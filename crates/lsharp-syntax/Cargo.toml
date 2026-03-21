@@ -1,0 +1,11 @@
+[package]
+name = "lsharp-syntax"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+miette.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+insta.workspace = true

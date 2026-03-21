@@ -1,0 +1,12 @@
+[package]
+name = "lsharp-types"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+lsharp-syntax = { path = "../lsharp-syntax" }
+thiserror.workspace = true
+miette.workspace = true
+
+[dev-dependencies]
+insta.workspace = true

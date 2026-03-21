@@ -1,0 +1,12 @@
+[package]
+name = "lsharp-ir"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+lsharp-syntax = { path = "../lsharp-syntax" }
+lsharp-types = { path = "../lsharp-types" }
+thiserror.workspace = true
+
+[dev-dependencies]
+insta.workspace = true

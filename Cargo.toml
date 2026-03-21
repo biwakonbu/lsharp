@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/lsharp-syntax",
+    "crates/lsharp-types",
+    "crates/lsharp-ir",
+    "crates/lsharp-wasm",
+    "crates/lsharp-driver",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+miette = { version = "7", features = ["fancy"] }
+thiserror = "2"
+insta = "1"
+clap = { version = "4", features = ["derive"] }
+wasm-encoder = "0.225"
+wasmtime = "29"

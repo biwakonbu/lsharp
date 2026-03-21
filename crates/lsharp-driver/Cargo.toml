@@ -1,0 +1,16 @@
+[package]
+name = "lsharp-driver"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "lsharp"
+path = "src/main.rs"
+
+[dependencies]
+lsharp-syntax = { path = "../lsharp-syntax" }
+lsharp-types = { path = "../lsharp-types" }
+lsharp-ir = { path = "../lsharp-ir" }
+lsharp-wasm = { path = "../lsharp-wasm" }
+clap.workspace = true
+miette.workspace = true
