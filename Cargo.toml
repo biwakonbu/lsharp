@@ -20,3 +20,4 @@ insta = "1"
 clap = { version = "4", features = ["derive"] }
 wasm-encoder = "0.225"
 wasmtime = "29"
+wasmtime-wasi = "29"

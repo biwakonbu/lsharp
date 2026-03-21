@@ -491,3 +491,162 @@ pub fn type_to_ir(ty: &Type) -> IrType {
         Type::App(_, _) => IrType::I64, // ADT ポインタ
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lsharp_types::infer::Infer;
+
+    /// ソースコードから IR モジュールを生成するヘルパー
+    fn lower(source: &str) -> Module {
+        let program = lsharp_syntax::parse(source).unwrap();
+        let mut infer = Infer::new();
+        let type_results = infer.infer_program(&program).unwrap();
+        let mut lowerer = Lower::new();
+        lowerer.lower_program(&program, &type_results).unwrap()
+    }
+
+    /// IR のテキストダンプをスナップショットテストで検証
+    fn assert_ir(source: &str, snapshot_name: &str) {
+        let module = lower(source);
+        insta::assert_snapshot!(snapshot_name, module.dump());
+    }
+
+    #[test]
+    fn test_lower_integer_literal() {
+        assert_ir("(defn main [] 42)", "lower_integer_literal");
+    }
+
+    #[test]
+    fn test_lower_bool_literal() {
+        assert_ir("(defn main [] true)", "lower_bool_literal");
+    }
+
+    #[test]
+    fn test_lower_arithmetic() {
+        assert_ir("(defn main [] (+ (* 3 4) 5))", "lower_arithmetic");
+    }
+
+    #[test]
+    fn test_lower_comparison() {
+        assert_ir("(defn main [] (< 1 2))", "lower_comparison");
+    }
+
+    #[test]
+    fn test_lower_if_expr() {
+        assert_ir(
+            "(defn main [] (if (< 1 2) 42 0))",
+            "lower_if_expr",
+        );
+    }
+
+    #[test]
+    fn test_lower_let_binding() {
+        assert_ir(
+            "(defn main [] (let [x 10 y 20] (+ x y)))",
+            "lower_let_binding",
+        );
+    }
+
+    #[test]
+    fn test_lower_nested_let() {
+        assert_ir(
+            "(defn main [] (let [a 5 b (+ a 3)] (* a b)))",
+            "lower_nested_let",
+        );
+    }
+
+    #[test]
+    fn test_lower_function_call() {
+        assert_ir(
+            "(defn double [x] (* x 2))
+             (defn main [] (double 21))",
+            "lower_function_call",
+        );
+    }
+
+    #[test]
+    fn test_lower_recursive_function() {
+        assert_ir(
+            "(defn fib [n]
+               (if (<= n 1)
+                 n
+                 (+ (fib (- n 1)) (fib (- n 2)))))
+             (defn main [] (fib 10))",
+            "lower_recursive_function",
+        );
+    }
+
+    #[test]
+    fn test_lower_print_call() {
+        assert_ir(
+            "(defn main [] (print 42))",
+            "lower_print_call",
+        );
+    }
+
+    #[test]
+    fn test_lower_wildcard_let() {
+        assert_ir(
+            "(defn main [] (let [_ 99] 1))",
+            "lower_wildcard_let",
+        );
+    }
+
+    #[test]
+    fn test_lower_do_block() {
+        assert_ir(
+            "(defn main [] (do (print 1) (print 2) 42))",
+            "lower_do_block",
+        );
+    }
+
+    #[test]
+    fn test_lower_not_operator() {
+        assert_ir(
+            "(defn main [] (not true))",
+            "lower_not_operator",
+        );
+    }
+
+    #[test]
+    fn test_lower_undefined_variable_error() {
+        // 型推論を通さずに直接 Lower を呼び出して未定義変数エラーを検証
+        use lsharp_syntax::ast::*;
+        use lsharp_syntax::span::Span;
+
+        let s = Span { start: 0, end: 0 };
+        let program = Program {
+            decls: vec![Decl::Defn {
+                span: s,
+                name: "main".to_string(),
+                params: vec![],
+                return_ty: None,
+                body: Expr::Var(s, "undefined_var".to_string()),
+            }],
+        };
+        let mut lowerer = Lower::new();
+        let result = lowerer.lower_program(&program, &[]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, LowerError::UndefinedFunction { .. }),
+            "expected UndefinedFunction error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_lower_lambda_unsupported() {
+        let program = lsharp_syntax::parse("(defn main [] (fn [x] x))").unwrap();
+        let mut infer = Infer::new();
+        let type_results = infer.infer_program(&program).unwrap();
+        let mut lowerer = Lower::new();
+        let result = lowerer.lower_program(&program, &type_results);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, LowerError::Unsupported { .. }),
+            "expected Unsupported error, got: {err}"
+        );
+    }
+}

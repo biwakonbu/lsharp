@@ -360,3 +360,115 @@ fn ir_to_wasm(ty: IrType) -> ValType {
         IrType::I32 => ValType::I32,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lsharp_ir::lower::Lower;
+    use lsharp_types::infer::Infer;
+
+    /// ソースコードから WASI 対応 Wasm バイナリを生成
+    fn compile_wasi(source: &str) -> Vec<u8> {
+        let program = lsharp_syntax::parse(source).unwrap();
+        let mut infer = Infer::new();
+        let type_results = infer.infer_program(&program).unwrap();
+        let mut lower = Lower::new();
+        let module = lower.lower_program(&program, &type_results).unwrap();
+        emit_wasm_wasi(&module).unwrap()
+    }
+
+    /// Wasm バイナリを WASI 環境で実行し、stdout 出力を返す
+    fn run_wasi(wasm_bytes: &[u8]) -> String {
+        use wasmtime::*;
+        use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
+
+        let engine = Engine::default();
+        let mut linker = Linker::<WasiP1Ctx>::new(&engine);
+        wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |t| t).unwrap();
+
+        let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(1024);
+
+        let wasi = WasiCtxBuilder::new()
+            .stdout(stdout.clone())
+            .build_p1();
+
+        let mut store = Store::new(&engine, wasi);
+        let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
+        let instance = linker.instantiate(&mut store, &module).unwrap();
+
+        let start = instance.get_typed_func::<(), ()>(&mut store, "_start").unwrap();
+        start.call(&mut store, ()).unwrap();
+
+        // store が WasiP1Ctx の参照を保持しているため、drop してから取得
+        drop(store);
+        let bytes = stdout.try_into_inner().unwrap();
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    #[test]
+    fn test_wasi_print_positive() {
+        let wasm = compile_wasi("(defn main [] (print 42))");
+        let output = run_wasi(&wasm);
+        assert_eq!(output, "42\n");
+    }
+
+    #[test]
+    fn test_wasi_print_zero() {
+        let wasm = compile_wasi("(defn main [] (print 0))");
+        let output = run_wasi(&wasm);
+        assert_eq!(output, "0\n");
+    }
+
+    #[test]
+    fn test_wasi_print_large_number() {
+        let wasm = compile_wasi("(defn main [] (print 1234567890))");
+        let output = run_wasi(&wasm);
+        assert_eq!(output, "1234567890\n");
+    }
+
+    #[test]
+    fn test_wasi_print_one() {
+        let wasm = compile_wasi("(defn main [] (print 1))");
+        let output = run_wasi(&wasm);
+        assert_eq!(output, "1\n");
+    }
+
+    #[test]
+    fn test_wasi_print_arithmetic_result() {
+        let wasm = compile_wasi("(defn main [] (print (+ (* 3 4) 5)))");
+        let output = run_wasi(&wasm);
+        assert_eq!(output, "17\n");
+    }
+
+    #[test]
+    fn test_wasi_multiple_prints() {
+        let wasm = compile_wasi(
+            "(defn main [] (do (print 1) (print 2) (print 3) 0))",
+        );
+        let output = run_wasi(&wasm);
+        assert_eq!(output, "1\n2\n3\n");
+    }
+
+    #[test]
+    fn test_wasi_print_function_result() {
+        let wasm = compile_wasi(
+            "(defn double [x] (* x 2))
+             (defn main [] (print (double 21)))",
+        );
+        let output = run_wasi(&wasm);
+        assert_eq!(output, "42\n");
+    }
+
+    #[test]
+    fn test_wasi_print_fib() {
+        let wasm = compile_wasi(
+            "(defn fib [n]
+               (if (<= n 1)
+                 n
+                 (+ (fib (- n 1)) (fib (- n 2)))))
+             (defn main [] (print (fib 10)))",
+        );
+        let output = run_wasi(&wasm);
+        assert_eq!(output, "55\n");
+    }
+}

@@ -1,0 +1,8 @@
+---
+source: crates/lsharp-ir/src/lower.rs
+expression: module.dump()
+---
+fn main() -> i64:
+  i64.const 42
+  call 0
+  i64.const 0
