@@ -293,12 +293,10 @@ fn test_e2e_adt_constructor_compile() {
 #[test]
 fn test_e2e_adt_constructor_no_args_compile() {
     // 引数なしコンストラクタ（Nothing）のコンパイルテスト
-    let wasm = compile_only(
+    assert_valid_wasm(&compile_only(
         "(type (Maybe a) (Just a) Nothing)
          (defn main [] (do (print Nothing) 0))",
-    );
-    assert!(wasm.len() > 8);
-    assert_eq!(&wasm[0..4], b"\0asm");
+    ));
 }
 
 // === サンプルファイル E2E テスト ===
@@ -530,9 +528,7 @@ fn test_e2e_module() {
 #[test]
 fn test_e2e_constrained_compile() {
     let source = std::fs::read_to_string(example_path("constrained.ls")).unwrap();
-    let wasm = compile_only(&source);
-    assert!(wasm.len() > 8);
-    assert_eq!(&wasm[0..4], b"\0asm");
+    assert_valid_wasm(&compile_only(&source));
 }
 
 // === Phase 1: エラーケース ===
@@ -635,63 +631,48 @@ fn test_e2e_complex_control_flow() {
 
 #[test]
 fn test_e2e_record_field_access_compile() {
-    // レコードフィールドアクセサのコンパイル
-    let wasm = compile_only(
+    assert_valid_wasm(&compile_only(
         "(type Point (record (: x Int) (: y Int)))
          (defn main []
            (let [p {Point x 10 y 20}]
              (Point.x p)))",
-    );
-    assert!(wasm.len() > 8);
-    assert_eq!(&wasm[0..4], b"\0asm");
+    ));
 }
 
 #[test]
 fn test_e2e_adt_match_compile() {
-    // ADT パターンマッチのコンパイル
-    let wasm = compile_only(
+    assert_valid_wasm(&compile_only(
         "(type (Maybe a) (Just a) Nothing)
          (defn from-maybe [m default]
            (match m
              [(Just x) x]
              [Nothing default]))
          (defn main [] (print 1))",
-    );
-    assert!(wasm.len() > 8);
-    assert_eq!(&wasm[0..4], b"\0asm");
+    ));
 }
 
 #[test]
 fn test_e2e_adt_multiple_variants_compile() {
-    // 複数バリアントの ADT コンパイル
-    let wasm = compile_only(
+    assert_valid_wasm(&compile_only(
         "(type Color Red Green Blue)
          (defn main [] (do (print Red) 0))",
-    );
-    assert!(wasm.len() > 8);
-    assert_eq!(&wasm[0..4], b"\0asm");
+    ));
 }
 
 #[test]
 fn test_e2e_record_multiple_fields_compile() {
-    // 複数フィールドレコードのコンパイル
-    let wasm = compile_only(
+    assert_valid_wasm(&compile_only(
         "(type Person (record (: name String) (: age Int) (: active Bool)))
          (defn main [] (print 1))",
-    );
-    assert!(wasm.len() > 8);
-    assert_eq!(&wasm[0..4], b"\0asm");
+    ));
 }
 
 #[test]
 fn test_e2e_adt_with_type_params_compile() {
-    // 型パラメータ付き ADT のコンパイル
-    let wasm = compile_only(
+    assert_valid_wasm(&compile_only(
         "(type (Result a b) (Ok a) (Err b))
          (defn main [] (do (print (Ok 42)) 0))",
-    );
-    assert!(wasm.len() > 8);
-    assert_eq!(&wasm[0..4], b"\0asm");
+    ));
 }
 
 // === Phase 2 追加: 残りの組み合わせテスト ===
