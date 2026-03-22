@@ -215,14 +215,14 @@ pub fn extract_context(source: &str, entry: &ReviewEntry, context_lines: usize) 
     let last = (end_line + context_lines).min(lines.len());
 
     let mut output = String::new();
-    for i in first..last {
-        let marker = if i + 1 >= start_line && i + 1 <= end_line {
+    for (i, line) in lines.iter().enumerate().skip(first).take(last - first) {
+        let marker = if i + 1 >= start_line && i < end_line {
             ">"
         } else {
             " "
         };
         output.push_str(&format!("{marker} {:>4} | {}
-", i + 1, lines[i]));
+", i + 1, line));
     }
     output
 }

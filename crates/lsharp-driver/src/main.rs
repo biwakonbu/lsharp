@@ -462,8 +462,8 @@ fn run_wasm_wasi(wasm_bytes: &[u8]) -> Result<String, String> {
     let bytes = stdout
         .try_into_inner()
         .ok_or_else(|| "stdout の取得に失敗".to_string())?;
-    Ok(String::from_utf8(bytes.to_vec())
-        .map_err(|e| format!("出力のデコードに失敗: {e}"))?)
+    String::from_utf8(bytes.to_vec())
+        .map_err(|e| format!("出力のデコードに失敗: {e}"))
 }
 
 /// Knowledge JSON を構築
@@ -596,10 +596,10 @@ fn build_knowledge(
 }
 
 /// P0-1: git リポジトリの存在を検証
-fn check_git_repo(file: &PathBuf) -> miette::Result<()> {
+fn check_git_repo(file: &std::path::Path) -> miette::Result<()> {
     // ファイルの親ディレクトリから .git を探索
     let mut dir = file.canonicalize()
-        .unwrap_or_else(|_| file.clone());
+        .unwrap_or_else(|_| file.to_path_buf());
 
     loop {
         if dir.is_file() {

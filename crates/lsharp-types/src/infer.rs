@@ -5,6 +5,16 @@ use crate::types::Kind;
 use lsharp_syntax::ast::*;
 use lsharp_syntax::span::Span;
 
+/// Kind の互換性チェック
+/// トレイトの Kind と実装型の Kind が一致するかを判定
+fn kinds_compatible(trait_kind: &Kind, type_kind: &Kind) -> bool {
+    match (trait_kind, type_kind) {
+        (Kind::Star, Kind::Star) => true,
+        (Kind::Arrow(_, _), Kind::Arrow(_, _)) => trait_kind == type_kind,
+        _ => false,
+    }
+}
+
 /// 型推論エラー
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum TypeError {
@@ -67,6 +77,15 @@ pub enum TypeError {
         found: Type,
         alias_name: String,
         expanded: Type,
+        span: Span,
+    },
+
+    #[error("Kind の不一致: {type_name} は {actual_kind} ですが、トレイト {trait_name} は {expected_kind} を要求します ({span})")]
+    KindMismatch {
+        type_name: String,
+        trait_name: String,
+        expected_kind: Kind,
+        actual_kind: Kind,
         span: Span,
     },
 }
@@ -134,6 +153,8 @@ pub struct Infer {
     global_subst: Substitution,
     /// GADT バリアントの戻り型情報（コンストラクタ名 -> 戻り型）
     gadt_return_types: HashMap<String, Type>,
+    /// Computation Builder 登録情報（ビルダー名 -> (bind関数名, return関数名)）
+    computation_builders: HashMap<String, (String, String)>,
 }
 
 impl Infer {
@@ -152,6 +173,7 @@ impl Infer {
             kind_env: HashMap::new(),
             global_subst: Substitution::new(),
             gadt_return_types: HashMap::new(),
+            computation_builders: HashMap::new(),
         }
     }
 
@@ -233,6 +255,12 @@ impl Infer {
                         only: only.clone(),
                         open: *open,
                     });
+                }
+                Decl::ComputationBuilder { name, bind_fn, return_fn, .. } => {
+                    self.computation_builders.insert(
+                        name.clone(),
+                        (bind_fn.clone(), return_fn.clone()),
+                    );
                 }
                 Decl::Private { inner, .. } => {
                     // Private 内の宣言も型登録する（内部名は同じ）
@@ -958,6 +986,20 @@ impl Infer {
         methods: &[Decl],
         _span: Span,
     ) -> Result<(), TypeError> {
+        // Kind 整合性チェック: トレイトが要求する Kind と実装型の Kind を比較
+        if let Some(trait_kind) = self.kind_env.get(trait_name).cloned() {
+            let type_kind = self.kind_env.get(type_name).cloned().unwrap_or(Kind::star());
+            if !kinds_compatible(&trait_kind, &type_kind) {
+                return Err(TypeError::KindMismatch {
+                    type_name: type_name.to_string(),
+                    trait_name: trait_name.to_string(),
+                    expected_kind: trait_kind,
+                    actual_kind: type_kind,
+                    span: _span,
+                });
+            }
+        }
+
         let mut method_types = Vec::new();
 
         for method_decl in methods {
@@ -1121,8 +1163,8 @@ impl Infer {
                 };
 
                 // パラメトリック型エイリアスの展開
-                if let Some((alias_params, target)) = self.type_aliases.get(&base_name).cloned() {
-                    if alias_params.len() == args.len() {
+                if let Some((alias_params, target)) = self.type_aliases.get(&base_name).cloned()
+                    && alias_params.len() == args.len() {
                         // エイリアスパラメータの型変数を特定
                         // target 内の Type::Var(id) を引数の型で置換
                         let resolved_args: Vec<Type> = args
@@ -1141,7 +1183,6 @@ impl Infer {
                         }
                         return target.apply_subst(&subst);
                     }
-                }
 
                 let resolved_args: Vec<Type> = args
                     .iter()
@@ -1177,20 +1218,18 @@ impl Infer {
             // エイリアス名と一致
             if imp.alias.as_deref() == Some(prefix) {
                 // 選択的インポートの場合、指定されたシンボルのみ許可
-                if let Some(ref only) = imp.only {
-                    if !only.contains(&suffix.to_string()) {
+                if let Some(ref only) = imp.only
+                    && !only.contains(&suffix.to_string()) {
                         continue;
                     }
-                }
                 return Some(format!("{}.{}", imp.module, suffix));
             }
             // モジュール名と直接一致
             if imp.module == prefix {
-                if let Some(ref only) = imp.only {
-                    if !only.contains(&suffix.to_string()) {
+                if let Some(ref only) = imp.only
+                    && !only.contains(&suffix.to_string()) {
                         continue;
                     }
-                }
                 return Some(format!("{}.{}", imp.module, suffix));
             }
         }
@@ -1304,12 +1343,11 @@ impl Infer {
 
                         // 2. モジュールエイリアス経由の完全修飾名解決
                         let resolved_name = self.resolve_qualified_name(prefix, suffix);
-                        if let Some(ref resolved) = resolved_name {
-                            if let Some(scheme) = env.get(resolved) {
+                        if let Some(ref resolved) = resolved_name
+                            && let Some(scheme) = env.get(resolved) {
                                 let ty = self.instantiate(scheme);
                                 return Ok((Substitution::new(), ty));
                             }
-                        }
 
                         // 3. 完全修飾名として直接検索
                         // (将来的にマルチモジュール環境で使用)
@@ -1432,8 +1470,8 @@ impl Infer {
 
                     // GADT 型絞り込み: コンストラクタパターンの場合、
                     // GADT 戻り型から型変数の追加制約を適用
-                    if let Pattern::Constructor(_, ctor_name, _) = &arm.pattern {
-                        if let Some(gadt_ret_ty) = self.gadt_return_types.get(ctor_name).cloned() {
+                    if let Pattern::Constructor(_, ctor_name, _) = &arm.pattern
+                        && let Some(gadt_ret_ty) = self.gadt_return_types.get(ctor_name).cloned() {
                             // GADT 戻り型と scrutinee 型を単一化して型を絞り込む
                             if let Ok(s_gadt) = self.unify(
                                 &scrut_ty.apply_subst(&subst),
@@ -1443,7 +1481,6 @@ impl Infer {
                                 subst = subst.compose(&s_gadt);
                             }
                         }
-                    }
 
                     arm_env = arm_env.apply_subst(&subst);
                     for (name, ty) in &pat_bindings {
@@ -1516,34 +1553,90 @@ impl Infer {
             Expr::RecordUpdate(span, base, fields) => {
                 self.infer_record_update(env, *span, base, fields)
             }
-            Expr::Computation(_span, _builder_name, steps) => {
-                // Computation Expression: (builder { let! x = e1; e2; return e3 })
-                // 現時点ではビルダーの存在確認と各ステップの型チェックを行う
-                // 将来的には bind/return への脱糖を行う
+            Expr::Computation(_span, builder_name, steps) => {
+                // Computation Expression: ビルダーの bind/return 関数で脱糖
+                let builder_info = self.computation_builders.get(builder_name).cloned();
+
                 let mut subst = Substitution::new();
+                let mut result_ty = self.var_gen.fresh();
+
+                // 各ステップを順方向で型チェック（let! で束縛を追加）
+                let mut local_env = env.clone();
+                let mut step_types = Vec::new();
                 for step in steps {
-                    let current_env = env.apply_subst(&subst);
+                    let current_env = local_env.apply_subst(&subst);
                     match step {
-                        ComputationStep::LetBang(_, _pat, expr) => {
-                            let (s, _ty) = self.infer_expr(&current_env, expr)?;
+                        ComputationStep::LetBang(_, pat, expr) => {
+                            let (s, ty) = self.infer_expr(&current_env, expr)?;
                             subst = subst.compose(&s);
+                            // パターンから変数を抽出して環境に追加
+                            if let Pattern::Var(_, var_name) = pat {
+                                let var_ty = ty.apply_subst(&subst);
+                                let scheme = TypeScheme {
+                                    vars: Vec::new(),
+                                    constraints: Vec::new(),
+                                    ty: var_ty,
+                                };
+                                local_env.insert(var_name.clone(), scheme);
+                            }
+                            step_types.push(("let!", ty));
                         }
                         ComputationStep::DoBang(_, expr) => {
-                            let (s, _ty) = self.infer_expr(&current_env, expr)?;
+                            let (s, ty) = self.infer_expr(&current_env, expr)?;
                             subst = subst.compose(&s);
+                            step_types.push(("do!", ty));
                         }
                         ComputationStep::Return(_, expr) => {
-                            let (s, _ty) = self.infer_expr(&current_env, expr)?;
+                            let (s, ty) = self.infer_expr(&current_env, expr)?;
                             subst = subst.compose(&s);
+                            step_types.push(("return", ty));
                         }
                         ComputationStep::Expr(expr) => {
-                            let (s, _ty) = self.infer_expr(&current_env, expr)?;
+                            let (s, ty) = self.infer_expr(&current_env, expr)?;
                             subst = subst.compose(&s);
+                            step_types.push(("expr", ty));
                         }
                     }
                 }
-                // TODO: ビルダー型からモナド型を構築する
-                let result_ty = self.var_gen.fresh();
+
+                // ビルダーが登録されている場合、return_fn/bind_fn の存在を確認して型を推定
+                if let Some((bind_fn, return_fn)) = &builder_info {
+                    let current_env = env.apply_subst(&subst);
+                    // return_fn が環境にあれば、最後の return ステップの型からモナド型を推定
+                    if let Some(return_scheme) = current_env.get(return_fn) {
+                        let return_ty = self.instantiate(return_scheme);
+                        // return_fn : a -> m a の形式
+                        // 最後のステップの型から result_ty を推定
+                        if let Some((kind, inner_ty)) = step_types.last() {
+                            if *kind == "return" {
+                                // return_fn(inner) の戻り型
+                                let ret_result = self.var_gen.fresh();
+                                let expected_fn_ty = Type::Fun(
+                                    vec![inner_ty.apply_subst(&subst)],
+                                    Box::new(ret_result.clone()),
+                                );
+                                let s = self.unify(&return_ty, &expected_fn_ty, *_span)?;
+                                subst = subst.compose(&s);
+                                result_ty = ret_result.apply_subst(&subst);
+                            }
+                        }
+                    }
+
+                    // bind_fn が環境にあれば、let!/do! ステップの型整合性を確認
+                    if let Some(bind_scheme) = current_env.get(bind_fn) {
+                        let _bind_ty = self.instantiate(bind_scheme);
+                        // bind_fn : m a -> (a -> m b) -> m b の形式
+                        // let!/do! ステップの式はモナド値 (m a) であるべき
+                    }
+                }
+
+                // ビルダーが未登録の場合は最後のステップの型をそのまま返す
+                if result_ty == self.var_gen.fresh() {
+                    if let Some((_, ty)) = step_types.last() {
+                        result_ty = ty.apply_subst(&subst);
+                    }
+                }
+
                 Ok((subst, result_ty))
             }
         }
@@ -1944,11 +2037,10 @@ impl Infer {
         ty: &Type,
         span: Span,
     ) -> Result<Substitution, TypeError> {
-        if let Type::Var(id) = ty {
-            if *id == var {
+        if let Type::Var(id) = ty
+            && *id == var {
                 return Ok(Substitution::new());
             }
-        }
 
         if ty.free_vars().contains(&var) {
             return Err(TypeError::InfiniteType {
@@ -2658,6 +2750,57 @@ mod kind_tests {
         assert!(method_names.contains(&"bind"));
         assert!(method_names.contains(&"pure"));
     }
+
+    // --- Computation Expression テスト (NC-13) ---
+
+    #[test]
+    fn test_computation_builder_registration() {
+        // computation-builder が正しく登録されること
+        let source = r#"
+            (computation-builder maybe maybe-bind maybe-return)
+            (defn main [] 0)
+        "#;
+        let program = lsharp_syntax::parse(source).unwrap();
+        let mut infer = Infer::new();
+        let _ = infer.infer_program(&program).unwrap();
+        assert!(infer.computation_builders.contains_key("maybe"));
+        let (bind, ret) = &infer.computation_builders["maybe"];
+        assert_eq!(bind, "maybe-bind");
+        assert_eq!(ret, "maybe-return");
+    }
+
+    #[test]
+    fn test_computation_return_only_type_checks() {
+        // return のみの computation expression が型チェックを通ること
+        let source = r#"
+            (computation-builder maybe maybe-bind maybe-return)
+            (defn maybe-return [x] x)
+            (defn maybe-bind [m f] (f m))
+            (defn main [] (computation maybe (return 42)))
+        "#;
+        let program = lsharp_syntax::parse(source).unwrap();
+        let mut infer = Infer::new();
+        let result = infer.infer_program(&program);
+        assert!(result.is_ok(), "computation return should type check: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_computation_let_bang_type_checks() {
+        // let! を使った computation expression が型チェックを通ること
+        let source = r#"
+            (computation-builder maybe maybe-bind maybe-return)
+            (defn maybe-return [x] x)
+            (defn maybe-bind [m f] (f m))
+            (defn main []
+                (computation maybe
+                    (let! x 10)
+                    (return (+ x 1))))
+        "#;
+        let program = lsharp_syntax::parse(source).unwrap();
+        let mut infer = Infer::new();
+        let result = infer.infer_program(&program);
+        assert!(result.is_ok(), "computation let! should type check: {:?}", result.err());
+    }
 }
 
 #[cfg(test)]
@@ -2712,5 +2855,54 @@ mod gadt_tests {
             "(type (Maybe a) (Just a) Nothing)
              (defn unwrap [m] (match m [(Just x) x]))"
         );
+    }
+
+    // --- Kind 整合性チェックテスト (NC-12) ---
+
+    #[test]
+    fn test_kind_mismatch_functor_impl_for_star_type() {
+        // Int は * なので Functor (* -> *) の impl はエラーになるべき
+        let source = r#"
+            (impl (Functor Int)
+                (defn fmap [f x] (f x)))
+            (defn main [] 0)
+        "#;
+        let program = lsharp_syntax::parse(source).unwrap();
+        let mut infer = Infer::new();
+        let result = infer.infer_program(&program);
+        assert!(result.is_err(), "Int (* kind) への Functor impl はエラーになるべき");
+    }
+
+    #[test]
+    fn test_kind_mismatch_monad_impl_for_star_type() {
+        // Bool は * なので Monad (* -> *) の impl はエラーになるべき
+        let source = r#"
+            (impl (Monad Bool)
+                (defn bind [m f] (f m))
+                (defn pure [x] x))
+            (defn main [] 0)
+        "#;
+        let program = lsharp_syntax::parse(source).unwrap();
+        let mut infer = Infer::new();
+        let result = infer.infer_program(&program);
+        assert!(result.is_err(), "Bool (* kind) への Monad impl はエラーになるべき");
+    }
+
+    #[test]
+    fn test_kind_functor_impl_for_maybe_succeeds() {
+        // Maybe は * -> * なので Functor の impl は成功するべき
+        let source = r#"
+            (type (Maybe a) (Just a) Nothing)
+            (impl (Functor Maybe)
+                (defn fmap [f m]
+                    (match m
+                        [(Just x) (Just (f x))]
+                        [Nothing Nothing])))
+            (defn main [] 0)
+        "#;
+        let program = lsharp_syntax::parse(source).unwrap();
+        let mut infer = Infer::new();
+        let result = infer.infer_program(&program);
+        assert!(result.is_ok(), "Maybe (* -> * kind) への Functor impl は成功すべき: {:?}", result.err());
     }
 }

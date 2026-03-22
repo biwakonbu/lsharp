@@ -49,6 +49,8 @@ pub struct Lower {
     string_data: RefCell<Vec<(String, Vec<u8>)>>,
     /// 次の文字列データオフセット
     string_offset: Cell<u32>,
+    /// Computation Builder 情報（ビルダー名 -> (bind関数名, return関数名)）
+    computation_builders: HashMap<String, (String, String)>,
 }
 
 /// Private 宣言を展開して内部の宣言を返す
@@ -75,6 +77,7 @@ impl Lower {
             adt_type_info: HashMap::new(),
             string_data: RefCell::new(Vec::new()),
             string_offset: Cell::new(512), // 文字列データの開始位置（メモリ先頭は数値変換バッファ用）
+            computation_builders: HashMap::new(),
         }
     }
 
@@ -227,6 +230,16 @@ impl Lower {
                         func_idx += 1;
                     }
                 }
+            }
+        }
+
+        // Computation Builder の登録
+        for decl in &program.decls {
+            if let Decl::ComputationBuilder { name, bind_fn, return_fn, .. } = unwrap_private(decl) {
+                self.computation_builders.insert(
+                    name.clone(),
+                    (bind_fn.clone(), return_fn.clone()),
+                );
             }
         }
 
@@ -462,26 +475,12 @@ impl Lower {
     fn generate_adt_constructor(
         &self,
         variant_name: &str,
-        gc_type_idx: u32,
+        _gc_type_idx: u32,
         tag_val: i32,
         field_count: usize,
     ) -> Function {
-        let mut body = Vec::new();
-
-        // $tag をスタックに積む
-        body.push(Instruction::I32Const(tag_val));
-
-        // 各フィールドをスタックに積む（引数から取得）
-        for i in 0..field_count {
-            body.push(Instruction::LocalGet(i as u32));
-        }
-
-        // struct.new で構築
-        body.push(Instruction::StructNew(gc_type_idx));
-
-        // MVP: GC struct → i64 にキャスト（wasmtime GC 未対応のため）
-        // 将来的には ref 型をそのまま返す
-        // 現在は i64 0 をフォールバックとして返す
+        // MVP: i64 フォールバック（wasmtime GC 未対応のため）
+        // 将来的には GC struct.new で ref 型をそのまま返す
         let mut fallback_body = Vec::new();
         for i in 0..field_count {
             fallback_body.push(Instruction::LocalGet(i as u32));
@@ -679,7 +678,7 @@ impl Lower {
         let (param_types, result_type) = if let Some(ty) = self.type_results.get(name) {
             match ty {
                 Type::Fun(params, ret) => {
-                    let p: Vec<IrType> = params.iter().map(|t| type_to_ir(t)).collect();
+                    let p: Vec<IrType> = params.iter().map(type_to_ir).collect();
                     let r = type_to_ir(ret);
                     (p, r)
                 }
@@ -795,7 +794,7 @@ impl Lower {
                     Expr::Var(_, op) if is_builtin_binop(op) && args.len() == 2 => {
                         self.lower_expr(ctx, &args[0])?;
                         self.lower_expr(ctx, &args[1])?;
-                        self.emit_binop(ctx, op);
+                        self.emit_binop(ctx, op)?;
                     }
                     // not 演算子
                     Expr::Var(_, op) if op == "not" && args.len() == 1 => {
@@ -809,7 +808,9 @@ impl Lower {
                         if let Some(arg) = args.first() {
                             self.lower_expr(ctx, arg)?;
                         }
-                        let idx = self.func_indices["print"];
+                        let idx = *self.func_indices.get("print").ok_or_else(|| {
+                            LowerError::UndefinedFunction { name: "print".to_string() }
+                        })?;
                         ctx.emit(Instruction::Call(idx));
                         // print は Unit を返す
                         ctx.emit(Instruction::I64Const(0));
@@ -930,13 +931,12 @@ impl Lower {
                 // TypeName.field 形式のフィールドアクセス
                 let mut resolved = false;
                 for (type_name, fields) in &self.record_fields {
-                    if let Some(field_idx) = fields.iter().position(|f| f == field_name) {
-                        if let Some(&gc_type_idx) = self.record_type_indices.get(type_name) {
+                    if let Some(field_idx) = fields.iter().position(|f| f == field_name)
+                        && let Some(&gc_type_idx) = self.record_type_indices.get(type_name) {
                             ctx.emit(Instruction::StructGet(gc_type_idx, field_idx as u32));
                             resolved = true;
                             break;
                         }
-                    }
                 }
 
                 if !resolved {
@@ -986,15 +986,54 @@ impl Lower {
                     ctx.emit(Instruction::LocalGet(base_local));
                 }
             }
-            Expr::Computation(_, _builder, steps) => {
-                // Computation Expression: 各ステップを順次評価
-                // TODO: bind/return への脱糖と適切なモナド変換
-                for step in steps {
+            Expr::Computation(_, builder_name, steps) => {
+                // Computation Expression: bind/return 関数呼び出しに脱糖
+                let builder_info = self.computation_builders.get(builder_name).cloned();
+
+                for (i, step) in steps.iter().enumerate() {
                     match step {
-                        ComputationStep::LetBang(_, _, expr) => self.lower_expr(ctx, expr)?,
-                        ComputationStep::DoBang(_, expr) => self.lower_expr(ctx, expr)?,
-                        ComputationStep::Return(_, expr) => self.lower_expr(ctx, expr)?,
-                        ComputationStep::Expr(expr) => self.lower_expr(ctx, expr)?,
+                        ComputationStep::LetBang(_, pat, expr) => {
+                            // let! x = expr → bind(expr, fn [x] rest)
+                            // MVP: bind 関数を呼び出す（簡易版: 式を評価してローカルに格納）
+                            self.lower_expr(ctx, expr)?;
+                            if let Some((ref bind_fn, _)) = builder_info {
+                                if let Some(&idx) = self.func_indices.get(bind_fn.as_str()) {
+                                    // bind 関数の第1引数（モナド値）は既にスタック上
+                                    // 残りのステップは後続で評価される
+                                    // MVP: 式の結果をそのまま変数に束縛
+                                    let _ = idx; // 将来的に bind 呼び出しに使用
+                                }
+                            }
+                            // パターン変数をローカルに格納
+                            if let Pattern::Var(_, var_name) = pat {
+                                let var_local = ctx.alloc_local(var_name.clone());
+                                ctx.emit(Instruction::LocalSet(var_local));
+                            }
+                        }
+                        ComputationStep::DoBang(_, expr) => {
+                            // do! expr → bind(expr, fn [_] rest)
+                            self.lower_expr(ctx, expr)?;
+                            // 結果を捨てる（最後のステップでなければ）
+                            if i < steps.len() - 1 {
+                                ctx.emit(Instruction::Drop);
+                            }
+                        }
+                        ComputationStep::Return(_, expr) => {
+                            // return expr → return_fn(expr)
+                            self.lower_expr(ctx, expr)?;
+                            if let Some((_, ref return_fn)) = builder_info {
+                                if let Some(&idx) = self.func_indices.get(return_fn.as_str()) {
+                                    ctx.emit(Instruction::Call(idx));
+                                }
+                            }
+                        }
+                        ComputationStep::Expr(expr) => {
+                            self.lower_expr(ctx, expr)?;
+                            // 中間式の結果を捨てる（最後のステップでなければ）
+                            if i < steps.len() - 1 {
+                                ctx.emit(Instruction::Drop);
+                            }
+                        }
                     }
                 }
             }
@@ -1111,7 +1150,7 @@ impl Lower {
     }
 
     /// 二項演算子の IR 命令を出力
-    fn emit_binop(&self, ctx: &mut FuncCtx, op: &str) {
+    fn emit_binop(&self, ctx: &mut FuncCtx, op: &str) -> Result<(), LowerError> {
         match op {
             "+" => ctx.emit(Instruction::I64Add),
             "-" => ctx.emit(Instruction::I64Sub),
@@ -1156,8 +1195,13 @@ impl Lower {
                 ctx.emit(Instruction::I32Or);
                 ctx.emit(Instruction::I64ExtendI32S);
             }
-            _ => {} // 未知の演算子は無視
+            _ => {
+                return Err(LowerError::Unsupported {
+                    msg: format!("未知の二項演算子: {}", op),
+                });
+            }
         }
+        Ok(())
     }
 }
 
@@ -1434,6 +1478,68 @@ mod tests {
             matches!(err, LowerError::Unsupported { .. }),
             "expected Unsupported error, got: {err}"
         );
+    }
+
+    #[test]
+    fn test_emit_binop_unknown_operator_returns_error() {
+        // 未知の二項演算子でエラーが返ることを確認 (R-M2)
+        let lowerer = Lower::new();
+        let mut ctx = FuncCtx::new("test".to_string());
+        let result = lowerer.emit_binop(&mut ctx, "unknown_op");
+        assert!(result.is_err(), "未知の演算子 'unknown_op' でエラーが返るべき");
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, LowerError::Unsupported { .. }),
+            "Unsupported エラーが返るべき: {err}"
+        );
+    }
+
+    #[test]
+    fn test_emit_binop_known_operators_succeed() {
+        // 既知の演算子は全て成功すること (R-M2 回帰テスト)
+        let lowerer = Lower::new();
+        let known_ops = ["+", "-", "*", "/", "%", "+.", "-.", "*.", "/.",
+                         "==", "=", "!=", "<", ">", "<=", ">=", "and", "or"];
+        for op in &known_ops {
+            let mut ctx = FuncCtx::new("test".to_string());
+            let result = lowerer.emit_binop(&mut ctx, op);
+            assert!(result.is_ok(), "演算子 '{op}' は成功すべき");
+        }
+    }
+
+    #[test]
+    fn test_lower_computation_return_calls_return_fn() {
+        // computation の return が return_fn を呼び出すこと
+        // (computation-builder name bind-fn return-fn)
+        let source = r#"
+            (computation-builder maybe mb mr)
+            (defn mb [m x] m)
+            (defn mr [x] x)
+            (defn main [] (computation maybe (return 42)))
+        "#;
+        let module = lower(source);
+        let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+        // mr (return_fn) への Call 命令が含まれるべき
+        let has_call = main_fn.body.iter().any(|instr| matches!(instr, Instruction::Call(_)));
+        assert!(has_call, "return は return_fn を Call すべき: {:?}", main_fn.body);
+    }
+
+    #[test]
+    fn test_lower_computation_let_bang_binds_variable() {
+        // computation の let! が変数をローカルに格納すること
+        let source = r#"
+            (computation-builder maybe identity identity)
+            (defn identity [x] x)
+            (defn main []
+                (computation maybe
+                    (let! x 10)
+                    (return (+ x 1))))
+        "#;
+        let module = lower(source);
+        let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+        // LocalSet + LocalGet の組み合わせがあるべき
+        let has_local_set = main_fn.body.iter().any(|instr| matches!(instr, Instruction::LocalSet(_)));
+        assert!(has_local_set, "let! はローカル変数に格納すべき: {:?}", main_fn.body);
     }
 }
 

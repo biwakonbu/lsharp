@@ -421,11 +421,10 @@ fn try_repeat_complex(
         require_end: bool,
     ) -> bool {
         // 最小回数を満たしたら、残りのパターンとマッチ試行
-        if count >= min_count {
-            if regex_match(rest_nodes, text, ni + 1, pos, require_end) {
+        if count >= min_count
+            && regex_match(rest_nodes, text, ni + 1, pos, require_end) {
                 return true;
             }
-        }
 
         if pos >= text.len() {
             return false;
@@ -438,21 +437,18 @@ fn try_repeat_complex(
                 for end in (pos + 1)..=text.len() {
                     if regex_match(group_nodes, text, 0, pos, false)
                         && group_full_match(group_nodes, text, pos, end)
-                    {
-                        if try_inner(inner, rest_nodes, text, ni, end, count + 1, min_count, require_end) {
+                        && try_inner(inner, rest_nodes, text, ni, end, count + 1, min_count, require_end) {
                             return true;
                         }
-                    }
                 }
             }
             RegexNode::Alternation(alternatives) => {
                 for alt in alternatives {
                     for end in (pos + 1)..=text.len() {
-                        if group_full_match(alt, text, pos, end) {
-                            if try_inner(inner, rest_nodes, text, ni, end, count + 1, min_count, require_end) {
+                        if group_full_match(alt, text, pos, end)
+                            && try_inner(inner, rest_nodes, text, ni, end, count + 1, min_count, require_end) {
                                 return true;
                             }
-                        }
                     }
                 }
             }
@@ -765,13 +761,13 @@ fn simple_pattern_match(text: &str, pattern: &str) -> bool {
         return true;
     }
 
-    let (anchored_start, pattern) = if pattern.starts_with('^') {
-        (true, &pattern[1..])
+    let (anchored_start, pattern) = if let Some(stripped) = pattern.strip_prefix('^') {
+        (true, stripped)
     } else {
         (false, pattern)
     };
-    let (anchored_end, pattern) = if pattern.ends_with('$') {
-        (true, &pattern[..pattern.len() - 1])
+    let (anchored_end, pattern) = if let Some(stripped) = pattern.strip_suffix('$') {
+        (true, stripped)
     } else {
         (false, pattern)
     };
@@ -886,13 +882,12 @@ pub fn check_constraint_compatibility(
                     ConstraintDef::Range(lo, _) => Some(*lo),
                     _ => None,
                 });
-                if let Some(cm) = child_min {
-                    if cm < *parent_min {
+                if let Some(cm) = child_min
+                    && cm < *parent_min {
                         errors.push(format!(
                             "子の下限 ({cm}) が親の下限 ({parent_min}) より小さい"
                         ));
                     }
-                }
             }
             ConstraintDef::Lte(parent_max) => {
                 // 子の Lte が親の Lte 以下であるか
@@ -901,13 +896,12 @@ pub fn check_constraint_compatibility(
                     ConstraintDef::Range(_, hi) => Some(*hi),
                     _ => None,
                 });
-                if let Some(cm) = child_max {
-                    if cm > *parent_max {
+                if let Some(cm) = child_max
+                    && cm > *parent_max {
                         errors.push(format!(
                             "子の上限 ({cm}) が親の上限 ({parent_max}) より大きい"
                         ));
                     }
-                }
             }
             ConstraintDef::Range(parent_lo, parent_hi) => {
                 // 子の範囲が親の範囲内か（Range、Gte、Lte のいずれかから推定）
@@ -936,20 +930,18 @@ pub fn check_constraint_compatibility(
                         ConstraintDef::Lte(v) => Some(*v),
                         _ => None,
                     });
-                    if let Some(clo) = child_lo {
-                        if clo < *parent_lo {
+                    if let Some(clo) = child_lo
+                        && clo < *parent_lo {
                             errors.push(format!(
                                 "子の下限 ({clo}) が親の範囲下限 ({parent_lo}) より小さい"
                             ));
                         }
-                    }
-                    if let Some(chi) = child_hi {
-                        if chi > *parent_hi {
+                    if let Some(chi) = child_hi
+                        && chi > *parent_hi {
                             errors.push(format!(
                                 "子の上限 ({chi}) が親の範囲上限 ({parent_hi}) より大きい"
                             ));
                         }
-                    }
                 }
             }
             _ => {}
@@ -1125,7 +1117,7 @@ pub fn generate_runtime_checks(
     let constraints = resolve_constraint_hierarchy(type_name, constrained_types);
     let conditions: Vec<RuntimeCondition> = constraints
         .iter()
-        .filter_map(|c| constraint_to_runtime_condition(c))
+        .filter_map(constraint_to_runtime_condition)
         .collect();
 
     RuntimeCheck {
@@ -1408,7 +1400,6 @@ mod tests {
             ConstraintResult::Violated(_)
         ));
     }
-}
 
     #[test]
     fn test_regex_backreference() {
@@ -1437,6 +1428,7 @@ mod tests {
         // 否定先読みの後に別のパターン
         assert!(simple_pattern_match("foobaz", "^foo(?!bar)baz$"));
     }
+}
 
 #[cfg(test)]
 mod hierarchy_tests {

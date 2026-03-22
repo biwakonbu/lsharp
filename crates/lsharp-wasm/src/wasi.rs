@@ -16,7 +16,6 @@ use crate::codegen::CodegenError;
 const NEWLINE_ADDR: i32 = 0;     // '\n' の格納位置
 const IOV_ADDR: i32 = 16;        // iovec 構造体 (8 bytes: base + len)
 const NWRITTEN_ADDR: i32 = 24;   // nwritten (4 bytes)
-const _BUF_START: i32 = 256;     // 数値変換バッファ開始
 const BUF_END: i32 = 276;        // 数値変換バッファ末尾 (21桁分: i64の最大桁数+符号)
 
 /// WASI モードで Wasm バイナリを生成

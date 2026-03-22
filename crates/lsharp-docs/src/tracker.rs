@@ -79,12 +79,11 @@ pub fn save_doc_status(status: &DocStatus, path: &std::path::Path) -> Result<(),
 
 /// コードの変更を検出して鮮度を更新
 pub fn update_freshness(status: &mut DocStatus, name: &str, current_ast_hash: u64) {
-    if let Some(entry) = status.entries.get_mut(name) {
-        if entry.ast_hash != current_ast_hash {
+    if let Some(entry) = status.entries.get_mut(name)
+        && entry.ast_hash != current_ast_hash {
             entry.freshness = Freshness::Stale;
             entry.ast_hash = current_ast_hash;
         }
-    }
 }
 
 /// ドキュメントを確認済みとしてマーク
@@ -96,14 +95,35 @@ pub fn acknowledge(status: &mut DocStatus, name: &str, reviewer: &str) {
     }
 }
 
-/// 現在時刻を ISO 8601 形式で返す（簡易実装）
+/// 現在時刻を ISO 8601 (RFC 3339) 形式で返す（簡易実装）
 fn chrono_now() -> String {
-    // 外部クレートなしの簡易実装
     use std::time::SystemTime;
-    let duration = SystemTime::now()
+    let secs = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default();
-    format!("{}s", duration.as_secs())
+        .unwrap_or_default()
+        .as_secs();
+
+    // UNIX epoch からの日数と時刻を計算
+    let days = secs / 86400;
+    let time_of_day = secs % 86400;
+    let hours = time_of_day / 3600;
+    let minutes = (time_of_day % 3600) / 60;
+    let seconds = time_of_day % 60;
+
+    // 日付計算 (civil date from days since 1970-01-01)
+    // アルゴリズム: Howard Hinnant の chrono-compatible 日付計算
+    let z = days as i64 + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u64; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // [0, 399]
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = doy - (153 * mp + 2) / 5 + 1; // [1, 31]
+    let m = if mp < 10 { mp + 3 } else { mp - 9 }; // [1, 12]
+    let year = if m <= 2 { y + 1 } else { y };
+
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", year, m, d, hours, minutes, seconds)
 }
 
 #[cfg(test)]
@@ -215,5 +235,17 @@ mod tests {
         let json = serde_json::to_string(&status).unwrap();
         let deserialized: DocStatus = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.entries["test"].ast_hash, 42);
+    }
+
+    #[test]
+    fn test_chrono_now_iso8601_format() {
+        let now = chrono_now();
+        // ISO 8601 形式 "YYYY-MM-DDTHH:MM:SSZ" に合致すること
+        assert!(now.contains('T'), "ISO 8601 形式に 'T' が含まれるべき: {}", now);
+        assert!(now.contains('-'), "ISO 8601 形式に '-' が含まれるべき: {}", now);
+        assert!(now.ends_with('Z'), "UTC タイムゾーン 'Z' で終わるべき: {}", now);
+        assert!(!now.ends_with('s'), "旧形式 '...s' であってはならない: {}", now);
+        // 長さチェック: "YYYY-MM-DDTHH:MM:SSZ" = 20 文字
+        assert_eq!(now.len(), 20, "ISO 8601 形式は 20 文字: {}", now);
     }
 }

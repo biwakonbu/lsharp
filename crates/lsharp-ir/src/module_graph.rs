@@ -77,11 +77,10 @@ impl ModuleGraph {
         let mut path = Vec::new();
 
         for name in self.modules.keys() {
-            if !visited.contains(name) {
-                if let Some(cycle) = self.dfs_detect_cycle(name, &mut visited, &mut in_stack, &mut path) {
+            if !visited.contains(name)
+                && let Some(cycle) = self.dfs_detect_cycle(name, &mut visited, &mut in_stack, &mut path) {
                     return Some(cycle);
                 }
-            }
         }
 
         None

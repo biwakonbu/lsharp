@@ -46,11 +46,10 @@ pub fn generate_test_program(
     // 元のプログラムの宣言を出力（main を除く）
     for decl in &original.decls {
         let actual = unwrap_private_decl(decl);
-        if let Decl::Defn { name, .. } = actual {
-            if name == "main" {
+        if let Decl::Defn { name, .. } = actual
+            && name == "main" {
                 continue;
             }
-        }
         source.push_str(&format!("{decl}\n"));
     }
 
@@ -99,11 +98,10 @@ pub fn generate_test_program(
 fn find_param_count(program: &Program, fn_name: &str) -> usize {
     for decl in &program.decls {
         let actual = unwrap_private_decl(decl);
-        if let Decl::Defn { name, params, .. } = actual {
-            if name == fn_name {
+        if let Decl::Defn { name, params, .. } = actual
+            && name == fn_name {
                 return params.len();
             }
-        }
     }
     0
 }

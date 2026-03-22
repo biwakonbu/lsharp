@@ -78,8 +78,7 @@ pub fn check_metadata(program: &Program) -> Vec<MetadataDiagnostic> {
             span,
             ..
         } = actual_decl
-        {
-            if let Some(meta) = metadata {
+            && let Some(meta) = metadata {
                 check_defn_metadata(
                     &mut diagnostics,
                     name,
@@ -89,7 +88,6 @@ pub fn check_metadata(program: &Program) -> Vec<MetadataDiagnostic> {
                     &all_names,
                 );
             }
-        }
     }
 
     diagnostics

@@ -113,15 +113,14 @@ impl Parser {
         // :where キーワードを確認
         // レキサーでは : + Symbol("where") になるか、Where トークンになる
         if self.check(TokenKind::Colon) {
-            if let Some(TokenKind::Symbol(ref s)) = self.peek_at(1).map(|t| &t.kind).cloned() {
-                if s == "where" {
+            if let Some(TokenKind::Symbol(ref s)) = self.peek_at(1).map(|t| &t.kind).cloned()
+                && s == "where" {
                     let span = self.peek_span();
                     self.advance(); // :
                     self.advance(); // where
 
                     return self.parse_where_clause_list(span);
                 }
-            }
             // Where トークンの場合
             if self.peek_at(1).map(|t| &t.kind) == Some(&TokenKind::Where) {
                 let span = self.peek_span();
@@ -737,7 +736,7 @@ impl Parser {
     /// パラメータ: name または (: name Type)
     fn parse_param(&mut self) -> Result<Param, ParseError> {
         if self.check(TokenKind::LParen) {
-            self.advance().span;
+            self.advance();
             self.expect(TokenKind::Colon)?;
             let name_span = self.peek_span();
             let name = self.expect_symbol()?;
@@ -854,8 +853,8 @@ impl Parser {
         }
 
         // 最初のトークンが大文字シンボルならレコードリテラル
-        if let Expr::Var(_, ref name) = first {
-            if name.starts_with(|c: char| c.is_ascii_uppercase()) && !name.contains('.') {
+        if let Expr::Var(_, ref name) = first
+            && name.starts_with(|c: char| c.is_ascii_uppercase()) && !name.contains('.') {
                 let type_name = name.clone();
                 let mut fields = Vec::new();
                 while !self.check(TokenKind::RBrace) {
@@ -870,7 +869,6 @@ impl Parser {
                     fields,
                 ));
             }
-        }
 
         // その他のブレース式はエラー
         Err(ParseError::Unexpected {
