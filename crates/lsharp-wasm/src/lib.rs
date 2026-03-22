@@ -4,3 +4,4 @@ pub mod codegen;
 pub mod emit;
 pub mod test_runner;
 pub mod wasi;
+pub mod wasi_runner;

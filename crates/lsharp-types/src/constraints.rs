@@ -466,9 +466,30 @@ fn group_full_match(nodes: &[RegexNode], text: &[char], start: usize, end: usize
     regex_match(nodes, sub_text, 0, 0, true)
 }
 
+/// 正規表現マッチのステップ上限 (NC-11: 病的入力対策)
+const REGEX_STEP_LIMIT: usize = 100_000;
+
+thread_local! {
+    /// 正規表現マッチのステップカウンター (NC-11)
+    static REGEX_STEPS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// NFA ベースの正規表現マッチ（バックトラッキング）
 /// require_end = true の場合、テキスト末尾まで消費されることを要求
 fn regex_match(nodes: &[RegexNode], text: &[char], ni: usize, ti: usize, require_end: bool) -> bool {
+    // ステップ制限チェック (NC-11)
+    let exceeded = REGEX_STEPS.with(|steps| {
+        let current = steps.get();
+        if current >= REGEX_STEP_LIMIT {
+            return true;
+        }
+        steps.set(current + 1);
+        false
+    });
+    if exceeded {
+        return false;
+    }
+
     if ni >= nodes.len() {
         return if require_end { ti >= text.len() } else { true };
     }
@@ -757,6 +778,9 @@ fn has_advanced_features(nodes: &[RegexNode]) -> bool {
 }
 
 fn simple_pattern_match(text: &str, pattern: &str) -> bool {
+    // ステップカウンターをリセット (NC-11)
+    REGEX_STEPS.with(|steps| steps.set(0));
+
     if pattern.is_empty() {
         return true;
     }
@@ -1427,6 +1451,25 @@ mod tests {
         assert!(!simple_pattern_match("foobar", "^foo(?!bar)"));
         // 否定先読みの後に別のパターン
         assert!(simple_pattern_match("foobaz", "^foo(?!bar)baz$"));
+    }
+
+    #[test]
+    fn test_regex_pathological_input_terminates() {
+        // NC-11: 病的入力（指数時間の可能性があるパターン）がステップ制限で終了することを検証
+        // (a+)+ のようなパターンは backtracking で指数時間になりうる
+        let pattern = "^(a+)+b$";
+        let input = "aaaaaaaaaaaaaaaaaaaac"; // マッチしない長い入力
+        // ステップ制限内で false を返すことを確認（無限ループしない）
+        assert!(!simple_pattern_match(input, pattern));
+    }
+
+    #[test]
+    fn test_regex_step_limit_prevents_hang() {
+        // NC-11: 非常に長い入力でもステップ制限で保護されることを検証
+        let long_input: String = "a".repeat(100);
+        let pattern = "^(a*)*b$";
+        // ステップ制限内で false を返す
+        assert!(!simple_pattern_match(&long_input, pattern));
     }
 }
 

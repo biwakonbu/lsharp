@@ -120,25 +120,105 @@ fn default_warning_level() -> String {
     "warning".to_string()
 }
 
-/// lsharp.toml を読み込み
-pub fn load_config(dir: &Path) -> Config {
-    let config_path = dir.join("lsharp.toml");
-    if !config_path.exists() {
-        return Config::default();
+/// 設定読み込みエラー
+#[derive(Debug, Clone)]
+pub enum ConfigError {
+    /// ファイル読み込み失敗
+    Read(String),
+    /// TOML パースエラー
+    Parse(String),
+    /// 設定値の検証エラー
+    Validation(Vec<String>),
+}
+
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigError::Read(msg) => write!(f, "lsharp.toml の読み込みに失敗: {msg}"),
+            ConfigError::Parse(msg) => write!(f, "lsharp.toml のパースに失敗: {msg}"),
+            ConfigError::Validation(errors) => {
+                write!(f, "設定値の検証エラー: {}", errors.join("; "))
+            }
+        }
+    }
+}
+
+/// 設定値の有効性を検証
+pub fn validate_config(config: &Config, project_dir: &Path) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    // random-test-count が 0 の場合は警告
+    if config.constraints.random_test_count == 0 {
+        errors.push("constraints.random-test-count は 1 以上の値を指定してください".to_string());
     }
 
-    match std::fs::read_to_string(&config_path) {
-        Ok(content) => match toml::from_str(&content) {
-            Ok(config) => config,
-            Err(e) => {
-                eprintln!("警告: lsharp.toml のパースに失敗: {e}");
-                Config::default()
+    // satisfies-search-count が 0 の場合は警告
+    if config.constraints.satisfies_search_count == 0 {
+        errors.push(
+            "constraints.satisfies-search-count は 1 以上の値を指定してください".to_string(),
+        );
+    }
+
+    // entry ファイルの存在確認
+    if !config.project.name.is_empty() {
+        let entry_path = project_dir.join(&config.project.entry);
+        if !entry_path.exists() {
+            errors.push(format!(
+                "project.entry で指定されたファイルが存在しません: {}",
+                config.project.entry
+            ));
+        }
+    }
+
+    // warning-level の値が有効か
+    let valid_levels = ["error", "warning", "off"];
+    if !valid_levels.contains(&config.doc_review.warning_level.as_str()) {
+        errors.push(format!(
+            "doc-review.warning-level の値が不正です: {} (有効値: error, warning, off)",
+            config.doc_review.warning_level
+        ));
+    }
+
+    errors
+}
+
+/// lsharp.toml を読み込み (Result 版)
+pub fn load_config_result(dir: &Path) -> Result<Config, ConfigError> {
+    let config_path = dir.join("lsharp.toml");
+    if !config_path.exists() {
+        return Ok(Config::default());
+    }
+
+    let content =
+        std::fs::read_to_string(&config_path).map_err(|e| ConfigError::Read(e.to_string()))?;
+
+    let config: Config =
+        toml::from_str(&content).map_err(|e| ConfigError::Parse(e.to_string()))?;
+
+    let validation_errors = validate_config(&config, dir);
+    if !validation_errors.is_empty() {
+        return Err(ConfigError::Validation(validation_errors));
+    }
+
+    Ok(config)
+}
+
+/// lsharp.toml を読み込み (後方互換: エラー時はデフォルト値を返す)
+pub fn load_config(dir: &Path) -> Config {
+    match load_config_result(dir) {
+        Ok(config) => config,
+        Err(ConfigError::Validation(_)) => {
+            // 検証エラーの場合はパース自体は成功しているので、
+            // ファイルを再読み込みしてデフォルトを返す
+            let config_path = dir.join("lsharp.toml");
+            if let Ok(content) = std::fs::read_to_string(&config_path)
+                && let Ok(config) = toml::from_str::<Config>(&content)
+            {
+                return config;
             }
-        },
-        Err(e) => {
-            eprintln!("警告: lsharp.toml の読み込みに失敗: {e}");
             Config::default()
         }
+        Err(_) => Config::default(),
     }
 }
 
@@ -212,5 +292,133 @@ warning-level = "error"
     fn test_load_nonexistent_config() {
         let config = load_config(Path::new("/nonexistent"));
         assert_eq!(config.constraints.random_test_count, 100);
+    }
+
+    #[test]
+    fn test_load_config_result_nonexistent() {
+        // 存在しないディレクトリではデフォルト設定を返す
+        let result = load_config_result(Path::new("/nonexistent"));
+        assert!(result.is_ok());
+        let config = result.unwrap();
+        assert_eq!(config.constraints.random_test_count, 100);
+    }
+
+    #[test]
+    fn test_load_config_result_invalid_toml() {
+        // 不正な TOML ファイルではエラーを返す
+        let dir = std::env::temp_dir().join("lsharp_test_invalid_toml");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lsharp.toml"), "invalid {{{{ toml").unwrap();
+
+        let result = load_config_result(&dir);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::Parse(msg) => {
+                assert!(!msg.is_empty());
+            }
+            other => panic!("ParseError を期待しましたが {:?} でした", other),
+        }
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_validate_random_test_count_zero() {
+        let mut config = Config::default();
+        config.constraints.random_test_count = 0;
+        let errors = validate_config(&config, Path::new("/tmp"));
+        assert!(errors.iter().any(|e| e.contains("random-test-count")));
+    }
+
+    #[test]
+    fn test_validate_satisfies_search_count_zero() {
+        let mut config = Config::default();
+        config.constraints.satisfies_search_count = 0;
+        let errors = validate_config(&config, Path::new("/tmp"));
+        assert!(errors.iter().any(|e| e.contains("satisfies-search-count")));
+    }
+
+    #[test]
+    fn test_validate_invalid_warning_level() {
+        let mut config = Config::default();
+        config.doc_review.warning_level = "invalid".to_string();
+        let errors = validate_config(&config, Path::new("/tmp"));
+        assert!(errors.iter().any(|e| e.contains("warning-level")));
+    }
+
+    #[test]
+    fn test_validate_valid_warning_levels() {
+        for level in &["error", "warning", "off"] {
+            let mut config = Config::default();
+            config.doc_review.warning_level = level.to_string();
+            let errors = validate_config(&config, Path::new("/tmp"));
+            assert!(
+                !errors.iter().any(|e| e.contains("warning-level")),
+                "{level} は有効な値のはず"
+            );
+        }
+    }
+
+    #[test]
+    fn test_validate_entry_file_not_found() {
+        let mut config = Config::default();
+        config.project.name = "test".to_string();
+        config.project.entry = "nonexistent/main.ls".to_string();
+        let errors = validate_config(&config, Path::new("/tmp"));
+        assert!(errors.iter().any(|e| e.contains("entry")));
+    }
+
+    #[test]
+    fn test_validate_default_config_no_entry_check() {
+        // project.name が空の場合は entry ファイルチェックをスキップ
+        let config = Config::default();
+        let errors = validate_config(&config, Path::new("/tmp"));
+        assert!(
+            !errors.iter().any(|e| e.contains("entry")),
+            "name が空なら entry チェックはスキップされるべき"
+        );
+    }
+
+    #[test]
+    fn test_load_config_result_validation_error() {
+        // 有効な TOML だが設定値が不正な場合
+        let dir = std::env::temp_dir().join("lsharp_test_validation");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("lsharp.toml"),
+            r#"
+[constraints]
+random-test-count = 0
+
+[doc-review]
+warning-level = "invalid"
+"#,
+        )
+        .unwrap();
+
+        let result = load_config_result(&dir);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ConfigError::Validation(errors) => {
+                assert!(errors.len() >= 2);
+            }
+            other => panic!("ValidationError を期待しましたが {:?} でした", other),
+        }
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_config_error_display() {
+        let err = ConfigError::Read("permission denied".to_string());
+        assert!(err.to_string().contains("permission denied"));
+
+        let err = ConfigError::Parse("syntax error".to_string());
+        assert!(err.to_string().contains("syntax error"));
+
+        let err = ConfigError::Validation(vec!["err1".to_string(), "err2".to_string()]);
+        let msg = err.to_string();
+        assert!(msg.contains("err1"));
+        assert!(msg.contains("err2"));
     }
 }
