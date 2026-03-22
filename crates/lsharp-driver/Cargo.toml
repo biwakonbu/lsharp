@@ -12,5 +12,10 @@ lsharp-syntax = { path = "../lsharp-syntax" }
 lsharp-types = { path = "../lsharp-types" }
 lsharp-ir = { path = "../lsharp-ir" }
 lsharp-wasm = { path = "../lsharp-wasm" }
+lsharp-docs = { path = "../lsharp-docs" }
 clap.workspace = true
 miette.workspace = true
+toml.workspace = true
+serde.workspace = true
+wasmtime.workspace = true
+wasmtime-wasi.workspace = true

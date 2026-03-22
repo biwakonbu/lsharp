@@ -1,0 +1,9 @@
+[package]
+name = "lsharp-docs"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+lsharp-syntax = { path = "../lsharp-syntax" }
+serde.workspace = true
+serde_json.workspace = true

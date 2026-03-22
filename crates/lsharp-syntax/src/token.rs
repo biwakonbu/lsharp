@@ -30,10 +30,22 @@ pub enum TokenKind {
     Do,
     Module,
     Import,
+    Record,          // P1-1: レコード型キーワード
+    Trait,           // P5-1: トレイトキーワード
+    Impl,            // P5-1: impl キーワード
+    Where,           // P5-1: where キーワード
+    TypeAlias,       // P2-1: 型エイリアスキーワード
+    TypeConstrained, // P2-1: 制約付き型キーワード
+    Constraints,     // P2-1: 制約ブロックキーワード
+    Private,         // P4-3: 可視性キーワード
+    Computation,     // P6-3: Computation Expression キーワード
+    ComputationBuilder, // P6-3: computation-builder 宣言キーワード
 
     // 型注釈
     Colon, // :
     Arrow, // ->
+    Pipe,  // | (レコード更新構文用)
+    Dot,   // . (フィールドアクセス用)
 
     // 特殊
     Eof,
@@ -62,8 +74,20 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Do => write!(f, "do"),
             TokenKind::Module => write!(f, "module"),
             TokenKind::Import => write!(f, "import"),
+            TokenKind::Record => write!(f, "record"),
+            TokenKind::Trait => write!(f, "trait"),
+            TokenKind::Impl => write!(f, "impl"),
+            TokenKind::Where => write!(f, "where"),
+            TokenKind::TypeAlias => write!(f, "type-alias"),
+            TokenKind::TypeConstrained => write!(f, "type-constrained"),
+            TokenKind::Constraints => write!(f, "constraints"),
+            TokenKind::Private => write!(f, "private"),
+            TokenKind::Computation => write!(f, "computation"),
+            TokenKind::ComputationBuilder => write!(f, "computation-builder"),
             TokenKind::Colon => write!(f, ":"),
             TokenKind::Arrow => write!(f, "->"),
+            TokenKind::Pipe => write!(f, "|"),
+            TokenKind::Dot => write!(f, "."),
             TokenKind::Eof => write!(f, "EOF"),
         }
     }

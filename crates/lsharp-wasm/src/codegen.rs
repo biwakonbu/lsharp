@@ -1,4 +1,4 @@
-//! IR → Wasm バイナリ生成
+//! IR -> Wasm バイナリ生成
 
 use lsharp_ir::{Instruction, IrType, Module};
 use wasm_encoder::{
@@ -111,7 +111,7 @@ fn emit_instructions(
         match instr {
             // 定数
             Instruction::I64Const(n) => func.instruction(&W::I64Const(*n)),
-            Instruction::F64Const(n) => func.instruction(&W::F64Const(*n)),
+            Instruction::F64Const(n) => func.instruction(&W::F64Const((*n).into())),
             Instruction::I32Const(n) => func.instruction(&W::I32Const(*n)),
 
             // ローカル変数
@@ -176,18 +176,48 @@ fn emit_instructions(
             Instruction::CallImport(i) => func.instruction(&W::Call(*i)),
 
             Instruction::Drop => func.instruction(&W::Drop),
+
+            // GC 命令は MVP では i64 にフォールバック
+            Instruction::StructNew(_) => {
+                // MVP: 未サポート、i64 0 を返す
+                func.instruction(&W::I64Const(0))
+            }
+            Instruction::StructGet(_, _) => {
+                // MVP: 引数をそのまま返す（何もしない）
+                &mut *func
+            }
+            Instruction::StructSet(_, _) => {
+                // MVP: drop して unit を返す
+                func.instruction(&W::Drop);
+                func.instruction(&W::Drop);
+                func.instruction(&W::I64Const(0))
+            }
+            Instruction::RefCast(_) => {
+                // MVP: 何もしない
+                &mut *func
+            }
+
+            // 関数参照
+            Instruction::RefFunc(idx) => func.instruction(&W::RefFunc(*idx)),
+            Instruction::CallRef(type_idx) => func.instruction(&W::CallRef(*type_idx)),
+
+            // グローバル変数
+            Instruction::GlobalGet(idx) => func.instruction(&W::GlobalGet(*idx)),
+            Instruction::GlobalSet(idx) => func.instruction(&W::GlobalSet(*idx)),
         };
     }
 
     Ok(())
 }
 
-/// IR 型 → Wasm 型
+/// IR 型 -> Wasm 型
 fn ir_to_wasm_type(ty: IrType) -> ValType {
     match ty {
         IrType::I64 => ValType::I64,
         IrType::F64 => ValType::F64,
         IrType::I32 => ValType::I32,
+        IrType::Ref(_) => ValType::I64, // MVP: GC 参照は i64 にフォールバック
+        IrType::FuncRef => ValType::FUNCREF,
     }
 }
 

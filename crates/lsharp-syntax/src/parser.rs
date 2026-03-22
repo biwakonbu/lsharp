@@ -46,6 +46,14 @@ impl Parser {
         let decl = match self.peek_kind() {
             Some(TokenKind::Defn) => self.parse_defn(start_span)?,
             Some(TokenKind::Type) => self.parse_type_def(start_span)?,
+            Some(TokenKind::TypeAlias) => self.parse_type_alias(start_span)?,
+            Some(TokenKind::TypeConstrained) => self.parse_type_constrained(start_span)?,
+            Some(TokenKind::Module) => self.parse_module_decl(start_span)?,
+            Some(TokenKind::Import) => self.parse_import_decl(start_span)?,
+            Some(TokenKind::Trait) => self.parse_trait_def(start_span)?,
+            Some(TokenKind::Impl) => self.parse_impl_def(start_span)?,
+            Some(TokenKind::Private) => self.parse_private(start_span)?,
+            Some(TokenKind::ComputationBuilder) => self.parse_computation_builder(start_span)?,
             Some(kind) => {
                 let span = self.peek_span();
                 return Err(ParseError::UnknownForm {
@@ -65,18 +73,26 @@ impl Parser {
 
     /// (defn name [params] body)
     /// (defn name [params] : RetType body)
+    /// (defn name [params] : RetType :where [(Trait a) ...] body)
     fn parse_defn(&mut self, start_span: Span) -> Result<Decl, ParseError> {
         self.advance(); // defn をスキップ
         let name = self.expect_symbol()?;
         let params = self.parse_params()?;
 
         // オプションの戻り値型注釈 `: RetType`
-        let return_ty = if self.check(TokenKind::Colon) {
+        // `:` の後がディレクティブキーワード（where, doc 等）の場合は型注釈ではない
+        let return_ty = if self.check(TokenKind::Colon) && !self.is_colon_directive() {
             self.advance();
             Some(self.parse_type_expr()?)
         } else {
             None
         };
+
+        // オプションの :where 制約句
+        let where_clauses = self.parse_where_clauses()?;
+
+        // オプションのメタデータ
+        let metadata = self.try_parse_metadata()?;
 
         let body = self.parse_expr()?;
         let end_span = self.expect(TokenKind::RParen)?.span;
@@ -87,11 +103,198 @@ impl Parser {
             params,
             return_ty,
             body,
+            where_clauses,
+            metadata,
         })
+    }
+
+    /// :where [(Trait a) ...] 制約句のパース
+    fn parse_where_clauses(&mut self) -> Result<Vec<WhereClause>, ParseError> {
+        // :where キーワードを確認
+        // レキサーでは : + Symbol("where") になるか、Where トークンになる
+        if self.check(TokenKind::Colon) {
+            if let Some(TokenKind::Symbol(ref s)) = self.peek_at(1).map(|t| &t.kind).cloned() {
+                if s == "where" {
+                    let span = self.peek_span();
+                    self.advance(); // :
+                    self.advance(); // where
+
+                    return self.parse_where_clause_list(span);
+                }
+            }
+            // Where トークンの場合
+            if self.peek_at(1).map(|t| &t.kind) == Some(&TokenKind::Where) {
+                let span = self.peek_span();
+                self.advance(); // :
+                self.advance(); // where
+
+                return self.parse_where_clause_list(span);
+            }
+        }
+        // where キーワード単体の場合
+        if self.check(TokenKind::Where) {
+            let span = self.peek_span();
+            self.advance(); // where
+            return self.parse_where_clause_list(span);
+        }
+
+        Ok(Vec::new())
+    }
+
+    /// where 制約リストのパース: [(Trait a) ...]
+    fn parse_where_clause_list(&mut self, _where_span: Span) -> Result<Vec<WhereClause>, ParseError> {
+        self.expect(TokenKind::LBracket)?;
+        let mut clauses = Vec::new();
+        while !self.check(TokenKind::RBracket) {
+            let clause_start = self.expect(TokenKind::LParen)?.span;
+            let trait_name = self.expect_symbol()?;
+            let type_var = self.expect_symbol()?;
+            let clause_end = self.expect(TokenKind::RParen)?.span;
+            clauses.push(WhereClause {
+                span: clause_start.merge(clause_end),
+                trait_name,
+                type_var,
+            });
+        }
+        self.advance(); // ]
+        Ok(clauses)
+    }
+
+    /// メタデータのパース試行
+    /// :doc "..." :params [(x "desc") ...] :returns "desc" など
+    fn try_parse_metadata(&mut self) -> Result<Option<Metadata>, ParseError> {
+        let mut metadata = Metadata::default();
+        let mut found = false;
+
+        loop {
+            if !self.check(TokenKind::Colon) {
+                break;
+            }
+
+            // 次のトークンがメタデータキーワードかチェック
+            let next = self.peek_at(1).map(|t| t.kind.clone());
+            match next {
+                Some(TokenKind::Symbol(ref s)) => {
+                    match s.as_str() {
+                        "doc" => {
+                            self.advance(); // :
+                            self.advance(); // doc
+                            if let Some(TokenKind::String(_)) = self.peek_kind() {
+                                let tok = self.advance();
+                                if let TokenKind::String(s) = tok.kind {
+                                    metadata.doc = Some(s);
+                                    found = true;
+                                }
+                            }
+                        }
+                        "params" => {
+                            self.advance(); // :
+                            self.advance(); // params
+                            self.expect(TokenKind::LBracket)?;
+                            while !self.check(TokenKind::RBracket) {
+                                self.expect(TokenKind::LParen)?;
+                                let param_name = self.expect_symbol()?;
+                                let param_desc = if let Some(TokenKind::String(_)) = self.peek_kind() {
+                                    let tok = self.advance();
+                                    if let TokenKind::String(s) = tok.kind { s } else { String::new() }
+                                } else {
+                                    String::new()
+                                };
+                                self.expect(TokenKind::RParen)?;
+                                metadata.params.push((param_name, param_desc));
+                            }
+                            self.advance(); // ]
+                            found = true;
+                        }
+                        "returns" => {
+                            self.advance(); // :
+                            self.advance(); // returns
+                            if let Some(TokenKind::String(_)) = self.peek_kind() {
+                                let tok = self.advance();
+                                if let TokenKind::String(s) = tok.kind {
+                                    metadata.returns = Some(s);
+                                    found = true;
+                                }
+                            }
+                        }
+                        "rationale" => {
+                            self.advance(); // :
+                            self.advance(); // rationale
+                            if let Some(TokenKind::String(_)) = self.peek_kind() {
+                                let tok = self.advance();
+                                if let TokenKind::String(s) = tok.kind {
+                                    metadata.rationale = Some(s);
+                                    found = true;
+                                }
+                            }
+                        }
+                        "since" => {
+                            self.advance(); // :
+                            self.advance(); // since
+                            if let Some(TokenKind::String(_)) = self.peek_kind() {
+                                let tok = self.advance();
+                                if let TokenKind::String(s) = tok.kind {
+                                    metadata.since = Some(s);
+                                    found = true;
+                                }
+                            }
+                        }
+                        "see-also" => {
+                            self.advance(); // :
+                            self.advance(); // see-also
+                            self.expect(TokenKind::LBracket)?;
+                            while !self.check(TokenKind::RBracket) {
+                                metadata.see_also.push(self.expect_symbol()?);
+                            }
+                            self.advance(); // ]
+                            found = true;
+                        }
+                        "example" => {
+                            self.advance(); // :
+                            self.advance(); // example
+                            self.expect(TokenKind::LBracket)?;
+                            while !self.check(TokenKind::RBracket) {
+                                metadata.example.push(self.parse_expr()?);
+                            }
+                            self.advance(); // ]
+                            found = true;
+                        }
+                        "invariant" => {
+                            self.advance(); // :
+                            self.advance(); // invariant
+                            metadata.invariant = Some(self.parse_expr()?);
+                            found = true;
+                        }
+                        "transitions" => {
+                            // :transitions [(From -> To) ...]
+                            self.advance(); // :
+                            self.advance(); // transitions
+                            self.expect(TokenKind::LBracket)?;
+                            while !self.check(TokenKind::RBracket) {
+                                self.expect(TokenKind::LParen)?;
+                                let from = self.expect_symbol()?;
+                                // -> 記号を読み飛ばす（Arrow トークン）
+                                self.expect(TokenKind::Arrow)?;
+                                let to = self.expect_symbol()?;
+                                self.expect(TokenKind::RParen)?;
+                                metadata.transitions.push((from, to));
+                            }
+                            self.advance(); // ]
+                            found = true;
+                        }
+                        _ => break,
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        Ok(if found { Some(metadata) } else { None })
     }
 
     /// (type Name Variant1 Variant2 ...)
     /// (type (Name a b) (Variant1 Type1) Variant2 ...)
+    /// (type Name (record (: field1 Type1) ...))
     fn parse_type_def(&mut self, start_span: Span) -> Result<Decl, ParseError> {
         self.advance(); // type をスキップ
 
@@ -111,17 +314,384 @@ impl Parser {
             (name, Vec::new())
         };
 
+        // レコード型かどうかを確認
+        if self.check(TokenKind::LParen) {
+            // 先読みして record キーワードを確認
+            if self.peek_at(1).map(|t| &t.kind) == Some(&TokenKind::Record) {
+                return self.parse_record_def(start_span, name, type_params);
+            }
+        }
+
         let mut variants = Vec::new();
         while !self.check(TokenKind::RParen) {
             variants.push(self.parse_variant()?);
         }
         let end_span = self.advance().span; // )
 
+        // オプションのメタデータ（型定義後）はスキップ（外側の ) 前で処理済み）
         Ok(Decl::TypeDef {
             span: start_span.merge(end_span),
             name,
             type_params,
             variants,
+            metadata: None,
+        })
+    }
+
+    /// レコード型定義のパース
+    /// (type Name (record (: field1 Type1) (: field2 Type2)))
+    fn parse_record_def(
+        &mut self,
+        start_span: Span,
+        name: String,
+        type_params: Vec<String>,
+    ) -> Result<Decl, ParseError> {
+        self.expect(TokenKind::LParen)?; // (
+        self.advance(); // record をスキップ
+
+        let mut fields = Vec::new();
+        while !self.check(TokenKind::RParen) {
+            // (: field Type)
+            self.expect(TokenKind::LParen)?;
+            self.expect(TokenKind::Colon)?;
+            let field_name = self.expect_symbol()?;
+            let field_type = self.parse_type_expr()?;
+            self.expect(TokenKind::RParen)?;
+            fields.push((field_name, field_type));
+        }
+        self.advance(); // ) (record を閉じる)
+
+        let end_span = self.expect(TokenKind::RParen)?.span; // (type を閉じる)
+
+        Ok(Decl::RecordDef {
+            span: start_span.merge(end_span),
+            name,
+            type_params,
+            fields,
+        })
+    }
+
+    /// 型エイリアスのパース
+    /// (type-alias Name Type)
+    /// (type-alias (Name a b) Type)
+    fn parse_type_alias(&mut self, start_span: Span) -> Result<Decl, ParseError> {
+        self.advance(); // type-alias をスキップ
+
+        let (name, params) = if self.check(TokenKind::LParen) {
+            self.advance();
+            let name = self.expect_symbol()?;
+            let mut params = Vec::new();
+            while !self.check(TokenKind::RParen) {
+                params.push(self.expect_symbol()?);
+            }
+            self.advance(); // )
+            (name, params)
+        } else {
+            let name = self.expect_symbol()?;
+            (name, Vec::new())
+        };
+
+        let target = self.parse_type_expr()?;
+        let end_span = self.expect(TokenKind::RParen)?.span;
+
+        Ok(Decl::TypeAlias {
+            span: start_span.merge(end_span),
+            name,
+            params,
+            target,
+        })
+    }
+
+    /// 制約付き型のパース
+    /// (type-constrained Name BaseType :constraints [(>= 0) (<= 100)])
+    fn parse_type_constrained(&mut self, start_span: Span) -> Result<Decl, ParseError> {
+        self.advance(); // type-constrained をスキップ
+
+        let name = self.expect_symbol()?;
+        let base_type = self.parse_type_expr()?;
+
+        let mut constraints = Vec::new();
+
+        // :constraints [...] を探す
+        if self.check(TokenKind::Colon) {
+            let next_is_constraints = match self.peek_at(1).map(|t| &t.kind) {
+                Some(TokenKind::Constraints) => true,
+                Some(TokenKind::Symbol(s)) if s == "constraints" => true,
+                _ => false,
+            };
+            if next_is_constraints {
+                self.advance(); // :
+                self.advance(); // constraints
+                self.expect(TokenKind::LBracket)?;
+
+                while !self.check(TokenKind::RBracket) {
+                    constraints.push(self.parse_constraint()?);
+                }
+                self.advance(); // ]
+            }
+        }
+
+        let end_span = self.expect(TokenKind::RParen)?.span;
+
+        Ok(Decl::TypeConstrained {
+            span: start_span.merge(end_span),
+            name,
+            base_type,
+            constraints,
+        })
+    }
+
+    /// 制約述語のパース
+    /// (>= N), (<= N), (range N M), (matches "..."), (min-length N),
+    /// (max-length N), (one-of [v1 v2 ...]), (satisfies fn-name)
+    fn parse_constraint(&mut self) -> Result<Constraint, ParseError> {
+        self.expect(TokenKind::LParen)?;
+
+        let op = self.expect_symbol()?;
+        let constraint = match op.as_str() {
+            ">=" => {
+                let val = self.parse_expr()?;
+                Constraint::Gte(val)
+            }
+            "<=" => {
+                let val = self.parse_expr()?;
+                Constraint::Lte(val)
+            }
+            "range" => {
+                let lo = self.parse_expr()?;
+                let hi = self.parse_expr()?;
+                Constraint::Range(lo, hi)
+            }
+            "matches" => {
+                let tok = self.advance();
+                if let TokenKind::String(s) = tok.kind {
+                    Constraint::Matches(s)
+                } else {
+                    return Err(ParseError::Unexpected {
+                        expected: "文字列パターン".to_string(),
+                        found: tok.kind.to_string(),
+                        span: tok.span,
+                    });
+                }
+            }
+            "min-length" => {
+                let val = self.parse_expr()?;
+                Constraint::MinLength(val)
+            }
+            "max-length" => {
+                let val = self.parse_expr()?;
+                Constraint::MaxLength(val)
+            }
+            "one-of" => {
+                self.expect(TokenKind::LBracket)?;
+                let mut values = Vec::new();
+                while !self.check(TokenKind::RBracket) {
+                    values.push(self.parse_expr()?);
+                }
+                self.advance(); // ]
+                Constraint::OneOf(values)
+            }
+            "satisfies" => {
+                let fn_name = self.expect_symbol()?;
+                Constraint::Satisfies(fn_name)
+            }
+            _ => {
+                return Err(ParseError::UnknownForm {
+                    name: format!("制約演算子: {op}"),
+                    span: self.peek_span(),
+                });
+            }
+        };
+
+        self.expect(TokenKind::RParen)?;
+        Ok(constraint)
+    }
+
+    /// 非公開宣言のパース
+    /// (private (defn ...))
+    fn parse_private(&mut self, start_span: Span) -> Result<Decl, ParseError> {
+        self.advance(); // private をスキップ
+
+        // 内側の宣言をパース（LParen から始まる）
+        let inner = self.parse_decl()?;
+        let end_span = self.expect(TokenKind::RParen)?.span;
+
+        Ok(Decl::Private {
+            span: start_span.merge(end_span),
+            inner: Box::new(inner),
+        })
+    }
+
+    /// (computation-builder name bind-fn return-fn)
+    fn parse_computation_builder(&mut self, start_span: Span) -> Result<Decl, ParseError> {
+        self.advance(); // computation-builder をスキップ
+        let name = self.expect_symbol()?;
+        let bind_fn = self.expect_symbol()?;
+        let return_fn = self.expect_symbol()?;
+        let end_span = self.expect(TokenKind::RParen)?.span;
+        Ok(Decl::ComputationBuilder {
+            span: start_span.merge(end_span),
+            name,
+            bind_fn,
+            return_fn,
+        })
+    }
+
+    /// モジュール宣言のパース
+    /// (module Name.Space)                       -- マーカーのみ
+    /// (module Name (defn ...) (defn ...) ...)    -- ネストモジュール（本体あり）
+    fn parse_module_decl(&mut self, start_span: Span) -> Result<Decl, ParseError> {
+        self.advance(); // module をスキップ
+        let name = self.expect_symbol()?;
+
+        // RParen なら本体なしのマーカーモジュール
+        // LParen なら本体ありのネストモジュール
+        let mut body = Vec::new();
+        while !self.check(TokenKind::RParen) {
+            body.push(self.parse_decl()?);
+        }
+        let end_span = self.expect(TokenKind::RParen)?.span;
+
+        Ok(Decl::ModuleDecl {
+            span: start_span.merge(end_span),
+            name,
+            body,
+        })
+    }
+
+    /// インポート宣言のパース
+    /// (import Name :as Alias)
+    /// (import Name :only [sym1 sym2])
+    /// (import Name :open)
+    fn parse_import_decl(&mut self, start_span: Span) -> Result<Decl, ParseError> {
+        self.advance(); // import をスキップ
+        let module = self.expect_symbol()?;
+
+        let mut alias = None;
+        let mut only = None;
+        let mut open = false;
+
+        // オプションの修飾子をパース
+        while !self.check(TokenKind::RParen) {
+            if self.check(TokenKind::Colon) {
+                self.advance(); // :
+            }
+            match self.peek_kind() {
+                Some(TokenKind::Symbol(ref s)) if s == "as" || s == ":as" => {
+                    self.advance();
+                    alias = Some(self.expect_symbol()?);
+                }
+                Some(TokenKind::Symbol(ref s)) if s == "only" || s == ":only" => {
+                    self.advance();
+                    self.expect(TokenKind::LBracket)?;
+                    let mut syms = Vec::new();
+                    while !self.check(TokenKind::RBracket) {
+                        syms.push(self.expect_symbol()?);
+                    }
+                    self.advance(); // ]
+                    only = Some(syms);
+                }
+                Some(TokenKind::Symbol(ref s)) if s == "open" || s == ":open" => {
+                    self.advance();
+                    open = true;
+                }
+                _ => break,
+            }
+        }
+
+        let end_span = self.expect(TokenKind::RParen)?.span;
+
+        Ok(Decl::ImportDecl {
+            span: start_span.merge(end_span),
+            module,
+            alias,
+            only,
+            open,
+        })
+    }
+
+    /// トレイト定義のパース
+    /// (trait (TraitName a) (defn method [...] ...))
+    fn parse_trait_def(&mut self, start_span: Span) -> Result<Decl, ParseError> {
+        self.advance(); // trait をスキップ
+
+        // (TraitName a)
+        self.expect(TokenKind::LParen)?;
+        let name = self.expect_symbol()?;
+        let type_param = self.expect_symbol()?;
+        self.expect(TokenKind::RParen)?;
+
+        let mut methods = Vec::new();
+        while !self.check(TokenKind::RParen) {
+            methods.push(self.parse_trait_method()?);
+        }
+
+        let end_span = self.expect(TokenKind::RParen)?.span;
+
+        Ok(Decl::TraitDef {
+            span: start_span.merge(end_span),
+            name,
+            type_param,
+            methods,
+        })
+    }
+
+    /// トレイトメソッドのパース
+    fn parse_trait_method(&mut self) -> Result<TraitMethod, ParseError> {
+        let start_span = self.expect(TokenKind::LParen)?.span;
+        self.expect(TokenKind::Defn)?;
+        let name = self.expect_symbol()?;
+        let params = self.parse_params()?;
+
+        let return_ty = if self.check(TokenKind::Colon) {
+            self.advance();
+            Some(self.parse_type_expr()?)
+        } else {
+            None
+        };
+
+        let default_impl = if !self.check(TokenKind::RParen) {
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
+
+        let end_span = self.expect(TokenKind::RParen)?.span;
+
+        Ok(TraitMethod {
+            span: start_span.merge(end_span),
+            name,
+            params,
+            return_ty,
+            default_impl,
+        })
+    }
+
+    /// impl 定義のパース
+    /// (impl (TraitName Type) (defn method [...] ...))
+    fn parse_impl_def(&mut self, start_span: Span) -> Result<Decl, ParseError> {
+        self.advance(); // impl をスキップ
+
+        // (TraitName Type)
+        self.expect(TokenKind::LParen)?;
+        let trait_name = self.expect_symbol()?;
+        let type_name = self.expect_symbol()?;
+        self.expect(TokenKind::RParen)?;
+
+        let mut methods = Vec::new();
+        while !self.check(TokenKind::RParen) {
+            let method_start = self.expect(TokenKind::LParen)?.span;
+            let method = self.parse_defn(method_start)?;
+            methods.push(method);
+        }
+
+        let end_span = self.expect(TokenKind::RParen)?.span;
+
+        Ok(Decl::ImplDef {
+            span: start_span.merge(end_span),
+            trait_name,
+            type_name,
+            methods,
         })
     }
 
@@ -139,6 +709,7 @@ impl Parser {
                 span: start_span.merge(end_span),
                 name,
                 fields,
+                return_type: None,
             })
         } else {
             let span = self.peek_span();
@@ -147,6 +718,7 @@ impl Parser {
                 span,
                 name,
                 fields: Vec::new(),
+                return_type: None,
             })
         }
     }
@@ -188,9 +760,10 @@ impl Parser {
     }
 
     /// 式をパース
-    fn parse_expr(&mut self) -> Result<Expr, ParseError> {
+    pub fn parse_expr(&mut self) -> Result<Expr, ParseError> {
         match self.peek_kind() {
             Some(TokenKind::LParen) => self.parse_list_expr(),
+            Some(TokenKind::LBrace) => self.parse_brace_expr(),
             Some(TokenKind::Int(_)) => {
                 let tok = self.advance();
                 if let TokenKind::Int(n) = tok.kind {
@@ -226,6 +799,18 @@ impl Parser {
             Some(TokenKind::Symbol(_)) => {
                 let tok = self.advance();
                 if let TokenKind::Symbol(name) = tok.kind {
+                    // ドット区切りシンボルの処理: TypeName.field
+                    if let Some(dot_pos) = name.find('.') {
+                        let prefix = &name[..dot_pos];
+                        let suffix = &name[dot_pos + 1..];
+                        if !prefix.is_empty()
+                            && !suffix.is_empty()
+                            && prefix.starts_with(|c: char| c.is_ascii_uppercase())
+                        {
+                            // TypeName.field 形式のフィールドアクセス（関数として使用）
+                            return Ok(Expr::Var(tok.span, name));
+                        }
+                    }
                     Ok(Expr::Var(tok.span, name))
                 } else {
                     unreachable!()
@@ -240,6 +825,59 @@ impl Parser {
                 expected: "式".to_string(),
             }),
         }
+    }
+
+    /// ブレース式のパース
+    /// {TypeName field1 val1 field2 val2}  -- レコードリテラル
+    /// {expr | field1 val1 ...}            -- レコード更新
+    fn parse_brace_expr(&mut self) -> Result<Expr, ParseError> {
+        let start_span = self.expect(TokenKind::LBrace)?.span;
+
+        // 最初のトークンを確認
+        let first = self.parse_expr()?;
+
+        // パイプがあればレコード更新
+        if self.check(TokenKind::Pipe) {
+            self.advance(); // |
+            let mut fields = Vec::new();
+            while !self.check(TokenKind::RBrace) {
+                let field_name = self.expect_symbol()?;
+                let field_val = self.parse_expr()?;
+                fields.push((field_name, field_val));
+            }
+            let end_span = self.expect(TokenKind::RBrace)?.span;
+            return Ok(Expr::RecordUpdate(
+                start_span.merge(end_span),
+                Box::new(first),
+                fields,
+            ));
+        }
+
+        // 最初のトークンが大文字シンボルならレコードリテラル
+        if let Expr::Var(_, ref name) = first {
+            if name.starts_with(|c: char| c.is_ascii_uppercase()) && !name.contains('.') {
+                let type_name = name.clone();
+                let mut fields = Vec::new();
+                while !self.check(TokenKind::RBrace) {
+                    let field_name = self.expect_symbol()?;
+                    let field_val = self.parse_expr()?;
+                    fields.push((field_name, field_val));
+                }
+                let end_span = self.expect(TokenKind::RBrace)?.span;
+                return Ok(Expr::RecordLit(
+                    start_span.merge(end_span),
+                    type_name,
+                    fields,
+                ));
+            }
+        }
+
+        // その他のブレース式はエラー
+        Err(ParseError::Unexpected {
+            expected: "レコードリテラルまたはレコード更新".to_string(),
+            found: "不明なブレース式".to_string(),
+            span: start_span,
+        })
     }
 
     /// 括弧で始まる式をパース
@@ -260,6 +898,7 @@ impl Parser {
             Some(TokenKind::Match) => self.parse_match(start_span),
             Some(TokenKind::Do) => self.parse_do(start_span),
             Some(TokenKind::Colon) => self.parse_ann(start_span),
+            Some(TokenKind::Computation) => self.parse_computation(start_span),
             _ => self.parse_app(start_span),
         }
     }
@@ -351,7 +990,77 @@ impl Parser {
         Ok(Expr::Do(start_span.merge(end_span), exprs))
     }
 
-    /// (: expr Type) — 型注釈
+    /// (computation builder-name step1 step2 ...)
+    /// ステップ: (let! pattern expr) | (do! expr) | (return expr) | expr
+    fn parse_computation(&mut self, start_span: Span) -> Result<Expr, ParseError> {
+        self.advance(); // computation
+        let builder_name = self.expect_symbol()?;
+        let mut steps = Vec::new();
+        while !self.check(TokenKind::RParen) {
+            let step = self.parse_computation_step()?;
+            steps.push(step);
+        }
+        let end_span = self.advance().span; // )
+        Ok(Expr::Computation(
+            start_span.merge(end_span),
+            builder_name,
+            steps,
+        ))
+    }
+
+    /// Computation Expression のステップをパース
+    fn parse_computation_step(&mut self) -> Result<ComputationStep, ParseError> {
+        let span = self.peek_span();
+        // (let! pat expr) または (do! expr) または (return expr)
+        if self.check(TokenKind::LParen) {
+            self.advance(); // (
+            let step_span = self.peek_span();
+            if let Some(TokenKind::Symbol(ref name)) = self.peek_kind() {
+                let name = name.clone();
+                match name.as_str() {
+                    "let!" => {
+                        self.advance(); // let!
+                        let pat = self.parse_pattern()?;
+                        let expr = self.parse_expr()?;
+                        let end = self.expect(TokenKind::RParen)?.span;
+                        return Ok(ComputationStep::LetBang(step_span.merge(end), pat, expr));
+                    }
+                    "do!" => {
+                        self.advance(); // do!
+                        let expr = self.parse_expr()?;
+                        let end = self.expect(TokenKind::RParen)?.span;
+                        return Ok(ComputationStep::DoBang(step_span.merge(end), expr));
+                    }
+                    "return" => {
+                        self.advance(); // return
+                        let expr = self.parse_expr()?;
+                        let end = self.expect(TokenKind::RParen)?.span;
+                        return Ok(ComputationStep::Return(step_span.merge(end), expr));
+                    }
+                    _ => {}
+                }
+            }
+            // 通常の S 式として巻き戻してパース
+            // ( は既に消費済みなので parse_list_expr の内部からパースする
+            let expr = match self.peek_kind() {
+                Some(TokenKind::If) => self.parse_if(span)?,
+                Some(TokenKind::Let) => self.parse_let(span)?,
+                Some(TokenKind::Fn) => self.parse_lambda(span)?,
+                Some(TokenKind::Match) => self.parse_match(span)?,
+                Some(TokenKind::Do) => self.parse_do(span)?,
+                Some(TokenKind::Colon) => self.parse_ann(span)?,
+                Some(TokenKind::Computation) => self.parse_computation(span)?,
+                _ => self.parse_app(span)?,
+            };
+            Ok(ComputationStep::Expr(expr))
+        } else {
+            // アトムの場合は通常の式
+            let expr = self.parse_expr()?;
+            Ok(ComputationStep::Expr(expr))
+        }
+    }
+
+    /// (: expr Type) -- 型注釈
     fn parse_ann(&mut self, start_span: Span) -> Result<Expr, ParseError> {
         self.advance(); // :
         let expr = self.parse_expr()?;
@@ -442,6 +1151,23 @@ impl Parser {
                     fields,
                 ))
             }
+            Some(TokenKind::LBrace) => {
+                // {TypeName field1 pat1 field2 pat2 ...}
+                let start_span = self.advance().span;
+                let type_name = self.expect_symbol()?;
+                let mut fields = Vec::new();
+                while !self.check(TokenKind::RBrace) {
+                    let field_name = self.expect_symbol()?;
+                    let field_pat = self.parse_pattern()?;
+                    fields.push((field_name, field_pat));
+                }
+                let end_span = self.advance().span; // }
+                Ok(Pattern::RecordPat(
+                    start_span.merge(end_span),
+                    type_name,
+                    fields,
+                ))
+            }
             Some(kind) => Err(ParseError::Unexpected {
                 expected: "パターン".to_string(),
                 found: kind.to_string(),
@@ -477,6 +1203,23 @@ impl Parser {
             }
             Some(TokenKind::LParen) => {
                 let start_span = self.advance().span;
+
+                // レコード型
+                if self.check(TokenKind::Record) {
+                    self.advance(); // record
+                    let mut fields = Vec::new();
+                    while !self.check(TokenKind::RParen) {
+                        self.expect(TokenKind::LParen)?;
+                        self.expect(TokenKind::Colon)?;
+                        let field_name = self.expect_symbol()?;
+                        let field_type = self.parse_type_expr()?;
+                        self.expect(TokenKind::RParen)?;
+                        fields.push((field_name, field_type));
+                    }
+                    let end_span = self.advance().span;
+                    return Ok(TypeExpr::Record(start_span.merge(end_span), fields));
+                }
+
                 if self.check(TokenKind::Arrow) {
                     // (-> Param1 Param2 Ret)
                     self.advance(); // ->
@@ -519,10 +1262,32 @@ impl Parser {
         }
     }
 
+    /// `:` の後がディレクティブキーワード（:where, :doc, :params 等）かを判定
+    fn is_colon_directive(&self) -> bool {
+        if !self.check(TokenKind::Colon) {
+            return false;
+        }
+        match self.peek_at(1).map(|t| &t.kind) {
+            Some(TokenKind::Where) => true,
+            Some(TokenKind::Constraints) => true,
+            Some(TokenKind::Symbol(s)) => matches!(
+                s.as_str(),
+                "where" | "constraints" | "doc" | "params" | "returns"
+                | "rationale" | "since" | "see-also" | "example" | "invariant"
+                | "transitions"
+            ),
+            _ => false,
+        }
+    }
+
     // --- ヘルパーメソッド ---
 
     fn peek(&self) -> Option<&Token> {
         self.tokens.get(self.pos)
+    }
+
+    fn peek_at(&self, offset: usize) -> Option<&Token> {
+        self.tokens.get(self.pos + offset)
     }
 
     fn peek_kind(&self) -> Option<TokenKind> {
@@ -676,5 +1441,416 @@ mod tests {
              (defn main [] (print (add 1 2)))",
         );
         assert_eq!(prog.decls.len(), 2);
+    }
+
+    // --- レコード型テスト ---
+
+    #[test]
+    fn test_record_type_def() {
+        let prog = parse("(type Point (record (: x Float) (: y Float)))");
+        assert_eq!(prog.decls.len(), 1);
+        assert_eq!(
+            prog.to_string(),
+            "(type Point (record (: x Float) (: y Float)))"
+        );
+    }
+
+    #[test]
+    fn test_parametric_record_type_def() {
+        let prog = parse("(type (Pair a b) (record (: fst a) (: snd b)))");
+        assert_eq!(prog.decls.len(), 1);
+        assert_eq!(
+            prog.to_string(),
+            "(type (Pair a b) (record (: fst a) (: snd b)))"
+        );
+    }
+
+    #[test]
+    fn test_record_literal() {
+        let expr = parse_expr_str("{Point x 1.0 y 2.0}");
+        assert_eq!(expr.to_string(), "{Point x 1 y 2}");
+    }
+
+    #[test]
+    fn test_record_update() {
+        let expr = parse_expr_str("{p | x 3.0}");
+        assert_eq!(expr.to_string(), "{(p) | x 3}");
+    }
+
+    // --- 型エイリアステスト ---
+
+    #[test]
+    fn test_type_alias() {
+        let prog = parse("(type-alias Str String)");
+        assert_eq!(prog.decls.len(), 1);
+        assert_eq!(prog.to_string(), "(type-alias Str String)");
+    }
+
+    #[test]
+    fn test_parametric_type_alias() {
+        let prog = parse("(type-alias (Callback a b) (-> a b))");
+        assert_eq!(prog.decls.len(), 1);
+    }
+
+    // --- 制約付き型テスト ---
+
+    #[test]
+    fn test_type_constrained_basic() {
+        let prog = parse(
+            "(type-constrained Natural Int :constraints [(>= 0)])"
+        );
+        assert_eq!(prog.decls.len(), 1);
+        if let Decl::TypeConstrained { name, constraints, .. } = &prog.decls[0] {
+            assert_eq!(name, "Natural");
+            assert_eq!(constraints.len(), 1);
+        } else {
+            panic!("Expected TypeConstrained");
+        }
+    }
+
+    #[test]
+    fn test_type_constrained_range() {
+        let prog = parse(
+            "(type-constrained Percentage Int :constraints [(>= 0) (<= 100)])"
+        );
+        assert_eq!(prog.decls.len(), 1);
+        if let Decl::TypeConstrained { name, constraints, .. } = &prog.decls[0] {
+            assert_eq!(name, "Percentage");
+            assert_eq!(constraints.len(), 2);
+        } else {
+            panic!("Expected TypeConstrained");
+        }
+    }
+
+    #[test]
+    fn test_type_constrained_matches() {
+        let prog = parse(
+            r#"(type-constrained Email String :constraints [(matches "^[^@]+@[^@]+$")])"#
+        );
+        assert_eq!(prog.decls.len(), 1);
+        if let Decl::TypeConstrained { constraints, .. } = &prog.decls[0] {
+            assert_eq!(constraints.len(), 1);
+            assert!(matches!(&constraints[0], Constraint::Matches(_)));
+        } else {
+            panic!("Expected TypeConstrained");
+        }
+    }
+
+    #[test]
+    fn test_type_constrained_satisfies() {
+        let prog = parse(
+            "(type-constrained EvenInt Int :constraints [(satisfies is-even)])"
+        );
+        assert_eq!(prog.decls.len(), 1);
+        if let Decl::TypeConstrained { constraints, .. } = &prog.decls[0] {
+            assert_eq!(constraints.len(), 1);
+            assert!(matches!(&constraints[0], Constraint::Satisfies(_)));
+        } else {
+            panic!("Expected TypeConstrained");
+        }
+    }
+
+    // --- where 制約テスト ---
+
+    #[test]
+    fn test_defn_with_where_clause() {
+        let prog = parse(
+            "(defn show-it [x] :where [(Show a)] (show x))"
+        );
+        assert_eq!(prog.decls.len(), 1);
+        if let Decl::Defn { where_clauses, .. } = &prog.decls[0] {
+            assert_eq!(where_clauses.len(), 1);
+            assert_eq!(where_clauses[0].trait_name, "Show");
+            assert_eq!(where_clauses[0].type_var, "a");
+        } else {
+            panic!("Expected Defn");
+        }
+    }
+
+    #[test]
+    fn test_defn_with_multiple_where_clauses() {
+        let prog = parse(
+            "(defn show-eq [x y] :where [(Show a) (Eq a)] (do (show x) (== x y)))"
+        );
+        assert_eq!(prog.decls.len(), 1);
+        if let Decl::Defn { where_clauses, .. } = &prog.decls[0] {
+            assert_eq!(where_clauses.len(), 2);
+        } else {
+            panic!("Expected Defn");
+        }
+    }
+
+    // --- メタデータテスト ---
+
+    #[test]
+    fn test_defn_with_metadata() {
+        let prog = parse(
+            r#"(defn add [x y] :doc "adds two numbers" (+ x y))"#
+        );
+        assert_eq!(prog.decls.len(), 1);
+        if let Decl::Defn { metadata, .. } = &prog.decls[0] {
+            assert!(metadata.is_some());
+            let m = metadata.as_ref().unwrap();
+            assert_eq!(m.doc.as_deref(), Some("adds two numbers"));
+        } else {
+            panic!("Expected Defn");
+        }
+    }
+
+    #[test]
+    fn test_defn_with_params_metadata() {
+        let prog = parse(
+            r#"(defn add [x y] :doc "addition" :params [(x "left") (y "right")] :returns "sum" (+ x y))"#
+        );
+        assert_eq!(prog.decls.len(), 1);
+        if let Decl::Defn { metadata, .. } = &prog.decls[0] {
+            let m = metadata.as_ref().unwrap();
+            assert_eq!(m.params.len(), 2);
+            assert_eq!(m.params[0].0, "x");
+            assert_eq!(m.returns.as_deref(), Some("sum"));
+        } else {
+            panic!("Expected Defn");
+        }
+    }
+
+    // --- モジュールテスト ---
+
+    #[test]
+    fn test_module_decl() {
+        let prog = parse("(module MyModule)");
+        assert_eq!(prog.decls.len(), 1);
+        assert_eq!(prog.to_string(), "(module MyModule)");
+    }
+
+    #[test]
+    fn test_nested_module_decl() {
+        let prog = parse(
+            "(module Utils (defn helper [x] (+ x 1)))"
+        );
+        assert_eq!(prog.decls.len(), 1);
+        if let Decl::ModuleDecl { name, body, .. } = &prog.decls[0] {
+            assert_eq!(name, "Utils");
+            assert_eq!(body.len(), 1);
+            assert!(matches!(&body[0], Decl::Defn { name, .. } if name == "helper"));
+        } else {
+            panic!("Expected ModuleDecl");
+        }
+    }
+
+    #[test]
+    fn test_nested_module_multiple_decls() {
+        let prog = parse(
+            "(module App.Utils
+              (defn add [x y] (+ x y))
+              (defn mul [x y] (* x y)))"
+        );
+        assert_eq!(prog.decls.len(), 1);
+        if let Decl::ModuleDecl { name, body, .. } = &prog.decls[0] {
+            assert_eq!(name, "App.Utils");
+            assert_eq!(body.len(), 2);
+        } else {
+            panic!("Expected ModuleDecl");
+        }
+    }
+
+    #[test]
+    fn test_nested_module_with_types() {
+        let prog = parse(
+            "(module Models
+              (type Point (record (: x Float) (: y Float)))
+              (defn origin [] {Point x 0.0 y 0.0}))"
+        );
+        assert_eq!(prog.decls.len(), 1);
+        if let Decl::ModuleDecl { name, body, .. } = &prog.decls[0] {
+            assert_eq!(name, "Models");
+            assert_eq!(body.len(), 2);
+            assert!(matches!(&body[0], Decl::RecordDef { .. }));
+            assert!(matches!(&body[1], Decl::Defn { .. }));
+        } else {
+            panic!("Expected ModuleDecl");
+        }
+    }
+
+    #[test]
+    fn test_nested_module_display() {
+        let prog = parse(
+            "(module Utils (defn id [x] x))"
+        );
+        assert_eq!(prog.to_string(), "(module Utils (defn id [x] x))");
+    }
+
+    #[test]
+    fn test_deeply_nested_modules() {
+        let prog = parse(
+            "(module App
+              (module Sub
+                (defn inner [] 42)))"
+        );
+        assert_eq!(prog.decls.len(), 1);
+        if let Decl::ModuleDecl { name, body, .. } = &prog.decls[0] {
+            assert_eq!(name, "App");
+            assert_eq!(body.len(), 1);
+            if let Decl::ModuleDecl { name: inner_name, body: inner_body, .. } = &body[0] {
+                assert_eq!(inner_name, "Sub");
+                assert_eq!(inner_body.len(), 1);
+            } else {
+                panic!("Expected inner ModuleDecl");
+            }
+        } else {
+            panic!("Expected ModuleDecl");
+        }
+    }
+
+    #[test]
+    fn test_import_decl() {
+        let prog = parse("(import MyModule)");
+        assert_eq!(prog.decls.len(), 1);
+    }
+
+    // --- トレイトテスト ---
+
+    #[test]
+    fn test_trait_def() {
+        let prog = parse("(trait (Show a) (defn show [self] : String))");
+        assert_eq!(prog.decls.len(), 1);
+    }
+
+    #[test]
+    fn test_impl_def() {
+        let prog = parse(
+            "(impl (Show Int) (defn show [self] (str self)))",
+        );
+        assert_eq!(prog.decls.len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod transitions_tests {
+    use crate::parse;
+    use crate::ast::Decl;
+
+    #[test]
+    fn test_transitions_metadata() {
+        let prog = parse(
+            r#"(defn open-door [door] :doc "Opens a door" :transitions [(Closed -> Open)] door)"#,
+        ).unwrap();
+        assert_eq!(prog.decls.len(), 1);
+        if let Decl::Defn { metadata, .. } = &prog.decls[0] {
+            let m = metadata.as_ref().unwrap();
+            assert_eq!(m.transitions.len(), 1);
+            assert_eq!(m.transitions[0], ("Closed".to_string(), "Open".to_string()));
+        } else {
+            panic!("Expected Defn");
+        }
+    }
+
+    #[test]
+    fn test_multiple_transitions() {
+        let prog = parse(
+            r#"(defn toggle [state] :transitions [(Open -> Closed) (Closed -> Open)] state)"#,
+        ).unwrap();
+        if let Decl::Defn { metadata, .. } = &prog.decls[0] {
+            let m = metadata.as_ref().unwrap();
+            assert_eq!(m.transitions.len(), 2);
+            assert_eq!(m.transitions[0], ("Open".to_string(), "Closed".to_string()));
+            assert_eq!(m.transitions[1], ("Closed".to_string(), "Open".to_string()));
+        } else {
+            panic!("Expected Defn");
+        }
+    }
+
+    #[test]
+    fn test_no_transitions() {
+        let prog = parse(r#"(defn add [x y] :doc "add" (+ x y))"#).unwrap();
+        if let Decl::Defn { metadata, .. } = &prog.decls[0] {
+            let m = metadata.as_ref().unwrap();
+            assert!(m.transitions.is_empty());
+        } else {
+            panic!("Expected Defn");
+        }
+    }
+}
+
+#[cfg(test)]
+mod computation_tests {
+    use crate::parse;
+    use crate::ast::{ComputationStep, Decl, Expr};
+
+    #[test]
+    fn test_computation_builder_decl() {
+        let prog = parse("(computation-builder maybe maybe-bind maybe-return)").unwrap();
+        assert_eq!(prog.decls.len(), 1);
+        if let Decl::ComputationBuilder { name, bind_fn, return_fn, .. } = &prog.decls[0] {
+            assert_eq!(name, "maybe");
+            assert_eq!(bind_fn, "maybe-bind");
+            assert_eq!(return_fn, "maybe-return");
+        } else {
+            panic!("Expected ComputationBuilder");
+        }
+    }
+
+    #[test]
+    fn test_computation_expr_basic() {
+        let prog = parse(
+            "(defn test [] (computation maybe (let! x (get-value)) (return x)))"
+        ).unwrap();
+        if let Decl::Defn { body, .. } = &prog.decls[0] {
+            if let Expr::Computation(_, builder, steps) = &body {
+                assert_eq!(builder, "maybe");
+                assert_eq!(steps.len(), 2);
+                assert!(matches!(&steps[0], ComputationStep::LetBang(..)));
+                assert!(matches!(&steps[1], ComputationStep::Return(..)));
+            } else {
+                panic!("Expected Computation expr, got: {body}");
+            }
+        } else {
+            panic!("Expected Defn");
+        }
+    }
+
+    #[test]
+    fn test_computation_expr_do_bang() {
+        let prog = parse(
+            "(defn test [] (computation async (do! (print 1)) (return 42)))"
+        ).unwrap();
+        if let Decl::Defn { body, .. } = &prog.decls[0] {
+            if let Expr::Computation(_, builder, steps) = &body {
+                assert_eq!(builder, "async");
+                assert_eq!(steps.len(), 2);
+                assert!(matches!(&steps[0], ComputationStep::DoBang(..)));
+                assert!(matches!(&steps[1], ComputationStep::Return(..)));
+            } else {
+                panic!("Expected Computation expr");
+            }
+        } else {
+            panic!("Expected Defn");
+        }
+    }
+
+    #[test]
+    fn test_computation_expr_with_plain_expr() {
+        let prog = parse(
+            "(defn test [] (computation maybe (let! x (get-value)) (+ x 1)))"
+        ).unwrap();
+        if let Decl::Defn { body, .. } = &prog.decls[0] {
+            if let Expr::Computation(_, _, steps) = &body {
+                assert_eq!(steps.len(), 2);
+                assert!(matches!(&steps[0], ComputationStep::LetBang(..)));
+                assert!(matches!(&steps[1], ComputationStep::Expr(_)));
+            } else {
+                panic!("Expected Computation expr");
+            }
+        } else {
+            panic!("Expected Defn");
+        }
+    }
+
+    #[test]
+    fn test_computation_display() {
+        let prog = parse(
+            "(defn test [] (computation maybe (let! x (get-value)) (return x)))"
+        ).unwrap();
+        let display = format!("{}", prog.decls[0]);
+        assert!(display.contains("maybe"));
     }
 }

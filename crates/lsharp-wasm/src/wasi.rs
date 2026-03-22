@@ -3,10 +3,11 @@
 //! wasmtime で直接実行可能な Wasm バイナリを生成する。
 //! print 関数を WASI の fd_write で実装し、_start エントリポイントを生成。
 
-use lsharp_ir::{Instruction, IrType, Module};
+use lsharp_ir::{GcTypeKind, Instruction, IrType, Module};
 use wasm_encoder::{
-    CodeSection, DataSection, EntityType, ExportKind, ExportSection, FunctionSection,
-    ImportSection, MemorySection, MemoryType, TypeSection, ValType,
+    ArrayType, CodeSection, CompositeInnerType, CompositeType, DataSection, EntityType,
+    ExportKind, ExportSection, FieldType, FunctionSection, ImportSection, MemorySection,
+    MemoryType, StorageType, StructType, SubType, TypeSection, ValType,
 };
 
 use crate::codegen::CodegenError;
@@ -31,13 +32,62 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let user_func_base: u32 = 2;
     let start_func_idx: u32 = user_func_base + module.functions.len() as u32;
 
+    // GC 型の数（TypeSection でのオフセット計算に使用）
+    let gc_type_count = module.gc_types.len() as u32;
+
     // === Type Section ===
     let mut types = TypeSection::new();
 
-    // type 0: fd_write (i32, i32, i32, i32) -> i32
+    // GC 型定義を TypeSection に登録（type index 0..gc_type_count-1）
+    for gc_type in &module.gc_types {
+        match &gc_type.kind {
+            GcTypeKind::Struct(fields) => {
+                let wasm_fields: Vec<FieldType> = fields
+                    .iter()
+                    .map(|f| FieldType {
+                        element_type: StorageType::Val(ir_to_wasm(f.ty)),
+                        mutable: f.mutable,
+                    })
+                    .collect();
+                types.ty().subtype(&SubType {
+                    is_final: true,
+                    supertype_idx: None,
+                    composite_type: CompositeType {
+                        inner: CompositeInnerType::Struct(StructType {
+                            fields: wasm_fields.into_boxed_slice(),
+                        }),
+                        shared: false,
+                        descriptor: None,
+                        describes: None,
+                    },
+                });
+            }
+            GcTypeKind::Array(elem_ty) => {
+                types.ty().subtype(&SubType {
+                    is_final: true,
+                    supertype_idx: None,
+                    composite_type: CompositeType {
+                        inner: CompositeInnerType::Array(ArrayType(FieldType {
+                            element_type: StorageType::Val(ir_to_wasm(*elem_ty)),
+                            mutable: true,
+                        })),
+                        shared: false,
+                        descriptor: None,
+                        describes: None,
+                    },
+                });
+            }
+        }
+    }
+
+    // 関数型のインデックスは gc_type_count だけオフセット
+
+    // fd_write 関数型: (i32, i32, i32, i32) -> i32
+    let fd_write_type_idx = types.len();
     types.ty().function(vec![ValType::I32; 4], vec![ValType::I32]);
 
-    // type 1: __print_i64 (i64) -> ()
+    // __print_i64 関数型: (i64) -> ()
+    let print_type_idx = types.len();
     types.ty().function(vec![ValType::I64], vec![]);
 
     // ユーザー関数の型
@@ -50,7 +100,7 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
         user_type_indices.push(type_idx);
     }
 
-    // type for _start: () -> ()
+    // _start 関数型: () -> ()
     let start_type_idx = types.len();
     types.ty().function(vec![], vec![]);
 
@@ -58,12 +108,12 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
 
     // === Import Section ===
     let mut imports = ImportSection::new();
-    imports.import("wasi_snapshot_preview1", "fd_write", EntityType::Function(0));
+    imports.import("wasi_snapshot_preview1", "fd_write", EntityType::Function(fd_write_type_idx));
     wasm_module.section(&imports);
 
     // === Function Section ===
     let mut functions = FunctionSection::new();
-    functions.function(1); // __print_i64: type 1
+    functions.function(print_type_idx); // __print_i64
     for &type_idx in &user_type_indices {
         functions.function(type_idx);
     }
@@ -101,7 +151,7 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
                 .map(|t| (1, ir_to_wasm(*t)))
                 .collect::<Vec<_>>(),
         );
-        emit_instructions_wasi(&mut f, &func.body, print_helper_idx, user_func_base)?;
+        emit_instructions_wasi(&mut f, &func.body, print_helper_idx, user_func_base, gc_type_count)?;
         f.instruction(&wasm_encoder::Instruction::End);
         codes.function(&f);
     }
@@ -122,17 +172,18 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     // === Data Section ===
     let mut data = DataSection::new();
     data.active(0, &wasm_encoder::ConstExpr::i32_const(NEWLINE_ADDR), b"\n".iter().copied());
+    // 文字列定数データをデータセクションに格納
+    let mut str_offset = 512i32;
+    for (_label, bytes) in &module.string_data {
+        data.active(0, &wasm_encoder::ConstExpr::i32_const(str_offset), bytes.iter().copied());
+        str_offset += bytes.len() as i32;
+    }
     wasm_module.section(&data);
 
     Ok(wasm_module.finish())
 }
 
 /// __print_i64: i64 の値を10進文字列に変換して stdout に出力
-///
-/// アルゴリズム:
-/// 1. BUF_END から左に向かって桁を書く（右詰め）
-/// 2. 書き終わったら iov を設定して fd_write
-/// 3. 改行を出力
 fn emit_print_i64_func(codes: &mut CodeSection) {
     use wasm_encoder::Instruction as W;
     use wasm_encoder::MemArg;
@@ -140,10 +191,6 @@ fn emit_print_i64_func(codes: &mut CodeSection) {
     let mem = |offset: u64| MemArg { offset, align: 0, memory_index: 0 };
     let mem32 = |offset: u64| MemArg { offset, align: 2, memory_index: 0 };
 
-    // param 0: value (i64)
-    // local 1: pos (i32) — 現在の書き込み位置
-    // local 2: is_neg (i32)
-    // local 3: abs_val (i64)
     let mut f = wasm_encoder::Function::new(vec![
         (1, ValType::I32), // local 1: pos
         (1, ValType::I32), // local 2: is_neg
@@ -182,36 +229,29 @@ fn emit_print_i64_func(codes: &mut CodeSection) {
     f.instruction(&W::I64Eqz);
     f.instruction(&W::If(wasm_encoder::BlockType::Empty));
     {
-        // pos -= 1
         f.instruction(&W::LocalGet(1));
         f.instruction(&W::I32Const(1));
         f.instruction(&W::I32Sub);
         f.instruction(&W::LocalSet(1));
-        // mem[pos] = '0'
         f.instruction(&W::LocalGet(1));
         f.instruction(&W::I32Const(48));
         f.instruction(&W::I32Store8(mem(0)));
     }
     f.instruction(&W::Else);
     {
-        // ループ: abs_val > 0 の間、桁を書く
         f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
         f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
         {
-            // if (abs_val == 0) break
             f.instruction(&W::LocalGet(3));
             f.instruction(&W::I64Eqz);
             f.instruction(&W::BrIf(1));
 
-            // pos -= 1
             f.instruction(&W::LocalGet(1));
             f.instruction(&W::I32Const(1));
             f.instruction(&W::I32Sub);
             f.instruction(&W::LocalSet(1));
 
-            // digit = (abs_val % 10) + '0'
-            // mem[pos] = digit
-            f.instruction(&W::LocalGet(1)); // addr for store
+            f.instruction(&W::LocalGet(1));
             f.instruction(&W::LocalGet(3));
             f.instruction(&W::I64Const(10));
             f.instruction(&W::I64RemU);
@@ -220,18 +260,17 @@ fn emit_print_i64_func(codes: &mut CodeSection) {
             f.instruction(&W::I32Add);
             f.instruction(&W::I32Store8(mem(0)));
 
-            // abs_val /= 10
             f.instruction(&W::LocalGet(3));
             f.instruction(&W::I64Const(10));
             f.instruction(&W::I64DivU);
             f.instruction(&W::LocalSet(3));
 
-            f.instruction(&W::Br(0)); // continue loop
+            f.instruction(&W::Br(0));
         }
-        f.instruction(&W::End); // end loop
-        f.instruction(&W::End); // end block
+        f.instruction(&W::End);
+        f.instruction(&W::End);
     }
-    f.instruction(&W::End); // end if-else
+    f.instruction(&W::End);
 
     // 負号
     f.instruction(&W::LocalGet(2));
@@ -242,24 +281,21 @@ fn emit_print_i64_func(codes: &mut CodeSection) {
         f.instruction(&W::I32Sub);
         f.instruction(&W::LocalSet(1));
         f.instruction(&W::LocalGet(1));
-        f.instruction(&W::I32Const(45)); // '-'
+        f.instruction(&W::I32Const(45));
         f.instruction(&W::I32Store8(mem(0)));
     }
     f.instruction(&W::End);
 
     // === fd_write: 数値出力 ===
-    // iov_base = pos
     f.instruction(&W::I32Const(IOV_ADDR));
     f.instruction(&W::LocalGet(1));
     f.instruction(&W::I32Store(mem32(0)));
-    // iov_len = BUF_END - pos
     f.instruction(&W::I32Const(IOV_ADDR + 4));
     f.instruction(&W::I32Const(BUF_END));
     f.instruction(&W::LocalGet(1));
     f.instruction(&W::I32Sub);
     f.instruction(&W::I32Store(mem32(0)));
 
-    // fd_write(1, IOV_ADDR, 1, NWRITTEN_ADDR)
     f.instruction(&W::I32Const(1));
     f.instruction(&W::I32Const(IOV_ADDR));
     f.instruction(&W::I32Const(1));
@@ -292,6 +328,7 @@ fn emit_instructions_wasi(
     instructions: &[Instruction],
     print_helper_idx: u32,
     user_func_base: u32,
+    _gc_type_count: u32,
 ) -> Result<(), CodegenError> {
     use wasm_encoder::Instruction as W;
 
@@ -305,7 +342,7 @@ fn emit_instructions_wasi(
                 }
             }
             Instruction::I64Const(n) => { func.instruction(&W::I64Const(*n)); }
-            Instruction::F64Const(n) => { func.instruction(&W::F64Const(*n)); }
+            Instruction::F64Const(n) => { func.instruction(&W::F64Const((*n).into())); }
             Instruction::I32Const(n) => { func.instruction(&W::I32Const(*n)); }
             Instruction::LocalGet(i) => { func.instruction(&W::LocalGet(*i)); }
             Instruction::LocalSet(i) => { func.instruction(&W::LocalSet(*i)); }
@@ -347,6 +384,22 @@ fn emit_instructions_wasi(
             Instruction::Unreachable => { func.instruction(&W::Unreachable); }
             Instruction::CallImport(i) => { func.instruction(&W::Call(*i)); }
             Instruction::Drop => { func.instruction(&W::Drop); }
+            // GC 命令は MVP ではフォールバック
+            // TODO: WasmGC ネイティブ対応時はここを struct.new/struct.get に変換
+            Instruction::StructNew(_) => { func.instruction(&W::I64Const(0)); }
+            Instruction::StructGet(_, _) => { /* nop */ }
+            Instruction::StructSet(_, _) => {
+                func.instruction(&W::Drop);
+                func.instruction(&W::Drop);
+                func.instruction(&W::I64Const(0));
+            }
+            Instruction::RefCast(_) => { /* nop */ }
+            // 関数参照
+            Instruction::RefFunc(idx) => { func.instruction(&W::RefFunc(*idx)); }
+            Instruction::CallRef(type_idx) => { func.instruction(&W::CallRef(*type_idx)); }
+            // グローバル変数
+            Instruction::GlobalGet(idx) => { func.instruction(&W::GlobalGet(*idx)); }
+            Instruction::GlobalSet(idx) => { func.instruction(&W::GlobalSet(*idx)); }
         };
     }
 
@@ -358,6 +411,8 @@ fn ir_to_wasm(ty: IrType) -> ValType {
         IrType::I64 => ValType::I64,
         IrType::F64 => ValType::F64,
         IrType::I32 => ValType::I32,
+        IrType::Ref(_) => ValType::I64, // MVP: GC 参照は i64 にフォールバック
+        IrType::FuncRef => ValType::FUNCREF,
     }
 }
 
@@ -399,7 +454,6 @@ mod tests {
         let start = instance.get_typed_func::<(), ()>(&mut store, "_start").unwrap();
         start.call(&mut store, ()).unwrap();
 
-        // store が WasiP1Ctx の参照を保持しているため、drop してから取得
         drop(store);
         let bytes = stdout.try_into_inner().unwrap();
         String::from_utf8(bytes.to_vec()).unwrap()
@@ -470,5 +524,27 @@ mod tests {
         );
         let output = run_wasi(&wasm);
         assert_eq!(output, "55\n");
+    }
+
+    #[test]
+    fn test_wasi_gc_type_section_with_record() {
+        // レコード型がある場合、TypeSection に GC 型定義が出力される
+        // wasmtime の GC feature が未有効のため、バイナリ生成のみ検証
+        let wasm = compile_wasi(
+            "(type Point (record (: x Int) (: y Int)))
+             (defn main [] (print 42))",
+        );
+        // Wasm バイナリが正常に生成されること
+        assert!(wasm.len() > 8);
+        // Wasm マジックナンバーの確認
+        assert_eq!(&wasm[0..4], b"\0asm");
+        // GC 型定義が含まれている場合、バイナリサイズが通常より大きいこと
+        let wasm_no_gc = compile_wasi("(defn main [] (print 42))");
+        assert!(
+            wasm.len() > wasm_no_gc.len(),
+            "GC 型を含むバイナリ({})は通常のバイナリ({})より大きいはず",
+            wasm.len(),
+            wasm_no_gc.len()
+        );
     }
 }

@@ -4,6 +4,52 @@ use std::fmt;
 /// 型変数の識別子
 pub type TypeVarId = u32;
 
+/// 種 (Kind) -- 型の型
+///
+/// HKT をサポートするための種システム。
+/// `*` は具体型の種、`* -> *` は型コンストラクタの種。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Kind {
+    /// 具体型の種 (*)
+    Star,
+    /// 型コンストラクタの種 (k1 -> k2)
+    Arrow(Box<Kind>, Box<Kind>),
+}
+
+impl Kind {
+    /// * (具体型)
+    pub fn star() -> Self {
+        Kind::Star
+    }
+
+    /// * -> * (1引数型コンストラクタ)
+    pub fn unary() -> Self {
+        Kind::Arrow(Box::new(Kind::Star), Box::new(Kind::Star))
+    }
+
+    /// * -> * -> * (2引数型コンストラクタ)
+    pub fn binary() -> Self {
+        Kind::Arrow(
+            Box::new(Kind::Star),
+            Box::new(Kind::Arrow(Box::new(Kind::Star), Box::new(Kind::Star))),
+        )
+    }
+}
+
+impl fmt::Display for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Kind::Star => write!(f, "*"),
+            Kind::Arrow(k1, k2) => {
+                match k1.as_ref() {
+                    Kind::Arrow(_, _) => write!(f, "({k1}) -> {k2}"),
+                    _ => write!(f, "{k1} -> {k2}"),
+                }
+            }
+        }
+    }
+}
+
 /// 型
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
@@ -15,6 +61,8 @@ pub enum Type {
     Fun(Vec<Type>, Box<Type>),
     /// 型適用 (Option Int, Result String Int)
     App(String, Vec<Type>),
+    /// レコード型
+    Record(String, Vec<(String, Type)>),
 }
 
 impl Type {
@@ -52,6 +100,12 @@ impl Type {
                 vars.dedup();
                 vars
             }
+            Type::Record(_, fields) => {
+                let mut vars: Vec<TypeVarId> = fields.iter().flat_map(|(_, t)| t.free_vars()).collect();
+                vars.sort();
+                vars.dedup();
+                vars
+            }
         }
     }
 
@@ -73,6 +127,12 @@ impl Type {
             ),
             Type::App(name, args) => {
                 Type::App(name.clone(), args.iter().map(|a| a.apply_subst(subst)).collect())
+            }
+            Type::Record(name, fields) => {
+                Type::Record(
+                    name.clone(),
+                    fields.iter().map(|(n, t)| (n.clone(), t.apply_subst(subst))).collect(),
+                )
             }
         }
     }
@@ -100,6 +160,13 @@ impl fmt::Display for Type {
                 }
                 write!(f, ")")
             }
+            Type::Record(name, fields) => {
+                write!(f, "{{{name}")?;
+                for (n, t) in fields {
+                    write!(f, " {n}: {t}")?;
+                }
+                write!(f, "}}")
+            }
         }
     }
 }
@@ -109,6 +176,8 @@ impl fmt::Display for Type {
 pub struct TypeScheme {
     /// 束縛された型変数
     pub vars: Vec<TypeVarId>,
+    /// トレイト制約
+    pub constraints: Vec<TraitConstraint>,
     /// 本体の型
     pub ty: Type,
 }
@@ -118,6 +187,7 @@ impl TypeScheme {
     pub fn mono(ty: Type) -> Self {
         TypeScheme {
             vars: Vec::new(),
+            constraints: Vec::new(),
             ty,
         }
     }
@@ -136,6 +206,7 @@ impl TypeScheme {
         let restricted = subst.without(&self.vars);
         TypeScheme {
             vars: self.vars.clone(),
+            constraints: self.constraints.clone(),
             ty: self.ty.apply_subst(&restricted),
         }
     }
@@ -150,12 +221,21 @@ impl fmt::Display for TypeScheme {
             for v in &self.vars {
                 write!(f, " t{v}")?;
             }
+            if !self.constraints.is_empty() {
+                write!(f, " where")?;
+                for (i, c) in self.constraints.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ",")?;
+                    }
+                    write!(f, " {} t{}", c.trait_name, c.type_var)?;
+                }
+            }
             write!(f, ". {}", self.ty)
         }
     }
 }
 
-/// 型代入（型変数 → 型 のマッピング）
+/// 型代入（型変数 -> 型 のマッピング）
 #[derive(Debug, Clone, Default)]
 pub struct Substitution {
     map: BTreeMap<TypeVarId, Type>,
@@ -231,7 +311,7 @@ impl TypeVarGen {
     }
 }
 
-/// 型環境（変数名 → 型スキーム）
+/// 型環境（変数名 -> 型スキーム）
 #[derive(Debug, Clone, Default)]
 pub struct TypeEnv {
     bindings: BTreeMap<String, TypeScheme>,
@@ -283,4 +363,64 @@ impl TypeEnv {
                 .collect(),
         }
     }
+}
+
+/// レコード型情報
+#[derive(Debug, Clone)]
+pub struct RecordInfo {
+    pub name: String,
+    pub type_params: Vec<TypeVarId>,
+    pub fields: Vec<(String, Type)>,
+}
+
+/// トレイト制約
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraitConstraint {
+    pub trait_name: String,
+    pub type_var: TypeVarId,
+}
+
+/// トレイト定義情報
+#[derive(Debug, Clone)]
+pub struct TraitInfo {
+    pub name: String,
+    pub type_param: TypeVarId,
+    pub methods: Vec<(String, TypeScheme)>,
+}
+
+/// トレイト実装情報
+#[derive(Debug, Clone)]
+pub struct ImplInfo {
+    pub trait_name: String,
+    pub type_name: String,
+    pub methods: Vec<(String, Type)>,
+}
+
+/// 制約付き型情報
+#[derive(Debug, Clone)]
+pub struct ConstrainedTypeInfo {
+    pub name: String,
+    pub base_type: Type,
+    pub constraints: Vec<ConstraintDef>,
+}
+
+/// 制約定義（実行時検証用）
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConstraintDef {
+    /// 下限 (>= N)
+    Gte(i64),
+    /// 上限 (<= N)
+    Lte(i64),
+    /// 範囲 (range lo hi)
+    Range(i64, i64),
+    /// 正規表現 (matches "pattern")
+    Matches(String),
+    /// 最小長 (min-length N)
+    MinLength(usize),
+    /// 最大長 (max-length N)
+    MaxLength(usize),
+    /// 値リスト (one-of [v1 v2 ...])
+    OneOf(Vec<i64>),
+    /// 述語関数 (satisfies fn-name)
+    Satisfies(String),
 }

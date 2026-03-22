@@ -21,6 +21,8 @@ pub enum TypeExpr {
     Fun(Span, Vec<TypeExpr>, Box<TypeExpr>),
     /// 型変数 (小文字の識別子: a, b, ...)
     Var(Span, String),
+    /// レコード型 (record (: field1 Type1) (: field2 Type2))
+    Record(Span, Vec<(String, TypeExpr)>),
 }
 
 /// パラメータ
@@ -43,6 +45,8 @@ pub enum Pattern {
     Lit(Span, Literal),
     /// コンストラクタパターン (Some x), None
     Constructor(Span, String, Vec<Pattern>),
+    /// レコードパターン {TypeName field1 pat1 field2 pat2}
+    RecordPat(Span, String, Vec<(String, Pattern)>),
 }
 
 /// match の腕
@@ -51,6 +55,52 @@ pub struct MatchArm {
     pub span: Span,
     pub pattern: Pattern,
     pub body: Expr,
+}
+
+/// 制約（型制約）
+#[derive(Debug, Clone, PartialEq)]
+pub enum Constraint {
+    Gte(Expr),
+    Lte(Expr),
+    Range(Expr, Expr),
+    Matches(String),
+    MinLength(Expr),
+    MaxLength(Expr),
+    OneOf(Vec<Expr>),
+    Satisfies(String),
+}
+
+/// トレイトメソッド定義
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraitMethod {
+    pub span: Span,
+    pub name: String,
+    pub params: Vec<Param>,
+    pub return_ty: Option<TypeExpr>,
+    pub default_impl: Option<Expr>,
+}
+
+/// トレイト制約 (:where [(Trait a) ...])
+#[derive(Debug, Clone, PartialEq)]
+pub struct WhereClause {
+    pub span: Span,
+    pub trait_name: String,
+    pub type_var: String,
+}
+
+/// 構造化メタデータ
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Metadata {
+    pub doc: Option<String>,
+    pub params: Vec<(String, String)>,
+    pub returns: Option<String>,
+    pub invariant: Option<Expr>,
+    pub rationale: Option<String>,
+    pub see_also: Vec<String>,
+    pub example: Vec<Expr>,
+    pub since: Option<String>,
+    /// ADT 状態遷移メタデータ :transitions [(from -> to) ...]
+    pub transitions: Vec<(String, String)>,
 }
 
 /// 式
@@ -74,6 +124,28 @@ pub enum Expr {
     Do(Span, Vec<Expr>),
     /// 型注釈 (: expr type)
     Ann(Span, Box<Expr>, TypeExpr),
+    /// レコードリテラル {TypeName field1 val1 field2 val2}
+    RecordLit(Span, String, Vec<(String, Expr)>),
+    /// フィールドアクセス TypeName.field expr
+    FieldAccess(Span, Box<Expr>, String),
+    /// レコード更新 {expr | field1 val1 ...}
+    RecordUpdate(Span, Box<Expr>, Vec<(String, Expr)>),
+    /// Computation Expression (builder-name { body })
+    /// let! によるモナディック束縛と return を含む
+    Computation(Span, String, Vec<ComputationStep>),
+}
+
+/// Computation Expression のステップ
+#[derive(Debug, Clone, PartialEq)]
+pub enum ComputationStep {
+    /// let! x = expr (モナディック束縛 -- bind に脱糖)
+    LetBang(Span, Pattern, Expr),
+    /// do! expr (モナディック実行 -- bind に脱糖、結果を捨てる)
+    DoBang(Span, Expr),
+    /// return expr (return に脱糖)
+    Return(Span, Expr),
+    /// 通常の式
+    Expr(Expr),
 }
 
 impl Expr {
@@ -87,7 +159,11 @@ impl Expr {
             | Expr::App(s, _, _)
             | Expr::Match(s, _, _)
             | Expr::Do(s, _)
-            | Expr::Ann(s, _, _) => *s,
+            | Expr::Ann(s, _, _)
+            | Expr::RecordLit(s, _, _)
+            | Expr::FieldAccess(s, _, _)
+            | Expr::RecordUpdate(s, _, _)
+            | Expr::Computation(s, _, _) => *s,
         }
     }
 }
@@ -98,6 +174,8 @@ pub struct Variant {
     pub span: Span,
     pub name: String,
     pub fields: Vec<TypeExpr>,
+    /// GADT: バリアント別の戻り型（None の場合は通常 ADT）
+    pub return_type: Option<TypeExpr>,
 }
 
 /// トップレベル宣言
@@ -110,6 +188,8 @@ pub enum Decl {
         params: Vec<Param>,
         return_ty: Option<TypeExpr>,
         body: Expr,
+        where_clauses: Vec<WhereClause>,
+        metadata: Option<Metadata>,
     },
     /// 型定義 (type (Name a b) (Variant1 ...) (Variant2 ...))
     TypeDef {
@@ -117,6 +197,69 @@ pub enum Decl {
         name: String,
         type_params: Vec<String>,
         variants: Vec<Variant>,
+        metadata: Option<Metadata>,
+    },
+    /// レコード型定義 (type Name (record (: field1 Type1) ...))
+    RecordDef {
+        span: Span,
+        name: String,
+        type_params: Vec<String>,
+        fields: Vec<(String, TypeExpr)>,
+    },
+    /// 型エイリアス (type-alias Name Type)
+    TypeAlias {
+        span: Span,
+        name: String,
+        params: Vec<String>,
+        target: TypeExpr,
+    },
+    /// 制約付き型 (type-constrained Name BaseType :constraints [...])
+    TypeConstrained {
+        span: Span,
+        name: String,
+        base_type: TypeExpr,
+        constraints: Vec<Constraint>,
+    },
+    /// モジュール宣言 (module Name) または (module Name decl1 decl2 ...)
+    ModuleDecl {
+        span: Span,
+        name: String,
+        /// ネストモジュールの本体宣言（空の場合はマーカーのみ）
+        body: Vec<Decl>,
+    },
+    /// インポート宣言 (import Name ...)
+    ImportDecl {
+        span: Span,
+        module: String,
+        alias: Option<String>,
+        only: Option<Vec<String>>,
+        open: bool,
+    },
+    /// トレイト定義 (trait (TraitName a) ...)
+    TraitDef {
+        span: Span,
+        name: String,
+        type_param: String,
+        methods: Vec<TraitMethod>,
+    },
+    /// トレイト実装 (impl (TraitName Type) ...)
+    ImplDef {
+        span: Span,
+        trait_name: String,
+        type_name: String,
+        methods: Vec<Decl>,
+    },
+    /// 非公開宣言 (private (defn ...))
+    Private {
+        span: Span,
+        inner: Box<Decl>,
+    },
+    /// Computation Builder 宣言 (computation-builder name bind-fn return-fn)
+    ComputationBuilder {
+        span: Span,
+        name: String,
+        bind_fn: String,
+        return_fn: String,
     },
 }
 
@@ -190,6 +333,105 @@ impl std::fmt::Display for Decl {
                 }
                 write!(f, ")")
             }
+            Decl::RecordDef {
+                name,
+                type_params,
+                fields,
+                ..
+            } => {
+                if type_params.is_empty() {
+                    write!(f, "(type {name} (record")?;
+                } else {
+                    write!(f, "(type ({name}")?;
+                    for p in type_params {
+                        write!(f, " {p}")?;
+                    }
+                    write!(f, ") (record")?;
+                }
+                for (fname, fty) in fields {
+                    write!(f, " (: {fname} {fty})")?;
+                }
+                write!(f, "))")
+            }
+            Decl::TypeAlias {
+                name,
+                params,
+                target,
+                ..
+            } => {
+                if params.is_empty() {
+                    write!(f, "(type-alias {name} {target})")
+                } else {
+                    write!(f, "(type-alias ({name}")?;
+                    for p in params {
+                        write!(f, " {p}")?;
+                    }
+                    write!(f, ") {target})")
+                }
+            }
+            Decl::TypeConstrained {
+                name, base_type, ..
+            } => {
+                write!(f, "(type-constrained {name} {base_type} ...)")
+            }
+            Decl::ModuleDecl { name, body, .. } => {
+                if body.is_empty() {
+                    write!(f, "(module {name})")
+                } else {
+                    write!(f, "(module {name}")?;
+                    for d in body {
+                        write!(f, " {d}")?;
+                    }
+                    write!(f, ")")
+                }
+            }
+            Decl::ImportDecl { module, alias, only, open, .. } => {
+                write!(f, "(import {module}")?;
+                if let Some(a) = alias {
+                    write!(f, " :as {a}")?;
+                }
+                if let Some(syms) = only {
+                    write!(f, " :only [")?;
+                    for (i, s) in syms.iter().enumerate() {
+                        if i > 0 { write!(f, " ")?; }
+                        write!(f, "{s}")?;
+                    }
+                    write!(f, "]")?;
+                }
+                if *open {
+                    write!(f, " :open")?;
+                }
+                write!(f, ")")
+            }
+            Decl::TraitDef { name, type_param, methods, .. } => {
+                write!(f, "(trait ({name} {type_param})")?;
+                for m in methods {
+                    write!(f, " (defn {} [", m.name)?;
+                    for (i, p) in m.params.iter().enumerate() {
+                        if i > 0 { write!(f, " ")?; }
+                        write!(f, "{}", p.name)?;
+                    }
+                    write!(f, "]")?;
+                    if let Some(body) = &m.default_impl {
+                        write!(f, " {body}")?;
+                    }
+                    write!(f, ")")?;
+                }
+                write!(f, ")")
+            }
+            Decl::ImplDef { trait_name, type_name, methods, .. } => {
+                write!(f, "(impl ({trait_name} {type_name})")?;
+                for m in methods {
+                    write!(f, " {m}")?;
+                }
+                write!(f, ")")
+            }
+            Decl::Private { inner, .. } => {
+                write!(f, "(private {inner})")
+            }
+            Decl::ComputationBuilder { name, bind_fn, return_fn, .. } => {
+                write!(f, "(computation-builder {name} {bind_fn} {return_fn})")
+            }
         }
     }
 }
@@ -246,6 +488,38 @@ impl std::fmt::Display for Expr {
             Expr::Ann(_, expr, ty) => {
                 write!(f, "(: {expr} {ty})")
             }
+            Expr::RecordLit(_, type_name, fields) => {
+                write!(f, "{{{type_name}")?;
+                for (name, val) in fields {
+                    write!(f, " {name} {val}")?;
+                }
+                write!(f, "}}")
+            }
+            Expr::FieldAccess(_, expr, field) => {
+                write!(f, "(. {expr} {field})")
+            }
+            Expr::RecordUpdate(_, base, fields) => {
+                write!(f, "{{({base}) |")?;
+                for (name, val) in fields {
+                    write!(f, " {name} {val}")?;
+                }
+                write!(f, "}}")
+            }
+            Expr::Computation(_, builder, steps) => {
+                write!(f, "({builder} {{")?;
+                for (i, step) in steps.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, "; ")?;
+                    }
+                    match step {
+                        ComputationStep::LetBang(_, pat, expr) => write!(f, "let! {pat} = {expr}")?,
+                        ComputationStep::DoBang(_, expr) => write!(f, "do! {expr}")?,
+                        ComputationStep::Return(_, expr) => write!(f, "return {expr}")?,
+                        ComputationStep::Expr(expr) => write!(f, "{expr}")?,
+                    }
+                }
+                write!(f, "}})")
+            }
         }
     }
 }
@@ -279,6 +553,13 @@ impl std::fmt::Display for Pattern {
                     write!(f, ")")
                 }
             }
+            Pattern::RecordPat(_, type_name, fields) => {
+                write!(f, "{{{type_name}")?;
+                for (name, pat) in fields {
+                    write!(f, " {name} {pat}")?;
+                }
+                write!(f, "}}")
+            }
         }
     }
 }
@@ -301,6 +582,13 @@ impl std::fmt::Display for TypeExpr {
                     write!(f, " {p}")?;
                 }
                 write!(f, " {ret})")
+            }
+            TypeExpr::Record(_, fields) => {
+                write!(f, "(record")?;
+                for (name, ty) in fields {
+                    write!(f, " (: {name} {ty})")?;
+                }
+                write!(f, ")")
             }
         }
     }

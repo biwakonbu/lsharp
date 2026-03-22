@@ -6,6 +6,7 @@ members = [
     "crates/lsharp-ir",
     "crates/lsharp-wasm",
     "crates/lsharp-driver",
+    "crates/lsharp-docs",
 ]
 
 [workspace.package]
@@ -18,6 +19,9 @@ miette = { version = "7", features = ["fancy"] }
 thiserror = "2"
 insta = "1"
 clap = { version = "4", features = ["derive"] }
-wasm-encoder = "0.225"
+wasm-encoder = "0.245"
 wasmtime = "29"
 wasmtime-wasi = "29"
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
