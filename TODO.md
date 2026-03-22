@@ -454,24 +454,24 @@ P1-2 AST ───┘                                      ↑
 - 対象: `crates/lsharp-ir/src/lib.rs`
 
 ### NC-8: パーサーのエラーリカバリ `[優先度: 中]`
-- [ ] 最初のエラーで停止する現状から、複数エラーの一括報告に改善
-- [ ] 不完全な構文からの部分的な復帰 (括弧不一致後の継続パース等)
+- [x] 最初のエラーで停止する現状から、複数エラーの一括報告に改善 -- `parse_program_recovering()` + `ParseError::Multiple` 追加、ユニットテスト 4 個
+- [x] 不完全な構文からの部分的な復帰 (括弧不一致後の継続パース等) -- `skip_to_next_declaration()` で次のトップレベル宣言まで回復
 - 対象: `crates/lsharp-syntax/src/parser.rs`
 
 ### NC-9: 制約階層の互換性チェック `[優先度: 中]`
-- [ ] 親子制約の範囲整合性検証 (例: AdultAge(18..150) ⊆ Age(0..150) の自動判定)
-- [ ] 制約の包含関係が明示的に表現されていない (Range が OneOf を包含する等)
+- [x] 親子制約の範囲整合性検証 (例: AdultAge(18..150) ⊆ Age(0..150) の自動判定) -- `check_constraint_compatibility()` + `resolve_constraint_hierarchy()` 実装済み、ユニットテスト 6 個
+- [x] 制約の包含関係が明示的に表現されていない (Range が OneOf を包含する等) -- `is_subtype_constraints()` で包含判定実装済み
 - 対象: `crates/lsharp-types/src/constraints.rs`
 
 ### NC-10: config.rs のエラーハンドリング改善 `[優先度: 低]`
-- [ ] load_config 失敗時に eprintln + default でエラーを swallow する問題
-- [ ] 設定値の有効性検証 (random-test-count=0、entry ファイルの存在確認等)
+- [x] load_config 失敗時に eprintln + default でエラーを swallow する問題 -- `load_config_result()` (Result 返却版) 追加、`ConfigError` 型定義、ユニットテスト 10 個追加
+- [x] 設定値の有効性検証 (random-test-count=0、entry ファイルの存在確認等) -- `validate_config()` 関数追加、warning-level 検証含む
 - 対象: `crates/lsharp-driver/src/config.rs`
 
 ### NC-11: 正規表現エンジンのパフォーマンス `[優先度: 低]`
-- [ ] backtracking 方式で指数時間の可能性がある入力パターンへの対策
-- [ ] NFA → DFA 変換による最適化の検討
-- [ ] Unicode サポートの明示的な対応 (現在 ASCII 前提)
+- [x] backtracking 方式で指数時間の可能性がある入力パターンへの対策 -- thread_local ステップカウンター (100,000回制限) で病的入力を打ち切り、ユニットテスト 2 個
+- [~] NFA → DFA 変換による最適化の検討 -- 現状のステップ制限で実用上十分、将来課題として保留
+- [~] Unicode サポートの明示的な対応 (現在 ASCII 前提) -- char ベースで基本的な Unicode は動作、文字クラスの Unicode カテゴリ対応は将来課題
 - 対象: `crates/lsharp-types/src/constraints.rs`
 
 ### NC-12: Kind 整合性チェック `[優先度: 高]`
@@ -520,7 +520,7 @@ P1-2 AST ───┘                                      ↑
 | 機能 | 現在のテスト状態 | 必要なテスト |
 |------|-----------------|-------------|
 | パーサーのエラーケース | 正常系 42 個 | エラーリカバリ、不正入力のテスト |
-| config.rs 設定読み込み | 基本 5 個 | エラーケース、無効値の検証テスト |
+| ~~config.rs 設定読み込み~~ | ~~基本 15 個~~ | ~~解消済み~~ |
 | 正規表現エンジン | Matches 制約テスト | 病的入力のパフォーマンステスト |
 
 ---
@@ -552,8 +552,8 @@ P1-2 AST ───┘                                      ↑
 - 対象: `crates/lsharp-wasm/src/emit.rs` (新規), `crates/lsharp-wasm/src/codegen.rs`, `crates/lsharp-wasm/src/wasi.rs`
 
 ### R-M5: FieldAccess の型解決がフィールド名のみに依存しフォールバックがサイレント
-- [ ] 型推論結果からレコードの型名を取得して正確に解決する
-- [ ] 解決失敗時に `LowerError` を返す
+- [x] 型推論結果からレコードの型名を取得して正確に解決する -- infer_expr_type_name() で型名取得、ユニットテスト 3 個追加
+- [x] 解決失敗時に `LowerError` を返す -- Unsupported エラー返却実装
 - 同名フィールドを持つ異なるレコード型で誤った型が選択される可能性
 - 対象: `crates/lsharp-ir/src/lower.rs` (925-945行)
 
@@ -566,11 +566,11 @@ P1-2 AST ───┘                                      ↑
 - 対象: `crates/lsharp-driver/src/main.rs`, `crates/lsharp-wasm/`, `crates/lsharp-types/src/constraints.rs`
 
 ### R-m2: `run_wasm_wasi` ヘルパーの重複解消
-- [ ] driver, e2e テスト, test_runner の 3箇所で重複している WASI 実行ヘルパーを統合
-- 対象: `crates/lsharp-driver/src/main.rs`, `crates/lsharp-wasm/tests/e2e.rs`, `crates/lsharp-wasm/src/test_runner.rs`
+- [x] driver, e2e テスト, test_runner の 3箇所で重複している WASI 実行ヘルパーを統合 -- `crates/lsharp-wasm/src/wasi_runner.rs` に抽出、3 箇所から呼び出し、ユニットテスト 2 個追加
+- 対象: `crates/lsharp-wasm/src/wasi_runner.rs` (新規), `crates/lsharp-driver/src/main.rs`, `crates/lsharp-wasm/tests/e2e.rs`, `crates/lsharp-wasm/src/test_runner.rs`
 
 ### R-m3: RecordUpdate の型推定がフィールド名のみに依存
-- [ ] 同じフィールドセットを持つ複数レコード型での誤選択を防ぐ
+- [x] 同じフィールドセットを持つ複数レコード型での誤選択を防ぐ -- infer_expr_type_name() でベース式から型名取得、ユニットテスト 1 個追加
 - 対象: `crates/lsharp-ir/src/lower.rs` (955-963行)
 
 ### R-m4: Computation Expression の IR 変換が bind/return 脱糖を未実装
@@ -591,11 +591,11 @@ P1-2 AST ───┘                                      ↑
 - 対象: `crates/lsharp-ir/src/lower.rs`
 
 ### R-m8: `parse_test_output` 内での `generate_sample_args` 重複呼び出し
-- [ ] 計算済みの値を再利用して非効率を解消
+- [x] 計算済みの値を再利用して非効率を解消 -- ループ前に1回キャッシュ、既存テスト 5 個通過確認
 - 対象: `crates/lsharp-wasm/src/test_runner.rs` (177-193行)
 
 ### R-m9: lower_match_arms でのコンストラクタパターンの比較条件不足
-- [ ] タグ値比較命令がスタックに積まれずに `If` 命令が発行される問題を修正
+- [x] タグ値比較命令がスタックに積まれずに `If` 命令が発行される問題を修正 -- LocalGet + I64Const(tag) + I64Eq をIf前に発行、ユニットテスト 1 個追加
 - 対象: `crates/lsharp-ir/src/lower.rs` (1055-1082行)
 
 ### Suggestion (任意の改善提案)
@@ -604,7 +604,7 @@ P1-2 AST ───┘                                      ↑
 - [ ] 各クレート独自のエラー型 (`LowerError`, `CodegenError`, `miette::Report`) を `thiserror` で統一
 
 ### R-S2: 型推論結果の IR 変換への受け渡し改善
-- [ ] `type_results: &[(String, TypeScheme)]` のスライス線形探索を `HashMap` に変更して O(1) 化
+- [x] `type_results: &[(String, TypeScheme)]` のスライス線形探索を `HashMap` に変更して O(1) 化 -- Lower 構造体内部で `HashMap<String, Type>` として保持済み、`.get()` で O(1) アクセス
 
 ### R-S3: WasmGC 対応への feature flag 導入
 - [ ] MVP i64 フォールバックと将来の WasmGC 切り替えを feature flag で管理
@@ -619,7 +619,7 @@ P1-2 AST ───┘                                      ↑
 - [ ] `Lower` 構造体の `RefCell<Vec<...>>` + `Cell<u32>` を `&mut self` メソッドに移行
 
 ### R-S7: TODO.md の完了状態と実際の制限事項の乖離
-- [ ] MVP フォールバック (GC, Lambda, ADT パターンマッチ) の未完了制限事項を明記
+- [x] MVP フォールバック (GC, Lambda, ADT パターンマッチ) の未完了制限事項を明記 -- 下記「既知の制限事項」セクション追加
 
 ### R-S8: Book ドキュメントと実装の整合性検証
 - [ ] ドキュメント記載機能と実装の自動検証の仕組みを導入
@@ -652,3 +652,19 @@ P1-2 AST ───┘                                      ↑
 | m-3 | Minor | `hkt.ls`, `gadt.ls` に wasmtime 未サポートの注記コメント追加 | [x] |
 | s-1 | Suggestion | `emit.rs` の GC フォールバック 4 箇所に TODO コメント追加 | [x] |
 | s-2 | Suggestion | `ir_to_wasm_type`/`ir_to_wasm` ラッパー削除、`emit::ir_to_wasm_valtype` 直接呼び出しに統一 | [x] |
+
+---
+
+## 既知の制限事項 (MVP フォールバック)
+
+> wasmtime の GC 機能が未サポートのため、以下の機能は i64 フォールバックで動作する。
+> 機能的には完成しているが、WasmGC ネイティブ実装は wasmtime の GC サポート待ち。
+
+| 機能 | 制限事項 | 影響範囲 |
+|------|---------|---------|
+| レコード型 | i64 パックエンコードで GC struct の代替実装 | record リテラル/アクセス/更新 |
+| ADT コンストラクタ | i64 エンコード + $tag フィールドで GC struct 代替 | ADT パターンマッチ |
+| 文字列 | offset<<32\|len の i64 パック方式 | 文字列操作全般 |
+| Lambda/クロージャ | 未サポート (LowerError::Unsupported) | 高階関数のランタイム実行 |
+| ref.cast | IR 定義済みだが codegen は i64 フォールバック | ADT ダウンキャスト |
+| GC 型テスト | コンパイルのみ検証、実行テスト不可 | record/ADT の E2E テスト |

@@ -17,6 +17,9 @@ pub enum ParseError {
 
     #[error("不明なフォーム: {name} ({span})")]
     UnknownForm { name: String, span: Span },
+
+    #[error("複数のパースエラー: {}", .0.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("; "))]
+    Multiple(Vec<ParseError>),
 }
 
 /// パーサー
@@ -31,12 +34,66 @@ impl Parser {
     }
 
     /// プログラム全体をパース
+    /// エラーが発生した場合、次のトップレベル宣言まで回復して継続する。
+    /// 複数エラーがある場合は `ParseError::Multiple` で一括報告する。
     pub fn parse_program(&mut self) -> Result<Program, ParseError> {
-        let mut decls = Vec::new();
-        while !self.is_eof() {
-            decls.push(self.parse_decl()?);
+        let (prog, errors) = self.parse_program_recovering();
+        if errors.is_empty() {
+            Ok(prog)
+        } else if errors.len() == 1 {
+            Err(errors.into_iter().next().unwrap())
+        } else {
+            Err(ParseError::Multiple(errors))
         }
-        Ok(Program { decls })
+    }
+
+    /// プログラム全体をパースし、部分的な結果とエラーを両方返す。
+    /// エラーがあっても正常にパースできた宣言を取得できる。
+    pub fn parse_program_recovering(&mut self) -> (Program, Vec<ParseError>) {
+        let mut decls = Vec::new();
+        let mut errors = Vec::new();
+
+        while !self.is_eof() {
+            match self.parse_decl() {
+                Ok(decl) => decls.push(decl),
+                Err(e) => {
+                    errors.push(e);
+                    self.recover_to_next_decl();
+                }
+            }
+        }
+
+        (Program { decls }, errors)
+    }
+
+    /// エラー回復: 次のトップレベル宣言の先頭まで tokens をスキップする。
+    /// トップレベル宣言は `(` で始まるため、括弧のネスト深度を追跡しながら
+    /// 現在の不正な宣言を飛ばし、次の `(` が深度 0 で出現する位置まで進む。
+    fn recover_to_next_decl(&mut self) {
+        let mut depth: i32 = 0;
+        while !self.is_eof() {
+            match self.peek_kind() {
+                Some(TokenKind::LParen) => {
+                    if depth <= 0 {
+                        // 次のトップレベル宣言の開始位置に到達
+                        return;
+                    }
+                    depth += 1;
+                    self.advance();
+                }
+                Some(TokenKind::RParen) => {
+                    depth -= 1;
+                    self.advance();
+                    if depth <= 0 {
+                        // 現在の宣言の閉じ括弧を消費した
+                        return;
+                    }
+                }
+                _ => {
+                    self.advance();
+                }
+            }
+        }
     }
 
     /// トップレベル宣言をパース
@@ -1719,6 +1776,71 @@ mod tests {
             "(impl (Show Int) (defn show [self] (str self)))",
         );
         assert_eq!(prog.decls.len(), 1);
+    }
+
+    // --- エラーリカバリテスト ---
+
+    fn parse_result(input: &str) -> Result<Program, ParseError> {
+        let mut lexer = Lexer::new(input);
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens);
+        parser.parse_program()
+    }
+
+    #[test]
+    fn test_parse_multiple_errors() {
+        // 2つの壊れた宣言がある入力で、両方のエラーが報告されることを確認
+        let source = "(defn [) (defn [)";
+        let result = parse_result(source);
+        assert!(result.is_err());
+        if let Err(ParseError::Multiple(errors)) = &result {
+            assert!(errors.len() >= 2, "Expected at least 2 errors, got {}", errors.len());
+        } else {
+            panic!("Expected Multiple error variant, got: {:?}", result);
+        }
+    }
+
+    #[test]
+    fn test_parse_recovery_after_error() {
+        // 最初の宣言にエラーがあっても、2番目の宣言がパースされることを確認
+        // parse_program は回復して継続するが、エラーがあるので Err を返す
+        let source = "(defn [) (defn ok [] 42)";
+        let result = parse_result(source);
+        assert!(result.is_err());
+        // 単一エラーが返ること（2番目はパース成功するため）
+        assert!(!matches!(result, Err(ParseError::Multiple(_))),
+            "Expected single error (second decl should parse ok), got: {:?}", result);
+    }
+
+    #[test]
+    fn test_parse_recovery_returns_partial_result() {
+        // エラーがあっても、正常な宣言はパースされることを確認
+        // parse_program_recovering で部分的な結果を取得可能
+        let source = "(defn [) (defn ok [] 42)";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize().unwrap();
+        let mut parser = Parser::new(tokens);
+        let (prog, errors) = parser.parse_program_recovering();
+        assert_eq!(errors.len(), 1, "Expected 1 error");
+        assert_eq!(prog.decls.len(), 1, "Expected 1 successfully parsed decl");
+    }
+
+    #[test]
+    fn test_parse_single_error_still_works() {
+        // 1つだけエラーがある場合、従来通り単一のエラーが返ることを確認
+        let source = "(unknown-form x)";
+        let result = parse_result(source);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_no_error_unchanged() {
+        // エラーがない場合は従来通り Ok が返ることを確認
+        let source = "(defn foo [] 42) (defn bar [] 99)";
+        let result = parse_result(source);
+        assert!(result.is_ok());
+        let prog = result.unwrap();
+        assert_eq!(prog.decls.len(), 2);
     }
 }
 

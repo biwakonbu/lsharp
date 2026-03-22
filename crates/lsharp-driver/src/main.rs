@@ -433,37 +433,7 @@ fn cmd_test(file: &PathBuf) -> miette::Result<()> {
 
 /// Wasm バイナリを WASI 環境で実行し、stdout 出力を返す
 fn run_wasm_wasi(wasm_bytes: &[u8]) -> Result<String, String> {
-    use wasmtime::*;
-    use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
-
-    let engine = Engine::default();
-    let mut linker = Linker::<WasiP1Ctx>::new(&engine);
-    wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |t| t)
-        .map_err(|e| format!("WASI リンクに失敗: {e}"))?;
-
-    let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(4096);
-    let wasi = WasiCtxBuilder::new().stdout(stdout.clone()).build_p1();
-    let mut store = Store::new(&engine, wasi);
-
-    let module = wasmtime::Module::new(&engine, wasm_bytes)
-        .map_err(|e| format!("Wasm モジュールの読み込みに失敗: {e}"))?;
-    let instance = linker
-        .instantiate(&mut store, &module)
-        .map_err(|e| format!("インスタンス化に失敗: {e}"))?;
-
-    let start = instance
-        .get_typed_func::<(), ()>(&mut store, "_start")
-        .map_err(|e| format!("_start 関数が見つかりません: {e}"))?;
-    start
-        .call(&mut store, ())
-        .map_err(|e| format!("実行に失敗: {e}"))?;
-
-    drop(store);
-    let bytes = stdout
-        .try_into_inner()
-        .ok_or_else(|| "stdout の取得に失敗".to_string())?;
-    String::from_utf8(bytes.to_vec())
-        .map_err(|e| format!("出力のデコードに失敗: {e}"))
+    lsharp_wasm::wasi_runner::run_wasm_wasi(wasm_bytes)
 }
 
 /// Knowledge JSON を構築

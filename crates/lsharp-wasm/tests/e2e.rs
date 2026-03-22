@@ -39,24 +39,7 @@ fn compile_only(source: &str) -> Vec<u8> {
 
 /// Wasm バイナリを WASI 環境で実行
 fn run_wasi(wasm_bytes: &[u8]) -> String {
-    use wasmtime::*;
-    use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
-
-    let engine = Engine::default();
-    let mut linker = Linker::<WasiP1Ctx>::new(&engine);
-    wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |t| t).unwrap();
-
-    let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(4096);
-    let wasi = WasiCtxBuilder::new().stdout(stdout.clone()).build_p1();
-    let mut store = Store::new(&engine, wasi);
-    let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
-    let instance = linker.instantiate(&mut store, &module).unwrap();
-    let start = instance.get_typed_func::<(), ()>(&mut store, "_start").unwrap();
-    start.call(&mut store, ()).unwrap();
-
-    drop(store);
-    let bytes = stdout.try_into_inner().unwrap();
-    String::from_utf8(bytes.to_vec()).unwrap()
+    lsharp_wasm::wasi_runner::run_wasm_wasi(wasm_bytes).unwrap()
 }
 
 /// 型チェックでエラーになることを検証

@@ -173,15 +173,14 @@ pub fn parse_test_output(
             }
             TestKind::Invariant => {
                 let param_count = find_param_count(original, &test.function_name);
-                let sample_count = generate_sample_args(param_count).len();
+                let sample_args = generate_sample_args(param_count);
                 let mut all_passed = true;
                 let mut fail_msg = None;
 
-                for i in 0..sample_count {
+                for args in &sample_args {
                     let passed = lines.get(line_idx).map(|l| l.trim() == "1").unwrap_or(false);
                     if !passed {
                         all_passed = false;
-                        let args = &generate_sample_args(param_count)[i];
                         fail_msg = Some(format!(
                             ":invariant が偽を返しました (入力: {})",
                             args.join(", ")
@@ -220,25 +219,7 @@ mod tests {
         let module = lower.lower_program(&program, &type_results).unwrap();
         let wasm_bytes = crate::wasi::emit_wasm_wasi(&module).unwrap();
 
-        // wasmtime で実行
-        use wasmtime::*;
-        use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
-
-        let engine = Engine::default();
-        let mut linker = Linker::<WasiP1Ctx>::new(&engine);
-        wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |t| t).unwrap();
-
-        let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(4096);
-        let wasi = WasiCtxBuilder::new().stdout(stdout.clone()).build_p1();
-        let mut store = Store::new(&engine, wasi);
-        let module = wasmtime::Module::new(&engine, &wasm_bytes).unwrap();
-        let instance = linker.instantiate(&mut store, &module).unwrap();
-        let start = instance.get_typed_func::<(), ()>(&mut store, "_start").unwrap();
-        start.call(&mut store, ()).unwrap();
-
-        drop(store);
-        let bytes = stdout.try_into_inner().unwrap();
-        String::from_utf8(bytes.to_vec()).unwrap()
+        crate::wasi_runner::run_wasm_wasi(&wasm_bytes).unwrap()
     }
 
     #[test]

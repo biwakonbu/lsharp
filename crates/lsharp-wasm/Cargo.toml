@@ -9,8 +9,8 @@ lsharp-syntax = { path = "../lsharp-syntax" }
 lsharp-types = { path = "../lsharp-types" }
 wasm-encoder.workspace = true
 thiserror.workspace = true
-
-[dev-dependencies]
 wasmtime.workspace = true
 wasmtime-wasi.workspace = true
+
+[dev-dependencies]
 insta.workspace = true
