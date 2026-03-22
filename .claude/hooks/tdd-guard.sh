@@ -13,7 +13,6 @@ log_error() {
 
 INPUT=$(cat || true)
 if [[ -z "$INPUT" ]]; then
-  log_error "stdin が空 (入力なし)"
   exit 0
 fi
 
@@ -23,12 +22,12 @@ if ! command -v jq &>/dev/null; then
   exit 0
 fi
 
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 if [[ "$TOOL_NAME" != "Edit" && "$TOOL_NAME" != "Write" ]]; then
   exit 0
 fi
 
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
+FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 if [[ -z "$FILE_PATH" ]]; then
   exit 0
 fi
@@ -41,7 +40,7 @@ fi
 
 # 書き込み内容にテスト関連コードが含まれていれば OK (テストを書いている最中)
 # Edit: new_string, Write: content
-CONTENT=$(echo "$INPUT" | jq -r '.tool_input.content // .tool_input.new_string // empty')
+CONTENT=$(echo "$INPUT" | jq -r '.tool_input.content // .tool_input.new_string // empty' 2>/dev/null)
 if echo "$CONTENT" | grep -qE '#\[cfg\(test\)\]|#\[test\]|mod tests'; then
   exit 0
 fi

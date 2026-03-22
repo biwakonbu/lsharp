@@ -89,31 +89,8 @@ Source (.ls)
 
 ## hooks/スキルのトラブルシューティング
 
-hooks やスキルに問題が発生した場合 (hook がエラーを出す、期待通りに動作しない、設定が壊れた等)、**サブエージェントを起動して調査・修正する**。
-
-### 検知トリガー
-
-- hook の stderr に `[tdd-guard]` や `[test-tracker]` 以外のエラーメッセージが出た場合
-- hook がタイムアウトした場合
-- `/tdd` コマンドの手順が途中で失敗した場合
-- `cargo test` の結果が hook で検知されない場合
-- ユーザーから hook/スキルの不具合報告があった場合
-
-### 対応フロー
-
-1. **Explore サブエージェント**を起動してエラーログ (`/tmp/lsharp-hook-errors.log`) と hook スクリプト (`.claude/hooks/`) を調査
-2. 問題の根本原因を特定
-3. hook スクリプト、settings.json、rules、コマンド定義を修正
-4. 修正後、テスト用 JSON をパイプして動作検証 (例: `echo '{"tool_name":"Edit",...}' | .claude/hooks/tdd-guard.sh`)
-5. 検証が通ったらユーザーに報告
-
-### 対象ファイル
-
-- `.claude/hooks/tdd-guard.sh` — PreToolUse (Edit|Write) ガード
-- `.claude/hooks/test-result-tracker.sh` — PostToolUse (Bash) トラッカー
-- `.claude/settings.json` — hooks 設定
-- `.claude/commands/tdd.md` — /tdd コマンド定義
-- `.claude/rules/tdd-workflow.md` — TDD ルール
+hooks やスキルに問題が発生した場合は `.claude/rules/hook-troubleshooting.md` を参照。
+注意: hook の stderr 出力 ([TDD Guard], [TDD Tracker]) は正常な情報メッセージであり、エラーとして対処する必要はない。
 
 ## ファイルサイズ制限
 

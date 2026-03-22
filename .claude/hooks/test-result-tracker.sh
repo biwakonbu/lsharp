@@ -13,7 +13,6 @@ log_error() {
 
 INPUT=$(cat || true)
 if [[ -z "$INPUT" ]]; then
-  log_error "stdin が空 (入力なし)"
   exit 0
 fi
 
@@ -23,20 +22,20 @@ if ! command -v jq &>/dev/null; then
   exit 0
 fi
 
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 if [[ "$TOOL_NAME" != "Bash" ]]; then
   exit 0
 fi
 
 # cargo test コマンドかどうか確認
-COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)
 if [[ ! "$COMMAND" =~ cargo[[:space:]]+test ]]; then
   exit 0
 fi
 
 # テスト結果を確認
 # PostToolUse の出力フィールドは stdout / output のいずれかの可能性がある
-STDOUT=$(echo "$INPUT" | jq -r '.tool_output.stdout // .tool_output.output // .stdout // .output // empty')
+STDOUT=$(echo "$INPUT" | jq -r '.tool_output.stdout // .tool_output.output // .stdout // .output // empty' 2>/dev/null)
 
 # 出力が空の場合はスキップ (スキーマ不明時のフォールバック)
 if [[ -z "$STDOUT" ]]; then
