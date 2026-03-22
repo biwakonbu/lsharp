@@ -545,6 +545,7 @@ fn test_e2e_undefined_variable_rejected() {
 
 #[test]
 fn test_e2e_parse_error_rejected() {
+    // body のない defn はパースエラー
     should_fail_parse("(defn main [])");
 }
 
@@ -790,4 +791,13 @@ fn test_e2e_constrained_type_typecheck() {
            :constraints [(>= 0) (<= 100)])
          (defn main [] (print 1))",
     );
+}
+
+// === エッジケース: ランタイムエラー ===
+
+#[test]
+#[should_panic]
+fn test_e2e_division_by_zero_traps() {
+    // Wasm の i64.div_s はゼロ除算で trap する
+    compile_and_run("(defn main [] (print (/ 1 0)))");
 }
