@@ -1,0 +1,29 @@
+metadata:
+  title: "L# で学ぶコンパイラ実装"
+  subtitle: "S 式 × 型推論 × WebAssembly"
+  author: "biwakonbu"
+  date: 2026-03-21
+  lang: ja
+  documentclass: ltjsbook
+  classoption:
+    - a5paper
+    - 10pt
+    - openany
+  mainfont: "Harano Aji Mincho"
+  sansfont: "Harano Aji Gothic"
+  monofont: "Harano Aji Gothic"
+  CJKmainfont: "Harano Aji Mincho"
+  CJKsansfont: "Harano Aji Gothic"
+  CJKmonofont: "Harano Aji Gothic"
+  luatexjapresetoptions: "haranoaji"
+  geometry:
+    - top=20mm
+    - bottom=20mm
+    - left=15mm
+    - right=15mm
+  colorlinks: true
+  linkcolor: blue
+toc: true
+toc-depth: 3
+number-sections: true
+pdf-engine: lualatex
