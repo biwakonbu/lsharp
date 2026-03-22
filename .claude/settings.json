@@ -1,15 +1,4 @@
 {
-  "extraKnownMarketplaces": {
-    "lsharp-local": {
-      "source": {
-        "source": "directory",
-        "path": ".claude/plugins/todo-manager"
-      }
-    }
-  },
-  "enabledPlugins": {
-    "todo-manager@lsharp-local": true
-  },
   "hooks": {
     "PreToolUse": [
       {

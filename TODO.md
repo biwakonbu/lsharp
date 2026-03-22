@@ -1,105 +1,263 @@
-# L# 型システム実装 TODO
+# L# セルフホスティング & エコシステム TODO
 
-> `docs/type-system-roadmap.md` から抽出。並列作業用に依存関係を明示。
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち
 >
-> **完了済みフェーズ**: Phase 0-5 は `docs/todo/completed.md` を参照
-> **コードレビューログ**: `docs/todo/review-log.md` を参照
+> **完了済みフェーズ**: Phase 0-6 (型システム) は完了。詳細は `docs/todo/archive.jsonl` を参照
+> **ロードマップ**: `.claude/plans/logical-riding-russell.md` を参照
 
 ---
 
-## Phase 6: 高度な型機能
+## Phase 0: 基盤整備
 
-### P6-1: 高カインド型 (HKT)
-- [x] `Type` に kind (種) の概念追加 -- Kind enum (Star, Arrow) 定義
-- [x] kind 推論の実装
-- [x] 型コンストラクタに対するトレイト (`Functor`, `Monad` 等)
-- [x] Kind 整合性チェック (NC-12) -- テスト 3 個追加
+### P0-0: lower.rs リファクタリング (前提作業)
+- [ ] `lower.rs` (~2000行) を `lower/mod.rs`, `lower/expr.rs`, `lower/pattern.rs`, `lower/decl.rs` に分割
+- [ ] 既存テスト 422 個が全パスすることを確認
 
-### P6-2: GADT
-- [x] Algorithm W → バイディレクショナル型チェックへの移行
-- [x] `:gadt` キーワードとバリアント別の戻り型指定構文
-- [x] パターンマッチでの型の絞り込み -- テスト 7 個
+### P0-1: リニアメモリ Bump Allocator
+- [ ] グローバル `$heap_ptr` の追加 (文字列定数データ末尾から開始)
+- [ ] `__alloc(size: i32) -> i32` ビルトイン関数を `wasi.rs` に生成
+- [ ] ページ不足時 `memory.grow` で自動拡張
+- [ ] E2E テスト: メモリ確保 → 値書き込み → 読み出し検証
 
-### P6-3: Computation Expressions
-- [x] `computation-builder` 宣言のパース
-- [x] `let!` 構文糖衣の脱糖パス
-- [x] `return` キーワードの文脈依存解決 -- テスト 6 個
+### P0-2: メモリ操作 IR 命令
+- [ ] `I32Load`, `I32Store`, `I32Load8U`, `I32Store8` を `Instruction` enum に追加
+- [ ] `emit.rs` で Wasm 命令への変換を実装
+- [ ] ユニットテスト: 各メモリ命令の正常動作
 
-### P6-4: ネストモジュール
-- [x] モジュール内モジュール宣言
-- [x] ネストされた名前空間の解決
-
----
-
-## 未完了タスク
-
-### 高優先度
-
-| ID | 内容 | 状態 |
-|----|------|------|
-| P3-3 | `:invariant` の実行評価 (構造チェックのみ実装済み) | `[~]` Wasm 実行パイプライン必要 |
-| P3-3 | `:example` の実行評価 (構造チェックのみ実装済み) | `[~]` Wasm 実行パイプライン必要 |
-
-### 完了済み (今回対応)
-
-| ID | 内容 | 対応内容 |
-|----|------|---------|
-| R-M5 | FieldAccess の型解決 | `infer_expr_type_name()` で型指向解決、ユニットテスト 3 個 |
-| NC-8 | パーサーのエラーリカバリ | `parse_program_recovering()` + `ParseError::Multiple`、テスト 4 個 |
-| NC-9 | 制約階層の互換性チェック | 実装済み確認 (`check_constraint_compatibility` + テスト 6 個) |
-| NC-10 | config.rs のエラーハンドリング | `ConfigError` 型 + `validate_config()`、テスト 10 個 |
-| NC-11 | 正規表現エンジンのパフォーマンス | thread_local ステップ制限 (100K回)、テスト 2 個 |
-| R-m2 | `run_wasm_wasi` ヘルパー統合 | `wasi_runner.rs` に抽出、3 箇所統合 |
-| R-m3 | RecordUpdate の型推定改善 | `infer_expr_type_name(base)` で型名取得、テスト 1 個 |
-| R-m8 | `parse_test_output` 重複解消 | ループ前キャッシュ化 |
-| R-m9 | コンストラクタパターン比較条件 | `I64Const(tag) + I64Eq` を If 前に発行、テスト 1 個 |
-| R-S2 | 型推論結果の HashMap 化 | 既に `HashMap<String, Type>` で実装済み確認 |
-| R-S7 | TODO.md 制限事項の明記 | 既知の制限事項セクション追加 |
-
-### 任意の改善提案 (Suggestion)
-
-| ID | 内容 | 対象 | 備考 |
-|----|------|------|------|
-| R-S1 | エラー型の統一 (`thiserror`) | 全クレート | 大規模リファクタリング |
-| R-S3 | WasmGC feature flag 導入 | wasm | アーキテクチャ設計変更 |
-| R-S4 | snapshot テストの活用拡大 | wasm | 中規模 |
-| R-S5 | ベンチマーク追加 (`criterion`) | 全体 | 新規ツール導入 |
-| R-S6 | `string_data` の RefCell 見直し | `lower.rs` | 構造変更 |
-| R-S8 | ドキュメントと実装の整合性検証 | 全体 | 新規機能 |
+### P0-3: タグ付きワードとヒープオブジェクト基盤
+- [ ] i64 の上位ビットでタグ判定 (integer vs pointer) の規約を設計・実装
+- [ ] ヒープオブジェクト共通ヘッダ `[tag: i32, size: i32, ...]` の生成
+- [ ] E2E テスト: ヒープオブジェクトの確保・タグ判定・フィールドアクセス
 
 ---
 
-## テスト検証債務
+## Phase 1: 文字列操作
 
-### 高優先度 (実行未検証)
+### P1-1: 文字列ランタイム関数
+- [ ] `string-length [s] -> Int` ビルトイン
+- [ ] `string-concat [a b] -> String` ビルトイン
+- [ ] `string-char-at [s i] -> Int` ビルトイン (バイト単位)
+- [ ] `substring [s start end] -> String` ビルトイン
+- [ ] `string-eq [a b] -> Bool` ビルトイン
+- [ ] `int-to-string [n] -> String` ビルトイン
+- [ ] `print-string [s] -> Unit` ビルトイン
+- [ ] E2E テスト: 各関数の正常動作 + 境界条件
 
-| 機能 | 現状 | 必要なテスト |
-|------|------|-------------|
-| `:invariant` 自動実行 | 構造チェックのみ | 式の実行・論理的正当性評価 |
-| `:example` 自動実行 | 構造チェックのみ | 式の実際の実行・結果検証 |
+### P1-2: 文字列リテラルのヒープ化
+- [ ] data section offset → ヒープ上 String オブジェクト (tag=1, len, bytes) への変換
+- [ ] 既存の文字列関連テストが引き続きパスすることを確認
 
-### 中優先度 (wasmtime GC 有効化待ち)
+### P1-3: print の多相化
+- [ ] `print-int` / `print-string` の分離
+- [ ] 既存 `print` の後方互換性維持 (整数引数時は `print-int` にフォールバック)
 
-| 機能 | 現状 | 必要なテスト |
-|------|------|-------------|
-| レコード型リテラル + アクセス | コンパイルのみ | GC 実行テスト |
-| レコード更新 | コンパイルのみ | GC 実行テスト |
-| ADT コンストラクタ (GC) | コンパイルのみ | GC 実行テスト |
-| モジュール import 実行 | テストなし | multi-file E2E テスト |
+---
+
+## Phase 2: 動的コレクション (同時並行で実装可能)
+
+### P2-1: ADT リニアメモリ版 lowering
+- [ ] WasmGC struct → リニアメモリ上のヒープオブジェクト (tag=3) への変換
+- [ ] コンストラクタ呼出: ヒープにフィールド確保 → ポインタを返す
+- [ ] パターンマッチ: タグ比較 + フィールド読み出し
+- [ ] Cons リスト `(type (List a) (Cons a (List a)) Nil)` が実行可能に
+- [ ] E2E テスト: ADT 構築・分解・パターンマッチ
+
+### P2-2: 可変長配列 (Vector)
+- [ ] `vector-new [capacity] -> Vector` ビルトイン
+- [ ] `vector-push [v x] -> Vector` ビルトイン
+- [ ] `vector-get [v i] -> a` ビルトイン
+- [ ] `vector-set [v i x] -> Vector` ビルトイン
+- [ ] `vector-length [v] -> Int` ビルトイン
+- [ ] capacity 超過時のリアロケーション
+- [ ] E2E テスト: 基本操作 + リアロケーション
+
+### P2-3: ハッシュマップ
+- [ ] `map-new [] -> Map` ビルトイン
+- [ ] `map-insert [m key value] -> Map` ビルトイン
+- [ ] `map-get [m key] -> Option` ビルトイン
+- [ ] `map-contains? [m key] -> Bool` ビルトイン
+- [ ] `map-remove [m key] -> Map` ビルトイン
+- [ ] `map-size [m] -> Int` ビルトイン
+- [ ] FNV-1a ハッシュ関数 (文字列キー用)
+- [ ] E2E テスト: 挿入・取得・削除・衝突処理
+
+---
+
+## Phase 3: クロージャ
+
+### P3-1: 自由変数解析
+- [ ] Lambda body の走査による自由変数収集
+- [ ] `crates/lsharp-ir/src/closure.rs` モジュール作成
+- [ ] ユニットテスト: 各種 Lambda パターンの自由変数抽出
+
+### P3-2: クロージャ変換 (Lambda Lifting)
+- [ ] Lambda → 通常関数 (環境パラメータ追加) へのリフト
+- [ ] クロージャオブジェクト (tag=4, func_idx, captured values) のヒープ確保
+- [ ] `call_indirect` によるクロージャ呼び出し
+- [ ] E2E テスト: 自由変数キャプチャ + クロージャ呼出
+
+### P3-3: 高階関数の有効化
+- [ ] `list-map [f xs] -> List` (クロージャ対応)
+- [ ] `list-filter [f xs] -> List` (クロージャ対応)
+- [ ] `list-fold [f init xs] -> a` (クロージャ対応)
+- [ ] `vector-map`, `vector-filter` の追加
+- [ ] E2E テスト: 高階関数の組み合わせ
+
+---
+
+## Phase 4: エラー処理 & ミュータビリティ
+
+### P4-1: Result/Option ランタイム
+- [ ] `(type (Option a) (Some a) None)` が実行時に動作
+- [ ] `(type (Result a e) (Ok a) (Err e))` が実行時に動作
+- [ ] `unwrap`, `map`, `and-then` ユーティリティ
+- [ ] E2E テスト: Option/Result のパターンマッチ
+
+### P4-2: 可変参照 (Ref Cell)
+- [ ] `ref-new [v] -> Ref` ビルトイン
+- [ ] `ref-get [r] -> a` ビルトイン
+- [ ] `ref-set [r v] -> Unit` ビルトイン
+- [ ] E2E テスト: 可変状態の読み書き
+
+---
+
+## Phase 5: File I/O & WASI 拡張
+
+### P5-1: WASI import 追加
+- [ ] `path_open` import
+- [ ] `fd_read` import
+- [ ] `fd_close` import
+- [ ] `fd_seek` import
+- [ ] `fd_filestat_get` import
+- [ ] `args_get`, `args_sizes_get` import
+- [ ] `proc_exit` import
+
+### P5-2: ファイル操作ビルトイン
+- [ ] `read-file [path] -> String` ビルトイン
+- [ ] `write-file [path content] -> Unit` ビルトイン
+- [ ] `file-exists? [path] -> Bool` ビルトイン
+- [ ] コマンドライン引数取得
+- [ ] E2E テスト: ファイル読み書き + 引数取得
+
+---
+
+## Phase 6: マルチファイルコンパイル
+
+### P6-1: モジュール探索
+- [ ] `(import ModuleName)` → ファイル探索規約の実装
+- [ ] 既存 `module_graph.rs` の活用
+- [ ] ユニットテスト: モジュール名 → ファイルパス解決
+
+### P6-2: クロスモジュール型環境
+- [ ] トポロジカルソート順コンパイル
+- [ ] export シンボルの型環境注入
+- [ ] ユニットテスト: クロスモジュール型解決
+
+### P6-3: IR リンク
+- [ ] 全モジュール IR の結合
+- [ ] 関数インデックス再割当て
+- [ ] E2E テスト: マルチファイルプロジェクトのコンパイル・実行
+
+---
+
+## Phase 7: 標準ライブラリ (L# で記述)
+
+- [ ] `stdlib/Core.ls` -- Bool, Option, Result, 基本関数
+- [ ] `stdlib/String.ls` -- concat, split, trim, contains, starts-with
+- [ ] `stdlib/List.ls` -- map, filter, fold, append, reverse, zip
+- [ ] `stdlib/Vector.ls` -- 可変長配列ラッパー
+- [ ] `stdlib/Map.ls` -- HashMap (Vector + ハッシュ関数)
+- [ ] `stdlib/Set.ls` -- HashSet
+- [ ] `stdlib/IO.ls` -- read-file, write-file, read-line
+- [ ] `stdlib/Debug.ls` -- debug-print, assert
+- [ ] `stdlib/Char.ls` -- is-digit, is-alpha, is-whitespace
+- [ ] stdlib のコンパイル・テスト自動化
+
+---
+
+## Phase 8: セルフホスティング
+
+### ブートストラップ戦略
+> 最小サブセットで開始: `let` / 再帰 / `if` / `match` / ADT / Record / モジュール
+> HKT/GADT/トレイト制約等の高度機能はセルフホスト後に段階追加
+
+### P8-1: L# で Lexer を実装
+- [ ] Token ADT 定義
+- [ ] 文字列走査による字句解析
+- [ ] Rust 版 lexer との出力比較テスト
+
+### P8-2: L# で Parser を実装
+- [ ] AST の ADT 定義
+- [ ] 再帰降下パーサー
+- [ ] Rust 版 parser との出力比較テスト
+
+### P8-3: L# で型推論を実装
+- [ ] 型 ADT (Con, Var, Fun) 定義
+- [ ] Substitution (HashMap ベース)
+- [ ] Unification アルゴリズム
+- [ ] let 多相 + 型注釈
+- [ ] Rust 版型推論との出力比較テスト
+
+### P8-4: L# で IR Lowering + Codegen を実装
+- [ ] IR ADT 定義
+- [ ] AST → IR 変換
+- [ ] LEB128 エンコーディング
+- [ ] Wasm バイナリ生成
+- [ ] Rust 版 codegen との出力比較テスト
+
+### P8-5: ブートストラップ検証
+- [ ] Rust 版 → stage1.wasm (L# コンパイラ)
+- [ ] stage1.wasm → stage2.wasm (セルフコンパイル)
+- [ ] stage1.wasm == stage2.wasm (固定点検証)
+- [ ] CI でのブートストラップ自動検証
+
+---
+
+## Phase 9: エコシステム (セルフホスト完了後)
+
+### P9-1: REPL
+- [ ] `lsharp repl` サブコマンド
+- [ ] readline ライブラリ統合
+- [ ] 式入力 → パイプライン実行 → 結果表示
+
+### P9-2: LSP
+- [ ] `crates/lsharp-lsp` クレート作成
+- [ ] tower-lsp 統合
+- [ ] 型ホバー、エラー診断、定義ジャンプ
+
+### P9-3: パッケージマネージャ
+- [ ] `lsharp.toml` の `[dependencies]` セクション
+- [ ] Git リポジトリベースの依存解決
+- [ ] ロックファイル生成
+
+### P9-4: ドキュメント生成
+- [ ] `:doc` メタデータから HTML 生成
+- [ ] 型シグネチャ・例の自動抽出
+
+---
+
+## 既存の未完了タスク (Phase に統合済み)
+
+| 旧 ID | 内容 | 統合先 |
+|--------|------|--------|
+| P3-3 | `:invariant` の実行評価 | Phase 2-1 (ADT リニアメモリ化) + Phase 7 (stdlib) 完了後に対応 |
+| P3-3 | `:example` の実行評価 | 同上 |
+| R-S1 | エラー型の統一 (`thiserror`) | P0-0 リファクタリング時に検討 |
+| R-S3 | WasmGC feature flag 導入 | アーキテクチャ方針: リニアメモリ正式基盤化で不要に |
+| R-S6 | `string_data` の RefCell 見直し | P0-0 リファクタリング時に対応 |
 
 ---
 
 ## 既知の制限事項
 
-### MVP i64 フォールバック
-- レコード型・ADT は WasmGC struct ではなく i64 フォールバックで実装
-- wasmtime が WasmGC を安定サポートするまでの暫定措置
-- `StructNew`, `StructGet`, `StructSet` 命令は IR に発行されるが、実行時は i64 で代替
+### リニアメモリランタイム (Phase 0 で正式基盤化)
+- WasmGC はオプショナルな最適化バックエンドとして位置づけ
+- リニアメモリ上の Bump Allocator で全ヒープデータを管理
+- GC は Phase 9 (REPL 等の長寿命プロセス) で Region GC として導入予定
 
-### Lambda (クロージャ)
+### Lambda (クロージャ) → Phase 3 で対応
 - 自由変数キャプチャは未実装 (ローカル関数として lowering)
-- クロージャ変換 (lambda lifting) は将来課題
+- Phase 3 でクロージャ変換 (lambda lifting) を実装
 
 ### パターンマッチ
 - ネストしたコンストラクタパターンは未対応
@@ -107,4 +265,4 @@
 
 ### 正規表現エンジン
 - NFA → DFA 変換による最適化は未実装 (ステップ制限で病的入力を防止)
-- Unicode 文字クラス (`\p{L}` 等) は未対応 (char ベースの基本 Unicode は動作)
+- Unicode 文字クラス (`\p{L}` 等) は未対応
