@@ -129,20 +129,14 @@ fn test_e2e_type_alias() {
 fn test_e2e_adt_option_typecheck() {
     // ADT コンストラクタの IR 変換は部分実装のため、型チェックまで検証
     let source = std::fs::read_to_string(example_path("types.ls")).unwrap();
-    let program = lsharp_syntax::parse(&source).unwrap();
-    let mut infer = Infer::new();
-    let results = infer.infer_program(&program).unwrap();
-    // 型推論が成功すること
-    assert!(!results.is_empty());
+    typecheck_only(&source);
 }
 
 #[test]
 fn test_e2e_record_compile() {
     // レコード型は GC 型を含むため、コンパイルのみ検証
     let source = std::fs::read_to_string(example_path("record.ls")).unwrap();
-    let wasm = compile_only(&source);
-    assert!(wasm.len() > 8);
-    assert_eq!(&wasm[0..4], b"\0asm");
+    assert_valid_wasm(&compile_only(&source));
 }
 
 #[test]
@@ -222,16 +216,14 @@ fn test_e2e_multiple_functions() {
 #[test]
 fn test_e2e_pattern_match_adt_typecheck() {
     // ADT コンストラクタの IR 変換は部分実装のため、型チェックまで検証
-    let source = "(type (Maybe a) (Just a) Nothing)
+    typecheck_only(
+        "(type (Maybe a) (Just a) Nothing)
          (defn from-maybe [m d]
            (match m
              [(Just x) x]
              [Nothing d]))
-         (defn main [] (print 42))";
-    let program = lsharp_syntax::parse(source).unwrap();
-    let mut infer = Infer::new();
-    let results = infer.infer_program(&program).unwrap();
-    assert!(!results.is_empty());
+         (defn main [] (print 42))",
+    );
 }
 
 #[test]
@@ -261,7 +253,7 @@ fn test_e2e_equality_operator() {
 #[test]
 fn test_e2e_record_update_compile() {
     // レコード型は GC 型を含むため、コンパイルのみ検証
-    let wasm = compile_only(
+    assert_valid_wasm(&compile_only(
         "(type Point (record (: x Int) (: y Int)))
          (defn main []
            (let [p {Point x 1 y 2}
@@ -270,9 +262,7 @@ fn test_e2e_record_update_compile() {
                (print (Point.x q))
                (print (Point.y q))
                0)))",
-    );
-    assert!(wasm.len() > 8);
-    assert_eq!(&wasm[0..4], b"\0asm");
+    ));
 }
 
 #[test]
@@ -294,12 +284,10 @@ fn test_e2e_nested_if() {
 fn test_e2e_adt_constructor_compile() {
     // ADT コンストラクタが関数として呼べることを検証（コンパイルのみ）
     // GC 型定義を含むため wasmtime では実行不可
-    let wasm = compile_only(
+    assert_valid_wasm(&compile_only(
         "(type (Maybe a) (Just a) Nothing)
          (defn main [] (do (print (Just 42)) 0))",
-    );
-    assert!(wasm.len() > 8);
-    assert_eq!(&wasm[0..4], b"\0asm");
+    ));
 }
 
 #[test]
@@ -335,10 +323,7 @@ fn test_e2e_gadt_typecheck() {
     // GADT 風 ADT の型チェック検証
     // GC 型定義を含むため wasmtime では実行不可、型チェックまで検証
     let source = std::fs::read_to_string(example_path("gadt.ls")).unwrap();
-    let program = lsharp_syntax::parse(&source).unwrap();
-    let mut infer = Infer::new();
-    let results = infer.infer_program(&program).unwrap();
-    assert!(!results.is_empty());
+    typecheck_only(&source);
 }
 
 #[test]
@@ -346,10 +331,7 @@ fn test_e2e_hkt_typecheck() {
     // 高カインド型（Functor トレイト）の型チェック検証
     // GC 型定義を含むため wasmtime では実行不可、型チェックまで検証
     let source = std::fs::read_to_string(example_path("hkt.ls")).unwrap();
-    let program = lsharp_syntax::parse(&source).unwrap();
-    let mut infer = Infer::new();
-    let results = infer.infer_program(&program).unwrap();
-    assert!(!results.is_empty());
+    typecheck_only(&source);
 }
 
 #[test]
