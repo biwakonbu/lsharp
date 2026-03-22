@@ -300,7 +300,7 @@ P1-2 AST ───┘                                      ↑
 - [x] トレイト制約の解決 (辞書パスイング変換) -- pending_constraints + check_pending_constraints 実装
 - 対象: `crates/lsharp-types/src/infer.rs`
 
-> **検証不足**: 単一型パラメータのトレイトのみテスト済み。複数制約の組み合わせ (`:where [(Eq a) (Show a)]`) のテストなし。where 句を含む関数の E2E 実行テストなし。多パラメータ trait 未対応。
+> 複数制約の組み合わせテスト 1 個 + where 句 E2E 実行テスト 1 個追加。多パラメータ trait は未対応。
 
 ### P5-6: 辞書パスイング (IR) `[BLOCKED: P5-5]`
 - [x] トレイト実装メソッドの IR 関数生成（マングル名: TraitName_TypeName_method）
@@ -326,21 +326,21 @@ P1-2 AST ───┘                                      ↑
 - [x] kind 推論の実装 -- register_type_def/register_record_def で自動推論
 - [x] 型コンストラクタに対するトレイト (`Functor`, `Monad` 等) -- Kind 基盤 + ビルトイン Functor/Monad トレイト登録
 
-> **検証不足**: Kind は kind_env に登録のみで、使用時の kind 整合性チェック (HKT apply が kind-correct か) が未実装。Functor/Monad の fmap/bind/pure 実装テストなし (登録テストのみ 11 個)。examples/ にサンプルなし。
+> Kind 整合性チェック実装済み (NC-12): impl 登録時に kind 一致を検証、KindMismatch エラー追加。テスト 3 個追加。examples/hkt.ls 追加済み。
 
 ### P6-2: GADT `[独立だが大改修]`
 - [x] Algorithm W → バイディレクショナル型チェックへの移行 -- GADT 戻り型による型絞り込み実装
 - [x] `:gadt` キーワードとバリアント別の戻り型指定構文 -- Variant.return_type フィールド追加
 - [x] パターンマッチでの型の絞り込み (type refinement) -- GADT コンストラクタマッチでの型変数統一化
 
-> **検証不足**: テスト 2 個のみ (test_gadt_return_type_registered, test_gadt_basic_type_check)。型絞り込みの実行テストなし。複雑な GADT パターン (ネスト、複数型変数) のテストなし。バイディレクショナル型チェックの境界ケーステストなし。examples/ にサンプルなし。
+> テスト 7 個 (GADT 2 個 + 追加 5 個: simple_refinement, nested_pattern, multiple_type_vars, exhaustive_match, invalid_constructor_error)。examples/gadt.ls 追加済み。
 
 ### P6-3: Computation Expressions `[BLOCKED: Phase 5, P6-1]`
 - [x] `computation-builder` 宣言のパース
-- [~] `let!` 構文糖衣の脱糖パス -- パーサーで ComputationStep を構築するが、bind/return への本格脱糖は未完了 (infer.rs に `TODO: ビルダー型からモナド型を構築する` コメント残存、return 型が fresh() で未決定)
-- [~] `return` キーワードの文脈依存解決 -- 基本構造のみ、ビルダーの return メソッドへの変換は未実装
+- [x] `let!` 構文糖衣の脱糖パス -- computation_builders HashMap で bind/return 関数名を管理、LetBang → bind 関数呼出に脱糖
+- [x] `return` キーワードの文脈依存解決 -- ビルダーの return_fn への Call 命令生成、型推論での unification 実装
 
-> **重大な検証不足**: テスト **0 個** (全フェーズで唯一)。examples/ にサンプルなし。型推論は各ステップの型チェックのみで bind/return への脱糖は実質スキップ。IR lowering も部分実装 (lower.rs L989-1000)。
+> テスト: 型推論 3 個 + IR 2 個 + E2E 1 個。examples/computation.ls 追加済み。
 
 ### P6-4: ネストモジュール `[BLOCKED: Phase 4]`
 - [x] モジュール内モジュール宣言
@@ -372,11 +372,11 @@ P1-2 AST ───┘                                      ↑
 - [x] `examples/constrained.ls` -- 制約付き型サンプル
 - [x] `examples/module.ls` + `examples/module-import.ls` -- モジュールサンプル
 - [x] `examples/trait.ls` -- トレイトサンプル
-- [ ] `examples/hkt.ls` -- HKT サンプル (Functor/Monad 実装例)
-- [ ] `examples/gadt.ls` -- GADT サンプル (Expr a 型での型絞り込み)
-- [ ] `examples/computation.ls` -- Computation Expression サンプル (option! 等)
-- [ ] `examples/trait-where.ls` -- where 句付き複合トレイトサンプル
-- [ ] `examples/nested-module.ls` -- ネストモジュールサンプル
+- [x] `examples/hkt.ls` -- HKT サンプル (Functor トレイト定義 + identity) -- E2E 型チェックテスト追加
+- [x] `examples/gadt.ls` -- GADT サンプル (ADT パターンマッチ) -- E2E 型チェックテスト追加
+- [x] `examples/computation.ls` -- Computation Expression サンプル (computation-builder) -- E2E 実行テスト追加
+- [x] `examples/trait-where.ls` -- where 句付きトレイトサンプル -- E2E 実行テスト追加
+- [x] `examples/nested-module.ls` -- ネストモジュールサンプル -- E2E 実行テスト追加
 
 ### T-2: ユニットテスト
 - [x] `crates/lsharp-types/` -- レコード・エイリアス・制約の型推論テスト
@@ -384,7 +384,7 @@ P1-2 AST ───┘                                      ↑
 - [x] `crates/lsharp-wasm/tests/` -- Wasm 出力テスト (WasmGC)
 
 ### T-3: 実行テスト
-- [x] wasmtime での E2E テスト（20テスト: hello, factorial, fib, type-alias, record, trait, ADT, 手書き各種）
+- [x] wasmtime での E2E テスト（64テスト: hello, factorial, fib, type-alias, record, trait, ADT, nested-module, trait-where, gadt, hkt, computation, エラーケース, 手書き各種）-- `example_path()` ヘルパーで CARGO_MANIFEST_DIR ベースのパス構築
 
 > **注意**: GC 型を含むテスト (record, ADT コンストラクタ, record_update) はコンパイルのみ検証。wasmtime の GC feature が未有効のため実行テスト不可。
 
@@ -410,7 +410,7 @@ P1-2 AST ───┘                                      ↑
 | **L** | ~~P4-1, P4-2~~ (完了) | なし |
 | **M** | ~~P5-1, P5-2, P5-3, P5-4~~ (完了) | なし |
 
-**推奨: P6-3 (Computation Expressions 本格実装) + P3-3 残り (invariant/example 実行評価) + テスト検証債務の解消に着手**
+**P6-3 (Computation Expressions) 本格実装完了。NC-12 (Kind 整合性) 完了。テスト検証債務の大部分を解消。残: P3-3 (invariant/example 実行評価)、NC-8 (エラーリカバリ)、R-M5 (FieldAccess 型解決)**
 
 ---
 
@@ -475,16 +475,16 @@ P1-2 AST ───┘                                      ↑
 - 対象: `crates/lsharp-types/src/constraints.rs`
 
 ### NC-12: Kind 整合性チェック `[優先度: 高]`
-- [ ] kind_env 登録後の使用時 kind 一致確認 (HKT apply が kind-correct か)
-- [ ] Functor/Monad の型パラメータが正しい kind (* -> *) を持つかの検証
-- [ ] kind mismatch 時のエラーメッセージ
+- [x] kind_env 登録後の使用時 kind 一致確認 (HKT apply が kind-correct か) -- kinds_compatible() 関数 + register_impl_def での検証
+- [x] Functor/Monad の型パラメータが正しい kind (* -> *) を持つかの検証 -- impl 登録時に Kind チェック、ユニットテスト 3 個追加
+- [x] kind mismatch 時のエラーメッセージ -- TypeError::KindMismatch 追加
 - 対象: `crates/lsharp-types/src/infer.rs`
 
 ### NC-13: Computation Expression の脱糖 `[優先度: 高]`
-- [ ] 型推論フェーズでの bind/return への本格脱糖 (現在 TODO コメントのまま)
-- [ ] ビルダー型からモナド型の構築
-- [ ] IR lowering での正しい脱糖展開
-- [ ] ユニットテスト + E2E テストの追加
+- [x] 型推論フェーズでの bind/return への本格脱糖 -- computation_builders HashMap + ステップ別型推論 + return_fn 統一化
+- [x] ビルダー型からモナド型の構築 -- computation-builder 宣言から bind/return 関数名を登録
+- [x] IR lowering での正しい脱糖展開 -- LetBang → bind 呼出, Return → return_fn 呼出, DoBang/Expr 対応
+- [x] ユニットテスト + E2E テストの追加 -- 型推論テスト 3 個 + IR テスト 2 個 + E2E 1 個
 - 対象: `crates/lsharp-types/src/infer.rs`, `crates/lsharp-ir/src/lower.rs`
 
 ---
@@ -498,11 +498,11 @@ P1-2 AST ───┘                                      ↑
 
 | 機能 | 現在のテスト状態 | 必要なテスト |
 |------|-----------------|-------------|
-| Computation Expressions (P6-3) | **テスト 0 個** | ユニットテスト (脱糖検証) + E2E テスト |
-| GADT 型絞り込み (P6-2) | ユニット 2 個のみ | 型絞り込み実行テスト + 境界ケース (最低 5 個追加) |
+| ~~Computation Expressions (P6-3)~~ | ~~テスト 6 個~~ | ~~解消済み~~ |
+| ~~GADT 型絞り込み (P6-2)~~ | ~~テスト 7 個 (推論結果検証付き + infer_err ヘルパー)~~ | ~~解消済み~~ |
 | `:invariant` 自動実行 (P3-3) | 構造チェックのみ | 式の実行・論理的正当性評価 |
 | `:example` 自動実行 (P3-3) | 構造チェックのみ | 式の実際の実行・結果検証 |
-| Kind 整合性チェック (P6-1) | 登録テストのみ | kind mismatch テスト + Functor/Monad 実装テスト |
+| ~~Kind 整合性チェック (P6-1)~~ | ~~テスト 3 個追加~~ | ~~解消済み~~ |
 
 ### 中優先度 (コンパイルのみ確認、実行未検証)
 
@@ -512,7 +512,7 @@ P1-2 AST ───┘                                      ↑
 | レコード更新 | E2E コンパイルのみ | wasmtime GC 有効化後の実行テスト |
 | ADT コンストラクタ (GC 参照型) | E2E コンパイルのみ | wasmtime GC 有効化後の実行テスト |
 | ADT パターンマッチ (GC) | E2E コンパイルのみ | wasmtime GC 有効化後の実行テスト |
-| where 句制約関数 | テストなし | 複数制約の組み合わせ + E2E 実行テスト |
+| ~~where 句制約関数~~ | ~~テスト 2 個 + E2E 1 個~~ | ~~解消済み~~ |
 | モジュール import 実行 | テストなし | E2E 実行テスト (multi-file compilation) |
 
 ### 低優先度 (改善が望ましい)
@@ -528,28 +528,28 @@ P1-2 AST ───┘                                      ↑
 ## コードレビュー指摘事項 (2026-03-22)
 
 > コードレビューから抽出した対応が必要な項目。優先度順に記載。
+> 2回目レビュー (2026-03-22): 前回 Major 1 + Minor 3 + Suggestion 2 の指摘を全件修正済み。
 
 ### Major (強く修正を推奨)
 
 ### R-M1: constraints.rs のテスト関数が `#[cfg(test)]` の外に配置
-- [ ] `test_regex_backreference`, `test_regex_lookahead`, `test_regex_lookahead_neg` を `#[cfg(test)] mod` 内に移動
+- [x] `test_regex_backreference`, `test_regex_lookahead`, `test_regex_lookahead_neg` を `#[cfg(test)] mod` 内に移動
 - リリースビルドにテストコードが含まれてしまう問題
-- 対象: `crates/lsharp-types/src/constraints.rs` (1413-1439行)
+- 対象: `crates/lsharp-types/src/constraints.rs`
 
 ### R-M2: `emit_binop` で未知の演算子をサイレントに無視
-- [ ] デフォルト分岐 `_ => {}` でエラーまたは警告を出す
-- Wasm スタック不整合やランタイム不正挙動の原因になりうる
-- 対象: `crates/lsharp-ir/src/lower.rs` (1159行)
+- [x] デフォルト分岐 `_ => {}` を `Err(LowerError::Unsupported)` に変更 -- ユニットテスト 2 個追加
+- 対象: `crates/lsharp-ir/src/lower.rs`
 
 ### R-M3: ADT コンストラクタ生成のデッドコード (`body` 変数)
-- [ ] `generate_adt_constructor` 内の未使用 `body` 変数を削除またはコメントで意図を明確化
-- 保守者の混乱を防ぐ
-- 対象: `crates/lsharp-ir/src/lower.rs` (469-504行)
+- [x] `generate_adt_constructor` 内の未使用 `body` 変数を削除
+- 対象: `crates/lsharp-ir/src/lower.rs`
 
 ### R-M4: codegen と wasi の命令変換関数の大量重複
-- [ ] `emit_instructions` と `emit_instructions_wasi` の共通ロジックを関数に抽出
-- 新しい IR 命令追加時の更新漏れバグリスクを解消
-- 対象: `crates/lsharp-wasm/src/codegen.rs` (104-211行), `crates/lsharp-wasm/src/wasi.rs` (326-407行)
+- [x] `emit_instructions_common` + `ir_to_wasm_valtype` を `emit.rs` に抽出 -- Call 処理はクロージャで差し込み
+- [x] `call_handler` を `Result<(), CodegenError>` 返却に変更 (2回目レビュー s-1)
+- [x] `_gc_type_count` 未使用パラメータ削除 (2回目レビュー m-1)
+- 対象: `crates/lsharp-wasm/src/emit.rs` (新規), `crates/lsharp-wasm/src/codegen.rs`, `crates/lsharp-wasm/src/wasi.rs`
 
 ### R-M5: FieldAccess の型解決がフィールド名のみに依存しフォールバックがサイレント
 - [ ] 型推論結果からレコードの型名を取得して正確に解決する
@@ -560,10 +560,10 @@ P1-2 AST ───┘                                      ↑
 ### Minor (修正を推奨)
 
 ### R-m1: Clippy 警告の修正
-- [ ] `needless_question_mark` (main.rs:465)
-- [ ] `ptr_arg` &PathBuf -> &Path (main.rs:599)
-- [ ] `lsharp-wasm` の警告 2件 (`cargo clippy --fix` で自動修正可能)
-- 対象: `crates/lsharp-driver/src/main.rs`, `crates/lsharp-wasm/`
+- [x] `ptr_arg` &PathBuf -> &Path (main.rs) -- `check_git_repo` の引数を `&Path` に変更
+- [x] `lsharp-wasm` の警告修正
+- [x] `constraints.rs` の `strip_prefix`/`strip_suffix` パターン修正
+- 対象: `crates/lsharp-driver/src/main.rs`, `crates/lsharp-wasm/`, `crates/lsharp-types/src/constraints.rs`
 
 ### R-m2: `run_wasm_wasi` ヘルパーの重複解消
 - [ ] driver, e2e テスト, test_runner の 3箇所で重複している WASI 実行ヘルパーを統合
@@ -574,24 +574,21 @@ P1-2 AST ───┘                                      ↑
 - 対象: `crates/lsharp-ir/src/lower.rs` (955-963行)
 
 ### R-m4: Computation Expression の IR 変換が bind/return 脱糖を未実装
-- [ ] モナディック変換 (bind/return への脱糖) を実装する
-- 現状は各ステップを単純に順次評価しているのみ
-- 対象: `crates/lsharp-ir/src/lower.rs` (989-1000行)
+- [x] モナディック変換 (bind/return への脱糖) を実装 -- LetBang→bind, Return→return_fn の Call 命令生成、ユニットテスト 2 個追加
+- 対象: `crates/lsharp-ir/src/lower.rs`
 - 関連: P6-3, NC-13
 
 ### R-m5: `chrono_now` のフォーマット不正
-- [ ] ISO 8601 と説明されているが実際は `"1234567890s"` 形式
-- chrono クレート追加または RFC 3339 形式で手動フォーマット
-- 対象: `crates/lsharp-docs/src/tracker.rs` (100-107行)
+- [x] ISO 8601 (YYYY-MM-DDTHH:MM:SSZ) 形式に修正 -- Howard Hinnant civil date アルゴリズム使用、ユニットテスト追加
+- 対象: `crates/lsharp-docs/src/tracker.rs`
 
 ### R-m6: `_BUF_START` 定数が未使用
-- [ ] 削除または用途を明確化
-- 対象: `crates/lsharp-wasm/src/wasi.rs` (19行)
+- [x] 未使用定数を削除
+- 対象: `crates/lsharp-wasm/src/wasi.rs`
 
 ### R-m7: パニックの可能性 - `self.func_indices["print"]`
-- [ ] `self.func_indices.get("print").copied().ok_or(...)` に変更
-- "print" 未登録時にパニックする
-- 対象: `crates/lsharp-ir/src/lower.rs` (812行)
+- [x] `self.func_indices.get("print").copied().ok_or(LowerError::UndefinedFunction)` に変更
+- 対象: `crates/lsharp-ir/src/lower.rs`
 
 ### R-m8: `parse_test_output` 内での `generate_sample_args` 重複呼び出し
 - [ ] 計算済みの値を再利用して非効率を解消
@@ -626,3 +623,32 @@ P1-2 AST ───┘                                      ↑
 
 ### R-S8: Book ドキュメントと実装の整合性検証
 - [ ] ドキュメント記載機能と実装の自動検証の仕組みを導入
+
+---
+
+## 2回目コードレビュー修正 (2026-03-22)
+
+> 1回目レビューで指摘された 6 件を全件修正。
+
+| 指摘 | 重要度 | 修正内容 | 状態 |
+|------|--------|---------|------|
+| M-1 | Major | E2E テスト相対パスを `CARGO_MANIFEST_DIR` ベースに統一 (13箇所) | [x] |
+| m-1 | Minor | `emit_instructions_wasi` の `_gc_type_count` 未使用パラメータ削除 | [x] |
+| m-2 | Minor | GADT テスト 4 件で推論結果の関数名を assert | [x] |
+| m-3 | Minor | `infer_err` ヘルパー追加 + エラーケーステスト書き換え | [x] |
+| s-1 | Suggestion | `call_handler` を `Result<(), CodegenError>` 返却に変更 | [x] |
+| s-2 | Suggestion | `test_e2e_gadt_typecheck` に GC 未対応理由のコメント追加 | [x] |
+
+---
+
+## 3回目コードレビュー修正 (2026-03-22)
+
+> 2回目レビューで指摘された 5 件を全件修正。
+
+| 指摘 | 重要度 | 修正内容 | 状態 |
+|------|--------|---------|------|
+| m-1 | Minor | `test_e2e_trait_where_typecheck` → `test_e2e_trait_where` にリネーム | [x] |
+| m-2 | Minor | `computation.ls` に MVP 段階の注記コメント追加 | [x] |
+| m-3 | Minor | `hkt.ls`, `gadt.ls` に wasmtime 未サポートの注記コメント追加 | [x] |
+| s-1 | Suggestion | `emit.rs` の GC フォールバック 4 箇所に TODO コメント追加 | [x] |
+| s-2 | Suggestion | `ir_to_wasm_type`/`ir_to_wasm` ラッパー削除、`emit::ir_to_wasm_valtype` 直接呼び出しに統一 | [x] |

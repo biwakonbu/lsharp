@@ -2,3 +2,4 @@
 *.wasm
 Cargo.lock
 *.pdf
+.claude/plans/

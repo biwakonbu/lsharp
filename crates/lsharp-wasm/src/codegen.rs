@@ -1,6 +1,6 @@
 //! IR -> Wasm バイナリ生成
 
-use lsharp_ir::{Instruction, IrType, Module};
+use lsharp_ir::{Instruction, Module};
 use wasm_encoder::{
     CodeSection, EntityType, ExportKind, ExportSection, FunctionSection, ImportSection,
     MemorySection, MemoryType, TypeSection, ValType,
@@ -27,8 +27,8 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let mut func_type_indices: Vec<u32> = Vec::new();
     for func in &module.functions {
         let type_idx = types.len();
-        let params: Vec<ValType> = func.params.iter().map(|t| ir_to_wasm_type(*t)).collect();
-        let results = vec![ir_to_wasm_type(func.result)];
+        let params: Vec<ValType> = func.params.iter().map(|t| crate::emit::ir_to_wasm_valtype(*t)).collect();
+        let results = vec![crate::emit::ir_to_wasm_valtype(func.result)];
         types.ty().function(params, results);
         func_type_indices.push(type_idx);
     }
@@ -83,7 +83,7 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
         let mut f = wasm_encoder::Function::new(
             func.locals
                 .iter()
-                .map(|t| (1, ir_to_wasm_type(*t)))
+                .map(|t| (1, crate::emit::ir_to_wasm_valtype(*t)))
                 .collect::<Vec<_>>(),
         );
 
@@ -106,120 +106,13 @@ fn emit_instructions(
     instructions: &[Instruction],
 ) -> Result<(), CodegenError> {
     use wasm_encoder::Instruction as W;
-
-    for instr in instructions {
-        match instr {
-            // 定数
-            Instruction::I64Const(n) => func.instruction(&W::I64Const(*n)),
-            Instruction::F64Const(n) => func.instruction(&W::F64Const((*n).into())),
-            Instruction::I32Const(n) => func.instruction(&W::I32Const(*n)),
-
-            // ローカル変数
-            Instruction::LocalGet(i) => func.instruction(&W::LocalGet(*i)),
-            Instruction::LocalSet(i) => func.instruction(&W::LocalSet(*i)),
-            Instruction::LocalTee(i) => func.instruction(&W::LocalTee(*i)),
-
-            // 整数演算
-            Instruction::I64Add => func.instruction(&W::I64Add),
-            Instruction::I64Sub => func.instruction(&W::I64Sub),
-            Instruction::I64Mul => func.instruction(&W::I64Mul),
-            Instruction::I64Div => func.instruction(&W::I64DivS),
-            Instruction::I64Rem => func.instruction(&W::I64RemS),
-
-            // 浮動小数点演算
-            Instruction::F64Add => func.instruction(&W::F64Add),
-            Instruction::F64Sub => func.instruction(&W::F64Sub),
-            Instruction::F64Mul => func.instruction(&W::F64Mul),
-            Instruction::F64Div => func.instruction(&W::F64Div),
-
-            // 比較
-            Instruction::I64Eq => func.instruction(&W::I64Eq),
-            Instruction::I64Ne => func.instruction(&W::I64Ne),
-            Instruction::I64LtS => func.instruction(&W::I64LtS),
-            Instruction::I64GtS => func.instruction(&W::I64GtS),
-            Instruction::I64LeS => func.instruction(&W::I64LeS),
-            Instruction::I64GeS => func.instruction(&W::I64GeS),
-
-            // 論理演算
-            Instruction::I32Eqz => func.instruction(&W::I32Eqz),
-            Instruction::I32And => func.instruction(&W::I32And),
-            Instruction::I32Or => func.instruction(&W::I32Or),
-
-            // 型変換
-            Instruction::I64ExtendI32S => func.instruction(&W::I64ExtendI32S),
-            Instruction::I32WrapI64 => func.instruction(&W::I32WrapI64),
-
-            // 制御フロー
-            Instruction::Call(i) => func.instruction(&W::Call(*i)),
-            Instruction::If(ty) => {
-                func.instruction(&W::If(wasm_encoder::BlockType::Result(
-                    ir_to_wasm_type(*ty),
-                )))
-            }
-            Instruction::Else => func.instruction(&W::Else),
-            Instruction::End => func.instruction(&W::End),
-            Instruction::Block(ty) => {
-                func.instruction(&W::Block(wasm_encoder::BlockType::Result(
-                    ir_to_wasm_type(*ty),
-                )))
-            }
-            Instruction::Loop(ty) => {
-                func.instruction(&W::Loop(wasm_encoder::BlockType::Result(
-                    ir_to_wasm_type(*ty),
-                )))
-            }
-            Instruction::Br(i) => func.instruction(&W::Br(*i)),
-            Instruction::BrIf(i) => func.instruction(&W::BrIf(*i)),
-            Instruction::Return => func.instruction(&W::Return),
-            Instruction::Unreachable => func.instruction(&W::Unreachable),
-
-            Instruction::CallImport(i) => func.instruction(&W::Call(*i)),
-
-            Instruction::Drop => func.instruction(&W::Drop),
-
-            // GC 命令は MVP では i64 にフォールバック
-            Instruction::StructNew(_) => {
-                // MVP: 未サポート、i64 0 を返す
-                func.instruction(&W::I64Const(0))
-            }
-            Instruction::StructGet(_, _) => {
-                // MVP: 引数をそのまま返す（何もしない）
-                &mut *func
-            }
-            Instruction::StructSet(_, _) => {
-                // MVP: drop して unit を返す
-                func.instruction(&W::Drop);
-                func.instruction(&W::Drop);
-                func.instruction(&W::I64Const(0))
-            }
-            Instruction::RefCast(_) => {
-                // MVP: 何もしない
-                &mut *func
-            }
-
-            // 関数参照
-            Instruction::RefFunc(idx) => func.instruction(&W::RefFunc(*idx)),
-            Instruction::CallRef(type_idx) => func.instruction(&W::CallRef(*type_idx)),
-
-            // グローバル変数
-            Instruction::GlobalGet(idx) => func.instruction(&W::GlobalGet(*idx)),
-            Instruction::GlobalSet(idx) => func.instruction(&W::GlobalSet(*idx)),
-        };
-    }
-
-    Ok(())
+    crate::emit::emit_instructions_common(func, instructions, |f, i| {
+        f.instruction(&W::Call(i));
+        Ok(())
+    })
 }
 
 /// IR 型 -> Wasm 型
-fn ir_to_wasm_type(ty: IrType) -> ValType {
-    match ty {
-        IrType::I64 => ValType::I64,
-        IrType::F64 => ValType::F64,
-        IrType::I32 => ValType::I32,
-        IrType::Ref(_) => ValType::I64, // MVP: GC 参照は i64 にフォールバック
-        IrType::FuncRef => ValType::FUNCREF,
-    }
-}
 
 #[cfg(test)]
 mod tests {

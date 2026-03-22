@@ -3,7 +3,7 @@
 //! wasmtime で直接実行可能な Wasm バイナリを生成する。
 //! print 関数を WASI の fd_write で実装し、_start エントリポイントを生成。
 
-use lsharp_ir::{GcTypeKind, Instruction, IrType, Module};
+use lsharp_ir::{GcTypeKind, Instruction, Module};
 use wasm_encoder::{
     ArrayType, CodeSection, CompositeInnerType, CompositeType, DataSection, EntityType,
     ExportKind, ExportSection, FieldType, FunctionSection, ImportSection, MemorySection,
@@ -44,7 +44,7 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
                 let wasm_fields: Vec<FieldType> = fields
                     .iter()
                     .map(|f| FieldType {
-                        element_type: StorageType::Val(ir_to_wasm(f.ty)),
+                        element_type: StorageType::Val(crate::emit::ir_to_wasm_valtype(f.ty)),
                         mutable: f.mutable,
                     })
                     .collect();
@@ -67,7 +67,7 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
                     supertype_idx: None,
                     composite_type: CompositeType {
                         inner: CompositeInnerType::Array(ArrayType(FieldType {
-                            element_type: StorageType::Val(ir_to_wasm(*elem_ty)),
+                            element_type: StorageType::Val(crate::emit::ir_to_wasm_valtype(*elem_ty)),
                             mutable: true,
                         })),
                         shared: false,
@@ -93,8 +93,8 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let mut user_type_indices = Vec::new();
     for func in &module.functions {
         let type_idx = types.len();
-        let params: Vec<ValType> = func.params.iter().map(|t| ir_to_wasm(*t)).collect();
-        let results = vec![ir_to_wasm(func.result)];
+        let params: Vec<ValType> = func.params.iter().map(|t| crate::emit::ir_to_wasm_valtype(*t)).collect();
+        let results = vec![crate::emit::ir_to_wasm_valtype(func.result)];
         types.ty().function(params, results);
         user_type_indices.push(type_idx);
     }
@@ -147,10 +147,10 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
         let mut f = wasm_encoder::Function::new(
             func.locals
                 .iter()
-                .map(|t| (1, ir_to_wasm(*t)))
+                .map(|t| (1, crate::emit::ir_to_wasm_valtype(*t)))
                 .collect::<Vec<_>>(),
         );
-        emit_instructions_wasi(&mut f, &func.body, print_helper_idx, user_func_base, gc_type_count)?;
+        emit_instructions_wasi(&mut f, &func.body, print_helper_idx, user_func_base)?;
         f.instruction(&wasm_encoder::Instruction::End);
         codes.function(&f);
     }
@@ -327,93 +327,18 @@ fn emit_instructions_wasi(
     instructions: &[Instruction],
     print_helper_idx: u32,
     user_func_base: u32,
-    _gc_type_count: u32,
 ) -> Result<(), CodegenError> {
     use wasm_encoder::Instruction as W;
-
-    for instr in instructions {
-        match instr {
-            Instruction::Call(i) => {
-                if *i == 0 {
-                    func.instruction(&W::Call(print_helper_idx));
-                } else {
-                    func.instruction(&W::Call(user_func_base + (*i - 1)));
-                }
-            }
-            Instruction::I64Const(n) => { func.instruction(&W::I64Const(*n)); }
-            Instruction::F64Const(n) => { func.instruction(&W::F64Const((*n).into())); }
-            Instruction::I32Const(n) => { func.instruction(&W::I32Const(*n)); }
-            Instruction::LocalGet(i) => { func.instruction(&W::LocalGet(*i)); }
-            Instruction::LocalSet(i) => { func.instruction(&W::LocalSet(*i)); }
-            Instruction::LocalTee(i) => { func.instruction(&W::LocalTee(*i)); }
-            Instruction::I64Add => { func.instruction(&W::I64Add); }
-            Instruction::I64Sub => { func.instruction(&W::I64Sub); }
-            Instruction::I64Mul => { func.instruction(&W::I64Mul); }
-            Instruction::I64Div => { func.instruction(&W::I64DivS); }
-            Instruction::I64Rem => { func.instruction(&W::I64RemS); }
-            Instruction::F64Add => { func.instruction(&W::F64Add); }
-            Instruction::F64Sub => { func.instruction(&W::F64Sub); }
-            Instruction::F64Mul => { func.instruction(&W::F64Mul); }
-            Instruction::F64Div => { func.instruction(&W::F64Div); }
-            Instruction::I64Eq => { func.instruction(&W::I64Eq); }
-            Instruction::I64Ne => { func.instruction(&W::I64Ne); }
-            Instruction::I64LtS => { func.instruction(&W::I64LtS); }
-            Instruction::I64GtS => { func.instruction(&W::I64GtS); }
-            Instruction::I64LeS => { func.instruction(&W::I64LeS); }
-            Instruction::I64GeS => { func.instruction(&W::I64GeS); }
-            Instruction::I32Eqz => { func.instruction(&W::I32Eqz); }
-            Instruction::I32And => { func.instruction(&W::I32And); }
-            Instruction::I32Or => { func.instruction(&W::I32Or); }
-            Instruction::I64ExtendI32S => { func.instruction(&W::I64ExtendI32S); }
-            Instruction::I32WrapI64 => { func.instruction(&W::I32WrapI64); }
-            Instruction::If(ty) => {
-                func.instruction(&W::If(wasm_encoder::BlockType::Result(ir_to_wasm(*ty))));
-            }
-            Instruction::Else => { func.instruction(&W::Else); }
-            Instruction::End => { func.instruction(&W::End); }
-            Instruction::Block(ty) => {
-                func.instruction(&W::Block(wasm_encoder::BlockType::Result(ir_to_wasm(*ty))));
-            }
-            Instruction::Loop(ty) => {
-                func.instruction(&W::Loop(wasm_encoder::BlockType::Result(ir_to_wasm(*ty))));
-            }
-            Instruction::Br(i) => { func.instruction(&W::Br(*i)); }
-            Instruction::BrIf(i) => { func.instruction(&W::BrIf(*i)); }
-            Instruction::Return => { func.instruction(&W::Return); }
-            Instruction::Unreachable => { func.instruction(&W::Unreachable); }
-            Instruction::CallImport(i) => { func.instruction(&W::Call(*i)); }
-            Instruction::Drop => { func.instruction(&W::Drop); }
-            // GC 命令は MVP ではフォールバック
-            // TODO: WasmGC ネイティブ対応時はここを struct.new/struct.get に変換
-            Instruction::StructNew(_) => { func.instruction(&W::I64Const(0)); }
-            Instruction::StructGet(_, _) => { /* nop */ }
-            Instruction::StructSet(_, _) => {
-                func.instruction(&W::Drop);
-                func.instruction(&W::Drop);
-                func.instruction(&W::I64Const(0));
-            }
-            Instruction::RefCast(_) => { /* nop */ }
-            // 関数参照
-            Instruction::RefFunc(idx) => { func.instruction(&W::RefFunc(*idx)); }
-            Instruction::CallRef(type_idx) => { func.instruction(&W::CallRef(*type_idx)); }
-            // グローバル変数
-            Instruction::GlobalGet(idx) => { func.instruction(&W::GlobalGet(*idx)); }
-            Instruction::GlobalSet(idx) => { func.instruction(&W::GlobalSet(*idx)); }
-        };
-    }
-
-    Ok(())
+    crate::emit::emit_instructions_common(func, instructions, |f, i| {
+        if i == 0 {
+            f.instruction(&W::Call(print_helper_idx));
+        } else {
+            f.instruction(&W::Call(user_func_base + (i - 1)));
+        }
+        Ok(())
+    })
 }
 
-fn ir_to_wasm(ty: IrType) -> ValType {
-    match ty {
-        IrType::I64 => ValType::I64,
-        IrType::F64 => ValType::F64,
-        IrType::I32 => ValType::I32,
-        IrType::Ref(_) => ValType::I64, // MVP: GC 参照は i64 にフォールバック
-        IrType::FuncRef => ValType::FUNCREF,
-    }
-}
 
 #[cfg(test)]
 mod tests {

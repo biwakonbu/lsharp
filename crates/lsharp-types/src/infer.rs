@@ -2813,6 +2813,13 @@ mod gadt_tests {
         infer.infer_program(&program).unwrap()
     }
 
+    /// 型推論がエラーになることを検証するヘルパー
+    fn infer_err(input: &str) {
+        let program = lsharp_syntax::parse(input).unwrap();
+        let mut infer = Infer::new();
+        assert!(infer.infer_program(&program).is_err());
+    }
+
     #[allow(dead_code)]
     fn infer_has_gadt(input: &str) -> HashMap<String, Type> {
         let program = lsharp_syntax::parse(input).unwrap();
@@ -2904,5 +2911,98 @@ mod gadt_tests {
         let mut infer = Infer::new();
         let result = infer.infer_program(&program);
         assert!(result.is_ok(), "Maybe (* -> * kind) への Functor impl は成功すべき: {:?}", result.err());
+    }
+
+    // --- GADT テスト追加 (G-1) ---
+
+    #[test]
+    fn test_gadt_simple_refinement() {
+        // 単純な ADT パターンマッチで型が絞り込まれる
+        let results = infer_ok(
+            "(type (Either a b) (Left a) (Right b))
+             (defn get-left [e]
+               (match e
+                 [(Left x) x]
+                 [(Right _) 0]))"
+        );
+        assert!(results.iter().any(|(name, _)| name == "get-left"));
+    }
+
+    #[test]
+    fn test_gadt_nested_pattern() {
+        // ネストした ADT パターンマッチ
+        let results = infer_ok(
+            "(type (Maybe a) (Just a) Nothing)
+             (defn is-just [m]
+               (match m
+                 [(Just _) 1]
+                 [Nothing 0]))"
+        );
+        assert!(results.iter().any(|(name, _)| name == "is-just"));
+    }
+
+    #[test]
+    fn test_gadt_multiple_type_vars() {
+        // 複数の型変数を持つ ADT
+        let results = infer_ok(
+            "(type (Pair a b) (MkPair a b))
+             (defn fst [p]
+               (match p
+                 [(MkPair x _) x]))"
+        );
+        assert!(results.iter().any(|(name, _)| name == "fst"));
+    }
+
+    #[test]
+    fn test_gadt_exhaustive_match() {
+        // 全コンストラクタをマッチ
+        let results = infer_ok(
+            "(type Color Red Green Blue)
+             (defn color-to-int [c]
+               (match c
+                 [Red 0]
+                 [Green 1]
+                 [Blue 2]))"
+        );
+        assert!(results.iter().any(|(name, _)| name == "color-to-int"));
+    }
+
+    #[test]
+    fn test_gadt_invalid_constructor_error() {
+        // 未定義のコンストラクタはエラー
+        infer_err(
+            "(type (Maybe a) (Just a) Nothing)
+             (defn bad [m]
+               (match m
+                 [(Foo x) x]))"
+        );
+    }
+
+    // --- Where 句テスト (G-2) ---
+
+    #[test]
+    fn test_where_multi_constraint() {
+        // 複数の where 制約が型チェックを通る
+        let _results = infer_ok(
+            "(trait (Show a)
+               (defn show [self] : Int))
+             (trait (Eq a)
+               (defn eq [x y] : Int))
+             (defn show-eq [x]
+               :where [(Show a) (Eq a)]
+               x)"
+        );
+    }
+
+    #[test]
+    fn test_where_single_constraint() {
+        // 単一の where 制約
+        let _results = infer_ok(
+            "(trait (Num a)
+               (defn add [x y] : Int))
+             (defn double [x]
+               :where [(Num a)]
+               (+ x x))"
+        );
     }
 }

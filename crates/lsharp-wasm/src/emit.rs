@@ -1,0 +1,126 @@
+//! 共通命令エミッション
+//!
+//! `codegen` と `wasi` の両モジュールで共有する命令変換ロジック。
+
+use lsharp_ir::{Instruction, IrType};
+use wasm_encoder::ValType;
+
+use crate::codegen::CodegenError;
+
+/// IR 型 → Wasm 型変換
+pub fn ir_to_wasm_valtype(ty: IrType) -> ValType {
+    match ty {
+        IrType::I64 => ValType::I64,
+        IrType::F64 => ValType::F64,
+        IrType::I32 => ValType::I32,
+        IrType::Ref(_) => ValType::I64, // MVP: GC 参照は i64 にフォールバック
+        IrType::FuncRef => ValType::FUNCREF,
+    }
+}
+
+/// IR 命令列を Wasm 命令に変換（Call 処理はコールバックで差し込み）
+pub fn emit_instructions_common<F>(
+    func: &mut wasm_encoder::Function,
+    instructions: &[Instruction],
+    mut call_handler: F,
+) -> Result<(), CodegenError>
+where
+    F: FnMut(&mut wasm_encoder::Function, u32) -> Result<(), CodegenError>,
+{
+    use wasm_encoder::Instruction as W;
+
+    for instr in instructions {
+        match instr {
+            // 定数
+            Instruction::I64Const(n) => { func.instruction(&W::I64Const(*n)); }
+            Instruction::F64Const(n) => { func.instruction(&W::F64Const((*n).into())); }
+            Instruction::I32Const(n) => { func.instruction(&W::I32Const(*n)); }
+
+            // ローカル変数
+            Instruction::LocalGet(i) => { func.instruction(&W::LocalGet(*i)); }
+            Instruction::LocalSet(i) => { func.instruction(&W::LocalSet(*i)); }
+            Instruction::LocalTee(i) => { func.instruction(&W::LocalTee(*i)); }
+
+            // 整数演算
+            Instruction::I64Add => { func.instruction(&W::I64Add); }
+            Instruction::I64Sub => { func.instruction(&W::I64Sub); }
+            Instruction::I64Mul => { func.instruction(&W::I64Mul); }
+            Instruction::I64Div => { func.instruction(&W::I64DivS); }
+            Instruction::I64Rem => { func.instruction(&W::I64RemS); }
+
+            // 浮動小数点演算
+            Instruction::F64Add => { func.instruction(&W::F64Add); }
+            Instruction::F64Sub => { func.instruction(&W::F64Sub); }
+            Instruction::F64Mul => { func.instruction(&W::F64Mul); }
+            Instruction::F64Div => { func.instruction(&W::F64Div); }
+
+            // 比較
+            Instruction::I64Eq => { func.instruction(&W::I64Eq); }
+            Instruction::I64Ne => { func.instruction(&W::I64Ne); }
+            Instruction::I64LtS => { func.instruction(&W::I64LtS); }
+            Instruction::I64GtS => { func.instruction(&W::I64GtS); }
+            Instruction::I64LeS => { func.instruction(&W::I64LeS); }
+            Instruction::I64GeS => { func.instruction(&W::I64GeS); }
+
+            // 論理演算
+            Instruction::I32Eqz => { func.instruction(&W::I32Eqz); }
+            Instruction::I32And => { func.instruction(&W::I32And); }
+            Instruction::I32Or => { func.instruction(&W::I32Or); }
+
+            // 型変換
+            Instruction::I64ExtendI32S => { func.instruction(&W::I64ExtendI32S); }
+            Instruction::I32WrapI64 => { func.instruction(&W::I32WrapI64); }
+
+            // 制御フロー — Call はコールバックに委譲
+            Instruction::Call(i) => { call_handler(func, *i)?; }
+            Instruction::If(ty) => {
+                func.instruction(&W::If(wasm_encoder::BlockType::Result(
+                    ir_to_wasm_valtype(*ty),
+                )));
+            }
+            Instruction::Else => { func.instruction(&W::Else); }
+            Instruction::End => { func.instruction(&W::End); }
+            Instruction::Block(ty) => {
+                func.instruction(&W::Block(wasm_encoder::BlockType::Result(
+                    ir_to_wasm_valtype(*ty),
+                )));
+            }
+            Instruction::Loop(ty) => {
+                func.instruction(&W::Loop(wasm_encoder::BlockType::Result(
+                    ir_to_wasm_valtype(*ty),
+                )));
+            }
+            Instruction::Br(i) => { func.instruction(&W::Br(*i)); }
+            Instruction::BrIf(i) => { func.instruction(&W::BrIf(*i)); }
+            Instruction::Return => { func.instruction(&W::Return); }
+            Instruction::Unreachable => { func.instruction(&W::Unreachable); }
+
+            Instruction::CallImport(i) => { func.instruction(&W::Call(*i)); }
+            Instruction::Drop => { func.instruction(&W::Drop); }
+
+            // GC 命令は MVP ではフォールバック
+            // TODO: WasmGC 本格実装時に削除。スタック操作はフォールバック用。
+            Instruction::StructNew(_) => { func.instruction(&W::I64Const(0)); }
+            // TODO: WasmGC 本格実装時に削除。スタック操作はフォールバック用。
+            Instruction::StructGet(_, _) => { /* nop */ }
+            // TODO: WasmGC 本格実装時に削除。スタック操作はフォールバック用。
+            Instruction::StructSet(_, _) => {
+                func.instruction(&W::Drop);
+                func.instruction(&W::Drop);
+                func.instruction(&W::I64Const(0));
+            }
+            // TODO: WasmGC 本格実装時に削除。スタック操作はフォールバック用。
+            Instruction::RefCast(_) => { /* nop */ }
+
+            // 関数参照
+            Instruction::RefFunc(idx) => { func.instruction(&W::RefFunc(*idx)); }
+            Instruction::CallRef(type_idx) => { func.instruction(&W::CallRef(*type_idx)); }
+
+            // グローバル変数
+            Instruction::GlobalGet(idx) => { func.instruction(&W::GlobalGet(*idx)); }
+            Instruction::GlobalSet(idx) => { func.instruction(&W::GlobalSet(*idx)); }
+        };
+    }
+
+    Ok(())
+}

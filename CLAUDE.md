@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 言語規則
+
+- **自然言語**: 日本語を使用
+- **コメント**: 日本語で記述
+- **変数・関数名**: 英語（国際標準）
+- **コード**: 英語（国際標準）
+
 ## プロジェクト概要
 
 L# (lsharp) は S 式構文 + Hindley-Milner 型推論の言語。WebAssembly (WASI) をターゲットに、wasmtime で直接実行可能。
