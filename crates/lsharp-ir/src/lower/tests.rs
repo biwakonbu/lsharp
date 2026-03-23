@@ -607,6 +607,69 @@ fn test_record_update_resolves_correct_type() {
     assert!(has_struct_new, "RecordUpdate は StructNew を生成すべき: {:?}", move_x.body);
 }
 
+// --- タグ付きワード (TASK-004) テスト ---
+
+#[test]
+fn test_emit_tag_pointer_generates_correct_instructions() {
+    // タグ付きポインタ変換: i32 アドレス → タグ付き i64
+    // スタック上の i32 を i64 に拡張して最上位ビットを立てる
+    let mut body = Vec::new();
+    emit_tag_pointer(&mut body, 0);
+    assert_eq!(body.len(), 3, "emit_tag_pointer は 3 命令を生成すべき");
+    assert!(matches!(body[0], Instruction::I64ExtendI32U));
+    assert!(matches!(body[1], Instruction::I64Const(v) if v == (1i64 << 63)));
+    assert!(matches!(body[2], Instruction::I64Add));
+}
+
+#[test]
+fn test_emit_untag_pointer_generates_correct_instructions() {
+    // アンタグ変換: タグ付き i64 → i32 アドレス
+    let mut body = Vec::new();
+    emit_untag_pointer(&mut body);
+    assert_eq!(body.len(), 1, "emit_untag_pointer は 1 命令を生成すべき");
+    assert!(matches!(body[0], Instruction::I32WrapI64));
+}
+
+#[test]
+fn test_emit_write_heap_header_generates_correct_instructions() {
+    // ヒープヘッダ書き込み: [tag: i32, size: i32]
+    // スタック: [addr] -> [] (addr は消費される、呼び出し側で保存が必要)
+    let mut body = Vec::new();
+    emit_write_heap_header(&mut body, 1, 16);
+    // addr, tag を store + addr, size を store = 4 命令
+    assert_eq!(body.len(), 4, "emit_write_heap_header は 4 命令を生成すべき: {:?}", body);
+    // tag 書き込み: I32Const(tag), I32Store { offset: 0 }
+    assert!(matches!(body[0], Instruction::I32Const(1)));
+    assert!(matches!(body[1], Instruction::I32Store { offset: 0 }));
+    // size 書き込み: I32Const(size), I32Store { offset: 4 }
+    assert!(matches!(body[2], Instruction::I32Const(16)));
+    assert!(matches!(body[3], Instruction::I32Store { offset: 4 }));
+}
+
+#[test]
+fn test_heap_object_tag_constants() {
+    // ヒープオブジェクトタグ定数が正しく定義されていること
+    assert_eq!(HEAP_TAG_STRING, 1);
+    assert_eq!(HEAP_TAG_RECORD, 2);
+    assert_eq!(HEAP_TAG_ADT, 3);
+    assert_eq!(HEAP_TAG_CLOSURE, 4);
+    assert_eq!(HEAP_TAG_VECTOR, 5);
+    assert_eq!(HEAP_TAG_HASHMAP, 6);
+    assert_eq!(HEAP_TAG_REF, 7);
+}
+
+#[test]
+fn test_tagged_pointer_roundtrip() {
+    // タグ付きポインタの往復変換が正しい命令列を生成すること
+    let mut body = Vec::new();
+    // タグ付け
+    emit_tag_pointer(&mut body, 0);
+    // アンタグ
+    emit_untag_pointer(&mut body);
+    // 合計 4 命令 (3 + 1)
+    assert_eq!(body.len(), 4);
+}
+
 // --- モジュール分割検証テスト ---
 
 #[test]

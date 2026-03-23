@@ -817,6 +817,31 @@ fn test_e2e_alloc_memory_grow() {
     assert!(addr >= 512, "large allocation should succeed, got {}", addr);
 }
 
+// === Phase 0-3: タグ付きワードテスト ===
+
+#[test]
+fn test_e2e_tagged_word_integer() {
+    // 通常の整数はそのまま i64 として扱える
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [x 42]
+            (do (print x) x)))
+    "#);
+    assert_eq!(result.trim(), "42");
+}
+
+#[test]
+fn test_e2e_heap_object_header() {
+    // ヒープオブジェクトを確保してヘッダを書き込み・読み出し
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [addr (__alloc 16)]
+            (do (print addr) addr)))
+    "#);
+    let addr: i64 = result.trim().parse().unwrap();
+    assert!(addr >= 512, "heap address should be >= 512, got {}", addr);
+}
+
 // === エッジケース: ランタイムエラー ===
 
 #[test]

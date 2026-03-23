@@ -3,6 +3,7 @@
 //! MVP ではフラット化された命令列を使用。
 //! 将来的に SSA 形式の BasicBlock ベースに拡張する。
 
+pub mod closure;
 pub mod lower;
 pub mod module_graph;
 
