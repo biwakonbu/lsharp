@@ -104,6 +104,16 @@ enum Command {
 
     /// 対話的 REPL (Read-Eval-Print Loop)
     Repl,
+
+    /// ドキュメント生成 (:doc メタデータから HTML 生成)
+    Doc {
+        /// 入力ファイル
+        file: PathBuf,
+
+        /// 出力ファイル (デフォルト: stdout)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 fn main() -> miette::Result<()> {
@@ -349,6 +359,10 @@ fn main() -> miette::Result<()> {
 
         Command::Repl => {
             cmd_repl()?;
+        }
+
+        Command::Doc { file, output } => {
+            cmd_doc(&file, output.as_deref())?;
         }
     }
 
@@ -709,6 +723,94 @@ version = "0.1.0"
     println!("\n次のステップ:");
     println!("  cd {name}");
     println!("  lsharp compile src/main.ls");
+
+    Ok(())
+}
+
+/// P9-4: ドキュメント生成
+fn cmd_doc(file: &PathBuf, output: Option<&std::path::Path>) -> miette::Result<()> {
+    let source = std::fs::read_to_string(file)
+        .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+
+    let program = lsharp_syntax::parse(&source)
+        .map_err(|e| miette::miette!("{e}"))?;
+
+    // 型チェックで型情報取得
+    let mut infer = lsharp_types::infer::Infer::new();
+    let type_results = infer.infer_program(&program)
+        .map_err(|e| miette::miette!("{e}"))?;
+
+    let mut html = String::new();
+    html.push_str("<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\">\n");
+    html.push_str(&format!("<title>L# API - {}</title>\n", file.display()));
+    html.push_str("<style>body{font-family:sans-serif;max-width:800px;margin:0 auto;padding:20px}\n");
+    html.push_str("h1{color:#333}h2{color:#555;border-bottom:1px solid #ddd;padding-bottom:5px}\n");
+    html.push_str(".sig{background:#f5f5f5;padding:8px;border-radius:4px;font-family:monospace}\n");
+    html.push_str(".doc{color:#666;margin:8px 0}.params{margin-left:20px}\n");
+    html.push_str("</style></head><body>\n");
+    html.push_str(&format!("<h1>{}</h1>\n", file.file_stem().unwrap_or_default().to_string_lossy()));
+
+    for decl in &program.decls {
+        match decl {
+            lsharp_syntax::ast::Decl::Defn { name, params, return_ty, metadata, .. } => {
+                html.push_str(&format!("<h2>{}</h2>\n", name));
+
+                // 型シグネチャ
+                let param_strs: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
+                let ret = return_ty.as_ref().map_or("?".to_string(), |t| format!("{:?}", t));
+                // 型推論結果があれば使用
+                let type_str = type_results.iter()
+                    .find(|(n, _)| n == name)
+                    .map(|(_, t)| format!("{}", t))
+                    .unwrap_or_else(|| format!("({}) -> {}", param_strs.join(", "), ret));
+                html.push_str(&format!("<div class=\"sig\">{}: {}</div>\n", name, type_str));
+
+                if let Some(meta) = metadata {
+                    if let Some(doc) = &meta.doc {
+                        html.push_str(&format!("<div class=\"doc\">{}</div>\n", doc));
+                    }
+                    if !meta.params.is_empty() {
+                        html.push_str("<div class=\"params\"><strong>パラメータ:</strong><ul>\n");
+                        for (pname, pdoc) in &meta.params {
+                            html.push_str(&format!("<li><code>{}</code> - {}</li>\n", pname, pdoc));
+                        }
+                        html.push_str("</ul></div>\n");
+                    }
+                    if let Some(ret_doc) = &meta.returns {
+                        html.push_str(&format!("<div class=\"doc\"><strong>戻り値:</strong> {}</div>\n", ret_doc));
+                    }
+                }
+            }
+            lsharp_syntax::ast::Decl::TypeDef { name, type_params, variants, metadata, .. } => {
+                html.push_str(&format!("<h2>type {}</h2>\n", name));
+                if !type_params.is_empty() {
+                    html.push_str(&format!("<div class=\"sig\">type ({} {})</div>\n",
+                        name, type_params.join(" ")));
+                }
+                html.push_str("<ul>\n");
+                for v in variants {
+                    html.push_str(&format!("<li><code>{}</code></li>\n", v.name));
+                }
+                html.push_str("</ul>\n");
+                if let Some(meta) = metadata {
+                    if let Some(doc) = &meta.doc {
+                        html.push_str(&format!("<div class=\"doc\">{}</div>\n", doc));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    html.push_str("</body></html>\n");
+
+    if let Some(output_path) = output {
+        std::fs::write(output_path, &html)
+            .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
+        println!("ドキュメント生成: {}", output_path.display());
+    } else {
+        print!("{}", html);
+    }
 
     Ok(())
 }
