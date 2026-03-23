@@ -104,7 +104,9 @@ fi
 echo "[4/4] L# をコンパイル・実行中..."
 LSHARP_CTIME="N/A"; LSHARP_CMEM="N/A"; LSHARP_ETIME="N/A"; LSHARP_EMEM="N/A"; LSHARP_SIZE="N/A"
 LSHARP_WASM="$TMP_DIR/fib_lsharp.wasm"
-COUT=$(/usr/bin/time -l cargo run --quiet --manifest-path "$PROJECT_DIR/Cargo.toml" -- compile "$PROJECT_DIR/examples/fib.ls" -o "$LSHARP_WASM" 2>&1 || true)
+# ベンチ用の fib(35) を使用 (examples/fib.ls は fib(10) なので比較不可)
+BENCH_FIB="$SCRIPT_DIR/bench-programs/fib.ls"
+COUT=$(/usr/bin/time -l cargo run --quiet --manifest-path "$PROJECT_DIR/Cargo.toml" -- compile "$BENCH_FIB" -o "$LSHARP_WASM" 2>&1 || true)
 LSHARP_CTIME=$(extract_real_time "$COUT")
 LSHARP_CMEM=$(extract_rss "$COUT")
 if [[ -f "$LSHARP_WASM" ]]; then

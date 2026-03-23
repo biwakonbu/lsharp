@@ -155,7 +155,9 @@ fi
 # --- L# コンパイル ---
 LSHARP_COMPILE_TIME="N/A"; LSHARP_COMPILE_RSS="N/A"; LSHARP_COMPILE_CPU="N/A"
 LSHARP_WASM="$TMP_DIR/fib_lsharp.wasm"
-COUT=$(/usr/bin/time -l cargo run --quiet --manifest-path "$PROJECT_DIR/Cargo.toml" -- compile "$PROJECT_DIR/examples/fib.ls" -o "$LSHARP_WASM" 2>&1 || true)
+# ベンチ用の fib(35) を使用 (examples/fib.ls は fib(10) なので比較不可)
+BENCH_FIB="$SCRIPT_DIR/bench-programs/fib.ls"
+COUT=$(/usr/bin/time -l cargo run --quiet --manifest-path "$PROJECT_DIR/Cargo.toml" -- compile "$BENCH_FIB" -o "$LSHARP_WASM" 2>&1 || true)
 LSHARP_COMPILE_TIME=$(extract_real_time "$COUT")
 LSHARP_COMPILE_RSS=$(extract_rss "$COUT")
 LSHARP_COMPILE_CPU=$(extract_cpu_percent "$COUT")
@@ -262,7 +264,7 @@ cat > "$REPORT_FILE" << REPORT_EOF
 |------|-----|
 | L# コンパイル時間 (fib.ls) | ${LSHARP_COMPILE_TIME} |
 | L# コンパイル RSS メモリ | $(format_bytes "$LSHARP_COMPILE_RSS") |
-| L# Wasm 実行時間 (fib 10) | ${LSHARP_EXEC_TIME} |
+| L# Wasm 実行時間 (fib 35) | ${LSHARP_EXEC_TIME} |
 | L# Wasm 実行 RSS メモリ | $(format_bytes "$LSHARP_EXEC_RSS") |
 | L# Wasm 平均サイズ | ${WASM_AVG_FMT} |
 | コンパイル成功数 | ${WASM_COUNT} / ${EXAMPLE_COUNT} |
