@@ -3,3 +3,4 @@
 Cargo.lock
 *.pdf
 .claude/plans/
+.agbullet/
