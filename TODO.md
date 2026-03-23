@@ -12,6 +12,12 @@
 - [ ] data section offset → ヒープ上 String オブジェクト (tag=1, len, bytes) への変換
 - [ ] 既存の文字列関連テストが引き続きパスすることを確認
 
+### P1-3: WASI ファイル I/O & 標準入出力 (P9-6 前提)
+- [ ] fd_read / fd_write の WASI syscall ラッパー (stdin/stdout/stderr)
+- [ ] fd_open / fd_close / fd_seek のファイル操作
+- [ ] パス操作ユーティリティ (L# stdlib)
+- [ ] JSON パーサー (L# stdlib) -- LSP プロトコルに必要
+
 ---
 
 ## Phase 2: 動的コレクション
@@ -75,6 +81,71 @@
 - [~] 型ホバー -- hover ハンドラは URI→ソース未接続 (プレースホルダー)
 - [ ] completion / references / rename / formatting
 
+### P9-6: VSCode 拡張 (L# ネイティブ)
+> 全コアロジックを L# → Wasm で実装。VSCode 拡張シェルのみ TypeScript (最小限)
+> 前提: P1-3 (WASI ファイル I/O) の完了
+
+#### P9-6a: シンタックスハイライト
+- [ ] L# トークナイザーベースのセマンティックハイライトエンジン (selfhost/Lexer.ls 拡張)
+- [ ] TextMate grammar 生成 (L# から .tmLanguage.json を出力)
+- [ ] VSCode 拡張シェル (TypeScript 最小限) + Wasm バインディング
+
+#### P9-6b: LSP サーバー (L# 実装)
+- [ ] JSON-RPC パーサー/シリアライザー (L# stdlib)
+- [ ] LSP プロトコルハンドラ: initialize / textDocument/didOpen / didChange
+- [ ] 診断発行 (parse エラー + 型エラー → LSP Diagnostic)
+- [ ] 定義ジャンプ (selfhost/AST.ls + シンボルテーブル)
+- [ ] 型ホバー (selfhost/Type.ls + TypeScheme.ls 活用)
+- [ ] 補完 (シンボル補完 + キーワード補完)
+
+#### P9-6c: リンター (L# 実装)
+- [ ] AST ベースのリントルール基盤 (selfhost/AST.ls 拡張)
+- [ ] 組み込みルール: 未使用変数、未使用 import、型注釈推奨
+- [ ] カスタムルール定義 API
+- [ ] LSP 統合 (diagnostics として報告)
+
+#### P9-6d: フォーマッタ (L# 実装)
+- [ ] AST プリティプリンタ (S 式の整形出力)
+- [ ] インデント・改行ルール設定
+- [ ] LSP textDocument/formatting ハンドラ統合
+- [ ] CLI フォーマッタコマンド (`lsharp fmt`)
+
+---
+
+## Phase 10: マクロシステム (型付き衛生マクロ)
+
+> Template Haskell + Typed Racket のハイブリッド。S式構文との親和性を活かし、
+> Computation Expression の脱糖パターンを拡張する形で段階的に実装。
+> パイプライン: Source → Lexer → Parser → AST → **MacroExpand** → Type Inference → Lowering → Wasm
+
+### P10-1: Quote/Unquote 基盤
+- [ ] Lexer: `'` (quote) `~` (unquote) `~@` (splice-unquote) トークン追加 (token.rs, lexer.rs)
+- [ ] AST: `Expr::Quote`, `Expr::Unquote`, `Expr::UnquoteSplice` 追加 (ast.rs)
+- [ ] Parser: quote/unquote 式のパース (parser.rs)
+
+### P10-2: defmacro 定義と展開
+- [ ] AST: `Decl::DefMacro { name, params, macro_type, body }` 追加 (ast.rs)
+- [ ] Parser: `parse_defmacro()` 追加 (parser.rs)
+- [ ] マクロ展開エンジン新規作成 (lsharp-syntax/src/macro_expand.rs)
+- [ ] パイプライン統合: parse 後にマクロ展開パスを挿入
+- [ ] 簡易 gensym による衛生性
+
+### P10-3: 型付きマクロ
+- [ ] マクロの `:type` シグネチャのパースと検証
+- [ ] マクロ展開トレースバック (型エラー時にマクロ展開元を表示、miette 活用)
+- [ ] 再帰マクロ (深度制限 128)
+- [ ] `~@` (unquote-splicing) の可変長引数展開
+
+### P10-4: 衛生マクロの完全化
+- [ ] Scope ID システム (`HygienicIdent` 導入)
+- [ ] Sets of Scopes による名前解決 (Typed Racket 方式)
+- [ ] `(unhygienic name)` escape hatch (anaphoric macro 用)
+
+### P10-5: 組み込みマクロ & Computation 統合 (将来)
+- [ ] 組み込みマクロ: `when`, `unless`, `cond`, `|>`, `assert`
+- [ ] `derive-show`, `derive-eq` 等の型レベルマクロ (`reify-type`)
+- [ ] Computation Expression のマクロ化 (既存テスト互換維持)
+
 ---
 
 ## 構造的バグ (ADR proposed 高優先度)
@@ -126,17 +197,14 @@
 
 ## 既知の制限事項
 
-### リニアメモリランタイム (Phase 0 で正式基盤化)
-- WasmGC はオプショナルな最適化バックエンドとして位置づけ
-- リニアメモリ上の Bump Allocator で全ヒープデータを管理
-- GC は Phase 9 (REPL 等の長寿命プロセス) で Region GC として導入予定
+### リニアメモリランタイム
+- [ ] WasmGC 最適化バックエンド -- 現在はオプショナル、リニアメモリ上の Bump Allocator で全ヒープデータを管理
+- [ ] Region GC 導入 -- REPL 等の長寿命プロセス向け (Phase 9)
 
 ### パターンマッチ
-- 引数付きコンストラクタパターン (深さ 1) は対応済み
-- ネストしたコンストラクタパターン (深さ 2 以上) は未対応
-- ワイルドカード `_` + リテラル + 変数 + Bool パターン対応
-- ガード条件は未実装
+- [ ] ネストしたコンストラクタパターン (深さ 2 以上) -- 現在は深さ 1 のみ対応
+- [ ] ガード条件 (`when` 節) -- 未実装
 
 ### 正規表現エンジン
-- NFA → DFA 変換による最適化は未実装 (ステップ制限で病的入力を防止)
-- Unicode 文字クラス (`\p{L}` 等) は未対応
+- [ ] NFA → DFA 変換による最適化 -- 現在はステップ制限 (100,000) で病的入力を防止
+- [ ] Unicode 文字クラス (`\p{L}` 等) -- 未対応

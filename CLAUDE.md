@@ -34,7 +34,7 @@ cargo run -- test examples/fib.ls           # メタデータテスト (:example
 
 ## ワークスペース構成
 
-6 クレートの Cargo ワークスペース。コンパイラパイプライン順:
+7 クレートの Cargo ワークスペース。コンパイラパイプライン順:
 
 | クレート | 役割 |
 |---------|------|
@@ -43,6 +43,7 @@ cargo run -- test examples/fib.ls           # メタデータテスト (:example
 | `lsharp-ir` | AST → IR への変換 (lowering)、モジュールリンク |
 | `lsharp-wasm` | IR → WebAssembly バイナリ生成 (WASI) |
 | `lsharp-driver` | CLI エントリポイント、プロジェクト管理 |
+| `lsharp-lsp` | LSP サーバー (tower-lsp 統合) |
 | `lsharp-docs` | ドキュメント追跡・レビュー管理 |
 
 ## コンパイラパイプライン
@@ -105,12 +106,13 @@ hooks やスキルに問題が発生した場合は `.claude/rules/hook-troubles
 - `wasmtime` + `wasmtime-wasi`: Wasm 実行ランタイム
 - `insta`: スナップショットテスト
 - `clap`: CLI 引数パース
+- `tower-lsp`: LSP サーバーフレームワーク
 
 ## 言語機能
 
 - S 式構文 (Clojure 風)
-- ADT + パターンマッチ → WasmGC struct ($tag による判別)
-- レコード型 → WasmGC struct
+- ADT + パターンマッチ → リニアメモリ上の struct (タグによる判別)
+- レコード型 → リニアメモリ上の struct
 - モジュールシステム: `(module Name)`, `(import Module)`, `(open Module)`
 - トレイト: 辞書引数による静的ディスパッチ
 - 計算式: `let!` によるモナディックバインド
