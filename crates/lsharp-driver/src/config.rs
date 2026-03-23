@@ -18,6 +18,31 @@ pub struct Config {
     /// [doc-review] セクション
     #[serde(rename = "doc-review", default)]
     pub doc_review: DocReviewConfig,
+
+    /// [dependencies] セクション (P9-3)
+    #[serde(default)]
+    pub dependencies: std::collections::HashMap<String, DependencySpec>,
+}
+
+/// 依存関係の指定 (P9-3)
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum DependencySpec {
+    /// バージョン文字列のみ: "1.0.0"
+    Version(String),
+    /// 詳細指定: { git = "...", branch = "..." }
+    Git {
+        git: String,
+        #[serde(default)]
+        branch: Option<String>,
+        #[serde(default)]
+        tag: Option<String>,
+    },
+    /// ローカルパス: { path = "..." }
+    Path {
+        path: String,
+    },
 }
 
 /// [project] セクション
@@ -406,6 +431,82 @@ warning-level = "invalid"
         }
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_parse_dependencies_version() {
+        let content = r#"
+[dependencies]
+math = "1.0.0"
+"#;
+        let config: Config = toml::from_str(content).unwrap();
+        assert_eq!(config.dependencies.len(), 1);
+        match &config.dependencies["math"] {
+            DependencySpec::Version(v) => assert_eq!(v, "1.0.0"),
+            other => panic!("Version を期待しましたが {:?} でした", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_dependencies_git() {
+        let content = r#"
+[dependencies.mylib]
+git = "https://github.com/user/mylib.git"
+branch = "main"
+"#;
+        let config: Config = toml::from_str(content).unwrap();
+        assert_eq!(config.dependencies.len(), 1);
+        match &config.dependencies["mylib"] {
+            DependencySpec::Git { git, branch, tag } => {
+                assert_eq!(git, "https://github.com/user/mylib.git");
+                assert_eq!(branch.as_deref(), Some("main"));
+                assert!(tag.is_none());
+            }
+            other => panic!("Git を期待しましたが {:?} でした", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_dependencies_path() {
+        let content = r#"
+[dependencies.local-lib]
+path = "../local-lib"
+"#;
+        let config: Config = toml::from_str(content).unwrap();
+        match &config.dependencies["local-lib"] {
+            DependencySpec::Path { path } => assert_eq!(path, "../local-lib"),
+            other => panic!("Path を期待しましたが {:?} でした", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_dependencies_mixed() {
+        let content = r#"
+[dependencies]
+math = "1.0.0"
+
+[dependencies.mylib]
+git = "https://github.com/user/mylib.git"
+tag = "v2.0"
+
+[dependencies.local]
+path = "./libs/local"
+"#;
+        let config: Config = toml::from_str(content).unwrap();
+        assert_eq!(config.dependencies.len(), 3);
+        assert!(matches!(&config.dependencies["math"], DependencySpec::Version(_)));
+        assert!(matches!(&config.dependencies["mylib"], DependencySpec::Git { .. }));
+        assert!(matches!(&config.dependencies["local"], DependencySpec::Path { .. }));
+    }
+
+    #[test]
+    fn test_parse_no_dependencies() {
+        let content = r#"
+[project]
+name = "test"
+"#;
+        let config: Config = toml::from_str(content).unwrap();
+        assert!(config.dependencies.is_empty());
     }
 
     #[test]

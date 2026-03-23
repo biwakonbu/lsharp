@@ -226,7 +226,7 @@
 - [ ] 型ホバー、エラー診断、定義ジャンプ
 
 ### P9-3: パッケージマネージャ
-- [ ] `lsharp.toml` の `[dependencies]` セクション
+- [x] `lsharp.toml` の `[dependencies]` セクション -- DependencySpec enum (Version/Git/Path)、テスト 5件
 - [ ] Git リポジトリベースの依存解決
 - [ ] ロックファイル生成
 
