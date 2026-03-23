@@ -61,6 +61,7 @@ measure_time_warm() {
 }
 
 echo "=== L# 言語比較ベンチマーク (fibonacci 35) ==="
+echo "    (Rust / Go / JS / MoonBit / L# を比較)"
 echo ""
 
 # --- Rust ---
@@ -108,8 +109,28 @@ else
     echo "  node が見つかりません。スキップ。"
 fi
 
+# --- MoonBit ---
+echo "[4/5] MoonBit をコンパイル・実行中..."
+MOONBIT_CTIME="N/A"; MOONBIT_CMEM="N/A"; MOONBIT_ETIME="N/A"; MOONBIT_EMEM="N/A"; MOONBIT_SIZE="N/A"
+MOONBIT_DIR="$SCRIPT_DIR/bench-programs/moonbit"
+if command -v moon &>/dev/null && [[ -d "$MOONBIT_DIR" ]]; then
+    (cd "$MOONBIT_DIR" && moon clean 2>/dev/null)
+    COUT=$(/usr/bin/time -l bash -c "cd '$MOONBIT_DIR' && moon build --target wasm --release" 2>&1 || true)
+    MOONBIT_CTIME=$(extract_real_time "$COUT")
+    MOONBIT_CMEM=$(extract_rss "$COUT")
+    MOONBIT_WASM="$MOONBIT_DIR/_build/wasm/release/build/cmd/main/main.wasm"
+    if [[ -f "$MOONBIT_WASM" ]]; then
+        MOONBIT_SIZE=$(wc -c < "$MOONBIT_WASM" | tr -d ' ')
+        EOUT=$(measure_time_warm bash -c "cd '$MOONBIT_DIR' && moon run cmd/main --target wasm" 2>/dev/null)
+        MOONBIT_ETIME=$(extract_real_time "$EOUT")
+        MOONBIT_EMEM=$(extract_rss "$EOUT")
+    fi
+else
+    echo "  moon が見つかりません。スキップ。"
+fi
+
 # --- L# ---
-echo "[4/4] L# をコンパイル・実行中..."
+echo "[5/5] L# をコンパイル・実行中..."
 LSHARP_CTIME="N/A"; LSHARP_CMEM="N/A"; LSHARP_ETIME="N/A"; LSHARP_EMEM="N/A"; LSHARP_SIZE="N/A"
 LSHARP_WASM="$TMP_DIR/fib_lsharp.wasm"
 # ベンチ用の fib(35) を使用 (examples/fib.ls は fib(10) なので比較不可)
@@ -134,6 +155,7 @@ printf "%-15s %15s %15s\n" "言語" "コンパイル時間" "コンパイルRSS"
 printf "%-15s %15s %15s\n" "---------------" "---------------" "---------------"
 printf "%-15s %15s %15s\n" "Rust" "$RUST_CTIME" "$(format_bytes "$RUST_CMEM")"
 printf "%-15s %15s %15s\n" "Go" "$GO_CTIME" "$(format_bytes "$GO_CMEM")"
+printf "%-15s %15s %15s\n" "MoonBit (→Wasm)" "$MOONBIT_CTIME" "$(format_bytes "$MOONBIT_CMEM")"
 printf "%-15s %15s %15s\n" "L# (→Wasm)" "$LSHARP_CTIME" "$(format_bytes "$LSHARP_CMEM")"
 printf "%-15s %15s %15s\n" "JS (Node)" "N/A" "N/A"
 
@@ -144,6 +166,7 @@ printf "%-15s %15s %15s %15s\n" "言語" "実行時間" "実行RSS" "バイナ�
 printf "%-15s %15s %15s %15s\n" "---------------" "---------------" "---------------" "---------------"
 printf "%-15s %15s %15s %15s\n" "Rust" "$RUST_ETIME" "$(format_bytes "$RUST_EMEM")" "$(format_bytes "$RUST_SIZE")"
 printf "%-15s %15s %15s %15s\n" "Go" "$GO_ETIME" "$(format_bytes "$GO_EMEM")" "$(format_bytes "$GO_SIZE")"
+printf "%-15s %15s %15s %15s\n" "MoonBit (moon)" "$MOONBIT_ETIME" "$(format_bytes "$MOONBIT_EMEM")" "$(format_bytes "$MOONBIT_SIZE")"
 printf "%-15s %15s %15s %15s\n" "L# (wasmtime)" "$LSHARP_ETIME" "$(format_bytes "$LSHARP_EMEM")" "$(format_bytes "$LSHARP_SIZE")"
 printf "%-15s %15s %15s %15s\n" "JS (Node)" "$JS_ETIME" "$(format_bytes "$JS_EMEM")" "N/A"
 

@@ -1,7 +1,7 @@
 # L# パフォーマンスベンチマーク レポート
 
-> 計測日時: 2026-03-24 01:31:50
-> Git: `24e5a98` (main)
+> 計測日時: 2026-03-24 01:58:42
+> Git: `6fcb3d8` (main)
 > プラットフォーム: Darwin arm64 (25.3.0)
 
 ---
@@ -10,7 +10,7 @@
 
 | 項目 | 値 |
 |------|-----|
-| L# コンパイル時間 (fib.ls) | 2.32 s |
+| L# コンパイル時間 (fib.ls) | 1.87 s |
 | L# コンパイル RSS メモリ | 11.0 MB |
 | L# Wasm 実行時間 (fib 35) | 0.03 s |
 | L# Wasm 実行 RSS メモリ | 14.2 MB |
@@ -25,9 +25,10 @@
 
 | 言語 | コンパイル時間 | コンパイル RSS メモリ | CPU 使用率 |
 |------|-------------|-------------------|-----------|
-| Rust (`rustc -O`) | 0.63 s | 87.7 MB | N/A |
-| Go (`go build`) | 0.34 s | 64.9 MB | N/A |
-| L# (`lsharp compile`) | 2.32 s | 11.0 MB | N/A |
+| Rust (`rustc -O`) | 0.31 s | 87.7 MB | N/A |
+| Go (`go build`) | 0.24 s | 64.5 MB | N/A |
+| MoonBit (`moon build`) | 0.09 s | 43.1 MB | N/A |
+| L# (`lsharp compile`) | 1.87 s | 11.0 MB | N/A |
 | JS (Node.js) | N/A (インタプリタ) | N/A | N/A |
 
 ### 実行速度
@@ -35,9 +36,10 @@
 | 言語 | 実行時間 | 実行 RSS メモリ | CPU 使用率 |
 |------|---------|---------------|-----------|
 | Rust (ネイティブ) | 0.01 s | 1.4 MB | N/A |
-| Go (ネイティブ) | 0.02 s | 3.6 MB | N/A |
+| Go (ネイティブ) | 0.03 s | 3.5 MB | N/A |
+| MoonBit (moon run) | 0.04 s | 13.3 MB | N/A |
 | L# (wasmtime) | 0.03 s | 14.2 MB | N/A |
-| JS (Node.js) | 0.08 s | 43.1 MB | N/A |
+| JS (Node.js) | 0.06 s | 43.0 MB | N/A |
 
 ### バイナリサイズ
 
@@ -45,6 +47,7 @@
 |------|-------------|
 | Rust | 432.5 KB |
 | Go | 2.3 MB |
+| MoonBit (Wasm) | 10.8 KB |
 | L# (Wasm) | 1.6 KB |
 | JS | N/A (ソースコード実行) |
 
@@ -53,6 +56,8 @@
 > - RSS メモリは maximum resident set size。単位は MB。
 > - L# の実行時間は wasmtime ランタイム起動オーバーヘッドを含む。
 > - L# のコンパイル時間は cargo の起動オーバーヘッドを含む (純粋なコンパイル時間は criterion を参照)。
+> - MoonBit の実行時間は `moon run` (独自ランタイム) 経由。WASI 非対応のため wasmtime 直接実行不可。
+> - MoonBit のコンパイル時間はクリーンビルド (`moon clean` 後)。
 
 ---
 
@@ -96,6 +101,8 @@
 | Go | go version go1.25.8 darwin/arm64 |
 | Node.js | v22.21.0 |
 | wasmtime | wasmtime 43.0.0 (be23469ec 2026-03-20) |
+| MoonBit | moon 0.1.20260309 (f21b520 2026-03-09)
+N/A |
 
 ---
 

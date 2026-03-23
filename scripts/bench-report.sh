@@ -164,6 +164,18 @@ if command -v go &>/dev/null; then
     GO_COMPILE_CPU=$(extract_cpu_percent "$COUT")
 fi
 
+# --- MoonBit コンパイル ---
+MOONBIT_COMPILE_TIME="N/A"; MOONBIT_COMPILE_RSS="N/A"; MOONBIT_COMPILE_CPU="N/A"
+MOONBIT_DIR="$SCRIPT_DIR/bench-programs/moonbit"
+if command -v moon &>/dev/null && [[ -d "$MOONBIT_DIR" ]]; then
+    # クリーンビルドで計測
+    (cd "$MOONBIT_DIR" && moon clean 2>/dev/null)
+    COUT=$(/usr/bin/time -l bash -c "cd '$MOONBIT_DIR' && moon build --target wasm --release" 2>&1 || true)
+    MOONBIT_COMPILE_TIME=$(extract_real_time "$COUT")
+    MOONBIT_COMPILE_RSS=$(extract_rss "$COUT")
+    MOONBIT_COMPILE_CPU=$(extract_cpu_percent "$COUT")
+fi
+
 # --- L# コンパイル ---
 LSHARP_COMPILE_TIME="N/A"; LSHARP_COMPILE_RSS="N/A"; LSHARP_COMPILE_CPU="N/A"
 LSHARP_WASM="$TMP_DIR/fib_lsharp.wasm"
@@ -206,6 +218,18 @@ if command -v node &>/dev/null; then
     JS_EXEC_TIME=$(extract_real_time "$EOUT")
     JS_EXEC_RSS=$(extract_rss "$EOUT")
     JS_EXEC_CPU=$(extract_cpu_percent "$EOUT")
+fi
+
+# --- MoonBit (Wasm) 実行 ---
+MOONBIT_EXEC_TIME="N/A"; MOONBIT_EXEC_RSS="N/A"; MOONBIT_EXEC_CPU="N/A"; MOONBIT_BIN_SIZE="N/A"
+MOONBIT_WASM="$MOONBIT_DIR/_build/wasm/release/build/cmd/main/main.wasm"
+if command -v moon &>/dev/null && [[ -f "$MOONBIT_WASM" ]]; then
+    MOONBIT_BIN_SIZE=$(wc -c < "$MOONBIT_WASM" | tr -d ' ')
+    # moon run は独自ランタイムで実行 (spectest::print_char を提供)
+    EOUT=$(measure_time_warm bash -c "cd '$MOONBIT_DIR' && moon run cmd/main --target wasm" 2>/dev/null)
+    MOONBIT_EXEC_TIME=$(extract_real_time "$EOUT")
+    MOONBIT_EXEC_RSS=$(extract_rss "$EOUT")
+    MOONBIT_EXEC_CPU=$(extract_cpu_percent "$EOUT")
 fi
 
 # --- L# (Wasm) 実行 ---
@@ -291,6 +315,7 @@ cat > "$REPORT_FILE" << REPORT_EOF
 |------|-------------|-------------------|-----------|
 | Rust (\`rustc -O\`) | ${RUST_COMPILE_TIME} | $(format_bytes "$RUST_COMPILE_RSS") | ${RUST_COMPILE_CPU} |
 | Go (\`go build\`) | ${GO_COMPILE_TIME} | $(format_bytes "$GO_COMPILE_RSS") | ${GO_COMPILE_CPU} |
+| MoonBit (\`moon build\`) | ${MOONBIT_COMPILE_TIME} | $(format_bytes "$MOONBIT_COMPILE_RSS") | ${MOONBIT_COMPILE_CPU} |
 | L# (\`lsharp compile\`) | ${LSHARP_COMPILE_TIME} | $(format_bytes "$LSHARP_COMPILE_RSS") | ${LSHARP_COMPILE_CPU} |
 | JS (Node.js) | N/A (インタプリタ) | N/A | N/A |
 
@@ -300,6 +325,7 @@ cat > "$REPORT_FILE" << REPORT_EOF
 |------|---------|---------------|-----------|
 | Rust (ネイティブ) | ${RUST_EXEC_TIME} | $(format_bytes "$RUST_EXEC_RSS") | ${RUST_EXEC_CPU} |
 | Go (ネイティブ) | ${GO_EXEC_TIME} | $(format_bytes "$GO_EXEC_RSS") | ${GO_EXEC_CPU} |
+| MoonBit (moon run) | ${MOONBIT_EXEC_TIME} | $(format_bytes "$MOONBIT_EXEC_RSS") | ${MOONBIT_EXEC_CPU} |
 | L# (wasmtime) | ${LSHARP_EXEC_TIME} | $(format_bytes "$LSHARP_EXEC_RSS") | ${LSHARP_EXEC_CPU} |
 | JS (Node.js) | ${JS_EXEC_TIME} | $(format_bytes "$JS_EXEC_RSS") | ${JS_EXEC_CPU} |
 
@@ -309,6 +335,7 @@ cat > "$REPORT_FILE" << REPORT_EOF
 |------|-------------|
 | Rust | $(format_bytes "$RUST_BIN_SIZE") |
 | Go | $(format_bytes "$GO_BIN_SIZE") |
+| MoonBit (Wasm) | $(format_bytes "$MOONBIT_BIN_SIZE") |
 | L# (Wasm) | $(format_bytes "$LSHARP_BIN_SIZE") |
 | JS | N/A (ソースコード実行) |
 
@@ -317,6 +344,8 @@ cat > "$REPORT_FILE" << REPORT_EOF
 > - RSS メモリは maximum resident set size。単位は MB。
 > - L# の実行時間は wasmtime ランタイム起動オーバーヘッドを含む。
 > - L# のコンパイル時間は cargo の起動オーバーヘッドを含む (純粋なコンパイル時間は criterion を参照)。
+> - MoonBit の実行時間は \`moon run\` (独自ランタイム) 経由。WASI 非対応のため wasmtime 直接実行不可。
+> - MoonBit のコンパイル時間はクリーンビルド (\`moon clean\` 後)。
 
 ---
 
@@ -343,6 +372,7 @@ ${WASM_SIZE_ROWS}
 | Go | $(go version 2>/dev/null || echo "N/A") |
 | Node.js | $(node --version 2>/dev/null || echo "N/A") |
 | wasmtime | $(wasmtime --version 2>/dev/null || echo "N/A") |
+| MoonBit | $(moon version 2>/dev/null | head -1 || echo "N/A") |
 
 ---
 
