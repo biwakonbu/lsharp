@@ -24,7 +24,7 @@ const BUF_END: i32 = 276;
 const IR_IMPORT_COUNT: u32 = 7;
 
 /// WASI import 関数数
-const WASI_IMPORT_COUNT: u32 = 7;
+const WASI_IMPORT_COUNT: u32 = 9;
 
 /// WASI モードで Wasm バイナリを生成
 pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
@@ -38,14 +38,16 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     // 4: fd_read (import)
     // 5: fd_close (import)
     // 6: path_open (import)
-    // 7: __print_i64
-    // 8: __alloc
-    // 9: __string_concat
-    // 10: __string_eq
-    // 11: __print_string
-    // 12: __int_to_string
-    // 13..13+N-1: ユーザー関数
-    // 13+N: _start
+    // 7: fd_seek (import)
+    // 8: fd_filestat_get (import)
+    // 9: __print_i64
+    // 10: __alloc
+    // 11: __string_concat
+    // 12: __string_eq
+    // 13: __print_string
+    // 14: __int_to_string
+    // 15..15+N-1: ユーザー関数
+    // 15+N: _start
     let _fd_write_idx: u32 = 0;
     let proc_exit_wasm_idx: u32 = 1;
     let _args_get_idx: u32 = 2;
@@ -53,6 +55,8 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let _fd_read_idx: u32 = 4;
     let _fd_close_idx: u32 = 5;
     let _path_open_idx: u32 = 6;
+    let _fd_seek_idx: u32 = 7;
+    let _fd_filestat_get_idx: u32 = 8;
     let print_helper_idx: u32 = WASI_IMPORT_COUNT;
     let alloc_func_idx: u32 = WASI_IMPORT_COUNT + 1;
     let string_concat_idx: u32 = WASI_IMPORT_COUNT + 2;
@@ -144,6 +148,17 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
         vec![ValType::I32],
     );
 
+    // fd_seek(fd: i32, offset: i64, whence: i32, newoffset_ptr: i32) -> i32
+    let fd_seek_type_idx = types.len();
+    types.ty().function(
+        vec![ValType::I32, ValType::I64, ValType::I32, ValType::I32],
+        vec![ValType::I32],
+    );
+
+    // fd_filestat_get(fd: i32, buf_ptr: i32) -> i32
+    let fd_filestat_get_type_idx = types.len();
+    types.ty().function(vec![ValType::I32, ValType::I32], vec![ValType::I32]);
+
     let print_type_idx = types.len();
     types.ty().function(vec![ValType::I64], vec![]);
 
@@ -204,6 +219,8 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     imports.import("wasi_snapshot_preview1", "fd_read", EntityType::Function(fd_read_type_idx));
     imports.import("wasi_snapshot_preview1", "fd_close", EntityType::Function(fd_close_type_idx));
     imports.import("wasi_snapshot_preview1", "path_open", EntityType::Function(path_open_type_idx));
+    imports.import("wasi_snapshot_preview1", "fd_seek", EntityType::Function(fd_seek_type_idx));
+    imports.import("wasi_snapshot_preview1", "fd_filestat_get", EntityType::Function(fd_filestat_get_type_idx));
     wasm_module.section(&imports);
 
     // === Function Section ===
@@ -1065,8 +1082,8 @@ mod tests {
 
     #[test]
     fn test_wasi_import_section_count() {
-        // Import Section に 7 つの WASI 関数が含まれていることを検証
-        // (fd_write, proc_exit, args_get, args_sizes_get, fd_read, fd_close, path_open)
+        // Import Section に 9 つの WASI 関数が含まれていることを検証
+        // (fd_write, proc_exit, args_get, args_sizes_get, fd_read, fd_close, path_open, fd_seek, fd_filestat_get)
         let wasm = compile_wasi("(defn main [] (print 42))");
 
         // wasmtime でモジュールを読み込んで import 数を検証
@@ -1074,7 +1091,7 @@ mod tests {
         let engine = Engine::default();
         let module = wasmtime::Module::new(&engine, &wasm).unwrap();
         let imports: Vec<_> = module.imports().collect();
-        assert_eq!(imports.len(), 7, "WASI import 数が 7 でない: {:?}",
+        assert_eq!(imports.len(), 9, "WASI import 数が 9 でない: {:?}",
             imports.iter().map(|i| i.name().to_string()).collect::<Vec<_>>());
 
         // 各 import 名を検証
@@ -1086,6 +1103,8 @@ mod tests {
         assert!(import_names.contains(&"fd_read".to_string()));
         assert!(import_names.contains(&"fd_close".to_string()));
         assert!(import_names.contains(&"path_open".to_string()));
+        assert!(import_names.contains(&"fd_seek".to_string()));
+        assert!(import_names.contains(&"fd_filestat_get".to_string()));
     }
 
     #[test]

@@ -640,6 +640,58 @@ impl Infer {
             );
         }
 
+        // === HashMap ビルトイン ===
+
+        // map-new: () -> Map (デフォルト容量で空のハッシュマップを作成)
+        env.insert(
+            "map-new".to_string(),
+            TypeScheme::mono(Type::Fun(vec![], Box::new(Type::int()))),
+        );
+
+        // map-size: Map -> Int (エントリ数を返す)
+        env.insert(
+            "map-size".to_string(),
+            TypeScheme::mono(Type::Fun(vec![Type::int()], Box::new(Type::int()))),
+        );
+
+        // map-insert: forall a. (Map, Int, a) -> Map (キーと値を挿入)
+        {
+            let a = self.var_gen.fresh_id();
+            env.insert(
+                "map-insert".to_string(),
+                TypeScheme {
+                    vars: vec![a],
+                    constraints: Vec::new(),
+                    ty: Type::Fun(vec![Type::int(), Type::int(), Type::Var(a)], Box::new(Type::int())),
+                },
+            );
+        }
+
+        // map-get: forall a. (Map, Int) -> a (キーで値を取得、未存在時は 0)
+        {
+            let a = self.var_gen.fresh_id();
+            env.insert(
+                "map-get".to_string(),
+                TypeScheme {
+                    vars: vec![a],
+                    constraints: Vec::new(),
+                    ty: Type::Fun(vec![Type::int(), Type::int()], Box::new(Type::Var(a))),
+                },
+            );
+        }
+
+        // map-contains?: (Map, Int) -> Bool (キーの存在チェック)
+        env.insert(
+            "map-contains?".to_string(),
+            TypeScheme::mono(Type::Fun(vec![Type::int(), Type::int()], Box::new(Type::int()))),
+        );
+
+        // map-remove: (Map, Int) -> Map (キーを削除)
+        env.insert(
+            "map-remove".to_string(),
+            TypeScheme::mono(Type::Fun(vec![Type::int(), Type::int()], Box::new(Type::int()))),
+        );
+
         // not: Bool -> Bool
         env.insert(
             "not".to_string(),

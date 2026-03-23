@@ -36,10 +36,10 @@
 ### P1-1: 文字列ランタイム関数
 - [x] `string-length [s] -> Int` ビルトイン -- パック文字列から下位32bit取得、E2E 3件
 - [x] `string-concat [a b] -> String` ビルトイン -- __alloc + memory.copy、E2E 2件
-- [ ] `string-char-at [s i] -> Int` ビルトイン (バイト単位)
-- [ ] `substring [s start end] -> String` ビルトイン
+- [x] `string-char-at [s i] -> Int` ビルトイン (バイト単位) -- パック文字列 offset + index、E2E 3件
+- [x] `substring [s start end] -> String` ビルトイン -- __alloc + メモリコピー、E2E 3件
 - [x] `string-eq [a b] -> Bool` ビルトイン -- 長さ比較 + バイト比較ループ、E2E 4件
-- [ ] `int-to-string [n] -> String` ビルトイン
+- [x] `int-to-string [n] -> String` ビルトイン -- emit_int_to_string_func ヘルパー、E2E 5件
 - [x] `print-string [s] -> Unit` ビルトイン -- fd_write でパック文字列出力、E2E 3件
 - [x] E2E テスト: 各関数の正常動作 + 境界条件 -- 12件パス
 
@@ -48,8 +48,8 @@
 - [ ] 既存の文字列関連テストが引き続きパスすることを確認
 
 ### P1-3: print の多相化
-- [ ] `print-int` / `print-string` の分離
-- [ ] 既存 `print` の後方互換性維持 (整数引数時は `print-int` にフォールバック)
+- [x] `print-int` / `print-string` の分離 -- infer_expr_type_name で型判定、E2E 2件
+- [x] 既存 `print` の後方互換性維持 (整数引数時は `print-int` にフォールバック)
 
 ---
 
@@ -63,23 +63,23 @@
 - [x] E2E テスト: ADT 構築・分解・パターンマッチ -- E2E テスト 12件パス
 
 ### P2-2: 可変長配列 (Vector)
-- [ ] `vector-new [capacity] -> Vector` ビルトイン
-- [ ] `vector-push [v x] -> Vector` ビルトイン
-- [ ] `vector-get [v i] -> a` ビルトイン
-- [ ] `vector-set [v i x] -> Vector` ビルトイン
-- [ ] `vector-length [v] -> Int` ビルトイン
-- [ ] capacity 超過時のリアロケーション
-- [ ] E2E テスト: 基本操作 + リアロケーション
+- [x] `vector-new [capacity] -> Vector` ビルトイン -- ヒープ確保 + タグ付きポインタ、E2E 2件
+- [x] `vector-push [v x] -> Vector` ビルトイン -- capacity超過時リアロケーション対応、E2E 2件
+- [x] `vector-get [v i] -> a` ビルトイン -- インデックス指定要素取得、E2E 1件
+- [x] `vector-set [v i x] -> Vector` ビルトイン -- ミューテーション、E2E 1件
+- [x] `vector-length [v] -> Int` ビルトイン -- mem[addr+8] 読み出し
+- [x] capacity 超過時のリアロケーション -- vector-push で自動拡張 (cap*2, 最低4)
+- [x] E2E テスト: 基本操作 + リアロケーション -- E2E 6件パス
 
 ### P2-3: ハッシュマップ
-- [ ] `map-new [] -> Map` ビルトイン
-- [ ] `map-insert [m key value] -> Map` ビルトイン
-- [ ] `map-get [m key] -> Option` ビルトイン
-- [ ] `map-contains? [m key] -> Bool` ビルトイン
-- [ ] `map-remove [m key] -> Map` ビルトイン
-- [ ] `map-size [m] -> Int` ビルトイン
-- [ ] FNV-1a ハッシュ関数 (文字列キー用)
-- [ ] E2E テスト: 挿入・取得・削除・衝突処理
+- [x] `map-new [] -> Map` ビルトイン -- 16エントリ容量、MemoryFill で初期化、E2E 1件
+- [x] `map-insert [m key value] -> Map` ビルトイン -- 線形探索、key=0 空判定、上書き対応、E2E 3件
+- [x] `map-get [m key] -> Option` ビルトイン -- 全スロット走査、未存在時 0 返却、E2E 2件
+- [x] `map-contains? [m key] -> Bool` ビルトイン -- 全スロット走査、E2E 2件
+- [x] `map-remove [m key] -> Map` ビルトイン -- tombstone (key=-1) 方式、E2E 1件
+- [x] `map-size [m] -> Int` ビルトイン -- mem[addr+8] 読み出し
+- [~] FNV-1a ハッシュ関数 (文字列キー用) -- 現在は整数キーのみ対応
+- [x] E2E テスト: 挿入・取得・削除・衝突処理 -- E2E 9件パス
 
 ---
 
@@ -97,11 +97,11 @@
 - [x] E2E テスト: 自由変数キャプチャ + クロージャ呼出 -- E2E 5件パス
 
 ### P3-3: 高階関数の有効化
-- [ ] `list-map [f xs] -> List` (クロージャ対応)
-- [ ] `list-filter [f xs] -> List` (クロージャ対応)
-- [ ] `list-fold [f init xs] -> a` (クロージャ対応)
+- [x] `list-map [f xs] -> List` (クロージャ対応) -- ユーザー定義関数 + Lambda、E2E 2件
+- [x] `list-filter [f xs] -> List` (クロージャ対応) -- E2E 2件
+- [x] `list-fold [f init xs] -> a` (クロージャ対応) -- E2E テストで動作確認
 - [ ] `vector-map`, `vector-filter` の追加
-- [ ] E2E テスト: 高階関数の組み合わせ
+- [x] E2E テスト: 高階関数の組み合わせ -- list-map/filter 組み合わせ E2E パス
 
 ---
 
@@ -127,8 +127,8 @@
 - [x] `path_open` import -- wasi.rs Import Section に追加
 - [x] `fd_read` import -- wasi.rs Import Section に追加
 - [x] `fd_close` import -- wasi.rs Import Section に追加
-- [ ] `fd_seek` import
-- [ ] `fd_filestat_get` import
+- [x] `fd_seek` import -- wasi.rs Import Section に追加
+- [x] `fd_filestat_get` import -- wasi.rs Import Section に追加
 - [x] `args_get`, `args_sizes_get` import -- wasi.rs Import Section に追加
 - [x] `proc_exit` import -- wasi.rs Import Section + E2E テスト 3件
 
