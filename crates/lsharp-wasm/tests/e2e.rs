@@ -2639,3 +2639,116 @@ fn test_e2e_selfhost_compiler() {
     "#);
     assert_eq!(result.trim(), "1\n1\n42\n1\n10\n3\n1\n5\n2\n172\n2");
 }
+
+#[test]
+fn test_e2e_selfhost_type_scheme() {
+    // セルフホスティング: TypeScheme (let 多相の instantiate/free-vars)
+    let result = compile_and_run(r#"
+        ;; TypeScheme = [type, bound-vars-vector]
+        (defn mono [ty]
+          (vector-push (vector-push (vector-new 2) ty) (vector-new 0)))
+
+        (defn poly [ty bound-vars]
+          (vector-push (vector-push (vector-new 2) ty) bound-vars))
+
+        (defn scheme-type [scheme] (vector-get scheme 0))
+        (defn scheme-vars [scheme] (vector-get scheme 1))
+
+        ;; 型変数カウンタ
+        (defn make-var-counter [] (ref-new 1000))
+        (defn next-var [counter]
+          (let [id (ref-get counter)]
+            (do (ref-set counter (+ id 1)) id)))
+
+        ;; instantiate-apply: 置換を型に適用
+        (defn inst-apply [subst ty]
+          (let [tag (vector-get ty 0)]
+            (if (= tag 2)
+              (let [looked (map-get subst (vector-get ty 1))]
+                (if (= looked 0) ty looked))
+              (if (= tag 3)
+                (vector-push
+                  (vector-push
+                    (vector-push (vector-new 3) 3)
+                    (inst-apply subst (vector-get ty 1)))
+                  (inst-apply subst (vector-get ty 2)))
+                ty))))
+
+        ;; instantiate: 型スキームを具体化
+        (defn instantiate [scheme counter]
+          (let [ty (scheme-type scheme)
+                vars (scheme-vars scheme)
+                n (vector-length vars)]
+            (if (= n 0)
+              ty
+              (let [subst (ref-new (map-new))
+                    i (ref-new 0)]
+                (do
+                  (if (< (ref-get i) n)
+                    (do
+                      (let [old-v (vector-get vars (ref-get i))
+                            new-id (next-var counter)
+                            new-ty (vector-push (vector-push (vector-new 2) 2) new-id)]
+                        (ref-set subst (map-insert (ref-get subst) old-v new-ty)))
+                      (ref-set i (+ (ref-get i) 1))
+                      0)
+                    0)
+                  (inst-apply (ref-get subst) ty))))))
+
+        ;; free-vars: 型の自由変数を収集
+        (defn free-vars [ty]
+          (let [tag (vector-get ty 0)]
+            (if (= tag 2)
+              (vector-push (vector-new 1) (vector-get ty 1))
+              (if (= tag 3)
+                (let [pv (free-vars (vector-get ty 1))
+                      rv (free-vars (vector-get ty 2))
+                      result (ref-new pv)
+                      j (ref-new 0)
+                      m (vector-length rv)]
+                  (do
+                    (if (< (ref-get j) m)
+                      (do
+                        (ref-set result (vector-push (ref-get result) (vector-get rv (ref-get j))))
+                        (ref-set j (+ (ref-get j) 1))
+                        0)
+                      0)
+                    (ref-get result)))
+                (vector-new 0)))))
+
+        (defn main []
+          (let [;; 型準備
+                int-ty (vector-push (vector-push (vector-new 2) 1) 100)
+                var-a (vector-push (vector-push (vector-new 2) 2) 1)
+                fun-ty (vector-push (vector-push (vector-push (vector-new 3) 3) var-a) var-a)
+
+                ;; 型スキーム
+                int-scheme (mono int-ty)
+                bound (vector-push (vector-new 1) 1)
+                id-scheme (poly fun-ty bound)
+
+                ;; instantiate
+                counter (make-var-counter)
+                inst1 (instantiate int-scheme counter)
+                inst2 (instantiate id-scheme counter)]
+            (do
+              ;; 単相の instantiate
+              (print (vector-get inst1 0))  ;; 1 (Con)
+              (print (vector-get inst1 1))  ;; 100
+
+              ;; 多相の instantiate (Fun型 + 新型変数)
+              (print (vector-get inst2 0))  ;; 3 (Fun)
+              (let [param (vector-get inst2 1)]
+                (do
+                  (print (vector-get param 0))  ;; 2 (Var)
+                  (print (vector-get param 1)))) ;; 1000
+
+              ;; free-vars
+              (print (vector-length (free-vars int-ty)))  ;; 0
+              (print (vector-length (free-vars var-a)))   ;; 1
+              (print (vector-get (free-vars var-a) 0))    ;; 1
+
+              0)))
+    "#);
+    assert_eq!(result.trim(), "1\n100\n3\n2\n1000\n0\n1\n1");
+}
