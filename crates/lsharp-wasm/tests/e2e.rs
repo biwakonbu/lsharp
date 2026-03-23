@@ -1262,6 +1262,26 @@ fn test_e2e_option_and_then() {
     assert_eq!(output, "5\n-1\n");
 }
 
+// === Phase 1-3: print 多相化テスト ===
+
+#[test]
+fn test_e2e_print_string_polymorphic() {
+    // print が文字列引数を受け取った場合に print-string として出力
+    let output = compile_and_run(
+        r#"(defn main [] (do (print "hello") 0))"#,
+    );
+    assert_eq!(output, "hello");
+}
+
+#[test]
+fn test_e2e_print_int_backward_compat() {
+    // print が整数引数の場合は従来通り動作
+    let output = compile_and_run(
+        "(defn main [] (do (print 42) 0))",
+    );
+    assert_eq!(output, "42\n");
+}
+
 // === エッジケース: ランタイムエラー ===
 
 #[test]

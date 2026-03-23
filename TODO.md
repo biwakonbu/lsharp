@@ -108,10 +108,10 @@
 ## Phase 4: エラー処理 & ミュータビリティ
 
 ### P4-1: Result/Option ランタイム
-- [ ] `(type (Option a) (Some a) None)` が実行時に動作
-- [ ] `(type (Result a e) (Ok a) (Err e))` が実行時に動作
-- [ ] `unwrap`, `map`, `and-then` ユーティリティ
-- [ ] E2E テスト: Option/Result のパターンマッチ
+- [x] `(type (Option a) (Some a) None)` が実行時に動作 -- ADT リニアメモリで動作確認
+- [x] `(type (Result a e) (Ok a) (Err e))` が実行時に動作 -- Ok/Err パターンマッチ E2E パス
+- [x] `unwrap`, `map`, `and-then` ユーティリティ -- safe-div/unwrap/unwrap-or 実装確認
+- [x] E2E テスト: Option/Result のパターンマッチ -- E2E 5件パス
 
 ### P4-2: 可変参照 (Ref Cell)
 - [x] `ref-new [v] -> Ref` ビルトイン -- ヒープ確保 + タグ付きポインタ返却

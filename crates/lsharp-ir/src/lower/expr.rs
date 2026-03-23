@@ -113,15 +113,28 @@ impl Lower {
                         ctx.emit(Instruction::I64Eq);
                         ctx.emit(Instruction::I64ExtendI32S);
                     }
-                    // print 関数
+                    // print 関数 (多相: 引数型に応じて print-int / print-string を呼び分け)
                     Expr::Var(_, name) if name == "print" => {
                         if let Some(arg) = args.first() {
+                            // 引数の型を推定して適切な print 関数を選択
+                            let is_string = self.infer_expr_type_name(arg)
+                                .map(|t| t == "String")
+                                .unwrap_or(false);
                             self.lower_expr(ctx, arg)?;
+                            if is_string {
+                                // 文字列の場合: print-string (改行なし) + 改行出力
+                                let idx = *self.func_indices.get("print-string").ok_or_else(|| {
+                                    LowerError::UndefinedFunction { name: "print-string".to_string() }
+                                })?;
+                                ctx.emit(Instruction::Call(idx));
+                            } else {
+                                // 整数の場合: print (改行付き)
+                                let idx = *self.func_indices.get("print").ok_or_else(|| {
+                                    LowerError::UndefinedFunction { name: "print".to_string() }
+                                })?;
+                                ctx.emit(Instruction::Call(idx));
+                            }
                         }
-                        let idx = *self.func_indices.get("print").ok_or_else(|| {
-                            LowerError::UndefinedFunction { name: "print".to_string() }
-                        })?;
-                        ctx.emit(Instruction::Call(idx));
                         // print は Unit を返す
                         ctx.emit(Instruction::I64Const(0));
                     }
