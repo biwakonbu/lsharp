@@ -171,7 +171,8 @@ impl Lower {
         self.func_indices.insert("__string_eq".to_string(), 3);
         self.func_indices.insert("print-string".to_string(), 4);
         self.func_indices.insert("proc-exit".to_string(), 5);
-        self.import_count = 6;
+        self.func_indices.insert("__int_to_string".to_string(), 6);
+        self.import_count = 7;
 
         // ユーザー定義関数のインデックスを事前登録
         let mut func_idx = self.import_count;

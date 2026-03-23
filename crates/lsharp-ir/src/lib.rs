@@ -203,10 +203,15 @@ pub enum Instruction {
     // ビット操作
     I32Shl,
     I32ShrU,
+    I64Shl,
+    I64ShrU,
+    I64And,
+    I64Or,
 
     // メモリ管理
     MemoryGrow,
     MemorySize,
+    MemoryCopy,
 
     // 間接呼び出し (クロージャ用)
     /// call_indirect: テーブルインデックスと型インデックスで間接呼び出し
@@ -290,9 +295,14 @@ impl fmt::Display for Instruction {
             // ビット操作
             Instruction::I32Shl => write!(f, "i32.shl"),
             Instruction::I32ShrU => write!(f, "i32.shr_u"),
+            Instruction::I64Shl => write!(f, "i64.shl"),
+            Instruction::I64ShrU => write!(f, "i64.shr_u"),
+            Instruction::I64And => write!(f, "i64.and"),
+            Instruction::I64Or => write!(f, "i64.or"),
             // メモリ管理
             Instruction::MemoryGrow => write!(f, "memory.grow"),
             Instruction::MemorySize => write!(f, "memory.size"),
+            Instruction::MemoryCopy => write!(f, "memory.copy"),
             Instruction::CallIndirect(type_idx) => write!(f, "call_indirect {type_idx}"),
             Instruction::FuncIdx(idx) => write!(f, "func_idx {idx}"),
         }
@@ -566,7 +576,8 @@ fn remap_instruction_with_imports(
 /// マルチファイルコンパイルのパイプライン
 ///
 /// エントリファイルから依存関係を解決し、トポロジカルソート順に
-/// パース → 型チェック → IR 変換を行い、最終的にリンクした IR モジュールを返す。
+/// パース → 型チェックを行い、全モジュールの AST を結合してから
+/// IR 変換することで、関数インデックスの一貫性を保つ。
 pub fn compile_multi_file(
     entry_file: &std::path::Path,
 ) -> Result<Module, String> {
@@ -580,15 +591,32 @@ pub fn compile_multi_file(
         return Err("コンパイル対象のファイルがありません".to_string());
     }
 
-    // 2. トポロジカルソート順にコンパイル
+    // 単一ファイルの場合は通常のパイプライン
+    if sorted_files.len() == 1 {
+        let (_, mod_path) = &sorted_files[0];
+        let source = std::fs::read_to_string(mod_path)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        let program = lsharp_syntax::parse(&source)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        let mut infer = lsharp_types::infer::Infer::new();
+        let type_results = infer
+            .infer_program(&program)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        let mut lower_ctx = lower::Lower::new();
+        return lower_ctx
+            .lower_program(&program, &type_results)
+            .map_err(|e| format!("{}: {e}", mod_path.display()));
+    }
+
+    // 2. 全モジュールをトポロジカルソート順にパース → 型チェック
+    //    全宣言を結合して、1つの Program として扱う
+    let mut all_decls: Vec<lsharp_syntax::ast::Decl> = Vec::new();
     let mut all_type_results: Vec<(String, lsharp_types::types::TypeScheme)> = Vec::new();
-    let mut all_modules: Vec<Module> = Vec::new();
 
     for (_mod_name, mod_path) in &sorted_files {
         let source = std::fs::read_to_string(mod_path)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
 
-        // パース
         let program = lsharp_syntax::parse(&source)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
 
@@ -599,23 +627,25 @@ pub fn compile_multi_file(
             .infer_program(&program)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
 
-        // IR 変換
-        let mut lower_ctx = lower::Lower::new();
-        let module = lower_ctx
-            .lower_program(&program, &type_results)
-            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
-
-        // このモジュールの型結果を蓄積（次のモジュールで使用）
+        // 型結果を蓄積
         all_type_results.extend(type_results);
-        all_modules.push(module);
+
+        // 宣言を収集（module 宣言と import 宣言は除外）
+        for decl in program.decls {
+            match &decl {
+                lsharp_syntax::ast::Decl::ModuleDecl { .. } => {}
+                lsharp_syntax::ast::Decl::ImportDecl { .. } => {}
+                _ => all_decls.push(decl),
+            }
+        }
     }
 
-    // 3. 全モジュールの IR をリンク
-    if all_modules.len() == 1 {
-        Ok(all_modules.into_iter().next().unwrap())
-    } else {
-        Ok(link_modules(&all_modules))
-    }
+    // 3. 結合した宣言で 1 つの Program を構成し、IR 変換
+    let merged_program = lsharp_syntax::ast::Program { decls: all_decls };
+    let mut lower_ctx = lower::Lower::new();
+    lower_ctx
+        .lower_program(&merged_program, &all_type_results)
+        .map_err(|e| format!("IR 変換エラー: {e}"))
 }
 
 #[cfg(test)]

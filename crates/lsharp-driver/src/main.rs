@@ -178,24 +178,28 @@ fn main() -> miette::Result<()> {
             let project_dir = file.parent().unwrap_or(std::path::Path::new("."));
             let _config = config::load_config(project_dir);
 
-            let source = std::fs::read_to_string(&file)
-                .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
-
-            // パース
-            let program = lsharp_syntax::parse(&source)
-                .map_err(|e| miette::miette!("{e}"))?;
-
-            // 型チェック
-            let mut infer = lsharp_types::infer::Infer::new();
-            let type_results = infer
-                .infer_program(&program)
-                .map_err(|e| miette::miette!("{e}"))?;
-
-            // IR 変換
-            let mut lower = lsharp_ir::lower::Lower::new();
-            let module = lower
-                .lower_program(&program, &type_results)
-                .map_err(|e| miette::miette!("{e}"))?;
+            // P6: マルチファイルコンパイル対応
+            // ファイルに (import ...) が含まれているか確認し、
+            // あればマルチファイルモードで依存関係を解決する
+            let module = if has_file_imports(&file)? {
+                // マルチファイルコンパイル
+                lsharp_ir::compile_multi_file(&file)
+                    .map_err(|e| miette::miette!("{e}"))?
+            } else {
+                // 単一ファイルコンパイル（従来通り）
+                let source = std::fs::read_to_string(&file)
+                    .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+                let program = lsharp_syntax::parse(&source)
+                    .map_err(|e| miette::miette!("{e}"))?;
+                let mut infer = lsharp_types::infer::Infer::new();
+                let type_results = infer
+                    .infer_program(&program)
+                    .map_err(|e| miette::miette!("{e}"))?;
+                let mut lower = lsharp_ir::lower::Lower::new();
+                lower
+                    .lower_program(&program, &type_results)
+                    .map_err(|e| miette::miette!("{e}"))?
+            };
 
             if emit_ir {
                 print!("{}", module.dump());
@@ -563,6 +567,25 @@ fn build_knowledge(
         types,
         dependencies,
     }
+}
+
+/// P6: ファイルにモジュール import が含まれているか確認
+///
+/// `(import ModuleName)` 宣言があれば true を返す。
+/// マルチファイルコンパイルの切り替え判定に使用。
+fn has_file_imports(file: &std::path::Path) -> miette::Result<bool> {
+    let source = std::fs::read_to_string(file)
+        .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+
+    let program = lsharp_syntax::parse(&source)
+        .map_err(|e| miette::miette!("{e}"))?;
+
+    for decl in &program.decls {
+        if matches!(decl, lsharp_syntax::ast::Decl::ImportDecl { .. }) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// P0-1: git リポジトリの存在を検証

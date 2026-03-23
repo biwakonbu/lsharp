@@ -20,8 +20,8 @@ const IOV_ADDR: i32 = 16;
 const NWRITTEN_ADDR: i32 = 24;
 const BUF_END: i32 = 276;
 
-/// IR 側の内部ヘルパー関数数 (print, __alloc, __string_concat, __string_eq, print-string, proc-exit)
-const IR_IMPORT_COUNT: u32 = 6;
+/// IR 側の内部ヘルパー関数数 (print, __alloc, __string_concat, __string_eq, print-string, proc-exit, __int_to_string)
+const IR_IMPORT_COUNT: u32 = 7;
 
 /// WASI import 関数数
 const WASI_IMPORT_COUNT: u32 = 7;
@@ -43,9 +43,10 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     // 9: __string_concat
     // 10: __string_eq
     // 11: __print_string
-    // 12..12+N-1: ユーザー関数
-    // 12+N: _start
-    let fd_write_idx: u32 = 0;
+    // 12: __int_to_string
+    // 13..13+N-1: ユーザー関数
+    // 13+N: _start
+    let _fd_write_idx: u32 = 0;
     let proc_exit_wasm_idx: u32 = 1;
     let _args_get_idx: u32 = 2;
     let _args_sizes_get_idx: u32 = 3;
@@ -57,7 +58,8 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let string_concat_idx: u32 = WASI_IMPORT_COUNT + 2;
     let string_eq_idx: u32 = WASI_IMPORT_COUNT + 3;
     let print_string_idx: u32 = WASI_IMPORT_COUNT + 4;
-    let user_func_base: u32 = WASI_IMPORT_COUNT + 5;
+    let int_to_string_idx: u32 = WASI_IMPORT_COUNT + 5;
+    let user_func_base: u32 = WASI_IMPORT_COUNT + 6;
     let start_func_idx: u32 = user_func_base + module.functions.len() as u32;
 
     let gc_type_count = module.gc_types.len() as u32;
@@ -157,6 +159,10 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let print_string_type_idx = types.len();
     types.ty().function(vec![ValType::I64], vec![]);
 
+    // __int_to_string: (i64) -> i64 (パック文字列を返す)
+    let int_to_string_type_idx = types.len();
+    types.ty().function(vec![ValType::I64], vec![ValType::I64]);
+
     let mut user_type_indices = Vec::new();
     for func in &module.functions {
         let type_idx = types.len();
@@ -207,6 +213,7 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     functions.function(string_concat_type_idx);
     functions.function(string_eq_type_idx);
     functions.function(print_string_type_idx);
+    functions.function(int_to_string_type_idx);
     for &type_idx in &user_type_indices {
         functions.function(type_idx);
     }
@@ -281,6 +288,7 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     emit_string_concat_func(&mut codes, alloc_func_idx);
     emit_string_eq_func(&mut codes);
     emit_print_string_func(&mut codes);
+    emit_int_to_string_func(&mut codes, alloc_func_idx);
 
     for func in &module.functions {
         let mut f = wasm_encoder::Function::new(
@@ -294,7 +302,7 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
             print_helper_idx, alloc_func_idx,
             string_concat_idx, string_eq_idx,
             print_string_idx, proc_exit_wasm_idx,
-            user_func_base,
+            int_to_string_idx, user_func_base,
             &call_indirect_type_map,
         )?;
         f.instruction(&wasm_encoder::Instruction::End);
@@ -683,6 +691,140 @@ fn emit_print_string_func(codes: &mut CodeSection) {
     codes.function(&f);
 }
 
+/// __int_to_string: i64 の値を10進文字列に変換してヒープに格納し、パック文字列を返す
+/// __print_i64 と同じ数値→文字列変換ロジックだが、stdout ではなくヒープに書き込む
+fn emit_int_to_string_func(codes: &mut CodeSection, alloc_func_idx: u32) {
+    use wasm_encoder::Instruction as W;
+    use wasm_encoder::MemArg;
+
+    let mem = |offset: u64| MemArg { offset, align: 0, memory_index: 0 };
+
+    // param 0: n (i64)
+    // local 1: buf_end (i32) - スクラッチバッファ末尾
+    // local 2: is_neg (i32)
+    // local 3: abs_val (i64)
+    // local 4: str_len (i32)
+    // local 5: new_addr (i64) - __alloc の戻り値
+    let mut f = wasm_encoder::Function::new(vec![
+        (1, ValType::I32), // local 1: buf_end
+        (1, ValType::I32), // local 2: is_neg
+        (1, ValType::I64), // local 3: abs_val
+        (1, ValType::I32), // local 4: str_len
+        (1, ValType::I64), // local 5: new_addr
+    ]);
+
+    // スクラッチバッファとして BUF_END (276) 付近を使用
+    // 数値変換は末尾から先頭に向かって書き込む
+    f.instruction(&W::I32Const(BUF_END));
+    f.instruction(&W::LocalSet(1));
+
+    // is_neg = 0
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(2));
+
+    // abs_val = n
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::LocalSet(3));
+
+    // n < 0 ?
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I64Const(0));
+    f.instruction(&W::I64LtS);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    // is_neg = 1
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::LocalSet(2));
+    // abs_val = 0 - n
+    f.instruction(&W::I64Const(0));
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I64Sub);
+    f.instruction(&W::LocalSet(3));
+    f.instruction(&W::End);
+
+    // abs_val == 0 の場合
+    f.instruction(&W::LocalGet(3));
+    f.instruction(&W::I64Eqz);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Sub);
+    f.instruction(&W::LocalSet(1));
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32Const(48)); // '0'
+    f.instruction(&W::I32Store8(mem(0)));
+    f.instruction(&W::Else);
+    // ループ: 各桁を変換
+    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(3));
+    f.instruction(&W::I64Eqz);
+    f.instruction(&W::BrIf(1));
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Sub);
+    f.instruction(&W::LocalSet(1));
+    f.instruction(&W::LocalGet(1));
+    // digit = abs_val % 10 + '0'
+    f.instruction(&W::LocalGet(3));
+    f.instruction(&W::I64Const(10));
+    f.instruction(&W::I64RemU);
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Const(48));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::I32Store8(mem(0)));
+    // abs_val /= 10
+    f.instruction(&W::LocalGet(3));
+    f.instruction(&W::I64Const(10));
+    f.instruction(&W::I64DivU);
+    f.instruction(&W::LocalSet(3));
+    f.instruction(&W::Br(0));
+    f.instruction(&W::End); // end loop
+    f.instruction(&W::End); // end block
+    f.instruction(&W::End); // end if-else
+
+    // 負符号を追加
+    f.instruction(&W::LocalGet(2));
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Sub);
+    f.instruction(&W::LocalSet(1));
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32Const(45)); // '-'
+    f.instruction(&W::I32Store8(mem(0)));
+    f.instruction(&W::End);
+
+    // str_len = BUF_END - buf_end
+    f.instruction(&W::I32Const(BUF_END));
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32Sub);
+    f.instruction(&W::LocalSet(4));
+
+    // new_addr = __alloc(str_len)
+    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::Call(alloc_func_idx));
+    f.instruction(&W::LocalSet(5));
+
+    // memory.copy(new_addr, buf_end, str_len)
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::MemoryCopy { src_mem: 0, dst_mem: 0 });
+
+    // パック文字列を返す: (new_addr << 32) | str_len
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I64Const(32));
+    f.instruction(&W::I64Shl);
+    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::I64Or);
+
+    f.instruction(&W::End);
+    codes.function(&f);
+}
+
 /// IR 命令を WASI 用にリマップして出力
 fn emit_instructions_wasi(
     func: &mut wasm_encoder::Function,
@@ -693,6 +835,7 @@ fn emit_instructions_wasi(
     string_eq_idx: u32,
     print_string_idx: u32,
     proc_exit_wasm_idx: u32,
+    int_to_string_idx: u32,
     user_func_base: u32,
     call_indirect_type_map: &HashMap<u32, u32>,
 ) -> Result<(), CodegenError> {
@@ -717,6 +860,7 @@ fn emit_instructions_wasi(
                     3 => string_eq_idx,
                     4 => print_string_idx,
                     5 => proc_exit_wasm_idx,
+                    6 => int_to_string_idx,
                     i => user_func_base + (i - IR_IMPORT_COUNT),
                 };
                 Instruction::FuncIdx(wasm_idx)
@@ -733,6 +877,7 @@ fn emit_instructions_wasi(
             3 => { f.instruction(&W::Call(string_eq_idx)); }
             4 => { f.instruction(&W::Call(print_string_idx)); }
             5 => { f.instruction(&W::Call(proc_exit_wasm_idx)); }
+            6 => { f.instruction(&W::Call(int_to_string_idx)); }
             _ => { f.instruction(&W::Call(user_func_base + (i - IR_IMPORT_COUNT))); }
         }
         Ok(())

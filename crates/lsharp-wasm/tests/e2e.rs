@@ -1393,3 +1393,360 @@ fn test_e2e_division_by_zero_traps() {
     // Wasm の i64.div_s はゼロ除算で trap する
     compile_and_run("(defn main [] (print (/ 1 0)))");
 }
+
+// === P1-1: string-char-at テスト ===
+
+#[test]
+fn test_e2e_string_char_at() {
+    // 'e' = 101
+    let result = compile_and_run(r#"
+        (defn main []
+          (print (string-char-at "hello" 1)))
+    "#);
+    assert_eq!(result.trim(), "101");
+}
+
+#[test]
+fn test_e2e_string_char_at_first() {
+    // 'h' = 104
+    let result = compile_and_run(r#"
+        (defn main []
+          (print (string-char-at "hello" 0)))
+    "#);
+    assert_eq!(result.trim(), "104");
+}
+
+#[test]
+fn test_e2e_string_char_at_last() {
+    // 'o' = 111
+    let result = compile_and_run(r#"
+        (defn main []
+          (print (string-char-at "hello" 4)))
+    "#);
+    assert_eq!(result.trim(), "111");
+}
+
+// === P1-1: substring テスト ===
+
+#[test]
+fn test_e2e_substring() {
+    // "hello" の [1..4) -> "ell" (長さ 3)
+    let result = compile_and_run(r#"
+        (defn main []
+          (do (print-string (substring "hello" 1 4)) 0))
+    "#);
+    assert_eq!(result, "ell");
+}
+
+#[test]
+fn test_e2e_substring_full() {
+    // "hello" の [0..5) -> "hello"
+    let result = compile_and_run(r#"
+        (defn main []
+          (do (print-string (substring "hello" 0 5)) 0))
+    "#);
+    assert_eq!(result, "hello");
+}
+
+#[test]
+fn test_e2e_substring_empty() {
+    // "hello" の [2..2) -> ""
+    let result = compile_and_run(r#"
+        (defn main []
+          (print (string-length (substring "hello" 2 2))))
+    "#);
+    assert_eq!(result.trim(), "0");
+}
+
+// === P1-1: int-to-string テスト ===
+
+#[test]
+fn test_e2e_int_to_string() {
+    let result = compile_and_run(r#"
+        (defn main []
+          (do (print-string (int-to-string 42)) 0))
+    "#);
+    assert_eq!(result, "42");
+}
+
+#[test]
+fn test_e2e_int_to_string_zero() {
+    let result = compile_and_run(r#"
+        (defn main []
+          (do (print-string (int-to-string 0)) 0))
+    "#);
+    assert_eq!(result, "0");
+}
+
+#[test]
+fn test_e2e_int_to_string_negative() {
+    let result = compile_and_run(r#"
+        (defn main []
+          (do (print-string (int-to-string -123)) 0))
+    "#);
+    assert_eq!(result, "-123");
+}
+
+#[test]
+fn test_e2e_int_to_string_large() {
+    let result = compile_and_run(r#"
+        (defn main []
+          (do (print-string (int-to-string 1234567890)) 0))
+    "#);
+    assert_eq!(result, "1234567890");
+}
+
+#[test]
+fn test_e2e_int_to_string_concat() {
+    // int-to-string + string-concat の組み合わせ
+    let result = compile_and_run(r#"
+        (defn main []
+          (do (print-string (string-concat "value=" (int-to-string 42))) 0))
+    "#);
+    assert_eq!(result, "value=42");
+}
+
+// === P3-3: 高階関数 (list-map, list-filter, list-fold) E2E テスト ===
+
+#[test]
+fn test_e2e_closure_with_adt_basic() {
+    // クロージャ引数を ADT の再帰関数内で使う基本テスト
+    // apply-to-list: リストの先頭要素にクロージャを適用
+    let output = compile_and_run(
+        "(type (List a) (Cons a (List a)) Nil)
+         (defn apply-head [f xs]
+           (match xs
+             [(Cons h t) (f h)]
+             [Nil 0]))
+         (defn main [] (print (apply-head (fn [x] (* x 10)) (Cons 4 (Cons 2 Nil)))))",
+    );
+    assert_eq!(output, "40\n");
+}
+
+#[test]
+fn test_e2e_list_map() {
+    // list-map: リスト全要素にクロージャを適用して新しいリストを返す
+    let output = compile_and_run(
+        "(type (List a) (Cons a (List a)) Nil)
+         (defn list-map [f xs]
+           (match xs
+             [Nil Nil]
+             [(Cons h t) (Cons (f h) (list-map f t))]))
+         (defn sum-list [xs]
+           (match xs
+             [Nil 0]
+             [(Cons h t) (+ h (sum-list t))]))
+         (defn main [] (print (sum-list (list-map (fn [x] (* x 2)) (Cons 1 (Cons 2 (Cons 3 Nil)))))))",
+    );
+    // (1*2) + (2*2) + (3*2) = 2 + 4 + 6 = 12
+    assert_eq!(output, "12\n");
+}
+
+#[test]
+fn test_e2e_list_filter() {
+    // list-filter: 条件を満たす要素のみ残す
+    let output = compile_and_run(
+        "(type (List a) (Cons a (List a)) Nil)
+         (defn list-filter [f xs]
+           (match xs
+             [Nil Nil]
+             [(Cons h t) (if (f h) (Cons h (list-filter f t)) (list-filter f t))]))
+         (defn sum-list [xs]
+           (match xs
+             [Nil 0]
+             [(Cons h t) (+ h (sum-list t))]))
+         (defn main [] (print (sum-list (list-filter (fn [x] (> x 2)) (Cons 1 (Cons 2 (Cons 3 (Cons 4 Nil))))))))",
+    );
+    // 3 + 4 = 7
+    assert_eq!(output, "7\n");
+}
+
+#[test]
+fn test_e2e_list_fold() {
+    // list-fold: リストを畳み込み
+    let output = compile_and_run(
+        "(type (List a) (Cons a (List a)) Nil)
+         (defn list-fold [f init xs]
+           (match xs
+             [Nil init]
+             [(Cons h t) (list-fold f (f init h) t)]))
+         (defn main [] (print (list-fold (fn [acc x] (+ acc x)) 0 (Cons 1 (Cons 2 (Cons 3 Nil))))))",
+    );
+    // 0 + 1 + 2 + 3 = 6
+    assert_eq!(output, "6\n");
+}
+
+#[test]
+fn test_e2e_list_map_identity() {
+    // list-map に恒等関数を渡すとリストが変わらない
+    let output = compile_and_run(
+        "(type (List a) (Cons a (List a)) Nil)
+         (defn list-map [f xs]
+           (match xs
+             [Nil Nil]
+             [(Cons h t) (Cons (f h) (list-map f t))]))
+         (defn sum-list [xs]
+           (match xs
+             [Nil 0]
+             [(Cons h t) (+ h (sum-list t))]))
+         (defn main [] (print (sum-list (list-map (fn [x] x) (Cons 10 (Cons 20 (Cons 30 Nil)))))))",
+    );
+    // 10 + 20 + 30 = 60
+    assert_eq!(output, "60\n");
+}
+
+#[test]
+fn test_e2e_list_fold_product() {
+    // list-fold で積を計算
+    let output = compile_and_run(
+        "(type (List a) (Cons a (List a)) Nil)
+         (defn list-fold [f init xs]
+           (match xs
+             [Nil init]
+             [(Cons h t) (list-fold f (f init h) t)]))
+         (defn main [] (print (list-fold (fn [acc x] (* acc x)) 1 (Cons 2 (Cons 3 (Cons 4 Nil))))))",
+    );
+    // 1 * 2 * 3 * 4 = 24
+    assert_eq!(output, "24\n");
+}
+
+#[test]
+fn test_e2e_list_filter_none() {
+    // list-filter で全要素がフィルタアウトされる場合
+    let output = compile_and_run(
+        "(type (List a) (Cons a (List a)) Nil)
+         (defn list-filter [f xs]
+           (match xs
+             [Nil Nil]
+             [(Cons h t) (if (f h) (Cons h (list-filter f t)) (list-filter f t))]))
+         (defn list-length [xs]
+           (match xs
+             [Nil 0]
+             [(Cons h t) (+ 1 (list-length t))]))
+         (defn main [] (print (list-length (list-filter (fn [x] (> x 100)) (Cons 1 (Cons 2 (Cons 3 Nil)))))))",
+    );
+    assert_eq!(output, "0\n");
+}
+
+#[test]
+fn test_e2e_list_map_filter_compose() {
+    // list-map と list-filter の合成: まず 2 倍してから 4 より大きいものを残す
+    let output = compile_and_run(
+        "(type (List a) (Cons a (List a)) Nil)
+         (defn list-map [f xs]
+           (match xs
+             [Nil Nil]
+             [(Cons h t) (Cons (f h) (list-map f t))]))
+         (defn list-filter [f xs]
+           (match xs
+             [Nil Nil]
+             [(Cons h t) (if (f h) (Cons h (list-filter f t)) (list-filter f t))]))
+         (defn sum-list [xs]
+           (match xs
+             [Nil 0]
+             [(Cons h t) (+ h (sum-list t))]))
+         (defn main [] (print (sum-list (list-filter (fn [x] (> x 4)) (list-map (fn [x] (* x 2)) (Cons 1 (Cons 2 (Cons 3 (Cons 4 Nil)))))))))",
+    );
+    // map *2: [2, 4, 6, 8], filter >4: [6, 8], sum: 14
+    assert_eq!(output, "14\n");
+}
+
+// === Vector (可変長配列) ビルトイン テスト ===
+
+#[test]
+fn test_e2e_vector_new_compile() {
+    // vector-new のコンパイルが成功することを確認
+    let source = r#"
+        (defn main []
+          (print (vector-length (vector-new 10))))
+    "#;
+    let program = lsharp_syntax::parse(source).unwrap();
+    let mut infer = lsharp_types::infer::Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lower = lsharp_ir::lower::Lower::new();
+    let module = lower.lower_program(&program, &type_results).unwrap();
+    eprintln!("IR:\n{}", module.dump());
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
+    assert_valid_wasm(&wasm_bytes);
+    // wasmtime でバリデーション
+    let engine = wasmtime::Engine::default();
+    match wasmtime::Module::new(&engine, &wasm_bytes) {
+        Ok(_) => eprintln!("Wasm validation: OK"),
+        Err(e) => panic!("Wasm validation FAILED: {e:?}"),
+    }
+}
+
+#[test]
+fn test_e2e_vector_new_length() {
+    // vector-new で作成したベクタの初期長さは 0
+    let result = compile_and_run(r#"
+        (defn main []
+          (print (vector-length (vector-new 10))))
+    "#);
+    assert_eq!(result.trim(), "0");
+}
+
+#[test]
+fn test_e2e_vector_push_length() {
+    // vector-push で要素を追加すると長さが増える
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [v (vector-new 4)
+                v1 (vector-push v 10)
+                v2 (vector-push v1 20)
+                v3 (vector-push v2 30)]
+            (print (vector-length v3))))
+    "#);
+    assert_eq!(result.trim(), "3");
+}
+
+#[test]
+fn test_e2e_vector_get() {
+    // vector-get でインデックス指定の要素を取得
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [v (vector-new 4)
+                v1 (vector-push v 100)
+                v2 (vector-push v1 200)
+                v3 (vector-push v2 300)]
+            (do
+              (print (vector-get v3 0))
+              (print (vector-get v3 1))
+              (print (vector-get v3 2)))))
+    "#);
+    assert_eq!(result.trim(), "100\n200\n300");
+}
+
+#[test]
+fn test_e2e_vector_set() {
+    // vector-set でインデックス指定の要素を上書き
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [v (vector-new 4)
+                v1 (vector-push v 10)
+                v2 (vector-push v1 20)
+                v3 (vector-set v2 0 99)]
+            (do
+              (print (vector-get v3 0))
+              (print (vector-get v3 1)))))
+    "#);
+    assert_eq!(result.trim(), "99\n20");
+}
+
+#[test]
+fn test_e2e_vector_push_beyond_capacity() {
+    // capacity を超えて push すると再割り当てされる
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [v (vector-new 2)
+                v1 (vector-push v 1)
+                v2 (vector-push v1 2)
+                v3 (vector-push v2 3)]
+            (do
+              (print (vector-length v3))
+              (print (vector-get v3 0))
+              (print (vector-get v3 1))
+              (print (vector-get v3 2)))))
+    "#);
+    assert_eq!(result.trim(), "3\n1\n2\n3");
+}

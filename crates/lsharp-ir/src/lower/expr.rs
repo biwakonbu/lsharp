@@ -174,6 +174,80 @@ impl Lower {
                         })?;
                         ctx.emit(Instruction::Call(idx));
                     }
+                    // string-char-at: パック済み文字列 s のインデックス i のバイト値を返す
+                    Expr::Var(_, name) if name == "string-char-at" => {
+                        if args.len() >= 2 {
+                            self.lower_expr(ctx, &args[0])?; // s (packed string)
+                            self.lower_expr(ctx, &args[1])?; // i (index)
+                        }
+                        // i を一時ローカルに保存 (i64 のまま)
+                        let idx_local = ctx.alloc_local("_char_at_idx".to_string());
+                        ctx.emit(Instruction::LocalSet(idx_local));
+                        // s はスタックトップ (i64)
+                        // offset = (s >> 32) as i32
+                        ctx.emit(Instruction::I64Const(32));
+                        ctx.emit(Instruction::I64ShrU);
+                        ctx.emit(Instruction::I32WrapI64);
+                        // addr = offset + i (i を i32 に変換して加算)
+                        ctx.emit(Instruction::LocalGet(idx_local));
+                        ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::I32Add);
+                        // バイト値を読み出し
+                        ctx.emit(Instruction::I32Load8U { offset: 0 });
+                        // i32 -> i64 に拡張
+                        ctx.emit(Instruction::I64ExtendI32U);
+                    }
+                    // substring: パック済み文字列 s の [start, end) を部分文字列として返す
+                    Expr::Var(_, name) if name == "substring" => {
+                        if args.len() >= 3 {
+                            self.lower_expr(ctx, &args[0])?; // s (packed string): i64
+                            self.lower_expr(ctx, &args[1])?; // start: i64
+                            self.lower_expr(ctx, &args[2])?; // end: i64
+                        }
+                        // end, start, s を一時ローカルに保存
+                        let end_local = ctx.alloc_local("_substr_end".to_string());
+                        ctx.emit(Instruction::LocalSet(end_local));
+                        let start_local = ctx.alloc_local("_substr_start".to_string());
+                        ctx.emit(Instruction::LocalSet(start_local));
+                        let str_local = ctx.alloc_local("_substr_str".to_string());
+                        ctx.emit(Instruction::LocalSet(str_local));
+                        // new_len = end - start
+                        let new_len_local = ctx.alloc_local("_substr_len".to_string());
+                        ctx.emit(Instruction::LocalGet(end_local));
+                        ctx.emit(Instruction::LocalGet(start_local));
+                        ctx.emit(Instruction::I64Sub);
+                        ctx.emit(Instruction::LocalSet(new_len_local));
+                        // new_addr = __alloc(new_len)
+                        let addr_local = ctx.alloc_local("_substr_addr".to_string());
+                        ctx.emit(Instruction::LocalGet(new_len_local));
+                        let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
+                            LowerError::UndefinedFunction { name: "__alloc".to_string() }
+                        })?;
+                        ctx.emit(Instruction::Call(alloc_idx));
+                        ctx.emit(Instruction::LocalSet(addr_local));
+                        // memory.copy(new_addr, src_offset + start, new_len)
+                        // dst: new_addr (i32)
+                        ctx.emit(Instruction::LocalGet(addr_local));
+                        ctx.emit(Instruction::I32WrapI64);
+                        // src: (s >> 32) + start (i32)
+                        ctx.emit(Instruction::LocalGet(str_local));
+                        ctx.emit(Instruction::I64Const(32));
+                        ctx.emit(Instruction::I64ShrU);
+                        ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::LocalGet(start_local));
+                        ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::I32Add);
+                        // len: new_len (i32)
+                        ctx.emit(Instruction::LocalGet(new_len_local));
+                        ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::MemoryCopy);
+                        // パック: (new_addr << 32) | new_len
+                        ctx.emit(Instruction::LocalGet(addr_local));
+                        ctx.emit(Instruction::I64Const(32));
+                        ctx.emit(Instruction::I64Shl);
+                        ctx.emit(Instruction::LocalGet(new_len_local));
+                        ctx.emit(Instruction::I64Or);
+                    }
                     // string-length: パック済み文字列 (offset<<32|len) から長さを取得
                     Expr::Var(_, name) if name == "string-length" => {
                         if let Some(arg) = args.first() {
@@ -202,6 +276,16 @@ impl Lower {
                         }
                         let idx = *self.func_indices.get("__string_eq").ok_or_else(|| {
                             LowerError::UndefinedFunction { name: "__string_eq".to_string() }
+                        })?;
+                        ctx.emit(Instruction::Call(idx));
+                    }
+                    // int-to-string: 整数を文字列に変換
+                    Expr::Var(_, name) if name == "int-to-string" => {
+                        if let Some(arg) = args.first() {
+                            self.lower_expr(ctx, arg)?;
+                        }
+                        let idx = *self.func_indices.get("__int_to_string").ok_or_else(|| {
+                            LowerError::UndefinedFunction { name: "__int_to_string".to_string() }
                         })?;
                         ctx.emit(Instruction::Call(idx));
                     }
@@ -272,6 +356,292 @@ impl Lower {
                             ctx.emit(Instruction::I64Const(0));
                         }
                     }
+                    // === Vector (可変長配列) ビルトイン ===
+
+                    // vector-new: 指定 capacity で空ベクタを確保
+                    // レイアウト: [tag=5: i32, capacity: i32, length: i32, padding: i32, elem_0: i64, ...]
+                    // ヘッダ 16 バイト + 各要素 8 バイト
+                    Expr::Var(_, name) if name == "vector-new" => {
+                        // 引数: capacity (i64)
+                        if let Some(arg) = args.first() {
+                            self.lower_expr(ctx, arg)?;
+                        }
+                        // capacity を i64 のままローカルに保存
+                        let cap_local = ctx.alloc_local("_vec_cap".to_string());
+                        ctx.emit(Instruction::LocalSet(cap_local));
+                        // 割り当てサイズ = 16 + capacity * 8 (i64 算術)
+                        ctx.emit(Instruction::I64Const(16));
+                        ctx.emit(Instruction::LocalGet(cap_local));
+                        ctx.emit(Instruction::I64Const(8));
+                        ctx.emit(Instruction::I64Mul);
+                        ctx.emit(Instruction::I64Add);
+                        // __alloc 呼び出し (i64 引数)
+                        let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
+                            LowerError::UndefinedFunction { name: "__alloc".to_string() }
+                        })?;
+                        ctx.emit(Instruction::Call(alloc_idx));
+                        // アドレスをローカルに保存 (i64)
+                        let addr_local = ctx.alloc_local("_vec_addr".to_string());
+                        ctx.emit(Instruction::LocalSet(addr_local));
+                        // tag=5 書き込み: mem[addr+0] = HEAP_TAG_VECTOR
+                        ctx.emit(Instruction::LocalGet(addr_local));
+                        ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::I32Const(super::HEAP_TAG_VECTOR));
+                        ctx.emit(Instruction::I32Store { offset: 0 });
+                        // capacity 書き込み: mem[addr+4] = capacity
+                        ctx.emit(Instruction::LocalGet(addr_local));
+                        ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::LocalGet(cap_local));
+                        ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::I32Store { offset: 4 });
+                        // length=0 書き込み: mem[addr+8] = 0
+                        ctx.emit(Instruction::LocalGet(addr_local));
+                        ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::I32Const(0));
+                        ctx.emit(Instruction::I32Store { offset: 8 });
+                        // padding=0 書き込み: mem[addr+12] = 0
+                        ctx.emit(Instruction::LocalGet(addr_local));
+                        ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::I32Const(0));
+                        ctx.emit(Instruction::I32Store { offset: 12 });
+                        // タグ付きポインタを返す
+                        ctx.emit(Instruction::LocalGet(addr_local));
+                        ctx.emit(Instruction::I64Const(1i64 << 63));
+                        ctx.emit(Instruction::I64Add);
+                    }
+
+                    // vector-length: ベクタの現在の長さを返す
+                    Expr::Var(_, name) if name == "vector-length" => {
+                        if let Some(arg) = args.first() {
+                            self.lower_expr(ctx, arg)?;
+                        }
+                        // タグ解除してアドレスを取得
+                        ctx.emit(Instruction::I32WrapI64);
+                        // mem[addr+8] から length を読み出す
+                        ctx.emit(Instruction::I32Load { offset: 8 });
+                        // i32 -> i64 に拡張
+                        ctx.emit(Instruction::I64ExtendI32U);
+                    }
+
+                    // vector-get: インデックス指定で要素を取得
+                    // vector-get [v i] -> a
+                    Expr::Var(_, name) if name == "vector-get" => {
+                        if args.len() >= 2 {
+                            // 第1引数: ベクタ (tagged pointer) → i64 のまま保持
+                            self.lower_expr(ctx, &args[0])?;
+                            let addr_local = ctx.alloc_local("_vget_addr".to_string());
+                            ctx.emit(Instruction::LocalSet(addr_local));
+                            // 第2引数: インデックス (i64) → i32 に変換して計算
+                            self.lower_expr(ctx, &args[1])?;
+                            ctx.emit(Instruction::I32WrapI64);
+                            // 要素のオフセット = 16 + i * 8
+                            ctx.emit(Instruction::I32Const(8));
+                            ctx.emit(Instruction::I32Mul);
+                            ctx.emit(Instruction::I32Const(16));
+                            ctx.emit(Instruction::I32Add);
+                            // addr (i64 → i32) + offset
+                            ctx.emit(Instruction::LocalGet(addr_local));
+                            ctx.emit(Instruction::I32WrapI64);
+                            ctx.emit(Instruction::I32Add);
+                            // i64 値を読み出す
+                            ctx.emit(Instruction::I64Load { offset: 0 });
+                        }
+                    }
+
+                    // vector-set: インデックス指定で要素を上書き (ミューテーション)
+                    // vector-set [v i x] -> Vector (同じベクタを返す)
+                    Expr::Var(_, name) if name == "vector-set" => {
+                        if args.len() >= 3 {
+                            // 第1引数: ベクタ (tagged pointer) → i64 のまま保持
+                            self.lower_expr(ctx, &args[0])?;
+                            let tagged_local = ctx.alloc_local("_vset_tagged".to_string());
+                            ctx.emit(Instruction::LocalSet(tagged_local));
+                            // 第2引数: インデックス (i64) → i32 に変換
+                            self.lower_expr(ctx, &args[1])?;
+                            ctx.emit(Instruction::I32WrapI64);
+                            // 要素のオフセット = 16 + i * 8
+                            ctx.emit(Instruction::I32Const(8));
+                            ctx.emit(Instruction::I32Mul);
+                            ctx.emit(Instruction::I32Const(16));
+                            ctx.emit(Instruction::I32Add);
+                            // addr (i64 → i32) + offset
+                            ctx.emit(Instruction::LocalGet(tagged_local));
+                            ctx.emit(Instruction::I32WrapI64);
+                            ctx.emit(Instruction::I32Add);
+                            // 第3引数: 新しい値 (i64)
+                            self.lower_expr(ctx, &args[2])?;
+                            // mem[elem_addr] = value
+                            ctx.emit(Instruction::I64Store { offset: 0 });
+                            // 同じタグ付きポインタを返す
+                            ctx.emit(Instruction::LocalGet(tagged_local));
+                        }
+                    }
+
+                    // vector-push: 要素を末尾に追加 (capacity 超過時は再割り当て)
+                    // vector-push [v x] -> Vector
+                    // 注意: すべてのローカル変数は i64 型で保持
+                    Expr::Var(_, name) if name == "vector-push" => {
+                        if args.len() >= 2 {
+                            // 第1引数: ベクタ (tagged pointer) → i64
+                            self.lower_expr(ctx, &args[0])?;
+                            let tagged_local = ctx.alloc_local("_vpush_tagged".to_string());
+                            ctx.emit(Instruction::LocalSet(tagged_local));
+                            // 第2引数: 追加する値 → i64
+                            self.lower_expr(ctx, &args[1])?;
+                            let val_local = ctx.alloc_local("_vpush_val".to_string());
+                            ctx.emit(Instruction::LocalSet(val_local));
+
+                            // length を読み出して i64 で保存
+                            let len_local = ctx.alloc_local("_vpush_len".to_string());
+                            ctx.emit(Instruction::LocalGet(tagged_local));
+                            ctx.emit(Instruction::I32WrapI64); // untag
+                            ctx.emit(Instruction::I32Load { offset: 8 });
+                            ctx.emit(Instruction::I64ExtendI32U);
+                            ctx.emit(Instruction::LocalSet(len_local));
+
+                            // capacity を読み出して i64 で保存
+                            let cap_local = ctx.alloc_local("_vpush_cap".to_string());
+                            ctx.emit(Instruction::LocalGet(tagged_local));
+                            ctx.emit(Instruction::I32WrapI64); // untag
+                            ctx.emit(Instruction::I32Load { offset: 4 });
+                            ctx.emit(Instruction::I64ExtendI32U);
+                            ctx.emit(Instruction::LocalSet(cap_local));
+
+                            // if length >= capacity then 再割り当て else 既存バッファに追加
+                            ctx.emit(Instruction::LocalGet(len_local));
+                            ctx.emit(Instruction::LocalGet(cap_local));
+                            ctx.emit(Instruction::I64GeS);
+                            ctx.emit(Instruction::If(IrType::I64)); // 結果: 新しいタグ付きポインタ (i64)
+
+                            // === 再割り当てブランチ ===
+                            {
+                                // new_cap = max(capacity * 2, 4) (i64 演算)
+                                let new_cap_local = ctx.alloc_local("_vpush_newcap".to_string());
+                                ctx.emit(Instruction::LocalGet(cap_local));
+                                ctx.emit(Instruction::I64Const(2));
+                                ctx.emit(Instruction::I64Mul);
+                                let tmp_local = ctx.alloc_local("_vpush_tmp".to_string());
+                                ctx.emit(Instruction::LocalSet(tmp_local));
+                                ctx.emit(Instruction::LocalGet(tmp_local));
+                                ctx.emit(Instruction::I64Const(4));
+                                ctx.emit(Instruction::I64GtS);
+                                ctx.emit(Instruction::If(IrType::I64));
+                                ctx.emit(Instruction::LocalGet(tmp_local));
+                                ctx.emit(Instruction::Else);
+                                ctx.emit(Instruction::I64Const(4));
+                                ctx.emit(Instruction::End);
+                                ctx.emit(Instruction::LocalSet(new_cap_local));
+
+                                // alloc_size = 16 + new_cap * 8 (i64)
+                                ctx.emit(Instruction::I64Const(16));
+                                ctx.emit(Instruction::LocalGet(new_cap_local));
+                                ctx.emit(Instruction::I64Const(8));
+                                ctx.emit(Instruction::I64Mul);
+                                ctx.emit(Instruction::I64Add);
+                                let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
+                                    LowerError::UndefinedFunction { name: "__alloc".to_string() }
+                                })?;
+                                ctx.emit(Instruction::Call(alloc_idx));
+                                let new_addr_local = ctx.alloc_local("_vpush_newaddr".to_string());
+                                ctx.emit(Instruction::LocalSet(new_addr_local));
+
+                                // 新しいヘッダを書き込む
+                                // tag=5
+                                ctx.emit(Instruction::LocalGet(new_addr_local));
+                                ctx.emit(Instruction::I32WrapI64);
+                                ctx.emit(Instruction::I32Const(super::HEAP_TAG_VECTOR));
+                                ctx.emit(Instruction::I32Store { offset: 0 });
+                                // capacity = new_cap
+                                ctx.emit(Instruction::LocalGet(new_addr_local));
+                                ctx.emit(Instruction::I32WrapI64);
+                                ctx.emit(Instruction::LocalGet(new_cap_local));
+                                ctx.emit(Instruction::I32WrapI64);
+                                ctx.emit(Instruction::I32Store { offset: 4 });
+                                // length = old_len + 1
+                                ctx.emit(Instruction::LocalGet(new_addr_local));
+                                ctx.emit(Instruction::I32WrapI64);
+                                ctx.emit(Instruction::LocalGet(len_local));
+                                ctx.emit(Instruction::I32WrapI64);
+                                ctx.emit(Instruction::I32Const(1));
+                                ctx.emit(Instruction::I32Add);
+                                ctx.emit(Instruction::I32Store { offset: 8 });
+                                // padding = 0
+                                ctx.emit(Instruction::LocalGet(new_addr_local));
+                                ctx.emit(Instruction::I32WrapI64);
+                                ctx.emit(Instruction::I32Const(0));
+                                ctx.emit(Instruction::I32Store { offset: 12 });
+
+                                // 既存要素をコピー: memory.copy(dst, src, byte_count)
+                                // dst = new_addr + 16
+                                ctx.emit(Instruction::LocalGet(new_addr_local));
+                                ctx.emit(Instruction::I32WrapI64);
+                                ctx.emit(Instruction::I32Const(16));
+                                ctx.emit(Instruction::I32Add);
+                                // src = old_addr + 16 (untag)
+                                ctx.emit(Instruction::LocalGet(tagged_local));
+                                ctx.emit(Instruction::I32WrapI64); // untag
+                                ctx.emit(Instruction::I32Const(16));
+                                ctx.emit(Instruction::I32Add);
+                                // count = len * 8
+                                ctx.emit(Instruction::LocalGet(len_local));
+                                ctx.emit(Instruction::I32WrapI64);
+                                ctx.emit(Instruction::I32Const(8));
+                                ctx.emit(Instruction::I32Mul);
+                                ctx.emit(Instruction::MemoryCopy);
+
+                                // 新要素を書き込み: mem[new_addr + 16 + len * 8] = val
+                                ctx.emit(Instruction::LocalGet(new_addr_local));
+                                ctx.emit(Instruction::I32WrapI64);
+                                ctx.emit(Instruction::LocalGet(len_local));
+                                ctx.emit(Instruction::I32WrapI64);
+                                ctx.emit(Instruction::I32Const(8));
+                                ctx.emit(Instruction::I32Mul);
+                                ctx.emit(Instruction::I32Const(16));
+                                ctx.emit(Instruction::I32Add);
+                                ctx.emit(Instruction::I32Add);
+                                ctx.emit(Instruction::LocalGet(val_local));
+                                ctx.emit(Instruction::I64Store { offset: 0 });
+
+                                // 新しいタグ付きポインタを返す
+                                ctx.emit(Instruction::LocalGet(new_addr_local));
+                                ctx.emit(Instruction::I64Const(1i64 << 63));
+                                ctx.emit(Instruction::I64Add);
+                            }
+
+                            ctx.emit(Instruction::Else);
+
+                            // === 既存バッファに追加ブランチ ===
+                            {
+                                // 新要素を書き込み: mem[untag(addr) + 16 + len * 8] = val
+                                ctx.emit(Instruction::LocalGet(tagged_local));
+                                ctx.emit(Instruction::I32WrapI64); // untag
+                                ctx.emit(Instruction::LocalGet(len_local));
+                                ctx.emit(Instruction::I32WrapI64);
+                                ctx.emit(Instruction::I32Const(8));
+                                ctx.emit(Instruction::I32Mul);
+                                ctx.emit(Instruction::I32Const(16));
+                                ctx.emit(Instruction::I32Add);
+                                ctx.emit(Instruction::I32Add);
+                                ctx.emit(Instruction::LocalGet(val_local));
+                                ctx.emit(Instruction::I64Store { offset: 0 });
+
+                                // length を更新: mem[untag(addr)+8] = len + 1
+                                ctx.emit(Instruction::LocalGet(tagged_local));
+                                ctx.emit(Instruction::I32WrapI64); // untag
+                                ctx.emit(Instruction::LocalGet(len_local));
+                                ctx.emit(Instruction::I32WrapI64);
+                                ctx.emit(Instruction::I32Const(1));
+                                ctx.emit(Instruction::I32Add);
+                                ctx.emit(Instruction::I32Store { offset: 8 });
+
+                                // 同じタグ付きポインタを返す
+                                ctx.emit(Instruction::LocalGet(tagged_local));
+                            }
+
+                            ctx.emit(Instruction::End);
+                        }
+                    }
+
                     // TypeName.field アクセサ呼び出し
                     Expr::Var(_, name) if name.contains('.') && name.starts_with(|c: char| c.is_ascii_uppercase()) => {
                         // 引数（レコード）を評価

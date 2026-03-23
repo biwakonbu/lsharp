@@ -124,13 +124,13 @@
 ## Phase 5: File I/O & WASI 拡張
 
 ### P5-1: WASI import 追加
-- [ ] `path_open` import
-- [ ] `fd_read` import
-- [ ] `fd_close` import
+- [x] `path_open` import -- wasi.rs Import Section に追加
+- [x] `fd_read` import -- wasi.rs Import Section に追加
+- [x] `fd_close` import -- wasi.rs Import Section に追加
 - [ ] `fd_seek` import
 - [ ] `fd_filestat_get` import
-- [ ] `args_get`, `args_sizes_get` import
-- [ ] `proc_exit` import
+- [x] `args_get`, `args_sizes_get` import -- wasi.rs Import Section に追加
+- [x] `proc_exit` import -- wasi.rs Import Section + E2E テスト 3件
 
 ### P5-2: ファイル操作ビルトイン
 - [ ] `read-file [path] -> String` ビルトイン
@@ -144,19 +144,19 @@
 ## Phase 6: マルチファイルコンパイル
 
 ### P6-1: モジュール探索
-- [ ] `(import ModuleName)` → ファイル探索規約の実装
-- [ ] 既存 `module_graph.rs` の活用
-- [ ] ユニットテスト: モジュール名 → ファイルパス解決
+- [x] `(import ModuleName)` → ファイル探索規約の実装 -- ユニットテスト 11 個追加
+- [x] 既存 `module_graph.rs` の活用 -- module_name_to_paths, resolve_module_file, build_from_entry 追加
+- [x] ユニットテスト: モジュール名 → ファイルパス解決 -- resolve_tests 11 個
 
 ### P6-2: クロスモジュール型環境
-- [ ] トポロジカルソート順コンパイル
-- [ ] export シンボルの型環境注入
-- [ ] ユニットテスト: クロスモジュール型解決
+- [x] トポロジカルソート順コンパイル -- compile_multi_file でトポソ順にパース+型チェック
+- [x] export シンボルの型環境注入 -- Infer.inject_external_types + external_types フィールド追加
+- [x] ユニットテスト: クロスモジュール型解決 -- E2E テスト 4 個 (multi_file_compile, chain, single, missing_import)
 
 ### P6-3: IR リンク
-- [ ] 全モジュール IR の結合
-- [ ] 関数インデックス再割当て
-- [ ] E2E テスト: マルチファイルプロジェクトのコンパイル・実行
+- [x] 全モジュール IR の結合 -- AST マージ方式で単一 Lower に統合
+- [x] 関数インデックス再割当て -- マージされた Program で一貫したインデックス空間を使用
+- [x] E2E テスト: マルチファイルプロジェクトのコンパイル・実行 -- E2E 4 個追加
 
 ---
 

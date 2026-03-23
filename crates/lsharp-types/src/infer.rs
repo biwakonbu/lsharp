@@ -518,6 +518,30 @@ impl Infer {
             TypeScheme::mono(Type::Fun(vec![Type::string()], Box::new(Type::unit()))),
         );
 
+        // string-char-at: String -> Int -> Int (文字列のインデックス位置のバイト値を返す)
+        env.insert(
+            "string-char-at".to_string(),
+            TypeScheme::mono(Type::Fun(
+                vec![Type::string(), Type::int()],
+                Box::new(Type::int()),
+            )),
+        );
+
+        // substring: String -> Int -> Int -> String (部分文字列を返す)
+        env.insert(
+            "substring".to_string(),
+            TypeScheme::mono(Type::Fun(
+                vec![Type::string(), Type::int(), Type::int()],
+                Box::new(Type::string()),
+            )),
+        );
+
+        // int-to-string: Int -> String (整数を文字列に変換)
+        env.insert(
+            "int-to-string".to_string(),
+            TypeScheme::mono(Type::Fun(vec![Type::int()], Box::new(Type::string()))),
+        );
+
         // proc-exit: Int -> Unit (プロセス終了)
         env.insert(
             "proc-exit".to_string(),
@@ -559,6 +583,59 @@ impl Infer {
                     vars: vec![a],
                     constraints: Vec::new(),
                     ty: Type::Fun(vec![Type::int(), Type::Var(a)], Box::new(Type::unit())),
+                },
+            );
+        }
+
+        // === Vector (可変長配列) ビルトイン ===
+
+        // vector-new: Int -> Vector (capacity を指定して空ベクタを作成)
+        env.insert(
+            "vector-new".to_string(),
+            TypeScheme::mono(Type::Fun(vec![Type::int()], Box::new(Type::int()))),
+        );
+
+        // vector-length: Vector -> Int (ベクタの現在の長さを返す)
+        env.insert(
+            "vector-length".to_string(),
+            TypeScheme::mono(Type::Fun(vec![Type::int()], Box::new(Type::int()))),
+        );
+
+        // vector-get: forall a. (Vector, Int) -> a (インデックス指定で要素を取得)
+        {
+            let a = self.var_gen.fresh_id();
+            env.insert(
+                "vector-get".to_string(),
+                TypeScheme {
+                    vars: vec![a],
+                    constraints: Vec::new(),
+                    ty: Type::Fun(vec![Type::int(), Type::int()], Box::new(Type::Var(a))),
+                },
+            );
+        }
+
+        // vector-set: forall a. (Vector, Int, a) -> Vector (インデックス指定で要素を上書き)
+        {
+            let a = self.var_gen.fresh_id();
+            env.insert(
+                "vector-set".to_string(),
+                TypeScheme {
+                    vars: vec![a],
+                    constraints: Vec::new(),
+                    ty: Type::Fun(vec![Type::int(), Type::int(), Type::Var(a)], Box::new(Type::int())),
+                },
+            );
+        }
+
+        // vector-push: forall a. (Vector, a) -> Vector (要素を末尾に追加)
+        {
+            let a = self.var_gen.fresh_id();
+            env.insert(
+                "vector-push".to_string(),
+                TypeScheme {
+                    vars: vec![a],
+                    constraints: Vec::new(),
+                    ty: Type::Fun(vec![Type::int(), Type::Var(a)], Box::new(Type::int())),
                 },
             );
         }

@@ -175,9 +175,14 @@ where
             // ビット操作
             Instruction::I32Shl => { func.instruction(&W::I32Shl); }
             Instruction::I32ShrU => { func.instruction(&W::I32ShrU); }
+            Instruction::I64Shl => { func.instruction(&W::I64Shl); }
+            Instruction::I64ShrU => { func.instruction(&W::I64ShrU); }
+            Instruction::I64And => { func.instruction(&W::I64And); }
+            Instruction::I64Or => { func.instruction(&W::I64Or); }
             // メモリ管理
             Instruction::MemoryGrow => { func.instruction(&W::MemoryGrow(0)); }
             Instruction::MemorySize => { func.instruction(&W::MemorySize(0)); }
+            Instruction::MemoryCopy => { func.instruction(&W::MemoryCopy { src_mem: 0, dst_mem: 0 }); }
             // 間接呼び出し (クロージャ用)
             Instruction::CallIndirect(type_idx) => {
                 func.instruction(&W::CallIndirect { type_index: *type_idx, table_index: 0 });

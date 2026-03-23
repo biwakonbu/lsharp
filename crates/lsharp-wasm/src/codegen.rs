@@ -68,6 +68,8 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     imports.import("env", "print-string", EntityType::Function(print_string_type_idx));
     // proc-exit: (i32) -> () - プロセス終了
     imports.import("env", "proc-exit", EntityType::Function(proc_exit_type_idx));
+    // __int_to_string: (i64) -> (i64) - 整数→文字列変換
+    imports.import("env", "__int_to_string", EntityType::Function(alloc_type_idx));
     wasm_module.section(&imports);
 
     // === Function Section ===
@@ -93,7 +95,7 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     exports.export("memory", ExportKind::Memory, 0);
 
     // main 関数とその他の export
-    let import_count: u32 = 6; // print + __alloc + __string_concat + __string_eq + print-string + proc-exit
+    let import_count: u32 = 7; // print + __alloc + __string_concat + __string_eq + print-string + proc-exit + __int_to_string
     for (i, func) in module.functions.iter().enumerate() {
         if func.is_export {
             exports.export(&func.name, ExportKind::Func, import_count + i as u32);
@@ -208,10 +210,17 @@ mod tests {
             Ok(())
         });
 
+        // __int_to_string 関数のスタブ
+        let int_to_string_ty = FuncType::new(&engine, [ValType::I64], [ValType::I64]);
+        let int_to_string_func = Func::new(&mut store, int_to_string_ty, |_caller, _params, results| {
+            results[0] = Val::I64(0); // ダミー
+            Ok(())
+        });
+
         let instance = Instance::new(
             &mut store,
             &module,
-            &[print_func.into(), alloc_func.into(), string_concat_func.into(), string_eq_func.into(), print_string_func.into(), proc_exit_func.into()],
+            &[print_func.into(), alloc_func.into(), string_concat_func.into(), string_eq_func.into(), print_string_func.into(), proc_exit_func.into(), int_to_string_func.into()],
         ).unwrap();
 
         let main = instance
