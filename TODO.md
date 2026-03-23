@@ -187,9 +187,9 @@
 - [~] Rust 版 lexer との出力比較テスト -- E2E テスト 1件パス (基本トークナイズ)
 
 ### P8-2: L# で Parser を実装
-- [ ] AST の ADT 定義
-- [ ] 再帰降下パーサー
-- [ ] Rust 版 parser との出力比較テスト
+- [x] AST の ADT 定義 -- selfhost/AST.ls (整数タグ + Vector 方式)
+- [x] 再帰降下パーサー -- selfhost/Parser.ls (parse-expr/parse-sexp)
+- [~] Rust 版 parser との出力比較テスト -- E2E テスト 1件パス (基本 S 式パース)
 
 ### P8-3: L# で型推論を実装
 - [ ] 型 ADT (Con, Var, Fun) 定義

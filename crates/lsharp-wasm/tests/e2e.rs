@@ -2367,3 +2367,38 @@ fn test_e2e_selfhost_lexer_basic() {
     // kinds:    0  30   20  2 3 10  1  99
     assert_eq!(result.trim(), "8\n0\n30\n20\n2\n3\n10\n1\n99");
 }
+
+#[test]
+fn test_e2e_selfhost_parser_basic() {
+    // セルフホスティング Parser: 基本的な S 式パース
+    let result = compile_and_run(r#"
+        (defn parse-expr [tokens pos]
+          (let [tok (vector-get tokens (ref-get pos))]
+            (if (== tok 0)
+              (do (ref-set pos (+ (ref-get pos) 1))
+                (let [inner-tok (vector-get tokens (ref-get pos))
+                      result (if (== inner-tok 30) (do (ref-set pos (+ (ref-get pos) 1)) 20)
+                               (if (== inner-tok 32) (do (ref-set pos (+ (ref-get pos) 1)) 6)
+                                 5))]
+                  (do
+                    ;; skip until )
+                    result)))
+              (if (== tok 10) (do (ref-set pos (+ (ref-get pos) 1)) 1)
+                (if (== tok 20) (do (ref-set pos (+ (ref-get pos) 1)) 4)
+                  (if (== tok 13) (do (ref-set pos (+ (ref-get pos) 1)) 2)
+                    0))))))
+        (defn main []
+          (let [tokens (vector-push (vector-push (vector-push (vector-push
+                        (vector-push (vector-push (vector-push (vector-push
+                          (vector-new 8) 0) 30) 20) 2) 3) 10) 1) 99)
+                pos (ref-new 0)
+                result (parse-expr tokens pos)]
+            (do
+              (print result)
+              (print (ref-get pos))
+              0)))
+    "#);
+    // defn ノード (20) を検出、位置は 2 進んだ
+    assert_eq!(result.trim(), "20\n2");
+}
+
