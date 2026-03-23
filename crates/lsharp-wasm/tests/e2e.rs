@@ -1916,6 +1916,69 @@ fn test_e2e_map_insert_overwrite() {
     assert_eq!(result.trim(), "1\n99");
 }
 
+
+// === HashMap 文字列キー テスト ===
+
+#[test]
+fn test_e2e_map_string_key_insert_get() {
+    // 文字列キーで insert して get で値を取得
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [m (map-new)
+                m1 (map-insert m "hello" 42)
+                m2 (map-insert m1 "world" 99)]
+            (do
+              (print (map-get m2 "hello"))
+              (print (map-get m2 "world")))))
+    "#);
+    assert_eq!(result.trim(), "42\n99");
+}
+
+#[test]
+fn test_e2e_map_string_key_contains() {
+    // 文字列キーで contains? の確認
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [m (map-new)
+                m1 (map-insert m "key1" 10)]
+            (do
+              (print (map-contains? m1 "key1"))
+              (print (map-contains? m1 "key2")))))
+    "#);
+    assert_eq!(result.trim(), "1\n0");
+}
+
+#[test]
+fn test_e2e_map_string_key_remove() {
+    // 文字列キーで remove の確認
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [m (map-new)
+                m1 (map-insert m "alpha" 100)
+                m2 (map-insert m1 "beta" 200)
+                m3 (map-remove m2 "alpha")]
+            (do
+              (print (map-size m3))
+              (print (map-contains? m3 "alpha"))
+              (print (map-get m3 "beta")))))
+    "#);
+    assert_eq!(result.trim(), "1\n0\n200");
+}
+
+#[test]
+fn test_e2e_map_string_key_overwrite() {
+    // 同じ文字列キーで上書きされることの確認
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [m (map-new)
+                m1 (map-insert m "x" 10)
+                m2 (map-insert m1 "x" 77)]
+            (do
+              (print (map-size m2))
+              (print (map-get m2 "x")))))
+    "#);
+    assert_eq!(result.trim(), "1\n77");
+}
 // === 標準ライブラリ E2E テスト ===
 
 /// stdlib/Core.ls の基本数学関数のテスト (abs, max, min, clamp)
@@ -3693,4 +3756,70 @@ fn test_e2e_selfhost_lexer_comparison_keywords() {
         "Rust Lexer と L# Lexer のトークン種別が一致しない\n\
          Rust: {:?}\nL#:   {:?}\n入力: {:?}",
         rust_kinds, lsharp_kinds, input);
+}
+
+// === P3-3: メタデータテスト実行評価 E2E テスト ===
+
+/// メタデータテスト用ヘルパー: テストプログラムを生成・コンパイル・実行して結果を返す
+fn run_metadata_tests(source: &str) -> Vec<lsharp_wasm::test_runner::TestResult> {
+    let program = lsharp_syntax::parse(source).unwrap();
+    let tests = lsharp_types::metadata_check::generate_tests(&program);
+    let test_source = lsharp_wasm::test_runner::generate_test_program(&program, &tests);
+
+    let test_program = lsharp_syntax::parse(&test_source).unwrap();
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&test_program).unwrap();
+    let mut lower = Lower::new();
+    let module = lower.lower_program(&test_program, &type_results).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes).unwrap();
+
+    lsharp_wasm::test_runner::parse_test_output(&output, &tests, &program)
+}
+
+#[test]
+fn test_e2e_metadata_example_pass() {
+    // :example アノテーション付き関数の自動テスト (成功ケース)
+    let results = run_metadata_tests(
+        r#"(defn add [x y] :example [(= (add 1 2) 3)] (+ x y))"#,
+    );
+    assert_eq!(results.len(), 1);
+    assert!(results[0].passed, ":example テストが成功するはず");
+    assert_eq!(results[0].kind, lsharp_types::metadata_check::TestKind::Example);
+    assert!(results[0].error.is_none());
+}
+
+#[test]
+fn test_e2e_metadata_example_fail() {
+    // :example アノテーション付き関数の自動テスト (失敗ケース)
+    let results = run_metadata_tests(
+        r#"(defn add [x y] :example [(= (add 1 2) 999)] (+ x y))"#,
+    );
+    assert_eq!(results.len(), 1);
+    assert!(!results[0].passed, ":example テストが失敗するはず");
+    assert!(results[0].error.is_some());
+}
+
+#[test]
+fn test_e2e_metadata_invariant_pass() {
+    // :invariant アノテーション付き関数の不変条件検証 (成功ケース)
+    let results = run_metadata_tests(
+        r#"(defn abs [x] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"#,
+    );
+    assert_eq!(results.len(), 1);
+    assert!(results[0].passed, ":invariant テストが成功するはず: {:?}", results[0].error);
+    assert_eq!(results[0].kind, lsharp_types::metadata_check::TestKind::Invariant);
+}
+
+#[test]
+fn test_e2e_metadata_example_and_invariant() {
+    // :example と :invariant の両方を持つ関数のフルパイプラインテスト
+    let results = run_metadata_tests(
+        r#"(defn abs [x] :invariant (>= result 0) :example [(= (abs 5) 5)] (if (< x 0) (- 0 x) x))"#,
+    );
+    assert_eq!(results.len(), 2);
+    let invariant_result = results.iter().find(|r| r.kind == lsharp_types::metadata_check::TestKind::Invariant).unwrap();
+    assert!(invariant_result.passed, ":invariant テストが成功するはず: {:?}", invariant_result.error);
+    let example_result = results.iter().find(|r| r.kind == lsharp_types::metadata_check::TestKind::Example).unwrap();
+    assert!(example_result.passed, ":example テストが成功するはず: {:?}", example_result.error);
 }
