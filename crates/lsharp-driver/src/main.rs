@@ -102,8 +102,14 @@ enum Command {
         emit_trailers: bool,
     },
 
+    /// 依存パッケージをインストール
+    Install,
+
     /// 対話的 REPL (Read-Eval-Print Loop)
     Repl,
+
+    /// LSP サーバーを起動
+    Lsp,
 
     /// ドキュメント生成 (:doc メタデータから HTML 生成)
     Doc {
@@ -357,8 +363,18 @@ fn main() -> miette::Result<()> {
             println!("ドキュメント検証OK: {}", file.display());
         }
 
+        Command::Install => {
+            cmd_install()?;
+        }
+
         Command::Repl => {
             cmd_repl()?;
+        }
+
+        Command::Lsp => {
+            tokio::runtime::Runtime::new()
+                .map_err(|e| miette::miette!("tokio ランタイム起動失敗: {e}"))?
+                .block_on(lsharp_lsp::run_server());
         }
 
         Command::Doc { file, output } => {
@@ -815,6 +831,89 @@ fn cmd_doc(file: &PathBuf, output: Option<&std::path::Path>) -> miette::Result<(
     Ok(())
 }
 
+/// 依存パッケージをインストール
+///
+/// lsharp.toml の [dependencies] セクションを読み込み、
+/// Path 依存はシンボリックリンクで `.lsharp/deps/` に配置する。
+fn cmd_install() -> miette::Result<()> {
+    cmd_install_in(std::path::Path::new("."))
+}
+
+/// 指定ディレクトリを基点に依存パッケージをインストール (テスト用に分離)
+fn cmd_install_in(project_dir: &std::path::Path) -> miette::Result<()> {
+    let config = config::load_config_result(project_dir)
+        .map_err(|e| miette::miette!("{e}"))?;
+
+    let deps = &config.dependencies;
+
+    if deps.is_empty() {
+        println!("依存パッケージはありません");
+        return Ok(());
+    }
+
+    // .lsharp/deps/ ディレクトリを作成
+    let deps_dir = project_dir.join(".lsharp").join("deps");
+    std::fs::create_dir_all(&deps_dir)
+        .map_err(|e| miette::miette!(".lsharp/deps/ の作成に失敗: {e}"))?;
+
+    let mut installed = 0u32;
+    let mut skipped = 0u32;
+
+    for (name, spec) in deps {
+        match spec {
+            config::DependencySpec::Path { path } => {
+                let resolved = project_dir.join(path);
+                if !resolved.exists() {
+                    eprintln!("警告: パス依存 '{name}' のパスが存在しません: {}", resolved.display());
+                    skipped += 1;
+                    continue;
+                }
+                let toml_path = resolved.join("lsharp.toml");
+                if !toml_path.exists() {
+                    eprintln!("警告: パス依存 '{name}' に lsharp.toml が見つかりません: {}", resolved.display());
+                    skipped += 1;
+                    continue;
+                }
+
+                let link_path = deps_dir.join(name);
+                // 既存のシンボリックリンクがあれば削除
+                if link_path.exists() || link_path.symlink_metadata().is_ok() {
+                    std::fs::remove_file(&link_path)
+                        .or_else(|_| std::fs::remove_dir_all(&link_path))
+                        .map_err(|e| miette::miette!("既存リンクの削除に失敗: {e}"))?;
+                }
+
+                // 絶対パスに変換してシンボリックリンク作成
+                let abs_resolved = resolved.canonicalize()
+                    .map_err(|e| miette::miette!("パスの正規化に失敗 '{}': {e}", resolved.display()))?;
+
+                #[cfg(unix)]
+                std::os::unix::fs::symlink(&abs_resolved, &link_path)
+                    .map_err(|e| miette::miette!("シンボリックリンク作成に失敗 '{name}': {e}"))?;
+
+                #[cfg(not(unix))]
+                std::fs::copy(&abs_resolved, &link_path)
+                    .map_err(|e| miette::miette!("依存コピーに失敗 '{name}': {e}"))?;
+
+                println!("  インストール: {name} -> {}", abs_resolved.display());
+                installed += 1;
+            }
+            config::DependencySpec::Git { git, .. } => {
+                eprintln!("  スキップ: {name} (Git 依存はまだサポートされていません: {git})");
+                skipped += 1;
+            }
+            config::DependencySpec::Version(v) => {
+                eprintln!("  スキップ: {name} (レジストリ依存はまだサポートされていません: {v})");
+                skipped += 1;
+            }
+        }
+    }
+
+    println!("\nインストール完了: {installed} 個インストール, {skipped} 個スキップ");
+
+    Ok(())
+}
+
 /// P9-1: 対話的 REPL
 fn cmd_repl() -> miette::Result<()> {
     use std::io::{self, BufRead, Write};
@@ -883,4 +982,111 @@ fn cmd_repl() -> miette::Result<()> {
     let _ = infer; // suppress unused warning
     println!("セッション終了。{} 式を評価しました。", expr_count);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cmd_install_no_dependencies() {
+        // lsharp.toml がないディレクトリではデフォルト設定 (依存なし) で成功する
+        let dir = std::env::temp_dir().join("lsharp_test_install_no_deps");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let result = cmd_install_in(&dir);
+        assert!(result.is_ok(), "依存なしで cmd_install_in は成功するべき");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_install_missing_toml_uses_defaults() {
+        // lsharp.toml が存在しないディレクトリでもデフォルト設定で動作する
+        let dir = std::env::temp_dir().join("lsharp_test_install_missing_toml");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // lsharp.toml を作成しない
+        let result = cmd_install_in(&dir);
+        assert!(result.is_ok(), "lsharp.toml がなくてもデフォルトで成功するべき");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_install_path_dependency() {
+        // Path 依存のインストールをテスト
+        let base_dir = std::env::temp_dir().join("lsharp_test_install_path_dep");
+        let _ = std::fs::remove_dir_all(&base_dir);
+        std::fs::create_dir_all(&base_dir).unwrap();
+
+        // 依存先ディレクトリを作成 (lsharp.toml を含む)
+        let dep_dir = base_dir.join("mylib");
+        std::fs::create_dir_all(&dep_dir).unwrap();
+        std::fs::write(
+            dep_dir.join("lsharp.toml"),
+            "[project]\nname = \"mylib\"\n",
+        ).unwrap();
+
+        // プロジェクトの lsharp.toml を作成
+        std::fs::write(
+            base_dir.join("lsharp.toml"),
+            "[dependencies.mylib]\npath = \"mylib\"\n",
+        ).unwrap();
+
+        let result = cmd_install_in(&base_dir);
+        assert!(result.is_ok(), "Path 依存のインストールは成功するべき: {:?}", result);
+
+        // シンボリックリンクが作成されていることを確認
+        let link_path = base_dir.join(".lsharp").join("deps").join("mylib");
+        assert!(link_path.exists(), ".lsharp/deps/mylib が存在するべき");
+
+        std::fs::remove_dir_all(&base_dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_install_path_dependency_missing_path() {
+        // 存在しないパス依存はスキップされる (エラーにはならない)
+        let base_dir = std::env::temp_dir().join("lsharp_test_install_missing_path");
+        let _ = std::fs::remove_dir_all(&base_dir);
+        std::fs::create_dir_all(&base_dir).unwrap();
+
+        std::fs::write(
+            base_dir.join("lsharp.toml"),
+            "[dependencies.missing]\npath = \"nonexistent\"\n",
+        ).unwrap();
+
+        let result = cmd_install_in(&base_dir);
+        assert!(result.is_ok(), "存在しないパスでもエラーにはならないべき");
+
+        std::fs::remove_dir_all(&base_dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_install_path_dependency_no_toml() {
+        // lsharp.toml がない依存先はスキップされる
+        let base_dir = std::env::temp_dir().join("lsharp_test_install_no_dep_toml");
+        let _ = std::fs::remove_dir_all(&base_dir);
+        std::fs::create_dir_all(&base_dir).unwrap();
+
+        // 依存先ディレクトリを作成するが lsharp.toml は配置しない
+        let dep_dir = base_dir.join("noconfig");
+        std::fs::create_dir_all(&dep_dir).unwrap();
+
+        std::fs::write(
+            base_dir.join("lsharp.toml"),
+            "[dependencies.noconfig]\npath = \"noconfig\"\n",
+        ).unwrap();
+
+        let result = cmd_install_in(&base_dir);
+        assert!(result.is_ok(), "lsharp.toml がない依存先でもエラーにはならないべき");
+
+        // シンボリックリンクは作成されない
+        let link_path = base_dir.join(".lsharp").join("deps").join("noconfig");
+        assert!(!link_path.exists(), "lsharp.toml がない依存先にはリンクを作らないべき");
+
+        std::fs::remove_dir_all(&base_dir).unwrap();
+    }
 }

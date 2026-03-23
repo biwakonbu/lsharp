@@ -1,0 +1,12 @@
+[package]
+name = "lsharp-lsp"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+lsharp-syntax = { path = "../lsharp-syntax" }
+lsharp-types = { path = "../lsharp-types" }
+tower-lsp = "0.20"
+tokio = { version = "1", features = ["full"] }
+serde.workspace = true
+serde_json.workspace = true

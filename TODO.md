@@ -221,12 +221,13 @@
 - [x] 式入力 → パイプライン実行 → 結果表示 -- parse→infer→lower→codegen→wasmtime
 
 ### P9-2: LSP
-- [ ] `crates/lsharp-lsp` クレート作成
-- [ ] tower-lsp 統合
-- [ ] 型ホバー、エラー診断、定義ジャンプ
+- [x] `crates/lsharp-lsp` クレート作成 -- tower-lsp 0.20, LsharpBackend 構造体
+- [x] tower-lsp 統合 -- initialize/shutdown/did_open/did_change/hover ハンドラ
+- [~] 型ホバー、エラー診断、定義ジャンプ -- ホバー・診断の基本実装あり、定義ジャンプは未実装
 
 ### P9-3: パッケージマネージャ
 - [x] `lsharp.toml` の `[dependencies]` セクション -- DependencySpec enum (Version/Git/Path)、テスト 5件
+- [x] `lsharp install` コマンド -- Path 依存のシンボリックリンク解決、テスト 2件
 - [ ] Git リポジトリベースの依存解決
 - [ ] ロックファイル生成
 

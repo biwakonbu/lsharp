@@ -13,7 +13,9 @@ lsharp-types = { path = "../lsharp-types" }
 lsharp-ir = { path = "../lsharp-ir" }
 lsharp-wasm = { path = "../lsharp-wasm" }
 lsharp-docs = { path = "../lsharp-docs" }
+lsharp-lsp = { path = "../lsharp-lsp" }
 clap.workspace = true
+tokio = { version = "1", features = ["rt-multi-thread"] }
 miette.workspace = true
 toml.workspace = true
 serde.workspace = true
