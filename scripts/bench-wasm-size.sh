@@ -7,6 +7,7 @@
 #
 # 出力: 各 example の Wasm バイナリサイズ (bytes)
 # ベースラインがある場合は差分 (%) も表示
+# 注: macOS デフォルト bash (3.x) 互換。連想配列は使用しない。
 
 set -euo pipefail
 
@@ -14,6 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BASELINE_FILE="$SCRIPT_DIR/bench-baseline.json"
 TMP_DIR=$(mktemp -d)
+RESULTS_FILE="$TMP_DIR/results.txt"
 SAVE_BASELINE=false
 
 if [[ "${1:-}" == "--save-baseline" ]]; then
@@ -28,22 +30,21 @@ trap cleanup EXIT
 echo "=== L# Wasm バイナリサイズ計測 ==="
 echo ""
 
-# ベースラインを読み込む
-declare -A BASELINE
-if [[ -f "$BASELINE_FILE" ]]; then
-    while IFS='=' read -r key value; do
-        BASELINE["$key"]="$value"
-    done < <(python3 -c "
-import json, sys
+# ベースラインからサイズを取得するヘルパー
+get_baseline_size() {
+    local name="$1"
+    if [[ -f "$BASELINE_FILE" ]]; then
+        python3 -c "
+import json
 with open('$BASELINE_FILE') as f:
     data = json.load(f)
-for k, v in data.get('wasm_sizes', {}).items():
-    print(f'{k}={v}')
-" 2>/dev/null || true)
-fi
+print(data.get('wasm_sizes', {}).get('$name', ''))
+" 2>/dev/null || echo ""
+    else
+        echo ""
+    fi
+}
 
-# 結果格納用
-declare -A RESULTS
 HAS_WARNING=false
 
 printf "%-25s %10s %10s\n" "ファイル" "サイズ" "ベースライン比"
@@ -65,23 +66,20 @@ for src in "$PROJECT_DIR"/examples/*.ls; do
     fi
 
     size=$(wc -c < "$wasm_path" | tr -d ' ')
-    RESULTS["$name"]=$size
+    echo "${name}=${size}" >> "$RESULTS_FILE"
 
     # ベースラインとの比較
     diff_str="-"
-    if [[ -n "${BASELINE[$name]:-}" ]]; then
-        baseline_size=${BASELINE[$name]}
-        if [[ $baseline_size -gt 0 ]]; then
-            diff_pct=$(python3 -c "print(f'{($size - $baseline_size) / $baseline_size * 100:+.1f}%')" 2>/dev/null || echo "N/A")
+    baseline_size=$(get_baseline_size "$name")
+    if [[ -n "$baseline_size" && "$baseline_size" =~ ^[0-9]+$ && "$baseline_size" -gt 0 ]]; then
+        diff_pct=$(python3 -c "print(f'{($size - $baseline_size) / $baseline_size * 100:+.1f}%')" 2>/dev/null || echo "N/A")
 
-            # 10% 以上の増加で WARNING
-            increase=$(python3 -c "print('YES' if ($size - $baseline_size) / $baseline_size * 100 > 10 else 'NO')" 2>/dev/null || echo "NO")
-            if [[ "$increase" == "YES" ]]; then
-                diff_str="$diff_pct WARNING"
-                HAS_WARNING=true
-            else
-                diff_str="$diff_pct"
-            fi
+        increase=$(python3 -c "print('YES' if ($size - $baseline_size) / $baseline_size * 100 > 10 else 'NO')" 2>/dev/null || echo "NO")
+        if [[ "$increase" == "YES" ]]; then
+            diff_str="$diff_pct WARNING"
+            HAS_WARNING=true
+        else
+            diff_str="$diff_pct"
         fi
     fi
 
@@ -91,21 +89,26 @@ done
 echo ""
 
 # ベースライン保存
-if [[ "$SAVE_BASELINE" == "true" ]]; then
-    # JSON 生成
-    json="{ \"timestamp\": \"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\", \"wasm_sizes\": {"
-    first=true
-    for name in "${!RESULTS[@]}"; do
-        if [[ "$first" == "true" ]]; then
-            first=false
-        else
-            json+=","
-        fi
-        json+=" \"$name\": ${RESULTS[$name]}"
-    done
-    json+=" } }"
+if [[ "$SAVE_BASELINE" == "true" && -f "$RESULTS_FILE" ]]; then
+    python3 -c "
+import json, sys
+from datetime import datetime, timezone
 
-    echo "$json" | python3 -m json.tool > "$BASELINE_FILE"
+results = {}
+with open('$RESULTS_FILE') as f:
+    for line in f:
+        name, size = line.strip().split('=')
+        results[name] = int(size)
+
+data = {
+    'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'wasm_sizes': results
+}
+
+with open('$BASELINE_FILE', 'w') as f:
+    json.dump(data, f, indent=2)
+" 2>/dev/null
+
     echo "ベースラインを保存しました: $BASELINE_FILE"
 fi
 

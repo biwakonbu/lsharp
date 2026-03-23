@@ -99,7 +99,17 @@ scripts/bench-compare.sh
 - 10% 以上のバイナリサイズ増加 → **WARNING** として明示
 - 回帰がある場合、原因の推定と改善案を提示
 
-### Step 5: ベースライン更新 (任意)
+### Step 5: レポート生成
+
+計測結果を `docs/BENCHMARK.md` に出力する:
+```bash
+scripts/bench-report.sh
+```
+- GitHub 上で確認可能な Markdown レポートが生成される
+- コミットすればリポジトリで誰でも閲覧可能
+- `--skip-bench` オプションで前回結果からレポートのみ再生成も可能
+
+### Step 6: ベースライン更新 (任意)
 
 ユーザーに確認の上、`scripts/bench-wasm-size.sh --save-baseline` でベースラインを更新するか判断する。
 
