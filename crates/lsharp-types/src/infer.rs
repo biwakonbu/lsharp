@@ -654,43 +654,59 @@ impl Infer {
             TypeScheme::mono(Type::Fun(vec![Type::int()], Box::new(Type::int()))),
         );
 
-        // map-insert: forall a. (Map, Int, a) -> Map (キーと値を挿入)
+        // map-insert: forall k a. (Map, k, a) -> Map (キーと値を挿入)
         {
+            let k = self.var_gen.fresh_id();
             let a = self.var_gen.fresh_id();
             env.insert(
                 "map-insert".to_string(),
                 TypeScheme {
-                    vars: vec![a],
+                    vars: vec![k, a],
                     constraints: Vec::new(),
-                    ty: Type::Fun(vec![Type::int(), Type::int(), Type::Var(a)], Box::new(Type::int())),
+                    ty: Type::Fun(vec![Type::int(), Type::Var(k), Type::Var(a)], Box::new(Type::int())),
                 },
             );
         }
 
-        // map-get: forall a. (Map, Int) -> a (キーで値を取得、未存在時は 0)
+        // map-get: forall k a. (Map, k) -> a (キーで値を取得、未存在時は 0)
         {
+            let k = self.var_gen.fresh_id();
             let a = self.var_gen.fresh_id();
             env.insert(
                 "map-get".to_string(),
                 TypeScheme {
-                    vars: vec![a],
+                    vars: vec![k, a],
                     constraints: Vec::new(),
-                    ty: Type::Fun(vec![Type::int(), Type::int()], Box::new(Type::Var(a))),
+                    ty: Type::Fun(vec![Type::int(), Type::Var(k)], Box::new(Type::Var(a))),
                 },
             );
         }
 
-        // map-contains?: (Map, Int) -> Bool (キーの存在チェック)
-        env.insert(
-            "map-contains?".to_string(),
-            TypeScheme::mono(Type::Fun(vec![Type::int(), Type::int()], Box::new(Type::int()))),
-        );
+        // map-contains?: forall k. (Map, k) -> Bool (キーの存在チェック)
+        {
+            let k = self.var_gen.fresh_id();
+            env.insert(
+                "map-contains?".to_string(),
+                TypeScheme {
+                    vars: vec![k],
+                    constraints: Vec::new(),
+                    ty: Type::Fun(vec![Type::int(), Type::Var(k)], Box::new(Type::int())),
+                },
+            );
+        }
 
-        // map-remove: (Map, Int) -> Map (キーを削除)
-        env.insert(
-            "map-remove".to_string(),
-            TypeScheme::mono(Type::Fun(vec![Type::int(), Type::int()], Box::new(Type::int()))),
-        );
+        // map-remove: forall k. (Map, k) -> Map (キーを削除)
+        {
+            let k = self.var_gen.fresh_id();
+            env.insert(
+                "map-remove".to_string(),
+                TypeScheme {
+                    vars: vec![k],
+                    constraints: Vec::new(),
+                    ty: Type::Fun(vec![Type::int(), Type::Var(k)], Box::new(Type::int())),
+                },
+            );
+        }
 
         // read-file: String -> String (ファイル内容を読み込み)
         env.insert(

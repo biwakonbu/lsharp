@@ -1,6 +1,5 @@
 //! Typed AST -> IR 変換 (Lowering)
 
-use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
 use lsharp_syntax::ast::*;
@@ -52,19 +51,19 @@ pub struct Lower {
     /// ADT 型名 -> バリアント情報リスト [(name, gc_idx, tag, field_count)]
     pub(crate) adt_type_info: HashMap<String, Vec<(String, u32, i32, usize)>>,
     /// 文字列定数データ [(label, bytes)]
-    pub(crate) string_data: RefCell<Vec<(String, Vec<u8>)>>,
+    pub(crate) string_data: Vec<(String, Vec<u8>)>,
     /// 次の文字列データオフセット
-    pub(crate) string_offset: Cell<u32>,
+    pub(crate) string_offset: u32,
     /// Computation Builder 情報（ビルダー名 -> (bind関数名, return関数名)）
     pub(crate) computation_builders: HashMap<String, (String, String)>,
     /// Lambda Lifting: リフトされた関数のリスト
-    pub(crate) lifted_functions: RefCell<Vec<crate::Function>>,
+    pub(crate) lifted_functions: Vec<crate::Function>,
     /// Lambda Lifting: 一意な Lambda 名生成用カウンター
-    pub(crate) lambda_counter: Cell<u32>,
+    pub(crate) lambda_counter: u32,
     /// Lambda Lifting: リフトされた関数名 -> 関数インデックスのマッピング
-    pub(crate) lifted_func_indices: RefCell<HashMap<String, u32>>,
+    pub(crate) lifted_func_indices: HashMap<String, u32>,
     /// Lambda Lifting: 次に割り当てる関数インデックス
-    pub(crate) next_func_idx: Cell<u32>,
+    pub(crate) next_func_idx: u32,
 }
 
 /// Private 宣言を展開して内部の宣言を返す
@@ -89,20 +88,20 @@ impl Lower {
             constrained_type_checks: HashMap::new(),
             adt_variant_indices: HashMap::new(),
             adt_type_info: HashMap::new(),
-            string_data: RefCell::new(Vec::new()),
-            string_offset: Cell::new(512), // 文字列データの開始位置（メモリ先頭は数値変換バッファ用）
+            string_data: Vec::new(),
+            string_offset: 512, // 文字列データの開始位置（メモリ先頭は数値変換バッファ用）
             computation_builders: HashMap::new(),
-            lifted_functions: RefCell::new(Vec::new()),
-            lambda_counter: Cell::new(0),
-            lifted_func_indices: RefCell::new(HashMap::new()),
-            next_func_idx: Cell::new(0),
+            lifted_functions: Vec::new(),
+            lambda_counter: 0,
+            lifted_func_indices: HashMap::new(),
+            next_func_idx: 0,
         }
     }
 
     /// 一意な Lambda 関数名を生成
-    pub(crate) fn fresh_lambda_name(&self) -> String {
-        let id = self.lambda_counter.get();
-        self.lambda_counter.set(id + 1);
+    pub(crate) fn fresh_lambda_name(&mut self) -> String {
+        let id = self.lambda_counter;
+        self.lambda_counter += 1;
         format!("__lambda_{id}")
     }
 
@@ -176,7 +175,8 @@ impl Lower {
         self.func_indices.insert("write-file".to_string(), 8);
         self.func_indices.insert("file-exists?".to_string(), 9);
         self.func_indices.insert("command-line-args".to_string(), 10);
-        self.import_count = 11;
+        self.func_indices.insert("__fnv1a_hash".to_string(), 11);
+        self.import_count = 12;
 
         // ユーザー定義関数のインデックスを事前登録
         let mut func_idx = self.import_count;
@@ -260,7 +260,7 @@ impl Lower {
         }
 
         // Lambda Lifting 用の次の関数インデックスを設定
-        self.next_func_idx.set(func_idx);
+        self.next_func_idx = func_idx;
 
         // 各関数を IR に変換
         let mut functions = Vec::new();
@@ -359,7 +359,7 @@ impl Lower {
         let _ = func_idx;
 
         // Lambda Lifting: リフトされた関数を追加
-        let lifted = self.lifted_functions.borrow().clone();
+        let lifted = self.lifted_functions.clone();
         functions.extend(lifted);
 
         Ok(Module {
@@ -367,7 +367,7 @@ impl Lower {
             gc_types: self.gc_types.clone(),
             imports: Vec::new(),
             globals: Vec::new(),
-            string_data: self.string_data.borrow().clone(),
+            string_data: self.string_data.clone(),
         })
     }
 }

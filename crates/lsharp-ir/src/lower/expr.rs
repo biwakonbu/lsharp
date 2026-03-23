@@ -10,7 +10,7 @@ use super::{is_builtin_binop, FuncCtx, Lower, LowerError};
 
 impl Lower {
     /// 式を IR 命令に変換（スタックマシン方式）
-    pub(crate) fn lower_expr(&self, ctx: &mut FuncCtx, expr: &Expr) -> Result<(), LowerError> {
+    pub(crate) fn lower_expr(&mut self, ctx: &mut FuncCtx, expr: &Expr) -> Result<(), LowerError> {
         match expr {
             Expr::Lit(_, lit) => match lit {
                 Literal::Int(n) => ctx.emit(Instruction::I64Const(*n)),
@@ -20,10 +20,10 @@ impl Lower {
                     // 文字列リテラル: データセクションに格納し、(offset << 32 | len) でエンコード
                     let bytes = s.as_bytes().to_vec();
                     let len = bytes.len() as u32;
-                    let offset = self.string_offset.get();
-                    let label = format!("$str{}", self.string_data.borrow().len());
-                    self.string_data.borrow_mut().push((label, bytes));
-                    self.string_offset.set(offset + len);
+                    let offset = self.string_offset;
+                    let label = format!("$str{}", self.string_data.len());
+                    self.string_data.push((label, bytes));
+                    self.string_offset += len;
                     // offset << 32 | len として i64 にパック
                     let packed = ((offset as i64) << 32) | (len as i64);
                     ctx.emit(Instruction::I64Const(packed));
@@ -37,7 +37,7 @@ impl Lower {
                 } else if let Some(&func_idx) = self.func_indices.get(name) {
                     // 引数なし ADT コンストラクタ（または引数なし関数）を呼び出し
                     ctx.emit(Instruction::Call(func_idx));
-                } else if let Some(&func_idx) = self.lifted_func_indices.borrow().get(name) {
+                } else if let Some(&func_idx) = self.lifted_func_indices.get(name) {
                     // Lambda Lifting で生成された関数の呼び出し
                     ctx.emit(Instruction::Call(func_idx));
                 } else {
@@ -713,6 +713,8 @@ impl Lower {
                             ctx.emit(Instruction::I64ExtendI32U);
                             ctx.emit(Instruction::LocalSet(addr_local));
                             self.lower_expr(ctx, &args[1])?;
+                            // 文字列キーの場合は FNV-1a ハッシュに変換
+                            self.emit_string_key_hash(ctx, &args[1])?;
                             let key_local = ctx.alloc_local("_mi_key".to_string());
                             ctx.emit(Instruction::LocalSet(key_local));
                             self.lower_expr(ctx, &args[2])?;
@@ -805,6 +807,8 @@ impl Lower {
                             ctx.emit(Instruction::I64ExtendI32U);
                             ctx.emit(Instruction::LocalSet(addr_local));
                             self.lower_expr(ctx, &args[1])?;
+                            // 文字列キーの場合は FNV-1a ハッシュに変換
+                            self.emit_string_key_hash(ctx, &args[1])?;
                             let key_local = ctx.alloc_local("_mg_key".to_string());
                             ctx.emit(Instruction::LocalSet(key_local));
                             let cap_local = ctx.alloc_local("_mg_cap".to_string());
@@ -871,6 +875,8 @@ impl Lower {
                             ctx.emit(Instruction::I64ExtendI32U);
                             ctx.emit(Instruction::LocalSet(addr_local));
                             self.lower_expr(ctx, &args[1])?;
+                            // 文字列キーの場合は FNV-1a ハッシュに変換
+                            self.emit_string_key_hash(ctx, &args[1])?;
                             let key_local = ctx.alloc_local("_mc_key".to_string());
                             ctx.emit(Instruction::LocalSet(key_local));
                             let cap_local = ctx.alloc_local("_mc_cap".to_string());
@@ -938,6 +944,8 @@ impl Lower {
                             ctx.emit(Instruction::I64ExtendI32U);
                             ctx.emit(Instruction::LocalSet(addr_local));
                             self.lower_expr(ctx, &args[1])?;
+                            // 文字列キーの場合は FNV-1a ハッシュに変換
+                            self.emit_string_key_hash(ctx, &args[1])?;
                             let key_local = ctx.alloc_local("_mr_key".to_string());
                             ctx.emit(Instruction::LocalSet(key_local));
                             let cap_local = ctx.alloc_local("_mr_cap".to_string());
@@ -1028,7 +1036,7 @@ impl Lower {
                                 self.lower_expr(ctx, arg)?;
                             }
                             ctx.emit(Instruction::Call(idx));
-                        } else if let Some(&idx) = self.lifted_func_indices.borrow().get(name.as_str()) {
+                        } else if let Some(&idx) = self.lifted_func_indices.get(name.as_str()) {
                             // Lambda Lifting で生成された関数の呼び出し
                             for arg in args {
                                 self.lower_expr(ctx, arg)?;
@@ -1165,11 +1173,11 @@ impl Lower {
                     is_export: false,
                 };
 
-                // リフトされた関数のインデックスを割り当て (RefCell 経由)
-                let func_idx = self.next_func_idx.get()
-                    + self.lifted_functions.borrow().len() as u32;
-                self.lifted_func_indices.borrow_mut().insert(lambda_name, func_idx);
-                self.lifted_functions.borrow_mut().push(lifted_func);
+                // リフトされた関数のインデックスを割り当て
+                let func_idx = self.next_func_idx
+                    + self.lifted_functions.len() as u32;
+                self.lifted_func_indices.insert(lambda_name, func_idx);
+                self.lifted_functions.push(lifted_func);
 
                 // クロージャオブジェクトをヒープに確保（自由変数の有無に関わらず）
                 // レイアウト: [heap_tag=4: i32, func_idx: i32, captured_0: i64, ...]
@@ -1228,12 +1236,12 @@ impl Lower {
             Expr::RecordLit(_, type_name, fields) => {
                 if let Some(&gc_type_idx) = self.record_type_indices.get(type_name) {
                     // レコード定義のフィールド順序に従って値をスタックに積む
-                    if let Some(field_order) = self.record_fields.get(type_name) {
+                    if let Some(field_order) = self.record_fields.get(type_name).cloned() {
                         let field_map: HashMap<&str, &Expr> = fields
                             .iter()
                             .map(|(n, e)| (n.as_str(), e))
                             .collect();
-                        for field_name in field_order {
+                        for field_name in &field_order {
                             if let Some(expr) = field_map.get(field_name.as_str()) {
                                 self.lower_expr(ctx, expr)?;
                             } else {
@@ -1268,7 +1276,7 @@ impl Lower {
 
                 if let Some(ref tn) = type_name_hint {
                     // 型名が判明: 正確に解決
-                    if let Some(fields) = self.record_fields.get(tn) {
+                    if let Some(fields) = self.record_fields.get(tn).cloned() {
                         if let Some(field_idx) = fields.iter().position(|f| f == field_name) {
                             if let Some(&gc_type_idx) = self.record_type_indices.get(tn) {
                                 ctx.emit(Instruction::StructGet(gc_type_idx, field_idx as u32));
@@ -1284,7 +1292,12 @@ impl Lower {
 
                 if !resolved {
                     // フォールバック: フィールド名で全レコード型を走査
-                    for (type_name, fields) in &self.record_fields {
+                    // record_fields を一時的にクローンして借用問題を回避
+                    let record_fields_snapshot: Vec<(String, Vec<String>)> = self.record_fields
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect();
+                    for (type_name, fields) in &record_fields_snapshot {
                         if let Some(field_idx) = fields.iter().position(|f| f == field_name) {
                             if let Some(&gc_type_idx) = self.record_type_indices.get(type_name) {
                                 ctx.emit(Instruction::StructGet(gc_type_idx, field_idx as u32));
@@ -1314,17 +1327,21 @@ impl Lower {
 
                 if let Some(ref tn) = type_name_hint {
                     // 型名が判明: 正確に解決
-                    if let Some(fields) = self.record_fields.get(tn) {
-                        found_type = Some((tn.clone(), fields.clone()));
+                    if let Some(fields) = self.record_fields.get(tn).cloned() {
+                        found_type = Some((tn.clone(), fields));
                     }
                 }
 
                 if found_type.is_none() {
                     // フォールバック: フィールド名で全レコード型を走査
-                    for (type_name, fields) in &self.record_fields {
+                    let record_fields_snapshot: Vec<(String, Vec<String>)> = self.record_fields
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect();
+                    for (type_name, fields) in record_fields_snapshot {
                         let all_match = update_fields.iter().all(|(n, _)| fields.contains(n));
                         if all_match {
-                            found_type = Some((type_name.clone(), fields.clone()));
+                            found_type = Some((type_name, fields));
                             break;
                         }
                     }
@@ -1411,7 +1428,7 @@ impl Lower {
     }
 
     /// 二項演算子の IR 命令を出力
-    pub(crate) fn emit_binop(&self, ctx: &mut FuncCtx, op: &str) -> Result<(), LowerError> {
+    pub(crate) fn emit_binop(&mut self, ctx: &mut FuncCtx, op: &str) -> Result<(), LowerError> {
         match op {
             "+" => ctx.emit(Instruction::I64Add),
             "-" => ctx.emit(Instruction::I64Sub),
@@ -1461,6 +1478,20 @@ impl Lower {
                     msg: format!("未知の二項演算子: {}", op),
                 });
             }
+        }
+        Ok(())
+    }
+
+    /// 文字列キーの場合に FNV-1a ハッシュ呼び出しを挿入する
+    fn emit_string_key_hash(&self, ctx: &mut FuncCtx, key_expr: &Expr) -> Result<(), LowerError> {
+        let is_string_key = self.infer_expr_type_name(key_expr)
+            .map(|t| t == "String")
+            .unwrap_or(false);
+        if is_string_key {
+            let hash_idx = *self.func_indices.get("__fnv1a_hash").ok_or_else(|| {
+                LowerError::UndefinedFunction { name: "__fnv1a_hash".to_string() }
+            })?;
+            ctx.emit(Instruction::Call(hash_idx));
         }
         Ok(())
     }

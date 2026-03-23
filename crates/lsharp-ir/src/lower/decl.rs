@@ -338,7 +338,7 @@ impl Lower {
 
     /// 関数を IR に変換
     pub(crate) fn lower_function(
-        &self,
+        &mut self,
         name: &str,
         params: &[Param],
         body: &Expr,

@@ -146,7 +146,7 @@ fn test_lower_undefined_variable_error() {
 #[test]
 fn test_emit_binop_unknown_operator_returns_error() {
     // 未知の二項演算子でエラーが返ることを確認 (R-M2)
-    let lowerer = Lower::new();
+    let mut lowerer = Lower::new();
     let mut ctx = FuncCtx::new("test".to_string());
     let result = lowerer.emit_binop(&mut ctx, "unknown_op");
     assert!(result.is_err(), "未知の演算子 'unknown_op' でエラーが返るべき");
@@ -160,7 +160,7 @@ fn test_emit_binop_unknown_operator_returns_error() {
 #[test]
 fn test_emit_binop_known_operators_succeed() {
     // 既知の演算子は全て成功すること (R-M2 回帰テスト)
-    let lowerer = Lower::new();
+    let mut lowerer = Lower::new();
     let known_ops = ["+", "-", "*", "/", "%", "+.", "-.", "*.", "/.",
                      "==", "=", "!=", "<", ">", "<=", ">=", "and", "or"];
     for op in &known_ops {
