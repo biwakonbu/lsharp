@@ -216,9 +216,9 @@
 ## Phase 9: エコシステム (セルフホスト完了後)
 
 ### P9-1: REPL
-- [ ] `lsharp repl` サブコマンド
+- [x] `lsharp repl` サブコマンド -- cmd_repl 実装、式入力→コンパイル→WASI実行
 - [ ] readline ライブラリ統合
-- [ ] 式入力 → パイプライン実行 → 結果表示
+- [x] 式入力 → パイプライン実行 → 結果表示 -- parse→infer→lower→codegen→wasmtime
 
 ### P9-2: LSP
 - [ ] `crates/lsharp-lsp` クレート作成

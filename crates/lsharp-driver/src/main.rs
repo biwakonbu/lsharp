@@ -101,6 +101,9 @@ enum Command {
         #[arg(long)]
         emit_trailers: bool,
     },
+
+    /// 対話的 REPL (Read-Eval-Print Loop)
+    Repl,
 }
 
 fn main() -> miette::Result<()> {
@@ -342,6 +345,10 @@ fn main() -> miette::Result<()> {
             }
 
             println!("ドキュメント検証OK: {}", file.display());
+        }
+
+        Command::Repl => {
+            cmd_repl()?;
         }
     }
 
@@ -703,5 +710,75 @@ version = "0.1.0"
     println!("  cd {name}");
     println!("  lsharp compile src/main.ls");
 
+    Ok(())
+}
+
+/// P9-1: 対話的 REPL
+fn cmd_repl() -> miette::Result<()> {
+    use std::io::{self, BufRead, Write};
+
+    println!("L# REPL v0.1.0");
+    println!("式を入力してください。終了するには Ctrl+D を押してください。");
+    println!();
+
+    let stdin = io::stdin();
+    let mut infer = lsharp_types::infer::Infer::new();
+    let mut expr_count = 0;
+
+    loop {
+        print!("lsharp> ");
+        io::stdout().flush().unwrap();
+
+        let mut line = String::new();
+        if stdin.lock().read_line(&mut line).unwrap() == 0 {
+            println!();
+            break;
+        }
+
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        // 式を main 関数でラップしてコンパイル・実行
+        let source = format!("(defn main [] {})", line);
+
+        match lsharp_syntax::parse(&source) {
+            Ok(program) => {
+                // 新しい Infer インスタンスを毎回作成 (状態リセット)
+                let mut local_infer = lsharp_types::infer::Infer::new();
+                match local_infer.infer_program(&program) {
+                    Ok(type_results) => {
+                        let mut lower = lsharp_ir::lower::Lower::new();
+                        match lower.lower_program(&program, &type_results) {
+                            Ok(module) => {
+                                match lsharp_wasm::wasi::emit_wasm_wasi(&module) {
+                                    Ok(wasm_bytes) => {
+                                        match lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes) {
+                                            Ok(output) => {
+                                                let output = output.trim();
+                                                if !output.is_empty() {
+                                                    println!("{}", output);
+                                                }
+                                                expr_count += 1;
+                                            }
+                                            Err(e) => eprintln!("実行エラー: {}", e),
+                                        }
+                                    }
+                                    Err(e) => eprintln!("コード生成エラー: {}", e),
+                                }
+                            }
+                            Err(e) => eprintln!("IR 変換エラー: {}", e),
+                        }
+                    }
+                    Err(e) => eprintln!("型エラー: {}", e),
+                }
+            }
+            Err(e) => eprintln!("パースエラー: {}", e),
+        }
+    }
+
+    let _ = infer; // suppress unused warning
+    println!("セッション終了。{} 式を評価しました。", expr_count);
     Ok(())
 }
