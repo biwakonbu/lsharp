@@ -192,18 +192,18 @@
 - [~] Rust 版 parser との出力比較テスト -- E2E テスト 1件パス (基本 S 式パース)
 
 ### P8-3: L# で型推論を実装
-- [ ] 型 ADT (Con, Var, Fun) 定義
-- [ ] Substitution (HashMap ベース)
+- [x] 型 ADT (Con, Var, Fun) 定義 -- selfhost/Type.ls (整数タグ + Vector)
+- [x] Substitution (HashMap ベース) -- subst-new/bind/lookup 実装
 - [ ] Unification アルゴリズム
 - [ ] let 多相 + 型注釈
-- [ ] Rust 版型推論との出力比較テスト
+- [~] Rust 版型推論との出力比較テスト -- E2E テスト 1件パス (型構築 + Substitution)
 
 ### P8-4: L# で IR Lowering + Codegen を実装
-- [ ] IR ADT 定義
+- [x] IR ADT 定義 -- selfhost/IR.ls (命令タグ + Vector)
 - [ ] AST → IR 変換
 - [ ] LEB128 エンコーディング
 - [ ] Wasm バイナリ生成
-- [ ] Rust 版 codegen との出力比較テスト
+- [~] Rust 版 codegen との出力比較テスト -- E2E テスト 1件パス (IR 命令構築)
 
 ### P8-5: ブートストラップ検証
 - [ ] Rust 版 → stage1.wasm (L# コンパイラ)

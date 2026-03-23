@@ -2402,3 +2402,49 @@ fn test_e2e_selfhost_parser_basic() {
     assert_eq!(result.trim(), "20\n2");
 }
 
+#[test]
+fn test_e2e_selfhost_type_system() {
+    // セルフホスティング型システム: 型 ADT + Substitution
+    let result = compile_and_run(r#"
+        (defn make-type-con [hash]
+          (vector-push (vector-push (vector-new 2) 1) hash))
+        (defn make-type-var [id]
+          (vector-push (vector-push (vector-new 2) 2) id))
+        (defn type-tag [ty] (vector-get ty 0))
+        (defn type-val [ty] (vector-get ty 1))
+        (defn subst-new [] (map-new))
+        (defn subst-bind [s var-id ty-tag] (map-insert s var-id ty-tag))
+        (defn subst-lookup [s var-id] (map-get s var-id))
+        (defn main []
+          (let [int-ty (make-type-con 0)
+                var-ty (make-type-var 42)
+                s (subst-bind (subst-new) 42 0)]
+            (do
+              (print (type-tag int-ty))
+              (print (type-tag var-ty))
+              (print (type-val var-ty))
+              (print (subst-lookup s 42))
+              0)))
+    "#);
+    assert_eq!(result.trim(), "1\n2\n42\n0");
+}
+
+#[test]
+fn test_e2e_selfhost_ir() {
+    // セルフホスティング IR: 命令構築
+    let result = compile_and_run(r#"
+        (defn make-instr [opcode operand]
+          (vector-push (vector-push (vector-new 2) opcode) operand))
+        (defn main []
+          (let [c (make-instr 1 42)
+                g (make-instr 10 0)]
+            (do
+              (print (vector-get c 0))
+              (print (vector-get c 1))
+              (print (vector-get g 0))
+              (print (vector-get g 1))
+              0)))
+    "#);
+    assert_eq!(result.trim(), "1\n42\n10\n0");
+}
+
