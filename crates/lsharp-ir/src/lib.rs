@@ -207,6 +207,15 @@ pub enum Instruction {
     // メモリ管理
     MemoryGrow,
     MemorySize,
+
+    // 間接呼び出し (クロージャ用)
+    /// call_indirect: テーブルインデックスと型インデックスで間接呼び出し
+    /// type_idx はリフト関数の型インデックスを指す
+    CallIndirect(u32),
+
+    /// 関数インデックスを i32 値としてスタックに積む
+    /// Call(idx) と同じインデックス空間。codegen でリマップされる。
+    FuncIdx(u32),
 }
 
 impl fmt::Display for Instruction {
@@ -284,6 +293,8 @@ impl fmt::Display for Instruction {
             // メモリ管理
             Instruction::MemoryGrow => write!(f, "memory.grow"),
             Instruction::MemorySize => write!(f, "memory.size"),
+            Instruction::CallIndirect(type_idx) => write!(f, "call_indirect {type_idx}"),
+            Instruction::FuncIdx(idx) => write!(f, "func_idx {idx}"),
         }
     }
 }
@@ -476,6 +487,16 @@ fn remap_instruction(
                 *idx = new_idx;
             }
         }
+        Instruction::CallIndirect(_) => {
+            // CallIndirect の型インデックスはモジュールローカルなのでリマップ不要
+            // （wasi.rs で実際の Wasm 型インデックスに変換される）
+        }
+        Instruction::FuncIdx(idx) => {
+            // FuncIdx は Call と同じインデックス空間
+            if let Some(&new_idx) = func_remap.get(&(mod_idx, *idx)) {
+                *idx = new_idx;
+            }
+        }
         _ => {}
     }
 }
@@ -521,6 +542,21 @@ fn remap_instruction_with_imports(
         Instruction::RefCast(idx) => {
             if let Some(&new_idx) = gc_type_remap.get(&(mod_idx, *idx)) {
                 *idx = new_idx;
+            }
+        }
+        Instruction::CallIndirect(_) => {
+            // CallIndirect の型インデックスはリマップ不要
+        }
+        Instruction::FuncIdx(idx) => {
+            // FuncIdx は Call と同じインデックス空間
+            if *idx < module_import_count {
+                if let Some(&new_idx) = import_remap.get(&(mod_idx, *idx)) {
+                    *idx = new_idx;
+                }
+            } else {
+                if let Some(&new_idx) = func_remap.get(&(mod_idx, *idx)) {
+                    *idx = new_idx;
+                }
             }
         }
         _ => {}

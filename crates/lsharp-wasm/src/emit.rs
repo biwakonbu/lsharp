@@ -182,6 +182,13 @@ where
             Instruction::CallIndirect(type_idx) => {
                 func.instruction(&W::CallIndirect { type_index: *type_idx, table_index: 0 });
             }
+            // 関数インデックスを i32 値として積む (codegen でリマップ済み)
+            Instruction::FuncIdx(idx) => {
+                // Call のリマップコールバックは使わず、直接 i32.const にする
+                // ここに来る時点で既に Wasm インデックスにリマップされていない
+                // → wasi.rs の emit_instructions_wasi で処理する
+                func.instruction(&W::I32Const(*idx as i32));
+            }
         };
     }
 

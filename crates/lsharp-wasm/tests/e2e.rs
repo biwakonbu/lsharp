@@ -1085,7 +1085,6 @@ fn test_e2e_lambda_no_free_vars() {
 }
 
 #[test]
-#[ignore = "P3-2 クロージャ変換: wasi.rs に table section 追加が必要"]
 fn test_e2e_lambda_with_free_vars_compile() {
     // 自由変数あり Lambda がリフトされてコンパイル可能
     let source = r#"
@@ -1153,7 +1152,6 @@ fn test_e2e_adt_nested_match() {
 // === クロージャ変換 E2E テスト ===
 
 #[test]
-#[ignore = "P3-2 クロージャ変換: wasi.rs に table section 追加が必要"]
 fn test_e2e_closure_capture_and_call() {
     // クロージャが自由変数をキャプチャして呼び出し可能
     // apply は第一級関数 (クロージャ) を引数として受け取り、call_indirect で呼び出す
@@ -1166,7 +1164,6 @@ fn test_e2e_closure_capture_and_call() {
 }
 
 #[test]
-#[ignore = "P3-2 クロージャ変換: wasi.rs に table section 追加が必要"]
 fn test_e2e_closure_multiple_captures() {
     // 複数の自由変数をキャプチャするクロージャ
     let output = compile_and_run(
@@ -1179,7 +1176,6 @@ fn test_e2e_closure_multiple_captures() {
 }
 
 #[test]
-#[ignore = "P3-2 クロージャ変換: wasi.rs に table section 追加が必要"]
 fn test_e2e_closure_no_capture() {
     // 自由変数なしクロージャ（Lambda Lifting のみ）
     let output = compile_and_run(

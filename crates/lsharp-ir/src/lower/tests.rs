@@ -894,7 +894,8 @@ fn test_lambda_no_free_vars_lifted() {
 
 #[test]
 fn test_lambda_with_free_vars_captures() {
-    // 自由変数あり Lambda: 自由変数が追加パラメータとしてリフトされる
+    // 自由変数あり Lambda: 統一呼び出し規約 (元パラメータ + closure_ptr)
+    // 自由変数は closure_ptr から読み出す
     let source = r#"
         (defn make-adder [n] (fn [x] (+ x n)))
         (defn main [] 0)
@@ -903,9 +904,12 @@ fn test_lambda_with_free_vars_captures() {
     let lifted = module.functions.iter().find(|f| f.name.starts_with("__lambda"));
     assert!(lifted.is_some(), "Lambda はリフトされた関数として生成されるべき: {:?}",
         module.functions.iter().map(|f| &f.name).collect::<Vec<_>>());
-    // リフト先関数は自由変数分のパラメータが追加されるべき (x + n = 2)
+    // 統一呼び出し規約: 元パラメータ x + closure_ptr = 2
     let lifted = lifted.unwrap();
-    assert_eq!(lifted.params.len(), 2, "自由変数 n が追加パラメータとして含まれるべき");
+    assert_eq!(lifted.params.len(), 2, "統一呼び出し規約: 元パラメータ 1 + closure_ptr 1 = 2");
+    // 本体に I64Load が含まれる (closure_ptr からキャプチャ値 n を読み出す)
+    let has_load = lifted.body.iter().any(|i| matches!(i, Instruction::I64Load { .. }));
+    assert!(has_load, "自由変数 n は closure_ptr から I64Load で読み出すべき: {:?}", lifted.body);
 }
 
 #[test]
@@ -1031,23 +1035,23 @@ fn test_closure_returns_tagged_pointer() {
     "#;
     let module = lower(source);
     let make_adder = module.functions.iter().find(|f| f.name == "make-adder").unwrap();
-    // タグ付きポインタ: I64ExtendI32U + I64Const(1<<63) + I64Add
-    let has_tag_ptr = make_adder.body.iter().any(|i| matches!(i, Instruction::I64ExtendI32U));
+    // タグ付きポインタ: I64Const(1<<63) + I64Add で最上位ビットをセット
+    let has_tag_ptr = make_adder.body.iter().any(|i| matches!(i, Instruction::I64Const(n) if *n == (1i64 << 63)));
     assert!(has_tag_ptr, "クロージャはタグ付きポインタを返すべき: {:?}", make_adder.body);
 }
 
 #[test]
-fn test_closure_no_free_vars_no_heap() {
-    // 自由変数なし Lambda はクロージャオブジェクトを確保しない（単に関数インデックスを返す）
+fn test_closure_no_free_vars_still_allocates() {
+    // 自由変数なし Lambda もクロージャオブジェクトを確保する（統一呼び出し規約）
     let source = r#"
         (defn make-inc [] (fn [x] (+ x 1)))
         (defn main [] 0)
     "#;
     let module = lower(source);
     let make_inc = module.functions.iter().find(|f| f.name == "make-inc").unwrap();
-    // __alloc への Call が含まれないべき
+    // __alloc への Call が含まれるべき
     let has_alloc = make_inc.body.iter().any(|i| matches!(i, Instruction::Call(1)));
-    assert!(!has_alloc, "自由変数なし Lambda はクロージャオブジェクトを確保しない: {:?}", make_inc.body);
+    assert!(has_alloc, "自由変数なし Lambda もクロージャオブジェクトを確保すべき: {:?}", make_inc.body);
 }
 
 // --- ADT パターンマッチ リニアメモリ版テスト ---

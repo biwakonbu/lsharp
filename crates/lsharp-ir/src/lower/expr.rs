@@ -125,6 +125,18 @@ impl Lower {
                         // print は Unit を返す
                         ctx.emit(Instruction::I64Const(0));
                     }
+                    // print-string: 文字列を出力 (改行なし)
+                    Expr::Var(_, name) if name == "print-string" => {
+                        if let Some(arg) = args.first() {
+                            self.lower_expr(ctx, arg)?;
+                        }
+                        let idx = *self.func_indices.get("print-string").ok_or_else(|| {
+                            LowerError::UndefinedFunction { name: "print-string".to_string() }
+                        })?;
+                        ctx.emit(Instruction::Call(idx));
+                        // print-string は Unit を返す
+                        ctx.emit(Instruction::I64Const(0));
+                    }
                     // __alloc 関数 (Bump Allocator)
                     Expr::Var(_, name) if name == "__alloc" => {
                         if let Some(arg) = args.first() {
@@ -249,18 +261,43 @@ impl Lower {
                     }
                     // ユーザー定義関数呼び出し（トレイト静的ディスパッチ対応）
                     Expr::Var(_, name) => {
-                        // 引数を評価
-                        for arg in args {
-                            self.lower_expr(ctx, arg)?;
-                        }
                         if let Some(&idx) = self.func_indices.get(name.as_str()) {
+                            // 既知の関数: 引数を評価して直接呼び出し
+                            for arg in args {
+                                self.lower_expr(ctx, arg)?;
+                            }
                             ctx.emit(Instruction::Call(idx));
                         } else if let Some(&idx) = self.lifted_func_indices.borrow().get(name.as_str()) {
                             // Lambda Lifting で生成された関数の呼び出し
+                            for arg in args {
+                                self.lower_expr(ctx, arg)?;
+                            }
                             ctx.emit(Instruction::Call(idx));
                         } else if let Some(idx) = self.resolve_trait_dispatch(name, args) {
                             // P5-6: トレイトメソッドの静的ディスパッチ自動解決
+                            for arg in args {
+                                self.lower_expr(ctx, arg)?;
+                            }
                             ctx.emit(Instruction::Call(idx));
+                        } else if let Some(&local_idx) = ctx.locals_map.get(name) {
+                            // ローカル変数に格納されたクロージャの間接呼び出し
+                            // 統一呼び出し規約: (元引数..., closure_ptr) -> result
+                            // call_indirect のスタック: [arg0, ..., argN, closure_ptr, table_idx]
+
+                            // 1. 元引数を評価してスタックに積む
+                            for arg in args {
+                                self.lower_expr(ctx, arg)?;
+                            }
+                            // 2. クロージャポインタをスタックに積む（リフト関数の最後のパラメータ）
+                            ctx.emit(Instruction::LocalGet(local_idx));
+                            // 3. テーブルインデックス (func_idx) を取得してスタックに積む
+                            //    クロージャポインタからタグ解除して func_idx を読み出す
+                            ctx.emit(Instruction::LocalGet(local_idx));
+                            ctx.emit(Instruction::I32WrapI64);
+                            ctx.emit(Instruction::I32Load { offset: 4 });
+                            // 4. call_indirect: 型は (i64 * (args.len() + 1)) -> i64
+                            let call_type_id = args.len() as u32 + 1; // 元引数 + closure_ptr
+                            ctx.emit(Instruction::CallIndirect(call_type_id));
                         } else {
                             return Err(LowerError::UndefinedFunction {
                                 name: name.clone(),
@@ -318,7 +355,9 @@ impl Lower {
                     .collect();
                 free_var_list.sort();
 
-                // リフト先関数を構築: (元パラメータ + 自由変数)
+                // リフト先関数を構築:
+                // 統一呼び出し規約: (元パラメータ..., closure_ptr) -> result
+                // リフト関数内部で closure_ptr からキャプチャ値を読み出す
                 let mut lifted_ctx = FuncCtx::new(lambda_name.clone());
                 // 元のパラメータを登録
                 for p in params {
@@ -327,19 +366,33 @@ impl Lower {
                     lifted_ctx.param_count += 1;
                     lifted_ctx.next_local += 1;
                 }
-                // 自由変数を追加パラメータとして登録
-                for fv in &free_var_list {
-                    let idx = lifted_ctx.next_local;
-                    lifted_ctx.locals_map.insert(fv.clone(), idx);
-                    lifted_ctx.param_count += 1;
-                    lifted_ctx.next_local += 1;
+                // closure_ptr パラメータを追加（常に最後のパラメータ）
+                let closure_ptr_idx = lifted_ctx.next_local;
+                lifted_ctx.locals_map.insert("__closure_ptr".to_string(), closure_ptr_idx);
+                lifted_ctx.param_count += 1;
+                lifted_ctx.next_local += 1;
+
+                // 自由変数をローカルに読み出すプロローグを生成
+                let mut prologue = Vec::new();
+                for (i, fv) in free_var_list.iter().enumerate() {
+                    let fv_local = lifted_ctx.alloc_local(fv.clone());
+                    // closure_ptr からキャプチャ値を読み出す:
+                    // fv_local = i64.load(i32.wrap(closure_ptr) + 8 + i*8)
+                    prologue.push(Instruction::LocalGet(closure_ptr_idx));
+                    prologue.push(Instruction::I32WrapI64);
+                    prologue.push(Instruction::I64Load { offset: 8 + (i as u32) * 8 });
+                    prologue.push(Instruction::LocalSet(fv_local));
                 }
 
                 // Lambda の本体を変換
                 self.lower_expr(&mut lifted_ctx, body)?;
 
-                // リフト先関数のパラメータ型 (全て i64)
-                let total_params = params.len() + free_var_list.len();
+                // プロローグを本体の先頭に挿入
+                let mut full_body = prologue;
+                full_body.extend(lifted_ctx.instructions);
+
+                // リフト先関数のパラメータ型: (元パラメータ..., closure_ptr)
+                let total_params = params.len() + 1; // +1 は closure_ptr
                 let extra_locals = vec![IrType::I64; (lifted_ctx.next_local - lifted_ctx.param_count) as usize];
 
                 let lifted_func = Function {
@@ -347,7 +400,7 @@ impl Lower {
                     params: vec![IrType::I64; total_params],
                     result: IrType::I64,
                     locals: extra_locals,
-                    body: lifted_ctx.instructions,
+                    body: full_body,
                     is_export: false,
                 };
 
@@ -357,8 +410,53 @@ impl Lower {
                 self.lifted_func_indices.borrow_mut().insert(lambda_name, func_idx);
                 self.lifted_functions.borrow_mut().push(lifted_func);
 
-                // Lambda 式の評価結果として関数インデックスを返す
-                ctx.emit(Instruction::I64Const(func_idx as i64));
+                // クロージャオブジェクトをヒープに確保（自由変数の有無に関わらず）
+                // レイアウト: [heap_tag=4: i32, func_idx: i32, captured_0: i64, ...]
+                {
+                    let n_captures = free_var_list.len();
+                    let alloc_size = 8 + (n_captures as i64) * 8; // 最低 8 バイト (ヘッダのみ)
+
+                    // __alloc(size) でメモリ確保
+                    ctx.emit(Instruction::I64Const(alloc_size));
+                    let alloc_idx = *self.func_indices.get("__alloc").unwrap_or(&1);
+                    ctx.emit(Instruction::Call(alloc_idx));
+                    // __alloc は i64 を返す → i64 のままローカルに保存
+                    let addr_local = ctx.alloc_local("_closure_addr".to_string());
+                    ctx.emit(Instruction::LocalSet(addr_local));
+
+                    // heap_tag=4 (CLOSURE) を offset 0 に書き込む
+                    ctx.emit(Instruction::LocalGet(addr_local));
+                    ctx.emit(Instruction::I32WrapI64);
+                    ctx.emit(Instruction::I32Const(super::HEAP_TAG_CLOSURE));
+                    ctx.emit(Instruction::I32Store { offset: 0 });
+
+                    // func_idx を offset 4 に書き込む
+                    ctx.emit(Instruction::LocalGet(addr_local));
+                    ctx.emit(Instruction::I32WrapI64);
+                    ctx.emit(Instruction::FuncIdx(func_idx));
+                    ctx.emit(Instruction::I32Store { offset: 4 });
+
+                    // キャプチャ値を書き込む: mem[addr + 8 + i*8] = captured_i
+                    for (i, fv) in free_var_list.iter().enumerate() {
+                        ctx.emit(Instruction::LocalGet(addr_local));
+                        ctx.emit(Instruction::I32WrapI64);
+                        if let Some(&fv_local) = ctx.locals_map.get(fv) {
+                            ctx.emit(Instruction::LocalGet(fv_local));
+                        } else {
+                            // フォールバック: 0 を書き込む
+                            ctx.emit(Instruction::I64Const(0));
+                        }
+                        ctx.emit(Instruction::I64Store {
+                            offset: 8 + (i as u32) * 8,
+                        });
+                    }
+
+                    // タグ付きポインタを返す: addr は i64 のまま
+                    // 最上位ビットをセット: addr | (1 << 63)
+                    ctx.emit(Instruction::LocalGet(addr_local));
+                    ctx.emit(Instruction::I64Const(1i64 << 63));
+                    ctx.emit(Instruction::I64Add);
+                }
             }
 
             Expr::Ann(_, expr, _) => {
