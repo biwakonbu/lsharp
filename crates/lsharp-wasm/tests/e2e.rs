@@ -2277,3 +2277,93 @@ fn test_e2e_file_exists() {
     assert_eq!(result.trim(), "0");
     let _ = std::fs::remove_dir_all(&tmpdir);
 }
+
+// === セルフホスティング: Lexer テスト ===
+
+#[test]
+fn test_e2e_selfhost_lexer_basic() {
+    // セルフホスティング Lexer: 基本トークナイズ
+    let result = compile_and_run(r#"
+        (defn is-ws [c]
+          (if (== c 32) true (if (== c 9) true (if (== c 10) true (== c 13)))))
+        (defn is-digit-char [c]
+          (if (>= c 48) (<= c 57) false))
+        (defn is-alpha-char [c]
+          (if (>= c 65) (if (<= c 90) true (if (>= c 97) (<= c 122) false)) false))
+        (defn is-symbol-start [c]
+          (if (is-alpha-char c) true
+            (if (== c 95) true (if (== c 43) true (if (== c 45) true
+              (if (== c 42) true (if (== c 47) true (if (== c 61) true
+                (if (== c 60) true (if (== c 62) true (if (== c 33) true
+                  (if (== c 63) true false))))))))))))
+        (defn is-symbol-char [c]
+          (if (is-symbol-start c) true (if (is-digit-char c) true (if (== c 46) true (== c 45)))))
+        (defn skip-comment [src pos len]
+          (if (>= pos len) pos
+            (if (== (string-char-at src pos) 10) (+ pos 1)
+              (skip-comment src (+ pos 1) len))))
+        (defn skip-ws-loop [src pos len]
+          (if (>= pos len) pos
+            (let [c (string-char-at src pos)]
+              (if (is-ws c) (skip-ws-loop src (+ pos 1) len)
+                (if (== c 59) (let [end (skip-comment src (+ pos 1) len)]
+                  (skip-ws-loop src end len)) pos)))))
+        (defn classify-symbol [name]
+          (if (string-eq name "defn") 30
+            (if (string-eq name "let") 31
+              (if (string-eq name "if") 32
+                (if (string-eq name "true") 13
+                  (if (string-eq name "false") 14 20))))))
+        (defn scan-digits [src pos len]
+          (if (>= pos len) pos
+            (if (is-digit-char (string-char-at src pos)) (scan-digits src (+ pos 1) len) pos)))
+        (defn scan-symbol-end [src pos len]
+          (if (>= pos len) pos
+            (if (is-symbol-char (string-char-at src pos)) (scan-symbol-end src (+ pos 1) len) pos)))
+        (defn lex-one [src pos len]
+          (if (>= pos len) (+ (* 99 1000000) pos)
+            (let [c (string-char-at src pos)]
+              (if (== c 40) (+ (* 0 1000000) (+ pos 1))
+                (if (== c 41) (+ (* 1 1000000) (+ pos 1))
+                  (if (== c 91) (+ (* 2 1000000) (+ pos 1))
+                    (if (== c 93) (+ (* 3 1000000) (+ pos 1))
+                      (if (is-digit-char c)
+                        (let [end (scan-digits src (+ pos 1) len)]
+                          (+ (* 10 1000000) end))
+                        (if (is-symbol-start c)
+                          (let [end (scan-symbol-end src (+ pos 1) len)
+                                name (substring src pos end)
+                                kind (classify-symbol name)]
+                            (+ (* kind 1000000) end))
+                          (+ (* 99 1000000) (+ pos 1)))))))))))
+        (defn tokenize-loop [src pos len tokens]
+          (let [ws-pos (skip-ws-loop src pos len)]
+            (if (>= ws-pos len)
+              (vector-push tokens 99)
+              (let [result (lex-one src ws-pos len)
+                    kind (/ result 1000000)
+                    end-pos (- result (* kind 1000000))]
+                (if (== kind 99)
+                  (vector-push tokens 99)
+                  (tokenize-loop src end-pos len (vector-push tokens kind)))))))
+        (defn tokenize [src]
+          (tokenize-loop src 0 (string-length src) (vector-new 16)))
+        (defn main []
+          (let [tokens (tokenize "(defn main [] 42)")
+                len (vector-length tokens)]
+            (do
+              (print len)
+              (print (vector-get tokens 0))
+              (print (vector-get tokens 1))
+              (print (vector-get tokens 2))
+              (print (vector-get tokens 3))
+              (print (vector-get tokens 4))
+              (print (vector-get tokens 5))
+              (print (vector-get tokens 6))
+              (print (vector-get tokens 7))
+              0)))
+    "#);
+    // 8 tokens: ( defn main [ ] 42 ) EOF
+    // kinds:    0  30   20  2 3 10  1  99
+    assert_eq!(result.trim(), "8\n0\n30\n20\n2\n3\n10\n1\n99");
+}

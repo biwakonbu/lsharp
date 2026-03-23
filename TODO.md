@@ -182,9 +182,9 @@
 > HKT/GADT/トレイト制約等の高度機能はセルフホスト後に段階追加
 
 ### P8-1: L# で Lexer を実装
-- [ ] Token ADT 定義
-- [ ] 文字列走査による字句解析
-- [ ] Rust 版 lexer との出力比較テスト
+- [x] Token ADT 定義 -- selfhost/Token.ls (整数タグ方式)
+- [x] 文字列走査による字句解析 -- selfhost/Lexer.ls (tokenize/lex-one/classify-symbol)
+- [~] Rust 版 lexer との出力比較テスト -- E2E テスト 1件パス (基本トークナイズ)
 
 ### P8-2: L# で Parser を実装
 - [ ] AST の ADT 定義
