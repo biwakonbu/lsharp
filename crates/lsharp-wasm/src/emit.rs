@@ -119,6 +119,65 @@ where
             // グローバル変数
             Instruction::GlobalGet(idx) => { func.instruction(&W::GlobalGet(*idx)); }
             Instruction::GlobalSet(idx) => { func.instruction(&W::GlobalSet(*idx)); }
+
+            // メモリ操作
+            Instruction::I32Load { offset } => {
+                func.instruction(&W::I32Load(wasm_encoder::MemArg {
+                    offset: *offset as u64,
+                    align: 2, // 4バイトアライン
+                    memory_index: 0,
+                }));
+            }
+            Instruction::I32Store { offset } => {
+                func.instruction(&W::I32Store(wasm_encoder::MemArg {
+                    offset: *offset as u64,
+                    align: 2,
+                    memory_index: 0,
+                }));
+            }
+            Instruction::I32Load8U { offset } => {
+                func.instruction(&W::I32Load8U(wasm_encoder::MemArg {
+                    offset: *offset as u64,
+                    align: 0, // 1バイトアライン
+                    memory_index: 0,
+                }));
+            }
+            Instruction::I32Store8 { offset } => {
+                func.instruction(&W::I32Store8(wasm_encoder::MemArg {
+                    offset: *offset as u64,
+                    align: 0,
+                    memory_index: 0,
+                }));
+            }
+            Instruction::I64Load { offset } => {
+                func.instruction(&W::I64Load(wasm_encoder::MemArg {
+                    offset: *offset as u64,
+                    align: 3, // 8バイトアライン
+                    memory_index: 0,
+                }));
+            }
+            Instruction::I64Store { offset } => {
+                func.instruction(&W::I64Store(wasm_encoder::MemArg {
+                    offset: *offset as u64,
+                    align: 3,
+                    memory_index: 0,
+                }));
+            }
+            // 型変換
+            Instruction::I64ExtendI32U => { func.instruction(&W::I64ExtendI32U); }
+            // i32 算術演算
+            Instruction::I32Add => { func.instruction(&W::I32Add); }
+            Instruction::I32Sub => { func.instruction(&W::I32Sub); }
+            Instruction::I32Mul => { func.instruction(&W::I32Mul); }
+            // i32 比較
+            Instruction::I32GtU => { func.instruction(&W::I32GtU); }
+            Instruction::I32GeU => { func.instruction(&W::I32GeU); }
+            // ビット操作
+            Instruction::I32Shl => { func.instruction(&W::I32Shl); }
+            Instruction::I32ShrU => { func.instruction(&W::I32ShrU); }
+            // メモリ管理
+            Instruction::MemoryGrow => { func.instruction(&W::MemoryGrow(0)); }
+            Instruction::MemorySize => { func.instruction(&W::MemorySize(0)); }
         };
     }
 

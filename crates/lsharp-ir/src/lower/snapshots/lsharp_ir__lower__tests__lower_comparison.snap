@@ -1,0 +1,9 @@
+---
+source: crates/lsharp-ir/src/lower/tests.rs
+expression: module.dump()
+---
+fn main() -> i64:
+  i64.const 1
+  i64.const 2
+  i64.lt_s
+  i64.extend_i32_s

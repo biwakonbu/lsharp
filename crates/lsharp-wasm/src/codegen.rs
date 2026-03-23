@@ -23,6 +23,10 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     // Type 0: print 関数の型 (i64) -> ()
     types.ty().function(vec![ValType::I64], vec![]);
 
+    // Type 1: __alloc 関数の型 (i64) -> (i64)
+    let alloc_type_idx = types.len();
+    types.ty().function(vec![ValType::I64], vec![ValType::I64]);
+
     // ユーザー定義関数の型を追加
     let mut func_type_indices: Vec<u32> = Vec::new();
     for func in &module.functions {
@@ -38,6 +42,8 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let mut imports = ImportSection::new();
     // print: (i64) -> ()  (type index 0)
     imports.import("env", "print", EntityType::Function(0));
+    // __alloc: (i64) -> (i64)  (type index 1) - Bump Allocator スタブ
+    imports.import("env", "__alloc", EntityType::Function(alloc_type_idx));
     wasm_module.section(&imports);
 
     // === Function Section ===
@@ -63,7 +69,7 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     exports.export("memory", ExportKind::Memory, 0);
 
     // main 関数とその他の export
-    let import_count: u32 = 1; // print
+    let import_count: u32 = 2; // print + __alloc
     for (i, func) in module.functions.iter().enumerate() {
         if func.is_export {
             exports.export(&func.name, ExportKind::Func, import_count + i as u32);
@@ -145,7 +151,14 @@ mod tests {
             Ok(())
         });
 
-        let instance = Instance::new(&mut store, &module, &[print_func.into()]).unwrap();
+        // __alloc 関数のスタブ（テスト用ダミー）
+        let alloc_ty = FuncType::new(&engine, [ValType::I64], [ValType::I64]);
+        let alloc_func = Func::new(&mut store, alloc_ty, |_caller, _params, results| {
+            results[0] = Val::I64(1024); // ダミーアドレス
+            Ok(())
+        });
+
+        let instance = Instance::new(&mut store, &module, &[print_func.into(), alloc_func.into()]).unwrap();
 
         let main = instance
             .get_typed_func::<(), i64>(&mut store, "main")

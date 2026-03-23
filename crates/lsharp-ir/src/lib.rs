@@ -178,6 +178,34 @@ pub enum Instruction {
     // グローバル変数
     GlobalGet(u32),         // global.get idx
     GlobalSet(u32),         // global.set idx
+
+    // メモリ操作
+    I32Load { offset: u32 },
+    I32Store { offset: u32 },
+    I32Load8U { offset: u32 },
+    I32Store8 { offset: u32 },
+    I64Load { offset: u32 },
+    I64Store { offset: u32 },
+
+    // 型変換（符号なし拡張）
+    I64ExtendI32U,
+
+    // i32 算術演算
+    I32Add,
+    I32Sub,
+    I32Mul,
+
+    // i32 比較（符号なし）
+    I32GtU,
+    I32GeU,
+
+    // ビット操作
+    I32Shl,
+    I32ShrU,
+
+    // メモリ管理
+    MemoryGrow,
+    MemorySize,
 }
 
 impl fmt::Display for Instruction {
@@ -233,6 +261,28 @@ impl fmt::Display for Instruction {
             Instruction::CallRef(idx) => write!(f, "call_ref {idx}"),
             Instruction::GlobalGet(idx) => write!(f, "global.get {idx}"),
             Instruction::GlobalSet(idx) => write!(f, "global.set {idx}"),
+            // メモリ操作
+            Instruction::I32Load { offset } => write!(f, "i32.load offset={offset}"),
+            Instruction::I32Store { offset } => write!(f, "i32.store offset={offset}"),
+            Instruction::I32Load8U { offset } => write!(f, "i32.load8_u offset={offset}"),
+            Instruction::I32Store8 { offset } => write!(f, "i32.store8 offset={offset}"),
+            Instruction::I64Load { offset } => write!(f, "i64.load offset={offset}"),
+            Instruction::I64Store { offset } => write!(f, "i64.store offset={offset}"),
+            // 型変換
+            Instruction::I64ExtendI32U => write!(f, "i64.extend_i32_u"),
+            // i32 算術演算
+            Instruction::I32Add => write!(f, "i32.add"),
+            Instruction::I32Sub => write!(f, "i32.sub"),
+            Instruction::I32Mul => write!(f, "i32.mul"),
+            // i32 比較
+            Instruction::I32GtU => write!(f, "i32.gt_u"),
+            Instruction::I32GeU => write!(f, "i32.ge_u"),
+            // ビット操作
+            Instruction::I32Shl => write!(f, "i32.shl"),
+            Instruction::I32ShrU => write!(f, "i32.shr_u"),
+            // メモリ管理
+            Instruction::MemoryGrow => write!(f, "memory.grow"),
+            Instruction::MemorySize => write!(f, "memory.size"),
         }
     }
 }
@@ -709,5 +759,123 @@ mod import_dedup_tests {
         };
         let linked = link_modules(&[module]);
         assert!(linked.imports.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod memory_instruction_tests {
+    use super::*;
+
+    #[test]
+    fn test_memory_load_store_instructions() {
+        let instructions = vec![
+            Instruction::I32Const(100),
+            Instruction::I32Load { offset: 0 },
+            Instruction::I32Const(200),
+            Instruction::I32Const(42),
+            Instruction::I32Store { offset: 0 },
+        ];
+        assert_eq!(instructions.len(), 5);
+    }
+
+    #[test]
+    fn test_i64_memory_instructions() {
+        let instructions = vec![
+            Instruction::I32Const(100),
+            Instruction::I64Load { offset: 0 },
+            Instruction::I32Const(200),
+            Instruction::I64Const(12345),
+            Instruction::I64Store { offset: 0 },
+        ];
+        assert_eq!(instructions.len(), 5);
+    }
+
+    #[test]
+    fn test_byte_memory_instructions() {
+        let instructions = vec![
+            Instruction::I32Const(100),
+            Instruction::I32Load8U { offset: 0 },
+            Instruction::I32Const(200),
+            Instruction::I32Const(65),
+            Instruction::I32Store8 { offset: 0 },
+        ];
+        assert_eq!(instructions.len(), 5);
+    }
+
+    #[test]
+    fn test_i32_arithmetic_instructions() {
+        let instructions = vec![
+            Instruction::I32Const(10),
+            Instruction::I32Const(20),
+            Instruction::I32Add,
+            Instruction::I32Sub,
+            Instruction::I32Mul,
+        ];
+        assert_eq!(instructions.len(), 5);
+    }
+
+    #[test]
+    fn test_i32_comparison_instructions() {
+        let instructions = vec![
+            Instruction::I32Const(10),
+            Instruction::I32Const(20),
+            Instruction::I32GtU,
+            Instruction::I32GeU,
+        ];
+        assert_eq!(instructions.len(), 4);
+    }
+
+    #[test]
+    fn test_i32_bitwise_instructions() {
+        let instructions = vec![
+            Instruction::I32Const(0xFF),
+            Instruction::I32Const(4),
+            Instruction::I32Shl,
+            Instruction::I32ShrU,
+        ];
+        assert_eq!(instructions.len(), 4);
+    }
+
+    #[test]
+    fn test_memory_management_instructions() {
+        let instructions = vec![
+            Instruction::MemorySize,
+            Instruction::I32Const(1),
+            Instruction::MemoryGrow,
+        ];
+        assert_eq!(instructions.len(), 3);
+    }
+
+    #[test]
+    fn test_i64_extend_i32_unsigned() {
+        let instructions = vec![
+            Instruction::I32Const(42),
+            Instruction::I64ExtendI32U,
+        ];
+        assert_eq!(instructions.len(), 2);
+    }
+
+    #[test]
+    fn test_instruction_display_memory_ops() {
+        assert_eq!(
+            format!("{}", Instruction::I32Load { offset: 0 }),
+            "i32.load offset=0"
+        );
+        assert_eq!(
+            format!("{}", Instruction::I32Store { offset: 4 }),
+            "i32.store offset=4"
+        );
+        assert_eq!(
+            format!("{}", Instruction::MemoryGrow),
+            "memory.grow"
+        );
+        assert_eq!(
+            format!("{}", Instruction::MemorySize),
+            "memory.size"
+        );
+        assert_eq!(
+            format!("{}", Instruction::I32Add),
+            "i32.add"
+        );
     }
 }

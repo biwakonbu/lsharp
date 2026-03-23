@@ -6,8 +6,9 @@
 use lsharp_ir::{GcTypeKind, Instruction, Module};
 use wasm_encoder::{
     ArrayType, CodeSection, CompositeInnerType, CompositeType, DataSection, EntityType,
-    ExportKind, ExportSection, FieldType, FunctionSection, ImportSection, MemorySection,
-    MemoryType, StorageType, StructType, SubType, TypeSection, ValType,
+    ExportKind, ExportSection, FieldType, FunctionSection, GlobalSection, GlobalType,
+    ImportSection, MemorySection, MemoryType, StorageType, StructType, SubType, TypeSection,
+    ValType,
 };
 
 use crate::codegen::CodegenError;
@@ -25,10 +26,12 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     // 関数インデックス:
     // 0: fd_write (import)
     // 1: __print_i64 (内部ヘルパー)
-    // 2..2+N-1: ユーザー関数
-    // 2+N: _start
+    // 2: __alloc (Bump Allocator)
+    // 3..3+N-1: ユーザー関数
+    // 3+N: _start
     let print_helper_idx: u32 = 1;
-    let user_func_base: u32 = 2;
+    let alloc_func_idx: u32 = 2;
+    let user_func_base: u32 = 3;
     let start_func_idx: u32 = user_func_base + module.functions.len() as u32;
 
     // GC 型の数（TypeSection でのオフセット計算に使用）
@@ -89,6 +92,10 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let print_type_idx = types.len();
     types.ty().function(vec![ValType::I64], vec![]);
 
+    // __alloc 関数型: (i64) -> i64 (サイズを受け取りアドレスを返す)
+    let alloc_type_idx = types.len();
+    types.ty().function(vec![ValType::I64], vec![ValType::I64]);
+
     // ユーザー関数の型
     let mut user_type_indices = Vec::new();
     for func in &module.functions {
@@ -113,6 +120,7 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     // === Function Section ===
     let mut functions = FunctionSection::new();
     functions.function(print_type_idx); // __print_i64
+    functions.function(alloc_type_idx); // __alloc
     for &type_idx in &user_type_indices {
         functions.function(type_idx);
     }
@@ -130,6 +138,24 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     });
     wasm_module.section(&memories);
 
+    // === Global Section ===
+    // $heap_ptr: ヒープポインタ（文字列定数データの末尾から開始）
+    let total_string_data_size: i32 = module.string_data.iter()
+        .map(|(_, bytes)| bytes.len() as i32)
+        .sum();
+    // 8バイトアラインメントに切り上げ
+    let heap_start = ((512 + total_string_data_size) + 7) & !7;
+    let mut globals = GlobalSection::new();
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: true,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(heap_start),
+    );
+    wasm_module.section(&globals);
+
     // === Export Section ===
     let mut exports = ExportSection::new();
     exports.export("memory", ExportKind::Memory, 0);
@@ -142,6 +168,9 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     // __print_i64
     emit_print_i64_func(&mut codes);
 
+    // __alloc (Bump Allocator)
+    emit_alloc_func(&mut codes);
+
     // ユーザー関数
     for func in &module.functions {
         let mut f = wasm_encoder::Function::new(
@@ -150,7 +179,7 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
                 .map(|t| (1, crate::emit::ir_to_wasm_valtype(*t)))
                 .collect::<Vec<_>>(),
         );
-        emit_instructions_wasi(&mut f, &func.body, print_helper_idx, user_func_base)?;
+        emit_instructions_wasi(&mut f, &func.body, print_helper_idx, alloc_func_idx, user_func_base)?;
         f.instruction(&wasm_encoder::Instruction::End);
         codes.function(&f);
     }
@@ -321,19 +350,98 @@ fn emit_print_i64_func(codes: &mut CodeSection) {
     codes.function(&f);
 }
 
+/// __alloc: Bump Allocator (i64 サイズ) -> i64 アドレス
+///
+/// 疑似コード:
+///   let aligned_size = ((size as i32) + 7) & !7
+///   let ptr = global.get $heap_ptr
+///   let new_ptr = ptr + aligned_size
+///   if new_ptr > memory.size * 65536:
+///     memory.grow((new_ptr - available + 65535) / 65536)
+///   global.set $heap_ptr = new_ptr
+///   return ptr as i64
+fn emit_alloc_func(codes: &mut CodeSection) {
+    use wasm_encoder::Instruction as W;
+
+    let mut f = wasm_encoder::Function::new(vec![
+        (1, ValType::I32), // local 1: aligned_size
+        (1, ValType::I32), // local 2: ptr (旧 heap_ptr)
+        (1, ValType::I32), // local 3: new_ptr
+    ]);
+
+    // aligned_size = (i32.wrap(size) + 7) & ~7
+    f.instruction(&W::LocalGet(0));    // size (i64)
+    f.instruction(&W::I32WrapI64);     // i32 に変換
+    f.instruction(&W::I32Const(7));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::I32Const(-8));   // !7 = 0xFFFF_FFF8 = -8 as i32
+    f.instruction(&W::I32And);
+    f.instruction(&W::LocalSet(1));    // aligned_size
+
+    // ptr = global.get $heap_ptr
+    f.instruction(&W::GlobalGet(0));   // $heap_ptr
+    f.instruction(&W::LocalSet(2));    // ptr
+
+    // new_ptr = ptr + aligned_size
+    f.instruction(&W::LocalGet(2));
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(3));    // new_ptr
+
+    // ページ不足チェック: if new_ptr > memory.size * 65536
+    f.instruction(&W::LocalGet(3));              // new_ptr
+    f.instruction(&W::MemorySize(0));            // memory.size (ページ数)
+    f.instruction(&W::I32Const(65536));
+    f.instruction(&W::I32Mul);                   // available = pages * 65536
+    f.instruction(&W::I32GtU);                   // new_ptr > available?
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    {
+        // needed_pages = (new_ptr - available + 65535) / 65536
+        f.instruction(&W::LocalGet(3));          // new_ptr
+        f.instruction(&W::MemorySize(0));
+        f.instruction(&W::I32Const(65536));
+        f.instruction(&W::I32Mul);               // available
+        f.instruction(&W::I32Sub);               // new_ptr - available
+        f.instruction(&W::I32Const(65535));
+        f.instruction(&W::I32Add);               // + 65535
+        f.instruction(&W::I32Const(65536));
+        f.instruction(&W::I32DivU);              // / 65536
+        f.instruction(&W::MemoryGrow(0));
+        f.instruction(&W::Drop);                 // memory.grow の戻り値を捨てる
+    }
+    f.instruction(&W::End);
+
+    // global.set $heap_ptr = new_ptr
+    f.instruction(&W::LocalGet(3));
+    f.instruction(&W::GlobalSet(0));
+
+    // return ptr as i64
+    f.instruction(&W::LocalGet(2));
+    f.instruction(&W::I64ExtendI32U);
+
+    f.instruction(&W::End);
+    codes.function(&f);
+}
+
 /// IR 命令を WASI 用にリマップして出力
 fn emit_instructions_wasi(
     func: &mut wasm_encoder::Function,
     instructions: &[Instruction],
     print_helper_idx: u32,
+    alloc_func_idx: u32,
     user_func_base: u32,
 ) -> Result<(), CodegenError> {
     use wasm_encoder::Instruction as W;
     crate::emit::emit_instructions_common(func, instructions, |f, i| {
         if i == 0 {
+            // print → __print_i64
             f.instruction(&W::Call(print_helper_idx));
+        } else if i == 1 {
+            // __alloc → __alloc 関数
+            f.instruction(&W::Call(alloc_func_idx));
         } else {
-            f.instruction(&W::Call(user_func_base + (i - 1)));
+            // ユーザー関数: import_count=2 分ずらす
+            f.instruction(&W::Call(user_func_base + (i - 2)));
         }
         Ok(())
     })

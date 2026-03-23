@@ -463,6 +463,12 @@ impl Infer {
             },
         );
 
+        // __alloc: Int -> Int (メモリアロケーション: サイズ -> アドレス)
+        env.insert(
+            "__alloc".to_string(),
+            TypeScheme::mono(Type::Fun(vec![Type::int()], Box::new(Type::int()))),
+        );
+
         // not: Bool -> Bool
         env.insert(
             "not".to_string(),

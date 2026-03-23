@@ -776,6 +776,47 @@ fn test_e2e_constrained_type_typecheck() {
     );
 }
 
+// === Phase 0: Bump Allocator テスト ===
+
+#[test]
+fn test_e2e_alloc_basic() {
+    // __alloc を呼び出してメモリアドレスを取得できることを検証
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [addr (__alloc 16)]
+            (do (print addr) addr)))
+    "#);
+    let addr: i64 = result.trim().parse().unwrap();
+    assert!(addr >= 512, "heap address should be >= 512, got {}", addr);
+}
+
+#[test]
+fn test_e2e_alloc_alignment() {
+    // 複数の __alloc 呼び出しで 8 バイトアラインメントを検証
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [a1 (__alloc 1)
+                a2 (__alloc 1)]
+            (do (print a1) (print a2) (- a2 a1))))
+    "#);
+    let lines: Vec<&str> = result.trim().lines().collect();
+    let a1: i64 = lines[0].parse().unwrap();
+    let a2: i64 = lines[1].parse().unwrap();
+    assert_eq!(a2 - a1, 8, "allocations should be 8-byte aligned");
+}
+
+#[test]
+fn test_e2e_alloc_memory_grow() {
+    // 大量のメモリ確保で memory.grow が正しく動作することを検証
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [addr (__alloc 131072)]
+            (do (print addr) addr)))
+    "#);
+    let addr: i64 = result.trim().parse().unwrap();
+    assert!(addr >= 512, "large allocation should succeed, got {}", addr);
+}
+
 // === エッジケース: ランタイムエラー ===
 
 #[test]
