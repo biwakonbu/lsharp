@@ -15,6 +15,7 @@ lsharp-wasm = { path = "../lsharp-wasm" }
 lsharp-docs = { path = "../lsharp-docs" }
 lsharp-lsp = { path = "../lsharp-lsp" }
 clap.workspace = true
+thiserror.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread"] }
 miette.workspace = true
 toml.workspace = true
