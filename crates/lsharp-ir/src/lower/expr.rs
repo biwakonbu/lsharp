@@ -150,6 +150,20 @@ impl Lower {
                         // print-string は Unit を返す
                         ctx.emit(Instruction::I64Const(0));
                     }
+                    // proc-exit: プロセス終了 (Int -> Unit)
+                    Expr::Var(_, name) if name == "proc-exit" => {
+                        if let Some(arg) = args.first() {
+                            self.lower_expr(ctx, arg)?;
+                        }
+                        // i64 -> i32 に変換して proc_exit を呼ぶ
+                        ctx.emit(Instruction::I32WrapI64);
+                        let idx = *self.func_indices.get("proc-exit").ok_or_else(|| {
+                            LowerError::UndefinedFunction { name: "proc-exit".to_string() }
+                        })?;
+                        ctx.emit(Instruction::Call(idx));
+                        // proc-exit は Unit を返す（実際にはここに到達しないが型整合のため）
+                        ctx.emit(Instruction::I64Const(0));
+                    }
                     // __alloc 関数 (Bump Allocator)
                     Expr::Var(_, name) if name == "__alloc" => {
                         if let Some(arg) = args.first() {
@@ -362,7 +376,7 @@ impl Lower {
                 let mut free_var_list: Vec<String> = free_vars.into_iter()
                     .filter(|v| {
                         !is_builtin_binop(v)
-                            && v != "not" && v != "print" && v != "__alloc"
+                            && v != "not" && v != "print" && v != "__alloc" && v != "proc-exit"
                             && !self.func_indices.contains_key(v)
                     })
                     .collect();

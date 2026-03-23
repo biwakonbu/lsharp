@@ -35,6 +35,14 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let string_eq_type_idx = types.len();
     types.ty().function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
 
+    // Type 4: print-string 関数の型 (i64) -> ()
+    let print_string_type_idx = types.len();
+    types.ty().function(vec![ValType::I64], vec![]);
+
+    // Type 5: proc-exit 関数の型 (i32) -> ()
+    let proc_exit_type_idx = types.len();
+    types.ty().function(vec![ValType::I32], vec![]);
+
     // ユーザー定義関数の型を追加
     let mut func_type_indices: Vec<u32> = Vec::new();
     for func in &module.functions {
@@ -56,6 +64,10 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     imports.import("env", "__string_concat", EntityType::Function(string_concat_type_idx));
     // __string_eq: (i64, i64) -> (i64) - 文字列比較
     imports.import("env", "__string_eq", EntityType::Function(string_eq_type_idx));
+    // print-string: (i64) -> () - 文字列出力
+    imports.import("env", "print-string", EntityType::Function(print_string_type_idx));
+    // proc-exit: (i32) -> () - プロセス終了
+    imports.import("env", "proc-exit", EntityType::Function(proc_exit_type_idx));
     wasm_module.section(&imports);
 
     // === Function Section ===
@@ -81,7 +93,7 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     exports.export("memory", ExportKind::Memory, 0);
 
     // main 関数とその他の export
-    let import_count: u32 = 4; // print + __alloc + __string_concat + __string_eq
+    let import_count: u32 = 6; // print + __alloc + __string_concat + __string_eq + print-string + proc-exit
     for (i, func) in module.functions.iter().enumerate() {
         if func.is_export {
             exports.export(&func.name, ExportKind::Func, import_count + i as u32);
@@ -184,10 +196,22 @@ mod tests {
             Ok(())
         });
 
+        // print-string 関数のスタブ
+        let print_string_ty = FuncType::new(&engine, [ValType::I64], []);
+        let print_string_func = Func::new(&mut store, print_string_ty, |_caller, _params, _results| {
+            Ok(())
+        });
+
+        // proc-exit 関数のスタブ
+        let proc_exit_ty = FuncType::new(&engine, [ValType::I32], []);
+        let proc_exit_func = Func::new(&mut store, proc_exit_ty, |_caller, _params, _results| {
+            Ok(())
+        });
+
         let instance = Instance::new(
             &mut store,
             &module,
-            &[print_func.into(), alloc_func.into(), string_concat_func.into(), string_eq_func.into()],
+            &[print_func.into(), alloc_func.into(), string_concat_func.into(), string_eq_func.into(), print_string_func.into(), proc_exit_func.into()],
         ).unwrap();
 
         let main = instance

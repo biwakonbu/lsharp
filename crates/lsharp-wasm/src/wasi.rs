@@ -20,8 +20,11 @@ const IOV_ADDR: i32 = 16;
 const NWRITTEN_ADDR: i32 = 24;
 const BUF_END: i32 = 276;
 
-/// IR 側の内部ヘルパー関数数
-const IR_IMPORT_COUNT: u32 = 5;
+/// IR 側の内部ヘルパー関数数 (print, __alloc, __string_concat, __string_eq, print-string, proc-exit)
+const IR_IMPORT_COUNT: u32 = 6;
+
+/// WASI import 関数数
+const WASI_IMPORT_COUNT: u32 = 7;
 
 /// WASI モードで Wasm バイナリを生成
 pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
@@ -29,19 +32,32 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
 
     // 関数インデックス:
     // 0: fd_write (import)
-    // 1: __print_i64
-    // 2: __alloc
-    // 3: __string_concat
-    // 4: __string_eq
-    // 5: __print_string
-    // 6..6+N-1: ユーザー関数
-    // 6+N: _start
-    let print_helper_idx: u32 = 1;
-    let alloc_func_idx: u32 = 2;
-    let string_concat_idx: u32 = 3;
-    let string_eq_idx: u32 = 4;
-    let print_string_idx: u32 = 5;
-    let user_func_base: u32 = 6;
+    // 1: proc_exit (import)
+    // 2: args_get (import)
+    // 3: args_sizes_get (import)
+    // 4: fd_read (import)
+    // 5: fd_close (import)
+    // 6: path_open (import)
+    // 7: __print_i64
+    // 8: __alloc
+    // 9: __string_concat
+    // 10: __string_eq
+    // 11: __print_string
+    // 12..12+N-1: ユーザー関数
+    // 12+N: _start
+    let fd_write_idx: u32 = 0;
+    let proc_exit_wasm_idx: u32 = 1;
+    let _args_get_idx: u32 = 2;
+    let _args_sizes_get_idx: u32 = 3;
+    let _fd_read_idx: u32 = 4;
+    let _fd_close_idx: u32 = 5;
+    let _path_open_idx: u32 = 6;
+    let print_helper_idx: u32 = WASI_IMPORT_COUNT;
+    let alloc_func_idx: u32 = WASI_IMPORT_COUNT + 1;
+    let string_concat_idx: u32 = WASI_IMPORT_COUNT + 2;
+    let string_eq_idx: u32 = WASI_IMPORT_COUNT + 3;
+    let print_string_idx: u32 = WASI_IMPORT_COUNT + 4;
+    let user_func_base: u32 = WASI_IMPORT_COUNT + 5;
     let start_func_idx: u32 = user_func_base + module.functions.len() as u32;
 
     let gc_type_count = module.gc_types.len() as u32;
@@ -93,6 +109,39 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let fd_write_type_idx = types.len();
     types.ty().function(vec![ValType::I32; 4], vec![ValType::I32]);
 
+    // proc_exit(code: i32) -> ()
+    let proc_exit_type_idx = types.len();
+    types.ty().function(vec![ValType::I32], vec![]);
+
+    // args_get(argv: i32, argv_buf: i32) -> i32
+    let args_get_type_idx = types.len();
+    types.ty().function(vec![ValType::I32; 2], vec![ValType::I32]);
+
+    // args_sizes_get(argc: i32, argv_buf_size: i32) -> i32
+    let args_sizes_get_type_idx = types.len();
+    types.ty().function(vec![ValType::I32; 2], vec![ValType::I32]);
+
+    // fd_read(fd: i32, iovs: i32, iovs_len: i32, nread: i32) -> i32
+    let fd_read_type_idx = types.len();
+    types.ty().function(vec![ValType::I32; 4], vec![ValType::I32]);
+
+    // fd_close(fd: i32) -> i32
+    let fd_close_type_idx = types.len();
+    types.ty().function(vec![ValType::I32], vec![ValType::I32]);
+
+    // path_open(dirfd: i32, dirflags: i32, path: i32, path_len: i32,
+    //           oflags: i32, fs_rights_base: i64, fs_rights_inheriting: i64,
+    //           fdflags: i32, fd: i32) -> i32
+    let path_open_type_idx = types.len();
+    types.ty().function(
+        vec![
+            ValType::I32, ValType::I32, ValType::I32, ValType::I32,
+            ValType::I32, ValType::I64, ValType::I64,
+            ValType::I32, ValType::I32,
+        ],
+        vec![ValType::I32],
+    );
+
     let print_type_idx = types.len();
     types.ty().function(vec![ValType::I64], vec![]);
 
@@ -143,6 +192,12 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     // === Import Section ===
     let mut imports = ImportSection::new();
     imports.import("wasi_snapshot_preview1", "fd_write", EntityType::Function(fd_write_type_idx));
+    imports.import("wasi_snapshot_preview1", "proc_exit", EntityType::Function(proc_exit_type_idx));
+    imports.import("wasi_snapshot_preview1", "args_get", EntityType::Function(args_get_type_idx));
+    imports.import("wasi_snapshot_preview1", "args_sizes_get", EntityType::Function(args_sizes_get_type_idx));
+    imports.import("wasi_snapshot_preview1", "fd_read", EntityType::Function(fd_read_type_idx));
+    imports.import("wasi_snapshot_preview1", "fd_close", EntityType::Function(fd_close_type_idx));
+    imports.import("wasi_snapshot_preview1", "path_open", EntityType::Function(path_open_type_idx));
     wasm_module.section(&imports);
 
     // === Function Section ===
@@ -238,7 +293,8 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
             &mut f, &func.body,
             print_helper_idx, alloc_func_idx,
             string_concat_idx, string_eq_idx,
-            print_string_idx, user_func_base,
+            print_string_idx, proc_exit_wasm_idx,
+            user_func_base,
             &call_indirect_type_map,
         )?;
         f.instruction(&wasm_encoder::Instruction::End);
@@ -636,6 +692,7 @@ fn emit_instructions_wasi(
     string_concat_idx: u32,
     string_eq_idx: u32,
     print_string_idx: u32,
+    proc_exit_wasm_idx: u32,
     user_func_base: u32,
     call_indirect_type_map: &HashMap<u32, u32>,
 ) -> Result<(), CodegenError> {
@@ -659,6 +716,7 @@ fn emit_instructions_wasi(
                     2 => string_concat_idx,
                     3 => string_eq_idx,
                     4 => print_string_idx,
+                    5 => proc_exit_wasm_idx,
                     i => user_func_base + (i - IR_IMPORT_COUNT),
                 };
                 Instruction::FuncIdx(wasm_idx)
@@ -674,6 +732,7 @@ fn emit_instructions_wasi(
             2 => { f.instruction(&W::Call(string_concat_idx)); }
             3 => { f.instruction(&W::Call(string_eq_idx)); }
             4 => { f.instruction(&W::Call(print_string_idx)); }
+            5 => { f.instruction(&W::Call(proc_exit_wasm_idx)); }
             _ => { f.instruction(&W::Call(user_func_base + (i - IR_IMPORT_COUNT))); }
         }
         Ok(())
@@ -784,6 +843,104 @@ mod tests {
         assert_eq!(&wasm[0..4], b"\0asm");
         let wasm_no_gc = compile_wasi("(defn main [] (print 42))");
         assert!(wasm.len() > wasm_no_gc.len());
+    }
+
+    #[test]
+    fn test_wasi_proc_exit_type_check() {
+        // proc-exit が型チェックを通ること (Int -> Unit)
+        let source = "(defn main [] (do (proc-exit 0) 0))";
+        let program = lsharp_syntax::parse(source).unwrap();
+        let mut infer = Infer::new();
+        let result = infer.infer_program(&program);
+        assert!(result.is_ok(), "proc-exit の型チェックが失敗: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_wasi_proc_exit_compile() {
+        // proc-exit を含むコードがコンパイルでき、wasmtime で検証できること
+        let wasm = compile_wasi("(defn main [] (do (proc-exit 0) 0))");
+        assert!(wasm.len() > 8);
+        assert_eq!(&wasm[0..4], b"\0asm");
+
+        // wasmtime でモジュールを読み込めるか検証
+        use wasmtime::Engine;
+        let engine = Engine::default();
+        wasmtime::Module::new(&engine, &wasm).expect("proc-exit を含むモジュールの読み込みに失敗");
+    }
+
+    #[test]
+    fn test_wasi_proc_exit_run() {
+        // proc-exit(0) を呼ぶと正常終了すること
+        // wasmtime では proc_exit(0) は Trap ではなく正常終了として扱われる
+        let wasm = compile_wasi("(defn main [] (do (print 42) (proc-exit 0) 0))");
+
+        use wasmtime::*;
+        use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
+
+        let engine = Engine::default();
+        let mut linker = Linker::<WasiP1Ctx>::new(&engine);
+        wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |t| t).unwrap();
+
+        let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(1024);
+        let wasi = WasiCtxBuilder::new().stdout(stdout.clone()).build_p1();
+
+        let mut store = Store::new(&engine, wasi);
+        let module = wasmtime::Module::new(&engine, &wasm).unwrap();
+        let instance = linker.instantiate(&mut store, &module).unwrap();
+
+        let start = instance.get_typed_func::<(), ()>(&mut store, "_start").unwrap();
+        // proc_exit(0) は I32Exit(0) をトラップするが、exit code 0 は成功
+        let result = start.call(&mut store, ());
+        match result {
+            Ok(()) => {} // 正常終了
+            Err(e) => {
+                // wasmtime は proc_exit を I32Exit として Trap する
+                let exit_status = e.downcast_ref::<wasmtime_wasi::I32Exit>();
+                assert!(exit_status.is_some(), "予期しないエラー: {e}");
+                assert_eq!(exit_status.unwrap().0, 0, "exit code が 0 でない");
+            }
+        }
+
+        drop(store);
+        let bytes = stdout.try_into_inner().unwrap();
+        let output = String::from_utf8(bytes.to_vec()).unwrap();
+        assert_eq!(output, "42\n", "proc-exit 前の print 出力が正しくない");
+    }
+
+    #[test]
+    fn test_wasi_additional_imports_validate() {
+        // 新しい WASI import が追加されていても既存のコードが正しく動くことを検証
+        let wasm = compile_wasi(
+            "(defn fib [n]
+               (if (<= n 1) n (+ (fib (- n 1)) (fib (- n 2)))))
+             (defn main [] (print (fib 10)))",
+        );
+        assert_eq!(run_wasi(&wasm), "55\n");
+    }
+
+    #[test]
+    fn test_wasi_import_section_count() {
+        // Import Section に 7 つの WASI 関数が含まれていることを検証
+        // (fd_write, proc_exit, args_get, args_sizes_get, fd_read, fd_close, path_open)
+        let wasm = compile_wasi("(defn main [] (print 42))");
+
+        // wasmtime でモジュールを読み込んで import 数を検証
+        use wasmtime::Engine;
+        let engine = Engine::default();
+        let module = wasmtime::Module::new(&engine, &wasm).unwrap();
+        let imports: Vec<_> = module.imports().collect();
+        assert_eq!(imports.len(), 7, "WASI import 数が 7 でない: {:?}",
+            imports.iter().map(|i| i.name().to_string()).collect::<Vec<_>>());
+
+        // 各 import 名を検証
+        let import_names: Vec<_> = imports.iter().map(|i| i.name().to_string()).collect();
+        assert!(import_names.contains(&"fd_write".to_string()));
+        assert!(import_names.contains(&"proc_exit".to_string()));
+        assert!(import_names.contains(&"args_get".to_string()));
+        assert!(import_names.contains(&"args_sizes_get".to_string()));
+        assert!(import_names.contains(&"fd_read".to_string()));
+        assert!(import_names.contains(&"fd_close".to_string()));
+        assert!(import_names.contains(&"path_open".to_string()));
     }
 
     #[test]

@@ -155,6 +155,8 @@ pub struct Infer {
     gadt_return_types: HashMap<String, Type>,
     /// Computation Builder 登録情報（ビルダー名 -> (bind関数名, return関数名)）
     computation_builders: HashMap<String, (String, String)>,
+    /// 外部モジュールから注入された型環境
+    external_types: HashMap<String, TypeScheme>,
 }
 
 impl Infer {
@@ -174,12 +176,29 @@ impl Infer {
             global_subst: Substitution::new(),
             gadt_return_types: HashMap::new(),
             computation_builders: HashMap::new(),
+            external_types: HashMap::new(),
+        }
+    }
+
+    /// 外部モジュールの型環境を注入
+    ///
+    /// クロスモジュールコンパイル時に、依存先モジュールの型推論結果を
+    /// 現在のモジュールの初期環境に追加する。
+    pub fn inject_external_types(&mut self, types: &[(String, TypeScheme)]) {
+        for (name, scheme) in types {
+            self.external_types.insert(name.clone(), scheme.clone());
         }
     }
 
     /// プログラム全体を型チェック
     pub fn infer_program(&mut self, program: &Program) -> Result<Vec<(String, TypeScheme)>, TypeError> {
         let mut env = self.builtin_env();
+
+        // 外部モジュールの型環境を注入
+        for (name, scheme) in &self.external_types {
+            env.insert(name.clone(), scheme.clone());
+        }
+
         let mut results = Vec::new();
 
         // まず全ての型定義を処理してコンストラクタを環境に登録
@@ -491,6 +510,18 @@ impl Infer {
                 vec![Type::string(), Type::string()],
                 Box::new(Type::bool()),
             )),
+        );
+
+        // print-string: String -> Unit (文字列を出力)
+        env.insert(
+            "print-string".to_string(),
+            TypeScheme::mono(Type::Fun(vec![Type::string()], Box::new(Type::unit()))),
+        );
+
+        // proc-exit: Int -> Unit (プロセス終了)
+        env.insert(
+            "proc-exit".to_string(),
+            TypeScheme::mono(Type::Fun(vec![Type::int()], Box::new(Type::unit()))),
         );
 
         // ref-new: forall a. a -> Int (Ref Cell 作成: 値 -> ヒープアドレス)

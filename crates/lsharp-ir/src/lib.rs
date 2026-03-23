@@ -563,6 +563,61 @@ fn remap_instruction_with_imports(
     }
 }
 
+/// マルチファイルコンパイルのパイプライン
+///
+/// エントリファイルから依存関係を解決し、トポロジカルソート順に
+/// パース → 型チェック → IR 変換を行い、最終的にリンクした IR モジュールを返す。
+pub fn compile_multi_file(
+    entry_file: &std::path::Path,
+) -> Result<Module, String> {
+    use module_graph::ModuleGraph;
+
+    // 1. モジュールグラフの構築とファイル探索
+    let (_graph, sorted_files) = ModuleGraph::build_from_entry(entry_file)
+        .map_err(|e| format!("モジュールグラフ構築エラー: {e}"))?;
+
+    if sorted_files.is_empty() {
+        return Err("コンパイル対象のファイルがありません".to_string());
+    }
+
+    // 2. トポロジカルソート順にコンパイル
+    let mut all_type_results: Vec<(String, lsharp_types::types::TypeScheme)> = Vec::new();
+    let mut all_modules: Vec<Module> = Vec::new();
+
+    for (_mod_name, mod_path) in &sorted_files {
+        let source = std::fs::read_to_string(mod_path)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+
+        // パース
+        let program = lsharp_syntax::parse(&source)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+
+        // 型チェック（依存先の型環境を注入）
+        let mut infer = lsharp_types::infer::Infer::new();
+        infer.inject_external_types(&all_type_results);
+        let type_results = infer
+            .infer_program(&program)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+
+        // IR 変換
+        let mut lower_ctx = lower::Lower::new();
+        let module = lower_ctx
+            .lower_program(&program, &type_results)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+
+        // このモジュールの型結果を蓄積（次のモジュールで使用）
+        all_type_results.extend(type_results);
+        all_modules.push(module);
+    }
+
+    // 3. 全モジュールの IR をリンク
+    if all_modules.len() == 1 {
+        Ok(all_modules.into_iter().next().unwrap())
+    } else {
+        Ok(link_modules(&all_modules))
+    }
+}
+
 #[cfg(test)]
 mod linker_tests {
     use super::*;

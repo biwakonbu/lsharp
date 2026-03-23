@@ -1282,6 +1282,109 @@ fn test_e2e_print_int_backward_compat() {
     assert_eq!(output, "42\n");
 }
 
+// === P6: マルチファイルコンパイル ===
+
+/// マルチファイルコンパイル: 2つのファイルを用意して import 経由で関数呼び出し
+#[test]
+fn test_e2e_multi_file_compile() {
+    let dir = std::env::temp_dir().join("lsharp_e2e_multi");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // Utils モジュール: helper 関数を提供
+    std::fs::write(
+        dir.join("Utils.ls"),
+        "(module Utils)\n(defn helper [x] (+ x 100))",
+    ).unwrap();
+
+    // Main モジュール: Utils を import して helper を呼ぶ
+    std::fs::write(
+        dir.join("main.ls"),
+        "(module Main)\n(import Utils)\n(defn main [] (print (helper 42)))",
+    ).unwrap();
+
+    // マルチファイルコンパイル
+    let linked_module = lsharp_ir::compile_multi_file(&dir.join("main.ls")).unwrap();
+
+    // Wasm 生成 + WASI 実行
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&linked_module).unwrap();
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes).unwrap();
+    assert_eq!(output, "142\n");
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// マルチファイルコンパイル: 3モジュールのチェーン依存
+#[test]
+fn test_e2e_multi_file_chain() {
+    let dir = std::env::temp_dir().join("lsharp_e2e_chain");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // Base モジュール
+    std::fs::write(
+        dir.join("Base.ls"),
+        "(module Base)\n(defn base-val [] 10)",
+    ).unwrap();
+
+    // Mid モジュール: Base を import
+    std::fs::write(
+        dir.join("Mid.ls"),
+        "(module Mid)\n(import Base)\n(defn mid-val [] (* (base-val) 2))",
+    ).unwrap();
+
+    // Main モジュール: Mid を import
+    std::fs::write(
+        dir.join("main.ls"),
+        "(module Main)\n(import Mid)\n(defn main [] (print (mid-val)))",
+    ).unwrap();
+
+    let linked_module = lsharp_ir::compile_multi_file(&dir.join("main.ls")).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&linked_module).unwrap();
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes).unwrap();
+    assert_eq!(output, "20\n");
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// マルチファイルコンパイル: 単一ファイルの場合はリンク不要
+#[test]
+fn test_e2e_multi_file_single() {
+    let dir = std::env::temp_dir().join("lsharp_e2e_single_multi");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    std::fs::write(
+        dir.join("main.ls"),
+        "(module Main)\n(defn main [] (print 99))",
+    ).unwrap();
+
+    let linked_module = lsharp_ir::compile_multi_file(&dir.join("main.ls")).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&linked_module).unwrap();
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes).unwrap();
+    assert_eq!(output, "99\n");
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// マルチファイルコンパイル: 存在しないモジュールの import でエラー
+#[test]
+fn test_e2e_multi_file_missing_import() {
+    let dir = std::env::temp_dir().join("lsharp_e2e_missing");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    std::fs::write(
+        dir.join("main.ls"),
+        "(module Main)\n(import NonExistent)\n(defn main [] (print 1))",
+    ).unwrap();
+
+    let result = lsharp_ir::compile_multi_file(&dir.join("main.ls"));
+    assert!(result.is_err());
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 // === エッジケース: ランタイムエラー ===
 
 #[test]

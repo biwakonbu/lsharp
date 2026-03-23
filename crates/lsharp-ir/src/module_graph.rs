@@ -226,6 +226,200 @@ impl ModuleGraph {
             .find(|(_, p)| p.as_str() == path)
             .map(|(name, _)| name.as_str())
     }
+
+    /// モジュール名をファイルパス候補に変換
+    ///
+    /// `ModuleName` → `["ModuleName.ls", "module_name.ls"]`
+    /// `A.B` → `["A/B.ls", "a/b.ls"]`
+    pub fn module_name_to_paths(name: &str) -> Vec<String> {
+        let mut candidates = Vec::new();
+
+        // ドット区切りをパス区切りに変換
+        let path_parts: Vec<&str> = name.split('.').collect();
+
+        // PascalCase 版: ModuleName.ls or A/B.ls
+        let pascal_path = format!("{}.ls", path_parts.join("/"));
+        candidates.push(pascal_path);
+
+        // snake_case 版: module_name.ls or a/b.ls
+        let snake_parts: Vec<String> = path_parts.iter()
+            .map(|part| Self::to_snake_case(part))
+            .collect();
+        let snake_path = format!("{}.ls", snake_parts.join("/"));
+        if !candidates.contains(&snake_path) {
+            candidates.push(snake_path);
+        }
+
+        candidates
+    }
+
+    /// PascalCase を snake_case に変換
+    fn to_snake_case(s: &str) -> String {
+        let mut result = String::new();
+        for (i, ch) in s.chars().enumerate() {
+            if ch.is_uppercase() {
+                if i > 0 {
+                    result.push('_');
+                }
+                result.push(ch.to_lowercase().next().unwrap());
+            } else {
+                result.push(ch);
+            }
+        }
+        result
+    }
+
+    /// 指定ディレクトリからモジュールファイルを探索
+    ///
+    /// `base_dir` を基準にモジュール名からファイルを探し、
+    /// 最初に見つかったパスを返す。
+    pub fn resolve_module_file(
+        name: &str,
+        base_dir: &std::path::Path,
+    ) -> Option<std::path::PathBuf> {
+        let candidates = Self::module_name_to_paths(name);
+        for candidate in &candidates {
+            let path = base_dir.join(candidate);
+            if path.exists() {
+                return Some(path);
+            }
+        }
+        None
+    }
+
+    /// ソースファイルから import を抽出し、依存グラフを構築
+    ///
+    /// `entry_file` をエントリポイントとし、再帰的に依存ファイルを探索する。
+    pub fn build_from_entry(
+        entry_file: &std::path::Path,
+    ) -> Result<(Self, Vec<(String, std::path::PathBuf)>), ModuleGraphError> {
+        use std::collections::VecDeque;
+
+        let base_dir = entry_file.parent().unwrap_or(std::path::Path::new("."));
+        let mut graph = Self::new();
+        // (モジュール名, ファイルパス) のリスト（トポソ順で返す）
+        let mut file_list: Vec<(String, std::path::PathBuf)> = Vec::new();
+        let mut queue: VecDeque<(String, std::path::PathBuf)> = VecDeque::new();
+
+        // エントリファイルのモジュール名を取得
+        let entry_module = Self::extract_module_name(entry_file)?;
+        queue.push_back((entry_module.clone(), entry_file.to_path_buf()));
+
+        while let Some((mod_name, mod_path)) = queue.pop_front() {
+            if graph.modules.contains_key(&mod_name) {
+                continue;
+            }
+
+            // ソースファイルからインポートを抽出
+            let imports = Self::extract_imports(&mod_path)?;
+
+            graph.add_module(
+                mod_name.clone(),
+                imports.clone(),
+                Some(mod_path.display().to_string()),
+            )?;
+            file_list.push((mod_name.clone(), mod_path.clone()));
+
+            // 依存モジュールをキューに追加
+            for imp in &imports {
+                if !graph.modules.contains_key(imp) {
+                    if let Some(imp_path) = Self::resolve_module_file(imp, base_dir) {
+                        queue.push_back((imp.clone(), imp_path));
+                    } else {
+                        return Err(ModuleGraphError::ModuleNotFound {
+                            name: imp.clone(),
+                            from: mod_name.clone(),
+                        });
+                    }
+                }
+            }
+        }
+
+        // トポロジカルソート順に並べ替え
+        let sorted = graph.topological_sort()?;
+        let sorted_list: Vec<(String, std::path::PathBuf)> = sorted
+            .iter()
+            .filter_map(|name| {
+                file_list.iter().find(|(n, _)| n == name).cloned()
+            })
+            .collect();
+
+        Ok((graph, sorted_list))
+    }
+
+    /// ソースファイルからモジュール名を抽出
+    ///
+    /// `(module Name)` があればその名前を、なければファイル名から生成する。
+    fn extract_module_name(
+        path: &std::path::Path,
+    ) -> Result<String, ModuleGraphError> {
+        let source = std::fs::read_to_string(path).map_err(|e| {
+            ModuleGraphError::ModuleNotFound {
+                name: path.display().to_string(),
+                from: format!("ファイル読み込みエラー: {e}"),
+            }
+        })?;
+
+        // パースして module 宣言を探す
+        if let Ok(program) = lsharp_syntax::parse(&source) {
+            for decl in &program.decls {
+                if let lsharp_syntax::ast::Decl::ModuleDecl { name, .. } = decl {
+                    return Ok(name.clone());
+                }
+            }
+        }
+
+        // module 宣言がなければファイル名から生成
+        let stem = path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Main");
+        // snake_case を PascalCase に変換
+        Ok(Self::to_pascal_case(stem))
+    }
+
+    /// ソースファイルから import モジュール名を抽出
+    fn extract_imports(
+        path: &std::path::Path,
+    ) -> Result<Vec<String>, ModuleGraphError> {
+        let source = std::fs::read_to_string(path).map_err(|e| {
+            ModuleGraphError::ModuleNotFound {
+                name: path.display().to_string(),
+                from: format!("ファイル読み込みエラー: {e}"),
+            }
+        })?;
+
+        let mut imports = Vec::new();
+        if let Ok(program) = lsharp_syntax::parse(&source) {
+            for decl in &program.decls {
+                if let lsharp_syntax::ast::Decl::ImportDecl { module, .. } = decl {
+                    imports.push(module.clone());
+                }
+            }
+        }
+        Ok(imports)
+    }
+
+    /// snake_case を PascalCase に変換
+    fn to_pascal_case(s: &str) -> String {
+        s.split('_')
+            .map(|word| {
+                let mut chars = word.chars();
+                match chars.next() {
+                    None => String::new(),
+                    Some(c) => {
+                        let mut result = c.to_uppercase().to_string();
+                        result.extend(chars);
+                        result
+                    }
+                }
+            })
+            .collect()
+    }
+
+    /// モジュールノードを取得
+    pub fn get_module(&self, name: &str) -> Option<&ModuleNode> {
+        self.modules.get(name)
+    }
 }
 
 #[cfg(test)]
@@ -430,6 +624,137 @@ mod nested_module_tests {
             .unwrap();
 
         assert!(graph.detect_cycles().is_some());
+    }
+}
+
+#[cfg(test)]
+mod resolve_tests {
+    use super::*;
+
+    #[test]
+    fn test_module_name_to_paths_simple() {
+        let paths = ModuleGraph::module_name_to_paths("Utils");
+        assert!(paths.contains(&"Utils.ls".to_string()));
+        assert!(paths.contains(&"utils.ls".to_string()));
+    }
+
+    #[test]
+    fn test_module_name_to_paths_pascal_case() {
+        let paths = ModuleGraph::module_name_to_paths("MathUtils");
+        assert!(paths.contains(&"MathUtils.ls".to_string()));
+        assert!(paths.contains(&"math_utils.ls".to_string()));
+    }
+
+    #[test]
+    fn test_module_name_to_paths_nested() {
+        let paths = ModuleGraph::module_name_to_paths("App.Utils");
+        assert!(paths.contains(&"App/Utils.ls".to_string()));
+        assert!(paths.contains(&"app/utils.ls".to_string()));
+    }
+
+    #[test]
+    fn test_to_snake_case() {
+        assert_eq!(ModuleGraph::to_snake_case("Utils"), "utils");
+        assert_eq!(ModuleGraph::to_snake_case("MathUtils"), "math_utils");
+        assert_eq!(ModuleGraph::to_snake_case("A"), "a");
+        assert_eq!(ModuleGraph::to_snake_case("abc"), "abc");
+    }
+
+    #[test]
+    fn test_to_pascal_case() {
+        assert_eq!(ModuleGraph::to_pascal_case("utils"), "Utils");
+        assert_eq!(ModuleGraph::to_pascal_case("math_utils"), "MathUtils");
+        assert_eq!(ModuleGraph::to_pascal_case("main"), "Main");
+    }
+
+    #[test]
+    fn test_resolve_module_file_not_found() {
+        let result = ModuleGraph::resolve_module_file("NonExistent", std::path::Path::new("/tmp/lsharp_nonexistent"));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_resolve_module_file_found() {
+        // 一時ディレクトリにファイルを作成してテスト
+        let dir = std::env::temp_dir().join("lsharp_resolve_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Utils.ls"), "(module Utils)\n(defn helper [x] x)").unwrap();
+
+        let result = ModuleGraph::resolve_module_file("Utils", &dir);
+        assert!(result.is_some());
+        assert!(result.unwrap().ends_with("Utils.ls"));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_resolve_module_file_snake_case() {
+        // snake_case ファイル名でも探索可能
+        let dir = std::env::temp_dir().join("lsharp_resolve_snake");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("math_utils.ls"), "(module MathUtils)\n(defn add [x y] (+ x y))").unwrap();
+
+        let result = ModuleGraph::resolve_module_file("MathUtils", &dir);
+        assert!(result.is_some());
+        assert!(result.unwrap().ends_with("math_utils.ls"));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_build_from_entry_single_file() {
+        let dir = std::env::temp_dir().join("lsharp_build_single");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("main.ls"),
+            "(module Main)\n(defn main [] (print 42))",
+        ).unwrap();
+
+        let (graph, files) = ModuleGraph::build_from_entry(&dir.join("main.ls")).unwrap();
+        assert_eq!(graph.len(), 1);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].0, "Main");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_build_from_entry_with_import() {
+        let dir = std::env::temp_dir().join("lsharp_build_import");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("Utils.ls"),
+            "(module Utils)\n(defn helper [x] (+ x 1))",
+        ).unwrap();
+        std::fs::write(
+            dir.join("main.ls"),
+            "(module Main)\n(import Utils)\n(defn main [] (print (helper 41)))",
+        ).unwrap();
+
+        let (graph, files) = ModuleGraph::build_from_entry(&dir.join("main.ls")).unwrap();
+        assert_eq!(graph.len(), 2);
+        assert_eq!(files.len(), 2);
+        // トポロジカルソート順: Utils が Main より前
+        let pos_utils = files.iter().position(|(n, _)| n == "Utils").unwrap();
+        let pos_main = files.iter().position(|(n, _)| n == "Main").unwrap();
+        assert!(pos_utils < pos_main);
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_build_from_entry_missing_import() {
+        let dir = std::env::temp_dir().join("lsharp_build_missing");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("main.ls"),
+            "(module Main)\n(import NonExistent)\n(defn main [] (print 1))",
+        ).unwrap();
+
+        let result = ModuleGraph::build_from_entry(&dir.join("main.ls"));
+        assert!(result.is_err());
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
 

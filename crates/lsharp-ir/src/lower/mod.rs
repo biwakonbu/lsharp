@@ -146,7 +146,8 @@ impl Lower {
             }
         }
 
-        // ADT 型定義を GC 型として登録
+        // ADT 型定義のバリアント情報を登録
+        // リニアメモリ版では GC 型は不要 (ヒープに直接書き込む)
         for decl in &program.decls {
             if let Decl::TypeDef {
                 name, variants, ..
@@ -154,30 +155,10 @@ impl Lower {
             {
                 let mut variant_infos = Vec::new();
                 for (tag, variant) in variants.iter().enumerate() {
-                    let gc_idx = self.gc_types.len() as u32;
                     let tag_val = tag as i32;
-
-                    // 各バリアントの struct 型: $tag: i32 + フィールド
-                    let mut gc_fields = vec![GcField {
-                        name: "$tag".to_string(),
-                        ty: IrType::I32,
-                        mutable: false,
-                    }];
-                    for (i, _field_ty) in variant.fields.iter().enumerate() {
-                        gc_fields.push(GcField {
-                            name: format!("$field{i}"),
-                            ty: IrType::I64, // MVP: 全フィールド i64
-                            mutable: false,
-                        });
-                    }
-
-                    self.gc_types.push(GcTypeDef {
-                        name: format!("{}.{}", name, variant.name),
-                        kind: GcTypeKind::Struct(gc_fields),
-                    });
-
-                    self.adt_variant_indices.insert(variant.name.clone(), (gc_idx, tag_val));
-                    variant_infos.push((variant.name.clone(), gc_idx, tag_val, variant.fields.len()));
+                    // gc_idx は互換性のため 0 を設定 (リニアメモリ版では未使用)
+                    self.adt_variant_indices.insert(variant.name.clone(), (0, tag_val));
+                    variant_infos.push((variant.name.clone(), 0, tag_val, variant.fields.len()));
                 }
                 self.adt_type_info.insert(name.clone(), variant_infos);
             }
@@ -188,7 +169,9 @@ impl Lower {
         self.func_indices.insert("__alloc".to_string(), 1);
         self.func_indices.insert("__string_concat".to_string(), 2);
         self.func_indices.insert("__string_eq".to_string(), 3);
-        self.import_count = 4;
+        self.func_indices.insert("print-string".to_string(), 4);
+        self.func_indices.insert("proc-exit".to_string(), 5);
+        self.import_count = 6;
 
         // ユーザー定義関数のインデックスを事前登録
         let mut func_idx = self.import_count;
