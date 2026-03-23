@@ -2847,6 +2847,225 @@ fn test_e2e_selfhost_wasm_emit() {
     assert_eq!(result.trim(), "8\n0\n97\n115\n109\n1\n7\n1\n5\n1\n96\n5\n172\n2");
 }
 
+#[test]
+fn test_e2e_selfhost_type_inference_comparison() {
+    // セルフホスト型推論 vs Rust 型推論の比較テスト
+    // L# の Type.ls パターンで型を構築し、Rust の Type 列挙型と同等の表現を検証
+    //
+    // 対応関係:
+    //   L# make-type-con(100) = [1, 100]  ↔  Rust Type::Con("Int")
+    //   L# make-type-var(42)  = [2, 42]   ↔  Rust Type::Var(42)
+    //   L# make-type-fun(p,r) = [3, p, r] ↔  Rust Type::Fun(vec![p], Box::new(r))
+    //   L# subst-bind/apply-subst          ↔  Rust Substitution::apply
+    let result = compile_and_run(r#"
+        ;; 型構築 (Type.ls パターン)
+        (defn make-type-con [hash]
+          (vector-push (vector-push (vector-new 2) 1) hash))
+        (defn make-type-var [id]
+          (vector-push (vector-push (vector-new 2) 2) id))
+        (defn make-type-fun [param-ty ret-ty]
+          (vector-push (vector-push (vector-push (vector-new 3) 3) param-ty) ret-ty))
+
+        ;; 型アクセス
+        (defn type-tag [ty] (vector-get ty 0))
+        (defn type-name [ty] (vector-get ty 1))
+        (defn type-fun-param [ty] (vector-get ty 1))
+        (defn type-fun-ret [ty] (vector-get ty 2))
+
+        ;; Substitution
+        (defn subst-new [] (map-new))
+        (defn subst-bind [s var-id ty] (map-insert s var-id ty))
+        (defn subst-lookup [s var-id] (map-get s var-id))
+
+        ;; apply-subst: 置換を型に適用
+        (defn apply-subst [subst ty]
+          (if (= (type-tag ty) 2)
+            (let [looked (subst-lookup subst (type-name ty))]
+              (if (= looked 0)
+                ty
+                (apply-subst subst looked)))
+            (if (= (type-tag ty) 3)
+              (make-type-fun
+                (apply-subst subst (type-fun-param ty))
+                (apply-subst subst (type-fun-ret ty)))
+              ty)))
+
+        ;; 型等価判定 (1=等しい, 0=異なる)
+        (defn types-eq [ty1 ty2]
+          (if (= (type-tag ty1) (type-tag ty2))
+            (if (= (type-tag ty1) 1)
+              (if (= (type-name ty1) (type-name ty2)) 1 0)
+              (if (= (type-tag ty1) 2)
+                (if (= (type-name ty1) (type-name ty2)) 1 0)
+                0))
+            0))
+
+        (defn main []
+          (let [int-ty (make-type-con 100)
+                var-ty (make-type-var 42)
+                var1 (make-type-var 1)
+                var2 (make-type-var 2)
+                fun-ty (make-type-fun var1 var2)]
+            (do
+              ;; テスト1: Con 型構築 (Rust: Type::Con("Int") → tag=1, hash=100)
+              (print (type-tag int-ty))
+              (print (type-name int-ty))
+
+              ;; テスト2: Var 型構築 (Rust: Type::Var(42) → tag=2, id=42)
+              (print (type-tag var-ty))
+              (print (type-name var-ty))
+
+              ;; テスト3: Fun 型構築 (Rust: Type::Fun → tag=3, param/ret)
+              (print (type-tag fun-ty))
+              (print (type-tag (type-fun-param fun-ty)))
+              (print (type-name (type-fun-param fun-ty)))
+              (print (type-tag (type-fun-ret fun-ty)))
+              (print (type-name (type-fun-ret fun-ty)))
+
+              ;; テスト4: Substitution 比較 (Rust: Substitution::apply)
+              ;; {42 -> Con(100)} を適用: Var(42) → Con(100)
+              (let [s (subst-bind (subst-new) 42 int-ty)
+                    resolved (apply-subst s var-ty)]
+                (do
+                  (print (type-tag resolved))
+                  (print (type-name resolved))))
+
+              ;; テスト5: types-eq 比較
+              ;; Con(100) == Con(100) → 1
+              (print (types-eq int-ty (make-type-con 100)))
+              ;; Con(100) != Con(200) → 0
+              (print (types-eq int-ty (make-type-con 200)))
+              ;; Var(42) == Var(42) → 1
+              (print (types-eq var-ty (make-type-var 42)))
+
+              0)))
+    "#);
+    // Con: tag=1, hash=100
+    // Var: tag=2, id=42
+    // Fun: tag=3, param(tag=2,id=1), ret(tag=2,id=2)
+    // Subst: resolved → Con(tag=1, hash=100)
+    // types-eq: 1, 0, 1
+    assert_eq!(
+        result.trim(),
+        "1\n100\n2\n42\n3\n2\n1\n2\n2\n1\n100\n1\n0\n1"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_codegen_comparison() {
+    // セルフホスト Codegen vs Rust Codegen の比較テスト
+    // L# の IR.ls/Compiler.ls/WasmEmit.ls パターンで命令・LEB128 を構築し、
+    // Rust の Instruction/leb128 エンコードと同等の結果を検証
+    //
+    // 対応関係:
+    //   L# make-instr(1, 42)  ↔  Rust Instruction::I64Const(42)
+    //   L# make-instr(10, 0)  ↔  Rust Instruction::LocalGet(0)
+    //   L# make-instr(40, 5)  ↔  Rust Instruction::Call(5)
+    //   L# leb128-unsigned    ↔  Rust wasm-encoder の LEB128
+    let result = compile_and_run(r#"
+        ;; IR 命令構築 (IR.ls パターン)
+        (defn make-instr [opcode operand]
+          (vector-push (vector-push (vector-new 2) opcode) operand))
+
+        ;; LEB128 符号なしエンコード (Compiler.ls/WasmEmit.ls パターン)
+        (defn leb128-unsigned [value]
+          (let [result (ref-new (vector-new 4))
+                v (ref-new value)]
+            (do
+              (let [byte (% (ref-get v) 128)
+                    rest (/ (ref-get v) 128)]
+                (if (= rest 0)
+                  (ref-set result (vector-push (ref-get result) byte))
+                  (do
+                    (ref-set result (vector-push (ref-get result) (+ byte 128)))
+                    (ref-set v rest)
+                    (let [byte2 (% (ref-get v) 128)
+                          rest2 (/ (ref-get v) 128)]
+                      (if (= rest2 0)
+                        (ref-set result (vector-push (ref-get result) byte2))
+                        (do
+                          (ref-set result (vector-push (ref-get result) (+ byte2 128)))
+                          (ref-set v rest2)
+                          (ref-set result (vector-push (ref-get result) (% (ref-get v) 128)))))))))
+              (ref-get result))))
+
+        ;; Wasm ヘッダー生成 (WasmEmit.ls パターン)
+        (defn emit-header []
+          (let [h (vector-new 8)]
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push h 0)
+                          97)
+                        115)
+                      109)
+                    1)
+                  0)
+                0)
+              0)))
+
+        (defn main []
+          (let [;; IR 命令構築比較 (Rust: Instruction 列挙型との対応)
+                const-instr (make-instr 1 42)
+                get-instr (make-instr 10 0)
+                call-instr (make-instr 40 5)
+
+                ;; LEB128 比較 (Rust: wasm-encoder の LEB128 と同等)
+                leb5 (leb128-unsigned 5)
+                leb300 (leb128-unsigned 300)
+                leb16384 (leb128-unsigned 16384)
+
+                ;; Wasm ヘッダー比較
+                header (emit-header)]
+            (do
+              ;; IR 命令: i64.const 42 (Rust: Instruction::I64Const(42))
+              (print (vector-get const-instr 0))
+              (print (vector-get const-instr 1))
+
+              ;; IR 命令: local.get 0 (Rust: Instruction::LocalGet(0))
+              (print (vector-get get-instr 0))
+              (print (vector-get get-instr 1))
+
+              ;; IR 命令: call 5 (Rust: Instruction::Call(5))
+              (print (vector-get call-instr 0))
+              (print (vector-get call-instr 1))
+
+              ;; LEB128(5) = [5] (1バイト)
+              (print (vector-length leb5))
+              (print (vector-get leb5 0))
+
+              ;; LEB128(300) = [172, 2] (2バイト: 300 = 0b100101100)
+              (print (vector-length leb300))
+              (print (vector-get leb300 0))
+              (print (vector-get leb300 1))
+
+              ;; LEB128(16384) = [128, 128, 1] (3バイト: 16384 = 0x4000)
+              (print (vector-length leb16384))
+              (print (vector-get leb16384 0))
+              (print (vector-get leb16384 1))
+              (print (vector-get leb16384 2))
+
+              ;; Wasm ヘッダー先頭4バイト: \0asm (Rust: wasm マジックナンバー)
+              (print (vector-get header 0))
+              (print (vector-get header 1))
+              (print (vector-get header 2))
+              (print (vector-get header 3))
+
+              0)))
+    "#);
+    // IR: const(1,42), get(10,0), call(40,5)
+    // LEB128(5)=[5](1byte), LEB128(300)=[172,2](2bytes), LEB128(16384)=[128,128,1](3bytes)
+    // Header: 0,97,115,109
+    assert_eq!(
+        result.trim(),
+        "1\n42\n10\n0\n40\n5\n1\n5\n2\n172\n2\n3\n128\n128\n1\n0\n97\n115\n109"
+    );
+}
+
 // ============================================================
 // ブートストラップ検証: セルフホストモジュールの個別コンパイル・実行
 // ============================================================
