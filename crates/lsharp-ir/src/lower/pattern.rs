@@ -9,7 +9,7 @@ use super::{FuncCtx, Lower, LowerError};
 impl Lower {
     /// match の腕を if-else チェインに変換
     pub(crate) fn lower_match_arms(
-        &self,
+        &mut self,
         ctx: &mut FuncCtx,
         scrut_local: u32,
         arms: &[MatchArm],
