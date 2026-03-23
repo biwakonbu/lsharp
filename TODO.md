@@ -10,38 +10,38 @@
 ## Phase 0: 基盤整備
 
 ### P0-0: lower.rs リファクタリング (前提作業)
-- [ ] `lower.rs` (~2000行) を `lower/mod.rs`, `lower/expr.rs`, `lower/pattern.rs`, `lower/decl.rs` に分割
-- [ ] 既存テスト 422 個が全パスすることを確認
+- [x] `lower.rs` (~2000行) を `lower/mod.rs`, `lower/expr.rs`, `lower/pattern.rs`, `lower/decl.rs` に分割 -- 5ファイルに分割済み
+- [x] 既存テスト 422 個が全パスすることを確認 -- 469テスト全パス
 
 ### P0-1: リニアメモリ Bump Allocator
-- [ ] グローバル `$heap_ptr` の追加 (文字列定数データ末尾から開始)
-- [ ] `__alloc(size: i32) -> i32` ビルトイン関数を `wasi.rs` に生成
-- [ ] ページ不足時 `memory.grow` で自動拡張
-- [ ] E2E テスト: メモリ確保 → 値書き込み → 読み出し検証
+- [x] グローバル `$heap_ptr` の追加 (文字列定数データ末尾から開始) -- wasi.rs GlobalSection 追加
+- [x] `__alloc(size: i64) -> i64` ビルトイン関数を `wasi.rs` に生成 -- emit_alloc_func 実装、型推論に builtin 登録、IR lowering 対応
+- [x] ページ不足時 `memory.grow` で自動拡張 -- emit_alloc_func 内で memory.grow 実装
+- [x] E2E テスト: メモリ確保・アライメント・大規模確保 -- E2E テスト 3 個追加 (test_e2e_alloc_basic, test_e2e_alloc_alignment, test_e2e_alloc_memory_grow)
 
 ### P0-2: メモリ操作 IR 命令
-- [ ] `I32Load`, `I32Store`, `I32Load8U`, `I32Store8` を `Instruction` enum に追加
-- [ ] `emit.rs` で Wasm 命令への変換を実装
-- [ ] ユニットテスト: 各メモリ命令の正常動作
+- [x] `I32Load`, `I32Store`, `I32Load8U`, `I32Store8` を `Instruction` enum に追加 -- 16種のメモリ操作命令
+- [x] `emit.rs` で Wasm 命令への変換を実装 -- emit.rs に全命令マッピング
+- [x] ユニットテスト: 各メモリ命令の正常動作 -- ユニットテスト追加
 
 ### P0-3: タグ付きワードとヒープオブジェクト基盤
-- [ ] i64 の上位ビットでタグ判定 (integer vs pointer) の規約を設計・実装
-- [ ] ヒープオブジェクト共通ヘッダ `[tag: i32, size: i32, ...]` の生成
-- [ ] E2E テスト: ヒープオブジェクトの確保・タグ判定・フィールドアクセス
+- [x] i64 の上位ビットでタグ判定 (integer vs pointer) の規約を設計・実装 -- MSB=1 でポインタ判定
+- [x] ヒープオブジェクト共通ヘッダ `[tag: i32, size: i32, ...]` の生成 -- emit_tag_pointer/emit_untag_pointer/emit_write_heap_header
+- [x] E2E テスト: ヒープオブジェクトの確保・タグ判定・フィールドアクセス -- Ref Cell E2E テスト 4件で検証
 
 ---
 
 ## Phase 1: 文字列操作
 
 ### P1-1: 文字列ランタイム関数
-- [ ] `string-length [s] -> Int` ビルトイン
-- [ ] `string-concat [a b] -> String` ビルトイン
+- [x] `string-length [s] -> Int` ビルトイン -- パック文字列から下位32bit取得、E2E 3件
+- [x] `string-concat [a b] -> String` ビルトイン -- __alloc + memory.copy、E2E 2件
 - [ ] `string-char-at [s i] -> Int` ビルトイン (バイト単位)
 - [ ] `substring [s start end] -> String` ビルトイン
-- [ ] `string-eq [a b] -> Bool` ビルトイン
+- [x] `string-eq [a b] -> Bool` ビルトイン -- 長さ比較 + バイト比較ループ、E2E 4件
 - [ ] `int-to-string [n] -> String` ビルトイン
-- [ ] `print-string [s] -> Unit` ビルトイン
-- [ ] E2E テスト: 各関数の正常動作 + 境界条件
+- [x] `print-string [s] -> Unit` ビルトイン -- fd_write でパック文字列出力、E2E 3件
+- [x] E2E テスト: 各関数の正常動作 + 境界条件 -- 12件パス
 
 ### P1-2: 文字列リテラルのヒープ化
 - [ ] data section offset → ヒープ上 String オブジェクト (tag=1, len, bytes) への変換
@@ -56,11 +56,11 @@
 ## Phase 2: 動的コレクション (同時並行で実装可能)
 
 ### P2-1: ADT リニアメモリ版 lowering
-- [ ] WasmGC struct → リニアメモリ上のヒープオブジェクト (tag=3) への変換
-- [ ] コンストラクタ呼出: ヒープにフィールド確保 → ポインタを返す
-- [ ] パターンマッチ: タグ比較 + フィールド読み出し
-- [ ] Cons リスト `(type (List a) (Cons a (List a)) Nil)` が実行可能に
-- [ ] E2E テスト: ADT 構築・分解・パターンマッチ
+- [x] WasmGC struct → リニアメモリ上のヒープオブジェクト (tag=3) への変換 -- decl.rs generate_adt_constructor
+- [x] コンストラクタ呼出: ヒープにフィールド確保 → ポインタを返す -- emit_tag_pointer でタグ付きポインタ返却
+- [x] パターンマッチ: タグ比較 + フィールド読み出し -- emit_untag_pointer + I32Load/I64Load
+- [x] Cons リスト `(type (List a) (Cons a (List a)) Nil)` が実行可能に -- E2E テスト sum/length パス
+- [x] E2E テスト: ADT 構築・分解・パターンマッチ -- E2E テスト 12件パス
 
 ### P2-2: 可変長配列 (Vector)
 - [ ] `vector-new [capacity] -> Vector` ビルトイン
@@ -86,15 +86,15 @@
 ## Phase 3: クロージャ
 
 ### P3-1: 自由変数解析
-- [ ] Lambda body の走査による自由変数収集
-- [ ] `crates/lsharp-ir/src/closure.rs` モジュール作成
-- [ ] ユニットテスト: 各種 Lambda パターンの自由変数抽出
+- [x] Lambda body の走査による自由変数収集 -- closure.rs に free_variables() 実装
+- [x] `crates/lsharp-ir/src/closure.rs` モジュール作成 -- 295行、全Exprバリアント対応
+- [x] ユニットテスト: 各種 Lambda パターンの自由変数抽出 -- ユニットテスト 10件
 
 ### P3-2: クロージャ変換 (Lambda Lifting)
-- [ ] Lambda → 通常関数 (環境パラメータ追加) へのリフト
-- [ ] クロージャオブジェクト (tag=4, func_idx, captured values) のヒープ確保
-- [ ] `call_indirect` によるクロージャ呼び出し
-- [ ] E2E テスト: 自由変数キャプチャ + クロージャ呼出
+- [x] Lambda → 通常関数 (環境パラメータ追加) へのリフト -- 統一呼び出し規約 (params + closure_ptr)
+- [x] クロージャオブジェクト (tag=4, func_idx, captured values) のヒープ確保 -- FuncIdx IR 命令で codegen リマップ
+- [x] `call_indirect` によるクロージャ呼び出し -- table/element section + CallIndirect 型マッピング
+- [x] E2E テスト: 自由変数キャプチャ + クロージャ呼出 -- E2E 5件パス
 
 ### P3-3: 高階関数の有効化
 - [ ] `list-map [f xs] -> List` (クロージャ対応)
@@ -114,10 +114,10 @@
 - [ ] E2E テスト: Option/Result のパターンマッチ
 
 ### P4-2: 可変参照 (Ref Cell)
-- [ ] `ref-new [v] -> Ref` ビルトイン
-- [ ] `ref-get [r] -> a` ビルトイン
-- [ ] `ref-set [r v] -> Unit` ビルトイン
-- [ ] E2E テスト: 可変状態の読み書き
+- [x] `ref-new [v] -> Ref` ビルトイン -- ヒープ確保 + タグ付きポインタ返却
+- [x] `ref-get [r] -> a` ビルトイン -- ポインタ解除 + I64Load
+- [x] `ref-set [r v] -> Unit` ビルトイン -- ポインタ解除 + I64Store
+- [x] E2E テスト: 可変状態の読み書き -- E2E テスト 4件 (new/get, set/get, multiple_updates, in_loop)
 
 ---
 

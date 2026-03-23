@@ -1186,6 +1186,82 @@ fn test_e2e_closure_no_capture() {
     assert_eq!(output, "42\n");
 }
 
+// === Phase 4-1: Option/Result ランタイム ===
+
+#[test]
+fn test_e2e_option_some_match() {
+    // Option の Some でパターンマッチ
+    let output = compile_and_run(
+        "(type (Option a) (Some a) None)
+         (defn unwrap-or [opt default]
+           (match opt
+             [(Some x) x]
+             [None default]))
+         (defn main [] (do (print (unwrap-or (Some 42) 0)) 0))",
+    );
+    assert_eq!(output, "42\n");
+}
+
+#[test]
+fn test_e2e_option_none_match() {
+    // Option の None でデフォルト値
+    let output = compile_and_run(
+        "(type (Option a) (Some a) None)
+         (defn unwrap-or [opt default]
+           (match opt
+             [(Some x) x]
+             [None default]))
+         (defn main [] (do (print (unwrap-or None 99)) 0))",
+    );
+    assert_eq!(output, "99\n");
+}
+
+#[test]
+fn test_e2e_result_ok_match() {
+    // Result の Ok パターンマッチ
+    let output = compile_and_run(
+        "(type (Result a e) (Ok a) (Err e))
+         (defn get-value [r]
+           (match r
+             [(Ok v) v]
+             [(Err e) -1]))
+         (defn main [] (do (print (get-value (Ok 100))) 0))",
+    );
+    assert_eq!(output, "100\n");
+}
+
+#[test]
+fn test_e2e_result_err_match() {
+    // Result の Err パターンマッチ
+    let output = compile_and_run(
+        "(type (Result a e) (Ok a) (Err e))
+         (defn get-value [r]
+           (match r
+             [(Ok v) v]
+             [(Err e) -1]))
+         (defn main [] (do (print (get-value (Err 0))) 0))",
+    );
+    assert_eq!(output, "-1\n");
+}
+
+#[test]
+fn test_e2e_option_and_then() {
+    // Option の and-then (手動展開版)
+    let output = compile_and_run(
+        "(type (Option a) (Some a) None)
+         (defn safe-div [a b]
+           (if (= b 0) None (Some (/ a b))))
+         (defn unwrap [opt]
+           (match opt
+             [(Some x) x]
+             [None -1]))
+         (defn main [] (do (print (unwrap (safe-div 10 2)))
+                           (print (unwrap (safe-div 10 0)))
+                           0))",
+    );
+    assert_eq!(output, "5\n-1\n");
+}
+
 // === エッジケース: ランタイムエラー ===
 
 #[test]
