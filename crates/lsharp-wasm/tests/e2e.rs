@@ -2752,3 +2752,97 @@ fn test_e2e_selfhost_type_scheme() {
     "#);
     assert_eq!(result.trim(), "1\n100\n3\n2\n1000\n0\n1\n1");
 }
+
+#[test]
+fn test_e2e_selfhost_wasm_emit() {
+    let result = compile_and_run(r#"
+        ;; LEB128 unsigned エンコーディング
+        (defn leb128-u [value]
+          (let [result (ref-new (vector-new 4))
+                v (ref-new value)]
+            (do
+              (let [byte (% (ref-get v) 128)
+                    rest (/ (ref-get v) 128)]
+                (if (= rest 0)
+                  (ref-set result (vector-push (ref-get result) byte))
+                  (do
+                    (ref-set result (vector-push (ref-get result) (+ byte 128)))
+                    (ref-set v rest)
+                    (let [byte2 (% (ref-get v) 128)
+                          rest2 (/ (ref-get v) 128)]
+                      (if (= rest2 0)
+                        (ref-set result (vector-push (ref-get result) byte2))
+                        (do
+                          (ref-set result (vector-push (ref-get result) (+ byte2 128)))
+                          (ref-set v rest2)
+                          (ref-set result (vector-push (ref-get result) (% (ref-get v) 128)))))))))
+              (ref-get result))))
+
+        ;; バイト列にバイトを追加
+        (defn emit-byte [bytes b]
+          (vector-push bytes b))
+
+        ;; Wasm ヘッダー (8 バイト)
+        (defn emit-header []
+          (let [h (vector-new 8)]
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push h 0)
+                          97)
+                        115)
+                      109)
+                    1)
+                  0)
+                0)
+              0)))
+
+        ;; Type セクション: () -> i64
+        (defn emit-type-section-main []
+          (let [bytes (vector-new 16)]
+            (let [b1 (emit-byte bytes 1)
+                  b2 (emit-byte b1 5)
+                  b3 (emit-byte b2 1)
+                  b4 (emit-byte b3 96)
+                  b5 (emit-byte b4 0)
+                  b6 (emit-byte b5 1)
+                  b7 (emit-byte b6 126)]
+              b7)))
+
+        (defn main []
+          (let [header (emit-header)
+                type-sec (emit-type-section-main)
+                leb5 (leb128-u 5)
+                leb300 (leb128-u 300)]
+            (do
+              ;; ヘッダー検証
+              (print (vector-length header))
+              (print (vector-get header 0))
+              (print (vector-get header 1))
+              (print (vector-get header 2))
+              (print (vector-get header 3))
+              (print (vector-get header 4))
+
+              ;; Type セクション検証
+              (print (vector-length type-sec))
+              (print (vector-get type-sec 0))
+              (print (vector-get type-sec 1))
+              (print (vector-get type-sec 2))
+              (print (vector-get type-sec 3))
+
+              ;; LEB128 検証
+              (print (vector-get leb5 0))
+              (print (vector-get leb300 0))
+              (print (vector-get leb300 1))
+
+              0)))
+    "#);
+    // header: length=8, bytes: 0('\\0'), 97('a'), 115('s'), 109('m'), 1(version)
+    // type-sec: length=7, bytes: 1(section-id), 5(size), 1(count), 96(0x60=func)
+    // leb128(5)=[5], leb128(300)=[172, 2]
+    assert_eq!(result.trim(), "8\n0\n97\n115\n109\n1\n7\n1\n5\n1\n96\n5\n172\n2");
+}

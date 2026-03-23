@@ -202,7 +202,7 @@
 - [x] IR ADT 定義 -- selfhost/IR.ls (命令タグ + Vector)
 - [x] AST → IR 変換 -- selfhost/Compiler.ls (compile-expr: lit/var/bool), E2E 1件
 - [x] LEB128 エンコーディング -- selfhost/Compiler.ls (leb128-unsigned), E2E 1件
-- [ ] Wasm バイナリ生成
+- [x] Wasm バイナリ生成 -- selfhost/WasmEmit.ls (ヘッダー/Type セクション/LEB128), E2E 1件
 - [~] Rust 版 codegen との出力比較テスト -- E2E テスト 2件パス (IR 命令構築 + Compiler)
 
 ### P8-5: ブートストラップ検証
