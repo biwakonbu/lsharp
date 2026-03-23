@@ -1,7 +1,7 @@
 # L# パフォーマンスベンチマーク レポート
 
-> 計測日時: 2026-03-24 01:58:42
-> Git: `6fcb3d8` (main)
+> 計測日時: 2026-03-24 02:06:05
+> Git: `a9aa644` (main)
 > プラットフォーム: Darwin arm64 (25.3.0)
 
 ---
@@ -10,11 +10,11 @@
 
 | 項目 | 値 |
 |------|-----|
-| L# コンパイル時間 (fib.ls) | 1.87 s |
-| L# コンパイル RSS メモリ | 11.0 MB |
+| L# コンパイル時間 (fib.ls) | 7.82 s |
+| L# コンパイル RSS メモリ | 11.2 MB |
 | L# Wasm 実行時間 (fib 35) | 0.03 s |
-| L# Wasm 実行 RSS メモリ | 14.2 MB |
-| L# Wasm 平均サイズ | 1.7 KB |
+| L# Wasm 実行 RSS メモリ | 14.1 MB |
+| L# Wasm 平均サイズ | 1.8 KB |
 | コンパイル成功数 | 14 / 14 |
 
 ---
@@ -23,23 +23,23 @@
 
 ### コンパイル速度
 
-| 言語 | コンパイル時間 | コンパイル RSS メモリ | CPU 使用率 |
-|------|-------------|-------------------|-----------|
-| Rust (`rustc -O`) | 0.31 s | 87.7 MB | N/A |
-| Go (`go build`) | 0.24 s | 64.5 MB | N/A |
-| MoonBit (`moon build`) | 0.09 s | 43.1 MB | N/A |
-| L# (`lsharp compile`) | 1.87 s | 11.0 MB | N/A |
-| JS (Node.js) | N/A (インタプリタ) | N/A | N/A |
+| 言語 | コンパイル時間 | コンパイル RSS メモリ |
+|------|-------------|-------------------|
+| Rust (`rustc -O`) | 0.78 s | 87.7 MB |
+| Go (`go build`) | 0.26 s | 66.0 MB |
+| MoonBit (`moon build`) | 0.11 s | 43.1 MB |
+| L# (`lsharp compile`) | 7.82 s | 11.2 MB |
+| JS (Node.js) | N/A (インタプリタ) | N/A |
 
 ### 実行速度
 
-| 言語 | 実行時間 | 実行 RSS メモリ | CPU 使用率 |
-|------|---------|---------------|-----------|
-| Rust (ネイティブ) | 0.01 s | 1.4 MB | N/A |
-| Go (ネイティブ) | 0.03 s | 3.5 MB | N/A |
-| MoonBit (moon run) | 0.04 s | 13.3 MB | N/A |
-| L# (wasmtime) | 0.03 s | 14.2 MB | N/A |
-| JS (Node.js) | 0.06 s | 43.0 MB | N/A |
+| 言語 | 実行時間 | 実行 RSS メモリ |
+|------|---------|---------------|
+| Rust (ネイティブ) | 0.01 s | 1.4 MB |
+| Go (ネイティブ) | 0.02 s | 3.6 MB |
+| MoonBit (moon run) | 0.04 s | 13.3 MB |
+| L# (wasmtime) | 0.03 s | 14.1 MB |
+| JS (Node.js) | 0.08 s | 43.1 MB |
 
 ### バイナリサイズ
 
@@ -48,7 +48,7 @@
 | Rust | 432.5 KB |
 | Go | 2.3 MB |
 | MoonBit (Wasm) | 10.8 KB |
-| L# (Wasm) | 1.6 KB |
+| L# (Wasm) | 1.7 KB |
 | JS | N/A (ソースコード実行) |
 
 > **注**:
@@ -72,22 +72,22 @@
 
 | ファイル | サイズ |
 |---------|--------|
-| `computation.ls` | 1.6 KB |
-| `constrained.ls` | 1.8 KB |
+| `computation.ls` | 1.7 KB |
+| `constrained.ls` | 1.9 KB |
 | `factorial.ls` | 1.7 KB |
-| `fib.ls` | 1.6 KB |
-| `gadt.ls` | 1.8 KB |
-| `hello.ls` | 1.6 KB |
-| `hkt.ls` | 1.7 KB |
-| `module.ls` | 1.6 KB |
+| `fib.ls` | 1.7 KB |
+| `gadt.ls` | 1.9 KB |
+| `hello.ls` | 1.7 KB |
+| `hkt.ls` | 1.8 KB |
+| `module.ls` | 1.7 KB |
 | `nested-module.ls` | 1.7 KB |
 | `record.ls` | 1.7 KB |
-| `trait-where.ls` | 1.6 KB |
-| `trait.ls` | 1.6 KB |
-| `type-alias.ls` | 1.6 KB |
-| `types.ls` | 1.9 KB |
+| `trait-where.ls` | 1.7 KB |
+| `trait.ls` | 1.7 KB |
+| `type-alias.ls` | 1.7 KB |
+| `types.ls` | 2.0 KB |
 
-| **平均** | **1.7 KB** |
+| **平均** | **1.8 KB** |
 
 ---
 
@@ -112,7 +112,6 @@ N/A |
 |---------|----------|------|
 | コンパイル速度 | ✅ 全言語比較 | `/usr/bin/time` + criterion |
 | 実行速度 | ✅ 全言語比較 | `/usr/bin/time` |
-| CPU 使用率 | ✅ 全言語比較 | `/usr/bin/time` |
 | メモリ使用量 (RSS) | ✅ 全言語比較 | `/usr/bin/time -l` |
 | バイナリサイズ | ✅ 全言語比較 | `wc -c` |
 | GPU 使用率 | N/A | Wasm/WASI に GPU アクセスなし |

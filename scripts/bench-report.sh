@@ -42,28 +42,6 @@ extract_real_time() {
     fi
 }
 
-# /usr/bin/time の出力から user 時間を抽出 (秒単位、単位付き)
-extract_user_time() {
-    local raw
-    raw=$(echo "$1" | grep "user" | awk '{print $1}' || echo "")
-    if [[ -n "$raw" && "$raw" != "N/A" ]]; then
-        echo "${raw} s"
-    else
-        echo "N/A"
-    fi
-}
-
-# /usr/bin/time の出力から CPU% を抽出
-extract_cpu_percent() {
-    local raw
-    raw=$(echo "$1" | grep "CPU" | grep -oE '[0-9]+%' | head -1 || echo "")
-    if [[ -n "$raw" ]]; then
-        echo "$raw"
-    else
-        echo "N/A"
-    fi
-}
-
 # /usr/bin/time の出力から RSS (バイト数) を抽出
 extract_rss() {
     echo "$1" | grep "maximum resident set size" | awk '{print $1}' || echo "0"
@@ -147,25 +125,23 @@ fi
 echo "[2/5] コンパイル速度比較中..."
 
 # --- Rust コンパイル ---
-RUST_COMPILE_TIME="N/A"; RUST_COMPILE_RSS="N/A"; RUST_COMPILE_CPU="N/A"
+RUST_COMPILE_TIME="N/A"; RUST_COMPILE_RSS="N/A"
 if command -v rustc &>/dev/null; then
     COUT=$(measure_time rustc -O "$SCRIPT_DIR/bench-programs/fib.rs" -o "$TMP_DIR/fib_rust" 2>/dev/null)
     RUST_COMPILE_TIME=$(extract_real_time "$COUT")
     RUST_COMPILE_RSS=$(extract_rss "$COUT")
-    RUST_COMPILE_CPU=$(extract_cpu_percent "$COUT")
 fi
 
 # --- Go コンパイル ---
-GO_COMPILE_TIME="N/A"; GO_COMPILE_RSS="N/A"; GO_COMPILE_CPU="N/A"
+GO_COMPILE_TIME="N/A"; GO_COMPILE_RSS="N/A"
 if command -v go &>/dev/null; then
     COUT=$(measure_time go build -o "$TMP_DIR/fib_go" "$SCRIPT_DIR/bench-programs/fib.go" 2>/dev/null)
     GO_COMPILE_TIME=$(extract_real_time "$COUT")
     GO_COMPILE_RSS=$(extract_rss "$COUT")
-    GO_COMPILE_CPU=$(extract_cpu_percent "$COUT")
 fi
 
 # --- MoonBit コンパイル ---
-MOONBIT_COMPILE_TIME="N/A"; MOONBIT_COMPILE_RSS="N/A"; MOONBIT_COMPILE_CPU="N/A"
+MOONBIT_COMPILE_TIME="N/A"; MOONBIT_COMPILE_RSS="N/A"
 MOONBIT_DIR="$SCRIPT_DIR/bench-programs/moonbit"
 if command -v moon &>/dev/null && [[ -d "$MOONBIT_DIR" ]]; then
     # クリーンビルドで計測
@@ -173,18 +149,16 @@ if command -v moon &>/dev/null && [[ -d "$MOONBIT_DIR" ]]; then
     COUT=$(/usr/bin/time -l bash -c "cd '$MOONBIT_DIR' && moon build --target wasm --release" 2>&1 || true)
     MOONBIT_COMPILE_TIME=$(extract_real_time "$COUT")
     MOONBIT_COMPILE_RSS=$(extract_rss "$COUT")
-    MOONBIT_COMPILE_CPU=$(extract_cpu_percent "$COUT")
 fi
 
 # --- L# コンパイル ---
-LSHARP_COMPILE_TIME="N/A"; LSHARP_COMPILE_RSS="N/A"; LSHARP_COMPILE_CPU="N/A"
+LSHARP_COMPILE_TIME="N/A"; LSHARP_COMPILE_RSS="N/A"
 LSHARP_WASM="$TMP_DIR/fib_lsharp.wasm"
 # ベンチ用の fib(35) を使用 (examples/fib.ls は fib(10) なので比較不可)
 BENCH_FIB="$SCRIPT_DIR/bench-programs/fib.ls"
 COUT=$(/usr/bin/time -l cargo run --quiet --manifest-path "$PROJECT_DIR/Cargo.toml" -- compile "$BENCH_FIB" -o "$LSHARP_WASM" 2>&1 || true)
 LSHARP_COMPILE_TIME=$(extract_real_time "$COUT")
 LSHARP_COMPILE_RSS=$(extract_rss "$COUT")
-LSHARP_COMPILE_CPU=$(extract_cpu_percent "$COUT")
 
 # ========================================
 # 3. 言語別実行速度比較
@@ -192,36 +166,33 @@ LSHARP_COMPILE_CPU=$(extract_cpu_percent "$COUT")
 echo "[3/5] 実行速度比較中..."
 
 # --- Rust 実行 ---
-RUST_EXEC_TIME="N/A"; RUST_EXEC_RSS="N/A"; RUST_EXEC_CPU="N/A"; RUST_BIN_SIZE="N/A"
+RUST_EXEC_TIME="N/A"; RUST_EXEC_RSS="N/A"; RUST_BIN_SIZE="N/A"
 if [[ -f "$TMP_DIR/fib_rust" ]]; then
     RUST_BIN_SIZE=$(wc -c < "$TMP_DIR/fib_rust" | tr -d ' ')
     EOUT=$(measure_time_warm "$TMP_DIR/fib_rust" 2>/dev/null)
     RUST_EXEC_TIME=$(extract_real_time "$EOUT")
     RUST_EXEC_RSS=$(extract_rss "$EOUT")
-    RUST_EXEC_CPU=$(extract_cpu_percent "$EOUT")
 fi
 
 # --- Go 実行 ---
-GO_EXEC_TIME="N/A"; GO_EXEC_RSS="N/A"; GO_EXEC_CPU="N/A"; GO_BIN_SIZE="N/A"
+GO_EXEC_TIME="N/A"; GO_EXEC_RSS="N/A"; GO_BIN_SIZE="N/A"
 if [[ -f "$TMP_DIR/fib_go" ]]; then
     GO_BIN_SIZE=$(wc -c < "$TMP_DIR/fib_go" | tr -d ' ')
     EOUT=$(measure_time_warm "$TMP_DIR/fib_go" 2>/dev/null)
     GO_EXEC_TIME=$(extract_real_time "$EOUT")
     GO_EXEC_RSS=$(extract_rss "$EOUT")
-    GO_EXEC_CPU=$(extract_cpu_percent "$EOUT")
 fi
 
 # --- JavaScript 実行 ---
-JS_EXEC_TIME="N/A"; JS_EXEC_RSS="N/A"; JS_EXEC_CPU="N/A"
+JS_EXEC_TIME="N/A"; JS_EXEC_RSS="N/A"
 if command -v node &>/dev/null; then
     EOUT=$(measure_time_warm node "$SCRIPT_DIR/bench-programs/fib.js" 2>/dev/null)
     JS_EXEC_TIME=$(extract_real_time "$EOUT")
     JS_EXEC_RSS=$(extract_rss "$EOUT")
-    JS_EXEC_CPU=$(extract_cpu_percent "$EOUT")
 fi
 
 # --- MoonBit (Wasm) 実行 ---
-MOONBIT_EXEC_TIME="N/A"; MOONBIT_EXEC_RSS="N/A"; MOONBIT_EXEC_CPU="N/A"; MOONBIT_BIN_SIZE="N/A"
+MOONBIT_EXEC_TIME="N/A"; MOONBIT_EXEC_RSS="N/A"; MOONBIT_BIN_SIZE="N/A"
 MOONBIT_WASM="$MOONBIT_DIR/_build/wasm/release/build/cmd/main/main.wasm"
 if command -v moon &>/dev/null && [[ -f "$MOONBIT_WASM" ]]; then
     MOONBIT_BIN_SIZE=$(wc -c < "$MOONBIT_WASM" | tr -d ' ')
@@ -229,18 +200,16 @@ if command -v moon &>/dev/null && [[ -f "$MOONBIT_WASM" ]]; then
     EOUT=$(measure_time_warm bash -c "cd '$MOONBIT_DIR' && moon run cmd/main --target wasm" 2>/dev/null)
     MOONBIT_EXEC_TIME=$(extract_real_time "$EOUT")
     MOONBIT_EXEC_RSS=$(extract_rss "$EOUT")
-    MOONBIT_EXEC_CPU=$(extract_cpu_percent "$EOUT")
 fi
 
 # --- L# (Wasm) 実行 ---
-LSHARP_EXEC_TIME="N/A"; LSHARP_EXEC_RSS="N/A"; LSHARP_EXEC_CPU="N/A"; LSHARP_BIN_SIZE="N/A"
+LSHARP_EXEC_TIME="N/A"; LSHARP_EXEC_RSS="N/A"; LSHARP_BIN_SIZE="N/A"
 if [[ -f "$LSHARP_WASM" ]]; then
     LSHARP_BIN_SIZE=$(wc -c < "$LSHARP_WASM" | tr -d ' ')
     if command -v wasmtime &>/dev/null; then
         EOUT=$(measure_time_warm wasmtime "$LSHARP_WASM" 2>/dev/null)
         LSHARP_EXEC_TIME=$(extract_real_time "$EOUT")
         LSHARP_EXEC_RSS=$(extract_rss "$EOUT")
-        LSHARP_EXEC_CPU=$(extract_cpu_percent "$EOUT")
     fi
 fi
 
@@ -311,23 +280,23 @@ cat > "$REPORT_FILE" << REPORT_EOF
 
 ### コンパイル速度
 
-| 言語 | コンパイル時間 | コンパイル RSS メモリ | CPU 使用率 |
-|------|-------------|-------------------|-----------|
-| Rust (\`rustc -O\`) | ${RUST_COMPILE_TIME} | $(format_bytes "$RUST_COMPILE_RSS") | ${RUST_COMPILE_CPU} |
-| Go (\`go build\`) | ${GO_COMPILE_TIME} | $(format_bytes "$GO_COMPILE_RSS") | ${GO_COMPILE_CPU} |
-| MoonBit (\`moon build\`) | ${MOONBIT_COMPILE_TIME} | $(format_bytes "$MOONBIT_COMPILE_RSS") | ${MOONBIT_COMPILE_CPU} |
-| L# (\`lsharp compile\`) | ${LSHARP_COMPILE_TIME} | $(format_bytes "$LSHARP_COMPILE_RSS") | ${LSHARP_COMPILE_CPU} |
-| JS (Node.js) | N/A (インタプリタ) | N/A | N/A |
+| 言語 | コンパイル時間 | コンパイル RSS メモリ |
+|------|-------------|-------------------|
+| Rust (\`rustc -O\`) | ${RUST_COMPILE_TIME} | $(format_bytes "$RUST_COMPILE_RSS") |
+| Go (\`go build\`) | ${GO_COMPILE_TIME} | $(format_bytes "$GO_COMPILE_RSS") |
+| MoonBit (\`moon build\`) | ${MOONBIT_COMPILE_TIME} | $(format_bytes "$MOONBIT_COMPILE_RSS") |
+| L# (\`lsharp compile\`) | ${LSHARP_COMPILE_TIME} | $(format_bytes "$LSHARP_COMPILE_RSS") |
+| JS (Node.js) | N/A (インタプリタ) | N/A |
 
 ### 実行速度
 
-| 言語 | 実行時間 | 実行 RSS メモリ | CPU 使用率 |
-|------|---------|---------------|-----------|
-| Rust (ネイティブ) | ${RUST_EXEC_TIME} | $(format_bytes "$RUST_EXEC_RSS") | ${RUST_EXEC_CPU} |
-| Go (ネイティブ) | ${GO_EXEC_TIME} | $(format_bytes "$GO_EXEC_RSS") | ${GO_EXEC_CPU} |
-| MoonBit (moon run) | ${MOONBIT_EXEC_TIME} | $(format_bytes "$MOONBIT_EXEC_RSS") | ${MOONBIT_EXEC_CPU} |
-| L# (wasmtime) | ${LSHARP_EXEC_TIME} | $(format_bytes "$LSHARP_EXEC_RSS") | ${LSHARP_EXEC_CPU} |
-| JS (Node.js) | ${JS_EXEC_TIME} | $(format_bytes "$JS_EXEC_RSS") | ${JS_EXEC_CPU} |
+| 言語 | 実行時間 | 実行 RSS メモリ |
+|------|---------|---------------|
+| Rust (ネイティブ) | ${RUST_EXEC_TIME} | $(format_bytes "$RUST_EXEC_RSS") |
+| Go (ネイティブ) | ${GO_EXEC_TIME} | $(format_bytes "$GO_EXEC_RSS") |
+| MoonBit (moon run) | ${MOONBIT_EXEC_TIME} | $(format_bytes "$MOONBIT_EXEC_RSS") |
+| L# (wasmtime) | ${LSHARP_EXEC_TIME} | $(format_bytes "$LSHARP_EXEC_RSS") |
+| JS (Node.js) | ${JS_EXEC_TIME} | $(format_bytes "$JS_EXEC_RSS") |
 
 ### バイナリサイズ
 
@@ -382,7 +351,6 @@ ${WASM_SIZE_ROWS}
 |---------|----------|------|
 | コンパイル速度 | ✅ 全言語比較 | \`/usr/bin/time\` + criterion |
 | 実行速度 | ✅ 全言語比較 | \`/usr/bin/time\` |
-| CPU 使用率 | ✅ 全言語比較 | \`/usr/bin/time\` |
 | メモリ使用量 (RSS) | ✅ 全言語比較 | \`/usr/bin/time -l\` |
 | バイナリサイズ | ✅ 全言語比較 | \`wc -c\` |
 | GPU 使用率 | N/A | Wasm/WASI に GPU アクセスなし |
