@@ -22,6 +22,16 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/perf-guard.sh",
+            "timeout": 5
+          }
+        ]
       }
     ]
   }
