@@ -3823,3 +3823,208 @@ fn test_e2e_metadata_example_and_invariant() {
     let example_result = results.iter().find(|r| r.kind == lsharp_types::metadata_check::TestKind::Example).unwrap();
     assert!(example_result.passed, ":example テストが成功するはず: {:?}", example_result.error);
 }
+
+// === P1-2: 文字列リテラルのヒープ化テスト ===
+
+#[test]
+fn test_e2e_string_heap_print() {
+    // ヒープ上の String オブジェクト経由で文字列が正しく出力されることを検証
+    let result = compile_and_run(r#"
+        (defn main []
+          (do (print-string "hello heap") 0))
+    "#);
+    assert_eq!(result, "hello heap");
+}
+
+#[test]
+fn test_e2e_string_heap_length() {
+    // ヒープ上の String オブジェクトから長さが正しく取得できることを検証
+    let result = compile_and_run(r#"
+        (defn main []
+          (print (string-length "heap string")))
+    "#);
+    assert_eq!(result.trim(), "11");
+}
+
+#[test]
+fn test_e2e_string_heap_char_at() {
+    // ヒープ上の String オブジェクトから文字取得が正しく動作することを検証
+    let result = compile_and_run(r#"
+        (defn main []
+          (print (string-char-at "abcdef" 2)))
+    "#);
+    // 'c' = 99
+    assert_eq!(result.trim(), "99");
+}
+
+#[test]
+fn test_e2e_string_heap_substring() {
+    // ヒープ上の String オブジェクトから部分文字列が正しく取得できることを検証
+    let result = compile_and_run(r#"
+        (defn main []
+          (do (print-string (substring "hello world" 6 11)) 0))
+    "#);
+    assert_eq!(result, "world");
+}
+
+#[test]
+fn test_e2e_string_heap_concat_mixed() {
+    // リテラル文字列同士の結合がヒープ上で正しく動作することを検証
+    let result = compile_and_run(r#"
+        (defn main []
+          (do (print-string (string-concat "foo" "bar")) 0))
+    "#);
+    assert_eq!(result, "foobar");
+}
+
+#[test]
+fn test_e2e_string_heap_eq() {
+    // ヒープ上の文字列同士の比較が正しく動作することを検証
+    let result = compile_and_run(r#"
+        (defn main []
+          (print (if (string-eq "test" "test") 1 0)))
+    "#);
+    assert_eq!(result.trim(), "1");
+}
+
+#[test]
+fn test_e2e_string_heap_multiple_literals() {
+    // 複数の文字列リテラルがそれぞれヒープ上に正しく配置されることを検証
+    let result = compile_and_run(r#"
+        (defn main []
+          (do
+            (print-string "first")
+            (print-string " ")
+            (print-string "second")
+            0))
+    "#);
+    assert_eq!(result, "first second");
+}
+
+#[test]
+fn test_e2e_string_heap_object_layout() {
+    // 文字列リテラルがヒープ上に [tag=1][len][bytes] として配置されることを検証
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [s "hello"]
+            (do
+              (print (string-length s))
+              (print (string-char-at s 0))
+              (print (string-char-at s 4))
+              0)))
+    "#);
+    // "hello": length=5, 'h'=104, 'o'=111
+    assert_eq!(result.trim(), "5\n104\n111");
+}
+
+// === ネストパターンマッチ E2E テスト ===
+
+#[test]
+fn test_e2e_nested_constructor_pattern() {
+    // ネストしたコンストラクタパターン (深さ2)
+    let output = compile_and_run(
+        "(type Tree (Leaf Int) (Node Tree Tree))
+         (defn depth [t]
+           (match t
+             [(Leaf _) 1]
+             [(Node (Leaf _) _) 2]
+             [(Node _ _) 3]))
+         (defn main [] (do
+           (print (depth (Leaf 1)))
+           (print (depth (Node (Leaf 1) (Leaf 2))))
+           (print (depth (Node (Node (Leaf 1) (Leaf 2)) (Leaf 3))))
+           0))",
+    );
+    assert_eq!(output, "1\n2\n3\n");
+}
+
+#[test]
+fn test_e2e_nested_constructor_pattern_extract() {
+    // ネストしたコンストラクタパターンでフィールドを取り出す
+    let output = compile_and_run(
+        "(type (Maybe a) (Just a) Nothing)
+         (defn unwrap-nested [m]
+           (match m
+             [(Just (Just x)) x]
+             [(Just Nothing) -1]
+             [Nothing -2]))
+         (defn main [] (do
+           (print (unwrap-nested (Just (Just 42))))
+           (print (unwrap-nested (Just Nothing)))
+           (print (unwrap-nested Nothing))
+           0))",
+    );
+    assert_eq!(output, "42\n-1\n-2\n");
+}
+
+// === ガード条件 (when 節) E2E テスト ===
+
+#[test]
+fn test_e2e_match_guard_basic() {
+    // ガード条件 (when 節) 付きパターンマッチ
+    let output = compile_and_run(
+        "(defn classify [n]
+           (match n
+             [x when (> x 0) 1]
+             [x when (< x 0) -1]
+             [_ 0]))
+         (defn main [] (do
+           (print (classify 5))
+           (print (classify -3))
+           (print (classify 0))
+           0))",
+    );
+    assert_eq!(output, "1\n-1\n0\n");
+}
+
+#[test]
+fn test_e2e_match_guard_with_binding() {
+    // ガード条件で束縛した変数を使用
+    let output = compile_and_run(
+        "(defn first-positive [a b]
+           (match a
+             [x when (> x 0) x]
+             [_ (match b
+                  [y when (> y 0) y]
+                  [_ 0])]))
+         (defn main [] (do
+           (print (first-positive 5 10))
+           (print (first-positive -1 7))
+           (print (first-positive -1 -2))
+           0))",
+    );
+    assert_eq!(output, "5\n7\n0\n");
+}
+
+// ============================================================
+// P8-5: ブートストラップ統合検証
+// selfhost/ の複数モジュールを結合した統合パイプラインの検証
+// ============================================================
+
+/// 統合テスト: selfhost/Main.ls を Rust コンパイラでコンパイル・実行し、
+/// AST 構築 → IR 変換 → Wasm バイナリ生成の統合パイプラインを検証する。
+#[test]
+fn test_e2e_bootstrap_stage1_integration() {
+    let source = include_str!("../../../selfhost/Main.ls");
+    let output = compile_and_run(source);
+    // 統合パイプラインの出力:
+    // AST: tag=1 (lit-int), value=42
+    // IR: 命令数=1, opcode=1 (i64.const), operand=42
+    // Wasm: header 長=8, magic bytes (0, 97, 115, 109), type section 長=7, section-id=1
+    assert_eq!(
+        output.trim(),
+        "1\n42\n1\n1\n42\n8\n0\n97\n115\n109\n7\n1"
+    );
+}
+
+/// 統合テスト: selfhost/ の全モジュールを結合したソースが正しくコンパイルでき、
+/// stage1.wasm 相当のバイナリ生成まで検証する。
+#[test]
+fn test_e2e_bootstrap_stage1_wasm_generation() {
+    let source = include_str!("../../../selfhost/Main.ls");
+    // コンパイルのみ (Wasm バイナリ生成まで) でも検証
+    let wasm_bytes = compile_only(source);
+    // 有効な Wasm バイナリであること (マジックナンバー確認)
+    assert!(wasm_bytes.len() > 8, "Wasm バイナリが短すぎる: {} bytes", wasm_bytes.len());
+    assert_eq!(&wasm_bytes[0..4], b"\0asm", "Wasm マジックナンバーが不正");
+}

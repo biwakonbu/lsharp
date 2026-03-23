@@ -226,6 +226,10 @@ pub enum Instruction {
     /// 関数インデックスを i32 値としてスタックに積む
     /// Call(idx) と同じインデックス空間。codegen でリマップされる。
     FuncIdx(u32),
+
+    /// 文字列定数: string_data のインデックスを指す
+    /// codegen でヒープ上に String オブジェクト (tag=1, len, bytes) を確保し、アドレスを返す
+    StringConst(u32),
 }
 
 impl fmt::Display for Instruction {
@@ -315,6 +319,7 @@ impl fmt::Display for Instruction {
             Instruction::MemoryFill => write!(f, "memory.fill"),
             Instruction::CallIndirect(type_idx) => write!(f, "call_indirect {type_idx}"),
             Instruction::FuncIdx(idx) => write!(f, "func_idx {idx}"),
+            Instruction::StringConst(idx) => write!(f, "string_const {idx}"),
         }
     }
 }

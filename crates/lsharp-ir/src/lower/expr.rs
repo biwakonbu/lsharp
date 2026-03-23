@@ -17,16 +17,54 @@ impl Lower {
                 Literal::Float(n) => ctx.emit(Instruction::F64Const(*n)),
                 Literal::Bool(b) => ctx.emit(Instruction::I64Const(if *b { 1 } else { 0 })),
                 Literal::String(s) => {
-                    // 文字列リテラル: データセクションに格納し、(offset << 32 | len) でエンコード
+                    // 文字列リテラル: データセクションにバイト列を格納し、
+                    // ランタイムでヒープ上に String オブジェクト [tag=1, len, bytes] を確保
                     let bytes = s.as_bytes().to_vec();
                     let len = bytes.len() as u32;
-                    let offset = self.string_offset;
+                    let data_offset = self.string_offset;
                     let label = format!("$str{}", self.string_data.len());
                     self.string_data.push((label, bytes));
                     self.string_offset += len;
-                    // offset << 32 | len として i64 にパック
-                    let packed = ((offset as i64) << 32) | (len as i64);
-                    ctx.emit(Instruction::I64Const(packed));
+
+                    let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
+                        LowerError::UndefinedFunction { name: "__alloc".to_string() }
+                    })?;
+
+                    // __alloc(8 + len) でヒープ領域を確保
+                    ctx.emit(Instruction::I64Const((8 + len) as i64));
+                    ctx.emit(Instruction::Call(alloc_idx));
+                    // 戻り値 = ヒープオブジェクトのアドレス (i64)
+                    let obj_local = ctx.alloc_local("_str_obj".to_string());
+                    ctx.emit(Instruction::LocalSet(obj_local));
+
+                    // tag = 1 を書き込み (obj + 0)
+                    ctx.emit(Instruction::LocalGet(obj_local));
+                    ctx.emit(Instruction::I32WrapI64);
+                    ctx.emit(Instruction::I32Const(1));
+                    ctx.emit(Instruction::I32Store { offset: 0 });
+
+                    // len を書き込み (obj + 4)
+                    ctx.emit(Instruction::LocalGet(obj_local));
+                    ctx.emit(Instruction::I32WrapI64);
+                    ctx.emit(Instruction::I32Const(len as i32));
+                    ctx.emit(Instruction::I32Store { offset: 4 });
+
+                    if len > 0 {
+                        // memory.copy(obj + 8, data_offset, len)
+                        // dst: obj + 8
+                        ctx.emit(Instruction::LocalGet(obj_local));
+                        ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::I32Const(8));
+                        ctx.emit(Instruction::I32Add);
+                        // src: data_offset (データセクション上のアドレス)
+                        ctx.emit(Instruction::I32Const(data_offset as i32));
+                        // len
+                        ctx.emit(Instruction::I32Const(len as i32));
+                        ctx.emit(Instruction::MemoryCopy);
+                    }
+
+                    // ヒープオブジェクトのアドレスをスタックに積む
+                    ctx.emit(Instruction::LocalGet(obj_local));
                 }
                 Literal::Unit => ctx.emit(Instruction::I64Const(0)),
             },
@@ -174,21 +212,22 @@ impl Lower {
                         })?;
                         ctx.emit(Instruction::Call(idx));
                     }
-                    // string-char-at: パック済み文字列 s のインデックス i のバイト値を返す
+                    // string-char-at: ヒープ上 String オブジェクトのバイト値を返す
+                    // String オブジェクト: [tag:i32=1][len:i32][bytes:u8*]
                     Expr::Var(_, name) if name == "string-char-at" => {
                         if args.len() >= 2 {
-                            self.lower_expr(ctx, &args[0])?; // s (packed string)
+                            self.lower_expr(ctx, &args[0])?; // s (String オブジェクトアドレス)
                             self.lower_expr(ctx, &args[1])?; // i (index)
                         }
                         // i を一時ローカルに保存 (i64 のまま)
                         let idx_local = ctx.alloc_local("_char_at_idx".to_string());
                         ctx.emit(Instruction::LocalSet(idx_local));
-                        // s はスタックトップ (i64)
-                        // offset = (s >> 32) as i32
-                        ctx.emit(Instruction::I64Const(32));
-                        ctx.emit(Instruction::I64ShrU);
+                        // s はスタックトップ (i64) = ヒープオブジェクトのアドレス
+                        // bytes_addr = s + 8 (tag=4bytes, len=4bytes をスキップ)
                         ctx.emit(Instruction::I32WrapI64);
-                        // addr = offset + i (i を i32 に変換して加算)
+                        ctx.emit(Instruction::I32Const(8));
+                        ctx.emit(Instruction::I32Add);
+                        // addr = bytes_addr + i
                         ctx.emit(Instruction::LocalGet(idx_local));
                         ctx.emit(Instruction::I32WrapI64);
                         ctx.emit(Instruction::I32Add);
@@ -197,10 +236,11 @@ impl Lower {
                         // i32 -> i64 に拡張
                         ctx.emit(Instruction::I64ExtendI32U);
                     }
-                    // substring: パック済み文字列 s の [start, end) を部分文字列として返す
+                    // substring: ヒープ上 String オブジェクトの [start, end) を部分文字列として返す
+                    // 新しい String オブジェクト [tag=1, len, bytes] をヒープに確保
                     Expr::Var(_, name) if name == "substring" => {
                         if args.len() >= 3 {
-                            self.lower_expr(ctx, &args[0])?; // s (packed string): i64
+                            self.lower_expr(ctx, &args[0])?; // s (String オブジェクトアドレス): i64
                             self.lower_expr(ctx, &args[1])?; // start: i64
                             self.lower_expr(ctx, &args[2])?; // end: i64
                         }
@@ -211,29 +251,44 @@ impl Lower {
                         ctx.emit(Instruction::LocalSet(start_local));
                         let str_local = ctx.alloc_local("_substr_str".to_string());
                         ctx.emit(Instruction::LocalSet(str_local));
-                        // new_len = end - start
+                        // new_len = end - start (i64)
                         let new_len_local = ctx.alloc_local("_substr_len".to_string());
                         ctx.emit(Instruction::LocalGet(end_local));
                         ctx.emit(Instruction::LocalGet(start_local));
                         ctx.emit(Instruction::I64Sub);
                         ctx.emit(Instruction::LocalSet(new_len_local));
-                        // new_addr = __alloc(new_len)
-                        let addr_local = ctx.alloc_local("_substr_addr".to_string());
+                        // new_obj = __alloc(8 + new_len) -- tag(4) + len(4) + bytes
+                        let obj_local = ctx.alloc_local("_substr_obj".to_string());
                         ctx.emit(Instruction::LocalGet(new_len_local));
+                        ctx.emit(Instruction::I64Const(8));
+                        ctx.emit(Instruction::I64Add);
                         let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
                             LowerError::UndefinedFunction { name: "__alloc".to_string() }
                         })?;
                         ctx.emit(Instruction::Call(alloc_idx));
-                        ctx.emit(Instruction::LocalSet(addr_local));
-                        // memory.copy(new_addr, src_offset + start, new_len)
-                        // dst: new_addr (i32)
-                        ctx.emit(Instruction::LocalGet(addr_local));
+                        ctx.emit(Instruction::LocalSet(obj_local));
+                        // tag = 1 を書き込み (obj + 0)
+                        ctx.emit(Instruction::LocalGet(obj_local));
                         ctx.emit(Instruction::I32WrapI64);
-                        // src: (s >> 32) + start (i32)
+                        ctx.emit(Instruction::I32Const(1));
+                        ctx.emit(Instruction::I32Store { offset: 0 });
+                        // len を書き込み (obj + 4)
+                        ctx.emit(Instruction::LocalGet(obj_local));
+                        ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::LocalGet(new_len_local));
+                        ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::I32Store { offset: 4 });
+                        // memory.copy(obj + 8, src + 8 + start, new_len)
+                        // dst: obj + 8
+                        ctx.emit(Instruction::LocalGet(obj_local));
+                        ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::I32Const(8));
+                        ctx.emit(Instruction::I32Add);
+                        // src: s + 8 + start
                         ctx.emit(Instruction::LocalGet(str_local));
-                        ctx.emit(Instruction::I64Const(32));
-                        ctx.emit(Instruction::I64ShrU);
                         ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::I32Const(8));
+                        ctx.emit(Instruction::I32Add);
                         ctx.emit(Instruction::LocalGet(start_local));
                         ctx.emit(Instruction::I32WrapI64);
                         ctx.emit(Instruction::I32Add);
@@ -241,20 +296,19 @@ impl Lower {
                         ctx.emit(Instruction::LocalGet(new_len_local));
                         ctx.emit(Instruction::I32WrapI64);
                         ctx.emit(Instruction::MemoryCopy);
-                        // パック: (new_addr << 32) | new_len
-                        ctx.emit(Instruction::LocalGet(addr_local));
-                        ctx.emit(Instruction::I64Const(32));
-                        ctx.emit(Instruction::I64Shl);
-                        ctx.emit(Instruction::LocalGet(new_len_local));
-                        ctx.emit(Instruction::I64Or);
+                        // 新しい String オブジェクトのアドレスを返す
+                        ctx.emit(Instruction::LocalGet(obj_local));
                     }
-                    // string-length: パック済み文字列 (offset<<32|len) から長さを取得
+                    // string-length: ヒープ上 String オブジェクトの len フィールドを取得
+                    // String オブジェクト: [tag:i32=1][len:i32][bytes:u8*]
                     Expr::Var(_, name) if name == "string-length" => {
                         if let Some(arg) = args.first() {
                             self.lower_expr(ctx, arg)?;
                         }
-                        // i64 の下位 32 ビットが長さ
+                        // s はスタックトップ (i64) = ヒープオブジェクトのアドレス
+                        // len = i32.load(s + 4)
                         ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::I32Load { offset: 4 });
                         ctx.emit(Instruction::I64ExtendI32U);
                     }
                     // string-concat: 2 つの文字列を結合

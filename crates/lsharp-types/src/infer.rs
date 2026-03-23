@@ -2073,18 +2073,27 @@ impl Infer {
                             }
 
                             let mut all_bindings = Vec::new();
+                            let mut pat_subst = Substitution::new();
                             for (sub_pat, expected_ty) in
                                 sub_pats.iter().zip(param_types.iter())
                             {
                                 let (pat_ty, bindings) = self.infer_pattern(env, sub_pat)?;
-                                let _ = pat_ty;
-                                for (name, _) in &bindings {
+                                // サブパターンの推論型とコンストラクタの期待型を unify
+                                // ネストコンストラクタパターンの型を正しく伝播させる
+                                let s = self.unify(
+                                    &pat_ty.apply_subst(&pat_subst),
+                                    &expected_ty.apply_subst(&pat_subst),
+                                    *span,
+                                )?;
+                                pat_subst = pat_subst.compose(&s);
+                                for (name, ty) in &bindings {
                                     all_bindings
-                                        .push((name.clone(), expected_ty.clone()));
+                                        .push((name.clone(), ty.apply_subst(&pat_subst)));
                                 }
                             }
 
-                            Ok((*ret_type, all_bindings))
+                            let final_ret = ret_type.apply_subst(&pat_subst);
+                            Ok((final_ret, all_bindings))
                         }
                         other => {
                             if !sub_pats.is_empty() {

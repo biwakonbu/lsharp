@@ -1017,11 +1017,23 @@ impl Parser {
         while self.check(TokenKind::LBracket) {
             let arm_start = self.advance().span; // [
             let pattern = self.parse_pattern()?;
+            // ガード条件 (when 節) のチェック
+            let guard = if let Some(TokenKind::Symbol(ref s)) = self.peek_kind() {
+                if s == "when" {
+                    self.advance(); // when
+                    Some(Box::new(self.parse_expr()?))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
             let body = self.parse_expr()?;
             let arm_end = self.expect(TokenKind::RBracket)?.span;
             arms.push(MatchArm {
                 span: arm_start.merge(arm_end),
                 pattern,
+                guard,
                 body,
             });
         }

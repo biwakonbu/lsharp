@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# 同一ブランチ/PR の重複実行をキャンセル
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test
+
+  lint:
+    name: Lint (clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy -- -D warnings
+
+  format:
+    name: Format (rustfmt)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --check
+
+  # 全ジョブの成功を集約するゲートジョブ
+  # Branch Protection Rules ではこのジョブだけを required にすればよい
+  ci-gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    needs: [test, lint, format]
+    if: always()
+    steps:
+      - name: 全ジョブの結果を検証
+        run: |
+          if [[ "${{ needs.test.result }}" != "success" ||
+                "${{ needs.lint.result }}" != "success" ||
+                "${{ needs.format.result }}" != "success" ]]; then
+            echo "CI failed: test=${{ needs.test.result }}, lint=${{ needs.lint.result }}, format=${{ needs.format.result }}"
+            exit 1
+          fi
+          echo "All checks passed."
