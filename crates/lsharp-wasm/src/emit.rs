@@ -178,6 +178,10 @@ where
             // メモリ管理
             Instruction::MemoryGrow => { func.instruction(&W::MemoryGrow(0)); }
             Instruction::MemorySize => { func.instruction(&W::MemorySize(0)); }
+            // 間接呼び出し (クロージャ用)
+            Instruction::CallIndirect(type_idx) => {
+                func.instruction(&W::CallIndirect { type_index: *type_idx, table_index: 0 });
+            }
         };
     }
 

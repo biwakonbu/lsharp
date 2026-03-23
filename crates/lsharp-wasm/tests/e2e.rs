@@ -659,6 +659,51 @@ fn test_e2e_adt_with_type_params_compile() {
     ));
 }
 
+// === ADT リニアメモリ版 E2E テスト ===
+
+#[test]
+fn test_e2e_adt_construct_and_match_no_args() {
+    // 引数なし ADT の構築 + パターンマッチで値を取り出す
+    let output = compile_and_run(
+        "(type Color Red Green Blue)
+         (defn color-to-int [c]
+           (match c
+             [Red 10]
+             [Green 20]
+             [Blue 30]))
+         (defn main [] (do (print (color-to-int Green)) 0))",
+    );
+    assert_eq!(output, "20\n");
+}
+
+#[test]
+fn test_e2e_adt_construct_and_match_with_args() {
+    // 引数付き ADT の構築 + パターンマッチでフィールドを取り出す
+    let output = compile_and_run(
+        "(type (Maybe a) (Just a) Nothing)
+         (defn from-maybe [m d]
+           (match m
+             [(Just x) x]
+             [Nothing d]))
+         (defn main [] (do (print (from-maybe (Just 42) 0)) 0))",
+    );
+    assert_eq!(output, "42\n");
+}
+
+#[test]
+fn test_e2e_adt_nothing_match() {
+    // Nothing のパターンマッチでデフォルト値を返す
+    let output = compile_and_run(
+        "(type (Maybe a) (Just a) Nothing)
+         (defn from-maybe [m d]
+           (match m
+             [(Just x) x]
+             [Nothing d]))
+         (defn main [] (do (print (from-maybe Nothing 99)) 0))",
+    );
+    assert_eq!(output, "99\n");
+}
+
 // === Phase 2 追加: 残りの組み合わせテスト ===
 
 #[test]
@@ -846,7 +891,6 @@ fn test_e2e_heap_object_header() {
 // P1-1 の string runtime 実装完了後に有効化する
 
 #[test]
-#[ignore = "P1-1 string runtime 未実装"]
 fn test_e2e_string_length() {
     let result = compile_and_run(r#"
         (defn main []
@@ -856,7 +900,6 @@ fn test_e2e_string_length() {
 }
 
 #[test]
-#[ignore = "P1-1 string runtime 未実装"]
 fn test_e2e_string_length_empty() {
     let result = compile_and_run(r#"
         (defn main []
@@ -866,13 +909,108 @@ fn test_e2e_string_length_empty() {
 }
 
 #[test]
-#[ignore = "P1-1 string runtime 未実装"]
 fn test_e2e_string_length_multibyte() {
     let result = compile_and_run(r#"
         (defn main []
           (print (string-length "abc")))
     "#);
     assert_eq!(result.trim(), "3");
+}
+
+// === string-concat テスト ===
+
+#[test]
+fn test_e2e_string_concat() {
+    // 2 つの文字列を結合し、その長さを確認
+    let result = compile_and_run(r#"
+        (defn main []
+          (print (string-length (string-concat "hello" " world"))))
+    "#);
+    assert_eq!(result.trim(), "11");
+}
+
+#[test]
+fn test_e2e_string_concat_empty() {
+    // 空文字列との結合
+    let result = compile_and_run(r#"
+        (defn main []
+          (print (string-length (string-concat "" "abc"))))
+    "#);
+    assert_eq!(result.trim(), "3");
+}
+
+// === string-eq テスト ===
+
+#[test]
+fn test_e2e_string_eq_true() {
+    // 同じ文字列の比較
+    let result = compile_and_run(r#"
+        (defn main []
+          (print (if (string-eq "hello" "hello") 1 0)))
+    "#);
+    assert_eq!(result.trim(), "1");
+}
+
+#[test]
+fn test_e2e_string_eq_false() {
+    // 異なる文字列の比較
+    let result = compile_and_run(r#"
+        (defn main []
+          (print (if (string-eq "hello" "world") 1 0)))
+    "#);
+    assert_eq!(result.trim(), "0");
+}
+
+#[test]
+fn test_e2e_string_eq_different_length() {
+    // 長さが異なる文字列の比較
+    let result = compile_and_run(r#"
+        (defn main []
+          (print (if (string-eq "abc" "abcd") 1 0)))
+    "#);
+    assert_eq!(result.trim(), "0");
+}
+
+#[test]
+fn test_e2e_string_eq_empty() {
+    // 空文字列同士の比較
+    let result = compile_and_run(r#"
+        (defn main []
+          (print (if (string-eq "" "") 1 0)))
+    "#);
+    assert_eq!(result.trim(), "1");
+}
+
+// === print-string テスト ===
+
+#[test]
+fn test_e2e_string_print_string() {
+    // print-string で文字列を出力
+    let result = compile_and_run(r#"
+        (defn main []
+          (do (print-string "hello") 0))
+    "#);
+    assert_eq!(result, "hello");
+}
+
+#[test]
+fn test_e2e_string_print_string_empty() {
+    // 空文字列を出力
+    let result = compile_and_run(r#"
+        (defn main []
+          (do (print-string "") 0))
+    "#);
+    assert_eq!(result, "");
+}
+
+#[test]
+fn test_e2e_string_print_string_concat() {
+    // 文字列結合後に出力
+    let result = compile_and_run(r#"
+        (defn main []
+          (do (print-string (string-concat "hello" " world")) 0))
+    "#);
+    assert_eq!(result, "hello world");
 }
 
 // === Phase 4-2: Ref Cell テスト ===
@@ -931,6 +1069,125 @@ fn test_e2e_ref_in_loop() {
             (print (loop-count counter 10))))
     "#);
     assert_eq!(result.trim(), "10");
+}
+
+// === Lambda Lifting テスト ===
+
+#[test]
+fn test_e2e_lambda_no_free_vars() {
+    // 自由変数なし Lambda がリフトされて正常にコンパイルされる
+    let source = r#"
+        (defn make-inc [] (fn [x] (+ x 1)))
+        (defn main [] (print 42))
+    "#;
+    let result = compile_and_run(source);
+    assert_eq!(result.trim(), "42");
+}
+
+#[test]
+#[ignore = "P3-2 クロージャ変換: wasi.rs に table section 追加が必要"]
+fn test_e2e_lambda_with_free_vars_compile() {
+    // 自由変数あり Lambda がリフトされてコンパイル可能
+    let source = r#"
+        (defn make-adder [n] (fn [x] (+ x n)))
+        (defn main [] (print 99))
+    "#;
+    let result = compile_and_run(source);
+    assert_eq!(result.trim(), "99");
+}
+
+// === ADT リニアメモリ版 E2E テスト ===
+
+#[test]
+fn test_e2e_adt_cons_list_sum() {
+    // Cons リストの構築と再帰的パターンマッチで合計を計算
+    let output = compile_and_run(
+        "(type (List a) (Cons a (List a)) Nil)
+         (defn sum-list [xs]
+           (match xs
+             [(Cons h t) (+ h (sum-list t))]
+             [Nil 0]))
+         (defn main [] (do (print (sum-list (Cons 1 (Cons 2 (Cons 3 Nil))))) 0))",
+    );
+    assert_eq!(output, "6\n");
+}
+
+#[test]
+fn test_e2e_adt_cons_list_length() {
+    // Cons リストの長さを再帰的に計算
+    let output = compile_and_run(
+        "(type (List a) (Cons a (List a)) Nil)
+         (defn list-length [xs]
+           (match xs
+             [(Cons h t) (+ 1 (list-length t))]
+             [Nil 0]))
+         (defn main [] (do (print (list-length (Cons 10 (Cons 20 (Cons 30 Nil))))) 0))",
+    );
+    assert_eq!(output, "3\n");
+}
+
+#[test]
+fn test_e2e_adt_nested_match() {
+    // ADT の入れ子パターンマッチ
+    let output = compile_and_run(
+        "(type (Maybe a) (Just a) Nothing)
+         (defn add-maybe [a b]
+           (match a
+             [(Just x) (match b
+                         [(Just y) (Just (+ x y))]
+                         [Nothing a])]
+             [Nothing b]))
+         (defn from-maybe [m d]
+           (match m
+             [(Just x) x]
+             [Nothing d]))
+         (defn main [] (do
+           (print (from-maybe (add-maybe (Just 10) (Just 20)) 0))
+           (print (from-maybe (add-maybe (Just 5) Nothing) 0))
+           (print (from-maybe (add-maybe Nothing (Just 7)) 0))
+           0))",
+    );
+    assert_eq!(output, "30\n5\n7\n");
+}
+
+// === クロージャ変換 E2E テスト ===
+
+#[test]
+#[ignore = "P3-2 クロージャ変換: wasi.rs に table section 追加が必要"]
+fn test_e2e_closure_capture_and_call() {
+    // クロージャが自由変数をキャプチャして呼び出し可能
+    // apply は第一級関数 (クロージャ) を引数として受け取り、call_indirect で呼び出す
+    let output = compile_and_run(
+        "(defn make-adder [n] (fn [x] (+ x n)))
+         (defn apply [f x] (f x))
+         (defn main [] (print (apply (make-adder 10) 32)))",
+    );
+    assert_eq!(output, "42\n");
+}
+
+#[test]
+#[ignore = "P3-2 クロージャ変換: wasi.rs に table section 追加が必要"]
+fn test_e2e_closure_multiple_captures() {
+    // 複数の自由変数をキャプチャするクロージャ
+    let output = compile_and_run(
+        "(defn make-linear [a b] (fn [x] (+ (* a x) b)))
+         (defn apply [f x] (f x))
+         (defn main [] (print (apply (make-linear 3 7) 5)))",
+    );
+    // 3 * 5 + 7 = 22
+    assert_eq!(output, "22\n");
+}
+
+#[test]
+#[ignore = "P3-2 クロージャ変換: wasi.rs に table section 追加が必要"]
+fn test_e2e_closure_no_capture() {
+    // 自由変数なしクロージャ（Lambda Lifting のみ）
+    let output = compile_and_run(
+        "(defn make-inc [] (fn [x] (+ x 1)))
+         (defn apply [f x] (f x))
+         (defn main [] (print (apply (make-inc) 41)))",
+    );
+    assert_eq!(output, "42\n");
 }
 
 // === エッジケース: ランタイムエラー ===
