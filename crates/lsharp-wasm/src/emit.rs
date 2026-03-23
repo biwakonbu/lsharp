@@ -90,6 +90,15 @@ where
                     ir_to_wasm_valtype(*ty),
                 )));
             }
+            Instruction::BlockEmpty => {
+                func.instruction(&W::Block(wasm_encoder::BlockType::Empty));
+            }
+            Instruction::LoopEmpty => {
+                func.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
+            }
+            Instruction::IfEmpty => {
+                func.instruction(&W::If(wasm_encoder::BlockType::Empty));
+            }
             Instruction::Br(i) => { func.instruction(&W::Br(*i)); }
             Instruction::BrIf(i) => { func.instruction(&W::BrIf(*i)); }
             Instruction::Return => { func.instruction(&W::Return); }
@@ -179,10 +188,12 @@ where
             Instruction::I64ShrU => { func.instruction(&W::I64ShrU); }
             Instruction::I64And => { func.instruction(&W::I64And); }
             Instruction::I64Or => { func.instruction(&W::I64Or); }
+            Instruction::I64Xor => { func.instruction(&W::I64Xor); }
             // メモリ管理
             Instruction::MemoryGrow => { func.instruction(&W::MemoryGrow(0)); }
             Instruction::MemorySize => { func.instruction(&W::MemorySize(0)); }
             Instruction::MemoryCopy => { func.instruction(&W::MemoryCopy { src_mem: 0, dst_mem: 0 }); }
+            Instruction::MemoryFill => { func.instruction(&W::MemoryFill(0)); }
             // 間接呼び出し (クロージャ用)
             Instruction::CallIndirect(type_idx) => {
                 func.instruction(&W::CallIndirect { type_index: *type_idx, table_index: 0 });

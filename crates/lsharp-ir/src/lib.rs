@@ -153,8 +153,11 @@ pub enum Instruction {
     If(IrType),       // if-then-else 開始（結果型付き）
     Else,
     End,
-    Block(IrType),    // ブロック開始
-    Loop(IrType),     // ループ開始
+    Block(IrType),    // ブロック開始 (結果型あり)
+    Loop(IrType),     // ループ開始 (結果型あり)
+    BlockEmpty,       // ブロック開始 (結果型なし)
+    LoopEmpty,        // ループ開始 (結果型なし)
+    IfEmpty,          // if-then-else 開始 (結果型なし)
     Br(u32),          // 分岐
     BrIf(u32),        // 条件分岐
     Return,
@@ -207,11 +210,13 @@ pub enum Instruction {
     I64ShrU,
     I64And,
     I64Or,
+    I64Xor,
 
     // メモリ管理
     MemoryGrow,
     MemorySize,
     MemoryCopy,
+    MemoryFill,
 
     // 間接呼び出し (クロージャ用)
     /// call_indirect: テーブルインデックスと型インデックスで間接呼び出し
@@ -258,6 +263,9 @@ impl fmt::Display for Instruction {
             Instruction::End => write!(f, "end"),
             Instruction::Block(ty) => write!(f, "block ({ty})"),
             Instruction::Loop(ty) => write!(f, "loop ({ty})"),
+            Instruction::BlockEmpty => write!(f, "block"),
+            Instruction::LoopEmpty => write!(f, "loop"),
+            Instruction::IfEmpty => write!(f, "if"),
             Instruction::Br(i) => write!(f, "br {i}"),
             Instruction::BrIf(i) => write!(f, "br_if {i}"),
             Instruction::Return => write!(f, "return"),
@@ -299,10 +307,12 @@ impl fmt::Display for Instruction {
             Instruction::I64ShrU => write!(f, "i64.shr_u"),
             Instruction::I64And => write!(f, "i64.and"),
             Instruction::I64Or => write!(f, "i64.or"),
+            Instruction::I64Xor => write!(f, "i64.xor"),
             // メモリ管理
             Instruction::MemoryGrow => write!(f, "memory.grow"),
             Instruction::MemorySize => write!(f, "memory.size"),
             Instruction::MemoryCopy => write!(f, "memory.copy"),
+            Instruction::MemoryFill => write!(f, "memory.fill"),
             Instruction::CallIndirect(type_idx) => write!(f, "call_indirect {type_idx}"),
             Instruction::FuncIdx(idx) => write!(f, "func_idx {idx}"),
         }
