@@ -714,15 +714,7 @@ impl Lower {
                             ctx.emit(Instruction::LocalSet(addr_local));
                             self.lower_expr(ctx, &args[1])?;
                             // 文字列キーの場合は FNV-1a ハッシュに変換
-                            let is_string_key = self.infer_expr_type_name(&args[1])
-                                .map(|t| t == "String")
-                                .unwrap_or(false);
-                            if is_string_key {
-                                let hash_idx = *self.func_indices.get("__fnv1a_hash").ok_or_else(|| {
-                                    LowerError::UndefinedFunction { name: "__fnv1a_hash".to_string() }
-                                })?;
-                                ctx.emit(Instruction::Call(hash_idx));
-                            }
+                            self.emit_string_key_hash(ctx, &args[1])?;
                             let key_local = ctx.alloc_local("_mi_key".to_string());
                             ctx.emit(Instruction::LocalSet(key_local));
                             self.lower_expr(ctx, &args[2])?;
@@ -816,15 +808,7 @@ impl Lower {
                             ctx.emit(Instruction::LocalSet(addr_local));
                             self.lower_expr(ctx, &args[1])?;
                             // 文字列キーの場合は FNV-1a ハッシュに変換
-                            let is_string_key = self.infer_expr_type_name(&args[1])
-                                .map(|t| t == "String")
-                                .unwrap_or(false);
-                            if is_string_key {
-                                let hash_idx = *self.func_indices.get("__fnv1a_hash").ok_or_else(|| {
-                                    LowerError::UndefinedFunction { name: "__fnv1a_hash".to_string() }
-                                })?;
-                                ctx.emit(Instruction::Call(hash_idx));
-                            }
+                            self.emit_string_key_hash(ctx, &args[1])?;
                             let key_local = ctx.alloc_local("_mg_key".to_string());
                             ctx.emit(Instruction::LocalSet(key_local));
                             let cap_local = ctx.alloc_local("_mg_cap".to_string());
@@ -892,15 +876,7 @@ impl Lower {
                             ctx.emit(Instruction::LocalSet(addr_local));
                             self.lower_expr(ctx, &args[1])?;
                             // 文字列キーの場合は FNV-1a ハッシュに変換
-                            let is_string_key = self.infer_expr_type_name(&args[1])
-                                .map(|t| t == "String")
-                                .unwrap_or(false);
-                            if is_string_key {
-                                let hash_idx = *self.func_indices.get("__fnv1a_hash").ok_or_else(|| {
-                                    LowerError::UndefinedFunction { name: "__fnv1a_hash".to_string() }
-                                })?;
-                                ctx.emit(Instruction::Call(hash_idx));
-                            }
+                            self.emit_string_key_hash(ctx, &args[1])?;
                             let key_local = ctx.alloc_local("_mc_key".to_string());
                             ctx.emit(Instruction::LocalSet(key_local));
                             let cap_local = ctx.alloc_local("_mc_cap".to_string());
@@ -969,15 +945,7 @@ impl Lower {
                             ctx.emit(Instruction::LocalSet(addr_local));
                             self.lower_expr(ctx, &args[1])?;
                             // 文字列キーの場合は FNV-1a ハッシュに変換
-                            let is_string_key = self.infer_expr_type_name(&args[1])
-                                .map(|t| t == "String")
-                                .unwrap_or(false);
-                            if is_string_key {
-                                let hash_idx = *self.func_indices.get("__fnv1a_hash").ok_or_else(|| {
-                                    LowerError::UndefinedFunction { name: "__fnv1a_hash".to_string() }
-                                })?;
-                                ctx.emit(Instruction::Call(hash_idx));
-                            }
+                            self.emit_string_key_hash(ctx, &args[1])?;
                             let key_local = ctx.alloc_local("_mr_key".to_string());
                             ctx.emit(Instruction::LocalSet(key_local));
                             let cap_local = ctx.alloc_local("_mr_cap".to_string());
@@ -1510,6 +1478,20 @@ impl Lower {
                     msg: format!("未知の二項演算子: {}", op),
                 });
             }
+        }
+        Ok(())
+    }
+
+    /// 文字列キーの場合に FNV-1a ハッシュ呼び出しを挿入する
+    fn emit_string_key_hash(&self, ctx: &mut FuncCtx, key_expr: &Expr) -> Result<(), LowerError> {
+        let is_string_key = self.infer_expr_type_name(key_expr)
+            .map(|t| t == "String")
+            .unwrap_or(false);
+        if is_string_key {
+            let hash_idx = *self.func_indices.get("__fnv1a_hash").ok_or_else(|| {
+                LowerError::UndefinedFunction { name: "__fnv1a_hash".to_string() }
+            })?;
+            ctx.emit(Instruction::Call(hash_idx));
         }
         Ok(())
     }
