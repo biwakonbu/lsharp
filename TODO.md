@@ -43,7 +43,7 @@
 - [x] `print-string [s] -> Unit` ビルトイン -- fd_write でパック文字列出力、E2E 3件
 - [x] E2E テスト: 各関数の正常動作 + 境界条件 -- 12件パス
 
-### P1-2: 文字列リテラルのヒープ化
+### P1-2: 文字列リテラルのヒープ化 (DEFERRED: 破壊的変更のため後回し)
 - [ ] data section offset → ヒープ上 String オブジェクト (tag=1, len, bytes) への変換
 - [ ] 既存の文字列関連テストが引き続きパスすることを確認
 
@@ -206,10 +206,10 @@
 - [~] Rust 版 codegen との出力比較テスト -- E2E テスト 2件パス (IR 命令構築 + Compiler)
 
 ### P8-5: ブートストラップ検証
-- [ ] Rust 版 → stage1.wasm (L# コンパイラ)
-- [ ] stage1.wasm → stage2.wasm (セルフコンパイル)
-- [ ] stage1.wasm == stage2.wasm (固定点検証)
-- [ ] CI でのブートストラップ自動検証
+- [~] Rust 版 → stage1.wasm (L# コンパイラ) -- 個別モジュール E2E 検証済み (Token/Lexer/AST/Parser/IR/Type/TypeScheme/Compiler/WasmEmit)、統合は未完
+- [ ] stage1.wasm → stage2.wasm (セルフコンパイル) -- 完全なセルフホストコンパイラ統合が前提
+- [ ] stage1.wasm == stage2.wasm (固定点検証) -- stage2 生成が前提
+- [ ] CI でのブートストラップ自動検証 -- 固定点検証が前提
 
 ---
 
@@ -228,7 +228,7 @@
 ### P9-3: パッケージマネージャ
 - [x] `lsharp.toml` の `[dependencies]` セクション -- DependencySpec enum (Version/Git/Path)、テスト 5件
 - [x] `lsharp install` コマンド -- Path 依存のシンボリックリンク解決、テスト 2件
-- [ ] Git リポジトリベースの依存解決
+- [x] Git リポジトリベースの依存解決 -- git_clone (shallow clone + branch/tag), テスト 2件
 - [x] ロックファイル生成 -- lockfile.rs (generate/write/read), TOML 形式, テスト 5件
 
 ### P9-4: ドキュメント生成

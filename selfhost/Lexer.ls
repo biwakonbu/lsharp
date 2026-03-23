@@ -38,7 +38,7 @@
                       (if (== c 63) true ;; ?
                         (if (== c 38) true ;; &
                           (if (== c 37) true ;; %
-                            (== c 126)))))))))))))) ;; ~
+                            (== c 126))))))))))))))) ;; ~
 
 ;; シンボル継続文字か
 (defn is-symbol-char [c]
@@ -152,7 +152,7 @@
                                   name (substring src pos end)
                                   kind (classify-symbol name)]
                               (+ (* kind 1000000) end))
-                            (+ (* 99 1000000) (+ pos 1))))))))))))))) ;; unknown → skip
+                            (+ (* 99 1000000) (+ pos 1)))))))))))))))) ;; unknown → skip
 
 ;; 全トークンを Vector に収集
 (defn tokenize-loop [src pos len tokens]

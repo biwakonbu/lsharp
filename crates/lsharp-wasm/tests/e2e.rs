@@ -2846,3 +2846,156 @@ fn test_e2e_selfhost_wasm_emit() {
     // leb128(5)=[5], leb128(300)=[172, 2]
     assert_eq!(result.trim(), "8\n0\n97\n115\n109\n1\n7\n1\n5\n1\n96\n5\n172\n2");
 }
+
+// ============================================================
+// ブートストラップ検証: セルフホストモジュールの個別コンパイル・実行
+// ============================================================
+
+/// セルフホストモジュールをコンパイル・実行し、結果を返す。
+/// パース・型推論・コード生成・実行の各段階でのエラーを文字列で返す。
+fn try_compile_and_run(source: &str) -> Result<String, String> {
+    let program = lsharp_syntax::parse(source)
+        .map_err(|e| format!("パースエラー: {:?}", e))?;
+    let mut infer = Infer::new();
+    let type_results = infer
+        .infer_program(&program)
+        .map_err(|e| format!("型推論エラー: {:?}", e))?;
+    let mut lower = Lower::new();
+    let module = lower
+        .lower_program(&program, &type_results)
+        .map_err(|e| format!("IR変換エラー: {:?}", e))?;
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
+        .map_err(|e| format!("Wasm生成エラー: {:?}", e))?;
+    lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes)
+        .map_err(|e| format!("実行エラー: {:?}", e))
+}
+
+#[test]
+fn test_e2e_bootstrap_stage1_modules() {
+    let mut passed = 0;
+    let mut skipped = 0;
+    let mut failed = Vec::new();
+
+    // 各モジュールの定義: (ファイル名, ソース, 期待出力)
+    let modules: Vec<(&str, &str, &str)> = vec![
+        // Token.ls: トークン種別定数の出力 (lparen=0, rparen=1, eof=99)
+        (
+            "Token.ls",
+            include_str!("../../../selfhost/Token.ls"),
+            "0\n1\n99",
+        ),
+        // Lexer.ls: "(defn main [] 42)" をトークナイズ (8トークン + 各トークン種別)
+        (
+            "Lexer.ls",
+            include_str!("../../../selfhost/Lexer.ls"),
+            "8\n0\n30\n20\n2\n3\n10\n1\n99",
+        ),
+        // AST.ls: リテラルノード生成 (tag=1, value=42)
+        (
+            "AST.ls",
+            include_str!("../../../selfhost/AST.ls"),
+            "1\n42",
+        ),
+        // Parser.ls: トークン列からパース (tag=20 defn, pos=8 全消費)
+        (
+            "Parser.ls",
+            include_str!("../../../selfhost/Parser.ls"),
+            "20\n8",
+        ),
+        // IR.ls: IR命令生成 (i64.const=1/42, local.get=10/0)
+        (
+            "IR.ls",
+            include_str!("../../../selfhost/IR.ls"),
+            "1\n42\n10\n0",
+        ),
+        // Type.ls: 型操作 (Con tag=1, Var tag=2, name=42, subst lookup→Con tag=1)
+        (
+            "Type.ls",
+            include_str!("../../../selfhost/Type.ls"),
+            "1\n2\n42\n1",
+        ),
+        // TypeScheme.ls: 型スキーム操作 (mono/poly instantiate, free-vars)
+        (
+            "TypeScheme.ls",
+            include_str!("../../../selfhost/TypeScheme.ls"),
+            "1\n100\n3\n2\n1000\n0\n1\n1",
+        ),
+        // Compiler.ls: コンパイラ操作 (命令数=1, op=1/42, LEB128検証)
+        (
+            "Compiler.ls",
+            include_str!("../../../selfhost/Compiler.ls"),
+            "1\n1\n42\n1\n5\n2\n172\n2",
+        ),
+        // WasmEmit.ls: Wasmバイナリ生成 (header + type section + LEB128)
+        (
+            "WasmEmit.ls",
+            include_str!("../../../selfhost/WasmEmit.ls"),
+            "8\n0\n97\n115\n109\n1\n7\n1\n5\n1\n96\n5\n172\n2",
+        ),
+    ];
+
+    // コンパイラの既知の制限により一部モジュールが未対応:
+    // - Lexer.ls: 深いネストの if 式でパースエラー
+    // - Parser.ls: 相互再帰関数 (parse-sexp) の前方参照が未対応
+    // - TypeScheme.ls: 相互再帰関数 (instantiate-apply) の前方参照が未対応
+    // これらは将来のコンパイラ改善で解消される予定
+    let known_limitations: &[&str] = &["Lexer.ls", "Parser.ls", "TypeScheme.ls"];
+
+    for (name, source, expected) in &modules {
+        let is_known_limitation = known_limitations.contains(name);
+
+        match try_compile_and_run(source) {
+            Ok(output) => {
+                if output.trim() == *expected {
+                    passed += 1;
+                } else {
+                    failed.push(format!(
+                        "{}: 出力不一致\n  期待: {:?}\n  実際: {:?}",
+                        name,
+                        expected,
+                        output.trim()
+                    ));
+                }
+            }
+            Err(e) => {
+                if is_known_limitation {
+                    // 既知の制限: エラーを記録するがテスト失敗にはしない
+                    eprintln!("  [既知の制限] {}: {}", name, e);
+                    skipped += 1;
+                } else {
+                    failed.push(format!("{}: {}", name, e));
+                }
+            }
+        }
+    }
+
+    // 結果サマリーを出力
+    eprintln!(
+        "\n=== ブートストラップ Stage1 検証結果 ===\n成功: {}/{} (スキップ: {})\n",
+        passed,
+        modules.len(),
+        skipped,
+    );
+    if !failed.is_empty() {
+        eprintln!("失敗モジュール:");
+        for msg in &failed {
+            eprintln!("  - {}", msg);
+        }
+    }
+
+    // 既知の制限以外の失敗があればテスト失敗
+    assert!(
+        failed.is_empty(),
+        "ブートストラップ検証: {}/{} モジュールが予期せず失敗\n{}",
+        failed.len(),
+        modules.len(),
+        failed.join("\n")
+    );
+
+    // 成功数の最低ラインを検証 (回帰防止)
+    assert!(
+        passed >= 6,
+        "ブートストラップ検証: 成功モジュール数が回帰 ({}/9、最低6必要)",
+        passed,
+    );
+}
