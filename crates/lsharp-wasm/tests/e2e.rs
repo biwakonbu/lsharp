@@ -2430,6 +2430,105 @@ fn test_e2e_selfhost_type_system() {
 }
 
 #[test]
+fn test_e2e_selfhost_unification() {
+    // セルフホスティング Unification: 型構築 + Substitution + occurs-check + unify
+    // map-contains? (Bool) を避け、map-get + = (Int比較) で統一
+    let result = compile_and_run(r#"
+        ;; 型構築
+        (defn make-type-con [hash]
+          (vector-push (vector-push (vector-new 2) 1) hash))
+        (defn make-type-int [] (make-type-con 100))
+        (defn make-type-bool [] (make-type-con 200))
+        (defn make-type-var [id]
+          (vector-push (vector-push (vector-new 2) 2) id))
+
+        ;; 型アクセス
+        (defn type-tag [ty] (vector-get ty 0))
+        (defn type-name [ty] (vector-get ty 1))
+
+        ;; Substitution (map-get のみ使用、map-contains? を避ける)
+        (defn subst-new [] (map-new))
+        (defn subst-bind [s var-id ty] (map-insert s var-id ty))
+
+        ;; 型の等価判定 (1=等しい, 0=異なる)
+        (defn types-eq [ty1 ty2]
+          (if (= (type-tag ty1) (type-tag ty2))
+            (if (= (type-name ty1) (type-name ty2)) 1 0)
+            0))
+
+        ;; occurs-check (1=出現, 0=非出現)
+        (defn occurs-check [var-id ty]
+          (if (= (type-tag ty) 2)
+            (if (= var-id (type-name ty)) 1 0)
+            0))
+
+        ;; エラーマーカー: 特殊キー -1 に値 1 を入れた Map
+        (defn unify-error [] (map-insert (map-new) -1 1))
+        ;; エラー判定: map-get で -1 キーを取得 (0 = エラーなし)
+        (defn is-error [s] (map-get s -1))
+
+        ;; 単純 unify (Con/Var のみ)
+        (defn unify-simple [t1 t2 subst]
+          (if (= (types-eq t1 t2) 1)
+            subst
+            (if (= (type-tag t1) 2)
+              (if (= (occurs-check (type-name t1) t2) 1)
+                (unify-error)
+                (subst-bind subst (type-name t1) t2))
+              (if (= (type-tag t2) 2)
+                (if (= (occurs-check (type-name t2) t1) 1)
+                  (unify-error)
+                  (subst-bind subst (type-name t2) t1))
+                (unify-error)))))
+
+        ;; apply-subst: Con/Var 型のみ
+        (defn apply-subst-simple [subst ty]
+          (if (= (type-tag ty) 2)
+            (let [looked (map-get subst (type-name ty))]
+              (if (= looked 0)
+                ty
+                looked))
+            ty))
+
+        (defn main []
+          (let [int1 (make-type-int)
+                int2 (make-type-int)
+                bool1 (make-type-bool)
+                var1 (make-type-var 10)
+                s0 (subst-new)]
+            (do
+              ;; テスト1: Int == Int → 成功 (is-error=0)
+              (let [r1 (unify-simple int1 int2 s0)]
+                (print (if (= (is-error r1) 0) 1 0)))
+
+              ;; テスト2: Int != Bool → 失敗 (is-error=1)
+              (let [r2 (unify-simple int1 bool1 s0)]
+                (print (if (= (is-error r2) 0) 1 0)))
+
+              ;; テスト3: Var(10) と Int → 成功 + 置換
+              (let [r3 (unify-simple var1 int1 s0)]
+                (do
+                  (print (if (= (is-error r3) 0) 1 0))
+                  ;; 置換に var-id=10 が含まれる (map-get で確認)
+                  (let [v10 (map-get r3 10)]
+                    (print (if (= v10 0) 0 1)))
+                  ;; apply-subst で Var(10) → Int
+                  (let [resolved (apply-subst-simple r3 var1)]
+                    (do
+                      (print (type-tag resolved))
+                      (print (type-name resolved))))))
+
+              ;; テスト4: occurs-check
+              (print (occurs-check 10 var1))
+              (print (occurs-check 99 var1))
+              (print (occurs-check 10 int1))
+
+              0)))
+    "#);
+    assert_eq!(result.trim(), "1\n0\n1\n1\n1\n100\n1\n0\n0");
+}
+
+#[test]
 fn test_e2e_selfhost_ir() {
     // セルフホスティング IR: 命令構築
     let result = compile_and_run(r#"
@@ -2448,3 +2547,95 @@ fn test_e2e_selfhost_ir() {
     assert_eq!(result.trim(), "1\n42\n10\n0");
 }
 
+#[test]
+fn test_e2e_selfhost_compiler() {
+    // セルフホスティング Compiler: AST→IR 変換 + LEB128 エンコード
+    let result = compile_and_run(r#"
+        ;; IR 命令構築
+        (defn emit-instr [opcode operand]
+          (vector-push (vector-push (vector-new 2) opcode) operand))
+
+        (defn emit-to [instrs opcode operand]
+          (vector-push instrs (emit-instr opcode operand)))
+
+        ;; 環境 (変数名ハッシュ → ローカルインデックス)
+        (defn env-new [] (map-new))
+        (defn env-bind [env name-hash idx] (map-insert env name-hash idx))
+        (defn env-lookup [env name-hash] (map-get env name-hash))
+
+        ;; AST → IR コンパイル (整数リテラル, 真偽値, 変数参照)
+        (defn compile-expr [node env instrs]
+          (let [tag (vector-get node 0)]
+            (if (= tag 1)
+              (emit-to instrs 1 (vector-get node 1))
+              (if (= tag 2)
+                (emit-to instrs 1 (vector-get node 1))
+                (if (= tag 4)
+                  (let [name-hash (vector-get node 1)
+                        idx (env-lookup env name-hash)]
+                    (if (= idx 0)
+                      (emit-to instrs 1 0)
+                      (emit-to instrs 10 idx)))
+                  (emit-to instrs 1 0))))))
+
+        ;; LEB128 符号なしエンコード
+        (defn leb128-unsigned [value]
+          (let [result (ref-new (vector-new 4))
+                v (ref-new value)]
+            (do
+              (let [byte (% (ref-get v) 128)
+                    rest (/ (ref-get v) 128)]
+                (if (= rest 0)
+                  (ref-set result (vector-push (ref-get result) byte))
+                  (do
+                    (ref-set result (vector-push (ref-get result) (+ byte 128)))
+                    (ref-set v rest)
+                    (let [byte2 (% (ref-get v) 128)
+                          rest2 (/ (ref-get v) 128)]
+                      (if (= rest2 0)
+                        (ref-set result (vector-push (ref-get result) byte2))
+                        (do
+                          (ref-set result (vector-push (ref-get result) (+ byte2 128)))
+                          (ref-set v rest2)
+                          (ref-set result (vector-push (ref-get result) (% (ref-get v) 128)))))))))
+              (ref-get result))))
+
+        (defn main []
+          (let [;; 整数リテラル [1, 42] をコンパイル
+                lit-node (vector-push (vector-push (vector-new 2) 1) 42)
+                env (env-new)
+                instrs (compile-expr lit-node env (vector-new 8))
+
+                ;; 変数参照 [4, 99] を環境ありでコンパイル
+                var-node (vector-push (vector-push (vector-new 2) 4) 99)
+                env2 (env-bind env 99 3)
+                instrs2 (compile-expr var-node env2 (vector-new 8))
+
+                ;; LEB128 テスト
+                leb5 (leb128-unsigned 5)
+                leb300 (leb128-unsigned 300)]
+            (do
+              ;; 整数リテラルのコンパイル結果
+              (print (vector-length instrs))
+              (let [i0 (vector-get instrs 0)]
+                (do
+                  (print (vector-get i0 0))
+                  (print (vector-get i0 1))))
+
+              ;; 変数参照のコンパイル結果
+              (print (vector-length instrs2))
+              (let [i1 (vector-get instrs2 0)]
+                (do
+                  (print (vector-get i1 0))
+                  (print (vector-get i1 1))))
+
+              ;; LEB128
+              (print (vector-length leb5))
+              (print (vector-get leb5 0))
+              (print (vector-length leb300))
+              (print (vector-get leb300 0))
+              (print (vector-get leb300 1))
+              0)))
+    "#);
+    assert_eq!(result.trim(), "1\n1\n42\n1\n10\n3\n1\n5\n2\n172\n2");
+}

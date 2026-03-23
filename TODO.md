@@ -194,16 +194,16 @@
 ### P8-3: L# で型推論を実装
 - [x] 型 ADT (Con, Var, Fun) 定義 -- selfhost/Type.ls (整数タグ + Vector)
 - [x] Substitution (HashMap ベース) -- subst-new/bind/lookup 実装
-- [ ] Unification アルゴリズム
+- [x] Unification アルゴリズム -- unify-simple (Con/Var), occurs-check, E2E テスト 1件
 - [ ] let 多相 + 型注釈
-- [~] Rust 版型推論との出力比較テスト -- E2E テスト 1件パス (型構築 + Substitution)
+- [~] Rust 版型推論との出力比較テスト -- E2E テスト 2件パス (型構築 + Substitution + Unification)
 
 ### P8-4: L# で IR Lowering + Codegen を実装
 - [x] IR ADT 定義 -- selfhost/IR.ls (命令タグ + Vector)
-- [ ] AST → IR 変換
-- [ ] LEB128 エンコーディング
+- [x] AST → IR 変換 -- selfhost/Compiler.ls (compile-expr: lit/var/bool), E2E 1件
+- [x] LEB128 エンコーディング -- selfhost/Compiler.ls (leb128-unsigned), E2E 1件
 - [ ] Wasm バイナリ生成
-- [~] Rust 版 codegen との出力比較テスト -- E2E テスト 1件パス (IR 命令構築)
+- [~] Rust 版 codegen との出力比較テスト -- E2E テスト 2件パス (IR 命令構築 + Compiler)
 
 ### P8-5: ブートストラップ検証
 - [ ] Rust 版 → stage1.wasm (L# コンパイラ)
