@@ -19,3 +19,5 @@ tokio = { version = "1", features = ["rt-multi-thread"] }
 miette.workspace = true
 toml.workspace = true
 serde.workspace = true
+rustyline = "15"
+dirs = "6"

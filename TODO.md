@@ -217,7 +217,7 @@
 
 ### P9-1: REPL
 - [x] `lsharp repl` サブコマンド -- cmd_repl 実装、式入力→コンパイル→WASI実行
-- [ ] readline ライブラリ統合
+- [x] readline ライブラリ統合 -- rustyline 15, 履歴ファイル対応
 - [x] 式入力 → パイプライン実行 → 結果表示 -- parse→infer→lower→codegen→wasmtime
 
 ### P9-2: LSP
@@ -229,7 +229,7 @@
 - [x] `lsharp.toml` の `[dependencies]` セクション -- DependencySpec enum (Version/Git/Path)、テスト 5件
 - [x] `lsharp install` コマンド -- Path 依存のシンボリックリンク解決、テスト 2件
 - [ ] Git リポジトリベースの依存解決
-- [ ] ロックファイル生成
+- [x] ロックファイル生成 -- lockfile.rs (generate/write/read), TOML 形式, テスト 5件
 
 ### P9-4: ドキュメント生成
 - [x] `:doc` メタデータから HTML 生成 -- `lsharp doc <file>` コマンド

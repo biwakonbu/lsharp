@@ -1,4 +1,5 @@
 mod config;
+mod lockfile;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -911,73 +912,105 @@ fn cmd_install_in(project_dir: &std::path::Path) -> miette::Result<()> {
 
     println!("\nインストール完了: {installed} 個インストール, {skipped} 個スキップ");
 
+    // ロックファイルを生成・書き出し
+    let lock = lockfile::generate_lockfile(&config, project_dir);
+    let lock_path = project_dir.join("lsharp.lock");
+    lockfile::write_lockfile(&lock, &lock_path)
+        .map_err(|e| miette::miette!("{e}"))?;
+    println!("ロックファイルを生成しました: {}", lock_path.display());
+
     Ok(())
 }
 
 /// P9-1: 対話的 REPL
 fn cmd_repl() -> miette::Result<()> {
-    use std::io::{self, BufRead, Write};
+    use rustyline::error::ReadlineError;
+    use rustyline::DefaultEditor;
 
     println!("L# REPL v0.1.0");
     println!("式を入力してください。終了するには Ctrl+D を押してください。");
     println!();
 
-    let stdin = io::stdin();
-    let mut infer = lsharp_types::infer::Infer::new();
+    let mut rl = DefaultEditor::new().expect("readline の初期化に失敗しました");
+
+    // 履歴ファイルの読み込み (存在しなくても無視)
+    let history_path = dirs::home_dir()
+        .map(|h| h.join(".lsharp_history"))
+        .unwrap_or_else(|| std::path::PathBuf::from(".lsharp_history"));
+    let _ = rl.load_history(&history_path);
+
+    let infer = lsharp_types::infer::Infer::new();
     let mut expr_count = 0;
 
     loop {
-        print!("lsharp> ");
-        io::stdout().flush().unwrap();
+        match rl.readline("lsharp> ") {
+            Ok(line) => {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
 
-        let mut line = String::new();
-        if stdin.lock().read_line(&mut line).unwrap() == 0 {
-            println!();
-            break;
-        }
+                rl.add_history_entry(line)
+                    .unwrap_or_default();
 
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
+                // 式を main 関数でラップしてコンパイル・実行
+                let source = format!("(defn main [] {})", line);
 
-        // 式を main 関数でラップしてコンパイル・実行
-        let source = format!("(defn main [] {})", line);
-
-        match lsharp_syntax::parse(&source) {
-            Ok(program) => {
-                // 新しい Infer インスタンスを毎回作成 (状態リセット)
-                let mut local_infer = lsharp_types::infer::Infer::new();
-                match local_infer.infer_program(&program) {
-                    Ok(type_results) => {
-                        let mut lower = lsharp_ir::lower::Lower::new();
-                        match lower.lower_program(&program, &type_results) {
-                            Ok(module) => {
-                                match lsharp_wasm::wasi::emit_wasm_wasi(&module) {
-                                    Ok(wasm_bytes) => {
-                                        match lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes) {
-                                            Ok(output) => {
-                                                let output = output.trim();
-                                                if !output.is_empty() {
-                                                    println!("{}", output);
+                match lsharp_syntax::parse(&source) {
+                    Ok(program) => {
+                        // 新しい Infer インスタンスを毎回作成 (状態リセット)
+                        let mut local_infer = lsharp_types::infer::Infer::new();
+                        match local_infer.infer_program(&program) {
+                            Ok(type_results) => {
+                                let mut lower = lsharp_ir::lower::Lower::new();
+                                match lower.lower_program(&program, &type_results) {
+                                    Ok(module) => {
+                                        match lsharp_wasm::wasi::emit_wasm_wasi(&module) {
+                                            Ok(wasm_bytes) => {
+                                                match lsharp_wasm::wasi_runner::run_wasm_wasi(
+                                                    &wasm_bytes,
+                                                ) {
+                                                    Ok(output) => {
+                                                        let output = output.trim();
+                                                        if !output.is_empty() {
+                                                            println!("{}", output);
+                                                        }
+                                                        expr_count += 1;
+                                                    }
+                                                    Err(e) => eprintln!("実行エラー: {}", e),
                                                 }
-                                                expr_count += 1;
                                             }
-                                            Err(e) => eprintln!("実行エラー: {}", e),
+                                            Err(e) => eprintln!("コード生成エラー: {}", e),
                                         }
                                     }
-                                    Err(e) => eprintln!("コード生成エラー: {}", e),
+                                    Err(e) => eprintln!("IR 変換エラー: {}", e),
                                 }
                             }
-                            Err(e) => eprintln!("IR 変換エラー: {}", e),
+                            Err(e) => eprintln!("型エラー: {}", e),
                         }
                     }
-                    Err(e) => eprintln!("型エラー: {}", e),
+                    Err(e) => eprintln!("パースエラー: {}", e),
                 }
             }
-            Err(e) => eprintln!("パースエラー: {}", e),
+            Err(ReadlineError::Interrupted) => {
+                // Ctrl+C: 現在の入力をキャンセルして続行
+                println!("^C");
+                continue;
+            }
+            Err(ReadlineError::Eof) => {
+                // Ctrl+D: REPL を終了
+                println!();
+                break;
+            }
+            Err(e) => {
+                eprintln!("入力エラー: {}", e);
+                break;
+            }
         }
     }
+
+    // 履歴ファイルの保存
+    let _ = rl.save_history(&history_path);
 
     let _ = infer; // suppress unused warning
     println!("セッション終了。{} 式を評価しました。", expr_count);
