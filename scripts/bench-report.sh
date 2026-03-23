@@ -94,6 +94,18 @@ measure_time() {
     /usr/bin/time -l "$@" 2>&1 || true
 }
 
+# ウォームアップ付き実行計測
+# 初回はコールドキャッシュ (ページフォルト) で計測値が不安定になるため、
+# 1回ウォームアップしてから計測する。
+# 引数: コマンド
+# 出力: /usr/bin/time の stderr 出力全体
+measure_time_warm() {
+    # ウォームアップ (結果は捨てる)
+    "$@" >/dev/null 2>&1 || true
+    # 本計測
+    /usr/bin/time -l "$@" 2>&1 || true
+}
+
 # タイムスタンプ
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 GIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -171,7 +183,7 @@ echo "[3/5] 実行速度比較中..."
 RUST_EXEC_TIME="N/A"; RUST_EXEC_RSS="N/A"; RUST_EXEC_CPU="N/A"; RUST_BIN_SIZE="N/A"
 if [[ -f "$TMP_DIR/fib_rust" ]]; then
     RUST_BIN_SIZE=$(wc -c < "$TMP_DIR/fib_rust" | tr -d ' ')
-    EOUT=$(/usr/bin/time -l "$TMP_DIR/fib_rust" 2>&1 >/dev/null || true)
+    EOUT=$(measure_time_warm "$TMP_DIR/fib_rust" 2>/dev/null)
     RUST_EXEC_TIME=$(extract_real_time "$EOUT")
     RUST_EXEC_RSS=$(extract_rss "$EOUT")
     RUST_EXEC_CPU=$(extract_cpu_percent "$EOUT")
@@ -181,7 +193,7 @@ fi
 GO_EXEC_TIME="N/A"; GO_EXEC_RSS="N/A"; GO_EXEC_CPU="N/A"; GO_BIN_SIZE="N/A"
 if [[ -f "$TMP_DIR/fib_go" ]]; then
     GO_BIN_SIZE=$(wc -c < "$TMP_DIR/fib_go" | tr -d ' ')
-    EOUT=$(/usr/bin/time -l "$TMP_DIR/fib_go" 2>&1 >/dev/null || true)
+    EOUT=$(measure_time_warm "$TMP_DIR/fib_go" 2>/dev/null)
     GO_EXEC_TIME=$(extract_real_time "$EOUT")
     GO_EXEC_RSS=$(extract_rss "$EOUT")
     GO_EXEC_CPU=$(extract_cpu_percent "$EOUT")
@@ -190,7 +202,7 @@ fi
 # --- JavaScript 実行 ---
 JS_EXEC_TIME="N/A"; JS_EXEC_RSS="N/A"; JS_EXEC_CPU="N/A"
 if command -v node &>/dev/null; then
-    EOUT=$(/usr/bin/time -l node "$SCRIPT_DIR/bench-programs/fib.js" 2>&1 >/dev/null || true)
+    EOUT=$(measure_time_warm node "$SCRIPT_DIR/bench-programs/fib.js" 2>/dev/null)
     JS_EXEC_TIME=$(extract_real_time "$EOUT")
     JS_EXEC_RSS=$(extract_rss "$EOUT")
     JS_EXEC_CPU=$(extract_cpu_percent "$EOUT")
@@ -201,7 +213,7 @@ LSHARP_EXEC_TIME="N/A"; LSHARP_EXEC_RSS="N/A"; LSHARP_EXEC_CPU="N/A"; LSHARP_BIN
 if [[ -f "$LSHARP_WASM" ]]; then
     LSHARP_BIN_SIZE=$(wc -c < "$LSHARP_WASM" | tr -d ' ')
     if command -v wasmtime &>/dev/null; then
-        EOUT=$(/usr/bin/time -l wasmtime "$LSHARP_WASM" 2>&1 >/dev/null || true)
+        EOUT=$(measure_time_warm wasmtime "$LSHARP_WASM" 2>/dev/null)
         LSHARP_EXEC_TIME=$(extract_real_time "$EOUT")
         LSHARP_EXEC_RSS=$(extract_rss "$EOUT")
         LSHARP_EXEC_CPU=$(extract_cpu_percent "$EOUT")
