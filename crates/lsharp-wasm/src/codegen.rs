@@ -43,6 +43,10 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let proc_exit_type_idx = types.len();
     types.ty().function(vec![ValType::I32], vec![]);
 
+    // Type 6: command-line-args 関数の型 () -> (i64)
+    let command_line_args_type_idx = types.len();
+    types.ty().function(vec![], vec![ValType::I64]);
+
     // ユーザー定義関数の型を追加
     let mut func_type_indices: Vec<u32> = Vec::new();
     for func in &module.functions {
@@ -70,6 +74,14 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     imports.import("env", "proc-exit", EntityType::Function(proc_exit_type_idx));
     // __int_to_string: (i64) -> (i64) - 整数→文字列変換
     imports.import("env", "__int_to_string", EntityType::Function(alloc_type_idx));
+    // read-file: (i64) -> (i64) - ファイル読み込み
+    imports.import("env", "read-file", EntityType::Function(alloc_type_idx));
+    // write-file: (i64, i64) -> (i64) - ファイル書き込み
+    imports.import("env", "write-file", EntityType::Function(string_concat_type_idx));
+    // file-exists?: (i64) -> (i64) - ファイル存在確認
+    imports.import("env", "file-exists?", EntityType::Function(alloc_type_idx));
+    // command-line-args: () -> (i64) - コマンドライン引数数
+    imports.import("env", "command-line-args", EntityType::Function(command_line_args_type_idx));
     wasm_module.section(&imports);
 
     // === Function Section ===
@@ -95,7 +107,7 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     exports.export("memory", ExportKind::Memory, 0);
 
     // main 関数とその他の export
-    let import_count: u32 = 7; // print + __alloc + __string_concat + __string_eq + print-string + proc-exit + __int_to_string
+    let import_count: u32 = 11; // print + __alloc + __string_concat + __string_eq + print-string + proc-exit + __int_to_string + read-file + write-file + file-exists? + command-line-args
     for (i, func) in module.functions.iter().enumerate() {
         if func.is_export {
             exports.export(&func.name, ExportKind::Func, import_count + i as u32);
@@ -217,10 +229,38 @@ mod tests {
             Ok(())
         });
 
+        // read-file 関数のスタブ
+        let read_file_ty = FuncType::new(&engine, [ValType::I64], [ValType::I64]);
+        let read_file_func = Func::new(&mut store, read_file_ty, |_caller, _params, results| {
+            results[0] = Val::I64(0); // ダミー
+            Ok(())
+        });
+
+        // write-file 関数のスタブ
+        let write_file_ty = FuncType::new(&engine, [ValType::I64, ValType::I64], [ValType::I64]);
+        let write_file_func = Func::new(&mut store, write_file_ty, |_caller, _params, results| {
+            results[0] = Val::I64(0); // ダミー
+            Ok(())
+        });
+
+        // file-exists? 関数のスタブ
+        let file_exists_ty = FuncType::new(&engine, [ValType::I64], [ValType::I64]);
+        let file_exists_func = Func::new(&mut store, file_exists_ty, |_caller, _params, results| {
+            results[0] = Val::I64(0); // ダミー
+            Ok(())
+        });
+
+        // command-line-args 関数のスタブ
+        let command_line_args_ty = FuncType::new(&engine, [], [ValType::I64]);
+        let command_line_args_func = Func::new(&mut store, command_line_args_ty, |_caller, _params, results| {
+            results[0] = Val::I64(0);
+            Ok(())
+        });
+
         let instance = Instance::new(
             &mut store,
             &module,
-            &[print_func.into(), alloc_func.into(), string_concat_func.into(), string_eq_func.into(), print_string_func.into(), proc_exit_func.into(), int_to_string_func.into()],
+            &[print_func.into(), alloc_func.into(), string_concat_func.into(), string_eq_func.into(), print_string_func.into(), proc_exit_func.into(), int_to_string_func.into(), read_file_func.into(), write_file_func.into(), file_exists_func.into(), command_line_args_func.into()],
         ).unwrap();
 
         let main = instance

@@ -20,8 +20,8 @@ const IOV_ADDR: i32 = 16;
 const NWRITTEN_ADDR: i32 = 24;
 const BUF_END: i32 = 276;
 
-/// IR 側の内部ヘルパー関数数 (print, __alloc, __string_concat, __string_eq, print-string, proc-exit, __int_to_string)
-const IR_IMPORT_COUNT: u32 = 7;
+/// IR 側の内部ヘルパー関数数 (print, __alloc, __string_concat, __string_eq, print-string, proc-exit, __int_to_string, read-file, write-file, file-exists?, command-line-args)
+const IR_IMPORT_COUNT: u32 = 11;
 
 /// WASI import 関数数
 const WASI_IMPORT_COUNT: u32 = 9;
@@ -46,24 +46,32 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     // 12: __string_eq
     // 13: __print_string
     // 14: __int_to_string
-    // 15..15+N-1: ユーザー関数
-    // 15+N: _start
-    let _fd_write_idx: u32 = 0;
+    // 15: __read_file
+    // 16: __write_file
+    // 17: __file_exists
+    // 18: __command_line_args
+    // 19..19+N-1: ユーザー関数
+    // 19+N: _start
+    let fd_write_idx: u32 = 0;
     let proc_exit_wasm_idx: u32 = 1;
-    let _args_get_idx: u32 = 2;
-    let _args_sizes_get_idx: u32 = 3;
-    let _fd_read_idx: u32 = 4;
-    let _fd_close_idx: u32 = 5;
-    let _path_open_idx: u32 = 6;
+    let args_get_idx: u32 = 2;
+    let args_sizes_get_idx: u32 = 3;
+    let fd_read_idx: u32 = 4;
+    let fd_close_idx: u32 = 5;
+    let path_open_idx: u32 = 6;
     let _fd_seek_idx: u32 = 7;
-    let _fd_filestat_get_idx: u32 = 8;
+    let fd_filestat_get_idx: u32 = 8;
     let print_helper_idx: u32 = WASI_IMPORT_COUNT;
     let alloc_func_idx: u32 = WASI_IMPORT_COUNT + 1;
     let string_concat_idx: u32 = WASI_IMPORT_COUNT + 2;
     let string_eq_idx: u32 = WASI_IMPORT_COUNT + 3;
     let print_string_idx: u32 = WASI_IMPORT_COUNT + 4;
     let int_to_string_idx: u32 = WASI_IMPORT_COUNT + 5;
-    let user_func_base: u32 = WASI_IMPORT_COUNT + 6;
+    let read_file_idx: u32 = WASI_IMPORT_COUNT + 6;
+    let write_file_idx: u32 = WASI_IMPORT_COUNT + 7;
+    let file_exists_idx: u32 = WASI_IMPORT_COUNT + 8;
+    let command_line_args_idx: u32 = WASI_IMPORT_COUNT + 9;
+    let user_func_base: u32 = WASI_IMPORT_COUNT + 10;
     let start_func_idx: u32 = user_func_base + module.functions.len() as u32;
 
     let gc_type_count = module.gc_types.len() as u32;
@@ -178,6 +186,22 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let int_to_string_type_idx = types.len();
     types.ty().function(vec![ValType::I64], vec![ValType::I64]);
 
+    // __read_file: (i64) -> i64 (パック文字列パス → パック文字列内容)
+    let read_file_type_idx = types.len();
+    types.ty().function(vec![ValType::I64], vec![ValType::I64]);
+
+    // __write_file: (i64, i64) -> i64 (パス, 内容 → 書き込みバイト数)
+    let write_file_type_idx = types.len();
+    types.ty().function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
+
+    // __file_exists: (i64) -> i64 (パス → 0 or 1)
+    let file_exists_type_idx = types.len();
+    types.ty().function(vec![ValType::I64], vec![ValType::I64]);
+
+    // __command_line_args: () -> i64 (引数の数を返す)
+    let command_line_args_type_idx = types.len();
+    types.ty().function(vec![], vec![ValType::I64]);
+
     let mut user_type_indices = Vec::new();
     for func in &module.functions {
         let type_idx = types.len();
@@ -231,6 +255,10 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     functions.function(string_eq_type_idx);
     functions.function(print_string_type_idx);
     functions.function(int_to_string_type_idx);
+    functions.function(read_file_type_idx);
+    functions.function(write_file_type_idx);
+    functions.function(file_exists_type_idx);
+    functions.function(command_line_args_type_idx);
     for &type_idx in &user_type_indices {
         functions.function(type_idx);
     }
@@ -306,6 +334,10 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     emit_string_eq_func(&mut codes);
     emit_print_string_func(&mut codes);
     emit_int_to_string_func(&mut codes, alloc_func_idx);
+    emit_read_file_func(&mut codes, alloc_func_idx, path_open_idx, fd_read_idx, fd_close_idx, fd_filestat_get_idx);
+    emit_write_file_func(&mut codes, path_open_idx, fd_write_idx, fd_close_idx);
+    emit_file_exists_func(&mut codes, path_open_idx, fd_close_idx);
+    emit_command_line_args_func(&mut codes, args_sizes_get_idx);
 
     for func in &module.functions {
         let mut f = wasm_encoder::Function::new(
@@ -319,7 +351,9 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
             print_helper_idx, alloc_func_idx,
             string_concat_idx, string_eq_idx,
             print_string_idx, proc_exit_wasm_idx,
-            int_to_string_idx, user_func_base,
+            int_to_string_idx, read_file_idx,
+            write_file_idx, file_exists_idx,
+            command_line_args_idx, user_func_base,
             &call_indirect_type_map,
         )?;
         f.instruction(&wasm_encoder::Instruction::End);
@@ -842,6 +876,296 @@ fn emit_int_to_string_func(codes: &mut CodeSection, alloc_func_idx: u32) {
     codes.function(&f);
 }
 
+/// __read_file: パック文字列パスを受け取り、ファイル内容をパック文字列で返す
+/// path_open → fd_filestat_get → __alloc → fd_read → fd_close
+fn emit_read_file_func(
+    codes: &mut CodeSection,
+    alloc_func_idx: u32,
+    path_open_idx: u32,
+    fd_read_idx: u32,
+    fd_close_idx: u32,
+    fd_filestat_get_idx: u32,
+) {
+    use wasm_encoder::Instruction as W;
+
+    // locals: 0=path(i64 param), 1=path_offset(i32), 2=path_len(i32), 3=fd(i32),
+    //         4=file_size(i32), 5=buf_addr(i32), 6=nread(i32)
+    let mut f = wasm_encoder::Function::new(vec![
+        (1, ValType::I32), // 1: path_offset
+        (1, ValType::I32), // 2: path_len
+        (1, ValType::I32), // 3: fd
+        (1, ValType::I32), // 4: file_size
+        (1, ValType::I32), // 5: buf_addr
+        (1, ValType::I32), // 6: nread
+    ]);
+
+    // パック文字列をアンパック: offset = (path >> 32) as i32, len = path & 0xFFFFFFFF
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I64Const(32));
+    f.instruction(&W::I64ShrU);
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(1)); // path_offset
+
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(2)); // path_len
+
+    // fd を格納するスクラッチ領域 (アドレス 280)
+    // path_open(dirfd=3, dirflags=0, path, path_len, oflags=0, rights_base, rights_inheriting, fdflags=0, fd_ptr)
+    f.instruction(&W::I32Const(3));       // dirfd = 3 (preopened dir)
+    f.instruction(&W::I32Const(0));       // dirflags = 0
+    f.instruction(&W::LocalGet(1));       // path
+    f.instruction(&W::LocalGet(2));       // path_len
+    f.instruction(&W::I32Const(0));       // oflags = 0 (read only)
+    f.instruction(&W::I64Const(0x42));    // rights_base = fd_read | fd_seek | fd_filestat_get
+    f.instruction(&W::I64Const(0));       // rights_inheriting
+    f.instruction(&W::I32Const(0));       // fdflags = 0
+    f.instruction(&W::I32Const(280));     // fd_ptr (スクラッチ領域)
+    f.instruction(&W::Call(path_open_idx));
+    f.instruction(&W::Drop);             // errno を無視 (簡略化)
+
+    // fd を読み出し
+    f.instruction(&W::I32Const(280));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::LocalSet(3)); // fd
+
+    // fd_filestat_get でファイルサイズ取得 (stat バッファは 288 から 64 バイト)
+    f.instruction(&W::LocalGet(3));       // fd
+    f.instruction(&W::I32Const(288));     // stat buf (288..352)
+    f.instruction(&W::Call(fd_filestat_get_idx));
+    f.instruction(&W::Drop);             // errno
+
+    // file_size = stat[32..40] の下位 32bit (filesize は offset 32 の i64)
+    f.instruction(&W::I32Const(288));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 32, align: 2, memory_index: 0 })); // stat.st_size の下位 32bit
+    f.instruction(&W::LocalSet(4)); // file_size
+
+    // バッファ確保: __alloc(file_size)
+    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::Call(alloc_func_idx));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(5)); // buf_addr
+
+    // iov を設定: iov[0].buf = buf_addr, iov[0].len = file_size (スクラッチ 352)
+    f.instruction(&W::I32Const(352));
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 })); // iov.buf
+
+    f.instruction(&W::I32Const(352));
+    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 })); // iov.len
+
+    // fd_read(fd, iov_ptr=352, iov_count=1, nread_ptr=360)
+    f.instruction(&W::LocalGet(3));       // fd
+    f.instruction(&W::I32Const(352));     // iovs
+    f.instruction(&W::I32Const(1));       // iovs_len
+    f.instruction(&W::I32Const(360));     // nread ptr
+    f.instruction(&W::Call(fd_read_idx));
+    f.instruction(&W::Drop);             // errno
+
+    // nread を読み取り
+    f.instruction(&W::I32Const(360));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::LocalSet(6)); // nread
+
+    // fd_close
+    f.instruction(&W::LocalGet(3));
+    f.instruction(&W::Call(fd_close_idx));
+    f.instruction(&W::Drop);
+
+    // パック文字列を返す: (buf_addr << 32) | nread
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::I64Const(32));
+    f.instruction(&W::I64Shl);
+    f.instruction(&W::LocalGet(6));
+    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::I64Or);
+
+    f.instruction(&W::End);
+    codes.function(&f);
+}
+
+/// __write_file: パック文字列パスとパック文字列内容を受け取り、書き込みバイト数を返す
+fn emit_write_file_func(
+    codes: &mut CodeSection,
+    path_open_idx: u32,
+    fd_write_idx: u32,
+    fd_close_idx: u32,
+) {
+    use wasm_encoder::Instruction as W;
+
+    // locals: 0=path(i64), 1=content(i64), 2=path_offset(i32), 3=path_len(i32),
+    //         4=content_offset(i32), 5=content_len(i32), 6=fd(i32), 7=nwritten(i32)
+    let mut f = wasm_encoder::Function::new(vec![
+        (1, ValType::I32), // 2: path_offset
+        (1, ValType::I32), // 3: path_len
+        (1, ValType::I32), // 4: content_offset
+        (1, ValType::I32), // 5: content_len
+        (1, ValType::I32), // 6: fd
+        (1, ValType::I32), // 7: nwritten
+    ]);
+
+    // パスをアンパック
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I64Const(32));
+    f.instruction(&W::I64ShrU);
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(2)); // path_offset
+
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(3)); // path_len
+
+    // 内容をアンパック
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I64Const(32));
+    f.instruction(&W::I64ShrU);
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(4)); // content_offset
+
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(5)); // content_len
+
+    // path_open(dirfd=3, dirflags=0, path, path_len, oflags=1(creat)|4(trunc), rights, 0, 0, fd_ptr=280)
+    f.instruction(&W::I32Const(3));       // dirfd = 3
+    f.instruction(&W::I32Const(0));       // dirflags
+    f.instruction(&W::LocalGet(2));       // path
+    f.instruction(&W::LocalGet(3));       // path_len
+    f.instruction(&W::I32Const(5));       // oflags = O_CREAT(1) | O_TRUNC(4)
+    f.instruction(&W::I64Const(0x40));    // rights_base = fd_write
+    f.instruction(&W::I64Const(0));       // rights_inheriting
+    f.instruction(&W::I32Const(0));       // fdflags
+    f.instruction(&W::I32Const(280));     // fd_ptr
+    f.instruction(&W::Call(path_open_idx));
+    f.instruction(&W::Drop);
+
+    // fd を読み出し
+    f.instruction(&W::I32Const(280));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::LocalSet(6)); // fd
+
+    // iov 設定 (スクラッチ 352)
+    f.instruction(&W::I32Const(352));
+    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 })); // iov.buf
+
+    f.instruction(&W::I32Const(352));
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 })); // iov.len
+
+    // fd_write(fd, iovs=352, iovs_len=1, nwritten_ptr=360)
+    f.instruction(&W::LocalGet(6));       // fd
+    f.instruction(&W::I32Const(352));     // iovs
+    f.instruction(&W::I32Const(1));       // iovs_len
+    f.instruction(&W::I32Const(360));     // nwritten
+    f.instruction(&W::Call(fd_write_idx));
+    f.instruction(&W::Drop);
+
+    // nwritten を読み取り
+    f.instruction(&W::I32Const(360));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::LocalSet(7));
+
+    // fd_close
+    f.instruction(&W::LocalGet(6));
+    f.instruction(&W::Call(fd_close_idx));
+    f.instruction(&W::Drop);
+
+    // 書き込みバイト数を返す
+    f.instruction(&W::LocalGet(7));
+    f.instruction(&W::I64ExtendI32U);
+
+    f.instruction(&W::End);
+    codes.function(&f);
+}
+
+/// __file_exists: パック文字列パスを受け取り、存在すれば 1、しなければ 0 を返す
+fn emit_file_exists_func(
+    codes: &mut CodeSection,
+    path_open_idx: u32,
+    fd_close_idx: u32,
+) {
+    use wasm_encoder::Instruction as W;
+
+    // locals: 0=path(i64), 1=path_offset(i32), 2=path_len(i32), 3=errno(i32)
+    let mut f = wasm_encoder::Function::new(vec![
+        (1, ValType::I32), // 1: path_offset
+        (1, ValType::I32), // 2: path_len
+        (1, ValType::I32), // 3: errno
+    ]);
+
+    // パスをアンパック
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I64Const(32));
+    f.instruction(&W::I64ShrU);
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(1)); // path_offset
+
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(2)); // path_len
+
+    // path_open(dirfd=3, 0, path, path_len, 0, rights, 0, 0, fd_ptr=280)
+    f.instruction(&W::I32Const(3));       // dirfd = 3
+    f.instruction(&W::I32Const(0));       // dirflags
+    f.instruction(&W::LocalGet(1));       // path
+    f.instruction(&W::LocalGet(2));       // path_len
+    f.instruction(&W::I32Const(0));       // oflags = 0 (read)
+    f.instruction(&W::I64Const(0x02));    // rights_base = fd_read
+    f.instruction(&W::I64Const(0));       // rights_inheriting
+    f.instruction(&W::I32Const(0));       // fdflags
+    f.instruction(&W::I32Const(280));     // fd_ptr
+    f.instruction(&W::Call(path_open_idx));
+    f.instruction(&W::LocalSet(3)); // errno
+
+    // errno == 0 → ファイル存在、fd_close して 1 を返す
+    f.instruction(&W::LocalGet(3));
+    f.instruction(&W::I32Eqz);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    // fd_close
+    f.instruction(&W::I32Const(280));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::Call(fd_close_idx));
+    f.instruction(&W::Drop);
+    f.instruction(&W::End);
+
+    // 結果: errno == 0 なら 1、それ以外 0
+    f.instruction(&W::LocalGet(3));
+    f.instruction(&W::I32Eqz);
+    f.instruction(&W::I64ExtendI32U);
+
+    f.instruction(&W::End);
+    codes.function(&f);
+}
+
+/// __command_line_args: コマンドライン引数の数を返す
+fn emit_command_line_args_func(
+    codes: &mut CodeSection,
+    args_sizes_get_idx: u32,
+) {
+    use wasm_encoder::Instruction as W;
+
+    // locals: なし (スクラッチ領域を使用)
+    let mut f = wasm_encoder::Function::new(vec![]);
+
+    // args_sizes_get(argc_ptr=280, argv_buf_size_ptr=284)
+    f.instruction(&W::I32Const(280));     // argc ptr
+    f.instruction(&W::I32Const(284));     // argv_buf_size ptr
+    f.instruction(&W::Call(args_sizes_get_idx));
+    f.instruction(&W::Drop);             // errno
+
+    // argc を読み取って返す
+    f.instruction(&W::I32Const(280));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I64ExtendI32U);
+
+    f.instruction(&W::End);
+    codes.function(&f);
+}
+
 /// IR 命令を WASI 用にリマップして出力
 fn emit_instructions_wasi(
     func: &mut wasm_encoder::Function,
@@ -853,6 +1177,10 @@ fn emit_instructions_wasi(
     print_string_idx: u32,
     proc_exit_wasm_idx: u32,
     int_to_string_idx: u32,
+    read_file_idx: u32,
+    write_file_idx: u32,
+    file_exists_idx: u32,
+    command_line_args_idx: u32,
     user_func_base: u32,
     call_indirect_type_map: &HashMap<u32, u32>,
 ) -> Result<(), CodegenError> {
@@ -878,6 +1206,10 @@ fn emit_instructions_wasi(
                     4 => print_string_idx,
                     5 => proc_exit_wasm_idx,
                     6 => int_to_string_idx,
+                    7 => read_file_idx,
+                    8 => write_file_idx,
+                    9 => file_exists_idx,
+                    10 => command_line_args_idx,
                     i => user_func_base + (i - IR_IMPORT_COUNT),
                 };
                 Instruction::FuncIdx(wasm_idx)
@@ -895,6 +1227,10 @@ fn emit_instructions_wasi(
             4 => { f.instruction(&W::Call(print_string_idx)); }
             5 => { f.instruction(&W::Call(proc_exit_wasm_idx)); }
             6 => { f.instruction(&W::Call(int_to_string_idx)); }
+            7 => { f.instruction(&W::Call(read_file_idx)); }
+            8 => { f.instruction(&W::Call(write_file_idx)); }
+            9 => { f.instruction(&W::Call(file_exists_idx)); }
+            10 => { f.instruction(&W::Call(command_line_args_idx)); }
             _ => { f.instruction(&W::Call(user_func_base + (i - IR_IMPORT_COUNT))); }
         }
         Ok(())

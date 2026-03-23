@@ -8,13 +8,27 @@ use wasmtime_wasi::{preview1::WasiP1Ctx, WasiCtxBuilder};
 
 /// Wasm バイナリを WASI 環境で実行し、stdout 出力を返す
 pub fn run_wasm_wasi(wasm_bytes: &[u8]) -> Result<String, String> {
+    run_wasm_wasi_with_dir(wasm_bytes, None)
+}
+
+/// Wasm バイナリを WASI 環境で実行 (ファイルシステムアクセス付き)
+pub fn run_wasm_wasi_with_dir(wasm_bytes: &[u8], dir: Option<&std::path::Path>) -> Result<String, String> {
     let engine = Engine::default();
     let mut linker = Linker::<WasiP1Ctx>::new(&engine);
     wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |t| t)
         .map_err(|e| format!("WASI リンクに失敗: {e}"))?;
 
     let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(4096);
-    let wasi = WasiCtxBuilder::new().stdout(stdout.clone()).build_p1();
+    let mut builder = WasiCtxBuilder::new();
+    builder.stdout(stdout.clone());
+    if let Some(dir_path) = dir {
+        builder.preopened_dir(
+            dir_path, ".",
+            wasmtime_wasi::DirPerms::all(),
+            wasmtime_wasi::FilePerms::all(),
+        ).map_err(|e| format!("preopened_dir に失敗: {e}"))?;
+    }
+    let wasi = builder.build_p1();
     let mut store = Store::new(&engine, wasi);
 
     let module = wasmtime::Module::new(&engine, wasm_bytes)

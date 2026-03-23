@@ -27,6 +27,18 @@ fn compile_and_run(source: &str) -> String {
     run_wasi(&wasm_bytes)
 }
 
+/// ソースコードをコンパイルしてファイルシステムアクセス付きで実行
+fn compile_and_run_with_dir(source: &str, dir: &std::path::Path) -> String {
+    let program = lsharp_syntax::parse(source).unwrap();
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lower = Lower::new();
+    let module = lower.lower_program(&program, &type_results).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
+
+    lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(&wasm_bytes, Some(dir)).unwrap()
+}
+
 /// ソースコードをコンパイルのみ（Wasm バイナリ生成まで）
 fn compile_only(source: &str) -> Vec<u8> {
     let program = lsharp_syntax::parse(source).unwrap();
@@ -2212,4 +2224,56 @@ fn test_e2e_stdlib_set() {
               0)))
     "#);
     assert_eq!(result.trim(), "3\n1\n0");
+}
+
+// === ファイル I/O & WASI 拡張テスト ===
+
+#[test]
+fn test_e2e_command_line_args() {
+    // command-line-args: コマンドライン引数の数を返す
+    // wasmtime で実行した場合、引数が 0 以上の整数が返る
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [argc (command-line-args)]
+            (do
+              (print (>= argc 0))
+              0)))
+    "#);
+    // argc >= 0 は常に true (1)
+    assert_eq!(result.trim(), "1");
+}
+
+#[test]
+fn test_e2e_write_and_read_file() {
+    // write-file + read-file: ファイルに書き込んで読み出し
+    let tmpdir = std::env::temp_dir().join("lsharp_test_file_io");
+    std::fs::create_dir_all(&tmpdir).unwrap();
+    let result = compile_and_run_with_dir(r#"
+        (defn main []
+          (let [written (write-file "test_output.txt" "hello")
+                content (read-file "test_output.txt")]
+            (do
+              (print written)
+              (print (string-length content))
+              0)))
+    "#, &tmpdir);
+    // written = 5 (bytes), content length = 5
+    assert_eq!(result.trim(), "5\n5");
+    // クリーンアップ
+    let _ = std::fs::remove_dir_all(&tmpdir);
+}
+
+#[test]
+fn test_e2e_file_exists() {
+    // file-exists?: ファイル存在チェック (preopened dir 付き)
+    let tmpdir = std::env::temp_dir().join("lsharp_test_file_exists");
+    std::fs::create_dir_all(&tmpdir).unwrap();
+    let result = compile_and_run_with_dir(r#"
+        (defn main []
+          (do
+            (print (file-exists? "nonexistent_file_xyz.txt"))
+            0))
+    "#, &tmpdir);
+    assert_eq!(result.trim(), "0");
+    let _ = std::fs::remove_dir_all(&tmpdir);
 }

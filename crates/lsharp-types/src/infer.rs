@@ -692,6 +692,33 @@ impl Infer {
             TypeScheme::mono(Type::Fun(vec![Type::int(), Type::int()], Box::new(Type::int()))),
         );
 
+        // read-file: String -> String (ファイル内容を読み込み)
+        env.insert(
+            "read-file".to_string(),
+            TypeScheme::mono(Type::Fun(vec![Type::string()], Box::new(Type::string()))),
+        );
+
+        // write-file: (String, String) -> Int (ファイルに書き込み、書き込みバイト数を返す)
+        env.insert(
+            "write-file".to_string(),
+            TypeScheme::mono(Type::Fun(
+                vec![Type::string(), Type::string()],
+                Box::new(Type::int()),
+            )),
+        );
+
+        // file-exists?: String -> Bool (ファイルが存在するか)
+        env.insert(
+            "file-exists?".to_string(),
+            TypeScheme::mono(Type::Fun(vec![Type::string()], Box::new(Type::bool()))),
+        );
+
+        // command-line-args: () -> Int (引数の数を返す)
+        env.insert(
+            "command-line-args".to_string(),
+            TypeScheme::mono(Type::Fun(vec![], Box::new(Type::int()))),
+        );
+
         // not: Bool -> Bool
         env.insert(
             "not".to_string(),

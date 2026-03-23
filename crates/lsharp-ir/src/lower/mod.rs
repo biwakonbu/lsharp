@@ -172,7 +172,11 @@ impl Lower {
         self.func_indices.insert("print-string".to_string(), 4);
         self.func_indices.insert("proc-exit".to_string(), 5);
         self.func_indices.insert("__int_to_string".to_string(), 6);
-        self.import_count = 7;
+        self.func_indices.insert("read-file".to_string(), 7);
+        self.func_indices.insert("write-file".to_string(), 8);
+        self.func_indices.insert("file-exists?".to_string(), 9);
+        self.func_indices.insert("command-line-args".to_string(), 10);
+        self.import_count = 11;
 
         // ユーザー定義関数のインデックスを事前登録
         let mut func_idx = self.import_count;

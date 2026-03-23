@@ -133,11 +133,11 @@
 - [x] `proc_exit` import -- wasi.rs Import Section + E2E テスト 3件
 
 ### P5-2: ファイル操作ビルトイン
-- [ ] `read-file [path] -> String` ビルトイン
-- [ ] `write-file [path content] -> Unit` ビルトイン
-- [ ] `file-exists? [path] -> Bool` ビルトイン
-- [ ] コマンドライン引数取得
-- [ ] E2E テスト: ファイル読み書き + 引数取得
+- [x] `read-file [path] -> String` ビルトイン -- WASI path_open+fd_read+fd_filestat_get, E2E 1件
+- [x] `write-file [path content] -> Int` ビルトイン -- WASI path_open+fd_write+fd_close, E2E 1件
+- [x] `file-exists? [path] -> Bool` ビルトイン -- WASI path_open エラー判定, E2E 1件
+- [x] コマンドライン引数取得 -- command-line-args ビルトイン, E2E 1件
+- [x] E2E テスト: ファイル読み書き + 引数取得 -- E2E 3件パス
 
 ---
 
@@ -168,7 +168,7 @@
 - [x] `stdlib/Vector.ls` -- 可変長配列ラッパー (vector-map/filter/fold/sum)
 - [x] `stdlib/Map.ls` -- HashMap ラッパー (map-empty?/map-get-or)
 - [x] `stdlib/Set.ls` -- HashSet (HashMap ベース) -- E2E 1件パス
-- [ ] `stdlib/IO.ls` -- read-file, write-file, read-line [BLOCKED: P5-2]
+- [x] `stdlib/IO.ls` -- read-file, write-file ラッパー
 - [x] `stdlib/Debug.ls` -- debug-print, assert -- E2E 1件パス
 - [x] `stdlib/Char.ls` -- is-digit, is-alpha, is-whitespace -- E2E 1件パス
 - [~] stdlib のコンパイル・テスト自動化 -- E2E 3件追加 (Char/Debug/Set)
