@@ -57,6 +57,14 @@ pub struct Lower {
     pub(crate) string_offset: Cell<u32>,
     /// Computation Builder 情報（ビルダー名 -> (bind関数名, return関数名)）
     pub(crate) computation_builders: HashMap<String, (String, String)>,
+    /// Lambda Lifting: リフトされた関数のリスト
+    pub(crate) lifted_functions: RefCell<Vec<crate::Function>>,
+    /// Lambda Lifting: 一意な Lambda 名生成用カウンター
+    pub(crate) lambda_counter: Cell<u32>,
+    /// Lambda Lifting: リフトされた関数名 -> 関数インデックスのマッピング
+    pub(crate) lifted_func_indices: RefCell<HashMap<String, u32>>,
+    /// Lambda Lifting: 次に割り当てる関数インデックス
+    pub(crate) next_func_idx: Cell<u32>,
 }
 
 /// Private 宣言を展開して内部の宣言を返す
@@ -84,7 +92,18 @@ impl Lower {
             string_data: RefCell::new(Vec::new()),
             string_offset: Cell::new(512), // 文字列データの開始位置（メモリ先頭は数値変換バッファ用）
             computation_builders: HashMap::new(),
+            lifted_functions: RefCell::new(Vec::new()),
+            lambda_counter: Cell::new(0),
+            lifted_func_indices: RefCell::new(HashMap::new()),
+            next_func_idx: Cell::new(0),
         }
+    }
+
+    /// 一意な Lambda 関数名を生成
+    pub(crate) fn fresh_lambda_name(&self) -> String {
+        let id = self.lambda_counter.get();
+        self.lambda_counter.set(id + 1);
+        format!("__lambda_{id}")
     }
 
     /// プログラム全体を IR に変換
@@ -164,10 +183,12 @@ impl Lower {
             }
         }
 
-        // import 関数を登録 (print = index 0, __alloc = index 1)
+        // import/内部ヘルパー関数を登録
         self.func_indices.insert("print".to_string(), 0);
         self.func_indices.insert("__alloc".to_string(), 1);
-        self.import_count = 2;
+        self.func_indices.insert("__string_concat".to_string(), 2);
+        self.func_indices.insert("__string_eq".to_string(), 3);
+        self.import_count = 4;
 
         // ユーザー定義関数のインデックスを事前登録
         let mut func_idx = self.import_count;
@@ -249,6 +270,9 @@ impl Lower {
                 );
             }
         }
+
+        // Lambda Lifting 用の次の関数インデックスを設定
+        self.next_func_idx.set(func_idx);
 
         // 各関数を IR に変換
         let mut functions = Vec::new();
@@ -345,6 +369,10 @@ impl Lower {
 
         // func_idx の未使用警告を抑制
         let _ = func_idx;
+
+        // Lambda Lifting: リフトされた関数を追加
+        let lifted = self.lifted_functions.borrow().clone();
+        functions.extend(lifted);
 
         Ok(Module {
             functions,

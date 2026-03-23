@@ -842,6 +842,97 @@ fn test_e2e_heap_object_header() {
     assert!(addr >= 512, "heap address should be >= 512, got {}", addr);
 }
 
+// === 文字列ランタイム関数テスト ===
+// P1-1 の string runtime 実装完了後に有効化する
+
+#[test]
+#[ignore = "P1-1 string runtime 未実装"]
+fn test_e2e_string_length() {
+    let result = compile_and_run(r#"
+        (defn main []
+          (print (string-length "hello")))
+    "#);
+    assert_eq!(result.trim(), "5");
+}
+
+#[test]
+#[ignore = "P1-1 string runtime 未実装"]
+fn test_e2e_string_length_empty() {
+    let result = compile_and_run(r#"
+        (defn main []
+          (print (string-length "")))
+    "#);
+    assert_eq!(result.trim(), "0");
+}
+
+#[test]
+#[ignore = "P1-1 string runtime 未実装"]
+fn test_e2e_string_length_multibyte() {
+    let result = compile_and_run(r#"
+        (defn main []
+          (print (string-length "abc")))
+    "#);
+    assert_eq!(result.trim(), "3");
+}
+
+// === Phase 4-2: Ref Cell テスト ===
+
+#[test]
+fn test_e2e_ref_new_and_get() {
+    // ref-new で作成した Ref Cell から ref-get で値を読み出す
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [r (ref-new 42)]
+            (print (ref-get r))))
+    "#);
+    assert_eq!(result.trim(), "42");
+}
+
+#[test]
+fn test_e2e_ref_set_and_get() {
+    // ref-set で値を上書きしてから ref-get で読み出す
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [r (ref-new 10)]
+            (do
+              (ref-set r 99)
+              (print (ref-get r)))))
+    "#);
+    assert_eq!(result.trim(), "99");
+}
+
+#[test]
+fn test_e2e_ref_multiple_updates() {
+    // Ref Cell を複数回更新
+    let result = compile_and_run(r#"
+        (defn main []
+          (let [r (ref-new 0)]
+            (do
+              (ref-set r 10)
+              (ref-set r 20)
+              (ref-set r 30)
+              (print (ref-get r)))))
+    "#);
+    assert_eq!(result.trim(), "30");
+}
+
+#[test]
+fn test_e2e_ref_in_loop() {
+    // Ref Cell を使ったカウンターループ
+    let result = compile_and_run(r#"
+        (defn loop-count [r n]
+          (if (<= n 0)
+            (ref-get r)
+            (do
+              (ref-set r (+ (ref-get r) 1))
+              (loop-count r (- n 1)))))
+        (defn main []
+          (let [counter (ref-new 0)]
+            (print (loop-count counter 10))))
+    "#);
+    assert_eq!(result.trim(), "10");
+}
+
 // === エッジケース: ランタイムエラー ===
 
 #[test]

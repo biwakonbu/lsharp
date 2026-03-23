@@ -9,4 +9,4 @@ fn double(i64) -> i64:
 
 fn main() -> i64:
   i64.const 21
-  call 2
+  call 4

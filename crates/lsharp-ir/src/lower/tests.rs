@@ -144,21 +144,6 @@ fn test_lower_undefined_variable_error() {
 }
 
 #[test]
-fn test_lower_lambda_unsupported() {
-    let program = lsharp_syntax::parse("(defn main [] (fn [x] x))").unwrap();
-    let mut infer = Infer::new();
-    let type_results = infer.infer_program(&program).unwrap();
-    let mut lowerer = Lower::new();
-    let result = lowerer.lower_program(&program, &type_results);
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(
-        matches!(err, LowerError::Unsupported { .. }),
-        "expected Unsupported error, got: {err}"
-    );
-}
-
-#[test]
 fn test_emit_binop_unknown_operator_returns_error() {
     // 未知の二項演算子でエラーが返ることを確認 (R-M2)
     let lowerer = Lower::new();
@@ -670,6 +655,92 @@ fn test_tagged_pointer_roundtrip() {
     assert_eq!(body.len(), 4);
 }
 
+// --- ADT リニアメモリ版テスト ---
+
+#[test]
+fn test_adt_constructor_linear_memory_uses_alloc() {
+    // ADT コンストラクタがリニアメモリ版で __alloc を呼び出すことを検証
+    let source = r#"
+        (type (Maybe a) (Just a) Nothing)
+        (defn main [] (Just 42))
+    "#;
+    let module = lower(source);
+    let just_fn = module.functions.iter().find(|f| f.name == "Just").unwrap();
+    // __alloc への Call 命令が含まれるべき (func_idx = 1)
+    let has_alloc_call = just_fn.body.iter().any(|i| matches!(i, Instruction::Call(1)));
+    assert!(has_alloc_call, "Just コンストラクタは __alloc を呼び出すべき: {:?}", just_fn.body);
+}
+
+#[test]
+fn test_adt_constructor_linear_memory_writes_heap_tag() {
+    // ADT コンストラクタがヒープタグ (tag=3) を書き込むことを検証
+    let source = r#"
+        (type (Maybe a) (Just a) Nothing)
+        (defn main [] 0)
+    "#;
+    let module = lower(source);
+    let just_fn = module.functions.iter().find(|f| f.name == "Just").unwrap();
+    // I32Const(3) (HEAP_TAG_ADT) が含まれるべき
+    let has_heap_tag = just_fn.body.iter().any(|i| matches!(i, Instruction::I32Const(3)));
+    assert!(has_heap_tag, "Just コンストラクタはヒープタグ 3 を書き込むべき: {:?}", just_fn.body);
+}
+
+#[test]
+fn test_adt_constructor_linear_memory_writes_variant_tag() {
+    // ADT コンストラクタがバリアントタグを書き込むことを検証
+    let source = r#"
+        (type (Maybe a) (Just a) Nothing)
+        (defn main [] 0)
+    "#;
+    let module = lower(source);
+    let just_fn = module.functions.iter().find(|f| f.name == "Just").unwrap();
+    // I32Store でバリアントタグを書き込む命令が含まれるべき
+    let has_variant_store = just_fn.body.iter().any(|i| matches!(i, Instruction::I32Store { offset: 4 }));
+    assert!(has_variant_store, "Just コンストラクタはバリアントタグを offset 4 に書き込むべき: {:?}", just_fn.body);
+}
+
+#[test]
+fn test_adt_constructor_linear_memory_stores_field() {
+    // ADT コンストラクタがフィールド値をメモリに書き込むことを検証
+    let source = r#"
+        (type (Maybe a) (Just a) Nothing)
+        (defn main [] 0)
+    "#;
+    let module = lower(source);
+    let just_fn = module.functions.iter().find(|f| f.name == "Just").unwrap();
+    // フィールドは offset 8 に I64Store で書き込まれるべき
+    let has_field_store = just_fn.body.iter().any(|i| matches!(i, Instruction::I64Store { offset: 8 }));
+    assert!(has_field_store, "Just コンストラクタはフィールドを offset 8 に書き込むべき: {:?}", just_fn.body);
+}
+
+#[test]
+fn test_adt_constructor_linear_memory_returns_tagged_pointer() {
+    // ADT コンストラクタがタグ付きポインタを返すことを検証
+    let source = r#"
+        (type (Maybe a) (Just a) Nothing)
+        (defn main [] 0)
+    "#;
+    let module = lower(source);
+    let just_fn = module.functions.iter().find(|f| f.name == "Just").unwrap();
+    // タグ付きポインタ: I64ExtendI32U + I64Const(1<<63) + I64Add
+    let has_tag_pointer = just_fn.body.iter().any(|i| matches!(i, Instruction::I64ExtendI32U));
+    assert!(has_tag_pointer, "Just コンストラクタはタグ付きポインタを返すべき: {:?}", just_fn.body);
+}
+
+#[test]
+fn test_adt_constructor_no_args_linear_memory() {
+    // 引数なしコンストラクタもヒープ確保してタグ付きポインタを返すことを検証
+    let source = r#"
+        (type (Maybe a) (Just a) Nothing)
+        (defn main [] 0)
+    "#;
+    let module = lower(source);
+    let nothing_fn = module.functions.iter().find(|f| f.name == "Nothing").unwrap();
+    // __alloc への Call が含まれるべき
+    let has_alloc_call = nothing_fn.body.iter().any(|i| matches!(i, Instruction::Call(1)));
+    assert!(has_alloc_call, "Nothing コンストラクタも __alloc を呼び出すべき: {:?}", nothing_fn.body);
+}
+
 // --- モジュール分割検証テスト ---
 
 #[test]
@@ -690,4 +761,126 @@ fn test_lower_module_structure() {
     // 本体は I64Const(42) の1命令
     assert_eq!(module.functions[0].body.len(), 1);
     assert!(matches!(module.functions[0].body[0], Instruction::I64Const(42)));
+}
+
+// --- Ref Cell テスト ---
+
+#[test]
+fn test_ref_new_generates_alloc_and_store() {
+    // ref-new はヒープ確保 + ヘッダ書き込み + 値書き込みを行うべき
+    let source = r#"
+        (defn main [] (ref-new 42))
+    "#;
+    let module = lower(source);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    // __alloc 呼び出しが含まれるべき
+    let has_alloc_call = main_fn.body.iter().any(|i| {
+        matches!(i, Instruction::Call(idx) if *idx == 1) // __alloc のインデックス
+    });
+    assert!(has_alloc_call, "ref-new は __alloc を呼び出すべき: {:?}", main_fn.body);
+}
+
+#[test]
+fn test_ref_get_generates_load() {
+    // ref-get はポインタアンタグ + I64Load を行うべき
+    let source = r#"
+        (defn main [] (let [r (ref-new 42)] (ref-get r)))
+    "#;
+    let module = lower(source);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    // I64Load が含まれるべき (ヒープからの値読み出し)
+    let has_load = main_fn.body.iter().any(|i| {
+        matches!(i, Instruction::I64Load { .. })
+    });
+    assert!(has_load, "ref-get は I64Load を含むべき: {:?}", main_fn.body);
+}
+
+#[test]
+fn test_ref_set_generates_store() {
+    // ref-set はポインタアンタグ + I64Store を行うべき
+    let source = r#"
+        (defn main [] (let [r (ref-new 42)] (do (ref-set r 100) 0)))
+    "#;
+    let module = lower(source);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    // I64Store が含まれるべき (ヒープへの値書き込み)
+    let has_store = main_fn.body.iter().any(|i| {
+        matches!(i, Instruction::I64Store { .. })
+    });
+    assert!(has_store, "ref-set は I64Store を含むべき: {:?}", main_fn.body);
+}
+
+// --- Lambda Lifting テスト ---
+
+#[test]
+fn test_lambda_no_free_vars_lifted() {
+    // 自由変数なし Lambda がリフトされた関数として生成される
+    let source = r#"
+        (defn make-inc [] (fn [x] (+ x 1)))
+        (defn main [] 0)
+    "#;
+    let module = lower(source);
+    // リフトされた Lambda 関数が生成されているべき
+    let lifted = module.functions.iter().find(|f| f.name.starts_with("__lambda"));
+    assert!(lifted.is_some(), "Lambda はリフトされた関数として生成されるべき: {:?}",
+        module.functions.iter().map(|f| &f.name).collect::<Vec<_>>());
+    // 自由変数なしなのでパラメータは元の1つだけ
+    let lifted = lifted.unwrap();
+    assert_eq!(lifted.params.len(), 1, "自由変数なし Lambda のパラメータは 1 つ");
+}
+
+#[test]
+fn test_lambda_with_free_vars_captures() {
+    // 自由変数あり Lambda: 自由変数が追加パラメータとしてリフトされる
+    let source = r#"
+        (defn make-adder [n] (fn [x] (+ x n)))
+        (defn main [] 0)
+    "#;
+    let module = lower(source);
+    let lifted = module.functions.iter().find(|f| f.name.starts_with("__lambda"));
+    assert!(lifted.is_some(), "Lambda はリフトされた関数として生成されるべき: {:?}",
+        module.functions.iter().map(|f| &f.name).collect::<Vec<_>>());
+    // リフト先関数は自由変数分のパラメータが追加されるべき (x + n = 2)
+    let lifted = lifted.unwrap();
+    assert_eq!(lifted.params.len(), 2, "自由変数 n が追加パラメータとして含まれるべき");
+}
+
+#[test]
+fn test_lambda_lifting_preserves_existing_tests() {
+    // 既存の関数定義が Lambda Lifting の影響を受けないことを確認
+    let source = "(defn double [x] (* x 2)) (defn main [] (double 21))";
+    let module = lower(source);
+    // double と main 以外にリフトされた関数はないべき
+    let non_lifted: Vec<_> = module.functions.iter()
+        .filter(|f| !f.name.starts_with("__lambda"))
+        .collect();
+    assert_eq!(non_lifted.len(), 2);
+    assert_eq!(non_lifted[0].name, "double");
+    assert_eq!(non_lifted[1].name, "main");
+}
+
+#[test]
+fn test_lambda_body_has_correct_instructions() {
+    // リフトされた Lambda の本体に正しい命令列が含まれる
+    let source = r#"
+        (defn make-inc [] (fn [x] (+ x 1)))
+        (defn main [] 0)
+    "#;
+    let module = lower(source);
+    let lifted = module.functions.iter().find(|f| f.name.starts_with("__lambda")).unwrap();
+    // (+ x 1) の命令: LocalGet(0), I64Const(1), I64Add
+    let has_add = lifted.body.iter().any(|i| matches!(i, Instruction::I64Add));
+    assert!(has_add, "Lambda 本体に I64Add が含まれるべき: {:?}", lifted.body);
+}
+
+#[test]
+fn test_lambda_unsupported_test_removed() {
+    // 以前の「Lambda は未サポート」テストは Lambda Lifting 実装によりパスしないことを確認
+    // Lambda が正常にコンパイルされることを検証
+    let program = lsharp_syntax::parse("(defn main [] (fn [x] x))").unwrap();
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lowerer = Lower::new();
+    let result = lowerer.lower_program(&program, &type_results);
+    assert!(result.is_ok(), "Lambda は Lambda Lifting で正常にコンパイルされるべき");
 }

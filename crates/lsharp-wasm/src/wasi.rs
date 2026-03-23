@@ -27,11 +27,15 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     // 0: fd_write (import)
     // 1: __print_i64 (内部ヘルパー)
     // 2: __alloc (Bump Allocator)
-    // 3..3+N-1: ユーザー関数
-    // 3+N: _start
+    // 3: __string_concat (スタブ)
+    // 4: __string_eq (スタブ)
+    // 5..5+N-1: ユーザー関数
+    // 5+N: _start
     let print_helper_idx: u32 = 1;
     let alloc_func_idx: u32 = 2;
-    let user_func_base: u32 = 3;
+    let string_concat_idx: u32 = 3;
+    let string_eq_idx: u32 = 4;
+    let user_func_base: u32 = 5;
     let start_func_idx: u32 = user_func_base + module.functions.len() as u32;
 
     // GC 型の数（TypeSection でのオフセット計算に使用）
@@ -96,6 +100,14 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let alloc_type_idx = types.len();
     types.ty().function(vec![ValType::I64], vec![ValType::I64]);
 
+    // __string_concat 関数型: (i64, i64) -> i64
+    let string_concat_type_idx = types.len();
+    types.ty().function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
+
+    // __string_eq 関数型: (i64, i64) -> i64
+    let string_eq_type_idx = types.len();
+    types.ty().function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
+
     // ユーザー関数の型
     let mut user_type_indices = Vec::new();
     for func in &module.functions {
@@ -121,6 +133,8 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let mut functions = FunctionSection::new();
     functions.function(print_type_idx); // __print_i64
     functions.function(alloc_type_idx); // __alloc
+    functions.function(string_concat_type_idx); // __string_concat
+    functions.function(string_eq_type_idx); // __string_eq
     for &type_idx in &user_type_indices {
         functions.function(type_idx);
     }
@@ -171,6 +185,24 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     // __alloc (Bump Allocator)
     emit_alloc_func(&mut codes);
 
+    // __string_concat スタブ: 第1引数をそのまま返す
+    {
+        use wasm_encoder::Instruction as W;
+        let mut f = wasm_encoder::Function::new(vec![]);
+        f.instruction(&W::LocalGet(0));
+        f.instruction(&W::End);
+        codes.function(&f);
+    }
+
+    // __string_eq スタブ: 0 (false) を返す
+    {
+        use wasm_encoder::Instruction as W;
+        let mut f = wasm_encoder::Function::new(vec![]);
+        f.instruction(&W::I64Const(0));
+        f.instruction(&W::End);
+        codes.function(&f);
+    }
+
     // ユーザー関数
     for func in &module.functions {
         let mut f = wasm_encoder::Function::new(
@@ -179,7 +211,12 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
                 .map(|t| (1, crate::emit::ir_to_wasm_valtype(*t)))
                 .collect::<Vec<_>>(),
         );
-        emit_instructions_wasi(&mut f, &func.body, print_helper_idx, alloc_func_idx, user_func_base)?;
+        emit_instructions_wasi(
+            &mut f, &func.body,
+            print_helper_idx, alloc_func_idx,
+            string_concat_idx, string_eq_idx,
+            user_func_base,
+        )?;
         f.instruction(&wasm_encoder::Instruction::End);
         codes.function(&f);
     }
@@ -423,25 +460,36 @@ fn emit_alloc_func(codes: &mut CodeSection) {
     codes.function(&f);
 }
 
+/// IR の import_count (print=0, __alloc=1, __string_concat=2, __string_eq=3)
+const IR_IMPORT_COUNT: u32 = 4;
+
 /// IR 命令を WASI 用にリマップして出力
 fn emit_instructions_wasi(
     func: &mut wasm_encoder::Function,
     instructions: &[Instruction],
     print_helper_idx: u32,
     alloc_func_idx: u32,
+    str_concat_idx: u32,
+    str_eq_idx: u32,
     user_func_base: u32,
 ) -> Result<(), CodegenError> {
     use wasm_encoder::Instruction as W;
     crate::emit::emit_instructions_common(func, instructions, |f, i| {
         if i == 0 {
-            // print → __print_i64
+            // print -> __print_i64
             f.instruction(&W::Call(print_helper_idx));
         } else if i == 1 {
-            // __alloc → __alloc 関数
+            // __alloc -> Bump Allocator
             f.instruction(&W::Call(alloc_func_idx));
+        } else if i == 2 {
+            // __string_concat
+            f.instruction(&W::Call(str_concat_idx));
+        } else if i == 3 {
+            // __string_eq
+            f.instruction(&W::Call(str_eq_idx));
         } else {
-            // ユーザー関数: import_count=2 分ずらす
-            f.instruction(&W::Call(user_func_base + (i - 2)));
+            // ユーザー関数: IR_IMPORT_COUNT 分ずらす
+            f.instruction(&W::Call(user_func_base + (i - IR_IMPORT_COUNT)));
         }
         Ok(())
     })

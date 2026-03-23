@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use lsharp_syntax::ast::*;
 
-use crate::{Instruction, IrType};
+use crate::{closure, Function, Instruction, IrType};
 
 use super::{is_builtin_binop, FuncCtx, Lower, LowerError};
 
@@ -36,6 +36,9 @@ impl Lower {
                     ctx.emit(Instruction::LocalGet(idx));
                 } else if let Some(&func_idx) = self.func_indices.get(name) {
                     // 引数なし ADT コンストラクタ（または引数なし関数）を呼び出し
+                    ctx.emit(Instruction::Call(func_idx));
+                } else if let Some(&func_idx) = self.lifted_func_indices.borrow().get(name) {
+                    // Lambda Lifting で生成された関数の呼び出し
                     ctx.emit(Instruction::Call(func_idx));
                 } else {
                     return Err(LowerError::UndefinedFunction {
@@ -132,6 +135,104 @@ impl Lower {
                         })?;
                         ctx.emit(Instruction::Call(idx));
                     }
+                    // string-length: パック済み文字列 (offset<<32|len) から長さを取得
+                    Expr::Var(_, name) if name == "string-length" => {
+                        if let Some(arg) = args.first() {
+                            self.lower_expr(ctx, arg)?;
+                        }
+                        // i64 の下位 32 ビットが長さ
+                        ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::I64ExtendI32U);
+                    }
+                    // string-concat: 2 つの文字列を結合
+                    Expr::Var(_, name) if name == "string-concat" => {
+                        if args.len() >= 2 {
+                            self.lower_expr(ctx, &args[0])?;
+                            self.lower_expr(ctx, &args[1])?;
+                        }
+                        let idx = *self.func_indices.get("__string_concat").ok_or_else(|| {
+                            LowerError::UndefinedFunction { name: "__string_concat".to_string() }
+                        })?;
+                        ctx.emit(Instruction::Call(idx));
+                    }
+                    // string-eq: 2 つの文字列を比較
+                    Expr::Var(_, name) if name == "string-eq" => {
+                        if args.len() >= 2 {
+                            self.lower_expr(ctx, &args[0])?;
+                            self.lower_expr(ctx, &args[1])?;
+                        }
+                        let idx = *self.func_indices.get("__string_eq").ok_or_else(|| {
+                            LowerError::UndefinedFunction { name: "__string_eq".to_string() }
+                        })?;
+                        ctx.emit(Instruction::Call(idx));
+                    }
+                    // ref-new: ヒープに Ref Cell を確保して値を格納
+                    // レイアウト: [tag=7: i32, _pad: i32, value: i64]
+                    // 合計 16 バイト
+                    Expr::Var(_, name) if name == "ref-new" => {
+                        // 引数 (値) を評価
+                        if let Some(arg) = args.first() {
+                            self.lower_expr(ctx, arg)?;
+                        }
+                        // 値を一時ローカルに保存
+                        let val_local = ctx.alloc_local("_ref_val".to_string());
+                        ctx.emit(Instruction::LocalSet(val_local));
+                        // __alloc(16) でヒープ確保
+                        ctx.emit(Instruction::I64Const(16));
+                        let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
+                            LowerError::UndefinedFunction { name: "__alloc".to_string() }
+                        })?;
+                        ctx.emit(Instruction::Call(alloc_idx));
+                        // アドレスを i64 のままローカルに保存
+                        let addr_local = ctx.alloc_local("_ref_addr".to_string());
+                        ctx.emit(Instruction::LocalSet(addr_local));
+                        // ヘッダ書き込み: mem[addr+0] = tag=7
+                        ctx.emit(Instruction::LocalGet(addr_local));
+                        ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::I32Const(super::HEAP_TAG_REF));
+                        ctx.emit(Instruction::I32Store { offset: 0 });
+                        // ヘッダ書き込み: mem[addr+4] = size=16
+                        ctx.emit(Instruction::LocalGet(addr_local));
+                        ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::I32Const(16));
+                        ctx.emit(Instruction::I32Store { offset: 4 });
+                        // 値書き込み: mem[addr+8] = value
+                        ctx.emit(Instruction::LocalGet(addr_local));
+                        ctx.emit(Instruction::I32WrapI64);
+                        ctx.emit(Instruction::LocalGet(val_local));
+                        ctx.emit(Instruction::I64Store { offset: 8 });
+                        // タグ付きポインタを返す (addr は既に i64)
+                        // 最上位ビットをセット: addr | (1 << 63)
+                        ctx.emit(Instruction::LocalGet(addr_local));
+                        ctx.emit(Instruction::I64Const(1i64 << 63));
+                        ctx.emit(Instruction::I64Add);
+                    }
+                    // ref-get: Ref Cell から値を読み出す
+                    Expr::Var(_, name) if name == "ref-get" => {
+                        // 引数 (Ref ポインタ) を評価
+                        if let Some(arg) = args.first() {
+                            self.lower_expr(ctx, arg)?;
+                        }
+                        // タグ解除してアドレスを取得
+                        super::emit_untag_pointer(&mut ctx.instructions);
+                        // mem[addr+8] から値を読み出す
+                        ctx.emit(Instruction::I64Load { offset: 8 });
+                    }
+                    // ref-set: Ref Cell に値を書き込む
+                    Expr::Var(_, name) if name == "ref-set" => {
+                        if args.len() >= 2 {
+                            // 第1引数 (Ref ポインタ) を評価
+                            self.lower_expr(ctx, &args[0])?;
+                            // タグ解除してアドレスを取得
+                            super::emit_untag_pointer(&mut ctx.instructions);
+                            // 第2引数 (新しい値) を評価
+                            self.lower_expr(ctx, &args[1])?;
+                            // mem[addr+8] = new_value
+                            ctx.emit(Instruction::I64Store { offset: 8 });
+                            // Unit を返す
+                            ctx.emit(Instruction::I64Const(0));
+                        }
+                    }
                     // TypeName.field アクセサ呼び出し
                     Expr::Var(_, name) if name.contains('.') && name.starts_with(|c: char| c.is_ascii_uppercase()) => {
                         // 引数（レコード）を評価
@@ -153,6 +254,9 @@ impl Lower {
                             self.lower_expr(ctx, arg)?;
                         }
                         if let Some(&idx) = self.func_indices.get(name.as_str()) {
+                            ctx.emit(Instruction::Call(idx));
+                        } else if let Some(&idx) = self.lifted_func_indices.borrow().get(name.as_str()) {
+                            // Lambda Lifting で生成された関数の呼び出し
                             ctx.emit(Instruction::Call(idx));
                         } else if let Some(idx) = self.resolve_trait_dispatch(name, args) {
                             // P5-6: トレイトメソッドの静的ディスパッチ自動解決
@@ -195,11 +299,66 @@ impl Lower {
                 }
             }
 
-            Expr::Lambda(_, _, _) => {
-                // MVP: ラムダ（クロージャ）は未サポート
-                return Err(LowerError::Unsupported {
-                    msg: "ラムダ式（クロージャ）".to_string(),
-                });
+            Expr::Lambda(_, params, body) => {
+                // Lambda Lifting: Lambda 式をトップレベル関数にリフト
+                let lambda_name = self.fresh_lambda_name();
+
+                // 自由変数を検出
+                let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
+                let free_vars = closure::free_variables(&param_names, body);
+
+                // 自由変数をソートして順序を安定させる
+                // 組み込み関数や既存関数は自由変数としてキャプチャしない
+                let mut free_var_list: Vec<String> = free_vars.into_iter()
+                    .filter(|v| {
+                        !is_builtin_binop(v)
+                            && v != "not" && v != "print" && v != "__alloc"
+                            && !self.func_indices.contains_key(v)
+                    })
+                    .collect();
+                free_var_list.sort();
+
+                // リフト先関数を構築: (元パラメータ + 自由変数)
+                let mut lifted_ctx = FuncCtx::new(lambda_name.clone());
+                // 元のパラメータを登録
+                for p in params {
+                    let idx = lifted_ctx.next_local;
+                    lifted_ctx.locals_map.insert(p.name.clone(), idx);
+                    lifted_ctx.param_count += 1;
+                    lifted_ctx.next_local += 1;
+                }
+                // 自由変数を追加パラメータとして登録
+                for fv in &free_var_list {
+                    let idx = lifted_ctx.next_local;
+                    lifted_ctx.locals_map.insert(fv.clone(), idx);
+                    lifted_ctx.param_count += 1;
+                    lifted_ctx.next_local += 1;
+                }
+
+                // Lambda の本体を変換
+                self.lower_expr(&mut lifted_ctx, body)?;
+
+                // リフト先関数のパラメータ型 (全て i64)
+                let total_params = params.len() + free_var_list.len();
+                let extra_locals = vec![IrType::I64; (lifted_ctx.next_local - lifted_ctx.param_count) as usize];
+
+                let lifted_func = Function {
+                    name: lambda_name.clone(),
+                    params: vec![IrType::I64; total_params],
+                    result: IrType::I64,
+                    locals: extra_locals,
+                    body: lifted_ctx.instructions,
+                    is_export: false,
+                };
+
+                // リフトされた関数のインデックスを割り当て (RefCell 経由)
+                let func_idx = self.next_func_idx.get()
+                    + self.lifted_functions.borrow().len() as u32;
+                self.lifted_func_indices.borrow_mut().insert(lambda_name, func_idx);
+                self.lifted_functions.borrow_mut().push(lifted_func);
+
+                // Lambda 式の評価結果として関数インデックスを返す
+                ctx.emit(Instruction::I64Const(func_idx as i64));
             }
 
             Expr::Ann(_, expr, _) => {

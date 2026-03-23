@@ -27,6 +27,14 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let alloc_type_idx = types.len();
     types.ty().function(vec![ValType::I64], vec![ValType::I64]);
 
+    // Type 2: __string_concat 関数の型 (i64, i64) -> (i64)
+    let string_concat_type_idx = types.len();
+    types.ty().function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
+
+    // Type 3: __string_eq 関数の型 (i64, i64) -> (i64)
+    let string_eq_type_idx = types.len();
+    types.ty().function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
+
     // ユーザー定義関数の型を追加
     let mut func_type_indices: Vec<u32> = Vec::new();
     for func in &module.functions {
@@ -44,6 +52,10 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     imports.import("env", "print", EntityType::Function(0));
     // __alloc: (i64) -> (i64)  (type index 1) - Bump Allocator スタブ
     imports.import("env", "__alloc", EntityType::Function(alloc_type_idx));
+    // __string_concat: (i64, i64) -> (i64) - 文字列結合
+    imports.import("env", "__string_concat", EntityType::Function(string_concat_type_idx));
+    // __string_eq: (i64, i64) -> (i64) - 文字列比較
+    imports.import("env", "__string_eq", EntityType::Function(string_eq_type_idx));
     wasm_module.section(&imports);
 
     // === Function Section ===
@@ -69,7 +81,7 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     exports.export("memory", ExportKind::Memory, 0);
 
     // main 関数とその他の export
-    let import_count: u32 = 2; // print + __alloc
+    let import_count: u32 = 4; // print + __alloc + __string_concat + __string_eq
     for (i, func) in module.functions.iter().enumerate() {
         if func.is_export {
             exports.export(&func.name, ExportKind::Func, import_count + i as u32);
@@ -158,7 +170,25 @@ mod tests {
             Ok(())
         });
 
-        let instance = Instance::new(&mut store, &module, &[print_func.into(), alloc_func.into()]).unwrap();
+        // __string_concat 関数のスタブ
+        let string_concat_ty = FuncType::new(&engine, [ValType::I64, ValType::I64], [ValType::I64]);
+        let string_concat_func = Func::new(&mut store, string_concat_ty, |_caller, _params, results| {
+            results[0] = Val::I64(0); // ダミー
+            Ok(())
+        });
+
+        // __string_eq 関数のスタブ
+        let string_eq_ty = FuncType::new(&engine, [ValType::I64, ValType::I64], [ValType::I64]);
+        let string_eq_func = Func::new(&mut store, string_eq_ty, |_caller, _params, results| {
+            results[0] = Val::I64(0); // ダミー
+            Ok(())
+        });
+
+        let instance = Instance::new(
+            &mut store,
+            &module,
+            &[print_func.into(), alloc_func.into(), string_concat_func.into(), string_eq_func.into()],
+        ).unwrap();
 
         let main = instance
             .get_typed_func::<(), i64>(&mut store, "main")

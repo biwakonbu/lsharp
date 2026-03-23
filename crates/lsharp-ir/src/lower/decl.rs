@@ -128,10 +128,10 @@ impl Lower {
     }
 
 
-    /// ADT コンストラクタ関数を生成 (P1-9: WasmGC)
+    /// ADT コンストラクタ関数を生成 (リニアメモリ版)
     ///
-    /// 各バリアントに対して struct.new で GC struct を構築する関数を生成。
-    /// 例: (Just x) -> $tag=0, $field0=x の struct を構築
+    /// ヒープレイアウト: [heap_tag=3: i32, variant_tag: i32, field_0: i64, ...]
+    /// __alloc でメモリ確保 → ヘッダ書き込み → フィールド書き込み → タグ付きポインタ返却
     pub(crate) fn generate_adt_constructor(
         &self,
         variant_name: &str,
@@ -139,26 +139,48 @@ impl Lower {
         tag_val: i32,
         field_count: usize,
     ) -> Function {
-        // MVP: i64 フォールバック（wasmtime GC 未対応のため）
-        // 将来的には GC struct.new で ref 型をそのまま返す
-        let mut fallback_body = Vec::new();
+        let mut body = Vec::new();
+        // ローカル変数の割り当て:
+        // 0..field_count: パラメータ (フィールド値)
+        // field_count: _addr (i32, ヒープアドレス)
+        let addr_local = field_count as u32;
+        let alloc_size = 8 + (field_count as i32) * 8; // ヘッダ 8 バイト + フィールド各 8 バイト
+
+        // __alloc(size) でメモリ確保
+        body.push(Instruction::I64Const(alloc_size as i64));
+        let alloc_idx = *self.func_indices.get("__alloc").unwrap_or(&1);
+        body.push(Instruction::Call(alloc_idx));
+        // __alloc は i64 を返す → i32 に変換してローカルに保存
+        body.push(Instruction::I32WrapI64);
+        body.push(Instruction::LocalSet(addr_local));
+
+        // heap_tag=3 (ADT) を offset 0 に書き込む
+        body.push(Instruction::LocalGet(addr_local));
+        body.push(Instruction::I32Const(super::HEAP_TAG_ADT));
+        body.push(Instruction::I32Store { offset: 0 });
+
+        // variant_tag を offset 4 に書き込む
+        body.push(Instruction::LocalGet(addr_local));
+        body.push(Instruction::I32Const(tag_val));
+        body.push(Instruction::I32Store { offset: 4 });
+
+        // 各フィールドを書き込む: mem[addr + 8 + i*8] = field_i
         for i in 0..field_count {
-            fallback_body.push(Instruction::LocalGet(i as u32));
+            body.push(Instruction::LocalGet(addr_local));
+            body.push(Instruction::LocalGet(i as u32));
+            body.push(Instruction::I64Store { offset: 8 + (i as u32) * 8 });
         }
-        // 最後の引数を返す（フィールドが1つの場合はその値、0の場合は 0）
-        if field_count > 0 {
-            fallback_body.push(Instruction::I64Const(tag_val as i64));
-            // タグ値をエンコード: tag << 32 | value（MVP 簡易表現）
-        } else {
-            fallback_body.push(Instruction::I64Const(tag_val as i64));
-        }
+
+        // タグ付きポインタを返す: addr | (1 << 63)
+        body.push(Instruction::LocalGet(addr_local));
+        super::emit_tag_pointer(&mut body, addr_local);
 
         Function {
             name: variant_name.to_string(),
             params: vec![IrType::I64; field_count],
             result: IrType::I64,
-            locals: Vec::new(),
-            body: fallback_body, // MVP: i64 フォールバック
+            locals: vec![IrType::I32], // addr_local (i32)
+            body,
             is_export: false,
         }
     }

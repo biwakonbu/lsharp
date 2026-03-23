@@ -469,6 +469,69 @@ impl Infer {
             TypeScheme::mono(Type::Fun(vec![Type::int()], Box::new(Type::int()))),
         );
 
+        // string-length: String -> Int (文字列のバイト長を返す)
+        env.insert(
+            "string-length".to_string(),
+            TypeScheme::mono(Type::Fun(vec![Type::string()], Box::new(Type::int()))),
+        );
+
+        // string-concat: String -> String -> String (文字列結合)
+        env.insert(
+            "string-concat".to_string(),
+            TypeScheme::mono(Type::Fun(
+                vec![Type::string(), Type::string()],
+                Box::new(Type::string()),
+            )),
+        );
+
+        // string-eq: String -> String -> Bool (文字列等価比較)
+        env.insert(
+            "string-eq".to_string(),
+            TypeScheme::mono(Type::Fun(
+                vec![Type::string(), Type::string()],
+                Box::new(Type::bool()),
+            )),
+        );
+
+        // ref-new: forall a. a -> Int (Ref Cell 作成: 値 -> ヒープアドレス)
+        {
+            let a = self.var_gen.fresh_id();
+            env.insert(
+                "ref-new".to_string(),
+                TypeScheme {
+                    vars: vec![a],
+                    constraints: Vec::new(),
+                    ty: Type::Fun(vec![Type::Var(a)], Box::new(Type::int())),
+                },
+            );
+        }
+
+        // ref-get: forall a. Int -> a (Ref Cell 読み出し: アドレス -> 値)
+        {
+            let a = self.var_gen.fresh_id();
+            env.insert(
+                "ref-get".to_string(),
+                TypeScheme {
+                    vars: vec![a],
+                    constraints: Vec::new(),
+                    ty: Type::Fun(vec![Type::int()], Box::new(Type::Var(a))),
+                },
+            );
+        }
+
+        // ref-set: forall a. (Int, a) -> Unit (Ref Cell 書き込み: アドレス, 値 -> Unit)
+        {
+            let a = self.var_gen.fresh_id();
+            env.insert(
+                "ref-set".to_string(),
+                TypeScheme {
+                    vars: vec![a],
+                    constraints: Vec::new(),
+                    ty: Type::Fun(vec![Type::int(), Type::Var(a)], Box::new(Type::unit())),
+                },
+            );
+        }
+
         // not: Bool -> Bool
         env.insert(
             "not".to_string(),
