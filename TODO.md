@@ -100,7 +100,7 @@
 - [x] `list-map [f xs] -> List` (クロージャ対応) -- ユーザー定義関数 + Lambda、E2E 2件
 - [x] `list-filter [f xs] -> List` (クロージャ対応) -- E2E 2件
 - [x] `list-fold [f init xs] -> a` (クロージャ対応) -- E2E テストで動作確認
-- [ ] `vector-map`, `vector-filter` の追加
+- [x] `vector-map`, `vector-filter` の追加 -- E2E テスト 2件パス
 - [x] E2E テスト: 高階関数の組み合わせ -- list-map/filter 組み合わせ E2E パス
 
 ---
@@ -162,16 +162,16 @@
 
 ## Phase 7: 標準ライブラリ (L# で記述)
 
-- [ ] `stdlib/Core.ls` -- Bool, Option, Result, 基本関数
-- [ ] `stdlib/String.ls` -- concat, split, trim, contains, starts-with
-- [ ] `stdlib/List.ls` -- map, filter, fold, append, reverse, zip
-- [ ] `stdlib/Vector.ls` -- 可変長配列ラッパー
-- [ ] `stdlib/Map.ls` -- HashMap (Vector + ハッシュ関数)
-- [ ] `stdlib/Set.ls` -- HashSet
-- [ ] `stdlib/IO.ls` -- read-file, write-file, read-line
-- [ ] `stdlib/Debug.ls` -- debug-print, assert
-- [ ] `stdlib/Char.ls` -- is-digit, is-alpha, is-whitespace
-- [ ] stdlib のコンパイル・テスト自動化
+- [x] `stdlib/Core.ls` -- Bool, Option, Result, 基本関数
+- [x] `stdlib/String.ls` -- concat, split, trim, contains, starts-with
+- [x] `stdlib/List.ls` -- map, filter, fold, append, reverse, zip
+- [x] `stdlib/Vector.ls` -- 可変長配列ラッパー (vector-map/filter/fold/sum)
+- [x] `stdlib/Map.ls` -- HashMap ラッパー (map-empty?/map-get-or)
+- [x] `stdlib/Set.ls` -- HashSet (HashMap ベース) -- E2E 1件パス
+- [ ] `stdlib/IO.ls` -- read-file, write-file, read-line [BLOCKED: P5-2]
+- [x] `stdlib/Debug.ls` -- debug-print, assert -- E2E 1件パス
+- [x] `stdlib/Char.ls` -- is-digit, is-alpha, is-whitespace -- E2E 1件パス
+- [~] stdlib のコンパイル・テスト自動化 -- E2E 3件追加 (Char/Debug/Set)
 
 ---
 

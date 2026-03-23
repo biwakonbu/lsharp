@@ -2137,3 +2137,79 @@ fn test_e2e_stdlib_string_index_of() {
     "#);
     assert_eq!(output.trim(), "6\n-1\n2");
 }
+
+// === stdlib コンパイル・実行テスト ===
+
+#[test]
+fn test_e2e_stdlib_char() {
+    // Char.ls: 文字判定関数
+    let result = compile_and_run(r#"
+        (defn is-digit [c]
+          (if (>= c 48) (<= c 57) false))
+        (defn is-upper [c]
+          (if (>= c 65) (<= c 90) false))
+        (defn is-lower [c]
+          (if (>= c 97) (<= c 122) false))
+        (defn is-alpha [c]
+          (if (is-upper c) true (is-lower c)))
+        (defn is-whitespace [c]
+          (if (== c 32) true
+            (if (== c 9) true
+              (if (== c 10) true
+                (== c 13)))))
+        (defn main []
+          (do
+            (print (is-digit 48))
+            (print (is-digit 65))
+            (print (is-alpha 65))
+            (print (is-alpha 48))
+            (print (is-whitespace 32))
+            0))
+    "#);
+    // 48='0' is digit=1, 65='A' is not digit=0, 65='A' is alpha=1, 48='0' is not alpha=0, 32=' ' is whitespace=1
+    assert_eq!(result.trim(), "1\n0\n1\n0\n1");
+}
+
+#[test]
+fn test_e2e_stdlib_debug() {
+    // Debug.ls: デバッグ・アサーション関数
+    let result = compile_and_run(r#"
+        (defn debug-print [x]
+          (do (print x) x))
+        (defn assert [cond]
+          (if cond 0 0))
+        (defn assert-eq [a b]
+          (assert (== a b)))
+        (defn main []
+          (do
+            (assert true)
+            (assert-eq 42 42)
+            (print (debug-print 99))
+            0))
+    "#);
+    // debug-print prints 99, then main prints the return value 99 again
+    assert_eq!(result.trim(), "99\n99");
+}
+
+#[test]
+fn test_e2e_stdlib_set() {
+    // Set.ls: HashMap ベースの集合
+    let result = compile_and_run(r#"
+        (defn set-new [] (map-new))
+        (defn set-add [s x] (map-insert s x 1))
+        (defn set-contains? [s x] (map-contains? s x))
+        (defn set-remove [s x] (map-remove s x))
+        (defn set-size [s] (map-size s))
+        (defn main []
+          (let [s (set-new)
+                s1 (set-add s 10)
+                s2 (set-add s1 20)
+                s3 (set-add s2 30)]
+            (do
+              (print (set-size s3))
+              (print (set-contains? s3 20))
+              (print (set-contains? s3 99))
+              0)))
+    "#);
+    assert_eq!(result.trim(), "3\n1\n0");
+}
