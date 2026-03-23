@@ -899,9 +899,25 @@ fn cmd_install_in(project_dir: &std::path::Path) -> miette::Result<()> {
                 println!("  インストール: {name} -> {}", abs_resolved.display());
                 installed += 1;
             }
-            config::DependencySpec::Git { git, .. } => {
-                eprintln!("  スキップ: {name} (Git 依存はまだサポートされていません: {git})");
-                skipped += 1;
+            config::DependencySpec::Git { git, branch, tag } => {
+                let dep_path = deps_dir.join(name);
+                if dep_path.exists() {
+                    println!("  already installed: {name}");
+                    skipped += 1;
+                    continue;
+                }
+
+                let clone_result = git_clone(git, branch.as_deref(), tag.as_deref(), &dep_path);
+                match clone_result {
+                    Ok(()) => {
+                        println!("  インストール: {name} (git: {git})");
+                        installed += 1;
+                    }
+                    Err(e) => {
+                        eprintln!("  失敗: {name} (git clone エラー: {e})");
+                        skipped += 1;
+                    }
+                }
             }
             config::DependencySpec::Version(v) => {
                 eprintln!("  スキップ: {name} (レジストリ依存はまだサポートされていません: {v})");
@@ -920,6 +936,61 @@ fn cmd_install_in(project_dir: &std::path::Path) -> miette::Result<()> {
     println!("ロックファイルを生成しました: {}", lock_path.display());
 
     Ok(())
+}
+
+/// Git リポジトリをクローンする
+///
+/// shallow clone (--depth 1) で高速にクローンする。
+/// branch または tag が指定されている場合は --branch オプションを付与する。
+fn git_clone(
+    url: &str,
+    branch: Option<&str>,
+    tag: Option<&str>,
+    dest: &std::path::Path,
+) -> Result<(), String> {
+    let mut args = vec!["clone", "--depth", "1"];
+
+    // branch が優先、なければ tag を使用
+    let ref_spec = branch.or(tag);
+    if let Some(r) = ref_spec {
+        args.push("--branch");
+        args.push(r);
+    }
+
+    args.push(url);
+    let dest_str = dest.to_string_lossy();
+    args.push(&dest_str);
+
+    let output = std::process::Command::new("git")
+        .args(&args)
+        .output()
+        .map_err(|e| format!("git コマンドの実行に失敗: {e}"))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("git clone 失敗: {}", stderr.trim()))
+    }
+}
+
+/// git clone コマンドの引数を構築する (テスト用)
+#[cfg(test)]
+fn build_git_clone_args<'a>(
+    url: &'a str,
+    branch: Option<&'a str>,
+    tag: Option<&'a str>,
+    dest: &'a str,
+) -> Vec<&'a str> {
+    let mut args = vec!["clone", "--depth", "1"];
+    let ref_spec = branch.or(tag);
+    if let Some(r) = ref_spec {
+        args.push("--branch");
+        args.push(r);
+    }
+    args.push(url);
+    args.push(dest);
+    args
 }
 
 /// P9-1: 対話的 REPL
@@ -1093,6 +1164,141 @@ mod tests {
 
         let result = cmd_install_in(&base_dir);
         assert!(result.is_ok(), "存在しないパスでもエラーにはならないべき");
+
+        std::fs::remove_dir_all(&base_dir).unwrap();
+    }
+
+    #[test]
+    fn test_build_git_clone_args_basic() {
+        // branch/tag なしの場合
+        let args = build_git_clone_args(
+            "https://github.com/user/repo.git",
+            None,
+            None,
+            ".lsharp/deps/repo",
+        );
+        assert_eq!(args, vec![
+            "clone", "--depth", "1",
+            "https://github.com/user/repo.git",
+            ".lsharp/deps/repo",
+        ]);
+    }
+
+    #[test]
+    fn test_build_git_clone_args_with_branch() {
+        let args = build_git_clone_args(
+            "https://github.com/user/repo.git",
+            Some("develop"),
+            None,
+            ".lsharp/deps/repo",
+        );
+        assert_eq!(args, vec![
+            "clone", "--depth", "1",
+            "--branch", "develop",
+            "https://github.com/user/repo.git",
+            ".lsharp/deps/repo",
+        ]);
+    }
+
+    #[test]
+    fn test_build_git_clone_args_with_tag() {
+        let args = build_git_clone_args(
+            "https://github.com/user/repo.git",
+            None,
+            Some("v1.0.0"),
+            ".lsharp/deps/repo",
+        );
+        assert_eq!(args, vec![
+            "clone", "--depth", "1",
+            "--branch", "v1.0.0",
+            "https://github.com/user/repo.git",
+            ".lsharp/deps/repo",
+        ]);
+    }
+
+    #[test]
+    fn test_build_git_clone_args_branch_takes_priority_over_tag() {
+        // branch と tag の両方が指定された場合、branch が優先される
+        let args = build_git_clone_args(
+            "https://github.com/user/repo.git",
+            Some("main"),
+            Some("v1.0.0"),
+            ".lsharp/deps/repo",
+        );
+        assert_eq!(args, vec![
+            "clone", "--depth", "1",
+            "--branch", "main",
+            "https://github.com/user/repo.git",
+            ".lsharp/deps/repo",
+        ]);
+    }
+
+    #[test]
+    fn test_git_clone_invalid_url_returns_error() {
+        // 存在しない URL でクローンするとエラーを返す (クラッシュしない)
+        let dir = std::env::temp_dir().join("lsharp_test_git_clone_invalid");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let dest = dir.join("nonexistent-repo");
+        let result = git_clone(
+            "https://invalid.example.com/no-such-repo.git",
+            None,
+            None,
+            &dest,
+        );
+
+        assert!(result.is_err(), "存在しない URL の git clone はエラーを返すべき");
+        let err_msg = result.unwrap_err();
+        assert!(
+            err_msg.contains("git clone 失敗") || err_msg.contains("git コマンドの実行に失敗"),
+            "エラーメッセージに適切な情報が含まれるべき: {err_msg}"
+        );
+
+        // クローン先ディレクトリが残っていれば削除
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_cmd_install_git_dependency_already_exists() {
+        // 既にクローン済みのディレクトリがある場合はスキップされる
+        let base_dir = std::env::temp_dir().join("lsharp_test_install_git_exists");
+        let _ = std::fs::remove_dir_all(&base_dir);
+        std::fs::create_dir_all(&base_dir).unwrap();
+
+        // 依存先ディレクトリを手動で作成 (クローン済みを模擬)
+        let deps_dir = base_dir.join(".lsharp").join("deps").join("mylib");
+        std::fs::create_dir_all(&deps_dir).unwrap();
+
+        std::fs::write(
+            base_dir.join("lsharp.toml"),
+            r#"[dependencies.mylib]
+git = "https://github.com/user/mylib.git"
+branch = "main"
+"#,
+        ).unwrap();
+
+        let result = cmd_install_in(&base_dir);
+        assert!(result.is_ok(), "既存ディレクトリがあればスキップして成功するべき");
+
+        std::fs::remove_dir_all(&base_dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_install_git_dependency_clone_failure() {
+        // 無効な URL での git clone はエラーメッセージを出してスキップする (全体はエラーにならない)
+        let base_dir = std::env::temp_dir().join("lsharp_test_install_git_fail");
+        let _ = std::fs::remove_dir_all(&base_dir);
+        std::fs::create_dir_all(&base_dir).unwrap();
+
+        std::fs::write(
+            base_dir.join("lsharp.toml"),
+            r#"[dependencies.badrepo]
+git = "https://invalid.example.com/no-such-repo.git"
+"#,
+        ).unwrap();
+
+        let result = cmd_install_in(&base_dir);
+        assert!(result.is_ok(), "git clone 失敗でも全体はエラーにならないべき");
 
         std::fs::remove_dir_all(&base_dir).unwrap();
     }
