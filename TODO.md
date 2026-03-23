@@ -63,11 +63,47 @@
 - [x] Wasm バイナリ生成 -- selfhost/WasmEmit.ls (ヘッダー/Type セクション/LEB128), E2E 1件
 - [x] Rust 版 codegen との出力比較テスト -- E2E テスト 3件パス (IR 命令構築 + Compiler + 比較テスト 1件)
 
-### P8-5: ブートストラップ検証
+### P8-5: Rust版コンパイラの制限解除 (セルフコンパイル前提)
+- [ ] T0-1: 相互再帰関数の前方参照対応 -- infer_decl_functions の2パス化 (1パス目: 全 defn の型変数仮登録、2パス目: 本推論)
+- [ ] T0-2: Parser.ls / TypeScheme.ls の stage1 コンパイル成功検証 -- 既存テスト 9/9 成功確認
+
+### P8-6: セルフコンパイラ MVP -- 最小プログラムのコンパイル
+> 目標: `(defn main [] 42)` を selfhost コンパイラでコンパイル → wasmtime 実行 → `42` 検証
+
+- [ ] T1-1: Compiler.ls: let 束縛 (tag=7) の compile-expr 対応
+- [ ] T1-2: Compiler.ls: if 式 (tag=6) の compile-expr 対応
+- [ ] T1-3: Compiler.ls: 関数適用 (tag=5) の compile-expr 対応
+- [ ] T1-4: Compiler.ls: lambda (tag=8) の compile-expr 対応 -- 直接呼出しのみ、lambda lifting 後回し
+- [ ] T1-5: WasmEmit.ls: Function セクション生成
+- [ ] T1-6: WasmEmit.ls: Export セクション生成 (_start)
+- [ ] T1-7: WasmEmit.ls: Code セクション生成 -- IR→Wasm バイトコード変換 (i64.const, local.get/set, call, if/end, 算術)
+- [ ] T1-8: WasmEmit.ls: Memory + Import セクション -- WASI fd_write + linear memory
+- [ ] T1-9: 統合 E2E テスト: 最小プログラムの selfhost コンパイル → wasmtime 実行検証
+
+### P8-7: Parser の完成 -- ソース文字列 → AST
+- [ ] T2-1: Lexer.ls: 値つきトークン -- (kind, start, end) 3つ組
+- [ ] T2-2: Parser.ls: 完全な AST 構築 -- vector ベースの AST ノード、defn/let/if/do/apply [BLOCKED: T0-1]
+- [ ] T2-3: Parser.ls: match 式のパース -- ADT パターン + リテラルパターン [BLOCKED: T2-2]
+- [ ] T2-4: 統合テスト: Rust版パーサーとの出力比較
+
+### P8-8: Compiler / WasmEmit の完成 -- 全言語機能対応
+- [ ] T3-1: Compiler.ls: do ブロック -- 逐次実行、最後の値を返す
+- [ ] T3-2: Compiler.ls: defn 宣言処理 -- パラメータ登録 + body コンパイル + 関数テーブル
+- [ ] T3-3: Compiler.ls: ビルトイン関数認識 -- print, vector-*, map-* 等の特別扱い
+- [ ] T3-4: Compiler.ls: 再帰関数 -- 自己再帰の関数インデックス事前登録
+- [ ] T3-5: Compiler.ls: match 式 -- ADT タグ判定 + 各分岐コンパイル [BLOCKED: T2-3]
+- [ ] T3-6: WasmEmit.ls: ビルトインヘルパー関数生成 -- print, __alloc, string 操作
+- [ ] T3-7: WasmEmit.ls: Data セクション -- 文字列定数配置
+- [ ] T3-8: WasmEmit.ls: 符号付き LEB128 -- 負数・大きな値の正しいエンコード
+
+### P8-9: ブートストラップ検証
 - [x] Rust 版 → stage1.wasm (L# コンパイラ) -- 個別モジュール E2E 9件 + Main.ls 統合パイプライン E2E 2件 (AST→IR→Wasm 統合検証)
-- [ ] stage1.wasm → stage2.wasm (セルフコンパイル) -- 完全なセルフホストコンパイラ統合が前提
-- [ ] stage1.wasm == stage2.wasm (固定点検証) -- stage2 生成が前提
-- [ ] CI でのブートストラップ自動検証 -- 固定点検証が前提
+- [ ] T4-1: Main.ls: WASI ファイル I/O 統合 -- read-file でソース読込、write-file で .wasm 出力
+- [ ] T4-2: Main.ls: モジュール結合 -- 全 selfhost ファイルを1ファイル結合 (推奨)
+- [ ] T4-3: stage1 E2E テスト -- stage1.wasm にテスト用 .ls を食わせて出力 .wasm を検証
+- [ ] T4-4: stage1.wasm → stage2.wasm (セルフコンパイル) -- stage1.wasm に selfhost/*.ls を食わせて stage2.wasm 生成
+- [ ] T4-5: stage1.wasm == stage2.wasm (固定点検証) -- バイナリ一致
+- [ ] T4-6: CI でのブートストラップ自動検証 -- GitHub Actions 統合
 
 ---
 
