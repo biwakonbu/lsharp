@@ -205,6 +205,10 @@ where
                 // → wasi.rs の emit_instructions_wasi で処理する
                 func.instruction(&W::I32Const(*idx as i32));
             }
+            // StringConst は lowering 段階でインライン展開済みのはず
+            Instruction::StringConst(_) => {
+                panic!("StringConst should be expanded in lowering stage");
+            }
         };
     }
 

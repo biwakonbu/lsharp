@@ -59,6 +59,10 @@ fn collect_free_vars(expr: &Expr, bound: &mut HashSet<String>, free: &mut HashSe
             for arm in arms {
                 let mut arm_bound = bound.clone();
                 collect_pattern_bindings(&arm.pattern, &mut arm_bound);
+                // ガード条件の自由変数も収集
+                if let Some(guard) = &arm.guard {
+                    collect_free_vars(guard, &mut arm_bound, free);
+                }
                 collect_free_vars(&arm.body, &mut arm_bound, free);
             }
         }
@@ -241,11 +245,13 @@ mod tests {
                         vec![Pattern::Var(s(), "v".to_string())],
                     ),
                     body: Expr::Var(s(), "v".to_string()),
+                    guard: None,
                 },
                 MatchArm {
                     span: s(),
                     pattern: Pattern::Constructor(s(), "None".to_string(), vec![]),
                     body: Expr::Var(s(), "y".to_string()),
+                    guard: None,
                 },
             ],
         );

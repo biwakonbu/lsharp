@@ -54,6 +54,8 @@ pub enum Pattern {
 pub struct MatchArm {
     pub span: Span,
     pub pattern: Pattern,
+    /// ガード条件 (when 節): パターンマッチ成功後に評価される追加条件
+    pub guard: Option<Box<Expr>>,
     pub body: Expr,
 }
 
@@ -474,7 +476,11 @@ impl std::fmt::Display for Expr {
             Expr::Match(_, scrutinee, arms) => {
                 write!(f, "(match {scrutinee}")?;
                 for arm in arms {
-                    write!(f, " [{} {}]", arm.pattern, arm.body)?;
+                    if let Some(guard) = &arm.guard {
+                        write!(f, " [{} when {} {}]", arm.pattern, guard, arm.body)?;
+                    } else {
+                        write!(f, " [{} {}]", arm.pattern, arm.body)?;
+                    }
                 }
                 write!(f, ")")
             }

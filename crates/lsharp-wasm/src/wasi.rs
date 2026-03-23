@@ -557,102 +557,112 @@ fn emit_alloc_func(codes: &mut CodeSection) {
     codes.function(&f);
 }
 
-/// __string_concat: 2 つのパック文字列を結合
+/// __string_concat: 2 つの String オブジェクト (ヒープ上) を結合
+/// String オブジェクト: [tag:i32=1][len:i32][bytes:u8*]
 fn emit_string_concat_func(codes: &mut CodeSection, alloc_func_idx: u32) {
     use wasm_encoder::Instruction as W;
 
     let mut f = wasm_encoder::Function::new(vec![
-        (1, ValType::I32), // local 2: off1
+        (1, ValType::I32), // local 2: addr1
         (1, ValType::I32), // local 3: len1
-        (1, ValType::I32), // local 4: off2
+        (1, ValType::I32), // local 4: addr2
         (1, ValType::I32), // local 5: len2
         (1, ValType::I32), // local 6: total_len
-        (1, ValType::I32), // local 7: new_addr
+        (1, ValType::I32), // local 7: new_obj (新しい String オブジェクトのアドレス)
     ]);
 
-    // off1 = (s1 >> 32) as i32
+    // addr1 = s1 as i32 (String オブジェクトのアドレス)
     f.instruction(&W::LocalGet(0));
-    f.instruction(&W::I64Const(32));
-    f.instruction(&W::I64ShrU);
     f.instruction(&W::I32WrapI64);
     f.instruction(&W::LocalSet(2));
-    // len1 = s1 as i32
-    f.instruction(&W::LocalGet(0));
-    f.instruction(&W::I32WrapI64);
+    // len1 = i32.load(addr1 + 4)
+    f.instruction(&W::LocalGet(2));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
     f.instruction(&W::LocalSet(3));
-    // off2 = (s2 >> 32) as i32
+    // addr2 = s2 as i32
     f.instruction(&W::LocalGet(1));
-    f.instruction(&W::I64Const(32));
-    f.instruction(&W::I64ShrU);
     f.instruction(&W::I32WrapI64);
     f.instruction(&W::LocalSet(4));
-    // len2 = s2 as i32
-    f.instruction(&W::LocalGet(1));
-    f.instruction(&W::I32WrapI64);
+    // len2 = i32.load(addr2 + 4)
+    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
     f.instruction(&W::LocalSet(5));
     // total_len = len1 + len2
     f.instruction(&W::LocalGet(3));
     f.instruction(&W::LocalGet(5));
     f.instruction(&W::I32Add);
     f.instruction(&W::LocalSet(6));
-    // new_addr = __alloc(total_len)
+    // new_obj = __alloc(8 + total_len) -- tag(4) + len(4) + bytes
     f.instruction(&W::LocalGet(6));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
     f.instruction(&W::I64ExtendI32U);
     f.instruction(&W::Call(alloc_func_idx));
     f.instruction(&W::I32WrapI64);
     f.instruction(&W::LocalSet(7));
-    // memory.copy(new_addr, off1, len1)
+    // tag = 1
     f.instruction(&W::LocalGet(7));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    // len = total_len
+    f.instruction(&W::LocalGet(7));
+    f.instruction(&W::LocalGet(6));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    // memory.copy(new_obj + 8, addr1 + 8, len1)
+    f.instruction(&W::LocalGet(7));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
     f.instruction(&W::LocalGet(2));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
     f.instruction(&W::LocalGet(3));
     f.instruction(&W::MemoryCopy { src_mem: 0, dst_mem: 0 });
-    // memory.copy(new_addr + len1, off2, len2)
+    // memory.copy(new_obj + 8 + len1, addr2 + 8, len2)
     f.instruction(&W::LocalGet(7));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
     f.instruction(&W::LocalGet(3));
     f.instruction(&W::I32Add);
     f.instruction(&W::LocalGet(4));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
     f.instruction(&W::LocalGet(5));
     f.instruction(&W::MemoryCopy { src_mem: 0, dst_mem: 0 });
-    // return pack(new_addr, total_len)
+    // return new_obj as i64
     f.instruction(&W::LocalGet(7));
     f.instruction(&W::I64ExtendI32U);
-    f.instruction(&W::I64Const(32));
-    f.instruction(&W::I64Shl);
-    f.instruction(&W::LocalGet(6));
-    f.instruction(&W::I64ExtendI32U);
-    f.instruction(&W::I64Or);
     f.instruction(&W::End);
     codes.function(&f);
 }
 
-/// __string_eq: 2 つのパック文字列を比較
+/// __string_eq: 2 つの String オブジェクト (ヒープ上) を比較
+/// String オブジェクト: [tag:i32=1][len:i32][bytes:u8*]
 fn emit_string_eq_func(codes: &mut CodeSection) {
     use wasm_encoder::Instruction as W;
 
     let mut f = wasm_encoder::Function::new(vec![
-        (1, ValType::I32), // local 2: off1
+        (1, ValType::I32), // local 2: addr1
         (1, ValType::I32), // local 3: len1
-        (1, ValType::I32), // local 4: off2
+        (1, ValType::I32), // local 4: addr2
         (1, ValType::I32), // local 5: len2
         (1, ValType::I32), // local 6: i
     ]);
 
-    // アンパック
+    // addr1 = s1 as i32
     f.instruction(&W::LocalGet(0));
-    f.instruction(&W::I64Const(32));
-    f.instruction(&W::I64ShrU);
     f.instruction(&W::I32WrapI64);
     f.instruction(&W::LocalSet(2));
-    f.instruction(&W::LocalGet(0));
-    f.instruction(&W::I32WrapI64);
+    // len1 = i32.load(addr1 + 4)
+    f.instruction(&W::LocalGet(2));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
     f.instruction(&W::LocalSet(3));
+    // addr2 = s2 as i32
     f.instruction(&W::LocalGet(1));
-    f.instruction(&W::I64Const(32));
-    f.instruction(&W::I64ShrU);
     f.instruction(&W::I32WrapI64);
     f.instruction(&W::LocalSet(4));
-    f.instruction(&W::LocalGet(1));
-    f.instruction(&W::I32WrapI64);
+    // len2 = i32.load(addr2 + 4)
+    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
     f.instruction(&W::LocalSet(5));
 
     // 長さ比較
@@ -668,18 +678,24 @@ fn emit_string_eq_func(codes: &mut CodeSection) {
     f.instruction(&W::I32Const(0));
     f.instruction(&W::LocalSet(6));
 
-    // バイト比較ループ
+    // バイト比較ループ (bytes は addr + 8 から)
     f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
     f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
     f.instruction(&W::LocalGet(6));
     f.instruction(&W::LocalGet(3));
     f.instruction(&W::I32GeU);
     f.instruction(&W::BrIf(1));
+    // mem[addr1 + 8 + i]
     f.instruction(&W::LocalGet(2));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
     f.instruction(&W::LocalGet(6));
     f.instruction(&W::I32Add);
     f.instruction(&W::I32Load8U(wasm_encoder::MemArg { offset: 0, align: 0, memory_index: 0 }));
+    // mem[addr2 + 8 + i]
     f.instruction(&W::LocalGet(4));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
     f.instruction(&W::LocalGet(6));
     f.instruction(&W::I32Add);
     f.instruction(&W::I32Load8U(wasm_encoder::MemArg { offset: 0, align: 0, memory_index: 0 }));
@@ -701,7 +717,8 @@ fn emit_string_eq_func(codes: &mut CodeSection) {
     codes.function(&f);
 }
 
-/// __print_string: パック文字列 (offset<<32|len) を stdout に出力 (改行なし)
+/// __print_string: ヒープ上 String オブジェクトを stdout に出力 (改行なし)
+/// String オブジェクト: [tag:i32=1][len:i32][bytes:u8*]
 fn emit_print_string_func(codes: &mut CodeSection) {
     use wasm_encoder::Instruction as W;
     use wasm_encoder::MemArg;
@@ -709,19 +726,17 @@ fn emit_print_string_func(codes: &mut CodeSection) {
     let mem32 = |offset: u64| MemArg { offset, align: 2, memory_index: 0 };
 
     let mut f = wasm_encoder::Function::new(vec![
-        (1, ValType::I32), // local 1: offset
+        (1, ValType::I32), // local 1: addr (String オブジェクトのアドレス)
         (1, ValType::I32), // local 2: len
     ]);
 
-    // offset = (s >> 32) as i32
+    // addr = s as i32 (String オブジェクトのアドレス)
     f.instruction(&W::LocalGet(0));
-    f.instruction(&W::I64Const(32));
-    f.instruction(&W::I64ShrU);
     f.instruction(&W::I32WrapI64);
     f.instruction(&W::LocalSet(1));
-    // len = s as i32
-    f.instruction(&W::LocalGet(0));
-    f.instruction(&W::I32WrapI64);
+    // len = i32.load(addr + 4)
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
     f.instruction(&W::LocalSet(2));
 
     // len == 0 なら何もしない
@@ -731,9 +746,11 @@ fn emit_print_string_func(codes: &mut CodeSection) {
     f.instruction(&W::Return);
     f.instruction(&W::End);
 
-    // iov[0].buf = offset
+    // iov[0].buf = addr + 8 (bytes の開始位置)
     f.instruction(&W::I32Const(IOV_ADDR));
     f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
     f.instruction(&W::I32Store(mem32(0)));
     // iov[0].len = len
     f.instruction(&W::I32Const(IOV_ADDR + 4));
@@ -860,32 +877,41 @@ fn emit_int_to_string_func(codes: &mut CodeSection, alloc_func_idx: u32) {
     f.instruction(&W::I32Sub);
     f.instruction(&W::LocalSet(4));
 
-    // new_addr = __alloc(str_len)
+    // new_obj = __alloc(8 + str_len) -- String オブジェクト [tag=1, len, bytes]
     f.instruction(&W::LocalGet(4));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
     f.instruction(&W::I64ExtendI32U);
     f.instruction(&W::Call(alloc_func_idx));
     f.instruction(&W::LocalSet(5));
 
-    // memory.copy(new_addr, buf_end, str_len)
+    // tag = 1
     f.instruction(&W::LocalGet(5));
     f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Store(MemArg { offset: 0, align: 2, memory_index: 0 }));
+    // len
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::I32Store(MemArg { offset: 4, align: 2, memory_index: 0 }));
+    // memory.copy(new_obj + 8, buf_end, str_len)
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
     f.instruction(&W::LocalGet(1));
     f.instruction(&W::LocalGet(4));
     f.instruction(&W::MemoryCopy { src_mem: 0, dst_mem: 0 });
 
-    // パック文字列を返す: (new_addr << 32) | str_len
+    // String オブジェクトのアドレスを返す
     f.instruction(&W::LocalGet(5));
-    f.instruction(&W::I64Const(32));
-    f.instruction(&W::I64Shl);
-    f.instruction(&W::LocalGet(4));
-    f.instruction(&W::I64ExtendI32U);
-    f.instruction(&W::I64Or);
 
     f.instruction(&W::End);
     codes.function(&f);
 }
 
-/// __read_file: パック文字列パスを受け取り、ファイル内容をパック文字列で返す
+/// __read_file: String オブジェクトパスを受け取り、ファイル内容を String オブジェクトで返す
 /// path_open → fd_filestat_get → __alloc → fd_read → fd_close
 fn emit_read_file_func(
     codes: &mut CodeSection,
@@ -900,23 +926,26 @@ fn emit_read_file_func(
     // locals: 0=path(i64 param), 1=path_offset(i32), 2=path_len(i32), 3=fd(i32),
     //         4=file_size(i32), 5=buf_addr(i32), 6=nread(i32)
     let mut f = wasm_encoder::Function::new(vec![
-        (1, ValType::I32), // 1: path_offset
+        (1, ValType::I32), // 1: path_offset (bytes の開始アドレス = path_addr + 8)
         (1, ValType::I32), // 2: path_len
         (1, ValType::I32), // 3: fd
         (1, ValType::I32), // 4: file_size
-        (1, ValType::I32), // 5: buf_addr
+        (1, ValType::I32), // 5: buf_addr (String オブジェクトのアドレス)
         (1, ValType::I32), // 6: nread
     ]);
 
-    // パック文字列をアンパック: offset = (path >> 32) as i32, len = path & 0xFFFFFFFF
+    // String オブジェクトからパス情報を取得
+    // path_offset = path_addr + 8 (bytes の開始位置)
     f.instruction(&W::LocalGet(0));
-    f.instruction(&W::I64Const(32));
-    f.instruction(&W::I64ShrU);
     f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
     f.instruction(&W::LocalSet(1)); // path_offset
 
+    // path_len = i32.load(path_addr + 4)
     f.instruction(&W::LocalGet(0));
     f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
     f.instruction(&W::LocalSet(2)); // path_len
 
     // fd を格納するスクラッチ領域 (アドレス 280)
@@ -949,16 +978,28 @@ fn emit_read_file_func(
     f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 32, align: 2, memory_index: 0 })); // stat.st_size の下位 32bit
     f.instruction(&W::LocalSet(4)); // file_size
 
-    // バッファ確保: __alloc(file_size)
+    // String オブジェクト確保: __alloc(8 + file_size)
     f.instruction(&W::LocalGet(4));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
     f.instruction(&W::I64ExtendI32U);
     f.instruction(&W::Call(alloc_func_idx));
     f.instruction(&W::I32WrapI64);
-    f.instruction(&W::LocalSet(5)); // buf_addr
+    f.instruction(&W::LocalSet(5)); // buf_addr = String オブジェクトのアドレス
+    // tag = 1
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    // len = file_size (後で nread に更新)
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
 
-    // iov を設定: iov[0].buf = buf_addr, iov[0].len = file_size (スクラッチ 352)
+    // iov を設定: iov[0].buf = buf_addr + 8, iov[0].len = file_size (スクラッチ 352)
     f.instruction(&W::I32Const(352));
     f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
     f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 })); // iov.buf
 
     f.instruction(&W::I32Const(352));
@@ -983,20 +1024,19 @@ fn emit_read_file_func(
     f.instruction(&W::Call(fd_close_idx));
     f.instruction(&W::Drop);
 
-    // パック文字列を返す: (buf_addr << 32) | nread
+    // String オブジェクトの len を nread に更新
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::LocalGet(6));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    // String オブジェクトのアドレスを返す
     f.instruction(&W::LocalGet(5));
     f.instruction(&W::I64ExtendI32U);
-    f.instruction(&W::I64Const(32));
-    f.instruction(&W::I64Shl);
-    f.instruction(&W::LocalGet(6));
-    f.instruction(&W::I64ExtendI32U);
-    f.instruction(&W::I64Or);
 
     f.instruction(&W::End);
     codes.function(&f);
 }
 
-/// __write_file: パック文字列パスとパック文字列内容を受け取り、書き込みバイト数を返す
+/// __write_file: String オブジェクトパスと String オブジェクト内容を受け取り、書き込みバイト数を返す
 fn emit_write_file_func(
     codes: &mut CodeSection,
     path_open_idx: u32,
@@ -1008,34 +1048,38 @@ fn emit_write_file_func(
     // locals: 0=path(i64), 1=content(i64), 2=path_offset(i32), 3=path_len(i32),
     //         4=content_offset(i32), 5=content_len(i32), 6=fd(i32), 7=nwritten(i32)
     let mut f = wasm_encoder::Function::new(vec![
-        (1, ValType::I32), // 2: path_offset
+        (1, ValType::I32), // 2: path_offset (= path_addr + 8)
         (1, ValType::I32), // 3: path_len
-        (1, ValType::I32), // 4: content_offset
+        (1, ValType::I32), // 4: content_offset (= content_addr + 8)
         (1, ValType::I32), // 5: content_len
         (1, ValType::I32), // 6: fd
         (1, ValType::I32), // 7: nwritten
     ]);
 
-    // パスをアンパック
+    // パスの bytes を取得: path_offset = path_addr + 8
     f.instruction(&W::LocalGet(0));
-    f.instruction(&W::I64Const(32));
-    f.instruction(&W::I64ShrU);
     f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
     f.instruction(&W::LocalSet(2)); // path_offset
 
+    // path_len = i32.load(path_addr + 4)
     f.instruction(&W::LocalGet(0));
     f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
     f.instruction(&W::LocalSet(3)); // path_len
 
-    // 内容をアンパック
+    // 内容の bytes を取得: content_offset = content_addr + 8
     f.instruction(&W::LocalGet(1));
-    f.instruction(&W::I64Const(32));
-    f.instruction(&W::I64ShrU);
     f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
     f.instruction(&W::LocalSet(4)); // content_offset
 
+    // content_len = i32.load(content_addr + 4)
     f.instruction(&W::LocalGet(1));
     f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
     f.instruction(&W::LocalSet(5)); // content_len
 
     // path_open(dirfd=3, dirflags=0, path, path_len, oflags=1(creat)|4(trunc), rights, 0, 0, fd_ptr=280)
@@ -1091,7 +1135,7 @@ fn emit_write_file_func(
     codes.function(&f);
 }
 
-/// __file_exists: パック文字列パスを受け取り、存在すれば 1、しなければ 0 を返す
+/// __file_exists: String オブジェクトパスを受け取り、存在すれば 1、しなければ 0 を返す
 fn emit_file_exists_func(
     codes: &mut CodeSection,
     path_open_idx: u32,
@@ -1101,20 +1145,23 @@ fn emit_file_exists_func(
 
     // locals: 0=path(i64), 1=path_offset(i32), 2=path_len(i32), 3=errno(i32)
     let mut f = wasm_encoder::Function::new(vec![
-        (1, ValType::I32), // 1: path_offset
+        (1, ValType::I32), // 1: path_offset (= path_addr + 8)
         (1, ValType::I32), // 2: path_len
         (1, ValType::I32), // 3: errno
     ]);
 
-    // パスをアンパック
+    // String オブジェクトからパス情報を取得
+    // path_offset = path_addr + 8
     f.instruction(&W::LocalGet(0));
-    f.instruction(&W::I64Const(32));
-    f.instruction(&W::I64ShrU);
     f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
     f.instruction(&W::LocalSet(1)); // path_offset
 
+    // path_len = i32.load(path_addr + 4)
     f.instruction(&W::LocalGet(0));
     f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
     f.instruction(&W::LocalSet(2)); // path_len
 
     // path_open(dirfd=3, 0, path, path_len, 0, rights, 0, 0, fd_ptr=280)
@@ -1176,30 +1223,32 @@ fn emit_command_line_args_func(
 }
 
 
-/// __fnv1a_hash: パック文字列 (i64: offset<<32|len) の FNV-1a ハッシュ値を計算
-/// パラメータ: local 0 = packed_str (i64)
+/// __fnv1a_hash: String オブジェクト (ヒープ上) の FNV-1a ハッシュ値を計算
+/// String オブジェクト: [tag:i32=1][len:i32][bytes:u8*]
+/// パラメータ: local 0 = str_obj (i64: String オブジェクトのアドレス)
 /// 戻り値: ハッシュ値 (i64)、0 と -1 を避けるため +2 する
 fn emit_fnv1a_hash_func(codes: &mut CodeSection) {
     use wasm_encoder::Instruction as W;
 
     let mut f = wasm_encoder::Function::new(vec![
-        (1, ValType::I32), // local 1: offset (文字列の開始アドレス)
+        (1, ValType::I32), // local 1: offset (bytes の開始アドレス = addr + 8)
         (1, ValType::I32), // local 2: len (文字列の長さ)
         (1, ValType::I32), // local 3: i (ループカウンタ)
         (1, ValType::I32), // local 4: hash (ハッシュ値、i32 で計算)
         (1, ValType::I32), // local 5: byte (読み込んだバイト)
     ]);
 
-    // offset = (packed_str >> 32) as i32
+    // offset = addr + 8 (bytes の開始位置)
     f.instruction(&W::LocalGet(0));
-    f.instruction(&W::I64Const(32));
-    f.instruction(&W::I64ShrU);
     f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
     f.instruction(&W::LocalSet(1));
 
-    // len = packed_str as i32 (下位32bit)
+    // len = i32.load(addr + 4)
     f.instruction(&W::LocalGet(0));
     f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
     f.instruction(&W::LocalSet(2));
 
     // i = 0

@@ -8,9 +8,9 @@
 
 ## Phase 1: 文字列操作
 
-### P1-2: 文字列リテラルのヒープ化 (DEFERRED: 破壊的変更のため後回し)
-- [ ] data section offset → ヒープ上 String オブジェクト (tag=1, len, bytes) への変換
-- [ ] 既存の文字列関連テストが引き続きパスすることを確認
+### P1-2: 文字列リテラルのヒープ化
+- [x] data section offset → ヒープ上 String オブジェクト (tag=1, len, bytes) への変換 -- E2E 8件追加、既存 string 15件 + stdlib/selfhost/map 20件パス
+- [x] 既存の文字列関連テストが引き続きパスすることを確認 -- 全 199 E2E テストパス
 
 ---
 
@@ -58,7 +58,7 @@
 - [x] Rust 版 codegen との出力比較テスト -- E2E テスト 3件パス (IR 命令構築 + Compiler + 比較テスト 1件)
 
 ### P8-5: ブートストラップ検証
-- [~] Rust 版 → stage1.wasm (L# コンパイラ) -- 個別モジュール E2E 検証済み (Token/Lexer/AST/Parser/IR/Type/TypeScheme/Compiler/WasmEmit)、統合は未完
+- [x] Rust 版 → stage1.wasm (L# コンパイラ) -- 個別モジュール E2E 9件 + Main.ls 統合パイプライン E2E 2件 (AST→IR→Wasm 統合検証)
 - [ ] stage1.wasm → stage2.wasm (セルフコンパイル) -- 完全なセルフホストコンパイラ統合が前提
 - [ ] stage1.wasm == stage2.wasm (固定点検証) -- stage2 生成が前提
 - [ ] CI でのブートストラップ自動検証 -- 固定点検証が前提
@@ -71,44 +71,45 @@
 - [x] `crates/lsharp-lsp` クレート作成 -- tower-lsp 0.20, LsharpBackend 構造体
 - [x] tower-lsp 統合 -- initialize/shutdown/did_open/did_change ハンドラ
 - [x] エラー診断発行 -- parse_and_check で Diagnostic 化
-- [~] 定義ジャンプ -- find_definition 関数実装 (テスト 3件) だが goto_definition ハンドラは URI→ソース未接続
-- [~] 型ホバー -- hover ハンドラは URI→ソース未接続 (プレースホルダー)
-- [ ] completion / references / rename / formatting
+- [x] 定義ジャンプ -- find_definition + ドキュメントキャッシュ + goto_definition ハンドラ接続、テスト 5件
+- [x] 型ホバー -- find_type_at_position + hover ハンドラ接続、テスト 3件
+- [x] completion 基本実装 -- キーワード 17種 + 関数名/変数名収集、テスト 5件
+- [x] references / rename / formatting -- モジュール分割 (util/references/rename/format.rs) + ソースキャッシュ追加、ユニットテスト 23件追加 (計 27件)
 
 ---
 
 ## 構造的バグ (ADR proposed 高優先度)
 
-- [ ] BUG-1 (ADR-064): FieldAccess の型解決がフィールド名のみに依存 -- 同名フィールドの別レコード型で誤選択 (lower/expr.rs)
-- [ ] BUG-2 (ADR-067): RecordUpdate の型推定がフィールド名のみに依存 -- 同フィールドセットで誤選択 (lower/expr.rs)
-- [ ] BUG-3 (ADR-073): lower_match_arms のコンストラクタパターンでタグ比較命令がスタックに積まれず If 発行 (lower/pattern.rs)
+- [x] BUG-1 (ADR-064): FieldAccess の型解決がフィールド名のみに依存 -- infer_expr_type_name に FieldAccess/Let/RecordUpdate/Match/If 対応追加、テスト 7件
+- [x] BUG-2 (ADR-067): RecordUpdate の型推定がフィールド名のみに依存 -- BUG-1 と同時修正 (infer_expr_type_name 拡張)
+- [x] BUG-3 (ADR-073): lower_match_arms のコンストラクタパターンでタグ比較命令がスタックに積まれず If 発行 -- 引数なし/付き両方で最後の腕でもタグ比較を発行、テスト 3件
 
 ---
 
 ## リファクタリング・改善 (ADR proposed 中優先度)
 
-- [ ] IMP-1 (ADR-054): パーサーのエラーリカバリ -- 複数エラー一括報告 (parser.rs)
-- [ ] IMP-2 (ADR-055): 制約階層の互換性チェック -- 親子制約の包含判定 (constraints.rs)
-- [ ] IMP-3 (ADR-056): config.rs のエラーハンドリング改善 -- load_config エラー swallow (config.rs)
-- [ ] IMP-4 (ADR-066): run_wasm_wasi ヘルパー 3 箇所の重複解消 (main.rs, e2e.rs, test_runner.rs)
+- [x] IMP-1 (ADR-054): パーサーのエラーリカバリ -- parse_program_recovering + ParseError::Multiple で実装済み、検証テスト 2件追加
+- [x] IMP-2 (ADR-055): 制約階層の互換性チェック -- check_constraint_compatibility + is_subtype_constraints で実装済み、検証テスト 3件追加
+- [x] IMP-3 (ADR-056): config.rs のエラーハンドリング改善 -- load_config_result + ConfigError で実装済み、検証テスト 3件追加
+- [x] IMP-4 (ADR-066): run_wasm_wasi ヘルパー 3 箇所の重複解消 -- wasi_runner.rs に統合済み、検証テスト 4件追加
 
 ---
 
 ## テスト・品質基盤 (低優先度)
 
-- [ ] QA-1 (ADR-057): 正規表現エンジン NFA→DFA 変換 + Unicode 文字クラス
-- [ ] QA-2 (ADR-072): parse_test_output の generate_sample_args 重複呼び出し最適化
-- [ ] QA-3 (ADR-075): 型推論結果の HashMap 化 (線形探索→O(1))
-- [ ] QA-4 (ADR-077): snapshot テスト拡大 (codegen/wasi の Wasm バイナリ)
-- [ ] QA-5 (ADR-078): criterion ベンチマーク追加
+- [x] QA-1 (ADR-057): 正規表現エンジン NFA→DFA 変換 + Unicode 文字クラス -- regex/ モジュール分割 + 部分集合構成法 DFA + \p{L}/\p{N} 対応、テスト 34件
+- [x] QA-2 (ADR-072): parse_test_output の generate_sample_args 重複呼び出し最適化 -- HashMap キャッシュ導入、テスト 3件追加
+- [x] QA-3 (ADR-075): 型推論結果の HashMap 化 (線形探索→O(1)) -- Lower.type_results が HashMap であることを検証、テスト 2件追加
+- [x] QA-4 (ADR-077): snapshot テスト拡大 (codegen/wasi の Wasm バイナリ) -- Wasm 14件 + IR 8件 = 22 スナップショットテスト追加
+- [x] QA-5 (ADR-078): criterion ベンチマーク追加 -- parse/infer/lower/codegen/full_pipeline x simple/fibonacci = 10 ベンチマーク
 
 ---
 
 ## CI/CD
 
-- [ ] GitHub Actions ワークフロー作成 (`cargo test` + `cargo clippy` + `cargo fmt --check`)
+- [x] GitHub Actions ワークフロー作成 (`cargo test` + `cargo clippy` + `cargo fmt --check`) -- .github/workflows/ci.yml
 - [ ] ブートストラップ CI (P8-5 完了後: stage1 生成 → 比較)
-- [ ] PR 自動テスト + マージブロック設定
+- [x] PR 自動テスト + マージブロック設定 -- ci-gate 集約ジョブ追加、docs/CI.md に設定手順記載
 
 ---
 
@@ -132,11 +133,11 @@
 - GC は Phase 9 (REPL 等の長寿命プロセス) で Region GC として導入予定
 
 ### パターンマッチ
-- 引数付きコンストラクタパターン (深さ 1) は対応済み
-- ネストしたコンストラクタパターン (深さ 2 以上) は未対応
+- [x] 引数付きコンストラクタパターン (深さ 1) は対応済み
+- [x] ネストしたコンストラクタパターン (深さ 2 以上) -- E2E テスト 2件追加
+- [x] ガード条件 (when 節) -- E2E テスト 2件追加
 - ワイルドカード `_` + リテラル + 変数 + Bool パターン対応
-- ガード条件は未実装
 
 ### 正規表現エンジン
-- NFA → DFA 変換による最適化は未実装 (ステップ制限で病的入力を防止)
-- Unicode 文字クラス (`\p{L}` 等) は未対応
+- [x] NFA → DFA 変換による最適化 -- 部分集合構成法、状態上限 256、NFA フォールバック
+- [x] Unicode 文字クラス (`\p{L}`, `\p{N}`) -- char::is_alphabetic/is_numeric による判定
