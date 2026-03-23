@@ -175,7 +175,8 @@ impl Lower {
         self.func_indices.insert("write-file".to_string(), 8);
         self.func_indices.insert("file-exists?".to_string(), 9);
         self.func_indices.insert("command-line-args".to_string(), 10);
-        self.import_count = 11;
+        self.func_indices.insert("__fnv1a_hash".to_string(), 11);
+        self.import_count = 12;
 
         // ユーザー定義関数のインデックスを事前登録
         let mut func_idx = self.import_count;

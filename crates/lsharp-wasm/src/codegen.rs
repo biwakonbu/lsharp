@@ -82,6 +82,8 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     imports.import("env", "file-exists?", EntityType::Function(alloc_type_idx));
     // command-line-args: () -> (i64) - コマンドライン引数数
     imports.import("env", "command-line-args", EntityType::Function(command_line_args_type_idx));
+    // __fnv1a_hash: (i64) -> (i64) - FNV-1a ハッシュ
+    imports.import("env", "__fnv1a_hash", EntityType::Function(alloc_type_idx));
     wasm_module.section(&imports);
 
     // === Function Section ===
@@ -107,7 +109,7 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     exports.export("memory", ExportKind::Memory, 0);
 
     // main 関数とその他の export
-    let import_count: u32 = 11; // print + __alloc + __string_concat + __string_eq + print-string + proc-exit + __int_to_string + read-file + write-file + file-exists? + command-line-args
+    let import_count: u32 = 12; // print + __alloc + __string_concat + __string_eq + print-string + proc-exit + __int_to_string + read-file + write-file + file-exists? + command-line-args + __fnv1a_hash
     for (i, func) in module.functions.iter().enumerate() {
         if func.is_export {
             exports.export(&func.name, ExportKind::Func, import_count + i as u32);
@@ -257,10 +259,17 @@ mod tests {
             Ok(())
         });
 
+        // __fnv1a_hash 関数のスタブ
+        let fnv1a_hash_ty = FuncType::new(&engine, [ValType::I64], [ValType::I64]);
+        let fnv1a_hash_func = Func::new(&mut store, fnv1a_hash_ty, |_caller, _params, results| {
+            results[0] = Val::I64(0); // ダミー
+            Ok(())
+        });
+
         let instance = Instance::new(
             &mut store,
             &module,
-            &[print_func.into(), alloc_func.into(), string_concat_func.into(), string_eq_func.into(), print_string_func.into(), proc_exit_func.into(), int_to_string_func.into(), read_file_func.into(), write_file_func.into(), file_exists_func.into(), command_line_args_func.into()],
+            &[print_func.into(), alloc_func.into(), string_concat_func.into(), string_eq_func.into(), print_string_func.into(), proc_exit_func.into(), int_to_string_func.into(), read_file_func.into(), write_file_func.into(), file_exists_func.into(), command_line_args_func.into(), fnv1a_hash_func.into()],
         ).unwrap();
 
         let main = instance
