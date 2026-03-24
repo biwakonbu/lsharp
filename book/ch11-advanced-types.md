@@ -1,5 +1,7 @@
 # 高度な型機能
 
+本章では L# の型システムの高度な機能——高カインド型 (HKT)、GADT、Computation Expressions——を解説する。これらは第 4 章の Hindley-Milner 型推論と第 10 章のトレイトの上に構築される拡張機能である。
+
 ## 高カインド型 (Higher-Kinded Types)
 
 ### 型コンストラクタとカインド
@@ -18,6 +20,66 @@
 
 ここで `f` は `* -> *` カインドの型変数である。`Option`, `List`, `Result String` など、型パラメータを1つ取る型コンストラクタなら何でも `f` に入れられる。
 
+### Kind の実装
+
+L# の Kind は `crates/lsharp-types/src/types.rs` に定義されている:
+
+```rust
+/// 型のカインド (型の型)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Kind {
+    /// 具体型のカインド: *
+    Star,
+    /// 型コンストラクタのカインド: k1 -> k2
+    Arrow(Box<Kind>, Box<Kind>),
+}
+```
+
+ユーティリティメソッドでよく使うカインドを生成できる:
+
+```rust
+impl Kind {
+    /// * -> * (1引数の型コンストラクタ)
+    pub fn unary() -> Self {
+        Kind::Arrow(Box::new(Kind::Star), Box::new(Kind::Star))
+    }
+
+    /// * -> * -> * (2引数の型コンストラクタ)
+    pub fn binary() -> Self {
+        Kind::Arrow(
+            Box::new(Kind::Star),
+            Box::new(Kind::Arrow(
+                Box::new(Kind::Star),
+                Box::new(Kind::Star),
+            )),
+        )
+    }
+}
+```
+
+`Int`, `String`, `Bool` のカインドは `Star`。`Option`, `List` のカインドは `Arrow(Star, Star)` (= `* -> *`)。`Result`, `Map` のカインドは `Arrow(Star, Arrow(Star, Star))` (= `* -> * -> *`)。
+
+### Kind 互換性チェック
+
+トレイト実装時に、実装型のカインドがトレイトの要求するカインドと一致するかを検証する:
+
+```rust
+fn kinds_compatible(trait_kind: &Kind, type_kind: &Kind) -> bool {
+    match (trait_kind, type_kind) {
+        (Kind::Star, Kind::Star) => true,
+        (Kind::Arrow(_, _), Kind::Arrow(_, _)) => trait_kind == type_kind,
+        _ => false,
+    }
+}
+```
+
+不一致の場合、`TypeError::KindMismatch` が報告される:
+
+```
+エラー: Kind の不一致: Int は * ですが、
+  トレイト Functor は * -> * を要求します
+```
+
 ### Functor の実装例
 
 ```lisp
@@ -28,7 +90,7 @@
       [None None])))
 ```
 
-HKT は**モナド**のような抽象の基盤となる。
+HKT は**モナド**のような抽象の基盤となる。`Monad` トレイトは `Functor` を前提とし、`bind` と `return` の操作を定義する。
 
 ## GADT (一般化代数的データ型)
 
@@ -44,7 +106,7 @@ HKT は**モナド**のような抽象の基盤となる。
   (Add (Expr a) (Expr a)))
 ```
 
-`(Add (IntLit 1) (BoolLit true))` が型エラーにならない問題がある。
+この定義では `(Add (IntLit 1) (BoolLit true))` が型エラーにならない。`IntLit` も `BoolLit` も同じ `(Expr a)` 型として扱われるため、`Add` の引数として両方が許容される。
 
 ### GADT の構文
 
@@ -59,13 +121,52 @@ GADT では各バリアントの**戻り値型**を個別に指定できる:
   [(If (Expr Bool) (Expr a) (Expr a))  : (Expr a)])
 ```
 
-これにより `IntLit` は常に `(Expr Int)` を返し、`BoolLit` は `(Expr Bool)` を返す。`(Add (IntLit 1) (BoolLit true))` は型エラーとなる。
+これにより `IntLit` は常に `(Expr Int)` を返し、`BoolLit` は `(Expr Bool)` を返す。`(Add (IntLit 1) (BoolLit true))` は型エラーとなる——`Add` の第2引数は `(Expr Int)` を要求するが、`(BoolLit true)` は `(Expr Bool)` だからである。
+
+### GADT の応用: 型安全なインタプリタ
+
+GADT の典型的な応用は型安全なインタプリタである:
+
+```lisp
+(defn eval [(: expr (Expr a))] : a
+  (match expr
+    [(IntLit n) n]
+    [(BoolLit b) b]
+    [(Add x y) (+ (eval x) (eval y))]
+    [(If cond then else)
+      (if (eval cond) (eval then) (eval else))]))
+```
+
+各ブランチで `a` の型が自動的に絞り込まれる:
+
+- `IntLit n` にマッチした場合 → `a = Int`、`n : Int` を返す
+- `BoolLit b` にマッチした場合 → `a = Bool`、`b : Bool` を返す
+- `Add x y` にマッチした場合 → `a = Int`、`(+ (eval x) (eval y))` は `Int` を返す
 
 ### 型推論への影響
 
 GADT のパターンマッチでは**型の絞り込み (type refinement)** が発生する。`(Expr a)` に対してパターン `(IntLit n)` がマッチした場合、そのブランチ内では `a = Int` が判明する。
 
-これを実現するには、Algorithm W からバイディレクショナル型チェックへの移行が必要になる。
+これを実現するには、通常の Algorithm W では不十分で、**バイディレクショナル型チェック**への拡張が必要になる。バイディレクショナル型チェックでは:
+
+1. **推論モード** (synthesis): 式の型をボトムアップに推論する (従来の Algorithm W)
+2. **チェックモード** (checking): 期待される型をトップダウンに伝搬して検証する
+
+GADT のパターンマッチでは、チェックモードがバリアントの戻り値型から型等式を生成し、ブランチ内の推論環境に追加の制約を導入する。
+
+### 型の絞り込みの仕組み
+
+```
+match expr with                    -- expr : (Expr a)
+  (IntLit n) ->                    -- GADT が (IntLit Int) : (Expr Int) と宣言
+                                   -- よって a = Int が判明
+    n                              -- n : Int, 返り値 : Int = a (整合)
+  (BoolLit b) ->                   -- GADT が (BoolLit Bool) : (Expr Bool) と宣言
+                                   -- よって a = Bool が判明
+    b                              -- b : Bool, 返り値 : Bool = a (整合)
+```
+
+この「ブランチごとの型変数束縛」は、通常の HM 推論の単一化とは異なり、ブランチの局所スコープでのみ有効な等式制約である。
 
 ## Computation Expressions (F# 風)
 
@@ -79,9 +180,11 @@ GADT のパターンマッチでは**型の絞り込み (type refinement)** が�
     (return (+ x y))))))
 ```
 
+ネストが深くなるにつれて読みにくさが増す。これは「コールバック地獄」と本質的に同じ問題である。
+
 ### Computation Expressions の構文
 
-F# の computation expression にインスパイアされた構文糖衣:
+F# の computation expression にインスパイアされた構文糖衣で、この問題を解決する:
 
 ```lisp
 ;; ビルダー定義
@@ -101,27 +204,84 @@ F# の computation expression にインスパイアされた構文糖衣:
 ;; => (Some 3)
 ```
 
-`let!` は `bind` に脱糖 (desugar) される。コンパイラが自動的に以下のコードに変換する:
+### 脱糖 (Desugaring)
+
+`let!` は `bind` に、`return` は `return` にそれぞれ脱糖される。コンパイラが自動的に以下のコードに変換する:
 
 ```lisp
+;; 脱糖前
+(option!
+  (let! [x (Some 1)]
+  (let! [y (Some 2)]
+  (return (+ x y)))))
+
+;; 脱糖後
 (bind (Some 1) (fn [x]
   (bind (Some 2) (fn [y]
     (return (+ x y))))))
 ```
 
+IR 降位 (`crates/lsharp-ir/src/lower/expr.rs`) では、この脱糖が段階的に処理される:
+
+1. `let! [x expr] rest` → `bind` 関数の呼び出しに変換。`expr` を第1引数、`(fn [x] rest)` を第2引数とする
+2. `do! expr` → `bind` 関数の呼び出しに変換。結果は束縛されず破棄される
+3. `return expr` → ビルダーの `return` 関数の呼び出しに変換
+
+### Computation Expressions の応用
+
+Option 以外にも、様々なモナドに対して computation expression を定義できる:
+
+```lisp
+;; Result モナド (エラー処理)
+(computation-builder result
+  (defn bind [(: x (Result a e)) (: f (-> a (Result b e)))] : (Result b e)
+    (match x
+      [(Ok v) (f v)]
+      [(Err e) (Err e)]))
+  (defn return [(: x a)] : (Result a e)
+    (Ok x)))
+
+;; 使用例
+(result!
+  (let! [config (read-config "app.toml")]
+  (let! [db (connect (Config.db-url config))]
+  (return db))))
+```
+
 ### 依存関係
 
-Computation Expressions はトレイト (Phase 5) と HKT (Phase 6a) の両方に依存する。`bind` や `return` の型をトレイトで抽象化し、任意のモナドに対して `!` 構文を使えるようにするためである。
+Computation Expressions はトレイトと HKT の両方に依存する。`bind` や `return` の型をトレイトで抽象化し、任意のモナドに対して `!` 構文を使えるようにするためである。
 
-## 実装の優先順位
+将来的には `Monad` トレイトを定義し、全てのモナドに対して統一的な computation expression を提供する:
 
-これらの高度な機能は Phase 6 として計画されている:
+```lisp
+(trait (Monad m)
+  (defn bind [(: ma (m a)) (: f (-> a (m b)))] : (m b))
+  (defn return [(: x a)] : (m a)))
+```
 
-| 機能 | 依存関係 | 難易度 |
-|------|----------|--------|
-| HKT | Phase 5 (トレイト) | 中〜高 |
-| GADT | 独立 (型チェッカーの大改修) | 高 |
-| Computation Expressions | Phase 5 + 6a | 中 |
-| ネストモジュール | Phase 4 (モジュール) | 低 |
+## 各機能の依存関係と実装順序
 
-段階的に追加していくことで、各機能の正しさを確認しながら型システムを成長させる。
+これらの高度な機能は互いに依存関係を持つ:
+
+```
+トレイト (Phase 5)
+    |
+    +---> HKT (Phase 6a)
+    |        |
+    |        +---> Functor/Monad トレイト
+    |
+    +---> Computation Expressions (Phase 6c)
+              |
+              +---> Monad トレイト + HKT が前提
+
+GADT (Phase 6b) -- 独立 (型チェッカーの大改修が必要)
+```
+
+| 機能 | 依存関係 | 難易度 | 状態 |
+|------|----------|--------|------|
+| HKT | トレイト | 中〜高 | 構文解析・Kind チェック実装済み |
+| GADT | 独立 (型チェッカーの改修) | 高 | 構文解析実装済み |
+| Computation Expressions | トレイト + HKT | 中 | 構文解析・脱糖実装済み |
+
+段階的に追加していくことで、各機能の正しさを確認しながら型システムを成長させる。全ての機能の構文解析は既に完了しており、型推論と IR 降位の拡張が今後の主要な作業となる。

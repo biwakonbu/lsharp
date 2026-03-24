@@ -235,8 +235,11 @@
 ## 既知の制限事項
 
 ### リニアメモリランタイム
-- [ ] WasmGC 最適化バックエンド -- 現在はオプショナル、リニアメモリ上の Bump Allocator で全ヒープデータを管理
-- [ ] Region GC 導入 -- REPL 等の長寿命プロセス向け (Phase 9)
+- [ ] Precise Tracing GC 導入 -- mainline 方針。linear memory 上で shadow stack + mark-sweep を実装し、長寿命インスタンスでもヒープ回収可能にする
+- [ ] 世代別 GC 最適化 -- young generation は bump allocator、old generation は non-moving mark-sweep。現在の `__alloc` fast path を維持しつつ回収を追加
+- [ ] Region 最適化 -- GC の代替ではなく補助最適化。短命オブジェクト/一時バッファ/コンパイラ内部ワーク領域向け
+- [ ] WasmGC 最適化バックエンド -- optional backend。browser/対応ランタイム向け。mainline の値表現・ABI は linear memory 基盤を維持
+- [ ] 詳細ロードマップを維持 -- `docs/memory-management-roadmap.md` を唯一の正本として更新
 
 ### パターンマッチ
 - [x] 引数付きコンストラクタパターン (深さ 1) は対応済み
