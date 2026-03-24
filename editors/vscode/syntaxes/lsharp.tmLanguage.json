@@ -1,0 +1,120 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "L#",
+  "scopeName": "source.lsharp",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#number" },
+    { "include": "#boolean" },
+    { "include": "#keyword" },
+    { "include": "#builtin-function" },
+    { "include": "#type-name" },
+    { "include": "#metadata" },
+    { "include": "#operator" },
+    { "include": "#macro" },
+    { "include": "#variable" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.semicolon.lsharp",
+      "match": ";.*$"
+    },
+    "string": {
+      "name": "string.quoted.double.lsharp",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.lsharp",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "number": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.lsharp",
+          "match": "-?\\d+\\.\\d+"
+        },
+        {
+          "name": "constant.numeric.integer.lsharp",
+          "match": "-?\\d+"
+        }
+      ]
+    },
+    "boolean": {
+      "name": "constant.language.boolean.lsharp",
+      "match": "\\b(true|false)\\b"
+    },
+    "keyword": {
+      "name": "keyword.control.lsharp",
+      "match": "(?<=\\()\\s*(defn|defmacro|let|if|match|type|fn|do|module|import|record|trait|impl|where|private|type-alias|type-constrained|constraints|computation|computation-builder|open|cond|when|unless|assert)\\b"
+    },
+    "builtin-function": {
+      "name": "support.function.builtin.lsharp",
+      "match": "(?<=\\()\\s*(print|print-string|read-file|write-file|file-exists\\?|string-length|string-concat|string-eq|vector-new|vector-push|vector-get|vector-length|vector-set|map-new|map-insert|map-get|map-contains\\?|map-remove|map-size|ref-new|ref-get|ref-set|proc-exit|command-line-args)\\b"
+    },
+    "type-name": {
+      "name": "entity.name.type.lsharp",
+      "match": "\\b[A-Z][A-Za-z0-9]*\\b"
+    },
+    "metadata": {
+      "name": "meta.annotation.lsharp",
+      "match": ":(doc|example|invariant|transitions|type)\\b"
+    },
+    "operator": {
+      "name": "keyword.operator.lsharp",
+      "match": "(?<=\\()\\s*(\\+|-|\\*|/|%|=|==|!=|<|>|<=|>=|\\|>)(?=\\s)"
+    },
+    "macro": {
+      "patterns": [
+        {
+          "name": "keyword.operator.quote.lsharp",
+          "match": "'"
+        },
+        {
+          "name": "keyword.operator.unquote-splice.lsharp",
+          "match": "~@"
+        },
+        {
+          "name": "keyword.operator.unquote.lsharp",
+          "match": "~"
+        }
+      ]
+    },
+    "variable": {
+      "name": "variable.other.lsharp",
+      "match": "[a-z_][a-zA-Z0-9_\\-\\?]*"
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.paren.open.lsharp",
+          "match": "\\("
+        },
+        {
+          "name": "punctuation.paren.close.lsharp",
+          "match": "\\)"
+        },
+        {
+          "name": "punctuation.bracket.open.lsharp",
+          "match": "\\["
+        },
+        {
+          "name": "punctuation.bracket.close.lsharp",
+          "match": "\\]"
+        },
+        {
+          "name": "punctuation.brace.open.lsharp",
+          "match": "\\{"
+        },
+        {
+          "name": "punctuation.brace.close.lsharp",
+          "match": "\\}"
+        }
+      ]
+    }
+  }
+}

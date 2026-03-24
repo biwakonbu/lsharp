@@ -329,6 +329,11 @@ impl TypeEnv {
         self.bindings.insert(name, scheme);
     }
 
+    /// 変数を環境から除去する
+    pub fn remove(&mut self, name: &str) {
+        self.bindings.remove(name);
+    }
+
     /// 変数の型スキームを取得
     pub fn get(&self, name: &str) -> Option<&TypeScheme> {
         self.bindings.get(name)

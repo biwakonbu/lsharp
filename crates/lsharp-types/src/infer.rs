@@ -377,7 +377,7 @@ impl Infer {
         Ok(())
     }
 
-    /// 宣言リストから関数定義を型推論（ネストモジュール対応）
+    /// 宣言リストから関数定義を型推論（ネストモジュール対応、2パス方式で相互再帰対応）
     fn infer_decl_functions(
         &mut self,
         env: &mut TypeEnv,
@@ -385,13 +385,13 @@ impl Infer {
         decls: &[Decl],
         module_prefix: Option<&str>,
     ) -> Result<(), TypeError> {
+        // パス1: 全 defn の名前に型変数を仮登録（前方参照を可能にする）
+        let mut defn_infos: Vec<(String, &[Param], Option<&TypeExpr>, &Expr, Span, Type)> = Vec::new();
         for decl in decls {
-            // Private 内の defn も展開して型推論
             let actual_decl = match decl {
                 Decl::Private { inner, .. } => inner.as_ref(),
                 other => other,
             };
-
             match actual_decl {
                 Decl::Defn {
                     name,
@@ -406,16 +406,11 @@ impl Infer {
                     } else {
                         name.clone()
                     };
-                    let (subst, ty) =
-                        self.infer_defn(env, &qualified_name, params, return_ty.as_ref(), body, *span)?;
-                    let env_after = env.apply_subst(&subst);
-                    let final_ty = ty.apply_subst(&subst);
-                    let scheme = self.generalize(&env_after, &final_ty);
-                    *env = env_after.extend(qualified_name.clone(), scheme.clone());
-                    results.push((qualified_name, scheme));
+                    let placeholder_ty = self.var_gen.fresh();
+                    env.insert(qualified_name.clone(), TypeScheme::mono(placeholder_ty.clone()));
+                    defn_infos.push((qualified_name, params.as_slice(), return_ty.as_ref(), body, *span, placeholder_ty));
                 }
                 Decl::ModuleDecl { name, body, .. } if !body.is_empty() => {
-                    // ネストモジュール内の関数を修飾名で型推論
                     let prefix = if let Some(outer) = module_prefix {
                         format!("{outer}.{name}")
                     } else {
@@ -426,8 +421,31 @@ impl Infer {
                 _ => {}
             }
         }
+
+        // パス2: 各 defn の body を本推論（仮登録された型変数を通じて前方参照が可能）
+        // 逐次的に推論・generalize し、env を更新していく
+        for (qualified_name, params, return_ty, body, span, placeholder_ty) in defn_infos {
+            let (subst, ty) =
+                self.infer_defn(env, &qualified_name, params, return_ty, body, span)?;
+            // 仮登録型変数と推論結果の関数型を unify（循環参照の型を結びつける）
+            let resolved_placeholder = placeholder_ty.apply_subst(&subst);
+            let resolved_ty = ty.apply_subst(&subst);
+            let s_extra = self.unify(&resolved_placeholder, &resolved_ty, span)?;
+            let subst = subst.compose(&s_extra);
+
+            let env_after = env.apply_subst(&subst);
+            let final_ty = ty.apply_subst(&subst);
+            // generalize 時に自分自身の仮登録型を除外（型変数が env に含まれて量化されない問題を防止）
+            let mut env_for_gen = env_after.clone();
+            env_for_gen.remove(&qualified_name);
+            let scheme = self.generalize(&env_for_gen, &final_ty);
+            *env = env_after.extend(qualified_name.clone(), scheme.clone());
+            results.push((qualified_name, scheme));
+        }
+
         Ok(())
     }
+
 
     /// 組み込み関数の型環境
     fn builtin_env(&mut self) -> TypeEnv {
@@ -1911,6 +1929,15 @@ impl Infer {
 
                 Ok((subst, result_ty))
             }
+
+            // P10-1: Quote/Unquote/UnquoteSplice はマクロ展開後には残らない
+            // マクロ展開前にこれらが残っている場合はエラーとする
+            Expr::Quote(span, _) | Expr::Unquote(span, _) | Expr::UnquoteSplice(span, _) => {
+                Err(TypeError::UndefinedVar {
+                    name: "quote/unquote はマクロ展開後に使用できません".to_string(),
+                    span: *span,
+                })
+            }
         }
     }
 
@@ -3081,6 +3108,66 @@ mod kind_tests {
         let mut infer = Infer::new();
         let result = infer.infer_program(&program);
         assert!(result.is_ok(), "computation let! should type check: {:?}", result.err());
+    }
+}
+
+#[cfg(test)]
+mod mutual_recursion_tests {
+    use super::*;
+
+    fn infer(input: &str) -> Result<Vec<(String, TypeScheme)>, TypeError> {
+        let program = lsharp_syntax::parse(input).unwrap();
+        let mut infer = Infer::new();
+        infer.infer_program(&program)
+    }
+
+    // --- P8-5: 相互再帰関数の前方参照テスト ---
+
+    #[test]
+    fn test_mutual_recursion_even_odd() {
+        // even?/odd? の相互再帰型推論
+        let results = infer(
+            "(defn even? [n] (if (= n 0) true (odd? (- n 1))))
+             (defn odd? [n] (if (= n 0) false (even? (- n 1))))"
+        ).unwrap();
+        // even? : (Int) -> Bool
+        let even_scheme = &results.iter().find(|(n, _)| n == "even?").unwrap().1;
+        assert_eq!(even_scheme.to_string(), "(Int) -> Bool");
+        // odd? : (Int) -> Bool
+        let odd_scheme = &results.iter().find(|(n, _)| n == "odd?").unwrap().1;
+        assert_eq!(odd_scheme.to_string(), "(Int) -> Bool");
+    }
+
+    #[test]
+    #[test]
+    fn test_mutual_recursion_three_functions() {
+        // 3関数の循環再帰: 型推論がエラーにならないことを検証
+        // 戻り値型は循環的なため具体的な型には解決されない（多相型変数のまま）
+        let results = infer(
+            "(defn f [x] (g (+ x 1)))
+             (defn g [x] (h (+ x 2)))
+             (defn h [x] (f (+ x 3)))"
+        ).unwrap();
+        // 全3関数が推論に成功し、関数型であること
+        let f_scheme = &results.iter().find(|(n, _)| n == "f").unwrap().1;
+        assert!(f_scheme.to_string().contains("(Int) ->"), "f should be a function from Int: {}", f_scheme);
+        let g_scheme = &results.iter().find(|(n, _)| n == "g").unwrap().1;
+        assert!(g_scheme.to_string().contains("(Int) ->"), "g should be a function from Int: {}", g_scheme);
+        let h_scheme = &results.iter().find(|(n, _)| n == "h").unwrap().1;
+        assert!(h_scheme.to_string().contains("(Int) ->"), "h should be a function from Int: {}", h_scheme);
+    }
+
+    #[test]
+    fn test_mutual_recursion_does_not_break_non_recursive() {
+        // 既存の非再帰 defn が壊れないことの回帰テスト
+        let results = infer(
+            "(defn add [a b] (+ a b))
+             (defn double [x] (add x x))"
+        ).unwrap();
+        let add_scheme = &results.iter().find(|(n, _)| n == "add").unwrap().1;
+        assert_eq!(add_scheme.to_string(), "(Int, Int) -> Int");
+        let double_scheme = &results.iter().find(|(n, _)| n == "double").unwrap().1;
+        assert_eq!(double_scheme.to_string(), "(Int) -> Int");
     }
 }
 

@@ -188,6 +188,10 @@ fn collect_var_references_inner(expr: &Expr, refs: &mut Vec<(String, Span)>) {
                 }
             }
         }
+        // P10-1: Quote/Unquote/UnquoteSplice -- 内部式の変数参照を再帰的に収集
+        Expr::Quote(_, inner) | Expr::Unquote(_, inner) | Expr::UnquoteSplice(_, inner) => {
+            collect_var_references_inner(inner, refs);
+        }
     }
 }
 

@@ -135,6 +135,12 @@ pub enum Expr {
     /// Computation Expression (builder-name { body })
     /// let! によるモナディック束縛と return を含む
     Computation(Span, String, Vec<ComputationStep>),
+    /// P10-1: Quote 式 'expr -- AST をデータとして扱う
+    Quote(Span, Box<Expr>),
+    /// P10-1: Unquote 式 ~expr -- quote 内で式を評価する
+    Unquote(Span, Box<Expr>),
+    /// P10-1: UnquoteSplice 式 ~@expr -- quote 内でリストを展開する
+    UnquoteSplice(Span, Box<Expr>),
 }
 
 /// Computation Expression のステップ
@@ -165,7 +171,10 @@ impl Expr {
             | Expr::RecordLit(s, _, _)
             | Expr::FieldAccess(s, _, _)
             | Expr::RecordUpdate(s, _, _)
-            | Expr::Computation(s, _, _) => *s,
+            | Expr::Computation(s, _, _)
+            | Expr::Quote(s, _)
+            | Expr::Unquote(s, _)
+            | Expr::UnquoteSplice(s, _) => *s,
         }
     }
 }
@@ -262,6 +271,15 @@ pub enum Decl {
         name: String,
         bind_fn: String,
         return_fn: String,
+    },
+    /// P10-2: マクロ定義 (defmacro name [params] body)
+    DefMacro {
+        span: Span,
+        name: String,
+        params: Vec<Param>,
+        /// オプションの型シグネチャ (P10-3)
+        macro_type: Option<TypeExpr>,
+        body: Expr,
     },
 }
 
@@ -434,6 +452,16 @@ impl std::fmt::Display for Decl {
             Decl::ComputationBuilder { name, bind_fn, return_fn, .. } => {
                 write!(f, "(computation-builder {name} {bind_fn} {return_fn})")
             }
+            Decl::DefMacro { name, params, body, .. } => {
+                write!(f, "(defmacro {name} [")?;
+                for (i, p) in params.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " ")?;
+                    }
+                    write!(f, "{}", p.name)?;
+                }
+                write!(f, "] {body})")
+            }
         }
     }
 }
@@ -526,6 +554,9 @@ impl std::fmt::Display for Expr {
                 }
                 write!(f, "}})")
             }
+            Expr::Quote(_, expr) => write!(f, "'{expr}"),
+            Expr::Unquote(_, expr) => write!(f, "~{expr}"),
+            Expr::UnquoteSplice(_, expr) => write!(f, "~@{expr}"),
         }
     }
 }

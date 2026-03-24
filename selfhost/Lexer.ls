@@ -2,6 +2,10 @@
 ;;
 ;; ソース文字列を受け取り、トークン列 (Vector) を返す。
 ;; Rust 版 lexer.rs の L# 移植版。
+;;
+;; T2-1: 値つきトークン対応
+;; tokenize-with-spans: (kind, start, end) 3つ組を返す
+;; トークン値の取得: token-int-value, token-string-value, token-symbol-name
 
 ;; === 文字判定 ===
 
@@ -133,15 +137,15 @@
   (if (>= pos len)
     (+ (* 99 1000000) pos)  ;; tok-eof
     (let [c (string-char-at src pos)]
-      (if (== c 40) (+ (* 0 1000000) (+ pos 1))  ;; ( → LParen
-        (if (== c 41) (+ (* 1 1000000) (+ pos 1))  ;; ) → RParen
-          (if (== c 91) (+ (* 2 1000000) (+ pos 1))  ;; [ → LBracket
-            (if (== c 93) (+ (* 3 1000000) (+ pos 1))  ;; ] → RBracket
-              (if (== c 123) (+ (* 4 1000000) (+ pos 1))  ;; { → LBrace
-                (if (== c 125) (+ (* 5 1000000) (+ pos 1))  ;; } → RBrace
-                  (if (== c 58) (+ (* 50 1000000) (+ pos 1))  ;; : → Colon
-                    (if (== c 124) (+ (* 52 1000000) (+ pos 1))  ;; | → Pipe
-                      (if (== c 34) ;; " → String
+      (if (== c 40) (+ (* 0 1000000) (+ pos 1))  ;; ( -> LParen
+        (if (== c 41) (+ (* 1 1000000) (+ pos 1))  ;; ) -> RParen
+          (if (== c 91) (+ (* 2 1000000) (+ pos 1))  ;; [ -> LBracket
+            (if (== c 93) (+ (* 3 1000000) (+ pos 1))  ;; ] -> RBracket
+              (if (== c 123) (+ (* 4 1000000) (+ pos 1))  ;; { -> LBrace
+                (if (== c 125) (+ (* 5 1000000) (+ pos 1))  ;; } -> RBrace
+                  (if (== c 58) (+ (* 50 1000000) (+ pos 1))  ;; : -> Colon
+                    (if (== c 124) (+ (* 52 1000000) (+ pos 1))  ;; | -> Pipe
+                      (if (== c 34) ;; " -> String
                         (let [end (scan-string-end src (+ pos 1) len)]
                           (+ (* 12 1000000) end))
                         (if (is-digit-char c)
@@ -152,9 +156,9 @@
                                   name (substring src pos end)
                                   kind (classify-symbol name)]
                               (+ (* kind 1000000) end))
-                            (+ (* 99 1000000) (+ pos 1)))))))))))))))) ;; unknown → skip
+                            (+ (* 99 1000000) (+ pos 1)))))))))))))))) ;; unknown -> skip
 
-;; 全トークンを Vector に収集
+;; 全トークンを Vector に収集 (kind のみ、後方互換)
 (defn tokenize-loop [src pos len tokens]
   (let [ws-pos (skip-ws-loop src pos len)]
     (if (>= ws-pos len)
@@ -167,23 +171,98 @@
           (tokenize-loop src end-pos len
             (vector-push tokens kind)))))))
 
-;; ソース文字列をトークン化して種別の Vector を返す
+;; ソース文字列をトークン化して種別の Vector を返す (後方互換)
 (defn tokenize [src]
   (tokenize-loop src 0 (string-length src) (vector-new 16)))
 
+;; === T2-1: 値つきトークン (kind, start, end) 3つ組 ===
+
+;; 全トークンを (kind, start, end) 3つ組の Vector に収集
+;; 結果の Vector は [kind0, start0, end0, kind1, start1, end1, ...] のフラット構造
+(defn tokenize-spans-loop [src pos len tokens]
+  (let [ws-pos (skip-ws-loop src pos len)]
+    (if (>= ws-pos len)
+      ;; EOF トークン: (99, pos, pos)
+      (vector-push (vector-push (vector-push tokens 99) ws-pos) ws-pos)
+      (let [result (lex-one src ws-pos len)
+            kind (/ result 1000000)
+            end-pos (- result (* kind 1000000))]
+        (if (== kind 99)
+          (vector-push (vector-push (vector-push tokens 99) ws-pos) ws-pos)
+          (tokenize-spans-loop src end-pos len
+            (vector-push (vector-push (vector-push tokens kind) ws-pos) end-pos)))))))
+
+;; ソース文字列をトークン化して (kind, start, end) 3つ組を返す
+(defn tokenize-with-spans [src]
+  (tokenize-spans-loop src 0 (string-length src) (vector-new 32)))
+
+;; === トークン値の取得 ===
+
+;; トークン列からトークン数を計算 (3つ組方式)
+(defn token-count [tokens]
+  (/ (vector-length tokens) 3))
+
+;; N 番目のトークンの kind を取得
+(defn token-kind [tokens n]
+  (vector-get tokens (* n 3)))
+
+;; N 番目のトークンの start を取得
+(defn token-start [tokens n]
+  (vector-get tokens (+ (* n 3) 1)))
+
+;; N 番目のトークンの end を取得
+(defn token-end [tokens n]
+  (vector-get tokens (+ (* n 3) 2)))
+
+;; 整数トークンの値を取得 (ソース文字列から数値をパース)
+(defn token-int-value [src tokens n]
+  (let [start (token-start tokens n)
+        end (token-end tokens n)]
+    (parse-int-from-string src start end 0)))
+
+;; 数字文字列を整数に変換 (再帰ヘルパー)
+(defn parse-int-from-string [src pos end acc]
+  (if (>= pos end)
+    acc
+    (let [digit (- (string-char-at src pos) 48)]
+      (parse-int-from-string src (+ pos 1) end (+ (* acc 10) digit)))))
+
+;; シンボル/キーワードトークンのソース文字列を取得
+(defn token-text [src tokens n]
+  (substring src (token-start tokens n) (token-end tokens n)))
+
 ;; エントリポイント (テスト用)
 (defn main []
-  (let [tokens (tokenize "(defn main [] 42)")
+  (let [;; 後方互換テスト
+        tokens (tokenize "(defn main [] 42)")
         len (vector-length tokens)]
     (do
       (print len)  ;; トークン数
       ;; 各トークンを出力
-      (print (vector-get tokens 0))  ;; ( → 0 (LParen)
-      (print (vector-get tokens 1))  ;; defn → 30 (Defn)
-      (print (vector-get tokens 2))  ;; main → 20 (Symbol)
-      (print (vector-get tokens 3))  ;; [ → 2 (LBracket)
-      (print (vector-get tokens 4))  ;; ] → 3 (RBracket)
-      (print (vector-get tokens 5))  ;; 42 → 10 (Int)
-      (print (vector-get tokens 6))  ;; ) → 1 (RParen)
-      (print (vector-get tokens 7))  ;; EOF → 99
+      (print (vector-get tokens 0))  ;; ( -> 0 (LParen)
+      (print (vector-get tokens 1))  ;; defn -> 30 (Defn)
+      (print (vector-get tokens 2))  ;; main -> 20 (Symbol)
+      (print (vector-get tokens 3))  ;; [ -> 2 (LBracket)
+      (print (vector-get tokens 4))  ;; ] -> 3 (RBracket)
+      (print (vector-get tokens 5))  ;; 42 -> 10 (Int)
+      (print (vector-get tokens 6))  ;; ) -> 1 (RParen)
+      (print (vector-get tokens 7))  ;; EOF -> 99
+
+      ;; T2-1: 値つきトークンのテスト
+      (let [spans (tokenize-with-spans "(+ 42 x)")
+            n (token-count spans)]
+        (do
+          (print n)                          ;; トークン数 = 6
+          (print (token-kind spans 0))       ;; ( -> 0 (LParen)
+          (print (token-kind spans 1))       ;; + -> 20 (Symbol)
+          (print (token-kind spans 2))       ;; 42 -> 10 (Int)
+          (print (token-kind spans 3))       ;; x -> 20 (Symbol)
+          (print (token-kind spans 4))       ;; ) -> 1 (RParen)
+          (print (token-kind spans 5))       ;; EOF -> 99
+          ;; 整数値の取得
+          (print (token-int-value "(+ 42 x)" spans 2))  ;; 42
+          ;; スパン情報
+          (print (token-start spans 1))      ;; 1 (+ の開始位置)
+          (print (token-end spans 1))        ;; 2 (+ の終了位置)
+          0))
       0)))

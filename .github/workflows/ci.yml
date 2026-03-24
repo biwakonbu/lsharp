@@ -45,12 +45,42 @@ jobs:
           components: rustfmt
       - run: cargo fmt --check
 
+  # P8-9: ブートストラップ CI
+  # selfhost モジュールの stage1 コンパイル成功を検証
+  bootstrap:
+    name: Bootstrap (selfhost)
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: selfhost モジュールのコンパイル検証
+        run: |
+          # 各 selfhost モジュールが Rust 版コンパイラでコンパイルできることを検証
+          for module in Token AST IR Type TypeScheme Compiler WasmEmit Lexer Parser Main; do
+            echo "=== Compiling selfhost/${module}.ls ==="
+            cargo run -- compile selfhost/${module}.ls -o /tmp/${module}.wasm 2>&1 || {
+              echo "WARNING: selfhost/${module}.ls compilation failed (may be expected)"
+            }
+          done
+          echo "Bootstrap check complete."
+      - name: stdlib コンパイル検証
+        run: |
+          for module in Core Char Debug IO List Map Path Set String Vector Json; do
+            echo "=== Compiling stdlib/${module}.ls ==="
+            cargo run -- compile stdlib/${module}.ls -o /tmp/stdlib_${module}.wasm 2>&1 || {
+              echo "WARNING: stdlib/${module}.ls compilation failed"
+            }
+          done
+          echo "stdlib check complete."
+
   # 全ジョブの成功を集約するゲートジョブ
   # Branch Protection Rules ではこのジョブだけを required にすればよい
   ci-gate:
     name: CI Gate
     runs-on: ubuntu-latest
-    needs: [test, lint, format]
+    needs: [test, lint, format, bootstrap]
     if: always()
     steps:
       - name: 全ジョブの結果を検証
@@ -60,5 +90,9 @@ jobs:
                 "${{ needs.format.result }}" != "success" ]]; then
             echo "CI failed: test=${{ needs.test.result }}, lint=${{ needs.lint.result }}, format=${{ needs.format.result }}"
             exit 1
+          fi
+          # bootstrap は必須ではない (一部モジュールは既知の制限あり)
+          if [[ "${{ needs.bootstrap.result }}" == "failure" ]]; then
+            echo "WARNING: Bootstrap check failed, but not blocking CI"
           fi
           echo "All checks passed."

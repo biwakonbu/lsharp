@@ -110,14 +110,14 @@
         (do
           (let [v (vector-get free (ref-get i))]
             (if (= (map-get env-vars v) 0)
-              (ref-set bound (vector-push (ref-get bound) v))
+              (do (ref-set bound (vector-push (ref-get bound) v)) 0)
               0))
           (ref-set i (+ (ref-get i) 1))
           (if (< (ref-get i) n)
             (do
               (let [v (vector-get free (ref-get i))]
                 (if (= (map-get env-vars v) 0)
-                  (ref-set bound (vector-push (ref-get bound) v))
+                  (do (ref-set bound (vector-push (ref-get bound) v)) 0)
                   0))
               (ref-set i (+ (ref-get i) 1))
               0)
