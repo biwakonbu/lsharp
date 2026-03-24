@@ -2,6 +2,23 @@
 
 Rust 実装と L# セルフホスト実装の機能パリティを追跡する。
 
+## PR 更新ルール
+
+Phase 11 完了まで、selfhost パイプラインに影響する PR では本マトリクスの更新を必須とする。
+
+**対象 PR の判定基準**:
+- `selfhost/*.ls` の変更を含む PR
+- `crates/lsharp-wasm/tests/e2e.rs` の selfhost 関連テストに変更がある PR
+- `crates/lsharp-ir/` または `crates/lsharp-wasm/` のコード変更を含む PR
+- `docs/compatibility-matrix.md` の更新が明示的にスコープ外と宣言されていない PR
+
+**更新手順**:
+1. 変更に関連する行の `L# status`, `Parity test` 列を現状に合わせて更新する
+2. 変更によって parity が後退する場合は `Deletion gate` の条件と照合し、影響を PR 本文に記載する
+3. `scripts/audit_docs.sh` を実行し、監査エラーが増加していないことを確認する
+
+**レビューチェック**: PR レビュー時に互換マトリクスの更新漏れがないことを確認する。
+
 ## CLI サブコマンド
 
 | コマンド | Rust status | L# status | Parity test | Default path | Deletion gate |
@@ -41,8 +58,8 @@ Rust 実装と L# セルフホスト実装の機能パリティを追跡する�
 |----------------|-------------|-----------|-------------|--------------|---------------|
 | Lexer | 完成 | 部分実装 (75%) | E2E 6件 | Rust | L# parity test 全 PASS |
 | Parser | 完成 | 部分実装 (65%) | E2E 4件 | Rust | L# parity test 全 PASS |
-| MacroExpand | 完成 | なし | - | Rust | L# parity test 全 PASS |
-| TypeInfer | 完成 | なし | - | Rust | L# parity test 全 PASS |
+| MacroExpand | 完成 | 部分実装 (30%) -- 637行/117関数, E2E未通過 | E2E 5件 (ignore) | Rust | L# parity test 全 PASS |
+| TypeInfer | 完成 | 部分実装 (40%) -- 838行/67関数, E2E未通過 | E2E 7件 (ignore) | Rust | L# parity test 全 PASS |
 | Lower/Compiler | 完成 | 部分実装 (70%) | E2E 2件 | Rust | L# parity test 全 PASS |
 | WasmEmit | 完成 | 部分実装 (50%) | - | Rust | L# parity test 全 PASS |
 | NativeEmit | N/A | なし | - | - | - |
