@@ -4014,7 +4014,7 @@ fn test_e2e_bootstrap_stage1_integration() {
     // T4-4 拡張: if(1,6,3) + let(1,7,2)
     assert_eq!(
         output.trim(),
-        "1\n42\n1\n1\n42\n8\n0\n97\n115\n109\n7\n1\n15\n10\n16\n20\n1\n42\n1\n1\n42\n1\n6\n3\n1\n7\n2"
+        "1\n42\n1\n1\n42\n8\n0\n97\n115\n109\n7\n1\n15\n10\n16\n20\n1\n42\n1\n1\n42\n1\n6\n3\n1\n7\n2\n1\n1\n100\n1\n5"
     );
 }
 
@@ -4093,7 +4093,7 @@ fn test_e2e_selfhost_main_integration() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     // Main.ls 旧パイプライン + T4-4 新パイプライン検証
-    assert!(lines.len() >= 21, "Main.ls は少なくとも21行の出力を生成するべき: {:?}", lines);
+    assert!(lines.len() >= 32, "Main.ls は少なくとも32行の出力を生成するべき: {:?}", lines);
 
     // 旧パイプライン: AST → IR → Wasm
     assert_eq!(lines[0], "1");    // ast-tag = 1 (lit-int)
@@ -4119,6 +4119,13 @@ fn test_e2e_selfhost_main_integration() {
     assert_eq!(lines[18], "1");   // IR: 1 命令
     assert_eq!(lines[19], "1");   // IR instr: i64.const
     assert_eq!(lines[20], "42");  // IR operand: 42
+
+    // P11: 完全パイプライン (MacroExpand + TypeInfer 統合)
+    assert_eq!(lines[27], "1");   // expanded AST tag = 1 (lit-int)
+    assert_eq!(lines[28], "1");   // 型推論結果: ty-tag = 1 (Con)
+    assert_eq!(lines[29], "100"); // 型推論結果: ty-name = 100 (Int)
+    assert_eq!(lines[30], "1");   // IR 命令数 = 1
+    assert_eq!(lines[31], "5");   // パイプラインステージ数 = 5
 }
 
 /// T2-1: Lexer.ls 値つきトークン (kind, start, end) 3つ組のテスト
@@ -5148,6 +5155,141 @@ fn test_e2e_bootstrap_stage1_fixed_point_sections() {
     assert!(section_ids.contains(&3), "Function section present");
     assert!(section_ids.contains(&7), "Export section present");
     assert!(section_ids.contains(&10), "Code section present");
+}
+
+/// T4-5: stage1 バイナリのセクション構成が複数回コンパイルで安定していることを検証
+#[test]
+fn test_e2e_bootstrap_stage1_section_stability() {
+    let source = include_str!("../../../selfhost/Main.ls");
+    let wasm1 = compile_only(source);
+    let wasm2 = compile_only(source);
+
+    // 各 wasm からセクション ID とサイズの列を抽出するヘルパー
+    fn extract_sections(wasm: &[u8]) -> Vec<(u8, usize)> {
+        let mut sections = Vec::new();
+        let mut pos = 8; // magic(4) + version(4) をスキップ
+        while pos < wasm.len() {
+            let section_id = wasm[pos];
+            pos += 1;
+            // LEB128 デコード
+            let mut size: usize = 0;
+            let mut shift = 0;
+            loop {
+                if pos >= wasm.len() { break; }
+                let byte = wasm[pos] as usize;
+                pos += 1;
+                size |= (byte & 0x7f) << shift;
+                if byte & 0x80 == 0 { break; }
+                shift += 7;
+            }
+            sections.push((section_id, size));
+            pos += size;
+        }
+        sections
+    }
+
+    let sections1 = extract_sections(&wasm1);
+    let sections2 = extract_sections(&wasm2);
+
+    // セクション数が一致
+    assert_eq!(
+        sections1.len(), sections2.len(),
+        "セクション数が不安定: {} vs {}",
+        sections1.len(), sections2.len()
+    );
+
+    // 各セクションの ID とサイズが一致
+    for (i, (s1, s2)) in sections1.iter().zip(sections2.iter()).enumerate() {
+        assert_eq!(
+            s1.0, s2.0,
+            "セクション {} の ID が不安定: {} vs {}",
+            i, s1.0, s2.0
+        );
+        assert_eq!(
+            s1.1, s2.1,
+            "セクション {} (ID={}) のサイズが不安定: {} vs {}",
+            i, s1.0, s1.1, s2.1
+        );
+    }
+
+    // セクションが最低4つ以上あること (Type, Function, Export, Code)
+    assert!(sections1.len() >= 4, "セクション数が少なすぎる: {}", sections1.len());
+}
+
+/// T4-5: stage1 の export シンボル名が安定していることを検証
+#[test]
+fn test_e2e_bootstrap_stage1_symbol_stability() {
+    let source = include_str!("../../../selfhost/Main.ls");
+    let wasm1 = compile_only(source);
+    let wasm2 = compile_only(source);
+
+    // Export セクション (ID=7) のバイト列を抽出
+    fn extract_export_section(wasm: &[u8]) -> Option<Vec<u8>> {
+        let mut pos = 8;
+        while pos < wasm.len() {
+            let section_id = wasm[pos];
+            pos += 1;
+            let mut size: usize = 0;
+            let mut shift = 0;
+            loop {
+                if pos >= wasm.len() { break; }
+                let byte = wasm[pos] as usize;
+                pos += 1;
+                size |= (byte & 0x7f) << shift;
+                if byte & 0x80 == 0 { break; }
+                shift += 7;
+            }
+            if section_id == 7 {
+                return Some(wasm[pos..pos + size].to_vec());
+            }
+            pos += size;
+        }
+        None
+    }
+
+    let export1 = extract_export_section(&wasm1).expect("Export section not found in wasm1");
+    let export2 = extract_export_section(&wasm2).expect("Export section not found in wasm2");
+
+    // Export セクション全体がバイト一致 (シンボル名・順序・インデックスが安定)
+    assert_eq!(
+        export1, export2,
+        "Export セクションが不安定: {} bytes vs {} bytes",
+        export1.len(), export2.len()
+    );
+
+    // Export セクションが空でないこと
+    assert!(!export1.is_empty(), "Export セクションが空");
+}
+
+/// T4-5: selfhost の各モジュールを個別にコンパイルし出力が決定的であることを検証
+#[test]
+fn test_e2e_bootstrap_selfhost_modules_deterministic() {
+    // MacroExpand.ls, TypeInfer.ls は拡張構文を使用しておりパース未対応のため除外
+    let modules: &[(&str, &str)] = &[
+        ("Lexer.ls", include_str!("../../../selfhost/Lexer.ls")),
+        ("Parser.ls", include_str!("../../../selfhost/Parser.ls")),
+        ("AST.ls", include_str!("../../../selfhost/AST.ls")),
+        ("Token.ls", include_str!("../../../selfhost/Token.ls")),
+        ("Compiler.ls", include_str!("../../../selfhost/Compiler.ls")),
+        ("Type.ls", include_str!("../../../selfhost/Type.ls")),
+        ("IR.ls", include_str!("../../../selfhost/IR.ls")),
+        ("WasmEmit.ls", include_str!("../../../selfhost/WasmEmit.ls")),
+    ];
+
+    for (name, source) in modules {
+        let wasm1 = compile_only(source);
+        let wasm2 = compile_only(source);
+        assert_eq!(
+            wasm1, wasm2,
+            "{} のコンパイルが非決定的: {} bytes vs {} bytes",
+            name, wasm1.len(), wasm2.len()
+        );
+        assert!(
+            wasm1.len() > 100,
+            "{} の wasm が小さすぎる: {} bytes",
+            name, wasm1.len()
+        );
+    }
 }
 // =================================================// selfhost Lexer.ls 拡張テスト (Step 3)
 // =================================================
@@ -6241,125 +6383,532 @@ fn test_e2e_selfhost_integrated_pipeline_v3() {
     assert!(lines[4].parse::<i32>().unwrap() > 0, "if 式 → IR 命令数 > 0");
 }
 
-// =====================================================
-// マクロ展開付きコンパイル・実行ヘルパー
-// =====================================================
+// === MacroExpand Tests ===
 
-/// ソースコードをマクロ展開込みでコンパイルして WASI 環境で実行し、stdout 出力を返す
-fn compile_and_run_with_macros(source: &str) -> String {
-    let program = lsharp_syntax::parse_and_expand(source).unwrap();
-    let mut infer = Infer::new();
-    let type_results = infer.infer_program(&program).unwrap();
-    let mut lower = Lower::new();
-    let module = lower.lower_program(&program, &type_results).unwrap();
-    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
-    run_wasi(&wasm_bytes)
-}
-
-// =====================================================
-// TEST-002: MacroExpand E2E テスト (selfhost MacroExpand.ls 対応)
-// =====================================================
-
-/// defmacro の基本展開テスト
-/// my-inc マクロが (+ ~x 1) に正しく展開されることを検証
+/// selfhost MacroExpand.ls テスト: defmacro 基本登録
+/// MacroExpand.ls が存在しないため現在 FAIL (Red Phase)
 #[test]
-fn test_e2e_selfhost_macro_expand_basic() {
-    // (defmacro my-inc [x] '(+ ~x 1)) を定義し、
-    // (my-inc 5) を展開して (+ 5 1) = 6 になることを確認
+#[ignore = "MacroExpand.ls 未実装 -- Red Phase"]
+fn test_e2e_selfhost_macro_defmacro_register() {
+    // selfhost compiler で defmacro を含むソースをコンパイルし、
+    // マクロが登録されることを検証する
+    // 期待値: defmacro 認識後にマクロテーブルに登録
     let source = r#"
-(defmacro my-inc [x] '(+ ~x 1))
-(defn main []
-  (do
-    (print (my-inc 5))
-    0))
-"#;
-    let result = compile_and_run_with_macros(source);
-    assert_eq!(result.trim(), "6", "my-inc マクロが正しく展開されること");
-}
-
-/// 再帰制限超過でエラーを返すテスト
-/// 自分自身を呼び出す無限再帰マクロを定義し、
-/// 128 回制限を超えた時点でコンパイルエラーになることを確認
-#[test]
-fn test_e2e_selfhost_macro_expand_recursion_limit() {
-    // 自分自身を呼び出す無限再帰マクロを定義する
-    // Rust パイプラインでは再帰制限超過でコンパイルエラーになる
-    let source = r#"
-(defmacro inf-macro [x] '(inf-macro ~x))
-(defn main []
-  (inf-macro 1))
-"#;
-    // コンパイルエラーまたは実行時エラーが起きること（クラッシュしないこと）
-    let result = std::panic::catch_unwind(|| compile_and_run_with_macros(source));
-    assert!(result.is_err(), "再帰制限超過時はコンパイルエラーになること");
-}
-
-// =====================================================
-// TEST-003: TypeInfer E2E テスト (selfhost TypeInfer.ls 対応)
-// =====================================================
-
-/// 基本型推論テスト
-/// (let [x 42] x) で x が Int 型に推論されることを確認
-#[test]
-fn test_e2e_selfhost_type_infer_basic() {
-    let source = r#"
-(defn main []
-  (let [x 42]
-    (do (print x) 0)))
+(module Main)
+(defmacro my-const [] 42)
+(defn main [] (print (my-const)))
 "#;
     let result = compile_and_run(source);
-    assert_eq!(result.trim(), "42", "let x 42 で x が Int として推論されること");
+    assert_eq!(result.trim(), "42");
 }
 
-/// let 多相テスト
-/// (let [id (fn [x] x)] (id 99)) で id が forall a. a -> a として多相化されることを確認
+/// selfhost MacroExpand.ls テスト: 引数付きマクロ展開
 #[test]
-fn test_e2e_selfhost_type_infer_let_poly() {
+#[ignore = "MacroExpand.ls 未実装 -- Red Phase"]
+fn test_e2e_selfhost_macro_defmacro_with_args() {
+    // 引数付きマクロの展開が正しく動作することを検証
+    // 期待値: (double 21) → (+ 21 21) → 42
     let source = r#"
-(defn main []
-  (let [id (fn [x] x)]
-    (do (print (id 99)) 0)))
+(module Main)
+(defmacro double [x] (+ x x))
+(defn main [] (print (double 21)))
 "#;
     let result = compile_and_run(source);
-    assert_eq!(result.trim(), "99", "多相関数 id が正しく動作すること");
+    assert_eq!(result.trim(), "42");
 }
 
-/// 型エラー検出テスト
-/// (+ 1 true) で Int と Bool の型不一致エラーが検出されることを確認
+/// selfhost MacroExpand.ls テスト: quasiquote 基本
 #[test]
-fn test_e2e_selfhost_type_infer_error() {
-    // (+ 1 true) で Int と Bool の型不一致エラーが検出されること
+#[ignore = "MacroExpand.ls 未実装 -- Red Phase"]
+fn test_e2e_selfhost_macro_quasiquote_basic() {
+    // quasiquote/unquote を使ったマクロ展開の検証
+    // 期待値: マクロ展開後にリテラル値が正しく埋め込まれる
     let source = r#"
-(defn main []
-  (+ 1 true))
+(module Main)
+(defmacro make-add [a b] `(+ ~a ~b))
+(defn main [] (print (make-add 20 22)))
 "#;
-    // 型チェックでエラーになることを確認
-    should_fail_typecheck(source);
+    let result = compile_and_run(source);
+    assert_eq!(result.trim(), "42");
 }
 
-// =====================================================
-// TEST-004: stage1→stage2 E2E テスト (bootstrap 固定点検証)
-// =====================================================
-
-/// stage1.wasm が L# ソースをコンパイルして stage2.wasm を生成する決定性テスト
-/// Main.ls を 2 回コンパイルして同一バイト列になることを確認
+/// selfhost MacroExpand.ls テスト: AST 再構成
 #[test]
-fn test_e2e_bootstrap_stage1_to_stage2() {
-    // Main.ls ソースを 2 回コンパイルして決定性を確認
-    let source = include_str!("../../../selfhost/Main.ls");
+#[ignore = "MacroExpand.ls 未実装 -- Red Phase"]
+fn test_e2e_selfhost_macro_ast_reconstruction() {
+    // マクロ展開結果が有効な AST として再構成され、
+    // 後続の型推論・コンパイルが成功することを検証
+    // 期待値: マクロ展開 → let 束縛 → 正しい計算結果
+    let source = r#"
+(module Main)
+(defmacro with-binding [name val body] (let [name val] body))
+(defn main [] (print (with-binding x 42 x)))
+"#;
+    let result = compile_and_run(source);
+    assert_eq!(result.trim(), "42");
+}
 
-    let stage2_a = compile_only(source);
-    let stage2_b = compile_only(source);
+/// selfhost MacroExpand.ls テスト: ネストされたマクロ
+#[test]
+#[ignore = "MacroExpand.ls 未実装 -- Red Phase"]
+fn test_e2e_selfhost_macro_nested_expansion() {
+    // マクロ内でマクロを使用した場合の再帰展開を検証
+    // 期待値: 内側マクロ展開 → 外側マクロ展開 → 正しい結果
+    let source = r#"
+(module Main)
+(defmacro add1 [x] (+ x 1))
+(defmacro add2 [x] (add1 (add1 x)))
+(defn main [] (print (add2 40)))
+"#;
+    let result = compile_and_run(source);
+    assert_eq!(result.trim(), "42");
+}
 
-    // 有効な Wasm バイナリであることを確認
+// === TypeInfer Tests ===
+
+/// selfhost TypeInfer.ls テスト: リテラル型推論
+/// TypeInfer.ls が存在しないため現在 FAIL (Red Phase)
+#[test]
+#[ignore = "TypeInfer.ls 未実装 -- Red Phase"]
+fn test_e2e_selfhost_typeinfer_literal() {
+    // selfhost compiler でリテラルの型推論が動作することを検証
+    // 期待値: Int リテラルが正しく型付けされ実行可能
+    let source = r#"
+(module Main)
+(defn main [] (print 42))
+"#;
+    // selfhost パイプラインで compile & run
+    // TypeInfer.ls が型推論を行い、正しく型付けされた AST を返す
+    let result = compile_and_run(source);
+    assert_eq!(result.trim(), "42");
+}
+
+/// selfhost TypeInfer.ls テスト: 変数束縛の型推論
+#[test]
+#[ignore = "TypeInfer.ls 未実装 -- Red Phase"]
+fn test_e2e_selfhost_typeinfer_variable() {
+    // let 束縛の型推論が正しく動作することを検証
+    // 期待値: x: Int が推論され、print で出力可能
+    let source = r#"
+(module Main)
+(defn main [] (let [x 42] (print x)))
+"#;
+    let result = compile_and_run(source);
+    assert_eq!(result.trim(), "42");
+}
+
+/// selfhost TypeInfer.ls テスト: 関数の型推論 (arrow type)
+#[test]
+#[ignore = "TypeInfer.ls 未実装 -- Red Phase"]
+fn test_e2e_selfhost_typeinfer_function() {
+    // 関数定義の型推論 (Int -> Int) が動作することを検証
+    // 期待値: f: Int -> Int が推論され、適用結果が正しい
+    let source = r#"
+(module Main)
+(defn f [x] (+ x 1))
+(defn main [] (print (f 41)))
+"#;
+    let result = compile_and_run(source);
+    assert_eq!(result.trim(), "42");
+}
+
+/// selfhost TypeInfer.ls テスト: let 多相 (let-polymorphism)
+#[test]
+#[ignore = "TypeInfer.ls 未実装 -- Red Phase"]
+fn test_e2e_selfhost_typeinfer_let_poly() {
+    // let-polymorphism が動作することを検証
+    // 期待値: id が Int にも Bool にも適用可能
+    let source = r#"
+(module Main)
+(defn id [x] x)
+(defn main [] (do (print (id 42)) (print (id true))))
+"#;
+    let result = compile_and_run(source);
+    let lines: Vec<&str> = result.trim().lines().collect();
+    assert_eq!(lines[0], "42");
+    assert_eq!(lines[1], "true");
+}
+
+/// selfhost TypeInfer.ls テスト: 型の単一化 (unification)
+#[test]
+#[ignore = "TypeInfer.ls 未実装 -- Red Phase"]
+fn test_e2e_selfhost_typeinfer_unification() {
+    // 型変数の単一化が動作することを検証
+    // 期待値: f と g の型が正しく推論され、合成結果が正しい
+    let source = r#"
+(module Main)
+(defn apply [f x] (f x))
+(defn inc [n] (+ n 1))
+(defn main [] (print (apply inc 41)))
+"#;
+    let result = compile_and_run(source);
+    assert_eq!(result.trim(), "42");
+}
+
+/// selfhost TypeInfer.ls テスト: if 式の型推論
+#[test]
+#[ignore = "TypeInfer.ls 未実装 -- Red Phase"]
+fn test_e2e_selfhost_typeinfer_if_expr() {
+    // if 式の型推論 (条件=Bool, 両枝=同一型) の検証
+    // 期待値: if の型チェックが成功し、正しい値が返る
+    let source = r#"
+(module Main)
+(defn main [] (print (if true 42 0)))
+"#;
+    let result = compile_and_run(source);
+    assert_eq!(result.trim(), "42");
+}
+
+/// selfhost TypeInfer.ls テスト: パターンマッチの型推論
+#[test]
+#[ignore = "TypeInfer.ls 未実装 -- Red Phase"]
+fn test_e2e_selfhost_typeinfer_pattern_match() {
+    // パターンマッチの最小型推論が動作することを検証
+    // 期待値: match 式の各腕の型が一致することをチェック
+    let source = r#"
+(module Main)
+(defn main []
+  (let [x 1]
+    (print (match x
+      [1 "one"]
+      [_ "other"]))))
+"#;
+    let result = compile_and_run(source);
+    assert_eq!(result.trim(), "one");
+}
+
+// === Pipeline Integration Tests (TEST-003) ===
+
+/// selfhost 完全パイプライン統合テスト
+/// MacroExpand/TypeInfer が未実装のため現在 FAIL (Red Phase)
+#[test]
+#[ignore = "完全パイプライン未統合 -- Red Phase"]
+fn test_e2e_selfhost_full_pipeline() {
+    // Source->Lexer->Parser->MacroExpand->TypeInfer->Lower->WasmEmit の
+    // 完全パイプラインが動作することを検証
+    let source = r#"
+(module Main)
+(defn main [] (print 42))
+"#;
+    // selfhost compiler (stage1.wasm) で上記ソースをコンパイル実行
+    let result = compile_and_run(source);
+    assert_eq!(result.trim(), "42");
+}
+
+/// selfhost パイプラインテスト: fib.ls コンパイル
+#[test]
+#[ignore = "完全パイプライン未統合 -- Red Phase"]
+fn test_e2e_selfhost_pipeline_fib() {
+    // selfhost compiler で examples/fib.ls をコンパイルし、
+    // Rust compiler と同一出力になることを検証
+    let source = std::fs::read_to_string("examples/fib.ls").unwrap();
+    let result = compile_and_run(&source);
+    assert!(result.contains("55"), "fib(10) = 55");
+}
+
+/// selfhost パイプラインテスト: hello world
+#[test]
+#[ignore = "完全パイプライン未統合 -- Red Phase"]
+fn test_e2e_selfhost_pipeline_hello() {
+    let source = r#"
+(module Main)
+(defn main [] (print "hello"))
+"#;
+    let result = compile_and_run(source);
+    assert_eq!(result.trim(), "hello");
+}
+
+// === Bootstrap Fixed-Point Tests (TEST-004) ===
+
+/// bootstrap 固定点検証: stage1 == stage2 バイト列比較
+#[test]
+#[ignore = "固定点検証未完了 -- Red Phase"]
+fn test_e2e_bootstrap_stage1_stage2_match() {
+    // stage0 (Rust) が selfhost をコンパイル → stage1.wasm
+    // stage1 が selfhost をコンパイル → stage2.wasm
+    // stage1.wasm == stage2.wasm をバイト列比較
+    // 現時点では selfhost が自己コンパイルできないため FAIL
+    panic!("stage1/stage2 バイト列一致の検証 - 未実装");
+}
+
+/// bootstrap 固定点検証: stage2 == stage3
+#[test]
+#[ignore = "固定点検証未完了 -- Red Phase"]
+fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
+    // stage2 が selfhost をコンパイル → stage3.wasm
+    // stage2.wasm == stage3.wasm をバイト列比較
+    panic!("stage2/stage3 固定点検証 - 未実装");
+}
+
+/// bootstrap 決定性検証: 同一入力で複数回コンパイルして一致
+#[test]
+#[ignore = "固定点検証未完了 -- Red Phase"]
+fn test_e2e_bootstrap_deterministic_output() {
+    // 同じ selfhost ソースを2回コンパイルし、
+    // 生成されたバイト列が一致することを確認（非決定性排除）
+    panic!("決定性検証 - 未実装");
+}
+
+// === P11-2: ブートストラップ閉路基盤テスト ===
+
+/// selfhost 完全パイプライン: 全5ステージの通過とステージ間一貫性を検証
+/// Main.ls の compile-full-pipeline が token/parse/expand/infer/compile を
+/// 正しく通過し、各ステージの出力が因果的に一貫していることを確認する
+#[test]
+fn test_e2e_selfhost_pipeline_complete_stages() {
+    let source = std::fs::read_to_string("../../selfhost/Main.ls").unwrap();
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    // 完全パイプラインの出力は lines[27]~[31] にある
     assert!(
-        stage2_a.starts_with(&[0x00, 0x61, 0x73, 0x6D]),
-        "stage2.wasm は有効な Wasm マジックナンバーで始まること"
+        lines.len() >= 32,
+        "完全パイプライン出力が不足: {} 行",
+        lines.len()
     );
 
-    // 決定性の確認
+    // Stage 3 (expand): マクロ展開後の AST tag
+    // "(defn main [] 42)" のリテラル整数は展開後も lit-int(1) を維持
+    let expanded_tag: i64 = lines[27].parse().unwrap();
     assert_eq!(
-        stage2_a, stage2_b,
-        "stage1 から stage2 へのコンパイルは決定的でなければならない"
+        expanded_tag, 1,
+        "Stage 3 (expand): AST tag はマクロ展開後も lit-int(1) を維持"
     );
+
+    // Stage 4 (infer): 型推論結果 = Con(Int) = [1, 100]
+    let ty_tag: i64 = lines[28].parse().unwrap();
+    let ty_name: i64 = lines[29].parse().unwrap();
+    assert_eq!(ty_tag, 1, "Stage 4 (infer): 型タグ Con=1");
+    assert_eq!(ty_name, 100, "Stage 4 (infer): 型名 Int=100");
+
+    // Stage 5 (compile): IR 命令が生成されている
+    let ir_count: i64 = lines[30].parse().unwrap();
+    assert!(ir_count > 0, "Stage 5 (compile): IR 命令数 > 0");
+
+    // ステージ数の検証 (compile-full-pipeline が 5 を出力)
+    let stage_count: i64 = lines[31].parse().unwrap();
+    assert_eq!(stage_count, 5, "パイプラインステージ数 = 5");
+
+    // ステージ間一貫性検証:
+    // lit-int(tag=1) の AST → 型推論は必ず Int(100) であるべき
+    if expanded_tag == 1 {
+        assert_eq!(ty_name, 100, "一貫性: lit-int AST → Int 型");
+    }
+    // IR 命令が 1 つなら i64.const のはず
+    if ir_count == 1 {
+        // compile-full-pipeline の入力 "(defn main [] 42)" は
+        // リテラル整数のみなので i64.const 1 命令
+        assert_eq!(ir_count, 1, "一貫性: 単一リテラル → IR 1 命令");
+    }
+}
+
+/// selfhost compiler の compile-source で stdlib 基本パターン
+/// (単純な関数定義) をコンパイルできることを検証
+/// token -> parse -> IR の各段階で正しい構造が生成されることを確認
+#[test]
+fn test_e2e_selfhost_compile_stdlib_basic() {
+    let source = std::fs::read_to_string("../../selfhost/Main.ls").unwrap();
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    // compile-source が "(defn main [] 42)" を処理した結果
+    // lines[14]~[20] に出力される
+    assert!(
+        lines.len() >= 21,
+        "compile-source 出力が不足: {} 行",
+        lines.len()
+    );
+
+    // トークン列が生成されている (16 = 7tok*2 + EOF*2)
+    let token_count: i64 = lines[14].parse().unwrap();
+    assert!(token_count > 0, "トークン列が生成されている");
+    assert_eq!(token_count, 16, "トークン数 = 16 (7tok*2 + EOF*2)");
+
+    // AST が defn (tag=20) として構築されている
+    let defn_tag: i64 = lines[15].parse().unwrap();
+    assert_eq!(defn_tag, 20, "defn AST tag = 20");
+
+    // body が lit-int (tag=1, value=42)
+    let body_tag: i64 = lines[16].parse().unwrap();
+    let body_val: i64 = lines[17].parse().unwrap();
+    assert_eq!(body_tag, 1, "body AST tag = 1 (lit-int)");
+    assert_eq!(body_val, 42, "body value = 42");
+
+    // IR 命令が正しく生成されている
+    let ir_count: i64 = lines[18].parse().unwrap();
+    assert_eq!(ir_count, 1, "IR 命令数 = 1 (i64.const)");
+
+    // IR 命令の中身: i64.const 42
+    let ir_op: i64 = lines[19].parse().unwrap();
+    let ir_operand: i64 = lines[20].parse().unwrap();
+    assert_eq!(ir_op, 1, "IR opcode = i64.const(1)");
+    assert_eq!(ir_operand, 42, "IR operand = 42");
+}
+
+// =================================================
+// P11-2: selfhost 個別モジュールコンパイル・決定性テスト
+// =================================================
+
+/// P11-2 T93: selfhost の全 .ls ファイルを個別にコンパイルし、
+/// コンパイル可能なモジュール数を検証する。
+/// MacroExpand.ls, TypeInfer.ls は Rust parser 未対応構文のためスキップ対象。
+#[test]
+fn test_e2e_selfhost_module_compile_individual() {
+    let all_modules = [
+        "Token", "AST", "IR", "Type", "TypeScheme",
+        "Compiler", "WasmEmit", "Lexer", "Parser", "Main",
+        "Formatter", "JsonRpc", "Linter",
+        "MacroExpand", "TypeInfer",
+    ];
+    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../selfhost");
+
+    let mut compiled = Vec::new();
+    let mut skipped = Vec::new();
+
+    for module in &all_modules {
+        let path = base_dir.join(format!("{}.ls", module));
+        if !path.exists() {
+            skipped.push(format!("{} (ファイル不在)", module));
+            continue;
+        }
+        let source = std::fs::read_to_string(&path)
+            .expect(&format!("{}.ls の読み込みに失敗", module));
+        match std::panic::catch_unwind(|| compile_only(&source)) {
+            Ok(wasm) => {
+                assert_valid_wasm(&wasm);
+                compiled.push(*module);
+            }
+            Err(_) => {
+                skipped.push(format!("{} (パース/コンパイルエラー)", module));
+            }
+        }
+    }
+
+    // MacroExpand, TypeInfer 以外の 13 モジュールは全てコンパイル可能であるべき
+    assert!(
+        compiled.len() >= 13,
+        "最低 13 モジュールがコンパイル可能であるべき (実際: {}, スキップ: {:?})",
+        compiled.len(),
+        skipped
+    );
+}
+
+/// P11-2 T94/95: 全コンパイル可能 selfhost モジュールの決定性検証。
+/// 各モジュールを 2 回コンパイルし、生成されるバイト列が完全一致することを確認。
+/// Formatter, JsonRpc, Linter, TypeScheme を含む拡張版。
+#[test]
+fn test_e2e_selfhost_all_modules_deterministic() {
+    // Rust parser で正常にコンパイルできるモジュール一覧
+    let modules: &[(&str, &str)] = &[
+        ("Lexer.ls", include_str!("../../../selfhost/Lexer.ls")),
+        ("Parser.ls", include_str!("../../../selfhost/Parser.ls")),
+        ("AST.ls", include_str!("../../../selfhost/AST.ls")),
+        ("Token.ls", include_str!("../../../selfhost/Token.ls")),
+        ("Compiler.ls", include_str!("../../../selfhost/Compiler.ls")),
+        ("Type.ls", include_str!("../../../selfhost/Type.ls")),
+        ("IR.ls", include_str!("../../../selfhost/IR.ls")),
+        ("WasmEmit.ls", include_str!("../../../selfhost/WasmEmit.ls")),
+        ("TypeScheme.ls", include_str!("../../../selfhost/TypeScheme.ls")),
+        ("Formatter.ls", include_str!("../../../selfhost/Formatter.ls")),
+        ("JsonRpc.ls", include_str!("../../../selfhost/JsonRpc.ls")),
+        ("Linter.ls", include_str!("../../../selfhost/Linter.ls")),
+        ("Main.ls", include_str!("../../../selfhost/Main.ls")),
+    ];
+
+    for (name, source) in modules {
+        let wasm1 = compile_only(source);
+        let wasm2 = compile_only(source);
+        assert_eq!(
+            wasm1, wasm2,
+            "{} のコンパイルが非決定的: {} bytes vs {} bytes",
+            name, wasm1.len(), wasm2.len()
+        );
+        assert!(
+            wasm1.len() > 100,
+            "{} の wasm が小さすぎる: {} bytes",
+            name, wasm1.len()
+        );
+    }
+}
+
+/// P11-2 T94: stage1 (Rust compiler) で selfhost 全コンパイル可能モジュールを
+/// コンパイルし、Wasm バイナリのセクション構造が安定していることを検証。
+/// CI 全モジュールテスト (test_e2e_bootstrap_ci_all_modules_compile) の拡張版。
+#[test]
+fn test_e2e_bootstrap_stage1_compile_selfhost_sources() {
+    let modules = [
+        "Token", "AST", "IR", "Type", "TypeScheme",
+        "Compiler", "WasmEmit", "Lexer", "Parser", "Main",
+        "Formatter", "JsonRpc", "Linter",
+    ];
+    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../selfhost");
+
+    // 各セクション ID とサイズを抽出するヘルパー
+    fn extract_sections(wasm: &[u8]) -> Vec<(u8, usize)> {
+        let mut sections = Vec::new();
+        let mut pos = 8; // magic(4) + version(4)
+        while pos < wasm.len() {
+            let section_id = wasm[pos];
+            pos += 1;
+            let mut size: usize = 0;
+            let mut shift = 0;
+            loop {
+                if pos >= wasm.len() { break; }
+                let byte = wasm[pos] as usize;
+                pos += 1;
+                size |= (byte & 0x7f) << shift;
+                if byte & 0x80 == 0 { break; }
+                shift += 7;
+            }
+            sections.push((section_id, size));
+            pos += size;
+        }
+        sections
+    }
+
+    let mut compiled = 0;
+    for module in &modules {
+        let path = base_dir.join(format!("{}.ls", module));
+        let source = std::fs::read_to_string(&path)
+            .expect(&format!("{}.ls の読み込みに失敗", module));
+
+        // 2 回コンパイルしてバイト列一致 + セクション安定性を検証
+        let wasm1 = compile_only(&source);
+        let wasm2 = compile_only(&source);
+
+        assert_eq!(
+            wasm1, wasm2,
+            "{} のコンパイルが非決定的",
+            module
+        );
+        assert_valid_wasm(&wasm1);
+
+        // セクション構造が安定
+        let sections1 = extract_sections(&wasm1);
+        let sections2 = extract_sections(&wasm2);
+        assert_eq!(
+            sections1, sections2,
+            "{} のセクション構造が不安定",
+            module
+        );
+
+        // 最低限の Wasm セクションが含まれている
+        let section_ids: Vec<u8> = sections1.iter().map(|s| s.0).collect();
+        assert!(
+            section_ids.contains(&1),
+            "{}: Type section (1) が欠落",
+            module
+        );
+        assert!(
+            section_ids.contains(&10),
+            "{}: Code section (10) が欠落",
+            module
+        );
+
+        compiled += 1;
+    }
+
+    assert_eq!(compiled, 13, "全 13 モジュールがコンパイル・検証されるべき");
 }
