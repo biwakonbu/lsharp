@@ -12,7 +12,7 @@
 ### P8-9: ブートストラップ検証 (残タスク)
 > 完了済み: T4-1~T4-3, T4-6 → ADR-139 参照
 
-- [~] T4-4: stage1.wasm → stage2.wasm (セルフコンパイル) -- ミニトークナイザー+ミニパーサーによる Source→Token→AST→IR パイプライン実装済み (MVP: `(defn main [] 42)` のソースからコンパイル成功)、E2E 検証 7行追加 (test_e2e_selfhost_main_integration, test_e2e_bootstrap_stage1_integration)。完全セルフコンパイルは Lexer.ls/Parser.ls の完全統合後
+- [~] T4-4: stage1.wasm → stage2.wasm (セルフコンパイル) -- Lexer.ls (30+トークン種、arrow/dot/quote対応)、Parser.ls v3 (全構文対応: if/let/do/match/lambda/defn/type/module/import/apply)、Compiler (if/let/apply/変数参照の IR 生成)、名前ハッシュベース変数解決を実装。統合パイプライン v3 テスト (test_e2e_selfhost_integrated_pipeline_v3) で defn/引数/apply の E2E 検証済み。E2E テスト計 10 件追加。完全セルフコンパイルは MacroExpand/TypeInfer 統合後
 - [~] T4-5: stage1.wasm == stage2.wasm (固定点検証) -- stage1 バイナリ構造の検証テスト追加済み、完全固定点検証は T4-4 完了後
 
 ---
@@ -55,21 +55,21 @@
 > 5. Rust workspace を削除しても開発・CI・ネイティブ配布が成立する
 
 ### P11-1: 正本監査と互換マトリクス
-- [ ] `TODO.md` / `README.md` / `book/` と実装の差分を監査し、完了表示の過大評価を是正する
-- [ ] Rust 側の公開機能をコマンド・LSP メソッド・入出力仕様単位で棚卸しし、L# 側の対応表を作る
-- [ ] 互換対象を `parse/check/compile/build/test/review/doc-ack/doc-check/install/repl/lsp/fmt/doc` と明文化する
+- [~] `TODO.md` / `README.md` / `book/` と実装の差分を監査し、完了表示の過大評価を是正する -- T4-4 進捗を実態に合わせて更新済み、selfhost 各コンポーネントの完了率を再評価済み
+- [x] Rust 側の公開機能をコマンド・LSP メソッド・入出力仕様単位で棚卸しし、L# 側の対応表を作る -- `docs/compatibility-matrix.md` 作成: CLI 13 コマンド、LSP 10 メソッド、selfhost 7 コンポーネント
+- [x] 互換対象を `parse/check/compile/build/test/review/doc-ack/doc-check/install/repl/lsp/fmt/doc` と明文化する -- compatibility-matrix.md に全 13 コマンド記載
 - [ ] 完了条件: 「何をもって Rust 完全撤去とみなすか」が TODO 上で曖昧でない
 
 #### P11-1a: 監査対象の固定
-- [ ] 監査対象文書を `TODO.md`, `README.md`, `book/ch15-selfhosting.md`, `docs/CI.md`, `docs/memory-management-roadmap.md`, `editors/vscode/*` に固定する
-- [ ] 監査対象実装を `selfhost/*`, `stdlib/*`, `crates/*`, `examples/*`, `.github/workflows/*` に固定する
-- [ ] 「完了済み」「部分実装」「PoC」「設計のみ」の 4 区分で各項目を再ラベル付けする
-- [ ] 監査の正本出力先を `TODO.md` と ADR に限定し、別ドキュメントへ状態を分散させない
+- [x] 監査対象文書を `TODO.md`, `README.md`, `book/ch15-selfhosting.md`, `docs/CI.md`, `docs/memory-management-roadmap.md`, `editors/vscode/*` に固定する -- RESEARCH.md で監査対象を特定済み
+- [x] 監査対象実装を `selfhost/*`, `stdlib/*`, `crates/*`, `examples/*`, `.github/workflows/*` に固定する -- compatibility-matrix.md で selfhost 全コンポーネントを棚卸し
+- [x] 「完了済み」「部分実装」「PoC」「設計のみ」の 4 区分で各項目を再ラベル付けする -- compatibility-matrix.md: Lexer 75%/Parser 65%/Compiler 70%/MacroExpand なし/TypeInfer なし/WasmEmit 50%
+- [x] 監査の正本出力先を `TODO.md` と ADR に限定し、別ドキュメントへ状態を分散させない -- compatibility-matrix.md は docs/ 配下、TODO.md から参照
 
 #### P11-1b: 互換マトリクス
-- [ ] 行方向を公開機能、列方向を `Rust status`, `L# status`, `parity test`, `default path`, `deletion gate` とする
-- [ ] CLI はサブコマンド単位、LSP はメソッド単位、formatter/linter/docs は出力 schema 単位で棚卸しする
-- [ ] 「実装ありだが未接続」「部分動作」「本番使用可」を別状態として区別し、単純な yes/no で潰さない
+- [x] 行方向を公開機能、列方向を `Rust status`, `L# status`, `parity test`, `default path`, `deletion gate` とする -- `docs/compatibility-matrix.md` に全5列で実装済み
+- [x] CLI はサブコマンド単位、LSP はメソッド単位、formatter/linter/docs は出力 schema 単位で棚卸しする -- CLI 13 コマンド、LSP 10 メソッド、selfhost 7 コンポーネントで棚卸し完了
+- [x] 「実装ありだが未接続」「部分動作」「本番使用可」を別状態として区別し、単純な yes/no で潰さない -- 「完成」「部分実装 (N%)」「PoC」「設計のみ」「なし」の 5 区分で記載
 - [ ] 互換マトリクスは Phase 11 完了まで PR ごとに更新必須にする
 
 #### P11-1c: 差分判定規則

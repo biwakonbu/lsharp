@@ -92,9 +92,13 @@
                         (if (string-eq name "impl") 41
                           (if (string-eq name "where") 42
                             (if (string-eq name "private") 43
-                              (if (string-eq name "true") 13
-                                (if (string-eq name "false") 14
-                                  20)))))))))))))))))
+                              (if (string-eq name "open") 44
+                                (if (string-eq name "constrained") 45
+                                  (if (string-eq name "computation") 46
+                                    (if (string-eq name "defmacro") 47
+                                      (if (string-eq name "true") 13
+                                        (if (string-eq name "false") 14
+                                          20)))))))))))))))))))))
 
 ;; === 数値読み取り ===
 
@@ -145,18 +149,32 @@
                 (if (== c 125) (+ (* 5 1000000) (+ pos 1))  ;; } -> RBrace
                   (if (== c 58) (+ (* 50 1000000) (+ pos 1))  ;; : -> Colon
                     (if (== c 124) (+ (* 52 1000000) (+ pos 1))  ;; | -> Pipe
-                      (if (== c 34) ;; " -> String
-                        (let [end (scan-string-end src (+ pos 1) len)]
-                          (+ (* 12 1000000) end))
-                        (if (is-digit-char c)
-                          (let [end (scan-digits src (+ pos 1) len)]
-                            (+ (* 10 1000000) end))  ;; Int
-                          (if (is-symbol-start c)
-                            (let [end (scan-symbol-end src (+ pos 1) len)
-                                  name (substring src pos end)
-                                  kind (classify-symbol name)]
-                              (+ (* kind 1000000) end))
-                            (+ (* 99 1000000) (+ pos 1)))))))))))))))) ;; unknown -> skip
+                      (if (== c 46) (+ (* 53 1000000) (+ pos 1))  ;; . -> Dot
+                        (if (== c 39) (+ (* 18 1000000) (+ pos 1))  ;; ' -> Quote
+                          (if (== c 34) ;; " -> String
+                            (let [end (scan-string-end src (+ pos 1) len)]
+                              (+ (* 12 1000000) end))
+                            ;; -> (arrow) の特殊処理: - の後に > が続く場合
+                            (if (== c 45)
+                              (if (< (+ pos 1) len)
+                                (if (== (string-char-at src (+ pos 1)) 62) ;; >
+                                  (+ (* 51 1000000) (+ pos 2))  ;; -> -> Arrow
+                                  ;; - で始まるシンボル
+                                  (let [end (scan-symbol-end src (+ pos 1) len)
+                                        name (substring src pos end)
+                                        kind (classify-symbol name)]
+                                    (+ (* kind 1000000) end)))
+                                ;; ソース末尾の - (シンボル)
+                                (+ (* 20 1000000) (+ pos 1)))
+                              (if (is-digit-char c)
+                                (let [end (scan-digits src (+ pos 1) len)]
+                                  (+ (* 10 1000000) end))  ;; Int
+                                (if (is-symbol-start c)
+                                  (let [end (scan-symbol-end src (+ pos 1) len)
+                                        name (substring src pos end)
+                                        kind (classify-symbol name)]
+                                    (+ (* kind 1000000) end))
+                                  (+ (* 99 1000000) (+ pos 1))))))))))))))))))) ;; unknown -> skip
 
 ;; 全トークンを Vector に収集 (kind のみ、後方互換)
 (defn tokenize-loop [src pos len tokens]
