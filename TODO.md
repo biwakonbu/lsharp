@@ -1,16 +1,13 @@
 # L# セルフホスティング & エコシステム TODO
 
-> 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち
+> 凡例: `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち
 >
-> **完了済みフェーズ**: Phase 0-7, P9-1/3/4 は完了。詳細は `docs/adr/decisions-001.jsonl` (ADR-093〜ADR-122) を参照
+> **完了済みタスク**: Phase 0-7, P1-2, P2-3, P8-1〜P8-4, P9-1〜P9-4, BUG-1〜3, IMP-1〜4, QA-1〜5 は完了。
+> 詳細は `docs/adr/decisions-001.jsonl` (ADR-001〜ADR-122) を参照
 
 ---
 
 ## Phase 1: 文字列操作
-
-### P1-2: 文字列リテラルのヒープ化
-- [x] data section offset → ヒープ上 String オブジェクト (tag=1, len, bytes) への変換 -- E2E 8件追加、既存 string 15件 + stdlib/selfhost/map 20件パス
-- [x] 既存の文字列関連テストが引き続きパスすることを確認 -- 全 199 E2E テストパス
 
 ### P1-3: WASI ファイル I/O & 標準入出力 (P9-6 前提)
 - [ ] fd_read / fd_write の WASI syscall ラッパー (stdin/stdout/stderr)
@@ -20,48 +17,11 @@
 
 ---
 
-## Phase 2: 動的コレクション
-
-### P2-3: ハッシュマップ
-- [x] FNV-1a + Open Addressing HashMap -- 整数キー・文字列キー両対応、insert/get/contains/remove/overwrite、E2E テスト 15件 + stdlib E2E 3件
-
----
-
-## Phase 7: 標準ライブラリ (L# で記述)
-
-- [x] stdlib のコンパイル・テスト自動化 -- E2E 10件追加 (Char/Debug/Set + IO 2件 + Map 3件 + Vector 3件)
-
----
-
 ## Phase 8: セルフホスティング
 
 ### ブートストラップ戦略
 > 最小サブセットで開始: `let` / 再帰 / `if` / `match` / ADT / Record / モジュール
 > HKT/GADT/トレイト制約等の高度機能はセルフホスト後に段階追加
-
-### P8-1: L# で Lexer を実装
-- [x] Token ADT 定義 -- selfhost/Token.ls (整数タグ方式)
-- [x] 文字列走査による字句解析 -- selfhost/Lexer.ls (tokenize/lex-one/classify-symbol)
-- [x] Rust 版 lexer との出力比較テスト -- E2E テスト 3件パス (基本トークナイズ + 比較テスト 2件)
-
-### P8-2: L# で Parser を実装
-- [x] AST の ADT 定義 -- selfhost/AST.ls (整数タグ + Vector 方式)
-- [x] 再帰降下パーサー -- selfhost/Parser.ls (parse-expr/parse-sexp)
-- [x] Rust 版 parser との出力比較テスト -- E2E テスト 3件パス (基本 S 式パース + 比較テスト 2件)
-
-### P8-3: L# で型推論を実装
-- [x] 型 ADT (Con, Var, Fun) 定義 -- selfhost/Type.ls (整数タグ + Vector)
-- [x] Substitution (HashMap ベース) -- subst-new/bind/lookup 実装
-- [x] Unification アルゴリズム -- unify-simple (Con/Var), occurs-check, E2E テスト 1件
-- [x] let 多相 + 型注釈 -- selfhost/TypeScheme.ls (instantiate/generalize/free-vars), E2E 1件
-- [x] Rust 版型推論との出力比較テスト -- E2E テスト 3件パス (型構築 + Substitution + Unification + 比較テスト 1件)
-
-### P8-4: L# で IR Lowering + Codegen を実装
-- [x] IR ADT 定義 -- selfhost/IR.ls (命令タグ + Vector)
-- [x] AST → IR 変換 -- selfhost/Compiler.ls (compile-expr: lit/var/bool), E2E 1件
-- [x] LEB128 エンコーディング -- selfhost/Compiler.ls (leb128-unsigned), E2E 1件
-- [x] Wasm バイナリ生成 -- selfhost/WasmEmit.ls (ヘッダー/Type セクション/LEB128), E2E 1件
-- [x] Rust 版 codegen との出力比較テスト -- E2E テスト 3件パス (IR 命令構築 + Compiler + 比較テスト 1件)
 
 ### P8-5: Rust版コンパイラの制限解除 (セルフコンパイル前提)
 - [ ] T0-1: 相互再帰関数の前方参照対応 -- infer_decl_functions の2パス化 (1パス目: 全 defn の型変数仮登録、2パス目: 本推論)
@@ -97,7 +57,6 @@
 - [ ] T3-8: WasmEmit.ls: 符号付き LEB128 -- 負数・大きな値の正しいエンコード
 
 ### P8-9: ブートストラップ検証
-- [x] Rust 版 → stage1.wasm (L# コンパイラ) -- 個別モジュール E2E 9件 + Main.ls 統合パイプライン E2E 2件 (AST→IR→Wasm 統合検証)
 - [ ] T4-1: Main.ls: WASI ファイル I/O 統合 -- read-file でソース読込、write-file で .wasm 出力
 - [ ] T4-2: Main.ls: モジュール結合 -- 全 selfhost ファイルを1ファイル結合 (推奨)
 - [ ] T4-3: stage1 E2E テスト -- stage1.wasm にテスト用 .ls を食わせて出力 .wasm を検証
@@ -108,15 +67,6 @@
 ---
 
 ## Phase 9: エコシステム
-
-### P9-2: LSP
-- [x] `crates/lsharp-lsp` クレート作成 -- tower-lsp 0.20, LsharpBackend 構造体
-- [x] tower-lsp 統合 -- initialize/shutdown/did_open/did_change ハンドラ
-- [x] エラー診断発行 -- parse_and_check で Diagnostic 化
-- [x] 定義ジャンプ -- find_definition + ドキュメントキャッシュ + goto_definition ハンドラ接続、テスト 5件
-- [x] 型ホバー -- find_type_at_position + hover ハンドラ接続、テスト 3件
-- [x] completion 基本実装 -- キーワード 17種 + 関数名/変数名収集、テスト 5件
-- [x] references / rename / formatting -- モジュール分割 (util/references/rename/format.rs) + ソースキャッシュ追加、ユニットテスト 23件追加 (計 27件)
 
 ### P9-6: VSCode 拡張 (L# ネイティブ)
 > 全コアロジックを L# → Wasm で実装。VSCode 拡張シェルのみ TypeScript (最小限)
@@ -185,50 +135,9 @@
 
 ---
 
-## 構造的バグ (ADR proposed 高優先度)
-
-- [x] BUG-1 (ADR-064): FieldAccess の型解決がフィールド名のみに依存 -- infer_expr_type_name に FieldAccess/Let/RecordUpdate/Match/If 対応追加、テスト 7件
-- [x] BUG-2 (ADR-067): RecordUpdate の型推定がフィールド名のみに依存 -- BUG-1 と同時修正 (infer_expr_type_name 拡張)
-- [x] BUG-3 (ADR-073): lower_match_arms のコンストラクタパターンでタグ比較命令がスタックに積まれず If 発行 -- 引数なし/付き両方で最後の腕でもタグ比較を発行、テスト 3件
-
----
-
-## リファクタリング・改善 (ADR proposed 中優先度)
-
-- [x] IMP-1 (ADR-054): パーサーのエラーリカバリ -- parse_program_recovering + ParseError::Multiple で実装済み、検証テスト 2件追加
-- [x] IMP-2 (ADR-055): 制約階層の互換性チェック -- check_constraint_compatibility + is_subtype_constraints で実装済み、検証テスト 3件追加
-- [x] IMP-3 (ADR-056): config.rs のエラーハンドリング改善 -- load_config_result + ConfigError で実装済み、検証テスト 3件追加
-- [x] IMP-4 (ADR-066): run_wasm_wasi ヘルパー 3 箇所の重複解消 -- wasi_runner.rs に統合済み、検証テスト 4件追加
-
----
-
-## テスト・品質基盤 (低優先度)
-
-- [x] QA-1 (ADR-057): 正規表現エンジン NFA→DFA 変換 + Unicode 文字クラス -- regex/ モジュール分割 + 部分集合構成法 DFA + \p{L}/\p{N} 対応、テスト 34件
-- [x] QA-2 (ADR-072): parse_test_output の generate_sample_args 重複呼び出し最適化 -- HashMap キャッシュ導入、テスト 3件追加
-- [x] QA-3 (ADR-075): 型推論結果の HashMap 化 (線形探索→O(1)) -- Lower.type_results が HashMap であることを検証、テスト 2件追加
-- [x] QA-4 (ADR-077): snapshot テスト拡大 (codegen/wasi の Wasm バイナリ) -- Wasm 14件 + IR 8件 = 22 スナップショットテスト追加
-- [x] QA-5 (ADR-078): criterion ベンチマーク追加 -- parse/infer/lower/codegen/full_pipeline x simple/fibonacci = 10 ベンチマーク
-
----
-
 ## CI/CD
 
-- [x] GitHub Actions ワークフロー作成 (`cargo test` + `cargo clippy` + `cargo fmt --check`) -- .github/workflows/ci.yml
 - [ ] ブートストラップ CI (P8-5 完了後: stage1 生成 → 比較)
-- [x] PR 自動テスト + マージブロック設定 -- ci-gate 集約ジョブ追加、docs/CI.md に設定手順記載
-
----
-
-## 既存の未完了タスク (Phase に統合済み)
-
-| 旧 ID | 内容 | 統合先 |
-|--------|------|--------|
-| P3-3 | `:invariant` の実行評価 | **完了** -- E2E テスト 4件追加 (実行評価パイプライン検証) |
-| P3-3 | `:example` の実行評価 | **完了** -- 同上 |
-| R-S1 | エラー型の統一 (`thiserror`) | **完了** -- `LsharpError` 統一エラー型 + テスト 7件 |
-| R-S3 | WasmGC feature flag 導入 | アーキテクチャ方針: リニアメモリ正式基盤化で不要に (ADR-076 も同様) |
-| R-S6 | `string_data` の RefCell 見直し | **完了** -- RefCell/Cell を直接フィールドに置換、&mut self 統一 |
 
 ---
 
@@ -240,13 +149,3 @@
 - [ ] Region 最適化 -- GC の代替ではなく補助最適化。短命オブジェクト/一時バッファ/コンパイラ内部ワーク領域向け
 - [ ] WasmGC 最適化バックエンド -- optional backend。browser/対応ランタイム向け。mainline の値表現・ABI は linear memory 基盤を維持
 - [ ] 詳細ロードマップを維持 -- `docs/memory-management-roadmap.md` を唯一の正本として更新
-
-### パターンマッチ
-- [x] 引数付きコンストラクタパターン (深さ 1) は対応済み
-- [x] ネストしたコンストラクタパターン (深さ 2 以上) -- E2E テスト 2件追加
-- [x] ガード条件 (when 節) -- E2E テスト 2件追加
-- ワイルドカード `_` + リテラル + 変数 + Bool パターン対応
-
-### 正規表現エンジン
-- [x] NFA → DFA 変換による最適化 -- 部分集合構成法、状態上限 256、NFA フォールバック
-- [x] Unicode 文字クラス (`\p{L}`, `\p{N}`) -- char::is_alphabetic/is_numeric による判定
