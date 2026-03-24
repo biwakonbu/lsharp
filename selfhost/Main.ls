@@ -139,6 +139,18 @@
 (defn env-lookup [env name-hash]
   (map-get env name-hash))
 
+;; ビルトイン演算子の IR オペコード (名前ハッシュから判定)
+;; 単一文字演算子: hash = ASCII コード
+(defn builtin-opcode [h]
+  (if (= h 43) 20   ;; + → i64.add
+    (if (= h 45) 21   ;; - → i64.sub
+      (if (= h 42) 22   ;; * → i64.mul
+        (if (= h 47) 23   ;; / → i64.div
+          (if (= h 61) 30   ;; = → i64.eq
+            (if (= h 62) 33   ;; > → i64.gt
+              (if (= h 60) 32   ;; < → i64.lt
+                0))))))))
+
 ;; AST ノードを IR 命令列に変換
 (defn compile-expr [node env instrs]
   (let [tag (vector-get node 0)]
@@ -150,13 +162,42 @@
         (emit-to instrs 1 (vector-get node 1))
         (if (= tag 4)
           ;; 変数参照: local.get idx
-          (let [name-hash (vector-get node 1)
-                idx (env-lookup env name-hash)]
+          (let [key (vector-get node 1)
+                idx (env-lookup env key)]
             (if (= idx 0)
               (emit-to instrs 1 0)
               (emit-to instrs 10 idx)))
-          ;; その他: 未実装
-          (emit-to instrs 1 0))))))
+          (if (= tag 6)
+            ;; if 式: cond → if → then → else → end
+            (let [i1 (compile-expr (vector-get node 1) env instrs)
+                  i2 (emit-to i1 41 0)
+                  i3 (compile-expr (vector-get node 2) env i2)
+                  i4 (emit-to i3 43 0)
+                  i5 (compile-expr (vector-get node 3) env i4)]
+              (emit-to i5 43 0))
+            (if (= tag 7)
+              ;; let 式: init → local.set → body
+              (let [key (vector-get node 1)
+                    init (vector-get node 2)
+                    body (vector-get node 3)
+                    i1 (compile-expr init env instrs)
+                    new-idx (+ 1 (map-size env))
+                    i2 (emit-to i1 11 new-idx)
+                    new-env (env-bind env key new-idx)]
+                (compile-expr body new-env i2))
+              (if (= tag 5)
+                ;; apply: ビルトイン演算子 or 関数呼び出し
+                (let [func (vector-get node 1)
+                      bop (if (= (vector-get func 0) 4)
+                             (builtin-opcode (vector-get func 1)) 0)]
+                  (if (> bop 0)
+                    (let [i1 (compile-expr (vector-get node 3) env instrs)
+                          i2 (compile-expr (vector-get node 4) env i1)]
+                      (emit-to i2 bop 0))
+                    (emit-to instrs 1 0)))
+                ;; その他: 未実装
+                (emit-to instrs 1 0)))))))))
+
 
 ;; ============================================================
 ;; WasmEmit (WasmEmit.ls より)
