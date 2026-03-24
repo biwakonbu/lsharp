@@ -175,6 +175,25 @@
           0))
       0)))
 
+;; === P9-6c: LSP Diagnostic 変換 ===
+
+;; リント診断を LSP Diagnostic 形式に変換
+;; 入力: [severity, rule-id, line, col, msg-hash]
+;; 出力: [start-line, start-col, severity, rule-id]
+(defn make-lsp-diagnostic [diagnostic]
+  (let [v (vector-new 4)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push v (diag-line diagnostic))
+          (vector-get diagnostic 3))
+        (diag-severity diagnostic))
+      (diag-rule diagnostic))))
+
+;; リント結果から LSP publishDiagnostics 用の診断数を返す
+(defn diagnostics-to-lsp-count [results]
+  (vector-length results))
+
 ;; === ルール一括実行 ===
 
 ;; 単一ノードに全ルールを適用し、結果を集約
@@ -231,7 +250,13 @@
         match-not (ast-contains-var match-node 77)
         ;; let x = 42 in (match 0 [1 x]) → x は使用されている → 警告なし
         used-match-let (vector-push (vector-push (vector-push (vector-push (vector-new 4) 7) 99) (make-lit-int 42)) match-node)
-        d-used-match (check-unused-var used-match-let)]
+        d-used-match (check-unused-var used-match-let)
+
+        ;; === P9-6c: LSP 統合テスト ===
+        ;; 診断情報を LSP Diagnostic 形式に変換
+        lsp-d1 (make-lsp-diagnostic d1)
+        ;; publishDiagnostics 用の診断数カウント
+        lsp-count (diagnostics-to-lsp-count r3)]
     (do
       ;; 診断情報の検証
       (print (diag-severity d1))  ;; 1 (warning)
@@ -272,5 +297,14 @@
       (print match-not)                ;; 0 (var 77 not found)
       ;; match ノード: let 経由の未使用変数検出 → 警告なし
       (print d-used-match)             ;; 0
+
+      ;; === P9-6c: LSP 統合検証 ===
+      ;; LSP Diagnostic: [start-line, start-col, severity, rule-id]
+      (print (vector-get lsp-d1 0))    ;; 10 (start-line)
+      (print (vector-get lsp-d1 1))    ;; 5  (start-col)
+      (print (vector-get lsp-d1 2))    ;; 1  (severity: warning)
+      (print (vector-get lsp-d1 3))    ;; 100 (code: unused-var)
+      ;; publishDiagnostics 診断数
+      (print lsp-count)                ;; 3
 
       0)))

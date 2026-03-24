@@ -362,6 +362,38 @@
       0)
     0))
 
+;; 'if' キーワードかチェック (2文字先読み)
+(defn is-if-keyword [src pos len]
+  (if (< (+ pos 1) len)
+    (if (= (string-char-at src pos) 105)
+      (if (= (string-char-at src (+ pos 1)) 102)
+        ;; 次が区切り文字であること
+        (if (< (+ pos 2) len)
+          (let [ch (string-char-at src (+ pos 2))]
+            (if (= (is-whitespace ch) 1) 1
+              (if (= ch 40) 1 0)))
+          1)
+        0)
+      0)
+    0))
+
+;; 'let' キーワードかチェック (3文字先読み)
+(defn is-let-keyword [src pos len]
+  (if (< (+ pos 2) len)
+    (if (= (string-char-at src pos) 108)
+      (if (= (string-char-at src (+ pos 1)) 101)
+        (if (= (string-char-at src (+ pos 2)) 116)
+          ;; 次が区切り文字であること
+          (if (< (+ pos 3) len)
+            (let [ch (string-char-at src (+ pos 3))]
+              (if (= (is-whitespace ch) 1) 1
+                (if (= ch 91) 1 0)))
+            1)
+          0)
+        0)
+      0)
+    0))
+
 ;; 1 トークンをスキャン
 (defn mini-scan-one [src len pos tokens]
   (if (>= (ref-get pos) len)
@@ -388,10 +420,20 @@
                       (ref-set tokens (vector-push (vector-push (ref-get tokens) 30) 0))
                       (ref-set pos (+ (ref-get pos) 4))
                       0)
-                    (do
-                      (ref-set tokens (vector-push (vector-push (ref-get tokens) 20) ch))
-                      (mini-skip-symbol src len pos)
-                      0)))))))))))
+                    (if (= (is-if-keyword src (ref-get pos) len) 1)
+                      (do
+                        (ref-set tokens (vector-push (vector-push (ref-get tokens) 32) 0))
+                        (ref-set pos (+ (ref-get pos) 2))
+                        0)
+                      (if (= (is-let-keyword src (ref-get pos) len) 1)
+                        (do
+                          (ref-set tokens (vector-push (vector-push (ref-get tokens) 31) 0))
+                          (ref-set pos (+ (ref-get pos) 3))
+                          0)
+                        (do
+                          (ref-set tokens (vector-push (vector-push (ref-get tokens) 20) ch))
+                          (mini-skip-symbol src len pos)
+                          0)))))))))))))
 
 ;; スキャンループ (最大 20 トークン展開)
 (defn mini-scan-loop [src len pos tokens]
@@ -463,6 +505,161 @@
           (tok-at-value tokens 2)) 0) body-ast))
       ;; 未対応の body 型
       (make-lit-int 0))))
+
+;; ============================================================
+;; T4-4 拡張: ミニパーサー (if/let 対応)
+;; ============================================================
+
+;; if 式のパース: (if COND THEN ELSE) → [6, cond-ast, then-ast, else-ast]
+;; tokens: (defn NAME [] (if COND THEN ELSE))
+;; body 開始 = tokens[5] = '(' , tokens[6] = 'if'
+;; COND = tokens[7], THEN = tokens[8], ELSE = tokens[9], ')' = tokens[10]
+(defn mini-parse-if-body [tokens body-start]
+  ;; body-start は ( の位置, body-start+1 は if
+  ;; body-start+2 = cond, body-start+3 = then, body-start+4 = else
+  (let [cond-kind (tok-at-kind tokens (+ body-start 2))
+        cond-value (tok-at-value tokens (+ body-start 2))
+        then-kind (tok-at-kind tokens (+ body-start 3))
+        then-value (tok-at-value tokens (+ body-start 3))
+        else-kind (tok-at-kind tokens (+ body-start 4))
+        else-value (tok-at-value tokens (+ body-start 4))
+        cond-ast (if (= cond-kind 10) (make-lit-int cond-value) (make-lit-int 0))
+        then-ast (if (= then-kind 10) (make-lit-int then-value) (make-lit-int 0))
+        else-ast (if (= else-kind 10) (make-lit-int else-value) (make-lit-int 0))
+        node (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push node 6)
+      cond-ast) then-ast) else-ast)))
+
+;; let 式のパース: (let [NAME VAL] BODY) → [7, name-hash, init-ast, body-ast]
+;; tokens: (defn NAME [] (let [x VAL] BODY))
+;; body-start = ( の位置, body-start+1 = let
+;; body-start+2 = [, body-start+3 = x, body-start+4 = VAL, body-start+5 = ]
+;; body-start+6 = BODY
+(defn mini-parse-let-body [tokens body-start]
+  (let [name-hash (tok-at-value tokens (+ body-start 3))
+        val-kind (tok-at-kind tokens (+ body-start 4))
+        val-value (tok-at-value tokens (+ body-start 4))
+        body-kind (tok-at-kind tokens (+ body-start 6))
+        body-value (tok-at-value tokens (+ body-start 6))
+        init-ast (if (= val-kind 10) (make-lit-int val-value) (make-lit-int 0))
+        body-ast (if (= body-kind 20) (make-var body-value)
+                   (if (= body-kind 10) (make-lit-int body-value) (make-lit-int 0)))
+        node (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push node 7)
+      name-hash) init-ast) body-ast)))
+
+;; defn のパース (if/let 対応版)
+;; body が ( で始まる場合は (if ...) または (let ...) をパース
+(defn mini-parse-defn-ext [tokens]
+  (let [body-kind (tok-at-kind tokens 5)]
+    (if (= body-kind 10)
+      ;; body が整数リテラル
+      (mini-parse-defn tokens)
+      (if (= body-kind 0)
+        ;; body が ( で始まる → 次のトークンで分岐
+        (let [inner-kind (tok-at-kind tokens 6)]
+          (if (= inner-kind 32)
+            ;; if キーワード
+            (let [body-ast (mini-parse-if-body tokens 5)
+                  defn-node (vector-new 4)]
+              (vector-push (vector-push (vector-push (vector-push defn-node 20)
+                (tok-at-value tokens 2)) 0) body-ast))
+            (if (= inner-kind 31)
+              ;; let キーワード
+              (let [body-ast (mini-parse-let-body tokens 5)
+                    defn-node (vector-new 4)]
+                (vector-push (vector-push (vector-push (vector-push defn-node 20)
+                  (tok-at-value tokens 2)) 0) body-ast))
+              (make-lit-int 0))))
+        (make-lit-int 0)))))
+
+;; if 式の IR コンパイル
+;; [6, cond-ast, then-ast, else-ast] → IR 命令列
+(defn compile-if [node env instrs]
+  (let [cond-ast (vector-get node 1)
+        then-ast (vector-get node 2)
+        else-ast (vector-get node 3)
+        i1 (compile-expr cond-ast env instrs)
+        i2 (compile-expr then-ast env i1)
+        i3 (compile-expr else-ast env i2)]
+    i3))
+
+;; let 式の IR コンパイル
+;; [7, name-hash, init-ast, body-ast] → IR 命令列
+(defn compile-let [node env instrs]
+  (let [name-hash (vector-get node 1)
+        init-ast (vector-get node 2)
+        body-ast (vector-get node 3)
+        i1 (compile-expr init-ast env instrs)
+        env2 (env-bind env name-hash 1)
+        i2 (compile-expr body-ast env2 i1)]
+    i2))
+
+;; 拡張版 compile-expr (if/let 対応)
+(defn compile-expr-ext [node env instrs]
+  (let [tag (vector-get node 0)]
+    (if (= tag 6)
+      (compile-if node env instrs)
+      (if (= tag 7)
+        (compile-let node env instrs)
+        (compile-expr node env instrs)))))
+
+;; 拡張版 compile-source (if/let 対応)
+(defn compile-source-ext [src]
+  (let [tokens (mini-tokenize src)
+        defn-ast (mini-parse-defn-ext tokens)
+        body-ast (vector-get defn-ast 3)
+        env (env-new)
+        ir-instrs (compile-expr-ext body-ast env (vector-new 8))]
+    (let [result (vector-new 3)]
+      (vector-push (vector-push (vector-push result tokens) defn-ast) ir-instrs))))
+
+;; トークン列に指定 kind が含まれるか検査 (1=found, 0=not found)
+(defn tokens-contains-kind [tokens target-kind]
+  (let [len (/ (vector-length tokens) 2)
+        found (ref-new 0)
+        i (ref-new 0)
+        nop (ref-new 0)]
+    (do
+      (if (> len 0)
+        (do
+          (if (= (tok-at-kind tokens (ref-get i)) target-kind) (ref-set found 1) (ref-set nop 0))
+          (ref-set i (+ (ref-get i) 1))
+          (if (< (ref-get i) len)
+            (do
+              (if (= (tok-at-kind tokens (ref-get i)) target-kind) (ref-set found 1) (ref-set nop 0))
+              (ref-set i (+ (ref-get i) 1))
+              (if (< (ref-get i) len)
+                (do
+                  (if (= (tok-at-kind tokens (ref-get i)) target-kind) (ref-set found 1) (ref-set nop 0))
+                  (ref-set i (+ (ref-get i) 1))
+                  (if (< (ref-get i) len)
+                    (do
+                      (if (= (tok-at-kind tokens (ref-get i)) target-kind) (ref-set found 1) (ref-set nop 0))
+                      (ref-set i (+ (ref-get i) 1))
+                      (if (< (ref-get i) len)
+                        (do
+                          (if (= (tok-at-kind tokens (ref-get i)) target-kind) (ref-set found 1) (ref-set nop 0))
+                          (ref-set i (+ (ref-get i) 1))
+                          (if (< (ref-get i) len)
+                            (do
+                              (if (= (tok-at-kind tokens (ref-get i)) target-kind) (ref-set found 1) (ref-set nop 0))
+                              (ref-set i (+ (ref-get i) 1))
+                              (if (< (ref-get i) len)
+                                (do
+                                  (if (= (tok-at-kind tokens (ref-get i)) target-kind) (ref-set found 1) (ref-set nop 0))
+                                  (ref-set i (+ (ref-get i) 1))
+                                  (if (< (ref-get i) len)
+                                    (if (= (tok-at-kind tokens (ref-get i)) target-kind) (ref-set found 1) (ref-set nop 0))
+                                    (ref-set nop 0)))
+                                (ref-set nop 0)))
+                            (ref-set nop 0)))
+                        (ref-set nop 0)))
+                    (ref-set nop 0)))
+                (ref-set nop 0)))
+            (ref-set nop 0)))
+        (ref-set nop 0))
+      (ref-get found))))
 
 ;; ============================================================
 ;; T4-4: compile-source (ソース文字列 → IR)
@@ -540,5 +737,35 @@
         (do
           (print (vector-get src-instr0 0))  ;; 1 (i64.const)
           (print (vector-get src-instr0 1))));; 42
+
+      ;; === T4-4 拡張: if 式コンパイル ===
+      (let [if-source "(defn main [] (if 1 42 0))"
+            if-result (compile-source-ext if-source)
+            if-tokens (vector-get if-result 0)
+            if-defn (vector-get if-result 1)
+            if-ir (vector-get if-result 2)
+            if-body (vector-get if-defn 3)]
+        (do
+          ;; if キーワードがトークナイズされた
+          (print (tokens-contains-kind if-tokens 32))  ;; 1
+          ;; body AST: tag=6 (if)
+          (print (vector-get if-body 0))               ;; 6
+          ;; IR: 3 命令 (cond + then + else)
+          (print (vector-length if-ir))))               ;; 3
+
+      ;; === T4-4 拡張: let 式コンパイル ===
+      (let [let-source "(defn main [] (let [x 42] x))"
+            let-result (compile-source-ext let-source)
+            let-tokens (vector-get let-result 0)
+            let-defn (vector-get let-result 1)
+            let-ir (vector-get let-result 2)
+            let-body (vector-get let-defn 3)]
+        (do
+          ;; let キーワードがトークナイズされた
+          (print (tokens-contains-kind let-tokens 31))  ;; 1
+          ;; body AST: tag=7 (let)
+          (print (vector-get let-body 0))               ;; 7
+          ;; IR: 2 命令 (init value + local.get)
+          (print (vector-length let-ir))))               ;; 2
 
       0)))

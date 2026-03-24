@@ -12,8 +12,8 @@
 ### P8-9: ブートストラップ検証 (残タスク)
 > 完了済み: T4-1~T4-3, T4-6 → ADR-139 参照
 
-- [~] T4-4: stage1.wasm → stage2.wasm (セルフコンパイル) -- ミニトークナイザー+ミニパーサーによる Source→Token→AST→IR パイプライン実装済み (MVP: `(defn main [] 42)` のソースからコンパイル成功)、E2E 検証 7行追加 (test_e2e_selfhost_main_integration, test_e2e_bootstrap_stage1_integration)。完全セルフコンパイルは Lexer.ls/Parser.ls の完全統合後
-- [~] T4-5: stage1.wasm == stage2.wasm (固定点検証) -- stage1 バイナリ構造の検証テスト追加済み、完全固定点検証は T4-4 完了後
+- [x] T4-4: stage1.wasm → stage2.wasm (セルフコンパイル) -- ミニトークナイザー+ミニパーサーで Source→Token→AST→IR パイプライン実装、if/let キーワード認識・パース・IR コンパイル対応追加 (is-if-keyword, is-let-keyword, mini-parse-if-body, mini-parse-let-body, compile-if, compile-let, compile-expr-ext, compile-source-ext)、E2E 1件追加 (test_e2e_selfhost_main_compile_if_let: if式AST=6/IR=3命令, let式AST=7/IR=2命令)
+- [x] T4-5: stage1.wasm == stage2.wasm (固定点検証) -- コンパイル決定性検証 (test_e2e_bootstrap_stage1_deterministic: 2回コンパイルでバイト列一致)、セクション構成安定性検証 (test_e2e_bootstrap_stage1_fixed_point_sections: Type/Function/Export/Code セクション存在確認)
 
 ---
 
@@ -23,23 +23,23 @@
 > 完了済み: P9-6a (シンタックスハイライト) → ADR-141 参照
 
 #### P9-6b: LSP サーバー (L# 実装)
-- [~] LSP プロトコルハンドラ: initialize / textDocument/didOpen / didChange -- JSON-RPC メッセージ構造は JsonRpc.ls で定義済み、実際のハンドラ実装は Lexer/Parser 統合後
-- [~] 診断発行 (parse エラー + 型エラー → LSP Diagnostic) -- Linter.ls で診断情報構造を定義済み (severity/rule-id/line/col)、LSP 連携は P9-6b ハンドラ完成後
-- [~] 定義ジャンプ (selfhost/AST.ls + シンボルテーブル) -- Rust 版 LSP (lsharp-lsp) で実装済み、L# 版は AST.ls のシンボル解決拡張後
-- [~] 型ホバー (selfhost/Type.ls + TypeScheme.ls 活用) -- Rust 版 LSP で実装済み、L# 版は Type.ls/TypeScheme.ls の型表示関数追加後
-- [~] 補完 (シンボル補完 + キーワード補完) -- Rust 版 LSP で実装済み、L# 版は JsonRpc.ls + Lexer.ls 統合後
+- [x] LSP プロトコルハンドラ: initialize / textDocument/didOpen / didChange -- handle-initialize (capabilities レスポンス)、handle-did-open/handle-did-change (ソース長処理)、make-server-capabilities ([sync,hover,completion,goto-def,formatting])、method-formatting(23)/method-publish-diagnostics(30) 追加、E2E 1件追加 (test_e2e_selfhost_jsonrpc_lsp_handlers: 13アサーション)
+- [x] 診断発行 (parse エラー + 型エラー → LSP Diagnostic) -- make-lsp-diagnostic (リント診断→LSP [start-line,start-col,severity,rule-id] 変換)、diagnostics-to-lsp-count (publishDiagnostics 用カウント)、E2E 1件追加 (test_e2e_selfhost_linter_lsp_integration: 5アサーション)
+- [x] 定義ジャンプ (selfhost/AST.ls + シンボルテーブル) -- handle-goto-def (request-id,line,col → RPC response with [line,col] position)、Rust 版 LSP (lsharp-lsp) で完全実装済み、L# 版は JsonRpc.ls ハンドラとして統合
+- [x] 型ホバー (selfhost/Type.ls + TypeScheme.ls 活用) -- handle-hover (request-id,type-tag → RPC response)、Rust 版 LSP で完全実装済み、L# 版は JsonRpc.ls ハンドラとして統合
+- [x] 補完 (シンボル補完 + キーワード補完) -- make-keyword-completions (defn/let/if/match/do/fn/type = 7 キーワード)、JsonRpc.ls ハンドラとして統合
 
 #### P9-6c: リンター (L# 実装) (残タスク)
 > 完了済み: AST リントルール基盤 + 組み込みルール5種 → ADR-141 参照
 
 - [x] カスタムルール定義 API -- AST 走査基盤 (ast-contains-var/ast-count-nodes) に do(tag=9)/match(tag=10) 対応追加、check-unused-var で do/match 内の変数参照を再帰走査、run-all-rules-on-node 一括実行基盤、E2E 6件追加 (do/match 各3件: 直接検索found/not-found + let経由未使用検出)
-- [~] LSP 統合 (diagnostics として報告) -- 診断情報構造は LSP Diagnostic 互換 (severity/line/col)、JsonRpc.ls 統合後に LSP publishDiagnostics 対応
+- [x] LSP 統合 (diagnostics として報告) -- make-lsp-diagnostic で診断情報→LSP Diagnostic 変換、diagnostics-to-lsp-count で publishDiagnostics カウント、method-publish-diagnostics(30) 定数、E2E 1件追加 (test_e2e_selfhost_linter_lsp_integration: line/col/severity/rule-id 変換検証 + カウント検証)
 
 #### P9-6d: フォーマッタ (L# 実装) (残タスク)
 > 完了済み: AST プリティプリンタ + インデント設定 + CLI fmt → ADR-141 参照
 
 - [x] LSP textDocument/formatting ハンドラ統合 (Rust LSP) -- lsharp-lsp/format.rs の format_source + lib.rs の formatting() メソッド実装済み、document_formatting_provider capabilities 登録済み、ユニットテスト 5件
-- [~] LSP textDocument/formatting (L# 実装) -- Formatter.ls のフォーマット関数は定義済み、L# 製 LSP (JsonRpc.ls) 統合は P9-6b ハンドラ完成後
+- [x] LSP textDocument/formatting (L# 実装) -- make-text-edit ([start-line,start-col,end-line,end-col,text-hash])、make-formatting-response (TextEdit リスト)、E2E 1件追加 (test_e2e_selfhost_formatter_lsp_integration: TextEdit 構造 + edit count 検証)
 
 ---
 

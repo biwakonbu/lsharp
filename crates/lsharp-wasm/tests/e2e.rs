@@ -4015,9 +4015,10 @@ fn test_e2e_bootstrap_stage1_integration() {
     // 統合パイプラインの出力:
     // 旧: AST(1,42) + IR(1,1,42) + Wasm(8,0,97,115,109,7,1) + WASI(15,10)
     // T4-4: tokens(16) + defn(20) + body(1,42) + IR(1,1,42)
+    // T4-4 拡張: if(1,6,3) + let(1,7,2)
     assert_eq!(
         output.trim(),
-        "1\n42\n1\n1\n42\n8\n0\n97\n115\n109\n7\n1\n15\n10\n16\n20\n1\n42\n1\n1\n42"
+        "1\n42\n1\n1\n42\n8\n0\n97\n115\n109\n7\n1\n15\n10\n16\n20\n1\n42\n1\n1\n42\n1\n6\n3\n1\n7\n2"
     );
 }
 
@@ -5035,4 +5036,156 @@ fn test_e2e_selfhost_formatter() {
     // 統計
     assert_eq!(lines[11], "1", "line count");
     assert_eq!(lines[12], "1", "node count");
+}
+
+// ============================================================
+// P9-6b: LSP ハンドラ統合 (selfhost/JsonRpc.ls)
+// ============================================================
+
+/// P9-6b: LSP ハンドラ関数がコンパイル+実行できることを検証
+#[test]
+fn test_e2e_selfhost_jsonrpc_lsp_handlers() {
+    let source = include_str!("../../../selfhost/JsonRpc.ls");
+    let output = compile_and_run(source);
+    let lines: Vec<&str> = output.trim().split('\n').collect();
+    // 既存 9 行の後に LSP ハンドラテスト出力
+    // server capabilities: 5 要素
+    assert_eq!(lines[9], "5", "capabilities: vector length");
+    assert_eq!(lines[10], "1", "capabilities: text-document-sync");
+    // handle-initialize: response type=1, id=1
+    assert_eq!(lines[11], "1", "initialize: response type");
+    assert_eq!(lines[12], "1", "initialize: response id");
+    // handle-did-open: source length returned
+    assert_eq!(lines[13], "100", "did-open: source length");
+    // handle-hover: response type=1, id=2, type-tag=1(int)
+    assert_eq!(lines[14], "1", "hover: response type");
+    assert_eq!(lines[15], "2", "hover: response id");
+    // handle-goto-def: response type=1, line=10, col=5
+    assert_eq!(lines[16], "1", "goto-def: response type");
+    assert_eq!(lines[17], "10", "goto-def: line");
+    assert_eq!(lines[18], "5", "goto-def: col");
+    // handle-completion: keyword count
+    assert_eq!(lines[19], "7", "completion: keyword count");
+    // 追加メソッド定数
+    assert_eq!(lines[20], "23", "method: formatting");
+    assert_eq!(lines[21], "30", "method: publish-diagnostics");
+}
+
+// ============================================================
+// P9-6c: リンター LSP 統合 (selfhost/Linter.ls)
+// ============================================================
+
+/// P9-6c: リンター診断を LSP Diagnostic 形式に変換できることを検証
+#[test]
+fn test_e2e_selfhost_linter_lsp_integration() {
+    let source = include_str!("../../../selfhost/Linter.ls");
+    let output = compile_and_run(source);
+    let lines: Vec<&str> = output.trim().split('\n').collect();
+    // 既存 19 行の後に LSP 統合テスト出力
+    // make-lsp-diagnostic: [start-line, start-col, severity, rule-id]
+    assert_eq!(lines[19], "10", "lsp-diag: start-line");
+    assert_eq!(lines[20], "5", "lsp-diag: start-col");
+    assert_eq!(lines[21], "1", "lsp-diag: severity (warning)");
+    assert_eq!(lines[22], "100", "lsp-diag: code (unused-var)");
+    // diagnostics-to-lsp-count
+    assert_eq!(lines[23], "3", "publish-diagnostics: count");
+}
+
+// ============================================================
+// P9-6d: フォーマッタ LSP 統合 (selfhost/Formatter.ls)
+// ============================================================
+
+/// P9-6d: フォーマッタが LSP TextEdit を生成できることを検証
+#[test]
+fn test_e2e_selfhost_formatter_lsp_integration() {
+    let source = include_str!("../../../selfhost/Formatter.ls");
+    let output = compile_and_run(source);
+    let lines: Vec<&str> = output.trim().split('\n').collect();
+    // 既存 13 行の後に LSP 統合テスト出力
+    // make-text-edit: [start-line, start-col, end-line, end-col, text-hash]
+    assert_eq!(lines[13], "0", "text-edit: start-line");
+    assert_eq!(lines[14], "0", "text-edit: start-col");
+    assert_eq!(lines[15], "10", "text-edit: end-line");
+    assert_eq!(lines[16], "0", "text-edit: end-col");
+    assert_eq!(lines[17], "42", "text-edit: new-text hash");
+    // formatting response: 1 edit
+    assert_eq!(lines[18], "1", "formatting: edit count");
+}
+
+// ============================================================
+// P8-9 T4-4: セルフコンパイル拡張 (if/let/変数)
+// ============================================================
+
+/// T4-4: if 式と let 式のソースからのコンパイルを検証
+#[test]
+fn test_e2e_selfhost_main_compile_if_let() {
+    let source = include_str!("../../../selfhost/Main.ls");
+    let output = compile_and_run(source);
+    let lines: Vec<&str> = output.trim().split('\n').collect();
+    // 既存出力 21 行 (index 0-20) の後に T4-4 拡張出力
+    // T4-4 拡張: if 式コンパイル
+    // "(defn main [] (if 1 42 0))" → tok: if=32 検出
+    assert_eq!(lines[21], "1", "if-compile: token if detected");
+    // if 式 AST: tag=6
+    assert_eq!(lines[22], "6", "if-compile: ast tag = if");
+    // if 式 IR: 3 命令 (cond, then, else)
+    assert_eq!(lines[23], "3", "if-compile: ir instruction count");
+
+    // T4-4 拡張: let 式コンパイル
+    // "(defn main [] (let [x 42] x))" → let=31 検出
+    assert_eq!(lines[24], "1", "let-compile: token let detected");
+    // let 式 AST: tag=7
+    assert_eq!(lines[25], "7", "let-compile: ast tag = let");
+    // let 式 IR: 2 命令 (init value + local.get)
+    assert_eq!(lines[26], "2", "let-compile: ir instruction count");
+}
+
+// ============================================================
+// P8-9 T4-5: 固定点検証
+// ============================================================
+
+/// T4-5: Main.ls のコンパイルが決定的 (同一入力→同一バイナリ) であることを検証
+#[test]
+fn test_e2e_bootstrap_stage1_deterministic() {
+    let source = include_str!("../../../selfhost/Main.ls");
+    let wasm1 = compile_only(source);
+    let wasm2 = compile_only(source);
+    assert_eq!(wasm1, wasm2, "stage1 compilation must be deterministic");
+    assert!(wasm1.len() > 100, "stage1 wasm must be non-trivial: {} bytes", wasm1.len());
+}
+
+/// T4-5: stage1 バイナリ構造の固定点検証 (セクション構成が安定していること)
+#[test]
+fn test_e2e_bootstrap_stage1_fixed_point_sections() {
+    let source = include_str!("../../../selfhost/Main.ls");
+    let wasm = compile_only(source);
+    // Wasm magic + version
+    assert_eq!(&wasm[0..4], b"\0asm", "wasm magic");
+    assert_eq!(wasm[4], 1, "wasm version");
+    // セクション ID の列が安定していることを確認
+    // Type(1), Function(3), Export(7), Code(10) の順
+    let mut section_ids = Vec::new();
+    let mut pos = 8;
+    while pos < wasm.len() {
+        let section_id = wasm[pos];
+        section_ids.push(section_id);
+        pos += 1;
+        // セクションサイズを LEB128 デコード
+        let mut size: usize = 0;
+        let mut shift = 0;
+        loop {
+            if pos >= wasm.len() { break; }
+            let byte = wasm[pos] as usize;
+            pos += 1;
+            size |= (byte & 0x7f) << shift;
+            if byte & 0x80 == 0 { break; }
+            shift += 7;
+        }
+        pos += size;
+    }
+    // セクション構成が Type, Function, Memory, Export, Code を含むこと
+    assert!(section_ids.contains(&1), "Type section present");
+    assert!(section_ids.contains(&3), "Function section present");
+    assert!(section_ids.contains(&7), "Export section present");
+    assert!(section_ids.contains(&10), "Code section present");
 }

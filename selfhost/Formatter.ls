@@ -86,6 +86,26 @@
           (vector-get stats 1))
         nodes))))
 
+;; === P9-6d: LSP TextEdit 構造 ===
+
+;; LSP TextEdit: [start-line, start-col, end-line, end-col, new-text-hash]
+(defn make-text-edit [start-line start-col end-line end-col text-hash]
+  (let [v (vector-new 5)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push v start-line)
+            start-col)
+          end-line)
+        end-col)
+      text-hash)))
+
+;; フォーマットレスポンス: TextEdit のリスト (1 要素)
+(defn make-formatting-response [edit]
+  (let [v (vector-new 1)]
+    (vector-push v edit)))
+
 ;; 検証用 main
 (defn main []
   (let [;; インデント生成テスト
@@ -108,7 +128,11 @@
         ;; 統計テスト
         stats (format-stats-new)
         s1 (stats-add-line stats)
-        s2 (stats-add-node s1)]
+        s2 (stats-add-node s1)
+
+        ;; P9-6d: LSP TextEdit テスト
+        edit (make-text-edit 0 0 10 0 42)
+        fmt-resp (make-formatting-response edit)]
     (do
       ;; インデント幅の検証
       (print (indent-width))           ;; 2
@@ -134,5 +158,13 @@
       ;; 統計
       (print (vector-get s2 0))        ;; 1 (行数)
       (print (vector-get s2 2))        ;; 1 (ノード数)
+
+      ;; === P9-6d: LSP TextEdit 検証 ===
+      (print (vector-get edit 0))      ;; 0 (start-line)
+      (print (vector-get edit 1))      ;; 0 (start-col)
+      (print (vector-get edit 2))      ;; 10 (end-line)
+      (print (vector-get edit 3))      ;; 0 (end-col)
+      (print (vector-get edit 4))      ;; 42 (new-text hash)
+      (print (vector-length fmt-resp)) ;; 1 (edit count)
 
       0)))

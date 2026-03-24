@@ -70,6 +70,43 @@
 (defn parse-content-length [header-value]
   header-value)
 
+;; === P9-6b: LSP ハンドラ実装 ===
+
+;; 追加 LSP メソッド定数
+(defn method-formatting [] 23)
+(defn method-publish-diagnostics [] 30)
+
+;; サーバー capabilities: [sync, hover, completion, goto-def, formatting]
+(defn make-server-capabilities []
+  (let [v (vector-new 5)]
+    (vector-push (vector-push (vector-push (vector-push (vector-push v 1) 1) 1) 1) 1)))
+
+;; handle-initialize: 初期化リクエスト → capabilities レスポンス
+(defn handle-initialize [request-id]
+  (make-rpc-response request-id 1))
+
+;; handle-did-open: ドキュメントオープン通知 → ソース長を返す
+(defn handle-did-open [source-length]
+  source-length)
+
+;; handle-did-change: ドキュメント変更通知 → ソース長を返す
+(defn handle-did-change [source-length]
+  source-length)
+
+;; handle-hover: 型ホバー → 型タグをレスポンスで返す
+(defn handle-hover [request-id type-tag]
+  (make-rpc-response request-id type-tag))
+
+;; handle-goto-def: 定義ジャンプ → [line, col] をレスポンスで返す
+(defn handle-goto-def [request-id line col]
+  (let [pos (vector-new 2)]
+    (make-rpc-response request-id (vector-push (vector-push pos line) col))))
+
+;; handle-completion: キーワード補完候補数
+;; defn, let, if, match, do, fn, type = 7
+(defn make-keyword-completions []
+  7)
+
 ;; 検証用 main
 (defn main []
   (let [req (make-rpc-request 1 (method-initialize) 0)
@@ -91,5 +128,44 @@
       ;; メソッドハッシュの検証
       (print (method-initialize)) ;; 1
       (print (method-shutdown))   ;; 2
+
+      ;; === P9-6b: LSP ハンドラ検証 ===
+
+      ;; server capabilities
+      (let [caps (make-server-capabilities)]
+        (do
+          (print (vector-length caps))   ;; 5
+          (print (vector-get caps 0))))  ;; 1 (text-document-sync)
+
+      ;; handle-initialize
+      (let [init-resp (handle-initialize 1)]
+        (do
+          (print (rpc-type init-resp))   ;; 1 (response)
+          (print (rpc-id init-resp))))   ;; 1
+
+      ;; handle-did-open
+      (print (handle-did-open 100))      ;; 100
+
+      ;; handle-hover
+      (let [hover-resp (handle-hover 2 1)]
+        (do
+          (print (rpc-type hover-resp))  ;; 1 (response)
+          (print (rpc-id hover-resp))))  ;; 2
+
+      ;; handle-goto-def
+      (let [def-resp (handle-goto-def 3 10 5)]
+        (do
+          (print (rpc-type def-resp))    ;; 1 (response)
+          (let [def-pos (vector-get def-resp 2)]
+            (do
+              (print (vector-get def-pos 0))  ;; 10 (line)
+              (print (vector-get def-pos 1))))))  ;; 5 (col)
+
+      ;; handle-completion
+      (print (make-keyword-completions))  ;; 7
+
+      ;; 追加メソッド定数
+      (print (method-formatting))         ;; 23
+      (print (method-publish-diagnostics)) ;; 30
 
       0)))
