@@ -32,7 +32,7 @@
 #### P9-6c: リンター (L# 実装) (残タスク)
 > 完了済み: AST リントルール基盤 + 組み込みルール5種 → ADR-141 参照
 
-- [~] カスタムルール定義 API -- AST 走査基盤実装済み (ast-is-leaf/ast-contains-var/ast-count-nodes)、check-unused-var ルール実装済み (let 束縛の未使用検出)、run-all-rules-on-node 一括実行基盤実装済み、E2E 4件追加。完全な AST walker (全ノードタイプ走査) は do/match 対応後
+- [x] カスタムルール定義 API -- AST 走査基盤 (ast-contains-var/ast-count-nodes) に do(tag=9)/match(tag=10) 対応追加、check-unused-var で do/match 内の変数参照を再帰走査、run-all-rules-on-node 一括実行基盤、E2E 6件追加 (do/match 各3件: 直接検索found/not-found + let経由未使用検出)
 - [~] LSP 統合 (diagnostics として報告) -- 診断情報構造は LSP Diagnostic 互換 (severity/line/col)、JsonRpc.ls 統合後に LSP publishDiagnostics 対応
 
 #### P9-6d: フォーマッタ (L# 実装) (残タスク)
@@ -44,13 +44,14 @@
 
 ## Phase 11: Rust 完全撤去
 
-> 目標: L# 製 compiler/toolchain を WASI 単体配布の正式実装に昇格し、Rust workspace を段階的に撤去する
+> 目標: L# 製 compiler/toolchain をネイティブ配布の正式実装に昇格し、Rust workspace を段階的に撤去する
+> 配布方針: ブートストラップと比較検証では Wasm/WASI を利用してよいが、エンドユーザー向け正式配布物は各プラットフォーム向けネイティブバイナリとする
 > 正式完了条件:
 > 1. `stageN.wasm` が selfhost compiler として `stageN+1.wasm` を生成できる
 > 2. `stageN.wasm == stageN+1.wasm` の固定点が CI で安定する
-> 3. Rust CLI/LSP/docs 系の公開機能が L# 側で互換提供される
+> 3. Rust CLI/LSP/docs 系の公開機能が L# 側で互換提供され、ネイティブ版 toolchain から利用できる
 > 4. 長寿命プロセス (LSP/REPL/server mode) で GC 有効時にメモリが単調増加しない
-> 5. Rust workspace を削除しても開発・CI・配布が成立する
+> 5. Rust workspace を削除しても開発・CI・ネイティブ配布が成立する
 
 ### P11-1: 正本監査と互換マトリクス
 - [ ] `TODO.md` / `README.md` / `book/` と実装の差分を監査し、完了表示の過大評価を是正する
@@ -63,7 +64,8 @@
 - [ ] `Main.ls` の暫定的な手動統合をやめ、`import/module` 前提の実モジュール構成で selfhost 全モジュールをコンパイル可能にする
 - [ ] `stage1.wasm -> stage2.wasm` で selfhost/stdlib/examples をコンパイルする E2E を追加する
 - [ ] `stageN.wasm == stageN+1.wasm` をバイト列比較し、非決定性があれば source map・symbol table・data section の生成順を固定する
-- [ ] 完了条件: Rust を使うのは stage0 生成だけで、stage1 以降の生成と検証は L# 単独で閉じる
+- [ ] ネイティブ backend/AOT への橋渡し層を定義し、selfhost compiler が Wasm 中間成果物からネイティブ配布物を生成できるようにする
+- [ ] 完了条件: Rust を使うのは stage0 生成だけで、stage1 以降の生成・検証・ネイティブ成果物生成は L# 単独で閉じる
 
 ### P11-3: コンパイラ中核の Rust parity
 - [ ] `crates/lsharp-syntax` 相当の機能を L# に移植する。対象は span/token/AST/衛生マクロ/derive/macro expansion を含む
@@ -77,8 +79,9 @@
 - [ ] L# 製 CLI を正式化し、現行サブコマンド互換の引数仕様と終了コードを固定する
 - [ ] L# 製 LSP を正式化し、`initialize/didOpen/didChange/hover/definition/references/rename/formatting/completion/shutdown` を実装する
 - [ ] L# 製 formatter/linter を AST 全体対応に拡張し、CLI と LSP の両経路で同一結果を返す
-- [ ] docs/review/knowledge/doc-check/doc-ack/install/repl を L# 側へ移植し、VSCode 拡張のバックエンドを Rust LSP から `stageN.wasm` 起動へ切り替える
-- [ ] 完了条件: エンドユーザーが Rust バイナリを一切触らずに開発フローを完走できる
+- [ ] docs/review/knowledge/doc-check/doc-ack/install/repl を L# 側へ移植し、VSCode 拡張のバックエンドを Rust LSP からネイティブな L# 実装へ切り替える
+- [ ] macOS/Linux/Windows 向けのネイティブ配布形式、クロスビルド手順、署名/パッケージング方針を固定する
+- [ ] 完了条件: エンドユーザーが Rust バイナリにも Wasm ランタイムにも触れずにネイティブ配布物だけで開発フローを完走できる
 
 ### P11-5: 長寿命運用のためのランタイム安定化
 - [ ] `docs/memory-management-roadmap.md` の M1-M3 を Phase 11 の gate として再接続する
@@ -89,8 +92,9 @@
 ### P11-6: CI 切替と Rust 撤去
 - [ ] CI の主経路を `cargo test` 中心から `stageN.wasm` 中心へ切り替える
 - [ ] Rust 実装は比較専用ジョブに一時隔離し、fixed-point と golden parity が安定した時点で削除する
-- [ ] `Cargo.toml` workspace と `crates/` を削除し、README/book/CI docs を L# 正式版前提に更新する
-- [ ] 完了条件: リポジトリの正本実装が L# のみになり、Rust 不在で clone 直後から bootstrap 手順が成立する
+- [ ] `Cargo.toml` workspace と `crates/` を削除し、README/book/CI docs を L# ネイティブ正式版前提に更新する
+- [ ] ネイティブ release artifact の生成、署名、配布、回帰テストを CI に組み込む
+- [ ] 完了条件: リポジトリの正本実装が L# のみになり、Rust 不在で clone 直後から bootstrap とネイティブ配布手順が成立する
 
 ---
 
