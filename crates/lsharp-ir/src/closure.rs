@@ -108,6 +108,10 @@ fn collect_free_vars(expr: &Expr, bound: &mut HashSet<String>, free: &mut HashSe
                 }
             }
         }
+        // P10-1: Quote/Unquote/UnquoteSplice -- 内部式の自由変数を収集
+        Expr::Quote(_, inner) | Expr::Unquote(_, inner) | Expr::UnquoteSplice(_, inner) => {
+            collect_free_vars(inner, bound, free);
+        }
     }
 }
 

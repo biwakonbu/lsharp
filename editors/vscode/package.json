@@ -1,0 +1,42 @@
+{
+  "name": "lsharp-vscode",
+  "displayName": "L# Language Support",
+  "description": "L# (lsharp) language support for Visual Studio Code - S-expression syntax with Hindley-Milner type inference",
+  "version": "0.1.0",
+  "publisher": "lsharp",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:lsharp"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "lsharp",
+        "aliases": ["L#", "lsharp"],
+        "extensions": [".ls"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "lsharp",
+        "scopeName": "source.lsharp",
+        "path": "./syntaxes/lsharp.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.3.0"
+  }
+}

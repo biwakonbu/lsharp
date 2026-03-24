@@ -89,7 +89,29 @@ impl<'src> Lexer<'src> {
             }
             '|' => {
                 self.pos += 1;
-                Ok(Token::new(TokenKind::Pipe, Span::new(start, self.pos)))
+                // P10-5: |> パイプライン演算子をシンボルとして扱う
+                if self.pos < self.bytes.len() && self.bytes[self.pos] == b'>' {
+                    self.pos += 1;
+                    Ok(Token::new(TokenKind::Symbol("|>".to_string()), Span::new(start, self.pos)))
+                } else {
+                    Ok(Token::new(TokenKind::Pipe, Span::new(start, self.pos)))
+                }
+            }
+            // P10-1: Quote トークン
+            '\'' => {
+                self.pos += 1;
+                Ok(Token::new(TokenKind::Quote, Span::new(start, self.pos)))
+            }
+            // P10-1: Unquote / SpliceUnquote トークン
+            '~' => {
+                self.pos += 1;
+                // ~@ の場合は SpliceUnquote
+                if self.pos < self.bytes.len() && self.bytes[self.pos] == b'@' {
+                    self.pos += 1;
+                    Ok(Token::new(TokenKind::SpliceUnquote, Span::new(start, self.pos)))
+                } else {
+                    Ok(Token::new(TokenKind::Unquote, Span::new(start, self.pos)))
+                }
             }
             '"' => self.lex_string(),
             _ if ch.is_ascii_digit() => self.lex_number(),
@@ -270,6 +292,7 @@ impl<'src> Lexer<'src> {
             "private" => TokenKind::Private,
             "computation" => TokenKind::Computation,
             "computation-builder" => TokenKind::ComputationBuilder,
+            "defmacro" => TokenKind::DefMacro,
             "true" => TokenKind::Bool(true),
             "false" => TokenKind::Bool(false),
             _ => TokenKind::Symbol(text.to_string()),
@@ -294,18 +317,18 @@ impl<'src> Lexer<'src> {
 }
 
 /// シンボルの開始文字として有効か（マルチバイト対応）
+/// 注意: '~' と '@' はマクロトークンとして使用するため除外
 fn is_symbol_start(ch: char) -> bool {
     ch.is_alphabetic()
         || matches!(
             ch,
             '_' | '+' | '-' | '*' | '/' | '=' | '<' | '>' | '!' | '?' | '&' | '%' | '^'
-            | '~' | '@'
         )
 }
 
 /// シンボルの継続文字として有効か（マルチバイト対応）
 fn is_symbol_char(ch: char) -> bool {
-    is_symbol_start(ch) || ch.is_ascii_digit() || matches!(ch, '.' | '-')
+    is_symbol_start(ch) || ch.is_ascii_digit() || matches!(ch, '.' | '-' | '~' | '@')
 }
 
 #[cfg(test)]
@@ -532,6 +555,94 @@ mod tests {
         assert_eq!(
             tokens,
             vec![TokenKind::Private, TokenKind::Eof]
+        );
+    }
+
+    // P10-1: Quote/Unquote トークンテスト
+
+    #[test]
+    fn test_quote_token() {
+        let tokens = lex("'(+ 1 2)");
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::Quote,
+                TokenKind::LParen,
+                TokenKind::Symbol("+".to_string()),
+                TokenKind::Int(1),
+                TokenKind::Int(2),
+                TokenKind::RParen,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_unquote_token() {
+        let tokens = lex("~x");
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::Unquote,
+                TokenKind::Symbol("x".to_string()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_splice_unquote_token() {
+        let tokens = lex("~@args");
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::SpliceUnquote,
+                TokenKind::Symbol("args".to_string()),
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_quote_in_expression() {
+        let tokens = lex("(defmacro m [x] '(+ ~x 1))");
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::LParen,
+                TokenKind::DefMacro,
+                TokenKind::Symbol("m".to_string()),
+                TokenKind::LBracket,
+                TokenKind::Symbol("x".to_string()),
+                TokenKind::RBracket,
+                TokenKind::Quote,
+                TokenKind::LParen,
+                TokenKind::Symbol("+".to_string()),
+                TokenKind::Unquote,
+                TokenKind::Symbol("x".to_string()),
+                TokenKind::Int(1),
+                TokenKind::RParen,
+                TokenKind::RParen,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_splice_unquote_in_list() {
+        let tokens = lex("'(a ~@rest b)");
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::Quote,
+                TokenKind::LParen,
+                TokenKind::Symbol("a".to_string()),
+                TokenKind::SpliceUnquote,
+                TokenKind::Symbol("rest".to_string()),
+                TokenKind::Symbol("b".to_string()),
+                TokenKind::RParen,
+                TokenKind::Eof,
+            ]
         );
     }
 }

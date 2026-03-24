@@ -15,6 +15,7 @@
 (defn ast-let [] 7)         ;; let 束縛
 (defn ast-lambda [] 8)      ;; ラムダ式
 (defn ast-do [] 9)          ;; do ブロック
+(defn ast-match [] 10)      ;; match 式
 
 ;; 宣言 (Decl)
 (defn ast-defn [] 20)       ;; 関数定義
@@ -38,6 +39,10 @@
   (let [v (vector-new 2)]
     (vector-push (vector-push v 4) name-hash)))
 
+;; match 式: [10, scrutinee-node, arm-count, pat1, body1, pat2, body2, ...]
+;; pat は整数 (リテラルパターン) またはノード
+;; body は AST ノード
+
 ;; 関数適用: [5, func-node-idx, arg-count, arg1, arg2, ...]
 ;; ノードはインデックスで参照
 
@@ -53,4 +58,6 @@
     (do
       (print (ast-tag lit))   ;; 1 (lit-int)
       (print (vector-get lit 1))  ;; 42
+      ;; match タグ検証
+      (print (ast-match))  ;; 10
       0)))
