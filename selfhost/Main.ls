@@ -13,7 +13,6 @@
 
 ;; ============================================================
 ;; Token 定数 (Token.ls より)
-;; ============================================================
 
 (defn tok-lparen [] 0)
 (defn tok-rparen [] 1)
@@ -49,7 +48,6 @@
 
 ;; ============================================================
 ;; AST 定義 (AST.ls より)
-;; ============================================================
 
 ;; AST ノード種別
 (defn ast-lit-int [] 1)
@@ -83,7 +81,6 @@
 
 ;; ============================================================
 ;; IR 定義 (IR.ls より)
-;; ============================================================
 
 (defn ir-i64-const [] 1)
 (defn ir-f64-const [] 2)
@@ -119,7 +116,6 @@
 
 ;; ============================================================
 ;; Compiler (Compiler.ls より、tag/op 定数は上で定義済み)
-;; ============================================================
 
 ;; IR 命令: [opcode, operand]
 (defn emit-instr [opcode operand]
@@ -201,7 +197,6 @@
 
 ;; ============================================================
 ;; WasmEmit (WasmEmit.ls より)
-;; ============================================================
 
 ;; Wasm 定数
 (defn wasm-magic-0 [] 0)
@@ -291,7 +286,6 @@
 
 ;; ============================================================
 ;; P8-9 T4-1: WASI ファイル I/O 統合
-;; ============================================================
 
 ;; ソースファイルを読み込み、内容の長さを返す (パイプライン検証用)
 (defn read-source [path]
@@ -311,7 +305,6 @@
 
 ;; ============================================================
 ;; P8-9 T4-2: モジュール結合情報
-;; ============================================================
 
 ;; 全 selfhost モジュールのリスト (依存順)
 ;; 1. Token.ls   - トークン定義
@@ -333,7 +326,6 @@
 
 ;; ============================================================
 ;; T4-4: ミニトークナイザー (ソース文字列 → トークン列)
-;; ============================================================
 
 ;; 文字種別判定
 (defn is-whitespace [ch]
@@ -520,7 +512,6 @@
 
 ;; ============================================================
 ;; T4-4: ミニパーサー (トークン列 → Vector ベース AST)
-;; ============================================================
 
 ;; トークン列のアクセサ (flat [kind, value, kind, value, ...])
 (defn tok-at-kind [tokens idx]
@@ -538,7 +529,6 @@
         name-kind (tok-at-kind tokens 2)
         body-kind (tok-at-kind tokens 5)
         body-value (tok-at-value tokens 5)]
-    ;; body が整数リテラルの場合
     (if (= body-kind 10)
       (let [body-ast (make-lit-int body-value)
             defn-node (vector-new 4)]
@@ -549,15 +539,12 @@
 
 ;; ============================================================
 ;; T4-4 拡張: ミニパーサー (if/let 対応)
-;; ============================================================
 
 ;; if 式のパース: (if COND THEN ELSE) → [6, cond-ast, then-ast, else-ast]
 ;; tokens: (defn NAME [] (if COND THEN ELSE))
 ;; body 開始 = tokens[5] = '(' , tokens[6] = 'if'
 ;; COND = tokens[7], THEN = tokens[8], ELSE = tokens[9], ')' = tokens[10]
 (defn mini-parse-if-body [tokens body-start]
-  ;; body-start は ( の位置, body-start+1 は if
-  ;; body-start+2 = cond, body-start+3 = then, body-start+4 = else
   (let [cond-kind (tok-at-kind tokens (+ body-start 2))
         cond-value (tok-at-value tokens (+ body-start 2))
         then-kind (tok-at-kind tokens (+ body-start 3))
@@ -573,9 +560,6 @@
 
 ;; let 式のパース: (let [NAME VAL] BODY) → [7, name-hash, init-ast, body-ast]
 ;; tokens: (defn NAME [] (let [x VAL] BODY))
-;; body-start = ( の位置, body-start+1 = let
-;; body-start+2 = [, body-start+3 = x, body-start+4 = VAL, body-start+5 = ]
-;; body-start+6 = BODY
 (defn mini-parse-let-body [tokens body-start]
   (let [name-hash (tok-at-value tokens (+ body-start 3))
         val-kind (tok-at-kind tokens (+ body-start 4))
@@ -594,7 +578,6 @@
 (defn mini-parse-defn-ext [tokens]
   (let [body-kind (tok-at-kind tokens 5)]
     (if (= body-kind 10)
-      ;; body が整数リテラル
       (mini-parse-defn tokens)
       (if (= body-kind 0)
         ;; body が ( で始まる → 次のトークンで分岐
@@ -704,7 +687,6 @@
 
 ;; ============================================================
 ;; T4-4: compile-source (ソース文字列 → IR)
-;; ============================================================
 
 ;; ソース文字列をトークナイズ → パース → IR 変換
 (defn compile-source [src]
@@ -723,7 +705,16 @@
 
 ;; ============================================================
 ;; 統合パイプライン: Source → Token → AST → IR → Wasm
-;; ============================================================
+
+
+;; Wasm コンパイルエントリポイント (P11-2a 統合パイプライン用)
+(defn compile-selfhost-wasm [source-str]
+  (let [tokens (mini-tokenize source-str)
+        defn-ast (mini-parse-defn tokens)
+        body-ast (vector-get defn-ast 3)
+        env (env-new)
+        ir-instrs (compile-expr body-ast env (vector-new 8))]
+    ir-instrs))
 
 (defn main []
   (let [;; === 旧パイプライン (手動 AST) ===
@@ -741,7 +732,6 @@
         src-defn (vector-get pipeline-result 1)
         src-ir (vector-get pipeline-result 2)]
     (do
-      ;; === 旧パイプライン検証 (既存テスト互換) ===
       (print (ast-tag ast-node))         ;; 1 (lit-int)
       (print (vector-get ast-node 1))    ;; 42
       (print (vector-length ir-instrs))  ;; 1
@@ -759,27 +749,21 @@
       (print wasm-size)                  ;; 15
       (print (module-count))             ;; 10
 
-      ;; === T4-4: 新パイプライン検証 ===
-      ;; トークン数 (kind,value ペア): 7+1(EOF) = 16 エントリ
       (print (vector-length src-tokens))  ;; 16
 
-      ;; defn AST: tag=20
       (print (vector-get src-defn 0))     ;; 20 (defn)
 
-      ;; body AST: tag=1, value=42
       (let [body (vector-get src-defn 3)]
         (do
           (print (vector-get body 0))     ;; 1 (lit-int)
           (print (vector-get body 1))))   ;; 42
 
-      ;; IR 命令: i64.const 42
       (print (vector-length src-ir))      ;; 1
       (let [src-instr0 (vector-get src-ir 0)]
         (do
           (print (vector-get src-instr0 0))  ;; 1 (i64.const)
           (print (vector-get src-instr0 1))));; 42
 
-      ;; === T4-4 拡張: if 式コンパイル ===
       (let [if-source "(defn main [] (if 1 42 0))"
             if-result (compile-source-ext if-source)
             if-tokens (vector-get if-result 0)
@@ -794,7 +778,6 @@
           ;; IR: 3 命令 (cond + then + else)
           (print (vector-length if-ir))))               ;; 3
 
-      ;; === T4-4 拡張: let 式コンパイル ===
       (let [let-source "(defn main [] (let [x 42] x))"
             let-result (compile-source-ext let-source)
             let-tokens (vector-get let-result 0)

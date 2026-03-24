@@ -2,6 +2,18 @@
 
 Rust 実装と L# セルフホスト実装の機能パリティを追跡する。
 
+## PR 更新ルール（Phase 11 完了まで必須）
+
+Phase 11 完了まで、本ファイルは全 PR でレビュアーが更新確認を必須とする。
+
+確認すべき列:
+- Rust 実装有無
+- selfhost 実装有無
+- E2E テスト有無
+- 受入条件
+
+エビデンス: TASK-003
+
 ## CLI サブコマンド
 
 | コマンド | Rust status | L# status | Parity test | Default path | Deletion gate |

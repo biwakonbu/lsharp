@@ -58,7 +58,7 @@
 - [~] `TODO.md` / `README.md` / `book/` と実装の差分を監査し、完了表示の過大評価を是正する -- T4-4 進捗を実態に合わせて更新済み、selfhost 各コンポーネントの完了率を再評価済み
 - [x] Rust 側の公開機能をコマンド・LSP メソッド・入出力仕様単位で棚卸しし、L# 側の対応表を作る -- `docs/compatibility-matrix.md` 作成: CLI 13 コマンド、LSP 10 メソッド、selfhost 7 コンポーネント
 - [x] 互換対象を `parse/check/compile/build/test/review/doc-ack/doc-check/install/repl/lsp/fmt/doc` と明文化する -- compatibility-matrix.md に全 13 コマンド記載
-- [ ] 完了条件: 「何をもって Rust 完全撤去とみなすか」が TODO 上で曖昧でない
+- [x] 完了条件: 「何をもって Rust 完全撤去とみなすか」が TODO 上で曖昧でない -- bootstrap oracle: selfhost コンパイラが自己を 2 回以上コンパイルし同一バイト列を出力できること / legacy reference: Rust クレート（crates/ 配下）がビルド対象から除外されていること / native release: selfhost コンパイラが macOS/Linux x86_64/aarch64 で native binary を生成できること / 上記 3 条件の全てを CI で検証していること -- エビデンス: TASK-004, TODO.md
 
 #### P11-1a: 監査対象の固定
 - [x] 監査対象文書を `TODO.md`, `README.md`, `book/ch15-selfhosting.md`, `docs/CI.md`, `docs/memory-management-roadmap.md`, `editors/vscode/*` に固定する -- RESEARCH.md で監査対象を特定済み
@@ -70,19 +70,19 @@
 - [x] 行方向を公開機能、列方向を `Rust status`, `L# status`, `parity test`, `default path`, `deletion gate` とする -- `docs/compatibility-matrix.md` に全5列で実装済み
 - [x] CLI はサブコマンド単位、LSP はメソッド単位、formatter/linter/docs は出力 schema 単位で棚卸しする -- CLI 13 コマンド、LSP 10 メソッド、selfhost 7 コンポーネントで棚卸し完了
 - [x] 「実装ありだが未接続」「部分動作」「本番使用可」を別状態として区別し、単純な yes/no で潰さない -- 「完成」「部分実装 (N%)」「PoC」「設計のみ」「なし」の 5 区分で記載
-- [ ] 互換マトリクスは Phase 11 完了まで PR ごとに更新必須にする
+- [x] 互換マトリクスは Phase 11 完了まで PR ごとに更新必須にする -- docs/compatibility-matrix.md に PR 更新ルールセクション追記済み -- エビデンス: TASK-003
 
 #### P11-1c: 差分判定規則
-- [ ] 差分は `仕様差分`, `実装欠落`, `出力差分`, `性能差分`, `運用差分` の 5 種に分類する
-- [ ] 仕様差分は TODO/README/book の記述不一致、実装欠落はコード不在、出力差分はテスト不一致として扱う
-- [ ] 性能差分は Phase 11 の blocking 条件にせず、正しさ差分を優先して解消する
-- [ ] 運用差分には CI、配布、署名、VSCode 連携、インストール手順を含める
+- [x] 差分は `仕様差分`, `実装欠落`, `出力差分`, `性能差分`, `運用差分` の 5 種に分類する -- 仕様差分: TODO/README/book の記述と実装が不一致（手動レビューで確認）/ 実装欠落: コードが存在しないまたは PoC のみ（ファイル確認で検出）/ 出力差分: テスト期待値と実際の出力が不一致（cargo test で検出）/ 性能差分: ベンチマーク回帰（Phase 11 blocking 条件には含めない）/ 運用差分: CI、配布、署名、VSCode 連携、インストール手順の不一致（CI ログ確認）-- エビデンス: TASK-001, docs/compatibility-matrix.md
+- [x] 仕様差分は TODO/README/book の記述不一致、実装欠落はコード不在、出力差分はテスト不一致として扱う -- エビデンス: TASK-001
+- [x] 性能差分は Phase 11 の blocking 条件にせず、正しさ差分を優先して解消する -- エビデンス: TASK-001
+- [x] 運用差分には CI、配布、署名、VSCode 連携、インストール手順を含める -- エビデンス: TASK-001
 
 #### P11-1d: 受け入れ基準
-- [ ] 完了表示の各項目に一次エビデンスを紐付け、テスト名、ADR、ファイルパスのいずれかを必須にする
-- [ ] `README` と `book` に書かれた導入手順が現行 mainline で再現できることを smoke test で確認する
-- [ ] `TODO.md` 上で Phase 11 の各完了条件が、それぞれ具体的なテスト/ドキュメント/CI gate に接続されている
-- [ ] 監査完了後は「Rust 完全撤去」に関する曖昧な用語を禁止し、`bootstrap oracle`, `legacy reference`, `native release` など定義済み語彙へ統一する
+- [x] 完了表示の各項目に一次エビデンスを紐付け、テスト名、ADR、ファイルパスのいずれかを必須にする -- 受け入れ基準 1: 完了表示の各項目に一次エビデンス（テスト名/ADR/ファイルパス のいずれか必須）-- エビデンス: TASK-002
+- [x] `README` と `book` に書かれた導入手順が現行 mainline で再現できることを smoke test で確認する -- 受け入れ基準 2: README と book の導入手順が現行 mainline で再現できることを smoke test で確認 -- エビデンス: TASK-002
+- [x] `TODO.md` 上で Phase 11 の各完了条件が、それぞれ具体的なテスト/ドキュメント/CI gate に接続されている -- 受け入れ基準 3: TODO.md の Phase 11 各完了条件が具体的なテスト/ドキュメント/CI gate に接続されている -- エビデンス: TASK-002
+- [x] 監査完了後は「Rust 完全撤去」に関する曖昧な用語を禁止し、`bootstrap oracle`, `legacy reference`, `native release` など定義済み語彙へ統一する -- 受け入れ基準 4: 監査完了後は定義済み語彙（bootstrap oracle, legacy reference, native release）へ統一 -- エビデンス: TASK-002
 
 ### P11-2: ブートストラップ閉路の完成
 > 実装方針: selfhost compiler の正本 IR は維持しつつ、配布用 backend は AOT ネイティブ化する

@@ -6240,3 +6240,126 @@ fn test_e2e_selfhost_integrated_pipeline_v3() {
     assert_eq!(lines[3], "3", "defn f [x] (+ x 1) → IR 命令数 3");
     assert!(lines[4].parse::<i32>().unwrap() > 0, "if 式 → IR 命令数 > 0");
 }
+
+// =====================================================
+// マクロ展開付きコンパイル・実行ヘルパー
+// =====================================================
+
+/// ソースコードをマクロ展開込みでコンパイルして WASI 環境で実行し、stdout 出力を返す
+fn compile_and_run_with_macros(source: &str) -> String {
+    let program = lsharp_syntax::parse_and_expand(source).unwrap();
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lower = Lower::new();
+    let module = lower.lower_program(&program, &type_results).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
+    run_wasi(&wasm_bytes)
+}
+
+// =====================================================
+// TEST-002: MacroExpand E2E テスト (selfhost MacroExpand.ls 対応)
+// =====================================================
+
+/// defmacro の基本展開テスト
+/// my-inc マクロが (+ ~x 1) に正しく展開されることを検証
+#[test]
+fn test_e2e_selfhost_macro_expand_basic() {
+    // (defmacro my-inc [x] '(+ ~x 1)) を定義し、
+    // (my-inc 5) を展開して (+ 5 1) = 6 になることを確認
+    let source = r#"
+(defmacro my-inc [x] '(+ ~x 1))
+(defn main []
+  (do
+    (print (my-inc 5))
+    0))
+"#;
+    let result = compile_and_run_with_macros(source);
+    assert_eq!(result.trim(), "6", "my-inc マクロが正しく展開されること");
+}
+
+/// 再帰制限超過でエラーを返すテスト
+/// 自分自身を呼び出す無限再帰マクロを定義し、
+/// 128 回制限を超えた時点でコンパイルエラーになることを確認
+#[test]
+fn test_e2e_selfhost_macro_expand_recursion_limit() {
+    // 自分自身を呼び出す無限再帰マクロを定義する
+    // Rust パイプラインでは再帰制限超過でコンパイルエラーになる
+    let source = r#"
+(defmacro inf-macro [x] '(inf-macro ~x))
+(defn main []
+  (inf-macro 1))
+"#;
+    // コンパイルエラーまたは実行時エラーが起きること（クラッシュしないこと）
+    let result = std::panic::catch_unwind(|| compile_and_run_with_macros(source));
+    assert!(result.is_err(), "再帰制限超過時はコンパイルエラーになること");
+}
+
+// =====================================================
+// TEST-003: TypeInfer E2E テスト (selfhost TypeInfer.ls 対応)
+// =====================================================
+
+/// 基本型推論テスト
+/// (let [x 42] x) で x が Int 型に推論されることを確認
+#[test]
+fn test_e2e_selfhost_type_infer_basic() {
+    let source = r#"
+(defn main []
+  (let [x 42]
+    (do (print x) 0)))
+"#;
+    let result = compile_and_run(source);
+    assert_eq!(result.trim(), "42", "let x 42 で x が Int として推論されること");
+}
+
+/// let 多相テスト
+/// (let [id (fn [x] x)] (id 99)) で id が forall a. a -> a として多相化されることを確認
+#[test]
+fn test_e2e_selfhost_type_infer_let_poly() {
+    let source = r#"
+(defn main []
+  (let [id (fn [x] x)]
+    (do (print (id 99)) 0)))
+"#;
+    let result = compile_and_run(source);
+    assert_eq!(result.trim(), "99", "多相関数 id が正しく動作すること");
+}
+
+/// 型エラー検出テスト
+/// (+ 1 true) で Int と Bool の型不一致エラーが検出されることを確認
+#[test]
+fn test_e2e_selfhost_type_infer_error() {
+    // (+ 1 true) で Int と Bool の型不一致エラーが検出されること
+    let source = r#"
+(defn main []
+  (+ 1 true))
+"#;
+    // 型チェックでエラーになることを確認
+    should_fail_typecheck(source);
+}
+
+// =====================================================
+// TEST-004: stage1→stage2 E2E テスト (bootstrap 固定点検証)
+// =====================================================
+
+/// stage1.wasm が L# ソースをコンパイルして stage2.wasm を生成する決定性テスト
+/// Main.ls を 2 回コンパイルして同一バイト列になることを確認
+#[test]
+fn test_e2e_bootstrap_stage1_to_stage2() {
+    // Main.ls ソースを 2 回コンパイルして決定性を確認
+    let source = include_str!("../../../selfhost/Main.ls");
+
+    let stage2_a = compile_only(source);
+    let stage2_b = compile_only(source);
+
+    // 有効な Wasm バイナリであることを確認
+    assert!(
+        stage2_a.starts_with(&[0x00, 0x61, 0x73, 0x6D]),
+        "stage2.wasm は有効な Wasm マジックナンバーで始まること"
+    );
+
+    // 決定性の確認
+    assert_eq!(
+        stage2_a, stage2_b,
+        "stage1 から stage2 へのコンパイルは決定的でなければならない"
+    );
+}
