@@ -38,7 +38,8 @@
 #### P9-6d: フォーマッタ (L# 実装) (残タスク)
 > 完了済み: AST プリティプリンタ + インデント設定 + CLI fmt → ADR-141 参照
 
-- [~] LSP textDocument/formatting ハンドラ統合 -- Formatter.ls のフォーマット関数は定義済み、LSP 連携は JsonRpc.ls 統合後
+- [x] LSP textDocument/formatting ハンドラ統合 (Rust LSP) -- lsharp-lsp/format.rs の format_source + lib.rs の formatting() メソッド実装済み、document_formatting_provider capabilities 登録済み、ユニットテスト 5件
+- [~] LSP textDocument/formatting (L# 実装) -- Formatter.ls のフォーマット関数は定義済み、L# 製 LSP (JsonRpc.ls) 統合は P9-6b ハンドラ完成後
 
 ---
 
@@ -60,12 +61,46 @@
 - [ ] 完了条件: 「何をもって Rust 完全撤去とみなすか」が TODO 上で曖昧でない
 
 ### P11-2: ブートストラップ閉路の完成
+> 実装方針: selfhost compiler の正本 IR は維持しつつ、配布用 backend は AOT ネイティブ化する
+> ネイティブ化方針: `L# source -> frontend/type/IR -> Native backend -> object file -> platform linker -> native binary`
+> 中間運用方針: bootstrap・固定点検証・差分比較には引き続き `stageN.wasm` を使い、最終成果物だけをネイティブ化する
+
 - [ ] selfhost compiler を `Source -> Lexer -> Parser -> MacroExpand -> TypeInfer -> Lower -> WasmEmit` の完全パイプラインに統合する
 - [ ] `Main.ls` の暫定的な手動統合をやめ、`import/module` 前提の実モジュール構成で selfhost 全モジュールをコンパイル可能にする
 - [ ] `stage1.wasm -> stage2.wasm` で selfhost/stdlib/examples をコンパイルする E2E を追加する
 - [ ] `stageN.wasm == stageN+1.wasm` をバイト列比較し、非決定性があれば source map・symbol table・data section の生成順を固定する
-- [ ] ネイティブ backend/AOT への橋渡し層を定義し、selfhost compiler が Wasm 中間成果物からネイティブ配布物を生成できるようにする
-- [ ] 完了条件: Rust を使うのは stage0 生成だけで、stage1 以降の生成・検証・ネイティブ成果物生成は L# 単独で閉じる
+- [ ] backend 境界を `FrontendResult -> LoweredModule -> CodegenArtifact` に固定し、Wasm backend と Native backend が同一 Lowered IR を共有する
+- [ ] Native backend の最小 v1 を `x86_64-apple-darwin` / `aarch64-apple-darwin` / `x86_64-unknown-linux-gnu` の 3 ターゲットに限定し、Windows/追加 arch は P11-4 の配布整備まで後段化する
+- [ ] Native backend v1 の出力形式を「直接実行バイナリ」ではなく「object file + 最小ランタイム + system linker 呼び出し」に固定し、Mach-O/ELF/PE 直書きは後回しにする
+- [ ] codegen v1 は整数、bool、文字列、関数呼出し、分岐、ローカル、静的データ、WASI 代替の最小 I/O ランタイムまでを対象にし、GC 依存の高度機能は linear-memory runtime 統合後に解放する
+
+#### P11-2a: Selfhost frontend の閉路化
+- [ ] `Main.ls` を分割し、Lexer/Parser/MacroExpand/Infer/Lower/WasmEmit/NativeEmit を import ベースで接続する
+- [ ] selfhost compiler が selfhost 自身、stdlib、examples を入力に取れるよう module graph 解決と複数入力のコンパイル順を固定する
+- [ ] `compile-selfhost-wasm` と `compile-selfhost-native` の 2 経路を用意し、同一 source から Wasm と native の両成果物を生成できるようにする
+
+#### P11-2b: Native backend / AOT 方式の固定
+- [ ] Native IR を新設するのではなく、既存 Lowered IR から `NativeInstr` へ 1 段で落とす方針に固定する
+- [ ] calling convention は「L# 関数内部 ABI」と「外部ランタイム ABI」を分離し、v1 では main / print / file I/O / alloc / gc-safe runtime entry だけを外部公開する
+- [ ] レジスタ割付は v1 では単純な linear-scan に固定し、spill は stack slot へ落とす
+- [ ] object emitter はターゲット別に `text/data/rodata/symbol/relocation` を出力し、リンクは platform linker (`ld`/`clang`/`cc`) に委譲する
+- [ ] 文字列定数、関数シンボル、グローバル初期化順を deterministic にし、固定点比較時の差分要因を codegen 側で潰す
+
+#### P11-2c: ランタイム接続
+- [ ] Wasm 専用 runtime helper を抽象化し、Native backend から呼べる `alloc/print/read/write/path/clock` の共通 runtime API を定義する
+- [ ] ネイティブ runtime v1 は selfhost compiler 実行に必要な最小機能だけを持たせ、スレッド、async、動的ロード、JIT は scope 外にする
+- [ ] GC 導入前は bump allocator 互換 runtime で selfhost を成立させ、GC 導入後に同一 runtime API の実装だけを差し替える
+
+#### P11-2d: 検証と固定点
+- [ ] `stage1.wasm -> stage2.wasm -> stage3.wasm` の固定点検証を bootstrap の正本とする
+- [ ] `stageN.wasm` と `stageN-native` が同じソースに対して同値な観測結果を返す differential test を追加する
+- [ ] selfhost/stdlib/examples の Wasm/native 両コンパイル結果に対して、終了コード、stdout、生成物ハッシュ、型エラー出力を比較する
+- [ ] Native backend はまず非最適化 (`-O0` 相当) で固定し、性能最適化は固定点と互換性が安定した後に別 Phase で扱う
+
+#### P11-2e: 完了条件
+- [ ] Rust を使うのは stage0 生成だけで、stage1 以降の生成・検証・ネイティブ成果物生成は L# 単独で閉じる
+- [ ] selfhost compiler が自分自身を native binary として再生成でき、同じ commit 上で bootstrap 経路と native 経路の両方が CI を通る
+- [ ] AOT backend の仕様が README/book/TODO で矛盾なく説明されている
 
 ### P11-3: コンパイラ中核の Rust parity
 - [ ] `crates/lsharp-syntax` 相当の機能を L# に移植する。対象は span/token/AST/衛生マクロ/derive/macro expansion を含む
