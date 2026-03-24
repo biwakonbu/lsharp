@@ -3172,11 +3172,11 @@ fn test_e2e_bootstrap_stage1_modules() {
             include_str!("../../../selfhost/Lexer.ls"),
             "8\n0\n30\n20\n2\n3\n10\n1\n99\n6\n0\n20\n10\n20\n1\n99\n42\n1\n2",
         ),
-        // AST.ls: リテラルノード生成 (tag=1, value=42)
+        // AST.ls: ノード生成 + 走査基盤 (tag/leaf/count/contains-var)
         (
             "AST.ls",
             include_str!("../../../selfhost/AST.ls"),
-            "1\n42\n10",
+            "1\n42\n10\n1\n0\n1\n4\n1\n0\n1",
         ),
         // Parser.ls: トークン列からパース (tag=20 defn, pos=2)
         (
@@ -4013,13 +4013,11 @@ fn test_e2e_bootstrap_stage1_integration() {
     let source = include_str!("../../../selfhost/Main.ls");
     let output = compile_and_run(source);
     // 統合パイプラインの出力:
-    // AST: tag=1 (lit-int), value=42
-    // IR: 命令数=1, opcode=1 (i64.const), operand=42
-    // Wasm: header 長=8, magic bytes (0, 97, 115, 109), type section 長=7, section-id=1
-    // WASI I/O: wasm-size=15 (8+7), module-count=10
+    // 旧: AST(1,42) + IR(1,1,42) + Wasm(8,0,97,115,109,7,1) + WASI(15,10)
+    // T4-4: tokens(16) + defn(20) + body(1,42) + IR(1,1,42)
     assert_eq!(
         output.trim(),
-        "1\n42\n1\n1\n42\n8\n0\n97\n115\n109\n7\n1\n15\n10"
+        "1\n42\n1\n1\n42\n8\n0\n97\n115\n109\n7\n1\n15\n10\n16\n20\n1\n42\n1\n1\n42"
     );
 }
 
@@ -4099,27 +4097,33 @@ fn test_e2e_selfhost_main_integration() {
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    // Main.ls は以下の順に print する:
-    // AST ノード検証
-    assert!(lines.len() >= 12, "Main.ls は少なくとも12行の出力を生成するべき: {:?}", lines);
+    // Main.ls 旧パイプライン + T4-4 新パイプライン検証
+    assert!(lines.len() >= 21, "Main.ls は少なくとも21行の出力を生成するべき: {:?}", lines);
+
+    // 旧パイプライン: AST → IR → Wasm
     assert_eq!(lines[0], "1");    // ast-tag = 1 (lit-int)
     assert_eq!(lines[1], "42");   // value = 42
-
-    // IR 命令検証
     assert_eq!(lines[2], "1");    // vector-length instrs = 1
     assert_eq!(lines[3], "1");    // op: i64.const
     assert_eq!(lines[4], "42");   // operand: 42
-
-    // Wasm ヘッダー検証
     assert_eq!(lines[5], "8");    // ヘッダー長 = 8
     assert_eq!(lines[6], "0");    // \0
     assert_eq!(lines[7], "97");   // 'a'
     assert_eq!(lines[8], "115");  // 's'
     assert_eq!(lines[9], "109");  // 'm'
-
-    // Type セクション検証
     assert_eq!(lines[10], "7");   // type section length = 7
     assert_eq!(lines[11], "1");   // section-id: Type
+    assert_eq!(lines[12], "15");  // wasm-size = 8 + 7
+    assert_eq!(lines[13], "10");  // module-count = 10
+
+    // T4-4: 新パイプライン (ソース文字列から)
+    assert_eq!(lines[14], "16");  // トークン数 (7tok*2 + EOF*2)
+    assert_eq!(lines[15], "20");  // defn AST tag
+    assert_eq!(lines[16], "1");   // body: lit-int tag
+    assert_eq!(lines[17], "42");  // body: value = 42
+    assert_eq!(lines[18], "1");   // IR: 1 命令
+    assert_eq!(lines[19], "1");   // IR instr: i64.const
+    assert_eq!(lines[20], "42");  // IR operand: 42
 }
 
 /// T2-1: Lexer.ls 値つきトークン (kind, start, end) 3つ組のテスト
@@ -4983,6 +4987,13 @@ fn test_e2e_selfhost_linter() {
     assert_eq!(lines[7], "3", "total diagnostics");
     // ルール数
     assert_eq!(lines[8], "5", "rule count");
+    // 未使用変数検出: severity=1(warning), rule=100(unused-var)
+    assert_eq!(lines[9], "1", "unused var: warning severity");
+    assert_eq!(lines[10], "100", "unused var: rule id");
+    // 使用済み変数: 検出されない (0)
+    assert_eq!(lines[11], "0", "used var: no diagnostic");
+    // ルール一括実行: 1件検出
+    assert_eq!(lines[12], "1", "run-all-rules: 1 diagnostic");
 }
 
 // ============================================================

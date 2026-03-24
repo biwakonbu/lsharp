@@ -1,3 +1,4 @@
+mod commands;
 mod config;
 mod error;
 mod lockfile;
@@ -112,6 +113,20 @@ enum Command {
 
     /// LSP サーバーを起動
     Lsp,
+
+    /// ソースコードをフォーマット
+    Fmt {
+        /// 入力ファイル
+        file: PathBuf,
+
+        /// フォーマット差分があればエラー終了 (CI 用)
+        #[arg(long)]
+        check: bool,
+
+        /// ファイルを上書きフォーマット
+        #[arg(short, long)]
+        write: bool,
+    },
 
     /// ドキュメント生成 (:doc メタデータから HTML 生成)
     Doc {
@@ -377,6 +392,10 @@ fn main() -> miette::Result<()> {
             tokio::runtime::Runtime::new()
                 .map_err(|e| miette::miette!("tokio ランタイム起動失敗: {e}"))?
                 .block_on(lsharp_lsp::run_server());
+        }
+
+        Command::Fmt { file, check, write } => {
+            commands::fmt::cmd_fmt(&file, check, write)?;
         }
 
         Command::Doc { file, output } => {

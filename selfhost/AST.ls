@@ -52,12 +52,109 @@
 (defn ast-tag [node]
   (vector-get node 0))
 
+;; === AST 走査基盤 ===
+
+;; ノードが子を持つか判定 (0 = 子なしリーフ)
+;; tag: 1(lit-int), 2(lit-bool), 4(var) → リーフ
+;; tag: 6(if) → 3子, 7(let) → 2子(init,body), 8(lambda) → 1子
+;; tag: 5(apply), 9(do), 10(match) → 可変長
+(defn ast-is-leaf [tag]
+  (if (= tag 1) 1
+    (if (= tag 2) 1
+      (if (= tag 4) 1
+        (if (= tag 3) 1
+          0)))))
+
+;; ノード内で特定の name-hash を持つ var 参照が存在するか検索
+;; 見つかれば 1、なければ 0
+;; node: AST ノード (Vector)、target-hash: 検索対象の変数ハッシュ
+(defn ast-contains-var [node target-hash]
+  (let [tag (vector-get node 0)]
+    (if (= tag 4)
+      ;; var ノード: name-hash が一致するか
+      (if (= (vector-get node 1) target-hash) 1 0)
+      (if (= tag 1) 0      ;; lit-int: 子なし
+      (if (= tag 2) 0      ;; lit-bool: 子なし
+      (if (= tag 3) 0      ;; lit-string: 子なし
+      (if (= tag 6)
+        ;; if ノード: [6, cond, then, else]
+        (let [r1 (ast-contains-var (vector-get node 1) target-hash)]
+          (if (= r1 1) 1
+            (let [r2 (ast-contains-var (vector-get node 2) target-hash)]
+              (if (= r2 1) 1
+                (ast-contains-var (vector-get node 3) target-hash)))))
+      (if (= tag 7)
+        ;; let ノード: [7, name-hash, init-expr, body-expr]
+        (let [r1 (ast-contains-var (vector-get node 2) target-hash)]
+          (if (= r1 1) 1
+            (ast-contains-var (vector-get node 3) target-hash)))
+      (if (= tag 5)
+        ;; apply ノード: [5, func-hash, arg-count, arg1, arg2, ...]
+        ;; arg を走査 (最大 2 引数)
+        (let [argc (vector-get node 2)]
+          (if (> argc 0)
+            (let [r1 (ast-contains-var (vector-get node 3) target-hash)]
+              (if (= r1 1) 1
+                (if (> argc 1)
+                  (ast-contains-var (vector-get node 4) target-hash)
+                  0)))
+            0))
+      0)))))))))
+
+;; AST ノードの数を再帰的にカウント (走査テスト用)
+(defn ast-count-nodes [node]
+  (let [tag (vector-get node 0)]
+    (if (= (ast-is-leaf tag) 1)
+      1
+      (if (= tag 6)
+        ;; if: 1 + cond + then + else
+        (+ 1 (+ (ast-count-nodes (vector-get node 1))
+               (+ (ast-count-nodes (vector-get node 2))
+                  (ast-count-nodes (vector-get node 3)))))
+      (if (= tag 7)
+        ;; let: 1 + init + body
+        (+ 1 (+ (ast-count-nodes (vector-get node 2))
+               (ast-count-nodes (vector-get node 3))))
+      (if (= tag 5)
+        ;; apply: 1 + args
+        (let [argc (vector-get node 2)]
+          (if (> argc 0)
+            (if (> argc 1)
+              (+ 1 (+ (ast-count-nodes (vector-get node 3))
+                     (ast-count-nodes (vector-get node 4))))
+              (+ 1 (ast-count-nodes (vector-get node 3))))
+            1))
+      1))))))
+
 ;; エントリポイント (テスト用)
 (defn main []
-  (let [lit (make-lit-int 42)]
+  (let [lit (make-lit-int 42)
+        var1 (make-var 99)
+        ;; (if var1 42 0) → if ノード
+        if-node (let [v (vector-new 4)]
+                  (vector-push (vector-push (vector-push (vector-push v 6)
+                    var1) lit) (make-lit-int 0)))
+        ;; let x = 42 in (if x 42 0) → let ノード
+        let-node (let [v (vector-new 4)]
+                   (vector-push (vector-push (vector-push (vector-push v 7)
+                     99) lit) if-node))]
     (do
-      (print (ast-tag lit))   ;; 1 (lit-int)
-      (print (vector-get lit 1))  ;; 42
-      ;; match タグ検証
-      (print (ast-match))  ;; 10
+      ;; 基本タグ検証
+      (print (ast-tag lit))           ;; 1 (lit-int)
+      (print (vector-get lit 1))      ;; 42
+      (print (ast-match))             ;; 10
+
+      ;; リーフ判定
+      (print (ast-is-leaf 1))         ;; 1 (lit-int はリーフ)
+      (print (ast-is-leaf 6))         ;; 0 (if はリーフでない)
+
+      ;; ノードカウント
+      (print (ast-count-nodes lit))   ;; 1 (リーフ)
+      (print (ast-count-nodes if-node)) ;; 4 (if + var + lit + lit)
+
+      ;; 変数検索
+      (print (ast-contains-var if-node 99))  ;; 1 (var1 が含まれる)
+      (print (ast-contains-var if-node 88))  ;; 0 (88 は含まれない)
+      (print (ast-contains-var let-node 99)) ;; 1 (body 内に var 99 がある)
+
       0)))

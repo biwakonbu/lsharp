@@ -101,7 +101,7 @@
 - [x] T4-1: Main.ls: WASI ファイル I/O 統合 -- read-source/emit-wasm-header-bytes 関数追加、WASI I/O 検証 (wasm-size=15)、E2E 2件追加 (stage1_compile_and_run + stage1_pipeline_verification)
 - [x] T4-2: Main.ls: モジュール結合 -- 全 selfhost 10 モジュールの依存順リスト + module-count 関数、モジュール結合情報を Main.ls に統合、E2E 検証済み
 - [x] T4-3: stage1 E2E テスト -- stage1.wasm のコンパイル+実行検証 (AST→IR→Wasm 出力比較)、Wasm バイナリ構造検証 (Type/Function/Export/Code セクション存在確認)、E2E 3件追加 (stage1_compile_and_run + stage1_pipeline_verification + stage1_binary_structure)
-- [~] T4-4: stage1.wasm → stage2.wasm (セルフコンパイル) -- selfhost コンパイラは Main.ls 統合パイプラインで AST→IR→Wasm 変換可能、完全セルフコンパイルは Lexer/Parser 統合後
+- [~] T4-4: stage1.wasm → stage2.wasm (セルフコンパイル) -- ミニトークナイザー+ミニパーサーによる Source→Token→AST→IR パイプライン実装済み (MVP: `(defn main [] 42)` のソースからコンパイル成功)、E2E 検証 7行追加 (test_e2e_selfhost_main_integration, test_e2e_bootstrap_stage1_integration)。完全セルフコンパイルは Lexer.ls/Parser.ls の完全統合後
 - [~] T4-5: stage1.wasm == stage2.wasm (固定点検証) -- stage1 バイナリ構造の検証テスト追加済み、完全固定点検証は T4-4 完了後
 - [x] T4-6: CI でのブートストラップ自動検証 -- .github/workflows/ci.yml に bootstrap ジョブ追加 (全 selfhost 10 モジュール + stdlib コンパイル検証)、ci-gate に統合、E2E 2件追加 (bootstrap_ci_all_modules_compile + bootstrap_ci_stdlib_compile)
 
@@ -138,14 +138,14 @@
 #### P9-6c: リンター (L# 実装)
 - [x] AST ベースのリントルール基盤 (selfhost/AST.ls 拡張) -- selfhost/Linter.ls (診断構造: severity/rule-id/line/col/msg-hash、リント結果集約)、E2E 1件追加
 - [x] 組み込みルール: 未使用変数、未使用 import、型注釈推奨 -- rule-unused-var/rule-unused-import/rule-missing-type-ann/rule-shadowed-var/rule-empty-body (5ルール定義)、check-empty-body 実装、E2E 検証済み
-- [~] カスタムルール定義 API -- ルール登録の基盤構造 (rule-count) は定義済み、関数インターフェース (ast-node -> diagnostic) の完全実装は AST 走査関数追加後
+- [~] カスタムルール定義 API -- AST 走査基盤実装済み (ast-is-leaf/ast-contains-var/ast-count-nodes)、check-unused-var ルール実装済み (let 束縛の未使用検出)、run-all-rules-on-node 一括実行基盤実装済み、E2E 4件追加。完全な AST walker (全ノードタイプ走査) は do/match 対応後
 - [~] LSP 統合 (diagnostics として報告) -- 診断情報構造は LSP Diagnostic 互換 (severity/line/col)、JsonRpc.ls 統合後に LSP publishDiagnostics 対応
 
 #### P9-6d: フォーマッタ (L# 実装)
 - [x] AST プリティプリンタ (S 式の整形出力) -- selfhost/Formatter.ls (format-lit-int/format-var/format-sexp-oneline/format-let-bindings/format-defn-layout + 統計収集)、E2E 1件追加
 - [x] インデント・改行ルール設定 -- indent-width=2/max-line-width=80/short-form-threshold=40、make-indent (再帰的インデント生成)、E2E 検証済み
 - [~] LSP textDocument/formatting ハンドラ統合 -- Formatter.ls のフォーマット関数は定義済み、LSP 連携は JsonRpc.ls 統合後
-- [~] CLI フォーマッタコマンド (`lsharp fmt`) -- Formatter.ls のコア関数は実装済み、CLI サブコマンドは lsharp-driver への追加が必要
+- [x] CLI フォーマッタコマンド (`lsharp fmt`) -- lsharp-driver に Fmt サブコマンド追加 (--check/--write フラグ対応)、Rust 版 AST Display による parse→format ラウンドトリップ、ユニットテスト 5件追加
 
 ---
 

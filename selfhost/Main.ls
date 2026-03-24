@@ -291,53 +291,254 @@
 (defn module-count [] 10)
 
 ;; ============================================================
-;; 統合パイプライン: AST -> IR -> Wasm
+;; T4-4: ミニトークナイザー (ソース文字列 → トークン列)
+;; ============================================================
+
+;; 文字種別判定
+(defn is-whitespace [ch]
+  (if (= ch 32) 1
+    (if (= ch 10) 1
+      (if (= ch 13) 1
+        (if (= ch 9) 1
+          0)))))
+
+(defn is-digit [ch]
+  (if (>= ch 48)
+    (if (<= ch 57) 1 0)
+    0))
+
+;; 1文字トークンを追加してポインタを進める
+(defn emit-tok [tokens pos kind]
+  (do
+    (ref-set tokens (vector-push (vector-push (ref-get tokens) kind) 0))
+    (ref-set pos (+ (ref-get pos) 1))
+    0))
+
+;; シンボルの残りをスキップ (空白/括弧まで)
+(defn mini-skip-symbol [src len pos]
+  (do
+    (ref-set pos (+ (ref-get pos) 1))
+    (if (< (ref-get pos) len)
+      (let [ch (string-char-at src (ref-get pos))]
+        (if (= (is-whitespace ch) 1) 0
+          (if (= ch 40) 0
+            (if (= ch 41) 0
+              (if (= ch 91) 0
+                (if (= ch 93) 0
+                  (mini-skip-symbol src len pos)))))))
+      0)))
+
+;; 数値を 1〜3 桁パース: [value, end-pos]
+(defn scan-int [src pos len]
+  (let [d0 (- (string-char-at src pos) 48)
+        p1 (+ pos 1)]
+    (if (< p1 len)
+      (if (= (is-digit (string-char-at src p1)) 1)
+        (let [d1 (- (string-char-at src p1) 48)
+              p2 (+ p1 1)]
+          (if (< p2 len)
+            (if (= (is-digit (string-char-at src p2)) 1)
+              (let [d2 (- (string-char-at src p2) 48)
+                    result (vector-new 2)]
+                (vector-push (vector-push result (+ (* (+ (* d0 10) d1) 10) d2)) (+ p2 1)))
+              (let [result (vector-new 2)]
+                (vector-push (vector-push result (+ (* d0 10) d1)) p2)))
+            (let [result (vector-new 2)]
+              (vector-push (vector-push result (+ (* d0 10) d1)) p2))))
+        (let [result (vector-new 2)]
+          (vector-push (vector-push result d0) p1)))
+      (let [result (vector-new 2)]
+        (vector-push (vector-push result d0) p1)))))
+
+;; 'defn' キーワードかチェック (4文字先読み)
+(defn is-defn-keyword [src pos len]
+  (if (< (+ pos 3) len)
+    (if (= (string-char-at src pos) 100)
+      (if (= (string-char-at src (+ pos 1)) 101)
+        (if (= (string-char-at src (+ pos 2)) 102)
+          (if (= (string-char-at src (+ pos 3)) 110) 1 0)
+          0)
+        0)
+      0)
+    0))
+
+;; 1 トークンをスキャン
+(defn mini-scan-one [src len pos tokens]
+  (if (>= (ref-get pos) len)
+    0
+    (let [ch (string-char-at src (ref-get pos))]
+      (if (= (is-whitespace ch) 1)
+        (do (ref-set pos (+ (ref-get pos) 1)) 1)
+        (if (= ch 40)
+          (emit-tok tokens pos 0)
+          (if (= ch 41)
+            (emit-tok tokens pos 1)
+            (if (= ch 91)
+              (emit-tok tokens pos 2)
+              (if (= ch 93)
+                (emit-tok tokens pos 3)
+                (if (= (is-digit ch) 1)
+                  (let [result (scan-int src (ref-get pos) len)]
+                    (do
+                      (ref-set tokens (vector-push (vector-push (ref-get tokens) 10) (vector-get result 0)))
+                      (ref-set pos (vector-get result 1))
+                      0))
+                  (if (= (is-defn-keyword src (ref-get pos) len) 1)
+                    (do
+                      (ref-set tokens (vector-push (vector-push (ref-get tokens) 30) 0))
+                      (ref-set pos (+ (ref-get pos) 4))
+                      0)
+                    (do
+                      (ref-set tokens (vector-push (vector-push (ref-get tokens) 20) ch))
+                      (mini-skip-symbol src len pos)
+                      0)))))))))))
+
+;; スキャンループ (最大 20 トークン展開)
+(defn mini-scan-loop [src len pos tokens]
+  (do
+    (mini-scan-one src len pos tokens)
+    (if (< (ref-get pos) len)
+      (do (mini-scan-one src len pos tokens)
+          (if (< (ref-get pos) len)
+            (do (mini-scan-one src len pos tokens)
+                (if (< (ref-get pos) len)
+                  (do (mini-scan-one src len pos tokens)
+                      (if (< (ref-get pos) len)
+                        (do (mini-scan-one src len pos tokens)
+                            (if (< (ref-get pos) len)
+                              (do (mini-scan-one src len pos tokens)
+                                  (if (< (ref-get pos) len)
+                                    (do (mini-scan-one src len pos tokens)
+                                        (if (< (ref-get pos) len)
+                                          (do (mini-scan-one src len pos tokens)
+                                              (if (< (ref-get pos) len)
+                                                (do (mini-scan-one src len pos tokens)
+                                                    (if (< (ref-get pos) len)
+                                                      (mini-scan-one src len pos tokens)
+                                                      0))
+                                                0))
+                                          0))
+                                    0))
+                              0))
+                        0))
+                  0))
+            0))
+      0)))
+
+;; ミニトークナイザーのエントリポイント
+(defn mini-tokenize [src]
+  (let [len (string-length src)
+        pos (ref-new 0)
+        tokens (ref-new (vector-new 32))]
+    (do
+      (mini-scan-loop src len pos tokens)
+      (ref-set tokens (vector-push (vector-push (ref-get tokens) 99) 0))
+      (ref-get tokens))))
+
+;; ============================================================
+;; T4-4: ミニパーサー (トークン列 → Vector ベース AST)
+;; ============================================================
+
+;; トークン列のアクセサ (flat [kind, value, kind, value, ...])
+(defn tok-at-kind [tokens idx]
+  (vector-get tokens (* idx 2)))
+
+(defn tok-at-value [tokens idx]
+  (vector-get tokens (+ (* idx 2) 1)))
+
+;; ミニパーサー: (defn NAME [] BODY) を Vector ベース AST に変換
+;; MVP: body は整数リテラルのみ
+;; 戻り値: defn AST ノード [20, name-hash, 0, body-node]
+(defn mini-parse-defn [tokens]
+  (let [;; tokens[0] = ( , tokens[1] = defn, tokens[2] = NAME
+        ;; tokens[3] = [ , tokens[4] = ] , tokens[5] = BODY, tokens[6] = )
+        name-kind (tok-at-kind tokens 2)
+        body-kind (tok-at-kind tokens 5)
+        body-value (tok-at-value tokens 5)]
+    ;; body が整数リテラルの場合
+    (if (= body-kind 10)
+      (let [body-ast (make-lit-int body-value)
+            defn-node (vector-new 4)]
+        (vector-push (vector-push (vector-push (vector-push defn-node 20)
+          (tok-at-value tokens 2)) 0) body-ast))
+      ;; 未対応の body 型
+      (make-lit-int 0))))
+
+;; ============================================================
+;; T4-4: compile-source (ソース文字列 → IR)
+;; ============================================================
+
+;; ソース文字列をトークナイズ → パース → IR 変換
+(defn compile-source [src]
+  (let [;; Step 1: トークナイズ
+        tokens (mini-tokenize src)
+        ;; Step 2: パース (defn の body を取得)
+        defn-ast (mini-parse-defn tokens)
+        ;; body は defn ノードの index 3
+        body-ast (vector-get defn-ast 3)
+        ;; Step 3: IR 変換
+        env (env-new)
+        ir-instrs (compile-expr body-ast env (vector-new 8))]
+    ;; [tokens, defn-ast, ir-instrs] を返す
+    (let [result (vector-new 3)]
+      (vector-push (vector-push (vector-push result tokens) defn-ast) ir-instrs))))
+
+;; ============================================================
+;; 統合パイプライン: Source → Token → AST → IR → Wasm
 ;; ============================================================
 
 (defn main []
-  (let [;; Step 1: AST 構築 (手動: Parser の代わり)
-        ;; "(defn main [] 42)" の本体 = 整数リテラル 42
+  (let [;; === 旧パイプライン (手動 AST) ===
         ast-node (make-lit-int 42)
-
-        ;; Step 2: IR 変換 (Compiler)
         env (env-new)
         ir-instrs (compile-expr ast-node env (vector-new 8))
-
-        ;; Step 3: Wasm バイナリ生成 (WasmEmit)
         header (emit-header)
         type-sec (emit-type-section-main)
+        wasm-size (emit-wasm-header-bytes)
 
-        ;; Step 4: WASI I/O 統合の検証
-        wasm-size (emit-wasm-header-bytes)]
+        ;; === T4-4: 新パイプライン (ソースから) ===
+        source "(defn main [] 42)"
+        pipeline-result (compile-source source)
+        src-tokens (vector-get pipeline-result 0)
+        src-defn (vector-get pipeline-result 1)
+        src-ir (vector-get pipeline-result 2)]
     (do
-      ;; === 検証出力 ===
-
-      ;; AST ノード検証
+      ;; === 旧パイプライン検証 (既存テスト互換) ===
       (print (ast-tag ast-node))         ;; 1 (lit-int)
       (print (vector-get ast-node 1))    ;; 42
-
-      ;; IR 命令検証
-      (print (vector-length ir-instrs))  ;; 1 (命令 1 個)
+      (print (vector-length ir-instrs))  ;; 1
       (let [instr0 (vector-get ir-instrs 0)]
         (do
           (print (vector-get instr0 0))  ;; 1 (op: i64.const)
-          (print (vector-get instr0 1))));; 42 (operand)
-
-      ;; Wasm ヘッダー検証
+          (print (vector-get instr0 1))));; 42
       (print (vector-length header))     ;; 8
-      (print (vector-get header 0))      ;; 0 (\0)
-      (print (vector-get header 1))      ;; 97 (a)
-      (print (vector-get header 2))      ;; 115 (s)
-      (print (vector-get header 3))      ;; 109 (m)
-
-      ;; Type セクション検証
+      (print (vector-get header 0))      ;; 0
+      (print (vector-get header 1))      ;; 97
+      (print (vector-get header 2))      ;; 115
+      (print (vector-get header 3))      ;; 109
       (print (vector-length type-sec))   ;; 7
-      (print (vector-get type-sec 0))    ;; 1 (section-id: Type)
-
-      ;; WASI I/O 統合検証
-      (print wasm-size)                  ;; 15 (8 + 7)
-
-      ;; モジュール結合検証
+      (print (vector-get type-sec 0))    ;; 1
+      (print wasm-size)                  ;; 15
       (print (module-count))             ;; 10
+
+      ;; === T4-4: 新パイプライン検証 ===
+      ;; トークン数 (kind,value ペア): 7+1(EOF) = 16 エントリ
+      (print (vector-length src-tokens))  ;; 16
+
+      ;; defn AST: tag=20
+      (print (vector-get src-defn 0))     ;; 20 (defn)
+
+      ;; body AST: tag=1, value=42
+      (let [body (vector-get src-defn 3)]
+        (do
+          (print (vector-get body 0))     ;; 1 (lit-int)
+          (print (vector-get body 1))))   ;; 42
+
+      ;; IR 命令: i64.const 42
+      (print (vector-length src-ir))      ;; 1
+      (let [src-instr0 (vector-get src-ir 0)]
+        (do
+          (print (vector-get src-instr0 0))  ;; 1 (i64.const)
+          (print (vector-get src-instr0 1))));; 42
 
       0)))
