@@ -3176,7 +3176,7 @@ fn test_e2e_bootstrap_stage1_modules() {
         (
             "AST.ls",
             include_str!("../../../selfhost/AST.ls"),
-            "1\n42\n10\n1\n0\n1\n4\n1\n0\n1",
+            "1\n42\n10\n1\n0\n1\n4\n1\n0\n1\n3\n4",
         ),
         // Parser.ls: トークン列からパース (tag=20 defn, pos=2)
         (
@@ -4994,6 +4994,16 @@ fn test_e2e_selfhost_linter() {
     assert_eq!(lines[11], "0", "used var: no diagnostic");
     // ルール一括実行: 1件検出
     assert_eq!(lines[12], "1", "run-all-rules: 1 diagnostic");
+    // do ノード: ast-contains-var 直接検索
+    assert_eq!(lines[13], "1", "do: contains-var found 99");
+    assert_eq!(lines[14], "0", "do: contains-var not found 77");
+    // do ノード: let 経由の未使用変数検出 → 警告なし
+    assert_eq!(lines[15], "0", "do: used var no diagnostic");
+    // match ノード: ast-contains-var 直接検索
+    assert_eq!(lines[16], "1", "match: contains-var found 99");
+    assert_eq!(lines[17], "0", "match: contains-var not found 77");
+    // match ノード: let 経由の未使用変数検出 → 警告なし
+    assert_eq!(lines[18], "0", "match: used var no diagnostic");
 }
 
 // ============================================================

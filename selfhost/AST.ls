@@ -124,7 +124,52 @@
                      (ast-count-nodes (vector-get node 4))))
               (+ 1 (ast-count-nodes (vector-get node 3))))
             1))
-      1))))))
+      (if (= tag 9)
+        ;; do: 1 + 各子式 (最大5式展開)
+        (let [ec (vector-get node 1)]
+          (if (> ec 0)
+            (if (> ec 1)
+              (if (> ec 2)
+                (if (> ec 3)
+                  (if (> ec 4)
+                    (+ 1 (+ (ast-count-nodes (vector-get node 2))
+                           (+ (ast-count-nodes (vector-get node 3))
+                              (+ (ast-count-nodes (vector-get node 4))
+                                 (+ (ast-count-nodes (vector-get node 5))
+                                    (ast-count-nodes (vector-get node 6)))))))
+                    (+ 1 (+ (ast-count-nodes (vector-get node 2))
+                           (+ (ast-count-nodes (vector-get node 3))
+                              (+ (ast-count-nodes (vector-get node 4))
+                                 (ast-count-nodes (vector-get node 5)))))))
+                  (+ 1 (+ (ast-count-nodes (vector-get node 2))
+                         (+ (ast-count-nodes (vector-get node 3))
+                            (ast-count-nodes (vector-get node 4))))))
+                (+ 1 (+ (ast-count-nodes (vector-get node 2))
+                       (ast-count-nodes (vector-get node 3)))))
+              (+ 1 (ast-count-nodes (vector-get node 2))))
+            1))
+      (if (= tag 10)
+        ;; match: 1 + scrutinee + 腕の body (最大3腕展開)
+        ;; [10, scrutinee, arm-count, pat1, body1, pat2, body2, ...]
+        (let [ac (vector-get node 2)
+              sc (ast-count-nodes (vector-get node 1))]
+          (if (> ac 0)
+            (if (> ac 1)
+              (if (> ac 2)
+                (+ 1 (+ sc (+ (+ (ast-count-nodes (vector-get node 3))
+                                 (ast-count-nodes (vector-get node 4)))
+                              (+ (+ (ast-count-nodes (vector-get node 5))
+                                    (ast-count-nodes (vector-get node 6)))
+                                 (+ (ast-count-nodes (vector-get node 7))
+                                    (ast-count-nodes (vector-get node 8)))))))
+                (+ 1 (+ sc (+ (+ (ast-count-nodes (vector-get node 3))
+                                 (ast-count-nodes (vector-get node 4)))
+                              (+ (ast-count-nodes (vector-get node 5))
+                                 (ast-count-nodes (vector-get node 6)))))))
+              (+ 1 (+ sc (+ (ast-count-nodes (vector-get node 3))
+                           (ast-count-nodes (vector-get node 4))))))
+            (+ 1 sc)))
+      1))))))))
 
 ;; エントリポイント (テスト用)
 (defn main []
@@ -156,5 +201,13 @@
       (print (ast-contains-var if-node 99))  ;; 1 (var1 が含まれる)
       (print (ast-contains-var if-node 88))  ;; 0 (88 は含まれない)
       (print (ast-contains-var let-node 99)) ;; 1 (body 内に var 99 がある)
+
+      ;; do ノード: [9, 2, var(99), lit(0)] → カウント 3
+      (let [do-node (vector-push (vector-push (vector-push (vector-push (vector-new 4) 9) 2) var1) (make-lit-int 0))]
+        (print (ast-count-nodes do-node)))   ;; 3
+
+      ;; match ノード: [10, lit(0), 1, lit(1), var(99)] → カウント 4
+      (let [match-node (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 10) (make-lit-int 0)) 1) (make-lit-int 1)) var1)]
+        (print (ast-count-nodes match-node))) ;; 4
 
       0)))

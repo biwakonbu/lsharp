@@ -54,7 +54,47 @@
                   (ast-contains-var (vector-get node 4) target-hash)
                   0)))
             0))
-      0)))))))))
+      (if (= tag 9)
+        ;; do ノード: [9, expr-count, expr1, expr2, ...]
+        ;; 最大5式を展開して走査
+        (let [ec (vector-get node 1)]
+          (if (> ec 0)
+            (let [r1 (ast-contains-var (vector-get node 2) target-hash)]
+              (if (= r1 1) 1
+                (if (> ec 1)
+                  (let [r2 (ast-contains-var (vector-get node 3) target-hash)]
+                    (if (= r2 1) 1
+                      (if (> ec 2)
+                        (let [r3 (ast-contains-var (vector-get node 4) target-hash)]
+                          (if (= r3 1) 1
+                            (if (> ec 3)
+                              (let [r4 (ast-contains-var (vector-get node 5) target-hash)]
+                                (if (= r4 1) 1
+                                  (if (> ec 4)
+                                    (ast-contains-var (vector-get node 6) target-hash)
+                                    0)))
+                              0)))
+                        0)))
+                  0)))
+            0))
+      (if (= tag 10)
+        ;; match ノード: [10, scrutinee, arm-count, pat1, body1, ...]
+        ;; scrutinee + 最大3腕の body を走査
+        (let [r1 (ast-contains-var (vector-get node 1) target-hash)
+              ac (vector-get node 2)]
+          (if (= r1 1) 1
+            (if (> ac 0)
+              (let [rb1 (ast-contains-var (vector-get node 4) target-hash)]
+                (if (= rb1 1) 1
+                  (if (> ac 1)
+                    (let [rb2 (ast-contains-var (vector-get node 6) target-hash)]
+                      (if (= rb2 1) 1
+                        (if (> ac 2)
+                          (ast-contains-var (vector-get node 8) target-hash)
+                          0)))
+                    0)))
+              0)))
+      0)))))))))))
 
 ;; リント診断の重要度
 (defn lint-error [] 0)
@@ -171,7 +211,27 @@
 
         ;; === 新規テスト: ルール一括実行 ===
         all-results (lint-results-new)
-        all-r1 (run-all-rules-on-node unused-let all-results)]
+        all-r1 (run-all-rules-on-node unused-let all-results)
+
+        ;; === 新規テスト: do ノード内の変数参照検出 ===
+        ;; do ノード: [9, 2, var(99), lit(0)]
+        do-node (vector-push (vector-push (vector-push (vector-push (vector-new 4) 9) 2) (make-var 99)) (make-lit-int 0))
+        ;; ast-contains-var: do ノード内で検索
+        do-found (ast-contains-var do-node 99)
+        do-not (ast-contains-var do-node 77)
+        ;; let x = 42 in (do x 0) → x は使用されている → 警告なし
+        used-do-let (vector-push (vector-push (vector-push (vector-push (vector-new 4) 7) 99) (make-lit-int 42)) do-node)
+        d-used-do (check-unused-var used-do-let)
+
+        ;; === 新規テスト: match ノード内の変数参照検出 ===
+        ;; match ノード: [10, lit(0), 1, lit(1), var(99)]
+        match-node (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 10) (make-lit-int 0)) 1) (make-lit-int 1)) (make-var 99))
+        ;; ast-contains-var: match ノード内で検索
+        match-found (ast-contains-var match-node 99)
+        match-not (ast-contains-var match-node 77)
+        ;; let x = 42 in (match 0 [1 x]) → x は使用されている → 警告なし
+        used-match-let (vector-push (vector-push (vector-push (vector-push (vector-new 4) 7) 99) (make-lit-int 42)) match-node)
+        d-used-match (check-unused-var used-match-let)]
     (do
       ;; 診断情報の検証
       (print (diag-severity d1))  ;; 1 (warning)
@@ -200,5 +260,17 @@
 
       ;; ルール一括実行: unused-let に対して1件検出
       (print (vector-length all-r1))    ;; 1
+
+      ;; do ノード: ast-contains-var 直接検索
+      (print do-found)                  ;; 1 (var 99 found)
+      (print do-not)                    ;; 0 (var 77 not found)
+      ;; do ノード: let 経由の未使用変数検出 → 警告なし
+      (print d-used-do)                 ;; 0
+
+      ;; match ノード: ast-contains-var 直接検索
+      (print match-found)              ;; 1 (var 99 found)
+      (print match-not)                ;; 0 (var 77 not found)
+      ;; match ノード: let 経由の未使用変数検出 → 警告なし
+      (print d-used-match)             ;; 0
 
       0)))
