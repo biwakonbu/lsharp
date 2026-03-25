@@ -21,6 +21,9 @@
 ;; tag=9: do [9, expr-count, expr1, expr2, ...]
 ;; tag=10: match [10, scrutinee, arm-count, pat1, body1, ...]
 ;; tag=20: defn [20, name-hash, param-count, param-hash1, ..., body]
+;; tag=21: type-decl [21, name-hash]
+;; tag=25: module-decl [25, name-hash]
+;; tag=26: import-decl [26, name-hash]
 
 ;; トークン種別定数 (Token.ls より)
 ;; 0=LParen, 1=RParen, 2=LBracket, 3=RBracket, 4=LBrace, 5=RBrace
@@ -102,7 +105,38 @@
 (defn make-string-node [start end]
   (vector-push (vector-push (vector-push (vector-new 3) 3) start) end))
 
+;; vector の特定インデックスを置換する
+;; 注: vector は不変なので新しい vector を組み立てる
+(defn vector-set-at [vec idx new-val]
+  (let [len (vector-length vec)
+        result (vector-new len)]
+    (vector-set-at-loop vec result idx new-val 0 len)))
+
+(defn vector-set-at-loop [vec result idx new-val i len]
+  (if (>= i len) result
+    (if (= i idx)
+      (vector-set-at-loop vec (vector-push result new-val)
+        idx new-val (+ i 1) len)
+      (vector-set-at-loop vec (vector-push result (vector-get vec i))
+        idx new-val (+ i 1) len))))
+
 ;; === メインパーサー (v3: span ベース) ===
+
+;; prefix quote 系: 'expr / ~expr / ~@expr
+(defn parse-quote-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)
+    (make-quote (parse-expr-v3 spans pos-ref src))))
+
+(defn parse-unquote-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)
+    (make-unquote (parse-expr-v3 spans pos-ref src))))
+
+(defn parse-unquote-splice-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)
+    (make-unquote-splice (parse-expr-v3 spans pos-ref src))))
 
 ;; 式のパース (メインディスパッチ)
 (defn parse-expr-v3 [spans pos-ref src]
@@ -122,17 +156,23 @@
                   end (p-end spans pos-ref)]
               (do (p-advance pos-ref)
                   (make-string-node (+ start 1) (- end 1)))) ;; 引用符を除く
-            (if (== kind 20)  ;; Symbol (変数参照)
-              (let [start (p-start spans pos-ref)
-                    end (p-end spans pos-ref)
-                    h (name-hash src start end)]
-                (do (p-advance pos-ref)
-                    (make-var-node h)))
-              (if (== kind 0)  ;; LParen -> S 式
-                (parse-sexp-v3 spans pos-ref src)
-                ;; unknown token
-                (do (p-advance pos-ref)
-                    (make-int-node 0))))))))))
+            (if (== kind 54)  ;; '
+              (parse-quote-v3 spans pos-ref src)
+              (if (== kind 55)  ;; ~
+                (parse-unquote-v3 spans pos-ref src)
+                (if (== kind 56)  ;; ~@
+                  (parse-unquote-splice-v3 spans pos-ref src)
+                  (if (== kind 20)  ;; Symbol (変数参照)
+                    (let [start (p-start spans pos-ref)
+                          end (p-end spans pos-ref)
+                          h (name-hash src start end)]
+                      (do (p-advance pos-ref)
+                          (make-var-node h)))
+                    (if (== kind 0)  ;; LParen -> S 式
+                      (parse-sexp-v3 spans pos-ref src)
+                      ;; unknown token
+                      (do (p-advance pos-ref)
+                          (make-int-node 0)))))))))))))
 
 ;; S 式のパース (( の後のキーワードディスパッチ)
 (defn parse-sexp-v3 [spans pos-ref src]
@@ -153,12 +193,14 @@
                   (parse-defn-v3 spans pos-ref src)
                   (if (== kind 34)  ;; type
                     (parse-type-v3 spans pos-ref src)
-                    (if (== kind 37)  ;; module
-                      (parse-module-v3 spans pos-ref src)
-                      (if (== kind 38)  ;; import
-                        (parse-import-v3 spans pos-ref src)
-                        ;; 関数適用 (apply)
-                        (parse-apply-v3 spans pos-ref src)))))))))))))
+                    (if (== kind 40)  ;; trait
+                      (parse-trait-v3 spans pos-ref src)
+                      (if (== kind 37)  ;; module
+                        (parse-module-v3 spans pos-ref src)
+                        (if (== kind 38)  ;; import
+                          (parse-import-v3 spans pos-ref src)
+                          ;; 関数適用 (apply)
+                          (parse-apply-v3 spans pos-ref src))))))))))))))
 
 ;; === if 式 ===
 (defn parse-if-v3 [spans pos-ref src]
@@ -236,7 +278,9 @@
   (do
     (p-advance pos-ref)  ;; do を消費
     (let [result (vector-push (vector-push (vector-new 16) 9) 0)]  ;; [9, count=0(後で更新)]
-      (parse-do-exprs-v3 spans pos-ref src result 0))))
+      (let [with-exprs (parse-do-exprs-v3 spans pos-ref src result 0)
+            expr-count (- (vector-length with-exprs) 2)]
+        (vector-set-at with-exprs 1 expr-count)))))
 
 ;; do 内の式を収集
 (defn parse-do-exprs-v3 [spans pos-ref src result count]
@@ -255,8 +299,10 @@
     (p-advance pos-ref)  ;; match を消費
     (let [scrutinee (parse-expr-v3 spans pos-ref src)
           result (vector-push (vector-push (vector-push (vector-new 16) 10)
-                   scrutinee) 0)]  ;; [10, scrutinee, arm-count=0]
-      (parse-match-arms-v3 spans pos-ref src result 0))))
+                    scrutinee) 0)]  ;; [10, scrutinee, arm-count=0]
+      (let [with-arms (parse-match-arms-v3 spans pos-ref src result 0)
+            arm-count (/ (- (vector-length with-arms) 3) 2)]
+        (vector-set-at with-arms 2 arm-count)))))
 
 ;; match の腕を収集
 (defn parse-match-arms-v3 [spans pos-ref src result count]
@@ -283,10 +329,12 @@
     (p-expect spans pos-ref 2)  ;; [ を消費
     (let [result (vector-push (vector-push (vector-new 8) 8) 0)]  ;; [8, param-count=0]
       (let [with-params (parse-params-v3 spans pos-ref src result 0)
+            param-count (- (vector-length with-params) 2)
+            lambda-node (vector-set-at with-params 1 param-count)
             body (parse-expr-v3 spans pos-ref src)]
         (do
           (p-expect spans pos-ref 1)  ;; ) を消費
-          (vector-push with-params body))))))
+          (vector-push lambda-node body))))))
 
 ;; パラメータリストを収集 (名前ハッシュ)
 (defn parse-params-v3 [spans pos-ref src result count]
@@ -312,46 +360,90 @@
         (p-expect spans pos-ref 2)  ;; [ を消費
         (let [result (vector-push (vector-push (vector-push (vector-new 8) 20) nh) 0)]
           (let [with-params (parse-params-v3 spans pos-ref src result 0)
+                param-count (- (vector-length with-params) 3)
+                defn-node (vector-set-at with-params 2 param-count)
                 body (parse-expr-v3 spans pos-ref src)]
             (do
               (p-expect spans pos-ref 1)  ;; ) を消費
-              (vector-push with-params body))))))))
+              (vector-push defn-node body))))))))
 
 ;; === type 宣言 (簡易) ===
 (defn parse-type-v3 [spans pos-ref src]
   (do
     (p-advance pos-ref)  ;; type を消費
-    ;; ) まで読み飛ばし
-    (parse-skip-to-close-v3 spans pos-ref 1)
-    (make-int-node 0)))  ;; ダミーノード
+    (let [kind (p-current spans pos-ref)]
+      (if (== kind 20)  ;; 型名シンボル
+        (let [start (p-start spans pos-ref)
+              end (p-end spans pos-ref)
+              h (name-hash src start end)]
+          (do
+            (p-advance pos-ref)
+            ;; いったん残りの variant / metadata は読み飛ばすが、
+            ;; record 本体だけは RecordDef として識別する
+            (let [head-kind (if (== (p-current spans pos-ref) 0)
+                              (span-kind spans (+ (ref-get pos-ref) 1))
+                              0)
+                  skipped (parse-skip-to-close-v3 spans pos-ref 1)]
+              (if (== head-kind 39)
+                (make-record-def h)
+                (make-type-decl h)))))
+        (do
+          (parse-skip-to-close-v3 spans pos-ref 1)
+          (make-type-decl 0))))))
+
+;; === trait 宣言 (簡易) ===
+(defn parse-trait-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)  ;; trait を消費
+    (if (== (p-current spans pos-ref) 0)
+      (do
+        (p-advance pos-ref)  ;; trait head の ( を消費
+        (if (== (p-current spans pos-ref) 20)
+          (let [name-start (p-start spans pos-ref)
+                name-end (p-end spans pos-ref)
+                name-h (name-hash src name-start name-end)]
+            (do
+              (p-advance pos-ref)  ;; trait 名を消費
+              (parse-skip-to-close-v3 spans pos-ref 2)
+              (make-trait-def name-h)))
+          (do
+            (parse-skip-to-close-v3 spans pos-ref 1)
+            (make-trait-def 0))))
+      (do
+        (parse-skip-to-close-v3 spans pos-ref 1)
+        (make-trait-def 0)))))
 
 ;; === module 宣言 ===
 (defn parse-module-v3 [spans pos-ref src]
   (do
     (p-advance pos-ref)  ;; module を消費
-    (let [name-start (p-start spans pos-ref)]
+    (let [name-start (p-start spans pos-ref)
+          name-end (p-end spans pos-ref)
+          name-h (name-hash src name-start name-end)]
       (do
         (p-advance pos-ref)  ;; name を消費
         (p-expect spans pos-ref 1)  ;; ) を消費
-        (let [n (vector-new 4)]
-          (vector-push (vector-push n 11) name-start))))))  ;; tag=11 for module
+        (make-module-decl name-h)))))
 
 ;; === import 宣言 ===
 (defn parse-import-v3 [spans pos-ref src]
   (do
     (p-advance pos-ref)  ;; import を消費
-    (let [name-start (p-start spans pos-ref)]
+    (let [name-start (p-start spans pos-ref)
+          name-end (p-end spans pos-ref)
+          name-h (name-hash src name-start name-end)]
       (do
         (p-advance pos-ref)  ;; name を消費
         (p-expect spans pos-ref 1)  ;; ) を消費
-        (let [n (vector-new 4)]
-          (vector-push (vector-push n 12) name-start))))))  ;; tag=12 for import
+        (make-import-decl name-h)))))
 
 ;; === apply (関数呼び出し) ===
 (defn parse-apply-v3 [spans pos-ref src]
   (let [func-node (parse-expr-v3 spans pos-ref src)
         result (vector-push (vector-push (vector-push (vector-new 8) 5) func-node) 0)]
-    (parse-apply-args-v3 spans pos-ref src result 0)))
+    (let [with-args (parse-apply-args-v3 spans pos-ref src result 0)
+          arg-count (- (vector-length with-args) 3)]
+      (vector-set-at with-args 2 arg-count))))
 
 ;; 引数を収集
 (defn parse-apply-args-v3 [spans pos-ref src result count]

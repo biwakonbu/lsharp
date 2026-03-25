@@ -35,6 +35,12 @@
       (if (= tag 1) 0
       (if (= tag 2) 0
       (if (= tag 3) 0
+      (if (= tag 16)
+        (ast-contains-var (vector-get node 1) target-hash)
+      (if (= tag 17)
+        (ast-contains-var (vector-get node 1) target-hash)
+      (if (= tag 18)
+        (ast-contains-var (vector-get node 1) target-hash)
       (if (= tag 6)
         ;; if ノード: [6, cond, then, else]
         (let [r1 (ast-contains-var (vector-get node 1) target-hash)]
@@ -97,7 +103,7 @@
                           0)))
                     0)))
               0)))
-      0)))))))))))
+      0))))))))))))))
 
 ;; リント診断の重要度
 (defn lint-error [] 0)

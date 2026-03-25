@@ -37,7 +37,7 @@
     result
     (let [decl (vector-get decls idx)
           tag (vector-get decl 0)]
-      ;; tag=34 は type 宣言 (selfhost パーサーの慣例)
+      ;; ast-type-decl は型宣言タグ
       ;; type 宣言に :derive メタデータがあるか検査
       (if (has-derive-metadata decl)
         ;; derive 対象: 元宣言を追加 + ヘルパー関数を生成して追加
@@ -107,7 +107,7 @@
         result1 (expand-derives empty-decls)
         ;; derive マーカー付き type 宣言で展開テスト
         type-decl (let [d (vector-new 4)]
-                    (vector-push (vector-push (vector-push d 34) 12345) 200))
+                    (vector-push (vector-push (vector-push d (ast-type-decl)) 12345) 200))
         decls2 (vector-push (vector-new 2) type-decl)
         result2 (expand-derives decls2)]
     (do

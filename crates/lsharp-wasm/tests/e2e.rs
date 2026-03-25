@@ -5572,6 +5572,87 @@ fn test_e2e_selfhost_lexer_additional_keywords() {
     assert_eq!(lines[4], "20", "unknown = symbol (20)");
 }
 
+#[test]
+fn test_e2e_selfhost_lexer_keyword_token_consistency() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (if (= (classify-symbol "open") (tok-open-kw)) 1 0))
+    (print (if (= (classify-symbol "constrained") (tok-constrained)) 1 0))
+    (print (if (= (classify-symbol "computation") (tok-computation)) 1 0))
+    (print (if (= (classify-symbol "defmacro") (tok-defmacro)) 1 0))
+    (print (if (= (classify-symbol "builder") (tok-builder)) 1 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}\n{}", token_ls, lexer_ls, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 5,
+        "追加キーワードの整合性出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "open は Token.tok-open-kw と一致すべき");
+    assert_eq!(
+        lines[1], "1",
+        "constrained は Token.tok-constrained と一致すべき"
+    );
+    assert_eq!(
+        lines[2], "1",
+        "computation は Token.tok-computation と一致すべき"
+    );
+    assert_eq!(
+        lines[3], "1",
+        "defmacro は Token.tok-defmacro と一致すべき"
+    );
+    assert_eq!(lines[4], "1", "builder は Token.tok-builder と一致すべき");
+}
+
+#[test]
+fn test_e2e_selfhost_lexer_special_token_consistency() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [tokens (tokenize-with-spans "' ~ ~@ # @")]
+    (do
+      (print (if (= (token-kind tokens 0) (tok-quote)) 1 0))
+      (print (if (= (token-kind tokens 1) (tok-unquote)) 1 0))
+      (print (if (= (token-kind tokens 2) (tok-splice-unquote)) 1 0))
+      (print (if (= (token-kind tokens 3) (tok-hash)) 1 0))
+      (print (if (= (token-kind tokens 4) (tok-at)) 1 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}\n{}", token_ls, lexer_ls, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 5, "特殊トークンの整合性出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "quote は Token.tok-quote と一致すべき");
+    assert_eq!(lines[1], "1", "unquote は Token.tok-unquote と一致すべき");
+    assert_eq!(
+        lines[2], "1",
+        "splice-unquote は Token.tok-splice-unquote と一致すべき"
+    );
+    assert_eq!(lines[3], "1", "hash は Token.tok-hash と一致すべき");
+    assert_eq!(lines[4], "1", "at は Token.tok-at と一致すべき");
+}
+
 // =================================================// selfhost Parser.ls 全構文テスト (Step 4)
 // =================================================
 #[test]
@@ -8732,6 +8813,274 @@ fn test_e2e_selfhost_parser_recovery_diagnostics() {
             || parser_content.contains("make-diagnostic"),
         "selfhost/Parser.ls に診断収集 (collect-diagnostics / make-diagnostic) が未実装"
     );
+}
+
+/// TEST-SYNTAX-02b: module/import/type 宣言が AST 正本タグを使う
+///
+/// selfhost Parser が module/import/type を独自ダミータグではなく
+/// AST.ls の canonical tag (`ast-module-decl`, `ast-import-decl`, `ast-type-decl`)
+/// で返すことを、selfhost 実装自身を実行して検証する。
+#[test]
+fn test_e2e_selfhost_parser_decl_ast_tags() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [src1 "(module Foo)"
+        program1 (parse-program src1)
+        node1 (vector-get program1 0)
+        src2 "(import Bar)"
+        program2 (parse-program src2)
+        node2 (vector-get program2 0)
+        src3 "(type Baz)"
+        program3 (parse-program src3)
+        node3 (vector-get program3 0)]
+    (do
+      (print (vector-get node1 0))
+      (print (if (= (vector-get node1 1) (name-hash src1 8 11)) 1 0))
+      (print (vector-get node2 0))
+      (print (if (= (vector-get node2 1) (name-hash src2 8 11)) 1 0))
+      (print (vector-get node3 0))
+      (print (if (= (vector-get node3 1) (name-hash src3 6 9)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 6,
+        "module/import/type の parser 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "25", "module は ast-module-decl (=25) を返すべき");
+    assert_eq!(lines[1], "1", "module 名ハッシュが Parser.name-hash と一致すべき");
+    assert_eq!(lines[2], "26", "import は ast-import-decl (=26) を返すべき");
+    assert_eq!(lines[3], "1", "import 名ハッシュが Parser.name-hash と一致すべき");
+    assert_eq!(lines[4], "21", "type は ast-type-decl (=21) を返すべき");
+    assert_eq!(lines[5], "1", "type 名ハッシュが Parser.name-hash と一致すべき");
+}
+
+/// TEST-SYNTAX-02c: 可変長ノードの count フィールドが実要素数を持つ
+///
+/// selfhost Parser が lambda/do/apply/match/defn の可変長ノードで、
+/// count フィールドを 0 のまま残さず、実際の引数数・式数・腕数・param 数へ
+/// 正しく更新して返すことを検証する。
+#[test]
+fn test_e2e_selfhost_parser_count_fields() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [lambda-node (vector-get (parse-program "(fn [x y] x)") 0)
+        do-node (vector-get (parse-program "(do 1 2 3)") 0)
+        apply-node (vector-get (parse-program "(f 1 2)") 0)
+        match-node (vector-get (parse-program "(match x [1 10] [2 20])") 0)
+        defn-node (vector-get (parse-program "(defn foo [x y] x)") 0)]
+    (do
+      (print (vector-get lambda-node 1))
+      (print (vector-get do-node 1))
+      (print (vector-get apply-node 2))
+      (print (vector-get match-node 2))
+      (print (vector-get defn-node 2))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 5, "count field 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "2", "lambda の param-count は 2 であるべき");
+    assert_eq!(lines[1], "3", "do の expr-count は 3 であるべき");
+    assert_eq!(lines[2], "2", "apply の arg-count は 2 であるべき");
+    assert_eq!(lines[3], "2", "match の arm-count は 2 であるべき");
+    assert_eq!(lines[4], "2", "defn の param-count は 2 であるべき");
+}
+
+/// TEST-SYNTAX-02d: quote/unquote 系トークンを AST ノードへパースできる
+///
+/// selfhost Parser が `'expr`, `~expr`, `~@expr` を
+/// ast-quote / ast-unquote / ast-unquote-splice として返し、
+/// 内側の式もそのまま保持することを検証する。
+#[test]
+fn test_e2e_selfhost_parser_quote_forms() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [quote-node (vector-get (parse-program "'foo") 0)
+        unquote-node (vector-get (parse-program "~bar") 0)
+        splice-node (vector-get (parse-program "~@baz") 0)]
+    (do
+      (print (if (= (vector-get quote-node 0) (ast-quote)) 1 0))
+      (print (if (= (vector-get (vector-get quote-node 1) 0) (ast-var)) 1 0))
+      (print (if (= (vector-get (vector-get quote-node 1) 1) (name-hash "foo" 0 3)) 1 0))
+      (print (if (= (vector-get unquote-node 0) (ast-unquote)) 1 0))
+      (print (if (= (vector-get (vector-get unquote-node 1) 0) (ast-var)) 1 0))
+      (print (if (= (vector-get (vector-get unquote-node 1) 1) (name-hash "bar" 0 3)) 1 0))
+      (print (if (= (vector-get splice-node 0) (ast-unquote-splice)) 1 0))
+      (print (if (= (vector-get (vector-get splice-node 1) 0) (ast-var)) 1 0))
+      (print (if (= (vector-get (vector-get splice-node 1) 1) (name-hash "baz" 0 3)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 9, "quote parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "quote ノードは ast-quote であるべき");
+    assert_eq!(lines[1], "1", "quote 内側は var ノードであるべき");
+    assert_eq!(lines[2], "1", "quote 内側の name-hash が一致すべき");
+    assert_eq!(lines[3], "1", "unquote ノードは ast-unquote であるべき");
+    assert_eq!(lines[4], "1", "unquote 内側は var ノードであるべき");
+    assert_eq!(lines[5], "1", "unquote 内側の name-hash が一致すべき");
+    assert_eq!(
+        lines[6], "1",
+        "splice-unquote ノードは ast-unquote-splice であるべき"
+    );
+    assert_eq!(lines[7], "1", "splice-unquote 内側は var ノードであるべき");
+    assert_eq!(lines[8], "1", "splice-unquote 内側の name-hash が一致すべき");
+}
+
+/// TEST-SYNTAX-02e: record / trait 宣言も canonical decl tag を返す
+///
+/// selfhost Parser が `(type Name (record ...))` を ast-recorddef、
+/// `(trait (Name a) ...)` を ast-traitdef として返し、
+/// 先頭名の hash も保持することを検証する。
+#[test]
+fn test_e2e_selfhost_parser_record_and_trait_decl_tags() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [record-node (vector-get (parse-program "(type Point (record (: x Int) (: y Int)))") 0)
+        trait-node (vector-get (parse-program "(trait (Show a) (defn show [self] : String))") 0)]
+    (do
+      (print (vector-get record-node 0))
+      (print (if (= (vector-get record-node 1) (name-hash "Point" 0 5)) 1 0))
+      (print (vector-get trait-node 0))
+      (print (if (= (vector-get trait-node 1) (name-hash "Show" 0 4)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 4, "record/trait parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "22", "record type は ast-recorddef (=22) を返すべき");
+    assert_eq!(lines[1], "1", "record type 名ハッシュが一致すべき");
+    assert_eq!(lines[2], "27", "trait は ast-traitdef (=27) を返すべき");
+    assert_eq!(lines[3], "1", "trait 名ハッシュが一致すべき");
+}
+
+/// TEST-SYNTAX-02f: record literal を AST ノードにパースできる
+///
+/// selfhost Parser が `{Point x 10 y 20}` を ast-recordlit として返し、
+/// type 名と field-count / field 名 / 値ノードを保持することを検証する。
+#[test]
+fn test_e2e_selfhost_parser_record_literal() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [record-node (vector-get (parse-program "{Point x 10 y 20}") 0)]
+    (do
+      (print (if (= (vector-get record-node 0) (ast-recordlit)) 1 0))
+      (print (if (= (vector-get record-node 1) (name-hash "Point" 0 5)) 1 0))
+      (print (vector-get record-node 2))
+      (print (if (= (vector-get record-node 3) (name-hash "x" 0 1)) 1 0))
+      (print (if (= (vector-get (vector-get record-node 4) 0) (ast-lit-int)) 1 0))
+      (print (if (= (vector-get record-node 5) (name-hash "y" 0 1)) 1 0))
+      (print (if (= (vector-get (vector-get record-node 6) 0) (ast-lit-int)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 7, "record literal parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "record literal は ast-recordlit であるべき");
+    assert_eq!(lines[1], "1", "record literal type 名ハッシュが一致すべき");
+    assert_eq!(lines[2], "2", "record literal field-count は 2 であるべき");
+    assert_eq!(lines[3], "1", "field x の name-hash が一致すべき");
+    assert_eq!(lines[4], "1", "field x の値は int literal であるべき");
+    assert_eq!(lines[5], "1", "field y の name-hash が一致すべき");
+    assert_eq!(lines[6], "1", "field y の値は int literal であるべき");
 }
 
 /// TEST-SYNTAX-04: Hygiene.ls gensym/scope-id/expansion trace

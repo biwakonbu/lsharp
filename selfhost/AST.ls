@@ -70,6 +70,46 @@
   (let [v (vector-new 2)]
     (vector-push (vector-push v 4) name-hash)))
 
+;; 型宣言: [21, name-hash]
+(defn make-type-decl [name-hash]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v (ast-type-decl)) name-hash)))
+
+;; レコード定義: [22, name-hash]
+(defn make-record-def [name-hash]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v (ast-recorddef)) name-hash)))
+
+;; モジュール宣言: [25, name-hash]
+(defn make-module-decl [name-hash]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v (ast-module-decl)) name-hash)))
+
+;; import 宣言: [26, name-hash]
+(defn make-import-decl [name-hash]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v (ast-import-decl)) name-hash)))
+
+;; trait 宣言: [27, name-hash]
+(defn make-trait-def [name-hash]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v (ast-traitdef)) name-hash)))
+
+;; quote: [16, expr]
+(defn make-quote [expr]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v (ast-quote)) expr)))
+
+;; unquote: [17, expr]
+(defn make-unquote [expr]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v (ast-unquote)) expr)))
+
+;; splice-unquote: [18, expr]
+(defn make-unquote-splice [expr]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v (ast-unquote-splice)) expr)))
+
 ;; match 式: [10, scrutinee-node, arm-count, pat1, body1, pat2, body2, ...]
 ;; pat は整数 (リテラルパターン) またはノード
 ;; body は AST ノード
@@ -107,6 +147,12 @@
       (if (= tag 1) 0      ;; lit-int: 子なし
       (if (= tag 2) 0      ;; lit-bool: 子なし
       (if (= tag 3) 0      ;; lit-string: 子なし
+      (if (= tag 16)
+        (ast-contains-var (vector-get node 1) target-hash)
+      (if (= tag 17)
+        (ast-contains-var (vector-get node 1) target-hash)
+      (if (= tag 18)
+        (ast-contains-var (vector-get node 1) target-hash)
       (if (= tag 6)
         ;; if ノード: [6, cond, then, else]
         (let [r1 (ast-contains-var (vector-get node 1) target-hash)]
@@ -130,13 +176,19 @@
                   (ast-contains-var (vector-get node 4) target-hash)
                   0)))
             0))
-      0)))))))))
+      0))))))))))))
 
 ;; AST ノードの数を再帰的にカウント (走査テスト用)
 (defn ast-count-nodes [node]
   (let [tag (vector-get node 0)]
     (if (= (ast-is-leaf tag) 1)
       1
+      (if (= tag 16)
+        (+ 1 (ast-count-nodes (vector-get node 1)))
+      (if (= tag 17)
+        (+ 1 (ast-count-nodes (vector-get node 1)))
+      (if (= tag 18)
+        (+ 1 (ast-count-nodes (vector-get node 1)))
       (if (= tag 6)
         ;; if: 1 + cond + then + else
         (+ 1 (+ (ast-count-nodes (vector-get node 1))
@@ -200,7 +252,7 @@
               (+ 1 (+ sc (+ (ast-count-nodes (vector-get node 3))
                            (ast-count-nodes (vector-get node 4))))))
             (+ 1 sc)))
-      1))))))))
+      1)))))))))))
 
 ;; エントリポイント (テスト用)
 (defn main []
