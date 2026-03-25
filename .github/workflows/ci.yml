@@ -55,27 +55,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: selfhost モジュールのコンパイル検証
-        run: |
-          # Main.ls を除く selfhost モジュールは bootstrap gate として必須化する
-          for module in Token AST IR Type TypeScheme Compiler WasmEmit Lexer Parser; do
-            echo "=== Compiling selfhost/${module}.ls ==="
-            cargo run -- compile selfhost/${module}.ls -o /tmp/${module}.wasm
-          done
-          echo "Bootstrap check complete."
-      - name: selfhost Main.ls の既知 blocker 監視
-        continue-on-error: true
-        run: |
-          echo "=== Compiling selfhost/Main.ls ==="
-          cargo run -- compile selfhost/Main.ls -o /tmp/Main.wasm
-      - name: stdlib コンパイル監視
-        continue-on-error: true
-        run: |
-          for module in Core Char Debug IO List Map Path Set String Vector Json; do
-            echo "=== Compiling stdlib/${module}.ls ==="
-            cargo run -- compile stdlib/${module}.ls -o /tmp/stdlib_${module}.wasm
-          done
-          echo "stdlib monitor complete."
+      - name: Phase 11 fixed input set のコンパイル検証
+        run: bash scripts/ci/compile-phase11-inputs.sh
 
   # P11-1: ドキュメント監査
   audit-docs:

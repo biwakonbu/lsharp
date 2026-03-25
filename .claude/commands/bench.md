@@ -101,7 +101,7 @@ scripts/bench-compare.sh
 
 ### Step 5: レポート生成
 
-計測結果を `docs/BENCHMARK.md` に出力する:
+計測結果を `docs/development/validation/BENCHMARK.md` に出力する:
 ```bash
 scripts/bench-report.sh
 ```

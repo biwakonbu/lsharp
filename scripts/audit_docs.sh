@@ -27,7 +27,7 @@ EVIDENCE_PATTERN='(test_|ADR-|\.rs|\.ls|TASK-|docs/|TODO\.md|compatibility-matri
 NO_EVIDENCE=0
 while IFS= read -r line; do
     if echo "$line" | grep -q '^\- \[x\]' && ! echo "$line" | grep -qE "$EVIDENCE_PATTERN"; then
-        echo "  WARNING: エビデンスなし: $(echo "$line" | head -c 120)"
+        echo "  ERROR: エビデンスなし: $(echo "$line" | head -c 120)"
         NO_EVIDENCE=$((NO_EVIDENCE + 1))
     fi
 done < TODO.md
@@ -35,7 +35,58 @@ if [ "$NO_EVIDENCE" -eq 0 ]; then
     echo "  OK: 全 [x] 項目にエビデンスあり"
 else
     echo "  エビデンスなし: $NO_EVIDENCE 件"
-    WARNINGS=$((WARNINGS + NO_EVIDENCE))
+    ERRORS=$((ERRORS + NO_EVIDENCE))
+fi
+
+# =============================================================================
+# 1b. Phase 11 完了主張と completion criteria の整合性
+# =============================================================================
+echo ""
+echo "--- [仕様差分] Phase 11 完了主張の整合性確認 ---"
+P11_CLAIM_COMPLETE=0
+if grep -qE '完了済みフェーズ.*P11|Phase 11 全[0-9]+タスク完了|Phase 11 実装完了 ADR' TODO.md; then
+    P11_CLAIM_COMPLETE=1
+fi
+P11_PENDING_COUNT=$(grep -cE '\[(pending|in-progress)\]' docs/development/planning/completion-criteria.md 2>/dev/null) || P11_PENDING_COUNT=0
+if [ "$P11_CLAIM_COMPLETE" -eq 1 ] && [ "$P11_PENDING_COUNT" -gt 0 ]; then
+    echo "  ERROR: TODO.md が Phase 11 完了を主張しているが、docs/development/planning/completion-criteria.md に pending/in-progress が $P11_PENDING_COUNT 件残っている"
+    ERRORS=$((ERRORS + 1))
+else
+    echo "  OK: TODO.md の Phase 11 状態表示と completion criteria に矛盾なし"
+fi
+
+# =============================================================================
+# 1c. compatibility-matrix の active row が証跡を持つか確認
+# =============================================================================
+echo ""
+echo "--- [仕様差分] compatibility-matrix: active row の証跡確認 ---"
+ACTIVE_ROW_GAPS=$(awk -F'|' '
+function trim(value) {
+    gsub(/^[ \t]+|[ \t]+$/, "", value)
+    return value
+}
+/^\|/ {
+    feature = trim($2)
+    rust = trim($3)
+    lsharp = trim($4)
+    evidence = trim($8)
+    if (feature == "" || feature == "Feature" || feature ~ /^-+$/) {
+        next
+    }
+    if (rust != "" && rust != "-" && lsharp != "" && lsharp != "-" &&
+        lsharp != "なし" && lsharp != "設計のみ" && evidence == "-") {
+        count += 1
+    }
+}
+END {
+    print count + 0
+}
+' docs/development/planning/compatibility-matrix.md)
+if [ "$ACTIVE_ROW_GAPS" -eq 0 ]; then
+    echo "  OK: active row に evidence 欠落なし"
+else
+    echo "  ERROR: evidence が空の active row が $ACTIVE_ROW_GAPS 件ある"
+    ERRORS=$((ERRORS + ACTIVE_ROW_GAPS))
 fi
 
 # =============================================================================
@@ -143,23 +194,23 @@ else
 fi
 
 # =============================================================================
-# 7. docs/gap-classification.md の存在確認 (P11-1c)
+# 7. docs/development/planning/gap-classification.md の存在確認 (P11-1c)
 # =============================================================================
 echo ""
 echo "--- [P11-1c] 差分判定規則ドキュメント ---"
-if [ -f "docs/gap-classification.md" ]; then
-    echo "  OK: docs/gap-classification.md 存在"
+if [ -f "docs/development/planning/gap-classification.md" ]; then
+    echo "  OK: docs/development/planning/gap-classification.md 存在"
 else
-    echo "  ERROR: docs/gap-classification.md なし"
+    echo "  ERROR: docs/development/planning/gap-classification.md なし"
     ERRORS=$((ERRORS + 1))
 fi
 
 # =============================================================================
-# 8. docs/compatibility-matrix.md の PR 更新ルール (P11-1b)
+# 8. docs/development/planning/compatibility-matrix.md の PR 更新ルール (P11-1b)
 # =============================================================================
 echo ""
 echo "--- [P11-1b] 互換マトリクス PR 更新ルール ---"
-if [ -f "docs/compatibility-matrix.md" ] && grep -q "PR 更新ルール" docs/compatibility-matrix.md; then
+if [ -f "docs/development/planning/compatibility-matrix.md" ] && grep -q "PR 更新ルール" docs/development/planning/compatibility-matrix.md; then
     echo "  OK: PR 更新ルールセクションあり"
 else
     echo "  ERROR: PR 更新ルールセクションなし"

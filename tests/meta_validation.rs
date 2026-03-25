@@ -5,13 +5,13 @@
 
 /// TEST-META-02: completion marker が 3状態 (pending/in-progress/done) で管理されていることを検証。
 ///
-/// docs/completion-criteria.md を読み込み、各完了条件マーカーが
+/// docs/development/planning/completion-criteria.md を読み込み、各完了条件マーカーが
 /// 3状態で管理されていることを assert する。
-/// Red Phase: completion-criteria.md に 3状態マーカーが未導入のため FAIL する。
+/// Red Phase: ../docs/development/planning/completion-criteria.md に 3状態マーカーが未導入のため FAIL する。
 #[test]
 fn test_meta_02_completion_marker_3_states() {
-    let criteria_source = std::fs::read_to_string("docs/completion-criteria.md")
-        .expect("docs/completion-criteria.md が存在しない");
+    let criteria_source = std::fs::read_to_string("docs/development/planning/completion-criteria.md")
+        .expect("docs/development/planning/completion-criteria.md が存在しない");
 
     // 3状態マーカーの定義が存在すること
     // 期待: [pending], [in-progress], [done] またはそれに相当するマーカー形式
@@ -28,15 +28,15 @@ fn test_meta_02_completion_marker_3_states() {
     // 3状態全てが文書内に存在すること
     assert!(
         has_pending_marker,
-        "completion-criteria.md に pending 状態のマーカーがない"
+        "../docs/development/planning/completion-criteria.md に pending 状態のマーカーがない"
     );
     assert!(
         has_in_progress_marker,
-        "completion-criteria.md に in-progress 状態のマーカーがない"
+        "../docs/development/planning/completion-criteria.md に in-progress 状態のマーカーがない"
     );
     assert!(
         has_done_marker,
-        "completion-criteria.md に done 状態のマーカーがない"
+        "../docs/development/planning/completion-criteria.md に done 状態のマーカーがない"
     );
 
     // 各セクション (技術/ドキュメント/撤去前ゲート) にマーカーが付与されていること
@@ -81,7 +81,7 @@ fn test_meta_02_completion_marker_3_states() {
         + criteria_source.matches("### ゲート").count();
     assert!(
         condition_count >= 7,
-        "completion-criteria.md の条件数が不足: {} (7以上必要)",
+        "../docs/development/planning/completion-criteria.md の条件数が不足: {} (7以上必要)",
         condition_count
     );
 

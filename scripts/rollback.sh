@@ -5,7 +5,7 @@
 # 使い方:
 #   ./scripts/rollback.sh [--dry-run]
 #
-# 詳細な手順は docs/rollback-procedure.md を参照
+# 詳細な手順は docs/development/operations/rollback-procedure.md を参照
 
 set -euo pipefail
 
@@ -44,9 +44,9 @@ if $DRY_RUN; then
     echo "  [DRY RUN] cargo test で検証"
 else
     echo "  WARNING: 実際のロールバックは手動で実行してください"
-    echo "  詳細: docs/rollback-procedure.md"
+    echo "  詳細: docs/development/operations/rollback-procedure.md"
 fi
 
 echo ""
 echo "=== ロールバック手順完了 ==="
-echo "詳細な手順は docs/rollback-procedure.md を参照してください"
+echo "詳細な手順は docs/development/operations/rollback-procedure.md を参照してください"

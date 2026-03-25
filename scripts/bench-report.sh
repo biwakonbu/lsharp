@@ -5,14 +5,14 @@
 #   scripts/bench-report.sh              # 全ベンチマーク実行 + レポート生成
 #   scripts/bench-report.sh --skip-bench  # criterion をスキップし、それ以外を実行
 #
-# 出力: docs/BENCHMARK.md
+# 出力: docs/development/validation/BENCHMARK.md
 # 注: macOS デフォルト bash (3.x) 互換。連想配列は使用しない。
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPORT_FILE="$PROJECT_DIR/docs/BENCHMARK.md"
+REPORT_FILE="$PROJECT_DIR/docs/development/validation/BENCHMARK.md"
 TMP_DIR=$(mktemp -d)
 SKIP_BENCH=false
 
@@ -25,7 +25,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$PROJECT_DIR/docs"
+mkdir -p "$PROJECT_DIR/docs/development/validation"
 
 # ========================================
 # ヘルパー関数
@@ -363,5 +363,5 @@ ${WASM_SIZE_ROWS}
 REPORT_EOF
 
 echo ""
-echo "レポートを生成しました: docs/BENCHMARK.md"
-echo "GitHub で確認: リポジトリの docs/BENCHMARK.md を参照"
+echo "レポートを生成しました: docs/development/validation/BENCHMARK.md"
+echo "GitHub で確認: リポジトリの docs/development/validation/BENCHMARK.md を参照"

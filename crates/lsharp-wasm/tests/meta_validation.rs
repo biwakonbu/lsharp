@@ -3,7 +3,7 @@
 //! TEST-META-01: compatibility matrix 8列拡張の検証
 //! TEST-META-04: gap backlog classification の5分類検証
 
-/// compatibility-matrix.md のヘッダーが 8 列であること、
+/// ../../../docs/development/planning/compatibility-matrix.md のヘッダーが 8 列であること、
 /// 必須列名が存在することを検証する。
 ///
 /// 8列: Feature, Rust source, L# source, Parity test, Default path, Deletion gate, + 2列拡張
@@ -13,9 +13,9 @@
 fn test_meta_01_compatibility_matrix_8_columns() {
     let content = std::fs::read_to_string(
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../docs/compatibility-matrix.md"),
+            .join("../../docs/development/planning/compatibility-matrix.md"),
     )
-    .expect("docs/compatibility-matrix.md が読み込めない");
+    .expect("docs/development/planning/compatibility-matrix.md が読み込めない");
 
     // ヘッダー行を探す (最初の Markdown テーブルヘッダー)
     let header_line = content
@@ -59,7 +59,7 @@ fn test_meta_01_compatibility_matrix_8_columns() {
     }
 }
 
-/// gap-classification.md に 5 分類のセクション/ラベルが
+/// ../../../docs/development/planning/gap-classification.md に 5 分類のセクション/ラベルが
 /// 全て存在することを検証する。
 ///
 /// 5 分類: spec-diff, impl-missing, output-diff, perf-diff, ops-diff
@@ -70,9 +70,9 @@ fn test_meta_01_compatibility_matrix_8_columns() {
 fn test_meta_04_gap_backlog_5_categories() {
     let content = std::fs::read_to_string(
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../docs/gap-classification.md"),
+            .join("../../docs/development/planning/gap-classification.md"),
     )
-    .expect("docs/gap-classification.md が読み込めない");
+    .expect("docs/development/planning/gap-classification.md が読み込めない");
 
     // 5 分類の英語ラベルが全て存在すること
     let categories = [
@@ -92,7 +92,7 @@ fn test_meta_04_gap_backlog_5_categories() {
 
     assert!(
         missing.is_empty(),
-        "gap-classification.md に以下の分類ラベルが不足: {:?} (全 5 分類が必要)",
+        "../../../docs/development/planning/gap-classification.md に以下の分類ラベルが不足: {:?} (全 5 分類が必要)",
         missing
     );
 

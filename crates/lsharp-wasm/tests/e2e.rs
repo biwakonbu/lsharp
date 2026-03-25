@@ -71,6 +71,27 @@ fn compile_only(source: &str) -> Vec<u8> {
     lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap()
 }
 
+/// ドライバの `lsharp compile` と同等の経路でファイルをコンパイルする
+fn compile_file_only(file: &std::path::Path) -> Vec<u8> {
+    let source = std::fs::read_to_string(file).unwrap();
+    let program = lsharp_syntax::parse(&source).unwrap();
+
+    let module = if program
+        .decls
+        .iter()
+        .any(|decl| matches!(decl, lsharp_syntax::ast::Decl::ImportDecl { .. }))
+    {
+        lsharp_ir::compile_multi_file(file).unwrap()
+    } else {
+        let mut infer = Infer::new();
+        let type_results = infer.infer_program(&program).unwrap();
+        let mut lower = Lower::new();
+        lower.lower_program(&program, &type_results).unwrap()
+    };
+
+    lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap()
+}
+
 /// Wasm バイナリを WASI 環境で実行
 fn run_wasi(wasm_bytes: &[u8]) -> String {
     lsharp_wasm::wasi_runner::run_wasm_wasi(wasm_bytes).unwrap()
@@ -4800,12 +4821,19 @@ fn test_e2e_bootstrap_stage1_binary_structure() {
 // =====================================================// P8-9 T4-6: CI ブートストラップ自動検証
 // =====================================================
 /// P8-9 T4-6: CI で使用されるブートストラップ検証と同等のテスト
-/// 全 selfhost モジュールがコンパイル可能であることを検証
+/// fixed input set の selfhost モジュールが個別 compile できることを検証。
+/// `Lower.ls` / `LowerPattern.ls` は Rust stage0 stack overflow の既知 blocker のため除外。
 #[test]
 fn test_e2e_bootstrap_ci_all_modules_compile() {
     let modules = [
-        "Token", "AST", "IR", "Type", "TypeScheme",
-        "Compiler", "WasmEmit", "Lexer", "Parser", "Main",
+        "AST", "Cli", "Closure", "Codegen", "Compiler",
+        "Constraints", "Derive", "DocTools", "Emit", "Formatter",
+        "GC", "HtmlDoc", "Hygiene", "IR", "JsonRpc",
+        "Lexer", "Linker", "Linter", "LowerDecl", "LowerExpr",
+        "LspServer", "MacroExpand", "Main", "MetadataCheck", "ModuleGraph",
+        "NativeCodegen", "NativeEmit", "NativeTarget", "Parser", "Span",
+        "TestRunner", "Token", "Type", "TypeInfer", "TypeScheme",
+        "WasiBackend", "WasiRunner", "WasmEmit",
     ];
     let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../selfhost");
@@ -4814,14 +4842,12 @@ fn test_e2e_bootstrap_ci_all_modules_compile() {
     for module in &modules {
         let path = base_dir.join(format!("{}.ls", module));
         if path.exists() {
-            let source = std::fs::read_to_string(&path)
-                .expect(&format!("Failed to read {}.ls", module));
-            let wasm = compile_only(&source);
+            let wasm = compile_file_only(&path);
             assert_valid_wasm(&wasm);
             compiled += 1;
         }
     }
-    assert_eq!(compiled, 10, "全 10 モジュールがコンパイルされるべき");
+    assert_eq!(compiled, 38, "fixed input set の全 38 モジュールがコンパイルされるべき");
 }
 
 /// P8-9 T4-6: CI で使用される stdlib コンパイル検証と同等のテスト
@@ -4835,26 +4861,33 @@ fn test_e2e_bootstrap_ci_stdlib_compile() {
         .join("../../stdlib");
 
     let mut compiled = 0;
-    let mut skipped = Vec::new();
     for module in &modules {
         let path = base_dir.join(format!("{}.ls", module));
         if path.exists() {
-            let source = std::fs::read_to_string(&path)
-                .expect(&format!("Failed to read {}.ls", module));
-            // コンパイルを試行、失敗したモジュールはスキップ (既知の制限)
-            match std::panic::catch_unwind(|| compile_only(&source)) {
-                Ok(wasm) => {
-                    assert_valid_wasm(&wasm);
-                    compiled += 1;
-                }
-                Err(_) => {
-                    skipped.push(*module);
-                }
-            }
+            let wasm = compile_file_only(&path);
+            assert_valid_wasm(&wasm);
+            compiled += 1;
         }
     }
-    // 存在する stdlib モジュールの大部分がコンパイル可能
-    assert!(compiled >= 8, "少なくとも 8 stdlib モジュールがコンパイルされるべき (実際: {}, スキップ: {:?})", compiled, skipped);
+    assert_eq!(compiled, 11, "全 11 stdlib モジュールがコンパイルされるべき");
+}
+
+/// P11-2 BOOT-03: examples fixed input set が個別 compile できることを検証
+#[test]
+fn test_e2e_bootstrap_ci_examples_compile() {
+    let examples = ["fib.ls", "module.ls", "trait.ls"];
+    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples");
+
+    let mut compiled = 0;
+    for file in &examples {
+        let path = base_dir.join(file);
+        let wasm = compile_file_only(&path);
+        assert_valid_wasm(&wasm);
+        compiled += 1;
+    }
+
+    assert_eq!(compiled, 3, "fixed input set の全 3 examples がコンパイルされるべき");
 }
 
 // =====================================================// P9-6a: VSCode 拡張 - シンタックスハイライト検証
@@ -6631,7 +6664,7 @@ fn test_e2e_selfhost_pipeline_hello() {
 
 // === Bootstrap Fixed-Point Tests (TEST-004) ===
 
-/// bootstrap 固定点検証: stage1 == stage2 バイト列比較
+/// bootstrap proxy 検証: stage1 == stage2 バイト列比較
 #[test]
 fn test_e2e_bootstrap_stage1_stage2_match() {
     // 真の stage1→stage2 自己コンパイル経路は未接続。
@@ -6639,10 +6672,10 @@ fn test_e2e_bootstrap_stage1_stage2_match() {
     let source = include_str!("../../../selfhost/Main.ls");
     let stage1 = compile_only(source);
     let stage2_proxy = compile_only(source);
-    assert_eq!(stage1, stage2_proxy, "bootstrap proxy must be byte-identical");
+    assert_eq!(stage1, stage2_proxy, "bootstrap proxy must be byte-identical until true stage1->stage2 is wired");
 }
 
-/// bootstrap 固定点検証: stage2 == stage3
+/// bootstrap proxy 検証: stage2 == stage3
 #[test]
 fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
     // 真の stage2→stage3 は未接続のため、proxy としてセクション列の固定点を検証する。
@@ -6678,7 +6711,7 @@ fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
     assert_eq!(
         extract_sections(&stage2_proxy),
         extract_sections(&stage3_proxy),
-        "bootstrap proxy sections must reach a fixed point"
+        "bootstrap proxy sections must reach a fixed point until true stage2->stage3 is wired"
     );
 }
 
@@ -10297,7 +10330,7 @@ fn test_e2e_selfhost_wasm_native_differential() {
 // Phase 6 Group I: Toolchain parity テスト (TDD Red Phase)
 // =============================================================================
 
-/// TEST-CLI-01: docs/toolchain-parity-spec.md に 13 CLI command の入出力契約が表形式で定義されていること
+/// TEST-CLI-01: docs/development/planning/toolchain-parity-spec.md に 13 CLI command の入出力契約が表形式で定義されていること
 ///
 /// T4a-1 AC-100/AC-101/AC-102: サブコマンド引数仕様テーブル、stdout/stderr 使い分け、終了コード表
 /// Red Phase: 仕様書に入出力契約テーブルが未記載のため FAIL する。
@@ -10305,13 +10338,13 @@ fn test_e2e_selfhost_wasm_native_differential() {
 fn test_e2e_selfhost_cli_command_contracts() {
     let project_root =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let spec_path = project_root.join("docs/toolchain-parity-spec.md");
+    let spec_path = project_root.join("docs/development/planning/toolchain-parity-spec.md");
     assert!(
         spec_path.exists(),
-        "docs/toolchain-parity-spec.md が存在しない"
+        "docs/development/planning/toolchain-parity-spec.md が存在しない"
     );
     let spec = std::fs::read_to_string(&spec_path)
-        .expect("docs/toolchain-parity-spec.md の読み込みに失敗");
+        .expect("docs/development/planning/toolchain-parity-spec.md の読み込みに失敗");
 
     // 13 CLI コマンドの入出力契約テーブルが存在すること
     let cli_commands = [
@@ -10324,7 +10357,7 @@ fn test_e2e_selfhost_cli_command_contracts() {
     for cmd in &cli_commands {
         assert!(
             spec.contains(cmd),
-            "toolchain-parity-spec.md に CLI コマンド '{}' の記載がない",
+            "../../../docs/development/planning/toolchain-parity-spec.md に CLI コマンド '{}' の記載がない",
             cmd
         );
     }

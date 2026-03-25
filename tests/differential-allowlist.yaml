@@ -3,8 +3,11 @@
 #
 # 形式:
 #   allowlist:
-#     - module: モジュール名
+#     - id: 一意な ID
+#       category: 差分カテゴリ
+#       observation: 観測された差分
 #       reason: 差分を許容する理由
-#       sections: [許容するセクション名のリスト]
+#       resolve_condition: allowlist から外せる条件
+#       tracking_issue: 追跡先 issue / task
 
 allowlist: []
