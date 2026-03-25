@@ -8,20 +8,13 @@
 |------|----------|----------|
 | `planning/` | ロードマップ担当、実装優先度を決める人 | Phase 11 計画、parity、完了条件、ギャップ分類 |
 | `validation/` | CI・品質・性能を見る人 | 固定点・差分テスト方針、`BENCHMARK.md`（**スクリプト生成**） |
-| `operations/` | リリース・インフラ・Rust 撤去 | CI 移行、rollback、legacy 隔離 |
-| `specs/` | 現在のタスク判断や過去の経緯を追う人 | 主導線は `todo-complete-all/`、`todo-completion-p8-p11/`、`selfhost-phase11-1/`。履歴は [specs/archive/](./specs/archive/) |
+| `operations/` | リリース・インフラ担当 | CI 設定、緊急ロールバック手順 |
 
-## `planning/` の主なファイル（目安）
+## `planning/` の主なファイル
 
 - `phase11-implementation-plan.md` -- Phase 11 実装の全体計画
 - `completion-criteria.md` / `compatibility-matrix.md` / `gap-classification.md` -- 完了判定と互換性
 - `rust-parity-spec.md` / `toolchain-parity-spec.md` / `runtime-stability-spec.md` -- ツールチェーン・安定性
 - `memory-management-roadmap.md` -- メモリ関連の長期方針
-
-## `specs/` でまず読むもの
-
-- `specs/todo-complete-all/` -- TODO 完了系の大きな正本
-- `specs/todo-completion-p8-p11/` -- P8 / P11 の実行トラック
-- `specs/selfhost-phase11-1/` -- Phase 11-1 の成果物境界
 
 詳細は各ファイル先頭の概要に従う。
