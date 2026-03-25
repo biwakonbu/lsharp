@@ -11,11 +11,14 @@
 
 ## Phase 11: Rust 完全撤去
 
-> 2026-03-25 実測注記 (更新):
-> - `selfhost/Main.ls` は import-only パイプラインへ寄せ済み (BOOT-01)。マルチファイル compile は `ModuleGraph::topological_sort` をモジュール名・import 名でソートし Wasm 出力の再現性を担保。
-> - `Lower.ls` / `LowerPattern.ls` の stage0 stack overflow は `lsharp-types` の `Type::apply_subst` ループ化・サイクル打ち切りで解消。`compile-phase11-inputs.sh` に含める。
+> **直近反映 (2026-03-25)** — 実測・コードベース同期:
+> - E2E: `crates/lsharp-wasm/tests/e2e.rs` に `#[test]` **352 件**（`cargo test -p lsharp-wasm --test e2e`）。ブートストラップ検証の主経路は `try_compile_and_run_file` / `compile_and_run_file`（マルチファイル・import）。インラインソース用の `try_compile_and_run` は将来の最小再現テスト用に **残置**（現状 `#[allow(dead_code)]`）。
+> - `selfhost/Main.ls` は import-only パイプライン (BOOT-01)。マルチファイル Wasm は `ModuleGraph::topological_sort` でモジュール名・import 名をソートし出力の再現性を担保。複数 `main` 定義がある場合は **最後**の `main` をエントリにする（`crates/lsharp-wasm/src/wasi.rs`）。
+> - `Lower.ls` / `LowerPattern.ls` の stage0 stack overflow は `lsharp-types` の `Type::apply_subst` ループ化・Var サイクル打ち切りで解消。`scripts/ci/compile-phase11-inputs.sh` に含め、`KNOWN_BLOCKERS` なし。
 > - `test_e2e_bootstrap_stage1_stage2_match` 等は proxy のまま。加え `test_e2e_bootstrap_stage0_oracle_chain_four_way_identity` で Rust oracle 4 連一致を固定。
-> - `scripts/ci/compile-phase11-inputs.sh` は known blocker なしで通過。残る大物は true bootstrap / native 実行差分 / toolchain parity / Rust 撤去。
+> - `scripts/ci/compile-phase11-inputs.sh` は known blocker なしで通過。
+> - OPS-05 第1段: `scripts/ci/default-path-smoke.sh`、`docs/development/operations/default-path-migration.md`、`crates/lsharp-driver/src/main.rs` の path 予約コメント、CI ジョブ `default-path-smoke`（`ci-gate` / `ci-gate-v2` の必須）、E2E `test_e2e_ops05_default_path_migration` で **`lsharp` バイナリ経路**を blocking 化。
+> - 残る大物: true bootstrap（stage1.wasm → stage2）、native 自己再生成、Wasm/native 観測差分ゼロ、GC メトリクス CI、**Cargo.toml 不在までの撤去**（P11-2e-3）。
 
 > 目標: L# 製 compiler/toolchain をネイティブ配布の正式実装に昇格し、Rust workspace を段階的に撤去する
 > 配布方針: ブートストラップと比較検証では Wasm/WASI を利用してよいが、エンドユーザー向け正式配布物は各プラットフォーム向けネイティブバイナリとする
@@ -89,11 +92,11 @@
 
 #### Step 6. `CP-06` Ops cutover / Rust removal を閉じる
 
-- [~] [`OPS-01 CI gate-v2 job graph`](docs/development/planning/phase11-implementation-plan.md#ops-01-ci-gate-v2-job-graph) / [`OPS-02 Artifact policy`](docs/development/planning/phase11-implementation-plan.md#ops-02-artifact-policy) -- `.github/workflows/ci.yml` に `ci-gate-v2`・artifact retention・`shadow-oracle` あり。E2E: `test_e2e_ops01_ci_gate_v2`, `test_e2e_ops02_artifact_policy`。spec 全文一致の再編は未完了。
-- [ ] [`OPS-05 Default path migration`](docs/development/planning/phase11-implementation-plan.md#ops-05-default-path-migration) -- default path を Rust から L# / native へ切り替える。
-- [ ] [`OPS-06 Release playbook`](docs/development/planning/phase11-implementation-plan.md#ops-06-release-playbook) / [`OPS-07 Fresh clone without Rust`](docs/development/planning/phase11-implementation-plan.md#ops-07-fresh-clone-without-rust) -- native-only RC と Rust 未導入 fresh clone を成立させる。
-- [ ] [`OPS-08 Final removal and rollback`](docs/development/planning/phase11-implementation-plan.md#ops-08-final-removal-and-rollback) -- rollback ADR と最終撤去手順を確定する。
-- [ ] Step 6 exit gate -- `docs/development/planning/completion-criteria.md` P11-2e-2 / P11-2e-3 を全て `[done]` にし、Rust workspace 依存を mainline から外す。
+- [~] [`OPS-01 CI gate-v2 job graph`](docs/development/planning/phase11-implementation-plan.md#ops-01-ci-gate-v2-job-graph) / [`OPS-02 Artifact policy`](docs/development/planning/phase11-implementation-plan.md#ops-02-artifact-policy) -- `ci-gate` / `ci-gate-v2` が `default-path-smoke` を必須に含む。E2E: `test_e2e_ops01_ci_gate_v2`, `test_e2e_ops02_artifact_policy`。
+- [~] [`OPS-05 Default path migration`](docs/development/planning/phase11-implementation-plan.md#ops-05-default-path-migration) -- **第1段完了**: `scripts/ci/default-path-smoke.sh`, `docs/development/operations/default-path-migration.md`, `crates/lsharp-driver/src/main.rs` の path 予約ドキュメント、E2E `test_e2e_ops05_default_path_migration`。完全な Rust 非依存 default は未達。
+- [~] [`OPS-06 Release playbook`](docs/development/planning/phase11-implementation-plan.md#ops-06-release-playbook) / [`OPS-07 Fresh clone without Rust`](docs/development/planning/phase11-implementation-plan.md#ops-07-fresh-clone-without-rust) -- `scripts/release-playbook.sh` / `scripts/smoke_test_readme.sh` あり（Rust 前提の smoke）。Rust 無し fresh clone は `final-removal-spec.md` どおり未達。
+- [~] [`OPS-08 Final removal and rollback`](docs/development/planning/phase11-implementation-plan.md#ops-08-final-removal-and-rollback) -- `scripts/rollback.sh`, `docs/development/operations/rollback-procedure.md`, E2E `test_e2e_ops08_final_removal_rollback`。
+- [ ] Step 6 exit gate -- `docs/development/planning/completion-criteria.md` P11-2e-3（Rust 無効化 2 週間・native-only RC・撤去 ADR レビュー）および **workspace 撤去**は未完了。
 
 ### Phase 11 クリティカルパス現況
 
@@ -102,7 +105,7 @@
 - [~] `CP-03 IR/backend/native` -- Lower/LowerPattern の stage0 compile は通過。native parity / Wasm 実行差分は structure 〜 Wasm 側のみ。Evidence: `selfhost/Lower.ls`, `test_e2e_selfhost_wasm_native_differential`, `tests/differential-allowlist.yaml`
 - [~] `CP-04 Public toolchain` -- `selfhost/Cli.ls`, `selfhost/LspServer.ls`, `selfhost/Formatter.ls`, `selfhost/TestRunner.ls` は骨格実装に留まる。Evidence: `selfhost/Cli.ls`, `selfhost/LspServer.ls`, `selfhost/Formatter.ls`, `selfhost/TestRunner.ls`
 - [~] `CP-05 Runtime stability` -- `test_e2e_gc_light_compile_run_loop` で短ループ回帰。1,000 cycle / メトリクス CI は未達。Evidence: `crates/lsharp-wasm/tests/e2e.rs`
-- [~] `CP-06 CI cutover` -- `scripts/ci/compile-phase11-inputs.sh` と `audit-docs` gate は blocking 化したが、Rust default path / native-only RC / rollback ADR は未達。Evidence: `scripts/ci/compile-phase11-inputs.sh`, `.github/workflows/ci.yml`, `docs/development/planning/completion-criteria.md`
+- [~] `CP-06 CI cutover` -- compile gate + audit-docs + **default-path-smoke**（`lsharp` バイナリの check/compile）が `ci-gate` 系の必須。Rust workspace 撤去 / native-only RC は未達。Evidence: `.github/workflows/ci.yml`, `scripts/ci/default-path-smoke.sh`, `test_e2e_ops05_default_path_migration`
 
 ### Phase 11 実装状態
 
@@ -117,7 +120,7 @@
 - [ ] [LSP-02 10 method parity](docs/development/planning/phase11-implementation-plan.md#lsp-02-10-method-parity) -- `selfhost/LspServer.ls` の主要ハンドラは `0` / 空 vector の骨格のみ。
 - [~] [FMT-01 Formatter roundtrip](docs/development/planning/phase11-implementation-plan.md#fmt-01-formatter-roundtrip) -- `format-program` を `vector-length` ベースの決定版に。完全 roundtrip は未。
 - [~] [GC-05 LSP soak and REPL GC](docs/development/planning/phase11-implementation-plan.md#gc-05-lsp-soak-and-repl-gc) -- `test_e2e_gc_light_compile_run_loop`（48 回）。1,000 cycle / REPL は未。
-- [ ] [OPS-05 Default path migration](docs/development/planning/phase11-implementation-plan.md#ops-05-default-path-migration) -- default path は依然 Rust で、native-only RC / rollback ADR も未達。
+- [~] [OPS-05 Default path migration](docs/development/planning/phase11-implementation-plan.md#ops-05-default-path-migration) -- CI + `default-path-smoke.sh` + `default-path-migration.md` + `test_e2e_ops05_default_path_migration` で `lsharp` バイナリ経路を固定。完全移行（Cargo 不在）は未達。
 
 ### Deferred / v2
 

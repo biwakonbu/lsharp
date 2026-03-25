@@ -3209,8 +3209,10 @@ fn test_e2e_selfhost_codegen_comparison() {
 
 // =====================================================// ブートストラップ検証: セルフホストモジュールの個別コンパイル・実行
 // =====================================================
-/// セルフホストモジュールをコンパイル・実行し、結果を返す。
-/// パース・型推論・コード生成・実行の各段階でのエラーを文字列で返す。
+/// インラインソースからフルパイプラインを実行する。
+/// 本番のブートストラップ検証は `try_compile_and_run_file`（マルチファイル・import 経路）を主とする。
+/// 最小再現・スニペット専用の将来テスト用に残す。
+#[allow(dead_code)]
 fn try_compile_and_run(source: &str) -> Result<String, String> {
     let program = lsharp_syntax::parse(source)
         .map_err(|e| format!("パースエラー: {:?}", e))?;
@@ -10886,6 +10888,16 @@ fn test_e2e_ops05_default_path_migration() {
     assert!(
         content.contains("LSHARP_PATH") || content.contains("lsharp_path") || content.contains("compiler path"),
         "main.rs に L# compiler path 設定が存在しない"
+    );
+    let smoke = project_root.join("scripts/ci/default-path-smoke.sh");
+    assert!(
+        smoke.is_file(),
+        "scripts/ci/default-path-smoke.sh が存在しない (OPS-05 CI gate)"
+    );
+    let doc = project_root.join("docs/development/operations/default-path-migration.md");
+    assert!(
+        doc.is_file(),
+        "docs/development/operations/default-path-migration.md が存在しない"
     );
 }
 

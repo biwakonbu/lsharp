@@ -9,8 +9,9 @@ Phase 11-2 (Native backend + bootstrap) の完了を判定するための条件�
 
 - `scripts/ci/compile-phase11-inputs.sh` により fixed input set の blocking compile gate は導入済み。
 - `cargo run -- compile selfhost/Main.ls` と `cargo run -- compile selfhost/MacroExpand.ls` は成功する。
-- `cargo run -- compile selfhost/Lower.ls` と `cargo run -- compile selfhost/LowerPattern.ls` は Rust stage0 で stack overflow を起こす。
-- true bootstrap (`stage1 -> stage2 -> stage3`), native self-regeneration, Wasm/native differential zero, native-only release/rollback は未完了のため、本書の `pending` / `in-progress` を維持する。
+- `selfhost/Lower.ls` / `LowerPattern.ls` の stage0 stack overflow は `lsharp-types` の `apply_subst` 改修で解消済み（compile gate に含める）。
+- **OPS-05 第1段**: `scripts/ci/default-path-smoke.sh` + CI job `default-path-smoke` でビルド済み `lsharp` バイナリ経路を blocking 検証。
+- true bootstrap (`stage1.wasm -> stage2.wasm`)、native self-regeneration、Wasm/native 観測差分ゼロ、**Rust workspace 物理撤去**、native-only RC は未完了のため、本書の該当 `pending` を維持する。
 
 ## 状態マーカー凡例
 

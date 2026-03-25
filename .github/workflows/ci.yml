@@ -58,6 +58,18 @@ jobs:
       - name: Phase 11 fixed input set のコンパイル検証
         run: bash scripts/ci/compile-phase11-inputs.sh
 
+  # OPS-05: ビルド済み lsharp バイナリ経路（cargo run に依存しない smoke）
+  default-path-smoke:
+    name: Default path (lsharp binary)
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: default-path-smoke.sh
+        run: bash scripts/ci/default-path-smoke.sh
+
   # P11-1: ドキュメント監査
   audit-docs:
     name: Audit Docs
@@ -72,7 +84,7 @@ jobs:
   ci-gate:
     name: CI Gate
     runs-on: ubuntu-latest
-    needs: [test, lint, format, bootstrap, audit-docs]
+    needs: [test, lint, format, bootstrap, audit-docs, default-path-smoke]
     if: always()
     steps:
       - name: 全ジョブの結果を検証
@@ -81,8 +93,9 @@ jobs:
                 "${{ needs.lint.result }}" != "success" ||
                 "${{ needs.format.result }}" != "success" ||
                 "${{ needs.bootstrap.result }}" != "success" ||
-                "${{ needs.audit-docs.result }}" != "success" ]]; then
-            echo "CI failed: test=${{ needs.test.result }}, lint=${{ needs.lint.result }}, format=${{ needs.format.result }}, bootstrap=${{ needs.bootstrap.result }}, audit-docs=${{ needs.audit-docs.result }}"
+                "${{ needs.audit-docs.result }}" != "success" ||
+                "${{ needs.default-path-smoke.result }}" != "success" ]]; then
+            echo "CI failed: test=${{ needs.test.result }}, lint=${{ needs.lint.result }}, format=${{ needs.format.result }}, bootstrap=${{ needs.bootstrap.result }}, audit-docs=${{ needs.audit-docs.result }}, default-path-smoke=${{ needs.default-path-smoke.result }}"
             exit 1
           fi
           echo "All checks passed."
@@ -91,7 +104,7 @@ jobs:
   ci-gate-v2:
     name: CI Gate v2
     runs-on: ubuntu-latest
-    needs: [test, lint, format, bootstrap, audit-docs, shadow-oracle]
+    needs: [test, lint, format, bootstrap, audit-docs, default-path-smoke, shadow-oracle]
     if: always()
     steps:
       - name: gate-v2 全ジョブの結果を検証
@@ -101,12 +114,14 @@ jobs:
           echo "format=${{ needs.format.result }}"
           echo "bootstrap=${{ needs.bootstrap.result }}"
           echo "audit-docs=${{ needs.audit-docs.result }}"
+          echo "default-path-smoke=${{ needs.default-path-smoke.result }}"
           echo "shadow-oracle=${{ needs.shadow-oracle.result }}"
           if [[ "${{ needs.test.result }}" != "success" ||
                 "${{ needs.lint.result }}" != "success" ||
                 "${{ needs.format.result }}" != "success" ||
                 "${{ needs.bootstrap.result }}" != "success" ||
-                "${{ needs.audit-docs.result }}" != "success" ]]; then
+                "${{ needs.audit-docs.result }}" != "success" ||
+                "${{ needs.default-path-smoke.result }}" != "success" ]]; then
             echo "CI Gate v2 failed (required jobs)"
             exit 1
           fi

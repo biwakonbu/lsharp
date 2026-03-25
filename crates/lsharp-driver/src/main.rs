@@ -1,3 +1,9 @@
+//! # Default path / compiler path (OPS-05)
+//!
+//! - 現行: 本バイナリが Rust 実装パイプライン（syntax → types → ir → wasm）を**内蔵**する。
+//! - 移行予定: 環境変数 `LSHARP_PATH`（予約）で selfhost / 外部コンパイラを指す拡張余地。
+//! - 検証: `scripts/ci/default-path-smoke.sh` が `target/debug/lsharp` のみで `check` / `compile` を通す。
+
 mod commands;
 mod config;
 mod error;
