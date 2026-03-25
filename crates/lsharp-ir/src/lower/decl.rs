@@ -197,8 +197,7 @@ impl Lower {
 
         for constraint in constraints {
             match constraint {
-                Constraint::Gte(expr) => {
-                    if let Expr::Lit(_, Literal::Int(threshold)) = expr {
+                Constraint::Gte(Expr::Lit(_, Literal::Int(threshold))) => {
                         body.push(Instruction::LocalGet(0));
                         body.push(Instruction::I64Const(*threshold));
                         body.push(Instruction::I64GeS);
@@ -209,10 +208,8 @@ impl Lower {
                         body.push(Instruction::I64Const(0));
                         body.push(Instruction::End);
                         body.push(Instruction::Drop);
-                    }
                 }
-                Constraint::Lte(expr) => {
-                    if let Expr::Lit(_, Literal::Int(threshold)) = expr {
+                Constraint::Lte(Expr::Lit(_, Literal::Int(threshold))) => {
                         body.push(Instruction::LocalGet(0));
                         body.push(Instruction::I64Const(*threshold));
                         body.push(Instruction::I64LeS);
@@ -223,7 +220,6 @@ impl Lower {
                         body.push(Instruction::I64Const(0));
                         body.push(Instruction::End);
                         body.push(Instruction::Drop);
-                    }
                 }
                 Constraint::Range(lo_expr, hi_expr) => {
                     if let (Expr::Lit(_, Literal::Int(lo)), Expr::Lit(_, Literal::Int(hi))) =
@@ -280,8 +276,7 @@ impl Lower {
 
         for constraint in constraints {
             match constraint {
-                Constraint::Gte(expr) => {
-                    if let Expr::Lit(_, Literal::Int(threshold)) = expr {
+                Constraint::Gte(Expr::Lit(_, Literal::Int(threshold))) => {
                         body.push(Instruction::LocalGet(0));
                         body.push(Instruction::I64Const(*threshold));
                         body.push(Instruction::I64GeS);
@@ -289,10 +284,8 @@ impl Lower {
                         body.push(Instruction::I32WrapI64);
                         body.push(Instruction::I32And);
                         body.push(Instruction::I64ExtendI32S);
-                    }
                 }
-                Constraint::Lte(expr) => {
-                    if let Expr::Lit(_, Literal::Int(threshold)) = expr {
+                Constraint::Lte(Expr::Lit(_, Literal::Int(threshold))) => {
                         body.push(Instruction::LocalGet(0));
                         body.push(Instruction::I64Const(*threshold));
                         body.push(Instruction::I64LeS);
@@ -300,7 +293,6 @@ impl Lower {
                         body.push(Instruction::I32WrapI64);
                         body.push(Instruction::I32And);
                         body.push(Instruction::I64ExtendI32S);
-                    }
                 }
                 Constraint::Range(lo_expr, hi_expr) => {
                     if let (Expr::Lit(_, Literal::Int(lo)), Expr::Lit(_, Literal::Int(hi))) =

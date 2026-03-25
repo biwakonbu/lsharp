@@ -1,6 +1,7 @@
 use std::path::Path;
 
 /// ソースコードのフォーマット結果
+#[allow(dead_code)]
 pub enum FmtResult {
     /// フォーマット済み（変更なし）
     Unchanged,
@@ -26,6 +27,7 @@ pub fn format_source(source: &str) -> Result<String, String> {
 }
 
 /// ソースのフォーマット差分を検出する
+#[allow(dead_code)]
 pub fn check_format(source: &str) -> Result<FmtResult, String> {
     let formatted = format_source(source)?;
     if formatted == source {

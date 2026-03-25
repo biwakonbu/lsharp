@@ -478,54 +478,6 @@ pub fn link_modules(modules: &[Module]) -> Module {
     }
 }
 
-/// 命令内のインデックスをリベース（後方互換用）
-#[allow(dead_code)]
-fn remap_instruction(
-    instr: &mut Instruction,
-    mod_idx: usize,
-    func_remap: &std::collections::HashMap<(usize, u32), u32>,
-    gc_type_remap: &std::collections::HashMap<(usize, u32), u32>,
-) {
-    match instr {
-        Instruction::Call(idx) => {
-            if let Some(&new_idx) = func_remap.get(&(mod_idx, *idx)) {
-                *idx = new_idx;
-            }
-        }
-        Instruction::StructNew(idx) => {
-            if let Some(&new_idx) = gc_type_remap.get(&(mod_idx, *idx)) {
-                *idx = new_idx;
-            }
-        }
-        Instruction::StructGet(type_idx, _) => {
-            if let Some(&new_idx) = gc_type_remap.get(&(mod_idx, *type_idx)) {
-                *type_idx = new_idx;
-            }
-        }
-        Instruction::StructSet(type_idx, _) => {
-            if let Some(&new_idx) = gc_type_remap.get(&(mod_idx, *type_idx)) {
-                *type_idx = new_idx;
-            }
-        }
-        Instruction::RefCast(idx) => {
-            if let Some(&new_idx) = gc_type_remap.get(&(mod_idx, *idx)) {
-                *idx = new_idx;
-            }
-        }
-        Instruction::CallIndirect(_) => {
-            // CallIndirect の型インデックスはモジュールローカルなのでリマップ不要
-            // （wasi.rs で実際の Wasm 型インデックスに変換される）
-        }
-        Instruction::FuncIdx(idx) => {
-            // FuncIdx は Call と同じインデックス空間
-            if let Some(&new_idx) = func_remap.get(&(mod_idx, *idx)) {
-                *idx = new_idx;
-            }
-        }
-        _ => {}
-    }
-}
-
 /// 命令内のインデックスをリベース（import 対応版）
 fn remap_instruction_with_imports(
     instr: &mut Instruction,
@@ -578,10 +530,8 @@ fn remap_instruction_with_imports(
                 if let Some(&new_idx) = import_remap.get(&(mod_idx, *idx)) {
                     *idx = new_idx;
                 }
-            } else {
-                if let Some(&new_idx) = func_remap.get(&(mod_idx, *idx)) {
-                    *idx = new_idx;
-                }
+            } else if let Some(&new_idx) = func_remap.get(&(mod_idx, *idx)) {
+                *idx = new_idx;
             }
         }
         _ => {}

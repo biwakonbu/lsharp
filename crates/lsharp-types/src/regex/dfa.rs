@@ -375,10 +375,9 @@ fn compile_dfa_from_nfa(nfa: Vec<NfaState>) -> Option<Dfa> {
 
             let target_idx = if let Some(&idx) = state_map.get(&target_set) {
                 idx
+            } else if dfa_states.len() >= DFA_STATE_LIMIT {
+                return None;
             } else {
-                if dfa_states.len() >= DFA_STATE_LIMIT {
-                    return None;
-                }
                 let idx = dfa_states.len();
                 let is_accept = target_set.iter().any(|&s| s < nfa.len() && nfa[s].is_accept);
                 state_map.insert(target_set.clone(), idx);

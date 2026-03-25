@@ -1,7 +1,8 @@
+#![allow(clippy::result_large_err, clippy::type_complexity)]
+
 use std::collections::HashMap;
 
 use crate::types::*;
-use crate::types::Kind;
 use lsharp_syntax::ast::*;
 use lsharp_syntax::span::Span;
 
@@ -131,9 +132,6 @@ pub struct Infer {
     record_registry: HashMap<String, RecordInfo>,
     /// 型エイリアスの登録情報
     type_aliases: HashMap<String, (Vec<String>, Type)>,
-    /// エイリアス展開中のトラッカー（再帰検出用）
-    #[allow(dead_code)]
-    alias_expanding: Vec<String>,
     /// トレイト定義
     trait_registry: HashMap<String, TraitInfo>,
     /// トレイト実装
@@ -165,7 +163,6 @@ impl Infer {
             var_gen: TypeVarGen::new(),
             record_registry: HashMap::new(),
             type_aliases: HashMap::new(),
-            alias_expanding: Vec::new(),
             trait_registry: HashMap::new(),
             impl_registry: Vec::new(),
             constrained_types: HashMap::new(),
@@ -1051,31 +1048,6 @@ impl Infer {
         }
     }
 
-    /// 型エイリアスを展開
-    #[allow(dead_code)]
-    fn expand_alias(&mut self, name: &str, span: Span) -> Result<Type, TypeError> {
-        // 再帰検出
-        if self.alias_expanding.contains(&name.to_string()) {
-            return Err(TypeError::RecursiveAlias {
-                name: name.to_string(),
-                span,
-            });
-        }
-
-        if let Some((params, target)) = self.type_aliases.get(name).cloned() {
-            self.alias_expanding.push(name.to_string());
-            let _ = params;
-            let result = target;
-            self.alias_expanding.pop();
-            Ok(result)
-        } else {
-            Err(TypeError::UndefinedAlias {
-                name: name.to_string(),
-                span,
-            })
-        }
-    }
-
     /// 制約付き型を登録
     fn register_type_constrained(
         &mut self,
@@ -1897,8 +1869,8 @@ impl Infer {
                         let return_ty = self.instantiate(return_scheme);
                         // return_fn : a -> m a の形式
                         // 最後のステップの型から result_ty を推定
-                        if let Some((kind, inner_ty)) = step_types.last() {
-                            if *kind == "return" {
+                        if let Some((kind, inner_ty)) = step_types.last()
+                            && *kind == "return" {
                                 // return_fn(inner) の戻り型
                                 let ret_result = self.var_gen.fresh();
                                 let expected_fn_ty = Type::Fun(
@@ -1909,7 +1881,6 @@ impl Infer {
                                 subst = subst.compose(&s);
                                 result_ty = ret_result.apply_subst(&subst);
                             }
-                        }
                     }
 
                     // bind_fn が環境にあれば、let!/do! ステップの型整合性を確認
@@ -1921,11 +1892,10 @@ impl Infer {
                 }
 
                 // ビルダーが未登録の場合は最後のステップの型をそのまま返す
-                if result_ty == self.var_gen.fresh() {
-                    if let Some((_, ty)) = step_types.last() {
+                if result_ty == self.var_gen.fresh()
+                    && let Some((_, ty)) = step_types.last() {
                         result_ty = ty.apply_subst(&subst);
                     }
-                }
 
                 Ok((subst, result_ty))
             }
@@ -3186,14 +3156,6 @@ mod gadt_tests {
         let program = lsharp_syntax::parse(input).unwrap();
         let mut infer = Infer::new();
         assert!(infer.infer_program(&program).is_err());
-    }
-
-    #[allow(dead_code)]
-    fn infer_has_gadt(input: &str) -> HashMap<String, Type> {
-        let program = lsharp_syntax::parse(input).unwrap();
-        let mut infer = Infer::new();
-        let _ = infer.infer_program(&program).unwrap();
-        infer.gadt_return_types
     }
 
     #[test]

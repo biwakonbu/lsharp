@@ -55,7 +55,7 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     // 20+N: _start
     let fd_write_idx: u32 = 0;
     let proc_exit_wasm_idx: u32 = 1;
-    let args_get_idx: u32 = 2;
+    let _args_get_idx: u32 = 2;
     let args_sizes_get_idx: u32 = 3;
     let fd_read_idx: u32 = 4;
     let fd_close_idx: u32 = 5;
@@ -76,7 +76,7 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let user_func_base: u32 = WASI_IMPORT_COUNT + 11;
     let start_func_idx: u32 = user_func_base + module.functions.len() as u32;
 
-    let gc_type_count = module.gc_types.len() as u32;
+    let _gc_type_count = module.gc_types.len() as u32;
 
     // === Type Section ===
     let mut types = TypeSection::new();
@@ -1324,6 +1324,7 @@ fn emit_fnv1a_hash_func(codes: &mut CodeSection) {
 }
 
 /// IR 命令を WASI 用にリマップして出力
+#[allow(clippy::too_many_arguments)]
 fn emit_instructions_wasi(
     func: &mut wasm_encoder::Function,
     instructions: &[Instruction],

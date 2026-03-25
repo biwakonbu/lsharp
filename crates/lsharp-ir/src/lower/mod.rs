@@ -43,9 +43,6 @@ pub struct Lower {
     /// トレイトメソッド名 -> トレイト名の逆引きテーブル（静的ディスパッチ用）
     /// method_name -> Vec<trait_name>
     pub(crate) trait_method_names: HashMap<String, Vec<String>>,
-    /// 制約付き型の登録情報 (ランタイム検証用)
-    #[allow(dead_code)]
-    pub(crate) constrained_type_checks: HashMap<String, Vec<(String, i64, i64)>>,
     /// ADT バリアント名 -> (GC 型インデックス, タグ値)
     pub(crate) adt_variant_indices: HashMap<String, (u32, i32)>,
     /// ADT 型名 -> バリアント情報リスト [(name, gc_idx, tag, field_count)]
@@ -85,7 +82,6 @@ impl Lower {
             gc_types: Vec::new(),
             trait_method_impls: HashMap::new(),
             trait_method_names: HashMap::new(),
-            constrained_type_checks: HashMap::new(),
             adt_variant_indices: HashMap::new(),
             adt_type_info: HashMap::new(),
             string_data: Vec::new(),
@@ -380,8 +376,6 @@ impl Default for Lower {
 
 /// 関数変換コンテキスト
 pub(crate) struct FuncCtx {
-    #[allow(dead_code)]
-    pub(crate) name: String,
     pub(crate) instructions: Vec<crate::Instruction>,
     pub(crate) locals_map: HashMap<String, u32>,
     pub(crate) param_count: u32,
@@ -389,9 +383,8 @@ pub(crate) struct FuncCtx {
 }
 
 impl FuncCtx {
-    pub(crate) fn new(name: String) -> Self {
+    pub(crate) fn new(_name: String) -> Self {
         Self {
-            name,
             instructions: Vec::new(),
             locals_map: HashMap::new(),
             param_count: 0,
@@ -512,6 +505,7 @@ pub(crate) fn emit_untag_pointer(body: &mut Vec<crate::Instruction>) {
 /// ヒープオブジェクトヘッダ [tag: i32, size: i32] を書き込む IR 命令列を生成
 /// スタック: [addr: i32] -> [] (アドレスは消費される、呼び出し側で保存が必要)
 /// addr+0 に tag、addr+4 に size を書き込む
+#[allow(dead_code)]
 pub(crate) fn emit_write_heap_header(
     body: &mut Vec<crate::Instruction>,
     tag: i32,

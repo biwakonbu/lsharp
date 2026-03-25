@@ -94,7 +94,6 @@ struct MacroDef {
     params: Vec<String>,
     body: Expr,
     /// P10-3: オプションの型シグネチャ
-    #[allow(dead_code)]
     type_sig: Option<TypeExpr>,
 }
 
@@ -779,8 +778,8 @@ impl MacroExpander {
                 for arg in args {
                     match arg {
                         Expr::UnquoteSplice(_, inner) => {
-                            if let Expr::Var(_, name) = inner.as_ref() {
-                                if let Some(replacement) = bindings.get(name) {
+                            if let Expr::Var(_, name) = inner.as_ref()
+                                && let Some(replacement) = bindings.get(name) {
                                     // リストを展開: App の引数をフラットに追加
                                     if let Expr::App(_, _, splice_args) = replacement {
                                         substituted_args.extend(splice_args.clone());
@@ -789,7 +788,6 @@ impl MacroExpander {
                                         substituted_args.push(replacement.clone());
                                     }
                                 }
-                            }
                         }
                         other => {
                             substituted_args.push(self.substitute_expr(other, bindings)?);

@@ -197,7 +197,7 @@ pub fn generate_boundary_test_cases(constraints: &[ConstraintDef]) -> Vec<(i64, 
 /// - `*` 直前の0回以上
 /// - `+` 直前の1回以上
 /// - `[...]` 文字クラス（ネストなし、`^` 否定あり）
-/// 正規表現パターン要素
+///   正規表現パターン要素
 #[derive(Debug, Clone)]
 enum RegexNode {
     /// リテラル文字
@@ -400,6 +400,7 @@ fn node_matches_char(node: &RegexNode, ch: char) -> bool {
 }
 
 /// 複雑なノード（Group/Alternation）の繰り返しマッチ
+#[allow(clippy::too_many_arguments)]
 fn try_repeat_complex(
     inner: &RegexNode,
     rest_nodes: &[RegexNode],

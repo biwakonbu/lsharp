@@ -2,6 +2,7 @@
 //!
 //! 各クレートのエラー型を統一的に扱うための列挙型。
 //! thiserror の `#[from]` を使い、自動的な From 変換を提供する。
+#![allow(dead_code)]
 
 use thiserror::Error;
 
