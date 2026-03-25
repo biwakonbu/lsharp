@@ -1,3 +1,6 @@
+(module Linter)
+(import AST)
+
 ;; Linter.ls - AST ベースのリントルール基盤
 ;;
 ;; P9-6c: L# で実装されたリンター

@@ -1,3 +1,7 @@
+(module JsonRpc)
+(import Linter)
+(import Formatter)
+
 ;; JsonRpc.ls - JSON-RPC パーサー/シリアライザー
 ;;
 ;; P9-6b: LSP サーバーの基盤となる JSON-RPC プロトコル処理

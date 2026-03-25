@@ -1,3 +1,6 @@
+(module Lexer)
+(import Token)
+
 ;; Lexer.ls - L# セルフホスティング: 字句解析器
 ;;
 ;; ソース文字列を受け取り、トークン列 (Vector) を返す。

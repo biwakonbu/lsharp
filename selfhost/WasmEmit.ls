@@ -1,3 +1,6 @@
+(module WasmEmit)
+(import IR)
+
 ;; WasmEmit.ls - L# セルフホスティング: Wasm バイナリ生成
 ;;
 ;; IR 命令列から Wasm バイナリを生成する。

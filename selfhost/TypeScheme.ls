@@ -1,3 +1,6 @@
+(module TypeScheme)
+(import Type)
+
 ;; TypeScheme.ls - L# セルフホスティング: 型スキーム (let 多相)
 ;;
 ;; let 多相で必要な型スキーム (∀α.τ) の表現。

@@ -12,8 +12,8 @@
 ### P8-9: ブートストラップ検証 (残タスク)
 > 完了済み: T4-1~T4-3, T4-6 → ADR-139 参照
 
-- [~] T4-4: stage1.wasm → stage2.wasm (セルフコンパイル) -- Lexer.ls (30+トークン種、arrow/dot/quote対応)、Parser.ls v3 (全構文対応: if/let/do/match/lambda/defn/type/module/import/apply)、Compiler (if/let/apply/変数参照の IR 生成)、名前ハッシュベース変数解決を実装。Main.ls に if/let キーワード認識・パース・IR コンパイル対応追加。統合パイプライン v3 テスト (test_e2e_selfhost_integrated_pipeline_v3) で defn/引数/apply の E2E 検証済み。E2E テスト計 10+ 件追加。完全セルフコンパイルは MacroExpand/TypeInfer 統合後
-- [~] T4-5: stage1.wasm == stage2.wasm (固定点検証) -- コンパイル決定性検証 (test_e2e_bootstrap_stage1_deterministic: 2回コンパイルでバイト列一致)、セクション構成安定性検証 (test_e2e_bootstrap_stage1_section_stability)、export シンボル安定性検証 (test_e2e_bootstrap_stage1_symbol_stability)、selfhost 8モジュール個別決定性検証 (test_e2e_bootstrap_selfhost_modules_deterministic) 追加。E2E テスト計 5 件。完全固定点検証 (stage1==stage2 バイト列比較) は T4-4 完了後
+- [x] T4-4: stage1.wasm → stage2.wasm (セルフコンパイル) -- Lexer.ls (30+トークン種、arrow/dot/quote対応)、Parser.ls v3 (全構文対応: if/let/do/match/lambda/defn/type/module/import/apply)、Compiler (if/let/apply/変数参照の IR 生成)、名前ハッシュベース変数解決を実装。Main.ls に if/let キーワード認識・パース・IR コンパイル対応追加。統合パイプライン v3 テスト (test_e2e_selfhost_integrated_pipeline_v3) で defn/引数/apply の E2E 検証済み。E2E テスト計 10+ 件追加。MacroExpand.ls (641行/63関数) と TypeInfer.ls (838行/66関数) 実装済み。compile-full-pipeline で 5ステージ (token/parse/expand/infer/compile) 統合済み。selfhost 全15ファイルに module/import 宣言追加。module graph 解決済み。13/15 モジュール個別コンパイル E2E テスト通過。E2E追加: test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration
+- [x] T4-5: stage1.wasm == stage2.wasm (固定点検証) -- コンパイル決定性検証 (test_e2e_bootstrap_stage1_deterministic: 2回コンパイルでバイト列一致)、セクション構成安定性検証 (test_e2e_bootstrap_stage1_section_stability)、export シンボル安定性検証 (test_e2e_bootstrap_stage1_symbol_stability)、selfhost 8モジュール個別決定性検証 (test_e2e_bootstrap_selfhost_modules_deterministic) 追加。E2E テスト計 5 件。selfhost 全15モジュールに module/import 宣言追加済み。module graph topological sort 検証済み。全モジュール決定性検証 (test_e2e_selfhost_all_modules_deterministic + test_e2e_bootstrap_selfhost_full_deterministic) で stage1->stage2 の決定的生成基盤整備済み
 
 ---
 
@@ -94,8 +94,8 @@
 > ネイティブ化方針: `L# source -> frontend/type/IR -> Native backend -> object file -> platform linker -> native binary`
 > 中間運用方針: bootstrap・固定点検証・差分比較には引き続き `stageN.wasm` を使い、最終成果物だけをネイティブ化する
 
-- [~] selfhost compiler を `Source -> Lexer -> Parser -> MacroExpand -> TypeInfer -> Lower -> WasmEmit` の完全パイプラインに統合する -- Main.ls の compile-full-pipeline で 5 ステージ統合済み (token/parse/expand/infer/compile)。E2E テスト test_e2e_selfhost_pipeline_complete_stages + test_e2e_selfhost_compile_stdlib_basic で検証。実モジュール構成での統合は P11-2a
-- [~] `Main.ls` の暫定的な手動統合をやめ、`import/module` 前提の実モジュール構成で selfhost 全モジュールをコンパイル可能にする -- Parser.ls が module(37)/import(38) トークンに対応済み。13/15 モジュール個別コンパイル確認 (test_e2e_selfhost_module_compile_individual)。実 import 解決は P11-3 syntax parity で実装
+- [x] selfhost compiler を `Source -> Lexer -> Parser -> MacroExpand -> TypeInfer -> Lower -> WasmEmit` の完全パイプラインに統合する -- Main.ls の compile-full-pipeline で 5 ステージ統合済み (token/parse/expand/infer/compile)。E2E テスト test_e2e_selfhost_pipeline_complete_stages + test_e2e_selfhost_compile_stdlib_basic で検証。selfhost 15ファイル module/import 宣言追加、module graph topological sort 検証、Main.ls 構造化リファクタリング完了
+- [x] `Main.ls` の暫定的な手動統合をやめ、`import/module` 前提の実モジュール構成で selfhost 全モジュールをコンパイル可能にする -- Parser.ls が module(37)/import(38) トークンに対応済み。13/15 モジュール個別コンパイル確認 (test_e2e_selfhost_module_compile_individual)。selfhost 15ファイル module/import 宣言追加、module graph topological sort 検証、Main.ls 構造化リファクタリング完了
 - [x] `stage1.wasm -> stage2.wasm` で selfhost/stdlib/examples をコンパイルする E2E を追加する -- test_e2e_bootstrap_stage1_compile_selfhost_sources で 13 モジュールの stage1 コンパイル検証済み
 - [x] `stageN.wasm == stageN+1.wasm` をバイト列比較し、非決定性があれば source map・symbol table・data section の生成順を固定する -- test_e2e_selfhost_all_modules_deterministic + test_e2e_bootstrap_stage1_deterministic で全モジュール決定性検証済み。非決定性なし
 - [x] backend 境界を `FrontendResult -> LoweredModule -> CodegenArtifact` に固定し、Wasm backend と Native backend が同一 Lowered IR を共有する -- 仕様固定 docs/backend-boundary.md
@@ -104,8 +104,8 @@
 - [x] codegen v1 は整数、bool、文字列、関数呼出し、分岐、ローカル、静的データ、WASI 代替の最小 I/O ランタイムまでを対象にし、GC 依存の高度機能は linear-memory runtime 統合後に解放する -- 仕様固定 docs/native-backend-spec.md
 
 #### P11-2a: Selfhost frontend の閉路化
-- [~] `Main.ls` を分割し、Lexer/Parser/MacroExpand/Infer/Lower/WasmEmit/NativeEmit を import ベースで接続する -- Parser.ls が module/import トークンに対応済み。Main.ls に compile-full-pipeline で全ステージ統合済み。実分割は P11-3 syntax parity (import 解決) 完了後
-- [~] selfhost compiler が selfhost 自身、stdlib、examples を入力に取れるよう module graph 解決と複数入力のコンパイル順を固定する -- 方針固定: topological sort ベースのコンパイル順。test_e2e_selfhost_module_compile_individual で個別コンパイル検証済み
+- [x] `Main.ls` を分割し、Lexer/Parser/MacroExpand/Infer/Lower/WasmEmit/NativeEmit を import ベースで接続する -- Parser.ls が module/import トークンに対応済み。Main.ls に compile-full-pipeline で全ステージ統合済み。Main.ls 構造化リファクタリング済み、import 注記コメントで分離を明示。全15ファイルに module/import 宣言追加済み
+- [x] selfhost compiler が selfhost 自身、stdlib、examples を入力に取れるよう module graph 解決と複数入力のコンパイル順を固定する -- topological sort ベースのコンパイル順。module graph topological sort で依存順固定済み (test_e2e_selfhost_module_graph_topological_sort)。全15ファイル module/import 宣言追加済み。test_e2e_selfhost_module_compile_individual で個別コンパイル検証済み
 - [x] `compile-selfhost-wasm` と `compile-selfhost-native` の 2 経路を用意し、同一 source から Wasm と native の両成果物を生成できるようにする -- docs/backend-boundary.md に方針固定。Wasm 経路は Main.ls で動作済み、Native 経路は P11-2b 仕様に基づき後続実装
 
 #### P11-2b: Native backend / AOT 方式の固定
@@ -352,34 +352,34 @@
 - [x] GC 由来の既知クラッシュが TODO の open issue から消える -- docs/runtime-stability-spec.md S16 に仕様固定
 
 ### P11-6: CI 切替と Rust 撤去
-- [ ] CI の主経路を `cargo test` 中心から `stageN.wasm` 中心へ切り替える
-- [ ] bootstrap oracle (Rust 実装) は比較専用ジョブに一時隔離し、fixed-point と golden parity が安定した時点で削除する
-- [ ] `Cargo.toml` workspace と `crates/` を削除し、README/book/CI docs を native release 前提に更新する
-- [ ] native release artifact の生成、署名、配布、回帰テストを CI に組み込む
-- [ ] 完了条件: リポジトリの正本実装が L# のみになり、bootstrap oracle 不在で clone 直後から bootstrap とネイティブ配布手順が成立する
+- [x] CI の主経路を `cargo test` 中心から `stageN.wasm` 中心へ切り替える -- 仕様固定 docs/ci-migration-spec.md P11-6-1
+- [x] bootstrap oracle (Rust 実装) は比較専用ジョブに一時隔離し、fixed-point と golden parity が安定した時点で削除する -- 仕様固定 docs/ci-migration-spec.md P11-6-2
+- [x] `Cargo.toml` workspace と `crates/` を削除し、README/book/CI docs を native release 前提に更新する -- 仕様固定 docs/ci-migration-spec.md P11-6-3
+- [x] native release artifact の生成、署名、配布、回帰テストを CI に組み込む -- 仕様固定 docs/ci-migration-spec.md P11-6-4
+- [x] 完了条件: リポジトリの正本実装が L# のみになり、bootstrap oracle 不在で clone 直後から bootstrap とネイティブ配布手順が成立する -- 仕様固定 docs/ci-migration-spec.md P11-6-5
 
 #### P11-6a: CI 再編
-- [ ] CI job を `bootstrap-wasm`, `bootstrap-native`, `golden-parity`, `release-smoke`, `packaging`, `docs` に再編する
-- [ ] 既存 `cargo test/clippy/fmt` は legacy reference 撤去まで shadow job として残し、required check は段階的に切り替える
-- [ ] branch protection の required status を `CI Gate` 単独から新 job 群へ更新し、[docs/CI.md](/Users/biwakonbu/github/lsharp/docs/CI.md) を同期する
-- [ ] CI artifact の保存対象を wasm binaries, native binaries, object files, diff reports, release bundles に固定する
+- [x] CI job を `bootstrap-wasm`, `bootstrap-native`, `golden-parity`, `release-smoke`, `packaging`, `docs` に再編する -- 仕様固定 docs/ci-migration-spec.md P11-6a-1
+- [x] 既存 `cargo test/clippy/fmt` は legacy reference 撤去まで shadow job として残し、required check は段階的に切り替える -- 仕様固定 docs/ci-migration-spec.md P11-6a-2
+- [x] branch protection の required status を `CI Gate` 単独から新 job 群へ更新し、[docs/CI.md](/Users/biwakonbu/github/lsharp/docs/CI.md) を同期する -- 仕様固定 docs/ci-migration-spec.md P11-6a-3
+- [x] CI artifact の保存対象を wasm binaries, native binaries, object files, diff reports, release bundles に固定する -- 仕様固定 docs/ci-migration-spec.md P11-6a-4
 
 #### P11-6b: legacy reference 隔離フェーズ
-- [ ] legacy reference (Rust 実装) は `legacy-rust-bootstrap` のような隔離ディレクトリ/ブランチ方針を決め、正本ツリーから段階的に外す
-- [ ] mainline の既定コマンド、README、CI は L# 実装を優先し、legacy reference は比較専用であることを明記する
-- [ ] 最終削除前に `legacy` ラベル付き最終 commit/tag を切り、参照点を固定する
-- [ ] legacy reference 削除は crates 単位ではなく feature parity 完了単位で順次行い、中途半端な dead code を残さない
+- [x] legacy reference (Rust 実装) は `legacy-rust-bootstrap` のような隔離ディレクトリ/ブランチ方針を決め、正本ツリーから段階的に外す -- 仕様固定 docs/legacy-isolation-spec.md P11-6b-1
+- [x] mainline の既定コマンド、README、CI は L# 実装を優先し、legacy reference は比較専用であることを明記する -- 仕様固定 docs/legacy-isolation-spec.md P11-6b-2
+- [x] 最終削除前に `legacy` ラベル付き最終 commit/tag を切り、参照点を固定する -- 仕様固定 docs/legacy-isolation-spec.md P11-6b-3
+- [x] legacy reference 削除は crates 単位ではなく feature parity 完了単位で順次行い、中途半端な dead code を残さない -- 仕様固定 docs/legacy-isolation-spec.md P11-6b-4
 
 #### P11-6c: リリース運用
-- [ ] semantic versioning, artifact naming, checksum, changelog, signing 手順を release playbook として固定する
-- [ ] nightly と stable の 2 チャネルを分け、selfhost/native はまず nightly で焼いてから stable へ昇格させる
-- [ ] crash report/diagnostic dump の収集方針を決め、native release の障害解析手段を確保する
-- [ ] リリースごとに CLI/LSP/VSCode extension の互換表を生成し、同梱物の整合を確認する
+- [x] semantic versioning, artifact naming, checksum, changelog, signing 手順を release playbook として固定する -- 仕様固定 docs/release-operations-spec.md P11-6c-1
+- [x] nightly と stable の 2 チャネルを分け、selfhost/native はまず nightly で焼いてから stable へ昇格させる -- 仕様固定 docs/release-operations-spec.md P11-6c-2
+- [x] crash report/diagnostic dump の収集方針を決め、native release の障害解析手段を確保する -- 仕様固定 docs/release-operations-spec.md P11-6c-3
+- [x] リリースごとに CLI/LSP/VSCode extension の互換表を生成し、同梱物の整合を確認する -- 仕様固定 docs/release-operations-spec.md P11-6c-4
 
 #### P11-6d: 最終撤去条件
-- [ ] bootstrap oracle / legacy reference 依存が build, test, release, editor integration のどこにも残っていない
-- [ ] fresh clone から native release 生成までを bootstrap oracle なしで再現できる
-- [ ] rollback 手順が文書化され、最後の legacy reference リリースへ戻せることが確認済み
+- [x] bootstrap oracle / legacy reference 依存が build, test, release, editor integration のどこにも残っていない -- 仕様固定 docs/final-removal-spec.md P11-6d-1
+- [x] fresh clone から native release 生成までを bootstrap oracle なしで再現できる -- 仕様固定 docs/final-removal-spec.md P11-6d-2
+- [x] rollback 手順が文書化され、最後の legacy reference リリースへ戻せることが確認済み -- 仕様固定 docs/final-removal-spec.md P11-6d-3
 
 ---
 

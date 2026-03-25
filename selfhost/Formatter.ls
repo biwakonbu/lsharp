@@ -1,3 +1,6 @@
+(module Formatter)
+(import AST)
+
 ;; Formatter.ls - AST プリティプリンタ
 ;;
 ;; P9-6d: L# で実装されたフォーマッタ
