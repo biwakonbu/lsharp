@@ -87,6 +87,7 @@ pub fn write_lockfile(lockfile: &Lockfile, path: &Path) -> Result<(), String> {
 }
 
 /// ロックファイルを読み込む
+#[allow(dead_code)]
 pub fn read_lockfile(path: &Path) -> Result<Lockfile, String> {
     let content =
         std::fs::read_to_string(path).map_err(|e| format!("ロックファイルの読み込みに失敗: {e}"))?;

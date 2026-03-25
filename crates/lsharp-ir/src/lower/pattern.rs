@@ -207,6 +207,7 @@ impl Lower {
     }
 
     /// ネストパターンのタグチェックを再帰的に行い、全てマッチしたら変数束縛 + body 実行
+    #[allow(clippy::too_many_arguments)]
     fn emit_nested_checks_and_bind(
         &mut self,
         ctx: &mut FuncCtx,

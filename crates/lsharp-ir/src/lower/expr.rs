@@ -733,7 +733,7 @@ impl Lower {
                         ctx.emit(Instruction::I32Const(16)); // ヘッダスキップ
                         ctx.emit(Instruction::I32Add);
                         ctx.emit(Instruction::I32Const(0)); // fill value = 0
-                        ctx.emit(Instruction::I32Const((default_cap * 16) as i32)); // 256 bytes
+                        ctx.emit(Instruction::I32Const(default_cap * 16)); // 256 bytes
                         ctx.emit(Instruction::MemoryFill);
                         // タグ付きポインタを返す
                         ctx.emit(Instruction::LocalGet(addr_local));
@@ -1352,13 +1352,12 @@ impl Lower {
                         .map(|(k, v)| (k.clone(), v.clone()))
                         .collect();
                     for (type_name, fields) in &record_fields_snapshot {
-                        if let Some(field_idx) = fields.iter().position(|f| f == field_name) {
-                            if let Some(&gc_type_idx) = self.record_type_indices.get(type_name) {
+                        if let Some(field_idx) = fields.iter().position(|f| f == field_name)
+                            && let Some(&gc_type_idx) = self.record_type_indices.get(type_name) {
                                 ctx.emit(Instruction::StructGet(gc_type_idx, field_idx as u32));
                                 resolved = true;
                                 break;
                             }
-                        }
                     }
                 }
 
@@ -1435,14 +1434,13 @@ impl Lower {
                             // let! x = expr -> bind(expr, fn [x] rest)
                             // MVP: bind 関数を呼び出す（簡易版: 式を評価してローカルに格納）
                             self.lower_expr(ctx, expr)?;
-                            if let Some((ref bind_fn, _)) = builder_info {
-                                if let Some(&idx) = self.func_indices.get(bind_fn.as_str()) {
+                            if let Some((ref bind_fn, _)) = builder_info
+                                && let Some(&idx) = self.func_indices.get(bind_fn.as_str()) {
                                     // bind 関数の第1引数（モナド値）は既にスタック上
                                     // 残りのステップは後続で評価される
                                     // MVP: 式の結果をそのまま変数に束縛
                                     let _ = idx; // 将来的に bind 呼び出しに使用
                                 }
-                            }
                             // パターン変数をローカルに格納
                             if let Pattern::Var(_, var_name) = pat {
                                 let var_local = ctx.alloc_local(var_name.clone());
@@ -1460,11 +1458,10 @@ impl Lower {
                         ComputationStep::Return(_, expr) => {
                             // return expr -> return_fn(expr)
                             self.lower_expr(ctx, expr)?;
-                            if let Some((_, ref return_fn)) = builder_info {
-                                if let Some(&idx) = self.func_indices.get(return_fn.as_str()) {
+                            if let Some((_, ref return_fn)) = builder_info
+                                && let Some(&idx) = self.func_indices.get(return_fn.as_str()) {
                                     ctx.emit(Instruction::Call(idx));
                                 }
-                            }
                         }
                         ComputationStep::Expr(expr) => {
                             self.lower_expr(ctx, expr)?;

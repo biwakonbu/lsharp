@@ -829,11 +829,10 @@ fn cmd_doc(file: &PathBuf, output: Option<&std::path::Path>) -> miette::Result<(
                     html.push_str(&format!("<li><code>{}</code></li>\n", v.name));
                 }
                 html.push_str("</ul>\n");
-                if let Some(meta) = metadata {
-                    if let Some(doc) = &meta.doc {
+                if let Some(meta) = metadata
+                    && let Some(doc) = &meta.doc {
                         html.push_str(&format!("<div class=\"doc\">{}</div>\n", doc));
                     }
-                }
             }
             _ => {}
         }
@@ -1030,7 +1029,6 @@ fn cmd_repl() -> miette::Result<()> {
         .unwrap_or_else(|| std::path::PathBuf::from(".lsharp_history"));
     let _ = rl.load_history(&history_path);
 
-    let infer = lsharp_types::infer::Infer::new();
     let mut expr_count = 0;
 
     loop {
@@ -1103,7 +1101,6 @@ fn cmd_repl() -> miette::Result<()> {
     // 履歴ファイルの保存
     let _ = rl.save_history(&history_path);
 
-    let _ = infer; // suppress unused warning
     println!("セッション終了。{} 式を評価しました。", expr_count);
     Ok(())
 }
