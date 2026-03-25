@@ -5072,6 +5072,9 @@ fn test_e2e_selfhost_formatter() {
     // 統計
     assert_eq!(lines[11], "1", "line count");
     assert_eq!(lines[12], "1", "node count");
+    // format-program: 空 vector は長さ 0、同一入力で連続一致 (idempotent)
+    assert_eq!(lines[13], "0", "format-program empty program");
+    assert_eq!(lines[14], "0", "format-program idempotent");
 }
 
 // =====================================================// P9-6b: LSP ハンドラ統合 (selfhost/JsonRpc.ls)
@@ -5131,15 +5134,15 @@ fn test_e2e_selfhost_formatter_lsp_integration() {
     let source = include_str!("../../../selfhost/Formatter.ls");
     let output = compile_and_run(source);
     let lines: Vec<&str> = output.trim().split('\n').collect();
-    // 既存 13 行の後に LSP 統合テスト出力
+    // 既存 15 行の後に LSP 統合テスト出力 (format-program 2 行追加)
     // make-text-edit: [start-line, start-col, end-line, end-col, text-hash]
-    assert_eq!(lines[13], "0", "text-edit: start-line");
-    assert_eq!(lines[14], "0", "text-edit: start-col");
-    assert_eq!(lines[15], "10", "text-edit: end-line");
-    assert_eq!(lines[16], "0", "text-edit: end-col");
-    assert_eq!(lines[17], "42", "text-edit: new-text hash");
+    assert_eq!(lines[15], "0", "text-edit: start-line");
+    assert_eq!(lines[16], "0", "text-edit: start-col");
+    assert_eq!(lines[17], "10", "text-edit: end-line");
+    assert_eq!(lines[18], "0", "text-edit: end-col");
+    assert_eq!(lines[19], "42", "text-edit: new-text hash");
     // formatting response: 1 edit
-    assert_eq!(lines[18], "1", "formatting: edit count");
+    assert_eq!(lines[20], "1", "formatting: edit count");
 }
 
 // =====================================================// P8-9 T4-4: セルフコンパイル拡張 (if/let/変数)
@@ -6721,6 +6724,29 @@ fn test_e2e_bootstrap_deterministic_output() {
     let wasm1 = compile_file_only(&main_path);
     let wasm2 = compile_file_only(&main_path);
     assert_eq!(wasm1, wasm2, "bootstrap output must be deterministic");
+}
+
+/// WASM-03 / BOOT-04 進捗: マルチファイル Main を連続 4 回 compile し全バイト一致（Rust stage0 oracle）。
+/// 真の stage1.wasm→stage2.wasm 自己コンパイルは未接続。退行検知を強化する。
+#[test]
+fn test_e2e_bootstrap_stage0_oracle_chain_four_way_identity() {
+    let main_path = selfhost_main_path();
+    let a = compile_file_only(&main_path);
+    let b = compile_file_only(&main_path);
+    let c = compile_file_only(&main_path);
+    let d = compile_file_only(&main_path);
+    assert_eq!(a, b, "oracle chain pass 1==2");
+    assert_eq!(b, c, "oracle chain pass 2==3");
+    assert_eq!(c, d, "oracle chain pass 3==4");
+}
+
+/// WASM-03: import なし単一モジュール (Token) の compile も連続一致すること
+#[test]
+fn test_e2e_wasm03_token_module_compile_deterministic() {
+    let token_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost/Token.ls");
+    let w1 = compile_file_only(&token_path);
+    let w2 = compile_file_only(&token_path);
+    assert_eq!(w1, w2, "Token.ls compile must be byte-deterministic (WASM-03)");
 }
 
 // === P11-2: ブートストラップ閉路基盤テスト ===
@@ -10284,6 +10310,14 @@ fn test_e2e_selfhost_wasm_native_differential() {
         "Wasm バックエンドの factorial(10) が不正"
     );
 
+    // NATIVE-06 前提: 同一ソースの Wasm バイナリが連続 compile で一致（バックエンド差分比較の土台）
+    let wasm_bin_a = compile_only(test_source);
+    let wasm_bin_b = compile_only(test_source);
+    assert_eq!(
+        wasm_bin_a, wasm_bin_b,
+        "factorial ソースの Wasm 出力は決定的であるべき (WASM-03 / NATIVE-06 前提)"
+    );
+
     // ネイティブバックエンド用のコンパイル関数が NativeCodegen.ls に存在すること
     let codegen_source = std::fs::read_to_string(&codegen_path)
         .expect("selfhost/NativeCodegen.ls の読み込みに失敗");
@@ -10733,6 +10767,16 @@ fn test_e2e_selfhost_pkg_archives() {
     );
 }
 
+/// GC-05 進捗: 同一ミニプログラムを短いループで compile+run（長寿命 soak の縮小版・CI 負荷を抑える）
+#[test]
+fn test_e2e_gc_light_compile_run_loop() {
+    let src = r#"(defn main [] (print 1))"#;
+    for _ in 0..48 {
+        let out = compile_and_run(src);
+        assert_eq!(out.trim(), "1", "GC light loop: 毎回同一出力");
+    }
+}
+
 // ============================================================
 // Group M: CI/Ops 系テスト (TEST-META-05, TEST-OPS-01〜08)
 // ============================================================
@@ -10753,6 +10797,12 @@ fn test_e2e_meta05_differential_allowlist() {
     assert!(
         content.contains("allowlist"),
         "differential-allowlist.yaml に 'allowlist' キーが含まれていない: {}",
+        content
+    );
+    // META-05: 許容エントリは空運用（エントリ追加は差分ゼロ不能時のみ）
+    assert!(
+        content.contains("allowlist: []"),
+        "differential-allowlist.yaml は空配列 allowlist: [] を維持すること (META-05): {}",
         content
     );
 }

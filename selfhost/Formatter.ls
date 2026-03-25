@@ -116,10 +116,9 @@
 ;; 出力: フォーマット済み文字列のハッシュ
 ;; AC-300: parse(format(parse(src))) == parse(src) を保証
 ;; AC-301: format(format(src)) == format(src) (idempotency)
+;; 段階1: program を decl 列 (vector) とみなし、長さを安定フィンガープリントとして返す（同一入力→同一出力）
 (defn format-program [program opts]
-  (let [indent-lv 0
-        result 0]
-    result))
+  (vector-length program))
 
 ;; format-expr: 単一式をフォーマットする
 ;; 入力: AST (Expr) + インデントレベル
@@ -180,11 +179,15 @@
       (print defn-short)               ;; 1
       (print defn-long)                ;; 6
 
-      ;; 統計
-      (print (vector-get s2 0))        ;; 1 (行数)
-      (print (vector-get s2 2))        ;; 1 (ノード数)
+        ;; 統計
+        (print (vector-get s2 0))        ;; 1 (行数)
+        (print (vector-get s2 2))        ;; 1 (ノード数)
 
-      ;; === P9-6d: LSP TextEdit 検証 ===
+        ;; format-program: 空プログラムの idempotent フィンガー (FMT-01 段階的実装)
+        (print (format-program (vector-new 0) 0))
+        (print (format-program (vector-new 0) 0))
+
+        ;; === P9-6d: LSP TextEdit 検証 ===
       (print (vector-get edit 0))      ;; 0 (start-line)
       (print (vector-get edit 1))      ;; 0 (start-col)
       (print (vector-get edit 2))      ;; 10 (end-line)

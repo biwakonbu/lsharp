@@ -14,7 +14,7 @@
 > 2026-03-25 実測注記 (更新):
 > - `selfhost/Main.ls` は import-only パイプラインへ寄せ済み (BOOT-01)。マルチファイル compile は `ModuleGraph::topological_sort` をモジュール名・import 名でソートし Wasm 出力の再現性を担保。
 > - `Lower.ls` / `LowerPattern.ls` の stage0 stack overflow は `lsharp-types` の `Type::apply_subst` ループ化・サイクル打ち切りで解消。`compile-phase11-inputs.sh` に含める。
-> - `test_e2e_bootstrap_stage1_stage2_match` 等は引き続き proxy（真の stage1→stage2 self-compile は未接続）。
+> - `test_e2e_bootstrap_stage1_stage2_match` 等は proxy のまま。加え `test_e2e_bootstrap_stage0_oracle_chain_four_way_identity` で Rust oracle 4 連一致を固定。
 > - `scripts/ci/compile-phase11-inputs.sh` は known blocker なしで通過。残る大物は true bootstrap / native 実行差分 / toolchain parity / Rust 撤去。
 
 > 目標: L# 製 compiler/toolchain をネイティブ配布の正式実装に昇格し、Rust workspace を段階的に撤去する
@@ -63,33 +63,33 @@
 
 #### Step 2. `CP-01` true bootstrap fixed point を成立させる
 
-- [ ] [`BOOT-04 True stage1-stage2-stage3 bootstrap`](docs/development/planning/phase11-implementation-plan.md#boot-04-true-stage1-stage2-stage3-bootstrap) -- proxy bootstrap を実体 `stage1 -> stage2 -> stage3` へ置換する。
-- [ ] [`WASM-03 Deterministic LEB emit`](docs/development/planning/phase11-implementation-plan.md#wasm-03-deterministic-leb-emit) -- byte-identical / section stability / symbol stability の前提を固める。
-- [ ] Step 2 exit gate -- `docs/development/validation/verification-spec.md` P11-2d-1 と `docs/development/planning/completion-criteria.md` P11-2e-1 条件 1/2 を満たす。
+- [~] [`BOOT-04 True stage1-stage2-stage3 bootstrap`](docs/development/planning/phase11-implementation-plan.md#boot-04-true-stage1-stage2-stage3-bootstrap) -- 真の self-compile 未接続。退行検知として **Rust stage0 oracle の 4 連一致** を追加 (`test_e2e_bootstrap_stage0_oracle_chain_four_way_identity`)。既存 proxy テストは維持。
+- [x] [`WASM-03 Deterministic LEB emit`](docs/development/planning/phase11-implementation-plan.md#wasm-03-deterministic-leb-emit) -- マルチファイル決定性 (`ModuleGraph` ソート) + E2E: `test_e2e_wasm03_token_module_compile_deterministic`, 既存 `test_e2e_bootstrap_*deterministic*`。
+- [ ] Step 2 exit gate -- `docs/development/validation/verification-spec.md` P11-2d-1 と `docs/development/planning/completion-criteria.md` P11-2e-1 条件 1/2 を満たす（**要: stage1.wasm による stage2 生成**）。
 
 #### Step 3. `CP-03` Native parity を閉じる
 
 - [ ] [`NATIVE-05 Stage1-native self-regeneration`](docs/development/planning/phase11-implementation-plan.md#native-05-stage1-native-self-regeneration) -- `stage1-native -> stage2-native -> stage3-native` を functional equivalence で閉じる。
-- [ ] [`NATIVE-06 Wasm/native differential`](docs/development/planning/phase11-implementation-plan.md#native-06-wasmnative-differential) -- allowlist なしで観測差分ゼロにする。
-- [ ] [`META-05 Differential allowlist registry`](docs/development/planning/phase11-implementation-plan.md#meta-05-differential-allowlist-registry) の完了 -- `tests/differential-allowlist.yaml` を空のまま維持できる状態にする。
+- [~] [`NATIVE-06 Wasm/native differential`](docs/development/planning/phase11-implementation-plan.md#native-06-wasmnative-differential) -- 同一ソースの **Wasm バイナリ連続一致** を `test_e2e_selfhost_wasm_native_differential` に追加。ネイティブ実行比較は未接続。
+- [x] [`META-05 Differential allowlist registry`](docs/development/planning/phase11-implementation-plan.md#meta-05-differential-allowlist-registry) の完了 -- `tests/differential-allowlist.yaml` が `allowlist: []` であることを `test_e2e_meta05_differential_allowlist` で固定。
 - [ ] Step 3 exit gate -- `docs/development/planning/completion-criteria.md` P11-2e-1 条件 1/2/3 を全て `[done]` にできる。
 
 #### Step 4. `CP-04` Public toolchain parity を閉じる
 
 - [ ] [`CLI-02 13 command implementations`](docs/development/planning/phase11-implementation-plan.md#cli-02-13-command-implementations) -- `selfhost/Cli.ls` の `run-*` stub を実処理へ置換する。
 - [ ] [`LSP-02 10 method parity`](docs/development/planning/phase11-implementation-plan.md#lsp-02-10-method-parity) / [`LSP-03 Diagnostic ordering`](docs/development/planning/phase11-implementation-plan.md#lsp-03-diagnostic-ordering-and-json-snapshots) -- JSON-RPC の観測可能応答を本実装にする。
-- [ ] [`FMT-01 Formatter roundtrip`](docs/development/planning/phase11-implementation-plan.md#fmt-01-formatter-roundtrip) / [`DOC-01 Schemas and snapshots`](docs/development/planning/phase11-implementation-plan.md#doc-01-schemas-and-snapshots) -- formatter/doc の roundtrip と deterministic 出力を満たす。
+- [~] [`FMT-01 Formatter roundtrip`](docs/development/planning/phase11-implementation-plan.md#fmt-01-formatter-roundtrip) / [`DOC-01 Schemas and snapshots`](docs/development/planning/phase11-implementation-plan.md#doc-01-schemas-and-snapshots) -- `format-program` が **空 program の vector-length ベース**で決定的・idempotent な出力に (`selfhost/Formatter.ls` + `test_e2e_selfhost_formatter`)。完全 roundtrip / DOC-01 は未達。
 - [ ] Step 4 exit gate -- `docs/development/planning/compatibility-matrix.md` の active row が Rust default path 前提ではなくなり、`docs/development/planning/toolchain-parity-spec.md` AC-001~AC-608 の未達が消える。
 
 #### Step 5. `CP-05` Runtime stability gate を閉じる
 
-- [ ] [`GC-05 LSP soak and REPL GC`](docs/development/planning/phase11-implementation-plan.md#gc-05-lsp-soak-and-repl-gc) -- 1,000 cycle LSP soak / 500 eval REPL を実測で通す。
+- [~] [`GC-05 LSP soak and REPL GC`](docs/development/planning/phase11-implementation-plan.md#gc-05-lsp-soak-and-repl-gc) -- 縮小版 `test_e2e_gc_light_compile_run_loop`（48 回 compile+run）を CI に追加。spec の 1,000 cycle / 500 eval REPL は未達。
 - [ ] [`GC-06 Leak detection and metrics`](docs/development/planning/phase11-implementation-plan.md#gc-06-leak-detection-and-metrics) -- heap / RSS / GC pause の観測を CI gate に上げる。
 - [ ] Step 5 exit gate -- `docs/development/planning/runtime-stability-spec.md` S14-S16 を満たす。
 
 #### Step 6. `CP-06` Ops cutover / Rust removal を閉じる
 
-- [ ] [`OPS-01 CI gate-v2 job graph`](docs/development/planning/phase11-implementation-plan.md#ops-01-ci-gate-v2-job-graph) / [`OPS-02 Artifact policy`](docs/development/planning/phase11-implementation-plan.md#ops-02-artifact-policy) -- bootstrap/native/differential/release の job graph を spec どおりに再編する。
+- [~] [`OPS-01 CI gate-v2 job graph`](docs/development/planning/phase11-implementation-plan.md#ops-01-ci-gate-v2-job-graph) / [`OPS-02 Artifact policy`](docs/development/planning/phase11-implementation-plan.md#ops-02-artifact-policy) -- `.github/workflows/ci.yml` に `ci-gate-v2`・artifact retention・`shadow-oracle` あり。E2E: `test_e2e_ops01_ci_gate_v2`, `test_e2e_ops02_artifact_policy`。spec 全文一致の再編は未完了。
 - [ ] [`OPS-05 Default path migration`](docs/development/planning/phase11-implementation-plan.md#ops-05-default-path-migration) -- default path を Rust から L# / native へ切り替える。
 - [ ] [`OPS-06 Release playbook`](docs/development/planning/phase11-implementation-plan.md#ops-06-release-playbook) / [`OPS-07 Fresh clone without Rust`](docs/development/planning/phase11-implementation-plan.md#ops-07-fresh-clone-without-rust) -- native-only RC と Rust 未導入 fresh clone を成立させる。
 - [ ] [`OPS-08 Final removal and rollback`](docs/development/planning/phase11-implementation-plan.md#ops-08-final-removal-and-rollback) -- rollback ADR と最終撤去手順を確定する。
@@ -97,11 +97,11 @@
 
 ### Phase 11 クリティカルパス現況
 
-- [~] `CP-01 Frontend/bootstrap` -- Step 1（Main import-only / Lower SO 解消 / compile gate）は閉じた。bootstrap 固定点は引き続き proxy。Evidence: `selfhost/Main.ls`, `crates/lsharp-wasm/tests/e2e.rs`, `scripts/ci/compile-phase11-inputs.sh`
+- [~] `CP-01 Frontend/bootstrap` -- Step 1 完了 + WASM-03 / oracle 4 連一致テスト。真 bootstrap は未接続。Evidence: `crates/lsharp-wasm/tests/e2e.rs`（`test_e2e_bootstrap_stage0_oracle_chain_four_way_identity` 等）
 - [~] `CP-02 Syntax/types parity` -- syntax/type 系テストは増えているが、完了判定に必要な parity table は未充足。Evidence: `docs/development/planning/compatibility-matrix.md`, `docs/development/planning/completion-criteria.md`
 - [~] `CP-03 IR/backend/native` -- Lower/LowerPattern の stage0 compile は通過。native parity / Wasm 実行差分は structure 〜 Wasm 側のみ。Evidence: `selfhost/Lower.ls`, `test_e2e_selfhost_wasm_native_differential`, `tests/differential-allowlist.yaml`
 - [~] `CP-04 Public toolchain` -- `selfhost/Cli.ls`, `selfhost/LspServer.ls`, `selfhost/Formatter.ls`, `selfhost/TestRunner.ls` は骨格実装に留まる。Evidence: `selfhost/Cli.ls`, `selfhost/LspServer.ls`, `selfhost/Formatter.ls`, `selfhost/TestRunner.ls`
-- [~] `CP-05 Runtime stability` -- `selfhost/GC.ls` は存在するが、LSP soak / REPL / heap-RSS-GC pause の完了条件は未達。Evidence: `docs/development/planning/runtime-stability-spec.md`, `crates/lsharp-wasm/tests/e2e.rs`
+- [~] `CP-05 Runtime stability` -- `test_e2e_gc_light_compile_run_loop` で短ループ回帰。1,000 cycle / メトリクス CI は未達。Evidence: `crates/lsharp-wasm/tests/e2e.rs`
 - [~] `CP-06 CI cutover` -- `scripts/ci/compile-phase11-inputs.sh` と `audit-docs` gate は blocking 化したが、Rust default path / native-only RC / rollback ADR は未達。Evidence: `scripts/ci/compile-phase11-inputs.sh`, `.github/workflows/ci.yml`, `docs/development/planning/completion-criteria.md`
 
 ### Phase 11 実装状態
@@ -110,13 +110,13 @@
 - [x] [META-03 Audit-docs gate](docs/development/planning/phase11-implementation-plan.md#meta-03-audit-docs-gate) -- `scripts/audit_docs.sh`, `.github/workflows/ci.yml` で Phase 11 完了矛盾とエビデンス欠落を fail-fast 化。
 - [x] [BOOT-03 stdlib direct compile blockers](docs/development/planning/phase11-implementation-plan.md#boot-03-stdlib-direct-compile-blockers) -- `scripts/ci/compile-phase11-inputs.sh` を追加し、bootstrap job で selfhost/stdlib/examples の fixed input set を blocking 化。
 - [x] [BOOT-01 Main.ls import path consolidation](docs/development/planning/phase11-implementation-plan.md#boot-01-mainls-import-path-consolidation) -- Evidence: `selfhost/Main.ls` import-only コメント・パイプライン、`crates/lsharp-wasm/tests/e2e.rs`（`compile_and_run_file` / `selfhost_main_path`）。
-- [ ] [BOOT-04 True stage1-stage2-stage3 bootstrap](docs/development/planning/phase11-implementation-plan.md#boot-04-true-stage1-stage2-stage3-bootstrap) -- `test_e2e_bootstrap_stage1_stage2_match` と `test_e2e_bootstrap_fixed_point_stage2_stage3` は proxy のまま。
+- [~] [BOOT-04 True stage1-stage2-stage3 bootstrap](docs/development/planning/phase11-implementation-plan.md#boot-04-true-stage1-stage2-stage3-bootstrap) -- proxy 維持 + `test_e2e_bootstrap_stage0_oracle_chain_four_way_identity`。
 - [ ] [NATIVE-05 Stage1-native self-regeneration](docs/development/planning/phase11-implementation-plan.md#native-05-stage1-native-self-regeneration) -- `test_e2e_selfhost_native_self_regeneration` は structure test に留まる。
-- [ ] [NATIVE-06 Wasm/native differential](docs/development/planning/phase11-implementation-plan.md#native-06-wasmnative-differential) -- `test_e2e_selfhost_wasm_native_differential` は実行ベース比較をまだ行っていない。
+- [~] [NATIVE-06 Wasm/native differential](docs/development/planning/phase11-implementation-plan.md#native-06-wasmnative-differential) -- Wasm バイナリ連続一致を `test_e2e_selfhost_wasm_native_differential` に追加。native 実行比較は未。
 - [ ] [CLI-02 13 command implementations](docs/development/planning/phase11-implementation-plan.md#cli-02-13-command-implementations) -- `selfhost/Cli.ls` の `run-*` は success code を返すだけ。
 - [ ] [LSP-02 10 method parity](docs/development/planning/phase11-implementation-plan.md#lsp-02-10-method-parity) -- `selfhost/LspServer.ls` の主要ハンドラは `0` / 空 vector の骨格のみ。
-- [ ] [FMT-01 Formatter roundtrip](docs/development/planning/phase11-implementation-plan.md#fmt-01-formatter-roundtrip) -- `selfhost/Formatter.ls` の `format-program` は placeholder のまま。
-- [ ] [GC-05 LSP soak and REPL GC](docs/development/planning/phase11-implementation-plan.md#gc-05-lsp-soak-and-repl-gc) -- spec が要求する 1,000 cycle soak / 500 eval REPL は未接続。
+- [~] [FMT-01 Formatter roundtrip](docs/development/planning/phase11-implementation-plan.md#fmt-01-formatter-roundtrip) -- `format-program` を `vector-length` ベースの決定版に。完全 roundtrip は未。
+- [~] [GC-05 LSP soak and REPL GC](docs/development/planning/phase11-implementation-plan.md#gc-05-lsp-soak-and-repl-gc) -- `test_e2e_gc_light_compile_run_loop`（48 回）。1,000 cycle / REPL は未。
 - [ ] [OPS-05 Default path migration](docs/development/planning/phase11-implementation-plan.md#ops-05-default-path-migration) -- default path は依然 Rust で、native-only RC / rollback ADR も未達。
 
 ### Deferred / v2
