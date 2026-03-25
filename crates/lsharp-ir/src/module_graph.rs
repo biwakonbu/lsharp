@@ -198,6 +198,32 @@ impl ModuleGraph {
         self.modules.is_empty()
     }
 
+    /// 指定モジュールの依存 closure を依存先優先の安定順で返す
+    pub fn dependency_closure(&self, module: &str) -> Vec<String> {
+        let mut visited = HashSet::new();
+        let mut deps = Vec::new();
+        self.collect_dependencies(module, &mut visited, &mut deps);
+        deps
+    }
+
+    fn collect_dependencies(
+        &self,
+        module: &str,
+        visited: &mut HashSet<String>,
+        deps: &mut Vec<String>,
+    ) {
+        if let Some(node) = self.modules.get(module) {
+            let mut imports = node.imports.clone();
+            imports.sort();
+            for import in imports {
+                if visited.insert(import.clone()) {
+                    self.collect_dependencies(&import, visited, deps);
+                    deps.push(import);
+                }
+            }
+        }
+    }
+
 
     /// 親モジュール名を取得 ("A.B.C" -> Some("A.B"))
     pub fn parent_module(name: &str) -> Option<&str> {

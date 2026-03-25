@@ -70,6 +70,16 @@
   (let [v (vector-new 2)]
     (vector-push (vector-push v 4) name-hash)))
 
+;; レコードリテラル: [12, type-name-hash, field-count, field1-hash, expr1, ...]
+(defn make-recordlit [type-name-hash]
+  (let [v (vector-new 8)]
+    (vector-push (vector-push (vector-push v (ast-recordlit)) type-name-hash) 0)))
+
+;; レコード更新: [14, base-expr, field-count, field1-hash, expr1, ...]
+(defn make-recordupdate [base-expr]
+  (let [v (vector-new 8)]
+    (vector-push (vector-push (vector-push v (ast-recordupdate)) base-expr) 0)))
+
 ;; 型宣言: [21, name-hash]
 (defn make-type-decl [name-hash]
   (let [v (vector-new 2)]
@@ -79,6 +89,16 @@
 (defn make-record-def [name-hash]
   (let [v (vector-new 2)]
     (vector-push (vector-push v (ast-recorddef)) name-hash)))
+
+;; 型エイリアス: [23, name-hash]
+(defn make-type-alias [name-hash]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v (ast-typealias)) name-hash)))
+
+;; 制約付き型: [24, name-hash]
+(defn make-type-constrained [name-hash]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v (ast-typeconstrained)) name-hash)))
 
 ;; モジュール宣言: [25, name-hash]
 (defn make-module-decl [name-hash]
@@ -94,6 +114,32 @@
 (defn make-trait-def [name-hash]
   (let [v (vector-new 2)]
     (vector-push (vector-push v (ast-traitdef)) name-hash)))
+
+;; impl 宣言: [28, trait-name-hash, type-name-hash]
+(defn make-impl-def [trait-name-hash type-name-hash]
+  (let [v (vector-new 3)]
+    (vector-push (vector-push (vector-push v (ast-impldef)) trait-name-hash) type-name-hash)))
+
+;; private 宣言: [29, inner-node]
+(defn make-private [inner-node]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v (ast-private)) inner-node)))
+
+;; computation-builder 宣言: [30, name-hash, bind-hash, return-hash]
+(defn make-computation-builder [name-hash bind-hash return-hash]
+  (let [v (vector-new 4)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push v (ast-computationbuilder))
+          name-hash)
+        bind-hash)
+      return-hash)))
+
+;; defmacro 宣言: [31, name-hash, param-count]
+(defn make-defmacro [name-hash]
+  (let [v (vector-new 3)]
+    (vector-push (vector-push (vector-push v (ast-defmacro)) name-hash) 0)))
 
 ;; quote: [16, expr]
 (defn make-quote [expr]
@@ -139,6 +185,20 @@
 ;; ノード内で特定の name-hash を持つ var 参照が存在するか検索
 ;; 見つかれば 1、なければ 0
 ;; node: AST ノード (Vector)、target-hash: 検索対象の変数ハッシュ
+(defn recordlit-contains-var-loop [node target-hash idx count]
+  (if (>= idx count) 0
+    (let [expr (vector-get node (+ 4 (* idx 2)))
+          found (ast-contains-var expr target-hash)]
+      (if (= found 1) 1
+        (recordlit-contains-var-loop node target-hash (+ idx 1) count)))))
+
+(defn recordupdate-contains-var-loop [node target-hash idx count]
+  (if (>= idx count) 0
+    (let [expr (vector-get node (+ 4 (* idx 2)))
+          found (ast-contains-var expr target-hash)]
+      (if (= found 1) 1
+        (recordupdate-contains-var-loop node target-hash (+ idx 1) count)))))
+
 (defn ast-contains-var [node target-hash]
   (let [tag (vector-get node 0)]
     (if (= tag 4)
@@ -147,6 +207,12 @@
       (if (= tag 1) 0      ;; lit-int: 子なし
       (if (= tag 2) 0      ;; lit-bool: 子なし
       (if (= tag 3) 0      ;; lit-string: 子なし
+      (if (= tag 12)
+        (recordlit-contains-var-loop node target-hash 0 (vector-get node 2))
+      (if (= tag 14)
+        (let [base-found (ast-contains-var (vector-get node 1) target-hash)]
+          (if (= base-found 1) 1
+            (recordupdate-contains-var-loop node target-hash 0 (vector-get node 2))))
       (if (= tag 16)
         (ast-contains-var (vector-get node 1) target-hash)
       (if (= tag 17)
@@ -176,13 +242,28 @@
                   (ast-contains-var (vector-get node 4) target-hash)
                   0)))
             0))
-      0))))))))))))
+      0))))))))))))))
 
 ;; AST ノードの数を再帰的にカウント (走査テスト用)
+(defn recordlit-count-fields-loop [node idx count]
+  (if (>= idx count) 0
+    (+ (ast-count-nodes (vector-get node (+ 4 (* idx 2))))
+       (recordlit-count-fields-loop node (+ idx 1) count))))
+
+(defn recordupdate-count-fields-loop [node idx count]
+  (if (>= idx count) 0
+    (+ (ast-count-nodes (vector-get node (+ 4 (* idx 2))))
+       (recordupdate-count-fields-loop node (+ idx 1) count))))
+
 (defn ast-count-nodes [node]
   (let [tag (vector-get node 0)]
     (if (= (ast-is-leaf tag) 1)
       1
+      (if (= tag 12)
+        (+ 1 (recordlit-count-fields-loop node 0 (vector-get node 2)))
+      (if (= tag 14)
+        (+ 1 (+ (ast-count-nodes (vector-get node 1))
+               (recordupdate-count-fields-loop node 0 (vector-get node 2))))
       (if (= tag 16)
         (+ 1 (ast-count-nodes (vector-get node 1)))
       (if (= tag 17)
@@ -252,7 +333,7 @@
               (+ 1 (+ sc (+ (ast-count-nodes (vector-get node 3))
                            (ast-count-nodes (vector-get node 4))))))
             (+ 1 sc)))
-      1)))))))))))
+      1)))))))))))))
 
 ;; エントリポイント (テスト用)
 (defn main []

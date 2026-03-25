@@ -547,9 +547,10 @@ pub fn compile_multi_file(
     entry_file: &std::path::Path,
 ) -> Result<Module, String> {
     use module_graph::ModuleGraph;
+    use std::collections::HashMap;
 
     // 1. モジュールグラフの構築とファイル探索
-    let (_graph, sorted_files) = ModuleGraph::build_from_entry(entry_file)
+    let (graph, sorted_files) = ModuleGraph::build_from_entry(entry_file)
         .map_err(|e| format!("モジュールグラフ構築エラー: {e}"))?;
 
     if sorted_files.is_empty() {
@@ -577,23 +578,32 @@ pub fn compile_multi_file(
     //    全宣言を結合して、1つの Program として扱う
     let mut all_decls: Vec<lsharp_syntax::ast::Decl> = Vec::new();
     let mut all_type_results: Vec<(String, lsharp_types::types::TypeScheme)> = Vec::new();
+    let mut per_module_type_results: HashMap<
+        String,
+        Vec<(String, lsharp_types::types::TypeScheme)>,
+    > = HashMap::new();
 
-    for (_mod_name, mod_path) in &sorted_files {
+    for (mod_name, mod_path) in &sorted_files {
         let source = std::fs::read_to_string(mod_path)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
 
         let program = lsharp_syntax::parse(&source)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
 
-        // 型チェック（依存先の型環境を注入）
+        // 型チェック（依存 closure に含まれる型環境だけを注入）
         let mut infer = lsharp_types::infer::Infer::new();
-        infer.inject_external_types(&all_type_results);
+        for dep_name in graph.dependency_closure(mod_name) {
+            if let Some(dep_results) = per_module_type_results.get(&dep_name) {
+                infer.inject_external_types(dep_results);
+            }
+        }
         let type_results = infer
             .infer_program(&program)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
 
         // 型結果を蓄積
-        all_type_results.extend(type_results);
+        all_type_results.extend(type_results.clone());
+        per_module_type_results.insert(mod_name.clone(), type_results);
 
         // 宣言を収集（module 宣言と import 宣言は除外）
         for decl in program.decls {
@@ -846,6 +856,49 @@ mod import_dedup_tests {
         };
         let linked = link_modules(&[module]);
         assert!(linked.imports.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod multifile_compile_tests {
+    use super::*;
+
+    #[test]
+    fn test_compile_multi_file_injects_only_dependency_closure() {
+        let dir = std::env::temp_dir().join("lsharp_compile_multi_file_dependency_closure");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("A.ls"),
+            "(module A)\n(defn status [x] x)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Noise.ls"),
+            "(module Noise)\n(defn status [x] true)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("ZConsumer.ls"),
+            "(module ZConsumer)\n(import A)\n(defn check [x] (= (status x) 1))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import A)\n(import Noise)\n(import ZConsumer)\n(defn main [] (if (check 1) 1 0))\n",
+        )
+        .unwrap();
+
+        let result = compile_multi_file(&dir.join("Main.ls"));
+        assert!(
+            result.is_ok(),
+            "unrelated sibling module types should not pollute dependency inference: {result:?}"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
 

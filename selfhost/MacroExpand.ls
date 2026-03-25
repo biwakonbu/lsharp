@@ -38,7 +38,7 @@
 ;; 宣言タグ
 (defn tag-defn [] 20)
 (defn tag-type-decl [] 21)
-(defn tag-defmacro [] 22)     ;; マクロ定義
+(defn tag-defmacro [] 31)     ;; マクロ定義 (AST.ast-defmacro と同値)
 
 ;; ============================================================
 ;; マクロテーブル
@@ -66,7 +66,7 @@
 ;; ============================================================
 
 ;; defmacro AST ノードからマクロエントリを構築
-;; defmacro ノード: [22, name-hash, param-count, param-hash1, ..., body]
+;; defmacro ノード: [31, name-hash, param-count, param-hash1, ..., body]
 ;; → entry: [param-count, param-hash1, ..., body]
 (defn make-macro-entry [defmacro-node]
   (let [param-count (vector-get defmacro-node 2)
@@ -555,14 +555,14 @@
 
         ;; === テスト 3: マクロ定義 + 呼び出し ===
         ;; (defmacro double [x] (+ x x))
-        ;; → defmacro ノード: [22, name-hash(double), 1, param-hash(x), body]
+        ;; → defmacro ノード: [31, name-hash(double), 1, param-hash(x), body]
         ;; body = (+ x x) = [5, [4, hash(+)], 2, [4, hash(x)], [4, hash(x)]]
         var-x (vector-push (vector-push (vector-new 2) 4) 120)  ;; x のハッシュ = 120
         var-plus (vector-push (vector-push (vector-new 2) 4) 43) ;; + のハッシュ = 43
         plus-body (vector-push (vector-push (vector-push (vector-push
           (vector-push (vector-new 8) 5) var-plus) 2) var-x) var-x)
         defmacro-double (vector-push (vector-push (vector-push
-          (vector-push (vector-push (vector-new 8) 22) 200) 1) 120) plus-body)
+          (vector-push (vector-push (vector-new 8) (tag-defmacro)) 200) 1) 120) plus-body)
           ;; name-hash(double) = 200, param x = 120
 
         ;; (defn bar [] (double 5))

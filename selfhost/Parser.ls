@@ -87,6 +87,12 @@
     (let [digit (- (string-char-at src pos) 48)]
       (parse-int-from-str src (+ pos 1) end (+ (* acc 10) digit)))))
 
+(defn current-symbol-text-v3 [spans pos-ref src]
+  (substring src (p-start spans pos-ref) (p-end spans pos-ref)))
+
+(defn current-symbol-hash-v3 [spans pos-ref src]
+  (name-hash src (p-start spans pos-ref) (p-end spans pos-ref)))
+
 ;; === AST ノード構築ヘルパー ===
 
 ;; 整数リテラルノード: [1, value]
@@ -138,6 +144,208 @@
     (p-advance pos-ref)
     (make-unquote-splice (parse-expr-v3 spans pos-ref src))))
 
+;; record literal: {Point field1 expr1 field2 expr2 ...}
+(defn brace-starts-recordlit-v3 [spans pos-ref src]
+  (let [next-idx (+ (ref-get pos-ref) 1)
+        next-kind (span-kind spans next-idx)]
+    (if (== next-kind 20)
+      (let [start (span-start spans next-idx)
+            c (string-char-at src start)]
+        (if (>= c 65)
+          (if (<= c 90) 1 0)
+          0))
+      0)))
+
+(defn parse-recordlit-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)  ;; { を消費
+    (if (== (p-current spans pos-ref) 20)
+      (let [type-start (p-start spans pos-ref)
+            type-end (p-end spans pos-ref)
+            type-h (name-hash src type-start type-end)
+            result (make-recordlit type-h)]
+        (do
+          (p-advance pos-ref)  ;; type 名を消費
+          (let [with-fields (parse-recordlit-fields-v3 spans pos-ref src result 0)
+                field-count (/ (- (vector-length with-fields) 3) 2)]
+            (vector-set-at with-fields 2 field-count))))
+      (let [result (make-recordlit 0)
+            with-fields (parse-recordlit-fields-v3 spans pos-ref src result 0)
+            field-count (/ (- (vector-length with-fields) 3) 2)]
+        (vector-set-at with-fields 2 field-count)))))
+
+(defn parse-recordlit-fields-v3 [spans pos-ref src result count]
+  (if (== (p-current spans pos-ref) 5)  ;; } で終了
+    (do (p-advance pos-ref) result)
+    (if (== (p-current spans pos-ref) 20)
+      (let [field-start (p-start spans pos-ref)
+            field-end (p-end spans pos-ref)
+            field-h (name-hash src field-start field-end)]
+        (do
+          (p-advance pos-ref)  ;; field 名を消費
+          (let [value (parse-expr-v3 spans pos-ref src)]
+            (parse-recordlit-fields-v3 spans pos-ref src
+              (vector-push (vector-push result field-h) value)
+              (+ count 1)))))
+      (do
+        (p-advance pos-ref)
+        (parse-recordlit-fields-v3 spans pos-ref src result count)))))
+
+(defn parse-recordupdate-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)  ;; { を消費
+    (let [base (parse-expr-v3 spans pos-ref src)
+          result (make-recordupdate base)]
+      (do
+        (if (== (p-current spans pos-ref) 52)  ;; | を消費
+          (do
+            (p-advance pos-ref)
+            0)
+          0)
+        (let [with-fields (parse-recordupdate-fields-v3 spans pos-ref src result 0)
+              field-count (/ (- (vector-length with-fields) 3) 2)]
+          (vector-set-at with-fields 2 field-count))))))
+
+(defn parse-recordupdate-fields-v3 [spans pos-ref src result count]
+  (if (== (p-current spans pos-ref) 5)  ;; } で終了
+    (do (p-advance pos-ref) result)
+    (if (== (p-current spans pos-ref) 20)
+      (let [field-start (p-start spans pos-ref)
+            field-end (p-end spans pos-ref)
+            field-h (name-hash src field-start field-end)]
+        (do
+          (p-advance pos-ref)  ;; field 名を消費
+          (let [value (parse-expr-v3 spans pos-ref src)]
+            (parse-recordupdate-fields-v3 spans pos-ref src
+              (vector-push (vector-push result field-h) value)
+              (+ count 1)))))
+      (do
+        (p-advance pos-ref)
+        (parse-recordupdate-fields-v3 spans pos-ref src result count)))))
+
+(defn skip-type-expr-v3 [spans pos-ref]
+  (if (== (p-current spans pos-ref) 0)
+    (do
+      (parse-skip-to-close-v3 spans pos-ref 1)
+      0)
+    (do
+      (p-advance pos-ref)
+      0)))
+
+(defn skip-optional-type-sig-v3 [spans pos-ref]
+  (if (== (p-current spans pos-ref) 50)  ;; :
+    (do
+      (p-advance pos-ref)
+      (skip-type-expr-v3 spans pos-ref)
+      0)
+    0))
+
+(defn parse-type-alias-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)  ;; type-alias を消費
+    (if (== (p-current spans pos-ref) 0)
+      (do
+        (p-advance pos-ref)  ;; alias head の ( を消費
+        (if (== (p-current spans pos-ref) 20)
+          (let [name-h (current-symbol-hash-v3 spans pos-ref src)]
+            (do
+              (p-advance pos-ref)  ;; alias 名を消費
+              (parse-skip-to-close-v3 spans pos-ref 1)
+              (skip-type-expr-v3 spans pos-ref)
+              (p-expect spans pos-ref 1)  ;; ) を消費
+              (make-type-alias name-h)))
+          (do
+            (parse-skip-to-close-v3 spans pos-ref 1)
+            (parse-skip-to-close-v3 spans pos-ref 1)
+            (make-type-alias 0))))
+      (if (== (p-current spans pos-ref) 20)
+        (let [name-h (current-symbol-hash-v3 spans pos-ref src)]
+          (do
+            (p-advance pos-ref)  ;; alias 名を消費
+            (skip-type-expr-v3 spans pos-ref)
+            (p-expect spans pos-ref 1)  ;; ) を消費
+            (make-type-alias name-h)))
+        (do
+          (parse-skip-to-close-v3 spans pos-ref 1)
+          (make-type-alias 0))))))
+
+(defn parse-type-constrained-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)  ;; type-constrained を消費
+    (if (== (p-current spans pos-ref) 20)
+      (let [name-h (current-symbol-hash-v3 spans pos-ref src)]
+        (do
+          (p-advance pos-ref)  ;; name を消費
+          (parse-skip-to-close-v3 spans pos-ref 1)
+          (make-type-constrained name-h)))
+      (do
+        (parse-skip-to-close-v3 spans pos-ref 1)
+        (make-type-constrained 0)))))
+
+(defn parse-computation-builder-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)  ;; computation-builder を消費
+    (if (== (p-current spans pos-ref) 20)
+      (let [name-h (current-symbol-hash-v3 spans pos-ref src)]
+        (do
+          (p-advance pos-ref)
+          (if (== (p-current spans pos-ref) 20)
+            (let [bind-h (current-symbol-hash-v3 spans pos-ref src)]
+              (do
+                (p-advance pos-ref)
+                (if (== (p-current spans pos-ref) 20)
+                  (let [return-h (current-symbol-hash-v3 spans pos-ref src)]
+                    (do
+                      (p-advance pos-ref)
+                      (p-expect spans pos-ref 1)  ;; ) を消費
+                      (make-computation-builder name-h bind-h return-h)))
+                  (do
+                    (parse-skip-to-close-v3 spans pos-ref 1)
+                    (make-computation-builder name-h bind-h 0)))))
+            (do
+              (parse-skip-to-close-v3 spans pos-ref 1)
+              (make-computation-builder name-h 0 0)))))
+      (do
+        (parse-skip-to-close-v3 spans pos-ref 1)
+        (make-computation-builder 0 0 0)))))
+
+(defn parse-impl-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)  ;; impl を消費
+    (if (== (p-current spans pos-ref) 0)
+      (do
+        (p-advance pos-ref)  ;; impl head の ( を消費
+        (if (== (p-current spans pos-ref) 20)
+          (let [trait-h (current-symbol-hash-v3 spans pos-ref src)]
+            (do
+              (p-advance pos-ref)  ;; trait 名を消費
+              (if (== (p-current spans pos-ref) 20)
+                (let [type-h (current-symbol-hash-v3 spans pos-ref src)]
+                  (do
+                    (p-advance pos-ref)  ;; type 名を消費
+                    (parse-skip-to-close-v3 spans pos-ref 2)
+                    (make-impl-def trait-h type-h)))
+                (do
+                  (parse-skip-to-close-v3 spans pos-ref 1)
+                  (parse-skip-to-close-v3 spans pos-ref 1)
+                  (make-impl-def trait-h 0)))))
+          (do
+            (parse-skip-to-close-v3 spans pos-ref 2)
+            (make-impl-def 0 0))))
+      (do
+        (parse-skip-to-close-v3 spans pos-ref 1)
+        (make-impl-def 0 0)))))
+
+(defn parse-symbol-form-v3 [spans pos-ref src]
+  (let [name (current-symbol-text-v3 spans pos-ref src)]
+    (if (string-eq name "type-alias")
+      (parse-type-alias-v3 spans pos-ref src)
+      (if (string-eq name "type-constrained")
+        (parse-type-constrained-v3 spans pos-ref src)
+        (if (string-eq name "computation-builder")
+          (parse-computation-builder-v3 spans pos-ref src)
+          (parse-apply-v3 spans pos-ref src))))))
+
 ;; 式のパース (メインディスパッチ)
 (defn parse-expr-v3 [spans pos-ref src]
   (let [kind (p-current spans pos-ref)]
@@ -162,17 +370,21 @@
                 (parse-unquote-v3 spans pos-ref src)
                 (if (== kind 56)  ;; ~@
                   (parse-unquote-splice-v3 spans pos-ref src)
-                  (if (== kind 20)  ;; Symbol (変数参照)
-                    (let [start (p-start spans pos-ref)
-                          end (p-end spans pos-ref)
-                          h (name-hash src start end)]
-                      (do (p-advance pos-ref)
-                          (make-var-node h)))
-                    (if (== kind 0)  ;; LParen -> S 式
-                      (parse-sexp-v3 spans pos-ref src)
-                      ;; unknown token
-                      (do (p-advance pos-ref)
-                          (make-int-node 0)))))))))))))
+                  (if (== kind 4)  ;; LBrace -> record literal
+                    (if (= (brace-starts-recordlit-v3 spans pos-ref src) 1)
+                      (parse-recordlit-v3 spans pos-ref src)
+                      (parse-recordupdate-v3 spans pos-ref src))
+                    (if (== kind 20)  ;; Symbol (変数参照)
+                      (let [start (p-start spans pos-ref)
+                            end (p-end spans pos-ref)
+                            h (name-hash src start end)]
+                        (do (p-advance pos-ref)
+                            (make-var-node h)))
+                      (if (== kind 0)  ;; LParen -> S 式
+                        (parse-sexp-v3 spans pos-ref src)
+                        ;; unknown token
+                        (do (p-advance pos-ref)
+                            (make-int-node 0))))))))))))))
 
 ;; S 式のパース (( の後のキーワードディスパッチ)
 (defn parse-sexp-v3 [spans pos-ref src]
@@ -191,16 +403,24 @@
                 (parse-lambda-v3 spans pos-ref src)
                 (if (== kind 30)  ;; defn
                   (parse-defn-v3 spans pos-ref src)
-                  (if (== kind 34)  ;; type
-                    (parse-type-v3 spans pos-ref src)
-                    (if (== kind 40)  ;; trait
-                      (parse-trait-v3 spans pos-ref src)
-                      (if (== kind 37)  ;; module
-                        (parse-module-v3 spans pos-ref src)
-                        (if (== kind 38)  ;; import
-                          (parse-import-v3 spans pos-ref src)
-                          ;; 関数適用 (apply)
-                          (parse-apply-v3 spans pos-ref src))))))))))))))
+                  (if (== kind 44)  ;; defmacro
+                    (parse-defmacro-v3 spans pos-ref src)
+                    (if (== kind 43)  ;; private
+                      (parse-private-v3 spans pos-ref src)
+                      (if (== kind 34)  ;; type
+                        (parse-type-v3 spans pos-ref src)
+                        (if (== kind 41)  ;; impl
+                          (parse-impl-v3 spans pos-ref src)
+                          (if (== kind 40)  ;; trait
+                            (parse-trait-v3 spans pos-ref src)
+                            (if (== kind 37)  ;; module
+                              (parse-module-v3 spans pos-ref src)
+                              (if (== kind 38)  ;; import
+                                (parse-import-v3 spans pos-ref src)
+                                (if (== kind 20)  ;; symbol-form
+                                  (parse-symbol-form-v3 spans pos-ref src)
+                                  ;; 関数適用 (apply)
+                                  (parse-apply-v3 spans pos-ref src))))))))))))))))))
 
 ;; === if 式 ===
 (defn parse-if-v3 [spans pos-ref src]
@@ -366,6 +586,36 @@
             (do
               (p-expect spans pos-ref 1)  ;; ) を消費
               (vector-push defn-node body))))))))
+
+;; === defmacro 宣言 ===
+(defn parse-defmacro-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)  ;; defmacro を消費
+    (let [ns (p-start spans pos-ref)
+          ne (p-end spans pos-ref)
+          nh (name-hash src ns ne)]
+      (do
+        (p-advance pos-ref)  ;; name を消費
+        (p-expect spans pos-ref 2)  ;; [ を消費
+        (let [result (make-defmacro nh)]
+          (let [with-params (parse-params-v3 spans pos-ref src result 0)
+                param-count (- (vector-length with-params) 3)
+                macro-node (vector-set-at with-params 2 param-count)]
+            (do
+              (skip-optional-type-sig-v3 spans pos-ref)
+              (let [body (parse-expr-v3 spans pos-ref src)]
+                (do
+                  (p-expect spans pos-ref 1)  ;; ) を消費
+                  (vector-push macro-node body))))))))))
+
+;; === private 宣言 ===
+(defn parse-private-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)  ;; private を消費
+    (let [inner (parse-expr-v3 spans pos-ref src)]
+      (do
+        (p-expect spans pos-ref 1)  ;; ) を消費
+        (make-private inner)))))
 
 ;; === type 宣言 (簡易) ===
 (defn parse-type-v3 [spans pos-ref src]

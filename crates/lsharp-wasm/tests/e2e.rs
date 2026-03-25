@@ -9083,6 +9083,223 @@ fn test_e2e_selfhost_parser_record_literal() {
     assert_eq!(lines[6], "1", "field y の値は int literal であるべき");
 }
 
+/// TEST-SYNTAX-02g: defmacro が canonical tag でパースされ collect-macros に拾われる
+///
+/// selfhost Parser が `(defmacro ...)` を ast-defmacro として返し、
+/// MacroExpand.collect-macros がそのノードを収集できることを検証する。
+#[test]
+fn test_e2e_selfhost_parser_defmacro_collect() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+    let macroexpand_ls =
+        std::fs::read_to_string(project_root.join("selfhost/MacroExpand.ls"))
+            .expect("selfhost/MacroExpand.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [src "(defmacro double [x] '(+ ~x ~x))"
+        program (parse-program src)
+        node (vector-get program 0)
+        table (collect-macros program)
+        name-h (name-hash "double" 0 6)
+        param-h (name-hash "x" 0 1)
+        entry (macro-table-get table name-h)]
+    (do
+      (print (if (= (vector-get node 0) (ast-defmacro)) 1 0))
+      (print (if (= (vector-get node 1) name-h) 1 0))
+      (print (vector-get node 2))
+      (print (if (= (vector-get (vector-get node 4) 0) (ast-quote)) 1 0))
+      (print (if (= entry 0) 0 1))
+      (print (if (= entry 0) 0 (if (= (entry-param-count entry) 1) 1 0)))
+      (print (if (= entry 0) 0 (if (= (entry-param-hash entry 0) param-h) 1 0)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, macroexpand_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 7, "defmacro parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "defmacro は ast-defmacro であるべき");
+    assert_eq!(lines[1], "1", "defmacro 名ハッシュが一致すべき");
+    assert_eq!(lines[2], "1", "defmacro の param-count は 1 であるべき");
+    assert_eq!(lines[3], "1", "defmacro body は quote ノードであるべき");
+    assert_eq!(lines[4], "1", "collect-macros が defmacro を拾うべき");
+    assert_eq!(lines[5], "1", "macro entry の param-count は 1 であるべき");
+    assert_eq!(lines[6], "1", "macro entry の param hash が一致すべき");
+}
+
+/// TEST-SYNTAX-02h: private 宣言が canonical tag でパースされる
+#[test]
+fn test_e2e_selfhost_parser_private_decl() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(private (defn foo [] 1))") 0)
+        inner (vector-get node 1)]
+    (do
+      (print (if (= (vector-get node 0) (ast-private)) 1 0))
+      (print (if (= (vector-get inner 0) (ast-defn)) 1 0))
+      (print (if (= (vector-get inner 1) (name-hash "foo" 0 3)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "private parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "private は ast-private であるべき");
+    assert_eq!(lines[1], "1", "private の内側は ast-defn であるべき");
+    assert_eq!(lines[2], "1", "inner defn 名ハッシュが一致すべき");
+}
+
+/// TEST-SYNTAX-02i: record update を AST ノードにパースできる
+#[test]
+fn test_e2e_selfhost_parser_record_update() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "{p | x 10 y 20}") 0)
+        base (vector-get node 1)]
+    (do
+      (print (if (= (vector-get node 0) (ast-recordupdate)) 1 0))
+      (print (if (= (vector-get base 0) (ast-var)) 1 0))
+      (print (if (= (vector-get base 1) (name-hash "p" 0 1)) 1 0))
+      (print (vector-get node 2))
+      (print (if (= (vector-get node 3) (name-hash "x" 0 1)) 1 0))
+      (print (if (= (vector-get (vector-get node 4) 0) (ast-lit-int)) 1 0))
+      (print (if (= (vector-get node 5) (name-hash "y" 0 1)) 1 0))
+      (print (if (= (vector-get (vector-get node 6) 0) (ast-lit-int)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 8, "record update parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "record update は ast-recordupdate であるべき");
+    assert_eq!(lines[1], "1", "record update base は var であるべき");
+    assert_eq!(lines[2], "1", "record update base 名ハッシュが一致すべき");
+    assert_eq!(lines[3], "2", "record update field-count は 2 であるべき");
+    assert_eq!(lines[4], "1", "field x の name-hash が一致すべき");
+    assert_eq!(lines[5], "1", "field x の値は int literal であるべき");
+    assert_eq!(lines[6], "1", "field y の name-hash が一致すべき");
+    assert_eq!(lines[7], "1", "field y の値は int literal であるべき");
+}
+
+/// TEST-SYNTAX-02j: type-alias / type-constrained / computation-builder / impl を decl tag にパースできる
+#[test]
+fn test_e2e_selfhost_parser_extended_decl_forms() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [alias-node (vector-get (parse-program "(type-alias Str String)") 0)
+        constrained-node (vector-get (parse-program "(type-constrained Natural Int :constraints [(>= 0)])") 0)
+        builder-node (vector-get (parse-program "(computation-builder maybe-builder mb identity)") 0)
+        impl-node (vector-get (parse-program "(impl (Show Int) (defn show [self] self))") 0)]
+    (do
+      (print (if (= (vector-get alias-node 0) (ast-typealias)) 1 0))
+      (print (if (= (vector-get alias-node 1) (name-hash "Str" 0 3)) 1 0))
+      (print (if (= (vector-get constrained-node 0) (ast-typeconstrained)) 1 0))
+      (print (if (= (vector-get constrained-node 1) (name-hash "Natural" 0 7)) 1 0))
+      (print (if (= (vector-get builder-node 0) (ast-computationbuilder)) 1 0))
+      (print (if (= (vector-get builder-node 1) (name-hash "maybe-builder" 0 13)) 1 0))
+      (print (if (= (vector-get builder-node 2) (name-hash "mb" 0 2)) 1 0))
+      (print (if (= (vector-get builder-node 3) (name-hash "identity" 0 8)) 1 0))
+      (print (if (= (vector-get impl-node 0) (ast-impldef)) 1 0))
+      (print (if (= (vector-get impl-node 1) (name-hash "Show" 0 4)) 1 0))
+      (print (if (= (vector-get impl-node 2) (name-hash "Int" 0 3)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 11,
+        "extended decl parser 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "type-alias は ast-typealias であるべき");
+    assert_eq!(lines[1], "1", "type-alias 名ハッシュが一致すべき");
+    assert_eq!(
+        lines[2], "1",
+        "type-constrained は ast-typeconstrained であるべき"
+    );
+    assert_eq!(lines[3], "1", "type-constrained 名ハッシュが一致すべき");
+    assert_eq!(
+        lines[4], "1",
+        "computation-builder は ast-computationbuilder であるべき"
+    );
+    assert_eq!(lines[5], "1", "builder 名ハッシュが一致すべき");
+    assert_eq!(lines[6], "1", "bind 関数名ハッシュが一致すべき");
+    assert_eq!(lines[7], "1", "return 関数名ハッシュが一致すべき");
+    assert_eq!(lines[8], "1", "impl は ast-impldef であるべき");
+    assert_eq!(lines[9], "1", "impl trait 名ハッシュが一致すべき");
+    assert_eq!(lines[10], "1", "impl type 名ハッシュが一致すべき");
+}
+
 /// TEST-SYNTAX-04: Hygiene.ls gensym/scope-id/expansion trace
 ///
 /// selfhost/Hygiene.ls が存在し、gensym, scope-id, expansion-trace 関数を公開していることを検証。
