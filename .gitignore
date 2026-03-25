@@ -4,3 +4,8 @@ Cargo.lock
 *.pdf
 .claude/plans/
 .agbullet/
+
+# VSCode 拡張
+editors/vscode/node_modules/
+editors/vscode/out/
+editors/vscode/*.vsix

@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "publisher": "lsharp",
   "engines": {
-    "vscode": "^1.80.0"
+    "vscode": "^1.82.0"
   },
   "categories": [
     "Programming Languages"
@@ -29,14 +29,31 @@
         "scopeName": "source.lsharp",
         "path": "./syntaxes/lsharp.tmLanguage.json"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "L#",
+      "properties": {
+        "lsharp.lspPath": {
+          "type": "string",
+          "default": "",
+          "description": "lsharp バイナリのパス (空の場合は PATH から検索)"
+        }
+      }
+    }
   },
   "scripts": {
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "compile": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+    "watch": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
+    "package": "npm run compile && vsce package --no-dependencies",
+    "install-ext": "npm run package && code --install-extension lsharp-vscode-0.1.0.vsix"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
-    "@types/vscode": "^1.80.0",
+    "@types/vscode": "^1.82.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.20.0",
     "typescript": "^5.3.0"
   }
 }
