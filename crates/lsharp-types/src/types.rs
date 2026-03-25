@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 /// 型変数の識別子
@@ -113,12 +113,21 @@ impl Type {
     pub fn apply_subst(&self, subst: &Substitution) -> Type {
         match self {
             Type::Con(name) => Type::Con(name.clone()),
+            // 型変数の連鎖 (t0 -> t1 -> ... -> 具体型) を再帰で辿ると
+            // 深い if 連鎖や compose の蓄積でスタックオーバーフローになるため、ループで潰す。
             Type::Var(id) => {
-                if let Some(ty) = subst.get(*id) {
-                    // 置換結果にさらに置換を適用（推移的閉包）
-                    ty.apply_subst(subst)
-                } else {
-                    Type::Var(*id)
+                let mut id = *id;
+                let mut seen: BTreeSet<TypeVarId> = BTreeSet::new();
+                loop {
+                    if !seen.insert(id) {
+                        // 置換マップに変数サイクルがある場合のフェイルセーフ（通常は occurs check で防ぐ）
+                        return Type::Var(id);
+                    }
+                    match subst.get(id) {
+                        None => return Type::Var(id),
+                        Some(Type::Var(next)) => id = *next,
+                        Some(other) => return other.clone().apply_subst(subst),
+                    }
                 }
             }
             Type::Fun(params, ret) => Type::Fun(
@@ -428,4 +437,30 @@ pub enum ConstraintDef {
     OneOf(Vec<i64>),
     /// 述語関数 (satisfies fn-name)
     Satisfies(String),
+}
+
+#[cfg(test)]
+mod apply_subst_tests {
+    use super::{Substitution, Type};
+
+    /// 長い型変数連鎖でも apply_subst がスタックを食いつぶさないこと（selfhost Lower* compile 退避用）
+    #[test]
+    fn apply_subst_resolves_long_var_chain() {
+        let mut s = Substitution::new();
+        for i in 0..64u32 {
+            s.insert(i, Type::Var(i + 1));
+        }
+        s.insert(64, Type::int());
+        assert_eq!(Type::Var(0).apply_subst(&s), Type::int());
+    }
+
+    /// 置換に変数サイクルがある場合は無限ループせず打ち切る
+    #[test]
+    fn apply_subst_var_cycle_is_safe() {
+        let mut s = Substitution::new();
+        s.insert(0, Type::Var(1));
+        s.insert(1, Type::Var(0));
+        let t = Type::Var(0).apply_subst(&s);
+        assert_eq!(t, Type::Var(0));
+    }
 }

@@ -1,6 +1,7 @@
 (module Parser)
 (import Token)
 (import AST)
+(import Lexer)
 
 ;; Parser.ls - L# セルフホスティング: 再帰降下パーサー
 ;;
@@ -443,6 +444,12 @@
     (let [expr (parse-expr-v3 spans pos-ref src)]
       (parse-program-loop-v3 spans pos-ref src
         (vector-push result expr)))))
+
+;; ソース文字列をトークン化してから v3 パーサでプログラム (宣言の Vector) を返す
+(defn parse-program [src]
+  (let [spans (tokenize-with-spans src)
+        pos-ref (ref-new 0)]
+    (parse-program-v3 spans pos-ref src)))
 
 ;; === 旧 API (後方互換) ===
 

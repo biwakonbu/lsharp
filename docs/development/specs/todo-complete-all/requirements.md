@@ -156,4 +156,4 @@ TODO.md に残存していた全未達成タスクを一括で完了させるプ
 ## 関連ドキュメント
 
 - [設計書](design.md)
-- [TODO 全残タスク完了 (前回)](../todo-complete/requirements.md)
+- [TODO 全残タスク完了 (前回)](../archive/todo-complete/requirements.md)

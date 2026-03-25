@@ -291,4 +291,4 @@ pub enum MacroErrorKind {
 ## 関連ドキュメント
 
 - [要件定義書](requirements.md)
-- [TODO 全残タスク完了 (前回)](../todo-complete/design.md)
+- [TODO 全残タスク完了 (前回)](../archive/todo-complete/design.md)

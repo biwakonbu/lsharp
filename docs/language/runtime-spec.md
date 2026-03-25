@@ -1,130 +1,169 @@
-# L# Runtime 仕様 (v1)
+# L# Runtime 仕様
 
-## 概要
+## 目的
 
-Wasm/Native 両 backend から呼べる共通 runtime API を定義する。
-ネイティブ runtime v1 は selfhost compiler 実行に必要な最小機能だけを持たせ、スレッド、async、動的ロード、JIT は scope 外にする。
-GC 導入前は bump allocator 互換 runtime で selfhost を成立させ、GC 導入後に同一 runtime API の実装だけを差し替える。
+本書は、Wasm backend と Native backend が共有する L# runtime の契約を定義する。
+runtime はメモリ確保、値表現、GC root 管理、I/O、診断の共通基盤を提供し、compiler core が host 環境へ直接依存しないようにする。
 
-## Runtime API (P11-2c)
+## 適用範囲
 
-| 関数 | シグネチャ | 説明 |
+本書が扱うのは次の領域である。
+
+- runtime API の公開契約
+- `LsharpWord` とヒープオブジェクトの値表現
+- GC root 管理と GC-safe point
+- ファイル I/O、時刻、環境値の取り扱い
+- runtime 起動シーケンスと診断モデル
+
+以下は v1 の対象外とする。
+
+- スレッド
+- async / task scheduler
+- 動的ロード
+- JIT
+- socket
+- subprocess
+- watch mode
+- 標準入力を前提にした共通 API
+
+## 設計原則
+
+runtime は次の原則に従う。
+
+1. compiler は runtime API を通じてのみメモリと host 機能へアクセスする
+2. Wasm / Native の両 backend は同一の値表現と root 管理モデルを共有する
+3. GC 導入前後で compiler 側の API 契約を変えない
+4. host 依存の差分は runtime boundary で吸収し、compiler core へ漏らさない
+
+## Runtime API
+
+### 共通 API
+
+runtime 実装は少なくとも次の API を提供しなければならない。
+
+| 関数 | シグネチャ | 役割 |
 |------|-----------|------|
 | `alloc_words` | `(size: Int, tag: Int) -> LsharpWord` | ワード単位のヒープ確保 |
 | `alloc_bytes` | `(size: Int, tag: Int) -> LsharpWord` | バイト単位のヒープ確保 |
-| `print` | `(value: LsharpWord) -> void` | stdout への出力 |
-| `eprint` | `(value: LsharpWord) -> void` | stderr への出力 |
-| `read_file` | `(path: LsharpWord) -> LsharpWord` | ファイル読み込み (Result を返す) |
-| `write_file` | `(path: LsharpWord, content: LsharpWord) -> LsharpWord` | ファイル書き込み (Result を返す) |
-| `file_exists` | `(path: LsharpWord) -> LsharpWord` | ファイル存在チェック (Bool) |
-| `read_dir` | `(path: LsharpWord) -> LsharpWord` | ディレクトリ読み込み (Result を返す) |
-| `clock_now_millis` | `() -> LsharpWord` | 現在時刻 (ミリ秒) |
+| `print` | `(value: LsharpWord) -> void` | 標準出力への出力 |
+| `eprint` | `(value: LsharpWord) -> void` | 標準エラー出力への出力 |
+| `read_file` | `(path: LsharpWord) -> LsharpWord` | ファイル読み込み。結果は `Result` 相当の値で返す |
+| `write_file` | `(path: LsharpWord, content: LsharpWord) -> LsharpWord` | ファイル書き込み。結果は `Result` 相当の値で返す |
+| `file_exists` | `(path: LsharpWord) -> LsharpWord` | ファイル存在確認。結果は `Bool` 相当の値で返す |
+| `read_dir` | `(path: LsharpWord) -> LsharpWord` | ディレクトリ一覧取得。結果は `Result` 相当の値で返す |
+| `clock_now_millis` | `() -> LsharpWord` | 現在時刻をミリ秒で返す |
 
-compiler 側は直接 `malloc` 相当を呼ばず、上記 API を通じてのみメモリを確保する。
+compiler core は `malloc` や OS syscall を直接呼び出してはならず、必ず上記 API か同等の runtime service を経由する。
 
-## 値表現 (P11-2c-1)
+### 内部管理 API
+
+GC を導入する runtime は、少なくとも次の root 管理 API を備える。
+
+| 関数 | 役割 |
+|------|------|
+| `root_push` | root stack にポインタを追加する |
+| `root_pop` | root stack の末尾を除去する |
+| `root_set` | 既存 root slot を更新する |
+
+これらは主に compiler が生成するコードや runtime 内部から利用されるものであり、ユーザー向け API ではない。
+
+## 値表現
 
 ### LsharpWord
 
-タグ付き machine word。immediate と heap pointer を統一的に表現する。
+`LsharpWord` は、L# の実行時値を表すタグ付き machine word である。
+runtime と backend は、少なくとも次の分類を共有しなければならない。
 
-- **immediate**: 整数、Bool はタグ付き即値として machine word に直接格納
-- **heap objects**: String, Vector, ADT, Closure, Ref Cell はヒープに確保
+- **immediate**: 整数や `Bool` のように machine word へ直接格納できる値
+- **heap object**: String、Vector、ADT、Closure、Ref Cell など、ヒープ領域を参照する値
 
 ### ヒープオブジェクトレイアウト
 
-```
+ヒープオブジェクトは、共通の先頭ヘッダを持つ。
+
+```text
 +--------+--------+--------+--------+-----+
 |  tag   |  size  | field0 | field1 | ... |
 +--------+--------+--------+--------+-----+
 ```
 
-- ヒープヘッダは `[tag, size, ...fields]` の固定レイアウト
-- backend ごとの独自レイアウトは禁止し、Wasm/native で共通化する
+- `tag` はオブジェクト種別を表す
+- `size` は後続領域の大きさを表す
+- `field0` 以降はオブジェクト本体である
+
+backend ごとに独自のオブジェクトヘッダを導入してはならない。Wasm / Native 間で同一レイアウトを維持する。
 
 ### 所有権モデル
 
-- すべてランタイム管理
-- ユーザーコードに `free` は露出しない
-- compiler 側は `alloc_words` / `alloc_bytes` のみを呼び出す
+値の所有権は runtime が一元管理する。
 
-## GC と Root 管理 (P11-2c-2)
+- ユーザーコードへ `free` は露出しない
+- compiler は `alloc_words` / `alloc_bytes` 以外の解放 API を前提にしない
+- 複合値の寿命は runtime のメモリ管理方針に従う
 
-### Root API
-
-| 関数 | 説明 |
-|------|------|
-| `root_push` | root stack にポインタを追加 |
-| `root_pop` | root stack からポインタを除去 |
-| `root_set` | root stack の指定位置を更新 |
+## メモリ管理と GC
 
 ### GC-safe point
 
-以下の地点を GC-safe point とし、それ以外では collector が走らない (v1 契約):
+collector が走ってよい地点は、v1 では次に限定する。
 
-1. **call site** -- 関数呼び出し地点
-2. **loop backedge** -- ループの末尾ジャンプ
-3. **runtime call 直前** -- runtime API 呼び出しの直前
+1. 関数呼び出し地点
+2. ループ backedge
+3. runtime API 呼び出し直前
 
-compiler は GC-safe point の前後で必ず root 集合を明示管理する。
+compiler は GC-safe point の前後で、必要な root 集合を必ず明示管理しなければならない。
+
+### Root 管理
+
+root stack は GC から到達可能な参照を保持するための明示的な管理領域である。
+例外や異常終了経路を含め、root stack の整合性を壊してはならない。
 
 ### GC 導入前の互換性
 
-- bump allocator 実装でも同じ root API を no-op 互換で提供する
-- compiler 側に条件分岐を持ち込まない
-- 例外/異常終了経路でも root stack が破壊されないよう、runtime abort パスと compiler 生成 epilogue の整合を保証する
+GC 未導入の段階では bump allocator 互換 runtime を許容する。
+ただし、その場合でも compiler から見える API 契約は変えない。
 
-## 文字列・パス・環境 (P11-2c-3)
+- `root_push` / `root_pop` / `root_set` は no-op 互換で提供してよい
+- compiler 側へ GC 有無の条件分岐を持ち込まない
+- 将来 collector 実装へ差し替えても同一コード生成規約を保てるようにする
+
+## 文字列・パス・環境値
 
 ### 文字列 ABI
 
-- UTF-8 bytes + length を保持する heap object
-- NUL 終端への変換は runtime boundary のみで行う
-- compiler core には L# 文字列だけを渡す
+L# の文字列は UTF-8 bytes と length を保持するヒープオブジェクトとして表現する。
+NUL 終端への変換は runtime boundary でのみ行い、compiler core や言語内部表現へ C 文字列を持ち込まない。
 
 ### OS 値の正規化
 
-ファイルパス、環境変数、CLI 引数は runtime で OS 文字列から L# 文字列へ正規化する。
+CLI 引数、環境変数、パスなどの OS 依存値は、runtime が L# の文字列表現へ正規化してから渡す。
 
-| サービス | 説明 |
+| サービス | 役割 |
 |---------|------|
-| `argv` | コマンドライン引数 |
-| `env` | 環境変数 |
-| `cwd` | カレントディレクトリ |
-| `tempdir` | 一時ディレクトリ |
-| `homedir` | ホームディレクトリ |
+| `argv` | コマンドライン引数を提供する |
+| `env` | 環境変数を提供する |
+| `cwd` | カレントディレクトリを提供する |
+| `tempdir` | 一時ディレクトリを提供する |
+| `homedir` | ホームディレクトリを提供する |
 
-これらは runtime service として切り出し、直接 OS syscall を compiler core に露出しない。
+compiler core は、これらの値を直接 OS syscall から取得してはならない。
 
 ### パス操作
 
-- 既存 `stdlib/Path.ls` を正本とする
-- OS 差分は separator と canonicalize 挙動だけ runtime で吸収する
+パス操作の言語側正本は `stdlib/Path.ls` とする。
+OS 差分は主に path separator と canonicalize 挙動に閉じ込め、runtime が吸収する。
 
-## I/O と時刻 (P11-2c-4)
+## I/O と診断
 
-### v1 API
+### I/O 契約
 
-`print`, `eprint`, `read_file`, `write_file`, `file_exists`, `read_dir`, `clock_now_millis` に固定する。
-
-### v1 scope 外
-
-以下は v1 scope 外とし、必要になった時点で別 Phase を切る:
-
-- 標準入力 (stdin)
-- watch mode
-- socket
-- subprocess
-
-### ツールチェイン層 adapter
-
-LSP/REPL 用の stdin/stdout ストリームは compiler core 共通 API ではなく、ツールチェイン層の adapter として実装する。
+v1 で共通契約に含める I/O は `print`、`eprint`、`read_file`、`write_file`、`file_exists`、`read_dir`、`clock_now_millis` に限定する。
+LSP や REPL で必要なストリーム処理は compiler core の共通 API ではなく、ツールチェイン層の adapter として実装する。
 
 ### エラー表現
 
-失敗しうる I/O API は `Result` 相当のタグ付きオブジェクトを返す。native runtime が errno/OS error を L# エラー値へ写像する。
-
-## エラーと診断 (P11-2c-5)
+失敗しうる I/O は、例外ではなく `Result` 相当のタグ付き値で返す。
+runtime は OS 固有のエラー表現を、L# が扱えるエラー値へ写像しなければならない。
 
 ### Runtime Error 分類
 
@@ -140,40 +179,36 @@ LSP/REPL 用の stdin/stdout ストリームは compiler core 共通 API では�
 | チャネル | 用途 |
 |---------|------|
 | `stdout` | 通常出力 |
-| `stderr` | 診断/障害 |
+| `stderr` | 診断、障害、内部エラー |
 
 | 終了コード | 意味 |
 |-----------|------|
 | `0` | 正常終了 |
-| `1` | ユーザーエラー |
-| `2` | 内部エラー |
+| `1` | ユーザー入力や I/O を含む回復可能な失敗 |
+| `2` | runtime または compiler の内部エラー |
 
-### 診断の分離
+compiler 診断と runtime 障害は別経路で扱い、同一のエラー種別へ曖昧に混ぜない。
 
-- compiler 診断 (型エラー、構文エラー) は L# 診断値で表現する
-- runtime 障害は runtime error 値で表現する
-- 両者は別経路とし、混合しない
+## 起動シーケンス
 
-## 起動シーケンス (P11-2c-6)
+runtime は概ね次の順序で初期化される。
 
-### 起動フロー
-
-```
+```text
 runtime_init
   -> argv/env/path 正規化
   -> GC 初期化
-  -> compiler main 呼出し
+  -> compiler main 呼び出し
   -> runtime_shutdown
 ```
 
-### 共有初期化
+CLI、LSP、REPL、formatter、doc generator は同一の runtime 初期化経路を共有し、ツールごとの差分は `main` 以降に閉じ込める。
 
-CLI, LSP, REPL, formatter, doc generator は同一 runtime 初期化経路を共有する。ツール別の差分は main 以降に閉じ込める。
+## 再初期化と観測
 
-### 再初期化
+stageN-native が別プロセスに分離されない形で再帰的に自己コンパイルできるよう、runtime は再初期化可能であることが望ましい。
+また、profiling や統計情報は v1 では内部フラグに限定し、ユーザー向け標準出力へ混在させない。
 
-stageN-native が selfhost compiler として別プロセスを起動せずに再帰的自己コンパイルできるよう、runtime は再初期化可能にする。
+## 関連文書
 
-### profiling/statistics
-
-v1 では内部フラグに限定し、ユーザー向けデフォルト出力へ混ぜない。
+- [`backend-boundary.md`](./backend-boundary.md)
+- [`native-backend-spec.md`](./native-backend-spec.md)

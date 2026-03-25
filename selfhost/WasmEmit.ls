@@ -486,6 +486,13 @@
               0)
             (ref-get out)))))))
 
+;; Main.ls 用: header + type + code の合計バイト長 (簡易モジュール)
+(defn emit-wasm [ir-instrs]
+  (let [h (emit-header)
+        t (emit-type-section-main)
+        c (emit-code-section ir-instrs)]
+    (+ (+ (vector-length h) (vector-length t)) (vector-length c))))
+
 ;; IR opcode を Wasm opcode に変換して bytes に追加
 ;; T3-6: ビルトインヘルパー -- 比較演算子 (i64.gt_s, i64.lt_s, i64.ge_s, i64.le_s) 追加
 (defn emit-ir-instr [bytes opcode operand]

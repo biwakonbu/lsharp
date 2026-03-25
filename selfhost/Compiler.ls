@@ -417,6 +417,19 @@
       (let [result (vector-new 2)]
         (vector-push (vector-push result (ref-get ftable)) (ref-get ir-list))))))
 
+;; Main.ls 用: リーフ式 [tag, ...] (長さ2の lit 等) は compile-expr、宣言列は compile-program
+(defn lower [x]
+  (let [n (vector-length x)]
+    (if (= n 0)
+      (vector-new 0)
+      (if (and (= n 2) (or (= (vector-get x 0) 1) (= (vector-get x 0) 2)))
+        (compile-expr x (env-new) (vector-new 8))
+        (let [pair (compile-program x)
+              ir-list (vector-get pair 1)]
+          (if (> (vector-length ir-list) 0)
+            (vector-get ir-list 0)
+            (vector-new 0)))))))
+
 ;; 関数のコンパイル: パラメータ名ハッシュのリスト → IR 命令列
 (defn compile-function [param-hashes body]
   (let [env (ref-new (env-new))

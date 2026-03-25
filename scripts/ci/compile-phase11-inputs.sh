@@ -26,8 +26,10 @@ SELFHOST_MODULES=(
   Lexer
   Linker
   Linter
+  Lower
   LowerDecl
   LowerExpr
+  LowerPattern
   LspServer
   MacroExpand
   Main
@@ -46,11 +48,6 @@ SELFHOST_MODULES=(
   WasiBackend
   WasiRunner
   WasmEmit
-)
-
-KNOWN_BLOCKERS=(
-  "selfhost/Lower.ls: Rust stage0 で stack overflow"
-  "selfhost/LowerPattern.ls: Rust stage0 で stack overflow"
 )
 
 STDLIB_MODULES=(
@@ -102,10 +99,4 @@ for file in "${EXAMPLE_FILES[@]}"; do
 done
 
 echo ""
-echo "Known blockers excluded from the fixed input set:"
-for blocker in "${KNOWN_BLOCKERS[@]}"; do
-  echo "  - ${blocker}"
-done
-
-echo ""
-echo "Phase 11 fixed input set compile gate complete."
+echo "Phase 11 fixed input set compile gate complete (no known compile blockers)."

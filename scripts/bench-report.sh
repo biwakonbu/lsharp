@@ -257,6 +257,10 @@ EXAMPLE_COUNT=$(ls "$PROJECT_DIR"/examples/*.ls 2>/dev/null | wc -l | tr -d ' ')
 cat > "$REPORT_FILE" << REPORT_EOF
 # L# パフォーマンスベンチマーク レポート
 
+**読者**: メンテナー・CI 担当（リグレッション検知・他言語との粗い比較）。恒久仕様ではなく、生成時点の計測スナップショットとして扱う。
+
+**生成**: \`scripts/bench-report.sh\` による自動出力。手編集は次回実行で上書きされる。
+
 > 計測日時: ${TIMESTAMP}
 > Git: \`${GIT_HASH}\` (${GIT_BRANCH})
 > プラットフォーム: $(uname -s) $(uname -m) ($(uname -r))

@@ -133,9 +133,13 @@ impl ModuleGraph {
         let mut visited = HashSet::new();
         let mut order = Vec::new();
 
-        for name in self.modules.keys() {
-            if !visited.contains(name) {
-                self.topo_dfs(name, &mut visited, &mut order);
+        // HashMap のキー順は非決定的なため、モジュール名でソートしてから DFS 開始点を固定する
+        let mut module_names: Vec<String> = self.modules.keys().cloned().collect();
+        module_names.sort();
+
+        for name in module_names {
+            if !visited.contains(&name) {
+                self.topo_dfs(&name, &mut visited, &mut order);
             }
         }
 
@@ -155,8 +159,11 @@ impl ModuleGraph {
         visited.insert(node.to_string());
 
         if let Some(module) = self.modules.get(node) {
-            for import in &module.imports {
-                self.topo_dfs(import, visited, order);
+            // 同一モジュール内の import 順も、ソース順に加えて名前で安定化（並列依存の訪問順を固定）
+            let mut imports: Vec<String> = module.imports.clone();
+            imports.sort();
+            for import in imports {
+                self.topo_dfs(&import, visited, order);
             }
         }
 
@@ -495,6 +502,31 @@ mod tests {
         assert!(pos_base < pos_right);
         assert!(pos_left < pos_top);
         assert!(pos_right < pos_top);
+    }
+
+    /// マルチファイル compile の Wasm 決定性: HashMap 走査順に依存しないこと
+    #[test]
+    fn test_topological_sort_stable_across_calls() {
+        let mut graph = ModuleGraph::new();
+        graph
+            .add_module("Z".to_string(), vec![], None)
+            .unwrap();
+        graph
+            .add_module("A".to_string(), vec![], None)
+            .unwrap();
+        graph
+            .add_module(
+                "M".to_string(),
+                vec!["Z".to_string(), "A".to_string()],
+                None,
+            )
+            .unwrap();
+
+        let o1 = graph.topological_sort().unwrap();
+        let o2 = graph.topological_sort().unwrap();
+        assert_eq!(o1, o2);
+        // import 名ソートにより A → Z → M（M の依存先を辞書順に処理）
+        assert_eq!(o1, vec!["A", "Z", "M"]);
     }
 
     #[test]

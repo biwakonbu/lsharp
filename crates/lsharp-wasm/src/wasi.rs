@@ -372,7 +372,9 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     // _start
     {
         let mut f = wasm_encoder::Function::new(vec![]);
-        if let Some(main_idx) = module.functions.iter().position(|f| f.name == "main") {
+        // マルチファイル結合時に各モジュールが (defn main []) を持つため、先頭の main は先頭ファイルのテスト用になる。
+        // エントリ Main.ls の main を選ぶため、最後に定義された main を呼ぶ。
+        if let Some(main_idx) = module.functions.iter().rposition(|f| f.name == "main") {
             f.instruction(&wasm_encoder::Instruction::Call(user_func_base + main_idx as u32));
             f.instruction(&wasm_encoder::Instruction::Drop);
         }

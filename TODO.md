@@ -11,11 +11,11 @@
 
 ## Phase 11: Rust 完全撤去
 
-> 2026-03-25 実測注記:
-> - `cargo run -- compile selfhost/Main.ls -o /tmp/Main.wasm` と `cargo run -- compile selfhost/MacroExpand.ls -o /tmp/MacroExpand.wasm` は成功する。
-> - `cargo run -- compile selfhost/Lower.ls -o /tmp/Lower.wasm` と `cargo run -- compile selfhost/LowerPattern.ls -o /tmp/LowerPattern.wasm` は Rust stage0 上で stack overflow を起こす。
-> - `test_e2e_bootstrap_stage1_stage2_match` / `test_e2e_bootstrap_fixed_point_stage2_stage3` は現時点では proxy 検証であり、真の self-compile fixed-point ではない。
-> - `scripts/ci/compile-phase11-inputs.sh` の fixed input set を bootstrap job の blocking gate に接続した。既知 blocker は `Lower.ls` / `LowerPattern.ls` と true bootstrap / native parity 系タスク。
+> 2026-03-25 実測注記 (更新):
+> - `selfhost/Main.ls` は import-only パイプラインへ寄せ済み (BOOT-01)。マルチファイル compile は `ModuleGraph::topological_sort` をモジュール名・import 名でソートし Wasm 出力の再現性を担保。
+> - `Lower.ls` / `LowerPattern.ls` の stage0 stack overflow は `lsharp-types` の `Type::apply_subst` ループ化・サイクル打ち切りで解消。`compile-phase11-inputs.sh` に含める。
+> - `test_e2e_bootstrap_stage1_stage2_match` 等は引き続き proxy（真の stage1→stage2 self-compile は未接続）。
+> - `scripts/ci/compile-phase11-inputs.sh` は known blocker なしで通過。残る大物は true bootstrap / native 実行差分 / toolchain parity / Rust 撤去。
 
 > 目標: L# 製 compiler/toolchain をネイティブ配布の正式実装に昇格し、Rust workspace を段階的に撤去する
 > 配布方針: ブートストラップと比較検証では Wasm/WASI を利用してよいが、エンドユーザー向け正式配布物は各プラットフォーム向けネイティブバイナリとする
@@ -56,10 +56,10 @@
 
 #### Step 1. `CP-01` Frontend unblock / bootstrap 入力集合を閉じる
 
-- [ ] [`BOOT-01 Main.ls import path consolidation`](docs/development/planning/phase11-implementation-plan.md#boot-01-mainls-import-path-consolidation) -- `selfhost/Main.ls` から暫定 API 再定義を除去し、import-only の compiler entry に戻す。
-- [ ] [`IR-02 Lower split`](docs/development/planning/phase11-implementation-plan.md#ir-02-lower-split) / [`IR-04 Pattern lowering`](docs/development/planning/phase11-implementation-plan.md#ir-04-pattern-lowering) -- `selfhost/Lower.ls`, `selfhost/LowerPattern.ls` の stage0 stack overflow を解消する。
-- [ ] [`BOOT-03 stdlib direct compile blockers`](docs/development/planning/phase11-implementation-plan.md#boot-03-stdlib-direct-compile-blockers) の残件 -- `scripts/ci/compile-phase11-inputs.sh` から除外中の blocker をなくし、fixed input set を selfhost 全体へ広げる。
-- [ ] Step 1 exit gate -- `scripts/ci/compile-phase11-inputs.sh` が known blocker なしで通り、`CP-01` の前提が揃う。
+- [x] [`BOOT-01 Main.ls import path consolidation`](docs/development/planning/phase11-implementation-plan.md#boot-01-mainls-import-path-consolidation) -- Evidence: `selfhost/Main.ls`, `test_e2e_selfhost_main_import_only_pipeline`, `test_e2e_selfhost_pipeline_complete_stages`（マルチファイル `compile_and_run_file`）。
+- [x] [`IR-02 Lower split`](docs/development/planning/phase11-implementation-plan.md#ir-02-lower-split) / [`IR-04 Pattern lowering`](docs/development/planning/phase11-implementation-plan.md#ir-04-pattern-lowering) -- Evidence: `crates/lsharp-types/src/types.rs` `apply_subst` + `apply_subst_tests`、`selfhost/Lower*.ls` が `compile-phase11-inputs.sh` で通過。
+- [x] [`BOOT-03 stdlib direct compile blockers`](docs/development/planning/phase11-implementation-plan.md#boot-03-stdlib-direct-compile-blockers) の残件 -- `scripts/ci/compile-phase11-inputs.sh` に Lower/LowerPattern を含め `KNOWN_BLOCKERS` 撤去済み。
+- [x] Step 1 exit gate -- `scripts/ci/compile-phase11-inputs.sh` known blocker なしで通過。
 
 #### Step 2. `CP-01` true bootstrap fixed point を成立させる
 
@@ -97,9 +97,9 @@
 
 ### Phase 11 クリティカルパス現況
 
-- [~] `CP-01 Frontend/bootstrap` -- `Main.ls` / `MacroExpand.ls` の compile は通るが、`selfhost/Main.ls` は import-only 化されておらず、bootstrap 固定点テストは proxy のまま。Evidence: `selfhost/Main.ls`, `crates/lsharp-wasm/tests/e2e.rs`
+- [~] `CP-01 Frontend/bootstrap` -- Step 1（Main import-only / Lower SO 解消 / compile gate）は閉じた。bootstrap 固定点は引き続き proxy。Evidence: `selfhost/Main.ls`, `crates/lsharp-wasm/tests/e2e.rs`, `scripts/ci/compile-phase11-inputs.sh`
 - [~] `CP-02 Syntax/types parity` -- syntax/type 系テストは増えているが、完了判定に必要な parity table は未充足。Evidence: `docs/development/planning/compatibility-matrix.md`, `docs/development/planning/completion-criteria.md`
-- [~] `CP-03 IR/backend/native` -- `selfhost/Lower.ls` / `selfhost/LowerPattern.ls` が compile blocker、native parity は structure test 段階。Evidence: `selfhost/Lower.ls`, `selfhost/LowerPattern.ls`, `crates/lsharp-wasm/tests/e2e.rs`
+- [~] `CP-03 IR/backend/native` -- Lower/LowerPattern の stage0 compile は通過。native parity / Wasm 実行差分は structure 〜 Wasm 側のみ。Evidence: `selfhost/Lower.ls`, `test_e2e_selfhost_wasm_native_differential`, `tests/differential-allowlist.yaml`
 - [~] `CP-04 Public toolchain` -- `selfhost/Cli.ls`, `selfhost/LspServer.ls`, `selfhost/Formatter.ls`, `selfhost/TestRunner.ls` は骨格実装に留まる。Evidence: `selfhost/Cli.ls`, `selfhost/LspServer.ls`, `selfhost/Formatter.ls`, `selfhost/TestRunner.ls`
 - [~] `CP-05 Runtime stability` -- `selfhost/GC.ls` は存在するが、LSP soak / REPL / heap-RSS-GC pause の完了条件は未達。Evidence: `docs/development/planning/runtime-stability-spec.md`, `crates/lsharp-wasm/tests/e2e.rs`
 - [~] `CP-06 CI cutover` -- `scripts/ci/compile-phase11-inputs.sh` と `audit-docs` gate は blocking 化したが、Rust default path / native-only RC / rollback ADR は未達。Evidence: `scripts/ci/compile-phase11-inputs.sh`, `.github/workflows/ci.yml`, `docs/development/planning/completion-criteria.md`
@@ -109,7 +109,7 @@
 - [x] [META-02 Completion marker sync](docs/development/planning/phase11-implementation-plan.md#meta-02-completion-marker-sync) -- `TODO.md`, `docs/development/planning/compatibility-matrix.md`, `docs/development/planning/completion-criteria.md` を実装実態へ同期。
 - [x] [META-03 Audit-docs gate](docs/development/planning/phase11-implementation-plan.md#meta-03-audit-docs-gate) -- `scripts/audit_docs.sh`, `.github/workflows/ci.yml` で Phase 11 完了矛盾とエビデンス欠落を fail-fast 化。
 - [x] [BOOT-03 stdlib direct compile blockers](docs/development/planning/phase11-implementation-plan.md#boot-03-stdlib-direct-compile-blockers) -- `scripts/ci/compile-phase11-inputs.sh` を追加し、bootstrap job で selfhost/stdlib/examples の fixed input set を blocking 化。
-- [ ] [BOOT-01 Main.ls import path consolidation](docs/development/planning/phase11-implementation-plan.md#boot-01-mainls-import-path-consolidation) -- `selfhost/Main.ls` に暫定 API 再定義が残る。
+- [x] [BOOT-01 Main.ls import path consolidation](docs/development/planning/phase11-implementation-plan.md#boot-01-mainls-import-path-consolidation) -- Evidence: `selfhost/Main.ls` import-only コメント・パイプライン、`crates/lsharp-wasm/tests/e2e.rs`（`compile_and_run_file` / `selfhost_main_path`）。
 - [ ] [BOOT-04 True stage1-stage2-stage3 bootstrap](docs/development/planning/phase11-implementation-plan.md#boot-04-true-stage1-stage2-stage3-bootstrap) -- `test_e2e_bootstrap_stage1_stage2_match` と `test_e2e_bootstrap_fixed_point_stage2_stage3` は proxy のまま。
 - [ ] [NATIVE-05 Stage1-native self-regeneration](docs/development/planning/phase11-implementation-plan.md#native-05-stage1-native-self-regeneration) -- `test_e2e_selfhost_native_self_regeneration` は structure test に留まる。
 - [ ] [NATIVE-06 Wasm/native differential](docs/development/planning/phase11-implementation-plan.md#native-06-wasmnative-differential) -- `test_e2e_selfhost_wasm_native_differential` は実行ベース比較をまだ行っていない。
@@ -120,6 +120,8 @@
 - [ ] [OPS-05 Default path migration](docs/development/planning/phase11-implementation-plan.md#ops-05-default-path-migration) -- default path は依然 Rust で、native-only RC / rollback ADR も未達。
 
 ### Deferred / v2
+
+> Gate 外タスク。Phase 11 完了判定には含めない。各項目の受入・Evidence は `phase11-implementation-plan.md` の V2-01〜V2-07 節を正とし、着手時に個別ブランチ／PR で切る。
 
 - [ ] [V2-01 LSP incremental sync](docs/development/planning/phase11-implementation-plan.md#v2-01-lsp-incremental-sync)
 - [ ] [V2-02 Formatter/linter custom rule API](docs/development/planning/phase11-implementation-plan.md#v2-02-formatterlinter-custom-rule-api)

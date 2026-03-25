@@ -499,11 +499,17 @@
 
 (defn infer [program]
   (let [counter (make-var-counter)
-        env (init-builtin-env counter)]
-    (do
-      ;; 簡易版: プログラム内の main 関数のみ推論
-      (print 0)
-      0)))
+        env (init-builtin-env counter)
+        n (vector-length program)]
+    (if (> n 0)
+      (let [decl (vector-get program 0)]
+        (if (= (vector-get decl 0) 20)
+          (let [out (infer-defn decl env counter)]
+            (if (= (vector-length out) 2)
+              (vector-get out 1)
+              (vector-get out 1)))
+          (mk-int)))
+      (mk-int))))
 
 ;; ============================================================
 ;; ビルトイン型環境の初期化

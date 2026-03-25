@@ -71,25 +71,42 @@ fn compile_only(source: &str) -> Vec<u8> {
     lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap()
 }
 
-/// ドライバの `lsharp compile` と同等の経路でファイルをコンパイルする
-fn compile_file_only(file: &std::path::Path) -> Vec<u8> {
-    let source = std::fs::read_to_string(file).unwrap();
-    let program = lsharp_syntax::parse(&source).unwrap();
+/// ドライバの `lsharp compile` と同等の経路でファイルをコンパイルする (エラーは Result)
+fn try_compile_file_only(file: &std::path::Path) -> Result<Vec<u8>, String> {
+    let source = std::fs::read_to_string(file)
+        .map_err(|e| format!("{}: {e}", file.display()))?;
+    let program = lsharp_syntax::parse(&source)
+        .map_err(|e| format!("{}: {e:?}", file.display()))?;
 
     let module = if program
         .decls
         .iter()
         .any(|decl| matches!(decl, lsharp_syntax::ast::Decl::ImportDecl { .. }))
     {
-        lsharp_ir::compile_multi_file(file).unwrap()
+        lsharp_ir::compile_multi_file(file).map_err(|e| format!("{}: {e}", file.display()))?
     } else {
         let mut infer = Infer::new();
-        let type_results = infer.infer_program(&program).unwrap();
+        let type_results = infer
+            .infer_program(&program)
+            .map_err(|e| format!("{}: {e:?}", file.display()))?;
         let mut lower = Lower::new();
-        lower.lower_program(&program, &type_results).unwrap()
+        lower
+            .lower_program(&program, &type_results)
+            .map_err(|e| format!("{}: {e:?}", file.display()))?
     };
 
-    lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap()
+    lsharp_wasm::wasi::emit_wasm_wasi(&module).map_err(|e| format!("Wasm: {e:?}"))
+}
+
+/// ドライバの `lsharp compile` と同等の経路でファイルをコンパイルする
+fn compile_file_only(file: &std::path::Path) -> Vec<u8> {
+    try_compile_file_only(file).unwrap()
+}
+
+/// エントリ `.ls` をコンパイルして WASI 実行 (エラーは Result)
+fn try_compile_and_run_file(path: &std::path::Path) -> Result<String, String> {
+    let wasm = try_compile_file_only(path)?;
+    lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm).map_err(|e| format!("実行: {e:?}"))
 }
 
 /// Wasm バイナリを WASI 環境で実行
@@ -136,6 +153,16 @@ fn example_path(name: &str) -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../examples")
         .join(name)
+}
+
+/// selfhost/Main.ls のパス (import 解決にはマルチファイルコンパイルが必要)
+fn selfhost_main_path() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost/Main.ls")
+}
+
+/// エントリ `.ls` ファイルから依存を解決してコンパイルし、WASI 実行結果を返す
+fn compile_and_run_file(path: &std::path::Path) -> String {
+    try_compile_and_run_file(path).unwrap()
 }
 
 // === examples/ ディレクトリのサンプルファイル E2E テスト ===
@@ -3207,63 +3234,39 @@ fn test_e2e_bootstrap_stage1_modules() {
     let mut skipped = 0;
     let mut failed = Vec::new();
 
-    // 各モジュールの定義: (ファイル名, ソース, 期待出力)
-    let modules: Vec<(&str, &str, &str)> = vec![
+    // 各モジュールの定義: (ファイル名, 期待出力) — ソースは selfhost/ から読み、(import) はマルチファイル経路
+    let modules: Vec<(&str, &str)> = vec![
         // Token.ls: トークン種別定数の出力 (lparen=0, rparen=1, eof=99)
-        (
-            "Token.ls",
-            include_str!("../../../selfhost/Token.ls"),
-            "0\n1\n99",
-        ),
+        ("Token.ls", "0\n1\n99"),
         // Lexer.ls: "(defn main [] 42)" をトークナイズ (8トークン + 各トークン種別)
         (
             "Lexer.ls",
-            include_str!("../../../selfhost/Lexer.ls"),
             "8\n0\n30\n20\n2\n3\n10\n1\n99\n6\n0\n20\n10\n20\n1\n99\n42\n1\n2",
         ),
         // AST.ls: ノード生成 + 走査基盤 (tag/leaf/count/contains-var)
-        (
-            "AST.ls",
-            include_str!("../../../selfhost/AST.ls"),
-            "1\n42\n10\n1\n0\n1\n4\n1\n0\n1\n3\n4",
-        ),
+        ("AST.ls", "1\n42\n10\n1\n0\n1\n4\n1\n0\n1\n3\n4"),
         // Parser.ls: トークン列からパース (tag=20 defn, pos=2)
-        (
-            "Parser.ls",
-            include_str!("../../../selfhost/Parser.ls"),
-            "20\n2\n10\n10\n2\n1\n2",
-        ),
+        ("Parser.ls", "20\n2\n10\n10\n2\n1\n2"),
         // IR.ls: IR命令生成 (i64.const=1/42, local.get=10/0)
-        (
-            "IR.ls",
-            include_str!("../../../selfhost/IR.ls"),
-            "1\n42\n10\n0",
-        ),
+        ("IR.ls", "1\n42\n10\n0"),
         // Type.ls: 型操作 (Con tag=1, Var tag=2, name=42, subst lookup→Con tag=1)
-        (
-            "Type.ls",
-            include_str!("../../../selfhost/Type.ls"),
-            "1\n2\n42\n1",
-        ),
+        ("Type.ls", "1\n2\n42\n1"),
         // TypeScheme.ls: 型スキーム操作 (mono/poly instantiate, free-vars)
-        (
-            "TypeScheme.ls",
-            include_str!("../../../selfhost/TypeScheme.ls"),
-            "1\n100\n3\n2\n1000\n0\n1\n1",
-        ),
+        ("TypeScheme.ls", "1\n100\n3\n2\n1000\n0\n1\n1"),
         // Compiler.ls: コンパイラ操作 (命令数=1, op=1/42, LEB128検証)
         (
             "Compiler.ls",
-            include_str!("../../../selfhost/Compiler.ls"),
             "1\n1\n42\n2\n1\n5\n2\n172\n2\n3\n1\n3\n1\n4\n20",
         ),
         // WasmEmit.ls: Wasmバイナリ生成 (header + type section + LEB128)
         (
             "WasmEmit.ls",
-            include_str!("../../../selfhost/WasmEmit.ls"),
             "8\n0\n97\n115\n109\n1\n7\n1\n5\n1\n96\n5\n172\n2\n5\n1\n127",
         ),
     ];
+
+    let selfhost_dir =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
 
     // コンパイラの既知の制限により一部モジュールが未対応:
     // - Lexer.ls: 深いネストの if 式でパースエラー
@@ -3273,10 +3276,11 @@ fn test_e2e_bootstrap_stage1_modules() {
     // 2パス型推論 + TypeScheme.ls 修正により全モジュールがコンパイル可能
     let known_limitations: &[&str] = &[];
 
-    for (name, source, expected) in &modules {
+    for (name, expected) in &modules {
         let is_known_limitation = known_limitations.contains(name);
+        let path = selfhost_dir.join(name);
 
-        match try_compile_and_run(source) {
+        match try_compile_and_run_file(&path) {
             Ok(output) => {
                 if output.trim() == *expected {
                     passed += 1;
@@ -4057,15 +4061,14 @@ fn test_e2e_match_guard_with_binding() {
 /// AST 構築 → IR 変換 → Wasm バイナリ生成の統合パイプラインを検証する。
 #[test]
 fn test_e2e_bootstrap_stage1_integration() {
-    let source = include_str!("../../../selfhost/Main.ls");
-    let output = compile_and_run(source);
+    let output = compile_and_run_file(&selfhost_main_path());
     // 統合パイプラインの出力:
     // 旧: AST(1,42) + IR(1,1,42) + Wasm(8,0,97,115,109,7,1) + WASI(15,10)
-    // T4-4: tokens(16) + defn(20) + body(1,42) + IR(1,1,42)
+    // T4-4: tokens(8) + defn(20) + body(1,42) + IR(1,1,42)
     // T4-4 拡張: if(1,6,3) + let(1,7,2)
     assert_eq!(
         output.trim(),
-        "1\n42\n1\n1\n42\n8\n0\n97\n115\n109\n7\n1\n15\n10\n16\n20\n1\n42\n1\n1\n42\n1\n6\n3\n1\n7\n2\n1\n1\n100\n1\n5"
+        "1\n42\n1\n1\n42\n8\n0\n97\n115\n109\n7\n1\n15\n10\n8\n20\n1\n42\n1\n1\n42\n1\n6\n3\n1\n7\n2\n1\n1\n100\n1\n5"
     );
 }
 
@@ -4073,9 +4076,7 @@ fn test_e2e_bootstrap_stage1_integration() {
 /// stage1.wasm 相当のバイナリ生成まで検証する。
 #[test]
 fn test_e2e_bootstrap_stage1_wasm_generation() {
-    let source = include_str!("../../../selfhost/Main.ls");
-    // コンパイルのみ (Wasm バイナリ生成まで) でも検証
-    let wasm_bytes = compile_only(source);
+    let wasm_bytes = compile_file_only(&selfhost_main_path());
     // 有効な Wasm バイナリであること (マジックナンバー確認)
     assert!(wasm_bytes.len() > 8, "Wasm バイナリが短すぎる: {} bytes", wasm_bytes.len());
     assert_eq!(&wasm_bytes[0..4], b"\0asm", "Wasm マジックナンバーが不正");
@@ -4139,8 +4140,7 @@ fn test_e2e_selfhost_wasmemit() {
 /// AST 構築 → IR 変換 → Wasm ヘッダー生成の統合パイプラインを検証
 #[test]
 fn test_e2e_selfhost_main_integration() {
-    let source = std::fs::read_to_string("../../selfhost/Main.ls").unwrap();
-    let output = compile_and_run(&source);
+    let output = compile_and_run_file(&selfhost_main_path());
     let lines: Vec<&str> = output.trim().lines().collect();
 
     // Main.ls 旧パイプライン + T4-4 新パイプライン検証
@@ -4162,8 +4162,8 @@ fn test_e2e_selfhost_main_integration() {
     assert_eq!(lines[12], "15");  // wasm-size = 8 + 7
     assert_eq!(lines[13], "10");  // module-count = 10
 
-    // T4-4: 新パイプライン (ソース文字列から)
-    assert_eq!(lines[14], "16");  // トークン数 (7tok*2 + EOF*2)
+    // T4-4: 新パイプライン (Lexer.tokenize の kind 列長)
+    assert_eq!(lines[14], "8");  // "(defn main [] 42)" のトークン数 (Lexer 実装に準拠)
     assert_eq!(lines[15], "20");  // defn AST tag
     assert_eq!(lines[16], "1");   // body: lit-int tag
     assert_eq!(lines[17], "42");  // body: value = 42
@@ -4735,16 +4735,15 @@ fn test_e2e_json_value_construction() {
 /// 出力される stage1.wasm が正しく動作することを検証
 #[test]
 fn test_e2e_bootstrap_stage1_compile_and_run() {
-    // stage1: Rust 版コンパイラで selfhost/Main.ls をコンパイル
-    let source = include_str!("../../../selfhost/Main.ls");
-    let wasm_bytes = compile_only(source);
+    let main_path = selfhost_main_path();
+    let wasm_bytes = compile_file_only(&main_path);
 
     // 有効な Wasm バイナリであること
     assert!(wasm_bytes.len() > 100, "stage1.wasm が小さすぎる: {} bytes", wasm_bytes.len());
     assert_eq!(&wasm_bytes[0..4], b"\0asm", "Wasm マジックナンバーが不正");
 
     // stage1 を実行して出力を検証
-    let output = compile_and_run(source);
+    let output = compile_and_run_file(&main_path);
     let lines: Vec<&str> = output.trim().split('\n').collect();
 
     // AST 検証: tag=1 (lit-int), value=42
@@ -4768,8 +4767,7 @@ fn test_e2e_bootstrap_stage1_compile_and_run() {
 /// (Main.ls が内部で AST→IR→Wasm パイプラインを実行していることの検証)
 #[test]
 fn test_e2e_bootstrap_stage1_pipeline_verification() {
-    let source = include_str!("../../../selfhost/Main.ls");
-    let output = compile_and_run(source);
+    let output = compile_and_run_file(&selfhost_main_path());
     let lines: Vec<&str> = output.trim().split('\n').collect();
 
     // WASI I/O 統合検証
@@ -4784,8 +4782,7 @@ fn test_e2e_bootstrap_stage1_pipeline_verification() {
 /// 将来的に .ls ファイルを受け取って stage2.wasm を生成できる構造を持つことを検証
 #[test]
 fn test_e2e_bootstrap_stage1_binary_structure() {
-    let source = include_str!("../../../selfhost/Main.ls");
-    let wasm_bytes = compile_only(source);
+    let wasm_bytes = compile_file_only(&selfhost_main_path());
 
     // Wasm バイナリの構造検証
     assert_eq!(&wasm_bytes[0..4], b"\0asm", "Wasm magic");
@@ -4822,15 +4819,14 @@ fn test_e2e_bootstrap_stage1_binary_structure() {
 // =====================================================
 /// P8-9 T4-6: CI で使用されるブートストラップ検証と同等のテスト
 /// fixed input set の selfhost モジュールが個別 compile できることを検証。
-/// `Lower.ls` / `LowerPattern.ls` は Rust stage0 stack overflow の既知 blocker のため除外。
 #[test]
 fn test_e2e_bootstrap_ci_all_modules_compile() {
     let modules = [
         "AST", "Cli", "Closure", "Codegen", "Compiler",
         "Constraints", "Derive", "DocTools", "Emit", "Formatter",
         "GC", "HtmlDoc", "Hygiene", "IR", "JsonRpc",
-        "Lexer", "Linker", "Linter", "LowerDecl", "LowerExpr",
-        "LspServer", "MacroExpand", "Main", "MetadataCheck", "ModuleGraph",
+        "Lexer", "Linker", "Linter", "Lower", "LowerDecl", "LowerExpr",
+        "LowerPattern", "LspServer", "MacroExpand", "Main", "MetadataCheck", "ModuleGraph",
         "NativeCodegen", "NativeEmit", "NativeTarget", "Parser", "Span",
         "TestRunner", "Token", "Type", "TypeInfer", "TypeScheme",
         "WasiBackend", "WasiRunner", "WasmEmit",
@@ -4847,7 +4843,7 @@ fn test_e2e_bootstrap_ci_all_modules_compile() {
             compiled += 1;
         }
     }
-    assert_eq!(compiled, 38, "fixed input set の全 38 モジュールがコンパイルされるべき");
+    assert_eq!(compiled, 40, "fixed input set の全 40 モジュールがコンパイルされるべき");
 }
 
 /// P8-9 T4-6: CI で使用される stdlib コンパイル検証と同等のテスト
@@ -5151,8 +5147,7 @@ fn test_e2e_selfhost_formatter_lsp_integration() {
 /// T4-4: if 式と let 式のソースからのコンパイルを検証
 #[test]
 fn test_e2e_selfhost_main_compile_if_let() {
-    let source = include_str!("../../../selfhost/Main.ls");
-    let output = compile_and_run(source);
+    let output = compile_and_run_file(&selfhost_main_path());
     let lines: Vec<&str> = output.trim().split('\n').collect();
     // 既存出力 21 行 (index 0-20) の後に T4-4 拡張出力
     // T4-4 拡張: if 式コンパイル
@@ -5177,9 +5172,9 @@ fn test_e2e_selfhost_main_compile_if_let() {
 /// T4-5: Main.ls のコンパイルが決定的 (同一入力→同一バイナリ) であることを検証
 #[test]
 fn test_e2e_bootstrap_stage1_deterministic() {
-    let source = include_str!("../../../selfhost/Main.ls");
-    let wasm1 = compile_only(source);
-    let wasm2 = compile_only(source);
+    let main_path = selfhost_main_path();
+    let wasm1 = compile_file_only(&main_path);
+    let wasm2 = compile_file_only(&main_path);
     assert_eq!(wasm1, wasm2, "stage1 compilation must be deterministic");
     assert!(wasm1.len() > 100, "stage1 wasm must be non-trivial: {} bytes", wasm1.len());
 }
@@ -5187,8 +5182,7 @@ fn test_e2e_bootstrap_stage1_deterministic() {
 /// T4-5: stage1 バイナリ構造の固定点検証 (セクション構成が安定していること)
 #[test]
 fn test_e2e_bootstrap_stage1_fixed_point_sections() {
-    let source = include_str!("../../../selfhost/Main.ls");
-    let wasm = compile_only(source);
+    let wasm = compile_file_only(&selfhost_main_path());
     // Wasm magic + version
     assert_eq!(&wasm[0..4], b"\0asm", "wasm magic");
     assert_eq!(wasm[4], 1, "wasm version");
@@ -5223,9 +5217,9 @@ fn test_e2e_bootstrap_stage1_fixed_point_sections() {
 /// T4-5: stage1 バイナリのセクション構成が複数回コンパイルで安定していることを検証
 #[test]
 fn test_e2e_bootstrap_stage1_section_stability() {
-    let source = include_str!("../../../selfhost/Main.ls");
-    let wasm1 = compile_only(source);
-    let wasm2 = compile_only(source);
+    let main_path = selfhost_main_path();
+    let wasm1 = compile_file_only(&main_path);
+    let wasm2 = compile_file_only(&main_path);
 
     // 各 wasm からセクション ID とサイズの列を抽出するヘルパー
     fn extract_sections(wasm: &[u8]) -> Vec<(u8, usize)> {
@@ -5282,9 +5276,9 @@ fn test_e2e_bootstrap_stage1_section_stability() {
 /// T4-5: stage1 の export シンボル名が安定していることを検証
 #[test]
 fn test_e2e_bootstrap_stage1_symbol_stability() {
-    let source = include_str!("../../../selfhost/Main.ls");
-    let wasm1 = compile_only(source);
-    let wasm2 = compile_only(source);
+    let main_path = selfhost_main_path();
+    let wasm1 = compile_file_only(&main_path);
+    let wasm2 = compile_file_only(&main_path);
 
     // Export セクション (ID=7) のバイト列を抽出
     fn extract_export_section(wasm: &[u8]) -> Option<Vec<u8>> {
@@ -5327,21 +5321,24 @@ fn test_e2e_bootstrap_stage1_symbol_stability() {
 /// T4-5: selfhost の各モジュールを個別にコンパイルし出力が決定的であることを検証
 #[test]
 fn test_e2e_bootstrap_selfhost_modules_deterministic() {
+    let selfhost_dir =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
     // MacroExpand.ls, TypeInfer.ls は拡張構文を使用しておりパース未対応のため除外
-    let modules: &[(&str, &str)] = &[
-        ("Lexer.ls", include_str!("../../../selfhost/Lexer.ls")),
-        ("Parser.ls", include_str!("../../../selfhost/Parser.ls")),
-        ("AST.ls", include_str!("../../../selfhost/AST.ls")),
-        ("Token.ls", include_str!("../../../selfhost/Token.ls")),
-        ("Compiler.ls", include_str!("../../../selfhost/Compiler.ls")),
-        ("Type.ls", include_str!("../../../selfhost/Type.ls")),
-        ("IR.ls", include_str!("../../../selfhost/IR.ls")),
-        ("WasmEmit.ls", include_str!("../../../selfhost/WasmEmit.ls")),
+    let modules: &[&str] = &[
+        "Lexer.ls",
+        "Parser.ls",
+        "AST.ls",
+        "Token.ls",
+        "Compiler.ls",
+        "Type.ls",
+        "IR.ls",
+        "WasmEmit.ls",
     ];
 
-    for (name, source) in modules {
-        let wasm1 = compile_only(source);
-        let wasm2 = compile_only(source);
+    for name in modules {
+        let path = selfhost_dir.join(name);
+        let wasm1 = compile_file_only(&path);
+        let wasm2 = compile_file_only(&path);
         assert_eq!(
             wasm1, wasm2,
             "{} のコンパイルが非決定的: {} bytes vs {} bytes",
@@ -6669,9 +6666,9 @@ fn test_e2e_selfhost_pipeline_hello() {
 fn test_e2e_bootstrap_stage1_stage2_match() {
     // 真の stage1→stage2 自己コンパイル経路は未接続。
     // 現時点では bootstrap 入力集合に対する再コンパイルのバイト一致を proxy として使う。
-    let source = include_str!("../../../selfhost/Main.ls");
-    let stage1 = compile_only(source);
-    let stage2_proxy = compile_only(source);
+    let main_path = selfhost_main_path();
+    let stage1 = compile_file_only(&main_path);
+    let stage2_proxy = compile_file_only(&main_path);
     assert_eq!(stage1, stage2_proxy, "bootstrap proxy must be byte-identical until true stage1->stage2 is wired");
 }
 
@@ -6705,9 +6702,9 @@ fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
         sections
     }
 
-    let source = include_str!("../../../selfhost/Main.ls");
-    let stage2_proxy = compile_only(source);
-    let stage3_proxy = compile_only(source);
+    let main_path = selfhost_main_path();
+    let stage2_proxy = compile_file_only(&main_path);
+    let stage3_proxy = compile_file_only(&main_path);
     assert_eq!(
         extract_sections(&stage2_proxy),
         extract_sections(&stage3_proxy),
@@ -6720,9 +6717,9 @@ fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
 fn test_e2e_bootstrap_deterministic_output() {
     // 同じ selfhost ソースを2回コンパイルし、
     // 生成されたバイト列が一致することを確認（非決定性排除）
-    let source = include_str!("../../../selfhost/Main.ls");
-    let wasm1 = compile_only(source);
-    let wasm2 = compile_only(source);
+    let main_path = selfhost_main_path();
+    let wasm1 = compile_file_only(&main_path);
+    let wasm2 = compile_file_only(&main_path);
     assert_eq!(wasm1, wasm2, "bootstrap output must be deterministic");
 }
 
@@ -6733,8 +6730,7 @@ fn test_e2e_bootstrap_deterministic_output() {
 /// 正しく通過し、各ステージの出力が因果的に一貫していることを確認する
 #[test]
 fn test_e2e_selfhost_pipeline_complete_stages() {
-    let source = std::fs::read_to_string("../../selfhost/Main.ls").unwrap();
-    let output = compile_and_run(&source);
+    let output = compile_and_run_file(&selfhost_main_path());
     let lines: Vec<&str> = output.trim().lines().collect();
 
     // 完全パイプラインの出力は lines[27]~[31] にある
@@ -6784,8 +6780,7 @@ fn test_e2e_selfhost_pipeline_complete_stages() {
 /// token -> parse -> IR の各段階で正しい構造が生成されることを確認
 #[test]
 fn test_e2e_selfhost_compile_stdlib_basic() {
-    let source = std::fs::read_to_string("../../selfhost/Main.ls").unwrap();
-    let output = compile_and_run(&source);
+    let output = compile_and_run_file(&selfhost_main_path());
     let lines: Vec<&str> = output.trim().lines().collect();
 
     // compile-source が "(defn main [] 42)" を処理した結果
@@ -6799,7 +6794,7 @@ fn test_e2e_selfhost_compile_stdlib_basic() {
     // トークン列が生成されている (16 = 7tok*2 + EOF*2)
     let token_count: i64 = lines[14].parse().unwrap();
     assert!(token_count > 0, "トークン列が生成されている");
-    assert_eq!(token_count, 16, "トークン数 = 16 (7tok*2 + EOF*2)");
+    assert_eq!(token_count, 8, "トークン数 = 8 (Lexer.tokenize に準拠)");
 
     // AST が defn (tag=20) として構築されている
     let defn_tag: i64 = lines[15].parse().unwrap();
@@ -6849,9 +6844,7 @@ fn test_e2e_selfhost_module_compile_individual() {
             skipped.push(format!("{} (ファイル不在)", module));
             continue;
         }
-        let source = std::fs::read_to_string(&path)
-            .expect(&format!("{}.ls の読み込みに失敗", module));
-        match std::panic::catch_unwind(|| compile_only(&source)) {
+        match try_compile_file_only(&path) {
             Ok(wasm) => {
                 assert_valid_wasm(&wasm);
                 compiled.push(*module);
@@ -6876,6 +6869,8 @@ fn test_e2e_selfhost_module_compile_individual() {
 /// Formatter, JsonRpc, Linter, TypeScheme を含む拡張版。
 #[test]
 fn test_e2e_selfhost_all_modules_deterministic() {
+    let selfhost_dir =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
     // Rust parser で正常にコンパイルできるモジュール一覧
     let modules: &[(&str, &str)] = &[
         ("Lexer.ls", include_str!("../../../selfhost/Lexer.ls")),
@@ -6893,9 +6888,10 @@ fn test_e2e_selfhost_all_modules_deterministic() {
         ("Main.ls", include_str!("../../../selfhost/Main.ls")),
     ];
 
-    for (name, source) in modules {
-        let wasm1 = compile_only(source);
-        let wasm2 = compile_only(source);
+    for (name, _source) in modules {
+        let path = selfhost_dir.join(name);
+        let wasm1 = compile_file_only(&path);
+        let wasm2 = compile_file_only(&path);
         assert_eq!(
             wasm1, wasm2,
             "{} のコンパイルが非決定的: {} bytes vs {} bytes",
@@ -6948,12 +6944,10 @@ fn test_e2e_bootstrap_stage1_compile_selfhost_sources() {
     let mut compiled = 0;
     for module in &modules {
         let path = base_dir.join(format!("{}.ls", module));
-        let source = std::fs::read_to_string(&path)
-            .expect(&format!("{}.ls の読み込みに失敗", module));
 
-        // 2 回コンパイルしてバイト列一致 + セクション安定性を検証
-        let wasm1 = compile_only(&source);
-        let wasm2 = compile_only(&source);
+        // 2 回コンパイルしてバイト列一致 + セクション安定性を検証 (import 付きはマルチファイル)
+        let wasm1 = compile_file_only(&path);
+        let wasm2 = compile_file_only(&path);
 
         assert_eq!(
             wasm1, wasm2,
@@ -7086,7 +7080,15 @@ fn test_e2e_selfhost_main_module_structure() {
     );
 
     // 2. 全ての import 宣言の存在
-    let expected_imports = ["Lexer", "Parser", "MacroExpand", "TypeInfer", "Compiler", "WasmEmit"];
+    let expected_imports = [
+        "AST",
+        "Lexer",
+        "Parser",
+        "MacroExpand",
+        "TypeInfer",
+        "Compiler",
+        "WasmEmit",
+    ];
     for imp in &expected_imports {
         let import_decl = format!("(import {})", imp);
         assert!(
@@ -7109,17 +7111,19 @@ fn test_e2e_selfhost_main_module_structure() {
         "Main.ls にモジュール依存関係のドキュメントコメントが必要"
     );
 
-    // 5. import から取得予定のコメントが存在する（他モジュールと重複する関数への注記）
+    // 5. import 経由の API 注記（旧: import から取得予定 / import で置換予定）
     assert!(
-        source.contains("import から取得予定") || source.contains("import で置換予定"),
-        "Main.ls に他モジュール重複関数への import 注記コメントが必要"
+        source.contains("import から取得予定")
+            || source.contains("import で置換予定")
+            || source.contains("import 経由"),
+        "Main.ls に import 経由 API への注記コメントが必要"
     );
 
     // 6. Main.ls 固有の関数が残っていること
     assert!(source.contains("(defn main ["), "Main.ls に main 関数が必要");
 
     // 7. コンパイル・実行が正常であること（既存パイプラインが壊れていないこと）
-    let output = compile_and_run(source);
+    let output = compile_and_run_file(&selfhost_main_path());
     let lines: Vec<&str> = output.trim().lines().collect();
     // 既存の出力行数以上の出力があること (最低 32 行: 旧パイプライン + 拡張)
     assert!(
@@ -7417,8 +7421,7 @@ fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
     );
 
     // 2. Main.ls の compile-full-pipeline が 5ステージを統合していることを検証
-    let main_source = std::fs::read_to_string("../../selfhost/Main.ls").unwrap();
-    let output = compile_and_run(&main_source);
+    let output = compile_and_run_file(&selfhost_main_path());
     let lines: Vec<&str> = output.trim().lines().collect();
 
     // compile-full-pipeline のステージ数出力 (lines[31])
@@ -7474,6 +7477,8 @@ fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
 /// コンパイル可能な 13 モジュールはバイト列一致で決定性を検証。
 #[test]
 fn test_e2e_bootstrap_selfhost_full_deterministic() {
+    let selfhost_dir =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
     // コンパイル可能な 13 モジュール: 2回コンパイルでバイト列一致
     let compilable_modules: &[(&str, &str)] = &[
         ("Lexer.ls", include_str!("../../../selfhost/Lexer.ls")),
@@ -7494,8 +7499,9 @@ fn test_e2e_bootstrap_selfhost_full_deterministic() {
     let mut deterministic_count = 0;
 
     for (name, source) in compilable_modules {
-        let wasm1 = compile_only(source);
-        let wasm2 = compile_only(source);
+        let path = selfhost_dir.join(name);
+        let wasm1 = compile_file_only(&path);
+        let wasm2 = compile_file_only(&path);
         assert_eq!(
             wasm1, wasm2,
             "{} のコンパイルが非決定的 (module 宣言追加後): {} bytes vs {} bytes",
@@ -7678,12 +7684,13 @@ fn test_e2e_selfhost_main_fixed_api_calls() {
         "Main.ls に TypeInfer.infer 呼び出しがない (固定 API 未統合)"
     );
 
-    // 固定 API: Lower.lower
-    let has_lower = main_source.contains("Lower.lower")
+    // 固定 API: Compiler.lower または import 経由の (lower ...)
+    let has_lower = main_source.contains("Compiler.lower")
+        || main_source.contains("Lower.lower")
         || main_source.contains("(lower ");
     assert!(
         has_lower,
-        "Main.ls に Lower.lower 呼び出しがない (固定 API 未統合)"
+        "Main.ls に Compiler.lower / Lower.lower / (lower 呼び出しがない (固定 API 未統合)"
     );
 
     // 固定 API: Codegen.emit-wasm
@@ -7782,7 +7789,15 @@ fn test_e2e_selfhost_main_import_only_pipeline() {
         std::fs::read_to_string("../../selfhost/Main.ls").expect("selfhost/Main.ls が読み込めない");
 
     // 1. 必須 import 宣言の存在確認
-    let required_imports = ["Lexer", "Parser", "MacroExpand", "TypeInfer", "Compiler", "WasmEmit"];
+    let required_imports = [
+        "AST",
+        "Lexer",
+        "Parser",
+        "MacroExpand",
+        "TypeInfer",
+        "Compiler",
+        "WasmEmit",
+    ];
     for module in &required_imports {
         assert!(
             main_source.contains(&format!("(import {})", module)),
@@ -7839,8 +7854,8 @@ fn test_e2e_selfhost_main_import_only_pipeline() {
         );
     }
 
-    // 4. Main.ls がコンパイル可能であること
-    let _wasm = compile_only(&main_source);
+    // 4. Main.ls がコンパイル可能であること (import 解決はマルチファイル)
+    let _wasm = compile_file_only(&selfhost_main_path());
 }
 
 // === TEST-BOOT-02-A: MacroExpand.ls direct compile テスト ===
@@ -8309,12 +8324,11 @@ fn test_e2e_selfhost_type_hm_core_golden() {
     // テスト 5: result_failed=0, ty_name=200 (変数 -> Bool)
     // テスト 6: result_failed=1 (未定義変数 -> エラー)
     // テスト 7: result_failed=0, ty_name=200 (do -> Bool)
-    // 連結ソースでは最初の main (Token.ls) が実行される
-    // Token.ls の main: tok-lparen=0, tok-rparen=1, tok-eof=99
+    // 連結ソースでは **最後**の main (TypeInfer.ls) が実行される
+    // (emit_wasm_wasi は複数 defn main があるとき rposition でエントリを選ぶ)
     let expected_lines = [
-        "0", // tok-lparen
-        "1", // tok-rparen
-        "99", // tok-eof
+        "0", "1", "100", "1", "200", "0", "1", "100", "0", "1", "100", "0", "200", "1", "0",
+        "200", "1",
     ];
 
     let output_lines: Vec<&str> = output.lines().collect();
@@ -9536,43 +9550,8 @@ fn test_e2e_selfhost_true_bootstrap_fixed_point() {
         "selfhost/Main.ls が存在しない"
     );
 
-    let main_source = std::fs::read_to_string(&main_path)
-        .expect("selfhost/Main.ls の読み込みに失敗");
-
-    // stage0: Rust コンパイラで selfhost/Main.ls をコンパイル -> stage1 wasm
-    let program0 = lsharp_syntax::parse(&main_source);
-    assert!(
-        program0.is_ok(),
-        "stage0: selfhost/Main.ls のパースに失敗 -- {:?}",
-        program0.err()
-    );
-    let program0 = program0.unwrap();
-
-    let mut infer0 = Infer::new();
-    let types0 = infer0.infer_program(&program0);
-    assert!(
-        types0.is_ok(),
-        "stage0: selfhost/Main.ls の型チェックに失敗 -- {:?}",
-        types0.err()
-    );
-    let types0 = types0.unwrap();
-
-    let mut lower0 = Lower::new();
-    let module0 = lower0.lower_program(&program0, &types0);
-    assert!(
-        module0.is_ok(),
-        "stage0: selfhost/Main.ls の IR lowering に失敗 -- {:?}",
-        module0.err()
-    );
-    let module0 = module0.unwrap();
-
-    let stage1_wasm = lsharp_wasm::wasi::emit_wasm_wasi(&module0);
-    assert!(
-        stage1_wasm.is_ok(),
-        "stage0: selfhost/Main.ls の Wasm 生成に失敗 -- {:?}",
-        stage1_wasm.err()
-    );
-    let stage1_wasm = stage1_wasm.unwrap();
+    // stage0: Rust コンパイラで selfhost/Main.ls をマルチファイル経路でコンパイル -> stage1 wasm
+    let stage1_wasm = compile_file_only(&main_path);
     assert_valid_wasm(&stage1_wasm);
 
     // stage1: stage1_wasm をセルフホストコンパイラとして実行し、同じソースをコンパイル
@@ -10930,15 +10909,14 @@ fn test_e2e_ops08_final_removal_rollback() {
         docs_dir.exists() && docs_dir.is_dir(),
         "docs/ ディレクトリが存在しない"
     );
-    let doc_entries: Vec<String> = std::fs::read_dir(&docs_dir)
-        .expect("docs/ の読み込みに失敗")
-        .filter_map(|e| e.ok())
-        .map(|e| e.file_name().to_string_lossy().to_string())
-        .collect();
-    let has_rollback_doc = doc_entries.iter().any(|n| n.contains("rollback"));
+    let rollback_candidates = [
+        project_root.join("docs/rollback-procedure.md"),
+        project_root.join("docs/development/operations/rollback-procedure.md"),
+    ];
+    let has_rollback_doc = rollback_candidates.iter().any(|p| p.is_file());
     assert!(
         has_rollback_doc,
-        "docs/ に rollback 手順ドキュメントが存在しない. 存在するファイル: {:?}",
-        doc_entries
+        "rollback 手順ドキュメントが見つからない (期待: {:?})",
+        rollback_candidates
     );
 }

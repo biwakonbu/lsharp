@@ -1,165 +1,164 @@
-# Backend 境界仕様書
+# Backend 境界仕様
 
-> P11-2: ブートストラップ閉路の基盤
+## 目的
 
-## 概要
+本書は、L# compiler の frontend、lowering、codegen の間にある境界契約を定義する。
+目的は、Wasm backend と Native backend が同一の Lowered IR を共有し、backend 固有の判断を codegen に閉じ込めることにある。
 
-L# コンパイラの backend 境界を `FrontendResult -> LoweredModule -> CodegenArtifact` の 3 層に固定し、Wasm backend と将来の Native backend が同一の Lowered IR を共有する方針を定める。
+## 適用範囲
 
-```
+本書が扱うのは次の領域である。
+
+- source から `FrontendResult` までの frontend の責務
+- `FrontendResult` から `LoweredModule` を生成する lowering の責務
+- `LoweredModule` から `CodegenArtifact` を生成する codegen の責務
+- backend 間で共有される IR 契約
+
+以下は本書の対象外とする。
+
+- runtime API の詳細
+- native backend 固有の ABI や object 形式
+- Phase 単位の実装計画やタスク管理
+
+## パイプライン全体像
+
+```text
 Source (.ls)
   -> Frontend (Lexer -> Parser -> MacroExpand -> TypeInfer)
-  -> FrontendResult (AST + 型情報)
+  -> FrontendResult
   -> Lowering
-  -> LoweredModule (IR)
+  -> LoweredModule
   -> Codegen (Wasm / Native)
-  -> CodegenArtifact (Wasm bytes / Native object)
+  -> CodegenArtifact
 ```
 
----
+この構造により、frontend は言語意味の解決に集中し、codegen は backend 固有の表現へ変換することに集中できる。
 
-## FrontendResult
+## 境界で受け渡す成果物
 
-Frontend が出力する中間表現。AST と型情報のペア。
+### FrontendResult
 
-### 定義
+`FrontendResult` は frontend の最終成果物であり、型検査済みのプログラム表現を lowering に渡す。
 
-```
-FrontendResult = {
-  program: Program       -- 型チェック済み AST (Vec<Decl>)
-  type_results: TypeResults  -- 各式の推論型マップ
-}
-```
+| フィールド | 内容 | 要件 |
+|------------|------|------|
+| `program` | 型検査済み AST (`Program`) | lowering はこの AST を唯一の構文入力として扱う |
+| `type_results` | 式ごとの推論型情報 (`TypeResults`) | lowering は追加の型推論を行わず、この結果を参照する |
 
-### Rust 側の対応
+`FrontendResult` は次の条件を満たさなければならない。
 
-- `lsharp_syntax::ast::Program` -- パース結果の AST
-- `lsharp_types::infer::TypeResults` -- 型推論結果 (`HashMap<ExprId, Type>`)
+- 構文エラーと型エラーは frontend の時点で解決済みである
+- backend 固有の calling convention やレジスタ情報を含まない
+- lowering に必要な型情報を欠落なく保持する
 
-### Selfhost 側の対応 (Main.ls)
+### LoweredModule
 
-- `compile-full-pipeline` の Step 1-4 が Frontend に対応
-  - Step 1: `mini-tokenize` (Lexer)
-  - Step 2: `mini-parse-defn` (Parser)
-  - Step 3: `expand-macros-mini` (MacroExpand)
-  - Step 4: `ti-infer-expr` (TypeInfer)
-- 出力: `[tokens, defn-ast, expanded-body, ti-result, ir-instrs]` の vector
+`LoweredModule` は backend 非依存の IR モジュールであり、Wasm backend と Native backend の共通入力となる。
 
----
+| フィールド | 内容 |
+|------------|------|
+| `functions` | 関数定義列 |
+| `globals` | グローバル変数 |
+| `data_segments` | 文字列定数などの静的データ |
+| `gc_types` | GC 管理対象の型情報 |
+| `imports` | runtime や外部環境から取り込む定義 |
+| `exports` | backend 成果物に公開する定義 |
 
-## LoweredModule
+`LoweredModule` は次の条件を満たさなければならない。
 
-Frontend の出力を IR に変換した中間表現。Backend 非依存。
+- backend 間で共有できる表現であること
+- レジスタ割付、スタックレイアウト、section 名など backend 固有の情報を含まないこと
+- codegen が安定した順序で処理できるよう、関数・静的データ・シンボル列の順序が決定的であること
 
-### 定義
+### CodegenArtifact
 
-```
-LoweredModule = {
-  functions: Vec<Function>   -- 関数定義列
-  globals: Vec<Global>       -- グローバル変数
-  data_segments: Vec<Data>   -- 静的データ (文字列定数等)
-  gc_types: Vec<GcType>      -- GC 管理型 (ADT, レコード)
-  imports: Vec<Import>       -- 外部インポート (WASI 等)
-  exports: Vec<Export>       -- エクスポート定義
-}
-```
+`CodegenArtifact` は codegen の最終成果物である。形式自体は backend ごとに異なるが、`LoweredModule` から生成される最終出力という役割は共通とする。
 
-### Rust 側の対応
+| 種別 | 内容 |
+|------|------|
+| `WasmArtifact` | `.wasm` バイナリと、その生成に付随する補助情報 |
+| `NativeArtifact` | `.o` などのネイティブ成果物と、リンクに必要な補助情報 |
 
-- `lsharp_ir::Module` -- IR モジュール (`lower.rs` の `Lower::lower_program` が生成)
-- `lsharp_ir::Function` -- 関数定義 (名前, 引数型, 戻り値型, ローカル, 命令列)
-- `lsharp_ir::Instruction` -- IR 命令 (I64Const, LocalGet, Call, If, Block, etc.)
+codegen は `CodegenArtifact` を生成する責務のみを持ち、frontend や lowering の意味解析を再実装してはならない。
 
-### Selfhost 側の対応 (Main.ls)
+## 境界ごとの責務
 
-- `compile-full-pipeline` の Step 5 が Lowering に対応
-  - `compile-expr` が AST ノードを IR 命令列 (`[opcode, operand]` の vector) に変換
-- IR opcodes: `ir-i64-const(1)`, `ir-local-get(10)`, `ir-local-set(11)`, `ir-call(40)`, `ir-if(41)`, etc.
+### Frontend の責務
 
----
+frontend は次を担当する。
 
-## CodegenArtifact
+- 字句解析、構文解析、マクロ展開、型推論
+- AST の意味解決
+- lowering が必要とする型情報の確定
 
-Codegen が出力する最終成果物。Backend ごとに異なるバイナリ形式。
+frontend は runtime のレイアウトや target ABI を知る必要がない。
 
-### 定義
+### Lowering の責務
 
-```
-CodegenArtifact = WasmArtifact | NativeArtifact
+lowering は次を担当する。
 
-WasmArtifact = {
-  bytes: Vec<u8>            -- WebAssembly バイナリ (.wasm)
-  source_map: Option<SourceMap>  -- デバッグ用ソースマップ
-}
+- 型検査済み AST を backend 非依存の IR へ写像する
+- 制御構造、呼び出し、データ定義を明示的な IR へ変換する
+- backend ごとの codegen が参照できる import / export / data 情報を整理する
 
-NativeArtifact = {
-  object: Vec<u8>           -- オブジェクトファイル (.o)
-  target: TargetTriple      -- ターゲットトリプル
-  runtime_deps: Vec<String> -- リンク時に必要なランタイムライブラリ
-}
-```
+lowering は次を行ってはならない。
 
-### Rust 側の対応 (Wasm backend)
+- 特定ターゲットのレジスタや命令セットに依存した最適化
+- Wasm 専用 / Native 専用の artifact 形式の決定
 
-- `lsharp_wasm::wasi::emit_wasm_wasi(&Module) -> Result<Vec<u8>>` -- Wasm バイナリ生成
-- `wasm-encoder` クレートで Type/Function/Export/Code セクションを構築
+### Codegen の責務
 
-### Selfhost 側の対応 (Main.ls)
+codegen は次を担当する。
 
-- `emit-header` -- Wasm マジックバイト + バージョン (8 bytes)
-- `emit-type-section-main` -- Type セクション
-- `leb128-u` -- LEB128 エンコーディング
+- `LoweredModule` を backend 固有のバイナリ表現へ変換する
+- target ごとの ABI、section、relocation、linker 連携を解決する
+- runtime との接続点を具体化する
 
-### Native backend (未実装 -- P11-2b で設計)
+codegen は IR 自体の意味を変更してはならない。意味変換が必要な場合は lowering 境界へ戻して設計する。
 
-- 出力形式: object file + 最小ランタイム + system linker 呼び出し
-- ターゲット v1: `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-unknown-linux-gnu`
-- Mach-O/ELF 直書きは後回し、`cc`/`ld` に委譲
+## IR 共有方針
 
----
+Wasm backend と Native backend は、次の原則に従って同一 IR を共有する。
 
-## Wasm backend と Native backend の IR 共有方針
+1. 両 backend は同じ `LoweredModule` を入力とする
+2. backend 固有の変換は codegen の内部に閉じる
+3. calling convention、レジスタ割付、ABI などの情報は IR へ持ち込まない
+4. runtime 依存は import / runtime 契約として明示し、暗黙の host 依存を作らない
 
-### 原則
+この方針により、backend の追加や差し替えが frontend / lowering の設計を汚染しないようにする。
 
-1. **同一 LoweredModule を入力**: Wasm backend も Native backend も `LoweredModule` を受け取る
-2. **Backend 固有の変換は Codegen 内に閉じる**: IR → Wasm 命令、IR → NativeInstr の変換はそれぞれの Codegen モジュール内で行う
-3. **IR に Backend 固有の情報を混ぜない**: レジスタ割付、calling convention、ABI 情報は IR に含めない
+## 実装との対応
 
-### パイプライン分岐点
+現在の主要な対応関係は次のとおりである。
 
-```
-FrontendResult
-  -> Lowering -> LoweredModule
-                    |
-                    +-> WasmCodegen -> WasmArtifact (.wasm)
-                    |
-                    +-> NativeCodegen -> NativeArtifact (.o) -> Linker -> Binary
-```
+| 層 | Rust 側の主な対応 | Selfhost 側の主な対応 |
+|----|-------------------|------------------------|
+| Frontend | `lsharp_syntax::ast::Program`, `lsharp_types::infer::TypeResults` | `mini-tokenize`, `mini-parse-defn`, `expand-macros-mini`, `ti-infer-expr` |
+| Lowering | `lsharp_ir::Module`, `Lower::lower_program` | `compile-expr` を中心とする IR 生成 |
+| Wasm Codegen | `lsharp_wasm::wasi::emit_wasm_wasi` | `emit-header`, `emit-type-section-main`, `leb128-u` など |
 
-### Bootstrap と配布の使い分け
+この表は現状の実装への対応を示す参考情報であり、仕様上の責務分割そのものは上記の境界契約で定義する。
 
-| 用途 | Backend | 成果物 |
-|------|---------|--------|
-| Bootstrap (stageN.wasm) | Wasm | `.wasm` (wasmtime で実行) |
-| 固定点検証 | Wasm | `stageN.wasm == stageN+1.wasm` |
-| 差分比較 | Wasm | Rust compiler vs selfhost compiler |
+## 適用例
+
+この境界仕様は、ビルドや配布の文脈で次のように使い分ける。
+
+| 用途 | 利用する backend | 主な成果物 |
+|------|------------------|------------|
+| bootstrap | Wasm | `stageN.wasm` |
+| 固定点検証 | Wasm | 同一入力からの再現可能な `.wasm` |
 | エンドユーザー配布 | Native | プラットフォーム別バイナリ |
-| CI テスト | Wasm + Native | 両方で同一テスト結果 |
+| CI の相互検証 | Wasm + Native | backend 間で同値なテスト結果 |
 
----
+## 進化方針
 
-## 現状と今後
+境界契約を拡張する場合は、次の方針を守る。
 
-### 実装済み (P11-1 時点)
+- 既存 `LoweredModule` の意味を壊す変更は避ける
+- 新しい backend 固有要件は、まず codegen 側の契約として局所化できるかを検討する
+- frontend と lowering の境界を変更する場合は、型情報と意味解析の責務分担を明文化してから適用する
 
-- [x] Rust 側: Frontend (parse/infer) -> Lowering (lower) -> WasmCodegen (wasi) のフルパイプライン
-- [x] Selfhost 側: Main.ls の `compile-full-pipeline` で 5 ステージ統合 (token/parse/expand/infer/compile)
-- [x] E2E テスト: `test_e2e_selfhost_pipeline_complete_stages` で全ステージ通過を検証
+## 関連文書
 
-### 未実装 (P11-2 以降)
-
-- [ ] Selfhost 側の Lowering を IR.ls/Compiler.ls の正式版に統合
-- [ ] Selfhost 側の WasmCodegen を WasmEmit.ls の正式版に統合
-- [ ] Native backend の設計・実装 (P11-2b)
-- [ ] Backend 境界の型安全性を L# の型システムで保証
+- [`runtime-spec.md`](./runtime-spec.md)
+- [`native-backend-spec.md`](./native-backend-spec.md)
