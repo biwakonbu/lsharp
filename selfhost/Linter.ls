@@ -60,6 +60,8 @@
         (ast-contains-var (vector-get node 1) target-hash)
       (if (= tag 12)
         (recordlit-contains-var-loop node target-hash 0 (vector-get node 2))
+      (if (= tag 13)
+        (ast-contains-var (vector-get node 1) target-hash)
       (if (= tag 14)
         (let [base-found (ast-contains-var (vector-get node 1) target-hash)]
           (if (= base-found 1) 1
@@ -134,7 +136,7 @@
                           0)))
                     0)))
               0)))
-      0))))))))))))))))))
+      0)))))))))))))))))))
 
 ;; リント診断の重要度
 (defn lint-error [] 0)

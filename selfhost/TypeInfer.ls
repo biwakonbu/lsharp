@@ -20,10 +20,17 @@
 (defn tag-lit-int [] 1)
 (defn tag-lit-bool [] 2)
 (defn tag-lit-string [] 3)
+(defn tag-lit-float [] 19)
+(defn tag-lit-unit [] 32)
 (defn tag-var [] 4)
 (defn tag-apply [] 5)
 (defn tag-if [] 6)
 (defn tag-let [] 7)
+(defn tag-ann [] 11)
+(defn tag-recordlit [] 12)
+(defn tag-fieldaccess [] 13)
+(defn tag-recordupdate [] 14)
+(defn tag-computation [] 15)
 (defn tag-lambda [] 8)
 (defn tag-do [] 9)
 (defn tag-match [] 10)
@@ -40,6 +47,8 @@
 (defn hash-int [] 100)
 (defn hash-bool [] 200)
 (defn hash-string [] 300)
+(defn hash-float [] 400)
+(defn hash-unit [] 500)
 
 ;; ============================================================
 ;; 型構築ヘルパー (Type.ls の関数を直接使用)
@@ -49,6 +58,10 @@
 (defn mk-int [] (make-type-int))
 (defn mk-bool [] (make-type-bool))
 (defn mk-string [] (make-type-string))
+(defn mk-float [] (make-type-float))
+(defn mk-unit [] (make-type-unit))
+(defn mk-con [name-hash]
+  (vector-push (vector-push (vector-new 2) (ty-con)) name-hash))
 (defn mk-var [id] (make-type-var id))
 (defn mk-fun [p r] (make-type-fun p r))
 
@@ -119,8 +132,12 @@
         (mk-bool)
         (if (= tag 3)
           (mk-string)
-          ;; 不明なリテラル -> Int にフォールバック
-          (mk-int))))))
+          (if (= tag 19)
+            (mk-float)
+            (if (= tag 32)
+              (mk-unit)
+              ;; 不明なリテラル -> Int にフォールバック
+              (mk-int))))))))
 
 ;; 変数参照の型推論
 (defn infer-var [node env subst counter]
@@ -184,6 +201,100 @@
             new-env (type-env-insert env name-hash scheme)]
         ;; body を推論
         (infer-expr body-node new-env s1 counter)))))
+
+;; ann 式の型推論
+;; selfhost AST は型式 payload を保持していないため、現状は内側の式をそのまま推論する
+;; [11, expr]
+(defn infer-ann [node env subst counter]
+  (infer-expr (vector-get node 1) env subst counter))
+
+;; record field value 群を順に推論する
+;; node は [tag, ..., field-count, field1-hash, expr1, ...]
+(defn infer-record-fields [node idx count env subst counter]
+  (if (= idx count)
+    (make-result subst (mk-int))
+    (let [value-node (vector-get node (+ 4 (* idx 2)))
+          value-result (infer-expr value-node env subst counter)]
+      (if (= (result-failed value-result) 1)
+        (make-error-result)
+        (infer-record-fields
+          node
+          (+ idx 1)
+          count
+          env
+          (result-subst value-result)
+          counter)))))
+
+;; record literal の型推論
+;; [12, type-name-hash, field-count, field1-hash, expr1, ...]
+(defn infer-recordlit [node env subst counter]
+  (let [type-name-hash (vector-get node 1)
+        field-count (vector-get node 2)
+        fields-result (infer-record-fields node 0 field-count env subst counter)]
+    (if (= (result-failed fields-result) 1)
+      (make-error-result)
+      (make-result (result-subst fields-result) (mk-con type-name-hash)))))
+
+;; field access の型推論
+;; [13, expr, field-name-hash]
+;; 最小版: base 式だけ推論し、結果型は fresh var にする
+(defn infer-fieldaccess [node env subst counter]
+  (let [base-result (infer-expr (vector-get node 1) env subst counter)]
+    (if (= (result-failed base-result) 1)
+      (make-error-result)
+      (make-result (result-subst base-result) (fresh-type-var counter)))))
+
+;; record update の型推論
+;; [14, base-expr, field-count, field1-hash, expr1, ...]
+(defn infer-recordupdate-node [node env subst counter]
+  (let [base-result (infer-expr (vector-get node 1) env subst counter)]
+    (if (= (result-failed base-result) 1)
+      (make-error-result)
+      (let [field-count (vector-get node 2)
+            fields-result
+              (infer-record-fields
+                node
+                0
+                field-count
+                env
+                (result-subst base-result)
+                counter)]
+        (if (= (result-failed fields-result) 1)
+          (make-error-result)
+          (make-result (result-subst fields-result) (result-type base-result)))))))
+
+;; computation expression の型推論
+;; [15, builder-hash, step-count, step-kind1, aux1, expr1, ...]
+;; 最小版: step を順に推論し、let! だけ束縛を環境へ追加して最後の式の型を返す
+(defn infer-computation-steps [node idx count env subst counter last-ty]
+  (if (= idx count)
+    (make-result subst last-ty)
+    (let [step-kind (vector-get node (+ 3 (* idx 3)))
+          aux (vector-get node (+ 4 (* idx 3)))
+          expr-node (vector-get node (+ 5 (* idx 3)))
+          expr-result (infer-expr expr-node env subst counter)]
+      (if (= (result-failed expr-result) 1)
+        (make-error-result)
+        (let [s1 (result-subst expr-result)
+              expr-ty (result-type expr-result)
+              new-env
+                (if (= step-kind (computation-step-let-bang))
+                  (type-env-insert env aux (mono (apply-subst s1 expr-ty)))
+                  env)]
+          (infer-computation-steps
+            node
+            (+ idx 1)
+            count
+            new-env
+            s1
+            counter
+            expr-ty))))))
+
+(defn infer-computation [node env subst counter]
+  (let [step-count (vector-get node 2)]
+    (if (= step-count 0)
+      (make-result subst (mk-int))
+      (infer-computation-steps node 0 step-count env subst counter (mk-int)))))
 
 ;; lambda 式の型推論
 ;; 簡易版: 1 引数のみ対応 [8, param-hash, body]
@@ -360,77 +471,65 @@
                       ty (fresh-type-var counter)]
                   (vector-push (make-result subst ty) env))
                 ;; 未知のパターン: 新しい型変数 (ワイルドカード扱い)
-                (let [ty (fresh-type-var counter)]
-                  (vector-push (make-result subst ty) env))))))))))
+                 (let [ty (fresh-type-var counter)]
+                   (vector-push (make-result subst ty) env))))))))))
+
+;; infer-pattern の戻り値アクセサ
+;; [subst, type, updated-env]
+(defn pat-result-subst [r]
+  (vector-get r 0))
+
+(defn pat-result-type [r]
+  (vector-get r 1))
+
+(defn pat-result-env [r]
+  (vector-get r 2))
 
 ;; match 式の型推論
 ;; [10, scrutinee, arm-count, pat1, body1, pat2, body2, ...]
-;; 簡易版: パターンはリテラルのみ (整数/真偽値)
+;; binder は各 arm body にだけ見え、次の arm には漏らさない
+(defn infer-match-arms [node idx arm-count env scrut-ty result-ty subst counter]
+  (if (>= idx arm-count)
+    (make-result subst (apply-subst subst result-ty))
+    (let [pat (vector-get node (+ 3 (* idx 2)))
+          body (vector-get node (+ 4 (* idx 2)))
+          pat-info (infer-pattern pat env subst counter)
+          pat-subst (pat-result-subst pat-info)
+          pat-ty (pat-result-type pat-info)
+          pat-env (pat-result-env pat-info)]
+      (if (= (map-get pat-subst -1) 1)
+        (make-error-result)
+        (let [s2 (unify (apply-subst pat-subst scrut-ty) pat-ty pat-subst)]
+          (if (= (unify-failed s2) 1)
+            (make-error-result)
+            (let [body-result (infer-expr body pat-env s2 counter)]
+              (if (= (result-failed body-result) 1)
+                (make-error-result)
+                (let [s3 (result-subst body-result)
+                      body-ty (result-type body-result)
+                      s4 (unify (apply-subst s3 result-ty) body-ty s3)]
+                  (if (= (unify-failed s4) 1)
+                    (make-error-result)
+                    (infer-match-arms
+                      node
+                      (+ idx 1)
+                      arm-count
+                      env
+                      scrut-ty
+                      result-ty
+                      s4
+                      counter)))))))))))
+
 (defn infer-match [node env subst counter]
   (let [scrutinee (vector-get node 1)
         arm-count (vector-get node 2)
-        ;; scrutinee を推論
         scrut-result (infer-expr scrutinee env subst counter)]
     (if (= (result-failed scrut-result) 1)
       (make-error-result)
       (let [s1 (result-subst scrut-result)
             scrut-ty (result-type scrut-result)
-            ;; 結果型の型変数
             result-ty (fresh-type-var counter)]
-        ;; 各腕を処理 (最大 3 腕)
-        (if (= arm-count 0)
-          (make-result s1 result-ty)
-          ;; 腕 1: pat1=node[3], body1=node[4]
-          (let [pat1 (vector-get node 3)
-                body1 (vector-get node 4)
-                ;; パターンの型を推論 (リテラルパターン)
-                pat1-ty (infer-lit pat1)
-                s2 (unify scrut-ty pat1-ty s1)]
-            (if (= (unify-failed s2) 1)
-              (make-error-result)
-              (let [body1-result (infer-expr body1 env s2 counter)]
-                (if (= (result-failed body1-result) 1)
-                  (make-error-result)
-                  (let [s3 (result-subst body1-result)
-                        body1-ty (result-type body1-result)
-                        s4 (unify result-ty body1-ty s3)]
-                    (if (= (unify-failed s4) 1)
-                      (make-error-result)
-                      (if (<= arm-count 1)
-                        (make-result s4 (apply-subst s4 result-ty))
-                        ;; 腕 2: pat2=node[5], body2=node[6]
-                        (let [pat2 (vector-get node 5)
-                              body2 (vector-get node 6)
-                              pat2-ty (infer-lit pat2)
-                              s5 (unify (apply-subst s4 scrut-ty) pat2-ty s4)]
-                          (if (= (unify-failed s5) 1)
-                            (make-error-result)
-                            (let [body2-result (infer-expr body2 env s5 counter)]
-                              (if (= (result-failed body2-result) 1)
-                                (make-error-result)
-                                (let [s6 (result-subst body2-result)
-                                      body2-ty (result-type body2-result)
-                                      s7 (unify (apply-subst s6 result-ty) body2-ty s6)]
-                                  (if (= (unify-failed s7) 1)
-                                    (make-error-result)
-                                    (if (<= arm-count 2)
-                                      (make-result s7 (apply-subst s7 result-ty))
-                                      ;; 腕 3: pat3=node[7], body3=node[8]
-                                      (let [pat3 (vector-get node 7)
-                                            body3 (vector-get node 8)
-                                            pat3-ty (infer-lit pat3)
-                                            s8 (unify (apply-subst s7 scrut-ty) pat3-ty s7)]
-                                        (if (= (unify-failed s8) 1)
-                                          (make-error-result)
-                                          (let [body3-result (infer-expr body3 env s8 counter)]
-                                            (if (= (result-failed body3-result) 1)
-                                              (make-error-result)
-                                              (let [s9 (result-subst body3-result)
-                                                    body3-ty (result-type body3-result)
-                                                    s10 (unify (apply-subst s9 result-ty) body3-ty s9)]
-                                                (if (= (unify-failed s10) 1)
-                                                  (make-error-result)
-                                                  (make-result s10 (apply-subst s10 result-ty)))))))))))))))))))))))))))
+        (infer-match-arms node 0 arm-count env scrut-ty result-ty s1 counter)))))
 
 ;; ============================================================
 ;; infer-expr: メインディスパッチ
@@ -447,29 +546,50 @@
         (if (= tag 3)
           ;; 文字列リテラル
           (make-result subst (mk-string))
-          (if (= tag 4)
-            ;; 変数参照
-            (infer-var node env subst counter)
-            (if (= tag 5)
-              ;; 関数適用
-              (infer-apply node env subst counter)
-              (if (= tag 6)
-                ;; if 式
-                (infer-if node env subst counter)
-                (if (= tag 7)
-                  ;; let 式
-                  (infer-let node env subst counter)
-                  (if (= tag 8)
-                    ;; lambda 式
-                    (infer-lambda node env subst counter)
-                    (if (= tag 9)
-                      ;; do ブロック
-                      (infer-do node env subst counter)
-                      (if (= tag 10)
-                        ;; match 式
-                        (infer-match node env subst counter)
-                        ;; 未知のノード: エラー
-                        (make-error-result)))))))))))))
+          (if (= tag 19)
+            ;; 浮動小数点リテラル
+            (make-result subst (mk-float))
+            (if (= tag 32)
+              ;; unit リテラル
+              (make-result subst (mk-unit))
+              (if (= tag 4)
+                ;; 変数参照
+                (infer-var node env subst counter)
+                (if (= tag 5)
+                  ;; 関数適用
+                  (infer-apply node env subst counter)
+                  (if (= tag 6)
+                    ;; if 式
+                    (infer-if node env subst counter)
+                    (if (= tag 7)
+                      ;; let 式
+                      (infer-let node env subst counter)
+                      (if (= tag (tag-ann))
+                        ;; ann 式
+                        (infer-ann node env subst counter)
+                        (if (= tag (tag-recordlit))
+                          ;; record literal
+                          (infer-recordlit node env subst counter)
+                          (if (= tag (tag-fieldaccess))
+                            ;; field access
+                            (infer-fieldaccess node env subst counter)
+                          (if (= tag (tag-recordupdate))
+                            ;; record update
+                            (infer-recordupdate-node node env subst counter)
+                            (if (= tag (tag-computation))
+                              ;; computation 式
+                              (infer-computation node env subst counter)
+                              (if (= tag 8)
+                                ;; lambda 式
+                                (infer-lambda node env subst counter)
+                                (if (= tag 9)
+                                  ;; do ブロック
+                                  (infer-do node env subst counter)
+                                  (if (= tag 10)
+                                    ;; match 式
+                                    (infer-match node env subst counter)
+                                    ;; 未知のノード: エラー
+                                    (make-error-result))))))))))))))))))))
 
 ;; ============================================================
 ;; infer-defn: トップレベル関数定義の型推論

@@ -30,6 +30,7 @@
 (defn ast-unquote [] 17)        ;; アンクオート Unquote
 (defn ast-unquote-splice [] 18) ;; アンクオートスプライス UnquoteSplice
 (defn ast-lit-float [] 19)      ;; 浮動小数点リテラル Float
+(defn ast-lit-unit [] 32)       ;; unit リテラル Unit
 
 ;; Computation step kind
 (defn computation-step-expr [] 0)
@@ -83,6 +84,10 @@
   (let [v (vector-new 2)]
     (vector-push (vector-push v 4) name-hash)))
 
+;; unit リテラル: [32]
+(defn make-lit-unit []
+  (vector-push (vector-new 1) (ast-lit-unit)))
+
 ;; 型注釈: [11, expr]
 (defn make-ann [expr]
   (let [v (vector-new 2)]
@@ -92,6 +97,11 @@
 (defn make-recordlit [type-name-hash]
   (let [v (vector-new 8)]
     (vector-push (vector-push (vector-push v (ast-recordlit)) type-name-hash) 0)))
+
+;; フィールドアクセス: [13, expr, field-name-hash]
+(defn make-fieldaccess [expr field-name-hash]
+  (let [v (vector-new 3)]
+    (vector-push (vector-push (vector-push v (ast-fieldaccess)) expr) field-name-hash)))
 
 ;; レコード更新: [14, base-expr, field-count, field1-hash, expr1, ...]
 (defn make-recordupdate [base-expr]
@@ -123,25 +133,31 @@
   (let [v (vector-new 2)]
     (vector-push (vector-push v (ast-typeconstrained)) name-hash)))
 
-;; モジュール宣言: [25, name-hash]
+;; モジュール宣言: [25, name-hash, decl-count, decl1, ...]
 (defn make-module-decl [name-hash]
-  (let [v (vector-new 2)]
-    (vector-push (vector-push v (ast-module-decl)) name-hash)))
+  (let [v (vector-new 8)]
+    (vector-push (vector-push (vector-push v (ast-module-decl)) name-hash) 0)))
 
 ;; import 宣言: [26, name-hash]
 (defn make-import-decl [name-hash]
   (let [v (vector-new 2)]
     (vector-push (vector-push v (ast-import-decl)) name-hash)))
 
-;; trait 宣言: [27, name-hash]
+;; trait 宣言: [27, name-hash, decl-count, decl1, ...]
 (defn make-trait-def [name-hash]
-  (let [v (vector-new 2)]
-    (vector-push (vector-push v (ast-traitdef)) name-hash)))
+  (let [v (vector-new 8)]
+    (vector-push (vector-push (vector-push v (ast-traitdef)) name-hash) 0)))
 
-;; impl 宣言: [28, trait-name-hash, type-name-hash]
+;; impl 宣言: [28, trait-name-hash, type-name-hash, decl-count, decl1, ...]
 (defn make-impl-def [trait-name-hash type-name-hash]
-  (let [v (vector-new 3)]
-    (vector-push (vector-push (vector-push v (ast-impldef)) trait-name-hash) type-name-hash)))
+  (let [v (vector-new 8)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push v (ast-impldef))
+          trait-name-hash)
+        type-name-hash)
+      0)))
 
 ;; private 宣言: [29, inner-node]
 (defn make-private [inner-node]
@@ -204,7 +220,8 @@
       (if (= tag 4) 1
         (if (= tag 3) 1
           (if (= tag 19) 1
-            0))))))
+            (if (= tag 32) 1
+             0)))))))
 
 ;; ノード内で特定の name-hash を持つ var 参照が存在するか検索
 ;; 見つかれば 1、なければ 0
@@ -242,6 +259,8 @@
         (ast-contains-var (vector-get node 1) target-hash)
       (if (= tag 12)
         (recordlit-contains-var-loop node target-hash 0 (vector-get node 2))
+      (if (= tag 13)
+        (ast-contains-var (vector-get node 1) target-hash)
       (if (= tag 14)
         (let [base-found (ast-contains-var (vector-get node 1) target-hash)]
           (if (= base-found 1) 1
@@ -277,7 +296,7 @@
                   (ast-contains-var (vector-get node 4) target-hash)
                   0)))
             0))
-      0))))))))))))))))
+      0)))))))))))))))))
 
 ;; AST ノードの数を再帰的にカウント (走査テスト用)
 (defn recordlit-count-fields-loop [node idx count]
@@ -303,6 +322,8 @@
         (+ 1 (ast-count-nodes (vector-get node 1)))
       (if (= tag 12)
         (+ 1 (recordlit-count-fields-loop node 0 (vector-get node 2)))
+      (if (= tag 13)
+        (+ 1 (ast-count-nodes (vector-get node 1)))
       (if (= tag 14)
         (+ 1 (+ (ast-count-nodes (vector-get node 1))
                (recordupdate-count-fields-loop node 0 (vector-get node 2))))
@@ -377,7 +398,7 @@
               (+ 1 (+ sc (+ (ast-count-nodes (vector-get node 3))
                            (ast-count-nodes (vector-get node 4))))))
             (+ 1 sc)))
-      1)))))))))))))))
+      1))))))))))))))))
 
 ;; エントリポイント (テスト用)
 (defn main []

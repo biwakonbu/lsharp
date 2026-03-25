@@ -6621,6 +6621,476 @@ fn test_e2e_selfhost_typeinfer_literal() {
     assert_eq!(result.trim(), "42");
 }
 
+/// selfhost TypeInfer.ls テスト: float / unit リテラル型推論
+#[test]
+fn test_e2e_selfhost_typeinfer_float_and_unit_literals() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        float-node (make-lit-float 0 4)
+        unit-node (make-lit-unit)
+        float-result (infer-expr float-node env (subst-new) counter)
+        unit-result (infer-expr unit-node env (subst-new) counter)]
+    (do
+      (print (result-failed float-result))
+      (print (ty-tag (result-type float-result)))
+      (print (ty-name (result-type float-result)))
+      (print (result-failed unit-result))
+      (print (ty-tag (result-type unit-result)))
+      (print (ty-name (result-type unit-result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 6,
+        "float/unit typeinfer 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "0", "float infer は失敗すべきでない");
+    assert_eq!(lines[1], "1", "float infer の型タグは Con であるべき");
+    assert_eq!(lines[2], "400", "float infer の型名は Float hash=400 であるべき");
+    assert_eq!(lines[3], "0", "unit infer は失敗すべきでない");
+    assert_eq!(lines[4], "1", "unit infer の型タグは Con であるべき");
+    assert_eq!(lines[5], "500", "unit infer の型名は Unit hash=500 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: ann form は内側の式の型を返せる
+#[test]
+fn test_e2e_selfhost_typeinfer_ann_expr() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        ann-node (make-ann (make-lit-int 42))
+        result (infer-expr ann-node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "ann typeinfer 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "0", "ann infer は失敗すべきでない");
+    assert_eq!(lines[1], "1", "ann infer の型タグは Con であるべき");
+    assert_eq!(lines[2], "100", "ann infer の型名は Int hash=100 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: record literal は type-name hash を型として返せる
+#[test]
+fn test_e2e_selfhost_typeinfer_record_literal() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        point-hash 700
+        field-x 120
+        field-y 121
+        node (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push (vector-new 7) 12)
+                         point-hash)
+                       2)
+                     field-x)
+                   (make-lit-int 10))
+                 field-y)
+               (make-lit-int 20))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "record literal typeinfer 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "0", "record literal infer は失敗すべきでない");
+    assert_eq!(lines[1], "1", "record literal infer の型タグは Con であるべき");
+    assert_eq!(lines[2], "700", "record literal infer の型名は Point hash=700 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: record update は base 式の型を維持できる
+#[test]
+fn test_e2e_selfhost_typeinfer_record_update() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn mk-point-type []
+  (vector-push (vector-push (vector-new 2) 1) 700))
+
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        point-hash 700
+        point-var 1001
+        field-x 120
+        env (type-env-insert env0 point-var (mono (mk-point-type)))
+        node (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 5) 14)
+                     (make-var point-var))
+                   1)
+                 field-x)
+               (make-lit-int 42))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "record update typeinfer 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "0", "record update infer は失敗すべきでない");
+    assert_eq!(lines[1], "1", "record update infer の型タグは Con であるべき");
+    assert_eq!(lines[2], "700", "record update infer の型名は Point hash=700 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: computation expression の最小型推論
+#[test]
+fn test_e2e_selfhost_typeinfer_computation_expr() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        builder-hash 900
+        x-hash 1200
+        return-only
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 6) 15)
+                  builder-hash)
+                1)
+              (computation-step-return))
+            0)
+        return-only-node (vector-push return-only (make-lit-int 42))
+        bind-and-return
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push (vector-new 9) 15)
+                        builder-hash)
+                      2)
+                    (computation-step-let-bang))
+                  x-hash)
+                (make-lit-int 10))
+              (computation-step-return))
+            0)
+        bind-and-return-node
+          (vector-push bind-and-return (make-var x-hash))
+        result1 (infer-expr return-only-node env (subst-new) counter)
+        result2 (infer-expr bind-and-return-node env (subst-new) counter)]
+    (do
+      (print (result-failed result1))
+      (print (ty-tag (result-type result1)))
+      (print (ty-name (result-type result1)))
+      (print (result-failed result2))
+      (print (ty-tag (result-type result2)))
+      (print (ty-name (result-type result2)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 6, "computation typeinfer 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "0", "return-only computation infer は失敗すべきでない");
+    assert_eq!(lines[1], "1", "return-only computation の型タグは Con であるべき");
+    assert_eq!(lines[2], "100", "return-only computation の型名は Int hash=100 であるべき");
+    assert_eq!(lines[3], "0", "let! computation infer は失敗すべきでない");
+    assert_eq!(lines[4], "1", "let! computation の型タグは Con であるべき");
+    assert_eq!(lines[5], "100", "let! computation の型名は Int hash=100 であるべき");
+}
+
+/// selfhost AST.ls テスト: field access constructor / traversal
+#[test]
+fn test_e2e_selfhost_ast_fieldaccess_helpers() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [p-hash 99
+        field-hash 120
+        node (make-fieldaccess (make-var p-hash) field-hash)]
+    (do
+      (print (if (= (vector-get node 0) (ast-fieldaccess)) 1 0))
+      (print (if (= (vector-get (vector-get node 1) 0) (ast-var)) 1 0))
+      (print (if (= (vector-get node 2) field-hash) 1 0))
+      (print (ast-contains-var node p-hash))
+      (print (ast-count-nodes node))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", ast_ls, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 5, "fieldaccess AST helper 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "fieldaccess は ast-fieldaccess であるべき");
+    assert_eq!(lines[1], "1", "fieldaccess inner は var であるべき");
+    assert_eq!(lines[2], "1", "fieldaccess field hash が保持されるべき");
+    assert_eq!(lines[3], "1", "fieldaccess inner var が探索できるべき");
+    assert_eq!(lines[4], "2", "fieldaccess の node count は 2 であるべき");
+}
+
+/// selfhost Parser.ls テスト: field access expression を最小 payload でパースできる
+#[test]
+fn test_e2e_selfhost_parser_field_access_expr() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(. p x)") 0)
+        inner (vector-get node 1)]
+    (do
+      (print (if (= (vector-get node 0) (ast-fieldaccess)) 1 0))
+      (print (if (= (vector-get inner 0) (ast-var)) 1 0))
+      (print (if (= (vector-get inner 1) (name-hash "p" 0 1)) 1 0))
+      (print (if (= (vector-get node 2) (name-hash "x" 0 1)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 4, "fieldaccess parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "fieldaccess は ast-fieldaccess であるべき");
+    assert_eq!(lines[1], "1", "fieldaccess inner は var であるべき");
+    assert_eq!(lines[2], "1", "fieldaccess inner hash が一致すべき");
+    assert_eq!(lines[3], "1", "fieldaccess field hash が一致すべき");
+}
+
+/// selfhost TypeInfer.ls テスト: field access は最小推論として fresh var を返せる
+#[test]
+fn test_e2e_selfhost_typeinfer_field_access() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        point-hash 700
+        point-var 1001
+        field-x 120
+        env (type-env-insert env0 point-var (mono (mk-con point-hash)))
+        node (make-fieldaccess (make-var point-var) field-x)
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "fieldaccess typeinfer 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "0", "fieldaccess infer は失敗すべきでない");
+    assert_eq!(lines[1], "2", "fieldaccess infer の型タグは fresh Var であるべき");
+    assert_eq!(lines[2], "1000", "fieldaccess infer の型変数 ID は 1000 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: match の var pattern binder を body で参照できる
+#[test]
+fn test_e2e_selfhost_typeinfer_match_var_binder() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        x-hash 1200
+        node (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 5) 10)
+                     (make-lit-int 1))
+                   1)
+                 (make-var x-hash))
+               (make-var x-hash))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "match binder typeinfer 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "0", "match binder infer は失敗すべきでない");
+    assert_eq!(lines[1], "1", "match binder infer の型タグは Con であるべき");
+    assert_eq!(lines[2], "100", "match binder infer の型名は Int hash=100 であるべき");
+}
+
 /// selfhost TypeInfer.ls テスト: 変数束縛の型推論
 #[test]
 fn test_e2e_selfhost_typeinfer_variable() {
@@ -8927,6 +9397,61 @@ fn test_e2e_selfhost_parser_count_fields() {
     assert_eq!(lines[4], "2", "defn の param-count は 2 であるべき");
 }
 
+/// TEST-SYNTAX-02c2: nested module を body 付きでパースできる
+#[test]
+fn test_e2e_selfhost_parser_nested_module_decl() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(module App (module Sub (defn inner [] 42)))") 0)
+        inner (vector-get node 3)
+        inner-defn (vector-get inner 3)]
+    (do
+      (print (if (= (vector-get node 0) (ast-module-decl)) 1 0))
+      (print (if (= (vector-get node 1) (name-hash "App" 0 3)) 1 0))
+      (print (vector-get node 2))
+      (print (if (= (vector-get inner 0) (ast-module-decl)) 1 0))
+      (print (if (= (vector-get inner 1) (name-hash "Sub" 0 3)) 1 0))
+      (print (vector-get inner 2))
+      (print (if (= (vector-get inner-defn 0) (ast-defn)) 1 0))
+      (print (if (= (vector-get inner-defn 1) (name-hash "inner" 0 5)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 8,
+        "nested module parser 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "outer node は module decl であるべき");
+    assert_eq!(lines[1], "1", "outer module 名 hash が一致すべき");
+    assert_eq!(lines[2], "1", "outer module body-count は 1 であるべき");
+    assert_eq!(lines[3], "1", "inner node も module decl であるべき");
+    assert_eq!(lines[4], "1", "inner module 名 hash が一致すべき");
+    assert_eq!(lines[5], "1", "inner module body-count は 1 であるべき");
+    assert_eq!(lines[6], "1", "inner body は defn であるべき");
+    assert_eq!(lines[7], "1", "inner defn 名 hash が一致すべき");
+}
+
 /// TEST-SYNTAX-02d: quote/unquote 系トークンを AST ノードへパースできる
 ///
 /// selfhost Parser が `'expr`, `~expr`, `~@expr` を
@@ -9300,7 +9825,251 @@ fn test_e2e_selfhost_parser_extended_decl_forms() {
     assert_eq!(lines[10], "1", "impl type 名ハッシュが一致すべき");
 }
 
-/// TEST-SYNTAX-02k: annotation form を AST ノードにパースできる
+/// TEST-SYNTAX-02j2: trait / impl の body decl を最小 payload で保持できる
+#[test]
+fn test_e2e_selfhost_parser_trait_impl_bodies() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [trait-node (vector-get (parse-program "(trait (Show a) (defn show [self] : String))") 0)
+        trait-defn (vector-get trait-node 3)
+        impl-node (vector-get (parse-program "(impl (Show Int) (defn show [self] (str self)))") 0)
+        impl-defn (vector-get impl-node 4)]
+    (do
+      (print (if (= (vector-get trait-node 0) (ast-traitdef)) 1 0))
+      (print (if (= (vector-get trait-node 1) (name-hash "Show" 0 4)) 1 0))
+      (print (vector-get trait-node 2))
+      (print (if (= (vector-get trait-defn 0) (ast-defn)) 1 0))
+      (print (if (= (vector-get trait-defn 1) (name-hash "show" 0 4)) 1 0))
+      (print (if (= (vector-get impl-node 0) (ast-impldef)) 1 0))
+      (print (if (= (vector-get impl-node 1) (name-hash "Show" 0 4)) 1 0))
+      (print (if (= (vector-get impl-node 2) (name-hash "Int" 0 3)) 1 0))
+      (print (vector-get impl-node 3))
+      (print (if (= (vector-get impl-defn 0) (ast-defn)) 1 0))
+      (print (if (= (vector-get impl-defn 1) (name-hash "show" 0 4)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 11,
+        "trait/impl body parser 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "trait は ast-traitdef であるべき");
+    assert_eq!(lines[1], "1", "trait 名 hash は Show であるべき");
+    assert_eq!(lines[2], "1", "trait body-count は 1 であるべき");
+    assert_eq!(lines[3], "1", "trait body は defn であるべき");
+    assert_eq!(lines[4], "1", "trait method 名 hash は show であるべき");
+    assert_eq!(lines[5], "1", "impl は ast-impldef であるべき");
+    assert_eq!(lines[6], "1", "impl trait hash は Show であるべき");
+    assert_eq!(lines[7], "1", "impl type hash は Int であるべき");
+    assert_eq!(lines[8], "1", "impl body-count は 1 であるべき");
+    assert_eq!(lines[9], "1", "impl body は defn であるべき");
+    assert_eq!(lines[10], "1", "impl method 名 hash は show であるべき");
+}
+
+/// TEST-SYNTAX-02j3: type-constrained の主要 constraint 形式をスキップできる
+#[test]
+fn test_e2e_selfhost_parser_type_constrained_constraint_forms() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [range-node (vector-get (parse-program "(type-constrained Percentage Int :constraints [(>= 0) (<= 100)])") 0)
+        matches-node (vector-get (parse-program "(type-constrained Email String :constraints [(matches \"^[^@]+@[^@]+$\")])") 0)
+        satisfies-node (vector-get (parse-program "(type-constrained EvenInt Int :constraints [(satisfies is-even)])") 0)]
+    (do
+      (print (if (= (vector-get range-node 0) (ast-typeconstrained)) 1 0))
+      (print (if (= (vector-get range-node 1) (name-hash "Percentage" 0 10)) 1 0))
+      (print (if (= (vector-get matches-node 0) (ast-typeconstrained)) 1 0))
+      (print (if (= (vector-get matches-node 1) (name-hash "Email" 0 5)) 1 0))
+      (print (if (= (vector-get satisfies-node 0) (ast-typeconstrained)) 1 0))
+      (print (if (= (vector-get satisfies-node 1) (name-hash "EvenInt" 0 7)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 6,
+        "type-constrained parser 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "range constraint は ast-typeconstrained であるべき");
+    assert_eq!(lines[1], "1", "range constraint 名 hash が一致すべき");
+    assert_eq!(lines[2], "1", "matches constraint は ast-typeconstrained であるべき");
+    assert_eq!(lines[3], "1", "matches constraint 名 hash が一致すべき");
+    assert_eq!(lines[4], "1", "satisfies constraint は ast-typeconstrained であるべき");
+    assert_eq!(lines[5], "1", "satisfies constraint 名 hash が一致すべき");
+}
+
+/// TEST-SYNTAX-02j4: 空 S 式 `()` を unit literal としてパースできる
+#[test]
+fn test_e2e_selfhost_parser_unit_literal() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "()") 0)]
+    (do
+      (print (if (= (vector-get node 0) (ast-lit-unit)) 1 0))
+      (print (vector-length node))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 2, "unit parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "unit literal は ast-lit-unit であるべき");
+    assert_eq!(lines[1], "1", "unit literal node length は 1 であるべき");
+}
+
+/// TEST-SYNTAX-02k: if 式を明示的に ast-if としてパースできる
+#[test]
+fn test_e2e_selfhost_parser_if_expr() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(if true 1 0)") 0)
+        cond-node (vector-get node 1)
+        then-node (vector-get node 2)
+        else-node (vector-get node 3)]
+    (do
+      (print (if (= (vector-get node 0) (ast-if)) 1 0))
+      (print (if (= (vector-get cond-node 0) (ast-lit-bool)) 1 0))
+      (print (if (= (vector-get then-node 0) (ast-lit-int)) 1 0))
+      (print (if (= (vector-get else-node 0) (ast-lit-int)) 1 0))
+      (print (vector-get then-node 1))
+      (print (vector-get else-node 1))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 6, "if expr parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "if は ast-if であるべき");
+    assert_eq!(lines[1], "1", "cond は bool literal であるべき");
+    assert_eq!(lines[2], "1", "then は int literal であるべき");
+    assert_eq!(lines[3], "1", "else は int literal であるべき");
+    assert_eq!(lines[4], "1", "then value は 1 であるべき");
+    assert_eq!(lines[5], "0", "else value は 0 であるべき");
+}
+
+/// TEST-SYNTAX-02l: parametric type / type-alias head を decl tag にパースできる
+#[test]
+fn test_e2e_selfhost_parser_parametric_type_heads() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [type-node (vector-get (parse-program "(type (Pair a b) (record (: fst a) (: snd b)))") 0)
+        alias-node (vector-get (parse-program "(type-alias (Callback a b) (-> a b))") 0)]
+    (do
+      (print (if (= (vector-get type-node 0) (ast-recorddef)) 1 0))
+      (print (if (= (vector-get type-node 1) (name-hash "Pair" 0 4)) 1 0))
+      (print (if (= (vector-get alias-node 0) (ast-typealias)) 1 0))
+      (print (if (= (vector-get alias-node 1) (name-hash "Callback" 0 8)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 4,
+        "parametric type parser 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "parametric type record は ast-recorddef であるべき");
+    assert_eq!(lines[1], "1", "parametric type 名 hash は Pair であるべき");
+    assert_eq!(lines[2], "1", "parametric type-alias は ast-typealias であるべき");
+    assert_eq!(lines[3], "1", "parametric alias 名 hash は Callback であるべき");
+}
+
+/// TEST-SYNTAX-02m: annotation form を AST ノードにパースできる
 #[test]
 fn test_e2e_selfhost_parser_ann_form() {
     let project_root =
@@ -9340,7 +10109,7 @@ fn test_e2e_selfhost_parser_ann_form() {
     assert_eq!(lines[2], "42", "annotation inner の値が保持されるべき");
 }
 
-/// TEST-SYNTAX-02l: float literal を lexer/parser で扱える
+/// TEST-SYNTAX-02n: float literal を lexer/parser で扱える
 #[test]
 fn test_e2e_selfhost_parser_float_literal() {
     let project_root =
@@ -9385,7 +10154,7 @@ fn test_e2e_selfhost_parser_float_literal() {
     assert_eq!(lines[4], "1", "float literal の lexeme が保持されるべき");
 }
 
-/// TEST-SYNTAX-02m: computation expression を最小 payload でパースできる
+/// TEST-SYNTAX-02o: computation expression を最小 payload でパースできる
 #[test]
 fn test_e2e_selfhost_parser_computation_expr() {
     let project_root =
@@ -9446,6 +10215,300 @@ fn test_e2e_selfhost_parser_computation_expr() {
     assert_eq!(lines[10], "1", "step3 expr の hash が一致すべき");
     assert_eq!(lines[11], "1", "step4 は return であるべき");
     assert_eq!(lines[12], "1", "step4 expr の hash が一致すべき");
+}
+
+/// TEST-SYNTAX-02p: defn の annotated param / return type を最小 payload でスキップできる
+#[test]
+fn test_e2e_selfhost_parser_typed_defn_signature() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(defn add [(: x Int) (: y Int)] : Int (+ x y))") 0)
+        body (vector-get node 5)]
+    (do
+      (print (if (= (vector-get node 0) 20) 1 0))
+      (print (if (= (vector-get node 1) (name-hash "add" 0 3)) 1 0))
+      (print (vector-get node 2))
+      (print (if (= (vector-get node 3) (name-hash "x" 0 1)) 1 0))
+      (print (if (= (vector-get node 4) (name-hash "y" 0 1)) 1 0))
+      (print (if (= (vector-get body 0) (ast-apply)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 6, "typed defn parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "defn tag が一致すべき");
+    assert_eq!(lines[1], "1", "関数名 hash が一致すべき");
+    assert_eq!(lines[2], "2", "param count は 2 であるべき");
+    assert_eq!(lines[3], "1", "param1 hash は x であるべき");
+    assert_eq!(lines[4], "1", "param2 hash は y であるべき");
+    assert_eq!(lines[5], "1", "body は apply ノードであるべき");
+}
+
+/// TEST-SYNTAX-02q: defn の :where clause を最小 payload のままスキップできる
+#[test]
+fn test_e2e_selfhost_parser_defn_where_clause() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(defn show-it [x] :where [(Show a)] (show x))") 0)
+        body (vector-get node 4)
+        callee (vector-get body 1)
+        arg1 (vector-get body 3)]
+    (do
+      (print (if (= (vector-get node 0) 20) 1 0))
+      (print (if (= (vector-get node 1) (name-hash "show-it" 0 7)) 1 0))
+      (print (vector-get node 2))
+      (print (if (= (vector-get node 3) (name-hash "x" 0 1)) 1 0))
+      (print (if (= (vector-get body 0) (ast-apply)) 1 0))
+      (print (vector-get body 2))
+      (print (if (= (vector-get callee 0) (ast-var)) 1 0))
+      (print (if (= (vector-get callee 1) (name-hash "show" 0 4)) 1 0))
+      (print (if (= (vector-get arg1 1) (name-hash "x" 0 1)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 9, "where defn parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "defn tag が一致すべき");
+    assert_eq!(lines[1], "1", "関数名 hash が一致すべき");
+    assert_eq!(lines[2], "1", "param count は 1 であるべき");
+    assert_eq!(lines[3], "1", "param1 hash は x であるべき");
+    assert_eq!(lines[4], "1", "body は apply ノードであるべき");
+    assert_eq!(lines[5], "1", "apply arg count は 1 であるべき");
+    assert_eq!(lines[6], "1", "callee は var ノードであるべき");
+    assert_eq!(lines[7], "1", "callee hash は show であるべき");
+    assert_eq!(lines[8], "1", "arg hash は x であるべき");
+}
+
+/// TEST-SYNTAX-02q2: defn の複数 :where clause をスキップして body を保てる
+#[test]
+fn test_e2e_selfhost_parser_defn_multiple_where_clauses() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(defn show-eq [x y] :where [(Show a) (Eq a)] (do (show x) (== x y)))") 0)
+        body (vector-get node 5)]
+    (do
+      (print (if (= (vector-get node 0) (ast-defn)) 1 0))
+      (print (if (= (vector-get node 1) (name-hash "show-eq" 0 7)) 1 0))
+      (print (vector-get node 2))
+      (print (if (= (vector-get node 3) (name-hash "x" 0 1)) 1 0))
+      (print (if (= (vector-get node 4) (name-hash "y" 0 1)) 1 0))
+      (print (if (= (vector-get body 0) (ast-do)) 1 0))
+      (print (vector-get body 1))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 7,
+        "multiple where parser 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "defn tag が一致すべき");
+    assert_eq!(lines[1], "1", "関数名 hash が一致すべき");
+    assert_eq!(lines[2], "2", "param count は 2 であるべき");
+    assert_eq!(lines[3], "1", "param1 hash は x であるべき");
+    assert_eq!(lines[4], "1", "param2 hash は y であるべき");
+    assert_eq!(lines[5], "1", "body は do ノードであるべき");
+    assert_eq!(lines[6], "2", "do expr-count は 2 であるべき");
+}
+
+/// TEST-SYNTAX-02r: defn の metadata directives を最小 payload のままスキップできる
+#[test]
+fn test_e2e_selfhost_parser_defn_metadata_directives() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(defn toggle [state] :invariant state :transitions [(Open -> Closed) (Closed -> Open)] (toggle-next state))") 0)
+        body (vector-get node 4)]
+    (do
+      (print (if (= (vector-get node 0) 20) 1 0))
+      (print (if (= (vector-get node 1) (name-hash "toggle" 0 6)) 1 0))
+      (print (vector-get node 2))
+      (print (if (= (vector-get node 3) (name-hash "state" 0 5)) 1 0))
+      (print (if (= (vector-get body 0) (ast-apply)) 1 0))
+      (print (vector-get body 2))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 6, "metadata defn parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "defn tag が一致すべき");
+    assert_eq!(lines[1], "1", "関数名 hash が一致すべき");
+    assert_eq!(lines[2], "1", "param count は 1 であるべき");
+    assert_eq!(lines[3], "1", "param1 hash は state であるべき");
+    assert_eq!(lines[4], "1", "body は apply ノードであるべき");
+    assert_eq!(lines[5], "1", "apply arg count は 1 であるべき");
+}
+
+/// TEST-SYNTAX-02s: defn の string metadata directives を最小 payload のままスキップできる
+#[test]
+fn test_e2e_selfhost_parser_defn_string_metadata() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(defn add [x y] :doc \"addition\" :returns \"sum\" (+ x y))") 0)
+        body (vector-get node 5)]
+    (do
+      (print (if (= (vector-get node 0) 20) 1 0))
+      (print (if (= (vector-get node 1) (name-hash "add" 0 3)) 1 0))
+      (print (vector-get node 2))
+      (print (if (= (vector-get node 3) (name-hash "x" 0 1)) 1 0))
+      (print (if (= (vector-get node 4) (name-hash "y" 0 1)) 1 0))
+      (print (if (= (vector-get body 0) (ast-apply)) 1 0))
+      (print (vector-get body 2))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 7, "string metadata parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "defn tag が一致すべき");
+    assert_eq!(lines[1], "1", "関数名 hash が一致すべき");
+    assert_eq!(lines[2], "2", "param count は 2 であるべき");
+    assert_eq!(lines[3], "1", "param1 hash は x であるべき");
+    assert_eq!(lines[4], "1", "param2 hash は y であるべき");
+    assert_eq!(lines[5], "1", "body は apply ノードであるべき");
+    assert_eq!(lines[6], "2", "apply arg count は 2 であるべき");
+}
+
+/// TEST-SYNTAX-02t: defn の params metadata を最小 payload のままスキップできる
+#[test]
+fn test_e2e_selfhost_parser_defn_params_metadata() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(defn add [x y] :doc \"addition\" :params [(x \"left\") (y \"right\")] :returns \"sum\" (+ x y))") 0)
+        body (vector-get node 5)]
+    (do
+      (print (if (= (vector-get node 0) 20) 1 0))
+      (print (if (= (vector-get node 1) (name-hash "add" 0 3)) 1 0))
+      (print (vector-get node 2))
+      (print (if (= (vector-get node 3) (name-hash "x" 0 1)) 1 0))
+      (print (if (= (vector-get node 4) (name-hash "y" 0 1)) 1 0))
+      (print (if (= (vector-get body 0) (ast-apply)) 1 0))
+      (print (vector-get body 2))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 7, "params metadata parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "defn tag が一致すべき");
+    assert_eq!(lines[1], "1", "関数名 hash が一致すべき");
+    assert_eq!(lines[2], "2", "param count は 2 であるべき");
+    assert_eq!(lines[3], "1", "param1 hash は x であるべき");
+    assert_eq!(lines[4], "1", "param2 hash は y であるべき");
+    assert_eq!(lines[5], "1", "body は apply ノードであるべき");
+    assert_eq!(lines[6], "2", "apply arg count は 2 であるべき");
 }
 
 /// TEST-SYNTAX-04: Hygiene.ls gensym/scope-id/expansion trace

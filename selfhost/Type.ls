@@ -30,6 +30,14 @@
 (defn make-type-string []
   (vector-push (vector-push (vector-new 2) 1) 300))
 
+;; Float 型
+(defn make-type-float []
+  (vector-push (vector-push (vector-new 2) 1) 400))
+
+;; Unit 型
+(defn make-type-unit []
+  (vector-push (vector-push (vector-new 2) 1) 500))
+
 ;; 型変数
 (defn make-type-var [id]
   (vector-push (vector-push (vector-new 2) 2) id))
