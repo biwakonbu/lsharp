@@ -1,3 +1,7 @@
+(module Parser)
+(import Token)
+(import AST)
+
 ;; Parser.ls - L# セルフホスティング: 再帰降下パーサー
 ;;
 ;; Lexer が出力したトークン列 (3つ組 Vector) を受け取り、AST を構築する。

@@ -1,3 +1,6 @@
+(module AST)
+(import Token)
+
 ;; AST.ls - L# セルフホスティング: AST 定義
 ;;
 ;; Rust 版 ast.rs に対応する AST を整数タグで表現する。

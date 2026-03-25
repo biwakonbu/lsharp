@@ -1,3 +1,7 @@
+(module MacroExpand)
+(import AST)
+(import Token)
+
 ;; MacroExpand.ls - L# セルフホスティング: マクロ展開フェーズ
 ;;
 ;; defmacro で定義されたマクロを名前→展開ルールのマップで保持し、

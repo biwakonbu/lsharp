@@ -1,9 +1,49 @@
+(module Main)
+(import Lexer)
+(import Parser)
+(import MacroExpand)
+(import TypeInfer)
+(import Compiler)
+(import WasmEmit)
+
 ;; Main.ls - L# セルフホスティング: 統合パイプライン
 ;;
 ;; Source -> Lexer -> Parser -> MacroExpand -> TypeInfer -> Compiler -> WasmEmit
 ;; の完全パイプラインを実現する。
+;;
+;; ============================================================
+;; モジュール依存関係
+;; ============================================================
+;;
+;; Main.ls は以下のモジュールに依存する:
+;;
+;;   Token.ls     - トークン定数定義
+;;   AST.ls       - AST ノードタグ・構築関数
+;;   IR.ls        - IR 命令定数
+;;   Lexer.ls     - トークナイズ (import Lexer)
+;;   Parser.ls    - パース (import Parser)
+;;   MacroExpand.ls - マクロ展開 (import MacroExpand)
+;;   TypeInfer.ls - 型推論 (import TypeInfer)
+;;   Compiler.ls  - AST -> IR 変換 (import Compiler)
+;;   WasmEmit.ls  - IR -> Wasm バイナリ生成 (import WasmEmit)
+;;
+;; 現在 Main.ls は各モジュールの関数をインラインで再定義している。
+;; import 解決が動作したら、これらのインライン定義を import で置換する。
+;;
+;; 依存グラフ:
+;;   Main -> Lexer -> Token
+;;   Main -> Parser -> Token, AST
+;;   Main -> MacroExpand -> AST, Token
+;;   Main -> TypeInfer -> AST, Type, TypeScheme
+;;   Main -> Compiler -> AST, IR
+;;   Main -> WasmEmit -> IR
+;;
+;; ============================================================
 
+;; ============================================================
 ;; Token 定数 (Token.ls より)
+;; import 解決が動作したら Token.ls から import で置換予定
+;; ============================================================
 
 (defn tok-lparen [] 0)
 (defn tok-rparen [] 1)
@@ -37,7 +77,10 @@
 (defn tok-dot [] 53)
 (defn tok-eof [] 99)
 
+;; ============================================================
 ;; AST 定義 (AST.ls より)
+;; import 解決が動作したら AST.ls から import で置換予定
+;; ============================================================
 
 (defn ast-lit-int [] 1)
 (defn ast-lit-bool [] 2)
@@ -52,6 +95,7 @@
 (defn ast-type-decl [] 21)
 
 ;; AST ノード構築
+;; import 解決が動作したら AST.ls から import で置換予定
 (defn make-lit-int [value]
   (let [v (vector-new 2)]
     (vector-push (vector-push v 1) value)))
@@ -67,7 +111,10 @@
 (defn ast-tag [node]
   (vector-get node 0))
 
+;; ============================================================
 ;; IR 定義 (IR.ls より)
+;; import 解決が動作したら IR.ls から import で置換予定
+;; ============================================================
 
 (defn ir-i64-const [] 1)
 (defn ir-f64-const [] 2)
@@ -89,6 +136,7 @@
 (defn ir-end [] 43)
 
 ;; IR 命令構築
+;; import 解決が動作したら IR.ls から import で置換予定
 (defn make-instr [opcode operand]
   (vector-push (vector-push (vector-new 2) opcode) operand))
 
@@ -101,7 +149,10 @@
 (defn make-call [func-idx]
   (make-instr 40 func-idx))
 
+;; ============================================================
 ;; Compiler (Compiler.ls より)
+;; import 解決が動作したら Compiler.ls から import で置換予定
+;; ============================================================
 
 (defn emit-instr [opcode operand]
   (vector-push (vector-push (vector-new 2) opcode) operand))
@@ -166,7 +217,10 @@
                 (emit-to instrs 1 0)))))))))
 
 
+;; ============================================================
 ;; WasmEmit (WasmEmit.ls より)
+;; import 解決が動作したら WasmEmit.ls から import で置換予定
+;; ============================================================
 
 (defn wasm-magic-0 [] 0)
 (defn wasm-magic-1 [] 97)
@@ -252,6 +306,11 @@
           b7 (emit-byte b6 126)]
       b7)))
 
+;; ============================================================
+;; Main.ls 固有の関数
+;; 以下の関数は Main.ls 固有であり、import による置換対象外
+;; ============================================================
+
 ;; WASI ファイル I/O
 
 (defn read-source [path]
@@ -272,7 +331,11 @@
 
 (defn module-count [] 10)
 
+;; ============================================================
 ;; ミニトークナイザー (ソース文字列 -> トークン列)
+;; Lexer.ls の簡易版。import 解決が動作したら Lexer.ls の
+;; tokenize 関数を使用する形に置換予定。
+;; ============================================================
 
 (defn is-whitespace [ch]
   (if (= ch 32) 1
@@ -446,7 +509,11 @@
       (ref-set tokens (vector-push (vector-push (ref-get tokens) 99) 0))
       (ref-get tokens))))
 
+;; ============================================================
 ;; ミニパーサー (トークン列 -> AST)
+;; Parser.ls の簡易版。import 解決が動作したら Parser.ls の
+;; parse 関数を使用する形に置換予定。
+;; ============================================================
 
 (defn tok-at-kind [tokens idx]
   (vector-get tokens (* idx 2)))
@@ -592,9 +659,13 @@
     (let [result (vector-new 3)]
       (vector-push (vector-push (vector-push result tokens) defn-ast) ir-instrs))))
 
+;; ============================================================
 ;; MacroExpand コア (MacroExpand.ls より最小統合)
+;; import 解決が動作したら MacroExpand.ls の expand-macros を
+;; 直接呼び出す形に置換予定。
 ;; マクロテーブルが空の場合、AST をそのまま返すパススルー実装。
 ;; defmacro が含まれない通常プログラムでは expand-macros-mini が使える。
+;; ============================================================
 
 (defn macro-table-new-mini [] (map-new))
 
@@ -605,9 +676,13 @@
         tsize (map-size table)]
     (if (= tsize 0) program program)))
 
+;; ============================================================
 ;; TypeInfer コア (TypeInfer.ls より最小統合)
+;; import 解決が動作したら TypeInfer.ls の infer-expr を
+;; 直接呼び出す形に置換予定。
 ;; 型タグ: 1=Con, 2=Var, 3=Fun
 ;; 型名ハッシュ: 100=Int, 200=Bool, 300=String
+;; ============================================================
 
 (defn ti-ty-con [] 1)
 (defn ti-ty-var [] 2)
@@ -664,7 +739,13 @@
           e7 (map-insert e6 60 3)]
       e7)))
 
+;; ============================================================
 ;; 完全パイプライン: Source -> Token -> AST -> MacroExpand -> TypeInfer -> IR -> Wasm
+;; compile-full-pipeline は MacroExpand と TypeInfer の完全版を呼び出す。
+;; 現時点では簡易版 (expand-macros-mini, ti-infer-expr) を使用。
+;; import 解決が動作したら MacroExpand.expand-macros と
+;; TypeInfer.infer-expr を直接呼び出す形に更新する。
+;; ============================================================
 
 ;; 完全パイプラインでコンパイル
 ;; 戻り値: [tokens, defn-ast, expanded-ast, type-result, ir-instrs]
@@ -691,7 +772,9 @@
     (vector-push (vector-push (vector-push (vector-push
       (vector-push result tokens) defn-ast) expanded-body) ti-result) ir-instrs)))
 
+;; ============================================================
 ;; 統合パイプライン: メイン関数
+;; ============================================================
 
 (defn main []
   (let [;; 旧パイプライン (手動 AST)

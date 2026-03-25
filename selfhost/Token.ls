@@ -1,3 +1,5 @@
+(module Token)
+
 ;; Token.ls - L# セルフホスティング: トークン定義
 ;;
 ;; Rust 版 token.rs に対応する Token ADT を定義する。

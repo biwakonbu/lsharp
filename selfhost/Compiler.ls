@@ -1,3 +1,7 @@
+(module Compiler)
+(import AST)
+(import IR)
+
 ;; Compiler.ls - L# セルフホスティング: AST → IR 変換
 ;;
 ;; AST ノード (整数タグ + Vector) を IR 命令列 (Vector of Vector) に変換する。

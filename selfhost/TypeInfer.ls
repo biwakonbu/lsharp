@@ -1,3 +1,8 @@
+(module TypeInfer)
+(import AST)
+(import Type)
+(import TypeScheme)
+
 ;; TypeInfer.ls - L# セルフホスティング: Hindley-Milner 型推論
 ;;
 ;; Type.ls (型定義・単一化・代入) と TypeScheme.ls (汎化・具体化) を使い、

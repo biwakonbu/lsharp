@@ -1,3 +1,5 @@
+(module Type)
+
 ;; Type.ls - L# セルフホスティング: 型定義
 ;;
 ;; Hindley-Milner 型推論で使用する型の表現。
