@@ -42,6 +42,13 @@
       (if (= found 1) 1
         (recordupdate-contains-var-loop node target-hash (+ idx 1) count)))))
 
+(defn computation-contains-var-loop [node target-hash idx count]
+  (if (>= idx count) 0
+    (let [expr (vector-get node (+ 5 (* idx 3)))
+          found (ast-contains-var expr target-hash)]
+      (if (= found 1) 1
+        (computation-contains-var-loop node target-hash (+ idx 1) count)))))
+
 (defn ast-contains-var [node target-hash]
   (let [tag (vector-get node 0)]
     (if (= tag 4)
@@ -49,12 +56,16 @@
       (if (= tag 1) 0
       (if (= tag 2) 0
       (if (= tag 3) 0
+      (if (= tag 11)
+        (ast-contains-var (vector-get node 1) target-hash)
       (if (= tag 12)
         (recordlit-contains-var-loop node target-hash 0 (vector-get node 2))
       (if (= tag 14)
         (let [base-found (ast-contains-var (vector-get node 1) target-hash)]
           (if (= base-found 1) 1
             (recordupdate-contains-var-loop node target-hash 0 (vector-get node 2))))
+      (if (= tag 15)
+        (computation-contains-var-loop node target-hash 0 (vector-get node 2))
       (if (= tag 16)
         (ast-contains-var (vector-get node 1) target-hash)
       (if (= tag 17)
@@ -123,7 +134,7 @@
                           0)))
                     0)))
               0)))
-      0))))))))))))))))
+      0))))))))))))))))))
 
 ;; リント診断の重要度
 (defn lint-error [] 0)

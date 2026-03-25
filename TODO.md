@@ -12,7 +12,7 @@
 ## Phase 11: Rust 完全撤去
 
 > **直近反映 (2026-03-25)** — 実測・コードベース同期:
-> - E2E: `crates/lsharp-wasm/tests/e2e.rs` に `#[test]` **363 件**（`cargo test -p lsharp-wasm --test e2e`）。ブートストラップ検証の主経路は `try_compile_and_run_file` / `compile_and_run_file`（マルチファイル・import）。インラインソース用の `try_compile_and_run` は将来の最小再現テスト用に **残置**（現状 `#[allow(dead_code)]`）。
+> - E2E: `crates/lsharp-wasm/tests/e2e.rs` に `#[test]` **365 件**（`cargo test -p lsharp-wasm --test e2e`）。ブートストラップ検証の主経路は `try_compile_and_run_file` / `compile_and_run_file`（マルチファイル・import）。インラインソース用の `try_compile_and_run` は将来の最小再現テスト用に **残置**（現状 `#[allow(dead_code)]`）。
 > - `selfhost/Main.ls` は import-only パイプライン (BOOT-01)。マルチファイル Wasm は `ModuleGraph::topological_sort` でモジュール名・import 名をソートし出力の再現性を担保。複数 `main` 定義がある場合は **最後**の `main` をエントリにする（`crates/lsharp-wasm/src/wasi.rs`）。
 > - `Lower.ls` / `LowerPattern.ls` の stage0 stack overflow は `lsharp-types` の `Type::apply_subst` ループ化・Var サイクル打ち切りで解消。`scripts/ci/compile-phase11-inputs.sh` に含め、`KNOWN_BLOCKERS` なし。
 > - `test_e2e_bootstrap_stage1_stage2_match` 等は proxy のまま。加え `test_e2e_bootstrap_stage0_oracle_chain_four_way_identity` で Rust oracle 4 連一致を固定。
@@ -101,7 +101,7 @@
 ### Phase 11 クリティカルパス現況
 
 - [~] `CP-01 Frontend/bootstrap` -- Step 1 完了 + WASM-03 / oracle 4 連一致テスト。真 bootstrap は未接続。Evidence: `crates/lsharp-wasm/tests/e2e.rs`（`test_e2e_bootstrap_stage0_oracle_chain_four_way_identity` 等）
-- [~] `CP-02 Syntax/types parity` -- syntax/type 系テストは増えており、selfhost parser の宣言タグ正規化・追加キーワード token 整合・可変長ノード count field 更新・特殊記号 token (`'`, `~`, `~@`, `#`, `@`) 整合・quote/unquote 系 parser・`record`/`trait` 宣言タグの canonical 化・record literal / record update parser・`defmacro` / `private` 宣言 parser・`type-alias` / `type-constrained` / `computation-builder` / `impl` の decl tag 対応と `MacroExpand.ls` の `ast-defmacro` 整合までは TDD で固定済み。ただし完了判定に必要な parity table は未充足。Evidence: `docs/development/planning/compatibility-matrix.md`, `docs/development/planning/completion-criteria.md`
+- [~] `CP-02 Syntax/types parity` -- syntax/type 系テストは増えており、selfhost parser の宣言タグ正規化・追加キーワード token 整合・可変長ノード count field 更新・特殊記号 token (`'`, `~`, `~@`, `#`, `@`) 整合・quote/unquote 系 parser・`record`/`trait` 宣言タグの canonical 化・record literal / record update parser・`defmacro` / `private` 宣言 parser・`type-alias` / `type-constrained` / `computation-builder` / `impl` の decl tag 対応・`(: expr Type)` の `ann` form parser と AST/Linter traversal・float literal の `tok-float` / parser / `ast-lit-float` 最小 payload・`MacroExpand.ls` の `ast-defmacro` 整合までは TDD で固定済み。ただし完了判定に必要な parity table は未充足。Evidence: `docs/development/planning/compatibility-matrix.md`, `docs/development/planning/completion-criteria.md`, `test_e2e_selfhost_parser_ann_form`, `test_e2e_selfhost_parser_float_literal`
 - [~] `CP-03 IR/backend/native` -- Lower/LowerPattern の stage0 compile は通過。native parity / Wasm 実行差分は structure 〜 Wasm 側のみ。Evidence: `selfhost/Lower.ls`, `test_e2e_selfhost_wasm_native_differential`, `tests/differential-allowlist.yaml`
 - [~] `CP-04 Public toolchain` -- `selfhost/Cli.ls`, `selfhost/LspServer.ls`, `selfhost/Formatter.ls`, `selfhost/TestRunner.ls` は骨格実装に留まる。Evidence: `selfhost/Cli.ls`, `selfhost/LspServer.ls`, `selfhost/Formatter.ls`, `selfhost/TestRunner.ls`
 - [~] `CP-05 Runtime stability` -- `test_e2e_gc_light_compile_run_loop` で短ループ回帰。1,000 cycle / メトリクス CI は未達。Evidence: `crates/lsharp-wasm/tests/e2e.rs`

@@ -117,6 +117,19 @@
       (scan-digits src (+ pos 1) len)
       pos)))
 
+;; 小数を含む数値の終端位置を返す
+;; 先頭の整数部は既に scan-digits 済みである前提
+(defn scan-number-end [src int-end len]
+  (if (>= int-end len)
+    int-end
+    (if (== (string-char-at src int-end) 46) ;; .
+      (if (< (+ int-end 1) len)
+        (if (is-digit-char (string-char-at src (+ int-end 1)))
+          (scan-digits src (+ int-end 2) len)
+          int-end)
+        int-end)
+      int-end)))
+
 ;; === シンボル読み取り ===
 
 ;; シンボルの終端位置を返す
@@ -182,8 +195,11 @@
                                         ;; ソース末尾の - (シンボル)
                                         (+ (* 20 1000000) (+ pos 1)))
                                       (if (is-digit-char c)
-                                        (let [end (scan-digits src (+ pos 1) len)]
-                                          (+ (* 10 1000000) end))  ;; Int
+                                        (let [int-end (scan-digits src (+ pos 1) len)
+                                              end (scan-number-end src int-end len)]
+                                          (if (> end int-end)
+                                            (+ (* 11 1000000) end)  ;; Float
+                                            (+ (* 10 1000000) end)))  ;; Int
                                         (if (is-symbol-start c)
                                           (let [end (scan-symbol-end src (+ pos 1) len)
                                                 name (substring src pos end)

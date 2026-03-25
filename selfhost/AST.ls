@@ -29,6 +29,13 @@
 (defn ast-quote [] 16)          ;; クオート Quote
 (defn ast-unquote [] 17)        ;; アンクオート Unquote
 (defn ast-unquote-splice [] 18) ;; アンクオートスプライス UnquoteSplice
+(defn ast-lit-float [] 19)      ;; 浮動小数点リテラル Float
+
+;; Computation step kind
+(defn computation-step-expr [] 0)
+(defn computation-step-let-bang [] 1)
+(defn computation-step-do-bang [] 2)
+(defn computation-step-return [] 3)
 
 ;; 宣言 (Decl)
 (defn ast-defn [] 20)           ;; 関数定義 Defn
@@ -59,6 +66,12 @@
   (let [v (vector-new 2)]
     (vector-push (vector-push v 1) value)))
 
+;; 浮動小数点リテラル: [19, start, end]
+;; 値そのものではなく source span を保持する
+(defn make-lit-float [start end]
+  (let [v (vector-new 3)]
+    (vector-push (vector-push (vector-push v (ast-lit-float)) start) end)))
+
 ;; 真偽値リテラル: [2, 0/1]
 (defn make-lit-bool [b]
   (let [v (vector-new 2)]
@@ -70,6 +83,11 @@
   (let [v (vector-new 2)]
     (vector-push (vector-push v 4) name-hash)))
 
+;; 型注釈: [11, expr]
+(defn make-ann [expr]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v (ast-ann)) expr)))
+
 ;; レコードリテラル: [12, type-name-hash, field-count, field1-hash, expr1, ...]
 (defn make-recordlit [type-name-hash]
   (let [v (vector-new 8)]
@@ -79,6 +97,11 @@
 (defn make-recordupdate [base-expr]
   (let [v (vector-new 8)]
     (vector-push (vector-push (vector-push v (ast-recordupdate)) base-expr) 0)))
+
+;; 計算式: [15, builder-hash, step-count, step-kind1, aux1, expr1, ...]
+(defn make-computation [builder-hash]
+  (let [v (vector-new 8)]
+    (vector-push (vector-push (vector-push v (ast-computation)) builder-hash) 0)))
 
 ;; 型宣言: [21, name-hash]
 (defn make-type-decl [name-hash]
@@ -180,7 +203,8 @@
     (if (= tag 2) 1
       (if (= tag 4) 1
         (if (= tag 3) 1
-          0)))))
+          (if (= tag 19) 1
+            0))))))
 
 ;; ノード内で特定の name-hash を持つ var 参照が存在するか検索
 ;; 見つかれば 1、なければ 0
@@ -199,6 +223,13 @@
       (if (= found 1) 1
         (recordupdate-contains-var-loop node target-hash (+ idx 1) count)))))
 
+(defn computation-contains-var-loop [node target-hash idx count]
+  (if (>= idx count) 0
+    (let [expr (vector-get node (+ 5 (* idx 3)))
+          found (ast-contains-var expr target-hash)]
+      (if (= found 1) 1
+        (computation-contains-var-loop node target-hash (+ idx 1) count)))))
+
 (defn ast-contains-var [node target-hash]
   (let [tag (vector-get node 0)]
     (if (= tag 4)
@@ -207,12 +238,16 @@
       (if (= tag 1) 0      ;; lit-int: 子なし
       (if (= tag 2) 0      ;; lit-bool: 子なし
       (if (= tag 3) 0      ;; lit-string: 子なし
+      (if (= tag 11)
+        (ast-contains-var (vector-get node 1) target-hash)
       (if (= tag 12)
         (recordlit-contains-var-loop node target-hash 0 (vector-get node 2))
       (if (= tag 14)
         (let [base-found (ast-contains-var (vector-get node 1) target-hash)]
           (if (= base-found 1) 1
             (recordupdate-contains-var-loop node target-hash 0 (vector-get node 2))))
+      (if (= tag 15)
+        (computation-contains-var-loop node target-hash 0 (vector-get node 2))
       (if (= tag 16)
         (ast-contains-var (vector-get node 1) target-hash)
       (if (= tag 17)
@@ -242,7 +277,7 @@
                   (ast-contains-var (vector-get node 4) target-hash)
                   0)))
             0))
-      0))))))))))))))
+      0))))))))))))))))
 
 ;; AST ノードの数を再帰的にカウント (走査テスト用)
 (defn recordlit-count-fields-loop [node idx count]
@@ -255,15 +290,24 @@
     (+ (ast-count-nodes (vector-get node (+ 4 (* idx 2))))
        (recordupdate-count-fields-loop node (+ idx 1) count))))
 
+(defn computation-count-steps-loop [node idx count]
+  (if (>= idx count) 0
+    (+ (ast-count-nodes (vector-get node (+ 5 (* idx 3))))
+       (computation-count-steps-loop node (+ idx 1) count))))
+
 (defn ast-count-nodes [node]
   (let [tag (vector-get node 0)]
     (if (= (ast-is-leaf tag) 1)
       1
+      (if (= tag 11)
+        (+ 1 (ast-count-nodes (vector-get node 1)))
       (if (= tag 12)
         (+ 1 (recordlit-count-fields-loop node 0 (vector-get node 2)))
       (if (= tag 14)
         (+ 1 (+ (ast-count-nodes (vector-get node 1))
                (recordupdate-count-fields-loop node 0 (vector-get node 2))))
+      (if (= tag 15)
+        (+ 1 (computation-count-steps-loop node 0 (vector-get node 2)))
       (if (= tag 16)
         (+ 1 (ast-count-nodes (vector-get node 1)))
       (if (= tag 17)
@@ -333,7 +377,7 @@
               (+ 1 (+ sc (+ (ast-count-nodes (vector-get node 3))
                            (ast-count-nodes (vector-get node 4))))))
             (+ 1 sc)))
-      1)))))))))))))
+      1)))))))))))))))
 
 ;; エントリポイント (テスト用)
 (defn main []

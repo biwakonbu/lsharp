@@ -9300,6 +9300,154 @@ fn test_e2e_selfhost_parser_extended_decl_forms() {
     assert_eq!(lines[10], "1", "impl type 名ハッシュが一致すべき");
 }
 
+/// TEST-SYNTAX-02k: annotation form を AST ノードにパースできる
+#[test]
+fn test_e2e_selfhost_parser_ann_form() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(: 42 Int)") 0)
+        inner (vector-get node 1)]
+    (do
+      (print (if (= (vector-get node 0) (ast-ann)) 1 0))
+      (print (if (= (vector-get inner 0) (ast-lit-int)) 1 0))
+      (print (vector-get inner 1))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "annotation parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "annotation は ast-ann であるべき");
+    assert_eq!(lines[1], "1", "annotation inner は int literal であるべき");
+    assert_eq!(lines[2], "42", "annotation inner の値が保持されるべき");
+}
+
+/// TEST-SYNTAX-02l: float literal を lexer/parser で扱える
+#[test]
+fn test_e2e_selfhost_parser_float_literal() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [src "3.14"
+        tokens (tokenize-with-spans src)
+        node (vector-get (parse-program src) 0)]
+    (do
+      (print (if (= (token-kind tokens 0) (tok-float)) 1 0))
+      (print (if (= (vector-get node 0) (ast-lit-float)) 1 0))
+      (print (vector-get node 1))
+      (print (vector-get node 2))
+      (print (if (string-eq (substring src (vector-get node 1) (vector-get node 2)) "3.14") 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 5, "float parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "3.14 は tok-float であるべき");
+    assert_eq!(lines[1], "1", "float literal は ast-lit-float であるべき");
+    assert_eq!(lines[2], "0", "float literal の start は 0 であるべき");
+    assert_eq!(lines[3], "4", "float literal の end は 4 であるべき");
+    assert_eq!(lines[4], "1", "float literal の lexeme が保持されるべき");
+}
+
+/// TEST-SYNTAX-02m: computation expression を最小 payload でパースできる
+#[test]
+fn test_e2e_selfhost_parser_computation_expr() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(computation maybe-builder (let! x m) (do! side) value (return x))") 0)
+        step1-expr (vector-get node 5)
+        step2-expr (vector-get node 8)
+        step3-expr (vector-get node 11)
+        step4-expr (vector-get node 14)]
+    (do
+      (print (if (= (vector-get node 0) (ast-computation)) 1 0))
+      (print (if (= (vector-get node 1) (name-hash "maybe-builder" 0 13)) 1 0))
+      (print (vector-get node 2))
+      (print (if (= (vector-get node 3) (computation-step-let-bang)) 1 0))
+      (print (if (= (vector-get node 4) (name-hash "x" 0 1)) 1 0))
+      (print (if (= (vector-get step1-expr 0) (ast-var)) 1 0))
+      (print (if (= (vector-get step1-expr 1) (name-hash "m" 0 1)) 1 0))
+      (print (if (= (vector-get node 6) (computation-step-do-bang)) 1 0))
+      (print (if (= (vector-get step2-expr 1) (name-hash "side" 0 4)) 1 0))
+      (print (if (= (vector-get node 9) (computation-step-expr)) 1 0))
+      (print (if (= (vector-get step3-expr 1) (name-hash "value" 0 5)) 1 0))
+      (print (if (= (vector-get node 12) (computation-step-return)) 1 0))
+      (print (if (= (vector-get step4-expr 1) (name-hash "x" 0 1)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 13, "computation parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "computation は ast-computation であるべき");
+    assert_eq!(lines[1], "1", "builder 名ハッシュが一致すべき");
+    assert_eq!(lines[2], "4", "step count は 4 であるべき");
+    assert_eq!(lines[3], "1", "step1 は let! であるべき");
+    assert_eq!(lines[4], "1", "step1 pattern hash が一致すべき");
+    assert_eq!(lines[5], "1", "step1 expr は var であるべき");
+    assert_eq!(lines[6], "1", "step1 expr の hash が一致すべき");
+    assert_eq!(lines[7], "1", "step2 は do! であるべき");
+    assert_eq!(lines[8], "1", "step2 expr の hash が一致すべき");
+    assert_eq!(lines[9], "1", "step3 は plain expr であるべき");
+    assert_eq!(lines[10], "1", "step3 expr の hash が一致すべき");
+    assert_eq!(lines[11], "1", "step4 は return であるべき");
+    assert_eq!(lines[12], "1", "step4 expr の hash が一致すべき");
+}
+
 /// TEST-SYNTAX-04: Hygiene.ls gensym/scope-id/expansion trace
 ///
 /// selfhost/Hygiene.ls が存在し、gensym, scope-id, expansion-trace 関数を公開していることを検証。

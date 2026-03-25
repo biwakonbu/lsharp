@@ -111,6 +111,22 @@
 (defn make-string-node [start end]
   (vector-push (vector-push (vector-push (vector-new 3) 3) start) end))
 
+;; 浮動小数点リテラルノード: [19, start, end]
+(defn make-float-node [start end]
+  (vector-push (vector-push (vector-push (vector-new 3) 19) start) end))
+
+;; 計算式ノード: [15, builder-hash, step-count, step-kind1, aux1, expr1, ...]
+(defn make-computation-node [builder-hash]
+  (vector-push (vector-push (vector-push (vector-new 8) 15) builder-hash) 0))
+
+(defn computation-add-step [node step-kind aux expr]
+  (let [count (vector-get node 2)
+        updated (vector-set-at node 2 (+ count 1))]
+    (vector-push (vector-push (vector-push updated step-kind) aux) expr)))
+
+(defn make-computation-step-node [step-kind aux expr]
+  (vector-push (vector-push (vector-push (vector-new 3) step-kind) aux) expr))
+
 ;; vector の特定インデックスを置換する
 ;; 注: vector は不変なので新しい vector を組み立てる
 (defn vector-set-at [vec idx new-val]
@@ -240,6 +256,15 @@
       0)
     0))
 
+(defn parse-ann-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)
+    (let [expr (parse-expr-v3 spans pos-ref src)]
+      (do
+        (skip-type-expr-v3 spans pos-ref)
+        (p-expect spans pos-ref 1)
+        (make-ann expr)))))
+
 (defn parse-type-alias-v3 [spans pos-ref src]
   (do
     (p-advance pos-ref)  ;; type-alias を消費
@@ -346,6 +371,83 @@
           (parse-computation-builder-v3 spans pos-ref src)
           (parse-apply-v3 spans pos-ref src))))))
 
+(defn parse-computation-let-bang-step-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)  ;; (
+    (p-advance pos-ref)  ;; let!
+    (if (== (p-current spans pos-ref) 20)
+      (let [pat-hash (current-symbol-hash-v3 spans pos-ref src)]
+        (do
+          (p-advance pos-ref)
+          (let [expr (parse-expr-v3 spans pos-ref src)]
+            (do
+              (p-expect spans pos-ref 1)
+              (make-computation-step-node (computation-step-let-bang) pat-hash expr)))))
+      (do
+        (parse-skip-to-close-v3 spans pos-ref 1)
+        (make-computation-step-node (computation-step-let-bang) 0 (make-int-node 0))))))
+
+(defn parse-computation-do-bang-step-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)  ;; (
+    (p-advance pos-ref)  ;; do!
+    (let [expr (parse-expr-v3 spans pos-ref src)]
+      (do
+        (p-expect spans pos-ref 1)
+        (make-computation-step-node (computation-step-do-bang) 0 expr)))))
+
+(defn parse-computation-return-step-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)  ;; (
+    (p-advance pos-ref)  ;; return
+    (let [expr (parse-expr-v3 spans pos-ref src)]
+      (do
+        (p-expect spans pos-ref 1)
+        (make-computation-step-node (computation-step-return) 0 expr)))))
+
+(defn parse-computation-step-v3 [spans pos-ref src]
+  (if (== (p-current spans pos-ref) 0)
+    (let [next-idx (+ (ref-get pos-ref) 1)
+          next-kind (span-kind spans next-idx)]
+      (if (== next-kind 20)
+        (let [name (substring src (span-start spans next-idx) (span-end spans next-idx))]
+          (if (string-eq name "let!")
+            (parse-computation-let-bang-step-v3 spans pos-ref src)
+            (if (string-eq name "do!")
+              (parse-computation-do-bang-step-v3 spans pos-ref src)
+              (if (string-eq name "return")
+                (parse-computation-return-step-v3 spans pos-ref src)
+                (let [expr (parse-expr-v3 spans pos-ref src)]
+                  (make-computation-step-node (computation-step-expr) 0 expr)))))
+        (let [expr (parse-expr-v3 spans pos-ref src)]
+          (make-computation-step-node (computation-step-expr) 0 expr))))
+    (let [expr (parse-expr-v3 spans pos-ref src)]
+      (make-computation-step-node (computation-step-expr) 0 expr))))
+
+(defn parse-computation-steps-v3 [spans pos-ref src result]
+  (if (== (p-current spans pos-ref) 1)
+    (do
+      (p-advance pos-ref)
+      result)
+    (let [step (parse-computation-step-v3 spans pos-ref src)]
+      (parse-computation-steps-v3 spans pos-ref src
+        (computation-add-step result
+          (vector-get step 0)
+          (vector-get step 1)
+          (vector-get step 2))))))
+
+(defn parse-computation-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)  ;; computation を消費
+    (if (== (p-current spans pos-ref) 20)
+      (let [builder-hash (current-symbol-hash-v3 spans pos-ref src)]
+        (do
+          (p-advance pos-ref)
+          (parse-computation-steps-v3 spans pos-ref src
+            (make-computation-node builder-hash))))
+      (parse-computation-steps-v3 spans pos-ref src
+        (make-computation-node 0)))))
+
 ;; 式のパース (メインディスパッチ)
 (defn parse-expr-v3 [spans pos-ref src]
   (let [kind (p-current spans pos-ref)]
@@ -355,6 +457,11 @@
             value (parse-int-from-str src start end 0)]
         (do (p-advance pos-ref)
             (make-int-node value)))
+      (if (== kind 11)  ;; Float
+        (let [start (p-start spans pos-ref)
+              end (p-end spans pos-ref)]
+          (do (p-advance pos-ref)
+              (make-float-node start end)))
       (if (== kind 13)  ;; true
         (do (p-advance pos-ref) (make-bool-node 1))
         (if (== kind 14)  ;; false
@@ -384,7 +491,7 @@
                         (parse-sexp-v3 spans pos-ref src)
                         ;; unknown token
                         (do (p-advance pos-ref)
-                            (make-int-node 0))))))))))))))
+                            (make-int-node 0)))))))))))))))
 
 ;; S 式のパース (( の後のキーワードディスパッチ)
 (defn parse-sexp-v3 [spans pos-ref src]
@@ -407,6 +514,10 @@
                     (parse-defmacro-v3 spans pos-ref src)
                     (if (== kind 43)  ;; private
                       (parse-private-v3 spans pos-ref src)
+                      (if (== kind 50)  ;; :
+                        (parse-ann-v3 spans pos-ref src)
+                      (if (== kind 47)  ;; computation
+                        (parse-computation-v3 spans pos-ref src)
                       (if (== kind 34)  ;; type
                         (parse-type-v3 spans pos-ref src)
                         (if (== kind 41)  ;; impl
@@ -420,7 +531,7 @@
                                 (if (== kind 20)  ;; symbol-form
                                   (parse-symbol-form-v3 spans pos-ref src)
                                   ;; 関数適用 (apply)
-                                  (parse-apply-v3 spans pos-ref src))))))))))))))))))
+                                  (parse-apply-v3 spans pos-ref src))))))))))))))))))))
 
 ;; === if 式 ===
 (defn parse-if-v3 [spans pos-ref src]
