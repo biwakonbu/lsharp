@@ -19,69 +19,72 @@ fn kinds_compatible(trait_kind: &Kind, type_kind: &Kind) -> bool {
 /// 型推論エラー
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum TypeError {
-    #[error("型の不一致: {expected} と {found} ({span})")]
+    #[error("[{error_code}] 型の不一致: expected {expected}, found {found} ({span})")]
     Mismatch {
         expected: Type,
         found: Type,
         span: Span,
+        /// エラーコード (E0002=if条件, E0003=分岐不一致, E0004=引数不一致, E0006=一般)
+        error_code: TypeErrorCode,
     },
 
-    #[error("無限型: t{var} は {ty} に出現します ({span})")]
+    #[error("[E0005] 無限型 (infinite type): t{var} は {ty} に出現します ({span})")]
     InfiniteType {
         var: TypeVarId,
         ty: Type,
         span: Span,
     },
 
-    #[error("未定義の変数: {name} ({span})")]
+    #[error("[E0001] 未定義の変数 (undefined): {name} ({span})")]
     UndefinedVar { name: String, span: Span },
 
-    #[error("未定義のコンストラクタ: {name} ({span})")]
+    #[error("[E0001] 未定義のコンストラクタ: {name} ({span})")]
     UndefinedConstructor { name: String, span: Span },
 
-    #[error("引数の数が不一致: 期待 {expected}, 実際 {found} ({span})")]
+    #[error("[E0006] 引数の数が不一致: 期待 {expected}, 実際 {found} ({span})")]
     ArityMismatch {
         expected: usize,
         found: usize,
         span: Span,
     },
 
-    #[error("未定義のレコード型: {name} ({span})")]
+    #[error("[E0001] 未定義のレコード型: {name} ({span})")]
     UndefinedRecord { name: String, span: Span },
 
-    #[error("未定義のフィールド: {record_name}.{field_name} ({span})")]
+    #[error("[E0001] 未定義のフィールド: {record_name}.{field_name} ({span})")]
     UndefinedField {
         record_name: String,
         field_name: String,
         span: Span,
     },
 
-    #[error("再帰的な型エイリアス: {name} ({span})")]
+    #[error("[E0006] 再帰的な型エイリアス: {name} ({span})")]
     RecursiveAlias { name: String, span: Span },
 
-    #[error("未定義の型エイリアス: {name} ({span})")]
+    #[error("[E0001] 未定義の型エイリアス: {name} ({span})")]
     UndefinedAlias { name: String, span: Span },
 
-    #[error("未定義のトレイト: {name} ({span})")]
+    #[error("[E0001] 未定義のトレイト: {name} ({span})")]
     UndefinedTrait { name: String, span: Span },
 
-    #[error("トレイト {trait_name} の実装が見つかりません: {type_name} ({span})")]
+    #[error("[E0006] トレイト {trait_name} の実装が見つかりません: {type_name} ({span})")]
     MissingImpl {
         trait_name: String,
         type_name: String,
         span: Span,
     },
 
-    #[error("型の不一致: {expected} と {found} (エイリアス '{alias_name}' は {expanded} に展開) ({span})")]
+    #[error("[{error_code}] 型の不一致 (mismatch): expected {expected}, found {found} (エイリアス '{alias_name}' は {expanded} に展開) ({span})")]
     MismatchWithAlias {
         expected: Type,
         found: Type,
         alias_name: String,
         expanded: Type,
         span: Span,
+        error_code: TypeErrorCode,
     },
 
-    #[error("Kind の不一致: {type_name} は {actual_kind} ですが、トレイト {trait_name} は {expected_kind} を要求します ({span})")]
+    #[error("[E0006] Kind の不一致: {type_name} は {actual_kind} ですが、トレイト {trait_name} は {expected_kind} を要求します ({span})")]
     KindMismatch {
         type_name: String,
         trait_name: String,
@@ -90,6 +93,32 @@ pub enum TypeError {
         span: Span,
     },
 }
+
+/// 型エラーコード (E0001 形式)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypeErrorCode {
+    /// E0002: if 条件が Bool でない
+    IfCondition,
+    /// E0003: if 分岐の型不一致
+    IfBranch,
+    /// E0004: 関数引数の型不一致
+    ArgMismatch,
+    /// E0006: 一般的な型不一致
+    General,
+}
+
+impl std::fmt::Display for TypeErrorCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TypeErrorCode::IfCondition => write!(f, "E0002"),
+            TypeErrorCode::IfBranch => write!(f, "E0003"),
+            TypeErrorCode::ArgMismatch => write!(f, "E0004"),
+            TypeErrorCode::General => write!(f, "E0006"),
+        }
+    }
+}
+
+impl std::error::Error for TypeErrorCode {}
 
 /// モジュール環境（モジュールごとの型環境・可視性情報）
 #[derive(Debug, Clone, Default)]
@@ -185,6 +214,16 @@ impl Infer {
         for (name, scheme) in types {
             self.external_types.insert(name.clone(), scheme.clone());
         }
+    }
+
+    /// 現在の external_types のスナップショットを Vec 形式で返す
+    ///
+    /// 再帰的 import 解決時に、解決済みの型を推移的に注入するために使用する。
+    pub fn external_types_snapshot(&self) -> Vec<(String, TypeScheme)> {
+        self.external_types
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
     }
 
     /// プログラム全体を型チェック
@@ -1524,6 +1563,29 @@ impl Infer {
         }
     }
 
+    /// TypeError のエラーコードを差し替えるヘルパー
+    fn with_error_code(err: TypeError, code: TypeErrorCode) -> TypeError {
+        match err {
+            TypeError::Mismatch { expected, found, span, .. } => TypeError::Mismatch {
+                expected,
+                found,
+                span,
+                error_code: code,
+            },
+            TypeError::MismatchWithAlias { expected, found, alias_name, expanded, span, .. } => {
+                TypeError::MismatchWithAlias {
+                    expected,
+                    found,
+                    alias_name,
+                    expanded,
+                    span,
+                    error_code: code,
+                }
+            }
+            other => other,
+        }
+    }
+
     /// 関数定義の型推論
     fn infer_defn(
         &mut self,
@@ -1634,7 +1696,9 @@ impl Infer {
 
             Expr::If(span, cond, then, else_) => {
                 let (s1, cond_ty) = self.infer_expr(env, cond)?;
-                let s_cond = self.unify(&cond_ty, &Type::bool(), *span)?;
+                // if 条件は Bool でなければならない (E0002)
+                let s_cond = self.unify(&cond_ty, &Type::bool(), *span)
+                    .map_err(|e| Self::with_error_code(e, TypeErrorCode::IfCondition))?;
                 let s1 = s1.compose(&s_cond);
 
                 let env1 = env.apply_subst(&s1);
@@ -1643,11 +1707,12 @@ impl Infer {
                 let env2 = env1.apply_subst(&s2);
                 let (s3, else_ty) = self.infer_expr(&env2, else_)?;
 
+                // then/else 分岐の型は一致しなければならない (E0003)
                 let s_branch = self.unify(
                     &then_ty.apply_subst(&s3),
                     &else_ty,
                     *span,
-                )?;
+                ).map_err(|e| Self::with_error_code(e, TypeErrorCode::IfBranch))?;
 
                 let final_subst = s1.compose(&s2).compose(&s3).compose(&s_branch);
                 let final_ty = else_ty.apply_subst(&s_branch);
@@ -1709,8 +1774,10 @@ impl Infer {
                 let ret_ty = self.var_gen.fresh();
                 let expected_func_ty = Type::Fun(arg_types, Box::new(ret_ty.clone()));
 
+                // 関数引数の型不一致 (E0004)
                 let s_unify =
-                    self.unify(&func_ty.apply_subst(&subst), &expected_func_ty, *span)?;
+                    self.unify(&func_ty.apply_subst(&subst), &expected_func_ty, *span)
+                        .map_err(|e| Self::with_error_code(e, TypeErrorCode::ArgMismatch))?;
 
                 let final_subst = subst.compose(&s_unify);
                 let final_ty = ret_ty.apply_subst(&s_unify);
@@ -1789,13 +1856,14 @@ impl Infer {
                 let alias_name = self.detect_alias_name(type_expr);
                 let s2 = self.unify(&inferred, &annotated, *span)
                     .map_err(|e| {
-                        if let (TypeError::Mismatch { expected, found, span }, Some(aname)) = (&e, &alias_name) {
+                        if let (TypeError::Mismatch { expected, found, span, error_code }, Some(aname)) = (&e, &alias_name) {
                             TypeError::MismatchWithAlias {
                                 expected: expected.clone(),
                                 found: found.clone(),
                                 alias_name: aname.clone(),
                                 expanded: annotated.clone(),
                                 span: *span,
+                                error_code: error_code.clone(),
                             }
                         } else {
                             e
@@ -2031,6 +2099,7 @@ impl Infer {
                     expected: Type::Con("Record".to_string()),
                     found: base_ty,
                     span,
+                    error_code: TypeErrorCode::General,
                 })
             }
         }
@@ -2237,6 +2306,7 @@ impl Infer {
                         expected: t1.clone(),
                         found: t2.clone(),
                         span,
+                        error_code: TypeErrorCode::General,
                     });
                 }
                 let mut subst = Substitution::new();
@@ -2281,6 +2351,7 @@ impl Infer {
                             expected: Type::Record(name1.clone(), fields1.clone()),
                             found: Type::Record(name2.clone(), fields2.clone()),
                             span,
+                            error_code: TypeErrorCode::General,
                         });
                     }
                     let s = self.unify(
@@ -2304,6 +2375,7 @@ impl Infer {
                 expected: t1.clone(),
                 found: t2.clone(),
                 span,
+                error_code: TypeErrorCode::General,
             }),
         }
     }

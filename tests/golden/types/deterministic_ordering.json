@@ -1,0 +1,29 @@
+{
+  "_comment": "型推論の決定性検証: 同じ入力に対して型変数名と diagnostics 順序が一致すること",
+  "test_cases": [
+    {
+      "description": "identity 関数の型変数名が安定",
+      "source": "(defn id [x] x)",
+      "expected_type_pattern": "forall a. a -> a",
+      "note": "型変数名 'a' は実装依存だが、2回の推論で同一であること"
+    },
+    {
+      "description": "compose 関数の型変数順序が安定",
+      "source": "(defn compose [f g x] (f (g x)))",
+      "expected_type_pattern": "forall a b c. (b -> c) -> (a -> b) -> a -> c",
+      "note": "型変数の出現順序が2回の推論で一致すること"
+    },
+    {
+      "description": "複数関数定義で diagnostics 順序が安定",
+      "source": "(defn f [x] (+ x 1)) (defn g [y] (+ y 2)) (defn main [] (f (g 3)))",
+      "expected_diagnostics_count": 0,
+      "note": "正常なプログラムでは diagnostics が空で安定"
+    },
+    {
+      "description": "型エラーを含むプログラムの diagnostics 順序が安定",
+      "source": "(defn main [] (+ true 1))",
+      "expected_error": true,
+      "note": "エラーメッセージの順序・内容が2回の推論で一致すること"
+    }
+  ]
+}

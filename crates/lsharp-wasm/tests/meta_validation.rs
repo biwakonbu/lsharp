@@ -1,0 +1,183 @@
+//! メタデータ検証テスト: ドキュメント構造の正当性を検証
+//!
+//! TEST-META-01: compatibility matrix 8列拡張の検証
+//! TEST-META-04: gap backlog classification の5分類検証
+
+/// compatibility-matrix.md のヘッダーが 8 列であること、
+/// 必須列名が存在することを検証する。
+///
+/// 8列: Feature, Rust source, L# source, Parity test, Default path, Deletion gate, + 2列拡張
+///
+/// 現状は 6 列なので、8 列拡張が完了するまで FAIL する (Red Phase)。
+#[test]
+fn test_meta_01_compatibility_matrix_8_columns() {
+    let content = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/compatibility-matrix.md"),
+    )
+    .expect("docs/compatibility-matrix.md が読み込めない");
+
+    // ヘッダー行を探す (最初の Markdown テーブルヘッダー)
+    let header_line = content
+        .lines()
+        .find(|line| line.starts_with('|') && line.contains("Rust source"))
+        .expect("テーブルヘッダー行 (Rust source を含む) が見つからない");
+
+    // パイプで分割して列数をカウント (先頭・末尾の空要素を除く)
+    let columns: Vec<&str> = header_line
+        .split('|')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    // 8 列であること
+    assert_eq!(
+        columns.len(),
+        8,
+        "互換マトリクスのヘッダーは 8 列であるべき (現在 {} 列): {:?}",
+        columns.len(),
+        columns
+    );
+
+    // 必須列名の存在チェック
+    let required_columns = [
+        "Feature",
+        "Rust source",
+        "L# source",
+        "Parity test",
+        "Default path",
+        "Deletion gate",
+    ];
+
+    for required in &required_columns {
+        assert!(
+            columns.iter().any(|c| c.contains(required)),
+            "必須列 '{}' がヘッダーに存在しない: {:?}",
+            required,
+            columns
+        );
+    }
+}
+
+/// gap-classification.md に 5 分類のセクション/ラベルが
+/// 全て存在することを検証する。
+///
+/// 5 分類: spec-diff, impl-missing, output-diff, perf-diff, ops-diff
+///
+/// 現状はセクション見出しが日本語名 (仕様差分, 実装欠落, ...) なので、
+/// 英語ラベル (spec-diff 等) が追加されるまで FAIL する (Red Phase)。
+#[test]
+fn test_meta_04_gap_backlog_5_categories() {
+    let content = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/gap-classification.md"),
+    )
+    .expect("docs/gap-classification.md が読み込めない");
+
+    // 5 分類の英語ラベルが全て存在すること
+    let categories = [
+        "spec-diff",
+        "impl-missing",
+        "output-diff",
+        "perf-diff",
+        "ops-diff",
+    ];
+
+    let mut missing: Vec<&str> = Vec::new();
+    for cat in &categories {
+        if !content.contains(cat) {
+            missing.push(cat);
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "gap-classification.md に以下の分類ラベルが不足: {:?} (全 5 分類が必要)",
+        missing
+    );
+
+    // 各分類がセクション (### または ## レベル) として定義されていること
+    for cat in &categories {
+        let section_pattern = format!("# {}", cat);
+        let has_section = content.lines().any(|line| {
+            let trimmed = line.trim();
+            trimmed.contains(cat)
+                && (trimmed.starts_with('#') || trimmed.starts_with("- "))
+        });
+        assert!(
+            has_section || content.contains(&section_pattern),
+            "分類 '{}' がセクション見出しまたはリスト項目として定義されていない",
+            cat
+        );
+    }
+}
+
+/// TEST-META-03: CI ワークフローの audit-docs ゲートジョブ検証
+///
+/// 以下を検証:
+/// 1. `.github/workflows/ci.yml` に `audit_docs` (または `audit-docs`) を実行するジョブが存在する
+/// 2. そのジョブが `ci-gate` の `needs` に含まれている (required check)
+/// 3. `scripts/audit_docs.sh` が存在し実行可能である
+#[test]
+fn test_meta_03_audit_docs_ci_gate() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("プロジェクトルートが見つからない");
+
+    // 1. CI ワークフローファイルの読み込み
+    let ci_yml_path = project_root.join(".github/workflows/ci.yml");
+    assert!(
+        ci_yml_path.exists(),
+        ".github/workflows/ci.yml が存在しない"
+    );
+    let ci_content =
+        std::fs::read_to_string(&ci_yml_path).expect("ci.yml の読み込みに失敗");
+
+    // 2. audit-docs ジョブが存在すること
+    let has_audit_docs_job =
+        ci_content.contains("audit-docs:") || ci_content.contains("audit_docs:");
+    assert!(
+        has_audit_docs_job,
+        "ci.yml に audit-docs (または audit_docs) ジョブが定義されていない"
+    );
+
+    // 3. audit-docs ジョブ内で audit_docs.sh を実行していること
+    let has_audit_script_run = ci_content.contains("audit_docs.sh");
+    assert!(
+        has_audit_script_run,
+        "ci.yml の audit-docs ジョブが scripts/audit_docs.sh を実行していない"
+    );
+
+    // 4. ci-gate の needs に audit-docs が含まれていること
+    let gate_needs_audit = ci_content.lines().any(|line| {
+        line.contains("needs:") && line.contains("audit-docs")
+    });
+    assert!(
+        gate_needs_audit,
+        "ci-gate ジョブの needs に audit-docs が含まれていない。\n\
+         audit-docs は CI の required check として ci-gate に統合される必要がある"
+    );
+
+    // 5. scripts/audit_docs.sh が存在すること
+    let audit_script_path = project_root.join("scripts/audit_docs.sh");
+    assert!(
+        audit_script_path.exists(),
+        "scripts/audit_docs.sh が存在しない"
+    );
+
+    // 6. scripts/audit_docs.sh が実行可能であること
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let metadata = std::fs::metadata(&audit_script_path)
+            .expect("audit_docs.sh のメタデータ取得に失敗");
+        let permissions = metadata.permissions();
+        let is_executable = permissions.mode() & 0o111 != 0;
+        assert!(
+            is_executable,
+            "scripts/audit_docs.sh に実行権限が付与されていない (mode: {:o})",
+            permissions.mode()
+        );
+    }
+}

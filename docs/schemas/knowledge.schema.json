@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lsharp-lang.org/schemas/knowledge.schema.json",
+  "title": "L# Knowledge JSON Schema",
+  "description": "L# knowledge base entry schema (AC-400)",
+  "type": "object",
+  "required": ["id", "title", "content", "category"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Knowledge entry identifier"
+    },
+    "title": {
+      "type": "string",
+      "description": "Entry title"
+    },
+    "content": {
+      "type": "string",
+      "description": "Entry content in markdown format"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["language", "stdlib", "compiler", "toolchain", "runtime"],
+      "description": "Knowledge category"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Search tags"
+    },
+    "related": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Related knowledge entry IDs"
+    },
+    "version": {
+      "type": "string",
+      "description": "Schema version"
+    }
+  },
+  "additionalProperties": false
+}

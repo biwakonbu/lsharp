@@ -105,12 +105,32 @@
 (defn lint-info [] 2)
 (defn lint-hint [] 3)
 
-;; リントルール ID
+;; リントルール ID (数値形式)
 (defn rule-unused-var [] 100)
 (defn rule-unused-import [] 101)
 (defn rule-missing-type-ann [] 102)
 (defn rule-shadowed-var [] 103)
 (defn rule-empty-body [] 104)
+
+;; === P11-4 T4c-2 AC-304: L0001 形式の rule ID ===
+;; 各 lint rule に一意の rule id を付与
+;; L0001: 未使用変数
+;; L0002: 未使用 import
+;; L0003: 型注釈欠落
+;; L0004: 変数シャドウイング
+;; L0005: 空の do ブロック
+;; L0006: 到達不能コード
+;; L0007: 冗長なパターン
+;; L0008: 未使用関数引数
+
+(defn rule-id-L0001 [] 1)
+(defn rule-id-L0002 [] 2)
+(defn rule-id-L0003 [] 3)
+(defn rule-id-L0004 [] 4)
+(defn rule-id-L0005 [] 5)
+(defn rule-id-L0006 [] 6)
+(defn rule-id-L0007 [] 7)
+(defn rule-id-L0008 [] 8)
 
 ;; 診断情報の構築
 ;; [severity, rule-id, line, column, message-hash]

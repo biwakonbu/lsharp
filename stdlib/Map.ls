@@ -10,10 +10,12 @@
   (== (map-size m) 0))
 
 ;; キーに関数を適用してデフォルト値を返す (キーが存在しない場合)
+;; map-contains? は Int (0/1) を返すため == で比較する
 (defn map-get-or [m key default]
-  (if (map-contains? m key)
-    (map-get m key)
-    default))
+  (let [has (map-contains? m key)]
+    (if (== has 1)
+      (map-get m key)
+      default)))
 
 ;; 複数のキー・値ペアを挿入
 (defn map-insert-all-impl [m keys vals i len]

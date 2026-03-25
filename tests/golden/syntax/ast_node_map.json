@@ -1,0 +1,42 @@
+{
+  "_comment": "Rust AST (crates/lsharp-syntax/src/ast.rs) の全ノード型 -> selfhost/AST.ls の対応マッピング",
+  "expr_variants": {
+    "Lit": { "selfhost_tag": "ast-lit-int / ast-lit-bool / ast-lit-string", "coverage": "partial" },
+    "Var": { "selfhost_tag": "ast-var", "coverage": "missing" },
+    "If": { "selfhost_tag": "ast-if", "coverage": "missing" },
+    "Let": { "selfhost_tag": "ast-let", "coverage": "missing" },
+    "Lambda": { "selfhost_tag": "ast-lambda", "coverage": "missing" },
+    "App": { "selfhost_tag": "ast-apply", "coverage": "missing" },
+    "Match": { "selfhost_tag": "ast-match", "coverage": "missing" },
+    "Do": { "selfhost_tag": "ast-do", "coverage": "missing" },
+    "Ann": { "selfhost_tag": null, "coverage": "missing" },
+    "RecordLit": { "selfhost_tag": null, "coverage": "missing" },
+    "FieldAccess": { "selfhost_tag": null, "coverage": "missing" },
+    "RecordUpdate": { "selfhost_tag": null, "coverage": "missing" },
+    "Computation": { "selfhost_tag": null, "coverage": "missing" },
+    "Quote": { "selfhost_tag": null, "coverage": "missing" },
+    "Unquote": { "selfhost_tag": null, "coverage": "missing" },
+    "UnquoteSplice": { "selfhost_tag": null, "coverage": "missing" }
+  },
+  "decl_variants": {
+    "Defn": { "selfhost_tag": "ast-defn", "coverage": "missing" },
+    "TypeDef": { "selfhost_tag": "ast-type-decl", "coverage": "missing" },
+    "RecordDef": { "selfhost_tag": null, "coverage": "missing" },
+    "TypeAlias": { "selfhost_tag": null, "coverage": "missing" },
+    "TypeConstrained": { "selfhost_tag": null, "coverage": "missing" },
+    "ModuleDecl": { "selfhost_tag": null, "coverage": "missing" },
+    "ImportDecl": { "selfhost_tag": null, "coverage": "missing" },
+    "TraitDef": { "selfhost_tag": null, "coverage": "missing" },
+    "ImplDef": { "selfhost_tag": null, "coverage": "missing" },
+    "Private": { "selfhost_tag": null, "coverage": "missing" },
+    "ComputationBuilder": { "selfhost_tag": null, "coverage": "missing" },
+    "DefMacro": { "selfhost_tag": null, "coverage": "missing" }
+  },
+  "pattern_variants": {
+    "Wildcard": { "selfhost_tag": null, "coverage": "missing" },
+    "Var": { "selfhost_tag": null, "coverage": "missing" },
+    "Lit": { "selfhost_tag": null, "coverage": "missing" },
+    "Constructor": { "selfhost_tag": null, "coverage": "missing" },
+    "RecordPat": { "selfhost_tag": null, "coverage": "missing" }
+  }
+}

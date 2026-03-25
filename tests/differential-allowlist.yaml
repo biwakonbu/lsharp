@@ -1,0 +1,10 @@
+# Differential テスト許可リスト
+# selfhost コンパイラと Rust コンパイラの出力差分を許容するケースを定義
+#
+# 形式:
+#   allowlist:
+#     - module: モジュール名
+#       reason: 差分を許容する理由
+#       sections: [許容するセクション名のリスト]
+
+allowlist: []

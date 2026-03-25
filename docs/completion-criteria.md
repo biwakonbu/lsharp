@@ -5,6 +5,14 @@ Phase 11-2 (Native backend + bootstrap) の完了を判定するための条件�
 技術完了条件、ドキュメント完了条件、撤去前ゲートの 3 層で構成する。
 全条件を満たした場合にのみ Phase 11-2 を完了とし、Rust 実装の段階的撤去に進む。
 
+## 状態マーカー凡例
+
+各完了条件には以下の 3 状態マーカーを付与する:
+
+- [pending] -- 未着手
+- [in-progress] -- 作業中
+- [done] -- 完了
+
 ---
 
 ## P11-2e: 完了条件 (トップレベル方針)
@@ -27,24 +35,24 @@ Phase 11-2 (Native backend + bootstrap) の完了を判定するための条件�
 
 ## P11-2e-1: 技術完了条件
 
-### 条件 1: stage1-native の単独コンパイル能力
+### 条件 1: stage1-native の単独コンパイル能力 [pending]
 - stage1-native が以下を Rust compiler の助けなしに単独でコンパイルできること:
   - `selfhost/*.ls` -- selfhost compiler 本体
   - `stdlib/*.ls` -- 標準ライブラリ
   - `examples/fib.ls`, `examples/module.ls`, `examples/trait.ls` -- 代表例
 - コンパイル結果が stage1.wasm の出力と観測的に同値であること
 
-### 条件 2: stage1-native の自己再生成
+### 条件 2: stage1-native の自己再生成 [pending]
 - stage1-native が自分自身のソースコード (selfhost/*.ls) から stage2-native を生成できること
 - stage2-native が stage1-native と機能的に同値であること (同一入力に対して同一出力)
 - 固定点検証: stage2-native で再度コンパイルした stage3-native が stage2-native と同値
 
-### 条件 3: Wasm/native 差分ゼロ
+### 条件 3: Wasm/native 差分ゼロ [pending]
 - stageN.wasm と stageN-native の観測結果差分が allowlist なしでゼロになること
 - 観測点は P11-2d-2 で定義した 5 点 (exit code, stdout, stderr, generated file bytes, diagnostics JSON)
 - allowlist が残っている場合は、各エントリの解消を完了条件に含める
 
-### 条件 4: 既存 Wasm backend の無回帰
+### 条件 4: 既存 Wasm backend の無回帰 [in-progress]
 - AOT backend 導入後も既存 Wasm backend の E2E テストが全件パスすること
 - E2E テスト: `crates/lsharp-wasm/tests/e2e.rs` の全テストケース
 - 新規テスト追加により E2E テスト数が減少していないこと
@@ -53,21 +61,21 @@ Phase 11-2 (Native backend + bootstrap) の完了を判定するための条件�
 
 ## P11-2e-2: ドキュメント完了条件
 
-### 条件 1: README アーキテクチャ図の更新
+### 条件 1: README アーキテクチャ図の更新 [pending]
 - README.md のアーキテクチャ図が Wasm 単一 backend 前提から multi-backend 前提へ更新されていること
 - 更新内容:
   - コンパイラパイプライン図に native backend の分岐を追加
   - クレート構成表に native backend 関連クレート/モジュールを追加
   - ビルド手順に native backend のビルド方法を追加
 
-### 条件 2: book の selfhosting 章の更新
+### 条件 2: book の selfhosting 章の更新 [pending]
 - `book/` の selfhosting 章が以下を反映していること:
   - native backend の設計と実装方針
   - bootstrap 手順 (stage0 -> stage1 -> stage2 -> stage3)
   - fixed-point 検証の方法と意味
   - Wasm backend との関係と使い分け
 
-### 条件 3: CI/配布/署名/クロスビルド手順の一本化
+### 条件 3: CI/配布/署名/クロスビルド手順の一本化 [pending]
 - 以下の手順が docs/ 配下に一本化されていること:
   - CI パイプライン構成と各 job の役割
   - リリースビルドの配布手順 (Wasm + native)
@@ -81,13 +89,13 @@ Phase 11-2 (Native backend + bootstrap) の完了を判定するための条件�
 
 Rust 実装の撤去 (Phase 11-3 以降) に進む前に、以下のゲートを全て通過する必要がある。
 
-### ゲート 1: Rust 無効化安定期間
+### ゲート 1: Rust 無効化安定期間 [pending]
 - Rust 実装を無効化 (feature flag or conditional compilation) した状態で mainline CI を実行する
 - 2 週間以上連続で CI が安定すること (flaky test による単発失敗は除外)
 - 安定期間中に発見された不具合は修正し、安定期間をリセットする
 - 安定期間のカウント開始日と経過を CHANGELOG または ADR に記録する
 
-### ゲート 2: native 配布物のみでのリリース候補作成
+### ゲート 2: native 配布物のみでのリリース候補作成 [pending]
 - リリース候補 (RC) を少なくとも 1 回、native 配布物だけで作成する
 - RC で以下が動作することを検証する:
   - CLI (`lsharp` コマンド) の全サブコマンド: parse, check, compile, test, fmt, doc
@@ -95,7 +103,7 @@ Rust 実装の撤去 (Phase 11-3 以降) に進む前に、以下のゲートを
   - REPL (対話モード)
 - RC の検証結果を release notes に記録する
 
-### ゲート 3: rollback 手順の確定
+### ゲート 3: rollback 手順の確定 [pending]
 - Rust ベースの最後の release tag を確定する (例: `v0.x.y-rust-final`)
 - 以下を ADR に記録する:
   - 削除対象の Rust コード範囲 (クレート一覧、ファイル一覧)

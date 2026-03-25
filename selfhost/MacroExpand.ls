@@ -49,17 +49,17 @@
 
 ;; 新しいマクロテーブルを作成
 (defn macro-table-new []
-  (hashmap-new))
+  (map-new))
 
 ;; マクロを登録
 ;; name-hash: マクロ名のハッシュ
 ;; entry: [param-count, param-hash1, ..., body-node]
 (defn macro-table-set [table name-hash entry]
-  (hashmap-set table name-hash entry))
+  (map-insert table name-hash entry))
 
 ;; マクロを検索 (0 = 未登録)
 (defn macro-table-get [table name-hash]
-  (hashmap-get table name-hash))
+  (map-get table name-hash))
 
 ;; ============================================================
 ;; マクロエントリ構築
@@ -130,7 +130,7 @@
 
 ;; 引数バインディング = HashMap<param-hash, arg-node>
 (defn make-arg-bindings [entry args]
-  (let [bindings (hashmap-new)
+  (let [bindings (map-new)
         pc (entry-param-count entry)]
     (make-arg-bindings-loop entry args bindings 0 pc)))
 
@@ -138,7 +138,7 @@
   (if (>= idx count) bindings
     (let [ph (entry-param-hash entry idx)
           arg (vector-get args idx)
-          new-bindings (hashmap-set bindings ph arg)]
+          new-bindings (map-insert bindings ph arg)]
       (make-arg-bindings-loop entry args new-bindings (+ idx 1) count))))
 
 ;; AST ノード内の変数参照をバインディングで置換
@@ -149,7 +149,7 @@
     (if (= tag (tag-var))
       ;; 変数参照 → バインディングに存在すれば置換
       (let [nh (vector-get node 1)
-            bound (hashmap-get bindings nh)]
+            bound (map-get bindings nh)]
         (if (= bound 0)
           node  ;; バインディングなし → そのまま
           bound))  ;; バインディングあり → 引数ノードで置換
@@ -621,11 +621,11 @@
               (let [arg2 (vector-get bar-body 4)]
                 (do
                   (print (vector-get arg2 0))      ;; 1 (lit-int)
-                  (print (vector-get arg2 1)))))))  ;; 5
+                  (print (vector-get arg2 1))))))))  ;; 5
 
       ;; テスト 4: substitute-node 単体テスト
       ;; var(120) を lit(99) に置換
-      (let [bindings (hashmap-set (hashmap-new) 120
+      (let [bindings (map-insert (map-new) 120
               (vector-push (vector-push (vector-new 2) 1) 99))
             result4 (substitute-node var-x bindings)]
         (do

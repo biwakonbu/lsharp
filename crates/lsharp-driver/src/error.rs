@@ -71,6 +71,7 @@ mod tests {
             expected: Type::Con("Int".to_string()),
             found: Type::Con("Bool".to_string()),
             span: Span::new(0, 1),
+            error_code: lsharp_types::infer::TypeErrorCode::General,
         };
         let unified: LsharpError = err.into();
         assert!(matches!(unified, LsharpError::Type(_)));

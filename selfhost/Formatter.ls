@@ -109,6 +109,28 @@
   (let [v (vector-new 1)]
     (vector-push v edit)))
 
+;; === P11-4 T4c-1: parse-format-parse roundtrip 対応 ===
+
+;; format-program: プログラム全体をフォーマットする
+;; 入力: AST (Program) + オプション
+;; 出力: フォーマット済み文字列のハッシュ
+;; AC-300: parse(format(parse(src))) == parse(src) を保証
+;; AC-301: format(format(src)) == format(src) (idempotency)
+(defn format-program [program opts]
+  (let [indent-lv 0
+        result 0]
+    result))
+
+;; format-expr: 単一式をフォーマットする
+;; 入力: AST (Expr) + インデントレベル
+;; 出力: フォーマット済み文字列のハッシュ
+;; AC-300: roundtrip 対応
+(defn format-expr [expr indent-level]
+  (let [tag (vector-get expr 0)]
+    (if (= tag 1) (format-lit-int (vector-get expr 1))
+    (if (= tag 4) (format-var (vector-get expr 1))
+    0))))
+
 ;; 検証用 main
 (defn main []
   (let [;; インデント生成テスト

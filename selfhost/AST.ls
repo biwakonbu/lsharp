@@ -20,9 +20,37 @@
 (defn ast-do [] 9)          ;; do ブロック
 (defn ast-match [] 10)      ;; match 式
 
+;; Expr 追加ノード (Rust AST 全ノード型対応)
+(defn ast-ann [] 11)            ;; 型注釈 Ann
+(defn ast-recordlit [] 12)      ;; レコードリテラル RecordLit
+(defn ast-fieldaccess [] 13)    ;; フィールドアクセス FieldAccess
+(defn ast-recordupdate [] 14)   ;; レコード更新 RecordUpdate
+(defn ast-computation [] 15)    ;; 計算式 Computation
+(defn ast-quote [] 16)          ;; クオート Quote
+(defn ast-unquote [] 17)        ;; アンクオート Unquote
+(defn ast-unquote-splice [] 18) ;; アンクオートスプライス UnquoteSplice
+
 ;; 宣言 (Decl)
-(defn ast-defn [] 20)       ;; 関数定義
-(defn ast-type-decl [] 21)  ;; 型定義
+(defn ast-defn [] 20)           ;; 関数定義 Defn
+(defn ast-typedef [] 21)        ;; 型定義 TypeDef
+(defn ast-type-decl [] 21)      ;; 型定義 TypeDef (別名)
+(defn ast-recorddef [] 22)      ;; レコード定義 RecordDef
+(defn ast-typealias [] 23)      ;; 型エイリアス TypeAlias
+(defn ast-typeconstrained [] 24) ;; 制約付き型 TypeConstrained
+(defn ast-module-decl [] 25)    ;; モジュール宣言 ModuleDecl
+(defn ast-import-decl [] 26)    ;; インポート宣言 ImportDecl
+(defn ast-traitdef [] 27)       ;; トレイト定義 TraitDef
+(defn ast-impldef [] 28)        ;; 実装定義 ImplDef
+(defn ast-private [] 29)        ;; プライベート宣言 Private
+(defn ast-computationbuilder [] 30) ;; 計算ビルダー ComputationBuilder
+(defn ast-defmacro [] 31)       ;; マクロ定義 DefMacro
+
+;; パターン (Pattern)
+(defn ast-pat-wildcard [] 40)   ;; ワイルドカードパターン Wildcard
+(defn ast-pat-var [] 41)        ;; 変数パターン Var (パターン用)
+(defn ast-pat-lit [] 42)        ;; リテラルパターン Lit
+(defn ast-pat-constructor [] 43) ;; コンストラクタパターン Constructor
+(defn ast-pat-recordpat [] 44)  ;; レコードパターン RecordPat
 
 ;; === AST ノード構築 ===
 

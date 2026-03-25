@@ -360,6 +360,62 @@
       (parse-apply-args-v3 spans pos-ref src
         (vector-push result arg) (+ count 1)))))
 
+;; === Recovery + 診断収集 ===
+
+;; 診断レコード: [severity code span message-hash]
+;; severity: 0=error, 1=warning, 2=info
+;; code: 整数エラーコード
+;; span: ソース位置 (start)
+;; message-hash: メッセージの名前ハッシュ
+(defn make-diagnostic [severity code span message-hash]
+  (let [d (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push d severity) code) span) message-hash)))
+
+;; 診断コレクタ: 診断のベクタを管理
+(defn collect-diagnostics []
+  (vector-new 8))
+
+;; 診断を追加
+(defn add-diagnostic [diagnostics diag]
+  (vector-push diagnostics diag))
+
+;; 次の同期ポイント (閉じ括弧 or トップレベル) まで回復
+;; kind=1 (RParen), kind=99 (EOF) で停止
+(defn recover-to-next [spans pos-ref]
+  (let [kind (p-current spans pos-ref)]
+    (if (== kind 99) 0   ;; EOF で停止
+      (if (== kind 1) 0  ;; ) で停止
+        (do (p-advance pos-ref)
+            (recover-to-next spans pos-ref))))))
+
+;; recovery 付きパース: パースに失敗したら回復して診断を記録
+;; 戻り値: [ast-node, diagnostics-vector]
+(defn parse-with-recovery [spans pos-ref src diagnostics]
+  (let [start-pos (ref-get pos-ref)
+        kind (p-current spans pos-ref)]
+    (if (== kind 99) ;; EOF
+      (let [result (vector-new 2)]
+        (vector-push (vector-push result (make-int-node 0)) diagnostics))
+      ;; 不正なトークン (閉じ括弧が先に来た等) の場合 recovery
+      (if (== kind 1) ;; 予期しない )
+        (let [span (p-start spans pos-ref)
+              diag (make-diagnostic 0 1001 span 0)
+              diags (add-diagnostic diagnostics diag)]
+          (do (p-advance pos-ref)
+              (let [result (vector-new 2)]
+                (vector-push (vector-push result (make-int-node 0)) diags))))
+        (if (== kind 3) ;; 予期しない ]
+          (let [span (p-start spans pos-ref)
+                diag (make-diagnostic 0 1002 span 0)
+                diags (add-diagnostic diagnostics diag)]
+            (do (p-advance pos-ref)
+                (let [result (vector-new 2)]
+                  (vector-push (vector-push result (make-int-node 0)) diags))))
+          ;; 通常パース
+          (let [node (parse-expr-v3 spans pos-ref src)
+                result (vector-new 2)]
+            (vector-push (vector-push result node) diagnostics)))))))
+
 ;; === ユーティリティ ===
 
 ;; 対応する閉じ括弧まで読み飛ばし (ネスト対応)

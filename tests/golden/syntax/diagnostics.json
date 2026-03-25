@@ -1,0 +1,38 @@
+{
+  "_comment": "Rust Parser (lsharp-syntax) の診断出力に対する golden fixture",
+  "cases": [
+    {
+      "input": "(+ 1",
+      "expected_diagnostics": [
+        {
+          "severity": "error",
+          "code": "E0001",
+          "message": "unexpected end of input: expected closing parenthesis",
+          "span": { "start": 0, "end": 4 }
+        }
+      ]
+    },
+    {
+      "input": "(defn 123 [] 0)",
+      "expected_diagnostics": [
+        {
+          "severity": "error",
+          "code": "E0002",
+          "message": "expected identifier after defn keyword",
+          "span": { "start": 6, "end": 9 }
+        }
+      ]
+    },
+    {
+      "input": "(let [x] x)",
+      "expected_diagnostics": [
+        {
+          "severity": "error",
+          "code": "E0003",
+          "message": "let binding requires a value expression",
+          "span": { "start": 5, "end": 8 }
+        }
+      ]
+    }
+  ]
+}

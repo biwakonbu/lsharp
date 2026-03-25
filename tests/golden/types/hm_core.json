@@ -1,0 +1,59 @@
+{
+  "_comment": "Rust TypeInfer の unify/generalize/instantiate の golden test fixtures",
+  "unify": [
+    {
+      "description": "Int と Int の単一化 -> 成功",
+      "input": { "t1": "Int", "t2": "Int" },
+      "expected": { "success": true, "result_type": "Int" }
+    },
+    {
+      "description": "Int と Bool の単一化 -> 失敗",
+      "input": { "t1": "Int", "t2": "Bool" },
+      "expected": { "success": false }
+    },
+    {
+      "description": "型変数 a と Int の単一化 -> a := Int",
+      "input": { "t1": "Var(a)", "t2": "Int" },
+      "expected": { "success": true, "substitution": { "a": "Int" } }
+    },
+    {
+      "description": "関数型 (Int -> a) と (Int -> Bool) の単一化 -> a := Bool",
+      "input": { "t1": "Fun(Int, Var(a))", "t2": "Fun(Int, Bool)" },
+      "expected": { "success": true, "substitution": { "a": "Bool" } }
+    },
+    {
+      "description": "occurs check: a と (a -> Int) の単一化 -> 失敗",
+      "input": { "t1": "Var(a)", "t2": "Fun(Var(a), Int)" },
+      "expected": { "success": false }
+    }
+  ],
+  "generalize": [
+    {
+      "description": "環境が空の場合、自由変数を全て束縛",
+      "input": { "type": "Fun(Var(a), Var(a))", "env_free_vars": [] },
+      "expected": { "bound_vars": ["a"], "type": "Fun(Var(a), Var(a))" }
+    },
+    {
+      "description": "環境に a が含まれる場合、a は束縛しない",
+      "input": { "type": "Fun(Var(a), Var(b))", "env_free_vars": ["a"] },
+      "expected": { "bound_vars": ["b"], "type": "Fun(Var(a), Var(b))" }
+    },
+    {
+      "description": "具体型は束縛変数なし",
+      "input": { "type": "Int", "env_free_vars": [] },
+      "expected": { "bound_vars": [], "type": "Int" }
+    }
+  ],
+  "instantiate": [
+    {
+      "description": "単相型スキームの具体化 -> そのまま",
+      "input": { "scheme": { "type": "Int", "bound_vars": [] } },
+      "expected": { "type": "Int" }
+    },
+    {
+      "description": "多相型スキーム forall a. a -> a の具体化 -> 新変数",
+      "input": { "scheme": { "type": "Fun(Var(a), Var(a))", "bound_vars": ["a"] } },
+      "expected": { "type_pattern": "Fun(Var(?), Var(?))", "note": "束縛変数は新しい一意な変数に置換される" }
+    }
+  ]
+}

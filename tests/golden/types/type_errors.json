@@ -1,0 +1,50 @@
+{
+  "_comment": "Rust 型推論器が生成する型エラーの golden fixture (error code, span, message)",
+  "type_errors": [
+    {
+      "description": "未定義変数の参照エラー",
+      "source": "(defn main [] undefined_var)",
+      "expected": {
+        "error_code": "E0001",
+        "message_contains": "undefined",
+        "has_span": true
+      }
+    },
+    {
+      "description": "if 式の条件が Bool でない",
+      "source": "(defn main [] (if 42 1 0))",
+      "expected": {
+        "error_code": "E0002",
+        "message_contains": "Bool",
+        "has_span": true
+      }
+    },
+    {
+      "description": "if 式の then/else 分岐の型不一致",
+      "source": "(defn main [] (if true 42 true))",
+      "expected": {
+        "error_code": "E0003",
+        "message_contains": "mismatch",
+        "has_span": true
+      }
+    },
+    {
+      "description": "関数適用の引数型不一致",
+      "source": "(defn f [x : Int] (+ x 1)) (defn main [] (f true))",
+      "expected": {
+        "error_code": "E0004",
+        "message_contains": "expected",
+        "has_span": true
+      }
+    },
+    {
+      "description": "occurs check 失敗 (無限型)",
+      "source": "(defn main [] (fn [x] (x x)))",
+      "expected": {
+        "error_code": "E0005",
+        "message_contains": "infinite",
+        "has_span": true
+      }
+    }
+  ]
+}

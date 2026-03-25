@@ -1,0 +1,58 @@
+{
+  "_comment": "Rust Parser (lsharp-syntax) の AST 出力に対する golden fixture",
+  "cases": [
+    {
+      "input": "42",
+      "expected_ast": {
+        "type": "Program",
+        "body": [
+          { "type": "Lit", "value": { "type": "Int", "value": 42 } }
+        ]
+      }
+    },
+    {
+      "input": "(+ 1 2)",
+      "expected_ast": {
+        "type": "Program",
+        "body": [
+          {
+            "type": "App",
+            "func": { "type": "Var", "name": "+" },
+            "args": [
+              { "type": "Lit", "value": { "type": "Int", "value": 1 } },
+              { "type": "Lit", "value": { "type": "Int", "value": 2 } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "input": "(if true 1 0)",
+      "expected_ast": {
+        "type": "Program",
+        "body": [
+          {
+            "type": "If",
+            "cond": { "type": "Lit", "value": { "type": "Bool", "value": true } },
+            "then": { "type": "Lit", "value": { "type": "Int", "value": 1 } },
+            "else": { "type": "Lit", "value": { "type": "Int", "value": 0 } }
+          }
+        ]
+      }
+    },
+    {
+      "input": "(defn id [x] x)",
+      "expected_ast": {
+        "type": "Program",
+        "body": [
+          {
+            "type": "Defn",
+            "name": "id",
+            "params": [{ "name": "x" }],
+            "body": { "type": "Var", "name": "x" }
+          }
+        ]
+      }
+    }
+  ]
+}

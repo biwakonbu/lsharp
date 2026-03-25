@@ -1,0 +1,48 @@
+{
+  "description": "Wasm ランタイム実行結果の golden fixture",
+  "version": "1.0",
+  "test_cases": {
+    "hello_world": {
+      "source": "(defn main () Int (do (print 42) 0))",
+      "expected_stdout": "42\n",
+      "expected_exit_code": 0
+    },
+    "arithmetic": {
+      "source": "(defn main () Int (+ 1 2))",
+      "expected_result": 3,
+      "expected_exit_code": 0
+    },
+    "fibonacci": {
+      "source": "(defn fib (n Int) Int (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2)))))",
+      "test_input": 10,
+      "expected_result": 55,
+      "expected_exit_code": 0
+    },
+    "factorial": {
+      "source": "(defn fact (n Int) Int (if (= n 0) 1 (* n (fact (- n 1)))))",
+      "test_input": 5,
+      "expected_result": 120,
+      "expected_exit_code": 0
+    }
+  },
+  "wasi_helpers": {
+    "print": {
+      "description": "fd_write を使った stdout 出力",
+      "wasi_function": "fd_write",
+      "fd": 1
+    },
+    "read_file": {
+      "description": "fd_read を使ったファイル読み込み",
+      "wasi_function": "fd_read"
+    },
+    "write_file": {
+      "description": "fd_write を使ったファイル書き込み",
+      "wasi_function": "fd_write"
+    },
+    "clock_now": {
+      "description": "clock_time_get を使った時刻取得",
+      "wasi_function": "clock_time_get",
+      "clock_id": 0
+    }
+  }
+}

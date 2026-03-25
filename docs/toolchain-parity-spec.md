@@ -361,6 +361,43 @@ README の Quick Start が native 配布物だけで完走できる。
 
 ---
 
+## CLI コマンド入出力契約テーブル (AC-100/AC-101/AC-102)
+
+### サブコマンド引数・入出力・終了コード一覧
+
+| サブコマンド | 必須引数 | オプション引数 | stdout | stderr | Exit Code (成功) | Exit Code (エラー) |
+|-------------|---------|---------------|--------|--------|-----------------|-------------------|
+| parse | `<file>` | `--ast`, `--tokens` | AST/トークン列 | 診断メッセージ | 0 | 1 |
+| check | `<file>` | `--verbose` | 型チェック結果 | 型エラー診断 | 0 | 1 |
+| compile | `<file>` | `-o <output>`, `--target` | (なし) | コンパイルエラー | 0 | 1 |
+| build | `[dir]` | `-o <output>`, `--release` | ビルド進捗 | ビルドエラー | 0 | 1 |
+| test | `<file>` | `--filter`, `--verbose` | テスト結果 | テスト失敗詳細 | 0 | 1 |
+| review | `<file>` | `--format json` | レビュー結果 JSON | 診断メッセージ | 0 | 1 |
+| doc-ack | `<file>` | `--trailer` | 確認メッセージ | エラー | 0 | 1 |
+| doc-check | `<file>` | `--strict` | チェック結果 | 不整合エラー | 0 | 1 |
+| install | `<package>` | `--global`, `--path` | インストール結果 | エラー | 0 | 1 |
+| repl | (なし) | `--no-color` | REPL 出力 | エラー | 0 | 2 |
+| lsp | (なし) | `--stdio`, `--port` | JSON-RPC stdout | ログ | 0 | 2 |
+| fmt | `<file>` | `--check`, `--write` | フォーマット済みソース | 診断メッセージ | 0 | 1 |
+| doc | `<file>` | `-o <dir>`, `--format` | 生成結果パス | エラー | 0 | 1 |
+
+### 終了コード体系 (exit code)
+
+| exit_code | 意味 | 適用コマンド |
+|-----------|------|-------------|
+| 0 | 成功 | 全コマンド |
+| 1 | コンパイルエラー / 入力エラー | parse, check, compile, build, test, review, doc-ack, doc-check, install, fmt, doc |
+| 2 | ランタイムエラー | repl, lsp |
+| 127 | 不明コマンド | (dispatcher) |
+
+### stdout/stderr の使い分け (AC-101)
+
+- **stdout**: プログラムの正規出力 (AST, 型情報, フォーマット結果, JSON-RPC 等)
+- **stderr**: 診断メッセージ (エラー, 警告, 進捗ログ)
+- LSP モードでは stdout は JSON-RPC 専用、stderr はサーバーログ専用
+
+---
+
 ## 依存関係
 
 | 依存先 | 前提条件 | 理由 |

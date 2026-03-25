@@ -140,6 +140,13 @@ enum Command {
 }
 
 fn main() -> miette::Result<()> {
+    // L# compiler path 設定
+    // LSHARP_PATH 環境変数でコンパイラのルートディレクトリを指定可能。
+    // 未設定の場合はカレントディレクトリを使用する。
+    // selfhost 移行後はこのパスで L# コンパイラバイナリを検索する。
+    let _lsharp_path = std::env::var("LSHARP_PATH")
+        .unwrap_or_else(|_| ".".to_string());
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -169,6 +176,18 @@ fn main() -> miette::Result<()> {
                 .map_err(|e| miette::miette!("{e}"))?;
 
             let mut infer = lsharp_types::infer::Infer::new();
+
+            // import 宣言を再帰的に解決: 同ディレクトリ内の .ls ファイルを探索し、
+            // import されたモジュールの定義を先に型推論して external_types に注入する
+            let parent_dir = file.parent().unwrap_or(std::path::Path::new("."));
+            let mut resolved_modules = std::collections::HashSet::new();
+            resolve_imports_recursive(
+                &program,
+                parent_dir,
+                &mut infer,
+                &mut resolved_modules,
+            );
+
             let results = infer
                 .infer_program(&program)
                 .map_err(|e| miette::miette!("{e}"))?;
@@ -624,6 +643,52 @@ fn build_knowledge(
         functions,
         types,
         dependencies,
+    }
+}
+
+/// check コマンド用: import 宣言を再帰的に解決する
+///
+/// 同ディレクトリ内の .ls ファイルを探索し、import されたモジュールの定義を
+/// 先に型推論して external_types に注入する。循環 import を防ぐため、
+/// 解決済みモジュール名を tracked する。
+fn resolve_imports_recursive(
+    program: &lsharp_syntax::ast::Program,
+    parent_dir: &std::path::Path,
+    infer: &mut lsharp_types::infer::Infer,
+    resolved: &mut std::collections::HashSet<String>,
+) {
+    for decl in &program.decls {
+        if let lsharp_syntax::ast::Decl::ImportDecl { module, .. } = decl {
+            if resolved.contains(module) {
+                continue;
+            }
+            resolved.insert(module.clone());
+
+            let import_path = parent_dir.join(format!("{module}.ls"));
+            if import_path.exists() {
+                if let Ok(import_source) = std::fs::read_to_string(&import_path) {
+                    if let Ok(import_program) = lsharp_syntax::parse(&import_source) {
+                        // 先に import 先の import を再帰解決する
+                        resolve_imports_recursive(
+                            &import_program,
+                            parent_dir,
+                            infer,
+                            resolved,
+                        );
+                        // import 先モジュールを型推論して結果を注入
+                        let mut import_infer = lsharp_types::infer::Infer::new();
+                        // 既に解決済みの外部型を import 先にも注入
+                        // (推移的依存の型を利用可能にする)
+                        import_infer.inject_external_types(
+                            &infer.external_types_snapshot(),
+                        );
+                        if let Ok(import_results) = import_infer.infer_program(&import_program) {
+                            infer.inject_external_types(&import_results);
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
