@@ -58,8 +58,8 @@ Phase 11 完了まで、selfhost パイプラインに影響する PR では本�
 |----------------|-------------|-----------|-------------|--------------|---------------|
 | Lexer | 完成 | 部分実装 (75%) | E2E 6件 | Rust | L# parity test 全 PASS |
 | Parser | 完成 | 部分実装 (65%) | E2E 4件 | Rust | L# parity test 全 PASS |
-| MacroExpand | 完成 | 部分実装 (30%) -- 637行/117関数, E2E未通過 | E2E 5件 (ignore) | Rust | L# parity test 全 PASS |
-| TypeInfer | 完成 | 部分実装 (40%) -- 838行/67関数, E2E未通過 | E2E 7件 (ignore) | Rust | L# parity test 全 PASS |
+| MacroExpand | 完成 | 部分実装 (35%) -- E2E 5件は通常テスト化済み | E2E 5件 PASS | Rust | L# parity test 全 PASS |
+| TypeInfer | 完成 | 部分実装 (45%) -- stale ignore を解消、backend 制約は一部残存 | E2E 7件 PASS | Rust | L# parity test 全 PASS |
 | Lower/Compiler | 完成 | 部分実装 (70%) | E2E 2件 | Rust | L# parity test 全 PASS |
 | WasmEmit | 完成 | 部分実装 (50%) | - | Rust | L# parity test 全 PASS |
 | NativeEmit | N/A | なし | - | - | - |
