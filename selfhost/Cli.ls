@@ -24,6 +24,12 @@
 (defn exit-runtime-error [] 2)
 (defn exit-unknown-command [] 127)
 
+;; === 終了コード公開 API (contract parity) ===
+(defn exit-code-success [] 0)
+(defn exit-code-compile-error [] 1)
+(defn exit-code-runtime-error [] 2)
+(defn exit-code-unknown-command [] 127)
+
 ;; === コマンド ID 定義 ===
 (defn cmd-parse [] 1)
 (defn cmd-check [] 2)
@@ -317,6 +323,56 @@
   (do
     (print-string (version-text))
     (exit-success)))
+
+;; === 出力チャネル分離 (stdout/stderr contract) ===
+
+;; プログラム結果を標準出力へ
+(defn cli-stdout [msg]
+  (do
+    (print-string msg)
+    (print-string "\n")
+    0))
+
+;; 診断・エラーメッセージを stderr チャネルへ
+;; WASI 環境では "error: " プレフィックスと改行で区別
+(defn cli-stderr [msg]
+  (do
+    (print-string (string-concat "error: " msg))
+    (print-string "\n")
+    0))
+
+;; === サブコマンドヘルプ ===
+
+;; 個別コマンドのヘルプ文字列を返す
+(defn format-subcommand-help [cmd]
+  (if (string-eq cmd "parse") "parse <file> - Parse source and show AST"
+  (if (string-eq cmd "check") "check <file> - Type-check source"
+  (if (string-eq cmd "compile") "compile <file> -o <out> - Compile to Wasm"
+  (if (string-eq cmd "build") "build [dir] - Build project"
+  (if (string-eq cmd "test") "test <file> - Run metadata tests"
+  (if (string-eq cmd "review") "review <file> - Code review"
+  (if (string-eq cmd "doc-ack") "doc-ack <file> - Acknowledge docs"
+  (if (string-eq cmd "doc-check") "doc-check <file> - Check doc consistency"
+  (if (string-eq cmd "install") "install <pkg> - Install package"
+  (if (string-eq cmd "repl") "repl - Interactive REPL"
+  (if (string-eq cmd "lsp") "lsp - Start LSP server"
+  (if (string-eq cmd "fmt") "fmt <file> - Format source"
+  (if (string-eq cmd "doc") "doc <file> - Generate docs"
+  "unknown command"))))))))))))))
+
+;; === トップレベルエントリポイント ===
+
+;; コマンド名文字列からディスパッチし、終了コードを返す
+;; --help / --version フラグも処理する
+(defn run-command [cmd-name file-path opts]
+  (if (string-eq cmd-name "--help") (show-help)
+  (if (string-eq cmd-name "--version") (show-version)
+  (let [cmd-id (arg-parse cmd-name)]
+    (if (= cmd-id 0)
+      (do
+        (cli-stderr (string-concat "unknown command: " cmd-name))
+        (exit-code-unknown-command))
+      (dispatch-command cmd-id file-path opts))))))
 
 ;; 検証用 main
 (defn main []

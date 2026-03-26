@@ -686,6 +686,180 @@ fn test_e2e_selfhost_cli_doc_check_file_handler() {
     );
 }
 
+/// TEST-CLI-02-V: exit-code-success が 0 を返すこと
+///
+/// CLI-02 contract parity: 終了コードの公開 API を検証
+#[test]
+fn test_e2e_selfhost_cli_exit_code_success() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (exit-code-success))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines.last().unwrap(),
+        &"0",
+        "exit-code-success は 0 であるべき"
+    );
+}
+
+/// TEST-CLI-02-W: exit-code-compile-error が 1 を返すこと
+///
+/// CLI-02 contract parity: コンパイルエラー終了コード
+#[test]
+fn test_e2e_selfhost_cli_exit_code_compile_error() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (exit-code-compile-error))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines.last().unwrap(),
+        &"1",
+        "exit-code-compile-error は 1 であるべき"
+    );
+}
+
+/// TEST-CLI-02-X: 不明コマンドで run-command が 127 を返すこと
+///
+/// CLI-02 contract parity: 不明コマンドの終了コード
+#[test]
+fn test_e2e_selfhost_cli_exit_code_unknown_command() {
+    let harness = r#"
+(defn main []
+  (let [code (run-command "nonexistent" "" 0)]
+    (do
+      (print code)
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    // run-command は cli-stderr でエラーを出力してから 127 を返す
+    assert_eq!(
+        lines.last().unwrap(),
+        &"127",
+        "不明コマンドの終了コードは 127 であるべき"
+    );
+    assert!(
+        output.contains("error: unknown command: nonexistent"),
+        "不明コマンドでエラーメッセージが出力されるべき: {:?}",
+        output
+    );
+}
+
+/// TEST-CLI-02-Y: help-text が 13 コマンドすべてを列挙すること
+///
+/// CLI-02 contract parity: ヘルプ出力の完全性
+#[test]
+fn test_e2e_selfhost_cli_help_lists_all_commands() {
+    let harness = r#"
+(defn main []
+  (do
+    (print-string (help-text))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+
+    let commands = [
+        "parse", "check", "compile", "build", "test", "review",
+        "doc-ack", "doc-check", "install", "repl", "lsp", "fmt", "doc",
+    ];
+    let mut count = 0;
+    for cmd in &commands {
+        if output.contains(cmd) {
+            count += 1;
+        }
+    }
+    assert_eq!(
+        count, 13,
+        "help テキストは 13 コマンドすべてを列挙すべき (found {})",
+        count
+    );
+}
+
+/// TEST-CLI-02-Z: version-text が `lsharp x.y.z` 形式であること
+///
+/// CLI-02 contract parity: バージョン出力形式
+#[test]
+fn test_e2e_selfhost_cli_version_format() {
+    let harness = r#"
+(defn main []
+  (do
+    (print-string (version-text))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let trimmed = output.trim();
+
+    assert!(
+        trimmed.starts_with("lsharp "),
+        "バージョンは 'lsharp ' で始まるべき: {:?}",
+        trimmed
+    );
+    let version_part = trimmed.strip_prefix("lsharp ").unwrap();
+    let parts: Vec<&str> = version_part.split('.').collect();
+    assert_eq!(
+        parts.len(),
+        3,
+        "バージョンは x.y.z 形式であるべき: {}",
+        version_part
+    );
+}
+
+/// TEST-CLI-02-AA: cli-stdout / cli-stderr の出力チャネル分離
+///
+/// CLI-02 contract parity: stdout は結果出力、stderr は "error: " プレフィックス付き
+#[test]
+fn test_e2e_selfhost_cli_stdout_stderr_separation() {
+    let harness = r#"
+(defn main []
+  (do
+    (cli-stdout "program output")
+    (cli-stderr "diagnostic message")
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+
+    assert!(
+        output.contains("program output"),
+        "cli-stdout の出力が含まれるべき: {:?}",
+        output
+    );
+    assert!(
+        output.contains("error: diagnostic message"),
+        "cli-stderr の出力は 'error: ' プレフィックスを持つべき: {:?}",
+        output
+    );
+    // stdout と stderr が別行に出力されることを確認
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(
+        lines.len() >= 2,
+        "cli-stdout と cli-stderr は別行に出力されるべき: {:?}",
+        lines
+    );
+}
+
 /// TEST-LSP-01: selfhost/LspServer.ls 存在 + JSON-RPC dispatch 構造
 ///
 /// T4-2: L# 製 LSP の正式化 -- LspServer.ls が存在し JSON-RPC dispatch を持つこと
