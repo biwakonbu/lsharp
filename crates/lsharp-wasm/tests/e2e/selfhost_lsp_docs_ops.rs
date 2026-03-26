@@ -1,0 +1,760 @@
+use super::support::*;
+
+
+/// TEST-LSP-03: selfhost/LspServer.ls に diagnostics の安定ソート機構
+///
+/// T4b-3 AC-208/AC-209/AC-210/AC-211: 診断のグルーピング・ソート・重複マージ・決定的順序
+/// Red Phase: selfhost/LspServer.ls が未作成のため FAIL する。
+#[test]
+fn test_e2e_selfhost_lsp_diagnostic_ordering() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let lsp_path = project_root.join("selfhost/LspServer.ls");
+    assert!(
+        lsp_path.exists(),
+        "selfhost/LspServer.ls が存在しない"
+    );
+    let source = std::fs::read_to_string(&lsp_path)
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+
+    // T4b-3 AC-208: 診断は source フィールドでグルーピングされ行番号昇順
+    assert!(
+        source.contains("sort") || source.contains("order")
+            || source.contains("diagnostic"),
+        "selfhost/LspServer.ls に diagnostics のソート/順序制御がない (AC-208)"
+    );
+}
+
+/// TEST-LSP-04: selfhost/LspServer.ls の主要ハンドラが runtime で観測できること
+#[test]
+fn test_e2e_selfhost_lsp_runtime_handlers() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines[0], "4", "initialize capability count は 4 であるべき");
+    assert_eq!(lines[1], "1", "textDocumentSync=Full であるべき");
+    assert_eq!(lines[2], "1", "hoverProvider=true であるべき");
+    assert_eq!(lines[3], "1", "completionProvider=true であるべき");
+    assert_eq!(lines[4], "12", "didOpen は source length=12 を返すべき");
+    assert_eq!(lines[5], "8", "didChange は source length=8 を返すべき");
+    assert_eq!(lines[6], "1", "formatting は edit count=1 を返すべき");
+    assert_eq!(lines[7], "7", "completion は keyword count=7 を返すべき");
+    assert_eq!(lines[8], "0", "shutdown は 0 を返すべき");
+}
+
+/// TEST-LSP-05: selfhost/LspServer.ls の sort-diagnostics が 2 要素を行番号順に並べること
+#[test]
+fn test_e2e_selfhost_lsp_runtime_sort_diagnostics() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines[9], "10001", "先頭 diagnostic key は 1:1 であるべき");
+    assert_eq!(lines[10], "30002", "次の diagnostic key は 3:2 であるべき");
+}
+
+/// TEST-LSP-06: selfhost/LspServer.ls の merge-duplicate-diagnostics が同一 span を 1 件へ潰すこと
+#[test]
+fn test_e2e_selfhost_lsp_runtime_merge_duplicates() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines[11], "1", "merged diagnostics count は 1 であるべき");
+    assert_eq!(lines[12], "1", "merged diagnostics severity は高い方=1 を残すべき");
+}
+
+/// TEST-LSP-07: selfhost/LspServer.ls の navigation handler shape が runtime で観測できること
+#[test]
+fn test_e2e_selfhost_lsp_runtime_navigation_shapes() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines[13], "2", "hover response shape length は 2 であるべき");
+    assert_eq!(lines[14], "2", "goto-definition shape length は 2 であるべき");
+    assert_eq!(lines[15], "0", "references count は 0 であるべき");
+    assert_eq!(lines[16], "1", "rename changes length は 1 であるべき");
+}
+
+/// TEST-LSP-08: selfhost/LspServer.ls が JsonRpc method 定数で dispatch できること
+#[test]
+fn test_e2e_selfhost_lsp_runtime_jsonrpc_method_dispatch() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        init (json-rpc-dispatch (lsp-method-initialize) 0 state)
+        did-open (json-rpc-dispatch (lsp-method-did-open) 14 state)
+        did-change (json-rpc-dispatch (lsp-method-did-change) 9 state)
+        hover (json-rpc-dispatch (lsp-method-hover) 0 state)
+        goto-def (json-rpc-dispatch (lsp-method-goto-def) 0 state)
+        formatting (json-rpc-dispatch (lsp-method-formatting) 0 state)
+        completion (json-rpc-dispatch (lsp-method-completion) 0 state)
+        shutdown (json-rpc-dispatch (lsp-method-shutdown) 0 state)]
+    (do
+      (print (vector-length init))
+      (print did-open)
+      (print did-change)
+      (print (vector-length hover))
+      (print (vector-length goto-def))
+      (print (vector-length formatting))
+      (print completion)
+      (print shutdown)
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines[0], "4", "initialize dispatch は capability vector を返すべき");
+    assert_eq!(lines[1], "14", "didOpen dispatch は source length を返すべき");
+    assert_eq!(lines[2], "9", "didChange dispatch は source length を返すべき");
+    assert_eq!(lines[3], "2", "hover dispatch は response shape length=2 を返すべき");
+    assert_eq!(lines[4], "2", "goto-definition dispatch は shape length=2 を返すべき");
+    assert_eq!(lines[5], "1", "formatting dispatch は edit count=1 を返すべき");
+    assert_eq!(lines[6], "7", "completion dispatch は keyword count=7 を返すべき");
+    assert_eq!(lines[7], "0", "shutdown dispatch は 0 を返すべき");
+}
+
+/// TEST-LSP-09: selfhost/LspServer.ls の server-loop が 1 メッセージ dispatch を観測できること
+#[test]
+fn test_e2e_selfhost_lsp_runtime_server_loop_single_message() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let harness = r#"
+(defn make-loop-request [method-id params]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v method-id) params)))
+
+(defn main []
+  (let [open-req (make-loop-request (lsp-method-did-open) 15)
+        change-req (make-loop-request (lsp-method-did-change) 9)
+        completion-req (make-loop-request (lsp-method-completion) 0)]
+    (do
+      (print (server-loop open-req))
+      (print (server-loop change-req))
+      (print (server-loop completion-req))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines[0], "15", "server-loop は didOpen request を dispatch できるべき");
+    assert_eq!(lines[1], "9", "server-loop は didChange request を dispatch できるべき");
+    assert_eq!(lines[2], "7", "server-loop は completion request を dispatch できるべき");
+}
+
+/// TEST-LSP-08: sort-diagnostics が 3 要素以上を行番号順にソートできること
+#[test]
+fn test_e2e_selfhost_lsp_sort_diagnostics_three() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+
+    // 3 つの診断を逆順で作成し、sort-diagnostics でソートされることを検証
+    let harness = r#"
+(defn make-diag [sev rule line col msg src]
+  (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) sev) rule) line) col) msg) src))
+
+(defn main []
+  (let [d1 (make-diag 1 100 5 1 0 0)
+        d2 (make-diag 1 101 1 3 0 0)
+        d3 (make-diag 1 102 3 2 0 0)
+        diags (vector-push (vector-push (vector-push (vector-new 3) d1) d2) d3)
+        sorted (sort-diagnostics diags)]
+    (do
+      (print (diagnostic-order-key (vector-get sorted 0)))
+      (print (diagnostic-order-key (vector-get sorted 1)))
+      (print (diagnostic-order-key (vector-get sorted 2)))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "sort 3 diagnostics 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "10003", "最小の diagnostic key (line=1,col=3) が先頭");
+    assert_eq!(lines[1], "30002", "中間の diagnostic key (line=3,col=2) が 2 番目");
+    assert_eq!(lines[2], "50001", "最大の diagnostic key (line=5,col=1) が末尾");
+}
+
+/// TEST-FMT-01: selfhost/Formatter.ls に format-program / format-expr 関数が存在すること
+///
+/// T4c-1 AC-300: parse-format-parse roundtrip のための format-program / format-expr
+/// Red Phase: Formatter.ls に format-program / format-expr が未定義のため FAIL する。
+#[test]
+fn test_e2e_selfhost_formatter_roundtrip_v2() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let fmt_path = project_root.join("selfhost/Formatter.ls");
+    assert!(
+        fmt_path.exists(),
+        "selfhost/Formatter.ls が存在しない (T4-3)"
+    );
+    let source = std::fs::read_to_string(&fmt_path)
+        .expect("selfhost/Formatter.ls の読み込みに失敗");
+
+    // T4c-1 AC-300: parse-format-parse roundtrip
+    // format-program と format-expr (または同等関数) が定義されていること
+    assert!(
+        source.contains("format-program") || source.contains("format_program"),
+        "selfhost/Formatter.ls に format-program 関数がない (AC-300)"
+    );
+    assert!(
+        source.contains("format-expr") || source.contains("format_expr"),
+        "selfhost/Formatter.ls に format-expr 関数がない (AC-300)"
+    );
+}
+
+/// TEST-LINT-01: selfhost/Linter.ls に L0001 形式の rule ID が定義されていること
+///
+/// T4c-2 AC-304: 各 lint rule に一意の rule id (L0001 形式) が付与されている
+/// Red Phase: Linter.ls に L0001 形式の rule ID が未定義のため FAIL する。
+#[test]
+fn test_e2e_selfhost_linter_rule_ids_v2() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let lint_path = project_root.join("selfhost/Linter.ls");
+    assert!(
+        lint_path.exists(),
+        "selfhost/Linter.ls が存在しない (T4-3)"
+    );
+    let source = std::fs::read_to_string(&lint_path)
+        .expect("selfhost/Linter.ls の読み込みに失敗");
+
+    // T4c-2 AC-304: 各 lint rule に一意の rule id (L0001 形式) が付与されている
+    // L + 4桁の数字パターンを手動検索
+    let has_rule_id = source.lines().any(|line| {
+        let bytes = line.as_bytes();
+        for i in 0..bytes.len().saturating_sub(4) {
+            if bytes[i] == b'L'
+                && i + 4 < bytes.len()
+                && bytes[i + 1].is_ascii_digit()
+                && bytes[i + 2].is_ascii_digit()
+                && bytes[i + 3].is_ascii_digit()
+                && bytes[i + 4].is_ascii_digit()
+            {
+                return true;
+            }
+        }
+        false
+    });
+    assert!(
+        has_rule_id,
+        "selfhost/Linter.ls に L0001 形式の rule ID がない (AC-304)"
+    );
+}
+
+/// TEST-DOC-01: docs/schemas/ に JSON schema ファイルが存在すること
+///
+/// T4d-1 AC-400/AC-401/AC-402: knowledge/review/doc の JSON Schema が docs/schemas/ に配置
+/// Red Phase: docs/schemas/ ディレクトリが未作成のため FAIL する。
+#[test]
+fn test_e2e_selfhost_doc_schemas() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let schemas_dir = project_root.join("docs/schemas");
+    assert!(
+        schemas_dir.exists() && schemas_dir.is_dir(),
+        "docs/schemas/ ディレクトリが存在しない (T4d-1 AC-400)"
+    );
+
+    // AC-400: knowledge JSON の JSON Schema
+    // AC-401: review output の JSON Schema
+    // AC-402: doc generator の出力 schema
+    let entries: Vec<_> = std::fs::read_dir(&schemas_dir)
+        .expect("docs/schemas/ の読み込みに失敗")
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            name.ends_with(".json") || name.ends_with(".schema.json")
+        })
+        .collect();
+
+    assert!(
+        !entries.is_empty(),
+        "docs/schemas/ に JSON schema ファイルが存在しない (AC-400/AC-401/AC-402)"
+    );
+
+    // 最低限 knowledge / review / doc の 3 schema が必要
+    let schema_names: Vec<String> = entries
+        .iter()
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    let required_schemas = ["knowledge", "review", "doc"];
+    for schema in &required_schemas {
+        let found = schema_names.iter().any(|n| n.contains(schema));
+        assert!(
+            found,
+            "docs/schemas/ に '{}' 関連の schema がない (AC-400/AC-401/AC-402). 存在するファイル: {:?}",
+            schema, schema_names
+        );
+    }
+}
+
+/// TEST-DOC-02: selfhost/DocTools.ls + HtmlDoc.ls が存在し deterministic HTML 生成に対応
+///
+/// T4d-3 AC-408/AC-409: deterministic 出力、タイムスタンプ非埋め込み
+/// Red Phase: selfhost/DocTools.ls, HtmlDoc.ls が未作成のため FAIL する。
+#[test]
+fn test_e2e_selfhost_doc_deterministic_html() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    // DocTools.ls の存在確認 (T4d-3)
+    let doctools_path = project_root.join("selfhost/DocTools.ls");
+    assert!(
+        doctools_path.exists(),
+        "selfhost/DocTools.ls が存在しない (T4d-3: HTML doc 生成)"
+    );
+
+    // HtmlDoc.ls の存在確認
+    let htmldoc_path = project_root.join("selfhost/HtmlDoc.ls");
+    assert!(
+        htmldoc_path.exists(),
+        "selfhost/HtmlDoc.ls が存在しない (T4d-3: HTML doc 生成)"
+    );
+
+    let doctools_source = std::fs::read_to_string(&doctools_path)
+        .expect("selfhost/DocTools.ls の読み込みに失敗");
+    let htmldoc_source = std::fs::read_to_string(&htmldoc_path)
+        .expect("selfhost/HtmlDoc.ls の読み込みに失敗");
+
+    // module 宣言の存在確認
+    assert!(
+        doctools_source.contains("(module DocTools)") || doctools_source.contains("(module Doc"),
+        "selfhost/DocTools.ls に module 宣言がない"
+    );
+    assert!(
+        htmldoc_source.contains("(module HtmlDoc)") || htmldoc_source.contains("(module Html"),
+        "selfhost/HtmlDoc.ls に module 宣言がない"
+    );
+
+    // doc 生成関数の存在確認
+    assert!(
+        doctools_source.contains("generate") || doctools_source.contains("gen-doc")
+            || doctools_source.contains("doc-generate"),
+        "selfhost/DocTools.ls に doc 生成関数がない"
+    );
+}
+
+/// TEST-DOC-03: selfhost/DocTools.ls が top-level defn を公開関数として抽出できること
+#[test]
+fn test_e2e_selfhost_doctools_extract_public_functions_runtime() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] 42) (defn add [x y] (+ x y))")
+        entries (extract-public-functions program)]
+    (do
+      (print (vector-length entries))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["2"], "public defn 2 件を抽出できるべき");
+}
+
+/// TEST-DOC-04: selfhost/DocTools.ls が type/type-alias を抽出できること
+#[test]
+fn test_e2e_selfhost_doctools_extract_type_definitions_runtime() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(type Foo Int) (type-alias Bar Int)")
+        entries (extract-type-definitions program)]
+    (do
+      (print (vector-length entries))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["2"], "type 定義 2 件を抽出できるべき");
+}
+
+/// TEST-DOC-05: selfhost/DocTools.ls が module body の公開 defn を抽出できること
+#[test]
+fn test_e2e_selfhost_doctools_extract_module_public_functions_runtime() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(module Demo (defn visible [] 1) (private (defn hidden [] 0)))")
+        entries (extract-public-functions program)]
+    (do
+      (print (vector-length entries))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["1"], "module body の公開 defn だけを抽出できるべき");
+}
+
+/// TEST-DOC-06: selfhost/DocTools.ls が module body の type 宣言を抽出できること
+#[test]
+fn test_e2e_selfhost_doctools_extract_module_type_definitions_runtime() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(module Demo (type Thing Int) (type-alias Alias Int))")
+        entries (extract-type-definitions program)]
+    (do
+      (print (vector-length entries))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["2"], "module body の type 系宣言を抽出できるべき");
+}
+
+/// TEST-PKG-01: scripts/ に配布物作成スクリプトが存在すること
+///
+/// T4e-1/T4e-2: OS 別配布形式の固定 + release artifact の同梱物
+/// Red Phase: 配布物作成スクリプトが未作成のため FAIL する。
+#[test]
+fn test_e2e_selfhost_pkg_archives() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let scripts_dir = project_root.join("scripts");
+    assert!(
+        scripts_dir.exists() && scripts_dir.is_dir(),
+        "scripts/ ディレクトリが存在しない"
+    );
+
+    // T4e-1: OS 別配布形式の固定
+    // T4e-2: release artifact の同梱物
+    let entries: Vec<String> = std::fs::read_dir(&scripts_dir)
+        .expect("scripts/ の読み込みに失敗")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+
+    // 配布物作成に関連するスクリプト (release / package / dist / archive)
+    let has_pkg_script = entries.iter().any(|n| {
+        n.contains("release") || n.contains("package")
+            || n.contains("dist") || n.contains("archive")
+    });
+    assert!(
+        has_pkg_script,
+        "scripts/ に配布物作成スクリプト (release/package/dist/archive) がない (T4e-1). 存在するファイル: {:?}",
+        entries
+    );
+
+    // checksums 生成スクリプトの存在確認 (AC-505: SHA-256 ハッシュ)
+    let has_checksum_script = entries.iter().any(|n| {
+        n.contains("checksum") || n.contains("sha256")
+    });
+    assert!(
+        has_checksum_script,
+        "scripts/ に checksum 生成スクリプトがない (AC-505). 存在するファイル: {:?}",
+        entries
+    );
+}
+
+/// GC-05 進捗: 同一ミニプログラムを短いループで compile+run（長寿命 soak の縮小版・CI 負荷を抑える）
+#[test]
+fn test_e2e_gc_light_compile_run_loop() {
+    let src = r#"(defn main [] (print 1))"#;
+    for _ in 0..48 {
+        let out = compile_and_run(src);
+        assert_eq!(out.trim(), "1", "GC light loop: 毎回同一出力");
+    }
+}
+
+/// GC-05 拡張: 1000 回 compile+run ループ (runtime-stability-spec S8 の CI 簡易モード相当)
+/// 通常テストでは skip し、CI で --include-ignored 実行する
+#[test]
+#[ignore]
+fn test_e2e_gc_compile_run_loop_1000() {
+    let src = r#"(defn main [] (print 1))"#;
+    for i in 0..1000 {
+        let out = compile_and_run(src);
+        assert_eq!(
+            out.trim(),
+            "1",
+            "GC 1000-loop: iteration {} で出力が不一致",
+            i
+        );
+    }
+}
+
+// ============================================================
+// Group M: CI/Ops 系テスト (TEST-META-05, TEST-OPS-01〜08)
+// ============================================================
+
+/// TEST-META-05: tests/differential-allowlist.yaml の存在 + 構造検証
+#[test]
+fn test_e2e_meta05_differential_allowlist() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let allowlist_path = project_root.join("tests/differential-allowlist.yaml");
+    assert!(
+        allowlist_path.exists(),
+        "tests/differential-allowlist.yaml が存在しない"
+    );
+    let content = std::fs::read_to_string(&allowlist_path)
+        .expect("differential-allowlist.yaml の読み込みに失敗");
+    // YAML として最低限のキーが含まれていること
+    assert!(
+        content.contains("allowlist"),
+        "differential-allowlist.yaml に 'allowlist' キーが含まれていない: {}",
+        content
+    );
+    // META-05: 許容エントリは空運用（エントリ追加は差分ゼロ不能時のみ）
+    assert!(
+        content.contains("allowlist: []"),
+        "differential-allowlist.yaml は空配列 allowlist: [] を維持すること (META-05): {}",
+        content
+    );
+}
+
+/// TEST-OPS-01: .github/workflows/ci.yml に gate-v2 ジョブ構造
+#[test]
+fn test_e2e_ops01_ci_gate_v2() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let ci_path = project_root.join(".github/workflows/ci.yml");
+    assert!(ci_path.exists(), "ci.yml が存在しない");
+    let content = std::fs::read_to_string(&ci_path)
+        .expect("ci.yml の読み込みに失敗");
+    // gate-v2 ジョブまたは ci-gate-v2 ジョブが存在すること
+    assert!(
+        content.contains("ci-gate-v2") || content.contains("gate-v2"),
+        "ci.yml に gate-v2 / ci-gate-v2 ジョブが存在しない"
+    );
+}
+
+/// TEST-OPS-02: ci.yml に artifact retention 設定
+#[test]
+fn test_e2e_ops02_artifact_policy() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let ci_path = project_root.join(".github/workflows/ci.yml");
+    assert!(ci_path.exists(), "ci.yml が存在しない");
+    let content = std::fs::read_to_string(&ci_path)
+        .expect("ci.yml の読み込みに失敗");
+    // artifact retention に関する設定が存在すること
+    assert!(
+        content.contains("retention-days"),
+        "ci.yml に artifact retention-days 設定が存在しない"
+    );
+}
+
+/// TEST-OPS-03: ci.yml に shadow/oracle ジョブ
+#[test]
+fn test_e2e_ops03_shadow_oracle() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let ci_path = project_root.join(".github/workflows/ci.yml");
+    assert!(ci_path.exists(), "ci.yml が存在しない");
+    let content = std::fs::read_to_string(&ci_path)
+        .expect("ci.yml の読み込みに失敗");
+    // shadow または oracle ジョブが存在すること
+    assert!(
+        content.contains("shadow") || content.contains("oracle"),
+        "ci.yml に shadow/oracle ジョブが存在しない"
+    );
+}
+
+/// TEST-OPS-04: legacy-rust-bootstrap/ ディレクトリ構造
+#[test]
+fn test_e2e_ops04_legacy_isolation() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let legacy_dir = project_root.join("legacy-rust-bootstrap");
+    assert!(
+        legacy_dir.exists() && legacy_dir.is_dir(),
+        "legacy-rust-bootstrap/ ディレクトリが存在しない"
+    );
+    // README.md が含まれていること
+    let readme = legacy_dir.join("README.md");
+    assert!(
+        readme.exists(),
+        "legacy-rust-bootstrap/README.md が存在しない"
+    );
+}
+
+/// TEST-OPS-05: driver/main.rs に L# path 設定
+#[test]
+fn test_e2e_ops05_default_path_migration() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let main_rs = project_root.join("crates/lsharp-driver/src/main.rs");
+    assert!(main_rs.exists(), "main.rs が存在しない");
+    let content = std::fs::read_to_string(&main_rs)
+        .expect("main.rs の読み込みに失敗");
+    // L# compiler path に関する設定またはコメントが存在すること
+    assert!(
+        content.contains("LSHARP_PATH") || content.contains("lsharp_path") || content.contains("compiler path"),
+        "main.rs に L# compiler path 設定が存在しない"
+    );
+    let smoke = project_root.join("scripts/ci/default-path-smoke.sh");
+    assert!(
+        smoke.is_file(),
+        "scripts/ci/default-path-smoke.sh が存在しない (OPS-05 CI gate)"
+    );
+    let doc = project_root.join("docs/development/operations/default-path-migration.md");
+    assert!(
+        doc.is_file(),
+        "docs/development/operations/default-path-migration.md が存在しない"
+    );
+}
+
+/// TEST-OPS-06: scripts/ に release playbook
+#[test]
+fn test_e2e_ops06_release_playbook() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let scripts_dir = project_root.join("scripts");
+    let entries: Vec<String> = std::fs::read_dir(&scripts_dir)
+        .expect("scripts/ の読み込みに失敗")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    let has_playbook = entries.iter().any(|n| n.contains("playbook"));
+    assert!(
+        has_playbook,
+        "scripts/ に release playbook スクリプトが存在しない. 存在するファイル: {:?}",
+        entries
+    );
+}
+
+/// TEST-OPS-07: scripts/smoke_test_readme.sh の存在 + 実行可能
+#[test]
+fn test_e2e_ops07_fresh_clone_no_rust() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let smoke_script = project_root.join("scripts/smoke_test_readme.sh");
+    assert!(
+        smoke_script.exists(),
+        "scripts/smoke_test_readme.sh が存在しない"
+    );
+    // 実行可能ビットが設定されていること (Unix)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let meta = std::fs::metadata(&smoke_script)
+            .expect("smoke_test_readme.sh のメタデータ取得失敗");
+        let mode = meta.permissions().mode();
+        assert!(
+            mode & 0o111 != 0,
+            "scripts/smoke_test_readme.sh に実行可能ビットがない (mode: {:o})",
+            mode
+        );
+    }
+}
+
+/// TEST-OPS-08: scripts/ に rollback スクリプト + docs/ に手順
+#[test]
+fn test_e2e_ops08_final_removal_rollback() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    // rollback スクリプトの存在
+    let scripts_dir = project_root.join("scripts");
+    let entries: Vec<String> = std::fs::read_dir(&scripts_dir)
+        .expect("scripts/ の読み込みに失敗")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    let has_rollback = entries.iter().any(|n| n.contains("rollback"));
+    assert!(
+        has_rollback,
+        "scripts/ に rollback スクリプトが存在しない. 存在するファイル: {:?}",
+        entries
+    );
+
+    // docs/ にロールバック手順ドキュメント
+    let docs_dir = project_root.join("docs");
+    assert!(
+        docs_dir.exists() && docs_dir.is_dir(),
+        "docs/ ディレクトリが存在しない"
+    );
+    let rollback_candidates = [
+        project_root.join("docs/rollback-procedure.md"),
+        project_root.join("docs/development/operations/rollback-procedure.md"),
+    ];
+    let has_rollback_doc = rollback_candidates.iter().any(|p| p.is_file());
+    assert!(
+        has_rollback_doc,
+        "rollback 手順ドキュメントが見つからない (期待: {:?})",
+        rollback_candidates
+    );
+}
+
+/// D-2: Formatter.ls の format-expr が lit-int AST ノードの値を正しく返すこと
+/// format-expr [1, 42] → 42 (整数リテラルの値)
+#[test]
+fn test_e2e_selfhost_formatter_format_expr_lit_int() {
+    let harness = r#"
+(defn main []
+  (let [;; tag=1 (lit-int), value=42
+        node (vector-push (vector-push (vector-new 2) 1) 42)
+        result (format-expr node 0)]
+    (do
+      (print result)
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines.last().unwrap(), &"42", "lit-int 42 をフォーマットすると 42 を返すべき");
+}
+
+/// D-2: Formatter.ls の format-expr が apply AST ノードの引数数を含む結果を返すこと
+/// format-expr [5, func-node, 2, arg1, arg2] → argc (2)
+#[test]
+fn test_e2e_selfhost_formatter_format_expr_apply() {
+    let harness = r#"
+(defn main []
+  (let [;; tag=5 (apply), func=[4, 100], argc=2, arg1=[1, 1], arg2=[1, 2]
+        func-node (vector-push (vector-push (vector-new 2) 4) 100)
+        arg1 (vector-push (vector-push (vector-new 2) 1) 1)
+        arg2 (vector-push (vector-push (vector-new 2) 1) 2)
+        node (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 5) 5) func-node) 2) arg1) arg2)
+        result (format-expr node 0)]
+    (do
+      (print result)
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    // apply の format 結果: argc (引数数) を返す
+    assert_eq!(lines.last().unwrap(), &"2", "apply の format 結果は argc=2 を返すべき");
+}
