@@ -179,6 +179,9 @@ fn selfhost_cli_runtime_bundle() -> String {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -201,7 +204,7 @@ fn selfhost_cli_runtime_bundle() -> String {
         .expect("selfhost/Cli.ls が読み込めない");
 
     format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
         token_ls,
         ast_ls,
         lexer_ls,
@@ -209,6 +212,7 @@ fn selfhost_cli_runtime_bundle() -> String {
         ir_ls,
         type_ls,
         type_scheme_ls,
+        type_infer_core_ls,
         type_infer_ls,
         compiler_ls,
         wasm_emit_ls,
@@ -4969,7 +4973,7 @@ fn test_e2e_bootstrap_ci_all_modules_compile() {
         "Lexer", "Linker", "Linter", "Lower", "LowerDecl", "LowerExpr",
         "LowerPattern", "LspServer", "MacroExpand", "Main", "MetadataCheck", "ModuleGraph",
         "NativeCodegen", "NativeEmit", "NativeTarget", "Parser", "Span",
-        "TestRunner", "Token", "Type", "TypeInfer", "TypeScheme",
+        "TestRunner", "Token", "Type", "TypeInfer", "TypeInferCore", "TypeScheme",
         "WasiBackend", "WasiRunner", "WasmEmit",
     ];
     let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -6773,6 +6777,9 @@ fn test_e2e_selfhost_typeinfer_float_and_unit_literals() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -6796,8 +6803,8 @@ fn test_e2e_selfhost_typeinfer_float_and_unit_literals() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -6828,6 +6835,9 @@ fn test_e2e_selfhost_typeinfer_ann_expr() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -6846,8 +6856,8 @@ fn test_e2e_selfhost_typeinfer_ann_expr() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -6871,6 +6881,9 @@ fn test_e2e_selfhost_typeinfer_error_undefined_var_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -6887,8 +6900,8 @@ fn test_e2e_selfhost_typeinfer_error_undefined_var_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -6915,6 +6928,9 @@ fn test_e2e_selfhost_typeinfer_error_if_cond_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -6939,8 +6955,8 @@ fn test_e2e_selfhost_typeinfer_error_if_cond_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -6967,6 +6983,9 @@ fn test_e2e_selfhost_typeinfer_error_if_branch_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -6991,8 +7010,8 @@ fn test_e2e_selfhost_typeinfer_error_if_branch_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -7019,6 +7038,9 @@ fn test_e2e_selfhost_typeinfer_error_apply_arg_mismatch_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -7043,8 +7065,8 @@ fn test_e2e_selfhost_typeinfer_error_apply_arg_mismatch_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -7074,6 +7096,9 @@ fn test_e2e_selfhost_typeinfer_error_apply_propagates_func_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -7098,8 +7123,8 @@ fn test_e2e_selfhost_typeinfer_error_apply_propagates_func_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -7129,6 +7154,9 @@ fn test_e2e_selfhost_typeinfer_error_infinite_type_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -7157,8 +7185,8 @@ fn test_e2e_selfhost_typeinfer_error_infinite_type_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -7185,6 +7213,9 @@ fn test_e2e_selfhost_typeinfer_error_lambda_propagates_infinite_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -7219,8 +7250,8 @@ fn test_e2e_selfhost_typeinfer_error_lambda_propagates_infinite_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -7250,6 +7281,9 @@ fn test_e2e_selfhost_typeinfer_error_defn_propagates_infinite_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -7287,8 +7321,8 @@ fn test_e2e_selfhost_typeinfer_error_defn_propagates_infinite_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -7318,6 +7352,9 @@ fn test_e2e_selfhost_typeinfer_error_let_propagates_infinite_init_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -7356,8 +7393,8 @@ fn test_e2e_selfhost_typeinfer_error_let_propagates_infinite_init_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -7387,6 +7424,9 @@ fn test_e2e_selfhost_typeinfer_error_do_propagates_infinite_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -7421,8 +7461,8 @@ fn test_e2e_selfhost_typeinfer_error_do_propagates_infinite_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -7452,6 +7492,9 @@ fn test_e2e_selfhost_typeinfer_error_computation_propagates_infinite_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -7498,8 +7541,8 @@ fn test_e2e_selfhost_typeinfer_error_computation_propagates_infinite_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -7529,6 +7572,9 @@ fn test_e2e_selfhost_typeinfer_error_match_propagates_infinite_body_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -7568,8 +7614,8 @@ fn test_e2e_selfhost_typeinfer_error_match_propagates_infinite_body_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -7599,6 +7645,9 @@ fn test_e2e_selfhost_typeinfer_error_match_arm_result_mismatch_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -7631,8 +7680,8 @@ fn test_e2e_selfhost_typeinfer_error_match_arm_result_mismatch_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -7662,6 +7711,9 @@ fn test_e2e_selfhost_typeinfer_error_match_pattern_scrutinee_mismatch_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -7701,8 +7753,8 @@ fn test_e2e_selfhost_typeinfer_error_match_pattern_scrutinee_mismatch_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -7735,6 +7787,9 @@ fn test_e2e_selfhost_typeinfer_error_match_undefined_constructor_pattern_code() 
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -7768,8 +7823,8 @@ fn test_e2e_selfhost_typeinfer_error_match_undefined_constructor_pattern_code() 
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -7799,6 +7854,9 @@ fn test_e2e_selfhost_typeinfer_error_match_constructor_child_pattern_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -7843,8 +7901,8 @@ fn test_e2e_selfhost_typeinfer_error_match_constructor_child_pattern_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -7874,6 +7932,9 @@ fn test_e2e_selfhost_typeinfer_error_match_constructor_arity_mismatch_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -7912,8 +7973,8 @@ fn test_e2e_selfhost_typeinfer_error_match_constructor_arity_mismatch_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -7943,6 +8004,9 @@ fn test_e2e_selfhost_typeinfer_error_match_pat_constructor_tag_undefined_code() 
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -7976,8 +8040,8 @@ fn test_e2e_selfhost_typeinfer_error_match_pat_constructor_tag_undefined_code() 
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -8010,6 +8074,9 @@ fn test_e2e_selfhost_typeinfer_error_match_pat_constructor_tag_arity_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -8049,8 +8116,8 @@ fn test_e2e_selfhost_typeinfer_error_match_pat_constructor_tag_arity_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -8083,6 +8150,9 @@ fn test_e2e_selfhost_typeinfer_error_match_pat_record_tag_child_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -8124,8 +8194,8 @@ fn test_e2e_selfhost_typeinfer_error_match_pat_record_tag_child_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -8158,6 +8228,9 @@ fn test_e2e_selfhost_typeinfer_error_match_record_child_pattern_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -8201,8 +8274,8 @@ fn test_e2e_selfhost_typeinfer_error_match_record_child_pattern_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -8232,6 +8305,9 @@ fn test_e2e_selfhost_typeinfer_error_record_literal_propagates_infinite_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -8270,8 +8346,8 @@ fn test_e2e_selfhost_typeinfer_error_record_literal_propagates_infinite_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -8301,6 +8377,9 @@ fn test_e2e_selfhost_typeinfer_error_field_access_propagates_infinite_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -8330,8 +8409,8 @@ fn test_e2e_selfhost_typeinfer_error_field_access_propagates_infinite_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -8361,6 +8440,9 @@ fn test_e2e_selfhost_typeinfer_error_record_update_propagates_infinite_code() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -8399,8 +8481,8 @@ fn test_e2e_selfhost_typeinfer_error_record_update_propagates_infinite_code() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -8430,6 +8512,9 @@ fn test_e2e_selfhost_typeinfer_record_literal() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -8458,8 +8543,8 @@ fn test_e2e_selfhost_typeinfer_record_literal() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -8483,6 +8568,9 @@ fn test_e2e_selfhost_typeinfer_record_update() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -8516,8 +8604,8 @@ fn test_e2e_selfhost_typeinfer_record_update() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -8541,6 +8629,9 @@ fn test_e2e_selfhost_typeinfer_computation_expr() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -8593,8 +8684,8 @@ fn test_e2e_selfhost_typeinfer_computation_expr() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -8621,6 +8712,9 @@ fn test_e2e_selfhost_typeinfer_computation_single_step_bool() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -8650,8 +8744,8 @@ fn test_e2e_selfhost_typeinfer_computation_single_step_bool() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -8688,6 +8782,9 @@ fn test_e2e_selfhost_typeinfer_computation_let_bang_bool_binder() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -8724,8 +8821,8 @@ fn test_e2e_selfhost_typeinfer_computation_let_bang_bool_binder() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -8753,6 +8850,9 @@ fn test_e2e_selfhost_typeinfer_computation_do_bang_bool_return() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -8788,8 +8888,8 @@ fn test_e2e_selfhost_typeinfer_computation_do_bang_bool_return() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -8817,6 +8917,9 @@ fn test_e2e_selfhost_typeinfer_computation_let_bang_do_bang_return_bool() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -8859,8 +8962,8 @@ fn test_e2e_selfhost_typeinfer_computation_let_bang_do_bang_return_bool() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -8894,6 +8997,9 @@ fn test_e2e_selfhost_typeinfer_computation_do_bang_let_bang_return_bool() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -8936,8 +9042,8 @@ fn test_e2e_selfhost_typeinfer_computation_do_bang_let_bang_return_bool() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -8971,6 +9077,9 @@ fn test_e2e_selfhost_typeinfer_do_six_exprs_last_bool() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -9003,8 +9112,8 @@ fn test_e2e_selfhost_typeinfer_do_six_exprs_last_bool() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -9028,6 +9137,9 @@ fn test_e2e_selfhost_typeinfer_do_seven_exprs_last_bool() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -9062,8 +9174,8 @@ fn test_e2e_selfhost_typeinfer_do_seven_exprs_last_bool() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -9087,6 +9199,9 @@ fn test_e2e_selfhost_typeinfer_do_eight_exprs_last_bool() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -9123,8 +9238,8 @@ fn test_e2e_selfhost_typeinfer_do_eight_exprs_last_bool() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -9148,6 +9263,9 @@ fn test_e2e_selfhost_typeinfer_do_nine_exprs_last_bool() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -9186,8 +9304,8 @@ fn test_e2e_selfhost_typeinfer_do_nine_exprs_last_bool() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -9211,6 +9329,9 @@ fn test_e2e_selfhost_typeinfer_do_ten_exprs_last_bool() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -9252,8 +9373,8 @@ fn test_e2e_selfhost_typeinfer_do_ten_exprs_last_bool() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -9277,6 +9398,9 @@ fn test_e2e_selfhost_typeinfer_do_eleven_exprs_last_bool() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -9320,8 +9444,8 @@ fn test_e2e_selfhost_typeinfer_do_eleven_exprs_last_bool() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -9349,6 +9473,9 @@ fn test_e2e_selfhost_typeinfer_do_twelve_exprs_last_bool() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -9394,8 +9521,8 @@ fn test_e2e_selfhost_typeinfer_do_twelve_exprs_last_bool() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -9423,6 +9550,9 @@ fn test_e2e_selfhost_typeinfer_do_thirteen_exprs_last_bool() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -9470,8 +9600,8 @@ fn test_e2e_selfhost_typeinfer_do_thirteen_exprs_last_bool() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -9499,6 +9629,9 @@ fn test_e2e_selfhost_typeinfer_do_fourteen_exprs_last_bool() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -9548,8 +9681,8 @@ fn test_e2e_selfhost_typeinfer_do_fourteen_exprs_last_bool() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -9577,6 +9710,9 @@ fn test_e2e_selfhost_typeinfer_lambda_two_params_curried() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -9626,8 +9762,8 @@ fn test_e2e_selfhost_typeinfer_lambda_two_params_curried() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -9661,6 +9797,9 @@ fn test_e2e_selfhost_typeinfer_defn_two_params_curried() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -9713,8 +9852,8 @@ fn test_e2e_selfhost_typeinfer_defn_two_params_curried() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -9748,6 +9887,9 @@ fn test_e2e_selfhost_typeinfer_apply_three_args_curried() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -9781,8 +9923,8 @@ fn test_e2e_selfhost_typeinfer_apply_three_args_curried() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -9810,6 +9952,9 @@ fn test_e2e_selfhost_typeinfer_apply_four_args_curried() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -9845,8 +9990,8 @@ fn test_e2e_selfhost_typeinfer_apply_four_args_curried() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -9874,6 +10019,9 @@ fn test_e2e_selfhost_typeinfer_apply_five_args_curried() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -9911,8 +10059,8 @@ fn test_e2e_selfhost_typeinfer_apply_five_args_curried() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -9940,6 +10088,9 @@ fn test_e2e_selfhost_typeinfer_apply_six_args_curried() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -9979,8 +10130,8 @@ fn test_e2e_selfhost_typeinfer_apply_six_args_curried() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -10008,6 +10159,9 @@ fn test_e2e_selfhost_typeinfer_apply_seven_args_curried() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -10049,8 +10203,8 @@ fn test_e2e_selfhost_typeinfer_apply_seven_args_curried() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -10078,6 +10232,9 @@ fn test_e2e_selfhost_typeinfer_lambda_three_params_curried() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -10141,8 +10298,8 @@ fn test_e2e_selfhost_typeinfer_lambda_three_params_curried() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -10179,6 +10336,9 @@ fn test_e2e_selfhost_typeinfer_lambda_four_params_curried() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -10259,8 +10419,8 @@ fn test_e2e_selfhost_typeinfer_lambda_four_params_curried() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -10300,6 +10460,9 @@ fn test_e2e_selfhost_typeinfer_lambda_five_params_curried() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -10397,8 +10560,8 @@ fn test_e2e_selfhost_typeinfer_lambda_five_params_curried() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -10441,6 +10604,9 @@ fn test_e2e_selfhost_typeinfer_lambda_six_params_curried() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -10555,8 +10721,8 @@ fn test_e2e_selfhost_typeinfer_lambda_six_params_curried() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -10602,6 +10768,9 @@ fn test_e2e_selfhost_typeinfer_lambda_seven_params_curried() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -10659,8 +10828,8 @@ fn test_e2e_selfhost_typeinfer_lambda_seven_params_curried() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -10687,6 +10856,9 @@ fn test_e2e_selfhost_typeinfer_defn_three_params_curried() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -10753,8 +10925,8 @@ fn test_e2e_selfhost_typeinfer_defn_three_params_curried() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -10791,6 +10963,9 @@ fn test_e2e_selfhost_typeinfer_defn_four_params_curried() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -10874,8 +11049,8 @@ fn test_e2e_selfhost_typeinfer_defn_four_params_curried() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -10915,6 +11090,9 @@ fn test_e2e_selfhost_typeinfer_defn_five_params_curried() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -11014,8 +11192,8 @@ fn test_e2e_selfhost_typeinfer_defn_five_params_curried() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -11058,6 +11236,9 @@ fn test_e2e_selfhost_typeinfer_defn_six_params_curried() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -11174,8 +11355,8 @@ fn test_e2e_selfhost_typeinfer_defn_six_params_curried() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -11221,6 +11402,9 @@ fn test_e2e_selfhost_typeinfer_defn_seven_params_curried() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -11280,8 +11464,8 @@ fn test_e2e_selfhost_typeinfer_defn_seven_params_curried() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -11385,6 +11569,9 @@ fn test_e2e_selfhost_typeinfer_field_access() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -11416,8 +11603,8 @@ fn test_e2e_selfhost_typeinfer_field_access() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -11441,6 +11628,9 @@ fn test_e2e_selfhost_typeinfer_field_access_fallback_var() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -11463,8 +11653,8 @@ fn test_e2e_selfhost_typeinfer_field_access_fallback_var() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -11498,6 +11688,9 @@ fn test_e2e_selfhost_typeinfer_field_access_on_record_literal() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -11528,8 +11721,8 @@ fn test_e2e_selfhost_typeinfer_field_access_on_record_literal() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -11566,6 +11759,9 @@ fn test_e2e_selfhost_typeinfer_field_access_on_record_literal_second_field() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -11601,8 +11797,8 @@ fn test_e2e_selfhost_typeinfer_field_access_on_record_literal_second_field() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -11639,6 +11835,9 @@ fn test_e2e_selfhost_typeinfer_quote_expr() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -11657,8 +11856,8 @@ fn test_e2e_selfhost_typeinfer_quote_expr() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -11682,6 +11881,9 @@ fn test_e2e_selfhost_typeinfer_unquote_expr() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -11702,8 +11904,8 @@ fn test_e2e_selfhost_typeinfer_unquote_expr() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -11727,6 +11929,9 @@ fn test_e2e_selfhost_typeinfer_unquote_splice_expr() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -11745,8 +11950,8 @@ fn test_e2e_selfhost_typeinfer_unquote_splice_expr() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -11780,6 +11985,9 @@ fn test_e2e_selfhost_typeinfer_match_var_binder() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -11807,8 +12015,8 @@ fn test_e2e_selfhost_typeinfer_match_var_binder() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -11832,6 +12040,9 @@ fn test_e2e_selfhost_typeinfer_match_pat_var_tag_binder() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -11860,8 +12071,8 @@ fn test_e2e_selfhost_typeinfer_match_pat_var_tag_binder() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -11892,6 +12103,9 @@ fn test_e2e_selfhost_typeinfer_match_record_pattern_binder() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -11930,8 +12144,8 @@ fn test_e2e_selfhost_typeinfer_match_record_pattern_binder() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -11955,6 +12169,9 @@ fn test_e2e_selfhost_typeinfer_match_constructor_pattern_binder() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -11995,8 +12212,8 @@ fn test_e2e_selfhost_typeinfer_match_constructor_pattern_binder() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -12020,6 +12237,9 @@ fn test_e2e_selfhost_typeinfer_match_pat_record_tag_binder() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -12059,8 +12279,8 @@ fn test_e2e_selfhost_typeinfer_match_pat_record_tag_binder() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -12094,6 +12314,9 @@ fn test_e2e_selfhost_typeinfer_match_pat_constructor_tag_binder() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -12135,8 +12358,8 @@ fn test_e2e_selfhost_typeinfer_match_pat_constructor_tag_binder() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -12173,6 +12396,9 @@ fn test_e2e_selfhost_typeinfer_match_pat_lit_tag() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -12200,8 +12426,8 @@ fn test_e2e_selfhost_typeinfer_match_pat_lit_tag() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -12226,6 +12452,9 @@ fn test_e2e_selfhost_typeinfer_match_pat_lit_unit_tag() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -12246,8 +12475,8 @@ fn test_e2e_selfhost_typeinfer_match_pat_lit_unit_tag() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -12270,6 +12499,9 @@ fn test_e2e_selfhost_typeinfer_match_constructor_child_pat_lit() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -12313,8 +12545,8 @@ fn test_e2e_selfhost_typeinfer_match_constructor_child_pat_lit() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -12351,6 +12583,9 @@ fn test_e2e_selfhost_typeinfer_match_record_child_pat_lit() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -12397,8 +12632,8 @@ fn test_e2e_selfhost_typeinfer_match_record_child_pat_lit() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -12435,6 +12670,9 @@ fn test_e2e_selfhost_typeinfer_match_constructor_child_pat_unit_lit() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -12478,8 +12716,8 @@ fn test_e2e_selfhost_typeinfer_match_constructor_child_pat_unit_lit() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls, harness
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -12819,6 +13057,7 @@ fn test_e2e_selfhost_compile_stdlib_basic() {
 fn test_e2e_selfhost_module_compile_individual() {
     let all_modules = [
         "Token", "AST", "IR", "Type", "TypeScheme",
+        "TypeInferCore",
         "Compiler", "WasmEmit", "Lexer", "Parser", "Main",
         "Formatter", "JsonRpc", "Linter",
         "MacroExpand", "TypeInfer",
@@ -12873,6 +13112,7 @@ fn test_e2e_selfhost_all_modules_deterministic() {
         ("IR.ls", include_str!("../../../selfhost/IR.ls")),
         ("WasmEmit.ls", include_str!("../../../selfhost/WasmEmit.ls")),
         ("TypeScheme.ls", include_str!("../../../selfhost/TypeScheme.ls")),
+        ("TypeInferCore.ls", include_str!("../../../selfhost/TypeInferCore.ls")),
         ("Formatter.ls", include_str!("../../../selfhost/Formatter.ls")),
         ("JsonRpc.ls", include_str!("../../../selfhost/JsonRpc.ls")),
         ("Linter.ls", include_str!("../../../selfhost/Linter.ls")),
@@ -12903,6 +13143,7 @@ fn test_e2e_selfhost_all_modules_deterministic() {
 fn test_e2e_bootstrap_stage1_compile_selfhost_sources() {
     let modules = [
         "Token", "AST", "IR", "Type", "TypeScheme",
+        "TypeInferCore",
         "Compiler", "WasmEmit", "Lexer", "Parser", "Main",
         "Formatter", "JsonRpc", "Linter",
     ];
@@ -12987,6 +13228,7 @@ fn test_e2e_selfhost_module_declarations() {
         ("Type.ls", "Type", &[]),
         ("AST.ls", "AST", &["Token"]),
         ("TypeScheme.ls", "TypeScheme", &["Type"]),
+        ("TypeInferCore.ls", "TypeInferCore", &["AST", "Type", "TypeScheme"]),
         ("Lexer.ls", "Lexer", &["Token"]),
         ("Parser.ls", "Parser", &["Token", "AST"]),
         ("MacroExpand.ls", "MacroExpand", &["AST", "Token"]),
@@ -13050,8 +13292,8 @@ fn test_e2e_selfhost_module_declarations() {
         }
     }
 
-    assert_eq!(text_verified, 15, "全 15 モジュールでテキスト検証すべき");
-    assert_eq!(parse_verified, 13, "パース可能な 13 モジュールで AST 検証すべき");
+    assert_eq!(text_verified, 16, "全 16 モジュールでテキスト検証すべき");
+    assert_eq!(parse_verified, 14, "パース可能な 14 モジュールで AST 検証すべき");
 }
 
 // =====================================================
@@ -13481,6 +13723,7 @@ fn test_e2e_bootstrap_selfhost_full_deterministic() {
         ("IR.ls", include_str!("../../../selfhost/IR.ls")),
         ("WasmEmit.ls", include_str!("../../../selfhost/WasmEmit.ls")),
         ("TypeScheme.ls", include_str!("../../../selfhost/TypeScheme.ls")),
+        ("TypeInferCore.ls", include_str!("../../../selfhost/TypeInferCore.ls")),
         ("Formatter.ls", include_str!("../../../selfhost/Formatter.ls")),
         ("JsonRpc.ls", include_str!("../../../selfhost/JsonRpc.ls")),
         ("Linter.ls", include_str!("../../../selfhost/Linter.ls")),
@@ -13923,6 +14166,9 @@ fn test_e2e_selfhost_type_responsibility_separation() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
@@ -14294,14 +14540,17 @@ fn test_e2e_selfhost_type_hm_core_golden() {
     let type_scheme_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
             .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_core_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
+            .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
             .expect("selfhost/TypeInfer.ls が読み込めない");
 
     // モジュール連結 (依存順)
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        token_ls, ast_ls, type_ls, type_scheme_ls, type_infer_ls
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls
     );
 
     // コンパイル + 実行: TypeInfer.ls の main() が golden fixture と同じ結果を出力するか

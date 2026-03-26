@@ -3,16 +3,6 @@
 (import Type)
 (import TypeScheme)
 
-;; TypeInferCore.ls - L# セルフホスティング: 型推論コア定義
-;;
-;; Type.ls (型定義・単一化・代入) と TypeScheme.ls (汎化・具体化) を使い、
-;; 型推論の基盤となる定数・ヘルパー・型環境・結果型を提供する。
-;;
-;; 依存: Type.ls, TypeScheme.ls, AST.ls
-;;
-;; 型環境 (TypeEnv) = HashMap<name-hash, TypeScheme>
-;; 推論結果 = [subst, type, error-code] (Vector of 3 要素)
-
 ;; ============================================================
 ;; AST タグ定数 (AST.ls から参照)
 ;; ============================================================
@@ -119,6 +109,9 @@
 (defn make-error-result []
   (make-error-result-code 6))
 
+(defn propagate-error-result [r]
+  (make-error-result-code (result-error-code r)))
+
 ;; 結果がエラーか判定
 (defn result-failed [r]
   (map-get (result-subst r) -1))
@@ -129,63 +122,6 @@
 
 (defn fresh-type-var [counter]
   (mk-var (next-var counter)))
-
-;; ============================================================
-;; infer: 公開 API (Main.ls から呼び出される)
-;; ============================================================
-
-(defn infer [program]
-  (let [counter (make-var-counter)
-        env (init-builtin-env counter)
-        n (vector-length program)]
-    (if (> n 0)
-      (let [decl (vector-get program 0)]
-        (if (= (vector-get decl 0) 20)
-          (let [out (infer-defn decl env counter)]
-            (if (= (vector-length out) 2)
-              (vector-get out 1)
-              (vector-get out 1)))
-          (mk-int)))
-      (mk-int))))
-
-;; ============================================================
-;; ビルトイン型環境の初期化
-;; ============================================================
-
-;; ビルトイン演算子の型を登録
-;; + : Int -> Int -> Int (カリー化)
-;; = : Int -> Int -> Bool
-;; print : Int -> Int
-(defn init-builtin-env [counter]
-  (let [env (type-env-new)
-        int-ty (mk-int)
-        bool-ty (mk-bool)
-        ;; + : Int -> (Int -> Int)
-        add-ty (mk-fun int-ty (mk-fun int-ty int-ty))
-        ;; - : Int -> (Int -> Int)
-        sub-ty (mk-fun int-ty (mk-fun int-ty int-ty))
-        ;; * : Int -> (Int -> Int)
-        mul-ty (mk-fun int-ty (mk-fun int-ty int-ty))
-        ;; / : Int -> (Int -> Int)
-        div-ty (mk-fun int-ty (mk-fun int-ty int-ty))
-        ;; = : Int -> (Int -> Bool)
-        eq-ty (mk-fun int-ty (mk-fun int-ty bool-ty))
-        ;; > : Int -> (Int -> Bool)
-        gt-ty (mk-fun int-ty (mk-fun int-ty bool-ty))
-        ;; < : Int -> (Int -> Bool)
-        lt-ty (mk-fun int-ty (mk-fun int-ty bool-ty))
-        ;; print : Int -> Int
-        print-ty (mk-fun int-ty int-ty)
-        ;; 名前ハッシュ (ASCII コード)
-        env1 (type-env-insert env 43 (mono add-ty))
-        env2 (type-env-insert env1 45 (mono sub-ty))
-        env3 (type-env-insert env2 42 (mono mul-ty))
-        env4 (type-env-insert env3 47 (mono div-ty))
-        env5 (type-env-insert env4 61 (mono eq-ty))
-        env6 (type-env-insert env5 62 (mono gt-ty))
-        env7 (type-env-insert env6 60 (mono lt-ty))
-        env8 (type-env-insert env7 112 (mono print-ty))]
-    env8))
 
 ;; ============================================================
 ;; HKT (Higher-Kinded Types) 支援
@@ -247,7 +183,7 @@
       ty)))
 
 ;; ============================================================
-;; Record Update 式の型推論 (ヘルパー)
+;; Record Update 式の型推論
 ;; ============================================================
 
 ;; infer-record-update: レコード更新式 { base | field1 = e1, ... }
