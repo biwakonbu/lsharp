@@ -966,7 +966,7 @@ fn test_e2e_ops05_default_path_migration() {
     );
 }
 
-/// TEST-OPS-06: scripts/ に release playbook
+/// TEST-OPS-06: scripts/ に release playbook + ドキュメント
 #[test]
 fn test_e2e_ops06_release_playbook() {
     let project_root =
@@ -983,9 +983,16 @@ fn test_e2e_ops06_release_playbook() {
         "scripts/ に release playbook スクリプトが存在しない. 存在するファイル: {:?}",
         entries
     );
+    // リリースプレイブックドキュメントが存在すること
+    let playbook_doc = project_root
+        .join("docs/development/operations/release-playbook.md");
+    assert!(
+        playbook_doc.is_file(),
+        "docs/development/operations/release-playbook.md が存在しない"
+    );
 }
 
-/// TEST-OPS-07: scripts/smoke_test_readme.sh の存在 + 実行可能
+/// TEST-OPS-07: scripts/smoke_test_readme.sh の存在 + 実行可能 + fresh clone 仕様ドキュメント
 #[test]
 fn test_e2e_ops07_fresh_clone_no_rust() {
     let project_root =
@@ -1008,9 +1015,16 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
             mode
         );
     }
+    // fresh clone 仕様ドキュメントが存在すること
+    let fresh_clone_doc = project_root
+        .join("docs/development/operations/fresh-clone-spec.md");
+    assert!(
+        fresh_clone_doc.is_file(),
+        "docs/development/operations/fresh-clone-spec.md が存在しない"
+    );
 }
 
-/// TEST-OPS-08: scripts/ に rollback スクリプト + docs/ に手順
+/// TEST-OPS-08: scripts/ に rollback スクリプト + docs/ に手順 + 撤去 ADR
 #[test]
 fn test_e2e_ops08_final_removal_rollback() {
     let project_root =
@@ -1045,6 +1059,14 @@ fn test_e2e_ops08_final_removal_rollback() {
         has_rollback_doc,
         "rollback 手順ドキュメントが見つからない (期待: {:?})",
         rollback_candidates
+    );
+
+    // Rust 撤去 ADR ドキュメントが存在すること
+    let adr_doc = project_root
+        .join("docs/development/operations/adr-rust-removal.md");
+    assert!(
+        adr_doc.is_file(),
+        "docs/development/operations/adr-rust-removal.md が存在しない"
     );
 }
 

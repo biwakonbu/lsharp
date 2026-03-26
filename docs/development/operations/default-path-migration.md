@@ -20,16 +20,29 @@
 
 ## 切替順
 
-`docs/development/planning/phase11-implementation-plan.md` の OPS-05 に従い、default path の切替順は次で固定する。
+`docs/development/planning/phase11-implementation-plan.md` の OPS-05 に従い、default path の切替順は次で固定する。全 13 コマンドを対象とする。
 
-1. `compile`
-2. `check`
-3. `parse`
-4. `test`
-5. `build`
-6. `fmt`
-7. `lsp`
-8. `docs`
+### コマンド別移行マトリクス
+
+| # | コマンド | 現在の default | 移行先 | Parity テスト | ステータス |
+|---|----------|---------------|--------|--------------|-----------|
+| 1 | `compile` | Rust (`lsharp-wasm`) | L# (`selfhost/Compiler.ls`) | `test_e2e_selfhost_wasm_native_differential` | 🔶 第1段完了 |
+| 2 | `check` | Rust (`lsharp-types`) | L# (`selfhost/TypeInfer.ls`) | `test_check_selfhost_typeinfer_standalone_import_path` | 🔶 第1段完了 |
+| 3 | `parse` | Rust (`lsharp-syntax`) | L# (`selfhost/Parser.ls`) | `test_e2e_selfhost_parser_*` | 🔶 smoke 通過 |
+| 4 | `test` | Rust (`lsharp-driver`) | L# (`selfhost/TestRunner.ls`) | — | ⬜ 未着手 |
+| 5 | `build` | Rust (`lsharp-driver`) | L# (`selfhost/Cli.ls`) | — | ⬜ 未着手 |
+| 6 | `fmt` | Rust (`lsharp-driver`) | L# (`selfhost/Formatter.ls`) | `test_e2e_selfhost_formatter_*` | 🔶 部分実装 |
+| 7 | `lsp` | Rust (`lsharp-lsp`) | L# (`selfhost/LspServer.ls`) | `test_e2e_selfhost_lsp_*` | 🔶 部分実装 |
+| 8 | `docs` | Rust (`lsharp-docs`) | L# (`selfhost/DocTools.ls`) | `test_e2e_selfhost_doctools_*` | 🔶 部分実装 |
+| 9 | `review` | Rust (`lsharp-docs`) | L# (未定) | — | ⬜ 未着手 |
+| 10 | `doc-ack` | Rust (`lsharp-docs`) | L# (未定) | — | ⬜ 未着手 |
+| 11 | `doc-check` | Rust (`lsharp-docs`) | L# (未定) | — | ⬜ 未着手 |
+| 12 | `install` | Rust (`lsharp-driver`) | L# (未定) | — | ⬜ 未着手 |
+| 13 | `repl` | Rust (`lsharp-driver`) | L# (未定) | — | ⬜ 未着手 |
+
+凡例: 🔶 = 進行中 / 部分完了、⬜ = 未着手
+
+### 切替の前提条件
 
 各コマンドは、切替前に以下を満たしてから active row を L# 側へ更新する。
 
