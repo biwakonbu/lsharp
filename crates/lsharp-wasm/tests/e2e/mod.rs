@@ -29,3 +29,5 @@ mod selfhost_cli_core;
 mod selfhost_lsp_docs_ops;
 mod selfhost_doctools_cli_diagnostics;
 mod selfhost_native_differential;
+mod selfhost_html_template;
+mod selfhost_html_layout;

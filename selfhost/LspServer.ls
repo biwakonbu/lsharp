@@ -82,26 +82,371 @@
 (defn handle-didChange [params state]
   params)
 
+;; === textDocument 系の簡易ソース解析 ===
+;; stdio なしでも hover / definition / references / completion / formatting を
+;; 実ソースに近い形で返せるよう、LspServer 内部で最小限の走査を行う。
+
+(defn lsp-param-count [params]
+  (if (= params 0) 0 (vector-length params)))
+
+(defn lsp-has-source-param [params]
+  (if (> (lsp-param-count params) 3) 1 0))
+
+(defn lsp-has-document-param [params]
+  (if (> (lsp-param-count params) 1) 1 0))
+
+(defn lsp-nav-uri [params]
+  (if (= (lsp-has-source-param params) 1) (vector-get params 0) 0))
+
+(defn lsp-nav-line [params]
+  (if (= (lsp-has-source-param params) 1) (vector-get params 1) 0))
+
+(defn lsp-nav-col [params]
+  (if (= (lsp-has-source-param params) 1) (vector-get params 2) 0))
+
+(defn lsp-nav-src [params]
+  (if (= (lsp-has-source-param params) 1) (vector-get params 3) ""))
+
+(defn lsp-document-src [params]
+  (if (= (lsp-has-document-param params) 1) (vector-get params 1) ""))
+
+(defn lsp-is-ws [c]
+  (if (= c 32) true
+    (if (= c 9) true
+      (if (= c 10) true
+        (= c 13)))))
+
+(defn lsp-is-digit-char [c]
+  (if (>= c 48) (<= c 57) false))
+
+(defn lsp-is-alpha-char [c]
+  (if (>= c 65)
+    (if (<= c 90) true
+      (if (>= c 97) (<= c 122) false))
+    false))
+
+(defn lsp-is-symbol-start [c]
+  (if (lsp-is-alpha-char c) true
+    (if (= c 95) true
+      (if (= c 43) true
+        (if (= c 45) true
+          (if (= c 42) true
+            (if (= c 47) true
+              (if (= c 61) true
+                (if (= c 60) true
+                  (if (= c 62) true
+                    (if (= c 33) true
+                      (if (= c 63) true
+                        (if (= c 38) true
+                          (= c 37))))))))))))))
+
+(defn lsp-is-symbol-char [c]
+  (if (lsp-is-symbol-start c) true
+    (if (lsp-is-digit-char c) true
+      (if (= c 46) true
+        (= c 45)))))
+
+(defn make-position [line col]
+  (vector-push (vector-push (vector-new 2) line) col))
+
+(defn position-line [pos]
+  (vector-get pos 0))
+
+(defn position-col [pos]
+  (vector-get pos 1))
+
+(defn make-range [start-line start-col end-line end-col]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) start-line)
+        start-col)
+      end-line)
+    end-col))
+
+(defn make-format-edit [start-line start-col end-line end-col new-text]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push (vector-new 5) start-line)
+          start-col)
+        end-line)
+      end-col)
+    new-text))
+
+(defn lsp-string-hash-loop [src pos end acc]
+  (if (>= pos end)
+    acc
+    (lsp-string-hash-loop src (+ pos 1) end (+ (string-char-at src pos) (* acc 31)))))
+
+(defn lsp-string-hash [src]
+  (lsp-string-hash-loop src 0 (string-length src) 0))
+
+(defn lsp-substring-hash [src start end]
+  (lsp-string-hash-loop src start end 0))
+
+(defn make-symbol-info [start end]
+  (vector-push
+    (vector-push (vector-new 2) start)
+    end))
+
+(defn empty-symbol-info []
+  (make-symbol-info (- 0 1) (- 0 1)))
+
+(defn symbol-info-start [info]
+  (vector-get info 0))
+
+(defn symbol-info-end [info]
+  (vector-get info 1))
+
+(defn lsp-offset-from-line-col-loop [src target-line target-col idx line col len]
+  (if (= line target-line)
+    (if (= col target-col)
+      idx
+      (if (>= idx len)
+        idx
+        (if (= (string-char-at src idx) 10)
+          (lsp-offset-from-line-col-loop src target-line target-col (+ idx 1) (+ line 1) 1 len)
+          (lsp-offset-from-line-col-loop src target-line target-col (+ idx 1) line (+ col 1) len))))
+    (if (>= idx len)
+      idx
+      (if (= (string-char-at src idx) 10)
+        (lsp-offset-from-line-col-loop src target-line target-col (+ idx 1) (+ line 1) 1 len)
+        (lsp-offset-from-line-col-loop src target-line target-col (+ idx 1) line (+ col 1) len)))))
+
+(defn lsp-offset-from-line-col [src line col]
+  (lsp-offset-from-line-col-loop src line col 0 1 1 (string-length src)))
+
+(defn lsp-position-from-offset-loop [src target idx line col]
+  (if (>= idx target)
+    (make-position line col)
+    (if (= (string-char-at src idx) 10)
+      (lsp-position-from-offset-loop src target (+ idx 1) (+ line 1) 1)
+      (lsp-position-from-offset-loop src target (+ idx 1) line (+ col 1)))))
+
+(defn lsp-position-from-offset [src offset]
+  (lsp-position-from-offset-loop src offset 0 1 1))
+
+(defn lsp-range-from-offsets [src start end]
+  (let [start-pos (lsp-position-from-offset src start)
+        end-pos (lsp-position-from-offset src end)]
+    (make-range
+      (position-line start-pos)
+      (position-col start-pos)
+      (position-line end-pos)
+      (position-col end-pos))))
+
+(defn lsp-normalize-symbol-offset [src offset len]
+  (if (>= offset len)
+    (if (> len 0)
+      (if (lsp-is-symbol-char (string-char-at src (- len 1)))
+        (- len 1)
+        len)
+      0)
+    (if (lsp-is-symbol-char (string-char-at src offset))
+      offset
+      (if (> offset 0)
+        (if (lsp-is-symbol-char (string-char-at src (- offset 1)))
+          (- offset 1)
+          offset)
+        offset))))
+
+(defn lsp-find-symbol-start [src idx]
+  (if (<= idx 0)
+    0
+    (if (lsp-is-symbol-char (string-char-at src (- idx 1)))
+      (lsp-find-symbol-start src (- idx 1))
+      idx)))
+
+(defn lsp-scan-symbol-end [src idx len]
+  (if (>= idx len)
+    idx
+    (if (lsp-is-symbol-char (string-char-at src idx))
+      (lsp-scan-symbol-end src (+ idx 1) len)
+      idx)))
+
+(defn lsp-symbol-at [src line col]
+  (let [len (string-length src)]
+    (if (= len 0)
+      (empty-symbol-info)
+      (let [offset (lsp-offset-from-line-col src line col)
+            offset (lsp-normalize-symbol-offset src offset len)]
+        (if (>= offset len)
+          (empty-symbol-info)
+          (if (lsp-is-symbol-char (string-char-at src offset))
+            (let [start (lsp-find-symbol-start src offset)
+                  end (lsp-scan-symbol-end src offset len)]
+              (make-symbol-info start end))
+            (empty-symbol-info)))))))
+
+(defn lsp-match-at [src idx pattern]
+  (let [plen (string-length pattern)
+        len (string-length src)]
+    (if (> (+ idx plen) len)
+      false
+      (string-eq (substring src idx (+ idx plen)) pattern))))
+
+(defn lsp-skip-ws [src idx len]
+  (if (>= idx len)
+    idx
+    (if (lsp-is-ws (string-char-at src idx))
+      (lsp-skip-ws src (+ idx 1) len)
+      idx)))
+
+(defn lsp-find-defn-offset-loop [src target idx len]
+  (if (>= idx len)
+    (- 0 1)
+    (if (lsp-match-at src idx "(defn")
+      (let [name-start (lsp-skip-ws src (+ idx 5) len)
+            name-end (lsp-scan-symbol-end src name-start len)]
+        (if (> name-end name-start)
+          (let [name (substring src name-start name-end)]
+            (if (string-eq name target)
+              name-start
+              (lsp-find-defn-offset-loop src target name-end len)))
+          (lsp-find-defn-offset-loop src target (+ idx 1) len)))
+      (lsp-find-defn-offset-loop src target (+ idx 1) len))))
+
+(defn lsp-find-defn-offset [src target]
+  (lsp-find-defn-offset-loop src target 0 (string-length src)))
+
+(defn lsp-hover-content-hash [src name]
+  (if (>= (lsp-find-defn-offset src name) 0)
+    (lsp-string-hash (string-concat "defn " name))
+    (lsp-string-hash (string-concat "symbol " name))))
+
+(defn lsp-symbol-start-at [src idx]
+  (if (= idx 0)
+    1
+    (if (lsp-is-symbol-char (string-char-at src (- idx 1))) 0 1)))
+
+(defn lsp-find-occurrences-loop [src target uri idx len results]
+  (if (>= idx len)
+    results
+    (let [c (string-char-at src idx)]
+      (if (lsp-is-symbol-char c)
+        (if (= (lsp-symbol-start-at src idx) 1)
+          (let [end (lsp-scan-symbol-end src idx len)
+                name (substring src idx end)]
+            (if (string-eq name target)
+              (let [pos (lsp-position-from-offset src idx)
+                    loc (make-location uri (position-line pos) (position-col pos))]
+                (lsp-find-occurrences-loop src target uri end len (vector-push results loc)))
+              (lsp-find-occurrences-loop src target uri end len results)))
+          (lsp-find-occurrences-loop src target uri (+ idx 1) len results))
+        (lsp-find-occurrences-loop src target uri (+ idx 1) len results)))))
+
+(defn lsp-find-occurrences [src target uri]
+  (lsp-find-occurrences-loop src target uri 0 (string-length src) (vector-new 4)))
+
+(defn lsp-prefix-at [src line col]
+  (let [offset (lsp-offset-from-line-col src line col)]
+    (if (<= offset 0)
+      ""
+      (let [idx (- offset 1)]
+        (if (lsp-is-symbol-char (string-char-at src idx))
+          (let [start (lsp-find-symbol-start src idx)]
+            (substring src start (+ idx 1)))
+          "")))))
+
+(defn lsp-prefix-matches [label prefix]
+  (let [prefix-len (string-length prefix)
+        label-len (string-length label)]
+    (if (= prefix-len 0)
+      true
+      (if (> prefix-len label-len)
+        false
+        (string-eq (substring label 0 prefix-len) prefix)))))
+
+(defn lsp-make-completion-item [label-hash kind insert-hash]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) label-hash)
+      kind)
+    insert-hash))
+
+(defn lsp-append-keyword-item [label prefix kind items]
+  (if (lsp-prefix-matches label prefix)
+    (let [label-hash (lsp-string-hash label)]
+      (vector-push items (lsp-make-completion-item label-hash kind label-hash)))
+    items))
+
+(defn lsp-append-keyword-completions [prefix items]
+  (let [items (lsp-append-keyword-item "defn" prefix 14 items)
+        items (lsp-append-keyword-item "let" prefix 14 items)
+        items (lsp-append-keyword-item "if" prefix 14 items)
+        items (lsp-append-keyword-item "match" prefix 14 items)
+        items (lsp-append-keyword-item "do" prefix 14 items)
+        items (lsp-append-keyword-item "fn" prefix 14 items)
+        items (lsp-append-keyword-item "module" prefix 14 items)]
+    items))
+
+(defn lsp-append-defn-completions-loop [src idx len prefix items]
+  (if (>= idx len)
+    items
+    (if (lsp-match-at src idx "(defn")
+      (let [name-start (lsp-skip-ws src (+ idx 5) len)
+            name-end (lsp-scan-symbol-end src name-start len)]
+        (if (> name-end name-start)
+          (let [name (substring src name-start name-end)
+                label-hash (lsp-substring-hash src name-start name-end)
+                items (if (lsp-prefix-matches name prefix)
+                        (vector-push items (lsp-make-completion-item label-hash 3 label-hash))
+                        items)]
+            (lsp-append-defn-completions-loop src name-end len prefix items))
+          (lsp-append-defn-completions-loop src (+ idx 1) len prefix items)))
+      (lsp-append-defn-completions-loop src (+ idx 1) len prefix items))))
+
+(defn lsp-append-defn-completions [src prefix]
+  (lsp-append-defn-completions-loop src 0 (string-length src) prefix (vector-new 8)))
+
+(defn lsp-ensure-trailing-newline [src]
+  (let [len (string-length src)]
+    (if (= len 0)
+      "\n"
+      (if (= (string-char-at src (- len 1)) 10)
+        src
+        (string-concat src "\n")))))
+
 ;; textDocument/hover: ホバー情報の提供
 ;; カーソル位置の型情報をマークダウン形式で返す (AC-205)
-;; params から line/col を取り出し、シンボルの型情報ハッシュを返す
-(defn handle-hover [params state]
+;; params=[uri, line, col, source] の場合はソース走査で symbol 情報を返す
+(defn handle-hover-mock [params]
   (let [v (vector-new 2)
         ;; params が vector の場合、line 情報から型情報ハッシュを生成
-        type-hash (if (> params 0)
-                    (+ (* (vector-get params 1) 100) (vector-get params 2))
-                    1)]
+        type-hash (if (= params 0)
+                    1
+                    (+ (* (vector-get params 1) 100) (vector-get params 2)))]
     (vector-push
       (vector-push v 0)     ;; range
       type-hash)))           ;; contents: 型情報ハッシュ
 
+(defn handle-hover [params state]
+  (if (= (lsp-has-source-param params) 1)
+    (let [src (lsp-nav-src params)
+          line (lsp-nav-line params)
+          col (lsp-nav-col params)
+          symbol (lsp-symbol-at src line col)
+          start (symbol-info-start symbol)
+          end (symbol-info-end symbol)]
+      (if (>= start 0)
+        (let [name (substring src start end)
+              range (lsp-range-from-offsets src start end)
+              contents (lsp-hover-content-hash src name)]
+          (vector-push
+            (vector-push (vector-new 2) range)
+            contents))
+        (handle-hover-mock params)))
+    (handle-hover-mock params)))
+
 ;; textDocument/goto-definition: 定義ジャンプ
 ;; シンボルの定義位置を Location [uri, line, col] として返す (AC-206)
-(defn handle-goto-definition [params state]
+(defn handle-goto-definition-mock [params]
   (let [v (vector-new 3)
         ;; params が vector の場合、元の位置情報をもとにモック位置を返す
-        uri (if (> params 0) (vector-get params 0) 0)
-        line (if (> params 0) 1 0)
+        uri (if (= params 0) 0 (vector-get params 0))
+        line (if (= params 0) 0 1)
         col 0]
     (vector-push
       (vector-push
@@ -109,19 +454,52 @@
         line)                ;; line
       col)))                 ;; col
 
+(defn handle-goto-definition [params state]
+  (if (= (lsp-has-source-param params) 1)
+    (let [uri (lsp-nav-uri params)
+          src (lsp-nav-src params)
+          line (lsp-nav-line params)
+          col (lsp-nav-col params)
+          symbol (lsp-symbol-at src line col)
+          start (symbol-info-start symbol)
+          end (symbol-info-end symbol)]
+      (if (>= start 0)
+        (let [name (substring src start end)
+              defn-offset (lsp-find-defn-offset src name)]
+          (if (>= defn-offset 0)
+            (let [pos (lsp-position-from-offset src defn-offset)]
+              (make-location uri (position-line pos) (position-col pos)))
+            (handle-goto-definition-mock params)))
+        (handle-goto-definition-mock params)))
+    (handle-goto-definition-mock params)))
+
 ;; textDocument/references: 参照箇所の検索
 ;; シンボルの参照位置リストを返す (AC-206)
 ;; 各 location は [uri, line, col] の 3 要素
 (defn make-location [uri line col]
   (vector-push (vector-push (vector-push (vector-new 3) uri) line) col))
 
-(defn handle-references [params state]
+(defn handle-references-mock [params]
   (let [;; モック: params の位置自体を 1 つの参照として返す
-        uri (if (> params 0) (vector-get params 0) 0)
-        line (if (> params 0) (vector-get params 1) 0)
-        col (if (> params 0) (vector-get params 2) 0)
-        loc (make-location uri line col)]
+         uri (if (= params 0) 0 (vector-get params 0))
+         line (if (= params 0) 0 (vector-get params 1))
+         col (if (= params 0) 0 (vector-get params 2))
+         loc (make-location uri line col)]
     (vector-push (vector-new 1) loc)))
+
+(defn handle-references [params state]
+  (if (= (lsp-has-source-param params) 1)
+    (let [uri (lsp-nav-uri params)
+          src (lsp-nav-src params)
+          line (lsp-nav-line params)
+          col (lsp-nav-col params)
+          symbol (lsp-symbol-at src line col)
+          start (symbol-info-start symbol)
+          end (symbol-info-end symbol)]
+      (if (>= start 0)
+        (lsp-find-occurrences src (substring src start end) uri)
+        (handle-references-mock params)))
+    (handle-references-mock params)))
 
 ;; textDocument/rename: リネーム
 ;; シンボルのリネーム用 WorkspaceEdit を返す
@@ -131,27 +509,44 @@
 
 ;; textDocument/formatting: ドキュメントフォーマット
 ;; Formatter.ls の format-program を呼び出して TextEdit リストを返す (AC-010)
-(defn handle-formatting [params state]
+(defn handle-formatting-mock [params]
   (let [edit (vector-new 1)]
     (vector-push edit 0)))
+
+(defn handle-formatting [params state]
+  (if (= (lsp-has-document-param params) 1)
+    (let [src (lsp-document-src params)
+          end-pos (lsp-position-from-offset src (string-length src))
+          formatted (lsp-ensure-trailing-newline src)
+          edit (make-format-edit 1 1 (position-line end-pos) (position-col end-pos) (lsp-string-hash formatted))]
+      (vector-push (vector-new 1) edit))
+    (handle-formatting-mock params)))
 
 ;; textDocument/completion: コード補完
 ;; カーソル位置に基づいてキーワード補完候補リストを返す (AC-207)
 ;; 各 item は [label-hash, kind] の 2 要素。kind=14 は LSP CompletionItemKind.Keyword
-(defn make-completion-item [label-hash kind]
+(defn make-completion-item-hash [label-hash kind]
   (vector-push (vector-push (vector-new 2) label-hash) kind))
 
 (defn handle-completion [params state]
-  (let [items (vector-new 7)
-        ;; L# キーワード: defn, let, if, match, do, fn, module
-        items (vector-push items (make-completion-item 1 14))   ;; defn
-        items (vector-push items (make-completion-item 2 14))   ;; let
-        items (vector-push items (make-completion-item 3 14))   ;; if
-        items (vector-push items (make-completion-item 4 14))   ;; match
-        items (vector-push items (make-completion-item 5 14))   ;; do
-        items (vector-push items (make-completion-item 6 14))   ;; fn
-        items (vector-push items (make-completion-item 7 14))]  ;; module
-    items))
+  (if (= (lsp-has-source-param params) 1)
+    (let [src (lsp-nav-src params)
+          line (lsp-nav-line params)
+          col (lsp-nav-col params)
+          prefix (lsp-prefix-at src line col)
+          items (lsp-append-defn-completions src prefix)
+          items (lsp-append-keyword-completions prefix items)]
+      items)
+    (let [items (vector-new 7)
+          ;; L# キーワード: defn, let, if, match, do, fn, module
+          items (vector-push items (make-completion-item-hash 1 14))   ;; defn
+          items (vector-push items (make-completion-item-hash 2 14))   ;; let
+          items (vector-push items (make-completion-item-hash 3 14))   ;; if
+          items (vector-push items (make-completion-item-hash 4 14))   ;; match
+          items (vector-push items (make-completion-item-hash 5 14))   ;; do
+          items (vector-push items (make-completion-item-hash 6 14))   ;; fn
+          items (vector-push items (make-completion-item-hash 7 14))]  ;; module
+      items)))
 
 ;; === 診断の安定順序制御 (T4b-3 AC-208/AC-209/AC-210/AC-211) ===
 

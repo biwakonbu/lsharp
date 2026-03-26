@@ -146,6 +146,61 @@
 - [~] [LSP-02 10 method parity](docs/development/planning/phase11-implementation-plan.md#lsp-02-10-method-parity) / [~] [LSP-03 Diagnostic ordering](docs/development/planning/phase11-implementation-plan.md#lsp-03-diagnostic-ordering-and-json-snapshots) -- 10 メソッド名、sort/dedup helper、JSON-RPC helper 相当の関数と E2E 18 件は追加済み。**ただし** 応答は mock vector が中心で、実 JSON/LSP parity と diagnostic snapshot gate は未達。
 - [~] [FMT-01 Formatter roundtrip](docs/development/planning/phase11-implementation-plan.md#fmt-01-formatter-roundtrip) -- 全 AST node coverage と fingerprint ベース roundtrip/idempotency テストは追加済み。**ただし** formatted text formatter parity は未達。
 - [~] [DOC-01 Schemas and snapshots](docs/development/planning/phase11-implementation-plan.md#doc-01-schemas-and-snapshots) -- `docs/schemas/`、`generate-html` / `generate-knowledge` / `generate-review` / `generate-doc-output`、E2E 7 件は追加済み。**ただし** 出力は vector/count / placeholder HTML が中心で、full schema/html parity は未達。
+- [x] DOC-02 HTML template engine library -- L# 製 HTML テンプレートエンジンライブラリ。`selfhost/HtmlTemplate.ls` (エスケープ・DSL・レンダリング 143行)、`selfhost/HtmlLayout.ls` (共通レイアウト 57行) 新規作成。`selfhost/HtmlDoc.ls` を DSL ベースに移行 (106→107行)。`selfhost/DocTools.ls` の render 系関数を削除して責務分離 (324→279行)。E2E テスト **20 件** (HtmlTemplate 12 + HtmlLayout 5 + 統合 3)。既存 DocTools テスト 13 件回帰なし。AC-408〜415 (T4d-3/T4d-4) に貢献。
+
+  **DOC-02a テンプレートエンジンコア** (`selfhost/HtmlTemplate.ls` 新規作成):
+  - [x] `html-escape`: `<>&"'` の 5 文字を HTML エンティティに変換 (`&lt;` `&gt;` `&amp;` `&quot;` `&#39;`)
+  - [x] `attr-escape`: 属性値用エスケープ (html-escape に加え属性コンテキスト安全)
+  - [x] `elem`: `(elem "div" attrs children)` → element ノード `[1, tag-name, attrs-vec, children-vec]` 生成
+  - [x] `text`: `(text value)` → エスケープ済みテキストノード `[2, escaped-string]` 生成
+  - [x] `raw`: `(raw html-string)` → エスケープなし raw HTML ノード `[3, html-string]` 生成
+  - [x] `render-attr`: `[key, value]` → ` key="escaped-value"` 文字列
+  - [x] `render-attrs`: attrs vector をループして属性文字列を連結
+  - [x] `render-node`: テンプレートノード → HTML 文字列 (tag-id で分岐、children を再帰)
+  - [x] `render-children`: children vector を idx ループで render-node を連結
+  - [x] `void-element?`: `br/hr/img/input/meta/link` を判定し閉じタグを省略
+  - [x] `each`: `(each items render-fn)` → items の各要素に render-fn を適用しノードリストを展開
+  - [x] `when`: `(when cond node)` → cond が真の場合のみ node をレンダリング
+  - [x] `render-template`: ルートノードを受け取り完全な HTML 文字列を返すエントリポイント
+  - [x] `doctype`: `"<!doctype html>"` 定数関数
+
+  **DOC-02b レイアウトテンプレート** (`selfhost/HtmlLayout.ls` 新規作成):
+  - [x] `css-inline`: モジュールドキュメント用の最小 CSS 文字列 (外部ファイル依存なし)
+  - [x] `base-layout`: `[title, content-node]` → `<!doctype html><html><head>...<body>content</body></html>` の完全 HTML ドキュメントノード
+  - [x] `doc-page-layout`: モジュールドキュメント用レイアウト (`<main><h1>title</h1><section id="functions">...<section id="types">...`)
+  - [x] `index-page-layout`: モジュール一覧インデックスページ用レイアウト (`<main><h1>modules</h1><ul>...`)
+
+  **DOC-02c HtmlDoc.ls 移行** (既存 `selfhost/HtmlDoc.ls` を HtmlTemplate/HtmlLayout ベースに書き換え):
+  - [x] `render-function-signature` / `render-type-definition`: string-concat → `elem`+`text` DSL に置換
+  - [x] `render-function-items-loop` / `render-type-items-loop`: 手動再帰ループ → `each` に置換
+  - [x] `render-module-page`: string-concat ベタ組み → `doc-page-layout` + `each` で構築
+  - [x] `html-header` / `html-footer`: 削除し `base-layout` に統合
+  - [x] `render-html`: `base-layout` + `render-module-page` + `render-template` のパイプラインに変更
+  - [x] `render-index` / `render-index-items-loop`: `index-page-layout` + `each` に置換
+  - [x] 公開 API 互換: `render-html`, `render-module-page`, `render-index` のシグネチャは維持し既存テスト回帰なし
+
+  **DOC-02d DocTools.ls 責務分離** (既存 `selfhost/DocTools.ls` の HTML 生成を HtmlDoc へ委譲):
+  - [x] `render-function-entry` / `render-functions-section` / `render-types-section` / `render-doc-body` (L192-241) を HtmlDoc の対応関数呼び出しに委譲
+  - [x] DocTools.ls は AST 解析・エントリ抽出・スキーマ出力のみに専念
+  - [x] `generate-html` 内の `render-doc-body` 呼び出しが HtmlDoc 経由の DSL レンダリングを使用
+
+  **DOC-02e 統合検証 — DocTools が実 HTML を生成できることの証明**:
+  - [x] `cargo run -- check selfhost/HtmlTemplate.ls` が通過 (standalone compile)
+  - [x] `cargo run -- check selfhost/HtmlLayout.ls` が通過 (standalone compile)
+  - [x] `cargo run -- check selfhost/HtmlDoc.ls` が通過 (import HtmlTemplate + HtmlLayout)
+  - [x] `cargo run -- check selfhost/DocTools.ls` が通過 (import HtmlDoc)
+  - [x] `generate-html` が `<section id="functions"><ul><li>fn-...</li></ul></section>` 形式の実 HTML body を返す (placeholder ではない)
+  - [x] `render-html` が `<!doctype html><html><head>...<body><main>...</main></body></html>` 形式の完全 HTML を返す
+  - [x] `render-index` が全モジュール名を `<li>` で列挙した完全な HTML インデックスページを返す
+  - [x] HTML 出力に `<>&"'` が混入するソースを与えた場合にエスケープされる (XSS 安全)
+  - [x] 同一入力で 2 回実行して diff が空 (AC-408 deterministic)
+  - [x] 生成 HTML にタイムスタンプ・ホスト名・絶対パスが含まれない (AC-409)
+
+  **DOC-02f E2E テスト** (`crates/lsharp-wasm/tests/e2e/` に追加):
+  - [x] HtmlTemplate 系 12 件: escape (lt/gt/amp, quotes, passthrough), elem (basic, attrs, void, nested), each, when-true, when-false, raw, deterministic
+  - [x] HtmlLayout 系 5 件: base-doctype, base-charset, title-escaped, doc-page, index-page
+  - [x] 既存 DocTools 回帰: `test_e2e_selfhost_doctools_*` 13 件 + `test_e2e_selfhost_doctools_html_doc_*` が全 green 維持
+  - [x] 統合テスト: DocTools.generate-html → HtmlDoc.render-html パイプラインが実 HTML 文字列を返しその string-length > 0
 - [~] [GC-05 LSP soak and REPL GC](docs/development/planning/phase11-implementation-plan.md#gc-05-lsp-soak-and-repl-gc) -- proxy soak テスト群は追加済み。**ただし** stateful LSP/REPL 長寿命 GC gate は未達。
 - [~] [GC-06 Leak detection and metrics](docs/development/planning/phase11-implementation-plan.md#gc-06-leak-detection-and-metrics) -- metrics API / leak suspect テストと CI gate 仕様は追加済み。**ただし** GC fixed-point を機械判定する blocking artifact / CI は未完成。
 - [~] [OPS-05 Default path migration](docs/development/planning/phase11-implementation-plan.md#ops-05-default-path-migration) -- CI + `default-path-smoke.sh` + `default-path-migration.md`（全 13 コマンド移行マトリクス） + `test_e2e_ops05_default_path_migration` で `lsharp` バイナリ経路の第1段 smoke を固定。`compatibility-matrix.md` の `Default path` 切替は未完了で、完全移行（Cargo 不在）は Phase 11 完了後。

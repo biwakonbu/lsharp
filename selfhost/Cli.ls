@@ -115,12 +115,17 @@
       (exit-success))))
 
 (defn run-test-source [src opts]
-  (let [program (parse-program src)
-        suite (generate-tests program)]
+  (let [suite (generate-tests-from-source src)
+        example-results (vector-get suite 0)
+        invariant-results (vector-get suite 1)
+        failed (+ (count-failed-results example-results)
+                  (count-failed-results invariant-results))]
     (do
-      (print (vector-length (vector-get suite 0)))
-      (print (vector-length (vector-get suite 1)))
-      (exit-success))))
+      (print (vector-length example-results))
+      (print (vector-length invariant-results))
+      (if (> failed 0)
+        (exit-runtime-error)
+        (exit-success)))))
 
 (defn review-unused-let-count [node]
   (if (= (vector-get node 0) 7)

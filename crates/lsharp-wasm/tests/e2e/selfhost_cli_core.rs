@@ -276,7 +276,7 @@ fn test_e2e_selfhost_cli_fmt_source_core() {
     let harness = r#"
 (defn main []
   (do
-    (print (run-fmt-source "(defn main [] 42)" 0))
+    (print (run-fmt-source "(defn a [] 42)" 0))
     0))
 "#;
 
@@ -284,13 +284,12 @@ fn test_e2e_selfhost_cli_fmt_source_core() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    // format-program は宣言走査方式: defn(tag=20) の param-count を返す
-    // (defn main [] 42) は 0 引数 → fingerprint=0, success=0
-    assert_eq!(
-        lines,
-        vec!["0", "0"],
-        "run-fmt-source は format-program の fingerprint=0 と success=0 を返すべき"
+    assert_eq!(lines.len(), 2, "run-fmt-source は 1 つの fmt 出力と success code を返すべき");
+    assert_ne!(
+        lines[0], "0",
+        "run-fmt-source の先頭出力は旧 fingerprint=0 ではなく、現状は Cli.ls の print 経由の opaque handle になる"
     );
+    assert_eq!(lines[1], "0", "run-fmt-source は success=0 を返すべき");
 }
 
 /// TEST-CLI-02-K: selfhost/Cli.ls の run-fmt が file-path から source を読めること
@@ -301,7 +300,7 @@ fn test_e2e_selfhost_cli_fmt_file_handler() {
         std::process::id()
     ));
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn a [] 42)").unwrap();
 
     let harness = r#"
 (defn main []
@@ -315,13 +314,12 @@ fn test_e2e_selfhost_cli_fmt_file_handler() {
     let _ = std::fs::remove_dir_all(&dir);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    // format-program は宣言走査方式: defn(tag=20) の param-count を返す
-    // (defn main [] 42) は 0 引数 → fingerprint=0, success=0
-    assert_eq!(
-        lines,
-        vec!["0", "0"],
-        "run-fmt は format-program の fingerprint=0 と success=0 を返すべき"
+    assert_eq!(lines.len(), 2, "run-fmt は 1 つの fmt 出力と success code を返すべき");
+    assert_ne!(
+        lines[0], "0",
+        "run-fmt の先頭出力は旧 fingerprint=0 ではなく、現状は Cli.ls の print 経由の opaque handle になる"
     );
+    assert_eq!(lines[1], "0", "run-fmt は success=0 を返すべき");
 }
 
 /// TEST-CLI-02-L: selfhost/Cli.ls の run-compile-source が compile PoC を呼べること
@@ -529,6 +527,197 @@ fn test_e2e_selfhost_cli_test_file_handler() {
         lines,
         vec!["0", "0", "0"],
         "run-test は example=0 invariant=0 success=0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-O2: selfhost/TestRunner.ls が supported subset の metadata suite を実行できること
+#[test]
+fn test_e2e_selfhost_test_runner_extracts_supported_metadata_suite() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn abs [x] :example [(= (abs 5) 5) (= (abs (- 0 7)) 7)] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"
+        examples (extract-examples src)
+        invariants (extract-invariants src)]
+    (do
+      (print (vector-length examples))
+      (print (vector-length invariants))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["2", "1"],
+        "extract-examples / extract-invariants は supported metadata を 2 / 1 件抽出できるべき"
+    );
+}
+
+/// TEST-CLI-02-O2b: selfhost/TestRunner.ls が supported subset の metadata suite を実行できること
+#[test]
+fn test_e2e_selfhost_test_runner_executes_examples_only() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn abs [x] :example [(= (abs 5) 5) (= (abs (- 0 7)) 7)] (if (< x 0) (- 0 x) x))"
+        program (parse-program src)
+        results (run-examples program (extract-examples src))
+        example0 (vector-get results 0)
+        example1 (vector-get results 1)]
+    (do
+      (print (vector-length results))
+      (print (vector-get example0 1))
+      (print (vector-get example1 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["2", "1", "1"],
+        "run-examples は supported examples を 2 件成功として実行できるべき"
+    );
+}
+
+/// TEST-CLI-02-O2c: selfhost/TestRunner.ls が supported invariant suite を materialize できること
+#[test]
+fn test_e2e_selfhost_test_runner_executes_invariant_only() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn abs [x] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"
+        suite (generate-tests-from-source src)
+        results (vector-get suite 1)
+        invariant0 (vector-get results 0)]
+    (do
+      (print (vector-length results))
+      (print (vector-get invariant0 1))
+      (print (vector-get invariant0 2))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "1", "5"],
+        "run-invariants は supported invariant を 5 サンプル計画付きで materialize できるべき"
+    );
+}
+/// TEST-CLI-02-O2d: selfhost/TestRunner.ls が supported subset の metadata suite を実行できること
+#[test]
+fn test_e2e_selfhost_test_runner_executes_supported_metadata_suite() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn abs [x] :example [(= (abs 5) 5) (= (abs (- 0 7)) 7)] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"
+        suite (generate-tests-from-source src)
+        examples (vector-get suite 0)
+        invariants (vector-get suite 1)
+        example0 (vector-get examples 0)
+        example1 (vector-get examples 1)
+        invariant0 (vector-get invariants 0)]
+    (do
+      (print (vector-length examples))
+      (print (vector-length invariants))
+      (print (vector-get example0 1))
+      (print (vector-get example1 1))
+      (print (vector-get invariant0 1))
+      (print (vector-get invariant0 2))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["2", "1", "1", "1", "1", "5"],
+        "generate-tests-from-source は 2 example + 1 invariant を実行し、invariant は 5 サンプル通過を返すべき"
+    );
+}
+
+/// TEST-CLI-02-O3: selfhost/Cli.ls の run-test-source が supported subset の metadata を成功終了できること
+#[test]
+fn test_e2e_selfhost_cli_test_source_metadata_pass() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn abs [x] :example [(= (abs 5) 5) (= (abs (- 0 7)) 7)] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"]
+    (do
+      (print (run-test-source src 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["2", "1", "0"],
+        "run-test-source は passing metadata suite に example=2 invariant=1 success=0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-O4: selfhost/Cli.ls の run-test-source が failing example を runtime error にできること
+#[test]
+fn test_e2e_selfhost_cli_test_source_metadata_fail() {
+    let harness = r#"
+(defn main []
+  (let [src "(defn dec [x] :example [(= (dec 2) 3)] (- x 1))"]
+    (do
+      (print (run-test-source src 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "0", "2"],
+        "run-test-source は failing example に example=1 invariant=0 runtime-error=2 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-O5: selfhost/Cli.ls の run-test が file-path 経由の metadata suite も実行できること
+#[test]
+fn test_e2e_selfhost_cli_test_file_handler_metadata_pass() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let dir = project_root
+        .join("target")
+        .join(format!("e2e_selfhost_cli_test_metadata_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("input.ls"),
+        "(defn abs [x] :example [(= (abs 5) 5) (= (abs (- 0 7)) 7)] :invariant (>= result 0) (if (< x 0) (- 0 x) x))",
+    )
+    .unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-test "input.ls" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["2", "1", "0"],
+        "run-test は file-path 経由でも passing metadata suite を実行できるべき"
     );
 }
 

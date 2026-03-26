@@ -68,6 +68,68 @@ fn hash_fingerprint(data: &[u8]) -> u64 {
     hasher.finish()
 }
 
+/// stage1 が stdout に出力した length-prefixed Wasm バイト列を復元するヘルパー
+fn parse_emitted_wasm_modules(output: &str, expected_modules: usize) -> Vec<Vec<u8>> {
+    let values: Vec<usize> = output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.trim()
+                .parse::<usize>()
+                .unwrap_or_else(|_| panic!("数値でない stage1 出力: {line:?}"))
+        })
+        .collect();
+
+    let mut pos = 0;
+    let mut modules = Vec::with_capacity(expected_modules);
+    for module_idx in 0..expected_modules {
+        assert!(
+            pos < values.len(),
+            "module[{module_idx}] の長さ行が不足: {:?}",
+            values
+        );
+        let len = values[pos];
+        pos += 1;
+        assert!(
+            values.len() >= pos + len,
+            "module[{module_idx}] の byte 数が不足: len={}, remaining={}",
+            len,
+            values.len().saturating_sub(pos)
+        );
+
+        let mut wasm = Vec::with_capacity(len);
+        for &value in &values[pos..pos + len] {
+            assert!(value <= u8::MAX as usize, "byte 値が範囲外: {value}");
+            wasm.push(value as u8);
+        }
+        pos += len;
+        modules.push(wasm);
+    }
+
+    assert_eq!(
+        pos,
+        values.len(),
+        "想定外の trailing output が残っている: {:?}",
+        &values[pos..]
+    );
+    modules
+}
+
+/// WASI ではなく素の Wasm export を呼び出し、i64 結果を確認するヘルパー
+fn run_exported_i64(wasm: &[u8], export_name: &str) -> i64 {
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, wasm)
+        .expect("stage2 Wasm の Module 構築に失敗");
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = wasmtime::Instance::new(&mut store, &module, &[])
+        .expect("stage2 Wasm のインスタンス化に失敗");
+    let func = instance
+        .get_typed_func::<(), i64>(&mut store, export_name)
+        .unwrap_or_else(|e| panic!("{export_name} export の取得に失敗: {e}"));
+    func.call(&mut store, ())
+        .expect("stage2 Wasm の export 呼び出しに失敗")
+}
+
 /// BOOT-04: 4 層比較テスト
 ///
 /// selfhost コンパイラを Rust stage0 で 2 回コンパイルし、
@@ -245,4 +307,90 @@ fn test_e2e_bootstrap_stage_chain_verification() {
         stage1_output, stage1_output_2,
         "Phase5: stage1 コンパイラの出力が非決定的"
     );
+}
+
+/// BOOT-04: stage1 が narrow subset を実際に stage2 Wasm へコンパイルできること
+///
+/// true fixed-point そのものではないが、Rust stage0 が生成した stage1 が
+/// selfhost の Parser/Compiler/WasmEmit を使って実体の Wasm bytes を出力し、
+/// その stage2 を実行できる最小 bootstrap 経路を固定する。
+#[test]
+fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_minimal_subset() {
+    let harness = r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        ir (lower program)
+        header (emit-header)
+        type-sec (emit-type-section-main)
+        function-sec (emit-function-section)
+        export-sec (emit-export-section)
+        code-sec (emit-code-section ir)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 function-sec 0 (vector-length function-sec))
+        bytes3 (bootstrap-append-bytes bytes2 export-sec 0 (vector-length export-sec))]
+    (bootstrap-append-bytes bytes3 code-sec 0 (vector-length code-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [stage2-a (bootstrap-build-stage2 "(defn main [] 42)")
+        stage2-b (bootstrap-build-stage2 "(defn main [] 7)")]
+    (do
+      (bootstrap-print-module stage2-a)
+      (bootstrap-print-module stage2-b)
+      0)))
+"#;
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let first_output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("stage1 wasm の 1 回目実行に失敗");
+    let second_output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("stage1 wasm の 2 回目実行に失敗");
+    assert_eq!(
+        first_output, second_output,
+        "stage1 の stage2 生成結果が非決定的"
+    );
+
+    let modules = parse_emitted_wasm_modules(&first_output, 2);
+    assert_eq!(modules.len(), 2, "stage2 モジュール数が不正");
+    assert_ne!(
+        modules[0], modules[1],
+        "異なる入力ソースから同一 stage2 Wasm が出力された"
+    );
+
+    for (idx, wasm) in modules.iter().enumerate() {
+        assert_valid_wasm(wasm);
+        assert!(
+            wasm.len() > 8,
+            "module[{idx}] の stage2 Wasm が短すぎる: {} bytes",
+            wasm.len()
+        );
+    }
+
+    assert_eq!(run_exported_i64(&modules[0], "_start"), 42);
+    assert_eq!(run_exported_i64(&modules[1], "_start"), 7);
 }

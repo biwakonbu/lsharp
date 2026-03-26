@@ -1,5 +1,29 @@
 use super::support::*;
 
+fn selfhost_doctools_runtime_bundle() -> String {
+    [
+        include_str!("../../../../selfhost/Token.ls"),
+        include_str!("../../../../selfhost/AST.ls"),
+        include_str!("../../../../selfhost/Lexer.ls"),
+        include_str!("../../../../selfhost/Parser.ls"),
+        include_str!("../../../../selfhost/DocTools.ls"),
+    ]
+    .join("\n")
+}
+
+fn run_lsp_harness(_name: &str, harness: &str) -> Vec<String> {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let output = compile_and_run(&format!("{}\n{}", source, harness));
+    output
+        .trim()
+        .lines()
+        .map(std::string::ToString::to_string)
+        .collect()
+}
+
 
 /// TEST-LSP-03: selfhost/LspServer.ls に diagnostics の安定ソート機構
 ///
@@ -484,6 +508,135 @@ fn test_e2e_selfhost_lsp_json_rpc_parse() {
     assert_eq!(lines[2], "55", "params は 55 であるべき");
 }
 
+/// TEST-LSP-18: hover がソースとカーソル位置から実シンボル情報を返すこと
+#[test]
+fn test_e2e_selfhost_lsp_real_shapes_hover_uses_source_symbol() {
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        src "(defn square [x] x)\n(defn main [] (square 1) (square 2))"
+        params (vector-push (vector-push (vector-push (vector-push (vector-new 4) 99) 2) 17) src)
+        result (handle-hover params state)
+        range (vector-get result 0)]
+    (do
+      (print (vector-length result))
+      (print (vector-get range 0))
+      (print (vector-get range 1))
+      (print (vector-get range 2))
+      (print (vector-get range 3))
+      (print (= (vector-get result 1) (lsp-string-hash "defn square")))
+      0)))
+"#;
+
+    let lines = run_lsp_harness("lsp_real_shapes_hover", harness);
+
+    assert_eq!(lines[0], "2", "hover response は [range, contents] の 2 要素であるべき");
+    assert_eq!(lines[1], "2", "hover range start-line は参照箇所の 2 行目であるべき");
+    assert_eq!(lines[2], "16", "hover range start-col は square 呼び出し先頭であるべき");
+    assert_eq!(lines[3], "2", "hover range end-line は参照箇所の 2 行目であるべき");
+    assert_eq!(lines[4], "22", "hover range end-col は symbol 終端であるべき");
+    assert_eq!(lines[5], "1", "hover contents は \"defn square\" であるべき");
+}
+
+/// TEST-LSP-19: definition / references がソース走査結果を返すこと
+#[test]
+fn test_e2e_selfhost_lsp_real_shapes_definition_and_references_use_source() {
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        src "(defn square [x] x)\n(defn main [] (square 1) (square 2))"
+        params (vector-push (vector-push (vector-push (vector-push (vector-new 4) 99) 2) 17) src)
+        defn-loc (handle-goto-definition params state)
+        refs (handle-references params state)
+        ref0 (vector-get refs 0)
+        ref1 (vector-get refs 1)
+        ref2 (vector-get refs 2)]
+    (do
+      (print (vector-get defn-loc 0))
+      (print (vector-get defn-loc 1))
+      (print (vector-get defn-loc 2))
+      (print (vector-length refs))
+      (print (vector-get ref0 1))
+      (print (vector-get ref0 2))
+      (print (vector-get ref1 1))
+      (print (vector-get ref1 2))
+      (print (vector-get ref2 1))
+      (print (vector-get ref2 2))
+      0)))
+"#;
+
+    let lines = run_lsp_harness("lsp_real_shapes_definition_references", harness);
+
+    assert_eq!(lines[0], "99", "definition は元の uri を保持するべき");
+    assert_eq!(lines[1], "1", "definition line は defn 名の 1 行目であるべき");
+    assert_eq!(lines[2], "7", "definition col は square 定義名の先頭であるべき");
+    assert_eq!(lines[3], "3", "references は定義 + 2 参照の合計 3 件であるべき");
+    assert_eq!(lines[4], "1", "1 件目は定義行であるべき");
+    assert_eq!(lines[5], "7", "1 件目は定義名の列を指すべき");
+    assert_eq!(lines[6], "2", "2 件目は 2 行目の呼び出しであるべき");
+    assert_eq!(lines[7], "16", "2 件目は 1 つ目の square 呼び出しであるべき");
+    assert_eq!(lines[8], "2", "3 件目は 2 行目の呼び出しであるべき");
+    assert_eq!(lines[9], "27", "3 件目は 2 つ目の square 呼び出しであるべき");
+}
+
+/// TEST-LSP-20: completion が prefix とシンボル表から安定した item を返すこと
+#[test]
+fn test_e2e_selfhost_lsp_real_shapes_completion_uses_prefix_and_symbols() {
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        src "(defn helper [] 1)\n(he)"
+        params (vector-push (vector-push (vector-push (vector-push (vector-new 4) 77) 2) 4) src)
+        items (handle-completion params state)
+        item0 (vector-get items 0)]
+    (do
+      (print (vector-length items))
+      (print (vector-length item0))
+      (print (= (vector-get item0 0) (lsp-string-hash "helper")))
+      (print (vector-get item0 1))
+      (print (= (vector-get item0 2) (lsp-string-hash "helper")))
+      0)))
+"#;
+
+    let lines = run_lsp_harness("lsp_real_shapes_completion", harness);
+
+    assert_eq!(lines[0], "1", "completion は prefix=he に対して helper のみ返すべき");
+    assert_eq!(lines[1], "3", "completion item は [label, kind, insertText] の 3 要素であるべき");
+    assert_eq!(lines[2], "1", "completion label は helper であるべき");
+    assert_eq!(lines[3], "3", "completion kind は関数 (3) であるべき");
+    assert_eq!(lines[4], "1", "completion insertText は helper であるべき");
+}
+
+/// TEST-LSP-21: formatting が実ソース長に基づく full-document edit を返すこと
+#[test]
+fn test_e2e_selfhost_lsp_real_shapes_formatting_returns_document_edit() {
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        src "(defn main [] 1)"
+        params (vector-push (vector-push (vector-new 2) 77) src)
+        edits (handle-formatting params state)
+        edit (vector-get edits 0)]
+    (do
+      (print (vector-length edits))
+      (print (vector-get edit 0))
+      (print (vector-get edit 1))
+      (print (vector-get edit 2))
+      (print (vector-get edit 3))
+      (print (= (vector-get edit 4) (lsp-string-hash "(defn main [] 1)\n")))
+      0)))
+"#;
+
+    let lines = run_lsp_harness("lsp_real_shapes_formatting", harness);
+
+    assert_eq!(lines[0], "1", "formatting は 1 件の TextEdit を返すべき");
+    assert_eq!(lines[1], "1", "TextEdit start-line は 1 であるべき");
+    assert_eq!(lines[2], "1", "TextEdit start-col は 1 であるべき");
+    assert_eq!(lines[3], "1", "TextEdit end-line は 1 であるべき");
+    assert_eq!(lines[4], "17", "TextEdit end-col は入力全文の終端であるべき");
+    assert_eq!(lines[5], "1", "TextEdit newText は整形後の全文であるべき");
+}
+
 /// TEST-FMT-01: selfhost/Formatter.ls に format-program / format-expr 関数が存在すること
 ///
 /// T4c-1 AC-300: parse-format-parse roundtrip のための format-program / format-expr
@@ -656,7 +809,7 @@ fn test_e2e_selfhost_doctools_extract_public_functions_runtime() {
       0)))
 "#;
 
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
@@ -675,7 +828,7 @@ fn test_e2e_selfhost_doctools_extract_type_definitions_runtime() {
       0)))
 "#;
 
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
@@ -694,7 +847,7 @@ fn test_e2e_selfhost_doctools_extract_module_public_functions_runtime() {
       0)))
 "#;
 
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
@@ -713,7 +866,7 @@ fn test_e2e_selfhost_doctools_extract_module_type_definitions_runtime() {
       0)))
 "#;
 
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
@@ -1070,119 +1223,160 @@ fn test_e2e_ops08_final_removal_rollback() {
     );
 }
 
-/// D-2: Formatter.ls の format-expr が lit-int AST ノードの値を正しく返すこと
-/// format-expr [1, 42] → 42 (整数リテラルの値)
+fn formatter_output_for_source(source: &str) -> String {
+    assert!(
+        !source.contains('"'),
+        "formatter_output_for_source は引用符を含まない source 専用 helper"
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (do
+    (print-string (format-program (parse-program "{source}") 0))
+    0))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
+    compile_and_run(&combined)
+}
+
+fn selfhost_formatter_runtime_bundle() -> String {
+    ["Token.ls", "AST.ls", "Lexer.ls", "Parser.ls", "Formatter.ls"]
+        .into_iter()
+        .map(selfhost_module)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// D-2: Formatter.ls の format-expr が lit-int AST ノードを実テキストへ整形すること
 #[test]
 fn test_e2e_selfhost_formatter_format_expr_lit_int() {
     let harness = r#"
 (defn main []
-  (let [;; tag=1 (lit-int), value=42
-        node (vector-push (vector-push (vector-new 2) 1) 42)
+  (let [node (vector-push (vector-push (vector-new 2) 1) 42)
         result (format-expr node 0)]
     (do
-      (print result)
+      (print-string result)
       0)))
 "#;
 
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.last().unwrap(), &"42", "lit-int 42 をフォーマットすると 42 を返すべき");
+    assert_eq!(lines.last().unwrap(), &"42", "lit-int 42 は文字列 \"42\" に整形されるべき");
 }
 
-/// D-2: Formatter.ls の format-expr が apply AST ノードの引数数を含む結果を返すこと
-/// format-expr [5, func-node, 2, arg1, arg2] → argc (2)
+/// D-2: format-expr が apply AST ノードを実テキストへ整形すること
 #[test]
 fn test_e2e_selfhost_formatter_format_expr_apply() {
     let harness = r#"
 (defn main []
-  (let [;; tag=5 (apply), func=[4, 100], argc=2, arg1=[1, 1], arg2=[1, 2]
-        func-node (vector-push (vector-push (vector-new 2) 4) 100)
+  (let [func-node (vector-push (vector-push (vector-new 2) 4) 102)
         arg1 (vector-push (vector-push (vector-new 2) 1) 1)
         arg2 (vector-push (vector-push (vector-new 2) 1) 2)
         node (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 5) 5) func-node) 2) arg1) arg2)
         result (format-expr node 0)]
     (do
-      (print result)
+      (print-string result)
       0)))
 "#;
 
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    // apply の format 結果: argc (引数数) を返す
-    assert_eq!(lines.last().unwrap(), &"2", "apply の format 結果は argc=2 を返すべき");
+    assert_eq!(lines.last().unwrap(), &"(f 1 2)", "apply は実テキスト \"(f 1 2)\" を返すべき");
 }
 
-/// FMT-01: format-expr が let (tag=7) の name-hash を返すこと
+/// FMT-01: format-expr が let (tag=7) を実テキストへ整形すること
 #[test]
 fn test_e2e_selfhost_formatter_format_expr_let() {
     let harness = r#"
 (defn main []
-  (let [;; tag=7 (let), name-hash=50, init=[1, 10], body=[1, 20]
-        init-expr (vector-push (vector-push (vector-new 2) 1) 10)
-        body-expr (vector-push (vector-push (vector-new 2) 1) 20)
-        node (vector-push (vector-push (vector-push (vector-push (vector-new 4) 7) 50) init-expr) body-expr)
+  (let [init-expr (vector-push (vector-push (vector-new 2) 1) 10)
+        body-expr (vector-push (vector-push (vector-new 2) 4) 120)
+        node (vector-push (vector-push (vector-push (vector-push (vector-new 4) 7) 120) init-expr) body-expr)
         result (format-expr node 0)]
     (do
-      (print result)
+      (print-string result)
       0)))
 "#;
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.last().unwrap(), &"50", "let の format 結果は name-hash=50 を返すべき");
+    assert_eq!(lines.last().unwrap(), &"(let [x 10] x)", "let は実テキストへ整形されるべき");
 }
 
-/// FMT-01: format-expr が lambda (tag=8) の param-count を返すこと
+/// FMT-01: format-expr が if (tag=6) を実テキストへ整形すること
+#[test]
+fn test_e2e_selfhost_formatter_format_expr_if() {
+    let harness = r#"
+(defn main []
+  (let [cond-expr (vector-push (vector-push (vector-new 2) 4) 120)
+        then-expr (vector-push (vector-push (vector-new 2) 1) 42)
+        else-expr (vector-push (vector-push (vector-new 2) 1) 0)
+        node (vector-push (vector-push (vector-push (vector-push (vector-new 4) 6) cond-expr) then-expr) else-expr)
+        result (format-expr node 0)]
+    (do
+      (print-string result)
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.last().unwrap(), &"(if x 42 0)", "if は実テキストへ整形されるべき");
+}
+
+/// FMT-01: format-expr が lambda (tag=8) を実テキストへ整形すること
 #[test]
 fn test_e2e_selfhost_formatter_format_expr_lambda() {
     let harness = r#"
 (defn main []
-  (let [;; tag=8 (lambda), param-count=2, p1=10, p2=20, body=[1, 42]
-        body-expr (vector-push (vector-push (vector-new 2) 1) 42)
-        node (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 5) 8) 2) 10) 20) body-expr)
+  (let [func-node (vector-push (vector-push (vector-new 2) 4) 102)
+        arg1 (vector-push (vector-push (vector-new 2) 4) 120)
+        arg2 (vector-push (vector-push (vector-new 2) 4) 121)
+        body-expr (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 5) 5) func-node) 2) arg1) arg2)
+        node (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 5) 8) 2) 120) 121) body-expr)
         result (format-expr node 0)]
     (do
-      (print result)
+      (print-string result)
       0)))
 "#;
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.last().unwrap(), &"2", "lambda の format 結果は param-count=2 を返すべき");
+    assert_eq!(lines.last().unwrap(), &"(fn [x y] (f x y))", "lambda は実テキストへ整形されるべき");
 }
 
-/// FMT-01: format-expr が do (tag=9) の expr-count を返すこと
+/// FMT-01: format-expr が do (tag=9) を実テキストへ整形すること
 #[test]
 fn test_e2e_selfhost_formatter_format_expr_do() {
     let harness = r#"
 (defn main []
-  (let [;; tag=9 (do), expr-count=3, e1=[1,1], e2=[1,2], e3=[1,3]
-        e1 (vector-push (vector-push (vector-new 2) 1) 1)
+  (let [e1 (vector-push (vector-push (vector-new 2) 1) 1)
         e2 (vector-push (vector-push (vector-new 2) 1) 2)
         e3 (vector-push (vector-push (vector-new 2) 1) 3)
         node (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 5) 9) 3) e1) e2) e3)
         result (format-expr node 0)]
     (do
-      (print result)
+      (print-string result)
       0)))
 "#;
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.last().unwrap(), &"3", "do の format 結果は expr-count=3 を返すべき");
+    assert_eq!(lines.last().unwrap(), &"(do 1 2 3)", "do は実テキストへ整形されるべき");
 }
 
-/// FMT-01: format-expr が match (tag=10) の arm-count を返すこと
+/// FMT-01: 未対応の match は明示的な fallback テキストを返すこと
 #[test]
 fn test_e2e_selfhost_formatter_format_expr_match() {
     let harness = r#"
 (defn main []
-  (let [;; tag=10 (match), scrutinee=[4,99], arm-count=2
-        scr (vector-push (vector-push (vector-new 2) 4) 99)
+  (let [scr (vector-push (vector-push (vector-new 2) 4) 120)
         pat1 (vector-push (vector-push (vector-new 2) 42) 1)
         body1 (vector-push (vector-push (vector-new 2) 1) 10)
         pat2 (vector-push (vector-push (vector-new 2) 42) 2)
@@ -1190,137 +1384,110 @@ fn test_e2e_selfhost_formatter_format_expr_match() {
         node (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 7) 10) scr) 2) pat1) body1) pat2) body2)
         result (format-expr node 0)]
     (do
-      (print result)
+      (print-string result)
       0)))
 "#;
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.last().unwrap(), &"2", "match の format 結果は arm-count=2 を返すべき");
+    assert_eq!(lines.last().unwrap(), &"(unsupported-expr 10)", "match は未対応 fallback を返すべき");
 }
 
-/// FMT-01: format-expr が recordlit (tag=12) の field-count を返すこと
+/// FMT-01: 未対応の recordlit は明示的な fallback テキストを返すこと
 #[test]
 fn test_e2e_selfhost_formatter_format_expr_recordlit() {
     let harness = r#"
 (defn main []
-  (let [;; tag=12 (recordlit), type-hash=99, field-count=2, f1-hash=10, f1-expr=[1,1], f2-hash=20, f2-expr=[1,2]
-        f1-expr (vector-push (vector-push (vector-new 2) 1) 1)
+  (let [f1-expr (vector-push (vector-push (vector-new 2) 1) 1)
         f2-expr (vector-push (vector-push (vector-new 2) 1) 2)
         node (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 7) 12) 99) 2) 10) f1-expr) 20) f2-expr)
         result (format-expr node 0)]
     (do
-      (print result)
+      (print-string result)
       0)))
 "#;
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.last().unwrap(), &"2", "recordlit の format 結果は field-count=2 を返すべき");
+    assert_eq!(lines.last().unwrap(), &"(unsupported-expr 12)", "recordlit は未対応 fallback を返すべき");
 }
 
-/// FMT-01: format-expr が fieldaccess (tag=13) の field-hash を返すこと
+/// FMT-01: 未対応の fieldaccess は明示的な fallback テキストを返すこと
 #[test]
 fn test_e2e_selfhost_formatter_format_expr_fieldaccess() {
     let harness = r#"
 (defn main []
-  (let [;; tag=13 (fieldaccess), expr=[4,50], field-hash=77
-        inner (vector-push (vector-push (vector-new 2) 4) 50)
+  (let [inner (vector-push (vector-push (vector-new 2) 4) 120)
         node (vector-push (vector-push (vector-push (vector-new 3) 13) inner) 77)
         result (format-expr node 0)]
     (do
-      (print result)
+      (print-string result)
       0)))
 "#;
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.last().unwrap(), &"77", "fieldaccess の format 結果は field-hash=77 を返すべき");
+    assert_eq!(lines.last().unwrap(), &"(unsupported-expr 13)", "fieldaccess は未対応 fallback を返すべき");
 }
 
-/// FMT-01: format-decl が defn (tag=20) の param-count を返すこと
+/// FMT-01: format-decl が defn (tag=20) を実テキストへ整形すること
 #[test]
 fn test_e2e_selfhost_formatter_format_decl_defn() {
     let harness = r#"
 (defn main []
-  (let [;; defn: [20, name-hash=100, param-count=3, p1=10, p2=20, p3=30, body=[1,0]]
-        body (vector-push (vector-push (vector-new 2) 1) 0)
-        node (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 7) 20) 100) 3) 10) 20) 30) body)
+  (let [body (vector-push (vector-push (vector-new 2) 1) 0)
+        node (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 7) 20) 97) 3) 120) 121) 122) body)
         result (format-decl node 0)]
     (do
-      (print result)
+      (print-string result)
       0)))
 "#;
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.last().unwrap(), &"3", "defn の format-decl 結果は param-count=3 を返すべき");
+    assert_eq!(lines.last().unwrap(), &"(defn a [x y z] 0)", "defn は実テキストへ整形されるべき");
 }
 
-/// FMT-01 AC-300: 同一 AST に対して format-expr は決定的に同じ結果を返す (roundtrip)
-/// 複数の AST ノード型で検証
+/// FMT-01: format-program が supported subset を実テキストへ整形すること
+#[test]
+fn test_e2e_selfhost_formatter_format_program_text_simple_program() {
+    let source = "  (defn a [b] (if b (let [c 1] c) (do b 0)))  ";
+    let output = formatter_output_for_source(source);
+
+    assert_eq!(
+        output,
+        "(defn a [b] (if b (let [c 1] c) (do b 0)))\n",
+        "format-program は simple defn/if/let/do を canonical な実テキストへ整形するべき"
+    );
+
+    let parsed = parse_for_pipeline(&output);
+    assert_eq!(parsed.decls.len(), 1, "format-program の出力は Rust parser でも再パースできるべき");
+}
+
+/// FMT-01 AC-300: parse(format(src)) 後に再 format しても同じ実テキストになること
 #[test]
 fn test_e2e_selfhost_formatter_roundtrip_deterministic() {
-    let harness = r#"
-(defn main []
-  (let [;; 同一の if ノードを 2 回構築
-        c1 (vector-push (vector-push (vector-new 2) 4) 99)
-        t1 (vector-push (vector-push (vector-new 2) 1) 42)
-        e1 (vector-push (vector-push (vector-new 2) 1) 0)
-        if1 (vector-push (vector-push (vector-push (vector-push (vector-new 4) 6) c1) t1) e1)
-        c2 (vector-push (vector-push (vector-new 2) 4) 99)
-        t2 (vector-push (vector-push (vector-new 2) 1) 42)
-        e2 (vector-push (vector-push (vector-new 2) 1) 0)
-        if2 (vector-push (vector-push (vector-push (vector-push (vector-new 4) 6) c2) t2) e2)
-        ;; 同一の let ノードを 2 回構築
-        li1 (vector-push (vector-push (vector-new 2) 1) 10)
-        lb1 (vector-push (vector-push (vector-new 2) 1) 20)
-        let1 (vector-push (vector-push (vector-push (vector-push (vector-new 4) 7) 88) li1) lb1)
-        li2 (vector-push (vector-push (vector-new 2) 1) 10)
-        lb2 (vector-push (vector-push (vector-new 2) 1) 20)
-        let2 (vector-push (vector-push (vector-push (vector-push (vector-new 4) 7) 88) li2) lb2)
-        ;; format 結果を比較
-        r-if1 (format-expr if1 0)
-        r-if2 (format-expr if2 0)
-        r-let1 (format-expr let1 0)
-        r-let2 (format-expr let2 0)]
-    (do
-      ;; 各ペアが一致すること (Bool → Int 変換)
-      (let [match-if (if (= r-if1 r-if2) 1 0)
-            match-let (if (= r-let1 r-let2) 1 0)]
-        (do
-          (print match-if)              ;; 1
-          (print match-let)             ;; 1
-          (print (+ match-if match-let))))
-      0)))
-"#;
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
-    let output = compile_and_run(&combined);
-    let lines: Vec<&str> = output.trim().lines().collect();
-    // 最後の出力: 2 ペアが一致
-    assert_eq!(lines.last().unwrap(), &"2", "roundtrip: 同一 AST の format 結果は一致するべき");
+    let source = " (defn a [b] (if b (let [c 1] c) (do b 0))) ";
+    let formatted = formatter_output_for_source(source);
+    let reformatted = formatter_output_for_source(formatted.trim_end());
+
+    assert_eq!(
+        formatted, reformatted,
+        "roundtrip: parse(format(src)) 後も format-program の実テキストは安定するべき"
+    );
 }
 
-/// FMT-01 AC-301: format-program の冪等性 (idempotency)
-/// 同一プログラムに対して 2 回呼んでも同じ結果
+/// FMT-01 AC-301: supported subset の format-program は 2 回適用しても同じ出力になること
 #[test]
 fn test_e2e_selfhost_formatter_idempotent() {
-    let harness = r#"
-(defn main []
-  (let [;; defn 2 つのプログラム
-        b1 (vector-push (vector-push (vector-new 2) 1) 42)
-        d1 (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 5) 20) 100) 1) 200) b1)
-        b2 (vector-push (vector-push (vector-new 2) 1) 0)
-        d2 (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 5) 20) 300) 2) 400) b2)
-        prog (vector-push (vector-push (vector-new 2) d1) d2)
-        r1 (format-program prog 0)
-        r2 (format-program prog 0)]
-    (do
-      (print (= r1 r2))  ;; 1 (冪等)
-      0)))
-"#;
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
-    let output = compile_and_run(&combined);
-    let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.last().unwrap(), &"1", "format-program の冪等性: 2 回適用しても同じ結果");
+    let source = " (defn a [] 42)   (defn b [c] (do c 0)) ";
+    let first = formatter_output_for_source(source);
+    let second = formatter_output_for_source(first.trim_end());
+
+    assert_eq!(
+        first,
+        "(defn a [] 42)\n(defn b [c] (do c 0))\n",
+        "format-program は複数 defn も改行区切りの実テキストへ整形するべき"
+    );
+    assert_eq!(first, second, "format-program は text output に対して idempotent であるべき");
 }

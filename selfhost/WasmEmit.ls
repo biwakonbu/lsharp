@@ -414,10 +414,12 @@
       ;; Code セクションを構築
       (let [func-body (ref-get body)
             func-body-size (vector-length func-body)
+            body-size-len (vector-length (leb128-u func-body-size))
+            section-size (+ (+ func-body-size body-size-len) 1)
             ;; セクション: [id=10, section-size, func-count=1, func-body-size, ...func-body]
             result (vector-new 64)
             r1 (emit-byte result 10)       ;; Section ID = 10 (Code)
-            r2 (emit-leb128 r1 (+ func-body-size 1))  ;; セクションサイズ (func-body + count)
+            r2 (emit-leb128 r1 section-size)  ;; セクションサイズ (count + body-size + func-body)
             r3 (emit-byte r2 1)            ;; 関数数 (1個)
             r4 (emit-leb128 r3 func-body-size)]  ;; 関数本体サイズ
         ;; func-body のバイト列を追加 (最大16バイトの展開)

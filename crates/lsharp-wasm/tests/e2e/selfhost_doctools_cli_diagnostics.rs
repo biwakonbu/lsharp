@@ -1,88 +1,145 @@
 use super::support::*;
 
+fn selfhost_doctools_runtime_bundle() -> String {
+    [
+        include_str!("../../../../selfhost/Token.ls"),
+        include_str!("../../../../selfhost/AST.ls"),
+        include_str!("../../../../selfhost/Lexer.ls"),
+        include_str!("../../../../selfhost/Parser.ls"),
+        include_str!("../../../../selfhost/DocTools.ls"),
+    ]
+    .join("\n")
+}
 
-/// D-3: DocTools.ls に generate-html 関数が存在し、deterministic な結果を返すこと
+fn selfhost_cli_html_runtime_bundle() -> String {
+    [
+        &selfhost_doctools_runtime_bundle(),
+        include_str!("../../../../selfhost/HtmlTemplate.ls"),
+        include_str!("../../../../selfhost/HtmlLayout.ls"),
+        include_str!("../../../../selfhost/HtmlDoc.ls"),
+    ]
+    .join("\n")
+}
+
+/// D-3: DocTools.ls の generate-html が title/body と entry list を返すこと
 #[test]
 fn test_e2e_selfhost_doctools_generate_html_basic() {
     let harness = r#"
 (defn main []
-  (let [program (parse-program "(defn main [] 42)")
-        html (generate-html program 0)]
+  (let [program (parse-program "(defn add [x y] (+ x y)) (type Num Int)")
+        html (generate-html program 0)
+        functions (vector-get html 3)
+        types (vector-get html 4)
+        fn0 (vector-get functions 0)
+        type0 (vector-get types 0)]
     (do
       (print (vector-length html))
       (print (vector-get html 0))
+      (print (if (string-eq (vector-get html 1) "module-global") 1 0))
+      (print (if (> (string-length (vector-get html 2)) 0) 1 0))
+      (print (vector-length functions))
+      (print (vector-get fn0 1))
+      (print (vector-length types))
+      (print (if (string-eq (vector-get type0 1) "type") 1 0))
       0)))
 "#;
 
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    // HTML doc 構造は 5 スロット: [tag, title, body, functions-count, types-count]
-    assert_eq!(lines[lines.len() - 2], "5", "HTML doc 構造は 5 スロットであるべき");
-    // tag=1 は HTML ドキュメント
-    assert_eq!(lines[lines.len() - 1], "1", "HTML doc の tag は 1 であるべき");
+    assert_eq!(lines, vec!["5", "1", "1", "1", "1", "2", "1", "1"]);
 }
 
-/// D-3: DocTools.ls の generate-html が idempotent であること (2回実行で同一結果)
+/// D-3: DocTools.ls の generate-html が 2 回実行しても同一 payload を返すこと
 #[test]
 fn test_e2e_selfhost_doctools_generate_html_idempotent() {
     let harness = r#"
 (defn main []
-  (let [program (parse-program "(defn add [x y] (+ x y))")
+  (let [program (parse-program "(defn add [x y] (+ x y)) (type Num Int)")
         html1 (generate-html program 0)
-        html2 (generate-html program 0)]
+        html2 (generate-html program 0)
+        functions1 (vector-get html1 3)
+        functions2 (vector-get html2 3)
+        types1 (vector-get html1 4)
+        types2 (vector-get html2 4)
+        fn1 (vector-get functions1 0)
+        fn2 (vector-get functions2 0)
+        type1 (vector-get types1 0)
+        type2 (vector-get types2 0)]
     (do
-      (print (vector-length html1))
-      (print (vector-length html2))
-      (print (= (vector-get html1 3) (vector-get html2 3)))
+      (print (if (string-eq (vector-get html1 1) (vector-get html2 1)) 1 0))
+      (print (if (string-eq (vector-get html1 2) (vector-get html2 2)) 1 0))
+      (print (if (= (vector-length functions1) (vector-length functions2)) 1 0))
+      (print (if (= (vector-get fn1 0) (vector-get fn2 0)) 1 0))
+      (print (if (= (vector-get fn1 1) (vector-get fn2 1)) 1 0))
+      (print (if (string-eq (vector-get type1 1) (vector-get type2 1)) 1 0))
       0)))
 "#;
 
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    // 同一サイズ
-    assert_eq!(lines[lines.len() - 3], lines[lines.len() - 2], "2回の generate-html で同一サイズ");
-    // functions-count が一致
-    assert_eq!(lines[lines.len() - 1], "1", "同一入力で同一 functions-count");
+    assert_eq!(lines, vec!["1", "1", "1", "1", "1", "1"]);
 }
 
-/// DOC-01: generate-knowledge の出力が knowledge スキーマ構造に準拠すること
-/// スキーマ: docs/schemas/knowledge.schema.json
-/// 構造: [module-id, functions-count, types-count]
+/// DOC-01: generate が title/body/function/type payload を返すこと
+#[test]
+fn test_e2e_selfhost_doctools_generate_structured_doc_payload() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] 42) (type Doc Int)")
+        doc (generate program 0)
+        functions (vector-get doc 2)
+        types (vector-get doc 3)]
+    (do
+      (print (vector-length doc))
+      (print (if (string-eq (vector-get doc 0) "module-global") 1 0))
+      (print (if (> (string-length (vector-get doc 1)) 0) 1 0))
+      (print (vector-length functions))
+      (print (vector-length types))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["4", "1", "1", "1", "1"]);
+}
+
+/// DOC-01: generate-knowledge の出力が module + function entries + type entries を返すこと
 #[test]
 fn test_e2e_selfhost_doctools_schema_knowledge() {
     let harness = r#"
 (defn main []
-  (let [program (parse-program "(defn main [] 42) (type Doc Int)")
-        kb (generate-knowledge program 100)]
+  (let [program (parse-program "(defn add [x y] (+ x y)) (type Doc Int) (type-alias Alias Int)")
+        kb (generate-knowledge program 100)
+        functions (vector-get kb 1)
+        types (vector-get kb 2)
+        fn0 (vector-get functions 0)
+        type0 (vector-get types 0)
+        type1 (vector-get types 1)]
     (do
       (print (vector-length kb))
       (print (vector-get kb 0))
-      (print (vector-get kb 1))
-      (print (vector-get kb 2))
+      (print (vector-length functions))
+      (print (vector-get fn0 1))
+      (print (vector-length types))
+      (print (if (string-eq (vector-get type0 1) "type") 1 0))
+      (print (if (string-eq (vector-get type1 1) "typealias") 1 0))
       0)))
 "#;
 
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    // knowledge 構造は 3 スロット: [module-id, functions-count, types-count]
-    assert_eq!(lines[lines.len() - 4], "3", "knowledge 構造は 3 スロットであるべき");
-    // module-id = 100
-    assert_eq!(lines[lines.len() - 3], "100", "module-id が正しいこと");
-    // functions-count = 1 (defn main)
-    assert_eq!(lines[lines.len() - 2], "1", "functions-count = 1");
-    // types-count = 1 (type Doc Int)
-    assert_eq!(lines[lines.len() - 1], "1", "types-count = 1");
+    assert_eq!(lines, vec!["3", "100", "1", "2", "2", "1", "1"]);
 }
 
-/// DOC-01: generate-review の出力が review スキーマ構造に準拠すること
-/// スキーマ: docs/schemas/review.schema.json
-/// 構造: [source-id, diagnostics-count]
+/// DOC-01: generate-review の diagnostics slot が vector であること
 #[test]
 fn test_e2e_selfhost_doctools_schema_review() {
     let harness = r#"
@@ -92,25 +149,18 @@ fn test_e2e_selfhost_doctools_schema_review() {
     (do
       (print (vector-length rev))
       (print (vector-get rev 0))
-      (print (vector-get rev 1))
+      (print (vector-length (vector-get rev 1)))
       0)))
 "#;
 
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    // review 構造は 2 スロット: [source-id, diagnostics-count]
-    assert_eq!(lines[lines.len() - 3], "2", "review 構造は 2 スロットであるべき");
-    // source-id = 200
-    assert_eq!(lines[lines.len() - 2], "200", "source-id が正しいこと");
-    // 正常ソースでは diagnostics-count = 0
-    assert_eq!(lines[lines.len() - 1], "0", "正常ソースの diagnostics は 0 件");
+    assert_eq!(lines, vec!["2", "200", "0"]);
 }
 
-/// DOC-01: generate-doc-output の出力が doc-output スキーマ構造に準拠すること
-/// スキーマ: docs/schemas/doc-output.schema.json
-/// 構造: [module-id, public-functions, types-count, html-title, html-sections]
+/// DOC-01: generate-doc-output の出力が function/type entries と title を含むこと
 #[test]
 fn test_e2e_selfhost_doctools_schema_doc_output() {
     let harness = r#"
@@ -120,121 +170,139 @@ fn test_e2e_selfhost_doctools_schema_doc_output() {
     (do
       (print (vector-length doc-out))
       (print (vector-get doc-out 0))
-      (print (vector-get doc-out 1))
-      (print (vector-get doc-out 2))
-      (print (vector-get doc-out 3))
+      (print (vector-length (vector-get doc-out 1)))
+      (print (vector-length (vector-get doc-out 2)))
+      (print (if (string-eq (vector-get doc-out 3) "module-300") 1 0))
       (print (vector-get doc-out 4))
       0)))
 "#;
 
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    // doc-output 構造は 5 スロット
-    assert_eq!(lines[lines.len() - 6], "5", "doc-output 構造は 5 スロットであるべき");
-    // module-id = 300
-    assert_eq!(lines[lines.len() - 5], "300", "module-id が正しいこと");
-    // public_functions = 1 (defn main)
-    assert_eq!(lines[lines.len() - 4], "1", "public_functions = 1");
-    // types = 1 (type Doc Int)
-    assert_eq!(lines[lines.len() - 3], "1", "types = 1");
-    // html-title = 0 (placeholder)
-    assert_eq!(lines[lines.len() - 2], "0", "html-title は placeholder (0)");
-    // html-sections = 2 (functions セクション + types セクション)
-    assert_eq!(lines[lines.len() - 1], "2", "html-sections = 2 (functions + types)");
+    assert_eq!(lines, vec!["5", "300", "1", "1", "1", "2"]);
 }
 
-/// DOC-01: ドキュメント出力にタイムスタンプ・ホスト名・絶対パスが含まれないこと
-/// AC-409: 環境依存情報を一切含まない
+/// DOC-01: ドキュメント文字列がタイムスタンプ・ホスト名・絶対パスを含まないこと
 #[test]
 fn test_e2e_selfhost_doctools_no_timestamp() {
     let harness = r#"
+(defn string-contains-loop [haystack needle i hlen nlen]
+  (if (> (+ i nlen) hlen)
+    0
+    (if (string-eq (substring haystack i (+ i nlen)) needle)
+      1
+      (string-contains-loop haystack needle (+ i 1) hlen nlen))))
+
+(defn string-contains [haystack needle]
+  (let [hlen (string-length haystack)
+        nlen (string-length needle)]
+    (if (= nlen 0)
+      1
+      (if (> nlen hlen)
+        0
+        (string-contains-loop haystack needle 0 hlen nlen)))))
+
 (defn main []
   (let [program (parse-program "(defn main [] 42) (type Doc Int)")
         doc (generate program 0)
         html (generate-html program 0)
-        kb (generate-knowledge program 0)
-        rev (generate-review program 0)
         doc-out (generate-doc-output program 0)]
     (do
-      ;; 全出力スロットを print して環境依存値がないことを検証
-      ;; generate: [title=0, body=0, fn-count, type-count]
-      (print (vector-get doc 0))
-      (print (vector-get doc 1))
-      ;; generate-html: [tag=1, title=0, body=0, fn-count, type-count]
-      (print (vector-get html 0))
-      (print (vector-get html 1))
-      (print (vector-get html 2))
-      ;; generate-knowledge: [module-id=0, fn-count, type-count]
-      (print (vector-get kb 0))
-      ;; generate-review: [source-id=0, diag-count=0]
-      (print (vector-get rev 1))
-      ;; generate-doc-output: [module-id=0, fn-count, type-count, html-title=0, sections]
-      (print (vector-get doc-out 0))
-      (print (vector-get doc-out 3))
+      (print (if (string-eq (vector-get doc 0) "module-global") 1 0))
+      (print (if (string-eq (vector-get doc-out 3) "module-0") 1 0))
+      (print (if (= (string-contains (vector-get doc 1) "/Users/") 0) 1 0))
+      (print (if (= (string-contains (vector-get html 2) "localhost") 0) 1 0))
+      (print (if (= (string-contains (vector-get html 2) "2026-") 0) 1 0))
       0)))
 "#;
 
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    // 全ての固定スロットが決定的小整数であること (タイムスタンプ等の大きな数値がないこと)
-    let fixed_slots = &lines[lines.len() - 9..lines.len()];
-    for (i, slot) in fixed_slots.iter().enumerate() {
-        let val: i64 = slot.parse().unwrap_or_else(|_| panic!("スロット {} が整数でない: {}", i, slot));
-        assert!(
-            val.abs() < 1000,
-            "スロット {} の値 {} がタイムスタンプまたは環境依存値の可能性あり",
-            i, val
-        );
-    }
+    assert_eq!(lines, vec!["1", "1", "1", "1", "1"]);
 }
 
-/// DOC-01: 同一入力に対し全スキーマ出力が deterministic であること
-/// AC-408: 同一入力→同一出力 (2回実行して完全一致)
+/// DOC-01: 同一入力に対し doc/html/schema 出力が deterministic であること
 #[test]
 fn test_e2e_selfhost_doctools_deterministic() {
     let harness = r#"
 (defn main []
   (let [program (parse-program "(defn add [x y] (+ x y)) (type Num Int)")
+        html1 (generate-html program 0)
+        html2 (generate-html program 0)
         kb1 (generate-knowledge program 50)
         kb2 (generate-knowledge program 50)
         doc1 (generate-doc-output program 50)
         doc2 (generate-doc-output program 50)
         rev1 (generate-review program 50)
-        rev2 (generate-review program 50)]
+        rev2 (generate-review program 50)
+        kb-fn1 (vector-get (vector-get kb1 1) 0)
+        kb-fn2 (vector-get (vector-get kb2 1) 0)
+        kb-type1 (vector-get (vector-get kb1 2) 0)
+        kb-type2 (vector-get (vector-get kb2 2) 0)]
     (do
-      ;; knowledge: 全 3 スロットが一致
-      (print (= (vector-get kb1 0) (vector-get kb2 0)))
-      (print (= (vector-get kb1 1) (vector-get kb2 1)))
-      (print (= (vector-get kb1 2) (vector-get kb2 2)))
-      ;; doc-output: 全 5 スロットが一致
-      (print (= (vector-get doc1 0) (vector-get doc2 0)))
-      (print (= (vector-get doc1 1) (vector-get doc2 1)))
-      (print (= (vector-get doc1 2) (vector-get doc2 2)))
-      (print (= (vector-get doc1 3) (vector-get doc2 3)))
-      (print (= (vector-get doc1 4) (vector-get doc2 4)))
-      ;; review: 全 2 スロットが一致
-      (print (= (vector-get rev1 0) (vector-get rev2 0)))
-      (print (= (vector-get rev1 1) (vector-get rev2 1)))
+      (print (if (string-eq (vector-get html1 1) (vector-get html2 1)) 1 0))
+      (print (if (string-eq (vector-get html1 2) (vector-get html2 2)) 1 0))
+      (print (if (= (vector-get kb1 0) (vector-get kb2 0)) 1 0))
+      (print (if (= (vector-get kb-fn1 0) (vector-get kb-fn2 0)) 1 0))
+      (print (if (= (vector-get kb-fn1 1) (vector-get kb-fn2 1)) 1 0))
+      (print (if (string-eq (vector-get kb-type1 1) (vector-get kb-type2 1)) 1 0))
+      (print (if (string-eq (vector-get doc1 3) (vector-get doc2 3)) 1 0))
+      (print (if (= (vector-get doc1 4) (vector-get doc2 4)) 1 0))
+      (print (if (= (vector-get rev1 0) (vector-get rev2 0)) 1 0))
+      (print (if (= (vector-length (vector-get rev1 1)) (vector-length (vector-get rev2 1))) 1 0))
       0)))
 "#;
 
-    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    // 全 10 スロット比較が true (= 1) であること
-    let comparisons = &lines[lines.len() - 10..lines.len()];
-    for (i, cmp) in comparisons.iter().enumerate() {
-        assert_eq!(
-            *cmp, "1",
-            "スロット比較 {} が不一致: expected 1, got {}",
-            i, cmp
-        );
-    }
+    assert_eq!(lines, vec!["1", "1", "1", "1", "1", "1", "1", "1", "1", "1"]);
+}
+
+/// D-3: HtmlDoc.ls が supported subset の実 HTML を決定的に描画できること
+#[test]
+fn test_e2e_selfhost_doctools_html_doc_render_html_supported_subset() {
+    let harness = r#"
+(defn string-contains-loop [haystack needle i hlen nlen]
+  (if (> (+ i nlen) hlen)
+    0
+    (if (string-eq (substring haystack i (+ i nlen)) needle)
+      1
+      (string-contains-loop haystack needle (+ i 1) hlen nlen))))
+
+(defn string-contains [haystack needle]
+  (let [hlen (string-length haystack)
+        nlen (string-length needle)]
+    (if (= nlen 0)
+      1
+      (if (> nlen hlen)
+        0
+        (string-contains-loop haystack needle 0 hlen nlen)))))
+
+(defn main []
+  (let [program (parse-program "(defn add [x y] (+ x y)) (type Num Int)")
+        doc (generate-html program 0)
+        html1 (render-html doc 0)
+        html2 (render-html doc 0)]
+    (do
+      (print (if (string-eq html1 html2) 1 0))
+      (print (if (= (string-contains html1 "<!doctype html>") 1) 1 0))
+      (print (if (= (string-contains html1 "<title>module-global</title>") 1) 1 0))
+      (print (if (= (string-contains html1 "<section id=\"functions\">") 1) 1 0))
+      (print (if (= (string-contains html1 "<section id=\"types\">") 1) 1 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["1", "1", "1", "1", "1"]);
 }
 
 /// D-4: Cli.ls の parse-diagnostics-count が正常ソースで 0 を返すこと
@@ -271,4 +339,117 @@ fn test_e2e_selfhost_cli_check_diagnostics() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(lines.last().unwrap(), &"0", "正常ソースの check diagnostics は 0 件であるべき");
+}
+
+// === DOC-02 統合テスト ===
+
+/// DOC-02: DocTools.generate-html → HtmlDoc.render-html パイプラインが実 HTML を返す
+#[test]
+fn test_e2e_selfhost_doctools_html_template_pipeline() {
+    let harness = r#"
+(defn string-contains-loop [haystack needle i hlen nlen]
+  (if (> (+ i nlen) hlen)
+    0
+    (if (string-eq (substring haystack i (+ i nlen)) needle)
+      1
+      (string-contains-loop haystack needle (+ i 1) hlen nlen))))
+
+(defn string-contains [haystack needle]
+  (let [hlen (string-length haystack)
+        nlen (string-length needle)]
+    (if (= nlen 0)
+      1
+      (if (> nlen hlen)
+        0
+        (string-contains-loop haystack needle 0 hlen nlen)))))
+
+(defn main []
+  (let [program (parse-program "(defn add [x y] (+ x y)) (type Num Int)")
+        doc (generate-html program 0)
+        html (render-html doc 0)]
+    (do
+      ;; 出力が非空
+      (print (if (> (string-length html) 0) 1 0))
+      ;; <!doctype html> で始まる
+      (print (if (string-eq (substring html 0 15) "<!doctype html>") 1 0))
+      ;; <section id="functions"> を含む
+      (print (if (= (string-contains html "<section id=\"functions\">") 1) 1 0))
+      ;; <section id="types"> を含む
+      (print (if (= (string-contains html "<section id=\"types\">") 1) 1 0))
+      ;; </body></html> で終わる (base-layout)
+      (print (if (= (string-contains html "</body></html>") 1) 1 0))
+      ;; CSS を含む (base-layout の css-inline)
+      (print (if (= (string-contains html "<style>") 1) 1 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["1", "1", "1", "1", "1", "1"]);
+}
+
+/// DOC-02: render-html の出力が deterministic
+#[test]
+fn test_e2e_selfhost_doctools_html_template_deterministic() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn foo [x] x) (type Bar Int)")
+        doc (generate-html program 0)
+        html1 (render-html doc 0)
+        html2 (render-html doc 0)]
+    (do
+      (print (if (string-eq html1 html2) 1 0))
+      (print (if (> (string-length html1) 100) 1 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["1", "1"]);
+}
+
+/// DOC-02: render-html の出力にタイムスタンプ・ホスト名・絶対パスが含まれない
+#[test]
+fn test_e2e_selfhost_doctools_html_template_no_timestamp() {
+    let harness = r#"
+(defn string-contains-loop [haystack needle i hlen nlen]
+  (if (> (+ i nlen) hlen)
+    0
+    (if (string-eq (substring haystack i (+ i nlen)) needle)
+      1
+      (string-contains-loop haystack needle (+ i 1) hlen nlen))))
+
+(defn string-contains [haystack needle]
+  (let [hlen (string-length haystack)
+        nlen (string-length needle)]
+    (if (= nlen 0)
+      1
+      (if (> nlen hlen)
+        0
+        (string-contains-loop haystack needle 0 hlen nlen)))))
+
+(defn main []
+  (let [program (parse-program "(defn main [] 42)")
+        doc (generate-html program 0)
+        html (render-html doc 0)]
+    (do
+      ;; タイムスタンプが含まれない
+      (print (if (= (string-contains html "2026") 0) 1 0))
+      ;; ホスト名パターンが含まれない
+      (print (if (= (string-contains html "hostname") 0) 1 0))
+      ;; 絶対パスが含まれない
+      (print (if (= (string-contains html "/Users/") 0) 1 0))
+      (print (if (= (string-contains html "/home/") 0) 1 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["1", "1", "1", "1"]);
 }

@@ -181,6 +181,10 @@ pub(crate) fn selfhost_module(name: &str) -> &'static str {
         "TestRunner.ls" => include_str!("../../../../selfhost/TestRunner.ls"),
         "DocTools.ls" => include_str!("../../../../selfhost/DocTools.ls"),
         "Cli.ls" => include_str!("../../../../selfhost/Cli.ls"),
+        "NativeTarget.ls" => include_str!("../../../../selfhost/NativeTarget.ls"),
+        "NativeCodegen.ls" => include_str!("../../../../selfhost/NativeCodegen.ls"),
+        "NativeEmit.ls" => include_str!("../../../../selfhost/NativeEmit.ls"),
+        "Linker.ls" => include_str!("../../../../selfhost/Linker.ls"),
         other => panic!("不明な selfhost モジュール: {other}"),
     }
 }
@@ -202,6 +206,7 @@ static SELFHOST_LEXER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_PARSER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_TYPEINFER_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
 static SELFHOST_CLI_RUNTIME_BUNDLE: OnceLock<String> = OnceLock::new();
+static SELFHOST_NATIVE_CODEGEN_BUNDLE: OnceLock<String> = OnceLock::new();
 
 pub(crate) fn selfhost_lexer_runtime_bundle() -> &'static str {
     cached_selfhost_bundle(&SELFHOST_LEXER_RUNTIME_BUNDLE, &["Token.ls", "Lexer.ls"])
@@ -247,6 +252,18 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> &'static str {
             "TestRunner.ls",
             "DocTools.ls",
             "Cli.ls",
+        ],
+    )
+}
+
+/// native code generation (NativeCodegen + NativeEmit + NativeTarget)
+pub(crate) fn selfhost_native_codegen_bundle() -> &'static str {
+    cached_selfhost_bundle(
+        &SELFHOST_NATIVE_CODEGEN_BUNDLE,
+        &[
+            "NativeTarget.ls",
+            "NativeCodegen.ls",
+            "NativeEmit.ls",
         ],
     )
 }

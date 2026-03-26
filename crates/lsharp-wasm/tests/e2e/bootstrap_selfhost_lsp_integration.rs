@@ -440,9 +440,9 @@ fn test_e2e_selfhost_formatter() {
     // 統計
     assert_eq!(lines[11], "1", "line count");
     assert_eq!(lines[12], "1", "node count");
-    // format-program: 空 vector は長さ 0、同一入力で連続一致 (idempotent)
-    assert_eq!(lines[13], "0", "format-program empty program");
-    assert_eq!(lines[14], "0", "format-program idempotent");
+    // format-program: 空 vector は CLI 連携用の末尾改行 1 文字、同一入力で連続一致
+    assert_eq!(lines[13], "1", "format-program empty program");
+    assert_eq!(lines[14], "1", "format-program idempotent");
 }
 
 // =====================================================// P9-6b: LSP ハンドラ統合 (selfhost/JsonRpc.ls)
