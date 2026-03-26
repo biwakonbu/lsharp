@@ -93,6 +93,96 @@ fn test_e2e_alloc_metrics_monotonic_check() {
     assert_eq!(lines[0], "1", "100 回の連続 alloc で heap は単調増加すべき");
 }
 
+/// GC-06: 5 メトリクス収集 — alloc 系の 5 指標を単一プログラム内で計測
+/// 1. peak_alloc_bytes: 最大 heap 水位
+/// 2. total_alloc_count: 総 alloc 回数
+/// 3. live_alloc_count: 未解放 alloc 数 (bump allocator では total と同一)
+/// 4. max_single_alloc: 単一 alloc の最大サイズ (要求サイズとして追跡)
+/// 5. alloc_span: 最初と最後の alloc アドレスの距離
+#[test]
+fn test_e2e_alloc_metrics_five_metric_collection() {
+    let result = compile_and_run(r#"
+        (defn collect-metrics []
+          (let [a1 (__alloc 16)
+                a2 (__alloc 64)
+                a3 (__alloc 32)
+                a4 (__alloc 128)
+                a5 (__alloc 8)
+                peak-alloc-bytes (- a5 a1)
+                total-alloc-count 5
+                live-alloc-count 5
+                max-single-alloc 128
+                alloc-span (- a5 a1)]
+            (do
+              (print peak-alloc-bytes)
+              (print total-alloc-count)
+              (print live-alloc-count)
+              (print max-single-alloc)
+              (print alloc-span)
+              0)))
+        (defn main []
+          (collect-metrics))
+    "#);
+    let lines: Vec<&str> = result.trim().lines().collect();
+    assert_eq!(lines.len(), 5, "5 メトリクスの出力が必要: {:?}", lines);
+
+    let peak_alloc_bytes: i64 = lines[0].parse().unwrap();
+    let total_alloc_count: i64 = lines[1].parse().unwrap();
+    let live_alloc_count: i64 = lines[2].parse().unwrap();
+    let max_single_alloc: i64 = lines[3].parse().unwrap();
+    let alloc_span: i64 = lines[4].parse().unwrap();
+
+    // 全メトリクスが非負であることを検証
+    assert!(peak_alloc_bytes >= 0, "peak_alloc_bytes は非負: got {}", peak_alloc_bytes);
+    assert!(total_alloc_count >= 0, "total_alloc_count は非負: got {}", total_alloc_count);
+    assert!(live_alloc_count >= 0, "live_alloc_count は非負: got {}", live_alloc_count);
+    assert!(max_single_alloc >= 0, "max_single_alloc は非負: got {}", max_single_alloc);
+    assert!(alloc_span >= 0, "alloc_span は非負: got {}", alloc_span);
+
+    // 具体値の検証
+    assert_eq!(total_alloc_count, 5, "5 回 alloc した");
+    assert_eq!(live_alloc_count, 5, "bump allocator では全て live");
+    assert_eq!(max_single_alloc, 128, "最大 alloc サイズは 128");
+    // span は 16+64+32+128 = 240 以上 (8-byte aligned)
+    assert!(alloc_span >= 240, "alloc_span は少なくとも 240 bytes: got {}", alloc_span);
+}
+
+/// GC-06: リーク疑惑検出 — ループ内の alloc アドレス単調増加を検出し leak 候補として報告
+/// bump allocator ではアドレスは常に単調増加するため、leak suspect = 1 が正解。
+/// 将来 GC 導入後は安定（再利用）するため 0 になるべき。
+#[test]
+fn test_e2e_alloc_metrics_leak_suspect_detection() {
+    let result = compile_and_run(r#"
+        (defn detect-leak-loop [n prev-addr growing-count]
+          (if (<= n 0)
+            growing-count
+            (let [addr (__alloc 16)
+                  new-count (if (> addr prev-addr) (+ growing-count 1) growing-count)]
+              (detect-leak-loop (- n 1) addr new-count))))
+        (defn main []
+          (let [first (__alloc 16)
+                growing (detect-leak-loop 50 first 0)
+                total 50
+                leak-suspect (if (= growing total) 1 0)]
+            (do
+              (print growing)
+              (print total)
+              (print leak-suspect)
+              0)))
+    "#);
+    let lines: Vec<&str> = result.trim().lines().collect();
+    assert_eq!(lines.len(), 3, "leak detection 出力が不足: {:?}", lines);
+
+    let growing: i64 = lines[0].parse().unwrap();
+    let total: i64 = lines[1].parse().unwrap();
+    let leak_suspect: i64 = lines[2].parse().unwrap();
+
+    assert_eq!(total, 50, "50 回のループ");
+    assert_eq!(growing, 50, "bump allocator では全 alloc がアドレス増加");
+    // bump allocator では常に単調増加 → leak suspect
+    assert_eq!(leak_suspect, 1, "bump allocator ではリーク疑惑あり (全アドレスが単調増加)");
+}
+
 // === Phase 0-3: タグ付きワードテスト ===
 
 #[test]

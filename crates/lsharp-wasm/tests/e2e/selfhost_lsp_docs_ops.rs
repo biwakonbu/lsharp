@@ -202,6 +202,288 @@ fn test_e2e_selfhost_lsp_sort_diagnostics_three() {
     assert_eq!(lines[2], "50001", "最大の diagnostic key (line=5,col=1) が末尾");
 }
 
+/// TEST-LSP-10: handle-hover が型情報文字列を返すこと
+#[test]
+fn test_e2e_selfhost_lsp_hover_returns_type_info() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        ;; params: [uri, line, col]
+        params (vector-push (vector-push (vector-push (vector-new 3) 42) 10) 5)
+        result (handle-hover params state)]
+    (do
+      ;; result は [range, contents] の 2 要素
+      (print (vector-length result))
+      ;; contents スロットに型情報ハッシュが格納されている
+      (print (vector-get result 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 2, "hover 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "2", "hover response は 2 要素であるべき");
+    // contents に型情報ハッシュ (非ゼロ) が入る
+    let type_info: i64 = lines[1].parse().unwrap_or(0);
+    assert!(type_info != 0, "hover contents に型情報が含まれるべき (got {})", type_info);
+}
+
+/// TEST-LSP-11: handle-goto-definition がソース位置構造を返すこと
+#[test]
+fn test_e2e_selfhost_lsp_definition_returns_location() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        ;; params: [uri, line, col]
+        params (vector-push (vector-push (vector-push (vector-new 3) 42) 10) 5)
+        result (handle-goto-definition params state)]
+    (do
+      ;; result は [uri, line, col] の 3 要素
+      (print (vector-length result))
+      (print (vector-get result 0))
+      (print (vector-get result 1))
+      (print (vector-get result 2))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 4, "definition 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "3", "definition response は [uri, line, col] の 3 要素であるべき");
+}
+
+/// TEST-LSP-12: handle-references が位置リストを返すこと
+#[test]
+fn test_e2e_selfhost_lsp_references_returns_locations() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        ;; params: [uri, line, col]
+        params (vector-push (vector-push (vector-push (vector-new 3) 42) 10) 5)
+        result (handle-references params state)]
+    (do
+      ;; result は locations リスト (最低 1 要素)
+      (print (vector-length result))
+      ;; 各 location は [uri, line, col] の 3 要素
+      (let [loc0 (vector-get result 0)]
+        (do
+          (print (vector-length loc0))
+          0)))))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 2, "references 出力が不足: {:?}", lines);
+    let ref_count: i64 = lines[0].parse().unwrap_or(0);
+    assert!(ref_count >= 1, "references は 1 件以上返すべき (got {})", ref_count);
+    assert_eq!(lines[1], "3", "各 location は [uri, line, col] の 3 要素であるべき");
+}
+
+/// TEST-LSP-13: handle-completion がキーワード補完候補を返すこと
+#[test]
+fn test_e2e_selfhost_lsp_completion_returns_keywords() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        params 0
+        result (handle-completion params state)]
+    (do
+      ;; result は completion items のリスト
+      (print (vector-length result))
+      ;; 各 item は [label-hash, kind] の 2 要素
+      (let [item0 (vector-get result 0)]
+        (do
+          (print (vector-length item0))
+          ;; kind=14 は Keyword
+          (print (vector-get item0 1))
+          0)))))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "completion 出力が不足: {:?}", lines);
+    let item_count: i64 = lines[0].parse().unwrap_or(0);
+    assert!(item_count >= 7, "completion は 7 件以上のキーワードを返すべき (got {})", item_count);
+    assert_eq!(lines[1], "2", "各 completion item は [label-hash, kind] の 2 要素であるべき");
+    assert_eq!(lines[2], "14", "completion kind は 14 (Keyword) であるべき");
+}
+
+/// TEST-LSP-14: sort-diagnostics が source 優先 → severity → line → col の順で並べること
+#[test]
+fn test_e2e_selfhost_lsp_diagnostic_ordering_source_priority() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+
+    // source=3(lint) が source=1(parse) より後に来ることを検証
+    let harness = r#"
+(defn make-diag [sev rule line col msg src]
+  (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) sev) rule) line) col) msg) src))
+
+(defn main []
+  (let [;; source=3(lint), sev=1, line=1, col=1
+        d1 (make-diag 1 200 1 1 0 3)
+        ;; source=1(parse), sev=1, line=1, col=1
+        d2 (make-diag 1 100 1 1 0 1)
+        ;; source=2(type), sev=2, line=1, col=1
+        d3 (make-diag 2 150 1 1 0 2)
+        diags (vector-push (vector-push (vector-push (vector-new 3) d1) d2) d3)
+        sorted (sort-diagnostics diags)]
+    (do
+      ;; source 順: parse(1) → type(2) → lint(3)
+      (print (vector-get (vector-get sorted 0) 5))
+      (print (vector-get (vector-get sorted 1) 5))
+      (print (vector-get (vector-get sorted 2) 5))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "source priority 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "最初は source=1 (parse) であるべき");
+    assert_eq!(lines[1], "2", "次は source=2 (type) であるべき");
+    assert_eq!(lines[2], "3", "最後は source=3 (lint) であるべき");
+}
+
+/// TEST-LSP-15: dedup-diagnostics が同一 span で severity の高い方を残すこと
+#[test]
+fn test_e2e_selfhost_lsp_diagnostic_dedup() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+
+    let harness = r#"
+(defn make-diag [sev rule line col msg src]
+  (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) sev) rule) line) col) msg) src))
+
+(defn main []
+  (let [;; 同一 span (line=3, col=5) に severity 違い 3 つ
+        d1 (make-diag 3 100 3 5 0 1)
+        d2 (make-diag 1 101 3 5 0 1)
+        d3 (make-diag 2 102 3 5 0 1)
+        ;; 別 span (line=7, col=2) に 1 つ
+        d4 (make-diag 2 103 7 2 0 1)
+        diags (vector-push (vector-push (vector-push (vector-push (vector-new 4) d1) d2) d3) d4)
+        deduped (dedup-diagnostics diags)]
+    (do
+      ;; 同一 span は 1 つに集約、別 span は残る → 2 件
+      (print (vector-length deduped))
+      ;; 同一 span は severity=1 (最高) が残る
+      (print (vector-get (vector-get deduped 0) 0))
+      ;; 別 span は severity=2 のまま
+      (print (vector-get (vector-get deduped 1) 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "dedup 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "2", "dedup 後は 2 件であるべき");
+    assert_eq!(lines[1], "1", "同一 span は severity=1 (最高) が残るべき");
+    assert_eq!(lines[2], "2", "別 span は severity=2 のまま残るべき");
+}
+
+/// TEST-LSP-16: encode-json-rpc-response が決定的な JSON-RPC 構造を生成すること
+#[test]
+fn test_e2e_selfhost_lsp_json_rpc_encode() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+
+    let harness = r#"
+(defn main []
+  (let [response (encode-json-rpc-response 42 99)]
+    (do
+      ;; response は [jsonrpc-version, id, result] の 3 要素
+      (print (vector-length response))
+      ;; jsonrpc-version = 2 (JSON-RPC 2.0 を数値で表現)
+      (print (vector-get response 0))
+      ;; id = 42
+      (print (vector-get response 1))
+      ;; result = 99
+      (print (vector-get response 2))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 4, "json-rpc encode 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "3", "JSON-RPC response は 3 要素であるべき");
+    assert_eq!(lines[1], "2", "jsonrpc version は 2 であるべき");
+    assert_eq!(lines[2], "42", "id は 42 であるべき");
+    assert_eq!(lines[3], "99", "result は 99 であるべき");
+}
+
+/// TEST-LSP-17: parse-json-rpc-request が method + params を抽出すること
+#[test]
+fn test_e2e_selfhost_lsp_json_rpc_parse() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+
+    let harness = r#"
+(defn main []
+  (let [;; msg = [jsonrpc-version, id, method-id, params]
+        msg (vector-push (vector-push (vector-push (vector-push (vector-new 4) 2) 7) 21) 55)
+        parsed (parse-json-rpc-request msg)]
+    (do
+      ;; parsed は [method-id, params] の 2 要素
+      (print (vector-length parsed))
+      ;; method-id = 21 (hover)
+      (print (vector-get parsed 0))
+      ;; params = 55
+      (print (vector-get parsed 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "json-rpc parse 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "2", "parsed request は [method-id, params] の 2 要素であるべき");
+    assert_eq!(lines[1], "21", "method-id は 21 (hover) であるべき");
+    assert_eq!(lines[2], "55", "params は 55 であるべき");
+}
+
 /// TEST-FMT-01: selfhost/Formatter.ls に format-program / format-expr 関数が存在すること
 ///
 /// T4c-1 AC-300: parse-format-parse roundtrip のための format-program / format-expr
@@ -509,6 +791,45 @@ fn test_e2e_gc_compile_run_loop_1000() {
     }
 }
 
+/// GC-05: REPL セッション模擬 — 50 回の eval ループ（各 eval でメモリ確保）
+/// 通常 CI 向けの軽量版。ループ内で毎回 alloc し、結果の決定性を検証。
+#[test]
+fn test_e2e_gc_repl_soak_50_eval() {
+    // 50 回の alloc ループで最終アドレスが決定的であることを検証
+    let src = r#"
+        (defn eval-loop [n total]
+          (if (<= n 0)
+            total
+            (let [addr (__alloc 32)]
+              (eval-loop (- n 1) (+ total 1)))))
+        (defn main []
+          (let [result (eval-loop 50 0)]
+            (do (print result) 0)))
+    "#;
+    let out = compile_and_run(src);
+    assert_eq!(out.trim(), "50", "50 eval REPL soak: 全 eval が完了すべき");
+}
+
+/// GC-05: REPL セッション模擬 — 500 回の eval ループ（各 eval でメモリ確保）
+/// Nightly / 手動実行向けの完全版。メモリ破損なく 500 eval を完走することを検証。
+#[test]
+#[ignore]
+fn test_e2e_gc_repl_soak_500_eval() {
+    // 500 回の alloc ループで最終カウントが正確であることを検証
+    let src = r#"
+        (defn eval-loop [n total]
+          (if (<= n 0)
+            total
+            (let [addr (__alloc 32)]
+              (eval-loop (- n 1) (+ total 1)))))
+        (defn main []
+          (let [result (eval-loop 500 0)]
+            (do (print result) 0)))
+    "#;
+    let out = compile_and_run(src);
+    assert_eq!(out.trim(), "500", "500 eval REPL soak: 全 eval が完了すべき");
+}
+
 // ============================================================
 // Group M: CI/Ops 系テスト (TEST-META-05, TEST-OPS-01〜08)
 // ============================================================
@@ -539,7 +860,7 @@ fn test_e2e_meta05_differential_allowlist() {
     );
 }
 
-/// TEST-OPS-01: .github/workflows/ci.yml に gate-v2 ジョブ構造
+/// TEST-OPS-01: .github/workflows/ci.yml に gate-v2 ジョブ構造 + ジョブグラフドキュメント
 #[test]
 fn test_e2e_ops01_ci_gate_v2() {
     let project_root =
@@ -553,9 +874,16 @@ fn test_e2e_ops01_ci_gate_v2() {
         content.contains("ci-gate-v2") || content.contains("gate-v2"),
         "ci.yml に gate-v2 / ci-gate-v2 ジョブが存在しない"
     );
+    // ジョブグラフドキュメントが存在すること
+    let job_graph_doc = project_root
+        .join("docs/development/operations/ci-gate-v2-job-graph.md");
+    assert!(
+        job_graph_doc.is_file(),
+        "docs/development/operations/ci-gate-v2-job-graph.md が存在しない"
+    );
 }
 
-/// TEST-OPS-02: ci.yml に artifact retention 設定
+/// TEST-OPS-02: ci.yml に artifact retention 設定 + ポリシードキュメント
 #[test]
 fn test_e2e_ops02_artifact_policy() {
     let project_root =
@@ -568,6 +896,13 @@ fn test_e2e_ops02_artifact_policy() {
     assert!(
         content.contains("retention-days"),
         "ci.yml に artifact retention-days 設定が存在しない"
+    );
+    // アーティファクトポリシードキュメントが存在すること
+    let policy_doc = project_root
+        .join("docs/development/operations/artifact-policy.md");
+    assert!(
+        policy_doc.is_file(),
+        "docs/development/operations/artifact-policy.md が存在しない"
     );
 }
 
