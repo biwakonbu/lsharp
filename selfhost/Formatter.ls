@@ -124,11 +124,22 @@
 ;; 入力: AST (Expr) + インデントレベル
 ;; 出力: フォーマット済み文字列のハッシュ
 ;; AC-300: roundtrip 対応
+;; format-apply: 関数適用の argc を返す (フォーマット情報)
+;; node: [5, func-node, argc, arg1, ...]
+(defn format-apply [node]
+  (vector-get node 2))
+
+;; format-if: if 式の分岐数を返す (常に 2: then/else)
+(defn format-if [node]
+  2)
+
 (defn format-expr [expr indent-level]
   (let [tag (vector-get expr 0)]
     (if (= tag 1) (format-lit-int (vector-get expr 1))
     (if (= tag 4) (format-var (vector-get expr 1))
-    0))))
+    (if (= tag 5) (format-apply expr)
+    (if (= tag 6) (format-if expr)
+    0))))))
 
 ;; 検証用 main
 (defn main []

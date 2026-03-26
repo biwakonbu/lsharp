@@ -129,6 +129,28 @@
 (defn filter-env-dependent [doc]
   doc)
 
+;; === HTML ドキュメント生成 ===
+
+;; generate-html: AST から HTML ドキュメント構造を生成
+;; 入力: AST (Program) + オプション
+;; 出力: HTML doc 構造 Vector [tag, title, body, functions-count, types-count]
+;; tag=1: HTML ドキュメント
+;; AC-408: 同一入力→同一出力 (deterministic)
+;; AC-409: タイムスタンプ・ホスト名・絶対パスを含まない
+(defn generate-html [ast opts]
+  (let [functions (extract-public-functions ast)
+        types (extract-type-definitions ast)
+        doc (vector-new 5)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push doc 1)                  ;; tag: HTML document
+            0)                                    ;; title (placeholder)
+          0)                                      ;; body (placeholder)
+        (vector-length functions))                ;; functions count
+      (vector-length types))))                    ;; types count
+
 ;; 検証用 main
 (defn main []
   (let [program (parse-program "(defn main [] 42) (type Doc Int)")

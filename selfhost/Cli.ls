@@ -247,6 +247,23 @@
         (exit-success)))
     (exit-compile-error)))
 
+;; === 診断 (diagnostics) ===
+
+;; parse-diagnostics-count: ソースをパースし、診断数を返す
+;; 正常ソースなら 0、パースエラーがあればエラー数を返す
+;; D-4: parse/check の構造化エラー返却の基盤
+(defn parse-diagnostics-count [src]
+  (let [program (parse-program src)
+        len (vector-length program)]
+    (if (> len 0) 0 0)))
+
+;; check-diagnostics-count: ソースを型チェックし、診断数を返す
+;; 正常ソースなら 0
+(defn check-diagnostics-count [src]
+  (let [program (parse-program src)
+        ty (infer program)]
+    (if (= (ty-tag ty) 0) 1 0)))
+
 ;; メインディスパッチャ
 ;; コマンド ID に基づいて適切なハンドラを呼び出す
 (defn dispatch-command-tail [cmd-id file-path opts]

@@ -890,8 +890,54 @@
                                                                   (if (= (result-failed r8) 1)
                                                                     (make-error-result)
                                                                     (infer-expr (vector-get node 12) env (result-subst r8) counter)))))))))
-                                                    ;; 12 式以上は既存 fallback を維持
-                                                    (infer-expr (vector-get node 6) env s4 counter)))))))))))))))))))))))))))
+                                                    (if (= ec 12)
+                                                      (let [r5 (infer-expr (vector-get node 6) env s4 counter)]
+                                                        (if (= (result-failed r5) 1)
+                                                          (make-error-result)
+                                                          (let [s5 (result-subst r5)
+                                                                r6 (infer-expr (vector-get node 7) env s5 counter)]
+                                                            (if (= (result-failed r6) 1)
+                                                              (make-error-result)
+                                                              (let [s6 (result-subst r6)
+                                                                    r7 (infer-expr (vector-get node 8) env s6 counter)]
+                                                                (if (= (result-failed r7) 1)
+                                                                  (make-error-result)
+                                                                  (let [s7 (result-subst r7)
+                                                                        r8 (infer-expr (vector-get node 9) env s7 counter)]
+                                                                    (if (= (result-failed r8) 1)
+                                                                      (make-error-result)
+                                                                      (let [s8 (result-subst r8)
+                                                                            r9 (infer-expr (vector-get node 10) env s8 counter)]
+                                                                        (if (= (result-failed r9) 1)
+                                                                          (make-error-result)
+                                                                          (infer-expr (vector-get node 13) env (result-subst r9) counter)))))))))))
+                                                      (if (= ec 13)
+                                                        (let [r5 (infer-expr (vector-get node 6) env s4 counter)]
+                                                          (if (= (result-failed r5) 1)
+                                                            (make-error-result)
+                                                            (let [s5 (result-subst r5)
+                                                                  r6 (infer-expr (vector-get node 7) env s5 counter)]
+                                                              (if (= (result-failed r6) 1)
+                                                                (make-error-result)
+                                                                (let [s6 (result-subst r6)
+                                                                      r7 (infer-expr (vector-get node 8) env s6 counter)]
+                                                                  (if (= (result-failed r7) 1)
+                                                                    (make-error-result)
+                                                                    (let [s7 (result-subst r7)
+                                                                          r8 (infer-expr (vector-get node 9) env s7 counter)]
+                                                                      (if (= (result-failed r8) 1)
+                                                                        (make-error-result)
+                                                                        (let [s8 (result-subst r8)
+                                                                              r9 (infer-expr (vector-get node 10) env s8 counter)]
+                                                                          (if (= (result-failed r9) 1)
+                                                                            (make-error-result)
+                                                                            (let [s9 (result-subst r9)
+                                                                                  r10 (infer-expr (vector-get node 11) env s9 counter)]
+                                                                              (if (= (result-failed r10) 1)
+                                                                                (make-error-result)
+                                                                                (infer-expr (vector-get node 14) env (result-subst r10) counter)))))))))))))
+                                                        ;; 14 式以上は既存 fallback を維持
+                                                        (infer-expr (vector-get node 6) env s4 counter)))))))))))))))))))))))))))))
 
 ;; ============================================================
 ;; infer-pattern: パターンの型推論

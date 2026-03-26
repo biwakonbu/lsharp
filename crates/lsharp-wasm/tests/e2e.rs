@@ -7748,6 +7748,156 @@ fn test_e2e_selfhost_typeinfer_do_eleven_exprs_last_bool() {
     assert_eq!(lines[2], "200", "do 11 exprs の型名は Bool hash=200 であるべき");
 }
 
+/// selfhost TypeInfer.ls テスト: do ブロック 12 式は最後の Bool 型を返せる
+#[test]
+fn test_e2e_selfhost_typeinfer_do_twelve_exprs_last_bool() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        ;; do node: [9, expr-count=12, e1, e2, ..., e12]
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push
+                            (vector-push
+                              (vector-push
+                                (vector-push
+                                  (vector-push (vector-new 14) 9)
+                                  12)
+                                (make-lit-int 1))
+                              (make-lit-int 2))
+                            (make-lit-int 3))
+                          (make-lit-int 4))
+                        (make-lit-int 5))
+                      (make-lit-int 6))
+                    (make-lit-int 7))
+                  (make-lit-int 8))
+                (make-lit-int 9))
+              (make-lit-int 10))
+            (make-lit-int 11))
+        do-node (vector-push node (make-lit-bool 1))
+        result (infer-expr do-node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "do 12 exprs typeinfer 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "0", "do 12 exprs infer は失敗すべきでない");
+    assert_eq!(lines[1], "1", "do 12 exprs の型タグは Con であるべき");
+    assert_eq!(lines[2], "200", "do 12 exprs の型名は Bool hash=200 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: do ブロック 13 式は最後の Bool 型を返せる
+#[test]
+fn test_e2e_selfhost_typeinfer_do_thirteen_exprs_last_bool() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        ;; do node: [9, expr-count=13, e1, e2, ..., e13]
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push
+                            (vector-push
+                              (vector-push
+                                (vector-push
+                                  (vector-push
+                                    (vector-push (vector-new 15) 9)
+                                    13)
+                                  (make-lit-int 1))
+                                (make-lit-int 2))
+                              (make-lit-int 3))
+                            (make-lit-int 4))
+                          (make-lit-int 5))
+                        (make-lit-int 6))
+                      (make-lit-int 7))
+                    (make-lit-int 8))
+                  (make-lit-int 9))
+                (make-lit-int 10))
+              (make-lit-int 11))
+            (make-lit-int 12))
+        do-node (vector-push node (make-lit-bool 1))
+        result (infer-expr do-node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "do 13 exprs typeinfer 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "0", "do 13 exprs infer は失敗すべきでない");
+    assert_eq!(lines[1], "1", "do 13 exprs の型タグは Con であるべき");
+    assert_eq!(lines[2], "200", "do 13 exprs の型名は Bool hash=200 であるべき");
+}
+
 /// selfhost TypeInfer.ls テスト: 2 引数 lambda はカリー化された関数型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_lambda_two_params_curried() {
@@ -16725,4 +16875,134 @@ fn test_e2e_ops08_final_removal_rollback() {
         "rollback 手順ドキュメントが見つからない (期待: {:?})",
         rollback_candidates
     );
+}
+
+/// D-2: Formatter.ls の format-expr が lit-int AST ノードの値を正しく返すこと
+/// format-expr [1, 42] → 42 (整数リテラルの値)
+#[test]
+fn test_e2e_selfhost_formatter_format_expr_lit_int() {
+    let harness = r#"
+(defn main []
+  (let [;; tag=1 (lit-int), value=42
+        node (vector-push (vector-push (vector-new 2) 1) 42)
+        result (format-expr node 0)]
+    (do
+      (print result)
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines.last().unwrap(), &"42", "lit-int 42 をフォーマットすると 42 を返すべき");
+}
+
+/// D-2: Formatter.ls の format-expr が apply AST ノードの引数数を含む結果を返すこと
+/// format-expr [5, func-node, 2, arg1, arg2] → argc (2)
+#[test]
+fn test_e2e_selfhost_formatter_format_expr_apply() {
+    let harness = r#"
+(defn main []
+  (let [;; tag=5 (apply), func=[4, 100], argc=2, arg1=[1, 1], arg2=[1, 2]
+        func-node (vector-push (vector-push (vector-new 2) 4) 100)
+        arg1 (vector-push (vector-push (vector-new 2) 1) 1)
+        arg2 (vector-push (vector-push (vector-new 2) 1) 2)
+        node (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 5) 5) func-node) 2) arg1) arg2)
+        result (format-expr node 0)]
+    (do
+      (print result)
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    // apply の format 結果: argc (引数数) を返す
+    assert_eq!(lines.last().unwrap(), &"2", "apply の format 結果は argc=2 を返すべき");
+}
+
+/// D-3: DocTools.ls に generate-html 関数が存在し、deterministic な結果を返すこと
+#[test]
+fn test_e2e_selfhost_doctools_generate_html_basic() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] 42)")
+        html (generate-html program 0)]
+    (do
+      (print (vector-length html))
+      (print (vector-get html 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    // HTML doc 構造は 5 スロット: [tag, title, body, functions-count, types-count]
+    assert_eq!(lines[lines.len() - 2], "5", "HTML doc 構造は 5 スロットであるべき");
+    // tag=1 は HTML ドキュメント
+    assert_eq!(lines[lines.len() - 1], "1", "HTML doc の tag は 1 であるべき");
+}
+
+/// D-3: DocTools.ls の generate-html が idempotent であること (2回実行で同一結果)
+#[test]
+fn test_e2e_selfhost_doctools_generate_html_idempotent() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn add [x y] (+ x y))")
+        html1 (generate-html program 0)
+        html2 (generate-html program 0)]
+    (do
+      (print (vector-length html1))
+      (print (vector-length html2))
+      (print (= (vector-get html1 3) (vector-get html2 3)))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    // 同一サイズ
+    assert_eq!(lines[lines.len() - 3], lines[lines.len() - 2], "2回の generate-html で同一サイズ");
+    // functions-count が一致
+    assert_eq!(lines[lines.len() - 1], "1", "同一入力で同一 functions-count");
+}
+
+/// D-4: Cli.ls の parse-diagnostics-count が正常ソースで 0 を返すこと
+#[test]
+fn test_e2e_selfhost_cli_parse_diagnostics() {
+    let harness = r#"
+(defn main []
+  (let [diag-count (parse-diagnostics-count "(defn main [] 42)")]
+    (do
+      (print diag-count)
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines.last().unwrap(), &"0", "正常ソースの parse diagnostics は 0 件であるべき");
+}
+
+/// D-4: Cli.ls の check-diagnostics-count が正常ソースで 0 を返すこと
+#[test]
+fn test_e2e_selfhost_cli_check_diagnostics() {
+    let harness = r#"
+(defn main []
+  (let [diag-count (check-diagnostics-count "(defn main [] 42)")]
+    (do
+      (print diag-count)
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines.last().unwrap(), &"0", "正常ソースの check diagnostics は 0 件であるべき");
 }
