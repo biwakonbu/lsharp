@@ -4,6 +4,7 @@
 Phase 11-2 (Native backend + bootstrap) の完了を判定するための条件群。
 技術完了条件、ドキュメント完了条件、撤去前ゲートの 3 層で構成する。
 全条件を満たした場合にのみ Phase 11-2 を完了とし、Rust 実装の段階的撤去に進む。
+本書では「証跡が文書化されていること」と「完了条件を閉じたこと」を分けて扱い、proxy/構造テストや補助 smoke test だけでは `done` に上げない。
 
 ## 2026-03-25 現況メモ
 
@@ -11,7 +12,10 @@ Phase 11-2 (Native backend + bootstrap) の完了を判定するための条件�
 - `cargo run -- compile selfhost/Main.ls` と `cargo run -- compile selfhost/MacroExpand.ls` は成功する。
 - `selfhost/Lower.ls` / `LowerPattern.ls` の stage0 stack overflow は `lsharp-types` の `apply_subst` 改修で解消済み（compile gate に含める）。
 - **OPS-05 第1段**: `scripts/ci/default-path-smoke.sh` + CI job `default-path-smoke` でビルド済み `lsharp` バイナリ経路を blocking 検証。
-- true bootstrap (`stage1.wasm -> stage2.wasm`)、native self-regeneration、Wasm/native 観測差分ゼロ、**Rust workspace 物理撤去**、native-only RC は未完了のため、本書の該当 `pending` を維持する。
+- **監査整理 / bootstrap**: 現時点で完了証跡として確認できるのは stage0 による selfhost 再コンパイルと stage1 実行までであり、`stage1.wasm -> stage2.wasm -> stage3.wasm` の実体生成・比較・固定点成立は BOOT-04 完了証跡として未提示。
+- **監査整理 / native**: native 系の既存テストは stage chain の構造確認や 5 観測点比較フレームワークの存在確認として読む。true native self-regeneration と allowlist なし differential zero の完了証跡ではない。
+- **監査整理 / runtime**: compile-and-run loop や短時間 REPL soak は runtime stability の補助証跡に留まる。S14/S15/S16 を閉じるには GC 有効の長寿命 stateful LSP/REPL と collector 有効 bootstrap fixed-point の証跡が別途必要。
+- したがって true bootstrap、native self-regeneration、Wasm/native 観測差分ゼロ、GC 有効 long-lived runtime gate、**Rust workspace 物理撤去**、native-only RC は未完了のため、本書の該当 `pending` / `in-progress` を維持する。
 
 ## 状態マーカー凡例
 
@@ -35,6 +39,11 @@ Phase 11-2 (Native backend + bootstrap) の完了を判定するための条件�
 - 同じ commit 上で bootstrap 経路 (Wasm) と native 経路の両方が CI を通る
 - どちらか一方でも CI fail する場合は完了としない
 
+### runtime stability との接続
+- compile-and-run loop、短時間 REPL soak、構造比較のみの differential test は補助証跡として扱い、単独では完了条件を閉じない
+- `docs/development/planning/runtime-stability-spec.md` の S14/S15/S16 は、GC 有効の長寿命 stateful LSP/REPL workload と collector 有効 bootstrap fixed-point の双方が揃ったときにのみ満たしたとみなす
+- 上記証跡が欠ける間は native-only RC や Rust 撤去判断に進まない
+
 ### ドキュメント整合性
 - AOT backend の仕様が README、book、TODO で矛盾なく説明されている
 - 矛盾が検出された場合はドキュメント修正を完了条件に含める
@@ -49,16 +58,19 @@ Phase 11-2 (Native backend + bootstrap) の完了を判定するための条件�
   - `stdlib/*.ls` -- 標準ライブラリ
   - `examples/fib.ls`, `examples/module.ls`, `examples/trait.ls` -- 代表例
 - コンパイル結果が stage1.wasm の出力と観測的に同値であること
+- **現況メモ**: 現在の compile gate は stage0 からの再コンパイル成功を示す証跡であり、`stage1-native` 単独で上記入力群を閉じた実行証跡ではない。
 
 ### 条件 2: stage1-native の自己再生成 [pending]
 - stage1-native が自分自身のソースコード (selfhost/*.ls) から stage2-native を生成できること
 - stage2-native が stage1-native と機能的に同値であること (同一入力に対して同一出力)
 - 固定点検証: stage2-native で再度コンパイルした stage3-native が stage2-native と同値
+- **現況メモ**: 既存の native stage chain テストは structural / observation-framework の確認に留まり、`stage1-native -> stage2-native -> stage3-native` の実体生成と functional fixed-point は未確認。
 
 ### 条件 3: Wasm/native 差分ゼロ [pending]
 - stageN.wasm と stageN-native の観測結果差分が allowlist なしでゼロになること
 - 観測点は P11-2d-2 で定義した 5 点 (exit code, stdout, stderr, generated file bytes, diagnostics JSON)
 - allowlist が残っている場合は、各エントリの解消を完了条件に含める
+- **現況メモ**: 5 観測点比較のハーネスや構造 parity テストが存在しても、native 実成果物に対する allowlist なし differential zero を継続的に示す証跡が揃うまでは完了扱いにしない。
 
 ### 条件 4: 既存 Wasm backend の無回帰 [done]
 - AOT backend 導入後も既存 Wasm backend の E2E テストが全件パスすること
@@ -111,8 +123,9 @@ Rust 実装の撤去 (Phase 11-3 以降) に進む前に、以下のゲートを
   - VSCode 拡張 (LSP 接続、diagnostics、hover、completion)
   - REPL (対話モード)
 - RC の検証結果を release notes に記録する
+- **現況メモ**: compile/run smoke や短い REPL 反復だけでは RC 完了証跡にならない。native 配布物のみで長寿命・stateful な LSP/REPL を GC 有効で運用した記録が必要。
 
-### ゲート 3: rollback 手順の確定 [done]
+### ゲート 3: rollback 手順の確定 [in-progress]
 - Rust ベースの最後の release tag を確定する (例: `v0.x.y-rust-final`)
 - 以下を ADR に記録する:
   - 削除対象の Rust コード範囲 (クレート一覧、ファイル一覧)
@@ -120,4 +133,4 @@ Rust 実装の撤去 (Phase 11-3 以降) に進む前に、以下のゲートを
   - rollback が必要になるシナリオの列挙
   - rollback 後の CI 復旧手順
 - ADR のレビューを少なくとも 1 名が完了していること
-- **達成**: `docs/development/operations/adr-rust-removal.md`（撤去スコープ・9 段階削除順序・ロールバックシナリオ）、`docs/development/operations/rollback-procedure.md`（復旧手順）、`scripts/rollback.sh`（自動化スクリプト）を作成済み。
+- **現況**: `docs/development/operations/adr-rust-removal.md`（撤去スコープ・9 段階削除順序・ロールバックシナリオ）、`docs/development/operations/rollback-procedure.md`（復旧手順）、`scripts/rollback.sh`（自動化スクリプト）は作成済み。rollback 文書化と自動化は進んでいるが、`adr-rust-removal.md` は提案状態で、`v0.x.y-rust-final` tag の確定と ADR review 完了の証跡が揃うまでは `[done]` に上げない。

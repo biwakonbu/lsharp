@@ -284,10 +284,12 @@ fn test_e2e_selfhost_cli_fmt_source_core() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
+    // format-program は宣言走査方式: defn(tag=20) の param-count を返す
+    // (defn main [] 42) は 0 引数 → fingerprint=0, success=0
     assert_eq!(
         lines,
-        vec!["1", "0"],
-        "run-fmt-source は format-program の fingerprint=1 と success=0 を返すべき"
+        vec!["0", "0"],
+        "run-fmt-source は format-program の fingerprint=0 と success=0 を返すべき"
     );
 }
 
@@ -313,10 +315,12 @@ fn test_e2e_selfhost_cli_fmt_file_handler() {
     let _ = std::fs::remove_dir_all(&dir);
     let lines: Vec<&str> = output.trim().lines().collect();
 
+    // format-program は宣言走査方式: defn(tag=20) の param-count を返す
+    // (defn main [] 42) は 0 引数 → fingerprint=0, success=0
     assert_eq!(
         lines,
-        vec!["1", "0"],
-        "run-fmt は format-program の fingerprint=1 と success=0 を返すべき"
+        vec!["0", "0"],
+        "run-fmt は format-program の fingerprint=0 と success=0 を返すべき"
     );
 }
 

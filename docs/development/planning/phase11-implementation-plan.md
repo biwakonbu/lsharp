@@ -4,7 +4,7 @@
 
 - `TODO.md` は実行順の master checklist。
 - この文書は task ID ごとの implementation bridge。仕様変更の正本ではなく、既存 spec を実コードへ落とすための実装方針・依存・受入条件を固定する。
-- 正本 spec は `docs/development/planning/rust-parity-spec.md`, `docs/development/planning/toolchain-parity-spec.md`, `docs/development/validation/verification-spec.md`, `docs/development/planning/completion-criteria.md`, `docs/development/planning/runtime-stability-spec.md`, `docs/development/operations/ci-migration-spec.md` を優先する。
+- 正本 spec は `docs/development/planning/rust-parity-spec.md`, `docs/development/planning/toolchain-parity-spec.md`, `docs/development/validation/verification-spec.md`, `docs/development/planning/completion-criteria.md`, `docs/development/planning/runtime-stability-spec.md`, `docs/development/operations/ci-gate-v2-job-graph.md`, `docs/development/operations/artifact-policy.md`, `docs/development/operations/default-path-migration.md`, `docs/development/operations/release-playbook.md`, `docs/development/operations/fresh-clone-spec.md`, `docs/development/operations/adr-rust-removal.md`, `docs/development/operations/rollback-procedure.md` を優先する。
 
 ## 運用ルール
 
@@ -131,7 +131,7 @@
 ### BOOT-04 True stage1-stage2-stage3 bootstrap
 
 - Goal: proxy bootstrap を本物の 3 段固定点検証へ置換する。
-- Current state: `test_e2e_bootstrap_stage1_stage2_match` と `test_e2e_bootstrap_fixed_point_stage2_stage3` は proxy 判定。
+- Current state: `test_e2e_bootstrap_four_layer_comparison` と `test_e2e_bootstrap_stage_chain_verification` により、stage0(Rust) の決定性と stage1.wasm の実行可能性までは確認できる。**ただし** `test_e2e_bootstrap_stage1_stage2_match` / `test_e2e_bootstrap_fixed_point_stage2_stage3` は依然 proxy 判定で、stage1.wasm が自分で stage2/stage3 を生成する true self-bootstrap は未接続。
 - Rust source: `docs/development/validation/verification-spec.md`, `crates/lsharp-wasm/tests/e2e.rs`
 - L# target: `crates/lsharp-wasm/tests/e2e.rs`, `.github/workflows/ci.yml`, `ci-artifacts/bootstrap-diff/`
 - Implementation direction: stage0(Rust) -> stage1.wasm -> stage2.wasm -> stage3.wasm を必ず実体生成し、比較層は `raw wasm bytes`, `exported symbol list`, `data section bytes`, `compiler diagnostics` の 4 つに固定する。失敗時 diff は artifact へ保存する。
@@ -511,7 +511,7 @@
 ### NATIVE-05 Stage1-native self-regeneration
 
 - Goal: stage1-native が selfhost compiler を自分で再生成できるようにする。
-- Current state: native path は存在せず、完了条件の stage1-native gate 未着手。
+- Current state: `selfhost/NativeCodegen.ls` / `selfhost/NativeEmit.ls` / `selfhost/NativeTarget.ls` と `test_e2e_native_self_regeneration_functional_equivalence` / `test_e2e_native_stage_chain_structure` により、native module skeleton と Wasm 基準の structural parity は追加済み。**ただし** stage1-native -> stage2-native -> stage3-native の実バイナリ再生成・実行比較は未達。
 - Rust source: `docs/development/planning/completion-criteria.md`
 - L# target: `scripts/ci/build-native.sh`, `.github/workflows/ci.yml`
 - Implementation direction: `stage1-native` の build entry は `selfhost/Main.ls` compile で固定し、`stage1-native -> stage2-native -> stage3-native` の functional equivalence を gate にする。
@@ -523,7 +523,7 @@
 ### NATIVE-06 Wasm/native differential
 
 - Goal: Wasm と native の観測差分をゼロにする。
-- Current state: differential harness と allowlist が未整備。
+- Current state: differential harness、`tests/differential-allowlist.yaml`、5 観測点 proxy test は追加済み。**ただし** 現状の比較は file structure / diagnostics / Wasm 由来の structural parity が中心で、tier1 native artifact の zero diff と実 native regeneration は未証明。
 - Rust source: `docs/development/validation/verification-spec.md`
 - L# target: `tests/differential-allowlist.yaml`, `.github/workflows/ci.yml`, `scripts/ci/compare-differential.sh`
 - Implementation direction: 7 カテゴリ入力に対し `exit code`, `stdout`, `stderr`, `generated file bytes`, `diagnostics JSON` を比較する。差分は allowlist へ退避できるが、Phase 11 完了前に 0 件へ戻す。
@@ -549,7 +549,7 @@
 ### CLI-02 13 command implementations
 
 - Goal: `parse/check/compile/build/test/review/doc-ack/doc-check/install/repl/lsp/fmt/doc` を L# 実装で提供する。
-- Current state: `compile`, `lsp`, `fmt` が PoC、他は未実装。
+- Current state: 13 サブコマンド名、終了コード API、stdout/stderr 分離、help/version smoke は揃っている。**ただし** `selfhost/Cli.ls` の多くの handler は PoC のままで、公開コマンド契約 / default path 切替に必要な実動作は未完。
 - Rust source: Rust CLI 実装群
 - L# target: `selfhost/Cli.ls`, `selfhost/Main.ls`, `selfhost/JsonRpc.ls`, `selfhost/Formatter.ls`, `selfhost/Linter.ls`
 - Implementation direction: `selfhost/Cli.ls` を新設し、arg parse と subcommand dispatch を一元化する。`Main.ls` は compiler core only にし、CLI entry はここへ移す。
@@ -573,7 +573,7 @@
 ### LSP-02 10 method parity
 
 - Goal: 10 LSP method の公開挙動を Rust 版互換にする。
-- Current state: initialize/shutdown/didOpen/didChange は設計のみ、hover/definition/references/rename/completion は未実装または PoC。
+- Current state: 10 メソッド名、dispatch、helper 群、vector ベースの response stub は揃っている。**ただし** hover/definition/references/completion は hash / 固定 location / keyword vector など mock 値が中心で、JSON-RPC 2.0 / LSP 3.17 schema parity と stateful session は未達。
 - Rust source: Rust LSP 実装, `docs/development/planning/toolchain-parity-spec.md`
 - L# target: `selfhost/LspServer.ls`, `selfhost/Formatter.ls`, `selfhost/Linter.ls`
 - Implementation direction: method 実装順は `initialize`, `shutdown`, `didOpen`, `didChange`, `hover`, `goto_definition`, `references`, `rename`, `formatting`, `completion` に固定する。レスポンス shape は JSON snapshot を正本にする。
@@ -585,7 +585,7 @@
 ### LSP-03 Diagnostic ordering and JSON snapshots
 
 - Goal: diagnostics の順序と schema を安定化する。
-- Current state: JSON snapshot の正本がなく、diagnostic dedup ルールも未固定。
+- Current state: `sort-diagnostics` / `dedup-diagnostics` helper と関連 E2E は追加済み。**ただし** 診断 JSON snapshot の正本や transport 経由の end-to-end ordering gate は未固定で、現在の検証は vector ベース helper の structural check が中心。
 - Rust source: Rust LSP diagnostics path
 - L# target: `selfhost/LspServer.ls`, `tests/snapshots/lsp/`
 - Implementation direction: diagnostics は `source(parse/type/lint)`, `severity`, `line`, `column` の順で sort し、同一 span は最も severity の高いものだけを残す。
@@ -597,7 +597,7 @@
 ### FMT-01 Formatter roundtrip
 
 - Goal: formatter を AST 全体対応 + roundtrip/idempotency gate へ引き上げる。
-- Current state: [Formatter.ls](/Users/biwakonbu/github/lsharp/selfhost/Formatter.ls) は integer/var/apply 중심の PoC。
+- Current state: [Formatter.ls](/Users/biwakonbu/github/lsharp/selfhost/Formatter.ls) は AST tag coverage と fingerprint ベース roundtrip/idempotency test までは追加済み。**ただし** public API は formatted text ではなく整数 fingerprint を返しており、CLI/LSP が要求する実テキスト formatter parity には未達。
 - Rust source: Rust formatter path, `docs/development/planning/toolchain-parity-spec.md`
 - L# target: `selfhost/Formatter.ls`
 - Implementation direction: formatter の public API は `format-program ast -> text` に固定し、parser と対で `parse(format(parse(src))) == parse(src)` を gate にする。短形式/長形式/let 整列ルールは spec に従う。
@@ -621,7 +621,7 @@
 ### DOC-01 Schemas and snapshots
 
 - Goal: knowledge/review/doc output の schema を固定する。
-- Current state: `docs/schemas/` が存在しない。
+- Current state: `docs/schemas/` と `selfhost/DocTools.ls` の helper 群、deterministic/no-timestamp test は追加済み。**ただし** 出力は vector/count と placeholder HTML が中心で、配布 schema / HTML parity を満たす full document payload は未完成。
 - Rust source: Rust docs/review path, `docs/development/planning/toolchain-parity-spec.md`
 - L# target: `docs/schemas/knowledge.schema.json`, `docs/schemas/review.schema.json`, `docs/schemas/doc-output.schema.json`
 - Implementation direction: docs 系は structured JSON schema を先に固定し、CLI/LSP/extension はその schema だけを見る。snapshot test は JSON canonicalization 後に比較する。
@@ -707,7 +707,7 @@
 ### GC-05 LSP soak and REPL GC
 
 - Goal: LSP と REPL の長寿命挙動を GC 前提で検証する。
-- Current state: LSP soak test と stateful REPL GC テストがない。
+- Current state: compile+run loop と REPL eval loop の soak test は追加済み。**ただし** 実 LSP server の `open -> edit -> diagnostics -> hover -> completion` を同一セッションで回す stateful soak や、単一 REPL プロセス長寿命 GC を測る gate ではなく、alloc/collect proxy workload が中心。
 - Rust source: `docs/development/planning/runtime-stability-spec.md`
 - L# target: LSP server, REPL implementation, test harness
 - Implementation direction: LSP は `open -> edit -> diagnostics -> hover -> completion` を 1000 サイクル、REPL は single-session 500 eval を固定 workload にする。両方とも同じ root API を使用する。
@@ -719,7 +719,7 @@
 ### GC-06 Leak detection and metrics
 
 - Goal: leak suspect 検知と metrics 出力を CI gate にする。
-- Current state: `peak RSS`, `heap bytes`, `live object count`, `GC pause`, `full GC count` の収集系が未整備。
+- Current state: metrics API / leak suspect test / CI gate spec 文書は追加済み。**ただし** 収集は structural proxy に留まり、S14-S16 を機械判定する artifact / blocking CI と GC fixed-point proof は未完成。
 - Rust source: `docs/development/planning/runtime-stability-spec.md`
 - L# target: runtime metrics collector, CI jobs
 - Implementation direction: CI では `peak RSS` と `full GC count` だけを fail threshold に使い、手元実行では live object count と pause histogram まで出す。 leak suspect は tag ごと単調増加を検出して stderr 出力する。
@@ -734,7 +734,7 @@
 
 - Goal: CI の主経路を L# ベース job graph へ切り替える。
 - Current state: bootstrap 強化は一部済みだが、job graph 全体は未再編。
-- Rust source: `docs/development/operations/ci-migration-spec.md`, `.github/workflows/ci.yml`
+- Rust source: `docs/development/operations/ci-gate-v2-job-graph.md`, `.github/workflows/ci.yml`
 - L# target: `.github/workflows/ci.yml`
 - Implementation direction: job graph は `bootstrap-wasm -> bootstrap-native -> golden-parity -> release-smoke -> packaging`, `docs` 独立、`ci-gate-v2` 集約に固定する。required checks もこの名前に合わせる。
 - Dependencies: `BOOT-04`, `NATIVE-06`, `PKG-01`
@@ -746,7 +746,7 @@
 
 - Goal: bootstrap/native/differential/release の artifact 保存規則を固定する。
 - Current state: artifact 種別と retention policy が未統一。
-- Rust source: `docs/development/operations/ci-migration-spec.md`
+- Rust source: `docs/development/operations/artifact-policy.md`
 - L# target: `.github/workflows/ci.yml`
 - Implementation direction: artifact は `bootstrap-stages`, `bootstrap-diff`, `native-binaries`, `differential-report`, `release-artifacts`, `benchmark-results` に固定し、PR/main/tag ごとの retention day を spec どおりに設定する。
 - Dependencies: `OPS-01`
@@ -782,7 +782,7 @@
 
 - Goal: public command の default path を Rust から L# へ切り替える。
 - Current state: compatibility matrix の `Default path` はほぼ Rust のまま。
-- Rust source: `docs/development/planning/compatibility-matrix.md`, `docs/development/operations/legacy-isolation-spec.md`
+- Rust source: `docs/development/planning/compatibility-matrix.md`, `docs/development/operations/default-path-migration.md`
 - L# target: `docs/development/planning/compatibility-matrix.md`, CLI/LSP entrypoints
 - Implementation direction: 切替順は `compile -> check -> parse -> test -> build -> fmt -> lsp -> docs` に固定し、各切替前に parity/golden/smoke を通す。切替後の Rust path は shadow へ下げる。
 - Dependencies: `CLI-02`, `LSP-02`, `FMT-01`, `DOC-02`, `OPS-03`
@@ -794,7 +794,7 @@
 
 - Goal: native release の build/sign/checksum/changelog を自動化する。
 - Current state: release playbook は仕様だけで、実 workflow と scripts が未接続。
-- Rust source: `docs/development/operations/release-operations-spec.md`
+- Rust source: `docs/development/operations/release-playbook.md`
 - L# target: release workflow, `scripts/generate-changelog.sh`, `scripts/ci/verify-signature.sh`
 - Implementation direction: stable/nightly の 2 チャネルを固定し、release は `version bump -> CI -> artifact -> checksum -> signing -> smoke -> tag -> GitHub Release` の順に自動化する。
 - Dependencies: `PKG-01`, `OPS-01`
@@ -806,19 +806,19 @@
 
 - Goal: Rust 未導入環境から bootstrap と native release を再現する。
 - Current state: fresh clone without Rust の自動検証がない。
-- Rust source: `docs/development/operations/final-removal-spec.md`
+- Rust source: `docs/development/operations/fresh-clone-spec.md`
 - L# target: `make fetch-stage0`, `make bootstrap`, `make native-release`, `make test`, `make release-bundle`
 - Implementation direction: `test-fresh-clone` job を追加し、Rust toolchain を含まない container/runner で `fetch-stage0 -> bootstrap -> native-release -> test -> release-bundle` を通す。
 - Dependencies: `OPS-06`, `NATIVE-05`
 - Acceptance: fresh clone CI が main merge ごとに green になる。
-- Evidence: `test-fresh-clone` job, `docs/development/operations/final-removal-spec.md`
+- Evidence: `test-fresh-clone` job, `docs/development/operations/fresh-clone-spec.md`
 
 <a id="ops-08-final-removal-and-rollback"></a>
 ### OPS-08 Final removal and rollback
 
 - Goal: Rust 最終撤去と rollback 手順を decision-complete にする。
 - Current state: final removal checklist と rollback plan は仕様だけで、repo state へ未反映。
-- Rust source: `docs/development/operations/final-removal-spec.md`, `docs/development/planning/completion-criteria.md`
+- Rust source: `docs/development/operations/adr-rust-removal.md`, `docs/development/planning/completion-criteria.md`
 - L# target: root tree, `docs/adr/`, release docs
 - Implementation direction: removal は `Cargo.toml`, `Cargo.lock`, `crates/`, `rust-toolchain.toml`, `.cargo/`, workflow 内 `cargo` を段階削除し、同時に `v0.x.y-rust-final` tag, rollback ADR, CI 復旧手順を固定する。
 - Dependencies: `OPS-04`, `OPS-05`, `OPS-07`
