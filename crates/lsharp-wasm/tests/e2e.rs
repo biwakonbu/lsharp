@@ -6829,6 +6829,932 @@ fn test_e2e_selfhost_typeinfer_ann_expr() {
     assert_eq!(lines[2], "100", "ann infer の型名は Int hash=100 であるべき");
 }
 
+/// selfhost TypeInfer.ls テスト: 未定義変数は undefined error code を返せる
+#[test]
+fn test_e2e_selfhost_typeinfer_error_undefined_var_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        result (infer-expr (make-var 99999) env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "undefined error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "未定義変数 infer は失敗すべき");
+    assert_eq!(lines[1], "1", "未定義変数 error code は E0001 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: if 条件不一致は if-cond error code を返せる
+#[test]
+fn test_e2e_selfhost_typeinfer_error_if_cond_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        if-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 6)
+                (make-lit-int 1))
+              (make-lit-int 2))
+            (make-lit-int 3))
+        result (infer-expr if-node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "if cond error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "if cond mismatch infer は失敗すべき");
+    assert_eq!(lines[1], "2", "if cond mismatch error code は E0002 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: if 分岐不一致は if-branch error code を返せる
+#[test]
+fn test_e2e_selfhost_typeinfer_error_if_branch_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        if-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 6)
+                (make-lit-bool 1))
+              (make-lit-int 2))
+            (make-lit-bool 0))
+        result (infer-expr if-node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "if branch error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "if branch mismatch infer は失敗すべき");
+    assert_eq!(lines[1], "3", "if branch mismatch error code は E0003 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: apply 引数不一致は arg-mismatch error code を返せる
+#[test]
+fn test_e2e_selfhost_typeinfer_error_apply_arg_mismatch_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        apply-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 5)
+                (make-lit-int 1))
+              1)
+            (make-lit-int 2))
+        result (infer-expr apply-node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "apply arg mismatch error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "apply arg mismatch infer は失敗すべき");
+    assert_eq!(
+        lines[1], "4",
+        "apply arg mismatch error code は E0004 であるべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: apply 内の未定義関数エラーは nested code を伝播できる
+#[test]
+fn test_e2e_selfhost_typeinfer_error_apply_propagates_func_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        apply-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 5)
+                (make-var 99999))
+              1)
+            (make-lit-int 2))
+        result (infer-expr apply-node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "apply nested undefined error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "apply nested undefined infer は失敗すべき");
+    assert_eq!(
+        lines[1], "1",
+        "apply nested undefined error code は E0001 を伝播すべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: 自己適用の occurs-check は infinite error code を返せる
+#[test]
+fn test_e2e_selfhost_typeinfer_error_infinite_type_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        x-hash 120
+        x-ty (fresh-type-var counter)
+        env (type-env-insert env0 x-hash (mono x-ty))
+        x-node (make-var x-hash)
+        apply-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 5)
+                x-node)
+              1)
+            x-node)
+        result (infer-expr apply-node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "infinite type error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "自己適用 infer は失敗すべき");
+    assert_eq!(lines[1], "5", "infinite type error code は E0005 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: lambda body の自己適用でも infinite error code を保つ
+#[test]
+fn test_e2e_selfhost_typeinfer_error_lambda_propagates_infinite_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        x-hash 120
+        x-node (make-var x-hash)
+        apply-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 5)
+                x-node)
+              1)
+            x-node)
+        lambda-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 8)
+                1)
+              x-hash)
+            apply-node)
+        result (infer-expr lambda-node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "lambda infinite error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "自己適用 lambda infer は失敗すべき");
+    assert_eq!(
+        lines[1], "5",
+        "lambda body の infinite error code は E0005 を維持すべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: defn body の自己適用でも infinite error code を保つ
+#[test]
+fn test_e2e_selfhost_typeinfer_error_defn_propagates_infinite_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        name-hash 122
+        x-hash 120
+        x-node (make-var x-hash)
+        apply-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 5)
+                x-node)
+              1)
+            x-node)
+        defn-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 20)
+                  name-hash)
+                1)
+              x-hash)
+            apply-node)
+        result (infer-defn defn-node env counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "defn infinite error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "自己適用 defn infer は失敗すべき");
+    assert_eq!(
+        lines[1], "5",
+        "defn body の infinite error code は E0005 を維持すべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: let init の自己適用でも infinite error code を保つ
+#[test]
+fn test_e2e_selfhost_typeinfer_error_let_propagates_infinite_init_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        let-name-hash 121
+        x-hash 120
+        x-ty (fresh-type-var counter)
+        env (type-env-insert env0 x-hash (mono x-ty))
+        x-node (make-var x-hash)
+        apply-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 5)
+                x-node)
+              1)
+            x-node)
+        body-node (make-var let-name-hash)
+        let-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 7)
+                let-name-hash)
+              apply-node)
+            body-node)
+        result (infer-expr let-node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "let infinite error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "自己適用 let infer は失敗すべき");
+    assert_eq!(
+        lines[1], "5",
+        "let init の infinite error code は E0005 を維持すべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: do 先頭式の自己適用でも infinite error code を保つ
+#[test]
+fn test_e2e_selfhost_typeinfer_error_do_propagates_infinite_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        x-hash 120
+        x-ty (fresh-type-var counter)
+        env (type-env-insert env0 x-hash (mono x-ty))
+        x-node (make-var x-hash)
+        apply-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 5)
+                x-node)
+              1)
+            x-node)
+        do-node
+          (vector-push
+            (vector-push
+              (vector-push (vector-new 4) 9)
+              2)
+            apply-node)
+        result (infer-expr (vector-push do-node (make-lit-bool 1)) env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "do infinite error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "自己適用 do infer は失敗すべき");
+    assert_eq!(
+        lines[1], "5",
+        "do 先頭式の infinite error code は E0005 を維持すべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: computation step failure でも infinite error code を保つ
+#[test]
+fn test_e2e_selfhost_typeinfer_error_computation_propagates_infinite_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        outer-hash 120
+        bind-hash 121
+        outer-ty (fresh-type-var counter)
+        env (type-env-insert env0 outer-hash (mono outer-ty))
+        x-node (make-var outer-hash)
+        apply-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 5)
+                x-node)
+              1)
+            x-node)
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push (vector-new 9) 15)
+                        901)
+                      2)
+                    (computation-step-let-bang))
+                  bind-hash)
+                apply-node)
+              (computation-step-return))
+            0)
+        comp-node (vector-push node (make-var bind-hash))
+        result (infer-expr comp-node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "computation infinite error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "自己適用 computation infer は失敗すべき");
+    assert_eq!(
+        lines[1], "5",
+        "computation step failure の infinite error code は E0005 を維持すべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: match body failure でも infinite error code を保つ
+#[test]
+fn test_e2e_selfhost_typeinfer_error_match_propagates_infinite_body_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        scrut-hash 1300
+        bind-hash 1200
+        scrut-ty (fresh-type-var counter)
+        env (type-env-insert env0 scrut-hash (mono scrut-ty))
+        x-node (make-var bind-hash)
+        apply-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 5)
+                x-node)
+              1)
+            x-node)
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 10)
+                  (make-var scrut-hash))
+                1)
+              (make-var bind-hash))
+            apply-node)
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "match infinite error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "自己適用 match infer は失敗すべき");
+    assert_eq!(
+        lines[1], "5",
+        "match body failure の infinite error code は E0005 を維持すべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: record literal field failure でも infinite error code を保つ
+#[test]
+fn test_e2e_selfhost_typeinfer_error_record_literal_propagates_infinite_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        outer-hash 120
+        outer-ty (fresh-type-var counter)
+        env (type-env-insert env0 outer-hash (mono outer-ty))
+        x-node (make-var outer-hash)
+        apply-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 5)
+                x-node)
+              1)
+            x-node)
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 12)
+                  700)
+                1)
+              121)
+            apply-node)
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "record literal infinite error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "自己適用 record literal infer は失敗すべき");
+    assert_eq!(
+        lines[1], "5",
+        "record literal field failure の infinite error code は E0005 を維持すべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: field access base failure でも infinite error code を保つ
+#[test]
+fn test_e2e_selfhost_typeinfer_error_field_access_propagates_infinite_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        outer-hash 120
+        outer-ty (fresh-type-var counter)
+        env (type-env-insert env0 outer-hash (mono outer-ty))
+        x-node (make-var outer-hash)
+        apply-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 5)
+                x-node)
+              1)
+            x-node)
+        node (make-fieldaccess apply-node 121)
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "field access infinite error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "自己適用 field access infer は失敗すべき");
+    assert_eq!(
+        lines[1], "5",
+        "field access base failure の infinite error code は E0005 を維持すべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: record update base failure でも infinite error code を保つ
+#[test]
+fn test_e2e_selfhost_typeinfer_error_record_update_propagates_infinite_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        outer-hash 120
+        outer-ty (fresh-type-var counter)
+        env (type-env-insert env0 outer-hash (mono outer-ty))
+        x-node (make-var outer-hash)
+        apply-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 5)
+                x-node)
+              1)
+            x-node)
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 14)
+                  apply-node)
+                1)
+              121)
+            (make-lit-int 1))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "record update infinite error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "自己適用 record update infer は失敗すべき");
+    assert_eq!(
+        lines[1], "5",
+        "record update base failure の infinite error code は E0005 を維持すべき"
+    );
+}
+
 /// selfhost TypeInfer.ls テスト: record literal は minimal Con type を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_record_literal() {
@@ -7896,6 +8822,84 @@ fn test_e2e_selfhost_typeinfer_do_thirteen_exprs_last_bool() {
     assert_eq!(lines[0], "0", "do 13 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 13 exprs の型タグは Con であるべき");
     assert_eq!(lines[2], "200", "do 13 exprs の型名は Bool hash=200 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: do ブロック 14 式は最後の Bool 型を返せる
+#[test]
+fn test_e2e_selfhost_typeinfer_do_fourteen_exprs_last_bool() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        ;; do node: [9, expr-count=14, e1, e2, ..., e14]
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push
+                            (vector-push
+                              (vector-push
+                                (vector-push
+                                  (vector-push
+                                    (vector-push
+                                      (vector-push (vector-new 16) 9)
+                                      14)
+                                    (make-lit-int 1))
+                                  (make-lit-int 2))
+                                (make-lit-int 3))
+                              (make-lit-int 4))
+                            (make-lit-int 5))
+                          (make-lit-int 6))
+                        (make-lit-int 7))
+                      (make-lit-int 8))
+                    (make-lit-int 9))
+                  (make-lit-int 10))
+                (make-lit-int 11))
+              (make-lit-int 12))
+            (make-lit-int 13))
+        do-node (vector-push node (make-lit-bool 1))
+        result (infer-expr do-node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "do 14 exprs typeinfer 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "0", "do 14 exprs infer は失敗すべきでない");
+    assert_eq!(lines[1], "1", "do 14 exprs の型タグは Con であるべき");
+    assert_eq!(lines[2], "200", "do 14 exprs の型名は Bool hash=200 であるべき");
 }
 
 /// selfhost TypeInfer.ls テスト: 2 引数 lambda はカリー化された関数型になる

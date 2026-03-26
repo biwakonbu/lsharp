@@ -162,7 +162,7 @@
 (defn unify-error []
   (map-insert (map-new) -1 1))
 
-;; 置換がエラーかチェック (map-get: 0=正常, 1=エラー)
+;; 置換がエラーかチェック (0=正常, 1=エラー)
 (defn unify-failed [result]
   (map-get result -1))
 
@@ -174,20 +174,20 @@
     (if (= (types-eq ty1 ty2) 1)
       ;; 同じ型なら置換をそのまま返す
       subst
-      (if (= (type-tag ty1) 2)
-        ;; ty1 が Var
-        (if (= (occurs-check (type-name ty1) ty2) 1)
-          (unify-error)
-          (subst-bind subst (type-name ty1) ty2))
-        (if (= (type-tag ty2) 2)
-          ;; ty2 が Var
-          (if (= (occurs-check (type-name ty2) ty1) 1)
+        (if (= (type-tag ty1) 2)
+          ;; ty1 が Var
+          (if (= (occurs-check (type-name ty1) ty2) 1)
             (unify-error)
-            (subst-bind subst (type-name ty2) ty1))
-          (if (= (type-tag ty1) 1)
-            ;; 両方 Con: 名前が一致しないなら失敗
-            (unify-error)
-            (if (= (type-tag ty1) 3)
+            (subst-bind subst (type-name ty1) ty2))
+          (if (= (type-tag ty2) 2)
+            ;; ty2 が Var
+            (if (= (occurs-check (type-name ty2) ty1) 1)
+              (unify-error)
+              (subst-bind subst (type-name ty2) ty1))
+            (if (= (type-tag ty1) 1)
+              ;; 両方 Con: 名前が一致しないなら失敗
+              (unify-error)
+              (if (= (type-tag ty1) 3)
               ;; 両方 Fun: パラメータを単一化してから戻り値を単一化
               (if (= (type-tag ty2) 3)
                 (let [s1 (unify (type-fun-param ty1) (type-fun-param ty2) subst)]

@@ -98,18 +98,29 @@
   (map-get env name-hash))
 
 ;; ============================================================
-;; 推論結果 = [subst, type]
+;; 推論結果 = [subst, type, error-code]
 ;; ============================================================
 
 (defn make-result [subst ty]
-  (vector-push (vector-push (vector-new 2) subst) ty))
+  (vector-push (vector-push (vector-push (vector-new 3) subst) ty) 0))
 
 (defn result-subst [r] (vector-get r 0))
 (defn result-type [r] (vector-get r 1))
+(defn result-error-code [r] (vector-get r 2))
 
 ;; エラー結果 (subst にエラーマーカー付き)
+(defn make-error-result-code [code]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) (map-insert (map-new) -1 1))
+      (mk-int))
+    code))
+
 (defn make-error-result []
-  (make-result (map-insert (map-new) -1 1) (mk-int)))
+  (make-error-result-code 6))
+
+(defn propagate-error-result [r]
+  (make-error-result-code (result-error-code r)))
 
 ;; 結果がエラーか判定
 (defn result-failed [r]
@@ -131,7 +142,7 @@
 ;;   subst   - 現在の置換 (HashMap<var-id, Type>)
 ;;   counter - 型変数カウンタ (ref-cell)
 ;; 戻り値:
-;;   [subst, type] - 更新された置換と推論された型
+;;   [subst, type, error-code] - 更新された置換と推論された型
 
 ;; リテラルの型推論
 (defn infer-lit [node]
@@ -155,7 +166,7 @@
         scheme (type-env-lookup env name-hash)]
     (if (= scheme 0)
       ;; 未定義変数: エラー
-      (make-error-result)
+      (make-error-result-code (error-code-undefined))
       ;; 型スキームを具体化
       (let [ty (instantiate scheme counter)]
         (make-result subst ty)))))
@@ -169,30 +180,30 @@
         ;; 条件式を推論
         cond-result (infer-expr cond-node env subst counter)]
     (if (= (result-failed cond-result) 1)
-      (make-error-result)
+      (make-error-result-code (result-error-code cond-result))
       (let [s1 (result-subst cond-result)
             cond-ty (result-type cond-result)
             ;; 条件式は Bool であること
             s2 (unify cond-ty (mk-bool) s1)]
         (if (= (unify-failed s2) 1)
-          (make-error-result)
+          (make-error-result-code (error-code-if-cond))
           ;; then 枝を推論
           (let [then-result (infer-expr then-node env s2 counter)]
             (if (= (result-failed then-result) 1)
-              (make-error-result)
+              (make-error-result-code (result-error-code then-result))
               (let [s3 (result-subst then-result)
                     then-ty (result-type then-result)
                     ;; else 枝を推論
                     else-result (infer-expr else-node env s3 counter)]
                 (if (= (result-failed else-result) 1)
-                  (make-error-result)
+                  (make-error-result-code (result-error-code else-result))
                   ;; then と else の型を統一
-                  (let [s4 (result-subst else-result)
-                        else-ty (result-type else-result)
-                        s5 (unify (apply-subst s4 then-ty) else-ty s4)]
-                    (if (= (unify-failed s5) 1)
-                      (make-error-result)
-                      (make-result s5 (apply-subst s5 else-ty)))))))))))))
+                    (let [s4 (result-subst else-result)
+                          else-ty (result-type else-result)
+                          s5 (unify (apply-subst s4 then-ty) else-ty s4)]
+                      (if (= (unify-failed s5) 1)
+                        (make-error-result-code (error-code-if-branch))
+                        (make-result s5 (apply-subst s5 else-ty)))))))))))))
 
 ;; let 式の型推論
 ;; [7, name-hash, init-expr, body-expr]
@@ -203,7 +214,7 @@
         ;; init を推論
         init-result (infer-expr init-node env subst counter)]
     (if (= (result-failed init-result) 1)
-      (make-error-result)
+      (propagate-error-result init-result)
       (let [s1 (result-subst init-result)
             init-ty (result-type init-result)
             ;; 汎化して環境に追加
@@ -236,7 +247,7 @@
     (let [value-node (vector-get node (+ 4 (* idx 2)))
           value-result (infer-expr value-node env subst counter)]
       (if (= (result-failed value-result) 1)
-        (make-error-result)
+        (propagate-error-result value-result)
         (infer-record-fields
           node
           (+ idx 1)
@@ -278,7 +289,7 @@
         field-count (vector-get node 2)
         fields-result (infer-record-fields node 0 field-count env subst counter)]
     (if (= (result-failed fields-result) 1)
-      (make-error-result)
+      (propagate-error-result fields-result)
       (make-result (result-subst fields-result) (mk-con type-name-hash)))))
 
 ;; field access の型推論
@@ -294,7 +305,7 @@
           (infer-expr field-node env subst counter)))
       (let [base-result (infer-expr base-node env subst counter)]
         (if (= (result-failed base-result) 1)
-          (make-error-result)
+          (propagate-error-result base-result)
           (let [s1 (result-subst base-result)
                 base-ty (apply-subst s1 (result-type base-result))]
             (if (= (ty-tag base-ty) (ty-record))
@@ -306,7 +317,7 @@
 (defn infer-recordupdate-node [node env subst counter]
   (let [base-result (infer-expr (vector-get node 1) env subst counter)]
     (if (= (result-failed base-result) 1)
-      (make-error-result)
+      (propagate-error-result base-result)
       (make-result (result-subst base-result) (result-type base-result)))))
 
 ;; computation expression の型推論
@@ -331,7 +342,7 @@
               (if (= step1-kind (comp-step-let-bang))
                 (let [step1-result (infer-expr step1-expr env subst counter)]
                   (if (= (result-failed step1-result) 1)
-                    (make-error-result)
+                    (propagate-error-result step1-result)
                     (let [s1 (result-subst step1-result)
                           bound-ty (result-type step1-result)
                           env2 (type-env-insert env step1-aux (mono bound-ty))]
@@ -339,7 +350,7 @@
                 (if (= step1-kind (comp-step-do-bang))
                   (let [step1-result (infer-expr step1-expr env subst counter)]
                     (if (= (result-failed step1-result) 1)
-                      (make-error-result)
+                      (propagate-error-result step1-result)
                       (infer-expr final-expr env (result-subst step1-result) counter)))
                   (make-result subst (mk-int))))
               (make-result subst (mk-int))))
@@ -356,19 +367,19 @@
                 (if (= step1-kind (comp-step-let-bang))
                   (let [step1-result (infer-expr step1-expr env subst counter)]
                     (if (= (result-failed step1-result) 1)
-                      (make-error-result)
+                      (propagate-error-result step1-result)
                       (let [s1 (result-subst step1-result)
                             bound1-ty (result-type step1-result)
                             env2 (type-env-insert env step1-aux (mono bound1-ty))]
                         (if (= step2-kind (comp-step-do-bang))
                           (let [step2-result (infer-expr step2-expr env2 s1 counter)]
                             (if (= (result-failed step2-result) 1)
-                              (make-error-result)
+                              (propagate-error-result step2-result)
                               (infer-expr final-expr env2 (result-subst step2-result) counter)))
                           (if (= step2-kind (comp-step-let-bang))
                             (let [step2-result (infer-expr step2-expr env2 s1 counter)]
                               (if (= (result-failed step2-result) 1)
-                                (make-error-result)
+                                (propagate-error-result step2-result)
                                 (let [s2 (result-subst step2-result)
                                       bound2-ty (result-type step2-result)
                                       env3 (type-env-insert env2 step2-aux (mono bound2-ty))]
@@ -377,12 +388,12 @@
                   (if (= step1-kind (comp-step-do-bang))
                     (let [step1-result (infer-expr step1-expr env subst counter)]
                       (if (= (result-failed step1-result) 1)
-                        (make-error-result)
+                        (propagate-error-result step1-result)
                         (let [s1 (result-subst step1-result)]
                           (if (= step2-kind (comp-step-let-bang))
                             (let [step2-result (infer-expr step2-expr env s1 counter)]
                               (if (= (result-failed step2-result) 1)
-                                (make-error-result)
+                                (propagate-error-result step2-result)
                                 (let [s2 (result-subst step2-result)
                                       bound2-ty (result-type step2-result)
                                       env2 (type-env-insert env step2-aux (mono bound2-ty))]
@@ -390,7 +401,7 @@
                             (if (= step2-kind (comp-step-do-bang))
                               (let [step2-result (infer-expr step2-expr env s1 counter)]
                                 (if (= (result-failed step2-result) 1)
-                                  (make-error-result)
+                                  (propagate-error-result step2-result)
                                   (infer-expr final-expr env (result-subst step2-result) counter)))
                               (make-result subst (mk-int)))))))
                     (make-result subst (mk-int))))
@@ -406,7 +417,7 @@
       (let [body-node (vector-get node 2)
             body-result (infer-expr body-node env subst counter)]
         (if (= (result-failed body-result) 1)
-          (make-error-result)
+          (propagate-error-result body-result)
           (let [s1 (result-subst body-result)
                 body-ty (result-type body-result)
                 fun-ty (mk-fun (mk-unit) body-ty)]
@@ -419,7 +430,7 @@
               new-env (type-env-insert env param-hash param-scheme)
               body-result (infer-expr body-node new-env subst counter)]
           (if (= (result-failed body-result) 1)
-            (make-error-result)
+            (propagate-error-result body-result)
             (let [s1 (result-subst body-result)
                   body-ty (result-type body-result)
                   fun-ty (mk-fun (apply-subst s1 param-ty) body-ty)]
@@ -434,7 +445,7 @@
                 env2 (type-env-insert env1 param2-hash (mono param2-ty))
                 body-result (infer-expr body-node env2 subst counter)]
             (if (= (result-failed body-result) 1)
-              (make-error-result)
+              (propagate-error-result body-result)
               (let [s1 (result-subst body-result)
                     body-ty (result-type body-result)
                     inner-fun (mk-fun (apply-subst s1 param2-ty) body-ty)
@@ -453,7 +464,7 @@
                   env3 (type-env-insert env2 param3-hash (mono param3-ty))
                   body-result (infer-expr body-node env3 subst counter)]
               (if (= (result-failed body-result) 1)
-                (make-error-result)
+                (propagate-error-result body-result)
                 (let [s1 (result-subst body-result)
                       body-ty (result-type body-result)
                       fun3 (mk-fun (apply-subst s1 param3-ty) body-ty)
@@ -476,7 +487,7 @@
                     env4 (type-env-insert env3 param4-hash (mono param4-ty))
                     body-result (infer-expr body-node env4 subst counter)]
                 (if (= (result-failed body-result) 1)
-                  (make-error-result)
+                  (propagate-error-result body-result)
                   (let [s1 (result-subst body-result)
                         body-ty (result-type body-result)
                         fun4 (mk-fun (apply-subst s1 param4-ty) body-ty)
@@ -503,7 +514,7 @@
                       env5 (type-env-insert env4 param5-hash (mono param5-ty))
                       body-result (infer-expr body-node env5 subst counter)]
                   (if (= (result-failed body-result) 1)
-                    (make-error-result)
+                    (propagate-error-result body-result)
                     (let [s1 (result-subst body-result)
                           body-ty (result-type body-result)
                           fun5 (mk-fun (apply-subst s1 param5-ty) body-ty)
@@ -534,7 +545,7 @@
                         env6 (type-env-insert env5 param6-hash (mono param6-ty))
                         body-result (infer-expr body-node env6 subst counter)]
                     (if (= (result-failed body-result) 1)
-                      (make-error-result)
+                      (propagate-error-result body-result)
                       (let [s1 (result-subst body-result)
                             body-ty (result-type body-result)
                             fun6 (mk-fun (apply-subst s1 param6-ty) body-ty)
@@ -569,7 +580,7 @@
                         env7 (type-env-insert env6 param7-hash (mono param7-ty))
                         body-result (infer-expr body-node env7 subst counter)]
                     (if (= (result-failed body-result) 1)
-                      (make-error-result)
+                      (propagate-error-result body-result)
                       (let [s1 (result-subst body-result)
                             body-ty (result-type body-result)
                             fun7 (mk-fun (apply-subst s1 param7-ty) body-ty)
@@ -593,204 +604,253 @@
       (infer-expr func-node env subst counter)
       (let [func-result (infer-expr func-node env subst counter)]
         (if (= (result-failed func-result) 1)
-          (make-error-result)
+          (propagate-error-result func-result)
           (let [s1 (result-subst func-result)
                 func-ty (result-type func-result)]
             (if (= argc 1)
               ;; 1 引数の適用
               (let [arg1-result (infer-expr (vector-get node 3) env s1 counter)]
                 (if (= (result-failed arg1-result) 1)
-                  (make-error-result)
-                  (let [s2 (result-subst arg1-result)
-                        arg1-ty (result-type arg1-result)
-                        ret-ty (fresh-type-var counter)
-                        expected (mk-fun arg1-ty ret-ty)
-                        s3 (unify (apply-subst s2 func-ty) expected s2)]
-                    (if (= (unify-failed s3) 1)
-                      (make-error-result)
-                      (make-result s3 (apply-subst s3 ret-ty))))))
+                  (propagate-error-result arg1-result)
+                    (let [s2 (result-subst arg1-result)
+                          arg1-ty (result-type arg1-result)
+                          ret-ty (fresh-type-var counter)
+                          expected (mk-fun arg1-ty ret-ty)
+                          applied-func-ty (apply-subst s2 func-ty)
+                          failure-code
+                            (if (= (type-tag applied-func-ty) 2)
+                              (if (= (occurs-check (type-name applied-func-ty) expected) 1)
+                                (error-code-infinite)
+                                (error-code-arg-mismatch))
+                              (error-code-arg-mismatch))
+                          s3 (unify applied-func-ty expected s2)]
+                      (if (= (unify-failed s3) 1)
+                        (make-error-result-code failure-code)
+                        (make-result s3 (apply-subst s3 ret-ty))))))
               (if (= argc 2)
                 ;; 2 引数の適用
                 (let [arg1-result (infer-expr (vector-get node 3) env s1 counter)]
                   (if (= (result-failed arg1-result) 1)
-                    (make-error-result)
+                    (propagate-error-result arg1-result)
                     (let [s2 (result-subst arg1-result)
                           arg1-ty (result-type arg1-result)
                           arg2-result (infer-expr (vector-get node 4) env s2 counter)]
                       (if (= (result-failed arg2-result) 1)
-                        (make-error-result)
+                        (propagate-error-result arg2-result)
                         (let [s3 (result-subst arg2-result)
                               arg2-ty (result-type arg2-result)
                               ret-ty (fresh-type-var counter)
                               expected (mk-fun arg1-ty (mk-fun arg2-ty ret-ty))
-                              s4 (unify (apply-subst s3 func-ty) expected s3)]
+                              applied-func-ty (apply-subst s3 func-ty)
+                              failure-code
+                                (if (= (type-tag applied-func-ty) 2)
+                                  (if (= (occurs-check (type-name applied-func-ty) expected) 1)
+                                    (error-code-infinite)
+                                    (error-code-arg-mismatch))
+                                  (error-code-arg-mismatch))
+                              s4 (unify applied-func-ty expected s3)]
                           (if (= (unify-failed s4) 1)
-                            (make-error-result)
+                            (make-error-result-code failure-code)
                             (make-result s4 (apply-subst s4 ret-ty))))))))
                 (if (= argc 3)
                   ;; 3 引数の適用
                   (let [arg1-result (infer-expr (vector-get node 3) env s1 counter)]
                     (if (= (result-failed arg1-result) 1)
-                      (make-error-result)
+                      (propagate-error-result arg1-result)
                       (let [s2 (result-subst arg1-result)
                             arg1-ty (result-type arg1-result)
                             arg2-result (infer-expr (vector-get node 4) env s2 counter)]
                         (if (= (result-failed arg2-result) 1)
-                          (make-error-result)
+                          (propagate-error-result arg2-result)
                           (let [s3 (result-subst arg2-result)
                                 arg2-ty (result-type arg2-result)
                                 arg3-result (infer-expr (vector-get node 5) env s3 counter)]
                             (if (= (result-failed arg3-result) 1)
-                              (make-error-result)
+                              (propagate-error-result arg3-result)
                               (let [s4 (result-subst arg3-result)
                                     arg3-ty (result-type arg3-result)
                                     ret-ty (fresh-type-var counter)
                                     expected (mk-fun arg1-ty (mk-fun arg2-ty (mk-fun arg3-ty ret-ty)))
-                                    s5 (unify (apply-subst s4 func-ty) expected s4)]
+                                    applied-func-ty (apply-subst s4 func-ty)
+                                    failure-code
+                                      (if (= (type-tag applied-func-ty) 2)
+                                        (if (= (occurs-check (type-name applied-func-ty) expected) 1)
+                                          (error-code-infinite)
+                                          (error-code-arg-mismatch))
+                                        (error-code-arg-mismatch))
+                                    s5 (unify applied-func-ty expected s4)]
                                 (if (= (unify-failed s5) 1)
-                                  (make-error-result)
+                                  (make-error-result-code failure-code)
                                   (make-result s5 (apply-subst s5 ret-ty))))))))))
                   (if (= argc 4)
                     ;; 4 引数の適用
                     (let [arg1-result (infer-expr (vector-get node 3) env s1 counter)]
                       (if (= (result-failed arg1-result) 1)
-                        (make-error-result)
+                        (propagate-error-result arg1-result)
                         (let [s2 (result-subst arg1-result)
                               arg1-ty (result-type arg1-result)
                               arg2-result (infer-expr (vector-get node 4) env s2 counter)]
                           (if (= (result-failed arg2-result) 1)
-                            (make-error-result)
+                            (propagate-error-result arg2-result)
                             (let [s3 (result-subst arg2-result)
                                   arg2-ty (result-type arg2-result)
                                   arg3-result (infer-expr (vector-get node 5) env s3 counter)]
                               (if (= (result-failed arg3-result) 1)
-                                (make-error-result)
+                                (propagate-error-result arg3-result)
                                 (let [s4 (result-subst arg3-result)
                                       arg3-ty (result-type arg3-result)
                                       arg4-result (infer-expr (vector-get node 6) env s4 counter)]
                                   (if (= (result-failed arg4-result) 1)
-                                    (make-error-result)
+                                    (propagate-error-result arg4-result)
                                     (let [s5 (result-subst arg4-result)
                                           arg4-ty (result-type arg4-result)
                                           ret-ty (fresh-type-var counter)
                                           expected (mk-fun arg1-ty (mk-fun arg2-ty (mk-fun arg3-ty (mk-fun arg4-ty ret-ty))))
-                                          s6 (unify (apply-subst s5 func-ty) expected s5)]
+                                          applied-func-ty (apply-subst s5 func-ty)
+                                          failure-code
+                                            (if (= (type-tag applied-func-ty) 2)
+                                              (if (= (occurs-check (type-name applied-func-ty) expected) 1)
+                                                (error-code-infinite)
+                                                (error-code-arg-mismatch))
+                                              (error-code-arg-mismatch))
+                                          s6 (unify applied-func-ty expected s5)]
                                       (if (= (unify-failed s6) 1)
-                                        (make-error-result)
+                                        (make-error-result-code failure-code)
                                         (make-result s6 (apply-subst s6 ret-ty))))))))))))
                     (if (= argc 5)
                       ;; 5 引数の適用
                       (let [arg1-result (infer-expr (vector-get node 3) env s1 counter)]
                         (if (= (result-failed arg1-result) 1)
-                          (make-error-result)
+                          (propagate-error-result arg1-result)
                           (let [s2 (result-subst arg1-result)
                                 arg1-ty (result-type arg1-result)
                                 arg2-result (infer-expr (vector-get node 4) env s2 counter)]
                             (if (= (result-failed arg2-result) 1)
-                              (make-error-result)
+                              (propagate-error-result arg2-result)
                               (let [s3 (result-subst arg2-result)
                                     arg2-ty (result-type arg2-result)
                                     arg3-result (infer-expr (vector-get node 5) env s3 counter)]
                                 (if (= (result-failed arg3-result) 1)
-                                  (make-error-result)
+                                  (propagate-error-result arg3-result)
                                   (let [s4 (result-subst arg3-result)
                                         arg3-ty (result-type arg3-result)
                                         arg4-result (infer-expr (vector-get node 6) env s4 counter)]
                                     (if (= (result-failed arg4-result) 1)
-                                      (make-error-result)
+                                      (propagate-error-result arg4-result)
                                       (let [s5 (result-subst arg4-result)
                                             arg4-ty (result-type arg4-result)
                                             arg5-result (infer-expr (vector-get node 7) env s5 counter)]
                                         (if (= (result-failed arg5-result) 1)
-                                          (make-error-result)
+                                          (propagate-error-result arg5-result)
                                           (let [s6 (result-subst arg5-result)
                                                 arg5-ty (result-type arg5-result)
                                                 ret-ty (fresh-type-var counter)
                                                 expected (mk-fun arg1-ty (mk-fun arg2-ty (mk-fun arg3-ty (mk-fun arg4-ty (mk-fun arg5-ty ret-ty)))))
-                                                s7 (unify (apply-subst s6 func-ty) expected s6)]
+                                                applied-func-ty (apply-subst s6 func-ty)
+                                                failure-code
+                                                  (if (= (type-tag applied-func-ty) 2)
+                                                    (if (= (occurs-check (type-name applied-func-ty) expected) 1)
+                                                      (error-code-infinite)
+                                                      (error-code-arg-mismatch))
+                                                    (error-code-arg-mismatch))
+                                                s7 (unify applied-func-ty expected s6)]
                                             (if (= (unify-failed s7) 1)
-                                              (make-error-result)
+                                              (make-error-result-code failure-code)
                                               (make-result s7 (apply-subst s7 ret-ty))))))))))))))
                       (if (= argc 6)
                         ;; 6 引数の適用
                         (let [arg1-result (infer-expr (vector-get node 3) env s1 counter)]
                           (if (= (result-failed arg1-result) 1)
-                            (make-error-result)
+                            (propagate-error-result arg1-result)
                             (let [s2 (result-subst arg1-result)
                                   arg1-ty (result-type arg1-result)
                                   arg2-result (infer-expr (vector-get node 4) env s2 counter)]
                               (if (= (result-failed arg2-result) 1)
-                                (make-error-result)
+                                (propagate-error-result arg2-result)
                                 (let [s3 (result-subst arg2-result)
                                       arg2-ty (result-type arg2-result)
                                       arg3-result (infer-expr (vector-get node 5) env s3 counter)]
                                   (if (= (result-failed arg3-result) 1)
-                                    (make-error-result)
+                                    (propagate-error-result arg3-result)
                                     (let [s4 (result-subst arg3-result)
                                           arg3-ty (result-type arg3-result)
                                           arg4-result (infer-expr (vector-get node 6) env s4 counter)]
                                       (if (= (result-failed arg4-result) 1)
-                                        (make-error-result)
+                                        (propagate-error-result arg4-result)
                                         (let [s5 (result-subst arg4-result)
                                               arg4-ty (result-type arg4-result)
                                               arg5-result (infer-expr (vector-get node 7) env s5 counter)]
                                           (if (= (result-failed arg5-result) 1)
-                                            (make-error-result)
+                                            (propagate-error-result arg5-result)
                                             (let [s6 (result-subst arg5-result)
                                                   arg5-ty (result-type arg5-result)
                                                   arg6-result (infer-expr (vector-get node 8) env s6 counter)]
                                               (if (= (result-failed arg6-result) 1)
-                                                (make-error-result)
+                                                (propagate-error-result arg6-result)
                                                 (let [s7 (result-subst arg6-result)
                                                       arg6-ty (result-type arg6-result)
                                                       ret-ty (fresh-type-var counter)
                                                       expected (mk-fun arg1-ty (mk-fun arg2-ty (mk-fun arg3-ty (mk-fun arg4-ty (mk-fun arg5-ty (mk-fun arg6-ty ret-ty))))))
-                                                      s8 (unify (apply-subst s7 func-ty) expected s7)]
+                                                      applied-func-ty (apply-subst s7 func-ty)
+                                                      failure-code
+                                                        (if (= (type-tag applied-func-ty) 2)
+                                                          (if (= (occurs-check (type-name applied-func-ty) expected) 1)
+                                                            (error-code-infinite)
+                                                            (error-code-arg-mismatch))
+                                                          (error-code-arg-mismatch))
+                                                      s8 (unify applied-func-ty expected s7)]
                                                   (if (= (unify-failed s8) 1)
-                                                    (make-error-result)
+                                                    (make-error-result-code failure-code)
                                                     (make-result s8 (apply-subst s8 ret-ty))))))))))))))))
                         (if (= argc 7)
                           ;; 7 引数の適用
                           (let [arg1-result (infer-expr (vector-get node 3) env s1 counter)]
                             (if (= (result-failed arg1-result) 1)
-                              (make-error-result)
+                              (propagate-error-result arg1-result)
                               (let [s2 (result-subst arg1-result)
                                     arg1-ty (result-type arg1-result)
                                     arg2-result (infer-expr (vector-get node 4) env s2 counter)]
                                 (if (= (result-failed arg2-result) 1)
-                                  (make-error-result)
+                                  (propagate-error-result arg2-result)
                                   (let [s3 (result-subst arg2-result)
                                         arg2-ty (result-type arg2-result)
                                         arg3-result (infer-expr (vector-get node 5) env s3 counter)]
                                     (if (= (result-failed arg3-result) 1)
-                                      (make-error-result)
+                                      (propagate-error-result arg3-result)
                                       (let [s4 (result-subst arg3-result)
                                             arg3-ty (result-type arg3-result)
                                             arg4-result (infer-expr (vector-get node 6) env s4 counter)]
                                         (if (= (result-failed arg4-result) 1)
-                                          (make-error-result)
+                                          (propagate-error-result arg4-result)
                                           (let [s5 (result-subst arg4-result)
                                                 arg4-ty (result-type arg4-result)
                                                 arg5-result (infer-expr (vector-get node 7) env s5 counter)]
                                             (if (= (result-failed arg5-result) 1)
-                                              (make-error-result)
+                                              (propagate-error-result arg5-result)
                                               (let [s6 (result-subst arg5-result)
                                                     arg5-ty (result-type arg5-result)
                                                     arg6-result (infer-expr (vector-get node 8) env s6 counter)]
                                                 (if (= (result-failed arg6-result) 1)
-                                                  (make-error-result)
+                                                  (propagate-error-result arg6-result)
                                                   (let [s7 (result-subst arg6-result)
                                                         arg6-ty (result-type arg6-result)
                                                         arg7-result (infer-expr (vector-get node 9) env s7 counter)]
                                                     (if (= (result-failed arg7-result) 1)
-                                                      (make-error-result)
+                                                      (propagate-error-result arg7-result)
                                                       (let [s8 (result-subst arg7-result)
                                                             arg7-ty (result-type arg7-result)
                                                             ret-ty (fresh-type-var counter)
                                                             expected (mk-fun arg1-ty (mk-fun arg2-ty (mk-fun arg3-ty (mk-fun arg4-ty (mk-fun arg5-ty (mk-fun arg6-ty (mk-fun arg7-ty ret-ty)))))))
-                                                            s9 (unify (apply-subst s8 func-ty) expected s8)]
+                                                            applied-func-ty (apply-subst s8 func-ty)
+                                                            failure-code
+                                                              (if (= (type-tag applied-func-ty) 2)
+                                                                (if (= (occurs-check (type-name applied-func-ty) expected) 1)
+                                                                  (error-code-infinite)
+                                                                  (error-code-arg-mismatch))
+                                                                (error-code-arg-mismatch))
+                                                            s9 (unify applied-func-ty expected s8)]
                                                         (if (= (unify-failed s9) 1)
-                                                          (make-error-result)
+                                                          (make-error-result-code failure-code)
                                                           (make-result s9 (apply-subst s9 ret-ty))))))))))))))))))
                           (make-error-result))))))))))))))
 
@@ -807,137 +867,166 @@
         ;; 2 式以上: 各式を順次推論、最後の型を返す
         (let [r1 (infer-expr (vector-get node 2) env subst counter)]
           (if (= (result-failed r1) 1)
-            (make-error-result)
+            (propagate-error-result r1)
             (let [s1 (result-subst r1)]
               (if (= ec 2)
                 (infer-expr (vector-get node 3) env s1 counter)
                 (let [r2 (infer-expr (vector-get node 3) env s1 counter)]
                   (if (= (result-failed r2) 1)
-                    (make-error-result)
+                    (propagate-error-result r2)
                     (let [s2 (result-subst r2)]
                       (if (= ec 3)
                         (infer-expr (vector-get node 4) env s2 counter)
                         (let [r3 (infer-expr (vector-get node 4) env s2 counter)]
                           (if (= (result-failed r3) 1)
-                            (make-error-result)
+                            (propagate-error-result r3)
                             (let [s3 (result-subst r3)]
                               (if (= ec 4)
                                 (infer-expr (vector-get node 5) env s3 counter)
                                 ;; covered slice として 5/6 式を扱う
                                 (let [r4 (infer-expr (vector-get node 5) env s3 counter)]
                                   (if (= (result-failed r4) 1)
-                                    (make-error-result)
+                                    (propagate-error-result r4)
                                     (let [s4 (result-subst r4)]
                                       (if (= ec 5)
                                         (infer-expr (vector-get node 6) env s4 counter)
                                         (if (= ec 6)
                                           (let [r5 (infer-expr (vector-get node 6) env s4 counter)]
                                             (if (= (result-failed r5) 1)
-                                              (make-error-result)
+                                              (propagate-error-result r5)
                                               (infer-expr (vector-get node 7) env (result-subst r5) counter)))
                                           (if (= ec 7)
                                             (let [r5 (infer-expr (vector-get node 6) env s4 counter)]
                                               (if (= (result-failed r5) 1)
-                                                (make-error-result)
+                                                (propagate-error-result r5)
                                                 (let [s5 (result-subst r5)]
                                                   (infer-expr (vector-get node 8) env s5 counter))))
                                             (if (= ec 8)
                                               (let [r5 (infer-expr (vector-get node 6) env s4 counter)]
                                                 (if (= (result-failed r5) 1)
-                                                  (make-error-result)
+                                                  (propagate-error-result r5)
                                                   (let [s5 (result-subst r5)
                                                         r6 (infer-expr (vector-get node 7) env s5 counter)]
                                                     (if (= (result-failed r6) 1)
-                                                      (make-error-result)
+                                                      (propagate-error-result r6)
                                                       (infer-expr (vector-get node 9) env (result-subst r6) counter)))))
                                               (if (= ec 9)
                                                 (let [r5 (infer-expr (vector-get node 6) env s4 counter)]
                                                   (if (= (result-failed r5) 1)
-                                                    (make-error-result)
+                                                    (propagate-error-result r5)
                                                     (let [s5 (result-subst r5)
                                                           r6 (infer-expr (vector-get node 7) env s5 counter)]
                                                       (if (= (result-failed r6) 1)
-                                                        (make-error-result)
+                                                        (propagate-error-result r6)
                                                         (let [s6 (result-subst r6)]
                                                           (infer-expr (vector-get node 10) env s6 counter))))))
                                                 (if (= ec 10)
                                                   (let [r5 (infer-expr (vector-get node 6) env s4 counter)]
                                                     (if (= (result-failed r5) 1)
-                                                      (make-error-result)
+                                                      (propagate-error-result r5)
                                                       (let [s5 (result-subst r5)
                                                             r6 (infer-expr (vector-get node 7) env s5 counter)]
                                                         (if (= (result-failed r6) 1)
-                                                          (make-error-result)
+                                                          (propagate-error-result r6)
                                                           (let [s6 (result-subst r6)
                                                                 r7 (infer-expr (vector-get node 8) env s6 counter)]
                                                             (if (= (result-failed r7) 1)
-                                                              (make-error-result)
+                                                              (propagate-error-result r7)
                                                               (infer-expr (vector-get node 11) env (result-subst r7) counter)))))))
                                                   (if (= ec 11)
                                                     (let [r5 (infer-expr (vector-get node 6) env s4 counter)]
                                                       (if (= (result-failed r5) 1)
-                                                        (make-error-result)
+                                                        (propagate-error-result r5)
                                                         (let [s5 (result-subst r5)
                                                               r6 (infer-expr (vector-get node 7) env s5 counter)]
                                                           (if (= (result-failed r6) 1)
-                                                            (make-error-result)
+                                                            (propagate-error-result r6)
                                                             (let [s6 (result-subst r6)
                                                                   r7 (infer-expr (vector-get node 8) env s6 counter)]
                                                               (if (= (result-failed r7) 1)
-                                                                (make-error-result)
+                                                                (propagate-error-result r7)
                                                                 (let [s7 (result-subst r7)
                                                                       r8 (infer-expr (vector-get node 9) env s7 counter)]
                                                                   (if (= (result-failed r8) 1)
-                                                                    (make-error-result)
+                                                                    (propagate-error-result r8)
                                                                     (infer-expr (vector-get node 12) env (result-subst r8) counter)))))))))
                                                     (if (= ec 12)
                                                       (let [r5 (infer-expr (vector-get node 6) env s4 counter)]
                                                         (if (= (result-failed r5) 1)
-                                                          (make-error-result)
+                                                          (propagate-error-result r5)
                                                           (let [s5 (result-subst r5)
                                                                 r6 (infer-expr (vector-get node 7) env s5 counter)]
                                                             (if (= (result-failed r6) 1)
-                                                              (make-error-result)
+                                                              (propagate-error-result r6)
                                                               (let [s6 (result-subst r6)
                                                                     r7 (infer-expr (vector-get node 8) env s6 counter)]
                                                                 (if (= (result-failed r7) 1)
-                                                                  (make-error-result)
+                                                                  (propagate-error-result r7)
                                                                   (let [s7 (result-subst r7)
                                                                         r8 (infer-expr (vector-get node 9) env s7 counter)]
                                                                     (if (= (result-failed r8) 1)
-                                                                      (make-error-result)
+                                                                      (propagate-error-result r8)
                                                                       (let [s8 (result-subst r8)
                                                                             r9 (infer-expr (vector-get node 10) env s8 counter)]
                                                                         (if (= (result-failed r9) 1)
-                                                                          (make-error-result)
+                                                                          (propagate-error-result r9)
                                                                           (infer-expr (vector-get node 13) env (result-subst r9) counter)))))))))))
                                                       (if (= ec 13)
                                                         (let [r5 (infer-expr (vector-get node 6) env s4 counter)]
                                                           (if (= (result-failed r5) 1)
-                                                            (make-error-result)
+                                                            (propagate-error-result r5)
                                                             (let [s5 (result-subst r5)
                                                                   r6 (infer-expr (vector-get node 7) env s5 counter)]
                                                               (if (= (result-failed r6) 1)
-                                                                (make-error-result)
+                                                                (propagate-error-result r6)
                                                                 (let [s6 (result-subst r6)
                                                                       r7 (infer-expr (vector-get node 8) env s6 counter)]
                                                                   (if (= (result-failed r7) 1)
-                                                                    (make-error-result)
+                                                                    (propagate-error-result r7)
                                                                     (let [s7 (result-subst r7)
                                                                           r8 (infer-expr (vector-get node 9) env s7 counter)]
                                                                       (if (= (result-failed r8) 1)
-                                                                        (make-error-result)
+                                                                        (propagate-error-result r8)
                                                                         (let [s8 (result-subst r8)
                                                                               r9 (infer-expr (vector-get node 10) env s8 counter)]
                                                                           (if (= (result-failed r9) 1)
-                                                                            (make-error-result)
+                                                                            (propagate-error-result r9)
                                                                             (let [s9 (result-subst r9)
                                                                                   r10 (infer-expr (vector-get node 11) env s9 counter)]
                                                                               (if (= (result-failed r10) 1)
-                                                                                (make-error-result)
+                                                                                (propagate-error-result r10)
                                                                                 (infer-expr (vector-get node 14) env (result-subst r10) counter)))))))))))))
-                                                        ;; 14 式以上は既存 fallback を維持
-                                                        (infer-expr (vector-get node 6) env s4 counter)))))))))))))))))))))))))))))
+                                                        (if (= ec 14)
+                                                          (let [r5 (infer-expr (vector-get node 6) env s4 counter)]
+                                                            (if (= (result-failed r5) 1)
+                                                              (propagate-error-result r5)
+                                                              (let [s5 (result-subst r5)
+                                                                    r6 (infer-expr (vector-get node 7) env s5 counter)]
+                                                                (if (= (result-failed r6) 1)
+                                                                  (propagate-error-result r6)
+                                                                  (let [s6 (result-subst r6)
+                                                                        r7 (infer-expr (vector-get node 8) env s6 counter)]
+                                                                    (if (= (result-failed r7) 1)
+                                                                      (propagate-error-result r7)
+                                                                      (let [s7 (result-subst r7)
+                                                                            r8 (infer-expr (vector-get node 9) env s7 counter)]
+                                                                        (if (= (result-failed r8) 1)
+                                                                          (propagate-error-result r8)
+                                                                          (let [s8 (result-subst r8)
+                                                                                r9 (infer-expr (vector-get node 10) env s8 counter)]
+                                                                            (if (= (result-failed r9) 1)
+                                                                              (propagate-error-result r9)
+                                                                              (let [s9 (result-subst r9)
+                                                                                    r10 (infer-expr (vector-get node 11) env s9 counter)]
+                                                                                (if (= (result-failed r10) 1)
+                                                                                  (propagate-error-result r10)
+                                                                                  (let [s10 (result-subst r10)
+                                                                                        r11 (infer-expr (vector-get node 12) env s10 counter)]
+                                                                                    (if (= (result-failed r11) 1)
+                                                                                      (propagate-error-result r11)
+                                                                                      (infer-expr (vector-get node 15) env (result-subst r11) counter)))))))))))))))
+                                                          ;; 15 式以上は既存 fallback を維持
+                                                          (infer-expr (vector-get node 6) env s4 counter))))))))))))))))))))))))))))))
 
 ;; ============================================================
 ;; infer-pattern: パターンの型推論
@@ -1049,7 +1138,7 @@
   (vector-get r 1))
 
 (defn pat-result-env [r]
-  (vector-get r 2))
+  (vector-get r 3))
 
 ;; match 式の型推論
 ;; [10, scrutinee, arm-count, pat1, body1, pat2, body2, ...]
@@ -1070,7 +1159,7 @@
             (make-error-result)
             (let [body-result (infer-expr body pat-env s2 counter)]
               (if (= (result-failed body-result) 1)
-                (make-error-result)
+                (propagate-error-result body-result)
                 (let [s3 (result-subst body-result)
                       body-ty (result-type body-result)
                       s4 (unify (apply-subst s3 result-ty) body-ty s3)]
@@ -1091,7 +1180,7 @@
         arm-count (vector-get node 2)
         scrut-result (infer-expr scrutinee env subst counter)]
     (if (= (result-failed scrut-result) 1)
-      (make-error-result)
+      (propagate-error-result scrut-result)
       (let [s1 (result-subst scrut-result)
             scrut-ty (result-type scrut-result)
             result-ty (fresh-type-var counter)]
@@ -1171,10 +1260,10 @@
         param-count (vector-get node 2)
         subst (subst-new)]
     (if (= param-count 0)
-      (let [body-node (vector-get node 3)
+        (let [body-node (vector-get node 3)
             result (infer-expr body-node env subst counter)]
         (if (= (result-failed result) 1)
-          (make-error-result)
+          (propagate-error-result result)
           (let [s (result-subst result)
                 body-ty (result-type result)
                 scheme (generalize (apply-subst s body-ty) (map-new))
@@ -1187,7 +1276,7 @@
               env1 (type-env-insert env param-hash (mono param-ty))
               result (infer-expr body-node env1 subst counter)]
           (if (= (result-failed result) 1)
-            (make-error-result)
+            (propagate-error-result result)
             (let [s (result-subst result)
                   body-ty (result-type result)
                   fun-ty (mk-fun (apply-subst s param-ty) body-ty)
@@ -1204,7 +1293,7 @@
                 env2 (type-env-insert env1 param2-hash (mono param2-ty))
                 result (infer-expr body-node env2 subst counter)]
             (if (= (result-failed result) 1)
-              (make-error-result)
+              (propagate-error-result result)
               (let [s (result-subst result)
                     body-ty (result-type result)
                     inner-fun (mk-fun (apply-subst s param2-ty) body-ty)
@@ -1225,7 +1314,7 @@
                   env3 (type-env-insert env2 param3-hash (mono param3-ty))
                   result (infer-expr body-node env3 subst counter)]
               (if (= (result-failed result) 1)
-                (make-error-result)
+                (propagate-error-result result)
                 (let [s (result-subst result)
                       body-ty (result-type result)
                       fun3 (mk-fun (apply-subst s param3-ty) body-ty)
@@ -1250,7 +1339,7 @@
                     env4 (type-env-insert env3 param4-hash (mono param4-ty))
                     result (infer-expr body-node env4 subst counter)]
                 (if (= (result-failed result) 1)
-                  (make-error-result)
+                  (propagate-error-result result)
                   (let [s (result-subst result)
                         body-ty (result-type result)
                         fun4 (mk-fun (apply-subst s param4-ty) body-ty)
@@ -1279,7 +1368,7 @@
                       env5 (type-env-insert env4 param5-hash (mono param5-ty))
                       result (infer-expr body-node env5 subst counter)]
                   (if (= (result-failed result) 1)
-                    (make-error-result)
+                    (propagate-error-result result)
                     (let [s (result-subst result)
                           body-ty (result-type result)
                           fun5 (mk-fun (apply-subst s param5-ty) body-ty)
@@ -1312,7 +1401,7 @@
                         env6 (type-env-insert env5 param6-hash (mono param6-ty))
                         result (infer-expr body-node env6 subst counter)]
                     (if (= (result-failed result) 1)
-                      (make-error-result)
+                      (propagate-error-result result)
                       (let [s (result-subst result)
                             body-ty (result-type result)
                             fun6 (mk-fun (apply-subst s param6-ty) body-ty)
@@ -1349,7 +1438,7 @@
                           env7 (type-env-insert env6 param7-hash (mono param7-ty))
                           result (infer-expr body-node env7 subst counter)]
                       (if (= (result-failed result) 1)
-                        (make-error-result)
+                        (propagate-error-result result)
                         (let [s (result-subst result)
                               body-ty (result-type result)
                               fun7 (mk-fun (apply-subst s param7-ty) body-ty)
