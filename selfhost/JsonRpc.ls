@@ -68,6 +68,9 @@
 (defn method-completion [] 20)
 (defn method-hover [] 21)
 (defn method-goto-def [] 22)
+(defn method-formatting [] 23)
+(defn method-references [] 24)
+(defn method-rename [] 25)
 
 ;; Content-Length ヘッダーのパース (簡易実装)
 ;; 実際の LSP では "Content-Length: N\r\n\r\n" の N を数値化する
@@ -77,7 +80,6 @@
 ;; === P9-6b: LSP ハンドラ実装 ===
 
 ;; 追加 LSP メソッド定数
-(defn method-formatting [] 23)
 (defn method-publish-diagnostics [] 30)
 
 ;; サーバー capabilities: [sync, hover, completion, goto-def, formatting]

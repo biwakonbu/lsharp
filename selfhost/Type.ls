@@ -16,6 +16,9 @@
 ;; 関数型: [3, param-type, return-type]
 (defn type-fun [] 3)
 
+;; レコード型: [4, name-hash, field1-hash, field1-type, ...]
+(defn type-record [] 4)
+
 ;; === 型構築 ===
 
 ;; 整数型 (hash=100, 0 は map-get のデフォルト値と衝突するため)
@@ -45,6 +48,25 @@
 ;; 関数型: param -> return
 (defn make-type-fun [param-ty ret-ty]
   (vector-push (vector-push (vector-push (vector-new 3) 3) param-ty) ret-ty))
+
+;; レコード型
+(defn make-type-record [name-hash]
+  (vector-push (vector-push (vector-new 8) 4) name-hash))
+
+;; レコード型にフィールドを追加
+(defn type-record-add-field [ty field-name-hash field-ty]
+  (vector-push (vector-push ty field-name-hash) field-ty))
+
+;; レコード型からフィールド型を取得
+(defn type-record-field-type [ty field-name-hash]
+  (type-record-field-type-loop ty field-name-hash 2 (vector-length ty)))
+
+(defn type-record-field-type-loop [ty field-name-hash idx len]
+  (if (>= idx len)
+    0
+    (if (= (vector-get ty idx) field-name-hash)
+      (vector-get ty (+ idx 1))
+      (type-record-field-type-loop ty field-name-hash (+ idx 2) len))))
 
 ;; 関数型のパラメータ型を取得
 (defn type-fun-param [ty]

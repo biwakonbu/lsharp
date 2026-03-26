@@ -1,5 +1,6 @@
 (module DocTools)
 (import AST)
+(import Parser)
 
 ;; DocTools.ls - L# 製ドキュメントツール
 ;;
@@ -15,14 +16,16 @@
 ;; AC-408: 同一入力に対し常に同一の出力を返す (deterministic)
 ;; AC-409: タイムスタンプ、ホスト名、絶対パスを含まない
 (defn generate [ast opts]
-  (let [doc (vector-new 4)]
+  (let [doc (vector-new 4)
+        functions (extract-public-functions ast)
+        types (extract-type-definitions ast)]
     (vector-push
       (vector-push
         (vector-push
           (vector-push doc 0)   ;; title
           0)                     ;; body
-        0)                       ;; functions
-      0)))                       ;; types
+        (vector-length functions)) ;; functions
+      (vector-length types))))    ;; types
 
 ;; gen-doc: generate のエイリアス (互換用)
 (defn gen-doc [ast]
@@ -30,17 +33,82 @@
 
 ;; doc-generate: generate のエイリアス (CLI 統合用)
 (defn doc-generate [file-path opts]
-  0)
+  (filter-env-dependent
+    (generate (parse-program (read-file file-path)) opts)))
+
+;; doc-summary-size: 現在の deterministic doc structure の slot 数
+(defn doc-summary-size [ast opts]
+  4)
+
+;; doc-file-summary-size: file-path 版の deterministic doc summary
+(defn doc-file-summary-size [file-path opts]
+  4)
 
 ;; === モジュールドキュメント抽出 ===
 
+;; type 系の宣言タグかどうかを返す
+(defn type-definition-tag? [tag]
+  (if (= tag (ast-type-decl))
+    1
+    (if (= tag (ast-recorddef))
+      1
+      (if (= tag (ast-typealias))
+        1
+        (if (= tag (ast-typeconstrained))
+          1
+          0)))))
+
 ;; モジュール内の公開関数リストを抽出
 (defn extract-public-functions [ast]
-  (vector-new 0))
+  (extract-public-functions-loop ast (vector-new 0) 0 (vector-length ast)))
+
+(defn extract-public-functions-loop [ast result idx count]
+  (if (>= idx count)
+    result
+    (let [decl (vector-get ast idx)
+          next-result (extract-public-functions-decl decl result)]
+      (extract-public-functions-loop ast next-result (+ idx 1) count))))
+
+(defn extract-public-functions-decl [decl result]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (vector-push result decl)
+      (if (= tag (ast-module-decl))
+        (extract-public-functions-module-body decl result 0 (vector-get decl 2))
+        result))))
+
+(defn extract-public-functions-module-body [decl result idx count]
+  (if (>= idx count)
+    result
+    (let [inner-decl (vector-get decl (+ idx 3))
+          next-result (extract-public-functions-decl inner-decl result)]
+      (extract-public-functions-module-body decl next-result (+ idx 1) count))))
 
 ;; モジュール内の型定義リストを抽出
 (defn extract-type-definitions [ast]
-  (vector-new 0))
+  (extract-type-definitions-loop ast (vector-new 0) 0 (vector-length ast)))
+
+(defn extract-type-definitions-loop [ast result idx count]
+  (if (>= idx count)
+    result
+    (let [decl (vector-get ast idx)
+          next-result (extract-type-definitions-decl decl result)]
+      (extract-type-definitions-loop ast next-result (+ idx 1) count))))
+
+(defn extract-type-definitions-decl [decl result]
+  (let [tag (vector-get decl 0)]
+    (if (= (type-definition-tag? tag) 1)
+      (vector-push result decl)
+      (if (= tag (ast-module-decl))
+        (extract-type-definitions-module-body decl result 0 (vector-get decl 2))
+        result))))
+
+(defn extract-type-definitions-module-body [decl result idx count]
+  (if (>= idx count)
+    result
+    (let [inner-decl (vector-get decl (+ idx 3))
+          next-result (extract-type-definitions-decl inner-decl result)]
+      (extract-type-definitions-module-body decl next-result (+ idx 1) count))))
 
 ;; :doc メタデータからドキュメント文字列を抽出
 (defn extract-doc-metadata [decl]
@@ -63,9 +131,10 @@
 
 ;; 検証用 main
 (defn main []
-  (let [doc (generate 0 0)
-        entries (extract-public-functions 0)]
+  (let [program (parse-program "(defn main [] 42) (type Doc Int)")
+        doc (generate program 0)
+        entries (extract-public-functions program)]
     (do
       (print (vector-length doc))      ;; 4
-      (print (vector-length entries))  ;; 0
+      (print (vector-length entries))  ;; 1
       0)))

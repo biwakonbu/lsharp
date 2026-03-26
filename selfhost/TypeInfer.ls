@@ -42,6 +42,7 @@
 (defn ty-con [] 1)
 (defn ty-var [] 2)
 (defn ty-fun [] 3)
+(defn ty-record [] 4)
 
 ;; 型コンストラクタの名前ハッシュ
 (defn hash-int [] 100)
@@ -237,12 +238,21 @@
 
 ;; field access の型推論
 ;; [13, expr, field-name-hash]
-;; 最小版: base 式だけ推論し、結果型は fresh var にする
+;; record 型なら対応フィールド型を返し、不明なら fresh var へ fallback する
 (defn infer-fieldaccess [node env subst counter]
-  (let [base-result (infer-expr (vector-get node 1) env subst counter)]
+  (let [field-name-hash (vector-get node 2)
+        base-result (infer-expr (vector-get node 1) env subst counter)]
     (if (= (result-failed base-result) 1)
       (make-error-result)
-      (make-result (result-subst base-result) (fresh-type-var counter)))))
+      (let [s1 (result-subst base-result)
+            base-ty (apply-subst s1 (result-type base-result))
+            field-ty
+              (if (= (ty-tag base-ty) (ty-record))
+                (type-record-field-type base-ty field-name-hash)
+                0)]
+        (if (= field-ty 0)
+          (make-result s1 (fresh-type-var counter))
+          (make-result s1 (apply-subst s1 field-ty)))))))
 
 ;; record update の型推論
 ;; [14, base-expr, field-count, field1-hash, expr1, ...]
@@ -434,6 +444,33 @@
 ;; 戻り値:
 ;;   [subst, type, updated-env] - 更新された置換、パターンの型、束縛追加後の環境
 
+(defn pattern-children-subst [r]
+  (vector-get r 0))
+
+(defn pattern-children-env [r]
+  (vector-get r 1))
+
+;; subpattern 群を左から処理して binder env を積み上げる
+;; base-index + idx * stride が subpattern の位置
+(defn infer-pattern-children [node idx count base-index stride env subst counter]
+  (if (>= idx count)
+    (vector-push (vector-push (vector-new 2) subst) env)
+    (let [child (vector-get node (+ base-index (* idx stride)))
+          child-info (infer-pattern child env subst counter)
+          child-subst (pat-result-subst child-info)
+          child-env (pat-result-env child-info)]
+      (if (= (map-get child-subst -1) 1)
+        (vector-push (vector-push (vector-new 2) child-subst) child-env)
+        (infer-pattern-children
+          node
+          (+ idx 1)
+          count
+          base-index
+          stride
+          child-env
+          child-subst
+          counter)))))
+
 (defn infer-pattern [pat env subst counter]
   (let [tag (vector-get pat 0)]
     (if (= tag 1)
@@ -460,16 +497,31 @@
                 (if (= ctor-scheme 0)
                   ;; 未定義コンストラクタ: エラー
                   (vector-push (make-error-result) env)
-                  ;; コンストラクタの型を具体化して返す
-                  (let [ctor-ty (instantiate ctor-scheme counter)]
-                    (vector-push (make-result subst ctor-ty) env))))
+                  (let [sub-count (vector-get pat 2)
+                        child-info
+                          (infer-pattern-children
+                            pat 0 sub-count 3 1 env subst counter)
+                        child-subst (pattern-children-subst child-info)
+                        child-env (pattern-children-env child-info)]
+                    (if (= (map-get child-subst -1) 1)
+                      (vector-push (make-error-result) child-env)
+                      ;; コンストラクタの型を具体化して返す
+                      (let [ctor-ty (instantiate ctor-scheme counter)]
+                        (vector-push (make-result child-subst ctor-ty) child-env))))))
               (if (= tag 12)
                 ;; レコードパターン
                 ;; [12, field-count, field-hash1, sub-pat1, ...]
-                ;; 簡易版: 各フィールドに新しい型変数を割り当て
                 (let [fc (vector-get pat 1)
-                      ty (fresh-type-var counter)]
-                  (vector-push (make-result subst ty) env))
+                      child-info
+                        (infer-pattern-children
+                          pat 0 fc 3 2 env subst counter)
+                      child-subst (pattern-children-subst child-info)
+                      child-env (pattern-children-env child-info)]
+                  (if (= (map-get child-subst -1) 1)
+                    (vector-push (make-error-result) child-env)
+                    ;; レコード全体の型はまだ最小版として fresh var
+                    (let [ty (fresh-type-var counter)]
+                      (vector-push (make-result child-subst ty) child-env))))
                 ;; 未知のパターン: 新しい型変数 (ワイルドカード扱い)
                  (let [ty (fresh-type-var counter)]
                    (vector-push (make-result subst ty) env))))))))))

@@ -160,6 +160,65 @@ fn selfhost_main_path() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost/Main.ls")
 }
 
+/// selfhost/Cli.ls を直接実行するための最小 runtime bundle
+fn selfhost_cli_runtime_bundle() -> String {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+        .expect("selfhost/Parser.ls が読み込めない");
+    let ir_ls = std::fs::read_to_string(project_root.join("selfhost/IR.ls"))
+        .expect("selfhost/IR.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let compiler_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Compiler.ls"))
+            .expect("selfhost/Compiler.ls が読み込めない");
+    let wasm_emit_ls =
+        std::fs::read_to_string(project_root.join("selfhost/WasmEmit.ls"))
+            .expect("selfhost/WasmEmit.ls が読み込めない");
+    let formatter_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Formatter.ls"))
+            .expect("selfhost/Formatter.ls が読み込めない");
+    let test_runner_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TestRunner.ls"))
+            .expect("selfhost/TestRunner.ls が読み込めない");
+    let doc_tools_ls =
+        std::fs::read_to_string(project_root.join("selfhost/DocTools.ls"))
+            .expect("selfhost/DocTools.ls が読み込めない");
+    let cli_ls = std::fs::read_to_string(project_root.join("selfhost/Cli.ls"))
+        .expect("selfhost/Cli.ls が読み込めない");
+
+    format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        token_ls,
+        ast_ls,
+        lexer_ls,
+        parser_ls,
+        ir_ls,
+        type_ls,
+        type_scheme_ls,
+        type_infer_ls,
+        compiler_ls,
+        wasm_emit_ls,
+        formatter_ls,
+        test_runner_ls,
+        doc_tools_ls,
+        cli_ls
+    )
+}
+
 /// エントリ `.ls` ファイルから依存を解決してコンパイルし、WASI 実行結果を返す
 fn compile_and_run_file(path: &std::path::Path) -> String {
     try_compile_and_run_file(path).unwrap()
@@ -6992,9 +7051,65 @@ fn test_e2e_selfhost_parser_field_access_expr() {
     assert_eq!(lines[3], "1", "fieldaccess field hash が一致すべき");
 }
 
-/// selfhost TypeInfer.ls テスト: field access は最小推論として fresh var を返せる
+/// selfhost TypeInfer.ls テスト: record type が分かる field access は実フィールド型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_field_access() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        point-hash 700
+        point-var 1001
+        field-x 120
+        field-y 121
+        point-ty
+          (type-record-add-field
+            (type-record-add-field
+              (make-type-record point-hash)
+              field-x
+              (mk-int))
+            field-y
+            (mk-bool))
+        env (type-env-insert env0 point-var (mono point-ty))
+        node (make-fieldaccess (make-var point-var) field-x)
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "fieldaccess typeinfer 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "0", "fieldaccess infer は失敗すべきでない");
+    assert_eq!(lines[1], "1", "fieldaccess infer の型タグは Con であるべき");
+    assert_eq!(lines[2], "100", "fieldaccess infer の型名は Int hash=100 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: record type が分からない field access は fresh var fallback を返せる
+#[test]
+fn test_e2e_selfhost_typeinfer_field_access_fallback_var() {
     let project_root =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
@@ -7033,10 +7148,20 @@ fn test_e2e_selfhost_typeinfer_field_access() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "fieldaccess typeinfer 出力が不足: {:?}", lines);
-    assert_eq!(lines[0], "0", "fieldaccess infer は失敗すべきでない");
-    assert_eq!(lines[1], "2", "fieldaccess infer の型タグは fresh Var であるべき");
-    assert_eq!(lines[2], "1000", "fieldaccess infer の型変数 ID は 1000 であるべき");
+    assert!(
+        lines.len() >= 3,
+        "fieldaccess fallback typeinfer 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "0", "fieldaccess fallback infer は失敗すべきでない");
+    assert_eq!(
+        lines[1], "2",
+        "fieldaccess fallback infer の型タグは fresh Var であるべき"
+    );
+    assert_eq!(
+        lines[2], "1000",
+        "fieldaccess fallback infer の型変数 ID は 1000 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: match の var pattern binder を body で参照できる
@@ -7089,6 +7214,133 @@ fn test_e2e_selfhost_typeinfer_match_var_binder() {
     assert_eq!(lines[0], "0", "match binder infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "match binder infer の型タグは Con であるべき");
     assert_eq!(lines[2], "100", "match binder infer の型名は Int hash=100 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: match の record pattern binder を body で参照できる
+#[test]
+fn test_e2e_selfhost_typeinfer_match_record_pattern_binder() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        point-hash 700
+        point-var 1001
+        field-x 120
+        x-hash 1200
+        env (type-env-insert env0 point-var (mono (mk-con point-hash)))
+        pat (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 4) 12)
+                  1)
+                field-x)
+              (make-var x-hash))
+        node (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 5) 10)
+                     (make-var point-var))
+                   1)
+                 pat)
+               (make-var x-hash))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "match record binder 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "0", "match record binder infer は失敗すべきでない");
+    assert_eq!(lines[1], "2", "match record binder infer の型タグは Var であるべき");
+    assert_eq!(lines[2], "1001", "match record binder infer の型変数 ID は 1001 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: match の constructor pattern binder を body で参照できる
+#[test]
+fn test_e2e_selfhost_typeinfer_match_constructor_pattern_binder() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        some-hash 800
+        ctor-hash 1300
+        value-hash 1301
+        x-hash 1200
+        env1 (type-env-insert env0 ctor-hash (mono (mk-con some-hash)))
+        env (type-env-insert env1 value-hash (mono (mk-con some-hash)))
+        pat (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 4) 11)
+                  ctor-hash)
+                1)
+              (make-var x-hash))
+        node (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 5) 10)
+                     (make-var value-hash))
+                   1)
+                 pat)
+               (make-var x-hash))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "match constructor binder 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "0", "match constructor binder infer は失敗すべきでない");
+    assert_eq!(lines[1], "2", "match constructor binder infer の型タグは Var であるべき");
+    assert_eq!(lines[2], "1001", "match constructor binder infer の型変数 ID は 1001 であるべき");
 }
 
 /// selfhost TypeInfer.ls テスト: 変数束縛の型推論
@@ -12253,6 +12505,664 @@ fn test_e2e_selfhost_cli_repl_lsp_fmt() {
     }
 }
 
+/// TEST-CLI-01-B: selfhost/Cli.ls の --help 相当出力が主要コマンドを列挙できること
+///
+/// T4a-2 AC-104/AC-106: help 出力が usage とサブコマンド一覧を含むこと
+#[test]
+fn test_e2e_selfhost_cli_help_output() {
+    let harness = r#"
+(defn main []
+  (do
+    (show-help)
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+
+    assert!(
+        output.contains("Usage: lsharp <command>"),
+        "help 出力に usage 行が必要: {:?}",
+        output
+    );
+    for cmd in [
+        "parse",
+        "check",
+        "compile",
+        "build",
+        "test",
+        "review",
+        "doc-ack",
+        "doc-check",
+        "install",
+        "repl",
+        "lsp",
+        "fmt",
+        "doc",
+    ] {
+        assert!(
+            output.contains(cmd),
+            "help 出力に '{}' が必要: {:?}",
+            cmd,
+            output
+        );
+    }
+}
+
+/// TEST-CLI-01-C: selfhost/Cli.ls の --version 相当出力が `lsharp x.y.z` 形式であること
+///
+/// T4a-2 AC-105: version 出力形式を固定する
+#[test]
+fn test_e2e_selfhost_cli_version_output() {
+    let harness = r#"
+(defn main []
+  (do
+    (show-version)
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+
+    assert_eq!(output.trim(), "lsharp 0.1.0");
+}
+
+/// TEST-CLI-02-D: selfhost/Cli.ls の parse core helper が source を parse できること
+///
+/// CLI-02 の最小 tranche として、file I/O 抜きで parse-program を CLI helper へ接続する。
+#[test]
+fn test_e2e_selfhost_cli_parse_source_core() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-parse-source "(defn main [] 42)" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 4,
+        "cli parse core 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "program decl-count は 1 であるべき");
+    assert_eq!(lines[1], "20", "先頭 decl は defn tag=20 であるべき");
+    assert_eq!(lines[2], "1", "defn body は lit-int tag=1 であるべき");
+    assert_eq!(lines[3], "0", "run-parse-source の終了コードは success であるべき");
+}
+
+/// TEST-CLI-02-E: selfhost/Cli.ls の check core helper が source を型推論できること
+///
+/// CLI-02 の最小 tranche として、file I/O 抜きで TypeInfer.infer を CLI helper へ接続する。
+#[test]
+fn test_e2e_selfhost_cli_check_source_core() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-check-source "(defn main [] 42)" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "cli check core 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "check 結果の型タグは Con=1 であるべき");
+    assert_eq!(lines[1], "100", "check 結果の型名は Int=100 であるべき");
+    assert_eq!(lines[2], "0", "run-check-source の終了コードは success であるべき");
+}
+
+/// TEST-CLI-02-F: selfhost/Cli.ls の run-parse が file-path から source を読めること
+#[test]
+fn test_e2e_selfhost_cli_parse_file_handler() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_parse_file_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-parse "input.ls" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 4,
+        "cli parse file handler 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "program decl-count は 1 であるべき");
+    assert_eq!(lines[1], "20", "先頭 decl は defn tag=20 であるべき");
+    assert_eq!(lines[2], "1", "defn body は lit-int tag=1 であるべき");
+    assert_eq!(lines[3], "0", "run-parse の終了コードは success であるべき");
+}
+
+/// TEST-CLI-02-G: selfhost/Cli.ls の run-check が file-path から source を読めること
+#[test]
+fn test_e2e_selfhost_cli_check_file_handler() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_check_file_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-check "input.ls" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "cli check file handler 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "check 結果の型タグは Con=1 であるべき");
+    assert_eq!(lines[1], "100", "check 結果の型名は Int=100 であるべき");
+    assert_eq!(lines[2], "0", "run-check の終了コードは success であるべき");
+}
+
+/// TEST-CLI-02-H: selfhost/Cli.ls の file-path handler は missing file を compile error で返す
+#[test]
+fn test_e2e_selfhost_cli_file_handler_missing_file() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_missing_file_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-parse "missing.ls" 0))
+    (print (run-check "missing.ls" 0))
+    (print (run-build "missing.ls" 0))
+    (print (run-test "missing.ls" 0))
+    (print (run-review "missing.ls" 0))
+    (print (run-fmt "missing.ls" 0))
+    (print (run-compile "missing.ls" 0))
+    (print (run-doc-ack "missing.ls" 0))
+    (print (run-doc-check "missing.ls" 0))
+    (print (run-doc "missing.ls" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "1", "1", "1", "1", "1", "1", "1", "1", "1"],
+        "missing file は parse/check/build/test/review/fmt/compile/doc-ack/doc-check/doc とも compile error=1 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-I: selfhost/Cli.ls の arg-parse がコマンド文字列を command id へ変換できること
+#[test]
+fn test_e2e_selfhost_cli_arg_parse_strings() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (arg-parse "parse"))
+    (print (arg-parse "check"))
+    (print (arg-parse "compile"))
+    (print (arg-parse "doc"))
+    (print (arg-parse "unknown"))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "2", "3", "13", "0"],
+        "arg-parse は既知コマンドを対応する id へ変換し、未知コマンドは 0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-J: selfhost/Cli.ls の run-fmt-source が format-program を呼べること
+#[test]
+fn test_e2e_selfhost_cli_fmt_source_core() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-fmt-source "(defn main [] 42)" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "0"],
+        "run-fmt-source は format-program の fingerprint=1 と success=0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-K: selfhost/Cli.ls の run-fmt が file-path から source を読めること
+#[test]
+fn test_e2e_selfhost_cli_fmt_file_handler() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_fmt_file_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-fmt "input.ls" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "0"],
+        "run-fmt は format-program の fingerprint=1 と success=0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-L: selfhost/Cli.ls の run-compile-source が compile PoC を呼べること
+#[test]
+fn test_e2e_selfhost_cli_compile_source_core() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-compile-source "(defn main [] 42)" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 2, "run-compile-source 出力が不足: {:?}", lines);
+    let wasm_size: i64 = lines[0].parse().expect("wasm size は整数であるべき");
+    assert!(wasm_size > 8, "wasm size は header 超であるべき: {}", wasm_size);
+    assert_eq!(lines[1], "0", "run-compile-source の終了コードは success であるべき");
+}
+
+/// TEST-CLI-02-M: selfhost/Cli.ls の run-compile が file-path から source を読めること
+#[test]
+fn test_e2e_selfhost_cli_compile_file_handler() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_compile_file_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-compile "input.ls" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 2, "run-compile 出力が不足: {:?}", lines);
+    let wasm_size: i64 = lines[0].parse().expect("wasm size は整数であるべき");
+    assert!(wasm_size > 8, "wasm size は header 超であるべき: {}", wasm_size);
+    assert_eq!(lines[1], "0", "run-compile の終了コードは success であるべき");
+}
+
+/// TEST-CLI-02-M2: selfhost/Cli.ls の run-build が file-path から source を読めること
+#[test]
+fn test_e2e_selfhost_cli_build_file_handler() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_build_file_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-build "input.ls" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 2, "run-build 出力が不足: {:?}", lines);
+    let wasm_size: i64 = lines[0].parse().expect("wasm size は整数であるべき");
+    assert!(wasm_size > 8, "wasm size は header 超であるべき: {}", wasm_size);
+    assert_eq!(lines[1], "0", "run-build の終了コードは success であるべき");
+}
+
+/// TEST-CLI-02-M3: selfhost/Cli.ls の run-install が package 名を受け取れること
+#[test]
+fn test_e2e_selfhost_cli_install_package_core() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-install "core" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["4", "0"],
+        "run-install は package 名長=4 と success=0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-M4: selfhost/Cli.ls の run-install は空 package を compile error にする
+#[test]
+fn test_e2e_selfhost_cli_install_empty_package() {
+    let harness = r#"
+(defn main []
+  (print (run-install "" 0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1"],
+        "run-install は空 package に compile error=1 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-M5: selfhost/Cli.ls の run-repl が warmup type を返せること
+#[test]
+fn test_e2e_selfhost_cli_repl_core() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-repl 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["100", "0"],
+        "run-repl は warmup type Int=100 と success=0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-M6: selfhost/Cli.ls の run-lsp が capability count を返せること
+#[test]
+fn test_e2e_selfhost_cli_lsp_core() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-lsp 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["4", "0"],
+        "run-lsp は capability count=4 と success=0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-N: selfhost/Cli.ls の run-test-source が TestRunner.generate-tests を呼べること
+#[test]
+fn test_e2e_selfhost_cli_test_source_core() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-test-source "(defn main [] 42)" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["0", "0", "0"],
+        "run-test-source は example=0 invariant=0 success=0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-O: selfhost/Cli.ls の run-test が file-path から source を読めること
+#[test]
+fn test_e2e_selfhost_cli_test_file_handler() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_test_file_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-test "input.ls" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["0", "0", "0"],
+        "run-test は example=0 invariant=0 success=0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-P: selfhost/Cli.ls の run-review-source が review count を返せること
+#[test]
+fn test_e2e_selfhost_cli_review_source_core() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-review-source "(defn main [] (let [x 42] 0))" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "0"],
+        "run-review-source は review count=1 と success=0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-Q: selfhost/Cli.ls の run-review が file-path から source を読めること
+#[test]
+fn test_e2e_selfhost_cli_review_file_handler() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_review_file_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] (let [x 42] 0))").unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-review "input.ls" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["1", "0"],
+        "run-review は review count=1 と success=0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-R: selfhost/Cli.ls の run-doc-source が DocTools.generate を呼べること
+#[test]
+fn test_e2e_selfhost_cli_doc_source_core() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-doc-source "(defn main [] 42)" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["4", "0"],
+        "run-doc-source は doc vector length=4 と success=0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-S: selfhost/Cli.ls の run-doc が file-path から source を読めること
+#[test]
+fn test_e2e_selfhost_cli_doc_file_handler() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_doc_file_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-doc "input.ls" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["4", "0"],
+        "run-doc は doc vector length=4 と success=0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-T: selfhost/Cli.ls の run-doc-ack が file-path から source を読めること
+#[test]
+fn test_e2e_selfhost_cli_doc_ack_file_handler() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_doc_ack_file_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-doc-ack "input.ls" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["4", "0"],
+        "run-doc-ack は doc summary size=4 と success=0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-U: selfhost/Cli.ls の run-doc-check が file-path から source を読めること
+#[test]
+fn test_e2e_selfhost_cli_doc_check_file_handler() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_doc_check_file_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-doc-check "input.ls" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["4", "0"],
+        "run-doc-check は doc summary size=4 と success=0 を返すべき"
+    );
+}
+
 /// TEST-LSP-01: selfhost/LspServer.ls 存在 + JSON-RPC dispatch 構造
 ///
 /// T4-2: L# 製 LSP の正式化 -- LspServer.ls が存在し JSON-RPC dispatch を持つこと
@@ -12340,6 +13250,147 @@ fn test_e2e_selfhost_lsp_diagnostic_ordering() {
             || source.contains("diagnostic"),
         "selfhost/LspServer.ls に diagnostics のソート/順序制御がない (AC-208)"
     );
+}
+
+/// TEST-LSP-04: selfhost/LspServer.ls の主要ハンドラが runtime で観測できること
+#[test]
+fn test_e2e_selfhost_lsp_runtime_handlers() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines[0], "4", "initialize capability count は 4 であるべき");
+    assert_eq!(lines[1], "1", "textDocumentSync=Full であるべき");
+    assert_eq!(lines[2], "1", "hoverProvider=true であるべき");
+    assert_eq!(lines[3], "1", "completionProvider=true であるべき");
+    assert_eq!(lines[4], "12", "didOpen は source length=12 を返すべき");
+    assert_eq!(lines[5], "8", "didChange は source length=8 を返すべき");
+    assert_eq!(lines[6], "1", "formatting は edit count=1 を返すべき");
+    assert_eq!(lines[7], "7", "completion は keyword count=7 を返すべき");
+    assert_eq!(lines[8], "0", "shutdown は 0 を返すべき");
+}
+
+/// TEST-LSP-05: selfhost/LspServer.ls の sort-diagnostics が 2 要素を行番号順に並べること
+#[test]
+fn test_e2e_selfhost_lsp_runtime_sort_diagnostics() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines[9], "10001", "先頭 diagnostic key は 1:1 であるべき");
+    assert_eq!(lines[10], "30002", "次の diagnostic key は 3:2 であるべき");
+}
+
+/// TEST-LSP-06: selfhost/LspServer.ls の merge-duplicate-diagnostics が同一 span を 1 件へ潰すこと
+#[test]
+fn test_e2e_selfhost_lsp_runtime_merge_duplicates() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines[11], "1", "merged diagnostics count は 1 であるべき");
+    assert_eq!(lines[12], "1", "merged diagnostics severity は高い方=1 を残すべき");
+}
+
+/// TEST-LSP-07: selfhost/LspServer.ls の navigation handler shape が runtime で観測できること
+#[test]
+fn test_e2e_selfhost_lsp_runtime_navigation_shapes() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let output = compile_and_run(&source);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines[13], "2", "hover response shape length は 2 であるべき");
+    assert_eq!(lines[14], "2", "goto-definition shape length は 2 であるべき");
+    assert_eq!(lines[15], "0", "references count は 0 であるべき");
+    assert_eq!(lines[16], "1", "rename changes length は 1 であるべき");
+}
+
+/// TEST-LSP-08: selfhost/LspServer.ls が JsonRpc method 定数で dispatch できること
+#[test]
+fn test_e2e_selfhost_lsp_runtime_jsonrpc_method_dispatch() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        init (json-rpc-dispatch (lsp-method-initialize) 0 state)
+        did-open (json-rpc-dispatch (lsp-method-did-open) 14 state)
+        did-change (json-rpc-dispatch (lsp-method-did-change) 9 state)
+        hover (json-rpc-dispatch (lsp-method-hover) 0 state)
+        goto-def (json-rpc-dispatch (lsp-method-goto-def) 0 state)
+        formatting (json-rpc-dispatch (lsp-method-formatting) 0 state)
+        completion (json-rpc-dispatch (lsp-method-completion) 0 state)
+        shutdown (json-rpc-dispatch (lsp-method-shutdown) 0 state)]
+    (do
+      (print (vector-length init))
+      (print did-open)
+      (print did-change)
+      (print (vector-length hover))
+      (print (vector-length goto-def))
+      (print (vector-length formatting))
+      (print completion)
+      (print shutdown)
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines[0], "4", "initialize dispatch は capability vector を返すべき");
+    assert_eq!(lines[1], "14", "didOpen dispatch は source length を返すべき");
+    assert_eq!(lines[2], "9", "didChange dispatch は source length を返すべき");
+    assert_eq!(lines[3], "2", "hover dispatch は response shape length=2 を返すべき");
+    assert_eq!(lines[4], "2", "goto-definition dispatch は shape length=2 を返すべき");
+    assert_eq!(lines[5], "1", "formatting dispatch は edit count=1 を返すべき");
+    assert_eq!(lines[6], "7", "completion dispatch は keyword count=7 を返すべき");
+    assert_eq!(lines[7], "0", "shutdown dispatch は 0 を返すべき");
+}
+
+/// TEST-LSP-09: selfhost/LspServer.ls の server-loop が 1 メッセージ dispatch を観測できること
+#[test]
+fn test_e2e_selfhost_lsp_runtime_server_loop_single_message() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
+        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let harness = r#"
+(defn make-loop-request [method-id params]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v method-id) params)))
+
+(defn main []
+  (let [open-req (make-loop-request (lsp-method-did-open) 15)
+        change-req (make-loop-request (lsp-method-did-change) 9)
+        completion-req (make-loop-request (lsp-method-completion) 0)]
+    (do
+      (print (server-loop open-req))
+      (print (server-loop change-req))
+      (print (server-loop completion-req))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines[0], "15", "server-loop は didOpen request を dispatch できるべき");
+    assert_eq!(lines[1], "9", "server-loop は didChange request を dispatch できるべき");
+    assert_eq!(lines[2], "7", "server-loop は completion request を dispatch できるべき");
 }
 
 /// TEST-FMT-01: selfhost/Formatter.ls に format-program / format-expr 関数が存在すること
@@ -12500,6 +13551,82 @@ fn test_e2e_selfhost_doc_deterministic_html() {
             || doctools_source.contains("doc-generate"),
         "selfhost/DocTools.ls に doc 生成関数がない"
     );
+}
+
+/// TEST-DOC-03: selfhost/DocTools.ls が top-level defn を公開関数として抽出できること
+#[test]
+fn test_e2e_selfhost_doctools_extract_public_functions_runtime() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] 42) (defn add [x y] (+ x y))")
+        entries (extract-public-functions program)]
+    (do
+      (print (vector-length entries))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["2"], "public defn 2 件を抽出できるべき");
+}
+
+/// TEST-DOC-04: selfhost/DocTools.ls が type/type-alias を抽出できること
+#[test]
+fn test_e2e_selfhost_doctools_extract_type_definitions_runtime() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(type Foo Int) (type-alias Bar Int)")
+        entries (extract-type-definitions program)]
+    (do
+      (print (vector-length entries))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["2"], "type 定義 2 件を抽出できるべき");
+}
+
+/// TEST-DOC-05: selfhost/DocTools.ls が module body の公開 defn を抽出できること
+#[test]
+fn test_e2e_selfhost_doctools_extract_module_public_functions_runtime() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(module Demo (defn visible [] 1) (private (defn hidden [] 0)))")
+        entries (extract-public-functions program)]
+    (do
+      (print (vector-length entries))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["1"], "module body の公開 defn だけを抽出できるべき");
+}
+
+/// TEST-DOC-06: selfhost/DocTools.ls が module body の type 宣言を抽出できること
+#[test]
+fn test_e2e_selfhost_doctools_extract_module_type_definitions_runtime() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(module Demo (type Thing Int) (type-alias Alias Int))")
+        entries (extract-type-definitions program)]
+    (do
+      (print (vector-length entries))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["2"], "module body の type 系宣言を抽出できるべき");
 }
 
 /// TEST-PKG-01: scripts/ に配布物作成スクリプトが存在すること
