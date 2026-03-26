@@ -453,3 +453,208 @@ fn test_e2e_selfhost_doctools_html_template_no_timestamp() {
 
     assert_eq!(lines, vec!["1", "1", "1", "1"]);
 }
+
+// === HtmlDoc 単体テスト ===
+
+/// HtmlDoc.render-function-signature が "<li>fn-{id}/{arity}</li>" 形式を返す
+#[test]
+fn test_e2e_selfhost_htmldoc_render_function_signature() {
+    let harness = r#"
+(defn main []
+  (let [func-doc (vector-push (vector-push (vector-new 2) 42) 3)
+        result (render-function-signature func-doc)]
+    (do
+      (print (if (string-eq result "<li>fn-42/3</li>") 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(output.trim(), "1");
+}
+
+/// HtmlDoc.render-type-definition が "<li>{kind}-{id}</li>" 形式を返す
+#[test]
+fn test_e2e_selfhost_htmldoc_render_type_definition() {
+    let harness = r#"
+(defn main []
+  (let [type-doc (vector-push (vector-push (vector-new 2) 99) "recorddef")
+        result (render-type-definition type-doc)]
+    (do
+      (print (if (string-eq result "<li>recorddef-99</li>") 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(output.trim(), "1");
+}
+
+/// HtmlDoc.render-module-page が <main><h1>...</h1>... 構造を持つ
+#[test]
+fn test_e2e_selfhost_htmldoc_render_module_page_structure() {
+    let harness = r#"
+(defn string-contains-loop [haystack needle i hlen nlen]
+  (if (> (+ i nlen) hlen)
+    0
+    (if (string-eq (substring haystack i (+ i nlen)) needle)
+      1
+      (string-contains-loop haystack needle (+ i 1) hlen nlen))))
+
+(defn string-contains [haystack needle]
+  (let [hlen (string-length haystack)
+        nlen (string-length needle)]
+    (if (= nlen 0)
+      1
+      (if (> nlen hlen)
+        0
+        (string-contains-loop haystack needle 0 hlen nlen)))))
+
+(defn main []
+  (let [program (parse-program "(defn add [x y] (+ x y)) (defn sub [a b] (- a b)) (type Pair Int)")
+        doc (generate-html program 0)
+        page (render-module-page doc)]
+    (do
+      ;; <main><h1> で始まる
+      (print (if (string-eq (substring page 0 10) "<main><h1>") 1 0))
+      ;; </main> で終わる
+      (let [len (string-length page)]
+        (print (if (string-eq (substring page (- len 7) len) "</main>") 1 0)))
+      ;; 関数セクションが存在する
+      (print (if (= (string-contains page "<section id=\"functions\">") 1) 1 0))
+      ;; 型セクションが存在する
+      (print (if (= (string-contains page "<section id=\"types\">") 1) 1 0))
+      ;; 関数エントリが <li> に含まれる
+      (print (if (= (string-contains page "<li>fn-") 1) 1 0))
+      ;; 型エントリが <li> に含まれる
+      (print (if (= (string-contains page "<li>type-") 1) 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines, vec!["1", "1", "1", "1", "1", "1"]);
+}
+
+/// HtmlDoc.render-html が完全な HTML ドキュメントを返し、title がエスケープされる
+#[test]
+fn test_e2e_selfhost_htmldoc_render_html_full_document() {
+    let harness = r#"
+(defn string-contains-loop [haystack needle i hlen nlen]
+  (if (> (+ i nlen) hlen)
+    0
+    (if (string-eq (substring haystack i (+ i nlen)) needle)
+      1
+      (string-contains-loop haystack needle (+ i 1) hlen nlen))))
+
+(defn string-contains [haystack needle]
+  (let [hlen (string-length haystack)
+        nlen (string-length needle)]
+    (if (= nlen 0)
+      1
+      (if (> nlen hlen)
+        0
+        (string-contains-loop haystack needle 0 hlen nlen)))))
+
+(defn main []
+  (let [program (parse-program "(defn main [] 42)")
+        doc (generate-html program 0)
+        html (render-html doc 0)]
+    (do
+      ;; <!doctype html> で始まる
+      (print (if (string-eq (substring html 0 15) "<!doctype html>") 1 0))
+      ;; <html> を含む
+      (print (if (= (string-contains html "<html>") 1) 1 0))
+      ;; <head> を含む
+      (print (if (= (string-contains html "<head>") 1) 1 0))
+      ;; <body> を含む
+      (print (if (= (string-contains html "<body>") 1) 1 0))
+      ;; </body></html> で終わる
+      (let [len (string-length html)]
+        (print (if (string-eq (substring html (- len 14) len) "</body></html>") 1 0)))
+      ;; <title> を含む
+      (print (if (= (string-contains html "<title>") 1) 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines, vec!["1", "1", "1", "1", "1", "1"]);
+}
+
+/// HtmlDoc.render-index がモジュール一覧ページを生成する
+#[test]
+fn test_e2e_selfhost_htmldoc_render_index() {
+    let harness = r#"
+(defn string-contains-loop [haystack needle i hlen nlen]
+  (if (> (+ i nlen) hlen)
+    0
+    (if (string-eq (substring haystack i (+ i nlen)) needle)
+      1
+      (string-contains-loop haystack needle (+ i 1) hlen nlen))))
+
+(defn string-contains [haystack needle]
+  (let [hlen (string-length haystack)
+        nlen (string-length needle)]
+    (if (= nlen 0)
+      1
+      (if (> nlen hlen)
+        0
+        (string-contains-loop haystack needle 0 hlen nlen)))))
+
+(defn main []
+  (let [modules (vector-push (vector-push (vector-push (vector-new 3) "Parser") "Lexer") "DocTools")
+        html (render-index modules)]
+    (do
+      ;; <!doctype html> で始まる
+      (print (if (string-eq (substring html 0 15) "<!doctype html>") 1 0))
+      ;; <h1>modules</h1> を含む
+      (print (if (= (string-contains html "<h1>modules</h1>") 1) 1 0))
+      ;; 各モジュール名が <li> に含まれる
+      (print (if (= (string-contains html "<li>Parser</li>") 1) 1 0))
+      (print (if (= (string-contains html "<li>Lexer</li>") 1) 1 0))
+      (print (if (= (string-contains html "<li>DocTools</li>") 1) 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines, vec!["1", "1", "1", "1", "1"]);
+}
+
+/// HtmlDoc: 関数も型もない場合の render-module-page
+#[test]
+fn test_e2e_selfhost_htmldoc_render_module_page_empty() {
+    let harness = r#"
+(defn string-contains-loop [haystack needle i hlen nlen]
+  (if (> (+ i nlen) hlen)
+    0
+    (if (string-eq (substring haystack i (+ i nlen)) needle)
+      1
+      (string-contains-loop haystack needle (+ i 1) hlen nlen))))
+
+(defn string-contains [haystack needle]
+  (let [hlen (string-length haystack)
+        nlen (string-length needle)]
+    (if (= nlen 0)
+      1
+      (if (> nlen hlen)
+        0
+        (string-contains-loop haystack needle 0 hlen nlen)))))
+
+(defn main []
+  (let [program (parse-program "(defn main [] 42)")
+        doc (generate-html program 0)
+        page (render-module-page doc)]
+    (do
+      ;; <main><h1> で始まる
+      (print (if (string-eq (substring page 0 10) "<main><h1>") 1 0))
+      ;; 関数セクションは存在する (main が抽出される)
+      (print (if (= (string-contains page "<section id=\"functions\">") 1) 1 0))
+      ;; 型セクションは存在しない
+      (print (if (= (string-contains page "<section id=\"types\">") 0) 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines, vec!["1", "1", "1"]);
+}

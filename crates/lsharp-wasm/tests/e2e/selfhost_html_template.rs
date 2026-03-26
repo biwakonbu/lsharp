@@ -244,3 +244,188 @@ fn test_e2e_selfhost_html_template_deterministic() {
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines, vec!["1", "1"]);
 }
+
+// === XSS 安全性テスト ===
+
+/// text ノードに <script>alert(1)</script> を入れた場合にエスケープされる
+#[test]
+fn test_e2e_selfhost_html_template_xss_text_script_tag() {
+    let harness = r#"
+(defn main []
+  (let [node (elem "div" (vector-new 0)
+              (vector-push (vector-new 1) (text "<script>alert(1)</script>")))
+        result (render-template node)]
+    (do
+      ;; <script> がエスケープされて &lt;script&gt; になるはず
+      (print (if (string-eq result "<div>&lt;script&gt;alert(1)&lt;/script&gt;</div>") 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_html_template_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(output.trim(), "1");
+}
+
+/// 属性値に " を含む場合にエスケープされる (属性値 XSS)
+#[test]
+fn test_e2e_selfhost_html_template_xss_attr_value_quote() {
+    let harness = r#"
+(defn main []
+  (let [attr (vector-push (vector-push (vector-new 2) "title") "a\"b")
+        attrs (vector-push (vector-new 1) attr)
+        node (elem "span" attrs (vector-push (vector-new 1) (text "x")))
+        result (render-template node)]
+    (do
+      ;; " が &quot; にエスケープされるはず
+      (print (if (string-eq result "<span title=\"a&quot;b\">x</span>") 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_html_template_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(output.trim(), "1");
+}
+
+/// 属性値に < を含む場合にエスケープされる (属性値 XSS)
+#[test]
+fn test_e2e_selfhost_html_template_xss_attr_value_lt() {
+    let harness = r#"
+(defn main []
+  (let [attr (vector-push (vector-push (vector-new 2) "data") "<img onerror=alert(1)>")
+        attrs (vector-push (vector-new 1) attr)
+        node (elem "div" attrs (vector-push (vector-new 1) (text "safe")))
+        result (render-template node)]
+    (do
+      ;; < > がエスケープされるはず
+      (print (if (string-eq result "<div data=\"&lt;img onerror=alert(1)&gt;\">safe</div>") 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_html_template_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(output.trim(), "1");
+}
+
+/// text ノードに全特殊文字 <>&"' を混合した場合にすべてエスケープされる
+#[test]
+fn test_e2e_selfhost_html_template_xss_all_special_chars() {
+    let harness = r#"
+(defn main []
+  (let [node (elem "p" (vector-new 0)
+              (vector-push (vector-new 1) (text "<b>\"hello\"&'world'</b>")))
+        result (render-template node)]
+    (do
+      (print (if (string-eq result "<p>&lt;b&gt;&quot;hello&quot;&amp;&#39;world&#39;&lt;/b&gt;</p>") 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_html_template_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(output.trim(), "1");
+}
+
+// === 境界値・エッジケーステスト ===
+
+/// 空文字列のエスケープ
+#[test]
+fn test_e2e_selfhost_html_template_escape_empty_string() {
+    let harness = r#"
+(defn main []
+  (let [result (html-escape "")]
+    (do
+      (print (if (string-eq result "") 1 0))
+      (print (string-length result))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_html_template_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines, vec!["1", "0"]);
+}
+
+/// 空 children の非 void 要素 → <div></div>
+#[test]
+fn test_e2e_selfhost_html_template_elem_empty_children() {
+    let harness = r#"
+(defn main []
+  (let [node (elem "div" (vector-new 0) (vector-new 0))
+        result (render-template node)]
+    (do
+      (print (if (string-eq result "<div></div>") 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_html_template_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(output.trim(), "1");
+}
+
+/// 複数属性の要素
+#[test]
+fn test_e2e_selfhost_html_template_elem_multiple_attrs() {
+    let harness = r#"
+(defn main []
+  (let [a1 (vector-push (vector-push (vector-new 2) "id") "main")
+        a2 (vector-push (vector-push (vector-new 2) "class") "container")
+        attrs (vector-push (vector-push (vector-new 2) a1) a2)
+        node (elem "div" attrs (vector-push (vector-new 1) (text "hi")))
+        result (render-template node)]
+    (do
+      (print (if (string-eq result "<div id=\"main\" class=\"container\">hi</div>") 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_html_template_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(output.trim(), "1");
+}
+
+/// 3 段ネスト <div><ul><li>deep</li></ul></div>
+#[test]
+fn test_e2e_selfhost_html_template_triple_nested() {
+    let harness = r#"
+(defn main []
+  (let [li (elem "li" (vector-new 0) (vector-push (vector-new 1) (text "deep")))
+        ul (elem "ul" (vector-new 0) (vector-push (vector-new 1) li))
+        div (elem "div" (vector-new 0) (vector-push (vector-new 1) ul))
+        result (render-template div)]
+    (do
+      (print (if (string-eq result "<div><ul><li>deep</li></ul></div>") 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_html_template_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(output.trim(), "1");
+}
+
+/// text と element の混合 children
+#[test]
+fn test_e2e_selfhost_html_template_mixed_children() {
+    let harness = r#"
+(defn main []
+  (let [t1 (text "hello ")
+        em (elem "em" (vector-new 0) (vector-push (vector-new 1) (text "world")))
+        t2 (text "!")
+        children (vector-push (vector-push (vector-push (vector-new 3) t1) em) t2)
+        node (elem "p" (vector-new 0) children)
+        result (render-template node)]
+    (do
+      (print (if (string-eq result "<p>hello <em>world</em>!</p>") 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_html_template_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(output.trim(), "1");
+}
+
+/// 連続特殊文字のエスケープ
+#[test]
+fn test_e2e_selfhost_html_template_escape_consecutive_special() {
+    let harness = r#"
+(defn main []
+  (let [result (html-escape "<<<>>>")]
+    (do
+      (print (if (string-eq result "&lt;&lt;&lt;&gt;&gt;&gt;") 1 0))
+      (print (string-length result))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_html_template_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    // "&lt;&lt;&lt;&gt;&gt;&gt;" = 4*3 + 4*3 = 24 文字
+    assert_eq!(lines, vec!["1", "24"]);
+}
