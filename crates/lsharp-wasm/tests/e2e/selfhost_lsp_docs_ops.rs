@@ -1285,11 +1285,13 @@ fn test_e2e_selfhost_formatter_roundtrip_deterministic() {
         r-let1 (format-expr let1 0)
         r-let2 (format-expr let2 0)]
     (do
-      ;; 各ペアが一致すること
-      (print (= r-if1 r-if2))    ;; 1
-      (print (= r-let1 r-let2))  ;; 1
-      ;; 合計: 2 (全ペア一致)
-      (print (+ (= r-if1 r-if2) (= r-let1 r-let2)))
+      ;; 各ペアが一致すること (Bool → Int 変換)
+      (let [match-if (if (= r-if1 r-if2) 1 0)
+            match-let (if (= r-let1 r-let2) 1 0)]
+        (do
+          (print match-if)              ;; 1
+          (print match-let)             ;; 1
+          (print (+ match-if match-let))))
       0)))
 "#;
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
