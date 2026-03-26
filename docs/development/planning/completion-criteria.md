@@ -60,10 +60,11 @@ Phase 11-2 (Native backend + bootstrap) の完了を判定するための条件�
 - 観測点は P11-2d-2 で定義した 5 点 (exit code, stdout, stderr, generated file bytes, diagnostics JSON)
 - allowlist が残っている場合は、各エントリの解消を完了条件に含める
 
-### 条件 4: 既存 Wasm backend の無回帰 [in-progress]
+### 条件 4: 既存 Wasm backend の無回帰 [done]
 - AOT backend 導入後も既存 Wasm backend の E2E テストが全件パスすること
 - E2E テスト: `crates/lsharp-wasm/tests/e2e.rs` の全テストケース
 - 新規テスト追加により E2E テスト数が減少していないこと
+- **達成**: E2E 516 passed / 1 ignored（GC soak `#[ignore]`）。テスト数は単調増加を維持。
 
 ---
 
@@ -111,7 +112,7 @@ Rust 実装の撤去 (Phase 11-3 以降) に進む前に、以下のゲートを
   - REPL (対話モード)
 - RC の検証結果を release notes に記録する
 
-### ゲート 3: rollback 手順の確定 [pending]
+### ゲート 3: rollback 手順の確定 [done]
 - Rust ベースの最後の release tag を確定する (例: `v0.x.y-rust-final`)
 - 以下を ADR に記録する:
   - 削除対象の Rust コード範囲 (クレート一覧、ファイル一覧)
@@ -119,3 +120,4 @@ Rust 実装の撤去 (Phase 11-3 以降) に進む前に、以下のゲートを
   - rollback が必要になるシナリオの列挙
   - rollback 後の CI 復旧手順
 - ADR のレビューを少なくとも 1 名が完了していること
+- **達成**: `docs/development/operations/adr-rust-removal.md`（撤去スコープ・9 段階削除順序・ロールバックシナリオ）、`docs/development/operations/rollback-procedure.md`（復旧手順）、`scripts/rollback.sh`（自動化スクリプト）を作成済み。
