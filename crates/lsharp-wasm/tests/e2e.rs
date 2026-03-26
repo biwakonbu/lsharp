@@ -7376,6 +7376,126 @@ fn test_e2e_selfhost_typeinfer_do_six_exprs_last_bool() {
     assert_eq!(lines[2], "200", "do 6 exprs の型名は Bool hash=200 であるべき");
 }
 
+/// selfhost TypeInfer.ls テスト: 7 式 do ブロックは最後の式型を返せる
+#[test]
+fn test_e2e_selfhost_typeinfer_do_seven_exprs_last_bool() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push (vector-new 9) 9)
+                        7)
+                      (make-lit-int 1))
+                    (make-lit-int 2))
+                  (make-lit-int 3))
+                (make-lit-int 4))
+              (make-lit-int 5))
+            (make-lit-int 6))
+        do-node (vector-push node (make-lit-bool 1))
+        result (infer-expr do-node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "do 7 exprs typeinfer 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "0", "do 7 exprs infer は失敗すべきでない");
+    assert_eq!(lines[1], "1", "do 7 exprs の型タグは Con であるべき");
+    assert_eq!(lines[2], "200", "do 7 exprs の型名は Bool hash=200 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: 8 式 do ブロックは最後の式型を返せる
+#[test]
+fn test_e2e_selfhost_typeinfer_do_eight_exprs_last_bool() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push (vector-new 10) 9)
+                          8)
+                        (make-lit-int 1))
+                      (make-lit-int 2))
+                    (make-lit-int 3))
+                  (make-lit-int 4))
+                (make-lit-int 5))
+              (make-lit-int 6))
+            (make-lit-int 7))
+        do-node (vector-push node (make-lit-bool 1))
+        result (infer-expr do-node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "do 8 exprs typeinfer 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "0", "do 8 exprs infer は失敗すべきでない");
+    assert_eq!(lines[1], "1", "do 8 exprs の型タグは Con であるべき");
+    assert_eq!(lines[2], "200", "do 8 exprs の型名は Bool hash=200 であるべき");
+}
+
 /// selfhost TypeInfer.ls テスト: 2 引数 lambda はカリー化された関数型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_lambda_two_params_curried() {
@@ -7673,6 +7793,140 @@ fn test_e2e_selfhost_typeinfer_apply_four_args_curried() {
     assert_eq!(lines[2], "100", "4 引数 apply の型名は Int hash=100 であるべき");
 }
 
+/// selfhost TypeInfer.ls テスト: 5 引数 apply はカリー化された関数型をたどれる
+#[test]
+fn test_e2e_selfhost_typeinfer_apply_five_args_curried() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        int-ty (mk-int)
+        f-hash 132
+        f-ty (mk-fun int-ty (mk-fun int-ty (mk-fun int-ty (mk-fun int-ty (mk-fun int-ty int-ty)))))
+        env (type-env-insert env0 f-hash (mono f-ty))
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push (vector-new 8) 5)
+                        (make-var f-hash))
+                      5)
+                    (make-lit-int 1))
+                  (make-lit-int 2))
+                (make-lit-int 3))
+              (make-lit-int 4))
+            (make-lit-int 5))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "apply five args typeinfer 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "0", "5 引数 apply infer は失敗すべきでない");
+    assert_eq!(lines[1], "1", "5 引数 apply の型タグは Con であるべき");
+    assert_eq!(lines[2], "100", "5 引数 apply の型名は Int hash=100 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: 6 引数 apply はカリー化された関数型をたどれる
+#[test]
+fn test_e2e_selfhost_typeinfer_apply_six_args_curried() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        int-ty (mk-int)
+        f-hash 133
+        f-ty (mk-fun int-ty (mk-fun int-ty (mk-fun int-ty (mk-fun int-ty (mk-fun int-ty (mk-fun int-ty int-ty))))))
+        env (type-env-insert env0 f-hash (mono f-ty))
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push (vector-new 9) 5)
+                          (make-var f-hash))
+                        6)
+                      (make-lit-int 1))
+                    (make-lit-int 2))
+                  (make-lit-int 3))
+                (make-lit-int 4))
+              (make-lit-int 5))
+            (make-lit-int 6))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "apply six args typeinfer 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "0", "6 引数 apply infer は失敗すべきでない");
+    assert_eq!(lines[1], "1", "6 引数 apply の型タグは Con であるべき");
+    assert_eq!(lines[2], "100", "6 引数 apply の型名は Int hash=100 であるべき");
+}
+
 /// selfhost TypeInfer.ls テスト: 3 引数 lambda は 3 段のカリー化型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_lambda_three_params_curried() {
@@ -7893,6 +8147,147 @@ fn test_e2e_selfhost_typeinfer_lambda_four_params_curried() {
     assert_eq!(lines[12], "100", "level4 param type は Int hash=100 であるべき");
     assert_eq!(lines[13], "1", "level4 return type は Con であるべき");
     assert_eq!(lines[14], "100", "level4 return type は Int hash=100 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: 5 引数 lambda は 5 段のカリー化型になる
+#[test]
+fn test_e2e_selfhost_typeinfer_lambda_five_params_curried() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        v-hash 124
+        w-hash 123
+        x-hash 120
+        y-hash 121
+        z-hash 122
+        inner-plus
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 5)
+                  (make-var 43))
+                2)
+              (make-var w-hash))
+            (make-var v-hash))
+        level3-plus
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 5)
+                  (make-var 43))
+                2)
+              (make-var z-hash))
+            inner-plus)
+        level2-plus
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 5)
+                  (make-var 43))
+                2)
+              (make-var y-hash))
+            level3-plus)
+        body-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 5)
+                  (make-var 43))
+                2)
+              (make-var x-hash))
+            level2-plus)
+        lambda-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push (vector-new 8) 8)
+                      5)
+                    x-hash)
+                  y-hash)
+                z-hash)
+              w-hash)
+            v-hash)
+        node (vector-push lambda-node body-node)
+        result (infer-expr node env (subst-new) counter)
+        outer (result-type result)
+        level2 (ty-fr outer)
+        level3 (ty-fr level2)
+        level4 (ty-fr level3)
+        level5 (ty-fr level4)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag outer))
+      (print (ty-tag (ty-fp outer)))
+      (print (ty-name (ty-fp outer)))
+      (print (ty-tag level2))
+      (print (ty-tag (ty-fp level2)))
+      (print (ty-name (ty-fp level2)))
+      (print (ty-tag level3))
+      (print (ty-tag (ty-fp level3)))
+      (print (ty-name (ty-fp level3)))
+      (print (ty-tag level4))
+      (print (ty-tag (ty-fp level4)))
+      (print (ty-name (ty-fp level4)))
+      (print (ty-tag level5))
+      (print (ty-tag (ty-fp level5)))
+      (print (ty-name (ty-fp level5)))
+      (print (ty-tag (ty-fr level5)))
+      (print (ty-name (ty-fr level5)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 18,
+        "five-param lambda typeinfer 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "0", "five-param lambda infer は失敗すべきでない");
+    assert_eq!(lines[1], "3", "outer type は Fun であるべき");
+    assert_eq!(lines[2], "1", "outer param type は Con であるべき");
+    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(lines[4], "3", "level2 type は Fun であるべき");
+    assert_eq!(lines[5], "1", "level2 param type は Con であるべき");
+    assert_eq!(lines[6], "100", "level2 param type は Int hash=100 であるべき");
+    assert_eq!(lines[7], "3", "level3 type は Fun であるべき");
+    assert_eq!(lines[8], "1", "level3 param type は Con であるべき");
+    assert_eq!(lines[9], "100", "level3 param type は Int hash=100 であるべき");
+    assert_eq!(lines[10], "3", "level4 type は Fun であるべき");
+    assert_eq!(lines[11], "1", "level4 param type は Con であるべき");
+    assert_eq!(lines[12], "100", "level4 param type は Int hash=100 であるべき");
+    assert_eq!(lines[13], "3", "level5 type は Fun であるべき");
+    assert_eq!(lines[14], "1", "level5 param type は Con であるべき");
+    assert_eq!(lines[15], "100", "level5 param type は Int hash=100 であるべき");
+    assert_eq!(lines[16], "1", "level5 return type は Con であるべき");
+    assert_eq!(lines[17], "100", "level5 return type は Int hash=100 であるべき");
 }
 
 /// selfhost TypeInfer.ls テスト: 3 引数 defn は 3 段のカリー化型になる
@@ -8121,6 +8516,149 @@ fn test_e2e_selfhost_typeinfer_defn_four_params_curried() {
     assert_eq!(lines[12], "100", "level4 param type は Int hash=100 であるべき");
     assert_eq!(lines[13], "1", "level4 return type は Con であるべき");
     assert_eq!(lines[14], "100", "level4 return type は Int hash=100 であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: 5 引数 defn は 5 段のカリー化型になる
+#[test]
+fn test_e2e_selfhost_typeinfer_defn_five_params_curried() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        name-hash 140
+        v-hash 124
+        w-hash 123
+        x-hash 120
+        y-hash 121
+        z-hash 122
+        inner-plus
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 5)
+                  (make-var 43))
+                2)
+              (make-var w-hash))
+            (make-var v-hash))
+        level3-plus
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 5)
+                  (make-var 43))
+                2)
+              (make-var z-hash))
+            inner-plus)
+        level2-plus
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 5)
+                  (make-var 43))
+                2)
+              (make-var y-hash))
+            level3-plus)
+        body-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 5)
+                  (make-var 43))
+                2)
+              (make-var x-hash))
+            level2-plus)
+        defn-node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push (vector-new 9) 20)
+                      name-hash)
+                    5)
+                  x-hash)
+                y-hash)
+              z-hash)
+            w-hash)
+        node (vector-push defn-node v-hash)
+        node (vector-push node body-node)
+        result (infer-defn node env counter)
+        outer (result-type result)
+        level2 (ty-fr outer)
+        level3 (ty-fr level2)
+        level4 (ty-fr level3)
+        level5 (ty-fr level4)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag outer))
+      (print (ty-tag (ty-fp outer)))
+      (print (ty-name (ty-fp outer)))
+      (print (ty-tag level2))
+      (print (ty-tag (ty-fp level2)))
+      (print (ty-name (ty-fp level2)))
+      (print (ty-tag level3))
+      (print (ty-tag (ty-fp level3)))
+      (print (ty-name (ty-fp level3)))
+      (print (ty-tag level4))
+      (print (ty-tag (ty-fp level4)))
+      (print (ty-name (ty-fp level4)))
+      (print (ty-tag level5))
+      (print (ty-tag (ty-fp level5)))
+      (print (ty-name (ty-fp level5)))
+      (print (ty-tag (ty-fr level5)))
+      (print (ty-name (ty-fr level5)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 18,
+        "five-param defn typeinfer 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "0", "five-param defn infer は失敗すべきでない");
+    assert_eq!(lines[1], "3", "outer type は Fun であるべき");
+    assert_eq!(lines[2], "1", "outer param type は Con であるべき");
+    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(lines[4], "3", "level2 type は Fun であるべき");
+    assert_eq!(lines[5], "1", "level2 param type は Con であるべき");
+    assert_eq!(lines[6], "100", "level2 param type は Int hash=100 であるべき");
+    assert_eq!(lines[7], "3", "level3 type は Fun であるべき");
+    assert_eq!(lines[8], "1", "level3 param type は Con であるべき");
+    assert_eq!(lines[9], "100", "level3 param type は Int hash=100 であるべき");
+    assert_eq!(lines[10], "3", "level4 type は Fun であるべき");
+    assert_eq!(lines[11], "1", "level4 param type は Con であるべき");
+    assert_eq!(lines[12], "100", "level4 param type は Int hash=100 であるべき");
+    assert_eq!(lines[13], "3", "level5 type は Fun であるべき");
+    assert_eq!(lines[14], "1", "level5 param type は Con であるべき");
+    assert_eq!(lines[15], "100", "level5 param type は Int hash=100 であるべき");
+    assert_eq!(lines[16], "1", "level5 return type は Con であるべき");
+    assert_eq!(lines[17], "100", "level5 return type は Int hash=100 であるべき");
 }
 
 /// selfhost AST.ls テスト: field access constructor / traversal
