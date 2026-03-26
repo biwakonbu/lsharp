@@ -1,73 +1,19 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lsharp-lang.org/schemas/doc-output.schema.json",
-  "title": "L# Doc Generator Output JSON Schema",
-  "description": "L# doc generator output schema (AC-402)",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "L# Documentation Output",
   "type": "object",
-  "required": ["modules"],
+  "required": ["module", "public_functions", "types", "html"],
   "properties": {
-    "modules": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["name", "functions"],
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Module name"
-          },
-          "doc": {
-            "type": "string",
-            "description": "Module documentation"
-          },
-          "functions": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["name", "signature"],
-              "properties": {
-                "name": { "type": "string" },
-                "signature": { "type": "string" },
-                "doc": { "type": "string" },
-                "examples": {
-                  "type": "array",
-                  "items": { "type": "string" }
-                },
-                "parameters": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "name": { "type": "string" },
-                      "type": { "type": "string" },
-                      "doc": { "type": "string" }
-                    }
-                  }
-                },
-                "return_type": { "type": "string" }
-              }
-            }
-          },
-          "types": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["name"],
-              "properties": {
-                "name": { "type": "string" },
-                "doc": { "type": "string" },
-                "variants": {
-                  "type": "array",
-                  "items": { "type": "string" }
-                }
-              }
-            }
-          }
-        }
+    "module": { "type": "string" },
+    "public_functions": { "type": "integer" },
+    "types": { "type": "integer" },
+    "html": {
+      "type": "object",
+      "required": ["title", "sections"],
+      "properties": {
+        "title": { "type": "string" },
+        "sections": { "type": "integer" }
       }
-    },
-    "version": {
-      "type": "string"
     }
   },
   "additionalProperties": false

@@ -1,41 +1,34 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lsharp-lang.org/schemas/knowledge.schema.json",
-  "title": "L# Knowledge JSON Schema",
-  "description": "L# knowledge base entry schema (AC-400)",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "L# Knowledge Base Entry",
   "type": "object",
-  "required": ["id", "title", "content", "category"],
+  "required": ["module", "functions", "types"],
   "properties": {
-    "id": {
-      "type": "string",
-      "description": "Knowledge entry identifier"
-    },
-    "title": {
-      "type": "string",
-      "description": "Entry title"
-    },
-    "content": {
-      "type": "string",
-      "description": "Entry content in markdown format"
-    },
-    "category": {
-      "type": "string",
-      "enum": ["language", "stdlib", "compiler", "toolchain", "runtime"],
-      "description": "Knowledge category"
-    },
-    "tags": {
+    "module": { "type": "string" },
+    "functions": {
       "type": "array",
-      "items": { "type": "string" },
-      "description": "Search tags"
+      "items": {
+        "type": "object",
+        "required": ["name", "arity"],
+        "properties": {
+          "name": { "type": "string" },
+          "arity": { "type": "integer" },
+          "doc": { "type": "string" },
+          "params": { "type": "array", "items": { "type": "string" } },
+          "returns": { "type": "string" }
+        }
+      }
     },
-    "related": {
+    "types": {
       "type": "array",
-      "items": { "type": "string" },
-      "description": "Related knowledge entry IDs"
-    },
-    "version": {
-      "type": "string",
-      "description": "Schema version"
+      "items": {
+        "type": "object",
+        "required": ["name", "kind"],
+        "properties": {
+          "name": { "type": "string" },
+          "kind": { "type": "string", "enum": ["type", "recorddef", "typealias", "typeconstrained"] }
+        }
+      }
     }
   },
   "additionalProperties": false

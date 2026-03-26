@@ -1,73 +1,23 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lsharp-lang.org/schemas/review.schema.json",
-  "title": "L# Review Output JSON Schema",
-  "description": "L# code review output schema (AC-401)",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "L# Code Review Output",
   "type": "object",
-  "required": ["file", "diagnostics", "summary"],
+  "required": ["source", "diagnostics"],
   "properties": {
-    "file": {
-      "type": "string",
-      "description": "Reviewed file path"
-    },
+    "source": { "type": "string" },
     "diagnostics": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["severity", "rule_id", "message", "range"],
+        "required": ["severity", "message", "line"],
         "properties": {
-          "severity": {
-            "type": "string",
-            "enum": ["error", "warning", "info", "hint"]
-          },
-          "rule_id": {
-            "type": "string",
-            "pattern": "^[A-Z][0-9]{4}$",
-            "description": "Rule identifier (e.g., L0001, E0001)"
-          },
-          "message": {
-            "type": "string"
-          },
-          "range": {
-            "type": "object",
-            "required": ["start", "end"],
-            "properties": {
-              "start": {
-                "type": "object",
-                "required": ["line", "character"],
-                "properties": {
-                  "line": { "type": "integer", "minimum": 0 },
-                  "character": { "type": "integer", "minimum": 0 }
-                }
-              },
-              "end": {
-                "type": "object",
-                "required": ["line", "character"],
-                "properties": {
-                  "line": { "type": "integer", "minimum": 0 },
-                  "character": { "type": "integer", "minimum": 0 }
-                }
-              }
-            }
-          },
-          "source": {
-            "type": "string",
-            "enum": ["parse", "type", "lint"]
-          }
+          "severity": { "type": "string", "enum": ["error", "warning", "info", "hint"] },
+          "message": { "type": "string" },
+          "line": { "type": "integer" },
+          "column": { "type": "integer" },
+          "code": { "type": "string" }
         }
       }
-    },
-    "summary": {
-      "type": "object",
-      "properties": {
-        "total": { "type": "integer" },
-        "errors": { "type": "integer" },
-        "warnings": { "type": "integer" },
-        "info": { "type": "integer" }
-      }
-    },
-    "version": {
-      "type": "string"
     }
   },
   "additionalProperties": false
