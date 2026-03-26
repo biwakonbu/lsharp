@@ -128,20 +128,48 @@
 ;; AC-208: source フィールドでグルーピング → 行番号昇順
 ;; AC-209: 同一 span の重複は severity 高い方のみ残す
 ;; AC-211: 決定的 (deterministic) な順序を保証
+
+;; 挿入ソートの内側ループ: sorted の idx 位置に elem を挿入する場所を見つけて挿入
+;; result: sorted の先頭 idx 要素を保持し、elem をキー順で挿入した新 Vector を返す
+(defn sort-diag-insert [sorted elem elem-key idx]
+  (if (= idx 0)
+    ;; 先頭に挿入
+    (let [out (vector-new (+ (vector-length sorted) 1))
+          out (vector-push out elem)]
+      (sort-diag-copy sorted 0 (vector-length sorted) out))
+    (let [prev (vector-get sorted (- idx 1))
+          prev-key (diagnostic-order-key prev)]
+      (if (< elem-key prev-key)
+        ;; まだ前に移動する必要がある
+        (sort-diag-insert sorted elem elem-key (- idx 1))
+        ;; ここに挿入: 0..idx をコピー → elem → idx..len をコピー
+        (let [out (vector-new (+ (vector-length sorted) 1))
+              out (sort-diag-copy sorted 0 idx out)
+              out (vector-push out elem)]
+          (sort-diag-copy sorted idx (vector-length sorted) out))))))
+
+;; sorted の from..to をコピーして out に追加する
+(defn sort-diag-copy [src from to out]
+  (if (>= from to)
+    out
+    (sort-diag-copy src (+ from 1) to (vector-push out (vector-get src from)))))
+
+;; 挿入ソートの外側ループ: diagnostics の idx 番目から順に sorted に挿入
+(defn sort-diag-loop [diagnostics sorted idx len]
+  (if (>= idx len)
+    sorted
+    (let [elem (vector-get diagnostics idx)
+          elem-key (diagnostic-order-key elem)
+          new-sorted (sort-diag-insert sorted elem elem-key (vector-length sorted))]
+      (sort-diag-loop diagnostics new-sorted (+ idx 1) len))))
+
 (defn sort-diagnostics [diagnostics]
-  (let [len (vector-length diagnostics)
-        sorted (vector-new len)]
-    (if (= len 0)
+  (let [len (vector-length diagnostics)]
+    (if (< len 2)
       diagnostics
-      (if (= len 1)
-        diagnostics
-        (let [diag0 (vector-get diagnostics 0)
-              diag1 (vector-get diagnostics 1)
-              key0 (diagnostic-order-key diag0)
-              key1 (diagnostic-order-key diag1)]
-          (if (< key0 key1)
-            (vector-push (vector-push sorted diag0) diag1)
-            (vector-push (vector-push sorted diag1) diag0)))))))
+      (let [first (vector-get diagnostics 0)
+            initial (vector-push (vector-new 1) first)]
+        (sort-diag-loop diagnostics initial 1 len)))))
 
 ;; 診断の重複マージ (AC-209)
 ;; 同一 span に対する重複診断は severity の高い方 (数値が小さい方) のみ残す
