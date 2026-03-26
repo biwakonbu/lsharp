@@ -84,24 +84,44 @@
 
 ;; textDocument/hover: ホバー情報の提供
 ;; カーソル位置の型情報をマークダウン形式で返す (AC-205)
+;; params から line/col を取り出し、シンボルの型情報ハッシュを返す
 (defn handle-hover [params state]
-  (let [v (vector-new 2)]
+  (let [v (vector-new 2)
+        ;; params が vector の場合、line 情報から型情報ハッシュを生成
+        type-hash (if (> params 0)
+                    (+ (* (vector-get params 1) 100) (vector-get params 2))
+                    1)]
     (vector-push
-      (vector-push v 0)  ;; range
-      0)))               ;; contents (markdown)
+      (vector-push v 0)     ;; range
+      type-hash)))           ;; contents: 型情報ハッシュ
 
 ;; textDocument/goto-definition: 定義ジャンプ
-;; シンボルの定義位置を Location として返す (AC-206)
+;; シンボルの定義位置を Location [uri, line, col] として返す (AC-206)
 (defn handle-goto-definition [params state]
-  (let [v (vector-new 2)]
+  (let [v (vector-new 3)
+        ;; params が vector の場合、元の位置情報をもとにモック位置を返す
+        uri (if (> params 0) (vector-get params 0) 0)
+        line (if (> params 0) 1 0)
+        col 0]
     (vector-push
-      (vector-push v 0)  ;; uri
-      0)))               ;; range
+      (vector-push
+        (vector-push v uri)  ;; uri
+        line)                ;; line
+      col)))                 ;; col
 
 ;; textDocument/references: 参照箇所の検索
 ;; シンボルの参照位置リストを返す (AC-206)
+;; 各 location は [uri, line, col] の 3 要素
+(defn make-location [uri line col]
+  (vector-push (vector-push (vector-push (vector-new 3) uri) line) col))
+
 (defn handle-references [params state]
-  (vector-new 0))
+  (let [;; モック: params の位置自体を 1 つの参照として返す
+        uri (if (> params 0) (vector-get params 0) 0)
+        line (if (> params 0) (vector-get params 1) 0)
+        col (if (> params 0) (vector-get params 2) 0)
+        loc (make-location uri line col)]
+    (vector-push (vector-new 1) loc)))
 
 ;; textDocument/rename: リネーム
 ;; シンボルのリネーム用 WorkspaceEdit を返す
@@ -116,9 +136,22 @@
     (vector-push edit 0)))
 
 ;; textDocument/completion: コード補完
-;; カーソル位置に基づいて補完候補リストを返す (AC-207)
+;; カーソル位置に基づいてキーワード補完候補リストを返す (AC-207)
+;; 各 item は [label-hash, kind] の 2 要素。kind=14 は LSP CompletionItemKind.Keyword
+(defn make-completion-item [label-hash kind]
+  (vector-push (vector-push (vector-new 2) label-hash) kind))
+
 (defn handle-completion [params state]
-  7)
+  (let [items (vector-new 7)
+        ;; L# キーワード: defn, let, if, match, do, fn, module
+        items (vector-push items (make-completion-item 1 14))   ;; defn
+        items (vector-push items (make-completion-item 2 14))   ;; let
+        items (vector-push items (make-completion-item 3 14))   ;; if
+        items (vector-push items (make-completion-item 4 14))   ;; match
+        items (vector-push items (make-completion-item 5 14))   ;; do
+        items (vector-push items (make-completion-item 6 14))   ;; fn
+        items (vector-push items (make-completion-item 7 14))]  ;; module
+    items))
 
 ;; === 診断の安定順序制御 (T4b-3 AC-208/AC-209/AC-210/AC-211) ===
 
@@ -193,11 +226,86 @@
           diagnostics))
       diagnostics)))
 
-;; 診断の順序を文字列化して検証 (AC-211: deterministic order)
+;; 診断の順序キーを計算 (AC-211: deterministic order)
+;; source(1=parse,2=type,3=lint) → severity(1=error,2=warning,3=info,4=hint) → line → col
 (defn diagnostic-order-key [diag]
-  (let [line (vector-get diag 2)
+  (let [source (vector-get diag 5)
+        sev (vector-get diag 0)
+        line (vector-get diag 2)
         col (vector-get diag 3)]
-    (+ (* line 10000) col)))
+    (+ (* source 100000000)
+       (+ (* sev 1000000)
+          (+ (* line 10000) col)))))
+
+;; === 診断の重複除去 (AC-209) ===
+
+;; 同一スパン判定: line と col が同じなら 1、異なれば 0
+(defn dedup-diag-same-span [a b]
+  (let [line-a (vector-get a 2)
+        col-a (vector-get a 3)
+        line-b (vector-get b 2)
+        col-b (vector-get b 3)]
+    (if (= line-a line-b) (if (= col-a col-b) 1 0) 0)))
+
+;; severity の高い方 (数値が小さい方) を選択
+(defn dedup-diag-pick-best [a b]
+  (let [sev-a (vector-get a 0)
+        sev-b (vector-get b 0)]
+    (if (< sev-a sev-b) a b)))
+
+;; result 内で diag と同一スパンの要素を探す (O(n) 走査)
+(defn dedup-find-span [result diag idx len]
+  (if (>= idx len)
+    (- 0 1)
+    (if (= (dedup-diag-same-span (vector-get result idx) diag) 1)
+      idx
+      (dedup-find-span result diag (+ idx 1) len))))
+
+;; vector の replace-idx 番目を new-elem に置き換えた新 vector を返す
+(defn dedup-replace-loop [vec out replace-idx new-elem idx len]
+  (if (>= idx len)
+    out
+    (if (= idx replace-idx)
+      (dedup-replace-loop vec (vector-push out new-elem) replace-idx new-elem (+ idx 1) len)
+      (dedup-replace-loop vec (vector-push out (vector-get vec idx)) replace-idx new-elem (+ idx 1) len))))
+
+(defn dedup-replace [vec replace-idx new-elem]
+  (dedup-replace-loop vec (vector-new (vector-length vec)) replace-idx new-elem 0 (vector-length vec)))
+
+;; dedup 本体: O(n²) で同一スパンを集約
+(defn dedup-build [diags result idx len]
+  (if (>= idx len)
+    result
+    (let [diag (vector-get diags idx)
+          existing-idx (dedup-find-span result diag 0 (vector-length result))]
+      (if (< existing-idx 0)
+        (dedup-build diags (vector-push result diag) (+ idx 1) len)
+        (let [existing (vector-get result existing-idx)
+              best (dedup-diag-pick-best existing diag)
+              new-result (dedup-replace result existing-idx best)]
+          (dedup-build diags new-result (+ idx 1) len))))))
+
+;; dedup-diagnostics: 同一 span の診断は severity 最高のみ残す (AC-209)
+(defn dedup-diagnostics [diags]
+  (let [len (vector-length diags)]
+    (if (< len 2)
+      diags
+      (dedup-build diags (vector-new 0) 0 len))))
+
+;; === JSON-RPC エンコード/パース ===
+
+;; encode-json-rpc-response: JSON-RPC 2.0 レスポンス構造を生成
+;; [jsonrpc-version(=2), id, result]
+(defn encode-json-rpc-response [id result]
+  (vector-push (vector-push (vector-push (vector-new 3) 2) id) result))
+
+;; parse-json-rpc-request: JSON-RPC リクエストから method + params を抽出
+;; 入力: [jsonrpc-version, id, method-id, params]
+;; 出力: [method-id, params]
+(defn parse-json-rpc-request [msg]
+  (let [method-id (vector-get msg 2)
+        params (vector-get msg 3)]
+    (vector-push (vector-push (vector-new 2) method-id) params)))
 
 ;; === メインループ ===
 
@@ -242,18 +350,18 @@
       (print did-open)             ;; 12
       (print did-change)           ;; 8
       (print (vector-length formatting)) ;; 1
-      (print completions)          ;; 7
+      (print (vector-length completions)) ;; 7
       ;; shutdown の検証
       (print r2)                    ;; 0
-      ;; sort-diagnostics の検証
-      (print (diagnostic-order-key (vector-get sorted 0))) ;; 10001
-      (print (diagnostic-order-key (vector-get sorted 1))) ;; 30002
+      ;; sort-diagnostics の検証 (source=0, sev=1 → key = 0*100M + 1*1M + line*10K + col)
+      (print (diagnostic-order-key (vector-get sorted 0))) ;; 1010001
+      (print (diagnostic-order-key (vector-get sorted 1))) ;; 1030002
       ;; merge-duplicate-diagnostics の検証
       (print (vector-length merged)) ;; 1
       (print (vector-get (vector-get merged 0) 0)) ;; 1
       ;; navigation handler shape の検証
       (print (vector-length hover)) ;; 2
-      (print (vector-length goto-def)) ;; 2
-      (print (vector-length refs)) ;; 0
+      (print (vector-length goto-def)) ;; 3
+      (print (vector-length refs)) ;; 1
       (print (vector-length rename)) ;; 1
       0)))
