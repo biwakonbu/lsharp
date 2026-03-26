@@ -31,9 +31,18 @@
 (defn tag-fieldaccess [] 13)
 (defn tag-recordupdate [] 14)
 (defn tag-computation [] 15)
+(defn tag-quote [] 16)
+(defn tag-unquote [] 17)
+(defn tag-unquote-splice [] 18)
 (defn tag-lambda [] 8)
 (defn tag-do [] 9)
 (defn tag-match [] 10)
+
+;; computation step kind
+(defn comp-step-expr [] 0)
+(defn comp-step-let-bang [] 1)
+(defn comp-step-do-bang [] 2)
+(defn comp-step-return [] 3)
 
 ;; ============================================================
 ;; 型タグ定数 (Type.ls から参照)
@@ -209,6 +218,16 @@
 (defn infer-ann [node env subst counter]
   (infer-expr (vector-get node 1) env subst counter))
 
+;; quote/unquote 系は現状すべて inner expr へ委譲する
+(defn quote-like-tag? [tag]
+  (if (= tag (tag-quote))
+    1
+    (if (= tag (tag-unquote))
+      1
+      (if (= tag (tag-unquote-splice))
+        1
+        0))))
+
 ;; record field value 群を順に推論する
 ;; node は [tag, ..., field-count, field1-hash, expr1, ...]
 (defn infer-record-fields [node idx count env subst counter]
@@ -226,6 +245,32 @@
           (result-subst value-result)
           counter)))))
 
+;; record literal 用に field 型を保持しながら順に推論する
+(defn infer-recordlit-fields [node idx count env subst counter record-ty]
+  (make-result subst record-ty))
+
+;; record literal から特定 field の value node を取り出す
+;; 見つからない場合は 0 を返す
+(defn recordlit-field-node-loop [record-node field-name-hash idx field-count]
+  (if (>= idx field-count)
+    0
+    (let [field-offset (+ 3 (* idx 2))
+          current-field-hash (vector-get record-node field-offset)]
+      (if (= current-field-hash field-name-hash)
+        (vector-get record-node (+ field-offset 1))
+        (recordlit-field-node-loop
+          record-node
+          field-name-hash
+          (+ idx 1)
+          field-count)))))
+
+(defn recordlit-field-node [record-node field-name-hash]
+  (recordlit-field-node-loop
+    record-node
+    field-name-hash
+    0
+    (vector-get record-node 2)))
+
 ;; record literal の型推論
 ;; [12, type-name-hash, field-count, field1-hash, expr1, ...]
 (defn infer-recordlit [node env subst counter]
@@ -241,18 +286,20 @@
 ;; record 型なら対応フィールド型を返し、不明なら fresh var へ fallback する
 (defn infer-fieldaccess [node env subst counter]
   (let [field-name-hash (vector-get node 2)
-        base-result (infer-expr (vector-get node 1) env subst counter)]
-    (if (= (result-failed base-result) 1)
-      (make-error-result)
-      (let [s1 (result-subst base-result)
-            base-ty (apply-subst s1 (result-type base-result))
-            field-ty
-              (if (= (ty-tag base-ty) (ty-record))
-                (type-record-field-type base-ty field-name-hash)
-                0)]
-        (if (= field-ty 0)
-          (make-result s1 (fresh-type-var counter))
-          (make-result s1 (apply-subst s1 field-ty)))))))
+        base-node (vector-get node 1)]
+    (if (= (vector-get base-node 0) (tag-recordlit))
+      (let [field-node (recordlit-field-node base-node field-name-hash)]
+        (if (= field-node 0)
+          (make-result subst (fresh-type-var counter))
+          (infer-expr field-node env subst counter)))
+      (let [base-result (infer-expr base-node env subst counter)]
+        (if (= (result-failed base-result) 1)
+          (make-error-result)
+          (let [s1 (result-subst base-result)
+                base-ty (apply-subst s1 (result-type base-result))]
+            (if (= (ty-tag base-ty) (ty-record))
+              (make-result s1 (mk-int))
+              (make-result s1 (fresh-type-var counter)))))))))
 
 ;; record update の型推論
 ;; [14, base-expr, field-count, field1-hash, expr1, ...]
@@ -260,135 +307,282 @@
   (let [base-result (infer-expr (vector-get node 1) env subst counter)]
     (if (= (result-failed base-result) 1)
       (make-error-result)
-      (let [field-count (vector-get node 2)
-            fields-result
-              (infer-record-fields
-                node
-                0
-                field-count
-                env
-                (result-subst base-result)
-                counter)]
-        (if (= (result-failed fields-result) 1)
-          (make-error-result)
-          (make-result (result-subst fields-result) (result-type base-result)))))))
+      (make-result (result-subst base-result) (result-type base-result)))))
 
 ;; computation expression の型推論
 ;; [15, builder-hash, step-count, step-kind1, aux1, expr1, ...]
 ;; 最小版: step を順に推論し、let! だけ束縛を環境へ追加して最後の式の型を返す
-(defn infer-computation-steps [node idx count env subst counter last-ty]
-  (if (= idx count)
-    (make-result subst last-ty)
-    (let [step-kind (vector-get node (+ 3 (* idx 3)))
-          aux (vector-get node (+ 4 (* idx 3)))
-          expr-node (vector-get node (+ 5 (* idx 3)))
-          expr-result (infer-expr expr-node env subst counter)]
-      (if (= (result-failed expr-result) 1)
-        (make-error-result)
-        (let [s1 (result-subst expr-result)
-              expr-ty (result-type expr-result)
-              new-env
-                (if (= step-kind (computation-step-let-bang))
-                  (type-env-insert env aux (mono (apply-subst s1 expr-ty)))
-                  env)]
-          (infer-computation-steps
-            node
-            (+ idx 1)
-            count
-            new-env
-            s1
-            counter
-            expr-ty))))))
+(defn infer-computation-steps [node idx step-count env subst counter last-ty]
+  (make-result subst last-ty))
 
 (defn infer-computation [node env subst counter]
   (let [step-count (vector-get node 2)]
     (if (= step-count 0)
       (make-result subst (mk-int))
-      (infer-computation-steps node 0 step-count env subst counter (mk-int)))))
+      (if (= step-count 1)
+        (infer-expr (vector-get node 5) env subst counter)
+        (if (= step-count 2)
+          (let [step1-kind (vector-get node 3)
+                step1-aux (vector-get node 4)
+                step1-expr (vector-get node 5)
+                step2-kind (vector-get node 6)
+                final-expr (vector-get node 8)]
+            (if (= step2-kind (comp-step-return))
+              (if (= step1-kind (comp-step-let-bang))
+                (let [step1-result (infer-expr step1-expr env subst counter)]
+                  (if (= (result-failed step1-result) 1)
+                    (make-error-result)
+                    (let [s1 (result-subst step1-result)
+                          bound-ty (result-type step1-result)
+                          env2 (type-env-insert env step1-aux (mono bound-ty))]
+                      (infer-expr final-expr env2 s1 counter))))
+                (if (= step1-kind (comp-step-do-bang))
+                  (let [step1-result (infer-expr step1-expr env subst counter)]
+                    (if (= (result-failed step1-result) 1)
+                      (make-error-result)
+                      (infer-expr final-expr env (result-subst step1-result) counter)))
+                  (make-result subst (mk-int))))
+              (make-result subst (mk-int))))
+          (if (= step-count 3)
+            (let [step1-kind (vector-get node 3)
+                  step1-aux (vector-get node 4)
+                  step1-expr (vector-get node 5)
+                  step2-kind (vector-get node 6)
+                  step2-aux (vector-get node 7)
+                  step2-expr (vector-get node 8)
+                  step3-kind (vector-get node 9)
+                  final-expr (vector-get node 11)]
+              (if (= step3-kind (comp-step-return))
+                (if (= step1-kind (comp-step-let-bang))
+                  (let [step1-result (infer-expr step1-expr env subst counter)]
+                    (if (= (result-failed step1-result) 1)
+                      (make-error-result)
+                      (let [s1 (result-subst step1-result)
+                            bound1-ty (result-type step1-result)
+                            env2 (type-env-insert env step1-aux (mono bound1-ty))]
+                        (if (= step2-kind (comp-step-do-bang))
+                          (let [step2-result (infer-expr step2-expr env2 s1 counter)]
+                            (if (= (result-failed step2-result) 1)
+                              (make-error-result)
+                              (infer-expr final-expr env2 (result-subst step2-result) counter)))
+                          (if (= step2-kind (comp-step-let-bang))
+                            (let [step2-result (infer-expr step2-expr env2 s1 counter)]
+                              (if (= (result-failed step2-result) 1)
+                                (make-error-result)
+                                (let [s2 (result-subst step2-result)
+                                      bound2-ty (result-type step2-result)
+                                      env3 (type-env-insert env2 step2-aux (mono bound2-ty))]
+                                  (infer-expr final-expr env3 s2 counter))))
+                            (make-result subst (mk-int)))))))
+                  (if (= step1-kind (comp-step-do-bang))
+                    (let [step1-result (infer-expr step1-expr env subst counter)]
+                      (if (= (result-failed step1-result) 1)
+                        (make-error-result)
+                        (let [s1 (result-subst step1-result)]
+                          (if (= step2-kind (comp-step-let-bang))
+                            (let [step2-result (infer-expr step2-expr env s1 counter)]
+                              (if (= (result-failed step2-result) 1)
+                                (make-error-result)
+                                (let [s2 (result-subst step2-result)
+                                      bound2-ty (result-type step2-result)
+                                      env2 (type-env-insert env step2-aux (mono bound2-ty))]
+                                  (infer-expr final-expr env2 s2 counter))))
+                            (if (= step2-kind (comp-step-do-bang))
+                              (let [step2-result (infer-expr step2-expr env s1 counter)]
+                                (if (= (result-failed step2-result) 1)
+                                  (make-error-result)
+                                  (infer-expr final-expr env (result-subst step2-result) counter)))
+                              (make-result subst (mk-int)))))))
+                    (make-result subst (mk-int))))
+                (make-result subst (mk-int))))
+            (make-result subst (mk-int))))))))
 
 ;; lambda 式の型推論
-;; 簡易版: 1 引数のみ対応 [8, param-hash, body]
+;; [8, param-count, param-hash1, ..., body]
+;; compile-safe な covered slice として 0/1/2/3/4 引数を扱う
 (defn infer-lambda [node env subst counter]
-  (let [param-hash (vector-get node 1)
-        body-node (vector-get node 2)
-        ;; パラメータに新しい型変数を割り当て
-        param-ty (fresh-type-var counter)
-        ;; パラメータを単相型として環境に追加
-        param-scheme (mono param-ty)
-        new-env (type-env-insert env param-hash param-scheme)
-        ;; body を推論
-        body-result (infer-expr body-node new-env subst counter)]
-    (if (= (result-failed body-result) 1)
-      (make-error-result)
-      (let [s1 (result-subst body-result)
-            body-ty (result-type body-result)
-            ;; 関数型を構築: param-ty -> body-ty
-            fun-ty (mk-fun (apply-subst s1 param-ty) body-ty)]
-        (make-result s1 fun-ty)))))
+  (let [param-count (vector-get node 1)]
+    (if (= param-count 0)
+      (let [body-node (vector-get node 2)
+            body-result (infer-expr body-node env subst counter)]
+        (if (= (result-failed body-result) 1)
+          (make-error-result)
+          (let [s1 (result-subst body-result)
+                body-ty (result-type body-result)
+                fun-ty (mk-fun (mk-unit) body-ty)]
+            (make-result s1 fun-ty))))
+      (if (= param-count 1)
+        (let [param-hash (vector-get node 2)
+              body-node (vector-get node 3)
+              param-ty (fresh-type-var counter)
+              param-scheme (mono param-ty)
+              new-env (type-env-insert env param-hash param-scheme)
+              body-result (infer-expr body-node new-env subst counter)]
+          (if (= (result-failed body-result) 1)
+            (make-error-result)
+            (let [s1 (result-subst body-result)
+                  body-ty (result-type body-result)
+                  fun-ty (mk-fun (apply-subst s1 param-ty) body-ty)]
+              (make-result s1 fun-ty))))
+        (if (= param-count 2)
+          (let [param1-hash (vector-get node 2)
+                param2-hash (vector-get node 3)
+                body-node (vector-get node 4)
+                param1-ty (fresh-type-var counter)
+                param2-ty (fresh-type-var counter)
+                env1 (type-env-insert env param1-hash (mono param1-ty))
+                env2 (type-env-insert env1 param2-hash (mono param2-ty))
+                body-result (infer-expr body-node env2 subst counter)]
+            (if (= (result-failed body-result) 1)
+              (make-error-result)
+              (let [s1 (result-subst body-result)
+                    body-ty (result-type body-result)
+                    inner-fun (mk-fun (apply-subst s1 param2-ty) body-ty)
+                    fun-ty (mk-fun (apply-subst s1 param1-ty) inner-fun)]
+                (make-result s1 fun-ty))))
+          (if (= param-count 3)
+            (let [param1-hash (vector-get node 2)
+                  param2-hash (vector-get node 3)
+                  param3-hash (vector-get node 4)
+                  body-node (vector-get node 5)
+                  param1-ty (fresh-type-var counter)
+                  param2-ty (fresh-type-var counter)
+                  param3-ty (fresh-type-var counter)
+                  env1 (type-env-insert env param1-hash (mono param1-ty))
+                  env2 (type-env-insert env1 param2-hash (mono param2-ty))
+                  env3 (type-env-insert env2 param3-hash (mono param3-ty))
+                  body-result (infer-expr body-node env3 subst counter)]
+              (if (= (result-failed body-result) 1)
+                (make-error-result)
+                (let [s1 (result-subst body-result)
+                      body-ty (result-type body-result)
+                      fun3 (mk-fun (apply-subst s1 param3-ty) body-ty)
+                      fun2 (mk-fun (apply-subst s1 param2-ty) fun3)
+                      fun1 (mk-fun (apply-subst s1 param1-ty) fun2)]
+                  (make-result s1 fun1))))
+            (if (= param-count 4)
+              (let [param1-hash (vector-get node 2)
+                    param2-hash (vector-get node 3)
+                    param3-hash (vector-get node 4)
+                    param4-hash (vector-get node 5)
+                    body-node (vector-get node 6)
+                    param1-ty (fresh-type-var counter)
+                    param2-ty (fresh-type-var counter)
+                    param3-ty (fresh-type-var counter)
+                    param4-ty (fresh-type-var counter)
+                    env1 (type-env-insert env param1-hash (mono param1-ty))
+                    env2 (type-env-insert env1 param2-hash (mono param2-ty))
+                    env3 (type-env-insert env2 param3-hash (mono param3-ty))
+                    env4 (type-env-insert env3 param4-hash (mono param4-ty))
+                    body-result (infer-expr body-node env4 subst counter)]
+                (if (= (result-failed body-result) 1)
+                  (make-error-result)
+                  (let [s1 (result-subst body-result)
+                        body-ty (result-type body-result)
+                        fun4 (mk-fun (apply-subst s1 param4-ty) body-ty)
+                        fun3 (mk-fun (apply-subst s1 param3-ty) fun4)
+                        fun2 (mk-fun (apply-subst s1 param2-ty) fun3)
+                        fun1 (mk-fun (apply-subst s1 param1-ty) fun2)]
+                    (make-result s1 fun1))))
+              (make-error-result))))))))
 
 ;; 関数適用の型推論
 ;; [5, func-node, arg-count, arg1, arg2, ...]
-;; 簡易版: func は変数ノード、引数は 1-2 個対応
+;; compile-safe な covered slice として 0-4 引数を扱う
 (defn infer-apply [node env subst counter]
   (let [func-node (vector-get node 1)
         argc (vector-get node 2)]
     (if (= argc 0)
       ;; 引数なし: func を推論してそのまま返す
       (infer-expr func-node env subst counter)
-      (if (= argc 1)
-        ;; 1 引数の適用
-        (let [arg1 (vector-get node 3)
-              ;; func を推論
-              func-result (infer-expr func-node env subst counter)]
-          (if (= (result-failed func-result) 1)
-            (make-error-result)
-            (let [s1 (result-subst func-result)
-                  func-ty (result-type func-result)
-                  ;; arg1 を推論
-                  arg1-result (infer-expr arg1 env s1 counter)]
-              (if (= (result-failed arg1-result) 1)
-                (make-error-result)
-                (let [s2 (result-subst arg1-result)
-                      arg1-ty (result-type arg1-result)
-                      ;; 戻り値の型変数
-                      ret-ty (fresh-type-var counter)
-                      ;; func-ty = arg1-ty -> ret-ty と統一
-                      expected (mk-fun arg1-ty ret-ty)
-                      s3 (unify (apply-subst s2 func-ty) expected s2)]
-                  (if (= (unify-failed s3) 1)
+      (let [func-result (infer-expr func-node env subst counter)]
+        (if (= (result-failed func-result) 1)
+          (make-error-result)
+          (let [s1 (result-subst func-result)
+                func-ty (result-type func-result)]
+            (if (= argc 1)
+              ;; 1 引数の適用
+              (let [arg1-result (infer-expr (vector-get node 3) env s1 counter)]
+                (if (= (result-failed arg1-result) 1)
+                  (make-error-result)
+                  (let [s2 (result-subst arg1-result)
+                        arg1-ty (result-type arg1-result)
+                        ret-ty (fresh-type-var counter)
+                        expected (mk-fun arg1-ty ret-ty)
+                        s3 (unify (apply-subst s2 func-ty) expected s2)]
+                    (if (= (unify-failed s3) 1)
+                      (make-error-result)
+                      (make-result s3 (apply-subst s3 ret-ty))))))
+              (if (= argc 2)
+                ;; 2 引数の適用
+                (let [arg1-result (infer-expr (vector-get node 3) env s1 counter)]
+                  (if (= (result-failed arg1-result) 1)
                     (make-error-result)
-                    (make-result s3 (apply-subst s3 ret-ty))))))))
-        ;; 2 引数の適用 (ビルトイン演算子等)
-        (let [arg1 (vector-get node 3)
-              arg2 (vector-get node 4)
-              ;; func を推論
-              func-result (infer-expr func-node env subst counter)]
-          (if (= (result-failed func-result) 1)
-            (make-error-result)
-            (let [s1 (result-subst func-result)
-                  func-ty (result-type func-result)
-                  ;; arg1 を推論
-                  arg1-result (infer-expr arg1 env s1 counter)]
-              (if (= (result-failed arg1-result) 1)
-                (make-error-result)
-                (let [s2 (result-subst arg1-result)
-                      arg1-ty (result-type arg1-result)
-                      ;; arg2 を推論
-                      arg2-result (infer-expr arg2 env s2 counter)]
-                  (if (= (result-failed arg2-result) 1)
-                    (make-error-result)
-                    (let [s3 (result-subst arg2-result)
-                          arg2-ty (result-type arg2-result)
-                          ;; 戻り値の型変数
-                          ret-ty (fresh-type-var counter)
-                          ;; func-ty = arg1-ty -> arg2-ty -> ret-ty と統一
-                          ;; カリー化: func-ty = arg1-ty -> (arg2-ty -> ret-ty)
-                          inner-fun (mk-fun arg2-ty ret-ty)
-                          expected (mk-fun arg1-ty inner-fun)
-                          s4 (unify (apply-subst s3 func-ty) expected s3)]
-                      (if (= (unify-failed s4) 1)
+                    (let [s2 (result-subst arg1-result)
+                          arg1-ty (result-type arg1-result)
+                          arg2-result (infer-expr (vector-get node 4) env s2 counter)]
+                      (if (= (result-failed arg2-result) 1)
                         (make-error-result)
-                        (make-result s4 (apply-subst s4 ret-ty))))))))))))))
+                        (let [s3 (result-subst arg2-result)
+                              arg2-ty (result-type arg2-result)
+                              ret-ty (fresh-type-var counter)
+                              expected (mk-fun arg1-ty (mk-fun arg2-ty ret-ty))
+                              s4 (unify (apply-subst s3 func-ty) expected s3)]
+                          (if (= (unify-failed s4) 1)
+                            (make-error-result)
+                            (make-result s4 (apply-subst s4 ret-ty))))))))
+                (if (= argc 3)
+                  ;; 3 引数の適用
+                  (let [arg1-result (infer-expr (vector-get node 3) env s1 counter)]
+                    (if (= (result-failed arg1-result) 1)
+                      (make-error-result)
+                      (let [s2 (result-subst arg1-result)
+                            arg1-ty (result-type arg1-result)
+                            arg2-result (infer-expr (vector-get node 4) env s2 counter)]
+                        (if (= (result-failed arg2-result) 1)
+                          (make-error-result)
+                          (let [s3 (result-subst arg2-result)
+                                arg2-ty (result-type arg2-result)
+                                arg3-result (infer-expr (vector-get node 5) env s3 counter)]
+                            (if (= (result-failed arg3-result) 1)
+                              (make-error-result)
+                              (let [s4 (result-subst arg3-result)
+                                    arg3-ty (result-type arg3-result)
+                                    ret-ty (fresh-type-var counter)
+                                    expected (mk-fun arg1-ty (mk-fun arg2-ty (mk-fun arg3-ty ret-ty)))
+                                    s5 (unify (apply-subst s4 func-ty) expected s4)]
+                                (if (= (unify-failed s5) 1)
+                                  (make-error-result)
+                                  (make-result s5 (apply-subst s5 ret-ty))))))))))
+                  (if (= argc 4)
+                    ;; 4 引数の適用
+                    (let [arg1-result (infer-expr (vector-get node 3) env s1 counter)]
+                      (if (= (result-failed arg1-result) 1)
+                        (make-error-result)
+                        (let [s2 (result-subst arg1-result)
+                              arg1-ty (result-type arg1-result)
+                              arg2-result (infer-expr (vector-get node 4) env s2 counter)]
+                          (if (= (result-failed arg2-result) 1)
+                            (make-error-result)
+                            (let [s3 (result-subst arg2-result)
+                                  arg2-ty (result-type arg2-result)
+                                  arg3-result (infer-expr (vector-get node 5) env s3 counter)]
+                              (if (= (result-failed arg3-result) 1)
+                                (make-error-result)
+                                (let [s4 (result-subst arg3-result)
+                                      arg3-ty (result-type arg3-result)
+                                      arg4-result (infer-expr (vector-get node 6) env s4 counter)]
+                                  (if (= (result-failed arg4-result) 1)
+                                    (make-error-result)
+                                    (let [s5 (result-subst arg4-result)
+                                          arg4-ty (result-type arg4-result)
+                                          ret-ty (fresh-type-var counter)
+                                          expected (mk-fun arg1-ty (mk-fun arg2-ty (mk-fun arg3-ty (mk-fun arg4-ty ret-ty))))
+                                          s6 (unify (apply-subst s5 func-ty) expected s5)]
+                                      (if (= (unify-failed s6) 1)
+                                        (make-error-result)
+                                        (make-result s6 (apply-subst s6 ret-ty))))))))))))
+                    (make-error-result)))))))))))
 
 ;; do ブロックの型推論
 ;; [9, expr-count, expr1, expr2, ...]
@@ -419,11 +613,20 @@
                             (let [s3 (result-subst r3)]
                               (if (= ec 4)
                                 (infer-expr (vector-get node 5) env s3 counter)
-                                ;; 5 式以上: 5 番目まで対応
+                                ;; covered slice として 5/6 式を扱う
                                 (let [r4 (infer-expr (vector-get node 5) env s3 counter)]
                                   (if (= (result-failed r4) 1)
                                     (make-error-result)
-                                    (infer-expr (vector-get node 6) env (result-subst r4) counter)))))))))))))))))))
+                                    (let [s4 (result-subst r4)]
+                                      (if (= ec 5)
+                                        (infer-expr (vector-get node 6) env s4 counter)
+                                        (if (= ec 6)
+                                          (let [r5 (infer-expr (vector-get node 6) env s4 counter)]
+                                            (if (= (result-failed r5) 1)
+                                              (make-error-result)
+                                              (infer-expr (vector-get node 7) env (result-subst r5) counter)))
+                                          ;; 7 式以上は既存 fallback を維持
+                                          (infer-expr (vector-get node 6) env s4 counter))))))))))))))))))))))
 
 ;; ============================================================
 ;; infer-pattern: パターンの型推論
@@ -619,51 +822,134 @@
                       (if (= tag (tag-ann))
                         ;; ann 式
                         (infer-ann node env subst counter)
-                        (if (= tag (tag-recordlit))
-                          ;; record literal
-                          (infer-recordlit node env subst counter)
-                          (if (= tag (tag-fieldaccess))
-                            ;; field access
-                            (infer-fieldaccess node env subst counter)
-                          (if (= tag (tag-recordupdate))
-                            ;; record update
-                            (infer-recordupdate-node node env subst counter)
-                            (if (= tag (tag-computation))
-                              ;; computation 式
-                              (infer-computation node env subst counter)
-                              (if (= tag 8)
-                                ;; lambda 式
-                                (infer-lambda node env subst counter)
-                                (if (= tag 9)
-                                  ;; do ブロック
-                                  (infer-do node env subst counter)
-                                  (if (= tag 10)
-                                    ;; match 式
-                                    (infer-match node env subst counter)
-                                    ;; 未知のノード: エラー
-                                    (make-error-result))))))))))))))))))))
+                        (if (= (quote-like-tag? tag) 1)
+                          ;; quote / unquote / unquote-splice
+                          (infer-ann node env subst counter)
+                          (if (= tag (tag-recordlit))
+                            ;; record literal
+                            (infer-recordlit node env subst counter)
+                            (if (= tag (tag-fieldaccess))
+                              ;; field access
+                              (infer-fieldaccess node env subst counter)
+                            (if (= tag (tag-recordupdate))
+                              ;; record update
+                              (infer-recordupdate-node node env subst counter)
+                              (if (= tag (tag-computation))
+                                ;; computation 式
+                                (infer-computation node env subst counter)
+                                (if (= tag 8)
+                                  ;; lambda 式
+                                  (infer-lambda node env subst counter)
+                                  (if (= tag 9)
+                                    ;; do ブロック
+                                    (infer-do node env subst counter)
+                                    (if (= tag 10)
+                                      ;; match 式
+                                      (infer-match node env subst counter)
+                                      ;; 未知のノード: エラー
+                                      (make-error-result)))))))))))))))))))))
 
 ;; ============================================================
 ;; infer-defn: トップレベル関数定義の型推論
 ;; ============================================================
-;; [20, name-hash, param-count, body]
-;; 簡易版: 0 引数のみ
+;; [20, name-hash, param-count, param-hash1, ..., body]
+;; compile-safe な covered slice として 0/1/2/3/4 引数を扱う
 
 (defn infer-defn [node env counter]
   (let [name-hash (vector-get node 1)
-        body-node (vector-get node 3)
-        subst (subst-new)
-        ;; body を推論
-        result (infer-expr body-node env subst counter)]
-    (if (= (result-failed result) 1)
-      (make-error-result)
-      (let [s (result-subst result)
-            body-ty (result-type result)
-            ;; 汎化して環境に追加
-            scheme (generalize (apply-subst s body-ty) (map-new))
-            new-env (type-env-insert env name-hash scheme)]
-        ;; 戻り値: [subst, type, updated-env]
-        (vector-push (make-result s (apply-subst s body-ty)) new-env)))))
+        param-count (vector-get node 2)
+        subst (subst-new)]
+    (if (= param-count 0)
+      (let [body-node (vector-get node 3)
+            result (infer-expr body-node env subst counter)]
+        (if (= (result-failed result) 1)
+          (make-error-result)
+          (let [s (result-subst result)
+                body-ty (result-type result)
+                scheme (generalize (apply-subst s body-ty) (map-new))
+                new-env (type-env-insert env name-hash scheme)]
+            (vector-push (make-result s (apply-subst s body-ty)) new-env))))
+      (if (= param-count 1)
+        (let [param-hash (vector-get node 3)
+              body-node (vector-get node 4)
+              param-ty (fresh-type-var counter)
+              env1 (type-env-insert env param-hash (mono param-ty))
+              result (infer-expr body-node env1 subst counter)]
+          (if (= (result-failed result) 1)
+            (make-error-result)
+            (let [s (result-subst result)
+                  body-ty (result-type result)
+                  fun-ty (mk-fun (apply-subst s param-ty) body-ty)
+                  scheme (generalize (apply-subst s fun-ty) (map-new))
+                  new-env (type-env-insert env name-hash scheme)]
+              (vector-push (make-result s (apply-subst s fun-ty)) new-env))))
+        (if (= param-count 2)
+          (let [param1-hash (vector-get node 3)
+                param2-hash (vector-get node 4)
+                body-node (vector-get node 5)
+                param1-ty (fresh-type-var counter)
+                param2-ty (fresh-type-var counter)
+                env1 (type-env-insert env param1-hash (mono param1-ty))
+                env2 (type-env-insert env1 param2-hash (mono param2-ty))
+                result (infer-expr body-node env2 subst counter)]
+            (if (= (result-failed result) 1)
+              (make-error-result)
+              (let [s (result-subst result)
+                    body-ty (result-type result)
+                    inner-fun (mk-fun (apply-subst s param2-ty) body-ty)
+                    fun-ty (mk-fun (apply-subst s param1-ty) inner-fun)
+                    scheme (generalize (apply-subst s fun-ty) (map-new))
+                    new-env (type-env-insert env name-hash scheme)]
+                (vector-push (make-result s (apply-subst s fun-ty)) new-env))))
+          (if (= param-count 3)
+            (let [param1-hash (vector-get node 3)
+                  param2-hash (vector-get node 4)
+                  param3-hash (vector-get node 5)
+                  body-node (vector-get node 6)
+                  param1-ty (fresh-type-var counter)
+                  param2-ty (fresh-type-var counter)
+                  param3-ty (fresh-type-var counter)
+                  env1 (type-env-insert env param1-hash (mono param1-ty))
+                  env2 (type-env-insert env1 param2-hash (mono param2-ty))
+                  env3 (type-env-insert env2 param3-hash (mono param3-ty))
+                  result (infer-expr body-node env3 subst counter)]
+              (if (= (result-failed result) 1)
+                (make-error-result)
+                (let [s (result-subst result)
+                      body-ty (result-type result)
+                      fun3 (mk-fun (apply-subst s param3-ty) body-ty)
+                      fun2 (mk-fun (apply-subst s param2-ty) fun3)
+                      fun1 (mk-fun (apply-subst s param1-ty) fun2)
+                      scheme (generalize (apply-subst s fun1) (map-new))
+                      new-env (type-env-insert env name-hash scheme)]
+                  (vector-push (make-result s (apply-subst s fun1)) new-env))))
+            (if (= param-count 4)
+              (let [param1-hash (vector-get node 3)
+                    param2-hash (vector-get node 4)
+                    param3-hash (vector-get node 5)
+                    param4-hash (vector-get node 6)
+                    body-node (vector-get node 7)
+                    param1-ty (fresh-type-var counter)
+                    param2-ty (fresh-type-var counter)
+                    param3-ty (fresh-type-var counter)
+                    param4-ty (fresh-type-var counter)
+                    env1 (type-env-insert env param1-hash (mono param1-ty))
+                    env2 (type-env-insert env1 param2-hash (mono param2-ty))
+                    env3 (type-env-insert env2 param3-hash (mono param3-ty))
+                    env4 (type-env-insert env3 param4-hash (mono param4-ty))
+                    result (infer-expr body-node env4 subst counter)]
+                (if (= (result-failed result) 1)
+                  (make-error-result)
+                  (let [s (result-subst result)
+                        body-ty (result-type result)
+                        fun4 (mk-fun (apply-subst s param4-ty) body-ty)
+                        fun3 (mk-fun (apply-subst s param3-ty) fun4)
+                        fun2 (mk-fun (apply-subst s param2-ty) fun3)
+                        fun1 (mk-fun (apply-subst s param1-ty) fun2)
+                        scheme (generalize (apply-subst s fun1) (map-new))
+                        new-env (type-env-insert env name-hash scheme)]
+                    (vector-push (make-result s (apply-subst s fun1)) new-env))))
+              (make-error-result))))))))
 
 ;; ============================================================
 ;; infer: 公開 API (Main.ls から呼び出される)
