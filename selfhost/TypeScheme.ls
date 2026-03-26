@@ -41,6 +41,32 @@
       (ref-set counter (+ id 1))
       id)))
 
+;; 束縛変数ベクタを左から順に fresh な型変数へ写す
+(defn instantiate-build-subst [vars idx len counter subst]
+  (if (>= idx len)
+    subst
+    (let [old-var (vector-get vars idx)
+          new-ty (make-type-var (next-var counter))]
+      (instantiate-build-subst
+        vars
+        (+ idx 1)
+        len
+        counter
+        (map-insert subst old-var new-ty)))))
+
+;; record 型の field type に置換を適用する
+(defn instantiate-apply-record-fields [subst ty idx len out]
+  (if (>= idx len)
+    out
+    (let [field-hash (vector-get ty idx)
+          field-ty (vector-get ty (+ idx 1))]
+      (instantiate-apply-record-fields
+        subst
+        ty
+        (+ idx 2)
+        len
+        (type-record-add-field out field-hash (instantiate-apply subst field-ty))))))
+
 ;; === instantiate ===
 
 ;; 型スキームを具体化: 束縛変数を新しい型変数で置換
@@ -53,30 +79,10 @@
     (if (= n 0)
       ;; 単相型: そのまま返す
       ty
-      ;; 多相型: 各束縛変数を新しい型変数に置き換え
-      (let [subst (ref-new (map-new))
-            i (ref-new 0)]
-        (do
-          ;; 置換マッピングを構築 (最大 4 変数)
-          (if (< (ref-get i) n)
-            (do
-              (let [old-var (vector-get vars (ref-get i))
-                    new-var (next-var counter)
-                    new-ty (vector-push (vector-push (vector-new 2) 2) new-var)]
-                (ref-set subst (map-insert (ref-get subst) old-var new-ty)))
-              (ref-set i (+ (ref-get i) 1))
-              (if (< (ref-get i) n)
-                (do
-                  (let [old-var (vector-get vars (ref-get i))
-                        new-var (next-var counter)
-                        new-ty (vector-push (vector-push (vector-new 2) 2) new-var)]
-                    (ref-set subst (map-insert (ref-get subst) old-var new-ty)))
-                  (ref-set i (+ (ref-get i) 1))
-                  0)
-                0))
-            0)
-          ;; apply-subst 相当: 置換を型に適用
-          (instantiate-apply (ref-get subst) ty))))))
+      ;; 多相型: 各束縛変数を source order のまま新しい型変数に置き換え
+      (instantiate-apply
+        (instantiate-build-subst vars 0 n counter (map-new))
+        ty))))
 
 ;; 置換を型に適用 (instantiate 用)
 (defn instantiate-apply [subst ty]
@@ -94,39 +100,74 @@
             (vector-push (vector-new 3) 3)
             (instantiate-apply subst (vector-get ty 1)))
           (instantiate-apply subst (vector-get ty 2)))
-        ;; Con: そのまま
-        ty))))
+        (if (= tag 4)
+          ;; Record: field type ごとに置換を適用
+          (instantiate-apply-record-fields
+            subst
+            ty
+            2
+            (vector-length ty)
+            (make-type-record (vector-get ty 1)))
+          ;; Con: そのまま
+          ty)))))
 
 ;; === generalize ===
+
+;; vars に target が含まれるか
+(defn free-vars-contains [vars idx len target]
+  (if (>= idx len)
+    0
+    (if (= (vector-get vars idx) target)
+      1
+      (free-vars-contains vars (+ idx 1) len target))))
+
+;; source order を維持しつつ、未出現の型変数だけを追加
+(defn free-vars-push-unique [vars target]
+  (if (= (free-vars-contains vars 0 (vector-length vars) target) 1)
+    vars
+    (vector-push vars target)))
+
+;; src を左から順に dst へマージし、自由変数順を安定化する
+(defn free-vars-append-unique [dst src idx len]
+  (if (>= idx len)
+    dst
+    (free-vars-append-unique
+      (free-vars-push-unique dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+;; record 型の field type を左から走査し、自由変数順を安定化する
+(defn free-vars-record-fields [ty idx len acc]
+  (if (>= idx len)
+    acc
+    (let [field-vars (free-vars (vector-get ty (+ idx 1)))]
+      (free-vars-record-fields
+        ty
+        (+ idx 2)
+        len
+        (free-vars-append-unique acc field-vars 0 (vector-length field-vars))))))
+
+;; 環境にない自由変数だけを source order のまま束縛変数へ積む
+(defn generalize-collect-bound [free idx len env-vars bound]
+  (if (>= idx len)
+    bound
+    (let [v (vector-get free idx)
+          next-bound
+            (if (= (map-get env-vars v) 0)
+              (vector-push bound v)
+              bound)]
+      (generalize-collect-bound free (+ idx 1) len env-vars next-bound))))
 
 ;; 型を一般化: 環境に出現しない自由変数を束縛
 ;; env-vars: 環境内の自由変数 ID の Set (map で代用)
 ;; 戻り値: TypeScheme
 (defn generalize [ty env-vars]
   (let [free (free-vars ty)
-        bound (ref-new (vector-new 4))
-        i (ref-new 0)
-        n (vector-length free)]
-    (do
-      ;; 環境にない自由変数を束縛変数として収集
-      (if (< (ref-get i) n)
-        (do
-          (let [v (vector-get free (ref-get i))]
-            (if (= (map-get env-vars v) 0)
-              (do (ref-set bound (vector-push (ref-get bound) v)) 0)
-              0))
-          (ref-set i (+ (ref-get i) 1))
-          (if (< (ref-get i) n)
-            (do
-              (let [v (vector-get free (ref-get i))]
-                (if (= (map-get env-vars v) 0)
-                  (do (ref-set bound (vector-push (ref-get bound) v)) 0)
-                  0))
-              (ref-set i (+ (ref-get i) 1))
-              0)
-            0))
-        0)
-      (poly ty (ref-get bound)))))
+        bound
+          (generalize-collect-bound
+            free 0 (vector-length free) env-vars (vector-new (vector-length free)))]
+    (poly ty bound)))
 
 ;; 型の自由変数を収集
 (defn free-vars [ty]
@@ -137,25 +178,13 @@
       (if (= tag 3)
         ;; Fun: パラメータと戻り値の自由変数を結合
         (let [pv (free-vars (vector-get ty 1))
-              rv (free-vars (vector-get ty 2))
-              result (ref-new pv)
-              j (ref-new 0)
-              m (vector-length rv)]
-          (do
-            (if (< (ref-get j) m)
-              (do
-                (ref-set result (vector-push (ref-get result) (vector-get rv (ref-get j))))
-                (ref-set j (+ (ref-get j) 1))
-                (if (< (ref-get j) m)
-                  (do
-                    (ref-set result (vector-push (ref-get result) (vector-get rv (ref-get j))))
-                    (ref-set j (+ (ref-get j) 1))
-                    0)
-                  0))
-              0)
-            (ref-get result)))
-        ;; Con: 自由変数なし
-        (vector-new 0)))))
+              rv (free-vars (vector-get ty 2))]
+          (free-vars-append-unique pv rv 0 (vector-length rv)))
+        (if (= tag 4)
+          ;; Record: field type を左から走査
+          (free-vars-record-fields ty 2 (vector-length ty) (vector-new 4))
+          ;; Con: 自由変数なし
+          (vector-new 0))))))
 
 ;; === エントリポイント (テスト用) ===
 

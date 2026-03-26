@@ -33,9 +33,14 @@
 ;; === リテラルパターン lowering ===
 
 ;; リテラルパターン: scrutinee == literal 値 の比較命令を生成
-;; pattern: [42, literal-value]
+;; pattern: [42, lit-node]
 (defn lower-literal-pattern [pattern scrutinee-idx instrs]
-  (let [lit-value (vector-get pattern 1)
+  (let [lit-node (vector-get pattern 1)
+        lit-tag (vector-get lit-node 0)
+        lit-value
+          (if (= lit-tag 32)
+            0
+            (vector-get lit-node 1))
         ;; scrutinee をロード
         i1 (vector-push instrs (make-instr 10 scrutinee-idx))
         ;; リテラル値をプッシュ
@@ -84,7 +89,10 @@
 
 (defn main []
   (let [;; リテラルパターンの lowering テスト
-        lit-pat (vector-push (vector-push (vector-new 2) 42) 99)
+        lit-pat
+          (vector-push
+            (vector-push (vector-new 2) 42)
+            (vector-push (vector-push (vector-new 2) 1) 99))
         result (lower-literal-pattern lit-pat 0 (vector-new 4))
         ;; ワイルドカードパターンのテスト
         wild-pat (vector-push (vector-new 1) 40)

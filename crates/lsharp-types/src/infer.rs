@@ -460,7 +460,13 @@ impl Infer {
 
         // パス2: 各 defn の body を本推論（仮登録された型変数を通じて前方参照が可能）
         // 逐次的に推論・generalize し、env を更新していく
-        for (qualified_name, params, return_ty, body, span, placeholder_ty) in defn_infos {
+        let pending_names: Vec<String> = defn_infos
+            .iter()
+            .map(|(qualified_name, _, _, _, _, _)| qualified_name.clone())
+            .collect();
+        for (index, (qualified_name, params, return_ty, body, span, placeholder_ty)) in
+            defn_infos.into_iter().enumerate()
+        {
             let (subst, ty) =
                 self.infer_defn(env, &qualified_name, params, return_ty, body, span)?;
             // 仮登録型変数と推論結果の関数型を unify（循環参照の型を結びつける）
@@ -471,9 +477,13 @@ impl Infer {
 
             let env_after = env.apply_subst(&subst);
             let final_ty = ty.apply_subst(&subst);
-            // generalize 時に自分自身の仮登録型を除外（型変数が env に含まれて量化されない問題を防止）
+            // generalize 時に未確定の top-level 仮登録型を除外する。
+            // import 解決では別 Infer で external_types を注入するため、
+            // 残存 placeholder が env 側にいると under-generalize されてしまう。
             let mut env_for_gen = env_after.clone();
-            env_for_gen.remove(&qualified_name);
+            for pending_name in pending_names.iter().skip(index) {
+                env_for_gen.remove(pending_name);
+            }
             let scheme = self.generalize(&env_for_gen, &final_ty);
             *env = env_after.extend(qualified_name.clone(), scheme.clone());
             results.push((qualified_name, scheme));

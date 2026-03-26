@@ -1257,6 +1257,62 @@ mod tests {
     }
 
     #[test]
+    fn test_check_import_open_polymorphic_helper_stays_generalized() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_test_check_import_poly_helper_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("Utils.ls"),
+            "(module Utils)\n(defn choose-first [x y] x)\n(defn helper [] 0)",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Utils :open)\n(defn main [] (do (print (choose-first 1 true)) (if (choose-first true 1) (print 1) (print 0))))",
+        )
+        .unwrap();
+
+        let source = std::fs::read_to_string(dir.join("Main.ls")).unwrap();
+        let program = lsharp_syntax::parse(&source).unwrap();
+        let mut infer = lsharp_types::infer::Infer::new();
+        let mut resolved_modules = std::collections::HashSet::new();
+
+        resolve_imports_recursive(&program, &dir, &mut infer, &mut resolved_modules);
+        let results = infer.infer_program(&program);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(
+            results.is_ok(),
+            "extra helper があっても open import の多相関数は一般化を保つべき: {:?}",
+            results.err()
+        );
+    }
+
+    #[test]
+    fn test_check_selfhost_typeinfer_standalone_import_path() {
+        let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let file = project_root.join("selfhost/TypeInfer.ls");
+        let source = std::fs::read_to_string(&file).unwrap();
+        let program = lsharp_syntax::parse(&source).unwrap();
+        let mut infer = lsharp_types::infer::Infer::new();
+        let parent_dir = file.parent().unwrap();
+        let mut resolved_modules = std::collections::HashSet::new();
+
+        resolve_imports_recursive(&program, parent_dir, &mut infer, &mut resolved_modules);
+        let results = infer.infer_program(&program);
+
+        assert!(
+            results.is_ok(),
+            "selfhost/TypeInfer.ls standalone check path は成功するべき: {:?}",
+            results.err()
+        );
+    }
+
+    #[test]
     fn test_build_git_clone_args_basic() {
         // branch/tag なしの場合
         let args = build_git_clone_args(

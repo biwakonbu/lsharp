@@ -1567,6 +1567,35 @@ fn test_e2e_multi_file_single() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+/// マルチファイル型推論: import 先に helper が増えても open import の多相関数は一般化を保つ
+#[test]
+fn test_e2e_multi_file_import_open_polymorphic_helper_stays_generalized() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_e2e_import_poly_helper_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    std::fs::write(
+        dir.join("Utils.ls"),
+        "(module Utils)\n(defn choose-first [x y] x)\n(defn helper [] 0)",
+    )
+    .unwrap();
+
+    std::fs::write(
+        dir.join("main.ls"),
+        "(module Main)\n(import Utils :open)\n(defn main [] (do (print (choose-first 1 true)) (if (choose-first true 1) (print 1) (print 0))))",
+    )
+    .unwrap();
+
+    let wasm = try_compile_file_only(&dir.join("main.ls"))
+        .expect("helper 追加後も imported polymorphic function は compile できるべき");
+    assert_valid_wasm(&wasm);
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 /// マルチファイルコンパイル: 存在しないモジュールの import でエラー
 #[test]
 fn test_e2e_multi_file_missing_import() {
@@ -7557,6 +7586,639 @@ fn test_e2e_selfhost_typeinfer_error_match_propagates_infinite_body_code() {
     );
 }
 
+/// selfhost TypeInfer.ls テスト: match arm 同士の結果型不一致は E0006 を返す
+#[test]
+fn test_e2e_selfhost_typeinfer_error_match_arm_result_mismatch_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        x-hash 1200
+        y-hash 1201
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push (vector-new 7) 10)
+                      (make-lit-int 1))
+                    2)
+                  (make-var x-hash))
+                (make-lit-int 2))
+              (make-var y-hash))
+            (make-lit-bool 1))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "match arm result mismatch error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "match arm result mismatch infer は失敗すべき");
+    assert_eq!(
+        lines[1], "6",
+        "match arm result mismatch error code は E0006 であるべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: scrutinee と pattern の型不一致は E0006 を返す
+#[test]
+fn test_e2e_selfhost_typeinfer_error_match_pattern_scrutinee_mismatch_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        some-hash 800
+        ctor-hash 1300
+        x-hash 1200
+        ctor-ty (mk-fun (mk-int) (mk-con some-hash))
+        env (type-env-insert env0 ctor-hash (mono ctor-ty))
+        pat
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 11)
+                ctor-hash)
+              1)
+            (make-var x-hash))
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 10)
+                  (make-lit-int 1))
+                1)
+              pat)
+            (make-lit-int 2))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "match pattern/scrutinee mismatch error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "1",
+        "match pattern/scrutinee mismatch infer は失敗すべき"
+    );
+    assert_eq!(
+        lines[1], "6",
+        "match pattern/scrutinee mismatch error code は E0006 であるべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: 未定義コンストラクタ pattern は E0001 を返す
+#[test]
+fn test_e2e_selfhost_typeinfer_error_match_undefined_constructor_pattern_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        missing-ctor 7777
+        pat
+          (vector-push
+            (vector-push
+              (vector-push (vector-new 3) 11)
+              missing-ctor)
+            0)
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 10)
+                  (make-lit-int 1))
+                1)
+              pat)
+            (make-lit-int 2))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "undefined constructor pattern error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "undefined constructor pattern infer は失敗すべき");
+    assert_eq!(
+        lines[1], "1",
+        "undefined constructor pattern error code は E0001 であるべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: constructor subpattern の未定義 ctor も E0001 を保つ
+#[test]
+fn test_e2e_selfhost_typeinfer_error_match_constructor_child_pattern_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        outer-ctor 8000
+        some-hash 700
+        ctor-ty (mk-fun (mk-int) (mk-con some-hash))
+        env (type-env-insert env0 outer-ctor (mono ctor-ty))
+        child-pat
+          (vector-push
+            (vector-push
+              (vector-push (vector-new 3) 11)
+              8888)
+            0)
+        pat
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 11)
+                outer-ctor)
+              1)
+            child-pat)
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 10)
+                  (make-lit-int 1))
+                1)
+              pat)
+            (make-lit-int 2))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "constructor child pattern error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "constructor child pattern infer は失敗すべき");
+    assert_eq!(
+        lines[1], "1",
+        "constructor child pattern error code は E0001 であるべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: constructor pattern の引数数不一致は E0006 を返す
+#[test]
+fn test_e2e_selfhost_typeinfer_error_match_constructor_arity_mismatch_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        some-hash 800
+        ctor-hash 1300
+        value-hash 1301
+        x-hash 1200
+        env1 (type-env-insert env0 ctor-hash (mono (mk-con some-hash)))
+        env (type-env-insert env1 value-hash (mono (mk-con some-hash)))
+        pat (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 4) 11)
+                  ctor-hash)
+                1)
+              (make-var x-hash))
+        node (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 5) 10)
+                     (make-var value-hash))
+                   1)
+                 pat)
+               (make-lit-int 2))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "constructor pattern arity mismatch error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "constructor pattern arity mismatch infer は失敗すべき");
+    assert_eq!(
+        lines[1], "6",
+        "constructor pattern arity mismatch error code は E0006 であるべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: ast-pat-constructor の未定義 ctor も E0001 を返す
+#[test]
+fn test_e2e_selfhost_typeinfer_error_match_pat_constructor_tag_undefined_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        missing-ctor 7777
+        pat
+          (vector-push
+            (vector-push
+              (vector-push (vector-new 3) (ast-pat-constructor))
+              missing-ctor)
+            0)
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 10)
+                  (make-lit-int 1))
+                1)
+              pat)
+            (make-lit-int 2))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "canonical undefined constructor pattern error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "1",
+        "canonical undefined constructor pattern infer は失敗すべき"
+    );
+    assert_eq!(
+        lines[1], "1",
+        "canonical undefined constructor pattern error code は E0001 であるべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: ast-pat-constructor の引数数不一致も E0006 を返す
+#[test]
+fn test_e2e_selfhost_typeinfer_error_match_pat_constructor_tag_arity_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        some-hash 800
+        ctor-hash 1300
+        value-hash 1301
+        x-hash 1200
+        env1 (type-env-insert env0 ctor-hash (mono (mk-con some-hash)))
+        env (type-env-insert env1 value-hash (mono (mk-con some-hash)))
+        child-pat (vector-push (vector-push (vector-new 2) (ast-pat-var)) x-hash)
+        pat (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 4) (ast-pat-constructor))
+                  ctor-hash)
+                1)
+              child-pat)
+        node (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 5) 10)
+                     (make-var value-hash))
+                   1)
+                 pat)
+               (make-lit-int 2))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "canonical constructor pattern arity mismatch error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "1",
+        "canonical constructor pattern arity mismatch infer は失敗すべき"
+    );
+    assert_eq!(
+        lines[1], "6",
+        "canonical constructor pattern arity mismatch error code は E0006 であるべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: ast-pat-recordpat の child failure も E0001 を保つ
+#[test]
+fn test_e2e_selfhost_typeinfer_error_match_pat_record_tag_child_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        field-x 120
+        bad-child
+          (vector-push
+            (vector-push
+              (vector-push (vector-new 3) (ast-pat-constructor))
+              9999)
+            0)
+        pat
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) (ast-pat-recordpat))
+                1)
+              field-x)
+            bad-child)
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 10)
+                  (make-lit-int 1))
+                1)
+              pat)
+            (make-lit-int 2))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "canonical record child pattern error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "1",
+        "canonical record child pattern infer は失敗すべき"
+    );
+    assert_eq!(
+        lines[1], "1",
+        "canonical record child pattern error code は E0001 であるべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: record subpattern の未定義 ctor も E0001 を保つ
+#[test]
+fn test_e2e_selfhost_typeinfer_error_match_record_child_pattern_code() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        scrut-hash 1300
+        scrut-ty (fresh-type-var counter)
+        env (type-env-insert env0 scrut-hash (mono scrut-ty))
+        child-pat
+          (vector-push
+            (vector-push
+              (vector-push (vector-new 3) 11)
+              9999)
+            0)
+        pat
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 12)
+                1)
+              121)
+            child-pat)
+        node
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 10)
+                  (make-var scrut-hash))
+                1)
+              pat)
+            (make-lit-int 2))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (result-error-code result))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "record child pattern error code 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "record child pattern infer は失敗すべき");
+    assert_eq!(
+        lines[1], "1",
+        "record child pattern error code は E0001 であるべき"
+    );
+}
+
 /// selfhost TypeInfer.ls テスト: record literal field failure でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_record_literal_propagates_infinite_code() {
@@ -11157,6 +11819,66 @@ fn test_e2e_selfhost_typeinfer_match_var_binder() {
     assert_eq!(lines[2], "100", "match binder infer の型名は Int hash=100 であるべき");
 }
 
+/// selfhost TypeInfer.ls テスト: ast-pat-var でも match binder を body で参照できる
+#[test]
+fn test_e2e_selfhost_typeinfer_match_pat_var_tag_binder() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        x-hash 1201
+        pat (vector-push (vector-push (vector-new 2) (ast-pat-var)) x-hash)
+        node (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 5) 10)
+                     (make-lit-int 1))
+                   1)
+                 pat)
+               (make-var x-hash))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "match pat-var binder typeinfer 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "0", "match pat-var binder infer は失敗すべきでない");
+    assert_eq!(lines[1], "1", "match pat-var binder infer の型タグは Con であるべき");
+    assert_eq!(
+        lines[2], "100",
+        "match pat-var binder infer の型名は Int hash=100 であるべき"
+    );
+}
+
 /// selfhost TypeInfer.ls テスト: match の record pattern binder を body で参照できる
 #[test]
 fn test_e2e_selfhost_typeinfer_match_record_pattern_binder() {
@@ -11245,7 +11967,8 @@ fn test_e2e_selfhost_typeinfer_match_constructor_pattern_binder() {
         ctor-hash 1300
         value-hash 1301
         x-hash 1200
-        env1 (type-env-insert env0 ctor-hash (mono (mk-con some-hash)))
+        ctor-ty (mk-fun (mk-int) (mk-con some-hash))
+        env1 (type-env-insert env0 ctor-hash (mono ctor-ty))
         env (type-env-insert env1 value-hash (mono (mk-con some-hash)))
         pat (vector-push
               (vector-push
@@ -11280,8 +12003,504 @@ fn test_e2e_selfhost_typeinfer_match_constructor_pattern_binder() {
 
     assert!(lines.len() >= 3, "match constructor binder 出力が不足: {:?}", lines);
     assert_eq!(lines[0], "0", "match constructor binder infer は失敗すべきでない");
-    assert_eq!(lines[1], "2", "match constructor binder infer の型タグは Var であるべき");
-    assert_eq!(lines[2], "1001", "match constructor binder infer の型変数 ID は 1001 であるべき");
+    assert_eq!(lines[1], "1", "match constructor binder infer の型タグは Con であるべき");
+    assert_eq!(lines[2], "100", "match constructor binder infer の型名は Int であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: ast-pat-recordpat でも match binder を body で参照できる
+#[test]
+fn test_e2e_selfhost_typeinfer_match_pat_record_tag_binder() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        point-hash 700
+        point-var 1001
+        field-x 120
+        x-hash 1200
+        env (type-env-insert env0 point-var (mono (mk-con point-hash)))
+        child-pat (vector-push (vector-push (vector-new 2) (ast-pat-var)) x-hash)
+        pat (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 4) (ast-pat-recordpat))
+                  1)
+                field-x)
+              child-pat)
+        node (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 5) 10)
+                     (make-var point-var))
+                   1)
+                 pat)
+               (make-var x-hash))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "match pat-record binder 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "0", "match pat-record binder infer は失敗すべきでない");
+    assert_eq!(
+        lines[1], "2",
+        "match pat-record binder infer の型タグは Var であるべき"
+    );
+    assert_eq!(
+        lines[2], "1001",
+        "match pat-record binder infer の型変数 ID は 1001 であるべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: ast-pat-constructor でも match binder を body で参照できる
+#[test]
+fn test_e2e_selfhost_typeinfer_match_pat_constructor_tag_binder() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        some-hash 800
+        ctor-hash 1300
+        value-hash 1301
+        x-hash 1200
+        ctor-ty (mk-fun (mk-int) (mk-con some-hash))
+        env1 (type-env-insert env0 ctor-hash (mono ctor-ty))
+        env (type-env-insert env1 value-hash (mono (mk-con some-hash)))
+        child-pat (vector-push (vector-push (vector-new 2) (ast-pat-var)) x-hash)
+        pat (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 4) (ast-pat-constructor))
+                  ctor-hash)
+                1)
+              child-pat)
+        node (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 5) 10)
+                     (make-var value-hash))
+                   1)
+                 pat)
+               (make-var x-hash))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "match pat-constructor binder 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "0",
+        "match pat-constructor binder infer は失敗すべきでない"
+    );
+    assert_eq!(
+        lines[1], "1",
+        "match pat-constructor binder infer の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[2], "100",
+        "match pat-constructor binder infer の型名は Int であるべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: ast-pat-lit は int/bool 型を返せる
+#[test]
+fn test_e2e_selfhost_typeinfer_match_pat_lit_tag() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        int-pat
+          (vector-push
+            (vector-push (vector-new 2) (ast-pat-lit))
+            (make-lit-int 7))
+        bool-pat
+          (vector-push
+            (vector-push (vector-new 2) (ast-pat-lit))
+            (make-lit-bool 1))
+        int-result (infer-pattern int-pat env (subst-new) counter)
+        bool-result (infer-pattern bool-pat env (subst-new) counter)]
+    (do
+      (print (ty-tag (pat-result-type int-result)))
+      (print (ty-name (pat-result-type int-result)))
+      (print (ty-tag (pat-result-type bool-result)))
+      (print (ty-name (pat-result-type bool-result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 4, "match pat-lit infer 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "int pat-lit infer の型タグは Con であるべき");
+    assert_eq!(lines[1], "100", "int pat-lit infer の型名は Int であるべき");
+    assert_eq!(lines[2], "1", "bool pat-lit infer の型タグは Con であるべき");
+    assert_eq!(lines[3], "200", "bool pat-lit infer の型名は Bool であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: ast-pat-lit は unit 型も返せる
+#[test]
+fn test_e2e_selfhost_typeinfer_match_pat_lit_unit_tag() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)
+        unit-pat
+          (vector-push
+            (vector-push (vector-new 2) (ast-pat-lit))
+            (make-lit-unit))
+        result (infer-pattern unit-pat env (subst-new) counter)]
+    (do
+      (print (ty-tag (pat-result-type result)))
+      (print (ty-name (pat-result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 2, "match pat-lit unit 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "unit pat-lit infer の型タグは Con であるべき");
+    assert_eq!(lines[1], "500", "unit pat-lit infer の型名は Unit であるべき");
+}
+
+/// selfhost TypeInfer.ls テスト: constructor child の ast-pat-lit も unify できる
+#[test]
+fn test_e2e_selfhost_typeinfer_match_constructor_child_pat_lit() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        some-hash 800
+        ctor-hash 1300
+        value-hash 1301
+        ctor-ty (mk-fun (mk-int) (mk-con some-hash))
+        env1 (type-env-insert env0 ctor-hash (mono ctor-ty))
+        env (type-env-insert env1 value-hash (mono (mk-con some-hash)))
+        child-pat
+          (vector-push
+            (vector-push (vector-new 2) (ast-pat-lit))
+            (make-lit-int 1))
+        pat (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 4) (ast-pat-constructor))
+                  ctor-hash)
+                1)
+              child-pat)
+        node (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 5) 10)
+                     (make-var value-hash))
+                   1)
+                 pat)
+               (make-lit-bool 1))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "match constructor child pat-lit 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "0",
+        "match constructor child pat-lit infer は失敗すべきでない"
+    );
+    assert_eq!(
+        lines[1], "1",
+        "match constructor child pat-lit infer の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[2], "200",
+        "match constructor child pat-lit infer の型名は Bool であるべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: record child の ast-pat-lit も unify できる
+#[test]
+fn test_e2e_selfhost_typeinfer_match_record_child_pat_lit() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        point-hash 700
+        point-var 1001
+        field-x 120
+        point-ty
+          (type-record-add-field
+            (make-type-record point-hash)
+            field-x
+            (mk-bool))
+        env (type-env-insert env0 point-var (mono point-ty))
+        child-pat
+          (vector-push
+            (vector-push (vector-new 2) (ast-pat-lit))
+            (make-lit-bool 1))
+        pat (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 4) (ast-pat-recordpat))
+                  1)
+                field-x)
+              child-pat)
+        node (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 5) 10)
+                     (make-var point-var))
+                   1)
+                 pat)
+               (make-lit-int 7))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "match record child pat-lit 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "0",
+        "match record child pat-lit infer は失敗すべきでない"
+    );
+    assert_eq!(
+        lines[1], "1",
+        "match record child pat-lit infer の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[2], "100",
+        "match record child pat-lit infer の型名は Int であるべき"
+    );
+}
+
+/// selfhost TypeInfer.ls テスト: constructor child の unit ast-pat-lit も unify できる
+#[test]
+fn test_e2e_selfhost_typeinfer_match_constructor_child_pat_unit_lit() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+            .expect("selfhost/TypeInfer.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [counter (make-var-counter)
+        env0 (init-builtin-env counter)
+        some-hash 800
+        ctor-hash 1300
+        value-hash 1301
+        ctor-ty (mk-fun (mk-unit) (mk-con some-hash))
+        env1 (type-env-insert env0 ctor-hash (mono ctor-ty))
+        env (type-env-insert env1 value-hash (mono (mk-con some-hash)))
+        child-pat
+          (vector-push
+            (vector-push (vector-new 2) (ast-pat-lit))
+            (make-lit-unit))
+        pat (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 4) (ast-pat-constructor))
+                  ctor-hash)
+                1)
+              child-pat)
+        node (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 5) 10)
+                     (make-var value-hash))
+                   1)
+                 pat)
+               (make-lit-bool 1))
+        result (infer-expr node env (subst-new) counter)]
+    (do
+      (print (result-failed result))
+      (print (ty-tag (result-type result)))
+      (print (ty-name (result-type result)))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        ast_ls, type_ls, type_scheme_ls, type_infer_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "match constructor child pat-unit 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "0",
+        "match constructor child pat-unit infer は失敗すべきでない"
+    );
+    assert_eq!(
+        lines[1], "1",
+        "match constructor child pat-unit infer の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[2], "200",
+        "match constructor child pat-unit infer の型名は Bool であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 変数束縛の型推論
@@ -13440,6 +14659,190 @@ fn test_e2e_selfhost_type_deterministic_ordering() {
     }
 }
 
+/// selfhost TypeScheme.ls テスト: generalize は source order の自由変数を漏れなく束縛する
+#[test]
+fn test_e2e_selfhost_typescheme_generalize_preserves_four_var_order() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [a (make-type-var 1)
+        b (make-type-var 2)
+        c (make-type-var 3)
+        d (make-type-var 4)
+        ty (make-type-fun a (make-type-fun b (make-type-fun c d)))
+        scheme (generalize ty (map-new))
+        bound (scheme-vars scheme)]
+    (do
+      (print (vector-length bound))
+      (print (vector-get bound 0))
+      (print (vector-get bound 1))
+      (print (vector-get bound 2))
+      (print (vector-get bound 3))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}\n{}", type_ls, type_scheme_ls, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 5,
+        "generalize deterministic ordering 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "4", "generalize は 4 つの自由変数を束縛すべき");
+    assert_eq!(lines[1], "1", "1 番目の束縛変数は source order 先頭");
+    assert_eq!(lines[2], "2", "2 番目の束縛変数は source order 2 番目");
+    assert_eq!(lines[3], "3", "3 番目の束縛変数は source order 3 番目");
+    assert_eq!(lines[4], "4", "4 番目の束縛変数は source order 4 番目");
+}
+
+/// selfhost TypeScheme.ls テスト: instantiate は bound-vars 全件を順序通り新鮮化する
+#[test]
+fn test_e2e_selfhost_typescheme_instantiate_rewrites_all_bound_vars() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [a (make-type-var 1)
+        b (make-type-var 2)
+        c (make-type-var 3)
+        d (make-type-var 4)
+        ty (make-type-fun a (make-type-fun b (make-type-fun c d)))
+        bound (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push (vector-new 4) 1)
+                    2)
+                  3)
+                4)
+        scheme (poly ty bound)
+        counter (make-var-counter)
+        inst (instantiate scheme counter)
+        fun2 (type-fun-ret inst)
+        fun3 (type-fun-ret fun2)]
+    (do
+      (print (type-name (type-fun-param inst)))
+      (print (type-name (type-fun-param fun2)))
+      (print (type-name (type-fun-param fun3)))
+      (print (type-name (type-fun-ret fun3)))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}\n{}", type_ls, type_scheme_ls, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 4,
+        "instantiate deterministic ordering 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1000", "1 番目の束縛変数は最初の fresh ID へ");
+    assert_eq!(lines[1], "1001", "2 番目の束縛変数は次の fresh ID へ");
+    assert_eq!(lines[2], "1002", "3 番目の束縛変数も fresh 化すべき");
+    assert_eq!(lines[3], "1003", "4 番目の束縛変数も fresh 化すべき");
+}
+
+/// selfhost TypeScheme.ls テスト: record field 型の free vars も source order で一般化する
+#[test]
+fn test_e2e_selfhost_typescheme_generalize_record_field_vars() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [a (make-type-var 1)
+        b (make-type-var 2)
+        rec0 (make-type-record 900)
+        rec1 (type-record-add-field rec0 120 a)
+        rec2 (type-record-add-field rec1 121 b)
+        scheme (generalize rec2 (map-new))
+        bound (scheme-vars scheme)]
+    (do
+      (print (vector-length bound))
+      (print (vector-get bound 0))
+      (print (vector-get bound 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}\n{}", type_ls, type_scheme_ls, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "record generalize deterministic ordering 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "2", "record field 型の自由変数 2 個を束縛すべき");
+    assert_eq!(lines[1], "1", "record field の 1 番目の自由変数順が崩れている");
+    assert_eq!(lines[2], "2", "record field の 2 番目の自由変数順が崩れている");
+}
+
+/// selfhost TypeScheme.ls テスト: record field 型の bound-vars も instantiate で fresh 化する
+#[test]
+fn test_e2e_selfhost_typescheme_instantiate_record_field_vars() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
+        .expect("selfhost/Type.ls が読み込めない");
+    let type_scheme_ls =
+        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+            .expect("selfhost/TypeScheme.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [a (make-type-var 1)
+        b (make-type-var 2)
+        rec0 (make-type-record 900)
+        rec1 (type-record-add-field rec0 120 a)
+        rec2 (type-record-add-field rec1 121 b)
+        bound (vector-push (vector-push (vector-new 2) 1) 2)
+        scheme (poly rec2 bound)
+        counter (make-var-counter)
+        inst (instantiate scheme counter)]
+    (do
+      (print (type-name (type-record-field-type inst 120)))
+      (print (type-name (type-record-field-type inst 121)))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}\n{}", type_ls, type_scheme_ls, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "record instantiate deterministic ordering 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1000", "record field 1 の型変数が fresh 化されていない");
+    assert_eq!(lines[1], "1001", "record field 2 の型変数が fresh 化されていない");
+}
+
 // =============================================================================
 // Phase 6 Group C: selfhost 拡張テスト (TDD Red Phase)
 // =============================================================================
@@ -14214,6 +15617,340 @@ fn test_e2e_selfhost_parser_if_expr() {
     assert_eq!(lines[3], "1", "else は int literal であるべき");
     assert_eq!(lines[4], "1", "then value は 1 であるべき");
     assert_eq!(lines[5], "0", "else value は 0 であるべき");
+}
+
+/// TEST-SYNTAX-02l1: match の `_` パターンを wildcard としてパースできる
+#[test]
+fn test_e2e_selfhost_parser_match_wildcard_pattern() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(match 1 [_ 2] [rest 3])") 0)
+        pat1 (vector-get node 3)
+        body1 (vector-get node 4)
+        pat2 (vector-get node 5)]
+    (do
+      (print (if (= (vector-get node 0) (ast-match)) 1 0))
+      (print (vector-get node 2))
+      (print (if (= (vector-get pat1 0) (ast-pat-wildcard)) 1 0))
+      (print (if (= (vector-get body1 0) (ast-lit-int)) 1 0))
+      (print (if (= (vector-get body1 1) 2) 1 0))
+      (print (if (= (vector-get pat2 0) (ast-pat-var)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 6, "match wildcard parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "match ノードは ast-match であるべき");
+    assert_eq!(lines[1], "2", "arm-count は 2 であるべき");
+    assert_eq!(lines[2], "1", "先頭 arm の `_` は wildcard パターンであるべき");
+    assert_eq!(lines[3], "1", "先頭 arm の body は整数リテラルであるべき");
+    assert_eq!(lines[4], "1", "先頭 arm の body 値は 2 であるべき");
+    assert_eq!(lines[5], "1", "通常の symbol pattern は ast-pat-var であるべき");
+}
+
+/// TEST-SYNTAX-02l2: match の symbol pattern を pattern tag としてパースできる
+#[test]
+fn test_e2e_selfhost_parser_match_var_pattern_tag() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(match 1 [rest 3])") 0)
+        pat (vector-get node 3)]
+    (do
+      (print (if (= (vector-get pat 0) (ast-pat-var)) 1 0))
+      (print (if (= (vector-get pat 1) (name-hash "rest" 0 4)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 2, "match var parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "symbol pattern は ast-pat-var であるべき");
+    assert_eq!(lines[1], "1", "pattern name-hash は source slice と一致すべき");
+}
+
+/// TEST-SYNTAX-02l3: match の constructor pattern を canonical tag としてパースできる
+#[test]
+fn test_e2e_selfhost_parser_match_constructor_pattern_tag() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(match value [(Some rest) rest])") 0)
+        pat (vector-get node 3)
+        child (vector-get pat 3)]
+    (do
+      (print (if (= (vector-get pat 0) (ast-pat-constructor)) 1 0))
+      (print (if (= (vector-get pat 1) (name-hash "Some" 0 4)) 1 0))
+      (print (vector-get pat 2))
+      (print (if (= (vector-get child 0) (ast-pat-var)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 4, "match constructor parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "constructor pattern は ast-pat-constructor であるべき");
+    assert_eq!(lines[1], "1", "constructor name-hash は source slice と一致すべき");
+    assert_eq!(lines[2], "1", "constructor sub-pattern count は 1 であるべき");
+    assert_eq!(lines[3], "1", "constructor child は ast-pat-var であるべき");
+}
+
+/// TEST-SYNTAX-02l4: match の record pattern を canonical tag としてパースできる
+#[test]
+fn test_e2e_selfhost_parser_match_record_pattern_tag() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(match value [{Point x rest} rest])") 0)
+        pat (vector-get node 3)
+        child (vector-get pat 3)]
+    (do
+      (print (if (= (vector-get pat 0) (ast-pat-recordpat)) 1 0))
+      (print (vector-get pat 1))
+      (print (if (= (vector-get pat 2) (name-hash "x" 0 1)) 1 0))
+      (print (if (= (vector-get child 0) (ast-pat-var)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 4, "match record parser 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "record pattern は ast-pat-recordpat であるべき");
+    assert_eq!(lines[1], "1", "record field count は 1 であるべき");
+    assert_eq!(lines[2], "1", "record field hash は source slice と一致すべき");
+    assert_eq!(lines[3], "1", "record child は ast-pat-var であるべき");
+}
+
+/// TEST-SYNTAX-02l5: match の int/bool literal pattern を canonical tag としてパースできる
+#[test]
+fn test_e2e_selfhost_parser_match_literal_pattern_tag() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(match value [1 2] [true 3] [rest 4])") 0)
+        int-pat (vector-get node 3)
+        bool-pat (vector-get node 5)
+        int-lit (vector-get int-pat 1)
+        bool-lit (vector-get bool-pat 1)]
+    (do
+      (print (if (= (vector-get int-pat 0) (ast-pat-lit)) 1 0))
+      (print (if (= (vector-get int-lit 0) (ast-lit-int)) 1 0))
+      (print (if (= (vector-get int-lit 1) 1) 1 0))
+      (print (if (= (vector-get bool-pat 0) (ast-pat-lit)) 1 0))
+      (print (if (= (vector-get bool-lit 0) (ast-lit-bool)) 1 0))
+      (print (if (= (vector-get bool-lit 1) 1) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 6,
+        "match literal parser 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "int literal pattern は ast-pat-lit であるべき");
+    assert_eq!(lines[1], "1", "int literal payload は ast-lit-int であるべき");
+    assert_eq!(lines[2], "1", "int literal payload value は 1 であるべき");
+    assert_eq!(lines[3], "1", "bool literal pattern は ast-pat-lit であるべき");
+    assert_eq!(
+        lines[4], "1",
+        "bool literal payload は ast-lit-bool であるべき"
+    );
+    assert_eq!(lines[5], "1", "bool literal payload value は true(1) であるべき");
+}
+
+/// TEST-SYNTAX-02l5b: match の unit literal pattern を canonical tag としてパースできる
+#[test]
+fn test_e2e_selfhost_parser_match_unit_literal_pattern_tag() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(match value [() 2] [rest 4])") 0)
+        unit-pat (vector-get node 3)
+        unit-lit (vector-get unit-pat 1)]
+    (do
+      (print (if (= (vector-get unit-pat 0) (ast-pat-lit)) 1 0))
+      (print (if (= (vector-get unit-lit 0) (ast-lit-unit)) 1 0))
+      (print (vector-length unit-lit))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "match unit literal parser 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "unit literal pattern は ast-pat-lit であるべき");
+    assert_eq!(lines[1], "1", "unit literal payload は ast-lit-unit であるべき");
+    assert_eq!(lines[2], "1", "unit literal payload の長さは 1 であるべき");
+}
+
+/// TEST-SYNTAX-02l6: nested constructor/record child でも literal pattern を canonicalize できる
+#[test]
+fn test_e2e_selfhost_parser_match_nested_literal_pattern_tag() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
+        .expect("selfhost/Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
+        .expect("selfhost/AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
+        .expect("selfhost/Lexer.ls が読み込めない");
+    let parser_ls =
+        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+            .expect("selfhost/Parser.ls が読み込めない");
+
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(match value [(Some 1) 2] [{Point x true} 3])") 0)
+        ctor-pat (vector-get node 3)
+        record-pat (vector-get node 5)
+        ctor-child (vector-get ctor-pat 3)
+        record-child (vector-get record-pat 3)
+        ctor-lit (vector-get ctor-child 1)
+        record-lit (vector-get record-child 1)]
+    (do
+      (print (if (= (vector-get ctor-child 0) (ast-pat-lit)) 1 0))
+      (print (if (= (vector-get ctor-lit 0) (ast-lit-int)) 1 0))
+      (print (if (= (vector-get ctor-lit 1) 1) 1 0))
+      (print (if (= (vector-get record-child 0) (ast-pat-lit)) 1 0))
+      (print (if (= (vector-get record-lit 0) (ast-lit-bool)) 1 0))
+      (print (if (= (vector-get record-lit 1) 1) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 6,
+        "match nested literal parser 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "1",
+        "constructor child literal pattern は ast-pat-lit であるべき"
+    );
+    assert_eq!(lines[1], "1", "constructor child payload は ast-lit-int であるべき");
+    assert_eq!(lines[2], "1", "constructor child payload value は 1 であるべき");
+    assert_eq!(
+        lines[3], "1",
+        "record child literal pattern は ast-pat-lit であるべき"
+    );
+    assert_eq!(lines[4], "1", "record child payload は ast-lit-bool であるべき");
+    assert_eq!(lines[5], "1", "record child payload value は true(1) であるべき");
 }
 
 /// TEST-SYNTAX-02l: parametric type / type-alias head を decl tag にパースできる

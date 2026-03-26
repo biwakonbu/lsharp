@@ -783,6 +783,132 @@
         (vector-push result expr) (+ count 1)))))
 
 ;; === match 式 ===
+(defn symbol-starts-uppercase-v3 [spans pos-ref src]
+  (if (== (p-current spans pos-ref) 20)
+    (let [c (string-char-at src (p-start spans pos-ref))]
+      (if (>= c 65)
+        (if (<= c 90) 1 0)
+        0))
+    0))
+
+(defn parse-constructor-pattern-args-v3 [spans pos-ref src result count]
+  (if (== (p-current spans pos-ref) 1)  ;; ) で終了
+    (do (p-advance pos-ref) result)
+    (let [pat (parse-pattern-v3 spans pos-ref src)]
+      (parse-constructor-pattern-args-v3
+        spans
+        pos-ref
+        src
+        (vector-push result pat)
+        (+ count 1)))))
+
+(defn parse-constructor-pattern-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)  ;; ( を消費
+    (if (== (p-current spans pos-ref) 20)
+      (let [ctor-hash (current-symbol-hash-v3 spans pos-ref src)
+            result
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 8) (ast-pat-constructor))
+                  ctor-hash)
+                0)]
+        (do
+          (p-advance pos-ref)
+          (let [with-args (parse-constructor-pattern-args-v3 spans pos-ref src result 0)
+                arg-count (- (vector-length with-args) 3)]
+            (vector-set-at with-args 2 arg-count))))
+      (do
+        (parse-skip-to-close-v3 spans pos-ref 1)
+        (vector-push
+          (vector-push
+            (vector-push (vector-new 3) (ast-pat-constructor))
+            0)
+          0)))))
+
+(defn parse-recordpat-fields-v3 [spans pos-ref src result count]
+  (if (== (p-current spans pos-ref) 5)  ;; } で終了
+    (do (p-advance pos-ref) result)
+    (if (== (p-current spans pos-ref) 20)
+      (let [field-hash (current-symbol-hash-v3 spans pos-ref src)]
+        (do
+          (p-advance pos-ref)
+          (let [pat (parse-pattern-v3 spans pos-ref src)]
+            (parse-recordpat-fields-v3
+              spans
+              pos-ref
+              src
+              (vector-push (vector-push result field-hash) pat)
+              (+ count 1)))))
+      (do
+        (p-advance pos-ref)
+        (parse-recordpat-fields-v3 spans pos-ref src result count)))))
+
+(defn parse-recordpat-v3 [spans pos-ref src]
+  (do
+    (p-advance pos-ref)  ;; { を消費
+    (if (== (p-current spans pos-ref) 20)
+      (do
+        (p-advance pos-ref)  ;; type 名を最小 parity で消費
+        0)
+      0)
+    (let [result
+            (vector-push
+              (vector-push (vector-new 8) (ast-pat-recordpat))
+              0)
+          with-fields (parse-recordpat-fields-v3 spans pos-ref src result 0)
+           field-count (/ (- (vector-length with-fields) 2) 2)]
+       (vector-set-at with-fields 1 field-count))))
+
+(defn wrap-literal-pattern-v3 [expr]
+  (let [tag (vector-get expr 0)]
+    (if (= tag (ast-lit-int))
+      (vector-push
+        (vector-push (vector-new 2) (ast-pat-lit))
+        expr)
+      (if (= tag (ast-lit-bool))
+        (vector-push
+          (vector-push (vector-new 2) (ast-pat-lit))
+          expr)
+        (if (= tag (ast-lit-unit))
+          (vector-push
+            (vector-push (vector-new 2) (ast-pat-lit))
+            expr)
+          expr)))))
+
+(defn sexp-starts-unit-pattern-v3 [spans pos-ref]
+  (let [next-idx (+ (ref-get pos-ref) 1)]
+    (if (== (span-kind spans next-idx) 1) 1 0)))
+
+(defn parse-pattern-v3 [spans pos-ref src]
+  (if (== (p-current spans pos-ref) 20)
+    (let [name (current-symbol-text-v3 spans pos-ref src)
+          name-hash (current-symbol-hash-v3 spans pos-ref src)]
+      (if (string-eq name "_")
+        (do
+          (p-advance pos-ref)
+          (vector-push (vector-new 1) (ast-pat-wildcard)))
+        (if (= (symbol-starts-uppercase-v3 spans pos-ref src) 1)
+          (do
+            (p-advance pos-ref)
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 3) (ast-pat-constructor))
+                name-hash)
+              0))
+          (do
+            (p-advance pos-ref)
+            (vector-push
+              (vector-push (vector-new 2) (ast-pat-var))
+              name-hash)))))
+    (if (== (p-current spans pos-ref) 0)
+      (if (= (sexp-starts-unit-pattern-v3 spans pos-ref) 1)
+        (wrap-literal-pattern-v3 (parse-expr-v3 spans pos-ref src))
+        (parse-constructor-pattern-v3 spans pos-ref src))
+      (if (== (p-current spans pos-ref) 4)
+        (parse-recordpat-v3 spans pos-ref src)
+        (wrap-literal-pattern-v3 (parse-expr-v3 spans pos-ref src))))))
+
 (defn parse-match-v3 [spans pos-ref src]
   (do
     (p-advance pos-ref)  ;; match を消費
@@ -800,8 +926,8 @@
     (if (== (p-current spans pos-ref) 2)  ;; [ -> arm
       (do
         (p-advance pos-ref)  ;; [ を消費
-        (let [pat (parse-expr-v3 spans pos-ref src)
-              body (parse-expr-v3 spans pos-ref src)]
+        (let [pat (parse-pattern-v3 spans pos-ref src)
+               body (parse-expr-v3 spans pos-ref src)]
           (do
             (p-expect spans pos-ref 3)  ;; ] を消費
             (parse-match-arms-v3 spans pos-ref src
