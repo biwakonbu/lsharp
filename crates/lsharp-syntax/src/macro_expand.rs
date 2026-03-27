@@ -34,7 +34,9 @@ pub struct MacroExpansionStep {
 pub enum MacroExpandError {
     #[error("未定義マクロ: {name}")]
     UndefinedMacro { name: String, span: Span },
-    #[error("マクロ引数の数が一致しません: {name} は {expected} 個の引数を受け取りますが、{actual} 個が渡されました")]
+    #[error(
+        "マクロ引数の数が一致しません: {name} は {expected} 個の引数を受け取りますが、{actual} 個が渡されました"
+    )]
     ArityMismatch {
         name: String,
         expected: usize,
@@ -121,7 +123,6 @@ impl MacroExpander {
             computation_builders: HashMap::new(),
         }
     }
-
 
     /// 組み込みマクロを登録済みの展開器を作成
     pub fn with_builtins() -> Self {
@@ -333,7 +334,11 @@ impl MacroExpander {
                         expanded_e,
                         Expr::Lambda(
                             span,
-                            vec![Param { span, name: var_name, ty: None }],
+                            vec![Param {
+                                span,
+                                name: var_name,
+                                ty: None,
+                            }],
                             Box::new(unit_return),
                         ),
                     ],
@@ -362,7 +367,11 @@ impl MacroExpander {
                             expanded_e,
                             Expr::Lambda(
                                 span,
-                                vec![Param { span, name: var_name, ty: None }],
+                                vec![Param {
+                                    span,
+                                    name: var_name,
+                                    ty: None,
+                                }],
                                 Box::new(result),
                             ),
                         ],
@@ -379,7 +388,11 @@ impl MacroExpander {
                             expanded_e,
                             Expr::Lambda(
                                 span,
-                                vec![Param { span, name: ignore_var, ty: None }],
+                                vec![Param {
+                                    span,
+                                    name: ignore_var,
+                                    ty: None,
+                                }],
                                 Box::new(result),
                             ),
                         ],
@@ -405,7 +418,7 @@ impl MacroExpander {
         Ok(result)
     }
 
-        /// gensym: ユニークなシンボル名を生成 (簡易衛生性)
+    /// gensym: ユニークなシンボル名を生成 (簡易衛生性)
     pub fn gensym(&mut self, prefix: &str) -> String {
         self.gensym_counter += 1;
         format!("__gensym_{}_{}", prefix, self.gensym_counter)
@@ -432,10 +445,14 @@ impl MacroExpander {
         for decl in program.decls {
             match decl {
                 Decl::ComputationBuilder {
-                    name, bind_fn, return_fn, ..
+                    name,
+                    bind_fn,
+                    return_fn,
+                    ..
                 } => {
                     // P10-5: Computation Builder を登録 (マクロ展開時に脱糖するため)
-                    self.computation_builders.insert(name.clone(), (bind_fn.clone(), return_fn.clone()));
+                    self.computation_builders
+                        .insert(name.clone(), (bind_fn.clone(), return_fn.clone()));
                     // ComputationBuilder 宣言は出力に残す (型推論でも参照するため)
                     expanded_decls.push(Decl::ComputationBuilder {
                         span: Span::new(0, 0),
@@ -445,7 +462,11 @@ impl MacroExpander {
                     });
                 }
                 Decl::DefMacro {
-                    name, params, macro_type, body, ..
+                    name,
+                    params,
+                    macro_type,
+                    body,
+                    ..
                 } => {
                     // マクロ定義を登録 (P10-3: 型シグネチャも保存)
                     let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
@@ -564,9 +585,7 @@ impl MacroExpander {
 
                         // パラメータ → 引数のマッピング
                         let mut bindings = HashMap::new();
-                        for (param, arg) in
-                            macro_def.params.iter().zip(expanded_args.iter())
-                        {
+                        for (param, arg) in macro_def.params.iter().zip(expanded_args.iter()) {
                             bindings.insert(param.clone(), arg.clone());
                         }
 
@@ -605,11 +624,7 @@ impl MacroExpander {
                     })
                     .collect::<Result<_, MacroExpandError>>()?;
                 let expanded_body = self.expand_expr(*body, depth + 1)?;
-                Ok(Expr::Let(
-                    span,
-                    expanded_bindings,
-                    Box::new(expanded_body),
-                ))
+                Ok(Expr::Let(span, expanded_bindings, Box::new(expanded_body)))
             }
 
             // ラムダ
@@ -703,7 +718,8 @@ impl MacroExpander {
             // 未登録の場合: Computation ノードをそのまま残す (型推論で処理)
             Expr::Computation(span, builder, steps) => {
                 use crate::ast::ComputationStep;
-                if let Some((bind_fn, return_fn)) = self.computation_builders.get(&builder).cloned() {
+                if let Some((bind_fn, return_fn)) = self.computation_builders.get(&builder).cloned()
+                {
                     // P10-5: Computation Expression を bind/return 関数呼び出しに脱糖
                     self.expansion_trace.push(MacroExpansionStep {
                         macro_name: format!("computation:{}", builder),
@@ -779,15 +795,16 @@ impl MacroExpander {
                     match arg {
                         Expr::UnquoteSplice(_, inner) => {
                             if let Expr::Var(_, name) = inner.as_ref()
-                                && let Some(replacement) = bindings.get(name) {
-                                    // リストを展開: App の引数をフラットに追加
-                                    if let Expr::App(_, _, splice_args) = replacement {
-                                        substituted_args.extend(splice_args.clone());
-                                    } else {
-                                        // 単一値の場合はそのまま追加
-                                        substituted_args.push(replacement.clone());
-                                    }
+                                && let Some(replacement) = bindings.get(name)
+                            {
+                                // リストを展開: App の引数をフラットに追加
+                                if let Expr::App(_, _, splice_args) = replacement {
+                                    substituted_args.extend(splice_args.clone());
+                                } else {
+                                    // 単一値の場合はそのまま追加
+                                    substituted_args.push(replacement.clone());
                                 }
+                            }
                         }
                         other => {
                             substituted_args.push(self.substitute_expr(other, bindings)?);
@@ -830,7 +847,11 @@ impl MacroExpander {
             // Lambda
             Expr::Lambda(span, params, body) => {
                 let substituted_body = self.substitute_expr(body, bindings)?;
-                Ok(Expr::Lambda(*span, params.clone(), Box::new(substituted_body)))
+                Ok(Expr::Lambda(
+                    *span,
+                    params.clone(),
+                    Box::new(substituted_body),
+                ))
             }
 
             // Do
@@ -889,7 +910,11 @@ impl MacroExpander {
 
             Expr::FieldAccess(span, inner, field) => {
                 let substituted = self.substitute_expr(inner, bindings)?;
-                Ok(Expr::FieldAccess(*span, Box::new(substituted), field.clone()))
+                Ok(Expr::FieldAccess(
+                    *span,
+                    Box::new(substituted),
+                    field.clone(),
+                ))
             }
 
             Expr::RecordUpdate(span, inner, fields) => {
@@ -958,7 +983,6 @@ mod tests {
         parser.parse_program().unwrap()
     }
 
-
     #[test]
     fn test_expand_simple_macro() {
         let prog = parse(
@@ -998,14 +1022,19 @@ mod tests {
         // P10-3: WithTrace でラップされることがある
         match result {
             Err(MacroExpandError::WithTrace { inner, .. }) => {
-                if let MacroExpandError::ArityMismatch { expected, actual, .. } = *inner {
+                if let MacroExpandError::ArityMismatch {
+                    expected, actual, ..
+                } = *inner
+                {
                     assert_eq!(expected, 2);
                     assert_eq!(actual, 1);
                 } else {
                     panic!("Expected ArityMismatch inside WithTrace");
                 }
             }
-            Err(MacroExpandError::ArityMismatch { expected, actual, .. }) => {
+            Err(MacroExpandError::ArityMismatch {
+                expected, actual, ..
+            }) => {
                 assert_eq!(expected, 2);
                 assert_eq!(actual, 1);
             }
@@ -1208,9 +1237,8 @@ mod tests {
     #[test]
     fn test_macro_type_sig_stored() {
         // (defmacro typed-when [test body] : (-> Bool Int Int) '(if ~test ~body ()))
-        let prog = parse(
-            "(defmacro typed-when [test body] : (-> Bool Int Int) '(if ~test ~body ()))",
-        );
+        let prog =
+            parse("(defmacro typed-when [test body] : (-> Bool Int Int) '(if ~test ~body ()))");
         let mut expander = MacroExpander::new();
         let _expanded = expander.expand_program(prog).unwrap();
         // 型シグネチャが保存されていることを確認
@@ -1254,7 +1282,11 @@ mod tests {
         let _expanded = expander.expand_program(prog).unwrap();
         let trace = expander.expansion_trace();
         // quad -> double -> double の3段階
-        assert!(trace.len() >= 2, "トレースは少なくとも2エントリ: {:?}", trace);
+        assert!(
+            trace.len() >= 2,
+            "トレースは少なくとも2エントリ: {:?}",
+            trace
+        );
         assert_eq!(trace[0].macro_name, "quad");
     }
 
@@ -1299,8 +1331,14 @@ mod tests {
         ];
         let with_trace = err.with_trace(trace);
         let formatted = with_trace.format_traceback();
-        assert!(formatted.contains("トレースバック"), "フォーマットにトレースバックが含まれるべき: {formatted}");
-        assert!(formatted.contains("loop"), "マクロ名が含まれるべき: {formatted}");
+        assert!(
+            formatted.contains("トレースバック"),
+            "フォーマットにトレースバックが含まれるべき: {formatted}"
+        );
+        assert!(
+            formatted.contains("loop"),
+            "マクロ名が含まれるべき: {formatted}"
+        );
     }
 }
 
@@ -1331,8 +1369,11 @@ mod tests_p10_5 {
             // 外側の if
             if let Expr::If(_, _, _, else_br) = body {
                 // 内側も if
-                assert!(matches!(else_br.as_ref(), Expr::If(_, _, _, _)),
-                    "cond の else 分岐が if に展開されるべき: {:?}", else_br);
+                assert!(
+                    matches!(else_br.as_ref(), Expr::If(_, _, _, _)),
+                    "cond の else 分岐が if に展開されるべき: {:?}",
+                    else_br
+                );
             } else {
                 panic!("Expected If, got {:?}", body);
             }
@@ -1349,8 +1390,11 @@ mod tests_p10_5 {
         let expanded = expander.expand_program(prog).unwrap();
         assert_eq!(expanded.decls.len(), 1);
         if let Decl::Defn { body, .. } = &expanded.decls[0] {
-            assert!(matches!(body, Expr::If(_, _, _, _)),
-                "cond は if に展開されるべき: {:?}", body);
+            assert!(
+                matches!(body, Expr::If(_, _, _, _)),
+                "cond は if に展開されるべき: {:?}",
+                body
+            );
         }
     }
 
@@ -1362,8 +1406,11 @@ mod tests_p10_5 {
         let expanded = expander.expand_program(prog).unwrap();
         assert_eq!(expanded.decls.len(), 1);
         if let Decl::Defn { body, .. } = &expanded.decls[0] {
-            assert!(matches!(body, Expr::Lit(_, Literal::Int(42))),
-                "cond のデフォルト値のみの場合はそのまま返すべき: {:?}", body);
+            assert!(
+                matches!(body, Expr::Lit(_, Literal::Int(42))),
+                "cond のデフォルト値のみの場合はそのまま返すべき: {:?}",
+                body
+            );
         }
     }
 
@@ -1378,11 +1425,17 @@ mod tests_p10_5 {
         assert_eq!(expanded.decls.len(), 1);
         if let Decl::Defn { body, .. } = &expanded.decls[0] {
             if let Expr::App(_, func, args) = body {
-                assert!(matches!(func.as_ref(), Expr::Var(_, name) if name == "print"),
-                    "pipe の関数が print であるべき: {:?}", func);
+                assert!(
+                    matches!(func.as_ref(), Expr::Var(_, name) if name == "print"),
+                    "pipe の関数が print であるべき: {:?}",
+                    func
+                );
                 assert_eq!(args.len(), 1);
-                assert!(matches!(&args[0], Expr::Lit(_, Literal::Int(42))),
-                    "pipe の引数が 42 であるべき: {:?}", args);
+                assert!(
+                    matches!(&args[0], Expr::Lit(_, Literal::Int(42))),
+                    "pipe の引数が 42 であるべき: {:?}",
+                    args
+                );
             } else {
                 panic!("Expected App, got {:?}", body);
             }
@@ -1400,8 +1453,11 @@ mod tests_p10_5 {
         if let Decl::Defn { body, .. } = &expanded.decls[0] {
             // 最外の App: (+ 3 ...)
             if let Expr::App(_, func, args) = body {
-                assert!(matches!(func.as_ref(), Expr::Var(_, name) if name == "+"),
-                    "最外の関数が + であるべき: {:?}", func);
+                assert!(
+                    matches!(func.as_ref(), Expr::Var(_, name) if name == "+"),
+                    "最外の関数が + であるべき: {:?}",
+                    func
+                );
                 // 引数は [2, (+ 2 1)] の2つ (部分適用 + パイプ引数)
                 assert_eq!(args.len(), 2, "引数が2つあるべき: {:?}", args);
             } else {
@@ -1418,8 +1474,11 @@ mod tests_p10_5 {
         let expanded = expander.expand_program(prog).unwrap();
         assert_eq!(expanded.decls.len(), 1);
         if let Decl::Defn { body, .. } = &expanded.decls[0] {
-            assert!(matches!(body, Expr::Lit(_, Literal::Int(42))),
-                "値のみの場合はそのまま返すべき: {:?}", body);
+            assert!(
+                matches!(body, Expr::Lit(_, Literal::Int(42))),
+                "値のみの場合はそのまま返すべき: {:?}",
+                body
+            );
         }
     }
 
@@ -1476,7 +1535,8 @@ mod tests_computation_macro {
             if let Expr::App(_, func, args) = body {
                 assert!(
                     matches!(func.as_ref(), Expr::Var(_, name) if name == "maybe-return"),
-                    "return は maybe-return に脱糖されるべき: {:?}", func
+                    "return は maybe-return に脱糖されるべき: {:?}",
+                    func
                 );
                 assert_eq!(args.len(), 1);
             } else {
@@ -1503,13 +1563,15 @@ mod tests_computation_macro {
             if let Expr::App(_, func, args) = body {
                 assert!(
                     matches!(func.as_ref(), Expr::Var(_, name) if name == "maybe-bind"),
-                    "let! は maybe-bind に脱糖されるべき: {:?}", func
+                    "let! は maybe-bind に脱糖されるべき: {:?}",
+                    func
                 );
                 assert_eq!(args.len(), 2, "bind は2引数であるべき");
                 // 第2引数が Lambda であること
                 assert!(
                     matches!(&args[1], Expr::Lambda(_, params, _) if params.len() == 1),
-                    "bind の第2引数は Lambda であるべき: {:?}", args[1]
+                    "bind の第2引数は Lambda であるべき: {:?}",
+                    args[1]
                 );
             } else {
                 panic!("Expected App (maybe-bind ...), got {:?}", body);
@@ -1534,13 +1596,17 @@ mod tests_computation_macro {
             if let Expr::App(_, func, args) = body {
                 assert!(
                     matches!(func.as_ref(), Expr::Var(_, name) if name == "maybe-bind"),
-                    "do! は maybe-bind に脱糖されるべき: {:?}", func
+                    "do! は maybe-bind に脱糖されるべき: {:?}",
+                    func
                 );
                 assert_eq!(args.len(), 2);
                 // 第2引数の Lambda パラメータ名が gensym (無視用) であること
                 if let Expr::Lambda(_, params, _) = &args[1] {
-                    assert!(params[0].name.starts_with("__gensym_"),
-                        "do! の Lambda パラメータは gensym であるべき: {}", params[0].name);
+                    assert!(
+                        params[0].name.starts_with("__gensym_"),
+                        "do! の Lambda パラメータは gensym であるべき: {}",
+                        params[0].name
+                    );
                 }
             } else {
                 panic!("Expected App, got {:?}", body);
@@ -1568,7 +1634,8 @@ mod tests_computation_macro {
                     if let Expr::App(_, inner_func, _) = inner_body.as_ref() {
                         assert!(
                             matches!(inner_func.as_ref(), Expr::Var(_, name) if name == "maybe-bind"),
-                            "チェーンの内側も maybe-bind であるべき: {:?}", inner_func
+                            "チェーンの内側も maybe-bind であるべき: {:?}",
+                            inner_func
                         );
                     } else {
                         panic!("Expected inner App, got {:?}", inner_body);
@@ -1589,23 +1656,25 @@ mod tests_computation_macro {
         let mut expander = MacroExpander::with_builtins();
         let _expanded = expander.expand_program(prog).unwrap();
         let trace = expander.expansion_trace();
-        assert!(!trace.is_empty(), "computation 展開のトレースが記録されるべき");
+        assert!(
+            !trace.is_empty(),
+            "computation 展開のトレースが記録されるべき"
+        );
         assert_eq!(trace[0].macro_name, "computation:maybe");
     }
 
     #[test]
     fn test_computation_without_builder_preserved() {
         // ビルダー未登録の場合は Computation ノードをそのまま残す
-        let prog = parse(
-            "(defn test [] (computation unknown (return 42)))",
-        );
+        let prog = parse("(defn test [] (computation unknown (return 42)))");
         let mut expander = MacroExpander::with_builtins();
         let expanded = expander.expand_program(prog).unwrap();
         assert_eq!(expanded.decls.len(), 1);
         if let Decl::Defn { body, .. } = &expanded.decls[0] {
             assert!(
                 matches!(body, Expr::Computation(_, name, _) if name == "unknown"),
-                "未登録ビルダーの場合は Computation を保持: {:?}", body
+                "未登録ビルダーの場合は Computation を保持: {:?}",
+                body
             );
         }
     }

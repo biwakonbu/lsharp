@@ -100,12 +100,12 @@ pub fn generate_review(
         let actual_decl = unwrap_private(decl);
         match actual_decl {
             Decl::Defn {
-                name, metadata, span, ..
+                name,
+                metadata,
+                span,
+                ..
             } => {
-                let has_doc = metadata
-                    .as_ref()
-                    .map(|m| m.doc.is_some())
-                    .unwrap_or(false);
+                let has_doc = metadata.as_ref().map(|m| m.doc.is_some()).unwrap_or(false);
 
                 let (freshness, reviewed_by, last_reviewed) =
                     if let Some(entry) = doc_status.entries.get(name) {
@@ -221,8 +221,12 @@ pub fn extract_context(source: &str, entry: &ReviewEntry, context_lines: usize) 
         } else {
             " "
         };
-        output.push_str(&format!("{marker} {:>4} | {}
-", i + 1, line));
+        output.push_str(&format!(
+            "{marker} {:>4} | {}
+",
+            i + 1,
+            line
+        ));
     }
     output
 }
@@ -331,10 +335,7 @@ mod tests {
         );
         let checkpoint = generate_review("test.ls", source, &status, &[]);
         assert_eq!(checkpoint.entries[0].freshness, Freshness::Fresh);
-        assert_eq!(
-            checkpoint.entries[0].reviewed_by,
-            Some("dev".to_string())
-        );
+        assert_eq!(checkpoint.entries[0].reviewed_by, Some("dev".to_string()));
     }
 
     #[test]
@@ -387,7 +388,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod context_tests {
     use super::*;
@@ -398,8 +398,8 @@ mod context_tests {
 line2
 line3";
         assert_eq!(offset_to_line(source, 0), 1);
-        assert_eq!(offset_to_line(source, 5), 1);  // end of line1
-        assert_eq!(offset_to_line(source, 6), 2);  // start of line2
+        assert_eq!(offset_to_line(source, 5), 1); // end of line1
+        assert_eq!(offset_to_line(source, 6), 2); // start of line2
         assert_eq!(offset_to_line(source, 12), 3); // start of line3
     }
 
@@ -420,13 +420,13 @@ line3";
             has_doc: false,
             reviewed_by: None,
             last_reviewed: None,
-            span_start: 11,  // start of (defn add ...)
-            span_end: 36,    // end of (defn add ...)
+            span_start: 11, // start of (defn add ...)
+            span_end: 36,   // end of (defn add ...)
         };
         let ctx = extract_context(source, &entry, 1);
         assert!(ctx.contains("(module M)"));
         assert!(ctx.contains("(defn add"));
-        assert!(ctx.contains(">"));  // marker for matching lines
+        assert!(ctx.contains(">")); // marker for matching lines
     }
 
     #[test]

@@ -60,8 +60,7 @@ pub fn derive_show_adt(name: &str, variants: &[Variant]) -> Decl {
                 }
             } else {
                 // 引数ありバリアント: パターンは (Variant v0 v1 ...)
-                let var_names: Vec<String> =
-                    (0..field_count).map(|i| format!("v{i}")).collect();
+                let var_names: Vec<String> = (0..field_count).map(|i| format!("v{i}")).collect();
                 let patterns: Vec<Pattern> = var_names
                     .iter()
                     .map(|v| Pattern::Var(s, v.clone()))
@@ -69,10 +68,7 @@ pub fn derive_show_adt(name: &str, variants: &[Variant]) -> Decl {
 
                 // ボディ: string-concat で結合
                 // "VariantName(" ++ show(v0) ++ ", " ++ show(v1) ++ ")"
-                let mut body = Expr::Lit(
-                    s,
-                    Literal::String(format!("{}(", variant.name)),
-                );
+                let mut body = Expr::Lit(s, Literal::String(format!("{}(", variant.name)));
 
                 for (i, var_name) in var_names.iter().enumerate() {
                     // (show vi)
@@ -125,11 +121,7 @@ pub fn derive_show_adt(name: &str, variants: &[Variant]) -> Decl {
             ty: None,
         }],
         return_ty: None,
-        body: Expr::Match(
-            s,
-            Box::new(Expr::Var(s, param_name.to_string())),
-            arms,
-        ),
+        body: Expr::Match(s, Box::new(Expr::Var(s, param_name.to_string())), arms),
         where_clauses: vec![],
         metadata: None,
     }
@@ -150,20 +142,14 @@ pub fn derive_eq_adt(name: &str, variants: &[Variant]) -> Decl {
         .iter()
         .map(|variant| {
             let field_count = variant.fields.len();
-            let a_vars: Vec<String> =
-                (0..field_count).map(|i| format!("a{i}")).collect();
-            let b_vars: Vec<String> =
-                (0..field_count).map(|i| format!("b{i}")).collect();
+            let a_vars: Vec<String> = (0..field_count).map(|i| format!("a{i}")).collect();
+            let b_vars: Vec<String> = (0..field_count).map(|i| format!("b{i}")).collect();
 
-            let a_patterns: Vec<Pattern> = a_vars
-                .iter()
-                .map(|v| Pattern::Var(s, v.clone()))
-                .collect();
+            let a_patterns: Vec<Pattern> =
+                a_vars.iter().map(|v| Pattern::Var(s, v.clone())).collect();
 
-            let b_patterns: Vec<Pattern> = b_vars
-                .iter()
-                .map(|v| Pattern::Var(s, v.clone()))
-                .collect();
+            let b_patterns: Vec<Pattern> =
+                b_vars.iter().map(|v| Pattern::Var(s, v.clone())).collect();
 
             // 内側の match: b に対して同じバリアントかチェック
             let inner_match_body = if field_count == 0 {
@@ -207,11 +193,7 @@ pub fn derive_eq_adt(name: &str, variants: &[Variant]) -> Decl {
             let inner_arms = vec![
                 MatchArm {
                     span: s,
-                    pattern: Pattern::Constructor(
-                        s,
-                        variant.name.clone(),
-                        b_patterns,
-                    ),
+                    pattern: Pattern::Constructor(s, variant.name.clone(), b_patterns),
                     guard: None,
                     body: inner_match_body,
                 },
@@ -225,17 +207,9 @@ pub fn derive_eq_adt(name: &str, variants: &[Variant]) -> Decl {
 
             MatchArm {
                 span: s,
-                pattern: Pattern::Constructor(
-                    s,
-                    variant.name.clone(),
-                    a_patterns,
-                ),
+                pattern: Pattern::Constructor(s, variant.name.clone(), a_patterns),
                 guard: None,
-                body: Expr::Match(
-                    s,
-                    Box::new(Expr::Var(s, "b".to_string())),
-                    inner_arms,
-                ),
+                body: Expr::Match(s, Box::new(Expr::Var(s, "b".to_string())), inner_arms),
             }
         })
         .collect();
@@ -256,11 +230,7 @@ pub fn derive_eq_adt(name: &str, variants: &[Variant]) -> Decl {
             },
         ],
         return_ty: None,
-        body: Expr::Match(
-            s,
-            Box::new(Expr::Var(s, "a".to_string())),
-            arms,
-        ),
+        body: Expr::Match(s, Box::new(Expr::Var(s, "a".to_string())), arms),
         where_clauses: vec![],
         metadata: None,
     }
@@ -277,10 +247,7 @@ pub fn derive_show_record(name: &str, fields: &[(String, crate::ast::TypeExpr)])
     let func_name = format!("show-{name}");
     let param_name = "r";
 
-    let mut body = Expr::Lit(
-        s,
-        Literal::String(format!("{name}{{")),
-    );
+    let mut body = Expr::Lit(s, Literal::String(format!("{name}{{")));
 
     for (i, (field_name, _)) in fields.iter().enumerate() {
         // フィールドラベル
@@ -344,12 +311,7 @@ pub fn apply_derives(program: &Program) -> Vec<Decl> {
 
     for decl in &program.decls {
         match decl {
-            Decl::TypeDef {
-                name,
-                variants,
-
-                ..
-            } => {
+            Decl::TypeDef { name, variants, .. } => {
                 // メタデータから derive 対象を取得
                 // 現在は全 TypeDef に対して show と eq を生成
                 // (将来的には :derive [Show Eq] メタデータで制御)
@@ -359,9 +321,7 @@ pub fn apply_derives(program: &Program) -> Vec<Decl> {
                     derived.push(derive_eq_adt(name, variants));
                 }
             }
-            Decl::RecordDef {
-                name, fields, ..
-            } => {
+            Decl::RecordDef { name, fields, .. } => {
                 derived.push(derive_show_record(name, fields));
             }
             _ => {}
@@ -374,7 +334,7 @@ pub fn apply_derives(program: &Program) -> Vec<Decl> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Variant, TypeExpr};
+    use crate::ast::{TypeExpr, Variant};
 
     fn make_variant(name: &str, field_count: usize) -> Variant {
         Variant {
@@ -398,7 +358,9 @@ mod tests {
             if let Expr::Match(_, _, arms) = body {
                 assert_eq!(arms.len(), 1);
                 // Nothing -> "Nothing"
-                assert!(matches!(&arms[0].body, Expr::Lit(_, Literal::String(s)) if s == "Nothing"));
+                assert!(
+                    matches!(&arms[0].body, Expr::Lit(_, Literal::String(s)) if s == "Nothing")
+                );
             }
         } else {
             panic!("Expected Defn");
@@ -407,10 +369,7 @@ mod tests {
 
     #[test]
     fn test_derive_show_adt_with_args() {
-        let variants = vec![
-            make_variant("Just", 1),
-            make_variant("Nothing", 0),
-        ];
+        let variants = vec![make_variant("Just", 1), make_variant("Nothing", 0)];
         let decl = derive_show_adt("Maybe", &variants);
         if let Decl::Defn { name, body, .. } = &decl {
             assert_eq!(name, "show-Maybe");
@@ -422,19 +381,21 @@ mod tests {
                     assert_eq!(pats.len(), 1);
                 }
                 // Nothing arm: 文字列リテラル
-                assert!(matches!(&arms[1].body, Expr::Lit(_, Literal::String(s)) if s == "Nothing"));
+                assert!(
+                    matches!(&arms[1].body, Expr::Lit(_, Literal::String(s)) if s == "Nothing")
+                );
             }
         }
     }
 
     #[test]
     fn test_derive_eq_adt() {
-        let variants = vec![
-            make_variant("Just", 1),
-            make_variant("Nothing", 0),
-        ];
+        let variants = vec![make_variant("Just", 1), make_variant("Nothing", 0)];
         let decl = derive_eq_adt("Maybe", &variants);
-        if let Decl::Defn { name, params, body, .. } = &decl {
+        if let Decl::Defn {
+            name, params, body, ..
+        } = &decl
+        {
             assert_eq!(name, "eq-Maybe?");
             assert_eq!(params.len(), 2);
             assert_eq!(params[0].name, "a");
@@ -452,10 +413,7 @@ mod tests {
 
     #[test]
     fn test_derive_eq_adt_no_args() {
-        let variants = vec![
-            make_variant("Nothing", 0),
-            make_variant("Something", 0),
-        ];
+        let variants = vec![make_variant("Nothing", 0), make_variant("Something", 0)];
         let decl = derive_eq_adt("Option", &variants);
         if let Decl::Defn { body, .. } = &decl {
             if let Expr::Match(_, _, arms) = body {
@@ -464,9 +422,15 @@ mod tests {
                 if let Expr::Match(_, _, inner_arms) = &arms[0].body {
                     assert_eq!(inner_arms.len(), 2); // Nothing + wildcard
                     // Nothing -> true
-                    assert!(matches!(&inner_arms[0].body, Expr::Lit(_, Literal::Bool(true))));
+                    assert!(matches!(
+                        &inner_arms[0].body,
+                        Expr::Lit(_, Literal::Bool(true))
+                    ));
                     // _ -> false
-                    assert!(matches!(&inner_arms[1].body, Expr::Lit(_, Literal::Bool(false))));
+                    assert!(matches!(
+                        &inner_arms[1].body,
+                        Expr::Lit(_, Literal::Bool(false))
+                    ));
                 }
             }
         }
@@ -475,8 +439,14 @@ mod tests {
     #[test]
     fn test_derive_show_record() {
         let fields = vec![
-            ("x".to_string(), TypeExpr::Named(Span::new(0, 0), "Int".to_string())),
-            ("y".to_string(), TypeExpr::Named(Span::new(0, 0), "Int".to_string())),
+            (
+                "x".to_string(),
+                TypeExpr::Named(Span::new(0, 0), "Int".to_string()),
+            ),
+            (
+                "y".to_string(),
+                TypeExpr::Named(Span::new(0, 0), "Int".to_string()),
+            ),
         ];
         let decl = derive_show_record("Point", &fields);
         if let Decl::Defn { name, params, .. } = &decl {

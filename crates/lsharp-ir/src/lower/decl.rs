@@ -5,13 +5,16 @@ use lsharp_types::types::Type;
 
 use crate::{Function, Instruction, IrType};
 
-use super::{type_to_ir, type_to_name, type_expr_to_name, FuncCtx, Lower, LowerError};
+use super::{FuncCtx, Lower, LowerError, type_expr_to_name, type_to_ir, type_to_name};
 
 impl Lower {
     /// レコード型のフィールドインデックスを解決
     pub(crate) fn resolve_field_index(&self, type_name: &str, field_name: &str) -> Option<u32> {
         if let Some(fields) = self.record_fields.get(type_name) {
-            fields.iter().position(|f| f == field_name).map(|i| i as u32)
+            fields
+                .iter()
+                .position(|f| f == field_name)
+                .map(|i| i as u32)
         } else {
             None
         }
@@ -35,7 +38,11 @@ impl Lower {
         if let Some(type_name) = first_arg_type {
             // (trait_name, type_name, method_name) でマングル名を検索
             for trait_name in trait_names {
-                let key = (trait_name.clone(), type_name.clone(), method_name.to_string());
+                let key = (
+                    trait_name.clone(),
+                    type_name.clone(),
+                    method_name.to_string(),
+                );
                 if let Some(mangled) = self.trait_method_impls.get(&key) {
                     return self.func_indices.get(mangled).copied();
                 }
@@ -44,7 +51,9 @@ impl Lower {
 
         // 型が不明な場合、実装が1つだけならそれを使う（一意解決）
         for trait_name in trait_names {
-            let matching: Vec<_> = self.trait_method_impls.iter()
+            let matching: Vec<_> = self
+                .trait_method_impls
+                .iter()
                 .filter(|((t, _, m), _)| t == trait_name && m == method_name)
                 .collect();
             if matching.len() == 1 {
@@ -127,7 +136,6 @@ impl Lower {
         }
     }
 
-
     /// ADT コンストラクタ関数を生成 (リニアメモリ版)
     ///
     /// ヒープレイアウト: [heap_tag=3: i32, variant_tag: i32, field_0: i64, ...]
@@ -168,7 +176,9 @@ impl Lower {
         for i in 0..field_count {
             body.push(Instruction::LocalGet(addr_local));
             body.push(Instruction::LocalGet(i as u32));
-            body.push(Instruction::I64Store { offset: 8 + (i as u32) * 8 });
+            body.push(Instruction::I64Store {
+                offset: 8 + (i as u32) * 8,
+            });
         }
 
         // タグ付きポインタを返す: addr | (1 << 63)
@@ -198,28 +208,28 @@ impl Lower {
         for constraint in constraints {
             match constraint {
                 Constraint::Gte(Expr::Lit(_, Literal::Int(threshold))) => {
-                        body.push(Instruction::LocalGet(0));
-                        body.push(Instruction::I64Const(*threshold));
-                        body.push(Instruction::I64GeS);
-                        body.push(Instruction::I32Eqz);
-                        body.push(Instruction::If(IrType::I64));
-                        body.push(Instruction::Unreachable);
-                        body.push(Instruction::Else);
-                        body.push(Instruction::I64Const(0));
-                        body.push(Instruction::End);
-                        body.push(Instruction::Drop);
+                    body.push(Instruction::LocalGet(0));
+                    body.push(Instruction::I64Const(*threshold));
+                    body.push(Instruction::I64GeS);
+                    body.push(Instruction::I32Eqz);
+                    body.push(Instruction::If(IrType::I64));
+                    body.push(Instruction::Unreachable);
+                    body.push(Instruction::Else);
+                    body.push(Instruction::I64Const(0));
+                    body.push(Instruction::End);
+                    body.push(Instruction::Drop);
                 }
                 Constraint::Lte(Expr::Lit(_, Literal::Int(threshold))) => {
-                        body.push(Instruction::LocalGet(0));
-                        body.push(Instruction::I64Const(*threshold));
-                        body.push(Instruction::I64LeS);
-                        body.push(Instruction::I32Eqz);
-                        body.push(Instruction::If(IrType::I64));
-                        body.push(Instruction::Unreachable);
-                        body.push(Instruction::Else);
-                        body.push(Instruction::I64Const(0));
-                        body.push(Instruction::End);
-                        body.push(Instruction::Drop);
+                    body.push(Instruction::LocalGet(0));
+                    body.push(Instruction::I64Const(*threshold));
+                    body.push(Instruction::I64LeS);
+                    body.push(Instruction::I32Eqz);
+                    body.push(Instruction::If(IrType::I64));
+                    body.push(Instruction::Unreachable);
+                    body.push(Instruction::Else);
+                    body.push(Instruction::I64Const(0));
+                    body.push(Instruction::End);
+                    body.push(Instruction::Drop);
                 }
                 Constraint::Range(lo_expr, hi_expr) => {
                     if let (Expr::Lit(_, Literal::Int(lo)), Expr::Lit(_, Literal::Int(hi))) =
@@ -277,22 +287,22 @@ impl Lower {
         for constraint in constraints {
             match constraint {
                 Constraint::Gte(Expr::Lit(_, Literal::Int(threshold))) => {
-                        body.push(Instruction::LocalGet(0));
-                        body.push(Instruction::I64Const(*threshold));
-                        body.push(Instruction::I64GeS);
-                        body.push(Instruction::I64ExtendI32S);
-                        body.push(Instruction::I32WrapI64);
-                        body.push(Instruction::I32And);
-                        body.push(Instruction::I64ExtendI32S);
+                    body.push(Instruction::LocalGet(0));
+                    body.push(Instruction::I64Const(*threshold));
+                    body.push(Instruction::I64GeS);
+                    body.push(Instruction::I64ExtendI32S);
+                    body.push(Instruction::I32WrapI64);
+                    body.push(Instruction::I32And);
+                    body.push(Instruction::I64ExtendI32S);
                 }
                 Constraint::Lte(Expr::Lit(_, Literal::Int(threshold))) => {
-                        body.push(Instruction::LocalGet(0));
-                        body.push(Instruction::I64Const(*threshold));
-                        body.push(Instruction::I64LeS);
-                        body.push(Instruction::I64ExtendI32S);
-                        body.push(Instruction::I32WrapI64);
-                        body.push(Instruction::I32And);
-                        body.push(Instruction::I64ExtendI32S);
+                    body.push(Instruction::LocalGet(0));
+                    body.push(Instruction::I64Const(*threshold));
+                    body.push(Instruction::I64LeS);
+                    body.push(Instruction::I64ExtendI32S);
+                    body.push(Instruction::I32WrapI64);
+                    body.push(Instruction::I32And);
+                    body.push(Instruction::I64ExtendI32S);
                 }
                 Constraint::Range(lo_expr, hi_expr) => {
                     if let (Expr::Lit(_, Literal::Int(lo)), Expr::Lit(_, Literal::Int(hi))) =

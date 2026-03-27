@@ -78,16 +78,10 @@ pub fn check_metadata(program: &Program) -> Vec<MetadataDiagnostic> {
             span,
             ..
         } = actual_decl
-            && let Some(meta) = metadata {
-                check_defn_metadata(
-                    &mut diagnostics,
-                    name,
-                    params,
-                    meta,
-                    *span,
-                    &all_names,
-                );
-            }
+            && let Some(meta) = metadata
+        {
+            check_defn_metadata(&mut diagnostics, name, params, meta, *span, &all_names);
+        }
     }
 
     diagnostics
@@ -181,7 +175,9 @@ fn collect_var_references_inner(expr: &Expr, refs: &mut Vec<(String, Span)>) {
         Expr::Computation(_, _, steps) => {
             for step in steps {
                 match step {
-                    ComputationStep::LetBang(_, _, expr) => collect_var_references_inner(expr, refs),
+                    ComputationStep::LetBang(_, _, expr) => {
+                        collect_var_references_inner(expr, refs)
+                    }
                     ComputationStep::DoBang(_, expr) => collect_var_references_inner(expr, refs),
                     ComputationStep::Return(_, expr) => collect_var_references_inner(expr, refs),
                     ComputationStep::Expr(expr) => collect_var_references_inner(expr, refs),
@@ -199,10 +195,23 @@ fn collect_var_references_inner(expr: &Expr, refs: &mut Vec<(String, Span)>) {
 fn is_builtin(name: &str) -> bool {
     matches!(
         name,
-        "+" | "-" | "*" | "/" | "%" | "=" | "!=" | "<" | ">" | "<=" | ">="
-            | "and" | "or" | "not"
-            | "print" | "println"
-            | "true" | "false"
+        "+" | "-"
+            | "*"
+            | "/"
+            | "%"
+            | "="
+            | "!="
+            | "<"
+            | ">"
+            | "<="
+            | ">="
+            | "and"
+            | "or"
+            | "not"
+            | "print"
+            | "println"
+            | "true"
+            | "false"
             | "nil"
     )
 }
@@ -225,9 +234,7 @@ fn check_defn_metadata(
             if !param_names.contains(&meta_param.as_str()) {
                 diagnostics.push(MetadataDiagnostic {
                     severity: Severity::Error,
-                    message: format!(
-                        ":params に存在しない引数 '{meta_param}' が記載されています"
-                    ),
+                    message: format!(":params に存在しない引数 '{meta_param}' が記載されています"),
                     span,
                     function_name: name.to_string(),
                 });
@@ -240,9 +247,7 @@ fn check_defn_metadata(
             if !meta_param_names.contains(param_name) {
                 diagnostics.push(MetadataDiagnostic {
                     severity: Severity::Warning,
-                    message: format!(
-                        "引数 '{param_name}' が :params に記載されていません"
-                    ),
+                    message: format!("引数 '{param_name}' が :params に記載されていません"),
                     span,
                     function_name: name.to_string(),
                 });
@@ -255,9 +260,7 @@ fn check_defn_metadata(
         if !all_names.contains(ref_name) {
             diagnostics.push(MetadataDiagnostic {
                 severity: Severity::Error,
-                message: format!(
-                    ":see-also に存在しない識別子 '{ref_name}' が参照されています"
-                ),
+                message: format!(":see-also に存在しない識別子 '{ref_name}' が参照されています"),
                 span,
                 function_name: name.to_string(),
             });
@@ -272,9 +275,7 @@ fn check_defn_metadata(
             if !param_names.contains(&ident.as_str()) && !all_names.contains(ident) {
                 diagnostics.push(MetadataDiagnostic {
                     severity: Severity::Warning,
-                    message: format!(
-                        ":doc 内の識別子 `{ident}` がプログラム中に見つかりません"
-                    ),
+                    message: format!(":doc 内の識別子 `{ident}` がプログラム中に見つかりません"),
                     span,
                     function_name: name.to_string(),
                 });
@@ -284,12 +285,26 @@ fn check_defn_metadata(
 
     // P3-3-5: :invariant の検証
     if let Some(ref invariant_expr) = metadata.invariant {
-        check_invariant(diagnostics, name, &param_names, invariant_expr, span, all_names);
+        check_invariant(
+            diagnostics,
+            name,
+            &param_names,
+            invariant_expr,
+            span,
+            all_names,
+        );
     }
 
     // P3-3-6: :example の検証
     for example_expr in &metadata.example {
-        check_example(diagnostics, name, &param_names, example_expr, span, all_names);
+        check_example(
+            diagnostics,
+            name,
+            &param_names,
+            example_expr,
+            span,
+            all_names,
+        );
     }
 }
 
@@ -320,9 +335,7 @@ fn check_invariant(
         if !param_names.contains(&ref_name.as_str()) && !all_names.contains(ref_name) {
             diagnostics.push(MetadataDiagnostic {
                 severity: Severity::Error,
-                message: format!(
-                    ":invariant 内で未定義の識別子 '{ref_name}' が参照されています"
-                ),
+                message: format!(":invariant 内で未定義の識別子 '{ref_name}' が参照されています"),
                 span,
                 function_name: fn_name.to_string(),
             });
@@ -352,16 +365,13 @@ fn check_example(
         if !param_names.contains(&ref_name.as_str()) && !all_names.contains(ref_name) {
             diagnostics.push(MetadataDiagnostic {
                 severity: Severity::Error,
-                message: format!(
-                    ":example 内で未定義の識別子 '{ref_name}' が参照されています"
-                ),
+                message: format!(":example 内で未定義の識別子 '{ref_name}' が参照されています"),
                 span,
                 function_name: fn_name.to_string(),
             });
         }
     }
 }
-
 
 /// メタデータから生成されたテストケース
 #[derive(Debug, Clone)]
@@ -446,20 +456,23 @@ mod tests {
 
     #[test]
     fn test_correct_params_metadata() {
-        let diags = check(
-            r#"(defn add [x y] :doc "addition" :params [(x "left") (y "right")] (+ x y))"#,
-        );
+        let diags =
+            check(r#"(defn add [x y] :doc "addition" :params [(x "left") (y "right")] (+ x y))"#);
         assert!(diags.is_empty());
     }
 
     #[test]
     fn test_unknown_param_in_metadata() {
-        let diags = check(
-            r#"(defn add [x y] :params [(x "left") (z "unknown")] (+ x y))"#,
-        );
+        let diags = check(r#"(defn add [x y] :params [(x "left") (z "unknown")] (+ x y))"#);
         // 'z' は引数にないのでエラー、'y' は :params にないので警告
-        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
-        let warnings: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Warning).collect();
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+        let warnings: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Warning)
+            .collect();
         assert_eq!(errors.len(), 1);
         assert!(errors[0].message.contains("'z'"));
         assert_eq!(warnings.len(), 1);
@@ -468,10 +481,11 @@ mod tests {
 
     #[test]
     fn test_missing_param_documentation() {
-        let diags = check(
-            r#"(defn add [x y] :params [(x "left")] (+ x y))"#,
-        );
-        let warnings: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Warning).collect();
+        let diags = check(r#"(defn add [x y] :params [(x "left")] (+ x y))"#);
+        let warnings: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Warning)
+            .collect();
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("'y'"));
     }
@@ -487,10 +501,11 @@ mod tests {
 
     #[test]
     fn test_see_also_invalid_reference() {
-        let diags = check(
-            r#"(defn add [x y] :doc "add" :see-also [nonexistent] (+ x y))"#,
-        );
-        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
+        let diags = check(r#"(defn add [x y] :doc "add" :see-also [nonexistent] (+ x y))"#);
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
         assert_eq!(errors.len(), 1);
         assert!(errors[0].message.contains("'nonexistent'"));
     }
@@ -500,9 +515,7 @@ mod tests {
     #[test]
     fn test_doc_valid_identifier_reference() {
         // :doc 内で参照した識別子が存在する場合は警告なし
-        let diags = check(
-            r#"(defn add [x y] :doc "Adds `x` and `y` together" (+ x y))"#,
-        );
+        let diags = check(r#"(defn add [x y] :doc "Adds `x` and `y` together" (+ x y))"#);
         assert!(diags.is_empty());
     }
 
@@ -519,10 +532,11 @@ mod tests {
     #[test]
     fn test_doc_invalid_identifier_reference() {
         // :doc 内で存在しない識別子を参照した場合は警告
-        let diags = check(
-            r#"(defn add [x y] :doc "Uses `nonexistent_fn` internally" (+ x y))"#,
-        );
-        let warnings: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Warning).collect();
+        let diags = check(r#"(defn add [x y] :doc "Uses `nonexistent_fn` internally" (+ x y))"#);
+        let warnings: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Warning)
+            .collect();
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("`nonexistent_fn`"));
     }
@@ -530,10 +544,11 @@ mod tests {
     #[test]
     fn test_doc_multiple_identifiers() {
         // 複数の識別子を参照: 1つは有効、1つは無効
-        let diags = check(
-            r#"(defn add [x y] :doc "Takes `x` and calls `missing`" (+ x y))"#,
-        );
-        let warnings: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Warning).collect();
+        let diags = check(r#"(defn add [x y] :doc "Takes `x` and calls `missing`" (+ x y))"#);
+        let warnings: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Warning)
+            .collect();
         assert_eq!(warnings.len(), 1);
         assert!(warnings[0].message.contains("`missing`"));
     }
@@ -541,9 +556,7 @@ mod tests {
     #[test]
     fn test_doc_no_backtick_identifiers() {
         // バッククォートのない :doc は識別子チェック対象外
-        let diags = check(
-            r#"(defn add [x y] :doc "Simple addition function" (+ x y))"#,
-        );
+        let diags = check(r#"(defn add [x y] :doc "Simple addition function" (+ x y))"#);
         assert!(diags.is_empty());
     }
 
@@ -573,19 +586,19 @@ mod tests {
     #[test]
     fn test_invariant_valid_references() {
         // :invariant 内で引数と組み込み関数のみ参照 -> エラーなし
-        let diags = check(
-            r#"(defn abs [x] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"#,
-        );
+        let diags = check(r#"(defn abs [x] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"#);
         assert!(diags.is_empty());
     }
 
     #[test]
     fn test_invariant_unknown_reference() {
         // :invariant 内で未定義の識別子を参照 -> エラー
-        let diags = check(
-            r#"(defn abs [x] :invariant (unknown-fn result) (if (< x 0) (- 0 x) x))"#,
-        );
-        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
+        let diags =
+            check(r#"(defn abs [x] :invariant (unknown-fn result) (if (< x 0) (- 0 x) x))"#);
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
         assert_eq!(errors.len(), 1);
         assert!(errors[0].message.contains("'unknown-fn'"));
         assert!(errors[0].message.contains(":invariant"));
@@ -607,19 +620,18 @@ mod tests {
     #[test]
     fn test_example_valid_references() {
         // :example 内で関数自身と引数値のみ参照 -> エラーなし
-        let diags = check(
-            r#"(defn add [x y] :example [(add 1 2)] (+ x y))"#,
-        );
+        let diags = check(r#"(defn add [x y] :example [(add 1 2)] (+ x y))"#);
         assert!(diags.is_empty());
     }
 
     #[test]
     fn test_example_unknown_reference() {
         // :example 内で未定義の識別子を参照 -> エラー
-        let diags = check(
-            r#"(defn add [x y] :example [(unknown-fn 1 2)] (+ x y))"#,
-        );
-        let errors: Vec<_> = diags.iter().filter(|d| d.severity == Severity::Error).collect();
+        let diags = check(r#"(defn add [x y] :example [(unknown-fn 1 2)] (+ x y))"#);
+        let errors: Vec<_> = diags
+            .iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
         assert_eq!(errors.len(), 1);
         assert!(errors[0].message.contains("'unknown-fn'"));
         assert!(errors[0].message.contains(":example"));
@@ -653,7 +665,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod test_generation_tests {
     use super::*;
@@ -665,9 +676,7 @@ mod test_generation_tests {
 
     #[test]
     fn test_generate_invariant_test() {
-        let tests = gen_tests(
-            r#"(defn abs [x] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"#,
-        );
+        let tests = gen_tests(r#"(defn abs [x] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"#);
         assert_eq!(tests.len(), 1);
         assert_eq!(tests[0].name, "abs_invariant");
         assert_eq!(tests[0].function_name, "abs");
@@ -676,9 +685,7 @@ mod test_generation_tests {
 
     #[test]
     fn test_generate_example_test() {
-        let tests = gen_tests(
-            r#"(defn add [x y] :example [(add 1 2)] (+ x y))"#,
-        );
+        let tests = gen_tests(r#"(defn add [x y] :example [(add 1 2)] (+ x y))"#);
         assert_eq!(tests.len(), 1);
         assert_eq!(tests[0].name, "add_example_0");
         assert_eq!(tests[0].function_name, "add");
@@ -687,9 +694,7 @@ mod test_generation_tests {
 
     #[test]
     fn test_generate_multiple_examples() {
-        let tests = gen_tests(
-            r#"(defn add [x y] :example [(add 1 2) (add 0 0)] (+ x y))"#,
-        );
+        let tests = gen_tests(r#"(defn add [x y] :example [(add 1 2) (add 0 0)] (+ x y))"#);
         assert_eq!(tests.len(), 2);
         assert_eq!(tests[0].name, "add_example_0");
         assert_eq!(tests[1].name, "add_example_1");
@@ -713,17 +718,13 @@ mod test_generation_tests {
 
     #[test]
     fn test_no_tests_with_doc_only() {
-        let tests = gen_tests(
-            r#"(defn add [x y] :doc "adds" (+ x y))"#,
-        );
+        let tests = gen_tests(r#"(defn add [x y] :doc "adds" (+ x y))"#);
         assert!(tests.is_empty());
     }
 
     #[test]
     fn test_private_function_test_generation() {
-        let tests = gen_tests(
-            r#"(private (defn helper [x] :invariant (>= result 0) (+ x 1)))"#,
-        );
+        let tests = gen_tests(r#"(private (defn helper [x] :invariant (>= result 0) (+ x 1)))"#);
         assert_eq!(tests.len(), 1);
         assert_eq!(tests[0].function_name, "helper");
     }

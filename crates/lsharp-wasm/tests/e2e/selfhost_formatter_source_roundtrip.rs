@@ -1,15 +1,25 @@
 use super::support::*;
 
 fn selfhost_formatter_source_bundle() -> String {
-    ["Token.ls", "AST.ls", "Lexer.ls", "Parser.ls", "Formatter.ls"]
-        .into_iter()
-        .map(selfhost_module)
-        .collect::<Vec<_>>()
-        .join("\n")
+    [
+        "Token.ls",
+        "AST.ls",
+        "Lexer.ls",
+        "Parser.ls",
+        "Formatter.ls",
+    ]
+    .into_iter()
+    .map(selfhost_module)
+    .collect::<Vec<_>>()
+    .join("\n")
 }
 
 fn run_formatter_source_harness(harness: &str) -> String {
-    compile_and_run(&format!("{}\n{}", selfhost_formatter_source_bundle(), harness))
+    compile_and_run(&format!(
+        "{}\n{}",
+        selfhost_formatter_source_bundle(),
+        harness
+    ))
 }
 
 /// FMT-01: source-aware formatter が string literal を fallback せず再構成できること
@@ -28,8 +38,7 @@ fn test_e2e_selfhost_formatter_format_program_with_source_string_literal() {
     );
 
     assert_eq!(
-        output,
-        "\"abc\"\n",
+        output, "\"abc\"\n",
         "format-program-with-source は string literal を source から復元するべき"
     );
 }
@@ -50,8 +59,7 @@ fn test_e2e_selfhost_formatter_format_program_with_source_float_literal() {
     );
 
     assert_eq!(
-        output,
-        "1.25\n",
+        output, "1.25\n",
         "format-program-with-source は float literal を source から復元するべき"
     );
 }

@@ -7,6 +7,7 @@ pub mod closure;
 pub mod lower;
 pub mod module_graph;
 
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 /// IR モジュール（コンパイル単位）
@@ -149,47 +150,59 @@ pub enum Instruction {
     I32WrapI64,
 
     // 制御フロー
-    Call(u32),        // 関数インデックス
-    If(IrType),       // if-then-else 開始（結果型付き）
+    Call(u32),  // 関数インデックス
+    If(IrType), // if-then-else 開始（結果型付き）
     Else,
     End,
-    Block(IrType),    // ブロック開始 (結果型あり)
-    Loop(IrType),     // ループ開始 (結果型あり)
-    BlockEmpty,       // ブロック開始 (結果型なし)
-    LoopEmpty,        // ループ開始 (結果型なし)
-    IfEmpty,          // if-then-else 開始 (結果型なし)
-    Br(u32),          // 分岐
-    BrIf(u32),        // 条件分岐
+    Block(IrType), // ブロック開始 (結果型あり)
+    Loop(IrType),  // ループ開始 (結果型あり)
+    BlockEmpty,    // ブロック開始 (結果型なし)
+    LoopEmpty,     // ループ開始 (結果型なし)
+    IfEmpty,       // if-then-else 開始 (結果型なし)
+    Br(u32),       // 分岐
+    BrIf(u32),     // 条件分岐
     Return,
     Unreachable,
 
     // ホスト関数呼び出し
-    CallImport(u32),  // import された関数のインデックス
+    CallImport(u32), // import された関数のインデックス
 
     // スタック操作
     Drop,
 
     // GC 命令 (WasmGC)
-    StructNew(u32),         // struct.new type_idx
-    StructGet(u32, u32),    // struct.get type_idx field_idx
-    StructSet(u32, u32),    // struct.set type_idx field_idx
-    RefCast(u32),           // ref.cast type_idx (ダウンキャスト)
+    StructNew(u32),      // struct.new type_idx
+    StructGet(u32, u32), // struct.get type_idx field_idx
+    StructSet(u32, u32), // struct.set type_idx field_idx
+    RefCast(u32),        // ref.cast type_idx (ダウンキャスト)
 
     // 関数参照 (vtable/辞書パスイング)
-    RefFunc(u32),           // ref.func func_idx
-    CallRef(u32),           // call_ref type_idx (funcref 経由の間接呼び出し)
+    RefFunc(u32), // ref.func func_idx
+    CallRef(u32), // call_ref type_idx (funcref 経由の間接呼び出し)
 
     // グローバル変数
-    GlobalGet(u32),         // global.get idx
-    GlobalSet(u32),         // global.set idx
+    GlobalGet(u32), // global.get idx
+    GlobalSet(u32), // global.set idx
 
     // メモリ操作
-    I32Load { offset: u32 },
-    I32Store { offset: u32 },
-    I32Load8U { offset: u32 },
-    I32Store8 { offset: u32 },
-    I64Load { offset: u32 },
-    I64Store { offset: u32 },
+    I32Load {
+        offset: u32,
+    },
+    I32Store {
+        offset: u32,
+    },
+    I32Load8U {
+        offset: u32,
+    },
+    I32Store8 {
+        offset: u32,
+    },
+    I64Load {
+        offset: u32,
+    },
+    I64Store {
+        offset: u32,
+    },
 
     // 型変換（符号なし拡張）
     I64ExtendI32U,
@@ -543,11 +556,49 @@ fn remap_instruction_with_imports(
 /// エントリファイルから依存関係を解決し、トポロジカルソート順に
 /// パース → 型チェックを行い、全モジュールの AST を結合してから
 /// IR 変換することで、関数インデックスの一貫性を保つ。
-pub fn compile_multi_file(
-    entry_file: &std::path::Path,
-) -> Result<Module, String> {
+#[derive(Debug, Clone, Default)]
+struct ImportVisibilitySpec {
+    only: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ModuleTypeSurface {
+    results: Vec<(String, lsharp_types::types::TypeScheme)>,
+    hidden: HashSet<String>,
+}
+
+fn collect_import_visibility(
+    program: &lsharp_syntax::ast::Program,
+) -> HashMap<String, ImportVisibilitySpec> {
+    let mut imports = HashMap::new();
+    for decl in &program.decls {
+        if let lsharp_syntax::ast::Decl::ImportDecl { module, only, .. } = decl {
+            let entry = imports
+                .entry(module.clone())
+                .or_insert_with(ImportVisibilitySpec::default);
+            match (&mut entry.only, only.as_ref()) {
+                (None, None) => {}
+                (slot @ None, Some(next)) => {
+                    *slot = Some(next.clone());
+                }
+                (Some(existing), Some(next)) => {
+                    for symbol in next {
+                        if !existing.contains(symbol) {
+                            existing.push(symbol.clone());
+                        }
+                    }
+                }
+                (Some(_), None) => {
+                    entry.only = None;
+                }
+            }
+        }
+    }
+    imports
+}
+
+pub fn compile_multi_file(entry_file: &std::path::Path) -> Result<Module, String> {
     use module_graph::ModuleGraph;
-    use std::collections::HashMap;
 
     // 1. モジュールグラフの構築とファイル探索
     let (graph, sorted_files) = ModuleGraph::build_from_entry(entry_file)
@@ -562,8 +613,8 @@ pub fn compile_multi_file(
         let (_, mod_path) = &sorted_files[0];
         let source = std::fs::read_to_string(mod_path)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
-        let program = lsharp_syntax::parse(&source)
-            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        let program =
+            lsharp_syntax::parse(&source).map_err(|e| format!("{}: {e}", mod_path.display()))?;
         let mut infer = lsharp_types::infer::Infer::new();
         let type_results = infer
             .infer_program(&program)
@@ -578,23 +629,28 @@ pub fn compile_multi_file(
     //    全宣言を結合して、1つの Program として扱う
     let mut all_decls: Vec<lsharp_syntax::ast::Decl> = Vec::new();
     let mut all_type_results: Vec<(String, lsharp_types::types::TypeScheme)> = Vec::new();
-    let mut per_module_type_results: HashMap<
-        String,
-        Vec<(String, lsharp_types::types::TypeScheme)>,
-    > = HashMap::new();
+    let mut per_module_type_results: HashMap<String, ModuleTypeSurface> = HashMap::new();
 
     for (mod_name, mod_path) in &sorted_files {
         let source = std::fs::read_to_string(mod_path)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
 
-        let program = lsharp_syntax::parse(&source)
-            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        let program =
+            lsharp_syntax::parse(&source).map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        let direct_imports = collect_import_visibility(&program);
 
-        // 型チェック（依存 closure に含まれる型環境だけを注入）
+        // 型チェック（直接 import されたモジュールの公開シンボルだけを注入）
         let mut infer = lsharp_types::infer::Infer::new();
         for dep_name in graph.dependency_closure(mod_name) {
-            if let Some(dep_results) = per_module_type_results.get(&dep_name) {
-                infer.inject_external_types(dep_results);
+            if let Some(import_spec) = direct_imports.get(&dep_name)
+                && let Some(dep_surface) = per_module_type_results.get(&dep_name)
+            {
+                infer.inject_external_types_for_import(
+                    &dep_name,
+                    import_spec.only.as_deref(),
+                    &dep_surface.hidden,
+                    &dep_surface.results,
+                );
             }
         }
         let type_results = infer
@@ -603,7 +659,13 @@ pub fn compile_multi_file(
 
         // 型結果を蓄積
         all_type_results.extend(type_results.clone());
-        per_module_type_results.insert(mod_name.clone(), type_results);
+        per_module_type_results.insert(
+            mod_name.clone(),
+            ModuleTypeSurface {
+                results: type_results,
+                hidden: infer.module_env.privates.iter().cloned().collect(),
+            },
+        );
 
         // 宣言を収集（module 宣言と import 宣言は除外）
         for decl in program.decls {
@@ -707,8 +769,16 @@ mod linker_tests {
             gc_types: vec![GcTypeDef {
                 name: "Point".to_string(),
                 kind: GcTypeKind::Struct(vec![
-                    GcField { name: "x".to_string(), ty: IrType::I64, mutable: false },
-                    GcField { name: "y".to_string(), ty: IrType::I64, mutable: false },
+                    GcField {
+                        name: "x".to_string(),
+                        ty: IrType::I64,
+                        mutable: false,
+                    },
+                    GcField {
+                        name: "y".to_string(),
+                        ty: IrType::I64,
+                        mutable: false,
+                    },
                 ]),
             }],
             imports: vec![],
@@ -730,9 +800,11 @@ mod linker_tests {
             }],
             gc_types: vec![GcTypeDef {
                 name: "Color".to_string(),
-                kind: GcTypeKind::Struct(vec![
-                    GcField { name: "r".to_string(), ty: IrType::I64, mutable: false },
-                ]),
+                kind: GcTypeKind::Struct(vec![GcField {
+                    name: "r".to_string(),
+                    ty: IrType::I64,
+                    mutable: false,
+                }]),
             }],
             imports: vec![],
             globals: vec![],
@@ -871,11 +943,7 @@ mod multifile_compile_tests {
         }
         std::fs::create_dir_all(&dir).unwrap();
 
-        std::fs::write(
-            dir.join("A.ls"),
-            "(module A)\n(defn status [x] x)\n",
-        )
-        .unwrap();
+        std::fs::write(dir.join("A.ls"), "(module A)\n(defn status [x] x)\n").unwrap();
         std::fs::write(
             dir.join("Noise.ls"),
             "(module Noise)\n(defn status [x] true)\n",
@@ -896,6 +964,62 @@ mod multifile_compile_tests {
         assert!(
             result.is_ok(),
             "unrelated sibling module types should not pollute dependency inference: {result:?}"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_import_only_blocks_non_selected_symbol() {
+        let dir = std::env::temp_dir().join("lsharp_compile_multi_file_import_only_blocks");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("Utils.ls"),
+            "(module Utils)\n(defn helper [] 1)\n(defn secret [] 2)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Utils :only [helper])\n(defn main [] (secret))\n",
+        )
+        .unwrap();
+
+        let result = compile_multi_file(&dir.join("Main.ls"));
+        assert!(
+            result.is_err(),
+            ":only で除外されたシンボルは compile でも参照できないべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_private_import_blocks_symbol() {
+        let dir = std::env::temp_dir().join("lsharp_compile_multi_file_private_blocks");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("Utils.ls"),
+            "(module Utils)\n(private (defn secret [] 2))\n(defn helper [] 1)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Utils)\n(defn main [] (secret))\n",
+        )
+        .unwrap();
+
+        let result = compile_multi_file(&dir.join("Main.ls"));
+        assert!(
+            result.is_err(),
+            "private なシンボルは compile でも参照できないべき"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
@@ -988,10 +1112,7 @@ mod memory_instruction_tests {
 
     #[test]
     fn test_i64_extend_i32_unsigned() {
-        let instructions = vec![
-            Instruction::I32Const(42),
-            Instruction::I64ExtendI32U,
-        ];
+        let instructions = vec![Instruction::I32Const(42), Instruction::I64ExtendI32U];
         assert_eq!(instructions.len(), 2);
     }
 
@@ -1005,17 +1126,8 @@ mod memory_instruction_tests {
             format!("{}", Instruction::I32Store { offset: 4 }),
             "i32.store offset=4"
         );
-        assert_eq!(
-            format!("{}", Instruction::MemoryGrow),
-            "memory.grow"
-        );
-        assert_eq!(
-            format!("{}", Instruction::MemorySize),
-            "memory.size"
-        );
-        assert_eq!(
-            format!("{}", Instruction::I32Add),
-            "i32.add"
-        );
+        assert_eq!(format!("{}", Instruction::MemoryGrow), "memory.grow");
+        assert_eq!(format!("{}", Instruction::MemorySize), "memory.size");
+        assert_eq!(format!("{}", Instruction::I32Add), "i32.add");
     }
 }

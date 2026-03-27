@@ -218,8 +218,7 @@ fn test_e2e_selfhost_lexer_additional_keywords() {
 
 #[test]
 fn test_e2e_selfhost_lexer_keyword_token_consistency() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
         .expect("selfhost/Token.ls が読み込めない");
     let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
@@ -254,17 +253,13 @@ fn test_e2e_selfhost_lexer_keyword_token_consistency() {
         lines[2], "1",
         "computation は Token.tok-computation と一致すべき"
     );
-    assert_eq!(
-        lines[3], "1",
-        "defmacro は Token.tok-defmacro と一致すべき"
-    );
+    assert_eq!(lines[3], "1", "defmacro は Token.tok-defmacro と一致すべき");
     assert_eq!(lines[4], "1", "builder は Token.tok-builder と一致すべき");
 }
 
 #[test]
 fn test_e2e_selfhost_lexer_special_token_consistency() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
         .expect("selfhost/Token.ls が読み込めない");
     let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
@@ -286,7 +281,11 @@ fn test_e2e_selfhost_lexer_special_token_consistency() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 5, "特殊トークンの整合性出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 5,
+        "特殊トークンの整合性出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "1", "quote は Token.tok-quote と一致すべき");
     assert_eq!(lines[1], "1", "unquote は Token.tok-unquote と一致すべき");
     assert_eq!(

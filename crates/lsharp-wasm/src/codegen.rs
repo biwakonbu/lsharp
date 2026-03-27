@@ -29,11 +29,15 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
 
     // Type 2: __string_concat 関数の型 (i64, i64) -> (i64)
     let string_concat_type_idx = types.len();
-    types.ty().function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
+    types
+        .ty()
+        .function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
 
     // Type 3: __string_eq 関数の型 (i64, i64) -> (i64)
     let string_eq_type_idx = types.len();
-    types.ty().function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
+    types
+        .ty()
+        .function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
 
     // Type 4: print-string 関数の型 (i64) -> ()
     let print_string_type_idx = types.len();
@@ -59,7 +63,11 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let mut func_type_indices: Vec<u32> = Vec::new();
     for func in &module.functions {
         let type_idx = types.len();
-        let params: Vec<ValType> = func.params.iter().map(|t| crate::emit::ir_to_wasm_valtype(*t)).collect();
+        let params: Vec<ValType> = func
+            .params
+            .iter()
+            .map(|t| crate::emit::ir_to_wasm_valtype(*t))
+            .collect();
         let results = vec![crate::emit::ir_to_wasm_valtype(func.result)];
         types.ty().function(params, results);
         func_type_indices.push(type_idx);
@@ -73,27 +81,59 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     // __alloc: (i64) -> (i64)  (type index 1) - Bump Allocator スタブ
     imports.import("env", "__alloc", EntityType::Function(alloc_type_idx));
     // __string_concat: (i64, i64) -> (i64) - 文字列結合
-    imports.import("env", "__string_concat", EntityType::Function(string_concat_type_idx));
+    imports.import(
+        "env",
+        "__string_concat",
+        EntityType::Function(string_concat_type_idx),
+    );
     // __string_eq: (i64, i64) -> (i64) - 文字列比較
-    imports.import("env", "__string_eq", EntityType::Function(string_eq_type_idx));
+    imports.import(
+        "env",
+        "__string_eq",
+        EntityType::Function(string_eq_type_idx),
+    );
     // print-string: (i64) -> () - 文字列出力
-    imports.import("env", "print-string", EntityType::Function(print_string_type_idx));
+    imports.import(
+        "env",
+        "print-string",
+        EntityType::Function(print_string_type_idx),
+    );
     // proc-exit: (i32) -> () - プロセス終了
     imports.import("env", "proc-exit", EntityType::Function(proc_exit_type_idx));
     // __int_to_string: (i64) -> (i64) - 整数→文字列変換
-    imports.import("env", "__int_to_string", EntityType::Function(alloc_type_idx));
+    imports.import(
+        "env",
+        "__int_to_string",
+        EntityType::Function(alloc_type_idx),
+    );
     // read-file: (i64) -> (i64) - ファイル読み込み
     imports.import("env", "read-file", EntityType::Function(alloc_type_idx));
     // write-file: (i64, i64) -> (i64) - ファイル書き込み
-    imports.import("env", "write-file", EntityType::Function(string_concat_type_idx));
+    imports.import(
+        "env",
+        "write-file",
+        EntityType::Function(string_concat_type_idx),
+    );
     // file-exists?: (i64) -> (i64) - ファイル存在確認
     imports.import("env", "file-exists?", EntityType::Function(alloc_type_idx));
     // command-line-args: () -> (i64) - コマンドライン引数数
-    imports.import("env", "command-line-args", EntityType::Function(command_line_args_type_idx));
+    imports.import(
+        "env",
+        "command-line-args",
+        EntityType::Function(command_line_args_type_idx),
+    );
     // command-line-arg: (i64) -> (i64) - 指定 index のコマンドライン引数
-    imports.import("env", "command-line-arg", EntityType::Function(command_line_arg_type_idx));
+    imports.import(
+        "env",
+        "command-line-arg",
+        EntityType::Function(command_line_arg_type_idx),
+    );
     // read-stdin: () -> (i64) - stdin 全体を返す
-    imports.import("env", "read-stdin", EntityType::Function(read_stdin_type_idx));
+    imports.import(
+        "env",
+        "read-stdin",
+        EntityType::Function(read_stdin_type_idx),
+    );
     // __fnv1a_hash: (i64) -> (i64) - FNV-1a ハッシュ
     imports.import("env", "__fnv1a_hash", EntityType::Function(alloc_type_idx));
     wasm_module.section(&imports);
@@ -212,10 +252,11 @@ mod tests {
 
         // __string_concat 関数のスタブ
         let string_concat_ty = FuncType::new(&engine, [ValType::I64, ValType::I64], [ValType::I64]);
-        let string_concat_func = Func::new(&mut store, string_concat_ty, |_caller, _params, results| {
-            results[0] = Val::I64(0); // ダミー
-            Ok(())
-        });
+        let string_concat_func =
+            Func::new(&mut store, string_concat_ty, |_caller, _params, results| {
+                results[0] = Val::I64(0); // ダミー
+                Ok(())
+            });
 
         // __string_eq 関数のスタブ
         let string_eq_ty = FuncType::new(&engine, [ValType::I64, ValType::I64], [ValType::I64]);
@@ -226,22 +267,27 @@ mod tests {
 
         // print-string 関数のスタブ
         let print_string_ty = FuncType::new(&engine, [ValType::I64], []);
-        let print_string_func = Func::new(&mut store, print_string_ty, |_caller, _params, _results| {
-            Ok(())
-        });
+        let print_string_func =
+            Func::new(&mut store, print_string_ty, |_caller, _params, _results| {
+                Ok(())
+            });
 
         // proc-exit 関数のスタブ
         let proc_exit_ty = FuncType::new(&engine, [ValType::I32], []);
-        let proc_exit_func = Func::new(&mut store, proc_exit_ty, |_caller, _params, _results| {
-            Ok(())
-        });
+        let proc_exit_func =
+            Func::new(
+                &mut store,
+                proc_exit_ty,
+                |_caller, _params, _results| Ok(()),
+            );
 
         // __int_to_string 関数のスタブ
         let int_to_string_ty = FuncType::new(&engine, [ValType::I64], [ValType::I64]);
-        let int_to_string_func = Func::new(&mut store, int_to_string_ty, |_caller, _params, results| {
-            results[0] = Val::I64(0); // ダミー
-            Ok(())
-        });
+        let int_to_string_func =
+            Func::new(&mut store, int_to_string_ty, |_caller, _params, results| {
+                results[0] = Val::I64(0); // ダミー
+                Ok(())
+            });
 
         // read-file 関数のスタブ
         let read_file_ty = FuncType::new(&engine, [ValType::I64], [ValType::I64]);
@@ -259,24 +305,33 @@ mod tests {
 
         // file-exists? 関数のスタブ
         let file_exists_ty = FuncType::new(&engine, [ValType::I64], [ValType::I64]);
-        let file_exists_func = Func::new(&mut store, file_exists_ty, |_caller, _params, results| {
-            results[0] = Val::I64(0); // ダミー
-            Ok(())
-        });
+        let file_exists_func =
+            Func::new(&mut store, file_exists_ty, |_caller, _params, results| {
+                results[0] = Val::I64(0); // ダミー
+                Ok(())
+            });
 
         // command-line-args 関数のスタブ
         let command_line_args_ty = FuncType::new(&engine, [], [ValType::I64]);
-        let command_line_args_func = Func::new(&mut store, command_line_args_ty, |_caller, _params, results| {
-            results[0] = Val::I64(0);
-            Ok(())
-        });
+        let command_line_args_func = Func::new(
+            &mut store,
+            command_line_args_ty,
+            |_caller, _params, results| {
+                results[0] = Val::I64(0);
+                Ok(())
+            },
+        );
 
         // command-line-arg 関数のスタブ
         let command_line_arg_ty = FuncType::new(&engine, [ValType::I64], [ValType::I64]);
-        let command_line_arg_func = Func::new(&mut store, command_line_arg_ty, |_caller, _params, results| {
-            results[0] = Val::I64(0);
-            Ok(())
-        });
+        let command_line_arg_func = Func::new(
+            &mut store,
+            command_line_arg_ty,
+            |_caller, _params, results| {
+                results[0] = Val::I64(0);
+                Ok(())
+            },
+        );
 
         // read-stdin 関数のスタブ
         let read_stdin_ty = FuncType::new(&engine, [], [ValType::I64]);
@@ -295,8 +350,24 @@ mod tests {
         let instance = Instance::new(
             &mut store,
             &module,
-            &[print_func.into(), alloc_func.into(), string_concat_func.into(), string_eq_func.into(), print_string_func.into(), proc_exit_func.into(), int_to_string_func.into(), read_file_func.into(), write_file_func.into(), file_exists_func.into(), command_line_args_func.into(), command_line_arg_func.into(), read_stdin_func.into(), fnv1a_hash_func.into()],
-        ).unwrap();
+            &[
+                print_func.into(),
+                alloc_func.into(),
+                string_concat_func.into(),
+                string_eq_func.into(),
+                print_string_func.into(),
+                proc_exit_func.into(),
+                int_to_string_func.into(),
+                read_file_func.into(),
+                write_file_func.into(),
+                file_exists_func.into(),
+                command_line_args_func.into(),
+                command_line_arg_func.into(),
+                read_stdin_func.into(),
+                fnv1a_hash_func.into(),
+            ],
+        )
+        .unwrap();
 
         let main = instance
             .get_typed_func::<(), i64>(&mut store, "main")

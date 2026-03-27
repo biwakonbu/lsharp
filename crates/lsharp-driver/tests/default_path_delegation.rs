@@ -11,8 +11,7 @@ fn unique_temp_dir(name: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("system time before unix epoch")
         .as_nanos();
-    let dir = std::env::temp_dir()
-        .join(format!("lsharp_{name}_{}_{}", std::process::id(), nonce));
+    let dir = std::env::temp_dir().join(format!("lsharp_{name}_{}_{}", std::process::id(), nonce));
     fs::create_dir_all(&dir).expect("temp dir creation failed");
     dir
 }

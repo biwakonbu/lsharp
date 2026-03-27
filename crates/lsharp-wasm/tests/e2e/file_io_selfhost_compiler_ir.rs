@@ -1,10 +1,10 @@
 use super::support::*;
 
-
 #[test]
 fn test_e2e_stdlib_set() {
     // Set.ls: HashMap ベースの集合
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn set-new [] (map-new))
         (defn set-add [s x] (map-insert s x 1))
         (defn set-contains? [s x] (map-contains? s x))
@@ -20,7 +20,8 @@ fn test_e2e_stdlib_set() {
               (print (set-contains? s3 20))
               (print (set-contains? s3 99))
               0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "3\n1\n0");
 }
 
@@ -30,13 +31,15 @@ fn test_e2e_stdlib_set() {
 fn test_e2e_command_line_args() {
     // command-line-args: コマンドライン引数の数を返す
     // wasmtime で実行した場合、引数が 0 以上の整数が返る
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [argc (command-line-args)]
             (do
               (print (>= argc 0))
               0)))
-    "#);
+    "#,
+    );
     // argc >= 0 は常に true (1)
     assert_eq!(result.trim(), "1");
 }
@@ -46,7 +49,8 @@ fn test_e2e_write_and_read_file() {
     // write-file + read-file: ファイルに書き込んで読み出し
     let tmpdir = std::env::temp_dir().join("lsharp_test_file_io");
     std::fs::create_dir_all(&tmpdir).unwrap();
-    let result = compile_and_run_with_dir(r#"
+    let result = compile_and_run_with_dir(
+        r#"
         (defn main []
           (let [written (write-file "test_output.txt" "hello")
                 content (read-file "test_output.txt")]
@@ -54,7 +58,9 @@ fn test_e2e_write_and_read_file() {
               (print written)
               (print (string-length content))
               0)))
-    "#, &tmpdir);
+    "#,
+        &tmpdir,
+    );
     // written = 5 (bytes), content length = 5
     assert_eq!(result.trim(), "5\n5");
     // クリーンアップ
@@ -66,12 +72,15 @@ fn test_e2e_file_exists() {
     // file-exists?: ファイル存在チェック (preopened dir 付き)
     let tmpdir = std::env::temp_dir().join("lsharp_test_file_exists");
     std::fs::create_dir_all(&tmpdir).unwrap();
-    let result = compile_and_run_with_dir(r#"
+    let result = compile_and_run_with_dir(
+        r#"
         (defn main []
           (do
             (print (file-exists? "nonexistent_file_xyz.txt"))
             0))
-    "#, &tmpdir);
+    "#,
+        &tmpdir,
+    );
     assert_eq!(result.trim(), "0");
     let _ = std::fs::remove_dir_all(&tmpdir);
 }
@@ -81,7 +90,8 @@ fn test_e2e_file_exists() {
 #[test]
 fn test_e2e_selfhost_lexer_basic() {
     // セルフホスティング Lexer: 基本トークナイズ
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn is-ws [c]
           (if (== c 32) true (if (== c 9) true (if (== c 10) true (== c 13)))))
         (defn is-digit-char [c]
@@ -160,7 +170,8 @@ fn test_e2e_selfhost_lexer_basic() {
               (print (vector-get tokens 6))
               (print (vector-get tokens 7))
               0)))
-    "#);
+    "#,
+    );
     // 8 tokens: ( defn main [ ] 42 ) EOF
     // kinds:    0  30   20  2 3 10  1  99
     assert_eq!(result.trim(), "8\n0\n30\n20\n2\n3\n10\n1\n99");
@@ -169,7 +180,8 @@ fn test_e2e_selfhost_lexer_basic() {
 #[test]
 fn test_e2e_selfhost_parser_basic() {
     // セルフホスティング Parser: 基本的な S 式パース
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn parse-expr [tokens pos]
           (let [tok (vector-get tokens (ref-get pos))]
             (if (== tok 0)
@@ -195,7 +207,8 @@ fn test_e2e_selfhost_parser_basic() {
               (print result)
               (print (ref-get pos))
               0)))
-    "#);
+    "#,
+    );
     // defn ノード (20) を検出、位置は 2 進んだ
     assert_eq!(result.trim(), "20\n2");
 }
@@ -203,7 +216,8 @@ fn test_e2e_selfhost_parser_basic() {
 #[test]
 fn test_e2e_selfhost_type_system() {
     // セルフホスティング型システム: 型 ADT + Substitution
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn make-type-con [hash]
           (vector-push (vector-push (vector-new 2) 1) hash))
         (defn make-type-var [id]
@@ -223,7 +237,8 @@ fn test_e2e_selfhost_type_system() {
               (print (type-val var-ty))
               (print (subst-lookup s 42))
               0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "1\n2\n42\n0");
 }
 
@@ -231,7 +246,8 @@ fn test_e2e_selfhost_type_system() {
 fn test_e2e_selfhost_unification() {
     // セルフホスティング Unification: 型構築 + Substitution + occurs-check + unify
     // map-contains? (Bool) を避け、map-get + = (Int比較) で統一
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         ;; 型構築
         (defn make-type-con [hash]
           (vector-push (vector-push (vector-new 2) 1) hash))
@@ -322,14 +338,16 @@ fn test_e2e_selfhost_unification() {
               (print (occurs-check 10 int1))
 
               0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "1\n0\n1\n1\n1\n100\n1\n0\n0");
 }
 
 #[test]
 fn test_e2e_selfhost_ir() {
     // セルフホスティング IR: 命令構築
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn make-instr [opcode operand]
           (vector-push (vector-push (vector-new 2) opcode) operand))
         (defn main []
@@ -341,14 +359,16 @@ fn test_e2e_selfhost_ir() {
               (print (vector-get g 0))
               (print (vector-get g 1))
               0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "1\n42\n10\n0");
 }
 
 #[test]
 fn test_e2e_selfhost_compiler() {
     // セルフホスティング Compiler: AST→IR 変換 + LEB128 エンコード
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         ;; IR 命令構築
         (defn emit-instr [opcode operand]
           (vector-push (vector-push (vector-new 2) opcode) operand))
@@ -434,14 +454,16 @@ fn test_e2e_selfhost_compiler() {
               (print (vector-get leb300 0))
               (print (vector-get leb300 1))
               0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "1\n1\n42\n1\n10\n3\n1\n5\n2\n172\n2");
 }
 
 #[test]
 fn test_e2e_selfhost_type_scheme() {
     // セルフホスティング: TypeScheme (let 多相の instantiate/free-vars)
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         ;; TypeScheme = [type, bound-vars-vector]
         (defn mono [ty]
           (vector-push (vector-push (vector-new 2) ty) (vector-new 0)))
@@ -547,13 +569,15 @@ fn test_e2e_selfhost_type_scheme() {
               (print (vector-get (free-vars var-a) 0))    ;; 1
 
               0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "1\n100\n3\n2\n1000\n0\n1\n1");
 }
 
 #[test]
 fn test_e2e_selfhost_wasm_emit() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         ;; LEB128 unsigned エンコーディング
         (defn leb128-u [value]
           (let [result (ref-new (vector-new 4))
@@ -638,11 +662,15 @@ fn test_e2e_selfhost_wasm_emit() {
               (print (vector-get leb300 1))
 
               0)))
-    "#);
+    "#,
+    );
     // header: length=8, bytes: 0('\\0'), 97('a'), 115('s'), 109('m'), 1(version)
     // type-sec: length=7, bytes: 1(section-id), 5(size), 1(count), 96(0x60=func)
     // leb128(5)=[5], leb128(300)=[172, 2]
-    assert_eq!(result.trim(), "8\n0\n97\n115\n109\n1\n7\n1\n5\n1\n96\n5\n172\n2");
+    assert_eq!(
+        result.trim(),
+        "8\n0\n97\n115\n109\n1\n7\n1\n5\n1\n96\n5\n172\n2"
+    );
 }
 
 #[test]
@@ -655,7 +683,8 @@ fn test_e2e_selfhost_type_inference_comparison() {
     //   L# make-type-var(42)  = [2, 42]   ↔  Rust Type::Var(42)
     //   L# make-type-fun(p,r) = [3, p, r] ↔  Rust Type::Fun(vec![p], Box::new(r))
     //   L# subst-bind/apply-subst          ↔  Rust Substitution::apply
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         ;; 型構築 (Type.ls パターン)
         (defn make-type-con [hash]
           (vector-push (vector-push (vector-new 2) 1) hash))
@@ -737,7 +766,8 @@ fn test_e2e_selfhost_type_inference_comparison() {
               (print (types-eq var-ty (make-type-var 42)))
 
               0)))
-    "#);
+    "#,
+    );
     // Con: tag=1, hash=100
     // Var: tag=2, id=42
     // Fun: tag=3, param(tag=2,id=1), ret(tag=2,id=2)

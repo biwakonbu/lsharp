@@ -1,16 +1,17 @@
 use super::support::*;
 
-
 // === Phase 0: Bump Allocator テスト ===
 
 #[test]
 fn test_e2e_alloc_basic() {
     // __alloc を呼び出してメモリアドレスを取得できることを検証
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [addr (__alloc 16)]
             (do (print addr) addr)))
-    "#);
+    "#,
+    );
     let addr: i64 = result.trim().parse().unwrap();
     assert!(addr >= 512, "heap address should be >= 512, got {}", addr);
 }
@@ -18,12 +19,14 @@ fn test_e2e_alloc_basic() {
 #[test]
 fn test_e2e_alloc_alignment() {
     // 複数の __alloc 呼び出しで 8 バイトアラインメントを検証
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [a1 (__alloc 1)
                 a2 (__alloc 1)]
             (do (print a1) (print a2) (- a2 a1))))
-    "#);
+    "#,
+    );
     let lines: Vec<&str> = result.trim().lines().collect();
     let a1: i64 = lines[0].parse().unwrap();
     let a2: i64 = lines[1].parse().unwrap();
@@ -33,11 +36,13 @@ fn test_e2e_alloc_alignment() {
 #[test]
 fn test_e2e_alloc_memory_grow() {
     // 大量のメモリ確保で memory.grow が正しく動作することを検証
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [addr (__alloc 131072)]
             (do (print addr) addr)))
-    "#);
+    "#,
+    );
     let addr: i64 = result.trim().parse().unwrap();
     assert!(addr >= 512, "large allocation should succeed, got {}", addr);
 }
@@ -48,7 +53,8 @@ fn test_e2e_alloc_metrics_peak_usage() {
     // 複数回 alloc 後、heap_ptr (global 0) が初期値より増えていることを検証
     // __alloc_peak / __alloc_total はまだ builtin にないので、
     // heap_ptr の差分で代替検証: 2 回 alloc して 2 番目のアドレスが 1 番目より大きい
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [a1 (__alloc 32)
                 a2 (__alloc 64)
@@ -59,7 +65,8 @@ fn test_e2e_alloc_metrics_peak_usage() {
               (print a3)
               (print (- a3 a1))
               0)))
-    "#);
+    "#,
+    );
     let lines: Vec<&str> = result.trim().lines().collect();
     assert!(lines.len() >= 4, "alloc metrics 出力が不足: {:?}", lines);
     let a1: i64 = lines[0].parse().unwrap();
@@ -70,13 +77,18 @@ fn test_e2e_alloc_metrics_peak_usage() {
     assert!(a2 > a1, "2 回目 alloc は 1 回目より後方");
     assert!(a3 > a2, "3 回目 alloc は 2 回目より後方");
     // 32 + 64 = 96 bytes (8-byte aligned: 32 + 64 = 96)
-    assert!(total_span >= 96, "alloc span は少なくとも 96 bytes: got {}", total_span);
+    assert!(
+        total_span >= 96,
+        "alloc span は少なくとも 96 bytes: got {}",
+        total_span
+    );
 }
 
 /// CP-05: __alloc メトリクス — 同サイズ連続 alloc で heap が単調増加すること
 #[test]
 fn test_e2e_alloc_metrics_monotonic_check() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn alloc-loop [n prev-addr ok]
           (if (<= n 0)
             ok
@@ -88,7 +100,8 @@ fn test_e2e_alloc_metrics_monotonic_check() {
           (let [first (__alloc 16)
                 result (alloc-loop 100 first 1)]
             (do (print result) 0)))
-    "#);
+    "#,
+    );
     let lines: Vec<&str> = result.trim().lines().collect();
     assert_eq!(lines[0], "1", "100 回の連続 alloc で heap は単調増加すべき");
 }
@@ -101,7 +114,8 @@ fn test_e2e_alloc_metrics_monotonic_check() {
 /// 5. alloc_span: 最初と最後の alloc アドレスの距離
 #[test]
 fn test_e2e_alloc_metrics_five_metric_collection() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn collect-metrics []
           (let [a1 (__alloc 16)
                 a2 (__alloc 64)
@@ -122,7 +136,8 @@ fn test_e2e_alloc_metrics_five_metric_collection() {
               0)))
         (defn main []
           (collect-metrics))
-    "#);
+    "#,
+    );
     let lines: Vec<&str> = result.trim().lines().collect();
     assert_eq!(lines.len(), 5, "5 メトリクスの出力が必要: {:?}", lines);
 
@@ -133,10 +148,26 @@ fn test_e2e_alloc_metrics_five_metric_collection() {
     let alloc_span: i64 = lines[4].parse().unwrap();
 
     // 全メトリクスが非負であることを検証
-    assert!(peak_alloc_bytes >= 0, "peak_alloc_bytes は非負: got {}", peak_alloc_bytes);
-    assert!(total_alloc_count >= 0, "total_alloc_count は非負: got {}", total_alloc_count);
-    assert!(live_alloc_count >= 0, "live_alloc_count は非負: got {}", live_alloc_count);
-    assert!(max_single_alloc >= 0, "max_single_alloc は非負: got {}", max_single_alloc);
+    assert!(
+        peak_alloc_bytes >= 0,
+        "peak_alloc_bytes は非負: got {}",
+        peak_alloc_bytes
+    );
+    assert!(
+        total_alloc_count >= 0,
+        "total_alloc_count は非負: got {}",
+        total_alloc_count
+    );
+    assert!(
+        live_alloc_count >= 0,
+        "live_alloc_count は非負: got {}",
+        live_alloc_count
+    );
+    assert!(
+        max_single_alloc >= 0,
+        "max_single_alloc は非負: got {}",
+        max_single_alloc
+    );
     assert!(alloc_span >= 0, "alloc_span は非負: got {}", alloc_span);
 
     // 具体値の検証
@@ -144,7 +175,11 @@ fn test_e2e_alloc_metrics_five_metric_collection() {
     assert_eq!(live_alloc_count, 5, "bump allocator では全て live");
     assert_eq!(max_single_alloc, 128, "最大 alloc サイズは 128");
     // span は 16+64+32+128 = 240 以上 (8-byte aligned)
-    assert!(alloc_span >= 240, "alloc_span は少なくとも 240 bytes: got {}", alloc_span);
+    assert!(
+        alloc_span >= 240,
+        "alloc_span は少なくとも 240 bytes: got {}",
+        alloc_span
+    );
 }
 
 /// GC-06: リーク疑惑検出 — ループ内の alloc アドレス単調増加を検出し leak 候補として報告
@@ -152,7 +187,8 @@ fn test_e2e_alloc_metrics_five_metric_collection() {
 /// 将来 GC 導入後は安定（再利用）するため 0 になるべき。
 #[test]
 fn test_e2e_alloc_metrics_leak_suspect_detection() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn detect-leak-loop [n prev-addr growing-count]
           (if (<= n 0)
             growing-count
@@ -169,7 +205,8 @@ fn test_e2e_alloc_metrics_leak_suspect_detection() {
               (print total)
               (print leak-suspect)
               0)))
-    "#);
+    "#,
+    );
     let lines: Vec<&str> = result.trim().lines().collect();
     assert_eq!(lines.len(), 3, "leak detection 出力が不足: {:?}", lines);
 
@@ -180,13 +217,17 @@ fn test_e2e_alloc_metrics_leak_suspect_detection() {
     assert_eq!(total, 50, "50 回のループ");
     assert_eq!(growing, 50, "bump allocator では全 alloc がアドレス増加");
     // bump allocator では常に単調増加 → leak suspect
-    assert_eq!(leak_suspect, 1, "bump allocator ではリーク疑惑あり (全アドレスが単調増加)");
+    assert_eq!(
+        leak_suspect, 1,
+        "bump allocator ではリーク疑惑あり (全アドレスが単調増加)"
+    );
 }
 
 /// GC-06: CI artifact 用の JSON payload を生成できること
 #[test]
 fn test_e2e_alloc_metrics_ci_artifact_payload() {
-    let metrics_result = compile_and_run(r#"
+    let metrics_result = compile_and_run(
+        r#"
         (defn collect-metrics []
           (let [a1 (__alloc 16)
                 a2 (__alloc 64)
@@ -207,9 +248,15 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
               0)))
         (defn main []
           (collect-metrics))
-    "#);
+    "#,
+    );
     let metric_lines: Vec<&str> = metrics_result.trim().lines().collect();
-    assert_eq!(metric_lines.len(), 5, "GC artifact metrics 出力が不足: {:?}", metric_lines);
+    assert_eq!(
+        metric_lines.len(),
+        5,
+        "GC artifact metrics 出力が不足: {:?}",
+        metric_lines
+    );
 
     let peak_alloc_bytes: i64 = metric_lines[0].parse().unwrap();
     let total_alloc_count: i64 = metric_lines[1].parse().unwrap();
@@ -217,7 +264,8 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
     let max_single_alloc: i64 = metric_lines[3].parse().unwrap();
     let alloc_span: i64 = metric_lines[4].parse().unwrap();
 
-    let leak_result = compile_and_run(r#"
+    let leak_result = compile_and_run(
+        r#"
         (defn detect-leak-loop [n prev-addr growing-count]
           (if (<= n 0)
             growing-count
@@ -234,9 +282,15 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
               (print total)
               (print leak-suspect)
               0)))
-    "#);
+    "#,
+    );
     let leak_lines: Vec<&str> = leak_result.trim().lines().collect();
-    assert_eq!(leak_lines.len(), 3, "GC leak artifact 出力が不足: {:?}", leak_lines);
+    assert_eq!(
+        leak_lines.len(),
+        3,
+        "GC leak artifact 出力が不足: {:?}",
+        leak_lines
+    );
 
     let leak_growing_count: i64 = leak_lines[0].parse().unwrap();
     let leak_total: i64 = leak_lines[1].parse().unwrap();
@@ -268,8 +322,9 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).unwrap();
         }
-        std::fs::write(&path, serde_json::to_string_pretty(&payload).unwrap())
-            .unwrap_or_else(|e| panic!("GC metrics artifact 書き込み失敗 {}: {}", path.display(), e));
+        std::fs::write(&path, serde_json::to_string_pretty(&payload).unwrap()).unwrap_or_else(
+            |e| panic!("GC metrics artifact 書き込み失敗 {}: {}", path.display(), e),
+        );
     }
 }
 
@@ -278,22 +333,26 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
 #[test]
 fn test_e2e_tagged_word_integer() {
     // 通常の整数はそのまま i64 として扱える
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [x 42]
             (do (print x) x)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "42");
 }
 
 #[test]
 fn test_e2e_heap_object_header() {
     // ヒープオブジェクトを確保してヘッダを書き込み・読み出し
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [addr (__alloc 16)]
             (do (print addr) addr)))
-    "#);
+    "#,
+    );
     let addr: i64 = result.trim().parse().unwrap();
     assert!(addr >= 512, "heap address should be >= 512, got {}", addr);
 }
@@ -303,28 +362,34 @@ fn test_e2e_heap_object_header() {
 
 #[test]
 fn test_e2e_string_length() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (string-length "hello")))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "5");
 }
 
 #[test]
 fn test_e2e_string_length_empty() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (string-length "")))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "0");
 }
 
 #[test]
 fn test_e2e_string_length_multibyte() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (string-length "abc")))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "3");
 }
 
@@ -333,20 +398,24 @@ fn test_e2e_string_length_multibyte() {
 #[test]
 fn test_e2e_string_concat() {
     // 2 つの文字列を結合し、その長さを確認
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (string-length (string-concat "hello" " world"))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "11");
 }
 
 #[test]
 fn test_e2e_string_concat_empty() {
     // 空文字列との結合
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (string-length (string-concat "" "abc"))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "3");
 }
 
@@ -355,40 +424,48 @@ fn test_e2e_string_concat_empty() {
 #[test]
 fn test_e2e_string_eq_true() {
     // 同じ文字列の比較
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (if (string-eq "hello" "hello") 1 0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "1");
 }
 
 #[test]
 fn test_e2e_string_eq_false() {
     // 異なる文字列の比較
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (if (string-eq "hello" "world") 1 0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "0");
 }
 
 #[test]
 fn test_e2e_string_eq_different_length() {
     // 長さが異なる文字列の比較
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (if (string-eq "abc" "abcd") 1 0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "0");
 }
 
 #[test]
 fn test_e2e_string_eq_empty() {
     // 空文字列同士の比較
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (if (string-eq "" "") 1 0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "1");
 }
 
@@ -397,30 +474,36 @@ fn test_e2e_string_eq_empty() {
 #[test]
 fn test_e2e_string_print_string() {
     // print-string で文字列を出力
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do (print-string "hello") 0))
-    "#);
+    "#,
+    );
     assert_eq!(result, "hello");
 }
 
 #[test]
 fn test_e2e_string_print_string_empty() {
     // 空文字列を出力
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do (print-string "") 0))
-    "#);
+    "#,
+    );
     assert_eq!(result, "");
 }
 
 #[test]
 fn test_e2e_string_print_string_concat() {
     // 文字列結合後に出力
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do (print-string (string-concat "hello" " world")) 0))
-    "#);
+    "#,
+    );
     assert_eq!(result, "hello world");
 }
 
@@ -429,31 +512,36 @@ fn test_e2e_string_print_string_concat() {
 #[test]
 fn test_e2e_ref_new_and_get() {
     // ref-new で作成した Ref Cell から ref-get で値を読み出す
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [r (ref-new 42)]
             (print (ref-get r))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "42");
 }
 
 #[test]
 fn test_e2e_ref_set_and_get() {
     // ref-set で値を上書きしてから ref-get で読み出す
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [r (ref-new 10)]
             (do
               (ref-set r 99)
               (print (ref-get r)))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "99");
 }
 
 #[test]
 fn test_e2e_ref_multiple_updates() {
     // Ref Cell を複数回更新
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [r (ref-new 0)]
             (do
@@ -461,14 +549,16 @@ fn test_e2e_ref_multiple_updates() {
               (ref-set r 20)
               (ref-set r 30)
               (print (ref-get r)))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "30");
 }
 
 #[test]
 fn test_e2e_ref_in_loop() {
     // Ref Cell を使ったカウンターループ
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn loop-count [r n]
           (if (<= n 0)
             (ref-get r)
@@ -478,7 +568,8 @@ fn test_e2e_ref_in_loop() {
         (defn main []
           (let [counter (ref-new 0)]
             (print (loop-count counter 10))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "10");
 }
 
@@ -678,18 +769,14 @@ fn test_e2e_option_and_then() {
 #[test]
 fn test_e2e_print_string_polymorphic() {
     // print が文字列引数を受け取った場合に print-string として出力
-    let output = compile_and_run(
-        r#"(defn main [] (do (print "hello") 0))"#,
-    );
+    let output = compile_and_run(r#"(defn main [] (do (print "hello") 0))"#);
     assert_eq!(output, "hello");
 }
 
 #[test]
 fn test_e2e_print_int_backward_compat() {
     // print が整数引数の場合は従来通り動作
-    let output = compile_and_run(
-        "(defn main [] (do (print 42) 0))",
-    );
+    let output = compile_and_run("(defn main [] (do (print 42) 0))");
     assert_eq!(output, "42\n");
 }
 
@@ -706,13 +793,15 @@ fn test_e2e_multi_file_compile() {
     std::fs::write(
         dir.join("Utils.ls"),
         "(module Utils)\n(defn helper [x] (+ x 100))",
-    ).unwrap();
+    )
+    .unwrap();
 
     // Main モジュール: Utils を import して helper を呼ぶ
     std::fs::write(
         dir.join("main.ls"),
         "(module Main)\n(import Utils)\n(defn main [] (print (helper 42)))",
-    ).unwrap();
+    )
+    .unwrap();
 
     // マルチファイルコンパイル
     let linked_module = lsharp_ir::compile_multi_file(&dir.join("main.ls")).unwrap();
@@ -733,22 +822,21 @@ fn test_e2e_multi_file_chain() {
     std::fs::create_dir_all(&dir).unwrap();
 
     // Base モジュール
-    std::fs::write(
-        dir.join("Base.ls"),
-        "(module Base)\n(defn base-val [] 10)",
-    ).unwrap();
+    std::fs::write(dir.join("Base.ls"), "(module Base)\n(defn base-val [] 10)").unwrap();
 
     // Mid モジュール: Base を import
     std::fs::write(
         dir.join("Mid.ls"),
         "(module Mid)\n(import Base)\n(defn mid-val [] (* (base-val) 2))",
-    ).unwrap();
+    )
+    .unwrap();
 
     // Main モジュール: Mid を import
     std::fs::write(
         dir.join("main.ls"),
         "(module Main)\n(import Mid)\n(defn main [] (print (mid-val)))",
-    ).unwrap();
+    )
+    .unwrap();
 
     let linked_module = lsharp_ir::compile_multi_file(&dir.join("main.ls")).unwrap();
     let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&linked_module).unwrap();
@@ -768,7 +856,8 @@ fn test_e2e_multi_file_single() {
     std::fs::write(
         dir.join("main.ls"),
         "(module Main)\n(defn main [] (print 99))",
-    ).unwrap();
+    )
+    .unwrap();
 
     let linked_module = lsharp_ir::compile_multi_file(&dir.join("main.ls")).unwrap();
     let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&linked_module).unwrap();
@@ -817,7 +906,8 @@ fn test_e2e_multi_file_missing_import() {
     std::fs::write(
         dir.join("main.ls"),
         "(module Main)\n(import NonExistent)\n(defn main [] (print 1))",
-    ).unwrap();
+    )
+    .unwrap();
 
     let result = lsharp_ir::compile_multi_file(&dir.join("main.ls"));
     assert!(result.is_err());
@@ -839,30 +929,36 @@ fn test_e2e_division_by_zero_traps() {
 #[test]
 fn test_e2e_string_char_at() {
     // 'e' = 101
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (string-char-at "hello" 1)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "101");
 }
 
 #[test]
 fn test_e2e_string_char_at_first() {
     // 'h' = 104
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (string-char-at "hello" 0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "104");
 }
 
 #[test]
 fn test_e2e_string_char_at_last() {
     // 'o' = 111
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (string-char-at "hello" 4)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "111");
 }
 
@@ -871,30 +967,36 @@ fn test_e2e_string_char_at_last() {
 #[test]
 fn test_e2e_substring() {
     // "hello" の [1..4) -> "ell" (長さ 3)
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do (print-string (substring "hello" 1 4)) 0))
-    "#);
+    "#,
+    );
     assert_eq!(result, "ell");
 }
 
 #[test]
 fn test_e2e_substring_full() {
     // "hello" の [0..5) -> "hello"
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do (print-string (substring "hello" 0 5)) 0))
-    "#);
+    "#,
+    );
     assert_eq!(result, "hello");
 }
 
 #[test]
 fn test_e2e_substring_empty() {
     // "hello" の [2..2) -> ""
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (string-length (substring "hello" 2 2))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "0");
 }
 
@@ -902,36 +1004,44 @@ fn test_e2e_substring_empty() {
 
 #[test]
 fn test_e2e_int_to_string() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do (print-string (int-to-string 42)) 0))
-    "#);
+    "#,
+    );
     assert_eq!(result, "42");
 }
 
 #[test]
 fn test_e2e_int_to_string_zero() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do (print-string (int-to-string 0)) 0))
-    "#);
+    "#,
+    );
     assert_eq!(result, "0");
 }
 
 #[test]
 fn test_e2e_int_to_string_negative() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do (print-string (int-to-string -123)) 0))
-    "#);
+    "#,
+    );
     assert_eq!(result, "-123");
 }
 
 #[test]
 fn test_e2e_int_to_string_large() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do (print-string (int-to-string 1234567890)) 0))
-    "#);
+    "#,
+    );
     assert_eq!(result, "1234567890");
 }

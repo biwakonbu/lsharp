@@ -261,10 +261,7 @@ pub enum Decl {
         methods: Vec<Decl>,
     },
     /// 非公開宣言 (private (defn ...))
-    Private {
-        span: Span,
-        inner: Box<Decl>,
-    },
+    Private { span: Span, inner: Box<Decl> },
     /// Computation Builder 宣言 (computation-builder name bind-fn return-fn)
     ComputationBuilder {
         span: Span,
@@ -405,7 +402,13 @@ impl std::fmt::Display for Decl {
                     write!(f, ")")
                 }
             }
-            Decl::ImportDecl { module, alias, only, open, .. } => {
+            Decl::ImportDecl {
+                module,
+                alias,
+                only,
+                open,
+                ..
+            } => {
                 write!(f, "(import {module}")?;
                 if let Some(a) = alias {
                     write!(f, " :as {a}")?;
@@ -413,7 +416,9 @@ impl std::fmt::Display for Decl {
                 if let Some(syms) = only {
                     write!(f, " :only [")?;
                     for (i, s) in syms.iter().enumerate() {
-                        if i > 0 { write!(f, " ")?; }
+                        if i > 0 {
+                            write!(f, " ")?;
+                        }
                         write!(f, "{s}")?;
                     }
                     write!(f, "]")?;
@@ -423,12 +428,19 @@ impl std::fmt::Display for Decl {
                 }
                 write!(f, ")")
             }
-            Decl::TraitDef { name, type_param, methods, .. } => {
+            Decl::TraitDef {
+                name,
+                type_param,
+                methods,
+                ..
+            } => {
                 write!(f, "(trait ({name} {type_param})")?;
                 for m in methods {
                     write!(f, " (defn {} [", m.name)?;
                     for (i, p) in m.params.iter().enumerate() {
-                        if i > 0 { write!(f, " ")?; }
+                        if i > 0 {
+                            write!(f, " ")?;
+                        }
                         write!(f, "{}", p.name)?;
                     }
                     write!(f, "]")?;
@@ -439,7 +451,12 @@ impl std::fmt::Display for Decl {
                 }
                 write!(f, ")")
             }
-            Decl::ImplDef { trait_name, type_name, methods, .. } => {
+            Decl::ImplDef {
+                trait_name,
+                type_name,
+                methods,
+                ..
+            } => {
                 write!(f, "(impl ({trait_name} {type_name})")?;
                 for m in methods {
                     write!(f, " {m}")?;
@@ -449,10 +466,17 @@ impl std::fmt::Display for Decl {
             Decl::Private { inner, .. } => {
                 write!(f, "(private {inner})")
             }
-            Decl::ComputationBuilder { name, bind_fn, return_fn, .. } => {
+            Decl::ComputationBuilder {
+                name,
+                bind_fn,
+                return_fn,
+                ..
+            } => {
                 write!(f, "(computation-builder {name} {bind_fn} {return_fn})")
             }
-            Decl::DefMacro { name, params, body, .. } => {
+            Decl::DefMacro {
+                name, params, body, ..
+            } => {
                 write!(f, "(defmacro {name} [")?;
                 for (i, p) in params.iter().enumerate() {
                     if i > 0 {

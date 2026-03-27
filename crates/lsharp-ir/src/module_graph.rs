@@ -17,11 +17,8 @@ pub struct ModuleSearchPaths {
 
 impl ModuleSearchPaths {
     pub fn discover(entry_file: &Path) -> Self {
-        let entry_dir = entry_file
-            .parent()
-            .unwrap_or_else(|| Path::new("."));
-        let package_root = find_package_root(entry_dir)
-            .unwrap_or_else(|| entry_dir.to_path_buf());
+        let entry_dir = entry_file.parent().unwrap_or_else(|| Path::new("."));
+        let package_root = find_package_root(entry_dir).unwrap_or_else(|| entry_dir.to_path_buf());
         let source_root_candidate = package_root.join("src");
         let source_root = if source_root_candidate.is_dir() {
             source_root_candidate
@@ -67,6 +64,15 @@ pub enum ModuleGraphError {
     #[error("モジュール '{name}' が見つかりません ('{from}' からインポート)")]
     ModuleNotFound { name: String, from: String },
 
+    #[error(
+        "モジュール '{name}' は package '{package}' から公開されていません ('{from}' からインポート)"
+    )]
+    ModuleNotExported {
+        name: String,
+        package: String,
+        from: String,
+    },
+
     #[error("モジュール '{name}' が重複しています")]
     DuplicateModule { name: String },
 }
@@ -111,9 +117,11 @@ impl ModuleGraph {
 
         for name in self.modules.keys() {
             if !visited.contains(name)
-                && let Some(cycle) = self.dfs_detect_cycle(name, &mut visited, &mut in_stack, &mut path) {
-                    return Some(cycle);
-                }
+                && let Some(cycle) =
+                    self.dfs_detect_cycle(name, &mut visited, &mut in_stack, &mut path)
+            {
+                return Some(cycle);
+            }
         }
 
         None
@@ -180,12 +188,7 @@ impl ModuleGraph {
     }
 
     /// トポロジカルソートの DFS
-    fn topo_dfs(
-        &self,
-        node: &str,
-        visited: &mut HashSet<String>,
-        order: &mut Vec<String>,
-    ) {
+    fn topo_dfs(&self, node: &str, visited: &mut HashSet<String>, order: &mut Vec<String>) {
         if visited.contains(node) {
             return;
         }
@@ -257,7 +260,6 @@ impl ModuleGraph {
         }
     }
 
-
     /// 親モジュール名を取得 ("A.B.C" -> Some("A.B"))
     pub fn parent_module(name: &str) -> Option<&str> {
         name.rfind('.').map(|pos| &name[..pos])
@@ -268,10 +270,7 @@ impl ModuleGraph {
         let prefix = format!("{parent}.");
         self.modules
             .keys()
-            .filter(|name| {
-                name.starts_with(&prefix)
-                    && !name[prefix.len()..].contains('.')
-            })
+            .filter(|name| name.starts_with(&prefix) && !name[prefix.len()..].contains('.'))
             .map(|s| s.as_str())
             .collect()
     }
@@ -308,7 +307,8 @@ impl ModuleGraph {
         candidates.push(pascal_path);
 
         // snake_case 版: module_name.ls or a/b.ls
-        let snake_parts: Vec<String> = path_parts.iter()
+        let snake_parts: Vec<String> = path_parts
+            .iter()
             .map(|part| Self::to_snake_case(part))
             .collect();
         let snake_path = format!("{}.ls", snake_parts.join("/"));
@@ -379,6 +379,29 @@ impl ModuleGraph {
         None
     }
 
+    pub fn resolve_module_import_path(
+        name: &str,
+        from: &str,
+        search_paths: &ModuleSearchPaths,
+    ) -> Result<Option<std::path::PathBuf>, ModuleGraphError> {
+        let Some(path) = Self::resolve_module_file_with_search_paths(name, search_paths) else {
+            return Ok(None);
+        };
+
+        if let Some(package_root) =
+            external_package_root_for_path(&path, &search_paths.package_sources)
+            && !is_module_exported_from_package(name, &package_root)
+        {
+            return Err(ModuleGraphError::ModuleNotExported {
+                name: name.to_string(),
+                package: package_name_for_root(&package_root),
+                from: from.to_string(),
+            });
+        }
+
+        Ok(Some(path))
+    }
+
     /// ソースファイルから import を抽出し、依存グラフを構築
     ///
     /// `entry_file` をエントリポイントとし、再帰的に依存ファイルを探索する。
@@ -415,7 +438,9 @@ impl ModuleGraph {
             // 依存モジュールをキューに追加
             for imp in &imports {
                 if !graph.modules.contains_key(imp) {
-                    if let Some(imp_path) = Self::resolve_module_file_with_search_paths(imp, &search_paths) {
+                    if let Some(imp_path) =
+                        Self::resolve_module_import_path(imp, &mod_name, &search_paths)?
+                    {
                         queue.push_back((imp.clone(), imp_path));
                     } else {
                         return Err(ModuleGraphError::ModuleNotFound {
@@ -431,9 +456,7 @@ impl ModuleGraph {
         let sorted = graph.topological_sort()?;
         let sorted_list: Vec<(String, std::path::PathBuf)> = sorted
             .iter()
-            .filter_map(|name| {
-                file_list.iter().find(|(n, _)| n == name).cloned()
-            })
+            .filter_map(|name| file_list.iter().find(|(n, _)| n == name).cloned())
             .collect();
 
         Ok((graph, sorted_list))
@@ -442,15 +465,12 @@ impl ModuleGraph {
     /// ソースファイルからモジュール名を抽出
     ///
     /// `(module Name)` があればその名前を、なければファイル名から生成する。
-    fn extract_module_name(
-        path: &std::path::Path,
-    ) -> Result<String, ModuleGraphError> {
-        let source = std::fs::read_to_string(path).map_err(|e| {
-            ModuleGraphError::ModuleNotFound {
+    fn extract_module_name(path: &std::path::Path) -> Result<String, ModuleGraphError> {
+        let source =
+            std::fs::read_to_string(path).map_err(|e| ModuleGraphError::ModuleNotFound {
                 name: path.display().to_string(),
                 from: format!("ファイル読み込みエラー: {e}"),
-            }
-        })?;
+            })?;
 
         // パースして module 宣言を探す
         if let Ok(program) = lsharp_syntax::parse(&source) {
@@ -462,23 +482,18 @@ impl ModuleGraph {
         }
 
         // module 宣言がなければファイル名から生成
-        let stem = path.file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("Main");
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Main");
         // snake_case を PascalCase に変換
         Ok(Self::to_pascal_case(stem))
     }
 
     /// ソースファイルから import モジュール名を抽出
-    fn extract_imports(
-        path: &std::path::Path,
-    ) -> Result<Vec<String>, ModuleGraphError> {
-        let source = std::fs::read_to_string(path).map_err(|e| {
-            ModuleGraphError::ModuleNotFound {
+    fn extract_imports(path: &std::path::Path) -> Result<Vec<String>, ModuleGraphError> {
+        let source =
+            std::fs::read_to_string(path).map_err(|e| ModuleGraphError::ModuleNotFound {
                 name: path.display().to_string(),
                 from: format!("ファイル読み込みエラー: {e}"),
-            }
-        })?;
+            })?;
 
         let mut imports = Vec::new();
         if let Ok(program) = lsharp_syntax::parse(&source) {
@@ -548,6 +563,71 @@ fn discover_package_sources(base: &Path) -> Vec<PathBuf> {
     sources
 }
 
+fn external_package_root_for_path(path: &Path, package_sources: &[PathBuf]) -> Option<PathBuf> {
+    for package_source in package_sources {
+        if path.starts_with(package_source) {
+            return package_source.parent().map(Path::to_path_buf);
+        }
+    }
+    None
+}
+
+fn package_name_for_root(package_root: &Path) -> String {
+    let config_path = package_root.join("lsharp.toml");
+    let Ok(source) = std::fs::read_to_string(config_path) else {
+        return package_root
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+    };
+    let Ok(value) = source.parse::<toml::Value>() else {
+        return package_root
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+    };
+    value
+        .get("project")
+        .and_then(|project| project.get("name"))
+        .and_then(toml::Value::as_str)
+        .unwrap_or_else(|| {
+            package_root
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("unknown")
+        })
+        .to_string()
+}
+
+fn is_module_exported_from_package(module: &str, package_root: &Path) -> bool {
+    let config_path = package_root.join("lsharp.toml");
+    let Ok(source) = std::fs::read_to_string(config_path) else {
+        return true;
+    };
+    let Ok(value) = source.parse::<toml::Value>() else {
+        return true;
+    };
+    let Some(modules) = value
+        .get("project")
+        .and_then(|project| project.get("exports"))
+        .and_then(|exports| exports.get("modules"))
+        .and_then(toml::Value::as_array)
+    else {
+        return true;
+    };
+
+    if modules.is_empty() {
+        return true;
+    }
+
+    modules
+        .iter()
+        .filter_map(toml::Value::as_str)
+        .any(|name| name == module)
+}
+
 fn default_stdlib_root() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("LSHARP_STDLIB_PATH") {
         let path = PathBuf::from(path);
@@ -577,9 +657,7 @@ mod tests {
     #[test]
     fn test_single_module() {
         let mut graph = ModuleGraph::new();
-        graph
-            .add_module("Main".to_string(), vec![], None)
-            .unwrap();
+        graph.add_module("Main".to_string(), vec![], None).unwrap();
         assert_eq!(graph.len(), 1);
         let order = graph.topological_sort().unwrap();
         assert_eq!(order, vec!["Main"]);
@@ -588,9 +666,7 @@ mod tests {
     #[test]
     fn test_linear_dependencies() {
         let mut graph = ModuleGraph::new();
-        graph
-            .add_module("A".to_string(), vec![], None)
-            .unwrap();
+        graph.add_module("A".to_string(), vec![], None).unwrap();
         graph
             .add_module("B".to_string(), vec!["A".to_string()], None)
             .unwrap();
@@ -610,9 +686,7 @@ mod tests {
     #[test]
     fn test_diamond_dependencies() {
         let mut graph = ModuleGraph::new();
-        graph
-            .add_module("Base".to_string(), vec![], None)
-            .unwrap();
+        graph.add_module("Base".to_string(), vec![], None).unwrap();
         graph
             .add_module("Left".to_string(), vec!["Base".to_string()], None)
             .unwrap();
@@ -642,12 +716,8 @@ mod tests {
     #[test]
     fn test_topological_sort_stable_across_calls() {
         let mut graph = ModuleGraph::new();
-        graph
-            .add_module("Z".to_string(), vec![], None)
-            .unwrap();
-        graph
-            .add_module("A".to_string(), vec![], None)
-            .unwrap();
+        graph.add_module("Z".to_string(), vec![], None).unwrap();
+        graph.add_module("A".to_string(), vec![], None).unwrap();
         graph
             .add_module(
                 "M".to_string(),
@@ -697,9 +767,7 @@ mod tests {
     #[test]
     fn test_duplicate_module_error() {
         let mut graph = ModuleGraph::new();
-        graph
-            .add_module("A".to_string(), vec![], None)
-            .unwrap();
+        graph.add_module("A".to_string(), vec![], None).unwrap();
         let result = graph.add_module("A".to_string(), vec![], None);
         assert!(result.is_err());
     }
@@ -742,14 +810,16 @@ mod nested_module_tests {
     #[test]
     fn test_nested_module_name() {
         let mut graph = ModuleGraph::new();
-        graph
-            .add_module("App".to_string(), vec![], None)
-            .unwrap();
+        graph.add_module("App".to_string(), vec![], None).unwrap();
         graph
             .add_module("App.Utils".to_string(), vec![], None)
             .unwrap();
         graph
-            .add_module("App.Models".to_string(), vec!["App.Utils".to_string()], None)
+            .add_module(
+                "App.Models".to_string(),
+                vec!["App.Utils".to_string()],
+                None,
+            )
             .unwrap();
 
         let order = graph.topological_sort().unwrap();
@@ -761,9 +831,7 @@ mod nested_module_tests {
     #[test]
     fn test_nested_module_depth() {
         let mut graph = ModuleGraph::new();
-        graph
-            .add_module("A".to_string(), vec![], None)
-            .unwrap();
+        graph.add_module("A".to_string(), vec![], None).unwrap();
         graph
             .add_module("A.B".to_string(), vec!["A".to_string()], None)
             .unwrap();
@@ -835,7 +903,10 @@ mod resolve_tests {
 
     #[test]
     fn test_resolve_module_file_not_found() {
-        let result = ModuleGraph::resolve_module_file("NonExistent", std::path::Path::new("/tmp/lsharp_nonexistent"));
+        let result = ModuleGraph::resolve_module_file(
+            "NonExistent",
+            std::path::Path::new("/tmp/lsharp_nonexistent"),
+        );
         assert!(result.is_none());
     }
 
@@ -858,7 +929,11 @@ mod resolve_tests {
         // snake_case ファイル名でも探索可能
         let dir = std::env::temp_dir().join("lsharp_resolve_snake");
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("math_utils.ls"), "(module MathUtils)\n(defn add [x y] (+ x y))").unwrap();
+        std::fs::write(
+            dir.join("math_utils.ls"),
+            "(module MathUtils)\n(defn add [x y] (+ x y))",
+        )
+        .unwrap();
 
         let result = ModuleGraph::resolve_module_file("MathUtils", &dir);
         assert!(result.is_some());
@@ -874,7 +949,8 @@ mod resolve_tests {
         std::fs::write(
             dir.join("main.ls"),
             "(module Main)\n(defn main [] (print 42))",
-        ).unwrap();
+        )
+        .unwrap();
 
         let (graph, files) = ModuleGraph::build_from_entry(&dir.join("main.ls")).unwrap();
         assert_eq!(graph.len(), 1);
@@ -891,11 +967,13 @@ mod resolve_tests {
         std::fs::write(
             dir.join("Utils.ls"),
             "(module Utils)\n(defn helper [x] (+ x 1))",
-        ).unwrap();
+        )
+        .unwrap();
         std::fs::write(
             dir.join("main.ls"),
             "(module Main)\n(import Utils)\n(defn main [] (print (helper 41)))",
-        ).unwrap();
+        )
+        .unwrap();
 
         let (graph, files) = ModuleGraph::build_from_entry(&dir.join("main.ls")).unwrap();
         assert_eq!(graph.len(), 2);
@@ -915,7 +993,8 @@ mod resolve_tests {
         std::fs::write(
             dir.join("main.ls"),
             "(module Main)\n(import NonExistent)\n(defn main [] (print 1))",
-        ).unwrap();
+        )
+        .unwrap();
 
         let result = ModuleGraph::build_from_entry(&dir.join("main.ls"));
         assert!(result.is_err());
@@ -941,9 +1020,14 @@ mod resolve_tests {
         )
         .unwrap();
 
-        let (graph, files) = ModuleGraph::build_from_entry(&dir.join("examples/demo/Main.ls")).unwrap();
+        let (graph, files) =
+            ModuleGraph::build_from_entry(&dir.join("examples/demo/Main.ls")).unwrap();
         assert_eq!(graph.len(), 2);
-        assert!(files.iter().any(|(name, path)| name == "Utils" && path.ends_with("src/Utils.ls")));
+        assert!(
+            files
+                .iter()
+                .any(|(name, path)| name == "Utils" && path.ends_with("src/Utils.ls"))
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -956,8 +1040,16 @@ mod resolve_tests {
         let stdlib = dir.join("custom-stdlib");
         std::fs::create_dir_all(&pkg_src).unwrap();
         std::fs::create_dir_all(&stdlib).unwrap();
-        std::fs::write(pkg_src.join("Helpers.ls"), "(module Helpers)\n(defn helper [] 1)").unwrap();
-        std::fs::write(stdlib.join("List.ls"), "(module List)\n(defn length [xs] 0)").unwrap();
+        std::fs::write(
+            pkg_src.join("Helpers.ls"),
+            "(module Helpers)\n(defn helper [] 1)",
+        )
+        .unwrap();
+        std::fs::write(
+            stdlib.join("List.ls"),
+            "(module List)\n(defn length [xs] 0)",
+        )
+        .unwrap();
 
         let search_paths = ModuleSearchPaths {
             package_root: dir.clone(),
@@ -966,11 +1058,21 @@ mod resolve_tests {
             stdlib_root: Some(stdlib.clone()),
         };
 
-        let pkg_result = ModuleGraph::resolve_module_file_with_search_paths("Helpers", &search_paths);
-        let stdlib_result = ModuleGraph::resolve_module_file_with_search_paths("List", &search_paths);
+        let pkg_result =
+            ModuleGraph::resolve_module_file_with_search_paths("Helpers", &search_paths);
+        let stdlib_result =
+            ModuleGraph::resolve_module_file_with_search_paths("List", &search_paths);
 
-        assert!(pkg_result.as_ref().is_some_and(|path| path.ends_with("Helpers.ls")));
-        assert!(stdlib_result.as_ref().is_some_and(|path| path.ends_with("List.ls")));
+        assert!(
+            pkg_result
+                .as_ref()
+                .is_some_and(|path| path.ends_with("Helpers.ls"))
+        );
+        assert!(
+            stdlib_result
+                .as_ref()
+                .is_some_and(|path| path.ends_with("List.ls"))
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -993,7 +1095,8 @@ mod resolve_tests {
         )
         .unwrap();
 
-        let (graph, files) = ModuleGraph::build_from_entry(&dir.join("examples/demo/Main.ls")).unwrap();
+        let (graph, files) =
+            ModuleGraph::build_from_entry(&dir.join("examples/demo/Main.ls")).unwrap();
 
         assert_eq!(graph.len(), 2);
         assert!(files.iter().any(|(name, path)| {
@@ -1001,6 +1104,38 @@ mod resolve_tests {
         }));
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_build_from_entry_rejects_non_exported_package_module() {
+        let dir = std::env::temp_dir().join("lsharp_build_non_exported_package_module");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::create_dir_all(dir.join(".lsharp/packages/demo-123/src")).unwrap();
+        std::fs::write(dir.join("lsharp.toml"), "[project]\nname=\"app\"\n").unwrap();
+        std::fs::write(
+            dir.join(".lsharp/packages/demo-123/lsharp.toml"),
+            "[project]\nname=\"demo\"\n[project.exports]\nmodules=[\"Public\"]\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join(".lsharp/packages/demo-123/src/Hidden.ls"),
+            "(module Hidden)\n(defn helper [] 1)",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("src/Main.ls"),
+            "(module Main)\n(import Hidden)\n(defn main [] 0)",
+        )
+        .unwrap();
+
+        let result = ModuleGraph::build_from_entry(&dir.join("src/Main.ls"));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(
+            result.is_err(),
+            "非公開 package module の import は失敗するべき"
+        );
     }
 }
 
@@ -1019,9 +1154,15 @@ mod hierarchy_tests {
     fn test_children() {
         let mut graph = ModuleGraph::new();
         graph.add_module("App".to_string(), vec![], None).unwrap();
-        graph.add_module("App.Utils".to_string(), vec![], None).unwrap();
-        graph.add_module("App.Models".to_string(), vec![], None).unwrap();
-        graph.add_module("App.Models.User".to_string(), vec![], None).unwrap();
+        graph
+            .add_module("App.Utils".to_string(), vec![], None)
+            .unwrap();
+        graph
+            .add_module("App.Models".to_string(), vec![], None)
+            .unwrap();
+        graph
+            .add_module("App.Models.User".to_string(), vec![], None)
+            .unwrap();
 
         let mut children = graph.children("App");
         children.sort();
@@ -1035,9 +1176,15 @@ mod hierarchy_tests {
     fn test_descendants() {
         let mut graph = ModuleGraph::new();
         graph.add_module("App".to_string(), vec![], None).unwrap();
-        graph.add_module("App.Utils".to_string(), vec![], None).unwrap();
-        graph.add_module("App.Models".to_string(), vec![], None).unwrap();
-        graph.add_module("App.Models.User".to_string(), vec![], None).unwrap();
+        graph
+            .add_module("App.Utils".to_string(), vec![], None)
+            .unwrap();
+        graph
+            .add_module("App.Models".to_string(), vec![], None)
+            .unwrap();
+        graph
+            .add_module("App.Models.User".to_string(), vec![], None)
+            .unwrap();
 
         let mut desc = graph.descendants("App");
         desc.sort();

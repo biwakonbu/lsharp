@@ -1,35 +1,40 @@
 use super::support::*;
 
-
 // === P1-2: 文字列リテラルのヒープ化テスト ===
 
 #[test]
 fn test_e2e_string_heap_print() {
     // ヒープ上の String オブジェクト経由で文字列が正しく出力されることを検証
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do (print-string "hello heap") 0))
-    "#);
+    "#,
+    );
     assert_eq!(result, "hello heap");
 }
 
 #[test]
 fn test_e2e_string_heap_length() {
     // ヒープ上の String オブジェクトから長さが正しく取得できることを検証
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (string-length "heap string")))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "11");
 }
 
 #[test]
 fn test_e2e_string_heap_char_at() {
     // ヒープ上の String オブジェクトから文字取得が正しく動作することを検証
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (string-char-at "abcdef" 2)))
-    "#);
+    "#,
+    );
     // 'c' = 99
     assert_eq!(result.trim(), "99");
 }
@@ -37,51 +42,60 @@ fn test_e2e_string_heap_char_at() {
 #[test]
 fn test_e2e_string_heap_substring() {
     // ヒープ上の String オブジェクトから部分文字列が正しく取得できることを検証
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do (print-string (substring "hello world" 6 11)) 0))
-    "#);
+    "#,
+    );
     assert_eq!(result, "world");
 }
 
 #[test]
 fn test_e2e_string_heap_concat_mixed() {
     // リテラル文字列同士の結合がヒープ上で正しく動作することを検証
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do (print-string (string-concat "foo" "bar")) 0))
-    "#);
+    "#,
+    );
     assert_eq!(result, "foobar");
 }
 
 #[test]
 fn test_e2e_string_heap_eq() {
     // ヒープ上の文字列同士の比較が正しく動作することを検証
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (if (string-eq "test" "test") 1 0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "1");
 }
 
 #[test]
 fn test_e2e_string_heap_multiple_literals() {
     // 複数の文字列リテラルがそれぞれヒープ上に正しく配置されることを検証
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do
             (print-string "first")
             (print-string " ")
             (print-string "second")
             0))
-    "#);
+    "#,
+    );
     assert_eq!(result, "first second");
 }
 
 #[test]
 fn test_e2e_string_heap_object_layout() {
     // 文字列リテラルがヒープ上に [tag=1][len][bytes] として配置されることを検証
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [s "hello"]
             (do
@@ -89,7 +103,8 @@ fn test_e2e_string_heap_object_layout() {
               (print (string-char-at s 0))
               (print (string-char-at s 4))
               0)))
-    "#);
+    "#,
+    );
     // "hello": length=5, 'h'=104, 'o'=111
     assert_eq!(result.trim(), "5\n104\n111");
 }
@@ -197,7 +212,11 @@ fn test_e2e_bootstrap_stage1_integration() {
 fn test_e2e_bootstrap_stage1_wasm_generation() {
     let wasm_bytes = compile_file_only(&selfhost_main_path());
     // 有効な Wasm バイナリであること (マジックナンバー確認)
-    assert!(wasm_bytes.len() > 8, "Wasm バイナリが短すぎる: {} bytes", wasm_bytes.len());
+    assert!(
+        wasm_bytes.len() > 8,
+        "Wasm バイナリが短すぎる: {} bytes",
+        wasm_bytes.len()
+    );
     assert_eq!(&wasm_bytes[0..4], b"\0asm", "Wasm マジックナンバーが不正");
 }
 
@@ -221,11 +240,16 @@ fn test_e2e_stdlib_path_operations() {
     let source = std::fs::read_to_string("../../stdlib/Path.ls").unwrap();
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.len(), 4, "Path.ls は4行の出力を生成するべき: {:?}", lines);
+    assert_eq!(
+        lines.len(),
+        4,
+        "Path.ls は4行の出力を生成するべき: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "13"); // path-join "/tmp" "file.txt" = "/tmp/file.txt" (13文字)
-    assert_eq!(lines[1], "4");  // path-extension "file.txt" = ".txt" (4文字)
-    assert_eq!(lines[2], "8");  // path-basename "/tmp/file.txt" = "file.txt" (8文字)
-    assert_eq!(lines[3], "4");  // path-dirname "/tmp/file.txt" = "/tmp" (4文字)
+    assert_eq!(lines[1], "4"); // path-extension "file.txt" = ".txt" (4文字)
+    assert_eq!(lines[2], "8"); // path-basename "/tmp/file.txt" = "file.txt" (8文字)
+    assert_eq!(lines[3], "4"); // path-dirname "/tmp/file.txt" = "/tmp" (4文字)
 }
 
 /// selfhost/Compiler.ls のセルフホストコンパイラのコンパイル+実行
@@ -234,9 +258,13 @@ fn test_e2e_selfhost_compiler_file() {
     let source = std::fs::read_to_string("../../selfhost/Compiler.ls").unwrap();
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 3, "Compiler.ls は少なくとも3行の出力を生成するべき: {:?}", lines);
-    assert_eq!(lines[0], "1");  // vector-length instrs = 1
-    assert_eq!(lines[1], "1");  // op: i64.const
+    assert!(
+        lines.len() >= 3,
+        "Compiler.ls は少なくとも3行の出力を生成するべき: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1"); // vector-length instrs = 1
+    assert_eq!(lines[1], "1"); // op: i64.const
     assert_eq!(lines[2], "42"); // operand: 42
 }
 
@@ -246,13 +274,17 @@ fn test_e2e_selfhost_wasmemit() {
     let source = std::fs::read_to_string("../../selfhost/WasmEmit.ls").unwrap();
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 6, "WasmEmit.ls は少なくとも6行の出力を生成するべき: {:?}", lines);
-    assert_eq!(lines[0], "8");   // ヘッダー長
-    assert_eq!(lines[1], "0");   // \0
-    assert_eq!(lines[2], "97");  // 'a'
+    assert!(
+        lines.len() >= 6,
+        "WasmEmit.ls は少なくとも6行の出力を生成するべき: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "8"); // ヘッダー長
+    assert_eq!(lines[1], "0"); // \0
+    assert_eq!(lines[2], "97"); // 'a'
     assert_eq!(lines[3], "115"); // 's'
     assert_eq!(lines[4], "109"); // 'm'
-    assert_eq!(lines[5], "1");   // version
+    assert_eq!(lines[5], "1"); // version
 }
 
 /// T1-9: selfhost/Main.ls 統合 E2E テスト
@@ -263,39 +295,43 @@ fn test_e2e_selfhost_main_integration() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     // Main.ls 旧パイプライン + T4-4 新パイプライン検証
-    assert!(lines.len() >= 32, "Main.ls は少なくとも32行の出力を生成するべき: {:?}", lines);
+    assert!(
+        lines.len() >= 32,
+        "Main.ls は少なくとも32行の出力を生成するべき: {:?}",
+        lines
+    );
 
     // 旧パイプライン: AST → IR → Wasm
-    assert_eq!(lines[0], "1");    // ast-tag = 1 (lit-int)
-    assert_eq!(lines[1], "42");   // value = 42
-    assert_eq!(lines[2], "1");    // vector-length instrs = 1
-    assert_eq!(lines[3], "1");    // op: i64.const
-    assert_eq!(lines[4], "42");   // operand: 42
-    assert_eq!(lines[5], "8");    // ヘッダー長 = 8
-    assert_eq!(lines[6], "0");    // \0
-    assert_eq!(lines[7], "97");   // 'a'
-    assert_eq!(lines[8], "115");  // 's'
-    assert_eq!(lines[9], "109");  // 'm'
-    assert_eq!(lines[10], "7");   // type section length = 7
-    assert_eq!(lines[11], "1");   // section-id: Type
-    assert_eq!(lines[12], "15");  // wasm-size = 8 + 7
-    assert_eq!(lines[13], "10");  // module-count = 10
+    assert_eq!(lines[0], "1"); // ast-tag = 1 (lit-int)
+    assert_eq!(lines[1], "42"); // value = 42
+    assert_eq!(lines[2], "1"); // vector-length instrs = 1
+    assert_eq!(lines[3], "1"); // op: i64.const
+    assert_eq!(lines[4], "42"); // operand: 42
+    assert_eq!(lines[5], "8"); // ヘッダー長 = 8
+    assert_eq!(lines[6], "0"); // \0
+    assert_eq!(lines[7], "97"); // 'a'
+    assert_eq!(lines[8], "115"); // 's'
+    assert_eq!(lines[9], "109"); // 'm'
+    assert_eq!(lines[10], "7"); // type section length = 7
+    assert_eq!(lines[11], "1"); // section-id: Type
+    assert_eq!(lines[12], "15"); // wasm-size = 8 + 7
+    assert_eq!(lines[13], "10"); // module-count = 10
 
     // T4-4: 新パイプライン (Lexer.tokenize の kind 列長)
-    assert_eq!(lines[14], "8");  // "(defn main [] 42)" のトークン数 (Lexer 実装に準拠)
-    assert_eq!(lines[15], "20");  // defn AST tag
-    assert_eq!(lines[16], "1");   // body: lit-int tag
-    assert_eq!(lines[17], "42");  // body: value = 42
-    assert_eq!(lines[18], "1");   // IR: 1 命令
-    assert_eq!(lines[19], "1");   // IR instr: i64.const
-    assert_eq!(lines[20], "42");  // IR operand: 42
+    assert_eq!(lines[14], "8"); // "(defn main [] 42)" のトークン数 (Lexer 実装に準拠)
+    assert_eq!(lines[15], "20"); // defn AST tag
+    assert_eq!(lines[16], "1"); // body: lit-int tag
+    assert_eq!(lines[17], "42"); // body: value = 42
+    assert_eq!(lines[18], "1"); // IR: 1 命令
+    assert_eq!(lines[19], "1"); // IR instr: i64.const
+    assert_eq!(lines[20], "42"); // IR operand: 42
 
     // P11: 完全パイプライン (MacroExpand + TypeInfer 統合)
-    assert_eq!(lines[27], "1");   // expanded AST tag = 1 (lit-int)
-    assert_eq!(lines[28], "1");   // 型推論結果: ty-tag = 1 (Con)
+    assert_eq!(lines[27], "1"); // expanded AST tag = 1 (lit-int)
+    assert_eq!(lines[28], "1"); // 型推論結果: ty-tag = 1 (Con)
     assert_eq!(lines[29], "100"); // 型推論結果: ty-name = 100 (Int)
-    assert_eq!(lines[30], "1");   // IR 命令数 = 1
-    assert_eq!(lines[31], "5");   // パイプラインステージ数 = 5
+    assert_eq!(lines[30], "1"); // IR 命令数 = 1
+    assert_eq!(lines[31], "5"); // パイプラインステージ数 = 5
 }
 
 /// T2-1: Lexer.ls 値つきトークン (kind, start, end) 3つ組のテスト
@@ -306,23 +342,26 @@ fn test_e2e_selfhost_lexer_value_tokens() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     // 後方互換テスト (既存の tokenize): 8行 (トークン数含む)
-    assert!(lines.len() >= 19, "Lexer.ls は少なくとも19行の出力を生成するべき: {:?}", lines);
-    assert_eq!(lines[0], "8");   // トークン数
+    assert!(
+        lines.len() >= 19,
+        "Lexer.ls は少なくとも19行の出力を生成するべき: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "8"); // トークン数
 
     // T2-1: 値つきトークンテスト
     // tokenize-with-spans "(+ 42 x)" の結果
-    assert_eq!(lines[9], "6");   // トークン数 = 6
-    assert_eq!(lines[10], "0");  // ( -> LParen (kind=0)
+    assert_eq!(lines[9], "6"); // トークン数 = 6
+    assert_eq!(lines[10], "0"); // ( -> LParen (kind=0)
     assert_eq!(lines[11], "20"); // + -> Symbol (kind=20)
     assert_eq!(lines[12], "10"); // 42 -> Int (kind=10)
     assert_eq!(lines[13], "20"); // x -> Symbol (kind=20)
-    assert_eq!(lines[14], "1");  // ) -> RParen (kind=1)
+    assert_eq!(lines[14], "1"); // ) -> RParen (kind=1)
     assert_eq!(lines[15], "99"); // EOF (kind=99)
     assert_eq!(lines[16], "42"); // token-int-value = 42
-    assert_eq!(lines[17], "1");  // + の start = 1
-    assert_eq!(lines[18], "2");  // + の end = 2
+    assert_eq!(lines[17], "1"); // + の start = 1
+    assert_eq!(lines[18], "2"); // + の end = 2
 }
-
 
 /// T2-2: Parser.ls AST ノード構築テスト
 /// T2-2: Parser.ls AST ノード構築テスト
@@ -384,16 +423,15 @@ fn test_e2e_selfhost_parser_v2_ast() {
     assert_eq!(lines[0], "42");
     assert_eq!(lines[1], "123");
     assert_eq!(lines[2], "0");
-    assert_eq!(lines[3], "1");   // int tag
-    assert_eq!(lines[4], "42");  // value
-    assert_eq!(lines[5], "2");   // bool tag
-    assert_eq!(lines[6], "1");   // true
-    assert_eq!(lines[7], "6");   // if tag
-    assert_eq!(lines[8], "2");   // cond bool tag
-    assert_eq!(lines[9], "10");  // then value
+    assert_eq!(lines[3], "1"); // int tag
+    assert_eq!(lines[4], "42"); // value
+    assert_eq!(lines[5], "2"); // bool tag
+    assert_eq!(lines[6], "1"); // true
+    assert_eq!(lines[7], "6"); // if tag
+    assert_eq!(lines[8], "2"); // cond bool tag
+    assert_eq!(lines[9], "10"); // then value
     assert_eq!(lines[10], "20"); // else value
 }
-
 
 // === T2-4: Parser 統合テスト: Rust版パーサーとの出力比較 ===
 
@@ -402,7 +440,7 @@ fn test_e2e_selfhost_parser_v2_ast() {
 #[test]
 fn test_e2e_parser_rust_selfhost_tag_comparison() {
     // Rust パーサーで各式をパースし、ノード種別を確認
-    use lsharp_syntax::ast::{Expr, Decl, Literal};
+    use lsharp_syntax::ast::{Decl, Expr, Literal};
 
     let test_cases = vec![
         // (ソース, Rust AST ノード種別, selfhost AST タグ)
@@ -410,7 +448,7 @@ fn test_e2e_parser_rust_selfhost_tag_comparison() {
         ("true", "Lit(Bool)", 2),        // ast-lit-bool
         ("false", "Lit(Bool)", 2),       // ast-lit-bool
         ("\"hello\"", "Lit(String)", 3), // ast-lit-string
-        ("x", "Var", 4),                // ast-var
+        ("x", "Var", 4),                 // ast-var
     ];
 
     for (source, expected_kind, selfhost_tag) in &test_cases {
@@ -476,10 +514,18 @@ fn test_e2e_parser_rust_selfhost_tag_comparison() {
             };
             assert_eq!(actual_kind, *expected_kind, "source={}", source);
             let expected_selfhost = match actual_kind {
-                "If" => 6, "Let" => 7, "Do" => 9, "App" => 5, "Match" => 10,
+                "If" => 6,
+                "Let" => 7,
+                "Do" => 9,
+                "App" => 5,
+                "Match" => 10,
                 _ => 0,
             };
-            assert_eq!(expected_selfhost, *selfhost_tag, "selfhost tag: source={}", source);
+            assert_eq!(
+                expected_selfhost, *selfhost_tag,
+                "selfhost tag: source={}",
+                source
+            );
         }
     }
 }
@@ -489,7 +535,8 @@ fn test_e2e_parser_rust_selfhost_tag_comparison() {
 fn test_e2e_parser_selfhost_parse_tags() {
     // selfhost Parser.ls の node-tag エンコーディング (tag * 10000 + value) を検証
     // parse-expr は整数エンコードを返す: tag=20(defn), tag=7(let), tag=6(if), tag=10(match), tag=5(apply)
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         ;; selfhost のエンコーディングと同じ方式で検証
         ;; node-tag: encoded / 10000
         (defn node-tag [encoded] (/ encoded 10000))
@@ -506,7 +553,8 @@ fn test_e2e_parser_selfhost_parse_tags() {
             ;; apply = 5 * 10000 = 50000 -> tag = 5
             (print (node-tag 50000))
             0))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "20\n7\n6\n10\n5");
 }
 
@@ -518,7 +566,8 @@ fn test_e2e_parser_selfhost_parse_tags() {
 #[test]
 fn test_e2e_selfhost_recursive_function_compilation() {
     // selfhost と同じ2パス方式の検証: 関数名の事前登録により再帰呼出しが可能
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn factorial [n]
           (if (== n 0)
             1
@@ -529,7 +578,8 @@ fn test_e2e_selfhost_recursive_function_compilation() {
             (print (factorial 0))
             (print (factorial 1))
             0))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "120\n1\n1");
 }
 
@@ -537,7 +587,8 @@ fn test_e2e_selfhost_recursive_function_compilation() {
 /// compile-program の2パス方式で、関数が互いを呼び出せることを検証
 #[test]
 fn test_e2e_selfhost_mutual_recursion_compilation() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn is-even [n]
           (if (== n 0)
             1
@@ -553,7 +604,8 @@ fn test_e2e_selfhost_mutual_recursion_compilation() {
             (print (is-even 1))
             (print (is-odd 0))
             0))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "1\n1\n0\n0");
 }
 
@@ -589,12 +641,19 @@ fn test_e2e_selfhost_compiler_two_zero_arg_defns_call_index() {
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 5, "2 関数 compile-program 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 5,
+        "2 関数 compile-program 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "2", "helper/main の 2 関数が必要");
     assert_eq!(lines[1], "1", "helper body は i64.const で始まること");
     assert_eq!(lines[2], "42", "helper body operand は 42");
     assert_eq!(lines[3], "40", "main body は call 命令で始まること");
-    assert_eq!(lines[4], "0", "main は helper の関数インデックス 0 を call すること");
+    assert_eq!(
+        lines[4], "0",
+        "main は helper の関数インデックス 0 を call すること"
+    );
 }
 
 /// selfhost Compiler.ls: 5 関数プログラムでも全 defn を compile-program-functions が保持できること
@@ -628,8 +687,14 @@ fn test_e2e_selfhost_compiler_five_zero_arg_defns_metadata_loop() {
     let lines: Vec<&str> = output.trim().lines().collect();
     assert!(lines.len() >= 3, "5 関数 metadata 出力が不足: {:?}", lines);
     assert_eq!(lines[0], "5", "5 defn 全てが metadata に残ること");
-    assert_eq!(lines[1], "40", "5 個目の main body は call 命令で始まること");
-    assert_eq!(lines[2], "3", "main は 4 個目の helper(d) を関数インデックス 3 で call すること");
+    assert_eq!(
+        lines[1], "40",
+        "5 個目の main body は call 命令で始まること"
+    );
+    assert_eq!(
+        lines[2], "3",
+        "main は 4 個目の helper(d) を関数インデックス 3 で call すること"
+    );
 }
 
 /// selfhost Compiler.ls: string-char-at を builtin として lowering し、補助 local を metadata に反映すること
@@ -663,11 +728,24 @@ fn test_e2e_selfhost_compiler_string_char_at_builtin_lowering() {
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 5, "string-char-at lowering 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 5,
+        "string-char-at lowering 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "1", "first は 1 引数関数であること");
-    assert_eq!(lines[1], "1", "string-char-at lowering 用の補助 local が 1 個必要");
-    assert_eq!(lines[2], "3", "body は local.get / i64.const / string-char-at の 3 命令であること");
-    assert_eq!(lines[3], "50", "末尾命令は string-char-at builtin opcode であること");
+    assert_eq!(
+        lines[1], "1",
+        "string-char-at lowering 用の補助 local が 1 個必要"
+    );
+    assert_eq!(
+        lines[2], "3",
+        "body は local.get / i64.const / string-char-at の 3 命令であること"
+    );
+    assert_eq!(
+        lines[3], "50",
+        "末尾命令は string-char-at builtin opcode であること"
+    );
     assert_eq!(lines[4], "2", "補助 local index は 2 であること");
 }
 
@@ -702,12 +780,25 @@ fn test_e2e_selfhost_compiler_string_length_builtin_lowering() {
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 5, "string-length lowering 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 5,
+        "string-length lowering 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "1", "len1 は 1 引数関数であること");
     assert_eq!(lines[1], "0", "string-length lowering に補助 local は不要");
-    assert_eq!(lines[2], "2", "body は local.get / string-length の 2 命令であること");
-    assert_eq!(lines[3], "51", "末尾命令は string-length builtin opcode であること");
-    assert_eq!(lines[4], "0", "string-length opcode operand は 0 であること");
+    assert_eq!(
+        lines[2], "2",
+        "body は local.get / string-length の 2 命令であること"
+    );
+    assert_eq!(
+        lines[3], "51",
+        "末尾命令は string-length builtin opcode であること"
+    );
+    assert_eq!(
+        lines[4], "0",
+        "string-length opcode operand は 0 であること"
+    );
 }
 
 /// selfhost Compiler.ls: vector-length を builtin として lowering できること
@@ -741,12 +832,25 @@ fn test_e2e_selfhost_compiler_vector_length_builtin_lowering() {
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 5, "vector-length lowering 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 5,
+        "vector-length lowering 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "1", "vlen は 1 引数関数であること");
     assert_eq!(lines[1], "0", "vector-length lowering に補助 local は不要");
-    assert_eq!(lines[2], "2", "body は local.get / vector-length の 2 命令であること");
-    assert_eq!(lines[3], "52", "末尾命令は vector-length builtin opcode であること");
-    assert_eq!(lines[4], "0", "vector-length opcode operand は 0 であること");
+    assert_eq!(
+        lines[2], "2",
+        "body は local.get / vector-length の 2 命令であること"
+    );
+    assert_eq!(
+        lines[3], "52",
+        "末尾命令は vector-length builtin opcode であること"
+    );
+    assert_eq!(
+        lines[4], "0",
+        "vector-length opcode operand は 0 であること"
+    );
 }
 
 /// selfhost Compiler.ls: vector-get を builtin として lowering し、補助 local を metadata に反映すること
@@ -780,11 +884,24 @@ fn test_e2e_selfhost_compiler_vector_get_builtin_lowering() {
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 5, "vector-get lowering 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 5,
+        "vector-get lowering 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "1", "vget0 は 1 引数関数であること");
-    assert_eq!(lines[1], "1", "vector-get lowering 用の補助 local が 1 個必要");
-    assert_eq!(lines[2], "3", "body は local.get / i64.const / vector-get の 3 命令であること");
-    assert_eq!(lines[3], "53", "末尾命令は vector-get builtin opcode であること");
+    assert_eq!(
+        lines[1], "1",
+        "vector-get lowering 用の補助 local が 1 個必要"
+    );
+    assert_eq!(
+        lines[2], "3",
+        "body は local.get / i64.const / vector-get の 3 命令であること"
+    );
+    assert_eq!(
+        lines[3], "53",
+        "末尾命令は vector-get builtin opcode であること"
+    );
     assert_eq!(lines[4], "2", "補助 local index は 2 であること");
 }
 
@@ -819,11 +936,24 @@ fn test_e2e_selfhost_compiler_vector_new_builtin_lowering() {
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 5, "vector-new lowering 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 5,
+        "vector-new lowering 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "main は 0 引数関数であること");
-    assert_eq!(lines[1], "2", "vector-new lowering 用の補助 local が 2 個必要");
-    assert_eq!(lines[2], "2", "body は i64.const / vector-new の 2 命令であること");
-    assert_eq!(lines[3], "54", "末尾命令は vector-new builtin opcode であること");
+    assert_eq!(
+        lines[1], "2",
+        "vector-new lowering 用の補助 local が 2 個必要"
+    );
+    assert_eq!(
+        lines[2], "2",
+        "body は i64.const / vector-new の 2 命令であること"
+    );
+    assert_eq!(
+        lines[3], "54",
+        "末尾命令は vector-new builtin opcode であること"
+    );
     assert_eq!(lines[4], "1", "補助 local base index は 1 であること");
 }
 
@@ -858,11 +988,24 @@ fn test_e2e_selfhost_compiler_vector_push_builtin_lowering() {
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 5, "vector-push lowering 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 5,
+        "vector-push lowering 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "main は 0 引数関数であること");
-    assert_eq!(lines[1], "6", "vector-push growth lowering 用の補助 local が 6 個必要");
-    assert_eq!(lines[2], "4", "body は vector-new を含めて 4 命令であること");
-    assert_eq!(lines[3], "55", "末尾命令は vector-push builtin opcode であること");
+    assert_eq!(
+        lines[1], "6",
+        "vector-push growth lowering 用の補助 local が 6 個必要"
+    );
+    assert_eq!(
+        lines[2], "4",
+        "body は vector-new を含めて 4 命令であること"
+    );
+    assert_eq!(
+        lines[3], "55",
+        "末尾命令は vector-push builtin opcode であること"
+    );
     assert_eq!(lines[4], "1", "補助 local base index は 1 であること");
 }
 
@@ -900,8 +1043,14 @@ fn test_e2e_selfhost_compiler_ref_new_builtin_lowering() {
     assert!(lines.len() >= 5, "ref-new lowering 出力が不足: {:?}", lines);
     assert_eq!(lines[0], "0", "main は 0 引数関数であること");
     assert_eq!(lines[1], "2", "ref-new lowering 用の補助 local が 2 個必要");
-    assert_eq!(lines[2], "2", "body は i64.const / ref-new の 2 命令であること");
-    assert_eq!(lines[3], "56", "末尾命令は ref-new builtin opcode であること");
+    assert_eq!(
+        lines[2], "2",
+        "body は i64.const / ref-new の 2 命令であること"
+    );
+    assert_eq!(
+        lines[3], "56",
+        "末尾命令は ref-new builtin opcode であること"
+    );
     assert_eq!(lines[4], "1", "補助 local base index は 1 であること");
 }
 
@@ -940,7 +1089,10 @@ fn test_e2e_selfhost_compiler_map_new_builtin_lowering() {
     assert_eq!(lines[0], "0", "main は 0 引数関数であること");
     assert_eq!(lines[1], "1", "map-new lowering 用の補助 local が 1 個必要");
     assert_eq!(lines[2], "1", "body は map-new の 1 命令であること");
-    assert_eq!(lines[3], "60", "末尾命令は map-new builtin opcode であること");
+    assert_eq!(
+        lines[3], "60",
+        "末尾命令は map-new builtin opcode であること"
+    );
     assert_eq!(lines[4], "1", "補助 local base index は 1 であること");
 }
 
@@ -978,7 +1130,10 @@ fn test_e2e_selfhost_compiler_print_builtin_lowering() {
     assert!(lines.len() >= 5, "print lowering 出力が不足: {:?}", lines);
     assert_eq!(lines[0], "0", "main は 0 引数関数であること");
     assert_eq!(lines[1], "0", "print lowering に補助 local は不要");
-    assert_eq!(lines[2], "2", "body は i64.const / print の 2 命令であること");
+    assert_eq!(
+        lines[2], "2",
+        "body は i64.const / print の 2 命令であること"
+    );
     assert_eq!(lines[3], "59", "末尾命令は print builtin opcode であること");
     assert_eq!(lines[4], "0", "print opcode operand は 0 であること");
 }
@@ -1014,11 +1169,21 @@ fn test_e2e_selfhost_compiler_read_file_builtin_lowering() {
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 5, "read-file lowering 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 5,
+        "read-file lowering 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "main は 0 引数関数であること");
     assert_eq!(lines[1], "0", "read-file lowering に補助 local は不要");
-    assert_eq!(lines[2], "2", "body は i64.const / read-file の 2 命令であること");
-    assert_eq!(lines[3], "64", "末尾命令は read-file builtin opcode であること");
+    assert_eq!(
+        lines[2], "2",
+        "body は i64.const / read-file の 2 命令であること"
+    );
+    assert_eq!(
+        lines[3], "64",
+        "末尾命令は read-file builtin opcode であること"
+    );
     assert_eq!(lines[4], "0", "read-file opcode operand は 0 であること");
 }
 
@@ -1053,12 +1218,28 @@ fn test_e2e_selfhost_compiler_command_line_arg_builtin_lowering() {
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 5, "command-line-arg lowering 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 5,
+        "command-line-arg lowering 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "main は 0 引数関数であること");
-    assert_eq!(lines[1], "0", "command-line-arg lowering に補助 local は不要");
-    assert_eq!(lines[2], "2", "body は i64.const / command-line-arg の 2 命令であること");
-    assert_eq!(lines[3], "67", "末尾命令は command-line-arg builtin opcode であること");
-    assert_eq!(lines[4], "0", "command-line-arg opcode operand は 0 であること");
+    assert_eq!(
+        lines[1], "0",
+        "command-line-arg lowering に補助 local は不要"
+    );
+    assert_eq!(
+        lines[2], "2",
+        "body は i64.const / command-line-arg の 2 命令であること"
+    );
+    assert_eq!(
+        lines[3], "67",
+        "末尾命令は command-line-arg builtin opcode であること"
+    );
+    assert_eq!(
+        lines[4], "0",
+        "command-line-arg opcode operand は 0 であること"
+    );
 }
 
 /// selfhost WasmEmit.ls: command-line-arg opcode を call import へ落とせること
@@ -1097,7 +1278,11 @@ fn test_e2e_selfhost_wasmemit_command_line_arg_instr() {
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 11, "command-line-arg code section 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 11,
+        "command-line-arg code section 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "10", "code section byte 長は 10 であること");
     assert_eq!(lines[1], "10", "section id は code=10");
     assert_eq!(lines[2], "8", "section size は 8");
@@ -1106,8 +1291,14 @@ fn test_e2e_selfhost_wasmemit_command_line_arg_instr() {
     assert_eq!(lines[5], "0", "local decl count は 0");
     assert_eq!(lines[6], "66", "先頭命令は i64.const");
     assert_eq!(lines[7], "0", "const operand は 0");
-    assert_eq!(lines[8], "16", "command-line-arg は call opcode へ lower されること");
-    assert_eq!(lines[9], "3", "command-line-arg import index は 3 であること");
+    assert_eq!(
+        lines[8], "16",
+        "command-line-arg は call opcode へ lower されること"
+    );
+    assert_eq!(
+        lines[9], "3",
+        "command-line-arg import index は 3 であること"
+    );
     assert_eq!(lines[10], "11", "body は end で終わること");
 }
 
@@ -1145,13 +1336,23 @@ fn test_e2e_selfhost_compiler_string_literal_source_data_lowering() {
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 6, "string literal lowering 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 6,
+        "string literal lowering 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "3", "string literal bytes の長さが不正");
     assert_eq!(lines[1], "97", "string literal の先頭 byte が不正");
     assert_eq!(lines[2], "98", "string literal の 2 byte 目が不正");
     assert_eq!(lines[3], "99", "string literal の 3 byte 目が不正");
-    assert_eq!(lines[4], "1", "string literal lowering の IR は i64.const 1 命令であること");
-    assert_eq!(lines[5], "1024", "string literal lowering の定数オフセットが不正");
+    assert_eq!(
+        lines[4], "1",
+        "string literal lowering の IR は i64.const 1 命令であること"
+    );
+    assert_eq!(
+        lines[5], "1024",
+        "string literal lowering の定数オフセットが不正"
+    );
 }
 
 /// selfhost Compiler.ls: nested string literal lowering が distinct offsets と連結 data bytes を返すこと
@@ -1195,7 +1396,11 @@ fn test_e2e_selfhost_compiler_nested_string_literal_source_data_lowering() {
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 11, "nested string literal lowering 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 11,
+        "nested string literal lowering 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "5", "nested string literal data bytes 長が不正");
     assert_eq!(lines[1], "97", "1 個目 string literal の先頭 byte が不正");
     assert_eq!(lines[2], "98", "1 個目 string literal の 2 byte 目が不正");
@@ -1206,7 +1411,10 @@ fn test_e2e_selfhost_compiler_nested_string_literal_source_data_lowering() {
     assert_eq!(lines[7], "1024", "先頭 string literal offset が不正");
     assert_eq!(lines[8], "44", "中間 string literal は drop されるべき");
     assert_eq!(lines[9], "1", "末尾命令は i64.const であるべき");
-    assert_eq!(lines[10], "1026", "末尾 string literal offset が前段 bytes を考慮していない");
+    assert_eq!(
+        lines[10], "1026",
+        "末尾 string literal offset が前段 bytes を考慮していない"
+    );
 }
 
 /// selfhost Compiler.ls: source-aware do string literal lowering が 5 式以上でも全要素を連結できること
@@ -1251,8 +1459,15 @@ fn test_e2e_selfhost_compiler_extended_do_string_literal_source_data_lowering() 
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 15, "extended do string literal lowering 出力が不足: {:?}", lines);
-    assert_eq!(lines[0], "11", "extended do string literal data bytes 長が不正");
+    assert!(
+        lines.len() >= 15,
+        "extended do string literal lowering 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "11",
+        "extended do string literal data bytes 長が不正"
+    );
     assert_eq!(lines[1], "97", "1 個目 string literal の先頭 byte が不正");
     assert_eq!(lines[2], "98", "1 個目 string literal の 2 byte 目が不正");
     assert_eq!(lines[3], "99", "2 個目 string literal の byte が不正");
@@ -1264,9 +1479,18 @@ fn test_e2e_selfhost_compiler_extended_do_string_literal_source_data_lowering() 
     assert_eq!(lines[9], "105", "5 個目 string literal の先頭 byte が不正");
     assert_eq!(lines[10], "106", "5 個目 string literal の 2 byte 目が不正");
     assert_eq!(lines[11], "107", "5 個目 string literal の 3 byte 目が不正");
-    assert_eq!(lines[12], "9", "5 式 do の IR は const/drop を含む 9 命令であること");
-    assert_eq!(lines[13], "1", "extended do の末尾命令は i64.const であること");
-    assert_eq!(lines[14], "1032", "extended do の末尾 string literal offset が不正");
+    assert_eq!(
+        lines[12], "9",
+        "5 式 do の IR は const/drop を含む 9 命令であること"
+    );
+    assert_eq!(
+        lines[13], "1",
+        "extended do の末尾命令は i64.const であること"
+    );
+    assert_eq!(
+        lines[14], "1032",
+        "extended do の末尾 string literal offset が不正"
+    );
 }
 
 /// selfhost Compiler.ls: source-aware if branch の string literal lowering が両 branch を data section に積むこと
@@ -1310,20 +1534,60 @@ fn test_e2e_selfhost_compiler_if_string_literal_source_data_lowering() {
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 13, "if string literal lowering 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 13,
+        "if string literal lowering 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "10", "if string literal data bytes 長が不正");
-    assert_eq!(lines[1], "104", "then branch string literal の先頭 byte が不正");
-    assert_eq!(lines[2], "101", "then branch string literal の 2 byte 目が不正");
-    assert_eq!(lines[3], "108", "then branch string literal の 3 byte 目が不正");
-    assert_eq!(lines[4], "108", "then branch string literal の 4 byte 目が不正");
-    assert_eq!(lines[5], "111", "then branch string literal の 5 byte 目が不正");
-    assert_eq!(lines[6], "119", "else branch string literal の先頭 byte が不正");
-    assert_eq!(lines[7], "111", "else branch string literal の 2 byte 目が不正");
-    assert_eq!(lines[8], "114", "else branch string literal の 3 byte 目が不正");
-    assert_eq!(lines[9], "108", "else branch string literal の 4 byte 目が不正");
-    assert_eq!(lines[10], "100", "else branch string literal の 5 byte 目が不正");
-    assert_eq!(lines[11], "1024", "then branch string literal offset が不正");
-    assert_eq!(lines[12], "1029", "else branch string literal offset が不正");
+    assert_eq!(
+        lines[1], "104",
+        "then branch string literal の先頭 byte が不正"
+    );
+    assert_eq!(
+        lines[2], "101",
+        "then branch string literal の 2 byte 目が不正"
+    );
+    assert_eq!(
+        lines[3], "108",
+        "then branch string literal の 3 byte 目が不正"
+    );
+    assert_eq!(
+        lines[4], "108",
+        "then branch string literal の 4 byte 目が不正"
+    );
+    assert_eq!(
+        lines[5], "111",
+        "then branch string literal の 5 byte 目が不正"
+    );
+    assert_eq!(
+        lines[6], "119",
+        "else branch string literal の先頭 byte が不正"
+    );
+    assert_eq!(
+        lines[7], "111",
+        "else branch string literal の 2 byte 目が不正"
+    );
+    assert_eq!(
+        lines[8], "114",
+        "else branch string literal の 3 byte 目が不正"
+    );
+    assert_eq!(
+        lines[9], "108",
+        "else branch string literal の 4 byte 目が不正"
+    );
+    assert_eq!(
+        lines[10], "100",
+        "else branch string literal の 5 byte 目が不正"
+    );
+    assert_eq!(
+        lines[11], "1024",
+        "then branch string literal offset が不正"
+    );
+    assert_eq!(
+        lines[12], "1029",
+        "else branch string literal offset が不正"
+    );
 }
 
 /// selfhost Compiler.ls: source-aware match arm body の string literal lowering が data section に積まれること
@@ -1356,7 +1620,11 @@ fn test_e2e_selfhost_compiler_match_string_literal_source_data_lowering() {
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 7, "match string literal lowering 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 7,
+        "match string literal lowering 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "6", "match string literal data bytes 長が不正");
     assert_eq!(lines[1], "111", "1 個目 string literal の先頭 byte が不正");
     assert_eq!(lines[2], "110", "1 個目 string literal の 2 byte 目が不正");
@@ -1392,7 +1660,11 @@ fn test_e2e_selfhost_compiler_lambda_string_literal_source_data_lowering() {
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 3, "lambda string literal lowering 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "lambda string literal lowering 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "2", "lambda string literal data bytes 長が不正");
     assert_eq!(lines[1], "111", "lambda string literal の先頭 byte が不正");
     assert_eq!(lines[2], "107", "lambda string literal の 2 byte 目が不正");
@@ -1436,8 +1708,15 @@ fn test_e2e_selfhost_compiler_map_string_key_source_hash_lowering() {
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 4, "map string-key lowering 出力が不足: {:?}", lines);
-    assert_eq!(lines[0], "0", "string key literal は data section へ積まず hash const 化すること");
+    assert!(
+        lines.len() >= 4,
+        "map string-key lowering 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "0",
+        "string key literal は data section へ積まず hash const 化すること"
+    );
     assert_eq!(lines[2], "1", "map-insert opcode が 1 回入ること");
     assert_eq!(lines[3], "2", "map-contains opcode が 2 回入ること");
 }
@@ -1481,10 +1760,20 @@ fn test_e2e_selfhost_compiler_map_non_literal_string_key_runtime_hash_lowering()
     );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert!(lines.len() >= 5, "non-literal string key lowering 出力が不足: {:?}", lines);
-    assert_eq!(lines[0], "11", "read-file path literal bytes は data section に積まれること");
+    assert!(
+        lines.len() >= 5,
+        "non-literal string key lowering 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "11",
+        "read-file path literal bytes は data section に積まれること"
+    );
     assert_eq!(lines[1], "1", "read-file opcode が 1 回入ること");
-    assert_eq!(lines[2], "2", "runtime hash opcode が map-insert/map-get の 2 回入ること");
+    assert_eq!(
+        lines[2], "2",
+        "runtime hash opcode が map-insert/map-get の 2 回入ること"
+    );
     assert_eq!(lines[3], "1", "map-insert opcode が 1 回入ること");
     assert_eq!(lines[4], "1", "map-get opcode が 1 回入ること");
 }
@@ -1495,12 +1784,14 @@ fn test_e2e_selfhost_compiler_map_non_literal_string_key_runtime_hash_lowering()
 /// (write-string は print-string の別名として動作する)
 #[test]
 fn test_e2e_write_string_stdout() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do
             (print-string "hello stdout")
             0))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "hello stdout");
 }
 
@@ -1508,13 +1799,15 @@ fn test_e2e_write_string_stdout() {
 /// stdout (fd=1) への print-string 出力が正しく動くことを検証
 #[test]
 fn test_e2e_fd_write_stdout() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do
             (print-string "line1")
             (print 42)
             0))
-    "#);
+    "#,
+    );
     assert!(result.contains("line1"));
     assert!(result.contains("42"));
 }
@@ -1527,13 +1820,16 @@ fn test_e2e_fd_read_file() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("test_input.txt"), "hello from file").unwrap();
 
-    let result = compile_and_run_with_dir(r#"
+    let result = compile_and_run_with_dir(
+        r#"
         (defn main []
           (do
             (let [content (read-file "test_input.txt")]
               (print (string-length content)))
             0))
-    "#, &dir);
+    "#,
+        &dir,
+    );
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(result.trim(), "15");
 }
@@ -1546,14 +1842,17 @@ fn test_e2e_file_roundtrip() {
     let dir = std::env::temp_dir().join("lsharp_test_roundtrip");
     std::fs::create_dir_all(&dir).unwrap();
 
-    let result = compile_and_run_with_dir(r#"
+    let result = compile_and_run_with_dir(
+        r#"
         (defn main []
           (do
             (write-file "roundtrip.txt" "test data 123")
             (let [content (read-file "roundtrip.txt")]
               (print (string-length content)))
             0))
-    "#, &dir);
+    "#,
+        &dir,
+    );
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(result.trim(), "13");
 }
@@ -1565,13 +1864,16 @@ fn test_e2e_file_exists_check() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("exists.txt"), "data").unwrap();
 
-    let result = compile_and_run_with_dir(r#"
+    let result = compile_and_run_with_dir(
+        r#"
         (defn main []
           (do
             (print (file-exists? "exists.txt"))
             (print (file-exists? "nonexistent.txt"))
             0))
-    "#, &dir);
+    "#,
+        &dir,
+    );
     let _ = std::fs::remove_dir_all(&dir);
     assert_eq!(result.trim(), "1\n0");
 }
@@ -1586,8 +1888,7 @@ fn test_e2e_file_exists_check() {
 #[test]
 fn test_e2e_json_stdlib_compiles() {
     let json_source = std::fs::read_to_string(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../stdlib/Json.ls")
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../stdlib/Json.ls"),
     );
     if let Ok(source) = json_source {
         // Json.ls が存在する場合、コンパイルが成功することを検証
@@ -1603,20 +1904,23 @@ fn test_e2e_json_stdlib_compiles() {
 /// 文字列オブジェクト: [tag:i32=1][len:i32][bytes]
 #[test]
 fn test_e2e_gc_string_header() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [s "test"]
             (do
               (print (string-length s))
               0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "4");
 }
 
 /// GC Phase 1: Vector オブジェクトのヘッダが正しく設定されることを検証
 #[test]
 fn test_e2e_gc_vector_header() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [v (vector-new 4)]
             (let [v1 (vector-push v 10)
@@ -1628,7 +1932,8 @@ fn test_e2e_gc_vector_header() {
                 (print (vector-get v3 1))
                 (print (vector-get v3 2))
                 0))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "3\n10\n20\n30");
 }
 
@@ -1636,7 +1941,8 @@ fn test_e2e_gc_vector_header() {
 /// (現在は bump allocator のみ、GC 導入後にヒープ回復も検証)
 #[test]
 fn test_e2e_gc_bulk_allocation() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn alloc-many [n]
           (if (= n 0)
             0
@@ -1649,14 +1955,16 @@ fn test_e2e_gc_bulk_allocation() {
             (alloc-many 100)
             (print 42)
             0))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "42");
 }
 
 /// GC Phase 3: HashMap の大量操作後もヒープが正常に動作
 #[test]
 fn test_e2e_gc_hashmap_stress() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [m1 (map-insert (map-new) 1 10)
                 m2 (map-insert m1 2 20)
@@ -1667,14 +1975,16 @@ fn test_e2e_gc_hashmap_stress() {
               (print (map-get m5 3))
               (print (map-size m5))
               0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "30\n5");
 }
 
 /// GC Phase 3: 文字列の大量連結でもヒープが正常に動作
 #[test]
 fn test_e2e_gc_string_concat_stress() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn repeat-concat [s n]
           (if (= n 0)
             s
@@ -1685,6 +1995,7 @@ fn test_e2e_gc_string_concat_stress() {
             (do
               (print (string-length result))
               0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "50");
 }

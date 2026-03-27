@@ -92,7 +92,10 @@ impl<'src> Lexer<'src> {
                 // P10-5: |> パイプライン演算子をシンボルとして扱う
                 if self.pos < self.bytes.len() && self.bytes[self.pos] == b'>' {
                     self.pos += 1;
-                    Ok(Token::new(TokenKind::Symbol("|>".to_string()), Span::new(start, self.pos)))
+                    Ok(Token::new(
+                        TokenKind::Symbol("|>".to_string()),
+                        Span::new(start, self.pos),
+                    ))
                 } else {
                     Ok(Token::new(TokenKind::Pipe, Span::new(start, self.pos)))
                 }
@@ -108,7 +111,10 @@ impl<'src> Lexer<'src> {
                 // ~@ の場合は SpliceUnquote
                 if self.pos < self.bytes.len() && self.bytes[self.pos] == b'@' {
                     self.pos += 1;
-                    Ok(Token::new(TokenKind::SpliceUnquote, Span::new(start, self.pos)))
+                    Ok(Token::new(
+                        TokenKind::SpliceUnquote,
+                        Span::new(start, self.pos),
+                    ))
                 } else {
                     Ok(Token::new(TokenKind::Unquote, Span::new(start, self.pos)))
                 }
@@ -437,7 +443,11 @@ mod tests {
         let tokens = lex("true false");
         assert_eq!(
             tokens,
-            vec![TokenKind::Bool(true), TokenKind::Bool(false), TokenKind::Eof]
+            vec![
+                TokenKind::Bool(true),
+                TokenKind::Bool(false),
+                TokenKind::Eof
+            ]
         );
     }
 
@@ -508,10 +518,7 @@ mod tests {
     #[test]
     fn test_type_alias_keyword() {
         let tokens = lex("type-alias");
-        assert_eq!(
-            tokens,
-            vec![TokenKind::TypeAlias, TokenKind::Eof]
-        );
+        assert_eq!(tokens, vec![TokenKind::TypeAlias, TokenKind::Eof]);
     }
 
     #[test]
@@ -534,28 +541,19 @@ mod tests {
     #[test]
     fn test_type_constrained_keyword() {
         let tokens = lex("type-constrained");
-        assert_eq!(
-            tokens,
-            vec![TokenKind::TypeConstrained, TokenKind::Eof]
-        );
+        assert_eq!(tokens, vec![TokenKind::TypeConstrained, TokenKind::Eof]);
     }
 
     #[test]
     fn test_constraints_keyword() {
         let tokens = lex("constraints");
-        assert_eq!(
-            tokens,
-            vec![TokenKind::Constraints, TokenKind::Eof]
-        );
+        assert_eq!(tokens, vec![TokenKind::Constraints, TokenKind::Eof]);
     }
 
     #[test]
     fn test_private_keyword() {
         let tokens = lex("private");
-        assert_eq!(
-            tokens,
-            vec![TokenKind::Private, TokenKind::Eof]
-        );
+        assert_eq!(tokens, vec![TokenKind::Private, TokenKind::Eof]);
     }
 
     // P10-1: Quote/Unquote トークンテスト
@@ -820,9 +818,7 @@ mod utf8_comment_tests {
 
     #[test]
     fn test_multiple_japanese_comments() {
-        let tokens = lex(
-            "; 関数定義\n(defn add ; 加算\n  [x y] ; 引数\n  (+ x y)) ; 本体"
-        );
+        let tokens = lex("; 関数定義\n(defn add ; 加算\n  [x y] ; 引数\n  (+ x y)) ; 本体");
         // (, defn, add, [, x, y, ], (, +, x, y, ), ), Eof
         assert!(tokens.len() >= 4);
         assert!(matches!(tokens[0].kind, TokenKind::LParen));

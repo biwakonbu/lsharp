@@ -13,15 +13,15 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 
 // 公開 API の再エクスポート
+pub use analysis::hover as analyze_hover;
+pub use completion::complete as analyze_completion;
+pub use format::format_source;
+pub use references::find_references;
 pub use tower_lsp::lsp_types::{
     CompletionItem, Hover, HoverContents, MarkedString, Position, Range,
 };
-pub use format::format_source;
-pub use references::find_references;
-pub use analysis::hover as analyze_hover;
-pub use completion::complete as analyze_completion;
-pub use util::parse_and_check;
 pub use util::find_definition;
+pub use util::parse_and_check;
 
 /// L# 言語サーバーのバックエンド
 pub struct LsharpBackend {
@@ -220,10 +220,7 @@ impl LanguageServer for LsharpBackend {
             let last_line = lines.len().saturating_sub(1) as u32;
             let last_col = lines.last().map_or(0, |l| l.len()) as u32;
             let edit = TextEdit {
-                range: Range::new(
-                    Position::new(0, 0),
-                    Position::new(last_line, last_col),
-                ),
+                range: Range::new(Position::new(0, 0), Position::new(last_line, last_col)),
                 new_text: formatted,
             };
             return Ok(Some(vec![edit]));
@@ -274,19 +271,14 @@ mod tests {
         let source = "(defn f [] (+ x y))";
         let pos = Position::new(0, 15);
         let result = find_definition(source, pos);
-        assert!(
-            result.is_none(),
-            "未定義シンボルでは None を返すべき"
-        );
+        assert!(result.is_none(), "未定義シンボルでは None を返すべき");
     }
 
     #[test]
     fn test_server_capabilities() {
         // ServerCapabilities に必要な provider が全て含まれる検証
         let capabilities = ServerCapabilities {
-            text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                TextDocumentSyncKind::FULL,
-            )),
+            text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
             hover_provider: Some(HoverProviderCapability::Simple(true)),
             completion_provider: Some(CompletionOptions::default()),
             definition_provider: Some(OneOf::Left(true)),

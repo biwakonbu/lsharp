@@ -122,7 +122,7 @@ impl Parser {
             None => {
                 return Err(ParseError::UnexpectedEof {
                     expected: "宣言".to_string(),
-                })
+                });
             }
         };
 
@@ -172,13 +172,14 @@ impl Parser {
         // レキサーでは : + Symbol("where") になるか、Where トークンになる
         if self.check(TokenKind::Colon) {
             if let Some(TokenKind::Symbol(ref s)) = self.peek_at(1).map(|t| &t.kind).cloned()
-                && s == "where" {
-                    let span = self.peek_span();
-                    self.advance(); // :
-                    self.advance(); // where
+                && s == "where"
+            {
+                let span = self.peek_span();
+                self.advance(); // :
+                self.advance(); // where
 
-                    return self.parse_where_clause_list(span);
-                }
+                return self.parse_where_clause_list(span);
+            }
             // Where トークンの場合
             if self.peek_at(1).map(|t| &t.kind) == Some(&TokenKind::Where) {
                 let span = self.peek_span();
@@ -199,7 +200,10 @@ impl Parser {
     }
 
     /// where 制約リストのパース: [(Trait a) ...]
-    fn parse_where_clause_list(&mut self, _where_span: Span) -> Result<Vec<WhereClause>, ParseError> {
+    fn parse_where_clause_list(
+        &mut self,
+        _where_span: Span,
+    ) -> Result<Vec<WhereClause>, ParseError> {
         self.expect(TokenKind::LBracket)?;
         let mut clauses = Vec::new();
         while !self.check(TokenKind::RBracket) {
@@ -251,12 +255,17 @@ impl Parser {
                             while !self.check(TokenKind::RBracket) {
                                 self.expect(TokenKind::LParen)?;
                                 let param_name = self.expect_symbol()?;
-                                let param_desc = if let Some(TokenKind::String(_)) = self.peek_kind() {
-                                    let tok = self.advance();
-                                    if let TokenKind::String(s) = tok.kind { s } else { String::new() }
-                                } else {
-                                    String::new()
-                                };
+                                let param_desc =
+                                    if let Some(TokenKind::String(_)) = self.peek_kind() {
+                                        let tok = self.advance();
+                                        if let TokenKind::String(s) = tok.kind {
+                                            s
+                                        } else {
+                                            String::new()
+                                        }
+                                    } else {
+                                        String::new()
+                                    };
                                 self.expect(TokenKind::RParen)?;
                                 metadata.params.push((param_name, param_desc));
                             }
@@ -961,21 +970,23 @@ impl Parser {
 
         // 最初のトークンが大文字シンボルならレコードリテラル
         if let Expr::Var(_, ref name) = first
-            && name.starts_with(|c: char| c.is_ascii_uppercase()) && !name.contains('.') {
-                let type_name = name.clone();
-                let mut fields = Vec::new();
-                while !self.check(TokenKind::RBrace) {
-                    let field_name = self.expect_symbol()?;
-                    let field_val = self.parse_expr()?;
-                    fields.push((field_name, field_val));
-                }
-                let end_span = self.expect(TokenKind::RBrace)?.span;
-                return Ok(Expr::RecordLit(
-                    start_span.merge(end_span),
-                    type_name,
-                    fields,
-                ));
+            && name.starts_with(|c: char| c.is_ascii_uppercase())
+            && !name.contains('.')
+        {
+            let type_name = name.clone();
+            let mut fields = Vec::new();
+            while !self.check(TokenKind::RBrace) {
+                let field_name = self.expect_symbol()?;
+                let field_val = self.parse_expr()?;
+                fields.push((field_name, field_val));
             }
+            let end_span = self.expect(TokenKind::RBrace)?.span;
+            return Ok(Expr::RecordLit(
+                start_span.merge(end_span),
+                type_name,
+                fields,
+            ));
+        }
 
         // その他のブレース式はエラー
         Err(ParseError::Unexpected {
@@ -1183,11 +1194,7 @@ impl Parser {
         let expr = self.parse_expr()?;
         let ty = self.parse_type_expr()?;
         let end_span = self.expect(TokenKind::RParen)?.span;
-        Ok(Expr::Ann(
-            start_span.merge(end_span),
-            Box::new(expr),
-            ty,
-        ))
+        Ok(Expr::Ann(start_span.merge(end_span), Box::new(expr), ty))
     }
 
     /// 関数適用 (f arg1 arg2 ...)
@@ -1198,11 +1205,7 @@ impl Parser {
             args.push(self.parse_expr()?);
         }
         let end_span = self.advance().span; // )
-        Ok(Expr::App(
-            start_span.merge(end_span),
-            Box::new(func),
-            args,
-        ))
+        Ok(Expr::App(start_span.merge(end_span), Box::new(func), args))
     }
 
     /// パターンをパース
@@ -1299,9 +1302,7 @@ impl Parser {
     /// 型式をパース
     fn parse_type_expr(&mut self) -> Result<TypeExpr, ParseError> {
         match self.peek_kind() {
-            Some(TokenKind::Symbol(ref s))
-                if s.starts_with(|c: char| c.is_ascii_uppercase()) =>
-            {
+            Some(TokenKind::Symbol(ref s)) if s.starts_with(|c: char| c.is_ascii_uppercase()) => {
                 let tok = self.advance();
                 if let TokenKind::Symbol(name) = tok.kind {
                     Ok(TypeExpr::Named(tok.span, name))
@@ -1389,9 +1390,17 @@ impl Parser {
             Some(TokenKind::Constraints) => true,
             Some(TokenKind::Symbol(s)) => matches!(
                 s.as_str(),
-                "where" | "constraints" | "doc" | "params" | "returns"
-                | "rationale" | "since" | "see-also" | "example" | "invariant"
-                | "transitions"
+                "where"
+                    | "constraints"
+                    | "doc"
+                    | "params"
+                    | "returns"
+                    | "rationale"
+                    | "since"
+                    | "see-also"
+                    | "example"
+                    | "invariant"
+                    | "transitions"
             ),
             _ => false,
         }
@@ -1433,7 +1442,10 @@ impl Parser {
         if self.check(kind.clone()) {
             Ok(self.advance())
         } else {
-            let found = self.peek_kind().map(|k| k.to_string()).unwrap_or("EOF".to_string());
+            let found = self
+                .peek_kind()
+                .map(|k| k.to_string())
+                .unwrap_or("EOF".to_string());
             Err(ParseError::Unexpected {
                 expected: kind.to_string(),
                 found,
@@ -1453,7 +1465,10 @@ impl Parser {
                 }
             }
             _ => {
-                let found = self.peek_kind().map(|k| k.to_string()).unwrap_or("EOF".to_string());
+                let found = self
+                    .peek_kind()
+                    .map(|k| k.to_string())
+                    .unwrap_or("EOF".to_string());
                 Err(ParseError::Unexpected {
                     expected: "シンボル".to_string(),
                     found,
@@ -1494,17 +1509,12 @@ mod tests {
     fn test_defn_with_type_annotation() {
         let prog = parse("(defn add [(: x Int) (: y Int)] : Int (+ x y))");
         assert_eq!(prog.decls.len(), 1);
-        assert_eq!(
-            prog.to_string(),
-            "(defn add [x y] : Int (+ x y))"
-        );
+        assert_eq!(prog.to_string(), "(defn add [x y] : Int (+ x y))");
     }
 
     #[test]
     fn test_fib() {
-        let prog = parse(
-            "(defn fib [n] (if (<= n 1) n (+ (fib (- n 1)) (fib (- n 2)))))",
-        );
+        let prog = parse("(defn fib [n] (if (<= n 1) n (+ (fib (- n 1)) (fib (- n 2)))))");
         assert_eq!(prog.decls.len(), 1);
     }
 
@@ -1613,11 +1623,12 @@ mod tests {
 
     #[test]
     fn test_type_constrained_basic() {
-        let prog = parse(
-            "(type-constrained Natural Int :constraints [(>= 0)])"
-        );
+        let prog = parse("(type-constrained Natural Int :constraints [(>= 0)])");
         assert_eq!(prog.decls.len(), 1);
-        if let Decl::TypeConstrained { name, constraints, .. } = &prog.decls[0] {
+        if let Decl::TypeConstrained {
+            name, constraints, ..
+        } = &prog.decls[0]
+        {
             assert_eq!(name, "Natural");
             assert_eq!(constraints.len(), 1);
         } else {
@@ -1627,11 +1638,12 @@ mod tests {
 
     #[test]
     fn test_type_constrained_range() {
-        let prog = parse(
-            "(type-constrained Percentage Int :constraints [(>= 0) (<= 100)])"
-        );
+        let prog = parse("(type-constrained Percentage Int :constraints [(>= 0) (<= 100)])");
         assert_eq!(prog.decls.len(), 1);
-        if let Decl::TypeConstrained { name, constraints, .. } = &prog.decls[0] {
+        if let Decl::TypeConstrained {
+            name, constraints, ..
+        } = &prog.decls[0]
+        {
             assert_eq!(name, "Percentage");
             assert_eq!(constraints.len(), 2);
         } else {
@@ -1641,9 +1653,8 @@ mod tests {
 
     #[test]
     fn test_type_constrained_matches() {
-        let prog = parse(
-            r#"(type-constrained Email String :constraints [(matches "^[^@]+@[^@]+$")])"#
-        );
+        let prog =
+            parse(r#"(type-constrained Email String :constraints [(matches "^[^@]+@[^@]+$")])"#);
         assert_eq!(prog.decls.len(), 1);
         if let Decl::TypeConstrained { constraints, .. } = &prog.decls[0] {
             assert_eq!(constraints.len(), 1);
@@ -1655,9 +1666,7 @@ mod tests {
 
     #[test]
     fn test_type_constrained_satisfies() {
-        let prog = parse(
-            "(type-constrained EvenInt Int :constraints [(satisfies is-even)])"
-        );
+        let prog = parse("(type-constrained EvenInt Int :constraints [(satisfies is-even)])");
         assert_eq!(prog.decls.len(), 1);
         if let Decl::TypeConstrained { constraints, .. } = &prog.decls[0] {
             assert_eq!(constraints.len(), 1);
@@ -1671,9 +1680,7 @@ mod tests {
 
     #[test]
     fn test_defn_with_where_clause() {
-        let prog = parse(
-            "(defn show-it [x] :where [(Show a)] (show x))"
-        );
+        let prog = parse("(defn show-it [x] :where [(Show a)] (show x))");
         assert_eq!(prog.decls.len(), 1);
         if let Decl::Defn { where_clauses, .. } = &prog.decls[0] {
             assert_eq!(where_clauses.len(), 1);
@@ -1686,9 +1693,7 @@ mod tests {
 
     #[test]
     fn test_defn_with_multiple_where_clauses() {
-        let prog = parse(
-            "(defn show-eq [x y] :where [(Show a) (Eq a)] (do (show x) (== x y)))"
-        );
+        let prog = parse("(defn show-eq [x y] :where [(Show a) (Eq a)] (do (show x) (== x y)))");
         assert_eq!(prog.decls.len(), 1);
         if let Decl::Defn { where_clauses, .. } = &prog.decls[0] {
             assert_eq!(where_clauses.len(), 2);
@@ -1701,9 +1706,7 @@ mod tests {
 
     #[test]
     fn test_defn_with_metadata() {
-        let prog = parse(
-            r#"(defn add [x y] :doc "adds two numbers" (+ x y))"#
-        );
+        let prog = parse(r#"(defn add [x y] :doc "adds two numbers" (+ x y))"#);
         assert_eq!(prog.decls.len(), 1);
         if let Decl::Defn { metadata, .. } = &prog.decls[0] {
             assert!(metadata.is_some());
@@ -1717,7 +1720,7 @@ mod tests {
     #[test]
     fn test_defn_with_params_metadata() {
         let prog = parse(
-            r#"(defn add [x y] :doc "addition" :params [(x "left") (y "right")] :returns "sum" (+ x y))"#
+            r#"(defn add [x y] :doc "addition" :params [(x "left") (y "right")] :returns "sum" (+ x y))"#,
         );
         assert_eq!(prog.decls.len(), 1);
         if let Decl::Defn { metadata, .. } = &prog.decls[0] {
@@ -1741,9 +1744,7 @@ mod tests {
 
     #[test]
     fn test_nested_module_decl() {
-        let prog = parse(
-            "(module Utils (defn helper [x] (+ x 1)))"
-        );
+        let prog = parse("(module Utils (defn helper [x] (+ x 1)))");
         assert_eq!(prog.decls.len(), 1);
         if let Decl::ModuleDecl { name, body, .. } = &prog.decls[0] {
             assert_eq!(name, "Utils");
@@ -1759,7 +1760,7 @@ mod tests {
         let prog = parse(
             "(module App.Utils
               (defn add [x y] (+ x y))
-              (defn mul [x y] (* x y)))"
+              (defn mul [x y] (* x y)))",
         );
         assert_eq!(prog.decls.len(), 1);
         if let Decl::ModuleDecl { name, body, .. } = &prog.decls[0] {
@@ -1775,7 +1776,7 @@ mod tests {
         let prog = parse(
             "(module Models
               (type Point (record (: x Float) (: y Float)))
-              (defn origin [] {Point x 0.0 y 0.0}))"
+              (defn origin [] {Point x 0.0 y 0.0}))",
         );
         assert_eq!(prog.decls.len(), 1);
         if let Decl::ModuleDecl { name, body, .. } = &prog.decls[0] {
@@ -1790,9 +1791,7 @@ mod tests {
 
     #[test]
     fn test_nested_module_display() {
-        let prog = parse(
-            "(module Utils (defn id [x] x))"
-        );
+        let prog = parse("(module Utils (defn id [x] x))");
         assert_eq!(prog.to_string(), "(module Utils (defn id [x] x))");
     }
 
@@ -1801,13 +1800,18 @@ mod tests {
         let prog = parse(
             "(module App
               (module Sub
-                (defn inner [] 42)))"
+                (defn inner [] 42)))",
         );
         assert_eq!(prog.decls.len(), 1);
         if let Decl::ModuleDecl { name, body, .. } = &prog.decls[0] {
             assert_eq!(name, "App");
             assert_eq!(body.len(), 1);
-            if let Decl::ModuleDecl { name: inner_name, body: inner_body, .. } = &body[0] {
+            if let Decl::ModuleDecl {
+                name: inner_name,
+                body: inner_body,
+                ..
+            } = &body[0]
+            {
                 assert_eq!(inner_name, "Sub");
                 assert_eq!(inner_body.len(), 1);
             } else {
@@ -1834,9 +1838,7 @@ mod tests {
 
     #[test]
     fn test_impl_def() {
-        let prog = parse(
-            "(impl (Show Int) (defn show [self] (str self)))",
-        );
+        let prog = parse("(impl (Show Int) (defn show [self] (str self)))");
         assert_eq!(prog.decls.len(), 1);
     }
 
@@ -1856,7 +1858,11 @@ mod tests {
         let result = parse_result(source);
         assert!(result.is_err());
         if let Err(ParseError::Multiple(errors)) = &result {
-            assert!(errors.len() >= 2, "Expected at least 2 errors, got {}", errors.len());
+            assert!(
+                errors.len() >= 2,
+                "Expected at least 2 errors, got {}",
+                errors.len()
+            );
         } else {
             panic!("Expected Multiple error variant, got: {:?}", result);
         }
@@ -1870,8 +1876,11 @@ mod tests {
         let result = parse_result(source);
         assert!(result.is_err());
         // 単一エラーが返ること（2番目はパース成功するため）
-        assert!(!matches!(result, Err(ParseError::Multiple(_))),
-            "Expected single error (second decl should parse ok), got: {:?}", result);
+        assert!(
+            !matches!(result, Err(ParseError::Multiple(_))),
+            "Expected single error (second decl should parse ok), got: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -1908,14 +1917,15 @@ mod tests {
 
 #[cfg(test)]
 mod transitions_tests {
-    use crate::parse;
     use crate::ast::Decl;
+    use crate::parse;
 
     #[test]
     fn test_transitions_metadata() {
         let prog = parse(
             r#"(defn open-door [door] :doc "Opens a door" :transitions [(Closed -> Open)] door)"#,
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(prog.decls.len(), 1);
         if let Decl::Defn { metadata, .. } = &prog.decls[0] {
             let m = metadata.as_ref().unwrap();
@@ -1930,7 +1940,8 @@ mod transitions_tests {
     fn test_multiple_transitions() {
         let prog = parse(
             r#"(defn toggle [state] :transitions [(Open -> Closed) (Closed -> Open)] state)"#,
-        ).unwrap();
+        )
+        .unwrap();
         if let Decl::Defn { metadata, .. } = &prog.decls[0] {
             let m = metadata.as_ref().unwrap();
             assert_eq!(m.transitions.len(), 2);
@@ -1955,10 +1966,10 @@ mod transitions_tests {
 
 #[cfg(test)]
 mod computation_tests {
-    use crate::parse;
+    use super::Parser;
     use crate::ast::{ComputationStep, Decl, Expr};
     use crate::lexer::Lexer;
-    use super::Parser;
+    use crate::parse;
 
     fn parse_expr_str(input: &str) -> Expr {
         let mut lexer = Lexer::new(input);
@@ -1971,7 +1982,13 @@ mod computation_tests {
     fn test_computation_builder_decl() {
         let prog = parse("(computation-builder maybe maybe-bind maybe-return)").unwrap();
         assert_eq!(prog.decls.len(), 1);
-        if let Decl::ComputationBuilder { name, bind_fn, return_fn, .. } = &prog.decls[0] {
+        if let Decl::ComputationBuilder {
+            name,
+            bind_fn,
+            return_fn,
+            ..
+        } = &prog.decls[0]
+        {
             assert_eq!(name, "maybe");
             assert_eq!(bind_fn, "maybe-bind");
             assert_eq!(return_fn, "maybe-return");
@@ -1982,9 +1999,8 @@ mod computation_tests {
 
     #[test]
     fn test_computation_expr_basic() {
-        let prog = parse(
-            "(defn test [] (computation maybe (let! x (get-value)) (return x)))"
-        ).unwrap();
+        let prog =
+            parse("(defn test [] (computation maybe (let! x (get-value)) (return x)))").unwrap();
         if let Decl::Defn { body, .. } = &prog.decls[0] {
             if let Expr::Computation(_, builder, steps) = &body {
                 assert_eq!(builder, "maybe");
@@ -2001,9 +2017,7 @@ mod computation_tests {
 
     #[test]
     fn test_computation_expr_do_bang() {
-        let prog = parse(
-            "(defn test [] (computation async (do! (print 1)) (return 42)))"
-        ).unwrap();
+        let prog = parse("(defn test [] (computation async (do! (print 1)) (return 42)))").unwrap();
         if let Decl::Defn { body, .. } = &prog.decls[0] {
             if let Expr::Computation(_, builder, steps) = &body {
                 assert_eq!(builder, "async");
@@ -2020,9 +2034,8 @@ mod computation_tests {
 
     #[test]
     fn test_computation_expr_with_plain_expr() {
-        let prog = parse(
-            "(defn test [] (computation maybe (let! x (get-value)) (+ x 1)))"
-        ).unwrap();
+        let prog =
+            parse("(defn test [] (computation maybe (let! x (get-value)) (+ x 1)))").unwrap();
         if let Decl::Defn { body, .. } = &prog.decls[0] {
             if let Expr::Computation(_, _, steps) = &body {
                 assert_eq!(steps.len(), 2);
@@ -2038,9 +2051,8 @@ mod computation_tests {
 
     #[test]
     fn test_computation_display() {
-        let prog = parse(
-            "(defn test [] (computation maybe (let! x (get-value)) (return x)))"
-        ).unwrap();
+        let prog =
+            parse("(defn test [] (computation maybe (let! x (get-value)) (return x)))").unwrap();
         let display = format!("{}", prog.decls[0]);
         assert!(display.contains("maybe"));
     }
@@ -2121,6 +2133,9 @@ mod computation_tests {
     #[test]
     fn test_defmacro_display() {
         let prog = parse("(defmacro unless [test body] '(if ~test () ~body))").unwrap();
-        assert_eq!(prog.to_string(), "(defmacro unless [test body] '(if ~test () ~body))");
+        assert_eq!(
+            prog.to_string(),
+            "(defmacro unless [test body] '(if ~test () ~body))"
+        );
     }
 }

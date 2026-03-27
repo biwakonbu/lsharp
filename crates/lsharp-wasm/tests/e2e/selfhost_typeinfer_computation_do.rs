@@ -1,10 +1,8 @@
 use super::support::*;
 
-
 /// selfhost TypeInfer.ls テスト: 3-step do! -> let! -> return は後段 binder を渡せる
 #[test]
 fn test_e2e_selfhost_typeinfer_computation_do_bang_let_bang_return_bool() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -51,7 +49,10 @@ fn test_e2e_selfhost_typeinfer_computation_do_bang_let_bang_return_bool() {
         "3-step do! let! computation typeinfer 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "0", "3-step do! let! computation infer は失敗すべきでない");
+    assert_eq!(
+        lines[0], "0",
+        "3-step do! let! computation infer は失敗すべきでない"
+    );
     assert_eq!(
         lines[1], "1",
         "3-step do! let! computation の型タグは Con であるべき"
@@ -65,7 +66,6 @@ fn test_e2e_selfhost_typeinfer_computation_do_bang_let_bang_return_bool() {
 /// selfhost TypeInfer.ls テスト: 6 式 do ブロックは最後の式型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_do_six_exprs_last_bool() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -97,16 +97,22 @@ fn test_e2e_selfhost_typeinfer_do_six_exprs_last_bool() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "do 6 exprs typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "do 6 exprs typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "do 6 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 6 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 6 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 6 exprs の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 7 式 do ブロックは最後の式型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_do_seven_exprs_last_bool() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -140,16 +146,22 @@ fn test_e2e_selfhost_typeinfer_do_seven_exprs_last_bool() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "do 7 exprs typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "do 7 exprs typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "do 7 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 7 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 7 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 7 exprs の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 8 式 do ブロックは最後の式型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_do_eight_exprs_last_bool() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -185,16 +197,22 @@ fn test_e2e_selfhost_typeinfer_do_eight_exprs_last_bool() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "do 8 exprs typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "do 8 exprs typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "do 8 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 8 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 8 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 8 exprs の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: do 9 式は最後の式の型を返す
 #[test]
 fn test_e2e_selfhost_typeinfer_do_nine_exprs_last_bool() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -232,16 +250,22 @@ fn test_e2e_selfhost_typeinfer_do_nine_exprs_last_bool() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "do 9 exprs typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "do 9 exprs typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "do 9 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 9 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 9 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 9 exprs の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: do ブロック 10 式は最後の Bool 型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_do_ten_exprs_last_bool() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -282,16 +306,22 @@ fn test_e2e_selfhost_typeinfer_do_ten_exprs_last_bool() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "do 10 exprs typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "do 10 exprs typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "do 10 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 10 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 10 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 10 exprs の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: do ブロック 11 式は最後の Bool 型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_do_eleven_exprs_last_bool() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -341,13 +371,15 @@ fn test_e2e_selfhost_typeinfer_do_eleven_exprs_last_bool() {
     );
     assert_eq!(lines[0], "0", "do 11 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 11 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 11 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 11 exprs の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: do ブロック 12 式は最後の Bool 型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_do_twelve_exprs_last_bool() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -399,13 +431,15 @@ fn test_e2e_selfhost_typeinfer_do_twelve_exprs_last_bool() {
     );
     assert_eq!(lines[0], "0", "do 12 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 12 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 12 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 12 exprs の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: do ブロック 13 式は最後の Bool 型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_do_thirteen_exprs_last_bool() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -459,13 +493,15 @@ fn test_e2e_selfhost_typeinfer_do_thirteen_exprs_last_bool() {
     );
     assert_eq!(lines[0], "0", "do 13 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 13 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 13 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 13 exprs の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: do ブロック 14 式は最後の Bool 型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_do_fourteen_exprs_last_bool() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -521,5 +557,8 @@ fn test_e2e_selfhost_typeinfer_do_fourteen_exprs_last_bool() {
     );
     assert_eq!(lines[0], "0", "do 14 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 14 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 14 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 14 exprs の型名は Bool hash=200 であるべき"
+    );
 }

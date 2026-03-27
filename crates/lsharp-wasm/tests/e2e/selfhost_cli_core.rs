@@ -1,21 +1,15 @@
 use super::support::*;
 
-
 /// TEST-CLI-02-C: selfhost/Cli.ls に repl/lsp/fmt/doc コマンド定義
 ///
 /// T4-4 AC-013: ユーティリティコマンドが L# 実装で動作すること
 /// Red Phase: selfhost/Cli.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_cli_repl_lsp_fmt() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let cli_path = project_root.join("selfhost/Cli.ls");
-    assert!(
-        cli_path.exists(),
-        "selfhost/Cli.ls が存在しない"
-    );
-    let source = std::fs::read_to_string(&cli_path)
-        .expect("selfhost/Cli.ls の読み込みに失敗");
+    assert!(cli_path.exists(), "selfhost/Cli.ls が存在しない");
+    let source = std::fs::read_to_string(&cli_path).expect("selfhost/Cli.ls の読み込みに失敗");
 
     // ユーティリティコマンドの定義を確認 (T4-4 AC-013)
     let commands = ["repl", "lsp", "fmt", "doc"];
@@ -106,16 +100,27 @@ fn test_e2e_selfhost_cli_parse_source_core() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(
-        lines.len() >= 5,
-        "cli parse core 出力が不足: {:?}",
-        lines
+    assert!(lines.len() >= 5, "cli parse core 出力が不足: {:?}", lines);
+    assert_eq!(
+        lines[0], "decls:1",
+        "program decl-count text は 1 であるべき"
     );
-    assert_eq!(lines[0], "decls:1", "program decl-count text は 1 であるべき");
-    assert_eq!(lines[1], "first-decl:defn", "先頭 decl は defn text であるべき");
-    assert_eq!(lines[2], "first-body:int", "defn body は int text であるべき");
-    assert_eq!(lines[3], "diagnostics:0", "parse diagnostics summary は 0 件であるべき");
-    assert_eq!(lines[4], "0", "run-parse-source の終了コードは success であるべき");
+    assert_eq!(
+        lines[1], "first-decl:defn",
+        "先頭 decl は defn text であるべき"
+    );
+    assert_eq!(
+        lines[2], "first-body:int",
+        "defn body は int text であるべき"
+    );
+    assert_eq!(
+        lines[3], "diagnostics:0",
+        "parse diagnostics summary は 0 件であるべき"
+    );
+    assert_eq!(
+        lines[4], "0",
+        "run-parse-source の終了コードは success であるべき"
+    );
 }
 
 /// TEST-CLI-02-E: selfhost/Cli.ls の check core helper が source を型推論できること
@@ -134,23 +139,23 @@ fn test_e2e_selfhost_cli_check_source_core() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(
-        lines.len() >= 3,
-        "cli check core 出力が不足: {:?}",
-        lines
-    );
+    assert!(lines.len() >= 3, "cli check core 出力が不足: {:?}", lines);
     assert_eq!(lines[0], "Int", "check 結果は型名 Int を返すべき");
-    assert_eq!(lines[1], "diagnostics:0", "check diagnostics summary は 0 件であるべき");
-    assert_eq!(lines[2], "0", "run-check-source の終了コードは success であるべき");
+    assert_eq!(
+        lines[1], "diagnostics:0",
+        "check diagnostics summary は 0 件であるべき"
+    );
+    assert_eq!(
+        lines[2], "0",
+        "run-check-source の終了コードは success であるべき"
+    );
 }
 
 /// TEST-CLI-02-F: selfhost/Cli.ls の run-parse が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_parse_file_handler() {
-    let dir = std::env::temp_dir().join(format!(
-        "lsharp_test_cli_parse_file_{}",
-        std::process::id()
-    ));
+    let dir =
+        std::env::temp_dir().join(format!("lsharp_test_cli_parse_file_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
 
@@ -171,20 +176,30 @@ fn test_e2e_selfhost_cli_parse_file_handler() {
         "cli parse file handler 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "decls:1", "program decl-count text は 1 であるべき");
-    assert_eq!(lines[1], "first-decl:defn", "先頭 decl は defn text であるべき");
-    assert_eq!(lines[2], "first-body:int", "defn body は int text であるべき");
-    assert_eq!(lines[3], "diagnostics:0", "parse diagnostics summary は 0 件であるべき");
+    assert_eq!(
+        lines[0], "decls:1",
+        "program decl-count text は 1 であるべき"
+    );
+    assert_eq!(
+        lines[1], "first-decl:defn",
+        "先頭 decl は defn text であるべき"
+    );
+    assert_eq!(
+        lines[2], "first-body:int",
+        "defn body は int text であるべき"
+    );
+    assert_eq!(
+        lines[3], "diagnostics:0",
+        "parse diagnostics summary は 0 件であるべき"
+    );
     assert_eq!(lines[4], "0", "run-parse の終了コードは success であるべき");
 }
 
 /// TEST-CLI-02-G: selfhost/Cli.ls の run-check が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_check_file_handler() {
-    let dir = std::env::temp_dir().join(format!(
-        "lsharp_test_cli_check_file_{}",
-        std::process::id()
-    ));
+    let dir =
+        std::env::temp_dir().join(format!("lsharp_test_cli_check_file_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
 
@@ -206,7 +221,10 @@ fn test_e2e_selfhost_cli_check_file_handler() {
         lines
     );
     assert_eq!(lines[0], "Int", "check 結果は型名 Int を返すべき");
-    assert_eq!(lines[1], "diagnostics:0", "check diagnostics summary は 0 件であるべき");
+    assert_eq!(
+        lines[1], "diagnostics:0",
+        "check diagnostics summary は 0 件であるべき"
+    );
     assert_eq!(lines[2], "0", "run-check の終了コードは success であるべき");
 }
 
@@ -236,7 +254,11 @@ fn test_e2e_selfhost_cli_parse_source_recovery_summary() {
         "parse recovery summary は code/location を含むべき: {:?}",
         lines
     );
-    assert_eq!(lines.last(), Some(&"0"), "run-parse-source は recovery summary 後も success を返すべき");
+    assert_eq!(
+        lines.last(),
+        Some(&"0"),
+        "run-parse-source は recovery summary 後も success を返すべき"
+    );
 }
 
 /// TEST-CLI-02-G2b: run-parse-source が `]` recovery でも token 別 diagnostics body を返すこと
@@ -265,7 +287,11 @@ fn test_e2e_selfhost_cli_parse_source_recovery_unexpected_bracket_summary() {
         "parse recovery summary は unexpected token ] を含むべき: {:?}",
         lines
     );
-    assert_eq!(lines.last(), Some(&"0"), "run-parse-source は recovery summary 後も success を返すべき");
+    assert_eq!(
+        lines.last(),
+        Some(&"0"),
+        "run-parse-source は recovery summary 後も success を返すべき"
+    );
 }
 
 /// TEST-CLI-02-G3: run-check-source が型エラー入力でも diagnostics summary を返すこと
@@ -294,7 +320,11 @@ fn test_e2e_selfhost_cli_check_source_type_error_summary() {
         "check type-error summary は code/location を含むべき: {:?}",
         lines
     );
-    assert_eq!(lines.last(), Some(&"0"), "run-check-source は type-error summary 後も success を返すべき");
+    assert_eq!(
+        lines.last(),
+        Some(&"0"),
+        "run-check-source は type-error summary 後も success を返すべき"
+    );
 }
 
 /// TEST-CLI-02-G3b: run-check-source が未定義シンボルでも code 別 diagnostics body を返すこと
@@ -323,7 +353,11 @@ fn test_e2e_selfhost_cli_check_source_undefined_symbol_summary() {
         "check undefined-symbol summary は code 別 body を含むべき: {:?}",
         lines
     );
-    assert_eq!(lines.last(), Some(&"0"), "run-check-source は diagnostics summary 後も success を返すべき");
+    assert_eq!(
+        lines.last(),
+        Some(&"0"),
+        "run-check-source は diagnostics summary 後も success を返すべき"
+    );
 }
 
 /// TEST-CLI-02-H: selfhost/Cli.ls の file-path handler は missing file を compile error で返す
@@ -402,7 +436,11 @@ fn test_e2e_selfhost_cli_fmt_source_core() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.len(), 2, "run-fmt-source は 1 つの fmt 出力と success code を返すべき");
+    assert_eq!(
+        lines.len(),
+        2,
+        "run-fmt-source は 1 つの fmt 出力と success code を返すべき"
+    );
     assert_eq!(
         lines[0], "(defn a [] 42)",
         "run-fmt-source は format-program の canonical text を stdout へ返すべき"
@@ -424,7 +462,11 @@ fn test_e2e_selfhost_cli_fmt_source_string_literal() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.len(), 2, "run-fmt-source string literal は fmt 出力と success code を返すべき");
+    assert_eq!(
+        lines.len(),
+        2,
+        "run-fmt-source string literal は fmt 出力と success code を返すべき"
+    );
     assert_eq!(
         lines[0], "\"abc\"",
         "run-fmt-source は string literal を source-aware formatter で返すべき"
@@ -435,10 +477,7 @@ fn test_e2e_selfhost_cli_fmt_source_string_literal() {
 /// TEST-CLI-02-K: selfhost/Cli.ls の run-fmt が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_fmt_file_handler() {
-    let dir = std::env::temp_dir().join(format!(
-        "lsharp_test_cli_fmt_file_{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("lsharp_test_cli_fmt_file_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("input.ls"), "(defn a [] 42)").unwrap();
 
@@ -454,7 +493,11 @@ fn test_e2e_selfhost_cli_fmt_file_handler() {
     let _ = std::fs::remove_dir_all(&dir);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.len(), 2, "run-fmt は 1 つの fmt 出力と success code を返すべき");
+    assert_eq!(
+        lines.len(),
+        2,
+        "run-fmt は 1 つの fmt 出力と success code を返すべき"
+    );
     assert_eq!(
         lines[0], "(defn a [] 42)",
         "run-fmt は file-path 経由でも canonical text を stdout へ返すべき"
@@ -476,7 +519,11 @@ fn test_e2e_selfhost_cli_compile_source_core() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 2, "run-compile-source 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 2,
+        "run-compile-source 出力が不足: {:?}",
+        lines
+    );
     assert!(
         lines[0].starts_with("wasm-size:"),
         "run-compile-source は wasm-size:<n> を返すべき: {:?}",
@@ -485,8 +532,15 @@ fn test_e2e_selfhost_cli_compile_source_core() {
     let wasm_size: i64 = lines[0]["wasm-size:".len()..]
         .parse()
         .expect("wasm size は整数であるべき");
-    assert!(wasm_size > 8, "wasm size は header 超であるべき: {}", wasm_size);
-    assert_eq!(lines[1], "0", "run-compile-source の終了コードは success であるべき");
+    assert!(
+        wasm_size > 8,
+        "wasm size は header 超であるべき: {}",
+        wasm_size
+    );
+    assert_eq!(
+        lines[1], "0",
+        "run-compile-source の終了コードは success であるべき"
+    );
 }
 
 /// TEST-CLI-02-M: selfhost/Cli.ls の run-compile が file-path から source を読めること
@@ -520,17 +574,22 @@ fn test_e2e_selfhost_cli_compile_file_handler() {
     let wasm_size: i64 = lines[0]["wasm-size:".len()..]
         .parse()
         .expect("wasm size は整数であるべき");
-    assert!(wasm_size > 8, "wasm size は header 超であるべき: {}", wasm_size);
-    assert_eq!(lines[1], "0", "run-compile の終了コードは success であるべき");
+    assert!(
+        wasm_size > 8,
+        "wasm size は header 超であるべき: {}",
+        wasm_size
+    );
+    assert_eq!(
+        lines[1], "0",
+        "run-compile の終了コードは success であるべき"
+    );
 }
 
 /// TEST-CLI-02-M2: selfhost/Cli.ls の run-build が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_build_file_handler() {
-    let dir = std::env::temp_dir().join(format!(
-        "lsharp_test_cli_build_file_{}",
-        std::process::id()
-    ));
+    let dir =
+        std::env::temp_dir().join(format!("lsharp_test_cli_build_file_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
 
@@ -555,7 +614,11 @@ fn test_e2e_selfhost_cli_build_file_handler() {
     let wasm_size: i64 = lines[0]["wasm-size:".len()..]
         .parse()
         .expect("wasm size は整数であるべき");
-    assert!(wasm_size > 8, "wasm size は header 超であるべき: {}", wasm_size);
+    assert!(
+        wasm_size > 8,
+        "wasm size は header 超であるべき: {}",
+        wasm_size
+    );
     assert_eq!(lines[1], "0", "run-build の終了コードは success であるべき");
 }
 
@@ -683,8 +746,7 @@ fn test_e2e_selfhost_cli_lsp_transport_initialize_frame() {
 /// TEST-CLI-02-M8: selfhost/Cli.ls の LSP transport helper が未知メソッドを JSON-RPC error frame にできること
 #[test]
 fn test_e2e_selfhost_cli_lsp_transport_unknown_method_error() {
-    let body =
-        r#"{"jsonrpc":"2.0","id":9,"error":{"code":-32601,"message":"Method not found"}}"#;
+    let body = r#"{"jsonrpc":"2.0","id":9,"error":{"code":-32601,"message":"Method not found"}}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
     let harness = r#"
 (defn main []
@@ -788,8 +850,7 @@ fn test_e2e_selfhost_cli_lsp_transport_hover_frame() {
 /// TEST-CLI-02-M9c: selfhost/Cli.ls の LSP transport helper が references request を framed response にできること
 #[test]
 fn test_e2e_selfhost_cli_lsp_transport_references_frame() {
-    let body =
-        r#"{"jsonrpc":"2.0","id":10,"result":[[99,1,7],[99,2,16],[99,2,27]]}"#;
+    let body = r#"{"jsonrpc":"2.0","id":10,"result":[[99,1,7],[99,2,16],[99,2,27]]}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
     let source = "(defn square [x] x)\n(defn main [] (square 1) (square 2))";
     let harness = format!(
@@ -854,8 +915,7 @@ fn test_e2e_selfhost_cli_lsp_transport_completion_frame() {
 /// TEST-CLI-02-M9e: selfhost/Cli.ls の LSP transport helper が formatting request を framed response にできること
 #[test]
 fn test_e2e_selfhost_cli_lsp_transport_formatting_frame() {
-    let body =
-        "{\"jsonrpc\":\"2.0\",\"id\":12,\"result\":[[1,1,2,4,\"(defn main [] 1)\n\"]]}";
+    let body = "{\"jsonrpc\":\"2.0\",\"id\":12,\"result\":[[1,1,2,4,\"(defn main [] 1)\n\"]]}";
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
     let source = "(defn main []\n 1)";
     let harness = format!(
@@ -974,9 +1034,20 @@ fn test_e2e_selfhost_cli_lsp_transport_sequence_summary() {
     let output = compile_and_run(&combined);
     let parts: Vec<&str> = output.split("\n---\n").collect();
 
-    assert_eq!(parts.len(), 3, "transport sequence output format が不正: {:?}", output);
-    assert_eq!(parts[0], init_frame, "frame0 は initialize response であるべき");
-    assert_eq!(parts[1], shutdown_frame, "frame1 は shutdown response であるべき");
+    assert_eq!(
+        parts.len(),
+        3,
+        "transport sequence output format が不正: {:?}",
+        output
+    );
+    assert_eq!(
+        parts[0], init_frame,
+        "frame0 は initialize response であるべき"
+    );
+    assert_eq!(
+        parts[1], shutdown_frame,
+        "frame1 は shutdown response であるべき"
+    );
     assert_eq!(
         parts[2].trim().lines().collect::<Vec<_>>(),
         vec!["2", "2"],
@@ -1027,7 +1098,12 @@ fn test_e2e_selfhost_cli_lsp_transport_publish_diagnostics_frame() {
     let output = compile_and_run(&combined);
     let parts: Vec<&str> = output.split("\n---\n").collect();
 
-    assert_eq!(parts.len(), 3, "publishDiagnostics output format が不正: {:?}", output);
+    assert_eq!(
+        parts.len(),
+        3,
+        "publishDiagnostics output format が不正: {:?}",
+        output
+    );
     assert_eq!(
         parts[0], diagnostics_json,
         "handle-publish-diagnostics は deterministic diagnostics JSON を返すべき"
@@ -1036,7 +1112,11 @@ fn test_e2e_selfhost_cli_lsp_transport_publish_diagnostics_frame() {
         parts[1], expected_frame,
         "lsp-render-publish-diagnostics-frame は notification frame を返すべき"
     );
-    assert_eq!(parts[2].trim(), "1", "publishDiagnostics dispatch は request-count を 1 増やすべき");
+    assert_eq!(
+        parts[2].trim(),
+        "1",
+        "publishDiagnostics dispatch は request-count を 1 増やすべき"
+    );
 }
 
 /// TEST-CLI-02-M11: didOpen dispatch + frame helper が deterministic に動くこと
@@ -1060,9 +1140,21 @@ fn test_e2e_selfhost_cli_lsp_transport_didopen_frame() {
     let output = compile_and_run(&combined);
     let parts: Vec<&str> = output.split("\n---\n").collect();
 
-    assert_eq!(parts.len(), 2, "didOpen helper output format が不正: {:?}", output);
-    assert_eq!(parts[0].trim(), "16", "didOpen dispatch は source length=16 を返すべき");
-    assert_eq!(parts[1], expected, "didOpen frame は deterministic であるべき");
+    assert_eq!(
+        parts.len(),
+        2,
+        "didOpen helper output format が不正: {:?}",
+        output
+    );
+    assert_eq!(
+        parts[0].trim(),
+        "16",
+        "didOpen dispatch は source length=16 を返すべき"
+    );
+    assert_eq!(
+        parts[1], expected,
+        "didOpen frame は deterministic であるべき"
+    );
 }
 
 /// TEST-CLI-02-M12: didOpen -> didChange shared-state sequence が framed notifications と state summary を返すこと
@@ -1075,8 +1167,7 @@ fn test_e2e_selfhost_cli_lsp_transport_document_sequence() {
         open_payload.len(),
         open_payload
     );
-    let change_payload =
-        r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":22}}"#;
+    let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":22}}"#;
     let change_frame = format!(
         "Content-Length: {}\r\n\r\n{}",
         change_payload.len(),
@@ -1103,9 +1194,20 @@ fn test_e2e_selfhost_cli_lsp_transport_document_sequence() {
     let output = compile_and_run(&combined);
     let parts: Vec<&str> = output.split("\n---\n").collect();
 
-    assert_eq!(parts.len(), 3, "document sequence output format が不正: {:?}", output);
-    assert_eq!(parts[0], open_frame, "frame0 は didOpen notification であるべき");
-    assert_eq!(parts[1], change_frame, "frame1 は didChange notification であるべき");
+    assert_eq!(
+        parts.len(),
+        3,
+        "document sequence output format が不正: {:?}",
+        output
+    );
+    assert_eq!(
+        parts[0], open_frame,
+        "frame0 は didOpen notification であるべき"
+    );
+    assert_eq!(
+        parts[1], change_frame,
+        "frame1 は didChange notification であるべき"
+    );
     assert_eq!(
         parts[2].trim().lines().collect::<Vec<_>>(),
         vec!["1", "2", "22"],
@@ -1143,8 +1245,16 @@ fn test_e2e_selfhost_cli_lsp_stdio_frame_initialize() {
     let output = compile_and_run(&combined);
     let parts: Vec<&str> = output.split("\n---\n").collect();
 
-    assert_eq!(parts.len(), 2, "stdio frame output format が不正: {:?}", output);
-    assert_eq!(parts[0], expected, "run-lsp-stdio-frame は initialize frame を返すべき");
+    assert_eq!(
+        parts.len(),
+        2,
+        "stdio frame output format が不正: {:?}",
+        output
+    );
+    assert_eq!(
+        parts[0], expected,
+        "run-lsp-stdio-frame は initialize frame を返すべき"
+    );
     assert_eq!(
         parts[1].trim(),
         body.len().to_string(),
@@ -1162,8 +1272,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_frame_sequence() {
         open_payload.len(),
         open_payload
     );
-    let change_payload =
-        r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":22}}"#;
+    let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":22}}"#;
     let change_frame = format!(
         "Content-Length: {}\r\n\r\n{}",
         change_payload.len(),
@@ -1208,9 +1317,20 @@ fn test_e2e_selfhost_cli_lsp_stdio_frame_sequence() {
     let output = compile_and_run(&combined);
     let parts: Vec<&str> = output.split("\n---\n").collect();
 
-    assert_eq!(parts.len(), 3, "stdio frame sequence output format が不正: {:?}", output);
-    assert_eq!(parts[0], open_frame, "frame0 は didOpen notification であるべき");
-    assert_eq!(parts[1], change_frame, "frame1 は didChange notification であるべき");
+    assert_eq!(
+        parts.len(),
+        3,
+        "stdio frame sequence output format が不正: {:?}",
+        output
+    );
+    assert_eq!(
+        parts[0], open_frame,
+        "frame0 は didOpen notification であるべき"
+    );
+    assert_eq!(
+        parts[1], change_frame,
+        "frame1 は didChange notification であるべき"
+    );
     assert_eq!(
         parts[2].trim().lines().collect::<Vec<_>>(),
         vec!["2", "22", &change_payload.len().to_string()],
@@ -1242,10 +1362,8 @@ fn test_e2e_selfhost_cli_test_source_core() {
 /// TEST-CLI-02-O: selfhost/Cli.ls の run-test が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_test_file_handler() {
-    let dir = std::env::temp_dir().join(format!(
-        "lsharp_test_cli_test_file_{}",
-        std::process::id()
-    ));
+    let dir =
+        std::env::temp_dir().join(format!("lsharp_test_cli_test_file_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
 
@@ -1427,11 +1545,11 @@ fn test_e2e_selfhost_cli_test_source_metadata_fail() {
 /// TEST-CLI-02-O5: selfhost/Cli.ls の run-test が file-path 経由の metadata suite も実行できること
 #[test]
 fn test_e2e_selfhost_cli_test_file_handler_metadata_pass() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let dir = project_root
-        .join("target")
-        .join(format!("e2e_selfhost_cli_test_metadata_{}", std::process::id()));
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let dir = project_root.join("target").join(format!(
+        "e2e_selfhost_cli_test_metadata_{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(
@@ -1475,7 +1593,14 @@ fn test_e2e_selfhost_cli_review_source_core() {
 
     assert_eq!(
         lines,
-        vec!["1", "unused-let", "diagnostics:1,first-body:let binding x is not used", "warning", "L0001@1:1", "0"],
+        vec![
+            "1",
+            "unused-let",
+            "diagnostics:1,first-body:let binding x is not used",
+            "warning",
+            "L0001@1:1",
+            "0"
+        ],
         "run-review-source は review count/title/body/severity/code-location と success=0 を返すべき"
     );
 }
@@ -1504,7 +1629,14 @@ fn test_e2e_selfhost_cli_review_file_handler() {
 
     assert_eq!(
         lines,
-        vec!["1", "unused-let", "diagnostics:1,first-body:let binding x is not used", "warning", "L0001@1:1", "0"],
+        vec![
+            "1",
+            "unused-let",
+            "diagnostics:1,first-body:let binding x is not used",
+            "warning",
+            "L0001@1:1",
+            "0"
+        ],
         "run-review は review count/title/body/severity/code-location と success=0 を返すべき"
     );
 }
@@ -1561,10 +1693,7 @@ fn test_e2e_selfhost_cli_doc_source_core() {
 /// TEST-CLI-02-S: selfhost/Cli.ls の run-doc が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_doc_file_handler() {
-    let dir = std::env::temp_dir().join(format!(
-        "lsharp_test_cli_doc_file_{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("lsharp_test_cli_doc_file_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
 
@@ -1750,8 +1879,19 @@ fn test_e2e_selfhost_cli_help_lists_all_commands() {
     let output = compile_and_run(&combined);
 
     let commands = [
-        "parse", "check", "compile", "build", "test", "review",
-        "doc-ack", "doc-check", "install", "repl", "lsp", "fmt", "doc",
+        "parse",
+        "check",
+        "compile",
+        "build",
+        "test",
+        "review",
+        "doc-ack",
+        "doc-check",
+        "install",
+        "repl",
+        "lsp",
+        "fmt",
+        "doc",
     ];
     let mut count = 0;
     for cmd in &commands {
@@ -1854,7 +1994,11 @@ fn test_e2e_selfhost_cli_main_dispatch_parse_file() {
     let _ = std::fs::remove_dir_all(&dir);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 5, "main-dispatch parse 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 5,
+        "main-dispatch parse 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "decls:1");
     assert_eq!(lines[1], "first-decl:defn");
     assert_eq!(lines[2], "first-body:int");
@@ -1973,7 +2117,11 @@ fn test_e2e_selfhost_cli_main_with_args_parse_file() {
     let _ = std::fs::remove_dir_all(&dir);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 4, "Cli main parse argv 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 4,
+        "Cli main parse argv 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "decls:1");
     assert_eq!(lines[1], "first-decl:defn");
     assert_eq!(lines[2], "first-body:int");
@@ -1998,7 +2146,11 @@ fn test_e2e_selfhost_cli_main_with_args_compile_file() {
     let _ = std::fs::remove_dir_all(&dir);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 1, "Cli main compile argv 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 1,
+        "Cli main compile argv 出力が不足: {:?}",
+        lines
+    );
     assert!(
         lines[0].starts_with("wasm-size:"),
         "Cli main compile argv は wasm-size:<n> を返すべき: {:?}",
@@ -2024,7 +2176,11 @@ fn test_e2e_selfhost_cli_main_with_args_build_file() {
     let _ = std::fs::remove_dir_all(&dir);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 1, "Cli main build argv 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 1,
+        "Cli main build argv 出力が不足: {:?}",
+        lines
+    );
     assert!(
         lines[0].starts_with("wasm-size:"),
         "Cli main build argv は wasm-size:<n> を返すべき: {:?}",
@@ -2051,7 +2207,11 @@ fn test_e2e_selfhost_cli_main_with_args_compile_output_path() {
     let _ = std::fs::remove_dir_all(&dir);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 1, "Cli main compile -o 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 1,
+        "Cli main compile -o 出力が不足: {:?}",
+        lines
+    );
     assert!(
         lines[0].starts_with("wasm-size:"),
         "Cli main compile -o は wasm-size:<n> を返すべき: {:?}",
@@ -2083,7 +2243,11 @@ fn test_e2e_selfhost_cli_main_with_args_build_output_path() {
     let _ = std::fs::remove_dir_all(&dir);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 1, "Cli main build --output 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 1,
+        "Cli main build --output 出力が不足: {:?}",
+        lines
+    );
     assert!(
         lines[0].starts_with("wasm-size:"),
         "Cli main build --output は wasm-size:<n> を返すべき: {:?}",
@@ -2159,8 +2323,7 @@ fn test_e2e_selfhost_cli_main_with_build_subcommand_help_output_option() {
 /// TEST-CLI-02-AL: actual Cli main は `lsp --stdio` で stdin の initialize frame を処理できること
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_initialize() {
-    let request_body =
-        r#"{"jsonrpc":"2.0","id":21,"method":"initialize","params":0}"#;
+    let request_body = r#"{"jsonrpc":"2.0","id":21,"method":"initialize","params":0}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}",
         request_body.len(),
@@ -2188,10 +2351,8 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_initialize() {
 /// TEST-CLI-02-AM: actual Cli main は `lsp --stdio` で連続 frame を順に処理できること
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_initialize_shutdown_sequence() {
-    let init_body =
-        r#"{"jsonrpc":"2.0","id":31,"method":"initialize","params":0}"#;
-    let shutdown_body =
-        r#"{"jsonrpc":"2.0","id":32,"method":"shutdown","params":0}"#;
+    let init_body = r#"{"jsonrpc":"2.0","id":31,"method":"initialize","params":0}"#;
+    let shutdown_body = r#"{"jsonrpc":"2.0","id":32,"method":"shutdown","params":0}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         init_body.len(),
@@ -2224,8 +2385,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_initialize_shutdown_sequence() {
 /// TEST-CLI-02-AN: actual Cli main は `lsp --stdio` で unknown method を Method not found frame にできること
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_unknown_method() {
-    let request_body =
-        r#"{"jsonrpc":"2.0","id":41,"method":"workspace/unknown","params":0}"#;
+    let request_body = r#"{"jsonrpc":"2.0","id":41,"method":"workspace/unknown","params":0}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}",
         request_body.len(),
@@ -2269,20 +2429,21 @@ fn test_e2e_selfhost_cli_main_with_help_lsp_stdio_option() {
 /// Red Phase: selfhost/LspServer.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_lsp_skeleton_v2() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let lsp_path = project_root.join("selfhost/LspServer.ls");
     assert!(
         lsp_path.exists(),
         "selfhost/LspServer.ls が存在しない (T4-2: L# 製 LSP の正式化)"
     );
-    let source = std::fs::read_to_string(&lsp_path)
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let source =
+        std::fs::read_to_string(&lsp_path).expect("selfhost/LspServer.ls の読み込みに失敗");
 
     // JSON-RPC dispatch 構造を確認
     assert!(
-        source.contains("jsonrpc") || source.contains("json-rpc")
-            || source.contains("JsonRpc") || source.contains("dispatch"),
+        source.contains("jsonrpc")
+            || source.contains("json-rpc")
+            || source.contains("JsonRpc")
+            || source.contains("dispatch"),
         "selfhost/LspServer.ls に JSON-RPC dispatch 構造がない"
     );
     // module 宣言
@@ -2299,21 +2460,24 @@ fn test_e2e_selfhost_lsp_skeleton_v2() {
 /// Red Phase: selfhost/LspServer.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_lsp_10_methods() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let lsp_path = project_root.join("selfhost/LspServer.ls");
-    assert!(
-        lsp_path.exists(),
-        "selfhost/LspServer.ls が存在しない"
-    );
-    let source = std::fs::read_to_string(&lsp_path)
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    assert!(lsp_path.exists(), "selfhost/LspServer.ls が存在しない");
+    let source =
+        std::fs::read_to_string(&lsp_path).expect("selfhost/LspServer.ls の読み込みに失敗");
 
     // T4-2 AC-005: 10 メソッドが LSP 3.17 仕様に準拠
     let methods = [
-        "initialize", "shutdown", "didOpen", "didChange",
-        "hover", "goto_definition", "references", "rename",
-        "formatting", "completion",
+        "initialize",
+        "shutdown",
+        "didOpen",
+        "didChange",
+        "hover",
+        "goto_definition",
+        "references",
+        "rename",
+        "formatting",
+        "completion",
     ];
     // メソッド名のバリエーション (キャメルケース / スネークケース / ハイフン区切り)
     for method in &methods {

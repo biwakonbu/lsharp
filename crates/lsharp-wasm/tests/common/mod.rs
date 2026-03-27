@@ -61,10 +61,9 @@ pub(crate) fn compile_only(source: &str) -> Vec<u8> {
 
 /// ドライバの `lsharp compile` と同等の経路でファイルをコンパイルする (エラーは Result)
 pub(crate) fn try_compile_file_only(file: &std::path::Path) -> Result<Vec<u8>, String> {
-    let source = std::fs::read_to_string(file)
-        .map_err(|e| format!("{}: {e}", file.display()))?;
-    let program = lsharp_syntax::parse(&source)
-        .map_err(|e| format!("{}: {e:?}", file.display()))?;
+    let source = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let program =
+        lsharp_syntax::parse(&source).map_err(|e| format!("{}: {e:?}", file.display()))?;
 
     let module = if program
         .decls
@@ -132,7 +131,11 @@ pub(crate) fn typecheck_only_expanded(source: &str) {
 
 /// Wasm バイナリのマジックバイトとサイズを検証
 pub(crate) fn assert_valid_wasm(wasm: &[u8]) {
-    assert!(wasm.len() > 8, "Wasm バイナリが小さすぎる: {} bytes", wasm.len());
+    assert!(
+        wasm.len() > 8,
+        "Wasm バイナリが小さすぎる: {} bytes",
+        wasm.len()
+    );
     assert_eq!(&wasm[0..4], b"\0asm", "Wasm マジックバイトが不正");
 }
 
@@ -150,8 +153,7 @@ pub(crate) fn selfhost_main_path() -> std::path::PathBuf {
 
 /// selfhost/Cli.ls を直接実行するための最小 runtime bundle
 pub(crate) fn selfhost_cli_runtime_bundle() -> String {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
         .expect("selfhost/Token.ls が読み込めない");
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
@@ -164,33 +166,26 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
         .expect("selfhost/IR.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
     let type_infer_defn_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferDefn.ls"))
             .expect("selfhost/TypeInferDefn.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
-    let compiler_ls =
-        std::fs::read_to_string(project_root.join("selfhost/Compiler.ls"))
-            .expect("selfhost/Compiler.ls が読み込めない");
-    let wasm_emit_ls =
-        std::fs::read_to_string(project_root.join("selfhost/WasmEmit.ls"))
-            .expect("selfhost/WasmEmit.ls が読み込めない");
-    let formatter_ls =
-        std::fs::read_to_string(project_root.join("selfhost/Formatter.ls"))
-            .expect("selfhost/Formatter.ls が読み込めない");
-    let test_runner_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TestRunner.ls"))
-            .expect("selfhost/TestRunner.ls が読み込めない");
-    let doc_tools_ls =
-        std::fs::read_to_string(project_root.join("selfhost/DocTools.ls"))
-            .expect("selfhost/DocTools.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
+    let compiler_ls = std::fs::read_to_string(project_root.join("selfhost/Compiler.ls"))
+        .expect("selfhost/Compiler.ls が読み込めない");
+    let wasm_emit_ls = std::fs::read_to_string(project_root.join("selfhost/WasmEmit.ls"))
+        .expect("selfhost/WasmEmit.ls が読み込めない");
+    let formatter_ls = std::fs::read_to_string(project_root.join("selfhost/Formatter.ls"))
+        .expect("selfhost/Formatter.ls が読み込めない");
+    let test_runner_ls = std::fs::read_to_string(project_root.join("selfhost/TestRunner.ls"))
+        .expect("selfhost/TestRunner.ls が読み込めない");
+    let doc_tools_ls = std::fs::read_to_string(project_root.join("selfhost/DocTools.ls"))
+        .expect("selfhost/DocTools.ls が読み込めない");
     let cli_ls = std::fs::read_to_string(project_root.join("selfhost/Cli.ls"))
         .expect("selfhost/Cli.ls が読み込めない");
 

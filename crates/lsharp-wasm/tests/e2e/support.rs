@@ -17,8 +17,8 @@
 pub(crate) use lsharp_ir::lower::Lower;
 pub(crate) use lsharp_types::infer::Infer;
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
     OnceLock,
+    atomic::{AtomicUsize, Ordering},
 };
 
 const SELFHOST_LSP_RUNTIME_SENTINEL: &str = ";;__SELFHOST_LSP_RUNTIME__";
@@ -96,7 +96,11 @@ pub(crate) fn compile_and_run_with_args(source: &str, args: &[&str]) -> String {
 }
 
 /// ソースコードをコンパイルしてコマンドライン引数・stdin 付きで実行
-pub(crate) fn compile_and_run_with_args_and_stdin(source: &str, args: &[&str], stdin: &str) -> String {
+pub(crate) fn compile_and_run_with_args_and_stdin(
+    source: &str,
+    args: &[&str],
+    stdin: &str,
+) -> String {
     let program = parse_for_pipeline(source);
     let mut infer = Infer::new();
     let type_results = infer.infer_program(&program).unwrap();
@@ -104,7 +108,8 @@ pub(crate) fn compile_and_run_with_args_and_stdin(source: &str, args: &[&str], s
     let module = lower.lower_program(&program, &type_results).unwrap();
     let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
 
-    lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin(&wasm_bytes, None, args, stdin).unwrap()
+    lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin(&wasm_bytes, None, args, stdin)
+        .unwrap()
 }
 
 /// ソースコードをコンパイルしてファイルシステム・argv 付きで実行
@@ -135,10 +140,9 @@ pub(crate) fn compile_only(source: &str) -> Vec<u8> {
 
 /// ドライバの `lsharp compile` と同等の経路でファイルをコンパイルする (エラーは Result)
 pub(crate) fn try_compile_file_only(file: &std::path::Path) -> Result<Vec<u8>, String> {
-    let source = std::fs::read_to_string(file)
-        .map_err(|e| format!("{}: {e}", file.display()))?;
-    let program = lsharp_syntax::parse(&source)
-        .map_err(|e| format!("{}: {e:?}", file.display()))?;
+    let source = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let program =
+        lsharp_syntax::parse(&source).map_err(|e| format!("{}: {e:?}", file.display()))?;
 
     let module = if program
         .decls
@@ -206,7 +210,11 @@ pub(crate) fn typecheck_only_expanded(source: &str) {
 
 /// Wasm バイナリのマジックバイトとサイズを検証
 pub(crate) fn assert_valid_wasm(wasm: &[u8]) {
-    assert!(wasm.len() > 8, "Wasm バイナリが小さすぎる: {} bytes", wasm.len());
+    assert!(
+        wasm.len() > 8,
+        "Wasm バイナリが小さすぎる: {} bytes",
+        wasm.len()
+    );
     assert_eq!(&wasm[0..4], b"\0asm", "Wasm マジックバイトが不正");
 }
 
@@ -258,15 +266,11 @@ fn selfhost_fixture_dir(prefix: &str) -> std::path::PathBuf {
         .join(format!("{prefix}-{id}"))
 }
 
-fn write_selfhost_fixture_modules(
-    dir: &std::path::Path,
-    modules: &[&str],
-) -> Result<(), String> {
+fn write_selfhost_fixture_modules(dir: &std::path::Path, modules: &[&str]) -> Result<(), String> {
     for name in modules {
         let path = dir.join(name);
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("{}: {e}", parent.display()))?;
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
         }
         std::fs::write(&path, selfhost_module(name))
             .map_err(|e| format!("{}: {e}", path.display()))?;
@@ -286,8 +290,7 @@ fn try_compile_and_run_selfhost_fixture_entry(
         write_selfhost_fixture_modules(&dir, modules)?;
         let entry_path = dir.join(entry_file);
         if let Some(parent) = entry_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("{}: {e}", parent.display()))?;
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
         }
         std::fs::write(&entry_path, entry_source)
             .map_err(|e| format!("{}: {e}", entry_path.display()))?;
@@ -332,10 +335,7 @@ fn try_compile_and_run_lsp_runtime(source: &str) -> Option<Result<String, String
     }
 }
 
-fn cached_selfhost_bundle(
-    cell: &'static OnceLock<String>,
-    modules: &[&str],
-) -> &'static str {
+fn cached_selfhost_bundle(cell: &'static OnceLock<String>, modules: &[&str]) -> &'static str {
     cell.get_or_init(|| {
         modules
             .iter()
@@ -409,11 +409,7 @@ pub(crate) fn selfhost_lsp_runtime_bundle() -> &'static str {
 pub(crate) fn selfhost_native_codegen_bundle() -> &'static str {
     cached_selfhost_bundle(
         &SELFHOST_NATIVE_CODEGEN_BUNDLE,
-        &[
-            "NativeTarget.ls",
-            "NativeCodegen.ls",
-            "NativeEmit.ls",
-        ],
+        &["NativeTarget.ls", "NativeCodegen.ls", "NativeEmit.ls"],
     )
 }
 
@@ -429,8 +425,7 @@ pub(crate) fn compile_and_run_file(path: &std::path::Path) -> String {
 /// 最小再現・スニペット専用の将来テスト用に残す。
 #[allow(dead_code)]
 pub(crate) fn try_compile_and_run(source: &str) -> Result<String, String> {
-    let program = lsharp_syntax::parse(source)
-        .map_err(|e| format!("パースエラー: {:?}", e))?;
+    let program = lsharp_syntax::parse(source).map_err(|e| format!("パースエラー: {:?}", e))?;
     let mut infer = Infer::new();
     let type_results = infer
         .infer_program(&program)
@@ -441,8 +436,7 @@ pub(crate) fn try_compile_and_run(source: &str) -> Result<String, String> {
         .map_err(|e| format!("IR変換エラー: {:?}", e))?;
     let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
         .map_err(|e| format!("Wasm生成エラー: {:?}", e))?;
-    lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes)
-        .map_err(|e| format!("実行エラー: {:?}", e))
+    lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes).map_err(|e| format!("実行エラー: {:?}", e))
 }
 
 // === P3-3: メタデータテスト実行評価 E2E テスト ===
@@ -481,6 +475,9 @@ mod tests {
     fn test_support_selfhost_typeinfer_runtime_bundle_cached() {
         let bundle = selfhost_typeinfer_runtime_bundle();
         assert!(bundle.contains(selfhost_module("TypeInfer.ls").trim()));
-        assert_eq!(bundle.as_ptr(), selfhost_typeinfer_runtime_bundle().as_ptr());
+        assert_eq!(
+            bundle.as_ptr(),
+            selfhost_typeinfer_runtime_bundle().as_ptr()
+        );
     }
 }

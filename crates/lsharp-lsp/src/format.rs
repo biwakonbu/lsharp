@@ -167,10 +167,7 @@ mod tests {
             formatted.contains("(defn"),
             "defn キーワードが保持されるべき"
         );
-        assert!(
-            formatted.contains("(+ x y)"),
-            "式の構造が保持されるべき"
-        );
+        assert!(formatted.contains("(+ x y)"), "式の構造が保持されるべき");
     }
 
     #[test]
@@ -179,11 +176,7 @@ mod tests {
         let formatted = format_source(source);
         // 行末に余分な空白がないことを確認
         for line in formatted.lines() {
-            assert_eq!(
-                line,
-                line.trim_end(),
-                "行末に余分な空白があってはならない"
-            );
+            assert_eq!(line, line.trim_end(), "行末に余分な空白があってはならない");
         }
     }
 

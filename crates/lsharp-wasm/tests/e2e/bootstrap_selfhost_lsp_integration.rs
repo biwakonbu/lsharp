@@ -1,19 +1,20 @@
 use super::support::*;
 
-
 // =====================================================// P1-3: WASI syscall ラッパー検証
 // =====================================================
 /// P1-3: fd_write が stdout (fd=1) に出力できることを検証
 /// print/print-string は内部で fd_write を使用
 #[test]
 fn test_e2e_fd_write_wrapper_stdout() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do
             (print-string "hello")
             (print 42)
             0))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "hello42");
 }
 
@@ -22,12 +23,14 @@ fn test_e2e_fd_write_wrapper_stdout() {
 #[test]
 fn test_e2e_fd_write_wrapper_stderr_placeholder() {
     // stderr 出力は未実装だが、print で stdout に書き込める
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do
             (print-string "error message test")
             0))
-    "#);
+    "#,
+    );
     assert!(result.contains("error message test"));
 }
 
@@ -40,7 +43,8 @@ fn test_e2e_fd_open_close_seek() {
     // write-file → path_open + fd_write + fd_close
     // read-file → path_open + fd_filestat_get + fd_read + fd_close
     // file-exists? → path_open + fd_close
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do
             ;; fd_write を直接使用する print が動作すること = fd_write ラッパーが有効
@@ -51,14 +55,16 @@ fn test_e2e_fd_open_close_seek() {
               (print 1)
               (print 0))
             0))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "42\n0");
 }
 
 /// P1-3: JSON パーサー - JsonValue 型の構築と検証
 #[test]
 fn test_e2e_json_value_construction() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         ;; JSON 値の型タグ (stdlib/Json.ls 互換)
         ;; Null=0, Bool=1, Num=2, Str=3, Arr=4, Obj=5
 
@@ -87,7 +93,8 @@ fn test_e2e_json_value_construction() {
               (print (json-tag num-val))
               (print (vector-get num-val 1))
               0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "0\n1\n2\n42");
 }
 
@@ -102,7 +109,11 @@ fn test_e2e_bootstrap_stage1_compile_and_run() {
     let wasm_bytes = compile_file_only(&main_path);
 
     // 有効な Wasm バイナリであること
-    assert!(wasm_bytes.len() > 100, "stage1.wasm が小さすぎる: {} bytes", wasm_bytes.len());
+    assert!(
+        wasm_bytes.len() > 100,
+        "stage1.wasm が小さすぎる: {} bytes",
+        wasm_bytes.len()
+    );
     assert_eq!(&wasm_bytes[0..4], b"\0asm", "Wasm マジックナンバーが不正");
 
     // stage1 を実行して出力を検証
@@ -134,7 +145,10 @@ fn test_e2e_bootstrap_stage1_pipeline_verification() {
     let lines: Vec<&str> = output.trim().split('\n').collect();
 
     // WASI I/O 統合検証
-    assert_eq!(lines[12], "15", "wasm-size = 15 (header 8 + type section 7)");
+    assert_eq!(
+        lines[12], "15",
+        "wasm-size = 15 (header 8 + type section 7)"
+    );
 
     // モジュール結合検証
     assert_eq!(lines[13], "10", "module-count = 10");
@@ -162,20 +176,40 @@ fn test_e2e_bootstrap_stage1_binary_structure() {
         let mut size: usize = 0;
         let mut shift = 0;
         loop {
-            if pos >= wasm_bytes.len() { break; }
+            if pos >= wasm_bytes.len() {
+                break;
+            }
             let byte = wasm_bytes[pos] as usize;
             pos += 1;
             size |= (byte & 0x7F) << shift;
             shift += 7;
-            if byte & 0x80 == 0 { break; }
+            if byte & 0x80 == 0 {
+                break;
+            }
         }
         pos += size;
     }
     // Type セクション (1), Import (2), Function (3), Export (7), Code (10) が含まれること
-    assert!(section_ids.contains(&1), "Type セクションが必要: {:?}", section_ids);
-    assert!(section_ids.contains(&3), "Function セクションが必要: {:?}", section_ids);
-    assert!(section_ids.contains(&7), "Export セクションが必要: {:?}", section_ids);
-    assert!(section_ids.contains(&10), "Code セクションが必要: {:?}", section_ids);
+    assert!(
+        section_ids.contains(&1),
+        "Type セクションが必要: {:?}",
+        section_ids
+    );
+    assert!(
+        section_ids.contains(&3),
+        "Function セクションが必要: {:?}",
+        section_ids
+    );
+    assert!(
+        section_ids.contains(&7),
+        "Export セクションが必要: {:?}",
+        section_ids
+    );
+    assert!(
+        section_ids.contains(&10),
+        "Code セクションが必要: {:?}",
+        section_ids
+    );
 }
 
 // =====================================================// P8-9 T4-6: CI ブートストラップ自動検証
@@ -185,17 +219,49 @@ fn test_e2e_bootstrap_stage1_binary_structure() {
 #[test]
 fn test_e2e_bootstrap_ci_all_modules_compile() {
     let modules = [
-        "AST", "Cli", "Closure", "Codegen", "Compiler",
-        "Constraints", "Derive", "DocTools", "Emit", "Formatter",
-        "GC", "HtmlDoc", "Hygiene", "IR", "JsonRpc",
-        "Lexer", "Linker", "Linter", "Lower", "LowerDecl", "LowerExpr",
-        "LowerPattern", "LspServer", "MacroExpand", "Main", "MetadataCheck", "ModuleGraph",
-        "NativeCodegen", "NativeEmit", "NativeTarget", "Parser", "Span",
-        "TestRunner", "Token", "Type", "TypeInfer", "TypeInferCore", "TypeScheme",
-        "WasiBackend", "WasiRunner", "WasmEmit",
+        "AST",
+        "Cli",
+        "Closure",
+        "Codegen",
+        "Compiler",
+        "Constraints",
+        "Derive",
+        "DocTools",
+        "Emit",
+        "Formatter",
+        "GC",
+        "HtmlDoc",
+        "Hygiene",
+        "IR",
+        "JsonRpc",
+        "Lexer",
+        "Linker",
+        "Linter",
+        "Lower",
+        "LowerDecl",
+        "LowerExpr",
+        "LowerPattern",
+        "LspServer",
+        "MacroExpand",
+        "Main",
+        "MetadataCheck",
+        "ModuleGraph",
+        "NativeCodegen",
+        "NativeEmit",
+        "NativeTarget",
+        "Parser",
+        "Span",
+        "TestRunner",
+        "Token",
+        "Type",
+        "TypeInfer",
+        "TypeInferCore",
+        "TypeScheme",
+        "WasiBackend",
+        "WasiRunner",
+        "WasmEmit",
     ];
-    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../selfhost");
+    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
 
     let mut compiled = 0;
     for module in &modules {
@@ -218,11 +284,9 @@ fn test_e2e_bootstrap_ci_all_modules_compile() {
 #[test]
 fn test_e2e_bootstrap_ci_stdlib_compile() {
     let modules = [
-        "Core", "Char", "Debug", "IO", "List",
-        "Map", "Path", "Set", "String", "Vector", "Json",
+        "Core", "Char", "Debug", "IO", "List", "Map", "Path", "Set", "String", "Vector", "Json",
     ];
-    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../stdlib");
+    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../stdlib");
 
     let mut compiled = 0;
     for module in &modules {
@@ -233,15 +297,17 @@ fn test_e2e_bootstrap_ci_stdlib_compile() {
             compiled += 1;
         }
     }
-    assert_eq!(compiled, 11, "全 11 stdlib モジュールがコンパイルされるべき");
+    assert_eq!(
+        compiled, 11,
+        "全 11 stdlib モジュールがコンパイルされるべき"
+    );
 }
 
 /// P11-2 BOOT-03: examples fixed input set が個別 compile できることを検証
 #[test]
 fn test_e2e_bootstrap_ci_examples_compile() {
     let examples = ["fib.ls", "module.ls", "trait.ls"];
-    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples");
+    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples");
 
     let mut compiled = 0;
     for file in &examples {
@@ -251,7 +317,10 @@ fn test_e2e_bootstrap_ci_examples_compile() {
         compiled += 1;
     }
 
-    assert_eq!(compiled, 3, "fixed input set の全 3 examples がコンパイルされるべき");
+    assert_eq!(
+        compiled, 3,
+        "fixed input set の全 3 examples がコンパイルされるべき"
+    );
 }
 
 // =====================================================// P9-6a: VSCode 拡張 - シンタックスハイライト検証
@@ -261,16 +330,34 @@ fn test_e2e_bootstrap_ci_examples_compile() {
 fn test_e2e_vscode_tmgrammar_exists() {
     let grammar_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../editors/vscode/syntaxes/lsharp.tmLanguage.json");
-    assert!(grammar_path.exists(), "TextMate grammar ファイルが存在するべき");
+    assert!(
+        grammar_path.exists(),
+        "TextMate grammar ファイルが存在するべき"
+    );
 
     let content = std::fs::read_to_string(&grammar_path).unwrap();
     // 基本的な JSON 構造の検証
-    assert!(content.contains("\"scopeName\""), "scopeName が含まれるべき");
-    assert!(content.contains("source.lsharp"), "scopeName が source.lsharp であるべき");
-    assert!(content.contains("\"keyword\""), "keyword パターンが含まれるべき");
+    assert!(
+        content.contains("\"scopeName\""),
+        "scopeName が含まれるべき"
+    );
+    assert!(
+        content.contains("source.lsharp"),
+        "scopeName が source.lsharp であるべき"
+    );
+    assert!(
+        content.contains("\"keyword\""),
+        "keyword パターンが含まれるべき"
+    );
     assert!(content.contains("defn"), "defn キーワードが含まれるべき");
-    assert!(content.contains("\"builtin-function\""), "組み込み関数パターンが含まれるべき");
-    assert!(content.contains("\"comment\""), "コメントパターンが含まれるべき");
+    assert!(
+        content.contains("\"builtin-function\""),
+        "組み込み関数パターンが含まれるべき"
+    );
+    assert!(
+        content.contains("\"comment\""),
+        "コメントパターンが含まれるべき"
+    );
 }
 
 /// P9-6a: VSCode 拡張マニフェストが存在し、必要な設定を含むことを検証
@@ -281,7 +368,10 @@ fn test_e2e_vscode_extension_manifest() {
     assert!(manifest_path.exists(), "package.json が存在するべき");
 
     let content = std::fs::read_to_string(&manifest_path).unwrap();
-    assert!(content.contains(".ls"), ".ls ファイル拡張子の登録が含まれるべき");
+    assert!(
+        content.contains(".ls"),
+        ".ls ファイル拡張子の登録が含まれるべき"
+    );
     assert!(content.contains("lsharp"), "言語ID lsharp が含まれるべき");
 }
 
@@ -294,7 +384,10 @@ fn test_e2e_vscode_extension_source() {
 
     let content = std::fs::read_to_string(&ext_path).unwrap();
     assert!(content.contains("activate"), "activate 関数が含まれるべき");
-    assert!(content.contains("deactivate"), "deactivate 関数が含まれるべき");
+    assert!(
+        content.contains("deactivate"),
+        "deactivate 関数が含まれるべき"
+    );
     assert!(content.contains("lsharp"), "lsharp 言語IDが含まれるべき");
 }
 
@@ -304,7 +397,8 @@ fn test_e2e_vscode_extension_source() {
 /// 現在のアロケータは bump allocator で、GC の基盤となる
 #[test]
 fn test_e2e_gc_alloc_foundation() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [;; 複数のヒープオブジェクトを生成してアロケータが動作することを検証
                 v1 (vector-new 4)
@@ -318,7 +412,8 @@ fn test_e2e_gc_alloc_foundation() {
               (print (vector-get v3 0))
               (print (string-length s3))
               0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "2\n100\n10");
 }
 
@@ -326,7 +421,8 @@ fn test_e2e_gc_alloc_foundation() {
 /// GC 導入時にも HashMap が正常に動作する基盤テスト
 #[test]
 fn test_e2e_gc_hashmap_memory_stable() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [m (map-new)
                 m1 (map-insert m 1 100)
@@ -338,7 +434,8 @@ fn test_e2e_gc_hashmap_memory_stable() {
               (print (map-get m3 2))
               (print (map-get m3 3))
               0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "3\n100\n200\n300");
 }
 
@@ -481,13 +578,11 @@ fn test_e2e_selfhost_jsonrpc_lsp_handlers() {
     assert_eq!(lines[25], "30", "method: publish-diagnostics");
     // deterministic JSON-RPC text rendering
     assert_eq!(
-        lines[26],
-        r#"{"jsonrpc":"2.0","id":1,"result":[1,1,1,1,1,1,1]}"#,
+        lines[26], r#"{"jsonrpc":"2.0","id":1,"result":[1,1,1,1,1,1,1]}"#,
         "initialize response text"
     );
     assert_eq!(
-        lines[27],
-        r#"{"jsonrpc":"2.0","id":9,"result":0}"#,
+        lines[27], r#"{"jsonrpc":"2.0","id":9,"result":0}"#,
         "shutdown response text"
     );
 }
@@ -563,7 +658,11 @@ fn test_e2e_bootstrap_stage1_deterministic() {
     let wasm1 = compile_file_only(&main_path);
     let wasm2 = compile_file_only(&main_path);
     assert_eq!(wasm1, wasm2, "stage1 compilation must be deterministic");
-    assert!(wasm1.len() > 100, "stage1 wasm must be non-trivial: {} bytes", wasm1.len());
+    assert!(
+        wasm1.len() > 100,
+        "stage1 wasm must be non-trivial: {} bytes",
+        wasm1.len()
+    );
 }
 
 /// T4-5: stage1 バイナリ構造の固定点検証 (セクション構成が安定していること)
@@ -585,11 +684,15 @@ fn test_e2e_bootstrap_stage1_fixed_point_sections() {
         let mut size: usize = 0;
         let mut shift = 0;
         loop {
-            if pos >= wasm.len() { break; }
+            if pos >= wasm.len() {
+                break;
+            }
             let byte = wasm[pos] as usize;
             pos += 1;
             size |= (byte & 0x7f) << shift;
-            if byte & 0x80 == 0 { break; }
+            if byte & 0x80 == 0 {
+                break;
+            }
             shift += 7;
         }
         pos += size;
@@ -619,11 +722,15 @@ fn test_e2e_bootstrap_stage1_section_stability() {
             let mut size: usize = 0;
             let mut shift = 0;
             loop {
-                if pos >= wasm.len() { break; }
+                if pos >= wasm.len() {
+                    break;
+                }
                 let byte = wasm[pos] as usize;
                 pos += 1;
                 size |= (byte & 0x7f) << shift;
-                if byte & 0x80 == 0 { break; }
+                if byte & 0x80 == 0 {
+                    break;
+                }
                 shift += 7;
             }
             sections.push((section_id, size));
@@ -637,9 +744,11 @@ fn test_e2e_bootstrap_stage1_section_stability() {
 
     // セクション数が一致
     assert_eq!(
-        sections1.len(), sections2.len(),
+        sections1.len(),
+        sections2.len(),
         "セクション数が不安定: {} vs {}",
-        sections1.len(), sections2.len()
+        sections1.len(),
+        sections2.len()
     );
 
     // 各セクションの ID とサイズが一致
@@ -657,7 +766,11 @@ fn test_e2e_bootstrap_stage1_section_stability() {
     }
 
     // セクションが最低4つ以上あること (Type, Function, Export, Code)
-    assert!(sections1.len() >= 4, "セクション数が少なすぎる: {}", sections1.len());
+    assert!(
+        sections1.len() >= 4,
+        "セクション数が少なすぎる: {}",
+        sections1.len()
+    );
 }
 
 /// T4-5: stage1 の export シンボル名が安定していることを検証
@@ -676,11 +789,15 @@ fn test_e2e_bootstrap_stage1_symbol_stability() {
             let mut size: usize = 0;
             let mut shift = 0;
             loop {
-                if pos >= wasm.len() { break; }
+                if pos >= wasm.len() {
+                    break;
+                }
                 let byte = wasm[pos] as usize;
                 pos += 1;
                 size |= (byte & 0x7f) << shift;
-                if byte & 0x80 == 0 { break; }
+                if byte & 0x80 == 0 {
+                    break;
+                }
                 shift += 7;
             }
             if section_id == 7 {
@@ -696,9 +813,11 @@ fn test_e2e_bootstrap_stage1_symbol_stability() {
 
     // Export セクション全体がバイト一致 (シンボル名・順序・インデックスが安定)
     assert_eq!(
-        export1, export2,
+        export1,
+        export2,
         "Export セクションが不安定: {} bytes vs {} bytes",
-        export1.len(), export2.len()
+        export1.len(),
+        export2.len()
     );
 
     // Export セクションが空でないこと
@@ -708,8 +827,7 @@ fn test_e2e_bootstrap_stage1_symbol_stability() {
 /// T4-5: selfhost の各モジュールを個別にコンパイルし出力が決定的であることを検証
 #[test]
 fn test_e2e_bootstrap_selfhost_modules_deterministic() {
-    let selfhost_dir =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
+    let selfhost_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
     // MacroExpand.ls, TypeInfer.ls は拡張構文を使用しておりパース未対応のため除外
     let modules: &[&str] = &[
         "Lexer.ls",
@@ -727,14 +845,18 @@ fn test_e2e_bootstrap_selfhost_modules_deterministic() {
         let wasm1 = compile_file_only(&path);
         let wasm2 = compile_file_only(&path);
         assert_eq!(
-            wasm1, wasm2,
+            wasm1,
+            wasm2,
             "{} のコンパイルが非決定的: {} bytes vs {} bytes",
-            name, wasm1.len(), wasm2.len()
+            name,
+            wasm1.len(),
+            wasm2.len()
         );
         assert!(
             wasm1.len() > 100,
             "{} の wasm が小さすぎる: {} bytes",
-            name, wasm1.len()
+            name,
+            wasm1.len()
         );
     }
 }

@@ -101,8 +101,7 @@ fn test_meta_04_gap_backlog_5_categories() {
         let section_pattern = format!("# {}", cat);
         let has_section = content.lines().any(|line| {
             let trimmed = line.trim();
-            trimmed.contains(cat)
-                && (trimmed.starts_with('#') || trimmed.starts_with("- "))
+            trimmed.contains(cat) && (trimmed.starts_with('#') || trimmed.starts_with("- "))
         });
         assert!(
             has_section || content.contains(&section_pattern),
@@ -131,8 +130,7 @@ fn test_meta_03_audit_docs_ci_gate() {
         ci_yml_path.exists(),
         ".github/workflows/ci.yml が存在しない"
     );
-    let ci_content =
-        std::fs::read_to_string(&ci_yml_path).expect("ci.yml の読み込みに失敗");
+    let ci_content = std::fs::read_to_string(&ci_yml_path).expect("ci.yml の読み込みに失敗");
 
     // 2. audit-docs ジョブが存在すること
     let has_audit_docs_job =
@@ -150,9 +148,9 @@ fn test_meta_03_audit_docs_ci_gate() {
     );
 
     // 4. ci-gate の needs に audit-docs が含まれていること
-    let gate_needs_audit = ci_content.lines().any(|line| {
-        line.contains("needs:") && line.contains("audit-docs")
-    });
+    let gate_needs_audit = ci_content
+        .lines()
+        .any(|line| line.contains("needs:") && line.contains("audit-docs"));
     assert!(
         gate_needs_audit,
         "ci-gate ジョブの needs に audit-docs が含まれていない。\n\
@@ -170,8 +168,8 @@ fn test_meta_03_audit_docs_ci_gate() {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let metadata = std::fs::metadata(&audit_script_path)
-            .expect("audit_docs.sh のメタデータ取得に失敗");
+        let metadata =
+            std::fs::metadata(&audit_script_path).expect("audit_docs.sh のメタデータ取得に失敗");
         let permissions = metadata.permissions();
         let is_executable = permissions.mode() & 0o111 != 0;
         assert!(

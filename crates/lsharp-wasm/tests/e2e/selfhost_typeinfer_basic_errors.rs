@@ -1,10 +1,8 @@
 use super::support::*;
 
-
 /// selfhost TypeInfer.ls テスト: ann form は内側の式の型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_ann_expr() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -25,13 +23,15 @@ fn test_e2e_selfhost_typeinfer_ann_expr() {
     assert!(lines.len() >= 3, "ann typeinfer 出力が不足: {:?}", lines);
     assert_eq!(lines[0], "0", "ann infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "ann infer の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "ann infer の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[2], "100",
+        "ann infer の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 未定義変数は undefined error code を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_error_undefined_var_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -59,7 +59,6 @@ fn test_e2e_selfhost_typeinfer_error_undefined_var_code() {
 /// selfhost TypeInfer.ls テスト: if 条件不一致は if-cond error code を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_error_if_cond_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -89,13 +88,15 @@ fn test_e2e_selfhost_typeinfer_error_if_cond_code() {
         lines
     );
     assert_eq!(lines[0], "1", "if cond mismatch infer は失敗すべき");
-    assert_eq!(lines[1], "2", "if cond mismatch error code は E0002 であるべき");
+    assert_eq!(
+        lines[1], "2",
+        "if cond mismatch error code は E0002 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: if 分岐不一致は if-branch error code を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_error_if_branch_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -125,13 +126,15 @@ fn test_e2e_selfhost_typeinfer_error_if_branch_code() {
         lines
     );
     assert_eq!(lines[0], "1", "if branch mismatch infer は失敗すべき");
-    assert_eq!(lines[1], "3", "if branch mismatch error code は E0003 であるべき");
+    assert_eq!(
+        lines[1], "3",
+        "if branch mismatch error code は E0003 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: apply 引数不一致は arg-mismatch error code を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_error_apply_arg_mismatch_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -170,7 +173,6 @@ fn test_e2e_selfhost_typeinfer_error_apply_arg_mismatch_code() {
 /// selfhost TypeInfer.ls テスト: apply 内の未定義関数エラーは nested code を伝播できる
 #[test]
 fn test_e2e_selfhost_typeinfer_error_apply_propagates_func_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -209,7 +211,6 @@ fn test_e2e_selfhost_typeinfer_error_apply_propagates_func_code() {
 /// selfhost TypeInfer.ls テスト: 自己適用の occurs-check は infinite error code を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_error_infinite_type_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -243,13 +244,15 @@ fn test_e2e_selfhost_typeinfer_error_infinite_type_code() {
         lines
     );
     assert_eq!(lines[0], "1", "自己適用 infer は失敗すべき");
-    assert_eq!(lines[1], "5", "infinite type error code は E0005 であるべき");
+    assert_eq!(
+        lines[1], "5",
+        "infinite type error code は E0005 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: lambda body の自己適用でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_lambda_propagates_infinite_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -298,7 +301,6 @@ fn test_e2e_selfhost_typeinfer_error_lambda_propagates_infinite_code() {
 /// selfhost TypeInfer.ls テスト: defn body の自己適用でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_defn_propagates_infinite_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -350,7 +352,6 @@ fn test_e2e_selfhost_typeinfer_error_defn_propagates_infinite_code() {
 /// selfhost TypeInfer.ls テスト: let init の自己適用でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_let_propagates_infinite_init_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -403,7 +404,6 @@ fn test_e2e_selfhost_typeinfer_error_let_propagates_infinite_init_code() {
 /// selfhost TypeInfer.ls テスト: do 先頭式の自己適用でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_do_propagates_infinite_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -452,7 +452,6 @@ fn test_e2e_selfhost_typeinfer_error_do_propagates_infinite_code() {
 /// selfhost TypeInfer.ls テスト: computation step failure でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_computation_propagates_infinite_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)

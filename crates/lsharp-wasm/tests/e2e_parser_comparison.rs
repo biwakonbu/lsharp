@@ -134,10 +134,7 @@ fn test_e2e_parser_comparison_defn_form() {
 
     // Rust parser: "(defn main [] 42)" -> Decl::Defn
     let rust_ast = lsharp_syntax::parse("(defn main [] 42)").unwrap();
-    let is_defn = matches!(
-        &rust_ast.decls[0],
-        lsharp_syntax::ast::Decl::Defn { .. }
-    );
+    let is_defn = matches!(&rust_ast.decls[0], lsharp_syntax::ast::Decl::Defn { .. });
 
     // 両方とも defn として認識
     // selfhost: tag=20 は defn (Parser.ls のエンコーディング)

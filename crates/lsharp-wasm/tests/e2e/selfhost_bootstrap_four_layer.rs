@@ -118,8 +118,7 @@ fn parse_emitted_wasm_modules(output: &str, expected_modules: usize) -> Vec<Vec<
 /// WASI ではなく素の Wasm export を呼び出し、i64 結果を確認するヘルパー
 fn run_exported_i64(wasm: &[u8], export_name: &str) -> i64 {
     let engine = wasmtime::Engine::default();
-    let module = wasmtime::Module::new(&engine, wasm)
-        .expect("stage2 Wasm の Module 構築に失敗");
+    let module = wasmtime::Module::new(&engine, wasm).expect("stage2 Wasm の Module 構築に失敗");
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = wasmtime::Instance::new(&mut store, &module, &[])
         .expect("stage2 Wasm のインスタンス化に失敗");
@@ -136,11 +135,14 @@ fn run_exported_i64_with_alloc_import(wasm: &[u8], export_name: &str) -> i64 {
     let module = wasmtime::Module::new(&engine, wasm)
         .expect("alloc import 付き stage2 Wasm の Module 構築に失敗");
     let mut store = wasmtime::Store::new(&engine, 1024_i64);
-    let alloc = wasmtime::Func::wrap(&mut store, |mut caller: wasmtime::Caller<'_, i64>, size: i64| -> i64 {
-        let base = *caller.data();
-        *caller.data_mut() = base + size;
-        base
-    });
+    let alloc = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, i64>, size: i64| -> i64 {
+            let base = *caller.data();
+            *caller.data_mut() = base + size;
+            base
+        },
+    );
     let instance = wasmtime::Instance::new(&mut store, &module, &[alloc.into()])
         .expect("alloc import 付き stage2 Wasm のインスタンス化に失敗");
     let func = instance
@@ -436,7 +438,12 @@ fn run_exported_i64_with_alloc_print_read_hash_imports(
     let instance = wasmtime::Instance::new(
         &mut store,
         &module,
-        &[alloc.into(), print.into(), read_file.into(), fnv1a_hash.into()],
+        &[
+            alloc.into(),
+            print.into(),
+            read_file.into(),
+            fnv1a_hash.into(),
+        ],
     )
     .expect("alloc/print/read-file/fnv1a import 付き stage2 Wasm のインスタンス化に失敗");
     let func = instance
@@ -479,8 +486,9 @@ fn run_exported_i64_with_alloc_print_read_arg_imports(
     }
 
     let engine = wasmtime::Engine::default();
-    let module = wasmtime::Module::new(&engine, wasm)
-        .expect("alloc/print/read-file/command-line-arg import 付き stage2 Wasm の Module 構築に失敗");
+    let module = wasmtime::Module::new(&engine, wasm).expect(
+        "alloc/print/read-file/command-line-arg import 付き stage2 Wasm の Module 構築に失敗",
+    );
     let mut store = wasmtime::Store::new(
         &engine,
         AllocPrintReadArgState {
@@ -538,17 +546,18 @@ fn run_exported_i64_with_alloc_print_read_arg_imports(
             command_line_arg.into(),
         ],
     )
-    .expect("alloc/print/read-file/command-line-arg import 付き stage2 Wasm のインスタンス化に失敗");
+    .expect(
+        "alloc/print/read-file/command-line-arg import 付き stage2 Wasm のインスタンス化に失敗",
+    );
     let func = instance
         .get_typed_func::<(), i64>(&mut store, export_name)
         .unwrap_or_else(|e| panic!("{export_name} export の取得に失敗: {e}"));
-    let value = func
-        .call(&mut store, ())
-        .expect("alloc/print/read-file/command-line-arg import 付き stage2 Wasm の export 呼び出しに失敗");
+    let value = func.call(&mut store, ()).expect(
+        "alloc/print/read-file/command-line-arg import 付き stage2 Wasm の export 呼び出しに失敗",
+    );
     let printed = store.data().printed.clone();
     (value, printed)
 }
-
 
 /// BOOT-04: 4 層比較テスト
 ///
@@ -579,12 +588,13 @@ fn test_e2e_bootstrap_four_layer_comparison() {
     );
 
     // レイヤー 2: Export セクション (ID=7) のシンボル比較
-    let export_a = extract_section_bytes(&wasm_a, 7)
-        .expect("wasm_a に Export セクションが見つからない");
-    let export_b = extract_section_bytes(&wasm_b, 7)
-        .expect("wasm_b に Export セクションが見つからない");
+    let export_a =
+        extract_section_bytes(&wasm_a, 7).expect("wasm_a に Export セクションが見つからない");
+    let export_b =
+        extract_section_bytes(&wasm_b, 7).expect("wasm_b に Export セクションが見つからない");
     assert_eq!(
-        export_a, export_b,
+        export_a,
+        export_b,
         "レイヤー2: Export セクション不一致 — {} bytes vs {} bytes",
         export_a.len(),
         export_b.len()
@@ -596,7 +606,8 @@ fn test_e2e_bootstrap_four_layer_comparison() {
     let data_a = extract_section_bytes(&wasm_a, 11);
     let data_b = extract_section_bytes(&wasm_b, 11);
     assert_eq!(
-        data_a, data_b,
+        data_a,
+        data_b,
         "レイヤー3: Data セクション不一致 — {:?} bytes vs {:?} bytes",
         data_a.as_ref().map(|d| d.len()),
         data_b.as_ref().map(|d| d.len())
@@ -615,7 +626,8 @@ fn test_e2e_bootstrap_four_layer_comparison() {
 
     // 追加検証: raw bytes が完全一致
     assert_eq!(
-        wasm_a, wasm_b,
+        wasm_a,
+        wasm_b,
         "raw bytes 不一致 — {} bytes vs {} bytes",
         wasm_a.len(),
         wasm_b.len()
@@ -624,10 +636,7 @@ fn test_e2e_bootstrap_four_layer_comparison() {
     // 追加検証: セクション構造の安定性
     let sections_a = extract_sections(&wasm_a);
     let sections_b = extract_sections(&wasm_b);
-    assert_eq!(
-        sections_a, sections_b,
-        "セクション構造不一致"
-    );
+    assert_eq!(sections_a, sections_b, "セクション構造不一致");
 }
 
 /// BOOT-04: ステージチェーン検証テスト
@@ -642,8 +651,7 @@ fn test_e2e_bootstrap_four_layer_comparison() {
 /// stage0 の決定性 + stage1 の実行可能性を証明する。
 #[test]
 fn test_e2e_bootstrap_stage_chain_verification() {
-    let selfhost_dir =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
+    let selfhost_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
     let main_path = selfhost_dir.join("Main.ls");
 
     // --- Phase 1: stage0 で最小サブセットをコンパイル ---
@@ -1458,7 +1466,9 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_nested_string_literal_data_se
     assert_valid_wasm(&modules[0]);
     let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
     assert!(
-        data_section.windows(5).any(|window| window == [97, 98, 99, 100, 101]),
+        data_section
+            .windows(5)
+            .any(|window| window == [97, 98, 99, 100, 101]),
         "nested string literal bytes が data section に連結配置されていない"
     );
     assert_eq!(
@@ -1536,7 +1546,9 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_extended_do_string_literal_da
     assert_valid_wasm(&modules[0]);
     let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
     assert!(
-        data_section.windows(11).any(|window| window == b"abcdefghijk"),
+        data_section
+            .windows(11)
+            .any(|window| window == b"abcdefghijk"),
         "extended do string literal bytes が data section に連結配置されていない"
     );
     assert_eq!(
@@ -1614,7 +1626,9 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_if_string_literal_data_sectio
     assert_valid_wasm(&modules[0]);
     let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
     assert!(
-        data_section.windows(10).any(|window| window == b"helloworld"),
+        data_section
+            .windows(10)
+            .any(|window| window == b"helloworld"),
         "if string literal bytes が data section に連結配置されていない"
     );
     assert_eq!(
@@ -2499,7 +2513,9 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_key_map_program() {
     assert_valid_wasm(&modules[0]);
     let data_section = extract_section_bytes(&modules[0], 11).unwrap_or_default();
     assert!(
-        !data_section.windows(2).any(|window| window == [97, 97] || window == [98, 98]),
+        !data_section
+            .windows(2)
+            .any(|window| window == [97, 97] || window == [98, 98]),
         "string key literal bytes は data section に残らず hash const 化されること"
     );
     assert_eq!(
@@ -2579,7 +2595,9 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_non_literal_string_key_map_pr
     assert_valid_wasm(&modules[0]);
     let data_section = extract_section_bytes(&modules[0], 11).unwrap_or_default();
     assert!(
-        data_section.windows("fixture.txt".len()).any(|window| window == b"fixture.txt"),
+        data_section
+            .windows("fixture.txt".len())
+            .any(|window| window == b"fixture.txt"),
         "read-file path literal bytes は data section に配置されること"
     );
     assert_eq!(
@@ -2659,7 +2677,9 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_generalized_alloc_print_read_
     assert_valid_wasm(&modules[0]);
     let data_section = extract_section_bytes(&modules[0], 11).unwrap_or_default();
     assert!(
-        data_section.windows("fixture.txt".len()).any(|window| window == b"fixture.txt"),
+        data_section
+            .windows("fixture.txt".len())
+            .any(|window| window == b"fixture.txt"),
         "generalized hash quad でも read-file path literal bytes は data section に配置されること"
     );
     assert_eq!(
@@ -2746,7 +2766,9 @@ fn test_e2e_bootstrap_stage1_emits_identical_hash_helper_quad_stage2_wasm_for_sa
     assert_valid_wasm(&modules[0]);
     let data_section = extract_section_bytes(&modules[0], 11).unwrap_or_default();
     assert!(
-        data_section.windows("fixture.txt".len()).any(|window| window == b"fixture.txt"),
+        data_section
+            .windows("fixture.txt".len())
+            .any(|window| window == b"fixture.txt"),
         "repeatability でも hash quad の read-file path literal bytes は data section に配置されること"
     );
     assert_eq!(
@@ -2887,8 +2909,14 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_generalized_alloc_print_helpe
     assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
     assert_valid_wasm(&modules[0]);
     let (result, printed) = run_exported_i64_with_alloc_print_imports(&modules[0], "_start");
-    assert_eq!(result, 0, "generalized alloc+print pair stage2 Wasm の戻り値が不正");
-    assert_eq!(printed, "42\n7\n", "generalized alloc+print pair stage2 print output が不正");
+    assert_eq!(
+        result, 0,
+        "generalized alloc+print pair stage2 Wasm の戻り値が不正"
+    );
+    assert_eq!(
+        printed, "42\n7\n",
+        "generalized alloc+print pair stage2 print output が不正"
+    );
 }
 
 /// BOOT-04: stage1 が同じ generalized alloc+print pair source から同一 stage2 Wasm を 2 回生成できること
@@ -3029,13 +3057,16 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_read_file_program() {
         extract_sections(&modules[0]).iter().any(|(id, _)| *id == 2),
         "read-file program を含む stage2 Wasm は import section を持つこと"
     );
-    let (result, printed) = run_exported_i64_with_alloc_print_read_imports(
-        &modules[0],
-        "_start",
-        "hello from file",
+    let (result, printed) =
+        run_exported_i64_with_alloc_print_read_imports(&modules[0], "_start", "hello from file");
+    assert_eq!(
+        result, 15,
+        "read-file program を含む stage2 Wasm の戻り値が不正"
     );
-    assert_eq!(result, 15, "read-file program を含む stage2 Wasm の戻り値が不正");
-    assert!(printed.is_empty(), "read-file slice では print output は不要");
+    assert!(
+        printed.is_empty(),
+        "read-file slice では print output は不要"
+    );
 }
 
 /// BOOT-04: stage1 が generalized 3-helper triple で alloc+print+read-file stage2 Wasm を生成できること
@@ -3099,11 +3130,8 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_generalized_alloc_print_read_
     let modules = parse_emitted_wasm_modules(&output, 1);
     assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
     assert_valid_wasm(&modules[0]);
-    let (result, printed) = run_exported_i64_with_alloc_print_read_imports(
-        &modules[0],
-        "_start",
-        "hello from file",
-    );
+    let (result, printed) =
+        run_exported_i64_with_alloc_print_read_imports(&modules[0], "_start", "hello from file");
     assert_eq!(
         result, 15,
         "generalized alloc+print+read-file triple stage2 Wasm の戻り値が不正"
@@ -3348,7 +3376,10 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_read_file_path_string_program
         result, 15,
         "path string read-file program を含む stage2 Wasm の戻り値が不正"
     );
-    assert!(printed.is_empty(), "read-file slice では print output は不要");
+    assert!(
+        printed.is_empty(),
+        "read-file slice では print output は不要"
+    );
 }
 
 /// BOOT-04: stage1 が同じ source-aware read-file path string source から同一 stage2 Wasm を 2 回生成できること
@@ -3515,8 +3546,14 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_command_line_arg_program() {
         "",
         &["cli", "hello-argv"],
     );
-    assert_eq!(result, 10, "command-line-arg program を含む stage2 Wasm の戻り値が不正");
-    assert!(printed.is_empty(), "command-line-arg slice では print output は不要");
+    assert_eq!(
+        result, 10,
+        "command-line-arg program を含む stage2 Wasm の戻り値が不正"
+    );
+    assert!(
+        printed.is_empty(),
+        "command-line-arg slice では print output は不要"
+    );
 }
 
 /// BOOT-04: stage1 が同じ command-line-arg helper source から同一 stage2 Wasm を 2 回生成できること
@@ -3587,8 +3624,12 @@ fn test_e2e_bootstrap_stage1_emits_identical_arg_helper_stage2_wasm_for_same_sou
         "同じ command-line-arg helper source から stage2 Wasm が非決定的に変化した"
     );
     assert_valid_wasm(&modules[0]);
-    let (result, printed) =
-        run_exported_i64_with_alloc_print_read_arg_imports(&modules[0], "_start", "", &["cli", "hello-argv"]);
+    let (result, printed) = run_exported_i64_with_alloc_print_read_arg_imports(
+        &modules[0],
+        "_start",
+        "",
+        &["cli", "hello-argv"],
+    );
     assert_eq!(result, 10);
     assert!(printed.is_empty());
 }

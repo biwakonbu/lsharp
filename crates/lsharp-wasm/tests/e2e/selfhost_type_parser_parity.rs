@@ -1,6 +1,5 @@
 use super::support::*;
 
-
 // =============================================================================
 // TEST-TYPE-07: error code/span/primary message の parity golden
 // golden fixture に Rust 側の型エラー (error code, span, message) を記録し、
@@ -9,8 +8,7 @@ use super::support::*;
 
 #[test]
 fn test_e2e_selfhost_type_error_parity() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // 1. golden fixture の読み込み
     let golden_path = project_root.join("tests/golden/types/type_errors.json");
@@ -18,10 +16,10 @@ fn test_e2e_selfhost_type_error_parity() {
         golden_path.exists(),
         "tests/golden/types/type_errors.json が存在しない"
     );
-    let golden_content = std::fs::read_to_string(&golden_path)
-        .expect("type_errors.json の読み込みに失敗");
-    let golden: serde_json::Value = serde_json::from_str(&golden_content)
-        .expect("type_errors.json の JSON パースに失敗");
+    let golden_content =
+        std::fs::read_to_string(&golden_path).expect("type_errors.json の読み込みに失敗");
+    let golden: serde_json::Value =
+        serde_json::from_str(&golden_content).expect("type_errors.json の JSON パースに失敗");
 
     // 2. golden fixture の構造検証
     let error_cases = golden
@@ -87,8 +85,7 @@ fn test_e2e_selfhost_type_error_parity() {
 
 #[test]
 fn test_e2e_selfhost_type_deterministic_ordering() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // 1. golden fixture の読み込み
     let golden_path = project_root.join("tests/golden/types/deterministic_ordering.json");
@@ -107,11 +104,7 @@ fn test_e2e_selfhost_type_deterministic_ordering() {
         .expect("test_cases セクションがない");
     assert!(test_cases.is_array(), "test_cases が配列でない");
     let cases = test_cases.as_array().unwrap();
-    assert!(
-        cases.len() >= 3,
-        "テストケースが 3 件未満: {}",
-        cases.len()
-    );
+    assert!(cases.len() >= 3, "テストケースが 3 件未満: {}", cases.len());
 
     // 3. 各テストケースで2回型推論し、結果が同一であることを検証
     for (i, case) in cases.iter().enumerate() {
@@ -198,14 +191,12 @@ fn test_e2e_selfhost_type_deterministic_ordering() {
 /// selfhost TypeScheme.ls テスト: generalize は source order の自由変数を漏れなく束縛する
 #[test]
 fn test_e2e_selfhost_typescheme_generalize_preserves_four_var_order() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -244,14 +235,12 @@ fn test_e2e_selfhost_typescheme_generalize_preserves_four_var_order() {
 /// selfhost TypeScheme.ls テスト: instantiate は bound-vars 全件を順序通り新鮮化する
 #[test]
 fn test_e2e_selfhost_typescheme_instantiate_rewrites_all_bound_vars() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -298,14 +287,12 @@ fn test_e2e_selfhost_typescheme_instantiate_rewrites_all_bound_vars() {
 /// selfhost TypeScheme.ls テスト: record field 型の free vars も source order で一般化する
 #[test]
 fn test_e2e_selfhost_typescheme_generalize_record_field_vars() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -333,21 +320,25 @@ fn test_e2e_selfhost_typescheme_generalize_record_field_vars() {
         lines
     );
     assert_eq!(lines[0], "2", "record field 型の自由変数 2 個を束縛すべき");
-    assert_eq!(lines[1], "1", "record field の 1 番目の自由変数順が崩れている");
-    assert_eq!(lines[2], "2", "record field の 2 番目の自由変数順が崩れている");
+    assert_eq!(
+        lines[1], "1",
+        "record field の 1 番目の自由変数順が崩れている"
+    );
+    assert_eq!(
+        lines[2], "2",
+        "record field の 2 番目の自由変数順が崩れている"
+    );
 }
 
 /// selfhost TypeScheme.ls テスト: record field 型の bound-vars も instantiate で fresh 化する
 #[test]
 fn test_e2e_selfhost_typescheme_instantiate_record_field_vars() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -375,8 +366,14 @@ fn test_e2e_selfhost_typescheme_instantiate_record_field_vars() {
         "record instantiate deterministic ordering 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "1000", "record field 1 の型変数が fresh 化されていない");
-    assert_eq!(lines[1], "1001", "record field 2 の型変数が fresh 化されていない");
+    assert_eq!(
+        lines[0], "1000",
+        "record field 1 の型変数が fresh 化されていない"
+    );
+    assert_eq!(
+        lines[1], "1001",
+        "record field 2 の型変数が fresh 化されていない"
+    );
 }
 
 // =============================================================================
@@ -390,17 +387,13 @@ fn test_e2e_selfhost_typescheme_instantiate_record_field_vars() {
 /// 現状: Parser.ls に recovery 機構なし → FAIL
 #[test]
 fn test_e2e_selfhost_parser_recovery_diagnostics() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // Parser.ls を読み込み
     let parser_ls_path = project_root.join("selfhost/Parser.ls");
-    assert!(
-        parser_ls_path.exists(),
-        "selfhost/Parser.ls が存在しない"
-    );
-    let parser_content = std::fs::read_to_string(&parser_ls_path)
-        .expect("selfhost/Parser.ls の読み込みに失敗");
+    assert!(parser_ls_path.exists(), "selfhost/Parser.ls が存在しない");
+    let parser_content =
+        std::fs::read_to_string(&parser_ls_path).expect("selfhost/Parser.ls の読み込みに失敗");
 
     // recovery 関連の関数が定義されていることを検証
     assert!(
@@ -424,8 +417,7 @@ fn test_e2e_selfhost_parser_recovery_diagnostics() {
 /// で返すことを、selfhost 実装自身を実行して検証する。
 #[test]
 fn test_e2e_selfhost_parser_decl_ast_tags() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
         .expect("selfhost/Token.ls が読み込めない");
@@ -433,9 +425,8 @@ fn test_e2e_selfhost_parser_decl_ast_tags() {
         .expect("selfhost/AST.ls が読み込めない");
     let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
         .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls =
-        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-            .expect("selfhost/Parser.ls が読み込めない");
+    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -471,11 +462,20 @@ fn test_e2e_selfhost_parser_decl_ast_tags() {
         lines
     );
     assert_eq!(lines[0], "25", "module は ast-module-decl (=25) を返すべき");
-    assert_eq!(lines[1], "1", "module 名ハッシュが Parser.name-hash と一致すべき");
+    assert_eq!(
+        lines[1], "1",
+        "module 名ハッシュが Parser.name-hash と一致すべき"
+    );
     assert_eq!(lines[2], "26", "import は ast-import-decl (=26) を返すべき");
-    assert_eq!(lines[3], "1", "import 名ハッシュが Parser.name-hash と一致すべき");
+    assert_eq!(
+        lines[3], "1",
+        "import 名ハッシュが Parser.name-hash と一致すべき"
+    );
     assert_eq!(lines[4], "21", "type は ast-type-decl (=21) を返すべき");
-    assert_eq!(lines[5], "1", "type 名ハッシュが Parser.name-hash と一致すべき");
+    assert_eq!(
+        lines[5], "1",
+        "type 名ハッシュが Parser.name-hash と一致すべき"
+    );
 }
 
 /// TEST-SYNTAX-02c: 可変長ノードの count フィールドが実要素数を持つ
@@ -485,8 +485,7 @@ fn test_e2e_selfhost_parser_decl_ast_tags() {
 /// 正しく更新して返すことを検証する。
 #[test]
 fn test_e2e_selfhost_parser_count_fields() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
         .expect("selfhost/Token.ls が読み込めない");
@@ -494,9 +493,8 @@ fn test_e2e_selfhost_parser_count_fields() {
         .expect("selfhost/AST.ls が読み込めない");
     let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
         .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls =
-        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-            .expect("selfhost/Parser.ls が読み込めない");
+    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -532,8 +530,7 @@ fn test_e2e_selfhost_parser_count_fields() {
 /// TEST-SYNTAX-02c2: nested module を body 付きでパースできる
 #[test]
 fn test_e2e_selfhost_parser_nested_module_decl() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
         .expect("selfhost/Token.ls が読み込めない");
@@ -541,9 +538,8 @@ fn test_e2e_selfhost_parser_nested_module_decl() {
         .expect("selfhost/AST.ls が読み込めない");
     let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
         .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls =
-        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-            .expect("selfhost/Parser.ls が読み込めない");
+    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -591,8 +587,7 @@ fn test_e2e_selfhost_parser_nested_module_decl() {
 /// 内側の式もそのまま保持することを検証する。
 #[test]
 fn test_e2e_selfhost_parser_quote_forms() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
         .expect("selfhost/Token.ls が読み込めない");
@@ -600,9 +595,8 @@ fn test_e2e_selfhost_parser_quote_forms() {
         .expect("selfhost/AST.ls が読み込めない");
     let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
         .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls =
-        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-            .expect("selfhost/Parser.ls が読み込めない");
+    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -641,7 +635,10 @@ fn test_e2e_selfhost_parser_quote_forms() {
         "splice-unquote ノードは ast-unquote-splice であるべき"
     );
     assert_eq!(lines[7], "1", "splice-unquote 内側は var ノードであるべき");
-    assert_eq!(lines[8], "1", "splice-unquote 内側の name-hash が一致すべき");
+    assert_eq!(
+        lines[8], "1",
+        "splice-unquote 内側の name-hash が一致すべき"
+    );
 }
 
 /// TEST-SYNTAX-02e: record / trait 宣言も canonical decl tag を返す
@@ -651,8 +648,7 @@ fn test_e2e_selfhost_parser_quote_forms() {
 /// 先頭名の hash も保持することを検証する。
 #[test]
 fn test_e2e_selfhost_parser_record_and_trait_decl_tags() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
         .expect("selfhost/Token.ls が読み込めない");
@@ -660,9 +656,8 @@ fn test_e2e_selfhost_parser_record_and_trait_decl_tags() {
         .expect("selfhost/AST.ls が読み込めない");
     let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
         .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls =
-        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-            .expect("selfhost/Parser.ls が読み込めない");
+    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -683,8 +678,15 @@ fn test_e2e_selfhost_parser_record_and_trait_decl_tags() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 4, "record/trait parser 出力が不足: {:?}", lines);
-    assert_eq!(lines[0], "22", "record type は ast-recorddef (=22) を返すべき");
+    assert!(
+        lines.len() >= 4,
+        "record/trait parser 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "22",
+        "record type は ast-recorddef (=22) を返すべき"
+    );
     assert_eq!(lines[1], "1", "record type 名ハッシュが一致すべき");
     assert_eq!(lines[2], "27", "trait は ast-traitdef (=27) を返すべき");
     assert_eq!(lines[3], "1", "trait 名ハッシュが一致すべき");
@@ -696,8 +698,7 @@ fn test_e2e_selfhost_parser_record_and_trait_decl_tags() {
 /// type 名と field-count / field 名 / 値ノードを保持することを検証する。
 #[test]
 fn test_e2e_selfhost_parser_record_literal() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
         .expect("selfhost/Token.ls が読み込めない");
@@ -705,9 +706,8 @@ fn test_e2e_selfhost_parser_record_literal() {
         .expect("selfhost/AST.ls が読み込めない");
     let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
         .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls =
-        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-            .expect("selfhost/Parser.ls が読み込めない");
+    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -730,7 +730,11 @@ fn test_e2e_selfhost_parser_record_literal() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 7, "record literal parser 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 7,
+        "record literal parser 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "1", "record literal は ast-recordlit であるべき");
     assert_eq!(lines[1], "1", "record literal type 名ハッシュが一致すべき");
     assert_eq!(lines[2], "2", "record literal field-count は 2 であるべき");

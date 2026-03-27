@@ -1,6 +1,5 @@
 use super::support::*;
 
-
 // =====================================================
 // TASK-007: Main.ls モジュール構造テスト
 // =====================================================
@@ -58,7 +57,10 @@ fn test_e2e_selfhost_main_module_structure() {
     );
 
     // 6. Main.ls 固有の関数が残っていること
-    assert!(source.contains("(defn main ["), "Main.ls に main 関数が必要");
+    assert!(
+        source.contains("(defn main ["),
+        "Main.ls に main 関数が必要"
+    );
 
     // 7. コンパイル・実行が正常であること（既存パイプラインが壊れていないこと）
     let output = compile_and_run_file(&selfhost_main_path());
@@ -86,13 +88,13 @@ fn test_e2e_selfhost_main_module_structure() {
 fn test_e2e_selfhost_module_graph_topological_sort() {
     use std::collections::{HashMap, HashSet, VecDeque};
 
-    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../selfhost");
+    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
 
     // 1. selfhost/*.ls を読み込み、module/import を抽出
     let mut module_imports: HashMap<String, Vec<String>> = HashMap::new();
 
-    for entry in std::fs::read_dir(&base_dir).expect("selfhost ディレクトリの読み込みに失敗") {
+    for entry in std::fs::read_dir(&base_dir).expect("selfhost ディレクトリの読み込みに失敗")
+    {
         let entry = entry.unwrap();
         let path = entry.path();
         if path.extension().map_or(true, |ext| ext != "ls") {
@@ -154,7 +156,8 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
             assert!(
                 all_modules.contains(imp),
                 "{} が import する {} が selfhost に存在しない",
-                module, imp
+                module,
+                imp
             );
         }
     }
@@ -234,7 +237,11 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
             assert!(
                 imp_pos < module_pos,
                 "依存順序の違反: {} (位置 {}) は {} (位置 {}) より後にあるべき。ソート結果: {:?}",
-                module, module_pos, imp, imp_pos, sorted
+                module,
+                module_pos,
+                imp,
+                imp_pos,
+                sorted
             );
         }
     }
@@ -284,7 +291,12 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
     // Level 2: Parser, MacroExpand, TypeInfer, Compiler, Linter, Formatter
     // (Level 1 のモジュールに依存)
     let level_2: HashSet<&str> = [
-        "Parser", "MacroExpand", "TypeInfer", "Compiler", "Linter", "Formatter",
+        "Parser",
+        "MacroExpand",
+        "TypeInfer",
+        "Compiler",
+        "Linter",
+        "Formatter",
     ]
     .iter()
     .copied()
@@ -329,10 +341,8 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
 #[test]
 fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
     // 1. MacroExpand.ls と TypeInfer.ls にモジュール宣言が存在することを検証
-    let macroexpand_source =
-        std::fs::read_to_string("../../selfhost/MacroExpand.ls").unwrap();
-    let typeinfer_source =
-        std::fs::read_to_string("../../selfhost/TypeInfer.ls").unwrap();
+    let macroexpand_source = std::fs::read_to_string("../../selfhost/MacroExpand.ls").unwrap();
+    let typeinfer_source = std::fs::read_to_string("../../selfhost/TypeInfer.ls").unwrap();
 
     // MacroExpand.ls: (module MacroExpand) + (import AST) + (import Token)
     assert!(
@@ -415,22 +425,39 @@ fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
 /// コンパイル可能な 13 モジュールはバイト列一致で決定性を検証。
 #[test]
 fn test_e2e_bootstrap_selfhost_full_deterministic() {
-    let selfhost_dir =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
+    let selfhost_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
     // コンパイル可能なモジュール: 2回コンパイルでバイト列一致
     let compilable_modules: &[(&str, &str)] = &[
         ("Lexer.ls", include_str!("../../../../selfhost/Lexer.ls")),
         ("Parser.ls", include_str!("../../../../selfhost/Parser.ls")),
         ("AST.ls", include_str!("../../../../selfhost/AST.ls")),
         ("Token.ls", include_str!("../../../../selfhost/Token.ls")),
-        ("Compiler.ls", include_str!("../../../../selfhost/Compiler.ls")),
+        (
+            "Compiler.ls",
+            include_str!("../../../../selfhost/Compiler.ls"),
+        ),
         ("Type.ls", include_str!("../../../../selfhost/Type.ls")),
         ("IR.ls", include_str!("../../../../selfhost/IR.ls")),
-        ("WasmEmit.ls", include_str!("../../../../selfhost/WasmEmit.ls")),
-        ("TypeScheme.ls", include_str!("../../../../selfhost/TypeScheme.ls")),
-        ("TypeInferCore.ls", include_str!("../../../../selfhost/TypeInferCore.ls")),
-        ("Formatter.ls", include_str!("../../../../selfhost/Formatter.ls")),
-        ("JsonRpc.ls", include_str!("../../../../selfhost/JsonRpc.ls")),
+        (
+            "WasmEmit.ls",
+            include_str!("../../../../selfhost/WasmEmit.ls"),
+        ),
+        (
+            "TypeScheme.ls",
+            include_str!("../../../../selfhost/TypeScheme.ls"),
+        ),
+        (
+            "TypeInferCore.ls",
+            include_str!("../../../../selfhost/TypeInferCore.ls"),
+        ),
+        (
+            "Formatter.ls",
+            include_str!("../../../../selfhost/Formatter.ls"),
+        ),
+        (
+            "JsonRpc.ls",
+            include_str!("../../../../selfhost/JsonRpc.ls"),
+        ),
         ("Linter.ls", include_str!("../../../../selfhost/Linter.ls")),
         ("Main.ls", include_str!("../../../../selfhost/Main.ls")),
     ];
@@ -442,7 +469,8 @@ fn test_e2e_bootstrap_selfhost_full_deterministic() {
         let wasm1 = compile_file_only(&path);
         let wasm2 = compile_file_only(&path);
         assert_eq!(
-            wasm1, wasm2,
+            wasm1,
+            wasm2,
             "{} のコンパイルが非決定的 (module 宣言追加後): {} bytes vs {} bytes",
             name,
             wasm1.len(),
@@ -523,12 +551,7 @@ fn test_e2e_bootstrap_selfhost_full_deterministic() {
         // テキストの決定性: include_str! を 2 回読んでも同じ内容であること
         // (コンパイル時に解決されるので常に同一だが、ソース変更がないことの記録)
         let source2 = *source; // include_str! は同一文字列リテラル
-        assert_eq!(
-            source.len(),
-            source2.len(),
-            "{} のソース長が不安定",
-            name
-        );
+        assert_eq!(source.len(), source2.len(), "{} のソース長が不安定", name);
     }
 
     // 全モジュールがカバーされていることを検証
@@ -559,8 +582,8 @@ fn test_e2e_selfhost_span_model() {
     );
 
     // constructor: span-new または make-span ([start end] 形式)
-    let has_constructor = span_source.contains("(defn span-new")
-        || span_source.contains("(defn make-span");
+    let has_constructor =
+        span_source.contains("(defn span-new") || span_source.contains("(defn make-span");
     assert!(
         has_constructor,
         "Span.ls に span コンストラクタ (span-new or make-span) がない"
@@ -600,28 +623,27 @@ fn test_e2e_selfhost_span_model() {
 /// これらの固定 API 名での呼び出しが存在しないため FAIL する。
 #[test]
 fn test_e2e_selfhost_main_fixed_api_calls() {
-    let main_source = std::fs::read_to_string("../../selfhost/Main.ls")
-        .expect("selfhost/Main.ls が存在しない");
+    let main_source =
+        std::fs::read_to_string("../../selfhost/Main.ls").expect("selfhost/Main.ls が存在しない");
 
     // 固定 API: Lexer.tokenize (または tokenize を Lexer モジュールから呼び出し)
-    let has_lexer_tokenize = main_source.contains("Lexer.tokenize")
-        || main_source.contains("(tokenize ");
+    let has_lexer_tokenize =
+        main_source.contains("Lexer.tokenize") || main_source.contains("(tokenize ");
     assert!(
         has_lexer_tokenize,
         "Main.ls に Lexer.tokenize 呼び出しがない (固定 API 未統合)"
     );
 
     // 固定 API: Parser.parse-program
-    let has_parser_parse = main_source.contains("Parser.parse-program")
-        || main_source.contains("(parse-program ");
+    let has_parser_parse =
+        main_source.contains("Parser.parse-program") || main_source.contains("(parse-program ");
     assert!(
         has_parser_parse,
         "Main.ls に Parser.parse-program 呼び出しがない (固定 API 未統合)"
     );
 
     // 固定 API: TypeInfer.infer
-    let has_typeinfer = main_source.contains("TypeInfer.infer")
-        || main_source.contains("(infer ");
+    let has_typeinfer = main_source.contains("TypeInfer.infer") || main_source.contains("(infer ");
     assert!(
         has_typeinfer,
         "Main.ls に TypeInfer.infer 呼び出しがない (固定 API 未統合)"
@@ -637,8 +659,8 @@ fn test_e2e_selfhost_main_fixed_api_calls() {
     );
 
     // 固定 API: Codegen.emit-wasm
-    let has_codegen = main_source.contains("Codegen.emit-wasm")
-        || main_source.contains("(emit-wasm ");
+    let has_codegen =
+        main_source.contains("Codegen.emit-wasm") || main_source.contains("(emit-wasm ");
     assert!(
         has_codegen,
         "Main.ls に Codegen.emit-wasm 呼び出しがない (固定 API 未統合)"
@@ -648,7 +670,11 @@ fn test_e2e_selfhost_main_fixed_api_calls() {
     assert!(
         has_lexer_tokenize && has_parser_parse && has_typeinfer && has_lower && has_codegen,
         "Main.ls の固定 API 統合が不完全: tokenize={}, parse-program={}, infer={}, lower={}, emit-wasm={}",
-        has_lexer_tokenize, has_parser_parse, has_typeinfer, has_lower, has_codegen
+        has_lexer_tokenize,
+        has_parser_parse,
+        has_typeinfer,
+        has_lower,
+        has_codegen
     );
 }
 
@@ -678,8 +704,8 @@ fn test_e2e_selfhost_main_full_compile() {
 
     let mut combined_source = String::new();
     for path in &module_files {
-        let source = std::fs::read_to_string(path)
-            .unwrap_or_else(|_| panic!("{} が存在しない", path));
+        let source =
+            std::fs::read_to_string(path).unwrap_or_else(|_| panic!("{} が存在しない", path));
         combined_source.push_str(&source);
         combined_source.push('\n');
     }
@@ -712,8 +738,5 @@ fn test_e2e_selfhost_main_full_compile() {
 
     // 実行して正常終了することを確認
     let output = run_wasi(&wasm_bytes);
-    assert!(
-        !output.is_empty(),
-        "Main.ls フルコンパイル実行結果が空"
-    );
+    assert!(!output.is_empty(), "Main.ls フルコンパイル実行結果が空");
 }

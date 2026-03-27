@@ -1,6 +1,5 @@
 use super::support::*;
 
-
 // =================================================// selfhost Compiler.ls 拡張テスト (Step 5)
 // =================================================
 #[test]
@@ -586,7 +585,10 @@ fn test_e2e_selfhost_integrated_pipeline_v3() {
     assert_eq!(lines[1], "1", "i64.const opcode");
     assert_eq!(lines[2], "42", "i64.const operand = 42");
     assert_eq!(lines[3], "3", "defn f [x] (+ x 1) → IR 命令数 3");
-    assert!(lines[4].parse::<i32>().unwrap() > 0, "if 式 → IR 命令数 > 0");
+    assert!(
+        lines[4].parse::<i32>().unwrap() > 0,
+        "if 式 → IR 命令数 > 0"
+    );
 }
 
 // === MacroExpand Tests ===
@@ -684,7 +686,6 @@ fn test_e2e_selfhost_typeinfer_literal() {
 /// selfhost TypeInfer.ls テスト: float / unit リテラル型推論
 #[test]
 fn test_e2e_selfhost_typeinfer_float_and_unit_literals() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -714,8 +715,14 @@ fn test_e2e_selfhost_typeinfer_float_and_unit_literals() {
     );
     assert_eq!(lines[0], "0", "float infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "float infer の型タグは Con であるべき");
-    assert_eq!(lines[2], "400", "float infer の型名は Float hash=400 であるべき");
+    assert_eq!(
+        lines[2], "400",
+        "float infer の型名は Float hash=400 であるべき"
+    );
     assert_eq!(lines[3], "0", "unit infer は失敗すべきでない");
     assert_eq!(lines[4], "1", "unit infer の型タグは Con であるべき");
-    assert_eq!(lines[5], "500", "unit infer の型名は Unit hash=500 であるべき");
+    assert_eq!(
+        lines[5], "500",
+        "unit infer の型名は Unit hash=500 であるべき"
+    );
 }

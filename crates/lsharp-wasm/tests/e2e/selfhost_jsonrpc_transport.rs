@@ -5,7 +5,11 @@ fn selfhost_jsonrpc_transport_bundle() -> String {
 }
 
 fn run_transport_harness(harness: &str) -> String {
-    compile_and_run(&format!("{}\n{}", selfhost_jsonrpc_transport_bundle(), harness))
+    compile_and_run(&format!(
+        "{}\n{}",
+        selfhost_jsonrpc_transport_bundle(),
+        harness
+    ))
 }
 
 /// LSP transport: Content-Length の簡易パースが決定的に動くこと
@@ -36,8 +40,7 @@ fn test_e2e_selfhost_jsonrpc_render_initialize_frame() {
     );
 
     assert_eq!(
-        output,
-        expected_frame,
+        output, expected_frame,
         "initialize response は Content-Length framed JSON であるべき"
     );
 }
@@ -56,8 +59,7 @@ fn test_e2e_selfhost_jsonrpc_render_error_frame() {
     );
 
     assert_eq!(
-        output,
-        expected_frame,
+        output, expected_frame,
         "error response は Content-Length framed JSON であるべき"
     );
 }

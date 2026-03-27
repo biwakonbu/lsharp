@@ -44,9 +44,7 @@ pub enum DependencySpec {
         tag: Option<String>,
     },
     /// ローカルパス: { path = "..." }
-    Path {
-        path: String,
-    },
+    Path { path: String },
 }
 
 /// [project] セクション
@@ -119,7 +117,10 @@ pub struct ConstraintsConfig {
     pub random_test_count: u32,
 
     /// satisfies 探索のサンプル数
-    #[serde(rename = "satisfies-search-count", default = "default_satisfies_search_count")]
+    #[serde(
+        rename = "satisfies-search-count",
+        default = "default_satisfies_search_count"
+    )]
     pub satisfies_search_count: u32,
 
     /// コンパイル時制約チェックの有効化
@@ -219,9 +220,8 @@ pub fn validate_config(config: &Config, project_dir: &Path) -> Vec<String> {
 
     // satisfies-search-count が 0 の場合は警告
     if config.constraints.satisfies_search_count == 0 {
-        errors.push(
-            "constraints.satisfies-search-count は 1 以上の値を指定してください".to_string(),
-        );
+        errors
+            .push("constraints.satisfies-search-count は 1 以上の値を指定してください".to_string());
     }
 
     // entry ファイルの存在確認
@@ -257,8 +257,7 @@ pub fn load_config_result(dir: &Path) -> Result<Config, ConfigError> {
     let content =
         std::fs::read_to_string(&config_path).map_err(|e| ConfigError::Read(e.to_string()))?;
 
-    let config: Config =
-        toml::from_str(&content).map_err(|e| ConfigError::Parse(e.to_string()))?;
+    let config: Config = toml::from_str(&content).map_err(|e| ConfigError::Parse(e.to_string()))?;
 
     let validation_errors = validate_config(&config, dir);
     if !validation_errors.is_empty() {
@@ -534,9 +533,18 @@ path = "./libs/local"
 "#;
         let config: Config = toml::from_str(content).unwrap();
         assert_eq!(config.dependencies.len(), 3);
-        assert!(matches!(&config.dependencies["math"], DependencySpec::Version(_)));
-        assert!(matches!(&config.dependencies["mylib"], DependencySpec::Git { .. }));
-        assert!(matches!(&config.dependencies["local"], DependencySpec::Path { .. }));
+        assert!(matches!(
+            &config.dependencies["math"],
+            DependencySpec::Version(_)
+        ));
+        assert!(matches!(
+            &config.dependencies["mylib"],
+            DependencySpec::Git { .. }
+        ));
+        assert!(matches!(
+            &config.dependencies["local"],
+            DependencySpec::Path { .. }
+        ));
     }
 
     #[test]

@@ -40,12 +40,10 @@ impl fmt::Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Kind::Star => write!(f, "*"),
-            Kind::Arrow(k1, k2) => {
-                match k1.as_ref() {
-                    Kind::Arrow(_, _) => write!(f, "({k1}) -> {k2}"),
-                    _ => write!(f, "{k1} -> {k2}"),
-                }
-            }
+            Kind::Arrow(k1, k2) => match k1.as_ref() {
+                Kind::Arrow(_, _) => write!(f, "({k1}) -> {k2}"),
+                _ => write!(f, "{k1} -> {k2}"),
+            },
         }
     }
 }
@@ -101,7 +99,8 @@ impl Type {
                 vars
             }
             Type::Record(_, fields) => {
-                let mut vars: Vec<TypeVarId> = fields.iter().flat_map(|(_, t)| t.free_vars()).collect();
+                let mut vars: Vec<TypeVarId> =
+                    fields.iter().flat_map(|(_, t)| t.free_vars()).collect();
                 vars.sort();
                 vars.dedup();
                 vars
@@ -134,15 +133,17 @@ impl Type {
                 params.iter().map(|p| p.apply_subst(subst)).collect(),
                 Box::new(ret.apply_subst(subst)),
             ),
-            Type::App(name, args) => {
-                Type::App(name.clone(), args.iter().map(|a| a.apply_subst(subst)).collect())
-            }
-            Type::Record(name, fields) => {
-                Type::Record(
-                    name.clone(),
-                    fields.iter().map(|(n, t)| (n.clone(), t.apply_subst(subst))).collect(),
-                )
-            }
+            Type::App(name, args) => Type::App(
+                name.clone(),
+                args.iter().map(|a| a.apply_subst(subst)).collect(),
+            ),
+            Type::Record(name, fields) => Type::Record(
+                name.clone(),
+                fields
+                    .iter()
+                    .map(|(n, t)| (n.clone(), t.apply_subst(subst)))
+                    .collect(),
+            ),
         }
     }
 }
@@ -357,11 +358,7 @@ impl TypeEnv {
 
     /// 環境の自由型変数
     pub fn free_vars(&self) -> Vec<TypeVarId> {
-        let mut vars: Vec<TypeVarId> = self
-            .bindings
-            .values()
-            .flat_map(|s| s.free_vars())
-            .collect();
+        let mut vars: Vec<TypeVarId> = self.bindings.values().flat_map(|s| s.free_vars()).collect();
         vars.sort();
         vars.dedup();
         vars

@@ -1,6 +1,10 @@
 use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind, Position};
 
-pub fn complete(source: &str, position: Position, module_candidates: &[String]) -> Vec<CompletionItem> {
+pub fn complete(
+    source: &str,
+    position: Position,
+    module_candidates: &[String],
+) -> Vec<CompletionItem> {
     let Some(offset) = crate::util::position_to_offset(source, position) else {
         return Vec::new();
     };
@@ -20,9 +24,10 @@ pub fn complete(source: &str, position: Position, module_candidates: &[String]) 
     if let Ok(program) = lsharp_syntax::parse(source) {
         for decl in &program.decls {
             if let lsharp_syntax::ast::Decl::Defn { name, .. } = decl
-                && name.starts_with(&prefix) {
-                    items.push(function_item(name));
-                }
+                && name.starts_with(&prefix)
+            {
+                items.push(function_item(name));
+            }
         }
     }
 
@@ -98,7 +103,10 @@ mod tests {
         let labels: Vec<&str> = items.iter().map(|item| item.label.as_str()).collect();
 
         assert!(labels.contains(&"helper"));
-        assert!(!labels.contains(&"defn"), "prefix=he では無関係な keyword は返さないべき");
+        assert!(
+            !labels.contains(&"defn"),
+            "prefix=he では無関係な keyword は返さないべき"
+        );
     }
 
     #[test]
@@ -107,7 +115,11 @@ mod tests {
         let items = complete(
             source,
             Position::new(0, 10),
-            &["Hello".to_string(), "Helpers".to_string(), "World".to_string()],
+            &[
+                "Hello".to_string(),
+                "Helpers".to_string(),
+                "World".to_string(),
+            ],
         );
         let labels: Vec<&str> = items.iter().map(|item| item.label.as_str()).collect();
 

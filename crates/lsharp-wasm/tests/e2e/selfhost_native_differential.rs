@@ -12,8 +12,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// ビット一致ではなく、機能レベルの等価性を検証する。
 #[test]
 fn test_e2e_native_self_regeneration_functional_equivalence() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // --- 前提: ネイティブバックエンドモジュールの存在確認 ---
     let native_modules = [
@@ -40,8 +39,8 @@ fn test_e2e_native_self_regeneration_functional_equivalence() {
 
     // --- Wasm バイナリのセクション構造を抽出 ---
     let wasm_export_count = count_wasm_section(&wasm_bytes, 7); // Export section = 7
-    let wasm_type_count = count_wasm_section(&wasm_bytes, 1);   // Type section = 1
-    let wasm_func_count = count_wasm_section(&wasm_bytes, 3);   // Function section = 3
+    let wasm_type_count = count_wasm_section(&wasm_bytes, 1); // Type section = 1
+    let wasm_func_count = count_wasm_section(&wasm_bytes, 3); // Function section = 3
 
     // Wasm 出力が有効な構造を持つこと
     assert!(
@@ -65,9 +64,8 @@ fn test_e2e_native_self_regeneration_functional_equivalence() {
     );
 
     // NativeEmit.ls も同様にパースできること
-    let native_emit_source =
-        std::fs::read_to_string(project_root.join("selfhost/NativeEmit.ls"))
-            .expect("NativeEmit.ls 読み込み失敗");
+    let native_emit_source = std::fs::read_to_string(project_root.join("selfhost/NativeEmit.ls"))
+        .expect("NativeEmit.ls 読み込み失敗");
     let native_emit_parse = lsharp_syntax::parse(&native_emit_source);
     assert!(
         native_emit_parse.is_ok(),
@@ -115,8 +113,7 @@ fn test_e2e_native_self_regeneration_functional_equivalence() {
 /// エクスポートシンボル・データセクション・型セクションの構造一致を検証する。
 #[test]
 fn test_e2e_native_stage_chain_structure() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // --- NativeCodegen.ls の決定的コンパイル ---
     let codegen_path = project_root.join("selfhost/NativeCodegen.ls");
@@ -147,8 +144,7 @@ fn test_e2e_native_stage_chain_structure() {
 
     // --- NativeEmit.ls の決定的コンパイル ---
     let emit_path = project_root.join("selfhost/NativeEmit.ls");
-    let emit_source =
-        std::fs::read_to_string(&emit_path).expect("NativeEmit.ls 読み込み失敗");
+    let emit_source = std::fs::read_to_string(&emit_path).expect("NativeEmit.ls 読み込み失敗");
 
     let emit_ast1 = lsharp_syntax::parse(&emit_source).expect("パース失敗 (1回目)");
     let emit_ast2 = lsharp_syntax::parse(&emit_source).expect("パース失敗 (2回目)");
@@ -220,8 +216,7 @@ fn test_e2e_native_stage_chain_structure() {
 ///   5. 診断メッセージ数 (diagnostics count)
 #[test]
 fn test_e2e_wasm_native_differential_five_observation_points() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // テスト対象ソース
     let test_source = r#"
@@ -239,11 +234,13 @@ fn test_e2e_wasm_native_differential_five_observation_points() {
     assert!(wasm_exit_ok, "Wasm パスの実行が失敗");
 
     // ネイティブパス: NativeCodegen.ls がパース可能であること (exit code = 0 相当)
-    let codegen_source =
-        std::fs::read_to_string(project_root.join("selfhost/NativeCodegen.ls"))
-            .expect("NativeCodegen.ls 読み込み失敗");
+    let codegen_source = std::fs::read_to_string(project_root.join("selfhost/NativeCodegen.ls"))
+        .expect("NativeCodegen.ls 読み込み失敗");
     let native_parse_ok = lsharp_syntax::parse(&codegen_source).is_ok();
-    assert!(native_parse_ok, "ネイティブパスの NativeCodegen.ls パースが失敗");
+    assert!(
+        native_parse_ok,
+        "ネイティブパスの NativeCodegen.ls パースが失敗"
+    );
 
     // --- 観測点 2: 標準出力内容 ---
     let wasm_stdout = wasm_run_result.unwrap();
@@ -263,9 +260,8 @@ fn test_e2e_wasm_native_differential_five_observation_points() {
     let native_target_source =
         std::fs::read_to_string(project_root.join("selfhost/NativeTarget.ls"))
             .expect("NativeTarget.ls 読み込み失敗");
-    let native_emit_source =
-        std::fs::read_to_string(project_root.join("selfhost/NativeEmit.ls"))
-            .expect("NativeEmit.ls 読み込み失敗");
+    let native_emit_source = std::fs::read_to_string(project_root.join("selfhost/NativeEmit.ls"))
+        .expect("NativeEmit.ls 読み込み失敗");
 
     let native_parse_errors: usize = [
         &codegen_source as &str,
@@ -341,8 +337,7 @@ fn test_e2e_wasm_native_differential_five_observation_points() {
 /// 差異が導入された場合、このテストが失敗してレビューを促す。
 #[test]
 fn test_e2e_differential_allowlist_empty() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let allowlist_path = project_root.join("tests/differential-allowlist.yaml");
 
     assert!(
@@ -387,8 +382,7 @@ fn test_e2e_differential_allowlist_empty() {
 /// 同等の構造 (関数定義・ターゲット対応) を持つことを検証する。
 #[test]
 fn test_e2e_wasm_native_differential_structural_parity() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // --- Wasm 決定性: 3回連続コンパイルでバイナリ一致 ---
     let test_source = r#"
@@ -406,8 +400,7 @@ fn test_e2e_wasm_native_differential_structural_parity() {
     // NativeCodegen → NativeTarget → NativeEmit の import chain が閉じていること
     let codegen_src =
         std::fs::read_to_string(project_root.join("selfhost/NativeCodegen.ls")).unwrap();
-    let emit_src =
-        std::fs::read_to_string(project_root.join("selfhost/NativeEmit.ls")).unwrap();
+    let emit_src = std::fs::read_to_string(project_root.join("selfhost/NativeEmit.ls")).unwrap();
 
     // NativeCodegen が NativeTarget を import していること
     assert!(
@@ -427,19 +420,21 @@ fn test_e2e_wasm_native_differential_structural_parity() {
     let type_count = count_wasm_section(&wasm1, 1);
 
     // 最低限のセクション構造
-    assert!(section_count >= 3, "Wasm セクション数が不足: {}", section_count);
+    assert!(
+        section_count >= 3,
+        "Wasm セクション数が不足: {}",
+        section_count
+    );
 
     // ネイティブ側の対応: 3ターゲットを NativeTarget.ls がサポートしていること
     let target_src =
         std::fs::read_to_string(project_root.join("selfhost/NativeTarget.ls")).unwrap();
     assert!(
-        target_src.contains("x86_64-apple-darwin")
-            || target_src.contains("target-x86-64-darwin"),
+        target_src.contains("x86_64-apple-darwin") || target_src.contains("target-x86-64-darwin"),
         "NativeTarget.ls に x86_64-apple-darwin サポートがない"
     );
     assert!(
-        target_src.contains("aarch64-apple-darwin")
-            || target_src.contains("target-aarch64-darwin"),
+        target_src.contains("aarch64-apple-darwin") || target_src.contains("target-aarch64-darwin"),
         "NativeTarget.ls に aarch64-apple-darwin サポートがない"
     );
     assert!(
@@ -534,8 +529,7 @@ fn count_defns(source: &str) -> usize {
 
 /// インラインソースからフルパイプライン実行を試行 (Result 版)
 fn try_compile_and_run(source: &str) -> Result<String, String> {
-    let program = lsharp_syntax::parse(source)
-        .map_err(|e| format!("パースエラー: {:?}", e))?;
+    let program = lsharp_syntax::parse(source).map_err(|e| format!("パースエラー: {:?}", e))?;
     let mut infer = lsharp_types::infer::Infer::new();
     let type_results = infer
         .infer_program(&program)
@@ -546,8 +540,7 @@ fn try_compile_and_run(source: &str) -> Result<String, String> {
         .map_err(|e| format!("IR変換エラー: {:?}", e))?;
     let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
         .map_err(|e| format!("Wasm生成エラー: {:?}", e))?;
-    lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes)
-        .map_err(|e| format!("実行エラー: {:?}", e))
+    lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes).map_err(|e| format!("実行エラー: {:?}", e))
 }
 
 static NATIVE_HARNESS_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -560,16 +553,20 @@ fn run_native_codegen_harness(entry_source: &str) -> String {
     std::fs::create_dir_all(&dir).expect("native fixture dir 作成失敗");
 
     let result = (|| {
-        std::fs::write(dir.join("IR.ls"), selfhost_module("IR.ls"))
-            .expect("IR.ls 書き込み失敗");
-        std::fs::write(dir.join("NativeTarget.ls"), selfhost_module("NativeTarget.ls"))
-            .expect("NativeTarget.ls 書き込み失敗");
-        std::fs::write(dir.join("NativeCodegen.ls"), selfhost_module("NativeCodegen.ls"))
-            .expect("NativeCodegen.ls 書き込み失敗");
+        std::fs::write(dir.join("IR.ls"), selfhost_module("IR.ls")).expect("IR.ls 書き込み失敗");
+        std::fs::write(
+            dir.join("NativeTarget.ls"),
+            selfhost_module("NativeTarget.ls"),
+        )
+        .expect("NativeTarget.ls 書き込み失敗");
+        std::fs::write(
+            dir.join("NativeCodegen.ls"),
+            selfhost_module("NativeCodegen.ls"),
+        )
+        .expect("NativeCodegen.ls 書き込み失敗");
         std::fs::write(dir.join("NativeEmit.ls"), selfhost_module("NativeEmit.ls"))
             .expect("NativeEmit.ls 書き込み失敗");
-        std::fs::write(dir.join("Main.ls"), entry_source)
-            .expect("Main.ls 書き込み失敗");
+        std::fs::write(dir.join("Main.ls"), entry_source).expect("Main.ls 書き込み失敗");
         compile_and_run_file(&dir.join("Main.ls"))
     })();
 
@@ -585,12 +582,14 @@ fn run_native_linker_harness(entry_source: &str) -> String {
     std::fs::create_dir_all(&dir).expect("native linker fixture dir 作成失敗");
 
     let result = (|| {
-        std::fs::write(dir.join("NativeTarget.ls"), selfhost_module("NativeTarget.ls"))
-            .expect("NativeTarget.ls 書き込み失敗");
+        std::fs::write(
+            dir.join("NativeTarget.ls"),
+            selfhost_module("NativeTarget.ls"),
+        )
+        .expect("NativeTarget.ls 書き込み失敗");
         std::fs::write(dir.join("Linker.ls"), selfhost_module("Linker.ls"))
             .expect("Linker.ls 書き込み失敗");
-        std::fs::write(dir.join("Main.ls"), entry_source)
-            .expect("Main.ls 書き込み失敗");
+        std::fs::write(dir.join("Main.ls"), entry_source).expect("Main.ls 書き込み失敗");
         compile_and_run_file(&dir.join("Main.ls"))
     })();
 
@@ -608,8 +607,7 @@ fn run_native_linker_harness(entry_source: &str) -> String {
 /// 戻り値: ネイティブコード バイト列が0でないサイズであること
 #[test]
 fn test_native_codegen_produces_executable_bytecode() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // --- セットアップ: NativeCodegen.ls を Wasm にコンパイルし、L# 関数として実行可能にする ---
     let codegen_source = std::fs::read_to_string(project_root.join("selfhost/NativeCodegen.ls"))
@@ -622,12 +620,12 @@ fn test_native_codegen_produces_executable_bytecode() {
     assert!(parse_result.is_ok(), "NativeCodegen.ls パース失敗");
 
     let program = parse_result.unwrap();
-    
+
     // NativeCodegen に必要な関数が定義されていること
     let has_generate_native = codegen_source.contains("(defn generate-native");
     let has_codegen_ir_instr = codegen_source.contains("(defn codegen-ir-instr");
     let has_emit_native = codegen_source.contains("(defn emit-native");
-    
+
     assert!(has_generate_native, "generate-native 関数が欠落");
     assert!(has_codegen_ir_instr, "codegen-ir-instr 関数が欠落");
     assert!(has_emit_native, "emit-native 関数が欠落");
@@ -640,7 +638,10 @@ fn test_native_codegen_produces_executable_bytecode() {
         decl_count
     );
 
-    eprintln!("✓ NativeCodegen.ls の機械語生成ロジックが整備されている (宣言数: {})", decl_count);
+    eprintln!(
+        "✓ NativeCodegen.ls の機械語生成ロジックが整備されている (宣言数: {})",
+        decl_count
+    );
 }
 
 /// NATIVE-REAL-02: ネイティブオブジェクトファイル生成が有効なヘッダーを生成すること
@@ -648,8 +649,7 @@ fn test_native_codegen_produces_executable_bytecode() {
 /// 実行パリティの前提: Mach-O / ELF ヘッダーが正しくフォーマットされていること
 #[test]
 fn test_native_emit_generates_valid_object_headers() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // --- NativeEmit.ls がヘッダー生成関数を持つこと ---
     let emit_source = std::fs::read_to_string(project_root.join("selfhost/NativeEmit.ls"))
@@ -662,7 +662,7 @@ fn test_native_emit_generates_valid_object_headers() {
     let has_emit_macho_header = emit_source.contains("(defn emit-macho-header");
     let has_emit_elf_header = emit_source.contains("(defn emit-elf-header");
     let has_emit_object = emit_source.contains("(defn emit-object");
-    
+
     assert!(has_emit_macho_header, "emit-macho-header 関数が欠落");
     assert!(has_emit_elf_header, "emit-elf-header 関数が欠落");
     assert!(has_emit_object, "emit-object 関数が欠落");
@@ -670,7 +670,7 @@ fn test_native_emit_generates_valid_object_headers() {
     // Mach-O マジックナンバーと ELF マジックナンバーの定数が定義されていること
     let has_macho_magic = emit_source.contains("0xFEEDFACF") || emit_source.contains("4277009103");
     let has_elf_magic = emit_source.contains("0x7F") && emit_source.contains("127");
-    
+
     assert!(has_macho_magic, "Mach-O マジック定数が欠落");
     assert!(has_elf_magic, "ELF マジック定数が欠落");
 
@@ -683,8 +683,7 @@ fn test_native_emit_generates_valid_object_headers() {
 /// (実際にバイナリを実行するのではなく、パイプラインが完結して出力を生成することをテスト)
 #[test]
 fn test_native_pipeline_complete_chain() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // --- NativeTarget.ls: ターゲット記述子をサポート ---
     let target_src = std::fs::read_to_string(project_root.join("selfhost/NativeTarget.ls"))
@@ -694,9 +693,18 @@ fn test_native_pipeline_complete_chain() {
     assert!(target_parse.is_ok(), "NativeTarget.ls パース失敗");
 
     // ターゲット生成関数
-    assert!(target_src.contains("(defn make-target"), "make-target 関数が欠落");
-    assert!(target_src.contains("(defn target-arch"), "target-arch 関数が欠落");
-    assert!(target_src.contains("(defn target-triple"), "target-triple 関数が欠落");
+    assert!(
+        target_src.contains("(defn make-target"),
+        "make-target 関数が欠落"
+    );
+    assert!(
+        target_src.contains("(defn target-arch"),
+        "target-arch 関数が欠落"
+    );
+    assert!(
+        target_src.contains("(defn target-triple"),
+        "target-triple 関数が欠落"
+    );
 
     // --- NativeCodegen.ls: ネイティブコード生成 ---
     let codegen_src = std::fs::read_to_string(project_root.join("selfhost/NativeCodegen.ls"))
@@ -706,9 +714,15 @@ fn test_native_pipeline_complete_chain() {
     assert!(codegen_parse.is_ok(), "NativeCodegen.ls パース失敗");
 
     // IR → ネイティブ命令列エンコーダ
-    assert!(codegen_src.contains("(defn emit-mov-imm64"), "emit-mov-imm64 が欠落");
+    assert!(
+        codegen_src.contains("(defn emit-mov-imm64"),
+        "emit-mov-imm64 が欠落"
+    );
     assert!(codegen_src.contains("(defn emit-ret"), "emit-ret が欠落");
-    assert!(codegen_src.contains("(defn codegen-ir-instr"), "codegen-ir-instr が欠落");
+    assert!(
+        codegen_src.contains("(defn codegen-ir-instr"),
+        "codegen-ir-instr が欠落"
+    );
 
     // --- NativeEmit.ls: オブジェクトファイル生成 ---
     let emit_src = std::fs::read_to_string(project_root.join("selfhost/NativeEmit.ls"))
@@ -723,12 +737,16 @@ fn test_native_pipeline_complete_chain() {
 
     // --- パイプラインの依存関係整合性 ---
     // NativeCodegen → NativeTarget
-    assert!(codegen_src.contains("(import NativeTarget)"), 
-            "NativeCodegen.ls が NativeTarget を import していない");
-    
+    assert!(
+        codegen_src.contains("(import NativeTarget)"),
+        "NativeCodegen.ls が NativeTarget を import していない"
+    );
+
     // NativeEmit → NativeTarget
-    assert!(emit_src.contains("(import NativeTarget)"),
-            "NativeEmit.ls が NativeTarget を import していない");
+    assert!(
+        emit_src.contains("(import NativeTarget)"),
+        "NativeEmit.ls が NativeTarget を import していない"
+    );
 
     eprintln!("✓ ネイティブパイプライン (Target → Codegen → Emit) チェーン確認");
 }
@@ -740,34 +758,35 @@ fn test_native_pipeline_complete_chain() {
 /// Wasm 経由で実行してネイティブコード生成・出力が機能することを確認する。
 #[test]
 fn test_native_codegen_emit_standalone_execution() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // --- NativeTarget を簡略版で実装 (テスト用) ---
     // 実際にはこれらを統合して実行する必要があるが、
     // ここでは独立した単体テストとして、ネイティブコード生成パスが
     // 実行可能であることをテストする
-    
+
     // NativeCodegen.ls の main() 関数が実行されたとき、
     // i64.const 42 の IR を ネイティブコードに変換して、
     // そのバイト数を print すること
-    
+
     let codegen_source = std::fs::read_to_string(project_root.join("selfhost/NativeCodegen.ls"))
         .expect("NativeCodegen.ls 読み込み失敗");
 
     // main() が定義されていること
-    assert!(codegen_source.contains("(defn main []"), 
-            "NativeCodegen.ls に main 関数が欠落");
+    assert!(
+        codegen_source.contains("(defn main []"),
+        "NativeCodegen.ls に main 関数が欠落"
+    );
 
     // --- テスト: NativeCodegen.ls 単独で実行してネイティブコード生成が機能することを確認 ---
     // 通常は NativeTarget.ls への import があるため直接実行できないが、
     // 代わりにモジュール内の generate-native が正しく構造化されていることをテストする
-    
+
     let has_vector_new = codegen_source.contains("vector-new");
     let has_vector_push = codegen_source.contains("vector-push");
     let has_ref_new = codegen_source.contains("ref-new");
     let has_ref_get = codegen_source.contains("ref-get");
-    
+
     assert!(has_vector_new, "vector-new の使用がない (基本データ構造)");
     assert!(has_vector_push, "vector-push の使用がない (コード生成)");
     assert!(has_ref_new, "ref-new の使用がない (可変参照)");
@@ -780,7 +799,7 @@ fn test_native_codegen_emit_standalone_execution() {
 ///
 /// **ACTUAL EXECUTION PARITY TEST**: Wasm パスと ネイティブパス両方で実行して
 /// 結果が一致することを確認する。
-/// 
+///
 /// ネイティブ側はまだ selfhost で完全実装されていないため、
 /// このテストでは:
 /// 1. Wasm側: double(21) = 42 を実行
@@ -797,7 +816,7 @@ fn test_wasm_native_execution_parity_double() {
     // --- Wasm パス: 実行して結果確認 ---
     let wasm_result = try_compile_and_run(test_source);
     assert!(wasm_result.is_ok(), "Wasm実行失敗: {:?}", wasm_result.err());
-    
+
     let wasm_output = wasm_result.unwrap();
     assert_eq!(wasm_output.trim(), "42", "Wasm 出力が期待値と異なる");
 
@@ -806,9 +825,8 @@ fn test_wasm_native_execution_parity_double() {
     // --- Native パス: ネイティブコード生成が実行可能であること ---
     // 実装側: L# の selfhost で NativeCodegen/Emit 呼び出し
     // テスト側: これらが Wasm 経由で実行できることを確認
-    
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // 必要なモジュール確認
     let modules = [
@@ -842,31 +860,32 @@ fn test_native_codegen_real_execution() {
     // NativeCodegen.ls を単独で実行
     // このモジュールは generate-native() 関数を持つ
     // main() は i64.const 42 の IR をネイティブコードに変換してサイズを print する
-    
+
     let native_codegen_src = std::fs::read_to_string(
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../selfhost/NativeCodegen.ls")
-    ).expect("NativeCodegen.ls 読み込み失敗");
+            .join("../../selfhost/NativeCodegen.ls"),
+    )
+    .expect("NativeCodegen.ls 読み込み失敗");
 
     // NativeCodegen は NativeTarget を import しているため、
     // 単独で実行するには両方を結合する必要がある
     let native_target_src = std::fs::read_to_string(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../selfhost/NativeTarget.ls")
-    ).expect("NativeTarget.ls 読み込み失敗");
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost/NativeTarget.ls"),
+    )
+    .expect("NativeTarget.ls 読み込み失敗");
 
     // 2つのモジュールを結合してコンパイル
     let combined = format!("{}\n{}", native_target_src, native_codegen_src);
 
     let result = try_compile_and_run(&combined);
-    
+
     // NativeCodegen.main() はネイティブコードのバイト数を print する
     // i64.const 42 をパイプラインで処理したバイト数が出力されるはず (10バイト以上)
     match result {
         Ok(output) => {
             eprintln!("✓ NativeCodegen.ls executed successfully");
             eprintln!("  Native code size: {} bytes", output.trim());
-            
+
             // バイト数をパースして妥当性チェック
             if let Ok(size) = output.trim().parse::<usize>() {
                 assert!(size > 0, "ネイティブコード生成がバイト数 0 を出力");
@@ -913,14 +932,24 @@ fn test_native_codegen_emits_full_const_instruction_bytes() {
     );
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 10, "native const bytes 出力が不足: {:?}", lines);
-    assert_eq!(lines[0], "16", "push/movrbp/const/pop/ret で 16 bytes であるべき");
+    assert!(
+        lines.len() >= 10,
+        "native const bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "16",
+        "push/movrbp/const/pop/ret で 16 bytes であるべき"
+    );
     assert_eq!(lines[1], "85", "先頭は push rbp (0x55)");
     assert_eq!(lines[2], "72", "2 byte 目は REX.W (0x48)");
     assert_eq!(lines[3], "137", "3 byte 目は MOV opcode (0x89)");
     assert_eq!(lines[4], "229", "4 byte 目は mov rbp,rsp suffix (0xE5)");
     assert_eq!(lines[5], "72", "const 命令の先頭は REX.W (0x48)");
-    assert_eq!(lines[6], "184", "const 命令の opcode は MOV rax, imm64 (0xB8)");
+    assert_eq!(
+        lines[6], "184",
+        "const 命令の opcode は MOV rax, imm64 (0xB8)"
+    );
     assert_eq!(lines[7], "42", "const 命令の即値下位 byte は 42");
     assert_eq!(lines[8], "93", "末尾 2 byte 手前は pop rbp (0x5D)");
     assert_eq!(lines[9], "195", "末尾は ret (0xC3)");
@@ -954,8 +983,15 @@ fn test_native_codegen_processes_multiple_ir_instructions() {
     );
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 6, "multi native bytes 出力が不足: {:?}", lines);
-    assert_eq!(lines[0], "19", "const + add まで含めると 19 bytes であるべき");
+    assert!(
+        lines.len() >= 6,
+        "multi native bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "19",
+        "const + add まで含めると 19 bytes であるべき"
+    );
     assert_eq!(lines[1], "72", "2 命令目 add の先頭は REX.W (0x48)");
     assert_eq!(lines[2], "1", "2 命令目 add の opcode は 0x01");
     assert_eq!(lines[3], "200", "2 命令目 add の ModRM は 0xC8");
@@ -996,9 +1032,19 @@ fn test_native_emit_object_keeps_full_native_payload() {
     );
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 10, "native object bytes 出力が不足: {:?}", lines);
-    assert_eq!(lines[0], "16", "const native payload は 16 bytes であるべき");
-    assert_eq!(lines[1], "32", "Mach-O header 16 + native payload 16 = 32 bytes であるべき");
+    assert!(
+        lines.len() >= 10,
+        "native object bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "16",
+        "const native payload は 16 bytes であるべき"
+    );
+    assert_eq!(
+        lines[1], "32",
+        "Mach-O header 16 + native payload 16 = 32 bytes であるべき"
+    );
     assert_eq!(lines[2], "207", "object 先頭は Mach-O magic 0xCF");
     assert_eq!(lines[3], "250", "object 2 byte 目は Mach-O magic 0xFA");
     assert_eq!(lines[4], "237", "object 3 byte 目は Mach-O magic 0xED");
@@ -1042,9 +1088,19 @@ fn test_native_emit_elf_object_keeps_full_native_payload() {
     );
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 10, "ELF object bytes 出力が不足: {:?}", lines);
-    assert_eq!(lines[0], "16", "const native payload は 16 bytes であるべき");
-    assert_eq!(lines[1], "24", "ELF header 8 + native payload 16 = 24 bytes であるべき");
+    assert!(
+        lines.len() >= 10,
+        "ELF object bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "16",
+        "const native payload は 16 bytes であるべき"
+    );
+    assert_eq!(
+        lines[1], "24",
+        "ELF header 8 + native payload 16 = 24 bytes であるべき"
+    );
     assert_eq!(lines[2], "127", "ELF 先頭は 0x7F");
     assert_eq!(lines[3], "69", "ELF 2 byte 目は 'E'");
     assert_eq!(lines[4], "76", "ELF 3 byte 目は 'L'");
@@ -1091,21 +1147,34 @@ fn test_native_emit_object_headers_cover_all_three_targets() {
     );
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 15, "3 target object summary 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 15,
+        "3 target object summary 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "32", "target 1 Mach-O object は 32 bytes");
     assert_eq!(lines[1], "207", "target 1 先頭 byte は Mach-O magic 0xCF");
     assert_eq!(lines[2], "7", "target 1 cpu byte は x86_64=0x07");
-    assert_eq!(lines[3], "93", "target 1 payload 末尾 2 byte 手前は pop rbp");
+    assert_eq!(
+        lines[3], "93",
+        "target 1 payload 末尾 2 byte 手前は pop rbp"
+    );
     assert_eq!(lines[4], "195", "target 1 payload 末尾は ret");
     assert_eq!(lines[5], "32", "target 2 Mach-O object も 32 bytes");
     assert_eq!(lines[6], "207", "target 2 先頭 byte も Mach-O magic 0xCF");
     assert_eq!(lines[7], "12", "target 2 cpu byte は arm64=0x0C");
-    assert_eq!(lines[8], "93", "target 2 payload 末尾 2 byte 手前は pop rbp");
+    assert_eq!(
+        lines[8], "93",
+        "target 2 payload 末尾 2 byte 手前は pop rbp"
+    );
     assert_eq!(lines[9], "195", "target 2 payload 末尾は ret");
     assert_eq!(lines[10], "24", "target 3 ELF object は 24 bytes");
     assert_eq!(lines[11], "127", "target 3 先頭 byte は ELF magic 0x7F");
     assert_eq!(lines[12], "2", "target 3 header byte 4 は ELFCLASS64=2");
-    assert_eq!(lines[13], "93", "target 3 payload 末尾 2 byte 手前は pop rbp");
+    assert_eq!(
+        lines[13], "93",
+        "target 3 payload 末尾 2 byte 手前は pop rbp"
+    );
     assert_eq!(lines[14], "195", "target 3 payload 末尾は ret");
 }
 
@@ -1146,15 +1215,24 @@ fn test_native_linker_response_keeps_full_object_list() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(lines.len() >= 10, "linker response 出力が不足: {:?}", lines);
-    assert_eq!(lines[0], "7", "-o, output, object 5 件で args は 7 要素であるべき");
-    assert_eq!(lines[1], "14", "7 要素の response file は 14 bytes であるべき");
+    assert_eq!(
+        lines[0], "7",
+        "-o, output, object 5 件で args は 7 要素であるべき"
+    );
+    assert_eq!(
+        lines[1], "14",
+        "7 要素の response file は 14 bytes であるべき"
+    );
     assert_eq!(lines[2], "1", "先頭 arg は -o フラグ sentinel");
     assert_eq!(lines[3], "99", "2 番目 arg は output 値");
     assert_eq!(lines[4], "40", "6 番目 arg は 4 個目 object");
     assert_eq!(lines[5], "50", "7 番目 arg は 5 個目 object");
     assert_eq!(lines[6], "40", "response 後半にも 4 個目 object が残ること");
     assert_eq!(lines[7], "10", "response の各 arg は改行区切りされること");
-    assert_eq!(lines[8], "50", "response 末尾直前にも 5 個目 object が残ること");
+    assert_eq!(
+        lines[8], "50",
+        "response 末尾直前にも 5 個目 object が残ること"
+    );
     assert_eq!(lines[9], "10", "response 末尾は改行で終わること");
 }
 
@@ -1189,7 +1267,11 @@ fn test_native_linker_response_consistency_across_three_targets() {
     );
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 18, "3 target linker summary 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 18,
+        "3 target linker summary 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "1", "target 1 linker は ld64");
     assert_eq!(lines[1], "8", "target 1 response len は 8 bytes");
     assert_eq!(lines[2], "1", "target 1 response 先頭は -o sentinel");
@@ -1236,16 +1318,38 @@ fn test_native_linker_multi_object_response_consistency_across_three_targets() {
     );
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 9, "3 target multi response 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 9,
+        "3 target multi response 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "8", "target 1 multi response len は 8 bytes");
-    assert_eq!(lines[1], "32", "target 1 multi response は object 1 size=32 を含む");
-    assert_eq!(lines[2], "32", "target 1 multi response は object 2 size=32 を含む");
+    assert_eq!(
+        lines[1], "32",
+        "target 1 multi response は object 1 size=32 を含む"
+    );
+    assert_eq!(
+        lines[2], "32",
+        "target 1 multi response は object 2 size=32 を含む"
+    );
     assert_eq!(lines[3], "8", "target 2 multi response len も 8 bytes");
-    assert_eq!(lines[4], "32", "target 2 multi response は object 1 size=32 を含む");
-    assert_eq!(lines[5], "32", "target 2 multi response は object 2 size=32 を含む");
+    assert_eq!(
+        lines[4], "32",
+        "target 2 multi response は object 1 size=32 を含む"
+    );
+    assert_eq!(
+        lines[5], "32",
+        "target 2 multi response は object 2 size=32 を含む"
+    );
     assert_eq!(lines[6], "8", "target 3 multi response len も 8 bytes");
-    assert_eq!(lines[7], "24", "target 3 multi response は object 1 size=24 を含む");
-    assert_eq!(lines[8], "24", "target 3 multi response は object 2 size=24 を含む");
+    assert_eq!(
+        lines[7], "24",
+        "target 3 multi response は object 1 size=24 を含む"
+    );
+    assert_eq!(
+        lines[8], "24",
+        "target 3 multi response は object 2 size=24 を含む"
+    );
 }
 
 /// NATIVE-REAL-10c: 同一 IR からの object emission が 3 target で決定的であること
@@ -1289,13 +1393,32 @@ fn test_native_emit_object_is_deterministic_across_three_targets() {
     );
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 30, "deterministic object summary 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 30,
+        "deterministic object summary 出力が不足: {:?}",
+        lines
+    );
     for chunk in lines.chunks_exact(10) {
-        assert_eq!(chunk[0], chunk[1], "object len が repeated emission で変化した");
-        assert_eq!(chunk[2], chunk[3], "object byte0 が repeated emission で変化した");
-        assert_eq!(chunk[4], chunk[5], "object byte4 が repeated emission で変化した");
-        assert_eq!(chunk[6], chunk[7], "object tail-1 が repeated emission で変化した");
-        assert_eq!(chunk[8], chunk[9], "object tail が repeated emission で変化した");
+        assert_eq!(
+            chunk[0], chunk[1],
+            "object len が repeated emission で変化した"
+        );
+        assert_eq!(
+            chunk[2], chunk[3],
+            "object byte0 が repeated emission で変化した"
+        );
+        assert_eq!(
+            chunk[4], chunk[5],
+            "object byte4 が repeated emission で変化した"
+        );
+        assert_eq!(
+            chunk[6], chunk[7],
+            "object tail-1 が repeated emission で変化した"
+        );
+        assert_eq!(
+            chunk[8], chunk[9],
+            "object tail が repeated emission で変化した"
+        );
     }
     assert_eq!(lines[0], "32", "target 1 object len は 32 bytes");
     assert_eq!(lines[10], "32", "target 2 object len は 32 bytes");
@@ -1336,13 +1459,32 @@ fn test_native_linker_response_is_deterministic_across_three_targets() {
     );
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 30, "deterministic linker summary 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 30,
+        "deterministic linker summary 出力が不足: {:?}",
+        lines
+    );
     for chunk in lines.chunks_exact(10) {
-        assert_eq!(chunk[0], chunk[1], "response len が repeated generation で変化した");
-        assert_eq!(chunk[2], chunk[3], "response byte0 が repeated generation で変化した");
-        assert_eq!(chunk[4], chunk[5], "response byte2 が repeated generation で変化した");
-        assert_eq!(chunk[6], chunk[7], "response byte4 が repeated generation で変化した");
-        assert_eq!(chunk[8], chunk[9], "response byte6 が repeated generation で変化した");
+        assert_eq!(
+            chunk[0], chunk[1],
+            "response len が repeated generation で変化した"
+        );
+        assert_eq!(
+            chunk[2], chunk[3],
+            "response byte0 が repeated generation で変化した"
+        );
+        assert_eq!(
+            chunk[4], chunk[5],
+            "response byte2 が repeated generation で変化した"
+        );
+        assert_eq!(
+            chunk[6], chunk[7],
+            "response byte4 が repeated generation で変化した"
+        );
+        assert_eq!(
+            chunk[8], chunk[9],
+            "response byte6 が repeated generation で変化した"
+        );
     }
     assert_eq!(lines[0], "8", "target 1 response len は 8 bytes");
     assert_eq!(lines[10], "8", "target 2 response len は 8 bytes");

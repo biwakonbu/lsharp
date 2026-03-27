@@ -1,8 +1,7 @@
 use tower_lsp::lsp_types::*;
 
 use crate::util::{
-    collect_definitions, collect_usages, offset_to_position, position_to_offset,
-    symbol_at_position,
+    collect_definitions, collect_usages, offset_to_position, position_to_offset, symbol_at_position,
 };
 
 /// ソースコード内の指定位置にあるシンボルの全参照箇所を検索する
@@ -12,11 +11,7 @@ use crate::util::{
 /// - include_declaration: 定義箇所を含めるかどうか
 ///
 /// 戻り値: 参照箇所の LSP Range のリスト
-pub fn find_references(
-    source: &str,
-    position: Position,
-    include_declaration: bool,
-) -> Vec<Range> {
+pub fn find_references(source: &str, position: Position, include_declaration: bool) -> Vec<Range> {
     let offset = match position_to_offset(source, position) {
         Some(o) => o,
         None => return Vec::new(),
@@ -86,11 +81,7 @@ mod tests {
         let pos = Position::new(0, 9);
         let refs = find_references(source, pos, true);
         // 定義 1 箇所 + 使用 2 箇所 = 3 箇所
-        assert_eq!(
-            refs.len(),
-            3,
-            "x の参照は 3 箇所あるべき (定義+使用*2)"
-        );
+        assert_eq!(refs.len(), 3, "x の参照は 3 箇所あるべき (定義+使用*2)");
     }
 
     #[test]
@@ -101,11 +92,7 @@ mod tests {
         let pos = Position::new(0, 17);
         let refs = find_references(source, pos, true);
         // 定義 1 箇所 + 使用 2 箇所 = 3 箇所
-        assert_eq!(
-            refs.len(),
-            3,
-            "a の参照は 3 箇所あるべき (定義+使用*2)"
-        );
+        assert_eq!(refs.len(), 3, "a の参照は 3 箇所あるべき (定義+使用*2)");
     }
 
     #[test]
@@ -115,11 +102,7 @@ mod tests {
         let pos = Position::new(0, 9);
         let refs = find_references(source, pos, false);
         // 使用 2 箇所のみ
-        assert_eq!(
-            refs.len(),
-            2,
-            "定義除外で x の参照は 2 箇所あるべき"
-        );
+        assert_eq!(refs.len(), 2, "定義除外で x の参照は 2 箇所あるべき");
     }
 
     #[test]
@@ -132,10 +115,7 @@ mod tests {
         // "f" は定義されているが、使用箇所はない → 定義のみ
         // (空白なら空)
         // offset 5 = 'f' → find_references は定義を含むので 1
-        assert!(
-            refs.len() <= 1,
-            "未使用シンボルの参照は定義のみ"
-        );
+        assert!(refs.len() <= 1, "未使用シンボルの参照は定義のみ");
     }
 
     #[test]

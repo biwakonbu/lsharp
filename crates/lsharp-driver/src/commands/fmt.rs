@@ -39,11 +39,10 @@ pub fn check_format(source: &str) -> Result<FmtResult, String> {
 
 /// fmt サブコマンドのエントリポイント
 pub fn cmd_fmt(file: &Path, check: bool, write: bool) -> miette::Result<()> {
-    let source = std::fs::read_to_string(file)
-        .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let source =
+        std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
 
-    let formatted = format_source(&source)
-        .map_err(|e| miette::miette!("フォーマット失敗: {e}"))?;
+    let formatted = format_source(&source).map_err(|e| miette::miette!("フォーマット失敗: {e}"))?;
 
     if check {
         // --check モード: 差分があれば非ゼロ終了

@@ -4,14 +4,15 @@
 //! - 移行中: 環境変数 `LSHARP_PATH` で selfhost / 外部コンパイラ executable またはその配置ディレクトリを指せる。
 //! - 検証: `scripts/ci/default-path-smoke.sh` が `target/debug/lsharp` のみで `check` / `compile` を通す。
 
-mod commands;
 mod api_doc;
+mod commands;
 mod config;
 mod error;
 mod lockfile;
 mod mcp_server;
 
 use clap::{Parser, Subcommand};
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -117,6 +118,32 @@ enum Command {
     /// 依存パッケージをインストール
     Install,
 
+    /// パッケージ内容を検証し api.json を生成
+    CheckPackage {
+        /// 比較対象の旧 api.json
+        #[arg(long)]
+        previous_api: Option<PathBuf>,
+
+        /// 比較対象の旧 Git tag
+        #[arg(long)]
+        previous_tag: Option<String>,
+    },
+
+    /// 2 つの api.json を比較
+    ApiDiff {
+        /// 旧 api.json または Git tag
+        old: String,
+
+        /// 新 api.json または Git tag
+        new: String,
+    },
+
+    /// インストール済みパッケージ情報を表示
+    Info {
+        /// パッケージ名
+        package: String,
+    },
+
     /// 対話的 REPL (Read-Eval-Print Loop)
     Repl,
 
@@ -169,8 +196,7 @@ fn main() -> miette::Result<()> {
             let source = std::fs::read_to_string(&file)
                 .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
 
-            let program = lsharp_syntax::parse(&source)
-                .map_err(|e| miette::miette!("{e}"))?;
+            let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{e}"))?;
 
             if ast {
                 println!("{program:#?}");
@@ -179,25 +205,20 @@ fn main() -> miette::Result<()> {
             }
         }
 
-        Command::Check { file, emit_knowledge } => {
+        Command::Check {
+            file,
+            emit_knowledge,
+        } => {
             let source = std::fs::read_to_string(&file)
                 .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
 
-            let program = lsharp_syntax::parse(&source)
-                .map_err(|e| miette::miette!("{e}"))?;
+            let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{e}"))?;
 
             let mut infer = lsharp_types::infer::Infer::new();
 
-            // import 宣言を再帰的に解決: 同ディレクトリ内の .ls ファイルを探索し、
-            // import されたモジュールの定義を先に型推論して external_types に注入する
-            let parent_dir = file.parent().unwrap_or(std::path::Path::new("."));
+            // import 宣言を再帰的に解決し、可視な外部シンボルだけを注入する
             let mut resolved_modules = std::collections::HashSet::new();
-            resolve_imports_recursive(
-                &program,
-                parent_dir,
-                &mut infer,
-                &mut resolved_modules,
-            );
+            resolve_imports_recursive(&program, &file, &mut infer, &mut resolved_modules)?;
 
             let results = infer
                 .infer_program(&program)
@@ -205,7 +226,8 @@ fn main() -> miette::Result<()> {
 
             if emit_knowledge {
                 let knowledge = build_knowledge(&program, &results, &infer);
-                let json = knowledge.to_json()
+                let json = knowledge
+                    .to_json()
                     .map_err(|e| miette::miette!("Knowledge JSON 生成失敗: {e}"))?;
                 println!("{json}");
                 return Ok(());
@@ -266,13 +288,10 @@ fn main() -> miette::Result<()> {
             let doc_status = lsharp_docs::tracker::load_doc_status(status_path);
 
             // メタデータ検証
-            let program = lsharp_syntax::parse(&source)
-                .map_err(|e| miette::miette!("{e}"))?;
+            let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{e}"))?;
             let metadata_diagnostics = lsharp_types::metadata_check::check_metadata(&program);
-            let diag_strings: Vec<String> = metadata_diagnostics
-                .iter()
-                .map(|d| d.to_string())
-                .collect();
+            let diag_strings: Vec<String> =
+                metadata_diagnostics.iter().map(|d| d.to_string()).collect();
 
             // レビューチェックポイント生成
             let checkpoint = lsharp_docs::review::generate_review(
@@ -295,7 +314,11 @@ fn main() -> miette::Result<()> {
             println!("'{name}' を確認済みとしてマーク ({reviewer})");
         }
 
-        Command::DocCheck { file, skip_doc_review, emit_trailers } => {
+        Command::DocCheck {
+            file,
+            skip_doc_review,
+            emit_trailers,
+        } => {
             if skip_doc_review {
                 println!("ドキュメントレビューをスキップしました");
                 return Ok(());
@@ -305,8 +328,7 @@ fn main() -> miette::Result<()> {
                 .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
 
             // パースとメタデータ検証
-            let program = lsharp_syntax::parse(&source)
-                .map_err(|e| miette::miette!("{e}"))?;
+            let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{e}"))?;
             let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
 
             // ドキュメントステータス確認
@@ -345,15 +367,13 @@ fn main() -> miette::Result<()> {
 
             if emit_trailers {
                 // コミットトレイラー出力
-                let trailer_status = if has_errors {
-                    "Failed"
-                } else {
-                    "Passed"
-                };
+                let trailer_status = if has_errors { "Failed" } else { "Passed" };
                 println!("Doc-Review-Status: {trailer_status}");
 
                 // レビュー済みエントリのレビュー者を収集
-                let mut reviewers: Vec<String> = doc_status.entries.values()
+                let mut reviewers: Vec<String> = doc_status
+                    .entries
+                    .values()
                     .filter_map(|entry| entry.reviewed_by.clone())
                     .collect();
                 reviewers.sort();
@@ -374,6 +394,38 @@ fn main() -> miette::Result<()> {
 
         Command::Install => {
             cmd_install()?;
+        }
+
+        Command::CheckPackage {
+            previous_api,
+            previous_tag,
+        } => {
+            let summary = cmd_check_package_in(
+                &std::env::current_dir()
+                    .map_err(|e| miette::miette!("current_dir 取得失敗: {e}"))?,
+                previous_api.as_deref(),
+                previous_tag.as_deref(),
+            )?;
+            print!("{summary}");
+        }
+
+        Command::ApiDiff { old, new } => {
+            let summary = cmd_api_diff_specs(
+                &std::env::current_dir()
+                    .map_err(|e| miette::miette!("current_dir 取得失敗: {e}"))?,
+                &old,
+                &new,
+            )?;
+            print!("{summary}");
+        }
+
+        Command::Info { package } => {
+            let summary = cmd_info_in(
+                &std::env::current_dir()
+                    .map_err(|e| miette::miette!("current_dir 取得失敗: {e}"))?,
+                &package,
+            )?;
+            print!("{summary}");
         }
 
         Command::Repl => {
@@ -413,13 +465,12 @@ fn maybe_delegate_to_external_compiler() -> miette::Result<()> {
     }
 
     let delegate_path = resolve_external_lsharp_path(&configured_path)?;
-    let current_exe = std::env::current_exe()
-        .map_err(|e| miette::miette!("current exe の取得に失敗: {e}"))?;
+    let current_exe =
+        std::env::current_exe().map_err(|e| miette::miette!("current exe の取得に失敗: {e}"))?;
 
-    let delegate_canonical = std::fs::canonicalize(&delegate_path)
-        .unwrap_or_else(|_| delegate_path.clone());
-    let current_canonical = std::fs::canonicalize(&current_exe)
-        .unwrap_or(current_exe);
+    let delegate_canonical =
+        std::fs::canonicalize(&delegate_path).unwrap_or_else(|_| delegate_path.clone());
+    let current_canonical = std::fs::canonicalize(&current_exe).unwrap_or(current_exe);
     if delegate_canonical == current_canonical {
         return Err(miette::miette!(
             "LSHARP_PATH が現在の lsharp バイナリ自身を指しています: {}",
@@ -496,26 +547,24 @@ fn resolve_external_lsharp_path(configured_path: &std::path::Path) -> miette::Re
 
 /// P3-3: メタデータテスト実行 (:example, :invariant の自動検証)
 fn cmd_test(file: &PathBuf) -> miette::Result<()> {
-    let source = std::fs::read_to_string(file)
-        .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let source =
+        std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
 
     // パース
-    let program = lsharp_syntax::parse(&source)
-        .map_err(|e| miette::miette!("{e}"))?;
+    let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{e}"))?;
 
     // テストケース生成
     let tests = lsharp_types::metadata_check::generate_tests(&program);
 
     if tests.is_empty() {
-        println!("テストなし: {} にはテスト対象のメタデータがありません", file.display());
+        println!(
+            "テストなし: {} にはテスト対象のメタデータがありません",
+            file.display()
+        );
         return Ok(());
     }
 
-    println!(
-        "テスト実行: {} ({} テスト)",
-        file.display(),
-        tests.len()
-    );
+    println!("テスト実行: {} ({} テスト)", file.display(), tests.len());
 
     // テスト用プログラムを生成
     let test_source = lsharp_wasm::test_runner::generate_test_program(&program, &tests);
@@ -538,8 +587,8 @@ fn cmd_test(file: &PathBuf) -> miette::Result<()> {
         .map_err(|e| miette::miette!("テストプログラムの Wasm 生成に失敗: {e}"))?;
 
     // WASI 環境で実行
-    let output = run_wasm_wasi(&wasm_bytes)
-        .map_err(|e| miette::miette!("テスト実行に失敗: {e}"))?;
+    let output =
+        run_wasm_wasi(&wasm_bytes).map_err(|e| miette::miette!("テスト実行に失敗: {e}"))?;
 
     // 結果を解析
     let results = lsharp_wasm::test_runner::parse_test_output(&output, &tests, &program);
@@ -573,9 +622,7 @@ fn cmd_test(file: &PathBuf) -> miette::Result<()> {
     );
 
     if failed > 0 {
-        return Err(miette::miette!(
-            "{failed} 個のテストが失敗しました"
-        ));
+        return Err(miette::miette!("{failed} 個のテストが失敗しました"));
     }
 
     Ok(())
@@ -599,8 +646,12 @@ fn build_knowledge(
 
     let mut functions = Vec::new();
     let mut types = Vec::new();
-    let is_private_set: std::collections::HashSet<&str> =
-        infer.module_env.privates.iter().map(|s| s.as_str()).collect();
+    let is_private_set: std::collections::HashSet<&str> = infer
+        .module_env
+        .privates
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
 
     // Private 名の収集のために再利用
     let _ = &is_private_set;
@@ -613,22 +664,38 @@ fn build_knowledge(
         };
 
         match actual_decl {
-            Decl::Defn { name, params, metadata, .. } => {
-                let type_str = type_results.iter()
+            Decl::Defn {
+                name,
+                params,
+                metadata,
+                ..
+            } => {
+                let type_str = type_results
+                    .iter()
                     .find(|(n, _)| n == name)
                     .map(|(_, s)| format!("{}", s.ty))
                     .unwrap_or_else(|| "?".to_string());
 
-                let param_infos: Vec<ParamInfo> = params.iter().map(|p| {
-                    let desc = metadata.as_ref().and_then(|m| {
-                        m.params.iter().find(|(n, _)| n == &p.name).map(|(_, d)| d.clone())
-                    });
-                    ParamInfo {
-                        name: p.name.clone(),
-                        ty: p.ty.as_ref().map(|t| format!("{t}")).unwrap_or_else(|| "?".to_string()),
-                        description: desc,
-                    }
-                }).collect();
+                let param_infos: Vec<ParamInfo> = params
+                    .iter()
+                    .map(|p| {
+                        let desc = metadata.as_ref().and_then(|m| {
+                            m.params
+                                .iter()
+                                .find(|(n, _)| n == &p.name)
+                                .map(|(_, d)| d.clone())
+                        });
+                        ParamInfo {
+                            name: p.name.clone(),
+                            ty: p
+                                .ty
+                                .as_ref()
+                                .map(|t| format!("{t}"))
+                                .unwrap_or_else(|| "?".to_string()),
+                            description: desc,
+                        }
+                    })
+                    .collect();
 
                 functions.push(FunctionInfo {
                     name: name.clone(),
@@ -640,29 +707,35 @@ fn build_knowledge(
                 });
             }
             Decl::RecordDef { name, fields, .. } => {
-                let field_infos: Vec<FieldInfo> = fields.iter().map(|(fname, ftype)| {
-                    FieldInfo {
+                let field_infos: Vec<FieldInfo> = fields
+                    .iter()
+                    .map(|(fname, ftype)| FieldInfo {
                         name: fname.clone(),
                         ty: format!("{ftype}"),
-                    }
-                }).collect();
+                    })
+                    .collect();
                 types.push(TypeInfo {
                     name: name.clone(),
-                    kind: TypeKind::Record { fields: field_infos },
+                    kind: TypeKind::Record {
+                        fields: field_infos,
+                    },
                     type_params: vec![],
                     doc: None,
                 });
             }
             Decl::TypeDef { name, variants, .. } => {
-                let variant_infos: Vec<VariantInfo> = variants.iter().map(|v| {
-                    VariantInfo {
+                let variant_infos: Vec<VariantInfo> = variants
+                    .iter()
+                    .map(|v| VariantInfo {
                         name: v.name.clone(),
                         fields: v.fields.iter().map(|f| format!("{f}")).collect(),
-                    }
-                }).collect();
+                    })
+                    .collect();
                 types.push(TypeInfo {
                     name: name.clone(),
-                    kind: TypeKind::Adt { variants: variant_infos },
+                    kind: TypeKind::Adt {
+                        variants: variant_infos,
+                    },
                     type_params: vec![],
                     doc: None,
                 });
@@ -670,7 +743,9 @@ fn build_knowledge(
             Decl::TypeAlias { name, target, .. } => {
                 types.push(TypeInfo {
                     name: name.clone(),
-                    kind: TypeKind::Alias { target: format!("{target}") },
+                    kind: TypeKind::Alias {
+                        target: format!("{target}"),
+                    },
                     type_params: vec![],
                     doc: None,
                 });
@@ -679,7 +754,9 @@ fn build_knowledge(
                 let method_names: Vec<String> = methods.iter().map(|m| m.name.clone()).collect();
                 types.push(TypeInfo {
                     name: name.clone(),
-                    kind: TypeKind::Trait { methods: method_names },
+                    kind: TypeKind::Trait {
+                        methods: method_names,
+                    },
                     type_params: vec![],
                     doc: None,
                 });
@@ -689,20 +766,27 @@ fn build_knowledge(
     }
 
     // 依存関係
-    let dependencies: Vec<DependencyInfo> = infer.module_env.imports.iter().map(|imp| {
-        let kind = if imp.open {
-            DependencyKind::OpenImport
-        } else if let Some(ref only) = imp.only {
-            DependencyKind::SelectiveImport { symbols: only.clone() }
-        } else {
-            DependencyKind::Import
-        };
-        DependencyInfo {
-            from: module_name.clone().unwrap_or_else(|| "main".to_string()),
-            to: imp.module.clone(),
-            kind,
-        }
-    }).collect();
+    let dependencies: Vec<DependencyInfo> = infer
+        .module_env
+        .imports
+        .iter()
+        .map(|imp| {
+            let kind = if imp.open {
+                DependencyKind::OpenImport
+            } else if let Some(ref only) = imp.only {
+                DependencyKind::SelectiveImport {
+                    symbols: only.clone(),
+                }
+            } else {
+                DependencyKind::Import
+            };
+            DependencyInfo {
+                from: module_name.clone().unwrap_or_else(|| "main".to_string()),
+                to: imp.module.clone(),
+                kind,
+            }
+        })
+        .collect();
 
     Knowledge {
         project: ProjectInfo {
@@ -715,76 +799,175 @@ fn build_knowledge(
     }
 }
 
-/// check コマンド用: import 宣言を再帰的に解決する
-///
-/// 同ディレクトリ内の .ls ファイルを探索し、import されたモジュールの定義を
-/// 先に型推論して external_types に注入する。循環 import を防ぐため、
-/// 解決済みモジュール名を tracked する。
-fn resolve_imports_recursive(
-    program: &lsharp_syntax::ast::Program,
-    parent_dir: &std::path::Path,
-    infer: &mut lsharp_types::infer::Infer,
-    resolved: &mut std::collections::HashSet<String>,
-) {
-    for decl in &program.decls {
-        if let lsharp_syntax::ast::Decl::ImportDecl { module, .. } = decl {
-            if resolved.contains(module) {
-                continue;
-            }
-            resolved.insert(module.clone());
+#[derive(Debug, Clone, Default)]
+struct ImportVisibilitySpec {
+    only: Option<Vec<String>>,
+}
 
-            let import_path = parent_dir.join(format!("{module}.ls"));
-            if import_path.exists() {
-                if let Ok(import_source) = std::fs::read_to_string(&import_path) {
-                    if let Ok(import_program) = lsharp_syntax::parse(&import_source) {
-                        // 先に import 先の import を再帰解決する
-                        resolve_imports_recursive(
-                            &import_program,
-                            parent_dir,
-                            infer,
-                            resolved,
-                        );
-                        // import 先モジュールを型推論して結果を注入
-                        let mut import_infer = lsharp_types::infer::Infer::new();
-                        // 既に解決済みの外部型を import 先にも注入
-                        // (推移的依存の型を利用可能にする)
-                        import_infer.inject_external_types(
-                            &infer.external_types_snapshot(),
-                        );
-                        if let Ok(import_results) = import_infer.infer_program(&import_program) {
-                            infer.inject_external_types(&import_results);
+#[derive(Debug, Clone, Default)]
+struct ResolvedImportModule {
+    results: Vec<(String, lsharp_types::types::TypeScheme)>,
+    hidden: std::collections::HashSet<String>,
+}
+
+fn collect_import_visibility(
+    program: &lsharp_syntax::ast::Program,
+) -> std::collections::HashMap<String, ImportVisibilitySpec> {
+    let mut imports = std::collections::HashMap::new();
+    for decl in &program.decls {
+        if let lsharp_syntax::ast::Decl::ImportDecl { module, only, .. } = decl {
+            let entry = imports
+                .entry(module.clone())
+                .or_insert_with(ImportVisibilitySpec::default);
+            match (&mut entry.only, only.as_ref()) {
+                (None, None) => {}
+                (slot @ None, Some(next)) => {
+                    *slot = Some(next.clone());
+                }
+                (Some(existing), Some(next)) => {
+                    for symbol in next {
+                        if !existing.contains(symbol) {
+                            existing.push(symbol.clone());
                         }
                     }
+                }
+                (Some(_), None) => {
+                    entry.only = None;
                 }
             }
         }
     }
+    imports
 }
 
-/// P6: ファイルにモジュール import が含まれているか確認
-///
-/// `(import ModuleName)` 宣言があれば true を返す。
-/// マルチファイルコンパイルの切り替え判定に使用。
-fn has_file_imports(file: &std::path::Path) -> miette::Result<bool> {
-    let source = std::fs::read_to_string(file)
-        .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+fn declared_module_name(
+    program: &lsharp_syntax::ast::Program,
+    fallback_file: &std::path::Path,
+) -> String {
+    program
+        .decls
+        .iter()
+        .find_map(|decl| {
+            if let lsharp_syntax::ast::Decl::ModuleDecl { name, .. } = decl {
+                Some(name.clone())
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            fallback_file
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .map(ToString::to_string)
+        })
+        .unwrap_or_else(|| "Main".to_string())
+}
 
-    let program = lsharp_syntax::parse(&source)
-        .map_err(|e| miette::miette!("{e}"))?;
-
-    for decl in &program.decls {
-        if matches!(decl, lsharp_syntax::ast::Decl::ImportDecl { .. }) {
-            return Ok(true);
-        }
+fn resolve_import_module_recursive(
+    module: &str,
+    from_module: &str,
+    search_paths: &lsharp_ir::module_graph::ModuleSearchPaths,
+    cache: &mut std::collections::HashMap<String, ResolvedImportModule>,
+    resolving: &mut std::collections::HashSet<String>,
+) -> miette::Result<ResolvedImportModule> {
+    if let Some(cached) = cache.get(module) {
+        return Ok(cached.clone());
     }
-    Ok(false)
+    if !resolving.insert(module.to_string()) {
+        return Ok(cache.get(module).cloned().unwrap_or_default());
+    }
+
+    let result = (|| -> miette::Result<ResolvedImportModule> {
+        let import_path = lsharp_ir::module_graph::ModuleGraph::resolve_module_import_path(
+            module,
+            from_module,
+            search_paths,
+        )
+        .map_err(|e| miette::miette!("{e}"))?
+        .ok_or_else(|| {
+            miette::miette!(
+                "モジュール '{}' が見つかりません ('{}' からインポート)",
+                module,
+                from_module
+            )
+        })?;
+
+        let import_source = std::fs::read_to_string(&import_path)
+            .map_err(|e| miette::miette!("{}: {}", import_path.display(), e))?;
+        let import_program = lsharp_syntax::parse(&import_source)
+            .map_err(|e| miette::miette!("{}: {e}", import_path.display()))?;
+        let import_module_name = declared_module_name(&import_program, &import_path);
+
+        let mut import_infer = lsharp_types::infer::Infer::new();
+        for (dependency, spec) in collect_import_visibility(&import_program) {
+            let dependency_surface = resolve_import_module_recursive(
+                &dependency,
+                &import_module_name,
+                search_paths,
+                cache,
+                resolving,
+            )?;
+            import_infer.inject_external_types_for_import(
+                &dependency,
+                spec.only.as_deref(),
+                &dependency_surface.hidden,
+                &dependency_surface.results,
+            );
+        }
+
+        let import_results = import_infer
+            .infer_program(&import_program)
+            .map_err(|e| miette::miette!("{}: {e}", import_path.display()))?;
+        Ok(ResolvedImportModule {
+            results: import_results,
+            hidden: import_infer.module_env.privates.iter().cloned().collect(),
+        })
+    })();
+
+    resolving.remove(module);
+    if let Ok(surface) = &result {
+        cache.insert(module.to_string(), surface.clone());
+    }
+    result
+}
+
+/// check コマンド用: import 宣言を再帰的に解決する
+///
+/// package root / src / .lsharp/packages / stdlib の探索順に従って import を解決し、
+/// 各 import ごとに `:only` / `private` / package exports を反映した型環境だけを注入する。
+fn resolve_imports_recursive(
+    program: &lsharp_syntax::ast::Program,
+    entry_file: &std::path::Path,
+    infer: &mut lsharp_types::infer::Infer,
+    resolved: &mut std::collections::HashSet<String>,
+) -> miette::Result<()> {
+    let search_paths = lsharp_ir::module_graph::ModuleSearchPaths::discover(entry_file);
+    let current_module = declared_module_name(program, entry_file);
+    let mut cache = std::collections::HashMap::new();
+
+    for (module, spec) in collect_import_visibility(program) {
+        let imported = resolve_import_module_recursive(
+            &module,
+            &current_module,
+            &search_paths,
+            &mut cache,
+            resolved,
+        )?;
+        infer.inject_external_types_for_import(
+            &module,
+            spec.only.as_deref(),
+            &imported.hidden,
+            &imported.results,
+        );
+    }
+
+    Ok(())
 }
 
 /// P0-1: git リポジトリの存在を検証
 fn check_git_repo(file: &std::path::Path) -> miette::Result<()> {
     // ファイルの親ディレクトリから .git を探索
-    let mut dir = file.canonicalize()
-        .unwrap_or_else(|_| file.to_path_buf());
+    let mut dir = file.canonicalize().unwrap_or_else(|_| file.to_path_buf());
 
     loop {
         if dir.is_file() {
@@ -822,18 +1005,14 @@ fn cmd_init(name: &str) -> miette::Result<()> {
 
     // ディレクトリ作成
     if project_dir.exists() {
-        return Err(miette::miette!(
-            "ディレクトリ '{name}' は既に存在します"
-        ));
+        return Err(miette::miette!("ディレクトリ '{name}' は既に存在します"));
     }
 
-    fs::create_dir_all(&project_dir)
-        .map_err(|e| miette::miette!("ディレクトリ作成失敗: {e}"))?;
+    fs::create_dir_all(&project_dir).map_err(|e| miette::miette!("ディレクトリ作成失敗: {e}"))?;
 
     // src ディレクトリ作成
     let src_dir = project_dir.join("src");
-    fs::create_dir_all(&src_dir)
-        .map_err(|e| miette::miette!("src ディレクトリ作成失敗: {e}"))?;
+    fs::create_dir_all(&src_dir).map_err(|e| miette::miette!("src ディレクトリ作成失敗: {e}"))?;
 
     // lsharp.toml 生成
     let toml_content = format!(
@@ -904,41 +1083,58 @@ fn cmd_doc(file: &PathBuf, output: Option<&Path>, json: bool) -> miette::Result<
         return cmd_doc_json(file, output);
     }
 
-    let source = std::fs::read_to_string(file)
-        .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let source =
+        std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
 
-    let program = lsharp_syntax::parse(&source)
-        .map_err(|e| miette::miette!("{e}"))?;
+    let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{e}"))?;
 
     // 型チェックで型情報取得
     let mut infer = lsharp_types::infer::Infer::new();
-    let type_results = infer.infer_program(&program)
+    let type_results = infer
+        .infer_program(&program)
         .map_err(|e| miette::miette!("{e}"))?;
 
     let mut html = String::new();
     html.push_str("<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\">\n");
     html.push_str(&format!("<title>L# API - {}</title>\n", file.display()));
-    html.push_str("<style>body{font-family:sans-serif;max-width:800px;margin:0 auto;padding:20px}\n");
+    html.push_str(
+        "<style>body{font-family:sans-serif;max-width:800px;margin:0 auto;padding:20px}\n",
+    );
     html.push_str("h1{color:#333}h2{color:#555;border-bottom:1px solid #ddd;padding-bottom:5px}\n");
     html.push_str(".sig{background:#f5f5f5;padding:8px;border-radius:4px;font-family:monospace}\n");
     html.push_str(".doc{color:#666;margin:8px 0}.params{margin-left:20px}\n");
     html.push_str("</style></head><body>\n");
-    html.push_str(&format!("<h1>{}</h1>\n", file.file_stem().unwrap_or_default().to_string_lossy()));
+    html.push_str(&format!(
+        "<h1>{}</h1>\n",
+        file.file_stem().unwrap_or_default().to_string_lossy()
+    ));
 
     for decl in &program.decls {
         match decl {
-            lsharp_syntax::ast::Decl::Defn { name, params, return_ty, metadata, .. } => {
+            lsharp_syntax::ast::Decl::Defn {
+                name,
+                params,
+                return_ty,
+                metadata,
+                ..
+            } => {
                 html.push_str(&format!("<h2>{}</h2>\n", name));
 
                 // 型シグネチャ
                 let param_strs: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
-                let ret = return_ty.as_ref().map_or("?".to_string(), |t| format!("{:?}", t));
+                let ret = return_ty
+                    .as_ref()
+                    .map_or("?".to_string(), |t| format!("{:?}", t));
                 // 型推論結果があれば使用
-                let type_str = type_results.iter()
+                let type_str = type_results
+                    .iter()
                     .find(|(n, _)| n == name)
                     .map(|(_, t)| format!("{}", t))
                     .unwrap_or_else(|| format!("({}) -> {}", param_strs.join(", "), ret));
-                html.push_str(&format!("<div class=\"sig\">{}: {}</div>\n", name, type_str));
+                html.push_str(&format!(
+                    "<div class=\"sig\">{}: {}</div>\n",
+                    name, type_str
+                ));
 
                 if let Some(meta) = metadata {
                     if let Some(doc) = &meta.doc {
@@ -952,15 +1148,27 @@ fn cmd_doc(file: &PathBuf, output: Option<&Path>, json: bool) -> miette::Result<
                         html.push_str("</ul></div>\n");
                     }
                     if let Some(ret_doc) = &meta.returns {
-                        html.push_str(&format!("<div class=\"doc\"><strong>戻り値:</strong> {}</div>\n", ret_doc));
+                        html.push_str(&format!(
+                            "<div class=\"doc\"><strong>戻り値:</strong> {}</div>\n",
+                            ret_doc
+                        ));
                     }
                 }
             }
-            lsharp_syntax::ast::Decl::TypeDef { name, type_params, variants, metadata, .. } => {
+            lsharp_syntax::ast::Decl::TypeDef {
+                name,
+                type_params,
+                variants,
+                metadata,
+                ..
+            } => {
                 html.push_str(&format!("<h2>type {}</h2>\n", name));
                 if !type_params.is_empty() {
-                    html.push_str(&format!("<div class=\"sig\">type ({} {})</div>\n",
-                        name, type_params.join(" ")));
+                    html.push_str(&format!(
+                        "<div class=\"sig\">type ({} {})</div>\n",
+                        name,
+                        type_params.join(" ")
+                    ));
                 }
                 html.push_str("<ul>\n");
                 for v in variants {
@@ -968,9 +1176,10 @@ fn cmd_doc(file: &PathBuf, output: Option<&Path>, json: bool) -> miette::Result<
                 }
                 html.push_str("</ul>\n");
                 if let Some(meta) = metadata
-                    && let Some(doc) = &meta.doc {
-                        html.push_str(&format!("<div class=\"doc\">{}</div>\n", doc));
-                    }
+                    && let Some(doc) = &meta.doc
+                {
+                    html.push_str(&format!("<div class=\"doc\">{}</div>\n", doc));
+                }
             }
             _ => {}
         }
@@ -1049,6 +1258,330 @@ fn find_project_root(start: &Path) -> PathBuf {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ApiDiffSummary {
+    added: Vec<String>,
+    changed: Vec<String>,
+    removed: Vec<String>,
+}
+
+fn cmd_check_package_in(
+    project_dir: &Path,
+    previous_api: Option<&Path>,
+    previous_tag: Option<&str>,
+) -> miette::Result<String> {
+    let mut out = String::new();
+    out.push_str("Validating lsharp.toml ... ");
+    let config = config::load_config_result(project_dir).map_err(|e| miette::miette!("{e}"))?;
+    out.push_str("ok\n");
+
+    let package = if config.project.name.is_empty() {
+        project_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("package")
+            .to_string()
+    } else {
+        config.project.name.clone()
+    };
+    let version = if config.project.version.is_empty() {
+        "0.1.0".to_string()
+    } else {
+        config.project.version.clone()
+    };
+    let api = api_doc::build_api_doc_for_package(project_dir, &package, &version)?;
+    let api_json = serde_json::to_vec_pretty(&api)
+        .map_err(|e| miette::miette!("api.json の直列化に失敗: {e}"))?;
+    let docs_dir = project_dir.join("docs");
+    std::fs::create_dir_all(&docs_dir)
+        .map_err(|e| miette::miette!("{}: {}", docs_dir.display(), e))?;
+    let api_path = docs_dir.join("api.json");
+    std::fs::write(&api_path, &api_json)
+        .map_err(|e| miette::miette!("{}: {}", api_path.display(), e))?;
+    out.push_str("Generating api.json ... ok\n");
+
+    if let Some((label, previous_doc)) =
+        resolve_previous_api_doc(project_dir, previous_api, previous_tag)?
+    {
+        let diff = diff_api_docs(&previous_doc, &api);
+        out.push_str(&format!("Comparing with {label} ...\n"));
+        out.push_str(&render_diff_lines(&diff));
+    }
+
+    let checksum = sha256_hex(&api_json);
+    out.push_str(&format!("checksum: sha256:{checksum}\n"));
+    Ok(out)
+}
+
+fn cmd_api_diff_specs(project_dir: &Path, old: &str, new: &str) -> miette::Result<String> {
+    let old_api = read_api_doc_spec(project_dir, old)?;
+    let new_api = read_api_doc_spec(project_dir, new)?;
+    let diff = diff_api_docs(&old_api, &new_api);
+    Ok(render_diff_summary(&diff))
+}
+
+fn cmd_info_in(project_dir: &Path, package: &str) -> miette::Result<String> {
+    let package_dir = find_installed_package_dir(project_dir, package)
+        .ok_or_else(|| miette::miette!("インストール済みパッケージが見つかりません: {package}"))?;
+    let api = read_or_generate_api_doc(&package_dir)?;
+    let source = read_package_source(project_dir, package).unwrap_or_else(|| "unknown".to_string());
+
+    let module_names: Vec<&str> = api
+        .modules
+        .iter()
+        .map(|module| module.name.as_str())
+        .collect();
+    let mut out = String::new();
+    out.push_str(&format!("Package: {}@{}\n", api.package, api.version));
+    out.push_str(&format!("Source: {source}\n"));
+    out.push_str(&format!("Modules: {}\n", module_names.join(", ")));
+    out.push_str("Functions:\n");
+    for module in &api.modules {
+        for function in &module.functions {
+            let doc = function.doc.as_deref().unwrap_or("");
+            out.push_str(&format!(
+                "  {}.{} : {}",
+                module.name, function.name, function.signature
+            ));
+            if !doc.is_empty() {
+                out.push_str(&format!(" - {doc}"));
+            }
+            out.push('\n');
+        }
+    }
+    if api.modules.iter().all(|module| module.functions.is_empty()) {
+        out.push_str("  (none)\n");
+    }
+    out.push_str("Types:\n");
+    let mut any_type = false;
+    for module in &api.modules {
+        for item in &module.types {
+            any_type = true;
+            out.push_str(&format!(
+                "  {}.{} : {}\n",
+                module.name, item.name, item.kind
+            ));
+        }
+    }
+    if !any_type {
+        out.push_str("  (none)\n");
+    }
+    Ok(out)
+}
+
+fn read_api_doc(path: &Path) -> miette::Result<api_doc::ApiDoc> {
+    let content =
+        std::fs::read_to_string(path).map_err(|e| miette::miette!("{}: {}", path.display(), e))?;
+    serde_json::from_str(&content).map_err(|e| miette::miette!("{}: {}", path.display(), e))
+}
+
+fn read_api_doc_spec(project_dir: &Path, spec: &str) -> miette::Result<api_doc::ApiDoc> {
+    let candidate = Path::new(spec);
+    if candidate.exists() {
+        return read_api_doc(candidate);
+    }
+    let relative = project_dir.join(spec);
+    if relative.exists() {
+        return read_api_doc(&relative);
+    }
+    read_api_doc_from_git_ref(project_dir, spec)
+}
+
+fn read_api_doc_from_git_ref(project_dir: &Path, git_ref: &str) -> miette::Result<api_doc::ApiDoc> {
+    let path_spec = format!("{git_ref}:docs/api.json");
+    let content =
+        git_stdout(project_dir, &["show", &path_spec]).map_err(|e| miette::miette!("{e}"))?;
+    serde_json::from_str(&content).map_err(|e| miette::miette!("{git_ref}:docs/api.json: {e}"))
+}
+
+fn read_or_generate_api_doc(package_dir: &Path) -> miette::Result<api_doc::ApiDoc> {
+    let api_path = package_dir.join("docs").join("api.json");
+    if api_path.exists() {
+        return read_api_doc(&api_path);
+    }
+
+    let config = config::load_config(package_dir);
+    let package = if config.project.name.is_empty() {
+        package_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("package")
+            .to_string()
+    } else {
+        config.project.name
+    };
+    let version = if config.project.version.is_empty() {
+        "0.1.0".to_string()
+    } else {
+        config.project.version
+    };
+    api_doc::build_api_doc_for_package(package_dir, &package, &version)
+}
+
+fn read_package_source(project_dir: &Path, package: &str) -> Option<String> {
+    let lock_path = project_dir.join(".lsharp").join("lock.toml");
+    let lockfile = lockfile::read_lockfile(&lock_path).ok()?;
+    lockfile
+        .entries
+        .into_iter()
+        .find(|entry| entry.name == package)
+        .map(|entry| entry.source)
+}
+
+fn resolve_previous_api_doc(
+    project_dir: &Path,
+    previous_api: Option<&Path>,
+    previous_tag: Option<&str>,
+) -> miette::Result<Option<(String, api_doc::ApiDoc)>> {
+    if let Some(path) = previous_api {
+        return Ok(Some((path.display().to_string(), read_api_doc(path)?)));
+    }
+    if let Some(tag) = previous_tag {
+        return Ok(Some((
+            tag.to_string(),
+            read_api_doc_from_git_ref(project_dir, tag)?,
+        )));
+    }
+    if let Some(tag) = latest_git_tag(project_dir) {
+        let api = read_api_doc_from_git_ref(project_dir, &tag)?;
+        return Ok(Some((tag, api)));
+    }
+    Ok(None)
+}
+
+fn latest_git_tag(project_dir: &Path) -> Option<String> {
+    let output = git_stdout(project_dir, &["tag", "--sort=-creatordate"]).ok()?;
+    output
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(str::to_string)
+}
+
+fn diff_api_docs(old: &api_doc::ApiDoc, new: &api_doc::ApiDoc) -> ApiDiffSummary {
+    let old_functions = flatten_api_functions(old);
+    let new_functions = flatten_api_functions(new);
+    let old_types = flatten_api_types(old);
+    let new_types = flatten_api_types(new);
+
+    let mut added = Vec::new();
+    let mut changed = Vec::new();
+    let mut removed = Vec::new();
+
+    for (name, signature) in &new_functions {
+        match old_functions.get(name) {
+            None => added.push(format!("+ {name} : {signature}")),
+            Some(old_signature) if old_signature != signature => changed.push(format!(
+                "~ {name} : {old_signature} -> {signature}  BREAKING"
+            )),
+            _ => {}
+        }
+    }
+    for name in old_functions.keys() {
+        if !new_functions.contains_key(name) {
+            removed.push(format!("- {name}"));
+        }
+    }
+
+    for (name, kind) in &new_types {
+        match old_types.get(name) {
+            None => added.push(format!("+ {name} : type {kind}")),
+            Some(old_kind) if old_kind != kind => {
+                changed.push(format!("~ {name} : {old_kind} -> {kind}  BREAKING"))
+            }
+            _ => {}
+        }
+    }
+    for name in old_types.keys() {
+        if !new_types.contains_key(name) {
+            removed.push(format!("- {name}"));
+        }
+    }
+
+    added.sort();
+    changed.sort();
+    removed.sort();
+
+    ApiDiffSummary {
+        added,
+        changed,
+        removed,
+    }
+}
+
+fn flatten_api_functions(api: &api_doc::ApiDoc) -> std::collections::BTreeMap<String, String> {
+    let mut functions = std::collections::BTreeMap::new();
+    for module in &api.modules {
+        for function in &module.functions {
+            functions.insert(
+                format!("{}.{}", module.name, function.name),
+                function.signature.clone(),
+            );
+        }
+    }
+    functions
+}
+
+fn flatten_api_types(api: &api_doc::ApiDoc) -> std::collections::BTreeMap<String, String> {
+    let mut types = std::collections::BTreeMap::new();
+    for module in &api.modules {
+        for item in &module.types {
+            types.insert(format!("{}.{}", module.name, item.name), item.kind.clone());
+        }
+    }
+    types
+}
+
+fn render_diff_summary(diff: &ApiDiffSummary) -> String {
+    let mut out = String::new();
+    if diff.added.is_empty() {
+        out.push_str("Added:    (none)\n");
+    } else {
+        for line in &diff.added {
+            out.push_str(&format!("Added:    {line}\n"));
+        }
+    }
+    if diff.changed.is_empty() {
+        out.push_str("Changed:  (none)\n");
+    } else {
+        for line in &diff.changed {
+            out.push_str(&format!("Changed:  {line}\n"));
+        }
+    }
+    if diff.removed.is_empty() {
+        out.push_str("Removed:  (none)\n");
+    } else {
+        for line in &diff.removed {
+            out.push_str(&format!("Removed:  {line}\n"));
+        }
+    }
+    out
+}
+
+fn render_diff_lines(diff: &ApiDiffSummary) -> String {
+    let mut out = String::new();
+    for line in &diff.added {
+        out.push_str(&format!("  {line}\n"));
+    }
+    for line in &diff.changed {
+        out.push_str(&format!("  {line}\n"));
+    }
+    for line in &diff.removed {
+        out.push_str(&format!("  {line}\n"));
+    }
+    if out.is_empty() {
+        out.push_str("  (no changes)\n");
+    }
+    out
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let digest = hasher.finalize();
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 /// 依存パッケージをインストール
 ///
 /// lsharp.toml の [dependencies] セクションを読み込み、
@@ -1059,8 +1592,7 @@ fn cmd_install() -> miette::Result<()> {
 
 /// 指定ディレクトリを基点に依存パッケージをインストール (テスト用に分離)
 fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
-    let config = config::load_config_result(project_dir)
-        .map_err(|e| miette::miette!("{e}"))?;
+    let config = config::load_config_result(project_dir).map_err(|e| miette::miette!("{e}"))?;
 
     let deps = &config.dependencies;
 
@@ -1083,19 +1615,26 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
             config::DependencySpec::Path { path } => {
                 let resolved = project_dir.join(path);
                 if !resolved.exists() {
-                    eprintln!("警告: パス依存 '{name}' のパスが存在しません: {}", resolved.display());
+                    eprintln!(
+                        "警告: パス依存 '{name}' のパスが存在しません: {}",
+                        resolved.display()
+                    );
                     skipped += 1;
                     continue;
                 }
                 let toml_path = resolved.join("lsharp.toml");
                 if !toml_path.exists() {
-                    eprintln!("警告: パス依存 '{name}' に lsharp.toml が見つかりません: {}", resolved.display());
+                    eprintln!(
+                        "警告: パス依存 '{name}' に lsharp.toml が見つかりません: {}",
+                        resolved.display()
+                    );
                     skipped += 1;
                     continue;
                 }
 
-                let abs_resolved = resolved.canonicalize()
-                    .map_err(|e| miette::miette!("パスの正規化に失敗 '{}': {e}", resolved.display()))?;
+                let abs_resolved = resolved.canonicalize().map_err(|e| {
+                    miette::miette!("パスの正規化に失敗 '{}': {e}", resolved.display())
+                })?;
                 let source_id = dependency_source_string(spec, project_dir);
                 let link_path = installed_package_dir(&packages_dir, name, &source_id);
                 // 既存のシンボリックリンクがあれば削除
@@ -1153,17 +1692,13 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
     std::fs::create_dir_all(&lsharp_dir)
         .map_err(|e| miette::miette!("{}: {}", lsharp_dir.display(), e))?;
     let lock_path = lsharp_dir.join("lock.toml");
-    lockfile::write_lockfile(&lock, &lock_path)
-        .map_err(|e| miette::miette!("{e}"))?;
+    lockfile::write_lockfile(&lock, &lock_path).map_err(|e| miette::miette!("{e}"))?;
     println!("ロックファイルを生成しました: {}", lock_path.display());
 
     Ok(())
 }
 
-fn dependency_source_string(
-    spec: &config::DependencySpec,
-    project_dir: &Path,
-) -> String {
+fn dependency_source_string(spec: &config::DependencySpec, project_dir: &Path) -> String {
     match spec {
         config::DependencySpec::Path { path } => {
             let resolved = project_dir.join(path);
@@ -1290,6 +1825,21 @@ fn git_clone(
     }
 }
 
+fn git_stdout(project_dir: &Path, args: &[&str]) -> Result<String, String> {
+    let output = std::process::Command::new("git")
+        .args(args)
+        .current_dir(project_dir)
+        .output()
+        .map_err(|e| format!("git コマンドの実行に失敗: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git 実行失敗: {}", stderr.trim()));
+    }
+
+    String::from_utf8(output.stdout).map_err(|e| format!("git stdout の UTF-8 変換に失敗: {e}"))
+}
+
 /// git clone コマンドの引数を構築する (テスト用)
 #[cfg(test)]
 fn build_git_clone_args<'a>(
@@ -1311,8 +1861,8 @@ fn build_git_clone_args<'a>(
 
 /// P9-1: 対話的 REPL
 fn cmd_repl() -> miette::Result<()> {
-    use rustyline::error::ReadlineError;
     use rustyline::DefaultEditor;
+    use rustyline::error::ReadlineError;
 
     println!("L# REPL v0.1.0");
     println!("式を入力してください。終了するには Ctrl+D を押してください。");
@@ -1336,8 +1886,7 @@ fn cmd_repl() -> miette::Result<()> {
                     continue;
                 }
 
-                rl.add_history_entry(line)
-                    .unwrap_or_default();
+                rl.add_history_entry(line).unwrap_or_default();
 
                 // 式を main 関数でラップしてコンパイル・実行
                 let source = format!("(defn main [] {})", line);
@@ -1428,7 +1977,10 @@ mod tests {
 
         // lsharp.toml を作成しない
         let result = cmd_install_in(&dir);
-        assert!(result.is_ok(), "lsharp.toml がなくてもデフォルトで成功するべき");
+        assert!(
+            result.is_ok(),
+            "lsharp.toml がなくてもデフォルトで成功するべき"
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -1462,6 +2014,334 @@ mod tests {
     }
 
     #[test]
+    fn test_cmd_check_package_generates_api_json_and_checksum() {
+        let dir = std::env::temp_dir().join("lsharp_test_check_package");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(
+            dir.join("lsharp.toml"),
+            "[project]\nname = \"demo\"\nversion = \"0.3.0\"\nentry = \"src/Geometry.ls\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("src/Geometry.ls"),
+            "(module Geometry)\n(defn add [x y] :doc \"加算\" (+ x y))",
+        )
+        .unwrap();
+
+        let summary = cmd_check_package_in(&dir, None, None).unwrap();
+
+        assert!(summary.contains("Validating lsharp.toml ... ok"));
+        assert!(summary.contains("Generating api.json ... ok"));
+        assert!(summary.contains("checksum: sha256:"));
+        assert!(dir.join("docs/api.json").exists());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_info_reads_installed_package_api() {
+        let dir = std::env::temp_dir().join("lsharp_test_info_package");
+        let _ = std::fs::remove_dir_all(&dir);
+        let package_dir = dir.join(".lsharp/packages/mylib-12345678");
+        std::fs::create_dir_all(package_dir.join("docs")).unwrap();
+        std::fs::create_dir_all(dir.join(".lsharp")).unwrap();
+        std::fs::write(
+            dir.join(".lsharp/lock.toml"),
+            r#"
+[[package]]
+name = "mylib"
+version = "0.2.0"
+source = "git:https://github.com/user/mylib.git?tag=v0.2.0"
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            package_dir.join("docs/api.json"),
+            r#"{
+  "package": "mylib",
+  "version": "0.2.0",
+  "modules": [
+    {
+      "name": "Geometry",
+      "doc": null,
+      "functions": [
+        {
+          "name": "distance",
+          "signature": "Point -> Point -> Float",
+          "params": [],
+          "returns": { "type": "Float", "doc": null },
+          "doc": "2 点間の距離",
+          "example": null
+        }
+      ],
+      "types": []
+    }
+  ]
+}"#,
+        )
+        .unwrap();
+
+        let summary = cmd_info_in(&dir, "mylib").unwrap();
+
+        assert!(summary.contains("Package: mylib@0.2.0"));
+        assert!(summary.contains("Source: git:https://github.com/user/mylib.git?tag=v0.2.0"));
+        assert!(summary.contains("Geometry.distance : Point -> Point -> Float - 2 点間の距離"));
+        assert!(summary.contains("Types:\n  (none)\n"));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_api_diff_reports_added_changed_removed() {
+        let dir = std::env::temp_dir().join("lsharp_test_api_diff");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let old = dir.join("old.json");
+        let new = dir.join("new.json");
+        std::fs::write(
+            &old,
+            r#"{
+  "package": "demo",
+  "version": "0.1.0",
+  "modules": [
+    {
+      "name": "Geometry",
+      "doc": null,
+      "functions": [
+        {
+          "name": "distance",
+          "signature": "Point -> Point -> Int",
+          "params": [],
+          "returns": { "type": "Int", "doc": null },
+          "doc": null,
+          "example": null
+        },
+        {
+          "name": "obsolete",
+          "signature": "Int -> Int",
+          "params": [],
+          "returns": { "type": "Int", "doc": null },
+          "doc": null,
+          "example": null
+        }
+      ],
+      "types": []
+    }
+  ]
+}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &new,
+            r#"{
+  "package": "demo",
+  "version": "0.2.0",
+  "modules": [
+    {
+      "name": "Geometry",
+      "doc": null,
+      "functions": [
+        {
+          "name": "distance",
+          "signature": "Point -> Point -> Float",
+          "params": [],
+          "returns": { "type": "Float", "doc": null },
+          "doc": null,
+          "example": null
+        },
+        {
+          "name": "rotate",
+          "signature": "Vec2 -> Float -> Vec2",
+          "params": [],
+          "returns": { "type": "Vec2", "doc": null },
+          "doc": null,
+          "example": null
+        }
+      ],
+      "types": []
+    }
+  ]
+}"#,
+        )
+        .unwrap();
+
+        let summary =
+            cmd_api_diff_specs(&dir, &old.display().to_string(), &new.display().to_string())
+                .unwrap();
+
+        assert!(summary.contains("Added:    + Geometry.rotate : Vec2 -> Float -> Vec2"));
+        assert!(summary.contains("Changed:  ~ Geometry.distance : Point -> Point -> Int -> Point -> Point -> Float  BREAKING"));
+        assert!(summary.contains("Removed:  - Geometry.obsolete"));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_api_diff_specs_supports_git_tags() {
+        let dir = std::env::temp_dir().join("lsharp_test_api_diff_git_tags");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("docs")).unwrap();
+
+        init_test_git_repo(&dir);
+        std::fs::write(
+            dir.join("docs/api.json"),
+            r#"{
+  "package": "demo",
+  "version": "0.1.0",
+  "modules": [
+    {
+      "name": "Geometry",
+      "doc": null,
+      "functions": [],
+      "types": []
+    }
+  ]
+}"#,
+        )
+        .unwrap();
+        git_commit_all(&dir, "v0.1.0");
+        git_tag(&dir, "v0.1.0");
+
+        std::fs::write(
+            dir.join("docs/api.json"),
+            r#"{
+  "package": "demo",
+  "version": "0.2.0",
+  "modules": [
+    {
+      "name": "Geometry",
+      "doc": null,
+      "functions": [
+        {
+          "name": "rotate",
+          "signature": "Vec2 -> Float -> Vec2",
+          "params": [],
+          "returns": { "type": "Vec2", "doc": null },
+          "doc": null,
+          "example": null
+        }
+      ],
+      "types": []
+    }
+  ]
+}"#,
+        )
+        .unwrap();
+        git_commit_all(&dir, "v0.2.0");
+        git_tag(&dir, "v0.2.0");
+
+        let summary = cmd_api_diff_specs(&dir, "v0.1.0", "v0.2.0").unwrap();
+
+        assert!(summary.contains("Added:    + Geometry.rotate : Vec2 -> Float -> Vec2"));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_check_package_previous_tag_compares_against_git_tag() {
+        let dir = std::env::temp_dir().join("lsharp_test_check_package_previous_tag");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::create_dir_all(dir.join("docs")).unwrap();
+
+        init_test_git_repo(&dir);
+        std::fs::write(
+            dir.join("lsharp.toml"),
+            "[project]\nname = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/Geometry.ls\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("src/Geometry.ls"),
+            "(module Geometry)\n(defn distance [p1 p2] 1)",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("docs/api.json"),
+            r#"{
+  "package": "demo",
+  "version": "0.1.0",
+  "modules": [
+    {
+      "name": "Geometry",
+      "doc": null,
+      "functions": [
+        {
+          "name": "distance",
+          "signature": "Point -> Point -> Int",
+          "params": [],
+          "returns": { "type": "Int", "doc": null },
+          "doc": null,
+          "example": null
+        }
+      ],
+      "types": []
+    }
+  ]
+}"#,
+        )
+        .unwrap();
+        git_commit_all(&dir, "baseline");
+        git_tag(&dir, "v0.1.0");
+
+        std::fs::write(
+            dir.join("src/Geometry.ls"),
+            "(module Geometry)\n(defn distance [p1 p2] 1.0)\n(defn rotate [v angle] v)",
+        )
+        .unwrap();
+
+        let summary = cmd_check_package_in(&dir, None, Some("v0.1.0")).unwrap();
+
+        assert!(summary.contains("Comparing with v0.1.0 ..."));
+        assert!(summary.contains("+ Geometry.rotate"));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    fn init_test_git_repo(dir: &Path) {
+        let output = std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "git init failed: {:?}", output);
+    }
+
+    fn git_commit_all(dir: &Path, message: &str) {
+        let add = std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(add.status.success(), "git add failed: {:?}", add);
+
+        let commit = std::process::Command::new("git")
+            .args([
+                "-c",
+                "user.name=Codex",
+                "-c",
+                "user.email=codex@example.com",
+                "commit",
+                "-m",
+                message,
+            ])
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(commit.status.success(), "git commit failed: {:?}", commit);
+    }
+
+    fn git_tag(dir: &Path, tag: &str) {
+        let output = std::process::Command::new("git")
+            .args(["tag", tag])
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "git tag failed: {:?}", output);
+    }
+
+    #[test]
     fn test_cmd_install_path_dependency() {
         // Path 依存のインストールをテスト
         let base_dir = std::env::temp_dir().join("lsharp_test_install_path_dep");
@@ -1471,10 +2351,7 @@ mod tests {
         // 依存先ディレクトリを作成 (lsharp.toml を含む)
         let dep_dir = base_dir.join("mylib");
         std::fs::create_dir_all(dep_dir.join("src")).unwrap();
-        std::fs::write(
-            dep_dir.join("lsharp.toml"),
-            "[project]\nname = \"mylib\"\n",
-        ).unwrap();
+        std::fs::write(dep_dir.join("lsharp.toml"), "[project]\nname = \"mylib\"\n").unwrap();
         std::fs::write(
             dep_dir.join("src/Lib.ls"),
             "(module Lib)\n(defn helper [] 1)",
@@ -1485,14 +2362,22 @@ mod tests {
         std::fs::write(
             base_dir.join("lsharp.toml"),
             "[dependencies.mylib]\npath = \"mylib\"\n",
-        ).unwrap();
+        )
+        .unwrap();
 
         let result = cmd_install_in(&base_dir);
-        assert!(result.is_ok(), "Path 依存のインストールは成功するべき: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Path 依存のインストールは成功するべき: {:?}",
+            result
+        );
 
         let link_path = find_installed_package_dir(&base_dir, "mylib")
             .expect(".lsharp/packages/<name>-<hash> が必要");
-        assert!(link_path.exists(), "インストール済み package dir が存在するべき");
+        assert!(
+            link_path.exists(),
+            "インストール済み package dir が存在するべき"
+        );
         assert!(
             dep_dir.join("docs/api.json").exists(),
             "install 時に docs/api.json を生成するべき"
@@ -1515,7 +2400,8 @@ mod tests {
         std::fs::write(
             base_dir.join("lsharp.toml"),
             "[dependencies.missing]\npath = \"nonexistent\"\n",
-        ).unwrap();
+        )
+        .unwrap();
 
         let result = cmd_install_in(&base_dir);
         assert!(result.is_ok(), "存在しないパスでもエラーにはならないべき");
@@ -1548,7 +2434,13 @@ mod tests {
         let mut infer = lsharp_types::infer::Infer::new();
         let mut resolved_modules = std::collections::HashSet::new();
 
-        resolve_imports_recursive(&program, &dir, &mut infer, &mut resolved_modules);
+        resolve_imports_recursive(
+            &program,
+            &dir.join("Main.ls"),
+            &mut infer,
+            &mut resolved_modules,
+        )
+        .unwrap();
         let results = infer.infer_program(&program);
         let _ = std::fs::remove_dir_all(&dir);
 
@@ -1566,16 +2458,176 @@ mod tests {
         let source = std::fs::read_to_string(&file).unwrap();
         let program = lsharp_syntax::parse(&source).unwrap();
         let mut infer = lsharp_types::infer::Infer::new();
-        let parent_dir = file.parent().unwrap();
         let mut resolved_modules = std::collections::HashSet::new();
 
-        resolve_imports_recursive(&program, parent_dir, &mut infer, &mut resolved_modules);
+        resolve_imports_recursive(&program, &file, &mut infer, &mut resolved_modules).unwrap();
         let results = infer.infer_program(&program);
 
         assert!(
             results.is_ok(),
             "selfhost/TypeInfer.ls standalone check path は成功するべき: {:?}",
             results.err()
+        );
+    }
+
+    #[test]
+    fn test_check_import_only_blocks_non_selected_symbol() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_test_check_import_only_blocks_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("Utils.ls"),
+            "(module Utils)\n(defn helper [] 1)\n(defn secret [] 2)",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Utils :only [helper])\n(defn main [] (secret))",
+        )
+        .unwrap();
+
+        let source = std::fs::read_to_string(dir.join("Main.ls")).unwrap();
+        let program = lsharp_syntax::parse(&source).unwrap();
+        let mut infer = lsharp_types::infer::Infer::new();
+        let mut resolved_modules = std::collections::HashSet::new();
+
+        resolve_imports_recursive(
+            &program,
+            &dir.join("Main.ls"),
+            &mut infer,
+            &mut resolved_modules,
+        )
+        .unwrap();
+        let results = infer.infer_program(&program);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(
+            results.is_err(),
+            ":only で除外されたシンボルは参照できないべき"
+        );
+    }
+
+    #[test]
+    fn test_check_private_import_blocks_symbol() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_test_check_private_import_blocks_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("Utils.ls"),
+            "(module Utils)\n(private (defn secret [] 2))\n(defn helper [] 1)",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Utils)\n(defn main [] (secret))",
+        )
+        .unwrap();
+
+        let source = std::fs::read_to_string(dir.join("Main.ls")).unwrap();
+        let program = lsharp_syntax::parse(&source).unwrap();
+        let mut infer = lsharp_types::infer::Infer::new();
+        let mut resolved_modules = std::collections::HashSet::new();
+
+        resolve_imports_recursive(
+            &program,
+            &dir.join("Main.ls"),
+            &mut infer,
+            &mut resolved_modules,
+        )
+        .unwrap();
+        let results = infer.infer_program(&program);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(
+            results.is_err(),
+            "private なシンボルは他モジュールから参照できないべき"
+        );
+    }
+
+    #[test]
+    fn test_check_resolves_packages_from_project_root() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_test_check_project_root_packages_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("examples/demo")).unwrap();
+        std::fs::create_dir_all(dir.join(".lsharp/packages/pkg-123/src")).unwrap();
+        std::fs::write(dir.join("lsharp.toml"), "[project]\nname=\"demo\"\n").unwrap();
+        std::fs::write(
+            dir.join(".lsharp/packages/pkg-123/src/Helpers.ls"),
+            "(module Helpers)\n(defn helper [] 1)",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("examples/demo/Main.ls"),
+            "(module Main)\n(import Helpers)\n(defn main [] (helper))",
+        )
+        .unwrap();
+
+        let main_file = dir.join("examples/demo/Main.ls");
+        let source = std::fs::read_to_string(&main_file).unwrap();
+        let program = lsharp_syntax::parse(&source).unwrap();
+        let mut infer = lsharp_types::infer::Infer::new();
+        let mut resolved_modules = std::collections::HashSet::new();
+
+        resolve_imports_recursive(&program, &main_file, &mut infer, &mut resolved_modules).unwrap();
+        let results = infer.infer_program(&program);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(
+            results.is_ok(),
+            "project root の packages 配下を探索できるべき"
+        );
+    }
+
+    #[test]
+    fn test_check_rejects_non_exported_package_module() {
+        let dir = std::env::temp_dir().join(format!(
+            "lsharp_test_check_package_exports_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::create_dir_all(dir.join(".lsharp/packages/demo-123/src")).unwrap();
+        std::fs::write(dir.join("lsharp.toml"), "[project]\nname=\"app\"\n").unwrap();
+        std::fs::write(
+            dir.join(".lsharp/packages/demo-123/lsharp.toml"),
+            "[project]\nname=\"demo\"\n[project.exports]\nmodules=[\"Public\"]\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join(".lsharp/packages/demo-123/src/Hidden.ls"),
+            "(module Hidden)\n(defn helper [] 1)",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("src/Main.ls"),
+            "(module Main)\n(import Hidden)\n(defn main [] 0)",
+        )
+        .unwrap();
+
+        let main_file = dir.join("src/Main.ls");
+        let source = std::fs::read_to_string(&main_file).unwrap();
+        let program = lsharp_syntax::parse(&source).unwrap();
+        let mut infer = lsharp_types::infer::Infer::new();
+        let mut resolved_modules = std::collections::HashSet::new();
+
+        let result =
+            resolve_imports_recursive(&program, &main_file, &mut infer, &mut resolved_modules);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(
+            result.is_err(),
+            "非公開 package module の import は失敗するべき"
         );
     }
 
@@ -1588,11 +2640,16 @@ mod tests {
             None,
             ".lsharp/packages/repo-12345678",
         );
-        assert_eq!(args, vec![
-            "clone", "--depth", "1",
-            "https://github.com/user/repo.git",
-            ".lsharp/packages/repo-12345678",
-        ]);
+        assert_eq!(
+            args,
+            vec![
+                "clone",
+                "--depth",
+                "1",
+                "https://github.com/user/repo.git",
+                ".lsharp/packages/repo-12345678",
+            ]
+        );
     }
 
     #[test]
@@ -1603,12 +2660,18 @@ mod tests {
             None,
             ".lsharp/packages/repo-12345678",
         );
-        assert_eq!(args, vec![
-            "clone", "--depth", "1",
-            "--branch", "develop",
-            "https://github.com/user/repo.git",
-            ".lsharp/packages/repo-12345678",
-        ]);
+        assert_eq!(
+            args,
+            vec![
+                "clone",
+                "--depth",
+                "1",
+                "--branch",
+                "develop",
+                "https://github.com/user/repo.git",
+                ".lsharp/packages/repo-12345678",
+            ]
+        );
     }
 
     #[test]
@@ -1619,12 +2682,18 @@ mod tests {
             Some("v1.0.0"),
             ".lsharp/packages/repo-12345678",
         );
-        assert_eq!(args, vec![
-            "clone", "--depth", "1",
-            "--branch", "v1.0.0",
-            "https://github.com/user/repo.git",
-            ".lsharp/packages/repo-12345678",
-        ]);
+        assert_eq!(
+            args,
+            vec![
+                "clone",
+                "--depth",
+                "1",
+                "--branch",
+                "v1.0.0",
+                "https://github.com/user/repo.git",
+                ".lsharp/packages/repo-12345678",
+            ]
+        );
     }
 
     #[test]
@@ -1636,12 +2705,18 @@ mod tests {
             Some("v1.0.0"),
             ".lsharp/packages/repo-12345678",
         );
-        assert_eq!(args, vec![
-            "clone", "--depth", "1",
-            "--branch", "main",
-            "https://github.com/user/repo.git",
-            ".lsharp/packages/repo-12345678",
-        ]);
+        assert_eq!(
+            args,
+            vec![
+                "clone",
+                "--depth",
+                "1",
+                "--branch",
+                "main",
+                "https://github.com/user/repo.git",
+                ".lsharp/packages/repo-12345678",
+            ]
+        );
     }
 
     #[test]
@@ -1658,7 +2733,10 @@ mod tests {
             &dest,
         );
 
-        assert!(result.is_err(), "存在しない URL の git clone はエラーを返すべき");
+        assert!(
+            result.is_err(),
+            "存在しない URL の git clone はエラーを返すべき"
+        );
         let err_msg = result.unwrap_err();
         assert!(
             err_msg.contains("git clone 失敗") || err_msg.contains("git コマンドの実行に失敗"),
@@ -1698,10 +2776,14 @@ mod tests {
 git = "https://github.com/user/mylib.git"
 branch = "main"
 "#,
-        ).unwrap();
+        )
+        .unwrap();
 
         let result = cmd_install_in(&base_dir);
-        assert!(result.is_ok(), "既存ディレクトリがあればスキップして成功するべき");
+        assert!(
+            result.is_ok(),
+            "既存ディレクトリがあればスキップして成功するべき"
+        );
 
         std::fs::remove_dir_all(&base_dir).unwrap();
     }
@@ -1718,10 +2800,14 @@ branch = "main"
             r#"[dependencies.badrepo]
 git = "https://invalid.example.com/no-such-repo.git"
 "#,
-        ).unwrap();
+        )
+        .unwrap();
 
         let result = cmd_install_in(&base_dir);
-        assert!(result.is_ok(), "git clone 失敗でも全体はエラーにならないべき");
+        assert!(
+            result.is_ok(),
+            "git clone 失敗でも全体はエラーにならないべき"
+        );
 
         std::fs::remove_dir_all(&base_dir).unwrap();
     }
@@ -1740,14 +2826,21 @@ git = "https://invalid.example.com/no-such-repo.git"
         std::fs::write(
             base_dir.join("lsharp.toml"),
             "[dependencies.noconfig]\npath = \"noconfig\"\n",
-        ).unwrap();
+        )
+        .unwrap();
 
         let result = cmd_install_in(&base_dir);
-        assert!(result.is_ok(), "lsharp.toml がない依存先でもエラーにはならないべき");
+        assert!(
+            result.is_ok(),
+            "lsharp.toml がない依存先でもエラーにはならないべき"
+        );
 
         // シンボリックリンクは作成されない
         let link_path = find_installed_package_dir(&base_dir, "noconfig");
-        assert!(link_path.is_none(), "lsharp.toml がない依存先にはリンクを作らないべき");
+        assert!(
+            link_path.is_none(),
+            "lsharp.toml がない依存先にはリンクを作らないべき"
+        );
 
         std::fs::remove_dir_all(&base_dir).unwrap();
     }

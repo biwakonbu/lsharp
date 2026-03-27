@@ -30,17 +30,17 @@ pub enum TokenKind {
     Do,
     Module,
     Import,
-    Record,          // P1-1: レコード型キーワード
-    Trait,           // P5-1: トレイトキーワード
-    Impl,            // P5-1: impl キーワード
-    Where,           // P5-1: where キーワード
-    TypeAlias,       // P2-1: 型エイリアスキーワード
-    TypeConstrained, // P2-1: 制約付き型キーワード
-    Constraints,     // P2-1: 制約ブロックキーワード
-    Private,         // P4-3: 可視性キーワード
-    Computation,     // P6-3: Computation Expression キーワード
+    Record,             // P1-1: レコード型キーワード
+    Trait,              // P5-1: トレイトキーワード
+    Impl,               // P5-1: impl キーワード
+    Where,              // P5-1: where キーワード
+    TypeAlias,          // P2-1: 型エイリアスキーワード
+    TypeConstrained,    // P2-1: 制約付き型キーワード
+    Constraints,        // P2-1: 制約ブロックキーワード
+    Private,            // P4-3: 可視性キーワード
+    Computation,        // P6-3: Computation Expression キーワード
     ComputationBuilder, // P6-3: computation-builder 宣言キーワード
-    DefMacro,        // P10-2: マクロ定義キーワード
+    DefMacro,           // P10-2: マクロ定義キーワード
 
     // 型注釈
     Colon, // :
@@ -49,8 +49,8 @@ pub enum TokenKind {
     Dot,   // . (フィールドアクセス用)
 
     // マクロ (P10-1: Quote/Unquote 基盤)
-    Quote,        // ' (quote)
-    Unquote,      // ~ (unquote)
+    Quote,         // ' (quote)
+    Unquote,       // ~ (unquote)
     SpliceUnquote, // ~@ (splice-unquote)
 
     // 特殊

@@ -32,54 +32,112 @@ where
     for instr in instructions {
         match instr {
             // 定数
-            Instruction::I64Const(n) => { func.instruction(&W::I64Const(*n)); }
-            Instruction::F64Const(n) => { func.instruction(&W::F64Const((*n).into())); }
-            Instruction::I32Const(n) => { func.instruction(&W::I32Const(*n)); }
+            Instruction::I64Const(n) => {
+                func.instruction(&W::I64Const(*n));
+            }
+            Instruction::F64Const(n) => {
+                func.instruction(&W::F64Const((*n).into()));
+            }
+            Instruction::I32Const(n) => {
+                func.instruction(&W::I32Const(*n));
+            }
 
             // ローカル変数
-            Instruction::LocalGet(i) => { func.instruction(&W::LocalGet(*i)); }
-            Instruction::LocalSet(i) => { func.instruction(&W::LocalSet(*i)); }
-            Instruction::LocalTee(i) => { func.instruction(&W::LocalTee(*i)); }
+            Instruction::LocalGet(i) => {
+                func.instruction(&W::LocalGet(*i));
+            }
+            Instruction::LocalSet(i) => {
+                func.instruction(&W::LocalSet(*i));
+            }
+            Instruction::LocalTee(i) => {
+                func.instruction(&W::LocalTee(*i));
+            }
 
             // 整数演算
-            Instruction::I64Add => { func.instruction(&W::I64Add); }
-            Instruction::I64Sub => { func.instruction(&W::I64Sub); }
-            Instruction::I64Mul => { func.instruction(&W::I64Mul); }
-            Instruction::I64Div => { func.instruction(&W::I64DivS); }
-            Instruction::I64Rem => { func.instruction(&W::I64RemS); }
+            Instruction::I64Add => {
+                func.instruction(&W::I64Add);
+            }
+            Instruction::I64Sub => {
+                func.instruction(&W::I64Sub);
+            }
+            Instruction::I64Mul => {
+                func.instruction(&W::I64Mul);
+            }
+            Instruction::I64Div => {
+                func.instruction(&W::I64DivS);
+            }
+            Instruction::I64Rem => {
+                func.instruction(&W::I64RemS);
+            }
 
             // 浮動小数点演算
-            Instruction::F64Add => { func.instruction(&W::F64Add); }
-            Instruction::F64Sub => { func.instruction(&W::F64Sub); }
-            Instruction::F64Mul => { func.instruction(&W::F64Mul); }
-            Instruction::F64Div => { func.instruction(&W::F64Div); }
+            Instruction::F64Add => {
+                func.instruction(&W::F64Add);
+            }
+            Instruction::F64Sub => {
+                func.instruction(&W::F64Sub);
+            }
+            Instruction::F64Mul => {
+                func.instruction(&W::F64Mul);
+            }
+            Instruction::F64Div => {
+                func.instruction(&W::F64Div);
+            }
 
             // 比較
-            Instruction::I64Eq => { func.instruction(&W::I64Eq); }
-            Instruction::I64Ne => { func.instruction(&W::I64Ne); }
-            Instruction::I64LtS => { func.instruction(&W::I64LtS); }
-            Instruction::I64GtS => { func.instruction(&W::I64GtS); }
-            Instruction::I64LeS => { func.instruction(&W::I64LeS); }
-            Instruction::I64GeS => { func.instruction(&W::I64GeS); }
+            Instruction::I64Eq => {
+                func.instruction(&W::I64Eq);
+            }
+            Instruction::I64Ne => {
+                func.instruction(&W::I64Ne);
+            }
+            Instruction::I64LtS => {
+                func.instruction(&W::I64LtS);
+            }
+            Instruction::I64GtS => {
+                func.instruction(&W::I64GtS);
+            }
+            Instruction::I64LeS => {
+                func.instruction(&W::I64LeS);
+            }
+            Instruction::I64GeS => {
+                func.instruction(&W::I64GeS);
+            }
 
             // 論理演算
-            Instruction::I32Eqz => { func.instruction(&W::I32Eqz); }
-            Instruction::I32And => { func.instruction(&W::I32And); }
-            Instruction::I32Or => { func.instruction(&W::I32Or); }
+            Instruction::I32Eqz => {
+                func.instruction(&W::I32Eqz);
+            }
+            Instruction::I32And => {
+                func.instruction(&W::I32And);
+            }
+            Instruction::I32Or => {
+                func.instruction(&W::I32Or);
+            }
 
             // 型変換
-            Instruction::I64ExtendI32S => { func.instruction(&W::I64ExtendI32S); }
-            Instruction::I32WrapI64 => { func.instruction(&W::I32WrapI64); }
+            Instruction::I64ExtendI32S => {
+                func.instruction(&W::I64ExtendI32S);
+            }
+            Instruction::I32WrapI64 => {
+                func.instruction(&W::I32WrapI64);
+            }
 
             // 制御フロー — Call はコールバックに委譲
-            Instruction::Call(i) => { call_handler(func, *i)?; }
-            Instruction::If(ty) => {
-                func.instruction(&W::If(wasm_encoder::BlockType::Result(
-                    ir_to_wasm_valtype(*ty),
-                )));
+            Instruction::Call(i) => {
+                call_handler(func, *i)?;
             }
-            Instruction::Else => { func.instruction(&W::Else); }
-            Instruction::End => { func.instruction(&W::End); }
+            Instruction::If(ty) => {
+                func.instruction(&W::If(wasm_encoder::BlockType::Result(ir_to_wasm_valtype(
+                    *ty,
+                ))));
+            }
+            Instruction::Else => {
+                func.instruction(&W::Else);
+            }
+            Instruction::End => {
+                func.instruction(&W::End);
+            }
             Instruction::Block(ty) => {
                 func.instruction(&W::Block(wasm_encoder::BlockType::Result(
                     ir_to_wasm_valtype(*ty),
@@ -99,17 +157,31 @@ where
             Instruction::IfEmpty => {
                 func.instruction(&W::If(wasm_encoder::BlockType::Empty));
             }
-            Instruction::Br(i) => { func.instruction(&W::Br(*i)); }
-            Instruction::BrIf(i) => { func.instruction(&W::BrIf(*i)); }
-            Instruction::Return => { func.instruction(&W::Return); }
-            Instruction::Unreachable => { func.instruction(&W::Unreachable); }
+            Instruction::Br(i) => {
+                func.instruction(&W::Br(*i));
+            }
+            Instruction::BrIf(i) => {
+                func.instruction(&W::BrIf(*i));
+            }
+            Instruction::Return => {
+                func.instruction(&W::Return);
+            }
+            Instruction::Unreachable => {
+                func.instruction(&W::Unreachable);
+            }
 
-            Instruction::CallImport(i) => { func.instruction(&W::Call(*i)); }
-            Instruction::Drop => { func.instruction(&W::Drop); }
+            Instruction::CallImport(i) => {
+                func.instruction(&W::Call(*i));
+            }
+            Instruction::Drop => {
+                func.instruction(&W::Drop);
+            }
 
             // GC 命令は MVP ではフォールバック
             // TODO: WasmGC 本格実装時に削除。スタック操作はフォールバック用。
-            Instruction::StructNew(_) => { func.instruction(&W::I64Const(0)); }
+            Instruction::StructNew(_) => {
+                func.instruction(&W::I64Const(0));
+            }
             // TODO: WasmGC 本格実装時に削除。スタック操作はフォールバック用。
             Instruction::StructGet(_, _) => { /* nop */ }
             // TODO: WasmGC 本格実装時に削除。スタック操作はフォールバック用。
@@ -122,12 +194,20 @@ where
             Instruction::RefCast(_) => { /* nop */ }
 
             // 関数参照
-            Instruction::RefFunc(idx) => { func.instruction(&W::RefFunc(*idx)); }
-            Instruction::CallRef(type_idx) => { func.instruction(&W::CallRef(*type_idx)); }
+            Instruction::RefFunc(idx) => {
+                func.instruction(&W::RefFunc(*idx));
+            }
+            Instruction::CallRef(type_idx) => {
+                func.instruction(&W::CallRef(*type_idx));
+            }
 
             // グローバル変数
-            Instruction::GlobalGet(idx) => { func.instruction(&W::GlobalGet(*idx)); }
-            Instruction::GlobalSet(idx) => { func.instruction(&W::GlobalSet(*idx)); }
+            Instruction::GlobalGet(idx) => {
+                func.instruction(&W::GlobalGet(*idx));
+            }
+            Instruction::GlobalSet(idx) => {
+                func.instruction(&W::GlobalSet(*idx));
+            }
 
             // メモリ操作
             Instruction::I32Load { offset } => {
@@ -173,30 +253,70 @@ where
                 }));
             }
             // 型変換
-            Instruction::I64ExtendI32U => { func.instruction(&W::I64ExtendI32U); }
+            Instruction::I64ExtendI32U => {
+                func.instruction(&W::I64ExtendI32U);
+            }
             // i32 算術演算
-            Instruction::I32Add => { func.instruction(&W::I32Add); }
-            Instruction::I32Sub => { func.instruction(&W::I32Sub); }
-            Instruction::I32Mul => { func.instruction(&W::I32Mul); }
+            Instruction::I32Add => {
+                func.instruction(&W::I32Add);
+            }
+            Instruction::I32Sub => {
+                func.instruction(&W::I32Sub);
+            }
+            Instruction::I32Mul => {
+                func.instruction(&W::I32Mul);
+            }
             // i32 比較
-            Instruction::I32GtU => { func.instruction(&W::I32GtU); }
-            Instruction::I32GeU => { func.instruction(&W::I32GeU); }
+            Instruction::I32GtU => {
+                func.instruction(&W::I32GtU);
+            }
+            Instruction::I32GeU => {
+                func.instruction(&W::I32GeU);
+            }
             // ビット操作
-            Instruction::I32Shl => { func.instruction(&W::I32Shl); }
-            Instruction::I32ShrU => { func.instruction(&W::I32ShrU); }
-            Instruction::I64Shl => { func.instruction(&W::I64Shl); }
-            Instruction::I64ShrU => { func.instruction(&W::I64ShrU); }
-            Instruction::I64And => { func.instruction(&W::I64And); }
-            Instruction::I64Or => { func.instruction(&W::I64Or); }
-            Instruction::I64Xor => { func.instruction(&W::I64Xor); }
+            Instruction::I32Shl => {
+                func.instruction(&W::I32Shl);
+            }
+            Instruction::I32ShrU => {
+                func.instruction(&W::I32ShrU);
+            }
+            Instruction::I64Shl => {
+                func.instruction(&W::I64Shl);
+            }
+            Instruction::I64ShrU => {
+                func.instruction(&W::I64ShrU);
+            }
+            Instruction::I64And => {
+                func.instruction(&W::I64And);
+            }
+            Instruction::I64Or => {
+                func.instruction(&W::I64Or);
+            }
+            Instruction::I64Xor => {
+                func.instruction(&W::I64Xor);
+            }
             // メモリ管理
-            Instruction::MemoryGrow => { func.instruction(&W::MemoryGrow(0)); }
-            Instruction::MemorySize => { func.instruction(&W::MemorySize(0)); }
-            Instruction::MemoryCopy => { func.instruction(&W::MemoryCopy { src_mem: 0, dst_mem: 0 }); }
-            Instruction::MemoryFill => { func.instruction(&W::MemoryFill(0)); }
+            Instruction::MemoryGrow => {
+                func.instruction(&W::MemoryGrow(0));
+            }
+            Instruction::MemorySize => {
+                func.instruction(&W::MemorySize(0));
+            }
+            Instruction::MemoryCopy => {
+                func.instruction(&W::MemoryCopy {
+                    src_mem: 0,
+                    dst_mem: 0,
+                });
+            }
+            Instruction::MemoryFill => {
+                func.instruction(&W::MemoryFill(0));
+            }
             // 間接呼び出し (クロージャ用)
             Instruction::CallIndirect(type_idx) => {
-                func.instruction(&W::CallIndirect { type_index: *type_idx, table_index: 0 });
+                func.instruction(&W::CallIndirect {
+                    type_index: *type_idx,
+                    table_index: 0,
+                });
             }
             // 関数インデックスを i32 値として積む (codegen でリマップ済み)
             Instruction::FuncIdx(idx) => {

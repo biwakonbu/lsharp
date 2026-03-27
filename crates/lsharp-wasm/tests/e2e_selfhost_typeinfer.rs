@@ -23,22 +23,19 @@ fn test_e2e_selfhost_typeinfer_literal() {
 /// selfhost TypeInfer.ls テスト: float / unit リテラル型推論
 #[test]
 fn test_e2e_selfhost_typeinfer_float_and_unit_literals() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -72,31 +69,34 @@ fn test_e2e_selfhost_typeinfer_float_and_unit_literals() {
     );
     assert_eq!(lines[0], "0", "float infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "float infer の型タグは Con であるべき");
-    assert_eq!(lines[2], "400", "float infer の型名は Float hash=400 であるべき");
+    assert_eq!(
+        lines[2], "400",
+        "float infer の型名は Float hash=400 であるべき"
+    );
     assert_eq!(lines[3], "0", "unit infer は失敗すべきでない");
     assert_eq!(lines[4], "1", "unit infer の型タグは Con であるべき");
-    assert_eq!(lines[5], "500", "unit infer の型名は Unit hash=500 であるべき");
+    assert_eq!(
+        lines[5], "500",
+        "unit infer の型名は Unit hash=500 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: ann form は内側の式の型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_ann_expr() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -121,28 +121,28 @@ fn test_e2e_selfhost_typeinfer_ann_expr() {
     assert!(lines.len() >= 3, "ann typeinfer 出力が不足: {:?}", lines);
     assert_eq!(lines[0], "0", "ann infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "ann infer の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "ann infer の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[2], "100",
+        "ann infer の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 未定義変数は undefined error code を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_error_undefined_var_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -174,22 +174,19 @@ fn test_e2e_selfhost_typeinfer_error_undefined_var_code() {
 /// selfhost TypeInfer.ls テスト: if 条件不一致は if-cond error code を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_error_if_cond_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -223,28 +220,28 @@ fn test_e2e_selfhost_typeinfer_error_if_cond_code() {
         lines
     );
     assert_eq!(lines[0], "1", "if cond mismatch infer は失敗すべき");
-    assert_eq!(lines[1], "2", "if cond mismatch error code は E0002 であるべき");
+    assert_eq!(
+        lines[1], "2",
+        "if cond mismatch error code は E0002 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: if 分岐不一致は if-branch error code を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_error_if_branch_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -278,28 +275,28 @@ fn test_e2e_selfhost_typeinfer_error_if_branch_code() {
         lines
     );
     assert_eq!(lines[0], "1", "if branch mismatch infer は失敗すべき");
-    assert_eq!(lines[1], "3", "if branch mismatch error code は E0003 であるべき");
+    assert_eq!(
+        lines[1], "3",
+        "if branch mismatch error code は E0003 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: apply 引数不一致は arg-mismatch error code を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_error_apply_arg_mismatch_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -342,22 +339,19 @@ fn test_e2e_selfhost_typeinfer_error_apply_arg_mismatch_code() {
 /// selfhost TypeInfer.ls テスト: apply 内の未定義関数エラーは nested code を伝播できる
 #[test]
 fn test_e2e_selfhost_typeinfer_error_apply_propagates_func_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -400,22 +394,19 @@ fn test_e2e_selfhost_typeinfer_error_apply_propagates_func_code() {
 /// selfhost TypeInfer.ls テスト: 自己適用の occurs-check は infinite error code を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_error_infinite_type_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -453,28 +444,28 @@ fn test_e2e_selfhost_typeinfer_error_infinite_type_code() {
         lines
     );
     assert_eq!(lines[0], "1", "自己適用 infer は失敗すべき");
-    assert_eq!(lines[1], "5", "infinite type error code は E0005 であるべき");
+    assert_eq!(
+        lines[1], "5",
+        "infinite type error code は E0005 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: lambda body の自己適用でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_lambda_propagates_infinite_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -527,22 +518,19 @@ fn test_e2e_selfhost_typeinfer_error_lambda_propagates_infinite_code() {
 /// selfhost TypeInfer.ls テスト: defn body の自己適用でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_defn_propagates_infinite_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -598,22 +586,19 @@ fn test_e2e_selfhost_typeinfer_error_defn_propagates_infinite_code() {
 /// selfhost TypeInfer.ls テスト: let init の自己適用でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_let_propagates_infinite_init_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -670,22 +655,19 @@ fn test_e2e_selfhost_typeinfer_error_let_propagates_infinite_init_code() {
 /// selfhost TypeInfer.ls テスト: do 先頭式の自己適用でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_do_propagates_infinite_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -738,22 +720,19 @@ fn test_e2e_selfhost_typeinfer_error_do_propagates_infinite_code() {
 /// selfhost TypeInfer.ls テスト: computation step failure でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_computation_propagates_infinite_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -818,22 +797,19 @@ fn test_e2e_selfhost_typeinfer_error_computation_propagates_infinite_code() {
 /// selfhost TypeInfer.ls テスト: match body failure でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_propagates_infinite_body_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -891,22 +867,19 @@ fn test_e2e_selfhost_typeinfer_error_match_propagates_infinite_body_code() {
 /// selfhost TypeInfer.ls テスト: match arm 同士の結果型不一致は E0006 を返す
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_arm_result_mismatch_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -947,7 +920,10 @@ fn test_e2e_selfhost_typeinfer_error_match_arm_result_mismatch_code() {
         "match arm result mismatch error code 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "1", "match arm result mismatch infer は失敗すべき");
+    assert_eq!(
+        lines[0], "1",
+        "match arm result mismatch infer は失敗すべき"
+    );
     assert_eq!(
         lines[1], "6",
         "match arm result mismatch error code は E0006 であるべき"
@@ -957,22 +933,19 @@ fn test_e2e_selfhost_typeinfer_error_match_arm_result_mismatch_code() {
 /// selfhost TypeInfer.ls テスト: scrutinee と pattern の型不一致は E0006 を返す
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_pattern_scrutinee_mismatch_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -1033,22 +1006,19 @@ fn test_e2e_selfhost_typeinfer_error_match_pattern_scrutinee_mismatch_code() {
 /// selfhost TypeInfer.ls テスト: 未定義コンストラクタ pattern は E0001 を返す
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_undefined_constructor_pattern_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -1090,7 +1060,10 @@ fn test_e2e_selfhost_typeinfer_error_match_undefined_constructor_pattern_code() 
         "undefined constructor pattern error code 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "1", "undefined constructor pattern infer は失敗すべき");
+    assert_eq!(
+        lines[0], "1",
+        "undefined constructor pattern infer は失敗すべき"
+    );
     assert_eq!(
         lines[1], "1",
         "undefined constructor pattern error code は E0001 であるべき"
@@ -1100,22 +1073,19 @@ fn test_e2e_selfhost_typeinfer_error_match_undefined_constructor_pattern_code() 
 /// selfhost TypeInfer.ls テスト: constructor subpattern の未定義 ctor も E0001 を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_constructor_child_pattern_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -1168,7 +1138,10 @@ fn test_e2e_selfhost_typeinfer_error_match_constructor_child_pattern_code() {
         "constructor child pattern error code 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "1", "constructor child pattern infer は失敗すべき");
+    assert_eq!(
+        lines[0], "1",
+        "constructor child pattern infer は失敗すべき"
+    );
     assert_eq!(
         lines[1], "1",
         "constructor child pattern error code は E0001 であるべき"
@@ -1178,22 +1151,19 @@ fn test_e2e_selfhost_typeinfer_error_match_constructor_child_pattern_code() {
 /// selfhost TypeInfer.ls テスト: constructor pattern の引数数不一致は E0006 を返す
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_constructor_arity_mismatch_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -1240,7 +1210,10 @@ fn test_e2e_selfhost_typeinfer_error_match_constructor_arity_mismatch_code() {
         "constructor pattern arity mismatch error code 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "1", "constructor pattern arity mismatch infer は失敗すべき");
+    assert_eq!(
+        lines[0], "1",
+        "constructor pattern arity mismatch infer は失敗すべき"
+    );
     assert_eq!(
         lines[1], "6",
         "constructor pattern arity mismatch error code は E0006 であるべき"
@@ -1250,22 +1223,19 @@ fn test_e2e_selfhost_typeinfer_error_match_constructor_arity_mismatch_code() {
 /// selfhost TypeInfer.ls テスト: ast-pat-constructor の未定義 ctor も E0001 を返す
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_pat_constructor_tag_undefined_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -1320,22 +1290,19 @@ fn test_e2e_selfhost_typeinfer_error_match_pat_constructor_tag_undefined_code() 
 /// selfhost TypeInfer.ls テスト: ast-pat-constructor の引数数不一致も E0006 を返す
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_pat_constructor_tag_arity_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -1396,22 +1363,19 @@ fn test_e2e_selfhost_typeinfer_error_match_pat_constructor_tag_arity_code() {
 /// selfhost TypeInfer.ls テスト: ast-pat-recordpat の child failure も E0001 を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_pat_record_tag_child_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -1474,22 +1438,19 @@ fn test_e2e_selfhost_typeinfer_error_match_pat_record_tag_child_code() {
 /// selfhost TypeInfer.ls テスト: record subpattern の未定義 ctor も E0001 を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_record_child_pattern_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -1551,22 +1512,19 @@ fn test_e2e_selfhost_typeinfer_error_match_record_child_pattern_code() {
 /// selfhost TypeInfer.ls テスト: record literal field failure でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_record_literal_propagates_infinite_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -1623,22 +1581,19 @@ fn test_e2e_selfhost_typeinfer_error_record_literal_propagates_infinite_code() {
 /// selfhost TypeInfer.ls テスト: field access base failure でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_field_access_propagates_infinite_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -1686,22 +1641,19 @@ fn test_e2e_selfhost_typeinfer_error_field_access_propagates_infinite_code() {
 /// selfhost TypeInfer.ls テスト: record update base failure でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_record_update_propagates_infinite_code() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -1758,22 +1710,19 @@ fn test_e2e_selfhost_typeinfer_error_record_update_propagates_infinite_code() {
 /// selfhost TypeInfer.ls テスト: record literal は minimal Con type を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_record_literal() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -1805,31 +1754,38 @@ fn test_e2e_selfhost_typeinfer_record_literal() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "record literal typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "record literal typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "record literal infer は失敗すべきでない");
-    assert_eq!(lines[1], "1", "record literal infer の型タグは Con であるべき");
-    assert_eq!(lines[2], "700", "record literal infer の型名は Point hash=700 であるべき");
+    assert_eq!(
+        lines[1], "1",
+        "record literal infer の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[2], "700",
+        "record literal infer の型名は Point hash=700 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: record update は base 式の型を維持できる
 #[test]
 fn test_e2e_selfhost_typeinfer_record_update() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn mk-point-type []
@@ -1866,31 +1822,38 @@ fn test_e2e_selfhost_typeinfer_record_update() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "record update typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "record update typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "record update infer は失敗すべきでない");
-    assert_eq!(lines[1], "1", "record update infer の型タグは Con であるべき");
-    assert_eq!(lines[2], "700", "record update infer の型名は Point hash=700 であるべき");
+    assert_eq!(
+        lines[1], "1",
+        "record update infer の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[2], "700",
+        "record update infer の型名は Point hash=700 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: computation expression の最小型推論
 #[test]
 fn test_e2e_selfhost_typeinfer_computation_expr() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -1946,34 +1909,47 @@ fn test_e2e_selfhost_typeinfer_computation_expr() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 6, "computation typeinfer 出力が不足: {:?}", lines);
-    assert_eq!(lines[0], "0", "return-only computation infer は失敗すべきでない");
-    assert_eq!(lines[1], "1", "return-only computation の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "return-only computation の型名は Int hash=100 であるべき");
+    assert!(
+        lines.len() >= 6,
+        "computation typeinfer 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "0",
+        "return-only computation infer は失敗すべきでない"
+    );
+    assert_eq!(
+        lines[1], "1",
+        "return-only computation の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[2], "100",
+        "return-only computation の型名は Int hash=100 であるべき"
+    );
     assert_eq!(lines[3], "0", "let! computation infer は失敗すべきでない");
     assert_eq!(lines[4], "1", "let! computation の型タグは Con であるべき");
-    assert_eq!(lines[5], "100", "let! computation の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[5], "100",
+        "let! computation の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: single-step computation は最後の式型へ委譲できる
 #[test]
 fn test_e2e_selfhost_typeinfer_computation_single_step_bool() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -2028,22 +2004,19 @@ fn test_e2e_selfhost_typeinfer_computation_single_step_bool() {
 /// selfhost TypeInfer.ls テスト: 2-step let! computation は binder を最後の式へ渡せる
 #[test]
 fn test_e2e_selfhost_typeinfer_computation_let_bang_bool_binder() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -2088,30 +2061,36 @@ fn test_e2e_selfhost_typeinfer_computation_let_bang_bool_binder() {
         "let! bool computation typeinfer 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "0", "let! bool computation infer は失敗すべきでない");
-    assert_eq!(lines[1], "1", "let! bool computation の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "let! bool computation の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[0], "0",
+        "let! bool computation infer は失敗すべきでない"
+    );
+    assert_eq!(
+        lines[1], "1",
+        "let! bool computation の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[2], "200",
+        "let! bool computation の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 2-step do! computation は最後の式型へ委譲できる
 #[test]
 fn test_e2e_selfhost_typeinfer_computation_do_bang_bool_return() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -2155,30 +2134,36 @@ fn test_e2e_selfhost_typeinfer_computation_do_bang_bool_return() {
         "do! bool computation typeinfer 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "0", "do! bool computation infer は失敗すべきでない");
-    assert_eq!(lines[1], "1", "do! bool computation の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do! bool computation の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[0], "0",
+        "do! bool computation infer は失敗すべきでない"
+    );
+    assert_eq!(
+        lines[1], "1",
+        "do! bool computation の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[2], "200",
+        "do! bool computation の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 3-step let! -> do! -> return は binder を維持できる
 #[test]
 fn test_e2e_selfhost_typeinfer_computation_let_bang_do_bang_return_bool() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -2229,7 +2214,10 @@ fn test_e2e_selfhost_typeinfer_computation_let_bang_do_bang_return_bool() {
         "3-step let! do! computation typeinfer 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "0", "3-step let! do! computation infer は失敗すべきでない");
+    assert_eq!(
+        lines[0], "0",
+        "3-step let! do! computation infer は失敗すべきでない"
+    );
     assert_eq!(
         lines[1], "1",
         "3-step let! do! computation の型タグは Con であるべき"
@@ -2243,22 +2231,19 @@ fn test_e2e_selfhost_typeinfer_computation_let_bang_do_bang_return_bool() {
 /// selfhost TypeInfer.ls テスト: 3-step do! -> let! -> return は後段 binder を渡せる
 #[test]
 fn test_e2e_selfhost_typeinfer_computation_do_bang_let_bang_return_bool() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -2309,7 +2294,10 @@ fn test_e2e_selfhost_typeinfer_computation_do_bang_let_bang_return_bool() {
         "3-step do! let! computation typeinfer 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "0", "3-step do! let! computation infer は失敗すべきでない");
+    assert_eq!(
+        lines[0], "0",
+        "3-step do! let! computation infer は失敗すべきでない"
+    );
     assert_eq!(
         lines[1], "1",
         "3-step do! let! computation の型タグは Con であるべき"
@@ -2323,22 +2311,19 @@ fn test_e2e_selfhost_typeinfer_computation_do_bang_let_bang_return_bool() {
 /// selfhost TypeInfer.ls テスト: 6 式 do ブロックは最後の式型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_do_six_exprs_last_bool() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -2374,31 +2359,35 @@ fn test_e2e_selfhost_typeinfer_do_six_exprs_last_bool() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "do 6 exprs typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "do 6 exprs typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "do 6 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 6 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 6 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 6 exprs の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 7 式 do ブロックは最後の式型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_do_seven_exprs_last_bool() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -2436,31 +2425,35 @@ fn test_e2e_selfhost_typeinfer_do_seven_exprs_last_bool() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "do 7 exprs typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "do 7 exprs typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "do 7 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 7 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 7 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 7 exprs の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 8 式 do ブロックは最後の式型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_do_eight_exprs_last_bool() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -2500,31 +2493,35 @@ fn test_e2e_selfhost_typeinfer_do_eight_exprs_last_bool() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "do 8 exprs typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "do 8 exprs typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "do 8 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 8 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 8 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 8 exprs の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: do 9 式は最後の式の型を返す
 #[test]
 fn test_e2e_selfhost_typeinfer_do_nine_exprs_last_bool() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -2566,31 +2563,35 @@ fn test_e2e_selfhost_typeinfer_do_nine_exprs_last_bool() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "do 9 exprs typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "do 9 exprs typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "do 9 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 9 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 9 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 9 exprs の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: do ブロック 10 式は最後の Bool 型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_do_ten_exprs_last_bool() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -2635,31 +2636,35 @@ fn test_e2e_selfhost_typeinfer_do_ten_exprs_last_bool() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "do 10 exprs typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "do 10 exprs typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "do 10 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 10 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 10 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 10 exprs の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: do ブロック 11 式は最後の Bool 型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_do_eleven_exprs_last_bool() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -2713,28 +2718,28 @@ fn test_e2e_selfhost_typeinfer_do_eleven_exprs_last_bool() {
     );
     assert_eq!(lines[0], "0", "do 11 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 11 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 11 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 11 exprs の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: do ブロック 12 式は最後の Bool 型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_do_twelve_exprs_last_bool() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -2790,28 +2795,28 @@ fn test_e2e_selfhost_typeinfer_do_twelve_exprs_last_bool() {
     );
     assert_eq!(lines[0], "0", "do 12 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 12 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 12 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 12 exprs の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: do ブロック 13 式は最後の Bool 型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_do_thirteen_exprs_last_bool() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -2869,28 +2874,28 @@ fn test_e2e_selfhost_typeinfer_do_thirteen_exprs_last_bool() {
     );
     assert_eq!(lines[0], "0", "do 13 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 13 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 13 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 13 exprs の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: do ブロック 14 式は最後の Bool 型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_do_fourteen_exprs_last_bool() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -2950,28 +2955,28 @@ fn test_e2e_selfhost_typeinfer_do_fourteen_exprs_last_bool() {
     );
     assert_eq!(lines[0], "0", "do 14 exprs infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "do 14 exprs の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do 14 exprs の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "do 14 exprs の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 2 引数 lambda はカリー化された関数型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_lambda_two_params_curried() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -3032,33 +3037,39 @@ fn test_e2e_selfhost_typeinfer_lambda_two_params_curried() {
     assert_eq!(lines[0], "0", "multi-param lambda infer は失敗すべきでない");
     assert_eq!(lines[1], "3", "outer type は Fun であるべき");
     assert_eq!(lines[2], "1", "outer param type は Con であるべき");
-    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[3], "100",
+        "outer param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[4], "3", "outer return type も Fun であるべき");
     assert_eq!(lines[5], "1", "inner param type は Con であるべき");
-    assert_eq!(lines[6], "100", "inner param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[6], "100",
+        "inner param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[7], "1", "inner return type は Con であるべき");
-    assert_eq!(lines[8], "100", "inner return type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[8], "100",
+        "inner return type は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 2 引数 defn はカリー化された関数型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_defn_two_params_curried() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -3122,33 +3133,39 @@ fn test_e2e_selfhost_typeinfer_defn_two_params_curried() {
     assert_eq!(lines[0], "0", "multi-param defn infer は失敗すべきでない");
     assert_eq!(lines[1], "3", "outer type は Fun であるべき");
     assert_eq!(lines[2], "1", "outer param type は Con であるべき");
-    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[3], "100",
+        "outer param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[4], "3", "outer return type も Fun であるべき");
     assert_eq!(lines[5], "1", "inner param type は Con であるべき");
-    assert_eq!(lines[6], "100", "inner param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[6], "100",
+        "inner param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[7], "1", "inner return type は Con であるべき");
-    assert_eq!(lines[8], "100", "inner return type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[8], "100",
+        "inner return type は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 3 引数 apply はカリー化された関数型をたどれる
 #[test]
 fn test_e2e_selfhost_typeinfer_apply_three_args_curried() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -3192,28 +3209,28 @@ fn test_e2e_selfhost_typeinfer_apply_three_args_curried() {
     );
     assert_eq!(lines[0], "0", "3 引数 apply infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "3 引数 apply の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "3 引数 apply の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[2], "100",
+        "3 引数 apply の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 4 引数 apply はカリー化された関数型をたどれる
 #[test]
 fn test_e2e_selfhost_typeinfer_apply_four_args_curried() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -3259,28 +3276,28 @@ fn test_e2e_selfhost_typeinfer_apply_four_args_curried() {
     );
     assert_eq!(lines[0], "0", "4 引数 apply infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "4 引数 apply の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "4 引数 apply の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[2], "100",
+        "4 引数 apply の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 5 引数 apply はカリー化された関数型をたどれる
 #[test]
 fn test_e2e_selfhost_typeinfer_apply_five_args_curried() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -3328,28 +3345,28 @@ fn test_e2e_selfhost_typeinfer_apply_five_args_curried() {
     );
     assert_eq!(lines[0], "0", "5 引数 apply infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "5 引数 apply の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "5 引数 apply の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[2], "100",
+        "5 引数 apply の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 6 引数 apply はカリー化された関数型をたどれる
 #[test]
 fn test_e2e_selfhost_typeinfer_apply_six_args_curried() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -3399,28 +3416,28 @@ fn test_e2e_selfhost_typeinfer_apply_six_args_curried() {
     );
     assert_eq!(lines[0], "0", "6 引数 apply infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "6 引数 apply の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "6 引数 apply の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[2], "100",
+        "6 引数 apply の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 7 引数 apply はカリー化された関数型をたどれる
 #[test]
 fn test_e2e_selfhost_typeinfer_apply_seven_args_curried() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -3472,28 +3489,28 @@ fn test_e2e_selfhost_typeinfer_apply_seven_args_curried() {
     );
     assert_eq!(lines[0], "0", "7 引数 apply infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "7 引数 apply の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "7 引数 apply の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[2], "100",
+        "7 引数 apply の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 3 引数 lambda は 3 段のカリー化型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_lambda_three_params_curried() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -3568,36 +3585,42 @@ fn test_e2e_selfhost_typeinfer_lambda_three_params_curried() {
     assert_eq!(lines[0], "0", "three-param lambda infer は失敗すべきでない");
     assert_eq!(lines[1], "3", "outer type は Fun であるべき");
     assert_eq!(lines[2], "1", "outer param type は Con であるべき");
-    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[3], "100",
+        "outer param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[4], "3", "mid type は Fun であるべき");
     assert_eq!(lines[5], "1", "mid param type は Con であるべき");
     assert_eq!(lines[6], "100", "mid param type は Int hash=100 であるべき");
     assert_eq!(lines[7], "3", "inner type は Fun であるべき");
     assert_eq!(lines[8], "1", "inner param type は Con であるべき");
-    assert_eq!(lines[9], "100", "inner param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[9], "100",
+        "inner param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[10], "1", "inner return type は Con であるべき");
-    assert_eq!(lines[11], "100", "inner return type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[11], "100",
+        "inner return type は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 4 引数 lambda は 4 段のカリー化型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_lambda_four_params_curried() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -3689,39 +3712,51 @@ fn test_e2e_selfhost_typeinfer_lambda_four_params_curried() {
     assert_eq!(lines[0], "0", "four-param lambda infer は失敗すべきでない");
     assert_eq!(lines[1], "3", "outer type は Fun であるべき");
     assert_eq!(lines[2], "1", "outer param type は Con であるべき");
-    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[3], "100",
+        "outer param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[4], "3", "level2 type は Fun であるべき");
     assert_eq!(lines[5], "1", "level2 param type は Con であるべき");
-    assert_eq!(lines[6], "100", "level2 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[6], "100",
+        "level2 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[7], "3", "level3 type は Fun であるべき");
     assert_eq!(lines[8], "1", "level3 param type は Con であるべき");
-    assert_eq!(lines[9], "100", "level3 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[9], "100",
+        "level3 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[10], "3", "level4 type は Fun であるべき");
     assert_eq!(lines[11], "1", "level4 param type は Con であるべき");
-    assert_eq!(lines[12], "100", "level4 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[12], "100",
+        "level4 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[13], "1", "level4 return type は Con であるべき");
-    assert_eq!(lines[14], "100", "level4 return type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[14], "100",
+        "level4 return type は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 5 引数 lambda は 5 段のカリー化型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_lambda_five_params_curried() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -3830,42 +3865,57 @@ fn test_e2e_selfhost_typeinfer_lambda_five_params_curried() {
     assert_eq!(lines[0], "0", "five-param lambda infer は失敗すべきでない");
     assert_eq!(lines[1], "3", "outer type は Fun であるべき");
     assert_eq!(lines[2], "1", "outer param type は Con であるべき");
-    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[3], "100",
+        "outer param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[4], "3", "level2 type は Fun であるべき");
     assert_eq!(lines[5], "1", "level2 param type は Con であるべき");
-    assert_eq!(lines[6], "100", "level2 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[6], "100",
+        "level2 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[7], "3", "level3 type は Fun であるべき");
     assert_eq!(lines[8], "1", "level3 param type は Con であるべき");
-    assert_eq!(lines[9], "100", "level3 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[9], "100",
+        "level3 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[10], "3", "level4 type は Fun であるべき");
     assert_eq!(lines[11], "1", "level4 param type は Con であるべき");
-    assert_eq!(lines[12], "100", "level4 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[12], "100",
+        "level4 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[13], "3", "level5 type は Fun であるべき");
     assert_eq!(lines[14], "1", "level5 param type は Con であるべき");
-    assert_eq!(lines[15], "100", "level5 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[15], "100",
+        "level5 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[16], "1", "level5 return type は Con であるべき");
-    assert_eq!(lines[17], "100", "level5 return type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[17], "100",
+        "level5 return type は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 6 引数 lambda は 6 段のカリー化型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_lambda_six_params_curried() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -3991,45 +4041,63 @@ fn test_e2e_selfhost_typeinfer_lambda_six_params_curried() {
     assert_eq!(lines[0], "0", "six-param lambda infer は失敗すべきでない");
     assert_eq!(lines[1], "3", "outer type は Fun であるべき");
     assert_eq!(lines[2], "1", "outer param type は Con であるべき");
-    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[3], "100",
+        "outer param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[4], "3", "level2 type は Fun であるべき");
     assert_eq!(lines[5], "1", "level2 param type は Con であるべき");
-    assert_eq!(lines[6], "100", "level2 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[6], "100",
+        "level2 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[7], "3", "level3 type は Fun であるべき");
     assert_eq!(lines[8], "1", "level3 param type は Con であるべき");
-    assert_eq!(lines[9], "100", "level3 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[9], "100",
+        "level3 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[10], "3", "level4 type は Fun であるべき");
     assert_eq!(lines[11], "1", "level4 param type は Con であるべき");
-    assert_eq!(lines[12], "100", "level4 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[12], "100",
+        "level4 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[13], "3", "level5 type は Fun であるべき");
     assert_eq!(lines[14], "1", "level5 param type は Con であるべき");
-    assert_eq!(lines[15], "100", "level5 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[15], "100",
+        "level5 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[16], "3", "level6 type は Fun であるべき");
     assert_eq!(lines[17], "1", "level6 param type は Con であるべき");
-    assert_eq!(lines[18], "100", "level6 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[18], "100",
+        "level6 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[19], "1", "level6 return type は Con であるべき");
-    assert_eq!(lines[20], "100", "level6 return type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[20], "100",
+        "level6 return type は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 7 引数 lambda は 7 段のカリー化型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_lambda_seven_params_curried() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     // 7 引数 lambda: (fn [a b c d e f g] (+ a ...)) → Int -> Int -> ... -> Int
     // body は (+ a b) 相当の単純な apply で全 param を Int に制約する
@@ -4102,22 +4170,19 @@ fn test_e2e_selfhost_typeinfer_lambda_seven_params_curried() {
 /// selfhost TypeInfer.ls テスト: 3 引数 defn は 3 段のカリー化型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_defn_three_params_curried() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -4195,36 +4260,42 @@ fn test_e2e_selfhost_typeinfer_defn_three_params_curried() {
     assert_eq!(lines[0], "0", "three-param defn infer は失敗すべきでない");
     assert_eq!(lines[1], "3", "outer type は Fun であるべき");
     assert_eq!(lines[2], "1", "outer param type は Con であるべき");
-    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[3], "100",
+        "outer param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[4], "3", "mid type は Fun であるべき");
     assert_eq!(lines[5], "1", "mid param type は Con であるべき");
     assert_eq!(lines[6], "100", "mid param type は Int hash=100 であるべき");
     assert_eq!(lines[7], "3", "inner type は Fun であるべき");
     assert_eq!(lines[8], "1", "inner param type は Con であるべき");
-    assert_eq!(lines[9], "100", "inner param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[9], "100",
+        "inner param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[10], "1", "inner return type は Con であるべき");
-    assert_eq!(lines[11], "100", "inner return type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[11], "100",
+        "inner return type は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 4 引数 defn は 4 段のカリー化型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_defn_four_params_curried() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -4319,39 +4390,51 @@ fn test_e2e_selfhost_typeinfer_defn_four_params_curried() {
     assert_eq!(lines[0], "0", "four-param defn infer は失敗すべきでない");
     assert_eq!(lines[1], "3", "outer type は Fun であるべき");
     assert_eq!(lines[2], "1", "outer param type は Con であるべき");
-    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[3], "100",
+        "outer param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[4], "3", "level2 type は Fun であるべき");
     assert_eq!(lines[5], "1", "level2 param type は Con であるべき");
-    assert_eq!(lines[6], "100", "level2 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[6], "100",
+        "level2 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[7], "3", "level3 type は Fun であるべき");
     assert_eq!(lines[8], "1", "level3 param type は Con であるべき");
-    assert_eq!(lines[9], "100", "level3 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[9], "100",
+        "level3 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[10], "3", "level4 type は Fun であるべき");
     assert_eq!(lines[11], "1", "level4 param type は Con であるべき");
-    assert_eq!(lines[12], "100", "level4 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[12], "100",
+        "level4 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[13], "1", "level4 return type は Con であるべき");
-    assert_eq!(lines[14], "100", "level4 return type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[14], "100",
+        "level4 return type は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 5 引数 defn は 5 段のカリー化型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_defn_five_params_curried() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -4462,42 +4545,57 @@ fn test_e2e_selfhost_typeinfer_defn_five_params_curried() {
     assert_eq!(lines[0], "0", "five-param defn infer は失敗すべきでない");
     assert_eq!(lines[1], "3", "outer type は Fun であるべき");
     assert_eq!(lines[2], "1", "outer param type は Con であるべき");
-    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[3], "100",
+        "outer param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[4], "3", "level2 type は Fun であるべき");
     assert_eq!(lines[5], "1", "level2 param type は Con であるべき");
-    assert_eq!(lines[6], "100", "level2 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[6], "100",
+        "level2 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[7], "3", "level3 type は Fun であるべき");
     assert_eq!(lines[8], "1", "level3 param type は Con であるべき");
-    assert_eq!(lines[9], "100", "level3 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[9], "100",
+        "level3 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[10], "3", "level4 type は Fun であるべき");
     assert_eq!(lines[11], "1", "level4 param type は Con であるべき");
-    assert_eq!(lines[12], "100", "level4 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[12], "100",
+        "level4 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[13], "3", "level5 type は Fun であるべき");
     assert_eq!(lines[14], "1", "level5 param type は Con であるべき");
-    assert_eq!(lines[15], "100", "level5 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[15], "100",
+        "level5 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[16], "1", "level5 return type は Con であるべき");
-    assert_eq!(lines[17], "100", "level5 return type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[17], "100",
+        "level5 return type は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 6 引数 defn は 6 段のカリー化型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_defn_six_params_curried() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -4625,45 +4723,63 @@ fn test_e2e_selfhost_typeinfer_defn_six_params_curried() {
     assert_eq!(lines[0], "0", "six-param defn infer は失敗すべきでない");
     assert_eq!(lines[1], "3", "outer type は Fun であるべき");
     assert_eq!(lines[2], "1", "outer param type は Con であるべき");
-    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[3], "100",
+        "outer param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[4], "3", "level2 type は Fun であるべき");
     assert_eq!(lines[5], "1", "level2 param type は Con であるべき");
-    assert_eq!(lines[6], "100", "level2 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[6], "100",
+        "level2 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[7], "3", "level3 type は Fun であるべき");
     assert_eq!(lines[8], "1", "level3 param type は Con であるべき");
-    assert_eq!(lines[9], "100", "level3 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[9], "100",
+        "level3 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[10], "3", "level4 type は Fun であるべき");
     assert_eq!(lines[11], "1", "level4 param type は Con であるべき");
-    assert_eq!(lines[12], "100", "level4 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[12], "100",
+        "level4 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[13], "3", "level5 type は Fun であるべき");
     assert_eq!(lines[14], "1", "level5 param type は Con であるべき");
-    assert_eq!(lines[15], "100", "level5 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[15], "100",
+        "level5 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[16], "3", "level6 type は Fun であるべき");
     assert_eq!(lines[17], "1", "level6 param type は Con であるべき");
-    assert_eq!(lines[18], "100", "level6 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[18], "100",
+        "level6 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[19], "1", "level6 return type は Con であるべき");
-    assert_eq!(lines[20], "100", "level6 return type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[20], "100",
+        "level6 return type は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 7 引数 defn は 7 段のカリー化型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_defn_seven_params_curried() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     // 7 引数 defn: (defn f [a b c d e f g] (+ a b)) → Fun(Int, Fun(Int, ...))
     let harness = r#"
@@ -4738,8 +4854,7 @@ fn test_e2e_selfhost_typeinfer_defn_seven_params_curried() {
 /// selfhost AST.ls テスト: field access constructor / traversal
 #[test]
 fn test_e2e_selfhost_ast_fieldaccess_helpers() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
@@ -4762,7 +4877,11 @@ fn test_e2e_selfhost_ast_fieldaccess_helpers() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 5, "fieldaccess AST helper 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 5,
+        "fieldaccess AST helper 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "1", "fieldaccess は ast-fieldaccess であるべき");
     assert_eq!(lines[1], "1", "fieldaccess inner は var であるべき");
     assert_eq!(lines[2], "1", "fieldaccess field hash が保持されるべき");
@@ -4773,8 +4892,7 @@ fn test_e2e_selfhost_ast_fieldaccess_helpers() {
 /// selfhost Parser.ls テスト: field access expression を最小 payload でパースできる
 #[test]
 fn test_e2e_selfhost_parser_field_access_expr() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
         .expect("selfhost/Token.ls が読み込めない");
@@ -4782,9 +4900,8 @@ fn test_e2e_selfhost_parser_field_access_expr() {
         .expect("selfhost/AST.ls が読み込めない");
     let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
         .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls =
-        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-            .expect("selfhost/Parser.ls が読み込めない");
+    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -4805,7 +4922,11 @@ fn test_e2e_selfhost_parser_field_access_expr() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 4, "fieldaccess parser 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 4,
+        "fieldaccess parser 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "1", "fieldaccess は ast-fieldaccess であるべき");
     assert_eq!(lines[1], "1", "fieldaccess inner は var であるべき");
     assert_eq!(lines[2], "1", "fieldaccess inner hash が一致すべき");
@@ -4815,22 +4936,19 @@ fn test_e2e_selfhost_parser_field_access_expr() {
 /// selfhost TypeInfer.ls テスト: record type が分かる field access は実フィールド型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_field_access() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -4865,31 +4983,35 @@ fn test_e2e_selfhost_typeinfer_field_access() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "fieldaccess typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "fieldaccess typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "fieldaccess infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "fieldaccess infer の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "fieldaccess infer の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[2], "100",
+        "fieldaccess infer の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: record type が分からない field access は fresh var fallback を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_field_access_fallback_var() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -4920,7 +5042,10 @@ fn test_e2e_selfhost_typeinfer_field_access_fallback_var() {
         "fieldaccess fallback typeinfer 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "0", "fieldaccess fallback infer は失敗すべきでない");
+    assert_eq!(
+        lines[0], "0",
+        "fieldaccess fallback infer は失敗すべきでない"
+    );
     assert_eq!(
         lines[1], "2",
         "fieldaccess fallback infer の型タグは fresh Var であるべき"
@@ -4934,22 +5059,19 @@ fn test_e2e_selfhost_typeinfer_field_access_fallback_var() {
 /// selfhost TypeInfer.ls テスト: record literal に対する field access は実フィールド型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_field_access_on_record_literal() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -5005,22 +5127,19 @@ fn test_e2e_selfhost_typeinfer_field_access_on_record_literal() {
 /// selfhost TypeInfer.ls テスト: 2-field record literal の後続 field access も実フィールド型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_field_access_on_record_literal_second_field() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -5081,22 +5200,19 @@ fn test_e2e_selfhost_typeinfer_field_access_on_record_literal_second_field() {
 /// selfhost TypeInfer.ls テスト: quote は内側式の最小型推論へ委譲できる
 #[test]
 fn test_e2e_selfhost_typeinfer_quote_expr() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -5121,28 +5237,28 @@ fn test_e2e_selfhost_typeinfer_quote_expr() {
     assert!(lines.len() >= 3, "quote typeinfer 出力が不足: {:?}", lines);
     assert_eq!(lines[0], "0", "quote infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "quote infer の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "quote infer の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[2], "100",
+        "quote infer の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: unquote は内側 var の型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_unquote_expr() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -5166,31 +5282,35 @@ fn test_e2e_selfhost_typeinfer_unquote_expr() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "unquote typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "unquote typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "unquote infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "unquote infer の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "unquote infer の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[2], "200",
+        "unquote infer の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: unquote-splice は内側式の型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_unquote_splice_expr() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -5231,22 +5351,19 @@ fn test_e2e_selfhost_typeinfer_unquote_splice_expr() {
 /// selfhost TypeInfer.ls テスト: match の var pattern binder を body で参照できる
 #[test]
 fn test_e2e_selfhost_typeinfer_match_var_binder() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -5277,31 +5394,38 @@ fn test_e2e_selfhost_typeinfer_match_var_binder() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "match binder typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "match binder typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "match binder infer は失敗すべきでない");
-    assert_eq!(lines[1], "1", "match binder infer の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "match binder infer の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[1], "1",
+        "match binder infer の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[2], "100",
+        "match binder infer の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: ast-pat-var でも match binder を body で参照できる
 #[test]
 fn test_e2e_selfhost_typeinfer_match_pat_var_tag_binder() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -5338,8 +5462,14 @@ fn test_e2e_selfhost_typeinfer_match_pat_var_tag_binder() {
         "match pat-var binder typeinfer 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "0", "match pat-var binder infer は失敗すべきでない");
-    assert_eq!(lines[1], "1", "match pat-var binder infer の型タグは Con であるべき");
+    assert_eq!(
+        lines[0], "0",
+        "match pat-var binder infer は失敗すべきでない"
+    );
+    assert_eq!(
+        lines[1], "1",
+        "match pat-var binder infer の型タグは Con であるべき"
+    );
     assert_eq!(
         lines[2], "100",
         "match pat-var binder infer の型名は Int hash=100 であるべき"
@@ -5349,22 +5479,19 @@ fn test_e2e_selfhost_typeinfer_match_pat_var_tag_binder() {
 /// selfhost TypeInfer.ls テスト: match の record pattern binder を body で参照できる
 #[test]
 fn test_e2e_selfhost_typeinfer_match_record_pattern_binder() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -5406,31 +5533,41 @@ fn test_e2e_selfhost_typeinfer_match_record_pattern_binder() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "match record binder 出力が不足: {:?}", lines);
-    assert_eq!(lines[0], "0", "match record binder infer は失敗すべきでない");
-    assert_eq!(lines[1], "2", "match record binder infer の型タグは Var であるべき");
-    assert_eq!(lines[2], "1001", "match record binder infer の型変数 ID は 1001 であるべき");
+    assert!(
+        lines.len() >= 3,
+        "match record binder 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "0",
+        "match record binder infer は失敗すべきでない"
+    );
+    assert_eq!(
+        lines[1], "2",
+        "match record binder infer の型タグは Var であるべき"
+    );
+    assert_eq!(
+        lines[2], "1001",
+        "match record binder infer の型変数 ID は 1001 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: match の constructor pattern binder を body で参照できる
 #[test]
 fn test_e2e_selfhost_typeinfer_match_constructor_pattern_binder() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -5474,31 +5611,41 @@ fn test_e2e_selfhost_typeinfer_match_constructor_pattern_binder() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "match constructor binder 出力が不足: {:?}", lines);
-    assert_eq!(lines[0], "0", "match constructor binder infer は失敗すべきでない");
-    assert_eq!(lines[1], "1", "match constructor binder infer の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "match constructor binder infer の型名は Int であるべき");
+    assert!(
+        lines.len() >= 3,
+        "match constructor binder 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "0",
+        "match constructor binder infer は失敗すべきでない"
+    );
+    assert_eq!(
+        lines[1], "1",
+        "match constructor binder infer の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[2], "100",
+        "match constructor binder infer の型名は Int であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: ast-pat-recordpat でも match binder を body で参照できる
 #[test]
 fn test_e2e_selfhost_typeinfer_match_pat_record_tag_binder() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -5546,7 +5693,10 @@ fn test_e2e_selfhost_typeinfer_match_pat_record_tag_binder() {
         "match pat-record binder 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "0", "match pat-record binder infer は失敗すべきでない");
+    assert_eq!(
+        lines[0], "0",
+        "match pat-record binder infer は失敗すべきでない"
+    );
     assert_eq!(
         lines[1], "2",
         "match pat-record binder infer の型タグは Var であるべき"
@@ -5560,22 +5710,19 @@ fn test_e2e_selfhost_typeinfer_match_pat_record_tag_binder() {
 /// selfhost TypeInfer.ls テスト: ast-pat-constructor でも match binder を body で参照できる
 #[test]
 fn test_e2e_selfhost_typeinfer_match_pat_constructor_tag_binder() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -5642,22 +5789,19 @@ fn test_e2e_selfhost_typeinfer_match_pat_constructor_tag_binder() {
 /// selfhost TypeInfer.ls テスト: ast-pat-lit は int/bool 型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_match_pat_lit_tag() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -5688,32 +5832,39 @@ fn test_e2e_selfhost_typeinfer_match_pat_lit_tag() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 4, "match pat-lit infer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 4,
+        "match pat-lit infer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "1", "int pat-lit infer の型タグは Con であるべき");
     assert_eq!(lines[1], "100", "int pat-lit infer の型名は Int であるべき");
-    assert_eq!(lines[2], "1", "bool pat-lit infer の型タグは Con であるべき");
-    assert_eq!(lines[3], "200", "bool pat-lit infer の型名は Bool であるべき");
+    assert_eq!(
+        lines[2], "1",
+        "bool pat-lit infer の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[3], "200",
+        "bool pat-lit infer の型名は Bool であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: ast-pat-lit は unit 型も返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_match_pat_lit_unit_tag() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -5737,30 +5888,37 @@ fn test_e2e_selfhost_typeinfer_match_pat_lit_unit_tag() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 2, "match pat-lit unit 出力が不足: {:?}", lines);
-    assert_eq!(lines[0], "1", "unit pat-lit infer の型タグは Con であるべき");
-    assert_eq!(lines[1], "500", "unit pat-lit infer の型名は Unit であるべき");
+    assert!(
+        lines.len() >= 2,
+        "match pat-lit unit 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "1",
+        "unit pat-lit infer の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[1], "500",
+        "unit pat-lit infer の型名は Unit であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: constructor child の ast-pat-lit も unify できる
 #[test]
 fn test_e2e_selfhost_typeinfer_match_constructor_child_pat_lit() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -5829,22 +5987,19 @@ fn test_e2e_selfhost_typeinfer_match_constructor_child_pat_lit() {
 /// selfhost TypeInfer.ls テスト: record child の ast-pat-lit も unify できる
 #[test]
 fn test_e2e_selfhost_typeinfer_match_record_child_pat_lit() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -5916,22 +6071,19 @@ fn test_e2e_selfhost_typeinfer_match_record_child_pat_lit() {
 /// selfhost TypeInfer.ls テスト: constructor child の unit ast-pat-lit も unify できる
 #[test]
 fn test_e2e_selfhost_typeinfer_match_constructor_child_pat_unit_lit() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     let harness = r#"
 (defn main []

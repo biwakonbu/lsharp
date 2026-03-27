@@ -91,12 +91,7 @@ pub fn build_api_doc(
                 let scheme = type_results.iter().find(|(candidate, _)| candidate == name);
                 let (param_types, return_type) = scheme
                     .map(|(_, scheme)| split_signature(&scheme.ty))
-                    .unwrap_or_else(|| {
-                        (
-                            vec!["?".to_string(); params.len()],
-                            "?".to_string(),
-                        )
-                    });
+                    .unwrap_or_else(|| (vec!["?".to_string(); params.len()], "?".to_string()));
                 let signature = scheme
                     .map(|(_, scheme)| render_signature(&scheme.ty))
                     .unwrap_or_else(|| "?".to_string());
@@ -117,11 +112,9 @@ pub fn build_api_doc(
                         }),
                     })
                     .collect();
-                let example = metadata.as_ref().and_then(|meta| {
-                    meta.example
-                        .first()
-                        .map(|example| format!("{example}"))
-                });
+                let example = metadata
+                    .as_ref()
+                    .and_then(|meta| meta.example.first().map(|example| format!("{example}")));
 
                 functions.push(ApiFunction {
                     name: name.clone(),
@@ -187,20 +180,21 @@ pub fn build_api_doc(
     }
 }
 
-pub fn build_api_doc_for_file(
-    package: &str,
-    version: &str,
-    file: &Path,
-) -> miette::Result<ApiDoc> {
-    let source = std::fs::read_to_string(file)
-        .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
-    let program = lsharp_syntax::parse(&source)
-        .map_err(|e| miette::miette!("{e}"))?;
+pub fn build_api_doc_for_file(package: &str, version: &str, file: &Path) -> miette::Result<ApiDoc> {
+    let source =
+        std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{e}"))?;
     let mut infer = Infer::new();
     let type_results = infer
         .infer_program(&program)
         .map_err(|e| miette::miette!("{e}"))?;
-    Ok(build_api_doc(package, version, &program, &type_results, &infer))
+    Ok(build_api_doc(
+        package,
+        version,
+        &program,
+        &type_results,
+        &infer,
+    ))
 }
 
 pub fn build_api_doc_for_package(
@@ -233,8 +227,8 @@ fn collect_lsharp_files(dir: &Path, out: &mut Vec<PathBuf>) -> miette::Result<()
     if !dir.exists() {
         return Ok(());
     }
-    let entries = std::fs::read_dir(dir)
-        .map_err(|e| miette::miette!("{}: {}", dir.display(), e))?;
+    let entries =
+        std::fs::read_dir(dir).map_err(|e| miette::miette!("{}: {}", dir.display(), e))?;
     for entry in entries {
         let entry = entry.map_err(|e| miette::miette!("{}: {}", dir.display(), e))?;
         let path = entry.path();
@@ -329,11 +323,7 @@ mod tests {
         let dir = std::env::temp_dir().join("lsharp_api_doc_package");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("src")).unwrap();
-        std::fs::write(
-            dir.join("src/Beta.ls"),
-            "(module Beta)\n(defn beta [] 2)",
-        )
-        .unwrap();
+        std::fs::write(dir.join("src/Beta.ls"), "(module Beta)\n(defn beta [] 2)").unwrap();
         std::fs::write(
             dir.join("src/Alpha.ls"),
             "(module Alpha)\n(defn alpha [] 1)",
@@ -341,7 +331,11 @@ mod tests {
         .unwrap();
 
         let api = build_api_doc_for_package(&dir, "demo", "0.1.0").unwrap();
-        let names: Vec<&str> = api.modules.iter().map(|module| module.name.as_str()).collect();
+        let names: Vec<&str> = api
+            .modules
+            .iter()
+            .map(|module| module.name.as_str())
+            .collect();
 
         assert_eq!(names, vec!["Alpha", "Beta"]);
 

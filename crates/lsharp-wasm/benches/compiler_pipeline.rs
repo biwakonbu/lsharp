@@ -3,7 +3,7 @@
 //! パイプラインの各ステージ (parse → infer → lower → codegen) を個別に計測し、
 //! ボトルネックの特定と回帰検出に使用する。
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use lsharp_ir::lower::Lower;
 use lsharp_types::infer::Infer;
 
@@ -90,7 +90,9 @@ fn bench_lower(c: &mut Criterion) {
     group.bench_function("factorial", |b| {
         b.iter(|| {
             let mut lower = Lower::new();
-            lower.lower_program(&factorial_ast, &factorial_types).unwrap()
+            lower
+                .lower_program(&factorial_ast, &factorial_types)
+                .unwrap()
         });
     });
 
@@ -124,9 +126,7 @@ fn bench_codegen(c: &mut Criterion) {
     let mut hello_infer = Infer::new();
     let hello_types = hello_infer.infer_program(&hello_ast).unwrap();
     let mut hello_lower = Lower::new();
-    let hello_module = hello_lower
-        .lower_program(&hello_ast, &hello_types)
-        .unwrap();
+    let hello_module = hello_lower.lower_program(&hello_ast, &hello_types).unwrap();
 
     let mut group = c.benchmark_group("codegen");
 

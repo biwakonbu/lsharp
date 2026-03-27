@@ -49,10 +49,15 @@ fn find_function_doc(program: &lsharp_syntax::ast::Program, name: &str) -> Optio
             Decl::Private { inner, .. } => inner.as_ref(),
             other => other,
         };
-        if let Decl::Defn { name: decl_name, metadata, .. } = decl
-            && decl_name == name {
-                return metadata.as_ref().and_then(|metadata| metadata.doc.clone());
-            }
+        if let Decl::Defn {
+            name: decl_name,
+            metadata,
+            ..
+        } = decl
+            && decl_name == name
+        {
+            return metadata.as_ref().and_then(|metadata| metadata.doc.clone());
+        }
     }
     None
 }

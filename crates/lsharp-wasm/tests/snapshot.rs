@@ -161,9 +161,7 @@ fn test_snapshot_wasm_recursive_function() {
 #[test]
 fn test_snapshot_wasm_string_operations() {
     // 文字列操作を含む関数
-    let dump = wasm_structure_dump(
-        r#"(defn main [] (do (print-string "hello") 0))"#,
-    );
+    let dump = wasm_structure_dump(r#"(defn main [] (do (print-string "hello") 0))"#);
     insta::assert_snapshot!("wasm_string_operations", dump);
 }
 
@@ -218,9 +216,7 @@ fn test_snapshot_wasm_trait_dispatch() {
 #[test]
 fn test_snapshot_wasm_do_block() {
     // do ブロック (複数 print)
-    let dump = wasm_structure_dump(
-        "(defn main [] (do (print 1) (print 2) (print 3) 0))",
-    );
+    let dump = wasm_structure_dump("(defn main [] (do (print 1) (print 2) (print 3) 0))");
     insta::assert_snapshot!("wasm_do_block", dump);
 }
 

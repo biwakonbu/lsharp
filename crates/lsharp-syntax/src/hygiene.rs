@@ -452,8 +452,7 @@ mod tests {
         assert_eq!(table.resolve(&ref_ident), Some("inner_x"));
 
         // 参照 {s0, s2} → outer_x を解決 ({s0} が最大部分集合)
-        let ref_ident2 =
-            HygienicIdent::new("x".to_string(), ScopeSet::empty().add(s0).add(s2));
+        let ref_ident2 = HygienicIdent::new("x".to_string(), ScopeSet::empty().add(s0).add(s2));
         assert_eq!(table.resolve(&ref_ident2), Some("outer_x"));
     }
 
@@ -484,8 +483,7 @@ mod tests {
         let macro_scope = alloc.alloc(); // scope#1: マクロ展開
 
         // ユーザーの tmp: スコープ {user_scope}
-        let user_tmp =
-            HygienicIdent::new("tmp".to_string(), ScopeSet::singleton(user_scope));
+        let user_tmp = HygienicIdent::new("tmp".to_string(), ScopeSet::singleton(user_scope));
         table.bind(&user_tmp, "user_tmp_value".to_string());
 
         // マクロの tmp: スコープ {user_scope, macro_scope}
@@ -503,8 +501,7 @@ mod tests {
         assert_eq!(table.resolve(&macro_ref), Some("macro_tmp_value"));
 
         // ユーザーから tmp を参照: スコープ {user_scope}
-        let user_ref =
-            HygienicIdent::new("tmp".to_string(), ScopeSet::singleton(user_scope));
+        let user_ref = HygienicIdent::new("tmp".to_string(), ScopeSet::singleton(user_scope));
         assert_eq!(table.resolve(&user_ref), Some("user_tmp_value"));
     }
 

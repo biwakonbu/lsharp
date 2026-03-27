@@ -1,5 +1,5 @@
 use crate::{api_doc, commands, config};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 
@@ -22,8 +22,8 @@ pub fn run_stdio_server() -> miette::Result<()> {
             continue;
         }
 
-        let request: Value = serde_json::from_str(&line)
-            .map_err(|e| miette::miette!("JSON パース失敗: {e}"))?;
+        let request: Value =
+            serde_json::from_str(&line).map_err(|e| miette::miette!("JSON パース失敗: {e}"))?;
         let response = handle_jsonrpc_message(&request);
         if response.is_null() {
             continue;
@@ -31,8 +31,7 @@ pub fn run_stdio_server() -> miette::Result<()> {
 
         let payload = serde_json::to_string(&response)
             .map_err(|e| miette::miette!("JSON 直列化失敗: {e}"))?;
-        writeln!(writer, "{payload}")
-            .map_err(|e| miette::miette!("stdout 書き込み失敗: {e}"))?;
+        writeln!(writer, "{payload}").map_err(|e| miette::miette!("stdout 書き込み失敗: {e}"))?;
         writer
             .flush()
             .map_err(|e| miette::miette!("stdout flush 失敗: {e}"))?;
@@ -137,7 +136,10 @@ pub fn list_tools() -> Vec<McpTool> {
         tool("lsharp_stdlib_api", "stdlib API を返す"),
         tool("lsharp_compile_run", "compile と実行結果を返す"),
         tool("lsharp_errors", "エラーコードの説明を返す"),
-        tool("lsharp_search", "ローカルインストール済みパッケージを検索する"),
+        tool(
+            "lsharp_search",
+            "ローカルインストール済みパッケージを検索する",
+        ),
     ]
 }
 
@@ -362,15 +364,15 @@ fn stdlib_api_tool(arguments: &Value) -> Result<Value, String> {
     let mut modules = Vec::new();
     let target_module = arguments.get("module").and_then(Value::as_str);
 
-    let entries = std::fs::read_dir(&stdlib_root)
-        .map_err(|e| format!("{}: {e}", stdlib_root.display()))?;
+    let entries =
+        std::fs::read_dir(&stdlib_root).map_err(|e| format!("{}: {e}", stdlib_root.display()))?;
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|ext| ext.to_str()) != Some("ls") {
             continue;
         }
-        let doc = api_doc::build_api_doc_for_file(package, version, &path)
-            .map_err(|e| e.to_string())?;
+        let doc =
+            api_doc::build_api_doc_for_file(package, version, &path).map_err(|e| e.to_string())?;
         let mut doc_modules = doc.modules;
         if let Some(module) = doc_modules.pop() {
             if target_module.is_none_or(|target| target == module.name) {
@@ -390,8 +392,7 @@ fn stdlib_api_tool(arguments: &Value) -> Result<Value, String> {
 fn compile_run_tool(arguments: &Value) -> Result<Value, String> {
     let temp_dir = std::env::temp_dir().join("lsharp_mcp_compile_run");
     let _ = std::fs::remove_dir_all(&temp_dir);
-    std::fs::create_dir_all(&temp_dir)
-        .map_err(|e| format!("{}: {e}", temp_dir.display()))?;
+    std::fs::create_dir_all(&temp_dir).map_err(|e| format!("{}: {e}", temp_dir.display()))?;
     let input_path = temp_dir.join("Main.ls");
     let output_path = temp_dir.join("Main.wasm");
 
@@ -399,8 +400,7 @@ fn compile_run_tool(arguments: &Value) -> Result<Value, String> {
         std::fs::write(&input_path, source)
             .map_err(|e| format!("{}: {e}", input_path.display()))?;
     } else if let Some(file) = arguments.get("file").and_then(Value::as_str) {
-        let content = std::fs::read_to_string(file)
-            .map_err(|e| format!("{file}: {e}"))?;
+        let content = std::fs::read_to_string(file).map_err(|e| format!("{file}: {e}"))?;
         std::fs::write(&input_path, content)
             .map_err(|e| format!("{}: {e}", input_path.display()))?;
     } else {
@@ -430,12 +430,36 @@ fn errors_tool(arguments: &Value) -> Result<Value, String> {
         .and_then(Value::as_str)
         .ok_or_else(|| "error_code が必要です".to_string())?;
     let (name, description, fix) = match code {
-        "E0001" => ("undefined", "未定義の識別子です", "定義または import を確認してください"),
-        "E0002" => ("if-condition", "if 条件は Bool である必要があります", "条件式を Bool へ修正してください"),
-        "E0003" => ("if-branch", "if の分岐型が一致していません", "then/else の型を揃えてください"),
-        "E0004" => ("arg-mismatch", "関数引数の型が一致していません", "呼び出し引数の型を修正してください"),
-        "E0005" => ("infinite-type", "無限型が発生しました", "再帰的自己参照を外してください"),
-        _ => ("unknown", "未知のエラーコードです", "最新版ドキュメントを確認してください"),
+        "E0001" => (
+            "undefined",
+            "未定義の識別子です",
+            "定義または import を確認してください",
+        ),
+        "E0002" => (
+            "if-condition",
+            "if 条件は Bool である必要があります",
+            "条件式を Bool へ修正してください",
+        ),
+        "E0003" => (
+            "if-branch",
+            "if の分岐型が一致していません",
+            "then/else の型を揃えてください",
+        ),
+        "E0004" => (
+            "arg-mismatch",
+            "関数引数の型が一致していません",
+            "呼び出し引数の型を修正してください",
+        ),
+        "E0005" => (
+            "infinite-type",
+            "無限型が発生しました",
+            "再帰的自己参照を外してください",
+        ),
+        _ => (
+            "unknown",
+            "未知のエラーコードです",
+            "最新版ドキュメントを確認してください",
+        ),
     };
     Ok(json!({
         "code": code,
@@ -456,7 +480,9 @@ fn search_tool(arguments: &Value) -> Result<Value, String> {
         .into_iter()
         .filter(|pkg| {
             query.is_empty()
-                || pkg["name"].as_str().is_some_and(|name| name.contains(query))
+                || pkg["name"]
+                    .as_str()
+                    .is_some_and(|name| name.contains(query))
         })
         .collect::<Vec<_>>();
     Ok(json!({ "packages": packages }))
@@ -622,8 +648,7 @@ fn read_or_generate_package_api(package_dir: &Path) -> Result<Value, String> {
     if api_path.exists() {
         let content = std::fs::read_to_string(&api_path)
             .map_err(|e| format!("{}: {e}", api_path.display()))?;
-        return serde_json::from_str(&content)
-            .map_err(|e| format!("{}: {e}", api_path.display()));
+        return serde_json::from_str(&content).map_err(|e| format!("{}: {e}", api_path.display()));
     }
 
     let cfg = config::load_config(package_dir);
@@ -654,11 +679,7 @@ fn stdlib_root() -> Option<PathBuf> {
         }
     }
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../stdlib");
-    if path.exists() {
-        Some(path)
-    } else {
-        None
-    }
+    if path.exists() { Some(path) } else { None }
 }
 
 #[cfg(test)]
@@ -714,5 +735,43 @@ mod tests {
         assert_eq!(response["jsonrpc"], "2.0");
         assert_eq!(response["id"], 1);
         assert!(response["result"]["tools"].is_array());
+    }
+
+    #[test]
+    fn test_package_api_tool_reads_installed_api_json() {
+        let dir = std::env::temp_dir().join("lsharp_mcp_package_api");
+        let _ = std::fs::remove_dir_all(&dir);
+        let package_dir = dir.join(".lsharp/packages/demo-12345678");
+        std::fs::create_dir_all(package_dir.join("docs")).unwrap();
+        std::fs::write(
+            package_dir.join("docs/api.json"),
+            r#"{
+  "package": "demo",
+  "version": "0.1.0",
+  "modules": [
+    {
+      "name": "Geometry",
+      "doc": null,
+      "functions": [],
+      "types": []
+    }
+  ]
+}"#,
+        )
+        .unwrap();
+
+        let result = call_tool(
+            "lsharp_package_api",
+            &json!({
+                "project_dir": dir.display().to_string(),
+                "name": "demo"
+            }),
+        )
+        .expect("package_api が成功するべき");
+
+        assert_eq!(result["package"], "demo");
+        assert_eq!(result["modules"][0]["name"], "Geometry");
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

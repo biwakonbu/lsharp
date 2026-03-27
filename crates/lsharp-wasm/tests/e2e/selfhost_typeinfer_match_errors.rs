@@ -1,10 +1,8 @@
 use super::support::*;
 
-
 /// selfhost TypeInfer.ls テスト: match body failure でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_propagates_infinite_body_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -58,7 +56,6 @@ fn test_e2e_selfhost_typeinfer_error_match_propagates_infinite_body_code() {
 /// selfhost TypeInfer.ls テスト: match arm 同士の結果型不一致は E0006 を返す
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_arm_result_mismatch_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -95,7 +92,10 @@ fn test_e2e_selfhost_typeinfer_error_match_arm_result_mismatch_code() {
         "match arm result mismatch error code 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "1", "match arm result mismatch infer は失敗すべき");
+    assert_eq!(
+        lines[0], "1",
+        "match arm result mismatch infer は失敗すべき"
+    );
     assert_eq!(
         lines[1], "6",
         "match arm result mismatch error code は E0006 であるべき"
@@ -105,7 +105,6 @@ fn test_e2e_selfhost_typeinfer_error_match_arm_result_mismatch_code() {
 /// selfhost TypeInfer.ls テスト: scrutinee と pattern の型不一致は E0006 を返す
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_pattern_scrutinee_mismatch_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -162,7 +161,6 @@ fn test_e2e_selfhost_typeinfer_error_match_pattern_scrutinee_mismatch_code() {
 /// selfhost TypeInfer.ls テスト: 未定義コンストラクタ pattern は E0001 を返す
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_undefined_constructor_pattern_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -200,7 +198,10 @@ fn test_e2e_selfhost_typeinfer_error_match_undefined_constructor_pattern_code() 
         "undefined constructor pattern error code 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "1", "undefined constructor pattern infer は失敗すべき");
+    assert_eq!(
+        lines[0], "1",
+        "undefined constructor pattern infer は失敗すべき"
+    );
     assert_eq!(
         lines[1], "1",
         "undefined constructor pattern error code は E0001 であるべき"
@@ -210,7 +211,6 @@ fn test_e2e_selfhost_typeinfer_error_match_undefined_constructor_pattern_code() 
 /// selfhost TypeInfer.ls テスト: constructor subpattern の未定義 ctor も E0001 を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_constructor_child_pattern_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -259,7 +259,10 @@ fn test_e2e_selfhost_typeinfer_error_match_constructor_child_pattern_code() {
         "constructor child pattern error code 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "1", "constructor child pattern infer は失敗すべき");
+    assert_eq!(
+        lines[0], "1",
+        "constructor child pattern infer は失敗すべき"
+    );
     assert_eq!(
         lines[1], "1",
         "constructor child pattern error code は E0001 であるべき"
@@ -269,7 +272,6 @@ fn test_e2e_selfhost_typeinfer_error_match_constructor_child_pattern_code() {
 /// selfhost TypeInfer.ls テスト: constructor pattern の引数数不一致は E0006 を返す
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_constructor_arity_mismatch_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -312,7 +314,10 @@ fn test_e2e_selfhost_typeinfer_error_match_constructor_arity_mismatch_code() {
         "constructor pattern arity mismatch error code 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "1", "constructor pattern arity mismatch infer は失敗すべき");
+    assert_eq!(
+        lines[0], "1",
+        "constructor pattern arity mismatch infer は失敗すべき"
+    );
     assert_eq!(
         lines[1], "6",
         "constructor pattern arity mismatch error code は E0006 であるべき"
@@ -322,7 +327,6 @@ fn test_e2e_selfhost_typeinfer_error_match_constructor_arity_mismatch_code() {
 /// selfhost TypeInfer.ls テスト: ast-pat-constructor の未定義 ctor も E0001 を返す
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_pat_constructor_tag_undefined_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -373,7 +377,6 @@ fn test_e2e_selfhost_typeinfer_error_match_pat_constructor_tag_undefined_code() 
 /// selfhost TypeInfer.ls テスト: ast-pat-constructor の引数数不一致も E0006 を返す
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_pat_constructor_tag_arity_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -430,7 +433,6 @@ fn test_e2e_selfhost_typeinfer_error_match_pat_constructor_tag_arity_code() {
 /// selfhost TypeInfer.ls テスト: ast-pat-recordpat の child failure も E0001 を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_pat_record_tag_child_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -489,7 +491,6 @@ fn test_e2e_selfhost_typeinfer_error_match_pat_record_tag_child_code() {
 /// selfhost TypeInfer.ls テスト: record subpattern の未定義 ctor も E0001 を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_match_record_child_pattern_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)

@@ -34,9 +34,7 @@ pub fn generate_lockfile(config: &Config, project_dir: &Path) -> Lockfile {
             DependencySpec::Path { path } => {
                 let resolved = project_dir.join(path);
                 // canonicalize できれば絶対パスに、できなければ join 結果をそのまま使う
-                let abs_path = resolved
-                    .canonicalize()
-                    .unwrap_or(resolved);
+                let abs_path = resolved.canonicalize().unwrap_or(resolved);
                 LockEntry {
                     name: name.clone(),
                     version: "0.0.0".to_string(),
@@ -89,12 +87,13 @@ pub fn write_lockfile(lockfile: &Lockfile, path: &Path) -> Result<(), String> {
 /// ロックファイルを読み込む
 #[allow(dead_code)]
 pub fn read_lockfile(path: &Path) -> Result<Lockfile, String> {
-    let content =
-        std::fs::read_to_string(path).map_err(|e| format!("ロックファイルの読み込みに失敗: {e}"))?;
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("ロックファイルの読み込みに失敗: {e}"))?;
 
     // toml::Value でパースして [[package]] 配列を手動取得
-    let table: toml::Value =
-        content.parse().map_err(|e: toml::de::Error| format!("TOML パースエラー: {e}"))?;
+    let table: toml::Value = content
+        .parse()
+        .map_err(|e: toml::de::Error| format!("TOML パースエラー: {e}"))?;
 
     let packages = table
         .get("package")
@@ -172,7 +171,9 @@ mod tests {
         );
         // 絶対パスが含まれるはず
         assert!(
-            lockfile.entries[0].source.contains("lsharp_lockfile_test_path"),
+            lockfile.entries[0]
+                .source
+                .contains("lsharp_lockfile_test_path"),
             "解決済みパスにテストディレクトリ名が含まれるべき: {}",
             lockfile.entries[0].source
         );
@@ -227,7 +228,10 @@ mod tests {
     #[test]
     fn test_generate_lockfile_version_and_git() {
         let mut deps = HashMap::new();
-        deps.insert("math".to_string(), DependencySpec::Version("1.0.0".to_string()));
+        deps.insert(
+            "math".to_string(),
+            DependencySpec::Version("1.0.0".to_string()),
+        );
         deps.insert(
             "netlib".to_string(),
             DependencySpec::Git {
@@ -249,8 +253,15 @@ mod tests {
         assert_eq!(math.version, "1.0.0");
         assert_eq!(math.source, "registry:default");
 
-        let netlib = lockfile.entries.iter().find(|e| e.name == "netlib").unwrap();
-        assert_eq!(netlib.source, "git:https://github.com/user/netlib.git?branch=main");
+        let netlib = lockfile
+            .entries
+            .iter()
+            .find(|e| e.name == "netlib")
+            .unwrap();
+        assert_eq!(
+            netlib.source,
+            "git:https://github.com/user/netlib.git?branch=main"
+        );
     }
 
     /// 存在しないファイルの読み込みはエラーを返す

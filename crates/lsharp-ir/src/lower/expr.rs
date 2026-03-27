@@ -4,9 +4,9 @@ use std::collections::HashMap;
 
 use lsharp_syntax::ast::*;
 
-use crate::{closure, Function, Instruction, IrType};
+use crate::{Function, Instruction, IrType, closure};
 
-use super::{is_builtin_binop, FuncCtx, Lower, LowerError};
+use super::{FuncCtx, Lower, LowerError, is_builtin_binop};
 
 impl Lower {
     /// 式を IR 命令に変換（スタックマシン方式）
@@ -27,7 +27,9 @@ impl Lower {
                     self.string_offset += len;
 
                     let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
-                        LowerError::UndefinedFunction { name: "__alloc".to_string() }
+                        LowerError::UndefinedFunction {
+                            name: "__alloc".to_string(),
+                        }
                     })?;
 
                     // __alloc(8 + len) でヒープ領域を確保
@@ -79,9 +81,7 @@ impl Lower {
                     // Lambda Lifting で生成された関数の呼び出し
                     ctx.emit(Instruction::Call(func_idx));
                 } else {
-                    return Err(LowerError::UndefinedFunction {
-                        name: name.clone(),
-                    });
+                    return Err(LowerError::UndefinedFunction { name: name.clone() });
                 }
             }
 
@@ -155,20 +155,26 @@ impl Lower {
                     Expr::Var(_, name) if name == "print" => {
                         if let Some(arg) = args.first() {
                             // 引数の型を推定して適切な print 関数を選択
-                            let is_string = self.infer_expr_type_name(arg)
+                            let is_string = self
+                                .infer_expr_type_name(arg)
                                 .map(|t| t == "String")
                                 .unwrap_or(false);
                             self.lower_expr(ctx, arg)?;
                             if is_string {
                                 // 文字列の場合: print-string (改行なし) + 改行出力
-                                let idx = *self.func_indices.get("print-string").ok_or_else(|| {
-                                    LowerError::UndefinedFunction { name: "print-string".to_string() }
-                                })?;
+                                let idx =
+                                    *self.func_indices.get("print-string").ok_or_else(|| {
+                                        LowerError::UndefinedFunction {
+                                            name: "print-string".to_string(),
+                                        }
+                                    })?;
                                 ctx.emit(Instruction::Call(idx));
                             } else {
                                 // 整数の場合: print (改行付き)
                                 let idx = *self.func_indices.get("print").ok_or_else(|| {
-                                    LowerError::UndefinedFunction { name: "print".to_string() }
+                                    LowerError::UndefinedFunction {
+                                        name: "print".to_string(),
+                                    }
                                 })?;
                                 ctx.emit(Instruction::Call(idx));
                             }
@@ -182,7 +188,9 @@ impl Lower {
                             self.lower_expr(ctx, arg)?;
                         }
                         let idx = *self.func_indices.get("print-string").ok_or_else(|| {
-                            LowerError::UndefinedFunction { name: "print-string".to_string() }
+                            LowerError::UndefinedFunction {
+                                name: "print-string".to_string(),
+                            }
                         })?;
                         ctx.emit(Instruction::Call(idx));
                         // print-string は Unit を返す
@@ -196,7 +204,9 @@ impl Lower {
                         // i64 -> i32 に変換して proc_exit を呼ぶ
                         ctx.emit(Instruction::I32WrapI64);
                         let idx = *self.func_indices.get("proc-exit").ok_or_else(|| {
-                            LowerError::UndefinedFunction { name: "proc-exit".to_string() }
+                            LowerError::UndefinedFunction {
+                                name: "proc-exit".to_string(),
+                            }
                         })?;
                         ctx.emit(Instruction::Call(idx));
                         // proc-exit は Unit を返す（実際にはここに到達しないが型整合のため）
@@ -208,7 +218,9 @@ impl Lower {
                             self.lower_expr(ctx, arg)?;
                         }
                         let idx = *self.func_indices.get("__alloc").ok_or_else(|| {
-                            LowerError::UndefinedFunction { name: "__alloc".to_string() }
+                            LowerError::UndefinedFunction {
+                                name: "__alloc".to_string(),
+                            }
                         })?;
                         ctx.emit(Instruction::Call(idx));
                     }
@@ -263,7 +275,9 @@ impl Lower {
                         ctx.emit(Instruction::I64Const(8));
                         ctx.emit(Instruction::I64Add);
                         let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
-                            LowerError::UndefinedFunction { name: "__alloc".to_string() }
+                            LowerError::UndefinedFunction {
+                                name: "__alloc".to_string(),
+                            }
                         })?;
                         ctx.emit(Instruction::Call(alloc_idx));
                         ctx.emit(Instruction::LocalSet(obj_local));
@@ -318,7 +332,9 @@ impl Lower {
                             self.lower_expr(ctx, &args[1])?;
                         }
                         let idx = *self.func_indices.get("__string_concat").ok_or_else(|| {
-                            LowerError::UndefinedFunction { name: "__string_concat".to_string() }
+                            LowerError::UndefinedFunction {
+                                name: "__string_concat".to_string(),
+                            }
                         })?;
                         ctx.emit(Instruction::Call(idx));
                     }
@@ -329,7 +345,9 @@ impl Lower {
                             self.lower_expr(ctx, &args[1])?;
                         }
                         let idx = *self.func_indices.get("__string_eq").ok_or_else(|| {
-                            LowerError::UndefinedFunction { name: "__string_eq".to_string() }
+                            LowerError::UndefinedFunction {
+                                name: "__string_eq".to_string(),
+                            }
                         })?;
                         ctx.emit(Instruction::Call(idx));
                     }
@@ -339,7 +357,9 @@ impl Lower {
                             self.lower_expr(ctx, arg)?;
                         }
                         let idx = *self.func_indices.get("__int_to_string").ok_or_else(|| {
-                            LowerError::UndefinedFunction { name: "__int_to_string".to_string() }
+                            LowerError::UndefinedFunction {
+                                name: "__int_to_string".to_string(),
+                            }
                         })?;
                         ctx.emit(Instruction::Call(idx));
                     }
@@ -357,7 +377,9 @@ impl Lower {
                         // __alloc(16) でヒープ確保
                         ctx.emit(Instruction::I64Const(16));
                         let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
-                            LowerError::UndefinedFunction { name: "__alloc".to_string() }
+                            LowerError::UndefinedFunction {
+                                name: "__alloc".to_string(),
+                            }
                         })?;
                         ctx.emit(Instruction::Call(alloc_idx));
                         // アドレスを i64 のままローカルに保存
@@ -431,7 +453,9 @@ impl Lower {
                         ctx.emit(Instruction::I64Add);
                         // __alloc 呼び出し (i64 引数)
                         let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
-                            LowerError::UndefinedFunction { name: "__alloc".to_string() }
+                            LowerError::UndefinedFunction {
+                                name: "__alloc".to_string(),
+                            }
                         })?;
                         ctx.emit(Instruction::Call(alloc_idx));
                         // アドレスをローカルに保存 (i64)
@@ -592,9 +616,12 @@ impl Lower {
                                 ctx.emit(Instruction::I64Const(8));
                                 ctx.emit(Instruction::I64Mul);
                                 ctx.emit(Instruction::I64Add);
-                                let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
-                                    LowerError::UndefinedFunction { name: "__alloc".to_string() }
-                                })?;
+                                let alloc_idx =
+                                    *self.func_indices.get("__alloc").ok_or_else(|| {
+                                        LowerError::UndefinedFunction {
+                                            name: "__alloc".to_string(),
+                                        }
+                                    })?;
                                 ctx.emit(Instruction::Call(alloc_idx));
                                 let new_addr_local = ctx.alloc_local("_vpush_newaddr".to_string());
                                 ctx.emit(Instruction::LocalSet(new_addr_local));
@@ -707,7 +734,9 @@ impl Lower {
                         let alloc_size: i64 = 16 + (default_cap as i64) * 16; // 272
                         ctx.emit(Instruction::I64Const(alloc_size));
                         let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
-                            LowerError::UndefinedFunction { name: "__alloc".to_string() }
+                            LowerError::UndefinedFunction {
+                                name: "__alloc".to_string(),
+                            }
                         })?;
                         ctx.emit(Instruction::Call(alloc_idx));
                         let addr_local = ctx.alloc_local("_map_addr".to_string());
@@ -1069,7 +1098,10 @@ impl Lower {
                     }
 
                     // TypeName.field アクセサ呼び出し
-                    Expr::Var(_, name) if name.contains('.') && name.starts_with(|c: char| c.is_ascii_uppercase()) => {
+                    Expr::Var(_, name)
+                        if name.contains('.')
+                            && name.starts_with(|c: char| c.is_ascii_uppercase()) =>
+                    {
                         // 引数（レコード）を評価
                         for arg in args {
                             self.lower_expr(ctx, arg)?;
@@ -1077,9 +1109,7 @@ impl Lower {
                         if let Some(&idx) = self.func_indices.get(name.as_str()) {
                             ctx.emit(Instruction::Call(idx));
                         } else {
-                            return Err(LowerError::UndefinedFunction {
-                                name: name.clone(),
-                            });
+                            return Err(LowerError::UndefinedFunction { name: name.clone() });
                         }
                     }
                     // ユーザー定義関数呼び出し（トレイト静的ディスパッチ対応）
@@ -1122,9 +1152,7 @@ impl Lower {
                             let call_type_id = args.len() as u32 + 1; // 元引数 + closure_ptr
                             ctx.emit(Instruction::CallIndirect(call_type_id));
                         } else {
-                            return Err(LowerError::UndefinedFunction {
-                                name: name.clone(),
-                            });
+                            return Err(LowerError::UndefinedFunction { name: name.clone() });
                         }
                     }
                     _ => {
@@ -1169,10 +1197,14 @@ impl Lower {
 
                 // 自由変数をソートして順序を安定させる
                 // 組み込み関数や既存関数は自由変数としてキャプチャしない
-                let mut free_var_list: Vec<String> = free_vars.into_iter()
+                let mut free_var_list: Vec<String> = free_vars
+                    .into_iter()
                     .filter(|v| {
                         !is_builtin_binop(v)
-                            && v != "not" && v != "print" && v != "__alloc" && v != "proc-exit"
+                            && v != "not"
+                            && v != "print"
+                            && v != "__alloc"
+                            && v != "proc-exit"
                             && !self.func_indices.contains_key(v)
                     })
                     .collect();
@@ -1191,7 +1223,9 @@ impl Lower {
                 }
                 // closure_ptr パラメータを追加（常に最後のパラメータ）
                 let closure_ptr_idx = lifted_ctx.next_local;
-                lifted_ctx.locals_map.insert("__closure_ptr".to_string(), closure_ptr_idx);
+                lifted_ctx
+                    .locals_map
+                    .insert("__closure_ptr".to_string(), closure_ptr_idx);
                 lifted_ctx.param_count += 1;
                 lifted_ctx.next_local += 1;
 
@@ -1203,7 +1237,9 @@ impl Lower {
                     // fv_local = i64.load(i32.wrap(closure_ptr) + 8 + i*8)
                     prologue.push(Instruction::LocalGet(closure_ptr_idx));
                     prologue.push(Instruction::I32WrapI64);
-                    prologue.push(Instruction::I64Load { offset: 8 + (i as u32) * 8 });
+                    prologue.push(Instruction::I64Load {
+                        offset: 8 + (i as u32) * 8,
+                    });
                     prologue.push(Instruction::LocalSet(fv_local));
                 }
 
@@ -1216,7 +1252,8 @@ impl Lower {
 
                 // リフト先関数のパラメータ型: (元パラメータ..., closure_ptr)
                 let total_params = params.len() + 1; // +1 は closure_ptr
-                let extra_locals = vec![IrType::I64; (lifted_ctx.next_local - lifted_ctx.param_count) as usize];
+                let extra_locals =
+                    vec![IrType::I64; (lifted_ctx.next_local - lifted_ctx.param_count) as usize];
 
                 let lifted_func = Function {
                     name: lambda_name.clone(),
@@ -1228,8 +1265,7 @@ impl Lower {
                 };
 
                 // リフトされた関数のインデックスを割り当て
-                let func_idx = self.next_func_idx
-                    + self.lifted_functions.len() as u32;
+                let func_idx = self.next_func_idx + self.lifted_functions.len() as u32;
                 self.lifted_func_indices.insert(lambda_name, func_idx);
                 self.lifted_functions.push(lifted_func);
 
@@ -1291,10 +1327,8 @@ impl Lower {
                 if let Some(&gc_type_idx) = self.record_type_indices.get(type_name) {
                     // レコード定義のフィールド順序に従って値をスタックに積む
                     if let Some(field_order) = self.record_fields.get(type_name).cloned() {
-                        let field_map: HashMap<&str, &Expr> = fields
-                            .iter()
-                            .map(|(n, e)| (n.as_str(), e))
-                            .collect();
+                        let field_map: HashMap<&str, &Expr> =
+                            fields.iter().map(|(n, e)| (n.as_str(), e)).collect();
                         for field_name in &field_order {
                             if let Some(expr) = field_map.get(field_name.as_str()) {
                                 self.lower_expr(ctx, expr)?;
@@ -1338,7 +1372,9 @@ impl Lower {
                             }
                         } else {
                             return Err(LowerError::Unsupported {
-                                msg: format!("レコード型 '{tn}' にフィールド '{field_name}' が存在しません"),
+                                msg: format!(
+                                    "レコード型 '{tn}' にフィールド '{field_name}' が存在しません"
+                                ),
                             });
                         }
                     }
@@ -1347,17 +1383,19 @@ impl Lower {
                 if !resolved {
                     // フォールバック: フィールド名で全レコード型を走査
                     // record_fields を一時的にクローンして借用問題を回避
-                    let record_fields_snapshot: Vec<(String, Vec<String>)> = self.record_fields
+                    let record_fields_snapshot: Vec<(String, Vec<String>)> = self
+                        .record_fields
                         .iter()
                         .map(|(k, v)| (k.clone(), v.clone()))
                         .collect();
                     for (type_name, fields) in &record_fields_snapshot {
                         if let Some(field_idx) = fields.iter().position(|f| f == field_name)
-                            && let Some(&gc_type_idx) = self.record_type_indices.get(type_name) {
-                                ctx.emit(Instruction::StructGet(gc_type_idx, field_idx as u32));
-                                resolved = true;
-                                break;
-                            }
+                            && let Some(&gc_type_idx) = self.record_type_indices.get(type_name)
+                        {
+                            ctx.emit(Instruction::StructGet(gc_type_idx, field_idx as u32));
+                            resolved = true;
+                            break;
+                        }
                     }
                 }
 
@@ -1387,7 +1425,8 @@ impl Lower {
 
                 if found_type.is_none() {
                     // フォールバック: フィールド名で全レコード型を走査
-                    let record_fields_snapshot: Vec<(String, Vec<String>)> = self.record_fields
+                    let record_fields_snapshot: Vec<(String, Vec<String>)> = self
+                        .record_fields
                         .iter()
                         .map(|(k, v)| (k.clone(), v.clone()))
                         .collect();
@@ -1402,10 +1441,8 @@ impl Lower {
 
                 if let Some((type_name, field_order)) = found_type {
                     if let Some(&gc_type_idx) = self.record_type_indices.get(&type_name) {
-                        let update_map: HashMap<&str, &Expr> = update_fields
-                            .iter()
-                            .map(|(n, e)| (n.as_str(), e))
-                            .collect();
+                        let update_map: HashMap<&str, &Expr> =
+                            update_fields.iter().map(|(n, e)| (n.as_str(), e)).collect();
                         // 各フィールドについて、更新値があればそれを、なければベースから取得
                         for (field_idx, field_name) in field_order.iter().enumerate() {
                             if let Some(expr) = update_map.get(field_name.as_str()) {
@@ -1435,12 +1472,13 @@ impl Lower {
                             // MVP: bind 関数を呼び出す（簡易版: 式を評価してローカルに格納）
                             self.lower_expr(ctx, expr)?;
                             if let Some((ref bind_fn, _)) = builder_info
-                                && let Some(&idx) = self.func_indices.get(bind_fn.as_str()) {
-                                    // bind 関数の第1引数（モナド値）は既にスタック上
-                                    // 残りのステップは後続で評価される
-                                    // MVP: 式の結果をそのまま変数に束縛
-                                    let _ = idx; // 将来的に bind 呼び出しに使用
-                                }
+                                && let Some(&idx) = self.func_indices.get(bind_fn.as_str())
+                            {
+                                // bind 関数の第1引数（モナド値）は既にスタック上
+                                // 残りのステップは後続で評価される
+                                // MVP: 式の結果をそのまま変数に束縛
+                                let _ = idx; // 将来的に bind 呼び出しに使用
+                            }
                             // パターン変数をローカルに格納
                             if let Pattern::Var(_, var_name) = pat {
                                 let var_local = ctx.alloc_local(var_name.clone());
@@ -1459,9 +1497,10 @@ impl Lower {
                             // return expr -> return_fn(expr)
                             self.lower_expr(ctx, expr)?;
                             if let Some((_, ref return_fn)) = builder_info
-                                && let Some(&idx) = self.func_indices.get(return_fn.as_str()) {
-                                    ctx.emit(Instruction::Call(idx));
-                                }
+                                && let Some(&idx) = self.func_indices.get(return_fn.as_str())
+                            {
+                                ctx.emit(Instruction::Call(idx));
+                            }
                         }
                         ComputationStep::Expr(expr) => {
                             self.lower_expr(ctx, expr)?;
@@ -1541,12 +1580,15 @@ impl Lower {
 
     /// 文字列キーの場合に FNV-1a ハッシュ呼び出しを挿入する
     fn emit_string_key_hash(&self, ctx: &mut FuncCtx, key_expr: &Expr) -> Result<(), LowerError> {
-        let is_string_key = self.infer_expr_type_name(key_expr)
+        let is_string_key = self
+            .infer_expr_type_name(key_expr)
             .map(|t| t == "String")
             .unwrap_or(false);
         if is_string_key {
             let hash_idx = *self.func_indices.get("__fnv1a_hash").ok_or_else(|| {
-                LowerError::UndefinedFunction { name: "__fnv1a_hash".to_string() }
+                LowerError::UndefinedFunction {
+                    name: "__fnv1a_hash".to_string(),
+                }
             })?;
             ctx.emit(Instruction::Call(hash_idx));
         }

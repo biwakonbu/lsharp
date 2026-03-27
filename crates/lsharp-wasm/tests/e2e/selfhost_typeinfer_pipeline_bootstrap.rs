@@ -1,10 +1,8 @@
 use super::support::*;
 
-
 /// selfhost TypeInfer.ls テスト: record child の ast-pat-lit も unify できる
 #[test]
 fn test_e2e_selfhost_typeinfer_match_record_child_pat_lit() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -72,7 +70,6 @@ fn test_e2e_selfhost_typeinfer_match_record_child_pat_lit() {
 /// selfhost TypeInfer.ls テスト: constructor child の unit ast-pat-lit も unify できる
 #[test]
 fn test_e2e_selfhost_typeinfer_match_constructor_child_pat_unit_lit() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -268,7 +265,10 @@ fn test_e2e_bootstrap_stage1_stage2_match() {
     let main_path = selfhost_main_path();
     let stage1 = compile_file_only(&main_path);
     let stage2_proxy = compile_file_only(&main_path);
-    assert_eq!(stage1, stage2_proxy, "bootstrap proxy must be byte-identical until true stage1->stage2 is wired");
+    assert_eq!(
+        stage1, stage2_proxy,
+        "bootstrap proxy must be byte-identical until true stage1->stage2 is wired"
+    );
 }
 
 /// bootstrap proxy 検証: stage2 == stage3
@@ -339,10 +339,14 @@ fn test_e2e_bootstrap_stage0_oracle_chain_four_way_identity() {
 /// WASM-03: import なし単一モジュール (Token) の compile も連続一致すること
 #[test]
 fn test_e2e_wasm03_token_module_compile_deterministic() {
-    let token_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost/Token.ls");
+    let token_path =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost/Token.ls");
     let w1 = compile_file_only(&token_path);
     let w2 = compile_file_only(&token_path);
-    assert_eq!(w1, w2, "Token.ls compile must be byte-deterministic (WASM-03)");
+    assert_eq!(
+        w1, w2,
+        "Token.ls compile must be byte-deterministic (WASM-03)"
+    );
 }
 
 // === P11-2: ブートストラップ閉路基盤テスト ===
@@ -493,43 +497,139 @@ fn test_e2e_selfhost_main_native_pipeline_summary() {
 
     assert_eq!(native_len, 16, "tiny native payload は 16 bytes であるべき");
     assert_eq!(object_len, 32, "tiny Mach-O object は 32 bytes であるべき");
-    assert_eq!(link_response_len, 6, "単一 object の linker response は 6 bytes であるべき");
-    assert_eq!(target_arch, 1, "tiny native pipeline は x86_64 target を使う");
-    assert_eq!(target_format, 1, "tiny native pipeline は Mach-O object format を使う");
+    assert_eq!(
+        link_response_len, 6,
+        "単一 object の linker response は 6 bytes であるべき"
+    );
+    assert_eq!(
+        target_arch, 1,
+        "tiny native pipeline は x86_64 target を使う"
+    );
+    assert_eq!(
+        target_format, 1,
+        "tiny native pipeline は Mach-O object format を使う"
+    );
     assert_eq!(darwin_linker, 1, "Darwin summary は ld64 を選ぶ");
-    assert_eq!(source_ir_len, 1, "native summary は compile-source 由来の IR 長を報告する");
-    assert_eq!(linux_native_len, 16, "tiny Linux native payload も 16 bytes であるべき");
-    assert_eq!(linux_object_len, 24, "tiny ELF object は 24 bytes であるべき");
-    assert_eq!(linux_link_response_len, 6, "単一 ELF object の linker response は 6 bytes であるべき");
-    assert_eq!(linux_target_arch, 1, "Linux summary も x86_64 target を使う");
-    assert_eq!(linux_target_format, 2, "Linux summary は ELF object format を使う");
+    assert_eq!(
+        source_ir_len, 1,
+        "native summary は compile-source 由来の IR 長を報告する"
+    );
+    assert_eq!(
+        linux_native_len, 16,
+        "tiny Linux native payload も 16 bytes であるべき"
+    );
+    assert_eq!(
+        linux_object_len, 24,
+        "tiny ELF object は 24 bytes であるべき"
+    );
+    assert_eq!(
+        linux_link_response_len, 6,
+        "単一 ELF object の linker response は 6 bytes であるべき"
+    );
+    assert_eq!(
+        linux_target_arch, 1,
+        "Linux summary も x86_64 target を使う"
+    );
+    assert_eq!(
+        linux_target_format, 2,
+        "Linux summary は ELF object format を使う"
+    );
     assert_eq!(linux_linker, 3, "Linux summary は GNU ld を選ぶ");
-    assert_eq!(linux_ir_len, 1, "Linux summary も compile-source 由来の IR 長を報告する");
-    assert_eq!(macho_multi_link_response_len, 8, "2 object の Mach-O linker response は 8 bytes であるべき");
-    assert_eq!(linux_multi_link_response_len, 8, "2 object の ELF linker response は 8 bytes であるべき");
-    assert_eq!(aarch64_native_len, 16, "tiny aarch64 native payload も 16 bytes であるべき");
-    assert_eq!(aarch64_object_len, 32, "tiny aarch64 Mach-O object は 32 bytes であるべき");
-    assert_eq!(aarch64_link_response_len, 6, "単一 aarch64 object の linker response は 6 bytes であるべき");
+    assert_eq!(
+        linux_ir_len, 1,
+        "Linux summary も compile-source 由来の IR 長を報告する"
+    );
+    assert_eq!(
+        macho_multi_link_response_len, 8,
+        "2 object の Mach-O linker response は 8 bytes であるべき"
+    );
+    assert_eq!(
+        linux_multi_link_response_len, 8,
+        "2 object の ELF linker response は 8 bytes であるべき"
+    );
+    assert_eq!(
+        aarch64_native_len, 16,
+        "tiny aarch64 native payload も 16 bytes であるべき"
+    );
+    assert_eq!(
+        aarch64_object_len, 32,
+        "tiny aarch64 Mach-O object は 32 bytes であるべき"
+    );
+    assert_eq!(
+        aarch64_link_response_len, 6,
+        "単一 aarch64 object の linker response は 6 bytes であるべき"
+    );
     assert_eq!(aarch64_target_arch, 2, "aarch64 summary は target 2 を使う");
-    assert_eq!(aarch64_target_format, 1, "aarch64 summary は Mach-O object format を使う");
+    assert_eq!(
+        aarch64_target_format, 1,
+        "aarch64 summary は Mach-O object format を使う"
+    );
     assert_eq!(aarch64_linker, 1, "aarch64 summary は ld64 を選ぶ");
-    assert_eq!(aarch64_ir_len, 1, "aarch64 summary も compile-source 由来の IR 長を報告する");
-    assert_eq!(aarch64_multi_link_response_len, 8, "2 object の aarch64 Mach-O linker response は 8 bytes であるべき");
-    assert_eq!(macho_magic_byte0, 207, "Mach-O header 先頭 byte は 0xCF であるべき");
-    assert_eq!(macho_cpu_byte, 7, "x86_64 Mach-O cpu byte は 0x07 であるべき");
-    assert_eq!(elf_magic_byte0, 127, "ELF header 先頭 byte は 0x7F であるべき");
+    assert_eq!(
+        aarch64_ir_len, 1,
+        "aarch64 summary も compile-source 由来の IR 長を報告する"
+    );
+    assert_eq!(
+        aarch64_multi_link_response_len, 8,
+        "2 object の aarch64 Mach-O linker response は 8 bytes であるべき"
+    );
+    assert_eq!(
+        macho_magic_byte0, 207,
+        "Mach-O header 先頭 byte は 0xCF であるべき"
+    );
+    assert_eq!(
+        macho_cpu_byte, 7,
+        "x86_64 Mach-O cpu byte は 0x07 であるべき"
+    );
+    assert_eq!(
+        elf_magic_byte0, 127,
+        "ELF header 先頭 byte は 0x7F であるべき"
+    );
     assert_eq!(elf_class_byte, 2, "ELF class byte は ELF64=2 であるべき");
-    assert_eq!(aarch64_macho_magic_byte0, 207, "aarch64 Mach-O header 先頭 byte も 0xCF であるべき");
-    assert_eq!(aarch64_macho_cpu_byte, 12, "aarch64 Mach-O cpu byte は 0x0C であるべき");
-    assert_eq!(darwin_response_output_byte, 99, "Darwin response file は output id=99 を含む");
-    assert_eq!(darwin_response_object_byte, 32, "Darwin response file は Mach-O object size=32 を含む");
-    assert_eq!(linux_response_output_byte, 99, "Linux response file も output id=99 を含む");
-    assert_eq!(linux_response_object_byte, 24, "Linux response file は ELF object size=24 を含む");
-    assert_eq!(aarch64_response_output_byte, 99, "aarch64 response file も output id=99 を含む");
-    assert_eq!(aarch64_response_object_byte, 32, "aarch64 response file は Mach-O object size=32 を含む");
-    assert_eq!(darwin_multi_response_object2_byte, 32, "Darwin multi-object response は 2 個目の Mach-O size=32 を含む");
-    assert_eq!(linux_multi_response_object2_byte, 24, "Linux multi-object response は 2 個目の ELF size=24 を含む");
-    assert_eq!(aarch64_multi_response_object2_byte, 32, "aarch64 multi-object response は 2 個目の Mach-O size=32 を含む");
+    assert_eq!(
+        aarch64_macho_magic_byte0, 207,
+        "aarch64 Mach-O header 先頭 byte も 0xCF であるべき"
+    );
+    assert_eq!(
+        aarch64_macho_cpu_byte, 12,
+        "aarch64 Mach-O cpu byte は 0x0C であるべき"
+    );
+    assert_eq!(
+        darwin_response_output_byte, 99,
+        "Darwin response file は output id=99 を含む"
+    );
+    assert_eq!(
+        darwin_response_object_byte, 32,
+        "Darwin response file は Mach-O object size=32 を含む"
+    );
+    assert_eq!(
+        linux_response_output_byte, 99,
+        "Linux response file も output id=99 を含む"
+    );
+    assert_eq!(
+        linux_response_object_byte, 24,
+        "Linux response file は ELF object size=24 を含む"
+    );
+    assert_eq!(
+        aarch64_response_output_byte, 99,
+        "aarch64 response file も output id=99 を含む"
+    );
+    assert_eq!(
+        aarch64_response_object_byte, 32,
+        "aarch64 response file は Mach-O object size=32 を含む"
+    );
+    assert_eq!(
+        darwin_multi_response_object2_byte, 32,
+        "Darwin multi-object response は 2 個目の Mach-O size=32 を含む"
+    );
+    assert_eq!(
+        linux_multi_response_object2_byte, 24,
+        "Linux multi-object response は 2 個目の ELF size=24 を含む"
+    );
+    assert_eq!(
+        aarch64_multi_response_object2_byte, 32,
+        "aarch64 multi-object response は 2 個目の Mach-O size=32 を含む"
+    );
 }
 
 // =================================================
@@ -542,14 +642,24 @@ fn test_e2e_selfhost_main_native_pipeline_summary() {
 #[test]
 fn test_e2e_selfhost_module_compile_individual() {
     let all_modules = [
-        "Token", "AST", "IR", "Type", "TypeScheme",
+        "Token",
+        "AST",
+        "IR",
+        "Type",
+        "TypeScheme",
         "TypeInferCore",
-        "Compiler", "WasmEmit", "Lexer", "Parser", "Main",
-        "Formatter", "JsonRpc", "Linter",
-        "MacroExpand", "TypeInfer",
+        "Compiler",
+        "WasmEmit",
+        "Lexer",
+        "Parser",
+        "Main",
+        "Formatter",
+        "JsonRpc",
+        "Linter",
+        "MacroExpand",
+        "TypeInfer",
     ];
-    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../selfhost");
+    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
 
     let mut compiled = Vec::new();
     let mut skipped = Vec::new();
@@ -585,22 +695,39 @@ fn test_e2e_selfhost_module_compile_individual() {
 /// Formatter, JsonRpc, Linter, TypeScheme を含む拡張版。
 #[test]
 fn test_e2e_selfhost_all_modules_deterministic() {
-    let selfhost_dir =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
+    let selfhost_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
     // Rust parser で正常にコンパイルできるモジュール一覧
     let modules: &[(&str, &str)] = &[
         ("Lexer.ls", include_str!("../../../../selfhost/Lexer.ls")),
         ("Parser.ls", include_str!("../../../../selfhost/Parser.ls")),
         ("AST.ls", include_str!("../../../../selfhost/AST.ls")),
         ("Token.ls", include_str!("../../../../selfhost/Token.ls")),
-        ("Compiler.ls", include_str!("../../../../selfhost/Compiler.ls")),
+        (
+            "Compiler.ls",
+            include_str!("../../../../selfhost/Compiler.ls"),
+        ),
         ("Type.ls", include_str!("../../../../selfhost/Type.ls")),
         ("IR.ls", include_str!("../../../../selfhost/IR.ls")),
-        ("WasmEmit.ls", include_str!("../../../../selfhost/WasmEmit.ls")),
-        ("TypeScheme.ls", include_str!("../../../../selfhost/TypeScheme.ls")),
-        ("TypeInferCore.ls", include_str!("../../../../selfhost/TypeInferCore.ls")),
-        ("Formatter.ls", include_str!("../../../../selfhost/Formatter.ls")),
-        ("JsonRpc.ls", include_str!("../../../../selfhost/JsonRpc.ls")),
+        (
+            "WasmEmit.ls",
+            include_str!("../../../../selfhost/WasmEmit.ls"),
+        ),
+        (
+            "TypeScheme.ls",
+            include_str!("../../../../selfhost/TypeScheme.ls"),
+        ),
+        (
+            "TypeInferCore.ls",
+            include_str!("../../../../selfhost/TypeInferCore.ls"),
+        ),
+        (
+            "Formatter.ls",
+            include_str!("../../../../selfhost/Formatter.ls"),
+        ),
+        (
+            "JsonRpc.ls",
+            include_str!("../../../../selfhost/JsonRpc.ls"),
+        ),
         ("Linter.ls", include_str!("../../../../selfhost/Linter.ls")),
         ("Main.ls", include_str!("../../../../selfhost/Main.ls")),
     ];
@@ -610,14 +737,18 @@ fn test_e2e_selfhost_all_modules_deterministic() {
         let wasm1 = compile_file_only(&path);
         let wasm2 = compile_file_only(&path);
         assert_eq!(
-            wasm1, wasm2,
+            wasm1,
+            wasm2,
             "{} のコンパイルが非決定的: {} bytes vs {} bytes",
-            name, wasm1.len(), wasm2.len()
+            name,
+            wasm1.len(),
+            wasm2.len()
         );
         assert!(
             wasm1.len() > 100,
             "{} の wasm が小さすぎる: {} bytes",
-            name, wasm1.len()
+            name,
+            wasm1.len()
         );
     }
 }
@@ -628,13 +759,22 @@ fn test_e2e_selfhost_all_modules_deterministic() {
 #[test]
 fn test_e2e_bootstrap_stage1_compile_selfhost_sources() {
     let modules = [
-        "Token", "AST", "IR", "Type", "TypeScheme",
+        "Token",
+        "AST",
+        "IR",
+        "Type",
+        "TypeScheme",
         "TypeInferCore",
-        "Compiler", "WasmEmit", "Lexer", "Parser", "Main",
-        "Formatter", "JsonRpc", "Linter",
+        "Compiler",
+        "WasmEmit",
+        "Lexer",
+        "Parser",
+        "Main",
+        "Formatter",
+        "JsonRpc",
+        "Linter",
     ];
-    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../selfhost");
+    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
 
     // 各セクション ID とサイズを抽出するヘルパー
     fn extract_sections(wasm: &[u8]) -> Vec<(u8, usize)> {
@@ -646,11 +786,15 @@ fn test_e2e_bootstrap_stage1_compile_selfhost_sources() {
             let mut size: usize = 0;
             let mut shift = 0;
             loop {
-                if pos >= wasm.len() { break; }
+                if pos >= wasm.len() {
+                    break;
+                }
                 let byte = wasm[pos] as usize;
                 pos += 1;
                 size |= (byte & 0x7f) << shift;
-                if byte & 0x80 == 0 { break; }
+                if byte & 0x80 == 0 {
+                    break;
+                }
                 shift += 7;
             }
             sections.push((section_id, size));
@@ -667,21 +811,13 @@ fn test_e2e_bootstrap_stage1_compile_selfhost_sources() {
         let wasm1 = compile_file_only(&path);
         let wasm2 = compile_file_only(&path);
 
-        assert_eq!(
-            wasm1, wasm2,
-            "{} のコンパイルが非決定的",
-            module
-        );
+        assert_eq!(wasm1, wasm2, "{} のコンパイルが非決定的", module);
         assert_valid_wasm(&wasm1);
 
         // セクション構造が安定
         let sections1 = extract_sections(&wasm1);
         let sections2 = extract_sections(&wasm2);
-        assert_eq!(
-            sections1, sections2,
-            "{} のセクション構造が不安定",
-            module
-        );
+        assert_eq!(sections1, sections2, "{} のセクション構造が不安定", module);
 
         // 最低限の Wasm セクションが含まれている
         let section_ids: Vec<u8> = sections1.iter().map(|s| s.0).collect();
@@ -719,7 +855,11 @@ fn test_e2e_selfhost_module_declarations() {
         ("Type.ls", "Type", &[]),
         ("AST.ls", "AST", &["Token"]),
         ("TypeScheme.ls", "TypeScheme", &["Type"]),
-        ("TypeInferCore.ls", "TypeInferCore", &["AST", "Type", "TypeScheme"]),
+        (
+            "TypeInferCore.ls",
+            "TypeInferCore",
+            &["AST", "Type", "TypeScheme"],
+        ),
         ("Lexer.ls", "Lexer", &["Token"]),
         ("Parser.ls", "Parser", &["Token", "AST"]),
         ("MacroExpand.ls", "MacroExpand", &["AST", "Token"]),
@@ -729,14 +869,24 @@ fn test_e2e_selfhost_module_declarations() {
         ("Linter.ls", "Linter", &["AST"]),
         ("Formatter.ls", "Formatter", &["AST"]),
         ("JsonRpc.ls", "JsonRpc", &["Linter", "Formatter"]),
-        ("Main.ls", "Main", &["Lexer", "Parser", "MacroExpand", "TypeInfer", "Compiler", "WasmEmit"]),
+        (
+            "Main.ls",
+            "Main",
+            &[
+                "Lexer",
+                "Parser",
+                "MacroExpand",
+                "TypeInfer",
+                "Compiler",
+                "WasmEmit",
+            ],
+        ),
     ];
 
     // MacroExpand, TypeInfer は Rust parser 未対応構文があるためパース検証をスキップ
     let parse_skip: &[&str] = &["MacroExpand.ls", "TypeInfer.ls"];
 
-    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../selfhost");
+    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
 
     let mut text_verified = 0;
     let mut parse_verified = 0;
@@ -745,15 +895,16 @@ fn test_e2e_selfhost_module_declarations() {
         let path = base_dir.join(filename);
         assert!(path.exists(), "{} が見つからない", filename);
 
-        let source = std::fs::read_to_string(&path)
-            .expect(&format!("{} の読み込みに失敗", filename));
+        let source =
+            std::fs::read_to_string(&path).expect(&format!("{} の読み込みに失敗", filename));
 
         // テキストベースで module 宣言の存在を確認（全15ファイル）
         let module_decl = format!("(module {})", expected_module);
         assert!(
             source.contains(&module_decl),
             "{} に {} が見つからない",
-            filename, module_decl
+            filename,
+            module_decl
         );
 
         // テキストベースで import 宣言の存在を確認（全15ファイル）
@@ -762,7 +913,8 @@ fn test_e2e_selfhost_module_declarations() {
             assert!(
                 source.contains(&import_decl),
                 "{} に {} が見つからない",
-                filename, import_decl
+                filename,
+                import_decl
             );
         }
 
@@ -773,16 +925,15 @@ fn test_e2e_selfhost_module_declarations() {
             let program = lsharp_syntax::parse(&source)
                 .unwrap_or_else(|e| panic!("{} のパースに失敗: {:?}", filename, e));
 
-            assert!(
-                !program.decls.is_empty(),
-                "{} の AST 宣言が空",
-                filename
-            );
+            assert!(!program.decls.is_empty(), "{} の AST 宣言が空", filename);
 
             parse_verified += 1;
         }
     }
 
     assert_eq!(text_verified, 16, "全 16 モジュールでテキスト検証すべき");
-    assert_eq!(parse_verified, 14, "パース可能な 14 モジュールで AST 検証すべき");
+    assert_eq!(
+        parse_verified, 14,
+        "パース可能な 14 モジュールで AST 検証すべき"
+    );
 }

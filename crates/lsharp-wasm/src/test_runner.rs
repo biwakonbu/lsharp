@@ -37,19 +37,17 @@ pub struct TestSummary {
 ///
 /// 各テストは `(print (if test_expr 1 0))` として出力される。
 /// 出力の各行が "1" ならテスト成功、"0" なら失敗。
-pub fn generate_test_program(
-    original: &Program,
-    tests: &[GeneratedTest],
-) -> String {
+pub fn generate_test_program(original: &Program, tests: &[GeneratedTest]) -> String {
     let mut source = String::new();
 
     // 元のプログラムの宣言を出力（main を除く）
     for decl in &original.decls {
         let actual = unwrap_private_decl(decl);
         if let Decl::Defn { name, .. } = actual
-            && name == "main" {
-                continue;
-            }
+            && name == "main"
+        {
+            continue;
+        }
         source.push_str(&format!("{decl}\n"));
     }
 
@@ -68,9 +66,7 @@ pub fn generate_test_program(
                 // :example 式をそのまま評価
                 // 式が真（非ゼロ）なら 1 を、偽なら 0 を print
                 let expr_str = format!("{}", test.expr);
-                source.push_str(&format!(
-                    "    (print (if {expr_str} 1 0))\n"
-                ));
+                source.push_str(&format!("    (print (if {expr_str} 1 0))\n"));
             }
             TestKind::Invariant => {
                 // :invariant は `result` を参照する事後条件
@@ -99,9 +95,10 @@ fn find_param_count(program: &Program, fn_name: &str) -> usize {
     for decl in &program.decls {
         let actual = unwrap_private_decl(decl);
         if let Decl::Defn { name, params, .. } = actual
-            && name == fn_name {
-                return params.len();
-            }
+            && name == fn_name
+        {
+            return params.len();
+        }
     }
     0
 }
@@ -157,7 +154,10 @@ pub fn parse_test_output(
     for test in tests {
         match test.kind {
             TestKind::Example => {
-                let passed = lines.get(line_idx).map(|l| l.trim() == "1").unwrap_or(false);
+                let passed = lines
+                    .get(line_idx)
+                    .map(|l| l.trim() == "1")
+                    .unwrap_or(false);
                 results.push(TestResult {
                     name: test.name.clone(),
                     function_name: test.function_name.clone(),
@@ -178,7 +178,10 @@ pub fn parse_test_output(
                 let mut fail_msg = None;
 
                 for args in &sample_args {
-                    let passed = lines.get(line_idx).map(|l| l.trim() == "1").unwrap_or(false);
+                    let passed = lines
+                        .get(line_idx)
+                        .map(|l| l.trim() == "1")
+                        .unwrap_or(false);
                     if !passed {
                         all_passed = false;
                         fail_msg = Some(format!(
@@ -264,7 +267,11 @@ mod tests {
         let results = parse_test_output(&output, &tests, &program);
 
         assert_eq!(results.len(), 1);
-        assert!(results[0].passed, "invariant テストが成功するはず: {:?}", results[0].error);
+        assert!(
+            results[0].passed,
+            "invariant テストが成功するはず: {:?}",
+            results[0].error
+        );
     }
 
     #[test]

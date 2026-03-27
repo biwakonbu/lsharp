@@ -1,6 +1,6 @@
 #![allow(clippy::result_large_err, clippy::type_complexity)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::types::*;
 use lsharp_syntax::ast::*;
@@ -74,7 +74,9 @@ pub enum TypeError {
         span: Span,
     },
 
-    #[error("[{error_code}] 型の不一致 (mismatch): expected {expected}, found {found} (エイリアス '{alias_name}' は {expanded} に展開) ({span})")]
+    #[error(
+        "[{error_code}] 型の不一致 (mismatch): expected {expected}, found {found} (エイリアス '{alias_name}' は {expanded} に展開) ({span})"
+    )]
     MismatchWithAlias {
         expected: Type,
         found: Type,
@@ -84,7 +86,9 @@ pub enum TypeError {
         error_code: TypeErrorCode,
     },
 
-    #[error("[E0006] Kind の不一致: {type_name} は {actual_kind} ですが、トレイト {trait_name} は {expected_kind} を要求します ({span})")]
+    #[error(
+        "[E0006] Kind の不一致: {type_name} は {actual_kind} ですが、トレイト {trait_name} は {expected_kind} を要求します ({span})"
+    )]
     KindMismatch {
         type_name: String,
         trait_name: String,
@@ -216,6 +220,21 @@ impl Infer {
         }
     }
 
+    /// import 可視性に従って外部モジュールの型環境を注入
+    pub fn inject_external_types_for_import(
+        &mut self,
+        module: &str,
+        only: Option<&[String]>,
+        hidden: &HashSet<String>,
+        types: &[(String, TypeScheme)],
+    ) {
+        for (name, scheme) in types {
+            if Self::is_type_visible_from_import(module, name, only, hidden) {
+                self.external_types.insert(name.clone(), scheme.clone());
+            }
+        }
+    }
+
     /// 現在の external_types のスナップショットを Vec 形式で返す
     ///
     /// 再帰的 import 解決時に、解決済みの型を推移的に注入するために使用する。
@@ -226,8 +245,32 @@ impl Infer {
             .collect()
     }
 
+    fn is_type_visible_from_import(
+        module: &str,
+        name: &str,
+        only: Option<&[String]>,
+        hidden: &HashSet<String>,
+    ) -> bool {
+        let module_qualified = format!("{module}.{name}");
+        if hidden.contains(name) || hidden.contains(&module_qualified) {
+            return false;
+        }
+
+        let visible_name = name.strip_prefix(&format!("{module}.")).unwrap_or(name);
+
+        match only {
+            Some(only) => only
+                .iter()
+                .any(|symbol| symbol == visible_name || symbol == name),
+            None => true,
+        }
+    }
+
     /// プログラム全体を型チェック
-    pub fn infer_program(&mut self, program: &Program) -> Result<Vec<(String, TypeScheme)>, TypeError> {
+    pub fn infer_program(
+        &mut self,
+        program: &Program,
+    ) -> Result<Vec<(String, TypeScheme)>, TypeError> {
         let mut env = self.builtin_env();
 
         // 外部モジュールの型環境を注入
@@ -311,11 +354,14 @@ impl Infer {
                         open: *open,
                     });
                 }
-                Decl::ComputationBuilder { name, bind_fn, return_fn, .. } => {
-                    self.computation_builders.insert(
-                        name.clone(),
-                        (bind_fn.clone(), return_fn.clone()),
-                    );
+                Decl::ComputationBuilder {
+                    name,
+                    bind_fn,
+                    return_fn,
+                    ..
+                } => {
+                    self.computation_builders
+                        .insert(name.clone(), (bind_fn.clone(), return_fn.clone()));
                 }
                 Decl::Private { inner, .. } => {
                     // Private 内の宣言も型登録する（内部名は同じ）
@@ -355,35 +401,79 @@ impl Infer {
     ) -> Result<(), TypeError> {
         for decl in body {
             match decl {
-                Decl::TypeDef { name, type_params, variants, .. } => {
+                Decl::TypeDef {
+                    name,
+                    type_params,
+                    variants,
+                    ..
+                } => {
                     let qualified = format!("{module_name}.{name}");
                     self.register_type_def(env, &qualified, type_params, variants)?;
                 }
-                Decl::RecordDef { name, type_params, fields, .. } => {
+                Decl::RecordDef {
+                    name,
+                    type_params,
+                    fields,
+                    ..
+                } => {
                     let qualified = format!("{module_name}.{name}");
                     self.register_record_def(env, &qualified, type_params, fields)?;
                 }
-                Decl::TypeAlias { name, params, target, span, .. } => {
+                Decl::TypeAlias {
+                    name,
+                    params,
+                    target,
+                    span,
+                    ..
+                } => {
                     let qualified = format!("{module_name}.{name}");
                     self.register_type_alias(&qualified, params, target, *span)?;
                 }
-                Decl::TypeConstrained { name, base_type, constraints, span, .. } => {
+                Decl::TypeConstrained {
+                    name,
+                    base_type,
+                    constraints,
+                    span,
+                    ..
+                } => {
                     let qualified = format!("{module_name}.{name}");
                     self.register_type_constrained(env, &qualified, base_type, constraints, *span)?;
                 }
-                Decl::TraitDef { name, type_param, methods, span, .. } => {
+                Decl::TraitDef {
+                    name,
+                    type_param,
+                    methods,
+                    span,
+                    ..
+                } => {
                     let qualified = format!("{module_name}.{name}");
                     self.register_trait_def(env, &qualified, type_param, methods, *span)?;
                 }
-                Decl::ImplDef { trait_name, type_name, methods, span, .. } => {
+                Decl::ImplDef {
+                    trait_name,
+                    type_name,
+                    methods,
+                    span,
+                    ..
+                } => {
                     self.register_impl_def(env, trait_name, type_name, methods, *span)?;
                 }
-                Decl::ModuleDecl { name: inner_name, body: inner_body, .. } => {
+                Decl::ModuleDecl {
+                    name: inner_name,
+                    body: inner_body,
+                    ..
+                } => {
                     // 再帰的にネストモジュールを処理（修飾名を連結）
                     let qualified = format!("{module_name}.{inner_name}");
                     self.register_nested_module_types(env, &qualified, inner_body)?;
                 }
-                Decl::ImportDecl { module, alias, only, open, .. } => {
+                Decl::ImportDecl {
+                    module,
+                    alias,
+                    only,
+                    open,
+                    ..
+                } => {
                     self.module_env.imports.push(ModuleImport {
                         module: module.clone(),
                         alias: alias.clone(),
@@ -391,22 +481,20 @@ impl Infer {
                         open: *open,
                     });
                 }
-                Decl::Private { inner, .. } => {
-                    match inner.as_ref() {
-                        Decl::Defn { name, .. } => {
-                            let qualified = format!("{module_name}.{name}");
-                            self.module_env.privates.push(qualified);
-                        }
-                        Decl::TypeDef { name, .. }
-                        | Decl::RecordDef { name, .. }
-                        | Decl::TypeAlias { name, .. }
-                        | Decl::TypeConstrained { name, .. } => {
-                            let qualified = format!("{module_name}.{name}");
-                            self.module_env.privates.push(qualified);
-                        }
-                        _ => {}
+                Decl::Private { inner, .. } => match inner.as_ref() {
+                    Decl::Defn { name, .. } => {
+                        let qualified = format!("{module_name}.{name}");
+                        self.module_env.privates.push(qualified);
                     }
-                }
+                    Decl::TypeDef { name, .. }
+                    | Decl::RecordDef { name, .. }
+                    | Decl::TypeAlias { name, .. }
+                    | Decl::TypeConstrained { name, .. } => {
+                        let qualified = format!("{module_name}.{name}");
+                        self.module_env.privates.push(qualified);
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
         }
@@ -422,7 +510,8 @@ impl Infer {
         module_prefix: Option<&str>,
     ) -> Result<(), TypeError> {
         // パス1: 全 defn の名前に型変数を仮登録（前方参照を可能にする）
-        let mut defn_infos: Vec<(String, &[Param], Option<&TypeExpr>, &Expr, Span, Type)> = Vec::new();
+        let mut defn_infos: Vec<(String, &[Param], Option<&TypeExpr>, &Expr, Span, Type)> =
+            Vec::new();
         for decl in decls {
             let actual_decl = match decl {
                 Decl::Private { inner, .. } => inner.as_ref(),
@@ -443,8 +532,18 @@ impl Infer {
                         name.clone()
                     };
                     let placeholder_ty = self.var_gen.fresh();
-                    env.insert(qualified_name.clone(), TypeScheme::mono(placeholder_ty.clone()));
-                    defn_infos.push((qualified_name, params.as_slice(), return_ty.as_ref(), body, *span, placeholder_ty));
+                    env.insert(
+                        qualified_name.clone(),
+                        TypeScheme::mono(placeholder_ty.clone()),
+                    );
+                    defn_infos.push((
+                        qualified_name,
+                        params.as_slice(),
+                        return_ty.as_ref(),
+                        body,
+                        *span,
+                        placeholder_ty,
+                    ));
                 }
                 Decl::ModuleDecl { name, body, .. } if !body.is_empty() => {
                     let prefix = if let Some(outer) = module_prefix {
@@ -491,7 +590,6 @@ impl Infer {
 
         Ok(())
     }
-
 
     /// 組み込み関数の型環境
     fn builtin_env(&mut self) -> TypeEnv {
@@ -686,7 +784,10 @@ impl Infer {
                 TypeScheme {
                     vars: vec![a],
                     constraints: Vec::new(),
-                    ty: Type::Fun(vec![Type::int(), Type::int(), Type::Var(a)], Box::new(Type::int())),
+                    ty: Type::Fun(
+                        vec![Type::int(), Type::int(), Type::Var(a)],
+                        Box::new(Type::int()),
+                    ),
                 },
             );
         }
@@ -727,7 +828,10 @@ impl Infer {
                 TypeScheme {
                     vars: vec![k, a],
                     constraints: Vec::new(),
-                    ty: Type::Fun(vec![Type::int(), Type::Var(k), Type::Var(a)], Box::new(Type::int())),
+                    ty: Type::Fun(
+                        vec![Type::int(), Type::Var(k), Type::Var(a)],
+                        Box::new(Type::int()),
+                    ),
                 },
             );
         }
@@ -959,7 +1063,8 @@ impl Infer {
             let variant_ret_type = if let Some(ref ret_type_expr) = variant.return_type {
                 let gadt_ret = self.resolve_type_expr(ret_type_expr, &param_vars);
                 // GADT 戻り型を記録（パターンマッチでの型絞り込みに使用）
-                self.gadt_return_types.insert(variant.name.clone(), gadt_ret.clone());
+                self.gadt_return_types
+                    .insert(variant.name.clone(), gadt_ret.clone());
                 gadt_ret
             } else {
                 result_type.clone()
@@ -1046,10 +1151,7 @@ impl Infer {
         // フィールドアクセサを登録
         for (field_name, field_type) in &record_fields {
             let accessor_name = format!("{type_name}.{field_name}");
-            let accessor_type = Type::Fun(
-                vec![record_type.clone()],
-                Box::new(field_type.clone()),
-            );
+            let accessor_type = Type::Fun(vec![record_type.clone()], Box::new(field_type.clone()));
             let accessor_scheme = TypeScheme {
                 vars: bound_vars.clone(),
                 constraints: Vec::new(),
@@ -1083,10 +1185,8 @@ impl Infer {
             .collect();
 
         let resolved = self.resolve_type_expr(target, &param_vars);
-        self.type_aliases.insert(
-            name.to_string(),
-            (params.to_vec(), resolved),
-        );
+        self.type_aliases
+            .insert(name.to_string(), (params.to_vec(), resolved));
 
         Ok(())
     }
@@ -1097,15 +1197,19 @@ impl Infer {
             TypeExpr::Named(_, name) | TypeExpr::Var(_, name) => name == alias_name,
             TypeExpr::App(_, base, args) => {
                 self.type_alias_contains_self(alias_name, base)
-                    || args.iter().any(|a| self.type_alias_contains_self(alias_name, a))
+                    || args
+                        .iter()
+                        .any(|a| self.type_alias_contains_self(alias_name, a))
             }
             TypeExpr::Fun(_, params, ret) => {
-                params.iter().any(|p| self.type_alias_contains_self(alias_name, p))
+                params
+                    .iter()
+                    .any(|p| self.type_alias_contains_self(alias_name, p))
                     || self.type_alias_contains_self(alias_name, ret)
             }
-            TypeExpr::Record(_, fields) => {
-                fields.iter().any(|(_, t)| self.type_alias_contains_self(alias_name, t))
-            }
+            TypeExpr::Record(_, fields) => fields
+                .iter()
+                .any(|(_, t)| self.type_alias_contains_self(alias_name, t)),
         }
     }
 
@@ -1136,40 +1240,29 @@ impl Infer {
         );
 
         // 制約付き型はベース型のエイリアスとして扱う（型推論時は透過）
-        self.type_aliases.insert(
-            name.to_string(),
-            (Vec::new(), resolved_base),
-        );
+        self.type_aliases
+            .insert(name.to_string(), (Vec::new(), resolved_base));
 
         // スマートコンストラクタ Name.new : BaseType -> Name を登録
         let new_type = Type::Fun(
             vec![self.resolve_type_expr(base_type, &[])],
             Box::new(Type::Con(name.to_string())),
         );
-        env.insert(
-            format!("{name}.new"),
-            TypeScheme::mono(new_type),
-        );
+        env.insert(format!("{name}.new"), TypeScheme::mono(new_type));
 
         // Name.value : Name -> BaseType を登録
         let value_type = Type::Fun(
             vec![Type::Con(name.to_string())],
             Box::new(self.resolve_type_expr(base_type, &[])),
         );
-        env.insert(
-            format!("{name}.value"),
-            TypeScheme::mono(value_type),
-        );
+        env.insert(format!("{name}.value"), TypeScheme::mono(value_type));
 
         // Name.valid? : BaseType -> Bool を登録
         let valid_type = Type::Fun(
             vec![self.resolve_type_expr(base_type, &[])],
             Box::new(Type::bool()),
         );
-        env.insert(
-            format!("{name}.valid?"),
-            TypeScheme::mono(valid_type),
-        );
+        env.insert(format!("{name}.valid?"), TypeScheme::mono(valid_type));
 
         Ok(())
     }
@@ -1283,7 +1376,11 @@ impl Infer {
             if let Some(ref default_body) = method.default_impl {
                 self.default_impls.insert(
                     (name.to_string(), method.name.clone()),
-                    (method.params.clone(), method.return_ty.clone(), default_body.clone()),
+                    (
+                        method.params.clone(),
+                        method.return_ty.clone(),
+                        default_body.clone(),
+                    ),
                 );
             }
         }
@@ -1311,7 +1408,11 @@ impl Infer {
     ) -> Result<(), TypeError> {
         // Kind 整合性チェック: トレイトが要求する Kind と実装型の Kind を比較
         if let Some(trait_kind) = self.kind_env.get(trait_name).cloned() {
-            let type_kind = self.kind_env.get(type_name).cloned().unwrap_or(Kind::star());
+            let type_kind = self
+                .kind_env
+                .get(type_name)
+                .cloned()
+                .unwrap_or(Kind::star());
             if !kinds_compatible(&trait_kind, &type_kind) {
                 return Err(TypeError::KindMismatch {
                     type_name: type_name.to_string(),
@@ -1406,10 +1507,7 @@ impl Infer {
     /// 型推論完了後に呼ばれ、制約に含まれる型変数が具体型に解決されている場合、
     /// 対応する impl が登録されているか確認する。
     /// 型変数がまだ未解決（多相のまま）の場合はスキップ（多相関数ではOK）。
-    fn check_pending_constraints(
-        &self,
-        subst: &Substitution,
-    ) -> Result<(), TypeError> {
+    fn check_pending_constraints(&self, subst: &Substitution) -> Result<(), TypeError> {
         // 型を名前文字列に変換するヘルパー
         fn type_to_name_str(ty: &Type) -> Option<String> {
             match ty {
@@ -1439,14 +1537,6 @@ impl Infer {
                         type_name: name.clone(),
                         span: constraint.span,
                     });
-
-
-
-
-
-
-
-
                 }
             }
         }
@@ -1454,11 +1544,7 @@ impl Infer {
     }
 
     /// TypeExpr を Type に変換
-    fn resolve_type_expr(
-        &self,
-        type_expr: &TypeExpr,
-        param_vars: &[(String, TypeVarId)],
-    ) -> Type {
+    fn resolve_type_expr(&self, type_expr: &TypeExpr, param_vars: &[(String, TypeVarId)]) -> Type {
         match type_expr {
             TypeExpr::Named(_, name) => {
                 if let Some((_, id)) = param_vars.iter().find(|(n, _)| n == name) {
@@ -1487,25 +1573,26 @@ impl Infer {
 
                 // パラメトリック型エイリアスの展開
                 if let Some((alias_params, target)) = self.type_aliases.get(&base_name).cloned()
-                    && alias_params.len() == args.len() {
-                        // エイリアスパラメータの型変数を特定
-                        // target 内の Type::Var(id) を引数の型で置換
-                        let resolved_args: Vec<Type> = args
-                            .iter()
-                            .map(|a| self.resolve_type_expr(a, param_vars))
-                            .collect();
+                    && alias_params.len() == args.len()
+                {
+                    // エイリアスパラメータの型変数を特定
+                    // target 内の Type::Var(id) を引数の型で置換
+                    let resolved_args: Vec<Type> = args
+                        .iter()
+                        .map(|a| self.resolve_type_expr(a, param_vars))
+                        .collect();
 
-                        // target の自由型変数を収集して、パラメータ順に対応付け
-                        let free_vars = target.free_vars();
-                        let mut subst = Substitution::new();
-                        // free_vars は sorted + dedup 済み、alias_params と同じ順序のはず
-                        for (i, &var_id) in free_vars.iter().enumerate() {
-                            if i < resolved_args.len() {
-                                subst.insert(var_id, resolved_args[i].clone());
-                            }
+                    // target の自由型変数を収集して、パラメータ順に対応付け
+                    let free_vars = target.free_vars();
+                    let mut subst = Substitution::new();
+                    // free_vars は sorted + dedup 済み、alias_params と同じ順序のはず
+                    for (i, &var_id) in free_vars.iter().enumerate() {
+                        if i < resolved_args.len() {
+                            subst.insert(var_id, resolved_args[i].clone());
                         }
-                        return target.apply_subst(&subst);
                     }
+                    return target.apply_subst(&subst);
+                }
 
                 let resolved_args: Vec<Type> = args
                     .iter()
@@ -1542,17 +1629,19 @@ impl Infer {
             if imp.alias.as_deref() == Some(prefix) {
                 // 選択的インポートの場合、指定されたシンボルのみ許可
                 if let Some(ref only) = imp.only
-                    && !only.contains(&suffix.to_string()) {
-                        continue;
-                    }
+                    && !only.contains(&suffix.to_string())
+                {
+                    continue;
+                }
                 return Some(format!("{}.{}", imp.module, suffix));
             }
             // モジュール名と直接一致
             if imp.module == prefix {
                 if let Some(ref only) = imp.only
-                    && !only.contains(&suffix.to_string()) {
-                        continue;
-                    }
+                    && !only.contains(&suffix.to_string())
+                {
+                    continue;
+                }
                 return Some(format!("{}.{}", imp.module, suffix));
             }
         }
@@ -1569,18 +1658,16 @@ impl Infer {
                     None
                 }
             }
-            TypeExpr::App(_, base, _) => {
-                match base.as_ref() {
-                    TypeExpr::Named(_, name) | TypeExpr::Var(_, name) => {
-                        if self.type_aliases.contains_key(name) {
-                            Some(name.clone())
-                        } else {
-                            None
-                        }
+            TypeExpr::App(_, base, _) => match base.as_ref() {
+                TypeExpr::Named(_, name) | TypeExpr::Var(_, name) => {
+                    if self.type_aliases.contains_key(name) {
+                        Some(name.clone())
+                    } else {
+                        None
                     }
-                    _ => None,
                 }
-            }
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -1588,22 +1675,32 @@ impl Infer {
     /// TypeError のエラーコードを差し替えるヘルパー
     fn with_error_code(err: TypeError, code: TypeErrorCode) -> TypeError {
         match err {
-            TypeError::Mismatch { expected, found, span, .. } => TypeError::Mismatch {
+            TypeError::Mismatch {
+                expected,
+                found,
+                span,
+                ..
+            } => TypeError::Mismatch {
                 expected,
                 found,
                 span,
                 error_code: code,
             },
-            TypeError::MismatchWithAlias { expected, found, alias_name, expanded, span, .. } => {
-                TypeError::MismatchWithAlias {
-                    expected,
-                    found,
-                    alias_name,
-                    expanded,
-                    span,
-                    error_code: code,
-                }
-            }
+            TypeError::MismatchWithAlias {
+                expected,
+                found,
+                alias_name,
+                expanded,
+                span,
+                ..
+            } => TypeError::MismatchWithAlias {
+                expected,
+                found,
+                alias_name,
+                expanded,
+                span,
+                error_code: code,
+            },
             other => other,
         }
     }
@@ -1690,10 +1787,11 @@ impl Infer {
                         // 2. モジュールエイリアス経由の完全修飾名解決
                         let resolved_name = self.resolve_qualified_name(prefix, suffix);
                         if let Some(ref resolved) = resolved_name
-                            && let Some(scheme) = env.get(resolved) {
-                                let ty = self.instantiate(scheme);
-                                return Ok((Substitution::new(), ty));
-                            }
+                            && let Some(scheme) = env.get(resolved)
+                        {
+                            let ty = self.instantiate(scheme);
+                            return Ok((Substitution::new(), ty));
+                        }
 
                         // 3. 完全修飾名として直接検索
                         // (将来的にマルチモジュール環境で使用)
@@ -1719,7 +1817,8 @@ impl Infer {
             Expr::If(span, cond, then, else_) => {
                 let (s1, cond_ty) = self.infer_expr(env, cond)?;
                 // if 条件は Bool でなければならない (E0002)
-                let s_cond = self.unify(&cond_ty, &Type::bool(), *span)
+                let s_cond = self
+                    .unify(&cond_ty, &Type::bool(), *span)
                     .map_err(|e| Self::with_error_code(e, TypeErrorCode::IfCondition))?;
                 let s1 = s1.compose(&s_cond);
 
@@ -1730,11 +1829,9 @@ impl Infer {
                 let (s3, else_ty) = self.infer_expr(&env2, else_)?;
 
                 // then/else 分岐の型は一致しなければならない (E0003)
-                let s_branch = self.unify(
-                    &then_ty.apply_subst(&s3),
-                    &else_ty,
-                    *span,
-                ).map_err(|e| Self::with_error_code(e, TypeErrorCode::IfBranch))?;
+                let s_branch = self
+                    .unify(&then_ty.apply_subst(&s3), &else_ty, *span)
+                    .map_err(|e| Self::with_error_code(e, TypeErrorCode::IfBranch))?;
 
                 let final_subst = s1.compose(&s2).compose(&s3).compose(&s_branch);
                 let final_ty = else_ty.apply_subst(&s_branch);
@@ -1797,9 +1894,9 @@ impl Infer {
                 let expected_func_ty = Type::Fun(arg_types, Box::new(ret_ty.clone()));
 
                 // 関数引数の型不一致 (E0004)
-                let s_unify =
-                    self.unify(&func_ty.apply_subst(&subst), &expected_func_ty, *span)
-                        .map_err(|e| Self::with_error_code(e, TypeErrorCode::ArgMismatch))?;
+                let s_unify = self
+                    .unify(&func_ty.apply_subst(&subst), &expected_func_ty, *span)
+                    .map_err(|e| Self::with_error_code(e, TypeErrorCode::ArgMismatch))?;
 
                 let final_subst = subst.compose(&s_unify);
                 let final_ty = ret_ty.apply_subst(&s_unify);
@@ -1815,40 +1912,33 @@ impl Infer {
                     let mut arm_env = env.apply_subst(&subst);
 
                     let (pat_ty, pat_bindings) = self.infer_pattern(&arm_env, &arm.pattern)?;
-                    let s_pat =
-                        self.unify(&scrut_ty.apply_subst(&subst), &pat_ty, arm.span)?;
+                    let s_pat = self.unify(&scrut_ty.apply_subst(&subst), &pat_ty, arm.span)?;
                     subst = subst.compose(&s_pat);
 
                     // GADT 型絞り込み: コンストラクタパターンの場合、
                     // GADT 戻り型から型変数の追加制約を適用
                     if let Pattern::Constructor(_, ctor_name, _) = &arm.pattern
-                        && let Some(gadt_ret_ty) = self.gadt_return_types.get(ctor_name).cloned() {
-                            // GADT 戻り型と scrutinee 型を単一化して型を絞り込む
-                            if let Ok(s_gadt) = self.unify(
-                                &scrut_ty.apply_subst(&subst),
-                                &gadt_ret_ty.apply_subst(&subst),
-                                arm.span,
-                            ) {
-                                subst = subst.compose(&s_gadt);
-                            }
+                        && let Some(gadt_ret_ty) = self.gadt_return_types.get(ctor_name).cloned()
+                    {
+                        // GADT 戻り型と scrutinee 型を単一化して型を絞り込む
+                        if let Ok(s_gadt) = self.unify(
+                            &scrut_ty.apply_subst(&subst),
+                            &gadt_ret_ty.apply_subst(&subst),
+                            arm.span,
+                        ) {
+                            subst = subst.compose(&s_gadt);
                         }
+                    }
 
                     arm_env = arm_env.apply_subst(&subst);
                     for (name, ty) in &pat_bindings {
-                        arm_env.insert(
-                            name.clone(),
-                            TypeScheme::mono(ty.apply_subst(&subst)),
-                        );
+                        arm_env.insert(name.clone(), TypeScheme::mono(ty.apply_subst(&subst)));
                     }
 
                     let (s_body, body_ty) = self.infer_expr(&arm_env, &arm.body)?;
                     subst = subst.compose(&s_body);
 
-                    let s_res = self.unify(
-                        &result_ty.apply_subst(&subst),
-                        &body_ty,
-                        *span,
-                    )?;
+                    let s_res = self.unify(&result_ty.apply_subst(&subst), &body_ty, *span)?;
                     subst = subst.compose(&s_res);
                 }
 
@@ -1876,21 +1966,29 @@ impl Infer {
                 let annotated = self.resolve_type_expr(type_expr, &[]);
                 // エイリアス名を検出して、Mismatch エラーに付与
                 let alias_name = self.detect_alias_name(type_expr);
-                let s2 = self.unify(&inferred, &annotated, *span)
-                    .map_err(|e| {
-                        if let (TypeError::Mismatch { expected, found, span, error_code }, Some(aname)) = (&e, &alias_name) {
-                            TypeError::MismatchWithAlias {
-                                expected: expected.clone(),
-                                found: found.clone(),
-                                alias_name: aname.clone(),
-                                expanded: annotated.clone(),
-                                span: *span,
-                                error_code: error_code.clone(),
-                            }
-                        } else {
-                            e
+                let s2 = self.unify(&inferred, &annotated, *span).map_err(|e| {
+                    if let (
+                        TypeError::Mismatch {
+                            expected,
+                            found,
+                            span,
+                            error_code,
+                        },
+                        Some(aname),
+                    ) = (&e, &alias_name)
+                    {
+                        TypeError::MismatchWithAlias {
+                            expected: expected.clone(),
+                            found: found.clone(),
+                            alias_name: aname.clone(),
+                            expanded: annotated.clone(),
+                            span: *span,
+                            error_code: error_code.clone(),
                         }
-                    })?;
+                    } else {
+                        e
+                    }
+                })?;
                 Ok((s1.compose(&s2), annotated))
             }
 
@@ -1960,17 +2058,18 @@ impl Infer {
                         // return_fn : a -> m a の形式
                         // 最後のステップの型から result_ty を推定
                         if let Some((kind, inner_ty)) = step_types.last()
-                            && *kind == "return" {
-                                // return_fn(inner) の戻り型
-                                let ret_result = self.var_gen.fresh();
-                                let expected_fn_ty = Type::Fun(
-                                    vec![inner_ty.apply_subst(&subst)],
-                                    Box::new(ret_result.clone()),
-                                );
-                                let s = self.unify(&return_ty, &expected_fn_ty, *_span)?;
-                                subst = subst.compose(&s);
-                                result_ty = ret_result.apply_subst(&subst);
-                            }
+                            && *kind == "return"
+                        {
+                            // return_fn(inner) の戻り型
+                            let ret_result = self.var_gen.fresh();
+                            let expected_fn_ty = Type::Fun(
+                                vec![inner_ty.apply_subst(&subst)],
+                                Box::new(ret_result.clone()),
+                            );
+                            let s = self.unify(&return_ty, &expected_fn_ty, *_span)?;
+                            subst = subst.compose(&s);
+                            result_ty = ret_result.apply_subst(&subst);
+                        }
                     }
 
                     // bind_fn が環境にあれば、let!/do! ステップの型整合性を確認
@@ -1983,9 +2082,10 @@ impl Infer {
 
                 // ビルダーが未登録の場合は最後のステップの型をそのまま返す
                 if result_ty == self.var_gen.fresh()
-                    && let Some((_, ty)) = step_types.last() {
-                        result_ty = ty.apply_subst(&subst);
-                    }
+                    && let Some((_, ty)) = step_types.last()
+                {
+                    result_ty = ty.apply_subst(&subst);
+                }
 
                 Ok((subst, result_ty))
             }
@@ -2009,12 +2109,14 @@ impl Infer {
         type_name: &str,
         fields: &[(String, Expr)],
     ) -> Result<(Substitution, Type), TypeError> {
-        let record_info = self.record_registry.get(type_name).cloned().ok_or_else(|| {
-            TypeError::UndefinedRecord {
+        let record_info = self
+            .record_registry
+            .get(type_name)
+            .cloned()
+            .ok_or_else(|| TypeError::UndefinedRecord {
                 name: type_name.to_string(),
                 span,
-            }
-        })?;
+            })?;
 
         let mut param_subst = Substitution::new();
         for &var_id in &record_info.type_params {
@@ -2116,14 +2218,12 @@ impl Infer {
                 let record_type = Type::Record(type_name.clone(), result_fields);
                 Ok((subst, record_type))
             }
-            _ => {
-                Err(TypeError::Mismatch {
-                    expected: Type::Con("Record".to_string()),
-                    found: base_ty,
-                    span,
-                    error_code: TypeErrorCode::General,
-                })
-            }
+            _ => Err(TypeError::Mismatch {
+                expected: Type::Con("Record".to_string()),
+                found: base_ty,
+                span,
+                error_code: TypeErrorCode::General,
+            }),
         }
     }
 
@@ -2162,9 +2262,7 @@ impl Infer {
 
                             let mut all_bindings = Vec::new();
                             let mut pat_subst = Substitution::new();
-                            for (sub_pat, expected_ty) in
-                                sub_pats.iter().zip(param_types.iter())
-                            {
+                            for (sub_pat, expected_ty) in sub_pats.iter().zip(param_types.iter()) {
                                 let (pat_ty, bindings) = self.infer_pattern(env, sub_pat)?;
                                 // サブパターンの推論型とコンストラクタの期待型を unify
                                 // ネストコンストラクタパターンの型を正しく伝播させる
@@ -2175,8 +2273,7 @@ impl Infer {
                                 )?;
                                 pat_subst = pat_subst.compose(&s);
                                 for (name, ty) in &bindings {
-                                    all_bindings
-                                        .push((name.clone(), ty.apply_subst(&pat_subst)));
+                                    all_bindings.push((name.clone(), ty.apply_subst(&pat_subst)));
                                 }
                             }
 
@@ -2202,12 +2299,14 @@ impl Infer {
                 }
             }
             Pattern::RecordPat(span, type_name, field_pats) => {
-                let record_info = self.record_registry.get(type_name).cloned().ok_or_else(|| {
-                    TypeError::UndefinedRecord {
-                        name: type_name.to_string(),
-                        span: *span,
-                    }
-                })?;
+                let record_info =
+                    self.record_registry
+                        .get(type_name)
+                        .cloned()
+                        .ok_or_else(|| TypeError::UndefinedRecord {
+                            name: type_name.to_string(),
+                            span: *span,
+                        })?;
 
                 let mut param_subst = Substitution::new();
                 for &var_id in &record_info.type_params {
@@ -2261,9 +2360,7 @@ impl Infer {
                 Ok(())
             }
             Pattern::Wildcard(_) => Ok(()),
-            _ => {
-                Ok(())
-            }
+            _ => Ok(()),
         }
     }
 
@@ -2333,18 +2430,11 @@ impl Infer {
                 }
                 let mut subst = Substitution::new();
                 for (p1, p2) in params1.iter().zip(params2.iter()) {
-                    let s = self.unify(
-                        &p1.apply_subst(&subst),
-                        &p2.apply_subst(&subst),
-                        span,
-                    )?;
+                    let s = self.unify(&p1.apply_subst(&subst), &p2.apply_subst(&subst), span)?;
                     subst = subst.compose(&s);
                 }
-                let s_ret = self.unify(
-                    &ret1.apply_subst(&subst),
-                    &ret2.apply_subst(&subst),
-                    span,
-                )?;
+                let s_ret =
+                    self.unify(&ret1.apply_subst(&subst), &ret2.apply_subst(&subst), span)?;
                 Ok(subst.compose(&s_ret))
             }
 
@@ -2353,11 +2443,7 @@ impl Infer {
             {
                 let mut subst = Substitution::new();
                 for (a1, a2) in args1.iter().zip(args2.iter()) {
-                    let s = self.unify(
-                        &a1.apply_subst(&subst),
-                        &a2.apply_subst(&subst),
-                        span,
-                    )?;
+                    let s = self.unify(&a1.apply_subst(&subst), &a2.apply_subst(&subst), span)?;
                     subst = subst.compose(&s);
                 }
                 Ok(subst)
@@ -2376,18 +2462,15 @@ impl Infer {
                             error_code: TypeErrorCode::General,
                         });
                     }
-                    let s = self.unify(
-                        &t1.apply_subst(&subst),
-                        &t2.apply_subst(&subst),
-                        span,
-                    )?;
+                    let s = self.unify(&t1.apply_subst(&subst), &t2.apply_subst(&subst), span)?;
                     subst = subst.compose(&s);
                 }
                 Ok(subst)
             }
 
             // レコード型と Con 型の統合（レコード名が一致する場合）
-            (Type::Record(name, _), Type::Con(con_name)) | (Type::Con(con_name), Type::Record(name, _))
+            (Type::Record(name, _), Type::Con(con_name))
+            | (Type::Con(con_name), Type::Record(name, _))
                 if name == con_name =>
             {
                 Ok(Substitution::new())
@@ -2410,9 +2493,10 @@ impl Infer {
         span: Span,
     ) -> Result<Substitution, TypeError> {
         if let Type::Var(id) = ty
-            && *id == var {
-                return Ok(Substitution::new());
-            }
+            && *id == var
+        {
+            return Ok(Substitution::new());
+        }
 
         if ty.free_vars().contains(&var) {
             return Err(TypeError::InfiniteType {
@@ -2491,9 +2575,7 @@ mod tests {
 
     #[test]
     fn test_recursive() {
-        let result = infer_one(
-            "(defn fib [n] (if (<= n 1) n (+ (fib (- n 1)) (fib (- n 2)))))",
-        );
+        let result = infer_one("(defn fib [n] (if (<= n 1) n (+ (fib (- n 1)) (fib (- n 2)))))");
         assert_eq!(result, "(Int) -> Int");
     }
 
@@ -2653,9 +2735,9 @@ mod tests {
 
     #[test]
     fn test_import_declaration() {
-        let program = lsharp_syntax::parse(
-            "(module Main) (import MyModule :as M) (defn main [] 42)"
-        ).unwrap();
+        let program =
+            lsharp_syntax::parse("(module Main) (import MyModule :as M) (defn main [] 42)")
+                .unwrap();
         let mut infer_ctx = Infer::new();
         let results = infer_ctx.infer_program(&program);
         assert!(results.is_ok());
@@ -2666,9 +2748,9 @@ mod tests {
 
     #[test]
     fn test_import_only() {
-        let program = lsharp_syntax::parse(
-            "(module Main) (import Utils :only [helper]) (defn main [] 42)"
-        ).unwrap();
+        let program =
+            lsharp_syntax::parse("(module Main) (import Utils :only [helper]) (defn main [] 42)")
+                .unwrap();
         let mut infer_ctx = Infer::new();
         let results = infer_ctx.infer_program(&program);
         assert!(results.is_ok());
@@ -2681,9 +2763,8 @@ mod tests {
 
     #[test]
     fn test_import_open() {
-        let program = lsharp_syntax::parse(
-            "(module Main) (import Utils :open) (defn main [] 42)"
-        ).unwrap();
+        let program =
+            lsharp_syntax::parse("(module Main) (import Utils :open) (defn main [] 42)").unwrap();
         let mut infer_ctx = Infer::new();
         let results = infer_ctx.infer_program(&program);
         assert!(results.is_ok());
@@ -2699,8 +2780,9 @@ mod private_tests {
     fn test_private_defn_type_inference() {
         // private 内の defn も正しく型推論される
         let program = lsharp_syntax::parse(
-            "(module MyModule) (private (defn helper [x] (+ x 1))) (defn main [] (helper 42))"
-        ).unwrap();
+            "(module MyModule) (private (defn helper [x] (+ x 1))) (defn main [] (helper 42))",
+        )
+        .unwrap();
         let mut infer_ctx = Infer::new();
         let results = infer_ctx.infer_program(&program).unwrap();
 
@@ -2712,25 +2794,35 @@ mod private_tests {
         assert!(main_result.is_some());
 
         // helper が privates に記録される
-        assert!(infer_ctx.module_env.privates.contains(&"helper".to_string()));
+        assert!(
+            infer_ctx
+                .module_env
+                .privates
+                .contains(&"helper".to_string())
+        );
     }
 
     #[test]
     fn test_private_not_in_public() {
         // private でない関数は privates に記録されない
-        let program = lsharp_syntax::parse(
-            "(module MyModule) (defn public_fn [x] (+ x 1))"
-        ).unwrap();
+        let program =
+            lsharp_syntax::parse("(module MyModule) (defn public_fn [x] (+ x 1))").unwrap();
         let mut infer_ctx = Infer::new();
         let _results = infer_ctx.infer_program(&program).unwrap();
-        assert!(!infer_ctx.module_env.privates.contains(&"public_fn".to_string()));
+        assert!(
+            !infer_ctx
+                .module_env
+                .privates
+                .contains(&"public_fn".to_string())
+        );
     }
 
     #[test]
     fn test_multiple_private_declarations() {
         let program = lsharp_syntax::parse(
-            "(module M) (private (defn a [] 1)) (private (defn b [] 2)) (defn c [] (+ (a) (b)))"
-        ).unwrap();
+            "(module M) (private (defn a [] 1)) (private (defn b [] 2)) (defn c [] (+ (a) (b)))",
+        )
+        .unwrap();
         let mut infer_ctx = Infer::new();
         let results = infer_ctx.infer_program(&program).unwrap();
         assert_eq!(results.len(), 3);
@@ -2753,9 +2845,7 @@ mod nested_module_infer_tests {
 
     #[test]
     fn test_nested_module_function_qualified_name() {
-        let (results, infer_ctx) = infer_nested(
-            "(module Utils (defn helper [x] (+ x 1)))"
-        );
+        let (results, infer_ctx) = infer_nested("(module Utils (defn helper [x] (+ x 1)))");
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0, "Utils.helper");
         assert_eq!(infer_ctx.module_env.name, Some("Utils".to_string()));
@@ -2766,7 +2856,7 @@ mod nested_module_infer_tests {
         let (results, _) = infer_nested(
             "(module Math
               (defn add [x y] (+ x y))
-              (defn sub [x y] (- x y)))"
+              (defn sub [x y] (- x y)))",
         );
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].0, "Math.add");
@@ -2778,7 +2868,7 @@ mod nested_module_infer_tests {
         let (results, _) = infer_nested(
             "(module App
               (module Sub
-                (defn inner [] 42)))"
+                (defn inner [] 42)))",
         );
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0, "App.Sub.inner");
@@ -2788,7 +2878,7 @@ mod nested_module_infer_tests {
     fn test_nested_module_with_top_level() {
         let (results, _) = infer_nested(
             "(module Utils (defn helper [x] (+ x 1)))
-             (defn main [] (Utils.helper 10))"
+             (defn main [] (Utils.helper 10))",
         );
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].0, "Utils.helper");
@@ -2800,10 +2890,20 @@ mod nested_module_infer_tests {
         let (_, infer_ctx) = infer_nested(
             "(module Utils
               (private (defn secret [] 42))
-              (defn public_fn [] 0))"
+              (defn public_fn [] 0))",
         );
-        assert!(infer_ctx.module_env.privates.contains(&"Utils.secret".to_string()));
-        assert!(!infer_ctx.module_env.privates.contains(&"Utils.public_fn".to_string()));
+        assert!(
+            infer_ctx
+                .module_env
+                .privates
+                .contains(&"Utils.secret".to_string())
+        );
+        assert!(
+            !infer_ctx
+                .module_env
+                .privates
+                .contains(&"Utils.public_fn".to_string())
+        );
     }
 }
 
@@ -2817,8 +2917,9 @@ mod trait_default_tests {
         let program = lsharp_syntax::parse(
             "(trait (Describable a) (defn describe [self] 0))
              (impl (Describable Int) )
-             (defn main [] 42)"
-        ).unwrap();
+             (defn main [] 42)",
+        )
+        .unwrap();
         let mut infer_ctx = Infer::new();
         let results = infer_ctx.infer_program(&program);
         assert!(results.is_ok());
@@ -2829,14 +2930,17 @@ mod trait_default_tests {
         // デフォルト実装がキャッシュされていることを確認
         let program = lsharp_syntax::parse(
             "(trait (Describable a) (defn describe [self] 0))
-             (defn main [] 42)"
-        ).unwrap();
+             (defn main [] 42)",
+        )
+        .unwrap();
         let mut infer_ctx = Infer::new();
         let _results = infer_ctx.infer_program(&program).unwrap();
 
-        assert!(infer_ctx.default_impls.contains_key(
-            &("Describable".to_string(), "describe".to_string())
-        ));
+        assert!(
+            infer_ctx
+                .default_impls
+                .contains_key(&("Describable".to_string(), "describe".to_string()))
+        );
     }
 
     #[test]
@@ -2845,8 +2949,9 @@ mod trait_default_tests {
         let program = lsharp_syntax::parse(
             "(trait (Show a) (defn show [self] 0))
              (impl (Show Int) (defn show [self] (+ self 1)))
-             (defn main [] 42)"
-        ).unwrap();
+             (defn main [] 42)",
+        )
+        .unwrap();
         let mut infer_ctx = Infer::new();
         let results = infer_ctx.infer_program(&program);
         assert!(results.is_ok());
@@ -2858,8 +2963,9 @@ mod trait_default_tests {
         let program = lsharp_syntax::parse(
             "(trait (Show a) (defn show [self] : Int))
              (impl (Show Int) )
-             (defn main [] 42)"
-        ).unwrap();
+             (defn main [] 42)",
+        )
+        .unwrap();
         let mut infer_ctx = Infer::new();
         // デフォルト実装がないのでメソッドは impl に追加されない
         // エラーにはならない（将来的にエラーにすべきだが現時点では許容）
@@ -2944,15 +3050,16 @@ mod alias_hint_tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         let msg = format!("{err}");
-        assert!(msg.contains("Str"), "エラーメッセージにエイリアス名 'Str' が含まれるべき: {msg}");
+        assert!(
+            msg.contains("Str"),
+            "エラーメッセージにエイリアス名 'Str' が含まれるべき: {msg}"
+        );
     }
 
     #[test]
     fn test_mismatch_without_alias() {
         // エイリアスを使わない場合は通常の Mismatch エラー
-        let result = infer(
-            "(defn bad [] (: 42 String))",
-        );
+        let result = infer("(defn bad [] (: 42 String))");
         assert!(result.is_err());
         let err = result.unwrap_err();
         match err {
@@ -3042,7 +3149,7 @@ mod kind_tests {
     fn test_kind_adt_no_params() {
         let (_, kinds) = infer_with_kinds(
             "(type Color Red Green Blue)
-             (defn main [] 0)"
+             (defn main [] 0)",
         );
         assert_eq!(kinds.get("Color"), Some(&Kind::star()));
     }
@@ -3051,7 +3158,7 @@ mod kind_tests {
     fn test_kind_adt_one_param() {
         let (_, kinds) = infer_with_kinds(
             "(type (Maybe a) (Just a) Nothing)
-             (defn main [] 0)"
+             (defn main [] 0)",
         );
         assert_eq!(kinds.get("Maybe"), Some(&Kind::unary()));
     }
@@ -3060,7 +3167,7 @@ mod kind_tests {
     fn test_kind_adt_two_params() {
         let (_, kinds) = infer_with_kinds(
             "(type (Either a b) (Left a) (Right b))
-             (defn main [] 0)"
+             (defn main [] 0)",
         );
         assert_eq!(kinds.get("Either"), Some(&Kind::binary()));
     }
@@ -3069,7 +3176,7 @@ mod kind_tests {
     fn test_kind_record() {
         let (_, kinds) = infer_with_kinds(
             "(type Point (record (: x Int) (: y Int)))
-             (defn main [] 0)"
+             (defn main [] 0)",
         );
         assert_eq!(kinds.get("Point"), Some(&Kind::star()));
     }
@@ -3078,7 +3185,7 @@ mod kind_tests {
     fn test_kind_parametric_record() {
         let (_, kinds) = infer_with_kinds(
             "(type (Pair a b) (record (: fst a) (: snd b)))
-             (defn main [] 0)"
+             (defn main [] 0)",
         );
         assert_eq!(kinds.get("Pair"), Some(&Kind::binary()));
     }
@@ -3153,7 +3260,11 @@ mod kind_tests {
         let program = lsharp_syntax::parse(source).unwrap();
         let mut infer = Infer::new();
         let result = infer.infer_program(&program);
-        assert!(result.is_ok(), "computation return should type check: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "computation return should type check: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -3171,7 +3282,11 @@ mod kind_tests {
         let program = lsharp_syntax::parse(source).unwrap();
         let mut infer = Infer::new();
         let result = infer.infer_program(&program);
-        assert!(result.is_ok(), "computation let! should type check: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "computation let! should type check: {:?}",
+            result.err()
+        );
     }
 }
 
@@ -3192,8 +3307,9 @@ mod mutual_recursion_tests {
         // even?/odd? の相互再帰型推論
         let results = infer(
             "(defn even? [n] (if (= n 0) true (odd? (- n 1))))
-             (defn odd? [n] (if (= n 0) false (even? (- n 1))))"
-        ).unwrap();
+             (defn odd? [n] (if (= n 0) false (even? (- n 1))))",
+        )
+        .unwrap();
         // even? : (Int) -> Bool
         let even_scheme = &results.iter().find(|(n, _)| n == "even?").unwrap().1;
         assert_eq!(even_scheme.to_string(), "(Int) -> Bool");
@@ -3210,15 +3326,28 @@ mod mutual_recursion_tests {
         let results = infer(
             "(defn f [x] (g (+ x 1)))
              (defn g [x] (h (+ x 2)))
-             (defn h [x] (f (+ x 3)))"
-        ).unwrap();
+             (defn h [x] (f (+ x 3)))",
+        )
+        .unwrap();
         // 全3関数が推論に成功し、関数型であること
         let f_scheme = &results.iter().find(|(n, _)| n == "f").unwrap().1;
-        assert!(f_scheme.to_string().contains("(Int) ->"), "f should be a function from Int: {}", f_scheme);
+        assert!(
+            f_scheme.to_string().contains("(Int) ->"),
+            "f should be a function from Int: {}",
+            f_scheme
+        );
         let g_scheme = &results.iter().find(|(n, _)| n == "g").unwrap().1;
-        assert!(g_scheme.to_string().contains("(Int) ->"), "g should be a function from Int: {}", g_scheme);
+        assert!(
+            g_scheme.to_string().contains("(Int) ->"),
+            "g should be a function from Int: {}",
+            g_scheme
+        );
         let h_scheme = &results.iter().find(|(n, _)| n == "h").unwrap().1;
-        assert!(h_scheme.to_string().contains("(Int) ->"), "h should be a function from Int: {}", h_scheme);
+        assert!(
+            h_scheme.to_string().contains("(Int) ->"),
+            "h should be a function from Int: {}",
+            h_scheme
+        );
     }
 
     #[test]
@@ -3226,8 +3355,9 @@ mod mutual_recursion_tests {
         // 既存の非再帰 defn が壊れないことの回帰テスト
         let results = infer(
             "(defn add [a b] (+ a b))
-             (defn double [x] (add x x))"
-        ).unwrap();
+             (defn double [x] (add x x))",
+        )
+        .unwrap();
         let add_scheme = &results.iter().find(|(n, _)| n == "add").unwrap().1;
         assert_eq!(add_scheme.to_string(), "(Int, Int) -> Int");
         let double_scheme = &results.iter().find(|(n, _)| n == "double").unwrap().1;
@@ -3260,20 +3390,29 @@ mod gadt_tests {
         let mut infer = Infer::new();
         let mut env = infer.builtin_env();
 
-        let variants = vec![
-            Variant {
-                span: lsharp_syntax::span::Span::new(0, 0),
-                name: "IntLit".to_string(),
-                fields: vec![TypeExpr::Named(lsharp_syntax::span::Span::new(0, 0), "Int".to_string())],
-                return_type: Some(TypeExpr::App(
+        let variants = vec![Variant {
+            span: lsharp_syntax::span::Span::new(0, 0),
+            name: "IntLit".to_string(),
+            fields: vec![TypeExpr::Named(
+                lsharp_syntax::span::Span::new(0, 0),
+                "Int".to_string(),
+            )],
+            return_type: Some(TypeExpr::App(
+                lsharp_syntax::span::Span::new(0, 0),
+                Box::new(TypeExpr::Named(
                     lsharp_syntax::span::Span::new(0, 0),
-                    Box::new(TypeExpr::Named(lsharp_syntax::span::Span::new(0, 0), "Expr".to_string())),
-                    vec![TypeExpr::Named(lsharp_syntax::span::Span::new(0, 0), "Int".to_string())],
+                    "Expr".to_string(),
                 )),
-            },
-        ];
+                vec![TypeExpr::Named(
+                    lsharp_syntax::span::Span::new(0, 0),
+                    "Int".to_string(),
+                )],
+            )),
+        }];
 
-        infer.register_type_def(&mut env, "Expr", &["a".to_string()], &variants).unwrap();
+        infer
+            .register_type_def(&mut env, "Expr", &["a".to_string()], &variants)
+            .unwrap();
 
         // IntLit が GADT 戻り型を持つ
         assert!(infer.gadt_return_types.contains_key("IntLit"));
@@ -3284,7 +3423,7 @@ mod gadt_tests {
         // 基本的な GADT パターンマッチが型チェックを通る
         let _results = infer_ok(
             "(type (Maybe a) (Just a) Nothing)
-             (defn unwrap [m] (match m [(Just x) x]))"
+             (defn unwrap [m] (match m [(Just x) x]))",
         );
     }
 
@@ -3301,7 +3440,10 @@ mod gadt_tests {
         let program = lsharp_syntax::parse(source).unwrap();
         let mut infer = Infer::new();
         let result = infer.infer_program(&program);
-        assert!(result.is_err(), "Int (* kind) への Functor impl はエラーになるべき");
+        assert!(
+            result.is_err(),
+            "Int (* kind) への Functor impl はエラーになるべき"
+        );
     }
 
     #[test]
@@ -3316,7 +3458,10 @@ mod gadt_tests {
         let program = lsharp_syntax::parse(source).unwrap();
         let mut infer = Infer::new();
         let result = infer.infer_program(&program);
-        assert!(result.is_err(), "Bool (* kind) への Monad impl はエラーになるべき");
+        assert!(
+            result.is_err(),
+            "Bool (* kind) への Monad impl はエラーになるべき"
+        );
     }
 
     #[test]
@@ -3334,7 +3479,11 @@ mod gadt_tests {
         let program = lsharp_syntax::parse(source).unwrap();
         let mut infer = Infer::new();
         let result = infer.infer_program(&program);
-        assert!(result.is_ok(), "Maybe (* -> * kind) への Functor impl は成功すべき: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Maybe (* -> * kind) への Functor impl は成功すべき: {:?}",
+            result.err()
+        );
     }
 
     // --- GADT テスト追加 (G-1) ---
@@ -3347,7 +3496,7 @@ mod gadt_tests {
              (defn get-left [e]
                (match e
                  [(Left x) x]
-                 [(Right _) 0]))"
+                 [(Right _) 0]))",
         );
         assert!(results.iter().any(|(name, _)| name == "get-left"));
     }
@@ -3360,7 +3509,7 @@ mod gadt_tests {
              (defn is-just [m]
                (match m
                  [(Just _) 1]
-                 [Nothing 0]))"
+                 [Nothing 0]))",
         );
         assert!(results.iter().any(|(name, _)| name == "is-just"));
     }
@@ -3372,7 +3521,7 @@ mod gadt_tests {
             "(type (Pair a b) (MkPair a b))
              (defn fst [p]
                (match p
-                 [(MkPair x _) x]))"
+                 [(MkPair x _) x]))",
         );
         assert!(results.iter().any(|(name, _)| name == "fst"));
     }
@@ -3386,7 +3535,7 @@ mod gadt_tests {
                (match c
                  [Red 0]
                  [Green 1]
-                 [Blue 2]))"
+                 [Blue 2]))",
         );
         assert!(results.iter().any(|(name, _)| name == "color-to-int"));
     }
@@ -3398,7 +3547,7 @@ mod gadt_tests {
             "(type (Maybe a) (Just a) Nothing)
              (defn bad [m]
                (match m
-                 [(Foo x) x]))"
+                 [(Foo x) x]))",
         );
     }
 
@@ -3414,7 +3563,7 @@ mod gadt_tests {
                (defn eq [x y] : Int))
              (defn show-eq [x]
                :where [(Show a) (Eq a)]
-               x)"
+               x)",
         );
     }
 
@@ -3426,7 +3575,7 @@ mod gadt_tests {
                (defn add [x y] : Int))
              (defn double [x]
                :where [(Num a)]
-               (+ x x))"
+               (+ x x))",
         );
     }
 }

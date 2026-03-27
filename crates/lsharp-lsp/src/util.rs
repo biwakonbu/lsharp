@@ -410,10 +410,7 @@ mod tests {
     fn test_symbol_at_position_basic() {
         let source = "(defn add [x y] (+ x y))";
         // "add" は offset 6 から
-        assert_eq!(
-            symbol_at_position(source, 6),
-            Some("add".to_string())
-        );
+        assert_eq!(symbol_at_position(source, 6), Some("add".to_string()));
         // "(" はシンボルではない
         assert_eq!(symbol_at_position(source, 0), None);
     }

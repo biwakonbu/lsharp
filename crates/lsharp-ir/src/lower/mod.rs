@@ -114,10 +114,7 @@ impl Lower {
 
         // レコード型定義を GC 型として登録
         for decl in &program.decls {
-            if let Decl::RecordDef {
-                name, fields, ..
-            } = unwrap_private(decl)
-            {
+            if let Decl::RecordDef { name, fields, .. } = unwrap_private(decl) {
                 let gc_idx = self.gc_types.len() as u32;
                 self.record_type_indices.insert(name.clone(), gc_idx);
 
@@ -144,15 +141,13 @@ impl Lower {
         // ADT 型定義のバリアント情報を登録
         // リニアメモリ版では GC 型は不要 (ヒープに直接書き込む)
         for decl in &program.decls {
-            if let Decl::TypeDef {
-                name, variants, ..
-            } = unwrap_private(decl)
-            {
+            if let Decl::TypeDef { name, variants, .. } = unwrap_private(decl) {
                 let mut variant_infos = Vec::new();
                 for (tag, variant) in variants.iter().enumerate() {
                     let tag_val = tag as i32;
                     // gc_idx は互換性のため 0 を設定 (リニアメモリ版では未使用)
-                    self.adt_variant_indices.insert(variant.name.clone(), (0, tag_val));
+                    self.adt_variant_indices
+                        .insert(variant.name.clone(), (0, tag_val));
                     variant_infos.push((variant.name.clone(), 0, tag_val, variant.fields.len()));
                 }
                 self.adt_type_info.insert(name.clone(), variant_infos);
@@ -170,7 +165,8 @@ impl Lower {
         self.func_indices.insert("read-file".to_string(), 7);
         self.func_indices.insert("write-file".to_string(), 8);
         self.func_indices.insert("file-exists?".to_string(), 9);
-        self.func_indices.insert("command-line-args".to_string(), 10);
+        self.func_indices
+            .insert("command-line-args".to_string(), 10);
         self.func_indices.insert("command-line-arg".to_string(), 11);
         self.func_indices.insert("read-stdin".to_string(), 12);
         self.func_indices.insert("__fnv1a_hash".to_string(), 13);
@@ -233,7 +229,10 @@ impl Lower {
             } = unwrap_private(decl)
             {
                 for method_decl in methods {
-                    if let Decl::Defn { name: method_name, .. } = unwrap_private(method_decl) {
+                    if let Decl::Defn {
+                        name: method_name, ..
+                    } = unwrap_private(method_decl)
+                    {
                         // マングル名: TraitName_TypeName_methodName
                         let mangled = format!("{trait_name}_{type_name}_{method_name}");
                         self.func_indices.insert(mangled.clone(), func_idx);
@@ -249,11 +248,15 @@ impl Lower {
 
         // Computation Builder の登録
         for decl in &program.decls {
-            if let Decl::ComputationBuilder { name, bind_fn, return_fn, .. } = unwrap_private(decl) {
-                self.computation_builders.insert(
-                    name.clone(),
-                    (bind_fn.clone(), return_fn.clone()),
-                );
+            if let Decl::ComputationBuilder {
+                name,
+                bind_fn,
+                return_fn,
+                ..
+            } = unwrap_private(decl)
+            {
+                self.computation_builders
+                    .insert(name.clone(), (bind_fn.clone(), return_fn.clone()));
             }
         }
 
@@ -276,7 +279,8 @@ impl Lower {
         for decl in &program.decls {
             if let Decl::RecordDef { name, fields, .. } = unwrap_private(decl) {
                 for (field_idx, (fname, ftype)) in fields.iter().enumerate() {
-                    let accessor = self.generate_field_accessor(name, fname, field_idx as u32, ftype);
+                    let accessor =
+                        self.generate_field_accessor(name, fname, field_idx as u32, ftype);
                     functions.push(accessor);
                 }
             }
@@ -310,9 +314,7 @@ impl Lower {
         // 制約付き型のランタイム検証関数を生成 (P2-6)
         for decl in &program.decls {
             if let Decl::TypeConstrained {
-                name,
-                constraints,
-                ..
+                name, constraints, ..
             } = unwrap_private(decl)
             {
                 // Name.new: (-> BaseType BaseType) -- 制約チェック付き
@@ -421,7 +423,8 @@ pub(crate) fn is_builtin_binop(name: &str) -> bool {
             | "-."
             | "*."
             | "/."
-            | "==" | "="
+            | "=="
+            | "="
             | "!="
             | "<"
             | ">"
@@ -438,12 +441,12 @@ pub fn type_to_ir(ty: &Type) -> IrType {
         Type::Con(name) => match name.as_str() {
             "Int" => IrType::I64,
             "Float" => IrType::F64,
-            "Bool" => IrType::I64, // Bool は i64 (0/1)
-            "Unit" => IrType::I64, // Unit も i64 (0)
+            "Bool" => IrType::I64,   // Bool は i64 (0/1)
+            "Unit" => IrType::I64,   // Unit も i64 (0)
             "String" => IrType::I64, // MVP: 文字列はポインタ (i64)
             _ => IrType::I64,
         },
-        Type::Var(_) => IrType::I64, // 未解決の型変数はデフォルト i64
+        Type::Var(_) => IrType::I64,    // 未解決の型変数はデフォルト i64
         Type::Fun(_, _) => IrType::I64, // 関数ポインタ
         Type::App(_, _) => IrType::I64, // ADT ポインタ
         Type::Record(_, _) => IrType::I64, // MVP: レコードは i64
@@ -508,11 +511,7 @@ pub(crate) fn emit_untag_pointer(body: &mut Vec<crate::Instruction>) {
 /// スタック: [addr: i32] -> [] (アドレスは消費される、呼び出し側で保存が必要)
 /// addr+0 に tag、addr+4 に size を書き込む
 #[allow(dead_code)]
-pub(crate) fn emit_write_heap_header(
-    body: &mut Vec<crate::Instruction>,
-    tag: i32,
-    size: i32,
-) {
+pub(crate) fn emit_write_heap_header(body: &mut Vec<crate::Instruction>, tag: i32, size: i32) {
     use crate::Instruction;
     // I32Store はスタックから [addr, value] を消費する
     // tag を書き込み: mem[addr+0] = tag

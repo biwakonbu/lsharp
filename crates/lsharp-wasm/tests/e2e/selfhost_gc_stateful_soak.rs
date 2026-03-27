@@ -18,7 +18,13 @@ fn test_e2e_gc_repl_stateful_single_session_metrics() {
     let repl_src_b = "(defn main [] (if true 1 2))";
     let iterations = 50usize;
     let expected_bytes: usize = (1..=iterations)
-        .map(|n| if n % 2 == 0 { repl_src_a.len() } else { repl_src_b.len() })
+        .map(|n| {
+            if n % 2 == 0 {
+                repl_src_a.len()
+            } else {
+                repl_src_b.len()
+            }
+        })
         .sum();
 
     let harness = format!(
@@ -45,7 +51,11 @@ fn test_e2e_gc_repl_stateful_single_session_metrics() {
     let output = compile_and_run(&format!("{}\n{}", selfhost_cli_runtime_bundle(), harness));
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines[0], iterations.to_string(), "単一 REPL session の eval 回数が保持されるべき");
+    assert_eq!(
+        lines[0],
+        iterations.to_string(),
+        "単一 REPL session の eval 回数が保持されるべき"
+    );
     assert_eq!(
         lines[1],
         expected_bytes.to_string(),
@@ -95,7 +105,13 @@ fn test_e2e_gc_repl_stateful_long_session_metrics() {
     let repl_src_b = "(defn main [] (if true 1 2))";
     let iterations = 200usize;
     let expected_bytes: usize = (1..=iterations)
-        .map(|n| if n % 2 == 0 { repl_src_a.len() } else { repl_src_b.len() })
+        .map(|n| {
+            if n % 2 == 0 {
+                repl_src_a.len()
+            } else {
+                repl_src_b.len()
+            }
+        })
         .sum();
 
     let harness = format!(
@@ -122,13 +138,20 @@ fn test_e2e_gc_repl_stateful_long_session_metrics() {
     let output = compile_and_run(&format!("{}\n{}", selfhost_cli_runtime_bundle(), harness));
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines[0], iterations.to_string(), "long REPL session の eval 回数が保持されるべき");
+    assert_eq!(
+        lines[0],
+        iterations.to_string(),
+        "long REPL session の eval 回数が保持されるべき"
+    );
     assert_eq!(
         lines[1],
         expected_bytes.to_string(),
         "long REPL session の累積入力バイト数が保持されるべき"
     );
-    assert_eq!(lines[2], "100", "long REPL session の最後の推論型は Int=100 であるべき");
+    assert_eq!(
+        lines[2], "100",
+        "long REPL session の最後の推論型は Int=100 であるべき"
+    );
 }
 
 /// GC-05 honest slice: hover を含む最小系列は shared state を明示的に渡して
@@ -177,16 +200,45 @@ fn test_e2e_gc_lsp_stateful_session_sequence_metrics() {
 
     let lines = run_stateful_lsp_harness(&harness);
 
-    assert_eq!(lines[0], open_src.len().to_string(), "didOpen は session に開いた source を保持するべき");
-    assert_eq!(lines[1], "2", "hover response は [range, contents] の 2 要素であるべき");
-    assert_eq!(lines[2], "defn helper", "hover は didOpen 済み document の symbol 情報を返すべき");
-    assert_eq!(lines[3], change_src.len().to_string(), "didChange は session source を更新するべき");
-    assert_eq!(lines[4], "1", "completion は変更後 source の prefix から 1 件返すべき");
+    assert_eq!(
+        lines[0],
+        open_src.len().to_string(),
+        "didOpen は session に開いた source を保持するべき"
+    );
+    assert_eq!(
+        lines[1], "2",
+        "hover response は [range, contents] の 2 要素であるべき"
+    );
+    assert_eq!(
+        lines[2], "defn helper",
+        "hover は didOpen 済み document の symbol 情報を返すべき"
+    );
+    assert_eq!(
+        lines[3],
+        change_src.len().to_string(),
+        "didChange は session source を更新するべき"
+    );
+    assert_eq!(
+        lines[4], "1",
+        "completion は変更後 source の prefix から 1 件返すべき"
+    );
     assert_eq!(lines[5], "helper", "completion は helper symbol を返すべき");
-    assert_eq!(lines[6], "1", "formatting は変更後 document に対して 1 edit を返すべき");
-    assert_eq!(lines[7], "1", "formatting edit は session に保持した最新 source を使うべき");
-    assert_eq!(lines[8], "1", "session 中の open document 数は 1 件のままであるべき");
-    assert_eq!(lines[9], "6", "stateful sequence の request count が蓄積されるべき");
+    assert_eq!(
+        lines[6], "1",
+        "formatting は変更後 document に対して 1 edit を返すべき"
+    );
+    assert_eq!(
+        lines[7], "1",
+        "formatting edit は session に保持した最新 source を使うべき"
+    );
+    assert_eq!(
+        lines[8], "1",
+        "session 中の open document 数は 1 件のままであるべき"
+    );
+    assert_eq!(
+        lines[9], "6",
+        "stateful sequence の request count が蓄積されるべき"
+    );
     assert_eq!(
         lines[10],
         change_src.len().to_string(),
@@ -250,7 +302,10 @@ fn test_e2e_gc_lsp_stateful_repeated_sequence_metrics() {
 
     let lines = run_stateful_lsp_harness(&harness);
 
-    assert_eq!(lines[0], "1", "repeated sequence でも open document 数は 1 件のままであるべき");
+    assert_eq!(
+        lines[0], "1",
+        "repeated sequence でも open document 数は 1 件のままであるべき"
+    );
     assert_eq!(
         lines[1],
         expected_requests.to_string(),

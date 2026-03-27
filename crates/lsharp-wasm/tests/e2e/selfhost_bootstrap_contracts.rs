@@ -1,6 +1,5 @@
 use super::support::*;
 
-
 // === TEST-BOOT-01-A: Main.ls import-only パイプラインの compile 成功テスト ===
 
 /// Main.ls が import-only パイプラインとして構成されていること、
@@ -149,18 +148,15 @@ fn test_e2e_selfhost_macroexpand_direct_compile() {
 /// 責務分離の assert が FAIL する。
 #[test]
 fn test_e2e_selfhost_type_responsibility_separation() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // 各ファイルの存在確認
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     // === Type.ls の責務: 型表現のみ ===
     // Type.ls には generalize / instantiate が含まれてはいけない
@@ -181,10 +177,7 @@ fn test_e2e_selfhost_type_responsibility_separation() {
         type_ls.contains("(defn make-type-"),
         "Type.ls に make-type- 関数がない"
     );
-    assert!(
-        type_ls.contains("(defn unify"),
-        "Type.ls に unify がない"
-    );
+    assert!(type_ls.contains("(defn unify"), "Type.ls に unify がない");
 
     // === TypeScheme.ls の責務: mono/poly/generalize/instantiate ===
     assert!(
@@ -232,12 +225,9 @@ fn test_e2e_selfhost_type_responsibility_separation() {
     // 重複定義の検出: TypeInfer.ls に unify/apply-subst/generalize が再定義されている場合 FAIL
     // (import しているなら再定義は不要)
     let type_infer_has_unify_redef = type_infer_ls.contains("(defn unify ");
-    let type_infer_has_apply_subst_redef =
-        type_infer_ls.contains("(defn apply-subst ");
-    let type_infer_has_generalize_redef =
-        type_infer_ls.contains("(defn generalize ");
-    let type_infer_has_instantiate_redef =
-        type_infer_ls.contains("(defn instantiate ");
+    let type_infer_has_apply_subst_redef = type_infer_ls.contains("(defn apply-subst ");
+    let type_infer_has_generalize_redef = type_infer_ls.contains("(defn generalize ");
+    let type_infer_has_instantiate_redef = type_infer_ls.contains("(defn instantiate ");
 
     assert!(
         !type_infer_has_unify_redef,
@@ -268,8 +258,7 @@ fn test_e2e_selfhost_type_responsibility_separation() {
 /// 多くのバリアント (Ann, RecordLit, FieldAccess, 等) に対応する constructor がなく FAIL する。
 #[test]
 fn test_e2e_selfhost_ast_full_coverage() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // golden fixture を読み込む
     let golden_path = project_root.join("tests/golden/syntax/ast_node_map.json");
@@ -277,11 +266,10 @@ fn test_e2e_selfhost_ast_full_coverage() {
         golden_path.exists(),
         "tests/golden/syntax/ast_node_map.json が存在しない"
     );
-    let golden_content = std::fs::read_to_string(&golden_path)
-        .expect("ast_node_map.json の読み込みに失敗");
+    let golden_content =
+        std::fs::read_to_string(&golden_path).expect("ast_node_map.json の読み込みに失敗");
     let golden: serde_json::Value =
-        serde_json::from_str(&golden_content)
-            .expect("ast_node_map.json の JSON パースに失敗");
+        serde_json::from_str(&golden_content).expect("ast_node_map.json の JSON パースに失敗");
 
     // Rust AST の Expr variant 列挙 (ast.rs から)
     let rust_expr_variants = [
@@ -320,21 +308,14 @@ fn test_e2e_selfhost_ast_full_coverage() {
     ];
 
     // Rust AST の Pattern variant 列挙
-    let rust_pattern_variants = [
-        "Wildcard",
-        "Var",
-        "Lit",
-        "Constructor",
-        "RecordPat",
-    ];
+    let rust_pattern_variants = ["Wildcard", "Var", "Lit", "Constructor", "RecordPat"];
 
     // selfhost/AST.ls を読み込む
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
 
     // golden fixture の expr_variants と実際の Rust variants が一致すること
-    let golden_expr =
-        golden.get("expr_variants").expect("expr_variants がない");
+    let golden_expr = golden.get("expr_variants").expect("expr_variants がない");
     for variant in &rust_expr_variants {
         assert!(
             golden_expr.get(variant).is_some(),
@@ -344,8 +325,7 @@ fn test_e2e_selfhost_ast_full_coverage() {
     }
 
     // golden fixture の decl_variants と実際の Rust variants が一致すること
-    let golden_decl =
-        golden.get("decl_variants").expect("decl_variants がない");
+    let golden_decl = golden.get("decl_variants").expect("decl_variants がない");
     for variant in &rust_decl_variants {
         assert!(
             golden_decl.get(variant).is_some(),
@@ -375,9 +355,7 @@ fn test_e2e_selfhost_ast_full_coverage() {
         let has_tag = ast_ls.contains(&format!("ast-{}", variant_lower))
             || ast_ls.contains(&format!(
                 "ast-{}",
-                variant
-                    .to_lowercase()
-                    .replace("splice", "-splice")
+                variant.to_lowercase().replace("splice", "-splice")
             ));
         let has_make = ast_ls.contains(&format!("make-{}", variant_lower))
             || ast_ls.contains(&format!(
@@ -401,14 +379,9 @@ fn test_e2e_selfhost_ast_full_coverage() {
     let mut missing_decl: Vec<&str> = Vec::new();
     for variant in &rust_decl_variants {
         let variant_lower = variant.to_lowercase();
-        let has_tag = ast_ls
-            .contains(&format!("ast-{}", variant_lower))
-            || ast_ls.contains(&format!(
-                "ast-{}",
-                variant_lower.replace("decl", "-decl")
-            ));
-        let has_make =
-            ast_ls.contains(&format!("make-{}", variant_lower));
+        let has_tag = ast_ls.contains(&format!("ast-{}", variant_lower))
+            || ast_ls.contains(&format!("ast-{}", variant_lower.replace("decl", "-decl")));
+        let has_make = ast_ls.contains(&format!("make-{}", variant_lower));
         if !has_tag && !has_make {
             missing_decl.push(variant);
         }
@@ -426,11 +399,9 @@ fn test_e2e_selfhost_ast_full_coverage() {
     let mut missing_pat: Vec<&str> = Vec::new();
     for variant in &rust_pattern_variants {
         let variant_lower = variant.to_lowercase();
-        let has_tag = ast_ls
-            .contains(&format!("ast-pat-{}", variant_lower))
+        let has_tag = ast_ls.contains(&format!("ast-pat-{}", variant_lower))
             || ast_ls.contains(&format!("ast-{}", variant_lower));
-        let has_make = ast_ls
-            .contains(&format!("make-pat-{}", variant_lower))
+        let has_make = ast_ls.contains(&format!("make-pat-{}", variant_lower))
             || ast_ls.contains(&format!("make-{}", variant_lower));
         if !has_tag && !has_make {
             missing_pat.push(variant);
@@ -457,8 +428,7 @@ fn test_e2e_selfhost_ast_full_coverage() {
 /// selfhost モジュール連結コンパイルが Rust 版と完全一致しないため FAIL する。
 #[test]
 fn test_e2e_selfhost_type_hm_core_golden() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // 1. golden fixture の読み込み
     let golden_path = project_root.join("tests/golden/types/hm_core.json");
@@ -466,11 +436,10 @@ fn test_e2e_selfhost_type_hm_core_golden() {
         golden_path.exists(),
         "tests/golden/types/hm_core.json が存在しない"
     );
-    let golden_content = std::fs::read_to_string(&golden_path)
-        .expect("hm_core.json の読み込みに失敗");
+    let golden_content =
+        std::fs::read_to_string(&golden_path).expect("hm_core.json の読み込みに失敗");
     let golden: serde_json::Value =
-        serde_json::from_str(&golden_content)
-            .expect("hm_core.json の JSON パースに失敗");
+        serde_json::from_str(&golden_content).expect("hm_core.json の JSON パースに失敗");
 
     // 2. golden fixture の構造検証
     let unify_cases = golden.get("unify").expect("unify セクションがない");
@@ -481,19 +450,19 @@ fn test_e2e_selfhost_type_hm_core_golden() {
         unify_cases.as_array().unwrap().len()
     );
 
-    let generalize_cases =
-        golden.get("generalize").expect("generalize セクションがない");
+    let generalize_cases = golden
+        .get("generalize")
+        .expect("generalize セクションがない");
     assert!(
-        generalize_cases.is_array()
-            && generalize_cases.as_array().unwrap().len() >= 3,
+        generalize_cases.is_array() && generalize_cases.as_array().unwrap().len() >= 3,
         "generalize テストケースが 3 件未満"
     );
 
-    let instantiate_cases =
-        golden.get("instantiate").expect("instantiate セクションがない");
+    let instantiate_cases = golden
+        .get("instantiate")
+        .expect("instantiate セクションがない");
     assert!(
-        instantiate_cases.is_array()
-            && instantiate_cases.as_array().unwrap().len() >= 2,
+        instantiate_cases.is_array() && instantiate_cases.as_array().unwrap().len() >= 2,
         "instantiate テストケースが 2 件未満"
     );
 
@@ -526,15 +495,13 @@ fn test_e2e_selfhost_type_hm_core_golden() {
         .expect("selfhost/AST.ls が読み込めない");
     let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
         .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-            .expect("selfhost/TypeScheme.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
+        .expect("selfhost/TypeScheme.ls が読み込めない");
     let type_infer_core_ls =
         std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
             .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-            .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
+        .expect("selfhost/TypeInfer.ls が読み込めない");
 
     // モジュール連結 (依存順)
     let combined = format!(
@@ -556,8 +523,8 @@ fn test_e2e_selfhost_type_hm_core_golden() {
     // 連結ソースでは **最後**の main (TypeInfer.ls) が実行される
     // (emit_wasm_wasi は複数 defn main があるとき rposition でエントリを選ぶ)
     let expected_lines = [
-        "0", "1", "100", "1", "200", "0", "1", "100", "0", "1", "100", "0", "200", "1", "0",
-        "200", "1",
+        "0", "1", "100", "1", "200", "0", "1", "100", "0", "1", "100", "0", "200", "1", "0", "200",
+        "1",
     ];
 
     let output_lines: Vec<&str> = output.lines().collect();
@@ -571,11 +538,10 @@ fn test_e2e_selfhost_type_hm_core_golden() {
         output
     );
 
-    for (i, (actual, expected)) in
-        output_lines.iter().zip(expected_lines.iter()).enumerate()
-    {
+    for (i, (actual, expected)) in output_lines.iter().zip(expected_lines.iter()).enumerate() {
         assert_eq!(
-            actual, expected,
+            actual,
+            expected,
             "selfhost 連結ソース出力の {} 行目が不一致: 期待='{}', 実際='{}'",
             i + 1,
             expected,
@@ -592,8 +558,7 @@ fn test_e2e_selfhost_type_hm_core_golden() {
 
 #[test]
 fn test_e2e_selfhost_metadata_check() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // 1. selfhost/MetadataCheck.ls が存在すること
     let metadata_check_path = project_root.join("selfhost/MetadataCheck.ls");
@@ -634,15 +599,12 @@ fn test_e2e_selfhost_metadata_check() {
     // 3. コンパイルが通ること (全依存モジュール連結)
     let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
         .expect("Token.ls 読み込み失敗");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("AST.ls 読み込み失敗");
+    let ast_ls =
+        std::fs::read_to_string(project_root.join("selfhost/AST.ls")).expect("AST.ls 読み込み失敗");
     let span_ls = std::fs::read_to_string(project_root.join("selfhost/Span.ls"))
         .expect("Span.ls 読み込み失敗");
 
-    let combined = format!(
-        "{}\n{}\n{}\n{}",
-        token_ls, ast_ls, span_ls, source
-    );
+    let combined = format!("{}\n{}\n{}\n{}", token_ls, ast_ls, span_ls, source);
 
     // パース + 型チェック + コンパイルが通ること
     let program = parse_for_pipeline(&combined);
@@ -662,8 +624,7 @@ fn test_e2e_selfhost_metadata_check() {
 
 #[test]
 fn test_e2e_selfhost_hkt_gadt_alias_record() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // selfhost/TypeInfer.ls を読み込み
     let type_infer_path = project_root.join("selfhost/TypeInfer.ls");
@@ -671,8 +632,8 @@ fn test_e2e_selfhost_hkt_gadt_alias_record() {
         type_infer_path.exists(),
         "selfhost/TypeInfer.ls が存在しない"
     );
-    let source = std::fs::read_to_string(&type_infer_path)
-        .expect("selfhost/TypeInfer.ls の読み込みに失敗");
+    let source =
+        std::fs::read_to_string(&type_infer_path).expect("selfhost/TypeInfer.ls の読み込みに失敗");
 
     // HKT (Higher-Kinded Types) 関連関数
     assert!(

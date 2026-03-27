@@ -1,10 +1,8 @@
 use super::support::*;
 
-
 /// selfhost TypeInfer.ls テスト: record literal field failure でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_record_literal_propagates_infinite_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -57,7 +55,6 @@ fn test_e2e_selfhost_typeinfer_error_record_literal_propagates_infinite_code() {
 /// selfhost TypeInfer.ls テスト: field access base failure でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_field_access_propagates_infinite_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -101,7 +98,6 @@ fn test_e2e_selfhost_typeinfer_error_field_access_propagates_infinite_code() {
 /// selfhost TypeInfer.ls テスト: record update base failure でも infinite error code を保つ
 #[test]
 fn test_e2e_selfhost_typeinfer_error_record_update_propagates_infinite_code() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -154,7 +150,6 @@ fn test_e2e_selfhost_typeinfer_error_record_update_propagates_infinite_code() {
 /// selfhost TypeInfer.ls テスト: record literal は minimal Con type を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_record_literal() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -182,16 +177,25 @@ fn test_e2e_selfhost_typeinfer_record_literal() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "record literal typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "record literal typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "record literal infer は失敗すべきでない");
-    assert_eq!(lines[1], "1", "record literal infer の型タグは Con であるべき");
-    assert_eq!(lines[2], "700", "record literal infer の型名は Point hash=700 であるべき");
+    assert_eq!(
+        lines[1], "1",
+        "record literal infer の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[2], "700",
+        "record literal infer の型名は Point hash=700 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: record update は base 式の型を維持できる
 #[test]
 fn test_e2e_selfhost_typeinfer_record_update() {
-
     let harness = r#"
 (defn mk-point-type []
   (vector-push (vector-push (vector-new 2) 1) 700))
@@ -224,16 +228,25 @@ fn test_e2e_selfhost_typeinfer_record_update() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "record update typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "record update typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "record update infer は失敗すべきでない");
-    assert_eq!(lines[1], "1", "record update infer の型タグは Con であるべき");
-    assert_eq!(lines[2], "700", "record update infer の型名は Point hash=700 であるべき");
+    assert_eq!(
+        lines[1], "1",
+        "record update infer の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[2], "700",
+        "record update infer の型名は Point hash=700 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: computation expression の最小型推論
 #[test]
 fn test_e2e_selfhost_typeinfer_computation_expr() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -285,19 +298,34 @@ fn test_e2e_selfhost_typeinfer_computation_expr() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 6, "computation typeinfer 出力が不足: {:?}", lines);
-    assert_eq!(lines[0], "0", "return-only computation infer は失敗すべきでない");
-    assert_eq!(lines[1], "1", "return-only computation の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "return-only computation の型名は Int hash=100 であるべき");
+    assert!(
+        lines.len() >= 6,
+        "computation typeinfer 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "0",
+        "return-only computation infer は失敗すべきでない"
+    );
+    assert_eq!(
+        lines[1], "1",
+        "return-only computation の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[2], "100",
+        "return-only computation の型名は Int hash=100 であるべき"
+    );
     assert_eq!(lines[3], "0", "let! computation infer は失敗すべきでない");
     assert_eq!(lines[4], "1", "let! computation の型タグは Con であるべき");
-    assert_eq!(lines[5], "100", "let! computation の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[5], "100",
+        "let! computation の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: single-step computation は最後の式型へ委譲できる
 #[test]
 fn test_e2e_selfhost_typeinfer_computation_single_step_bool() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -348,7 +376,6 @@ fn test_e2e_selfhost_typeinfer_computation_single_step_bool() {
 /// selfhost TypeInfer.ls テスト: 2-step let! computation は binder を最後の式へ渡せる
 #[test]
 fn test_e2e_selfhost_typeinfer_computation_let_bang_bool_binder() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -389,15 +416,23 @@ fn test_e2e_selfhost_typeinfer_computation_let_bang_bool_binder() {
         "let! bool computation typeinfer 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "0", "let! bool computation infer は失敗すべきでない");
-    assert_eq!(lines[1], "1", "let! bool computation の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "let! bool computation の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[0], "0",
+        "let! bool computation infer は失敗すべきでない"
+    );
+    assert_eq!(
+        lines[1], "1",
+        "let! bool computation の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[2], "200",
+        "let! bool computation の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 2-step do! computation は最後の式型へ委譲できる
 #[test]
 fn test_e2e_selfhost_typeinfer_computation_do_bang_bool_return() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -437,15 +472,23 @@ fn test_e2e_selfhost_typeinfer_computation_do_bang_bool_return() {
         "do! bool computation typeinfer 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "0", "do! bool computation infer は失敗すべきでない");
-    assert_eq!(lines[1], "1", "do! bool computation の型タグは Con であるべき");
-    assert_eq!(lines[2], "200", "do! bool computation の型名は Bool hash=200 であるべき");
+    assert_eq!(
+        lines[0], "0",
+        "do! bool computation infer は失敗すべきでない"
+    );
+    assert_eq!(
+        lines[1], "1",
+        "do! bool computation の型タグは Con であるべき"
+    );
+    assert_eq!(
+        lines[2], "200",
+        "do! bool computation の型名は Bool hash=200 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 3-step let! -> do! -> return は binder を維持できる
 #[test]
 fn test_e2e_selfhost_typeinfer_computation_let_bang_do_bang_return_bool() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -492,7 +535,10 @@ fn test_e2e_selfhost_typeinfer_computation_let_bang_do_bang_return_bool() {
         "3-step let! do! computation typeinfer 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "0", "3-step let! do! computation infer は失敗すべきでない");
+    assert_eq!(
+        lines[0], "0",
+        "3-step let! do! computation infer は失敗すべきでない"
+    );
     assert_eq!(
         lines[1], "1",
         "3-step let! do! computation の型タグは Con であるべき"

@@ -1,13 +1,11 @@
 use super::support::*;
 
-
 // === Phase 6 Group E: IR / WASM / BOOT 系テスト ===
 
 /// TEST-IR-01: selfhost/ModuleGraph.ls の存在 + topological-sort, detect-cycle 関数
 #[test]
 fn test_e2e_selfhost_module_graph() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // ModuleGraph.ls が存在することを検証
     let mg_path = project_root.join("selfhost/ModuleGraph.ls");
@@ -16,8 +14,8 @@ fn test_e2e_selfhost_module_graph() {
         "selfhost/ModuleGraph.ls が存在しない -- モジュール依存グラフ未作成"
     );
 
-    let mg_content = std::fs::read_to_string(&mg_path)
-        .expect("selfhost/ModuleGraph.ls の読み込みに失敗");
+    let mg_content =
+        std::fs::read_to_string(&mg_path).expect("selfhost/ModuleGraph.ls の読み込みに失敗");
 
     // モジュール宣言を検証
     assert!(
@@ -41,8 +39,7 @@ fn test_e2e_selfhost_module_graph() {
 /// TEST-IR-02: selfhost/Lower.ls, LowerExpr.ls, LowerDecl.ls, LowerPattern.ls の存在
 #[test]
 fn test_e2e_selfhost_lower_split() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let files = [
         "selfhost/Lower.ls",
@@ -81,8 +78,7 @@ fn test_e2e_selfhost_lower_split() {
 /// TEST-IR-03: selfhost/Closure.ls の存在 + free-vars, capture-env 関数
 #[test]
 fn test_e2e_selfhost_closure_conversion() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let closure_path = project_root.join("selfhost/Closure.ls");
     assert!(
@@ -90,8 +86,8 @@ fn test_e2e_selfhost_closure_conversion() {
         "selfhost/Closure.ls が存在しない -- クロージャ変換モジュール未作成"
     );
 
-    let content = std::fs::read_to_string(&closure_path)
-        .expect("selfhost/Closure.ls の読み込みに失敗");
+    let content =
+        std::fs::read_to_string(&closure_path).expect("selfhost/Closure.ls の読み込みに失敗");
 
     assert!(
         content.contains("(module Closure)"),
@@ -112,17 +108,13 @@ fn test_e2e_selfhost_closure_conversion() {
 /// TEST-IR-04: LowerPattern.ls に literal/constructor/record/wildcard パターン lowering 関数
 #[test]
 fn test_e2e_selfhost_pattern_lowering() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let path = project_root.join("selfhost/LowerPattern.ls");
-    assert!(
-        path.exists(),
-        "selfhost/LowerPattern.ls が存在しない"
-    );
+    assert!(path.exists(), "selfhost/LowerPattern.ls が存在しない");
 
-    let content = std::fs::read_to_string(&path)
-        .expect("selfhost/LowerPattern.ls の読み込みに失敗");
+    let content =
+        std::fs::read_to_string(&path).expect("selfhost/LowerPattern.ls の読み込みに失敗");
 
     // literal パターン lowering
     assert!(
@@ -156,17 +148,12 @@ fn test_e2e_selfhost_pattern_lowering() {
 /// TEST-IR-05: LowerDecl.ls に辞書引数付き call 変換関数
 #[test]
 fn test_e2e_selfhost_trait_dispatch_lowering() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let path = project_root.join("selfhost/LowerDecl.ls");
-    assert!(
-        path.exists(),
-        "selfhost/LowerDecl.ls が存在しない"
-    );
+    assert!(path.exists(), "selfhost/LowerDecl.ls が存在しない");
 
-    let content = std::fs::read_to_string(&path)
-        .expect("selfhost/LowerDecl.ls の読み込みに失敗");
+    let content = std::fs::read_to_string(&path).expect("selfhost/LowerDecl.ls の読み込みに失敗");
 
     assert!(
         content.contains("(module LowerDecl)"),
@@ -185,18 +172,13 @@ fn test_e2e_selfhost_trait_dispatch_lowering() {
 /// TEST-IR-06: IR snapshot を line-based format で出力できること
 #[test]
 fn test_e2e_selfhost_ir_snapshot_serializer() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // IR.ls に snapshot 出力関数が定義されていることを検証
     let ir_path = project_root.join("selfhost/IR.ls");
-    assert!(
-        ir_path.exists(),
-        "selfhost/IR.ls が存在しない"
-    );
+    assert!(ir_path.exists(), "selfhost/IR.ls が存在しない");
 
-    let content = std::fs::read_to_string(&ir_path)
-        .expect("selfhost/IR.ls の読み込みに失敗");
+    let content = std::fs::read_to_string(&ir_path).expect("selfhost/IR.ls の読み込みに失敗");
 
     // line-based snapshot serializer 関数を検証
     assert!(
@@ -208,9 +190,7 @@ fn test_e2e_selfhost_ir_snapshot_serializer() {
 
     // 出力が line-based であることを示す改行処理が含まれるか検証
     assert!(
-        content.contains("newline")
-            || content.contains("\\n")
-            || content.contains("line-format"),
+        content.contains("newline") || content.contains("\\n") || content.contains("line-format"),
         "selfhost/IR.ls に line-based format の出力処理がない"
     );
 }
@@ -218,17 +198,12 @@ fn test_e2e_selfhost_ir_snapshot_serializer() {
 /// TEST-WASM-01: FrontendResult/LoweredModule/CodegenArtifact の3層境界が IR.ls に定義
 #[test]
 fn test_e2e_selfhost_backend_boundary() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ir_path = project_root.join("selfhost/IR.ls");
-    assert!(
-        ir_path.exists(),
-        "selfhost/IR.ls が存在しない"
-    );
+    assert!(ir_path.exists(), "selfhost/IR.ls が存在しない");
 
-    let content = std::fs::read_to_string(&ir_path)
-        .expect("selfhost/IR.ls の読み込みに失敗");
+    let content = std::fs::read_to_string(&ir_path).expect("selfhost/IR.ls の読み込みに失敗");
 
     // FrontendResult 型定義
     assert!(
@@ -252,8 +227,7 @@ fn test_e2e_selfhost_backend_boundary() {
 /// TEST-WASM-02: selfhost/Codegen.ls, Emit.ls, WasiBackend.ls の存在
 #[test]
 fn test_e2e_selfhost_section_builders() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let files = [
         ("selfhost/Codegen.ls", "(module Codegen)"),
@@ -269,8 +243,8 @@ fn test_e2e_selfhost_section_builders() {
             file
         );
 
-        let content = std::fs::read_to_string(&path)
-            .unwrap_or_else(|_| panic!("{} の読み込みに失敗", file));
+        let content =
+            std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{} の読み込みに失敗", file));
         assert!(
             content.contains(expected_module),
             "{} に {} 宣言がない",
@@ -284,8 +258,7 @@ fn test_e2e_selfhost_section_builders() {
 /// + selfhost Emit.ls に LEB128 エンコーダが定義されていること
 #[test]
 fn test_e2e_selfhost_deterministic_leb_emit() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // Rust コンパイラの決定的出力を検証
     let source = r#"
@@ -314,8 +287,8 @@ fn test_e2e_selfhost_deterministic_leb_emit() {
         "selfhost/Emit.ls が存在しない -- LEB128 エンコーダ未実装"
     );
 
-    let emit_content = std::fs::read_to_string(&emit_path)
-        .expect("selfhost/Emit.ls の読み込みに失敗");
+    let emit_content =
+        std::fs::read_to_string(&emit_path).expect("selfhost/Emit.ls の読み込みに失敗");
 
     assert!(
         emit_content.contains("(defn encode-leb128")
@@ -328,17 +301,12 @@ fn test_e2e_selfhost_deterministic_leb_emit() {
 /// TEST-WASM-04: WasiBackend.ls に print/read-file/write-file/clock-now ヘルパー
 #[test]
 fn test_e2e_selfhost_wasi_helpers() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let path = project_root.join("selfhost/WasiBackend.ls");
-    assert!(
-        path.exists(),
-        "selfhost/WasiBackend.ls が存在しない"
-    );
+    assert!(path.exists(), "selfhost/WasiBackend.ls が存在しない");
 
-    let content = std::fs::read_to_string(&path)
-        .expect("selfhost/WasiBackend.ls の読み込みに失敗");
+    let content = std::fs::read_to_string(&path).expect("selfhost/WasiBackend.ls の読み込みに失敗");
 
     assert!(
         content.contains("(module WasiBackend)"),
@@ -381,8 +349,7 @@ fn test_e2e_selfhost_wasi_helpers() {
 /// TEST-WASM-05: selfhost/TestRunner.ls の存在 + :example/:invariant テスト生成
 #[test]
 fn test_e2e_selfhost_test_runner() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let path = project_root.join("selfhost/TestRunner.ls");
     assert!(
@@ -390,8 +357,7 @@ fn test_e2e_selfhost_test_runner() {
         "selfhost/TestRunner.ls が存在しない -- テストランナーモジュール未作成"
     );
 
-    let content = std::fs::read_to_string(&path)
-        .expect("selfhost/TestRunner.ls の読み込みに失敗");
+    let content = std::fs::read_to_string(&path).expect("selfhost/TestRunner.ls の読み込みに失敗");
 
     assert!(
         content.contains("(module TestRunner)"),
@@ -420,8 +386,7 @@ fn test_e2e_selfhost_test_runner() {
 /// TEST-WASM-06: tests/golden/wasm/ に section hash golden fixture
 #[test]
 fn test_e2e_selfhost_wasm_golden() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let golden_dir = project_root.join("tests/golden/wasm");
     assert!(
@@ -449,8 +414,7 @@ fn test_e2e_selfhost_wasm_golden() {
 /// TEST-BOOT-03: selfhost/*.ls, stdlib/*.ls, examples/*.ls 全件 individual compile
 #[test]
 fn test_e2e_selfhost_all_files_compile() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let mut all_files = Vec::new();
     let mut failures = Vec::new();
@@ -511,9 +475,10 @@ fn test_e2e_selfhost_all_files_compile() {
             Ok(program) => {
                 // import 宣言があるファイルはモジュール間依存があるため
                 // 単体での型チェックをスキップしてパース成功のみを確認する
-                let has_imports = program.decls.iter().any(|d| {
-                    matches!(d, lsharp_syntax::ast::Decl::ImportDecl { .. })
-                });
+                let has_imports = program
+                    .decls
+                    .iter()
+                    .any(|d| matches!(d, lsharp_syntax::ast::Decl::ImportDecl { .. }));
                 if has_imports {
                     // パース成功のみ確認 (import 解決が必要なため型チェックはスキップ)
                     continue;
@@ -546,11 +511,7 @@ fn test_e2e_selfhost_all_files_compile() {
                         }
                     }
                     Err(e) => {
-                        failures.push(format!(
-                            "{}: 型チェック失敗 - {}",
-                            file.display(),
-                            e
-                        ));
+                        failures.push(format!("{}: 型チェック失敗 - {}", file.display(), e));
                     }
                 }
             }
@@ -570,15 +531,11 @@ fn test_e2e_selfhost_all_files_compile() {
 /// TEST-BOOT-04: 実体3段固定点検証 (stage0 -> stage1 -> stage2 -> stage3)
 #[test]
 fn test_e2e_selfhost_true_bootstrap_fixed_point() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // selfhost/Main.ls が存在することを前提とする
     let main_path = project_root.join("selfhost/Main.ls");
-    assert!(
-        main_path.exists(),
-        "selfhost/Main.ls が存在しない"
-    );
+    assert!(main_path.exists(), "selfhost/Main.ls が存在しない");
 
     // stage0: Rust コンパイラで selfhost/Main.ls をマルチファイル経路でコンパイル -> stage1 wasm
     let stage1_wasm = compile_file_only(&main_path);
@@ -610,8 +567,7 @@ fn test_e2e_selfhost_true_bootstrap_fixed_point() {
 /// TEST-GC-01: selfhost/GC.ls が存在し、object header / trace map / root API を持つ
 #[test]
 fn test_e2e_selfhost_gc_object_model() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     // selfhost/GC.ls が存在すること
     let gc_path = project_root.join("selfhost/GC.ls");
@@ -620,8 +576,7 @@ fn test_e2e_selfhost_gc_object_model() {
         "selfhost/GC.ls が存在しない -- GC モジュールを作成してください"
     );
 
-    let gc_source = std::fs::read_to_string(&gc_path)
-        .expect("selfhost/GC.ls の読み込みに失敗");
+    let gc_source = std::fs::read_to_string(&gc_path).expect("selfhost/GC.ls の読み込みに失敗");
 
     // モジュール宣言
     assert!(
@@ -637,18 +592,24 @@ fn test_e2e_selfhost_gc_object_model() {
 
     // trace map (GC がオブジェクト内のポインタを辿るためのマップ)
     assert!(
-        gc_source.contains("trace-map") || gc_source.contains("trace_map") || gc_source.contains("TraceMap"),
+        gc_source.contains("trace-map")
+            || gc_source.contains("trace_map")
+            || gc_source.contains("TraceMap"),
         "selfhost/GC.ls に trace map 関連の定義がない"
     );
 
     // root API (GC ルート登録/解除)
     assert!(
-        gc_source.contains("add-root") || gc_source.contains("add_root") || gc_source.contains("gc-root"),
+        gc_source.contains("add-root")
+            || gc_source.contains("add_root")
+            || gc_source.contains("gc-root"),
         "selfhost/GC.ls に root 登録 API がない"
     );
 
     assert!(
-        gc_source.contains("remove-root") || gc_source.contains("remove_root") || gc_source.contains("gc-unroot"),
+        gc_source.contains("remove-root")
+            || gc_source.contains("remove_root")
+            || gc_source.contains("gc-unroot"),
         "selfhost/GC.ls に root 解除 API がない"
     );
 
@@ -664,8 +625,7 @@ fn test_e2e_selfhost_gc_object_model() {
 /// TEST-GC-02: GC モジュールに mark-sweep 実装 (free-list, mark-bit, sweep-loop)
 #[test]
 fn test_e2e_selfhost_gc_mark_sweep() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let gc_path = project_root.join("selfhost/GC.ls");
     assert!(
@@ -673,18 +633,22 @@ fn test_e2e_selfhost_gc_mark_sweep() {
         "selfhost/GC.ls が存在しない -- GC モジュールを作成してください"
     );
 
-    let gc_source = std::fs::read_to_string(&gc_path)
-        .expect("selfhost/GC.ls の読み込みに失敗");
+    let gc_source = std::fs::read_to_string(&gc_path).expect("selfhost/GC.ls の読み込みに失敗");
 
     // free-list 管理
     assert!(
-        gc_source.contains("free-list") || gc_source.contains("free_list") || gc_source.contains("FreeList"),
+        gc_source.contains("free-list")
+            || gc_source.contains("free_list")
+            || gc_source.contains("FreeList"),
         "selfhost/GC.ls に free-list 関連の定義がない"
     );
 
     // mark-bit 操作
     assert!(
-        gc_source.contains("mark-bit") || gc_source.contains("mark_bit") || gc_source.contains("set-mark") || gc_source.contains("is-marked"),
+        gc_source.contains("mark-bit")
+            || gc_source.contains("mark_bit")
+            || gc_source.contains("set-mark")
+            || gc_source.contains("is-marked"),
         "selfhost/GC.ls に mark-bit 関連の定義がない"
     );
 
@@ -696,7 +660,9 @@ fn test_e2e_selfhost_gc_mark_sweep() {
 
     // mark フェーズ
     assert!(
-        gc_source.contains("gc-mark") || gc_source.contains("mark-phase") || gc_source.contains("(defn mark"),
+        gc_source.contains("gc-mark")
+            || gc_source.contains("mark-phase")
+            || gc_source.contains("(defn mark"),
         "selfhost/GC.ls に mark フェーズ関連の定義がない"
     );
 

@@ -256,12 +256,13 @@
 
 ### P12-0: CLI 統一 (`compile` 一本化)
 
-> Phase 12 の前提作業。CLI サブコマンドを `compile` に統一し、format → check → codegen を一括実行する。
+> Phase 12 の前提作業。`compile` を推奨エントリに昇格し、format → check → codegen を一括実行する。
+> `check` / `fmt` / `parse` は互換コマンドとして当面維持し、削除は別タスクに分離する。
 
-- [ ] **P12-0. `lsharp compile` パイプライン統合**
-  - [ ] `compile` サブコマンドで format → check → codegen を順に実行
+- [~] **P12-0. `lsharp compile` パイプライン統合** (tests: `commands::compile::tests::test_compile_file_runs_format_check_codegen_pipeline`)
+  - [x] `compile` サブコマンドで format → check → codegen を順に実行
   - [ ] 出力ファイル拡張子 (`.wasm` / なし) または `--target` フラグでバックエンド判定 (Wasm / Native)
-  - [ ] format 差分があればソースファイルを書き換えてから check → codegen に進む
+  - [x] format 差分があればソースファイルを書き換えてから check → codegen に進む
   - [ ] CLI サブコマンドとしての `check` / `format` / `parse` を廃止 (Rust API / LSP / MCP 内部では存続)
   - 修正対象: `crates/lsharp-driver/src/main.rs`
 
@@ -269,34 +270,34 @@
 
 > 最優先サブフェーズ。既存の LSP をバックエンドに、L# エコシステム全体を 1 つの MCP Server で AI に公開する。
 
-- [ ] **A-1. api.json スキーマと生成コマンド**
-  - [ ] `knowledge.schema.json` を拡張 (型シグネチャ・パラメータ `:doc` / `:params` / `:returns` フィールド追加)
-  - [ ] `lsharp doc --json` コマンド実装 (AST メタデータ + 型推論結果 → api.json)
-  - [ ] `:doc` / `:params` / `:returns` メタデータをコンパイラパイプライン全体で伝搬 (parse → infer → output)
-  - 修正対象: `docs/schemas/knowledge.schema.json`, `crates/lsharp-driver/src/main.rs`, 新規 `crates/lsharp-driver/src/api_doc.rs`
+- [~] **A-1. api.json スキーマと生成コマンド** (tests: `api_doc::tests::test_build_api_doc_includes_metadata_signature_and_return_docs`, `api_doc::tests::test_build_api_doc_for_package_collects_modules_from_src_in_sorted_order`, `tests::test_cmd_doc_json_writes_docs_api_json`)
+  - [x] 新規 `docs/schemas/api.schema.json` を追加 (knowledge schema とは分離)
+  - [x] `lsharp doc --json` コマンド実装 (AST メタデータ + 型推論結果 → api.json)
+  - [x] `:doc` / `:params` / `:returns` メタデータを api.json 出力に反映
+  - 修正対象: `docs/schemas/api.schema.json`, `crates/lsharp-driver/src/main.rs`, `crates/lsharp-driver/src/api_doc.rs`
 
-- [ ] **A-1.5. LSP 拡張 (hover + completion)**
-  - [ ] hover 実装完了: AST の `:doc` メタデータ + 型推論結果を返す (現在は TODO 状態)
-  - [ ] completion 新規実装: スコープ内シンボル一覧 + import 候補を返す
-  - [ ] LSP の pub API を MCP から直接呼び出し可能な形に整理 (`parse_and_check`, `find_definition`, `find_references`, `format_source` は既に pub)
+- [x] **A-1.5. LSP 拡張 (hover + completion)** (tests: `analysis::tests::test_hover_returns_type_and_doc_for_toplevel_function`, `completion::tests::test_complete_returns_matching_keyword_and_function_symbols`, `tests::test_server_capabilities`)
+  - [x] hover 実装完了: AST の `:doc` メタデータ + 型推論結果を返す
+  - [x] completion 新規実装: スコープ内シンボル一覧 + import 候補を返す
+  - [x] LSP の pub API を MCP から直接呼び出し可能な形に整理 (`parse_and_check`, `find_definition`, `find_references`, `format_source`, `hover`, `completion`)
   - 修正対象: `crates/lsharp-lsp/src/lib.rs`, `crates/lsharp-lsp/src/util.rs`, 新規 `crates/lsharp-lsp/src/completion.rs`
 
-- [ ] **A-2. lsharp-mcp Server 実装 (LSP-over-MCP)**
-  - [ ] `lsharp mcp-server` サブコマンド (stdio transport MCP Server)
+- [~] **A-2. lsharp-mcp Server 実装 (LSP-over-MCP)** (tests: `mcp_server::tests::test_call_hover_tool_returns_doc_and_type`, `mcp_server::tests::test_handle_jsonrpc_tools_list_request_returns_mcp_result`)
+  - [x] `lsharp mcp-server` サブコマンド (stdio transport MCP Server)
   - [ ] **LSP バックエンドツール** (LSP の `LsharpBackend` をライブラリとして組み込み):
-    - [ ] `lsharp_check` ツール: `util::parse_and_check()` → 診断結果を返す
-    - [ ] `lsharp_hover` ツール: `LsharpBackend::hover()` → 型情報 + :doc メタデータを返す
-    - [ ] `lsharp_completion` ツール: `LsharpBackend::completion()` → 補完候補一覧を返す
-    - [ ] `lsharp_format` ツール: `format::format_source()` → フォーマット済みソースを返す
-    - [ ] `lsharp_definition` ツール: `util::find_definition()` → 定義位置を返す
-    - [ ] `lsharp_references` ツール: `references::find_references()` → 参照位置一覧を返す
+    - [x] `lsharp_check` ツール: `util::parse_and_check()` → 診断結果を返す
+    - [x] `lsharp_hover` ツール: `hover()` → 型情報 + :doc メタデータを返す
+    - [x] `lsharp_completion` ツール: `completion()` → 補完候補一覧を返す
+    - [x] `lsharp_format` ツール: `format::format_source()` → フォーマット済みソースを返す
+    - [x] `lsharp_definition` ツール: `util::find_definition()` → 定義位置を返す
+    - [x] `lsharp_references` ツール: `references::find_references()` → 参照位置一覧を返す
   - [ ] **MCP 独自ツール** (LSP を経由しない):
-    - [ ] `lsharp_project_context` ツール: lsharp.toml を読み、使用中パッケージ + バージョン一覧を返す
-    - [ ] `lsharp_package_api` ツール: 指定パッケージ@バージョンの api.json を返す (ローカル → リモートフォールバック)
-    - [ ] `lsharp_stdlib_api` ツール: stdlib の全/指定モジュール API を返す
-    - [ ] `lsharp_compile_run` ツール: format + check + codegen + 実行結果を返す
-    - [ ] `lsharp_errors` ツール: エラーコードの説明と対処法を返す
-    - [ ] `lsharp_search` ツール: インストール済みパッケージのローカル検索
+    - [x] `lsharp_project_context` ツール: lsharp.toml を読み、使用中パッケージ + バージョン一覧を返す
+    - [x] `lsharp_package_api` ツール: 指定パッケージのローカル api.json を返す
+    - [x] `lsharp_stdlib_api` ツール: stdlib の全/指定モジュール API を返す
+    - [x] `lsharp_compile_run` ツール: format + check + codegen + 実行結果を返す
+    - [x] `lsharp_errors` ツール: エラーコードの説明と対処法を返す
+    - [x] `lsharp_search` ツール: インストール済みパッケージのローカル検索
   - [ ] `lsharp claude-plugin` サブコマンド:
     - [ ] Claude Code の settings.json に MCP Server 設定を自動登録
     - [ ] Agent Skills (L# 言語概要) を Claude Code にインストール (構文・型システム・パターン・stdlib 一覧)
@@ -322,11 +323,11 @@
 
 > lsharp.toml 拡張・可視性制御・依存解決の実装。P12-A 完了後に着手推奨。
 
-- [ ] **B-1. lsharp.toml スキーマ拡張**
-  - [ ] `[project]` に description, license, authors, repository, keywords, lsharp-version フィールド追加
-  - [ ] `[project.exports]` セクション: 公開モジュール一覧 (省略時は全モジュール公開)
-  - [ ] `[dev-dependencies]` セクション
-  - [ ] 全フィールド optional (`#[serde(default)]`) で後方互換性維持
+- [x] **B-1. lsharp.toml スキーマ拡張** (tests: `config::tests::test_parse_project_metadata_exports_and_dev_dependencies`)
+  - [x] `[project]` に description, license, authors, repository, keywords, lsharp-version フィールド追加
+  - [x] `[project.exports]` セクション: 公開モジュール一覧 (省略時は全モジュール公開)
+  - [x] `[dev-dependencies]` セクション
+  - [x] 全フィールド optional (`#[serde(default)]`) で後方互換性維持
   - 修正対象: `crates/lsharp-driver/src/config.rs`
 
 - [ ] **B-2. パッケージディレクトリ規約と lsharp init**
@@ -335,24 +336,24 @@
   - [ ] モジュール→ファイルマッピング: `src/` prefix ルール (lsharp.toml 存在時に ModuleGraph が src/ 配下を探索)
   - 修正対象: `crates/lsharp-driver/src/main.rs`, 新規 `crates/lsharp-driver/src/init.rs`
 
-- [ ] **B-3. 可視性制御の実装**
-  - [ ] `(import Module :only [syms])` の type checker レベルでの enforcement (未列挙シンボルの参照をエラーにする)
-  - [ ] `[project.exports]` に基づくモジュール境界制御 (外部パッケージからは exports に列挙されたモジュールのみ参照可)
-  - [ ] `(private ...)` 宣言のモジュール跨ぎ enforcement (他モジュールからの private シンボル参照をエラーにする)
+- [x] **B-3. 可視性制御の実装** (tests: `tests::test_check_import_only_blocks_non_selected_symbol`, `tests::test_check_private_import_blocks_symbol`, `tests::test_check_rejects_non_exported_package_module`, `multifile_compile_tests::test_compile_multi_file_import_only_blocks_non_selected_symbol`, `multifile_compile_tests::test_compile_multi_file_private_import_blocks_symbol`, `module_graph::resolve_tests::test_build_from_entry_rejects_non_exported_package_module`)
+  - [x] `(import Module :only [syms])` の type checker レベルでの enforcement (未列挙シンボルの参照をエラーにする)
+  - [x] `[project.exports]` に基づくモジュール境界制御 (外部パッケージからは exports に列挙されたモジュールのみ参照可)
+  - [x] `(private ...)` 宣言のモジュール跨ぎ enforcement (他モジュールからの private シンボル参照をエラーにする)
   - 修正対象: `crates/lsharp-types/src/infer.rs`, `crates/lsharp-ir/src/module_graph.rs`
 
-- [ ] **B-4. stdlib 自動リンク**
-  - [ ] コンパイラのモジュール解決順序を定義: 1. local src/ → 2. .lsharp/packages/ → 3. stdlib
-  - [ ] `(import List)` が明示的な依存設定なしで stdlib から解決される
-  - [ ] stdlib パスの環境変数 (`LSHARP_STDLIB_PATH`) による上書きサポート
+- [x] **B-4. stdlib 自動リンク** (tests: `module_graph::resolve_tests::test_build_from_entry_prefers_package_src_root`, `module_graph::resolve_tests::test_build_from_entry_resolves_packages_from_project_root`, `module_graph::resolve_tests::test_resolve_module_file_with_search_paths_uses_packages_then_stdlib`)
+  - [x] コンパイラのモジュール解決順序を定義: 1. local src/ → 2. .lsharp/packages/ → 3. stdlib
+  - [x] `(import List)` が明示的な依存設定なしで stdlib から解決される
+  - [x] stdlib パスの環境変数 (`LSHARP_STDLIB_PATH`) による上書きサポート
   - 修正対象: `crates/lsharp-ir/src/module_graph.rs`
 
-- [ ] **B-5. 依存関係解決とインストール**
-  - [ ] `lsharp install` コマンド: lsharp.toml の dependencies を読み、path/git 依存を `.lsharp/packages/<name>-<hash>/` にダウンロード
-  - [ ] `.lsharp/lock.toml` ロックファイル生成 (name, version, source, checksum)
-  - [ ] ModuleGraph の検索パスに `.lsharp/packages/` を追加
+- [~] **B-5. 依存関係解決とインストール** (tests: `tests::test_cmd_install_path_dependency`)
+  - [x] `lsharp install` コマンド: lsharp.toml の dependencies を読み、path/git 依存を `.lsharp/packages/<name>-<hash>/` に配置
+  - [x] `.lsharp/lock.toml` ロックファイル生成 (name, version, source)
+  - [x] ModuleGraph の検索パスに `.lsharp/packages/` を追加
   - [ ] semver 互換範囲の解決 ("1.0.0" → >=1.0.0, <2.0.0)
-  - [ ] インストール時に `lsharp doc --json` を自動実行し `docs/api.json` を生成 (MCP Server が読む)
+  - [x] インストール時に `docs/api.json` を生成 (MCP Server が読む)
   - 修正対象: `crates/lsharp-ir/src/module_graph.rs`, `crates/lsharp-driver/src/config.rs`, 新規 `crates/lsharp-driver/src/resolver.rs`
 
 ### P12-C: パッケージ配布 & エコシステム (GitHub only)
@@ -365,19 +366,19 @@
   - [ ] `lsharp add <github-url> --tag <tag>` コマンド: lsharp.toml への依存追加
   - 修正対象: `crates/lsharp-driver/src/resolver.rs`
 
-- [ ] **C-2. パッケージ検証 (`lsharp check-package`)**
-  - [ ] lsharp.toml 検証 + api.json 自動生成
-  - [ ] 前タグとの破壊的変更の自動検出 (api.json diff で型シグネチャ変更・関数削除を検知)
-  - [ ] checksum (SHA-256) 生成
+- [~] **C-2. パッケージ検証 (`lsharp check-package`)** (tests: `tests::test_cmd_check_package_generates_api_json_and_checksum`)
+  - [x] lsharp.toml 検証 + api.json 自動生成
+  - [x] 前回 API との破壊的変更の自動検出 (`--previous-api <path>` と `--previous-tag <tag>`、tag 未指定時は最新 tag 自動検出)
+  - [x] checksum (SHA-256) 生成
   - パッケージ作者が `git tag` する前にローカルで実行
 
-- [ ] **C-3. パッケージ API diff & 互換性チェック**
-  - [ ] `lsharp api-diff <old-tag> <new-tag>` コマンド: 2 つの Git タグ間の api.json 比較
-  - [ ] 破壊的変更の検出と警告表示
+- [x] **C-3. パッケージ API diff & 互換性チェック** (tests: `tests::test_cmd_api_diff_reports_added_changed_removed`, `tests::test_cmd_api_diff_specs_supports_git_tags`)
+  - [x] `lsharp api-diff <old> <new>` コマンド: 2 つの api.json / Git tag の比較
+  - [x] 破壊的変更の検出と警告表示
 
-- [ ] **C-4. パッケージ情報表示**
-  - [ ] `lsharp info <package>` コマンド: インストール済みパッケージの api.json ベースの関数・型一覧表示
-  - [ ] MCP Server の `lsharp_package_api` ツールからインストール済みパッケージの API を返す
+- [x] **C-4. パッケージ情報表示** (tests: `tests::test_cmd_info_reads_installed_package_api`, `mcp_server::tests::test_package_api_tool_reads_installed_api_json`)
+  - [x] `lsharp info <package>` コマンド: インストール済みパッケージの api.json ベースの関数・型一覧表示
+  - [x] MCP Server の `lsharp_package_api` ツールからインストール済みパッケージの API を返す
 
 ---
 

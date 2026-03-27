@@ -17,11 +17,7 @@ pub fn prepare_rename(source: &str, position: Position) -> Option<(String, Range
 /// 全出現箇所を新しい名前に置換する TextEdit のリストを計算する
 ///
 /// find_references で全箇所を取得し、各箇所に対して TextEdit を生成する。
-pub fn compute_rename_edits(
-    source: &str,
-    position: Position,
-    new_name: &str,
-) -> Vec<TextEdit> {
+pub fn compute_rename_edits(source: &str, position: Position, new_name: &str) -> Vec<TextEdit> {
     let refs = find_references(source, position, true);
     refs.into_iter()
         .map(|range| TextEdit {

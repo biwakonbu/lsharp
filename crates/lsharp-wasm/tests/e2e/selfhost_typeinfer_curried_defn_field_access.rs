@@ -1,10 +1,8 @@
 use super::support::*;
 
-
 /// selfhost TypeInfer.ls テスト: 5 引数 defn は 5 段のカリー化型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_defn_five_params_curried() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -111,27 +109,44 @@ fn test_e2e_selfhost_typeinfer_defn_five_params_curried() {
     assert_eq!(lines[0], "0", "five-param defn infer は失敗すべきでない");
     assert_eq!(lines[1], "3", "outer type は Fun であるべき");
     assert_eq!(lines[2], "1", "outer param type は Con であるべき");
-    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[3], "100",
+        "outer param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[4], "3", "level2 type は Fun であるべき");
     assert_eq!(lines[5], "1", "level2 param type は Con であるべき");
-    assert_eq!(lines[6], "100", "level2 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[6], "100",
+        "level2 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[7], "3", "level3 type は Fun であるべき");
     assert_eq!(lines[8], "1", "level3 param type は Con であるべき");
-    assert_eq!(lines[9], "100", "level3 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[9], "100",
+        "level3 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[10], "3", "level4 type は Fun であるべき");
     assert_eq!(lines[11], "1", "level4 param type は Con であるべき");
-    assert_eq!(lines[12], "100", "level4 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[12], "100",
+        "level4 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[13], "3", "level5 type は Fun であるべき");
     assert_eq!(lines[14], "1", "level5 param type は Con であるべき");
-    assert_eq!(lines[15], "100", "level5 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[15], "100",
+        "level5 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[16], "1", "level5 return type は Con であるべき");
-    assert_eq!(lines[17], "100", "level5 return type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[17], "100",
+        "level5 return type は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 6 引数 defn は 6 段のカリー化型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_defn_six_params_curried() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -255,30 +270,50 @@ fn test_e2e_selfhost_typeinfer_defn_six_params_curried() {
     assert_eq!(lines[0], "0", "six-param defn infer は失敗すべきでない");
     assert_eq!(lines[1], "3", "outer type は Fun であるべき");
     assert_eq!(lines[2], "1", "outer param type は Con であるべき");
-    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[3], "100",
+        "outer param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[4], "3", "level2 type は Fun であるべき");
     assert_eq!(lines[5], "1", "level2 param type は Con であるべき");
-    assert_eq!(lines[6], "100", "level2 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[6], "100",
+        "level2 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[7], "3", "level3 type は Fun であるべき");
     assert_eq!(lines[8], "1", "level3 param type は Con であるべき");
-    assert_eq!(lines[9], "100", "level3 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[9], "100",
+        "level3 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[10], "3", "level4 type は Fun であるべき");
     assert_eq!(lines[11], "1", "level4 param type は Con であるべき");
-    assert_eq!(lines[12], "100", "level4 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[12], "100",
+        "level4 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[13], "3", "level5 type は Fun であるべき");
     assert_eq!(lines[14], "1", "level5 param type は Con であるべき");
-    assert_eq!(lines[15], "100", "level5 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[15], "100",
+        "level5 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[16], "3", "level6 type は Fun であるべき");
     assert_eq!(lines[17], "1", "level6 param type は Con であるべき");
-    assert_eq!(lines[18], "100", "level6 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[18], "100",
+        "level6 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[19], "1", "level6 return type は Con であるべき");
-    assert_eq!(lines[20], "100", "level6 return type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[20], "100",
+        "level6 return type は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 7 引数 defn は 7 段のカリー化型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_defn_seven_params_curried() {
-
     // 7 引数 defn: (defn f [a b c d e f g] (+ a b)) → Fun(Int, Fun(Int, ...))
     let harness = r#"
 (defn main []
@@ -349,8 +384,7 @@ fn test_e2e_selfhost_typeinfer_defn_seven_params_curried() {
 /// selfhost AST.ls テスト: field access constructor / traversal
 #[test]
 fn test_e2e_selfhost_ast_fieldaccess_helpers() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
         .expect("selfhost/AST.ls が読み込めない");
@@ -373,7 +407,11 @@ fn test_e2e_selfhost_ast_fieldaccess_helpers() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 5, "fieldaccess AST helper 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 5,
+        "fieldaccess AST helper 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "1", "fieldaccess は ast-fieldaccess であるべき");
     assert_eq!(lines[1], "1", "fieldaccess inner は var であるべき");
     assert_eq!(lines[2], "1", "fieldaccess field hash が保持されるべき");
@@ -384,8 +422,7 @@ fn test_e2e_selfhost_ast_fieldaccess_helpers() {
 /// selfhost Parser.ls テスト: field access expression を最小 payload でパースできる
 #[test]
 fn test_e2e_selfhost_parser_field_access_expr() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
         .expect("selfhost/Token.ls が読み込めない");
@@ -393,9 +430,8 @@ fn test_e2e_selfhost_parser_field_access_expr() {
         .expect("selfhost/AST.ls が読み込めない");
     let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
         .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls =
-        std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-            .expect("selfhost/Parser.ls が読み込めない");
+    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
+        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -416,7 +452,11 @@ fn test_e2e_selfhost_parser_field_access_expr() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 4, "fieldaccess parser 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 4,
+        "fieldaccess parser 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "1", "fieldaccess は ast-fieldaccess であるべき");
     assert_eq!(lines[1], "1", "fieldaccess inner は var であるべき");
     assert_eq!(lines[2], "1", "fieldaccess inner hash が一致すべき");
@@ -426,7 +466,6 @@ fn test_e2e_selfhost_parser_field_access_expr() {
 /// selfhost TypeInfer.ls テスト: record type が分かる field access は実フィールド型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_field_access() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -457,16 +496,22 @@ fn test_e2e_selfhost_typeinfer_field_access() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "fieldaccess typeinfer 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "fieldaccess typeinfer 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "0", "fieldaccess infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "fieldaccess infer の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "fieldaccess infer の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[2], "100",
+        "fieldaccess infer の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: record type が分からない field access は fresh var fallback を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_field_access_fallback_var() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -493,7 +538,10 @@ fn test_e2e_selfhost_typeinfer_field_access_fallback_var() {
         "fieldaccess fallback typeinfer 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "0", "fieldaccess fallback infer は失敗すべきでない");
+    assert_eq!(
+        lines[0], "0",
+        "fieldaccess fallback infer は失敗すべきでない"
+    );
     assert_eq!(
         lines[1], "2",
         "fieldaccess fallback infer の型タグは fresh Var であるべき"
@@ -507,7 +555,6 @@ fn test_e2e_selfhost_typeinfer_field_access_fallback_var() {
 /// selfhost TypeInfer.ls テスト: record literal に対する field access は実フィールド型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_field_access_on_record_literal() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -559,7 +606,6 @@ fn test_e2e_selfhost_typeinfer_field_access_on_record_literal() {
 /// selfhost TypeInfer.ls テスト: 2-field record literal の後続 field access も実フィールド型を返せる
 #[test]
 fn test_e2e_selfhost_typeinfer_field_access_on_record_literal_second_field() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)

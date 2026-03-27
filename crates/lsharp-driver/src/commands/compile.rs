@@ -11,10 +11,10 @@ pub struct CompileArtifacts {
 
 /// コンパイル前にフォーマットを適用し、必要ならソースを書き戻す
 pub fn prepare_source_for_compile(file: &Path) -> miette::Result<(String, bool)> {
-    let source = std::fs::read_to_string(file)
-        .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
-    let formatted = super::fmt::format_source(&source)
-        .map_err(|e| miette::miette!("フォーマット失敗: {e}"))?;
+    let source =
+        std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let formatted =
+        super::fmt::format_source(&source).map_err(|e| miette::miette!("フォーマット失敗: {e}"))?;
 
     if formatted != source {
         std::fs::write(file, &formatted)
@@ -30,8 +30,7 @@ fn compile_module_from_formatted_source(file: &Path, source: &str) -> miette::Re
         return lsharp_ir::compile_multi_file(file).map_err(|e| miette::miette!("{e}"));
     }
 
-    let program = lsharp_syntax::parse(source)
-        .map_err(|e| miette::miette!("{e}"))?;
+    let program = lsharp_syntax::parse(source).map_err(|e| miette::miette!("{e}"))?;
     let mut infer = lsharp_types::infer::Infer::new();
     let type_results = infer
         .infer_program(&program)
@@ -72,8 +71,8 @@ pub fn compile_file(
         });
     }
 
-    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
-        .map_err(|e| miette::miette!("{e}"))?;
+    let wasm_bytes =
+        lsharp_wasm::wasi::emit_wasm_wasi(&module).map_err(|e| miette::miette!("{e}"))?;
     std::fs::write(&output_path, &wasm_bytes)
         .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
     Ok(CompileArtifacts {
@@ -99,7 +98,10 @@ mod tests {
         let on_disk = std::fs::read_to_string(&file).unwrap();
 
         assert!(changed, "format 差分があるので changed=true を返すべき");
-        assert_eq!(formatted, on_disk, "compile 前にフォーマット済みソースを書き戻すべき");
+        assert_eq!(
+            formatted, on_disk,
+            "compile 前にフォーマット済みソースを書き戻すべき"
+        );
         assert!(
             on_disk.contains("(defn main"),
             "compile 前に空白が正規化されるべき: {on_disk}"
@@ -122,7 +124,10 @@ mod tests {
         let artifacts = compile_file(&file, Some(&output), false).unwrap();
 
         assert_eq!(artifacts.output_path, output);
-        assert!(artifacts.formatted, "compile は format 差分を検出して書き戻すべき");
+        assert!(
+            artifacts.formatted,
+            "compile は format 差分を検出して書き戻すべき"
+        );
         assert!(output.exists(), "compile は Wasm 出力を生成するべき");
 
         std::fs::remove_dir_all(&dir).unwrap();

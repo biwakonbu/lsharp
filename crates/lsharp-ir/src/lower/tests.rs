@@ -1,8 +1,8 @@
 //! lower モジュールのテスト
 
 use super::*;
-use lsharp_types::infer::Infer;
 use crate::{Instruction, Module};
+use lsharp_types::infer::Infer;
 
 /// ソースコードから IR モジュールを生成するヘルパー
 fn lower(source: &str) -> Module {
@@ -41,10 +41,7 @@ fn test_lower_comparison() {
 
 #[test]
 fn test_lower_if_expr() {
-    assert_ir(
-        "(defn main [] (if (< 1 2) 42 0))",
-        "lower_if_expr",
-    );
+    assert_ir("(defn main [] (if (< 1 2) 42 0))", "lower_if_expr");
 }
 
 #[test]
@@ -86,18 +83,12 @@ fn test_lower_recursive_function() {
 
 #[test]
 fn test_lower_print_call() {
-    assert_ir(
-        "(defn main [] (print 42))",
-        "lower_print_call",
-    );
+    assert_ir("(defn main [] (print 42))", "lower_print_call");
 }
 
 #[test]
 fn test_lower_wildcard_let() {
-    assert_ir(
-        "(defn main [] (let [_ 99] 1))",
-        "lower_wildcard_let",
-    );
+    assert_ir("(defn main [] (let [_ 99] 1))", "lower_wildcard_let");
 }
 
 #[test]
@@ -110,10 +101,7 @@ fn test_lower_do_block() {
 
 #[test]
 fn test_lower_not_operator() {
-    assert_ir(
-        "(defn main [] (not true))",
-        "lower_not_operator",
-    );
+    assert_ir("(defn main [] (not true))", "lower_not_operator");
 }
 
 #[test]
@@ -149,7 +137,10 @@ fn test_emit_binop_unknown_operator_returns_error() {
     let mut lowerer = Lower::new();
     let mut ctx = FuncCtx::new("test".to_string());
     let result = lowerer.emit_binop(&mut ctx, "unknown_op");
-    assert!(result.is_err(), "未知の演算子 'unknown_op' でエラーが返るべき");
+    assert!(
+        result.is_err(),
+        "未知の演算子 'unknown_op' でエラーが返るべき"
+    );
     let err = result.unwrap_err();
     assert!(
         matches!(err, LowerError::Unsupported { .. }),
@@ -161,8 +152,10 @@ fn test_emit_binop_unknown_operator_returns_error() {
 fn test_emit_binop_known_operators_succeed() {
     // 既知の演算子は全て成功すること (R-M2 回帰テスト)
     let mut lowerer = Lower::new();
-    let known_ops = ["+", "-", "*", "/", "%", "+.", "-.", "*.", "/.",
-                     "==", "=", "!=", "<", ">", "<=", ">=", "and", "or"];
+    let known_ops = [
+        "+", "-", "*", "/", "%", "+.", "-.", "*.", "/.", "==", "=", "!=", "<", ">", "<=", ">=",
+        "and", "or",
+    ];
     for op in &known_ops {
         let mut ctx = FuncCtx::new("test".to_string());
         let result = lowerer.emit_binop(&mut ctx, op);
@@ -183,8 +176,15 @@ fn test_lower_computation_return_calls_return_fn() {
     let module = lower(source);
     let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
     // mr (return_fn) への Call 命令が含まれるべき
-    let has_call = main_fn.body.iter().any(|instr| matches!(instr, Instruction::Call(_)));
-    assert!(has_call, "return は return_fn を Call すべき: {:?}", main_fn.body);
+    let has_call = main_fn
+        .body
+        .iter()
+        .any(|instr| matches!(instr, Instruction::Call(_)));
+    assert!(
+        has_call,
+        "return は return_fn を Call すべき: {:?}",
+        main_fn.body
+    );
 }
 
 #[test]
@@ -201,8 +201,15 @@ fn test_lower_computation_let_bang_binds_variable() {
     let module = lower(source);
     let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
     // LocalSet + LocalGet の組み合わせがあるべき
-    let has_local_set = main_fn.body.iter().any(|instr| matches!(instr, Instruction::LocalSet(_)));
-    assert!(has_local_set, "let! はローカル変数に格納すべき: {:?}", main_fn.body);
+    let has_local_set = main_fn
+        .body
+        .iter()
+        .any(|instr| matches!(instr, Instruction::LocalSet(_)));
+    assert!(
+        has_local_set,
+        "let! はローカル変数に格納すべき: {:?}",
+        main_fn.body
+    );
 }
 
 // --- private テスト ---
@@ -210,9 +217,9 @@ fn test_lower_computation_let_bang_binds_variable() {
 #[test]
 fn test_lower_private_defn() {
     // private 内の関数も正しく IR 変換される
-    let program = lsharp_syntax::parse(
-        "(private (defn helper [x] (+ x 1))) (defn main [] (helper 42))"
-    ).unwrap();
+    let program =
+        lsharp_syntax::parse("(private (defn helper [x] (+ x 1))) (defn main [] (helper 42))")
+            .unwrap();
     let mut infer = Infer::new();
     let type_results = infer.infer_program(&program).unwrap();
     let mut lowerer = Lower::new();
@@ -228,8 +235,9 @@ fn test_lower_private_defn() {
 fn test_lower_private_record() {
     // private 内のレコード型も正しく IR 変換される
     let program = lsharp_syntax::parse(
-        "(private (type Point (record (: x Int) (: y Int)))) (defn main [] 42)"
-    ).unwrap();
+        "(private (type Point (record (: x Int) (: y Int)))) (defn main [] 42)",
+    )
+    .unwrap();
     let mut infer = Infer::new();
     let type_results = infer.infer_program(&program).unwrap();
     let mut lowerer = Lower::new();
@@ -333,8 +341,15 @@ fn test_static_dispatch_with_literal_arg() {
 
     // main 関数に Call 命令が含まれる（Show_Int_show への呼び出し）
     let main_func = module.functions.iter().find(|f| f.name == "main").unwrap();
-    let has_call = main_func.body.iter().any(|i| matches!(i, Instruction::Call(_)));
-    assert!(has_call, "main 関数にトレイトメソッド呼び出し（Call）が含まれるべき: {:?}", main_func.body);
+    let has_call = main_func
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::Call(_)));
+    assert!(
+        has_call,
+        "main 関数にトレイトメソッド呼び出し（Call）が含まれるべき: {:?}",
+        main_func.body
+    );
 }
 
 #[test]
@@ -355,9 +370,20 @@ fn test_static_dispatch_unique_impl() {
     let module = lowerer.lower_program(&program, &type_results).unwrap();
 
     // use-show が正常にコンパイルされる（一意解決）
-    let use_show = module.functions.iter().find(|f| f.name == "use-show").unwrap();
-    let has_call = use_show.body.iter().any(|i| matches!(i, Instruction::Call(_)));
-    assert!(has_call, "use-show にトレイトメソッド呼び出し（Call）が含まれるべき: {:?}", use_show.body);
+    let use_show = module
+        .functions
+        .iter()
+        .find(|f| f.name == "use-show")
+        .unwrap();
+    let has_call = use_show
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::Call(_)));
+    assert!(
+        has_call,
+        "use-show にトレイトメソッド呼び出し（Call）が含まれるべき: {:?}",
+        use_show.body
+    );
 }
 
 #[test]
@@ -402,8 +428,16 @@ fn test_lower_constrained_type_generates_new() {
 
     // main + Natural.new + Natural.valid? = 3 関数
     let names: Vec<&str> = module.functions.iter().map(|f| f.name.as_str()).collect();
-    assert!(names.contains(&"Natural.new"), "Natural.new が生成されていない: {:?}", names);
-    assert!(names.contains(&"Natural.valid?"), "Natural.valid? が生成されていない: {:?}", names);
+    assert!(
+        names.contains(&"Natural.new"),
+        "Natural.new が生成されていない: {:?}",
+        names
+    );
+    assert!(
+        names.contains(&"Natural.valid?"),
+        "Natural.valid? が生成されていない: {:?}",
+        names
+    );
 }
 
 #[test]
@@ -418,7 +452,11 @@ fn test_constraint_check_gte_instructions() {
     let mut lowerer = Lower::new();
     let module = lowerer.lower_program(&program, &type_results).unwrap();
 
-    let new_func = module.functions.iter().find(|f| f.name == "Natural.new").unwrap();
+    let new_func = module
+        .functions
+        .iter()
+        .find(|f| f.name == "Natural.new")
+        .unwrap();
     // 最後の命令は LocalGet(0) (値をそのまま返す)
     assert!(matches!(
         new_func.body.last(),
@@ -426,7 +464,10 @@ fn test_constraint_check_gte_instructions() {
     ));
     // Unreachable が含まれている (制約違反時のトラップ)
     assert!(
-        new_func.body.iter().any(|i| matches!(i, Instruction::Unreachable)),
+        new_func
+            .body
+            .iter()
+            .any(|i| matches!(i, Instruction::Unreachable)),
         "Natural.new に Unreachable が含まれていない"
     );
 }
@@ -443,12 +484,22 @@ fn test_constraint_valid_returns_bool() {
     let mut lowerer = Lower::new();
     let module = lowerer.lower_program(&program, &type_results).unwrap();
 
-    let valid_func = module.functions.iter().find(|f| f.name == "Natural.valid?").unwrap();
+    let valid_func = module
+        .functions
+        .iter()
+        .find(|f| f.name == "Natural.valid?")
+        .unwrap();
     // 最初の命令は I64Const(1) (true で初期化)
-    assert!(matches!(valid_func.body.first(), Some(Instruction::I64Const(1))));
+    assert!(matches!(
+        valid_func.body.first(),
+        Some(Instruction::I64Const(1))
+    ));
     // Unreachable は含まれない (valid? はトラップしない)
     assert!(
-        !valid_func.body.iter().any(|i| matches!(i, Instruction::Unreachable)),
+        !valid_func
+            .body
+            .iter()
+            .any(|i| matches!(i, Instruction::Unreachable)),
         "Natural.valid? に Unreachable が含まれてはいけない"
     );
 }
@@ -465,12 +516,21 @@ fn test_constraint_range_generates_both_checks() {
     let mut lowerer = Lower::new();
     let module = lowerer.lower_program(&program, &type_results).unwrap();
 
-    let new_func = module.functions.iter().find(|f| f.name == "Port.new").unwrap();
+    let new_func = module
+        .functions
+        .iter()
+        .find(|f| f.name == "Port.new")
+        .unwrap();
     // range は 2 つの Unreachable を生成 (下限チェック + 上限チェック)
-    let unreachable_count = new_func.body.iter()
+    let unreachable_count = new_func
+        .body
+        .iter()
         .filter(|i| matches!(i, Instruction::Unreachable))
         .count();
-    assert_eq!(unreachable_count, 2, "Range 制約は 2 つのチェックを生成する");
+    assert_eq!(
+        unreachable_count, 2,
+        "Range 制約は 2 つのチェックを生成する"
+    );
 }
 
 // --- レコードパターンテスト ---
@@ -491,19 +551,24 @@ fn test_record_pattern_uses_struct_get() {
 
     let get_x = module.functions.iter().find(|f| f.name == "get-x").unwrap();
     // StructGet 命令が生成されていることを確認
-    let struct_gets: Vec<_> = get_x.body.iter()
+    let struct_gets: Vec<_> = get_x
+        .body
+        .iter()
         .filter(|i| matches!(i, Instruction::StructGet(_, _)))
         .collect();
-    assert!(struct_gets.len() >= 1, "レコードパターンは StructGet を使用すべき: {:?}", get_x.body);
+    assert!(
+        struct_gets.len() >= 1,
+        "レコードパターンは StructGet を使用すべき: {:?}",
+        get_x.body
+    );
 }
 
 #[test]
 fn test_resolve_field_index() {
     let mut lowerer = Lower::new();
-    lowerer.record_fields.insert(
-        "Point".to_string(),
-        vec!["x".to_string(), "y".to_string()],
-    );
+    lowerer
+        .record_fields
+        .insert("Point".to_string(), vec!["x".to_string(), "y".to_string()]);
     assert_eq!(lowerer.resolve_field_index("Point", "x"), Some(0));
     assert_eq!(lowerer.resolve_field_index("Point", "y"), Some(1));
     assert_eq!(lowerer.resolve_field_index("Point", "z"), None);
@@ -515,8 +580,12 @@ fn test_field_access_resolves_correct_type() {
     // R-M5: FieldAccess に型推論結果から正しい型名で解決することを検証
     // 直接 AST を構築（パーサーは FieldAccess を生成しないため）
     let mut lowerer = Lower::new();
-    lowerer.record_fields.insert("Point".to_string(), vec!["x".to_string(), "y".to_string()]);
-    lowerer.record_fields.insert("Size".to_string(), vec!["x".to_string(), "h".to_string()]);
+    lowerer
+        .record_fields
+        .insert("Point".to_string(), vec!["x".to_string(), "y".to_string()]);
+    lowerer
+        .record_fields
+        .insert("Size".to_string(), vec!["x".to_string(), "h".to_string()]);
     lowerer.record_type_indices.insert("Point".to_string(), 0);
     lowerer.record_type_indices.insert("Size".to_string(), 1);
     // Point の x フィールドはインデックス 0
@@ -529,7 +598,9 @@ fn test_field_access_resolves_correct_type() {
 fn test_field_access_error_on_unknown_field() {
     // R-M5: 解決失敗時にエラーを返すことを検証
     let mut lowerer = Lower::new();
-    lowerer.record_fields.insert("Point".to_string(), vec!["x".to_string(), "y".to_string()]);
+    lowerer
+        .record_fields
+        .insert("Point".to_string(), vec!["x".to_string(), "y".to_string()]);
     lowerer.record_type_indices.insert("Point".to_string(), 0);
     // 存在しないフィールドは None
     assert_eq!(lowerer.resolve_field_index("Point", "z"), None);
@@ -545,13 +616,35 @@ fn test_field_accessor_function_uses_struct_get() {
     "#;
     let module = lower(source);
     // Point.x アクセサ関数が正しい GC 型インデックスとフィールドインデックスで StructGet を使用
-    let point_x = module.functions.iter().find(|f| f.name == "Point.x").unwrap();
-    let has_struct_get = point_x.body.iter().any(|i| matches!(i, Instruction::StructGet(0, 0)));
-    assert!(has_struct_get, "Point.x は StructGet(0, 0) を使用すべき: {:?}", point_x.body);
+    let point_x = module
+        .functions
+        .iter()
+        .find(|f| f.name == "Point.x")
+        .unwrap();
+    let has_struct_get = point_x
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::StructGet(0, 0)));
+    assert!(
+        has_struct_get,
+        "Point.x は StructGet(0, 0) を使用すべき: {:?}",
+        point_x.body
+    );
     // Size.x は異なる GC 型インデックスで StructGet を使用
-    let size_x = module.functions.iter().find(|f| f.name == "Size.x").unwrap();
-    let has_struct_get = size_x.body.iter().any(|i| matches!(i, Instruction::StructGet(1, 0)));
-    assert!(has_struct_get, "Size.x は StructGet(1, 0) を使用すべき: {:?}", size_x.body);
+    let size_x = module
+        .functions
+        .iter()
+        .find(|f| f.name == "Size.x")
+        .unwrap();
+    let has_struct_get = size_x
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::StructGet(1, 0)));
+    assert!(
+        has_struct_get,
+        "Size.x は StructGet(1, 0) を使用すべき: {:?}",
+        size_x.body
+    );
 }
 
 #[test]
@@ -569,10 +662,18 @@ fn test_constructor_pattern_emits_tag_comparison() {
             [Blue 2]))
     "#;
     let module = lower(source);
-    let func = module.functions.iter().find(|f| f.name == "color-to-int").unwrap();
+    let func = module
+        .functions
+        .iter()
+        .find(|f| f.name == "color-to-int")
+        .unwrap();
     // タグ比較のために I64Eq が使用されるべき
     let has_eq = func.body.iter().any(|i| matches!(i, Instruction::I64Eq));
-    assert!(has_eq, "コンストラクタパターンはタグ比較 (I64Eq) を使用すべき: {:?}", func.body);
+    assert!(
+        has_eq,
+        "コンストラクタパターンはタグ比較 (I64Eq) を使用すべき: {:?}",
+        func.body
+    );
 }
 
 #[test]
@@ -586,10 +687,21 @@ fn test_record_update_resolves_correct_type() {
             {p | x 10}))
     "#;
     let module = lower(source);
-    let move_x = module.functions.iter().find(|f| f.name == "move-x").unwrap();
+    let move_x = module
+        .functions
+        .iter()
+        .find(|f| f.name == "move-x")
+        .unwrap();
     // StructNew が発行されることを確認（更新されたレコードを構築）
-    let has_struct_new = move_x.body.iter().any(|i| matches!(i, Instruction::StructNew(_)));
-    assert!(has_struct_new, "RecordUpdate は StructNew を生成すべき: {:?}", move_x.body);
+    let has_struct_new = move_x
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::StructNew(_)));
+    assert!(
+        has_struct_new,
+        "RecordUpdate は StructNew を生成すべき: {:?}",
+        move_x.body
+    );
 }
 
 // --- タグ付きワード (TASK-004) テスト ---
@@ -622,7 +734,12 @@ fn test_emit_write_heap_header_generates_correct_instructions() {
     let mut body = Vec::new();
     emit_write_heap_header(&mut body, 1, 16);
     // addr, tag を store + addr, size を store = 4 命令
-    assert_eq!(body.len(), 4, "emit_write_heap_header は 4 命令を生成すべき: {:?}", body);
+    assert_eq!(
+        body.len(),
+        4,
+        "emit_write_heap_header は 4 命令を生成すべき: {:?}",
+        body
+    );
     // tag 書き込み: I32Const(tag), I32Store { offset: 0 }
     assert!(matches!(body[0], Instruction::I32Const(1)));
     assert!(matches!(body[1], Instruction::I32Store { offset: 0 }));
@@ -667,8 +784,15 @@ fn test_adt_constructor_linear_memory_uses_alloc() {
     let module = lower(source);
     let just_fn = module.functions.iter().find(|f| f.name == "Just").unwrap();
     // __alloc への Call 命令が含まれるべき (func_idx = 1)
-    let has_alloc_call = just_fn.body.iter().any(|i| matches!(i, Instruction::Call(1)));
-    assert!(has_alloc_call, "Just コンストラクタは __alloc を呼び出すべき: {:?}", just_fn.body);
+    let has_alloc_call = just_fn
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::Call(1)));
+    assert!(
+        has_alloc_call,
+        "Just コンストラクタは __alloc を呼び出すべき: {:?}",
+        just_fn.body
+    );
 }
 
 #[test]
@@ -681,8 +805,15 @@ fn test_adt_constructor_linear_memory_writes_heap_tag() {
     let module = lower(source);
     let just_fn = module.functions.iter().find(|f| f.name == "Just").unwrap();
     // I32Const(3) (HEAP_TAG_ADT) が含まれるべき
-    let has_heap_tag = just_fn.body.iter().any(|i| matches!(i, Instruction::I32Const(3)));
-    assert!(has_heap_tag, "Just コンストラクタはヒープタグ 3 を書き込むべき: {:?}", just_fn.body);
+    let has_heap_tag = just_fn
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I32Const(3)));
+    assert!(
+        has_heap_tag,
+        "Just コンストラクタはヒープタグ 3 を書き込むべき: {:?}",
+        just_fn.body
+    );
 }
 
 #[test]
@@ -695,8 +826,15 @@ fn test_adt_constructor_linear_memory_writes_variant_tag() {
     let module = lower(source);
     let just_fn = module.functions.iter().find(|f| f.name == "Just").unwrap();
     // I32Store でバリアントタグを書き込む命令が含まれるべき
-    let has_variant_store = just_fn.body.iter().any(|i| matches!(i, Instruction::I32Store { offset: 4 }));
-    assert!(has_variant_store, "Just コンストラクタはバリアントタグを offset 4 に書き込むべき: {:?}", just_fn.body);
+    let has_variant_store = just_fn
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I32Store { offset: 4 }));
+    assert!(
+        has_variant_store,
+        "Just コンストラクタはバリアントタグを offset 4 に書き込むべき: {:?}",
+        just_fn.body
+    );
 }
 
 #[test]
@@ -709,8 +847,15 @@ fn test_adt_constructor_linear_memory_stores_field() {
     let module = lower(source);
     let just_fn = module.functions.iter().find(|f| f.name == "Just").unwrap();
     // フィールドは offset 8 に I64Store で書き込まれるべき
-    let has_field_store = just_fn.body.iter().any(|i| matches!(i, Instruction::I64Store { offset: 8 }));
-    assert!(has_field_store, "Just コンストラクタはフィールドを offset 8 に書き込むべき: {:?}", just_fn.body);
+    let has_field_store = just_fn
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I64Store { offset: 8 }));
+    assert!(
+        has_field_store,
+        "Just コンストラクタはフィールドを offset 8 に書き込むべき: {:?}",
+        just_fn.body
+    );
 }
 
 #[test]
@@ -723,8 +868,15 @@ fn test_adt_constructor_linear_memory_returns_tagged_pointer() {
     let module = lower(source);
     let just_fn = module.functions.iter().find(|f| f.name == "Just").unwrap();
     // タグ付きポインタ: I64ExtendI32U + I64Const(1<<63) + I64Add
-    let has_tag_pointer = just_fn.body.iter().any(|i| matches!(i, Instruction::I64ExtendI32U));
-    assert!(has_tag_pointer, "Just コンストラクタはタグ付きポインタを返すべき: {:?}", just_fn.body);
+    let has_tag_pointer = just_fn
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I64ExtendI32U));
+    assert!(
+        has_tag_pointer,
+        "Just コンストラクタはタグ付きポインタを返すべき: {:?}",
+        just_fn.body
+    );
 }
 
 #[test]
@@ -735,10 +887,21 @@ fn test_adt_constructor_no_args_linear_memory() {
         (defn main [] 0)
     "#;
     let module = lower(source);
-    let nothing_fn = module.functions.iter().find(|f| f.name == "Nothing").unwrap();
+    let nothing_fn = module
+        .functions
+        .iter()
+        .find(|f| f.name == "Nothing")
+        .unwrap();
     // __alloc への Call が含まれるべき
-    let has_alloc_call = nothing_fn.body.iter().any(|i| matches!(i, Instruction::Call(1)));
-    assert!(has_alloc_call, "Nothing コンストラクタも __alloc を呼び出すべき: {:?}", nothing_fn.body);
+    let has_alloc_call = nothing_fn
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::Call(1)));
+    assert!(
+        has_alloc_call,
+        "Nothing コンストラクタも __alloc を呼び出すべき: {:?}",
+        nothing_fn.body
+    );
 }
 
 // --- ADT パターンマッチ リニアメモリ版テスト ---
@@ -756,13 +919,31 @@ fn test_adt_pattern_match_no_args_reads_variant_tag_from_memory() {
         (defn main [] 0)
     "#;
     let module = lower(source);
-    let func = module.functions.iter().find(|f| f.name == "color-to-int").unwrap();
+    let func = module
+        .functions
+        .iter()
+        .find(|f| f.name == "color-to-int")
+        .unwrap();
     // タグ付きポインタからアドレスを取り出す I32WrapI64 が含まれるべき
-    let has_untag = func.body.iter().any(|i| matches!(i, Instruction::I32WrapI64));
-    assert!(has_untag, "コンストラクタパターンはポインタをアンタグすべき: {:?}", func.body);
+    let has_untag = func
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I32WrapI64));
+    assert!(
+        has_untag,
+        "コンストラクタパターンはポインタをアンタグすべき: {:?}",
+        func.body
+    );
     // variant_tag を読み出す I32Load { offset: 4 } が含まれるべき
-    let has_tag_load = func.body.iter().any(|i| matches!(i, Instruction::I32Load { offset: 4 }));
-    assert!(has_tag_load, "コンストラクタパターンは variant_tag を I32Load(offset:4) で読むべき: {:?}", func.body);
+    let has_tag_load = func
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I32Load { offset: 4 }));
+    assert!(
+        has_tag_load,
+        "コンストラクタパターンは variant_tag を I32Load(offset:4) で読むべき: {:?}",
+        func.body
+    );
 }
 
 #[test]
@@ -777,10 +958,21 @@ fn test_adt_pattern_match_with_args_extracts_fields() {
         (defn main [] 0)
     "#;
     let module = lower(source);
-    let func = module.functions.iter().find(|f| f.name == "from-maybe").unwrap();
+    let func = module
+        .functions
+        .iter()
+        .find(|f| f.name == "from-maybe")
+        .unwrap();
     // フィールド取り出しの I64Load { offset: 8 } が含まれるべき
-    let has_field_load = func.body.iter().any(|i| matches!(i, Instruction::I64Load { offset: 8 }));
-    assert!(has_field_load, "引数付きコンストラクタパターンはフィールドを I64Load(offset:8) で取り出すべき: {:?}", func.body);
+    let has_field_load = func
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I64Load { offset: 8 }));
+    assert!(
+        has_field_load,
+        "引数付きコンストラクタパターンはフィールドを I64Load(offset:8) で取り出すべき: {:?}",
+        func.body
+    );
 }
 
 #[test]
@@ -795,13 +987,28 @@ fn test_adt_pattern_match_with_args_compares_variant_tag() {
         (defn main [] 0)
     "#;
     let module = lower(source);
-    let func = module.functions.iter().find(|f| f.name == "from-maybe").unwrap();
+    let func = module
+        .functions
+        .iter()
+        .find(|f| f.name == "from-maybe")
+        .unwrap();
     // variant_tag を読み出す I32Load が含まれるべき
-    let has_tag_load = func.body.iter().any(|i| matches!(i, Instruction::I32Load { offset: 4 }));
-    assert!(has_tag_load, "引数付きコンストラクタパターンは variant_tag で分岐すべき: {:?}", func.body);
+    let has_tag_load = func
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I32Load { offset: 4 }));
+    assert!(
+        has_tag_load,
+        "引数付きコンストラクタパターンは variant_tag で分岐すべき: {:?}",
+        func.body
+    );
     // I64ExtendI32U + I64Eq でタグ比較すべき
     let has_eq = func.body.iter().any(|i| matches!(i, Instruction::I64Eq));
-    assert!(has_eq, "パターンマッチはタグ値を比較すべき: {:?}", func.body);
+    assert!(
+        has_eq,
+        "パターンマッチはタグ値を比較すべき: {:?}",
+        func.body
+    );
 }
 
 // --- モジュール分割検証テスト ---
@@ -820,10 +1027,16 @@ fn test_lower_module_structure() {
     // main 関数が1つ生成される
     assert_eq!(module.functions.len(), 1);
     assert_eq!(module.functions[0].name, "main");
-    assert!(module.functions[0].is_export, "main 関数は export されるべき");
+    assert!(
+        module.functions[0].is_export,
+        "main 関数は export されるべき"
+    );
     // 本体は I64Const(42) の1命令
     assert_eq!(module.functions[0].body.len(), 1);
-    assert!(matches!(module.functions[0].body[0], Instruction::I64Const(42)));
+    assert!(matches!(
+        module.functions[0].body[0],
+        Instruction::I64Const(42)
+    ));
 }
 
 // --- Ref Cell テスト ---
@@ -840,7 +1053,11 @@ fn test_ref_new_generates_alloc_and_store() {
     let has_alloc_call = main_fn.body.iter().any(|i| {
         matches!(i, Instruction::Call(idx) if *idx == 1) // __alloc のインデックス
     });
-    assert!(has_alloc_call, "ref-new は __alloc を呼び出すべき: {:?}", main_fn.body);
+    assert!(
+        has_alloc_call,
+        "ref-new は __alloc を呼び出すべき: {:?}",
+        main_fn.body
+    );
 }
 
 #[test]
@@ -852,10 +1069,15 @@ fn test_ref_get_generates_load() {
     let module = lower(source);
     let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
     // I64Load が含まれるべき (ヒープからの値読み出し)
-    let has_load = main_fn.body.iter().any(|i| {
-        matches!(i, Instruction::I64Load { .. })
-    });
-    assert!(has_load, "ref-get は I64Load を含むべき: {:?}", main_fn.body);
+    let has_load = main_fn
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I64Load { .. }));
+    assert!(
+        has_load,
+        "ref-get は I64Load を含むべき: {:?}",
+        main_fn.body
+    );
 }
 
 #[test]
@@ -867,10 +1089,15 @@ fn test_ref_set_generates_store() {
     let module = lower(source);
     let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
     // I64Store が含まれるべき (ヒープへの値書き込み)
-    let has_store = main_fn.body.iter().any(|i| {
-        matches!(i, Instruction::I64Store { .. })
-    });
-    assert!(has_store, "ref-set は I64Store を含むべき: {:?}", main_fn.body);
+    let has_store = main_fn
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I64Store { .. }));
+    assert!(
+        has_store,
+        "ref-set は I64Store を含むべき: {:?}",
+        main_fn.body
+    );
 }
 
 // --- Lambda Lifting テスト ---
@@ -884,12 +1111,22 @@ fn test_lambda_no_free_vars_lifted() {
     "#;
     let module = lower(source);
     // リフトされた Lambda 関数が生成されているべき
-    let lifted = module.functions.iter().find(|f| f.name.starts_with("__lambda"));
-    assert!(lifted.is_some(), "Lambda はリフトされた関数として生成されるべき: {:?}",
-        module.functions.iter().map(|f| &f.name).collect::<Vec<_>>());
+    let lifted = module
+        .functions
+        .iter()
+        .find(|f| f.name.starts_with("__lambda"));
+    assert!(
+        lifted.is_some(),
+        "Lambda はリフトされた関数として生成されるべき: {:?}",
+        module.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+    );
     // 統一呼び出し規約: 元パラメータ + closure_ptr で 2 つ
     let lifted = lifted.unwrap();
-    assert_eq!(lifted.params.len(), 2, "統一呼び出し規約: 元パラメータ 1 + closure_ptr 1 = 2");
+    assert_eq!(
+        lifted.params.len(),
+        2,
+        "統一呼び出し規約: 元パラメータ 1 + closure_ptr 1 = 2"
+    );
 }
 
 #[test]
@@ -901,15 +1138,32 @@ fn test_lambda_with_free_vars_captures() {
         (defn main [] 0)
     "#;
     let module = lower(source);
-    let lifted = module.functions.iter().find(|f| f.name.starts_with("__lambda"));
-    assert!(lifted.is_some(), "Lambda はリフトされた関数として生成されるべき: {:?}",
-        module.functions.iter().map(|f| &f.name).collect::<Vec<_>>());
+    let lifted = module
+        .functions
+        .iter()
+        .find(|f| f.name.starts_with("__lambda"));
+    assert!(
+        lifted.is_some(),
+        "Lambda はリフトされた関数として生成されるべき: {:?}",
+        module.functions.iter().map(|f| &f.name).collect::<Vec<_>>()
+    );
     // 統一呼び出し規約: 元パラメータ x + closure_ptr = 2
     let lifted = lifted.unwrap();
-    assert_eq!(lifted.params.len(), 2, "統一呼び出し規約: 元パラメータ 1 + closure_ptr 1 = 2");
+    assert_eq!(
+        lifted.params.len(),
+        2,
+        "統一呼び出し規約: 元パラメータ 1 + closure_ptr 1 = 2"
+    );
     // 本体に I64Load が含まれる (closure_ptr からキャプチャ値 n を読み出す)
-    let has_load = lifted.body.iter().any(|i| matches!(i, Instruction::I64Load { .. }));
-    assert!(has_load, "自由変数 n は closure_ptr から I64Load で読み出すべき: {:?}", lifted.body);
+    let has_load = lifted
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I64Load { .. }));
+    assert!(
+        has_load,
+        "自由変数 n は closure_ptr から I64Load で読み出すべき: {:?}",
+        lifted.body
+    );
 }
 
 #[test]
@@ -918,7 +1172,9 @@ fn test_lambda_lifting_preserves_existing_tests() {
     let source = "(defn double [x] (* x 2)) (defn main [] (double 21))";
     let module = lower(source);
     // double と main 以外にリフトされた関数はないべき
-    let non_lifted: Vec<_> = module.functions.iter()
+    let non_lifted: Vec<_> = module
+        .functions
+        .iter()
         .filter(|f| !f.name.starts_with("__lambda"))
         .collect();
     assert_eq!(non_lifted.len(), 2);
@@ -934,10 +1190,18 @@ fn test_lambda_body_has_correct_instructions() {
         (defn main [] 0)
     "#;
     let module = lower(source);
-    let lifted = module.functions.iter().find(|f| f.name.starts_with("__lambda")).unwrap();
+    let lifted = module
+        .functions
+        .iter()
+        .find(|f| f.name.starts_with("__lambda"))
+        .unwrap();
     // (+ x 1) の命令: LocalGet(0), I64Const(1), I64Add
     let has_add = lifted.body.iter().any(|i| matches!(i, Instruction::I64Add));
-    assert!(has_add, "Lambda 本体に I64Add が含まれるべき: {:?}", lifted.body);
+    assert!(
+        has_add,
+        "Lambda 本体に I64Add が含まれるべき: {:?}",
+        lifted.body
+    );
 }
 
 #[test]
@@ -949,7 +1213,10 @@ fn test_lambda_unsupported_test_removed() {
     let type_results = infer.infer_program(&program).unwrap();
     let mut lowerer = Lower::new();
     let result = lowerer.lower_program(&program, &type_results);
-    assert!(result.is_ok(), "Lambda は Lambda Lifting で正常にコンパイルされるべき");
+    assert!(
+        result.is_ok(),
+        "Lambda は Lambda Lifting で正常にコンパイルされるべき"
+    );
 }
 
 #[test]
@@ -964,8 +1231,15 @@ fn test_closure_call_indirect_ir() {
     let apply_fn = module.functions.iter().find(|f| f.name == "apply").unwrap();
     eprintln!("apply IR: {:?}", apply_fn.body);
     // apply 関数に CallIndirect が含まれるべき
-    let has_call_indirect = apply_fn.body.iter().any(|i| matches!(i, Instruction::CallIndirect(_)));
-    assert!(has_call_indirect, "apply 関数に CallIndirect が含まれるべき: {:?}", apply_fn.body);
+    let has_call_indirect = apply_fn
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::CallIndirect(_)));
+    assert!(
+        has_call_indirect,
+        "apply 関数に CallIndirect が含まれるべき: {:?}",
+        apply_fn.body
+    );
 }
 
 // --- クロージャ変換テスト ---
@@ -978,10 +1252,21 @@ fn test_closure_object_allocates_heap() {
         (defn main [] 0)
     "#;
     let module = lower(source);
-    let make_adder = module.functions.iter().find(|f| f.name == "make-adder").unwrap();
+    let make_adder = module
+        .functions
+        .iter()
+        .find(|f| f.name == "make-adder")
+        .unwrap();
     // __alloc への Call が含まれるべき (クロージャオブジェクト確保)
-    let has_alloc = make_adder.body.iter().any(|i| matches!(i, Instruction::Call(1)));
-    assert!(has_alloc, "クロージャは __alloc でヒープ確保すべき: {:?}", make_adder.body);
+    let has_alloc = make_adder
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::Call(1)));
+    assert!(
+        has_alloc,
+        "クロージャは __alloc でヒープ確保すべき: {:?}",
+        make_adder.body
+    );
 }
 
 #[test]
@@ -992,10 +1277,21 @@ fn test_closure_object_writes_tag() {
         (defn main [] 0)
     "#;
     let module = lower(source);
-    let make_adder = module.functions.iter().find(|f| f.name == "make-adder").unwrap();
+    let make_adder = module
+        .functions
+        .iter()
+        .find(|f| f.name == "make-adder")
+        .unwrap();
     // I32Const(4) (HEAP_TAG_CLOSURE) が含まれるべき
-    let has_tag = make_adder.body.iter().any(|i| matches!(i, Instruction::I32Const(4)));
-    assert!(has_tag, "クロージャはヒープタグ 4 を書き込むべき: {:?}", make_adder.body);
+    let has_tag = make_adder
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I32Const(4)));
+    assert!(
+        has_tag,
+        "クロージャはヒープタグ 4 を書き込むべき: {:?}",
+        make_adder.body
+    );
 }
 
 #[test]
@@ -1006,10 +1302,21 @@ fn test_closure_object_writes_func_idx() {
         (defn main [] 0)
     "#;
     let module = lower(source);
-    let make_adder = module.functions.iter().find(|f| f.name == "make-adder").unwrap();
+    let make_adder = module
+        .functions
+        .iter()
+        .find(|f| f.name == "make-adder")
+        .unwrap();
     // I32Store { offset: 4 } が含まれるべき (func_idx の書き込み)
-    let has_func_idx_store = make_adder.body.iter().any(|i| matches!(i, Instruction::I32Store { offset: 4 }));
-    assert!(has_func_idx_store, "クロージャは func_idx を offset 4 に書き込むべき: {:?}", make_adder.body);
+    let has_func_idx_store = make_adder
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I32Store { offset: 4 }));
+    assert!(
+        has_func_idx_store,
+        "クロージャは func_idx を offset 4 に書き込むべき: {:?}",
+        make_adder.body
+    );
 }
 
 #[test]
@@ -1020,10 +1327,21 @@ fn test_closure_object_captures_free_vars() {
         (defn main [] 0)
     "#;
     let module = lower(source);
-    let make_adder = module.functions.iter().find(|f| f.name == "make-adder").unwrap();
+    let make_adder = module
+        .functions
+        .iter()
+        .find(|f| f.name == "make-adder")
+        .unwrap();
     // キャプチャ値の書き込み: I64Store { offset: 8 } が含まれるべき
-    let has_capture_store = make_adder.body.iter().any(|i| matches!(i, Instruction::I64Store { offset: 8 }));
-    assert!(has_capture_store, "クロージャはキャプチャ値を offset 8 に書き込むべき: {:?}", make_adder.body);
+    let has_capture_store = make_adder
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I64Store { offset: 8 }));
+    assert!(
+        has_capture_store,
+        "クロージャはキャプチャ値を offset 8 に書き込むべき: {:?}",
+        make_adder.body
+    );
 }
 
 #[test]
@@ -1034,10 +1352,21 @@ fn test_closure_returns_tagged_pointer() {
         (defn main [] 0)
     "#;
     let module = lower(source);
-    let make_adder = module.functions.iter().find(|f| f.name == "make-adder").unwrap();
+    let make_adder = module
+        .functions
+        .iter()
+        .find(|f| f.name == "make-adder")
+        .unwrap();
     // タグ付きポインタ: I64Const(1<<63) + I64Add で最上位ビットをセット
-    let has_tag_ptr = make_adder.body.iter().any(|i| matches!(i, Instruction::I64Const(n) if *n == (1i64 << 63)));
-    assert!(has_tag_ptr, "クロージャはタグ付きポインタを返すべき: {:?}", make_adder.body);
+    let has_tag_ptr = make_adder
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I64Const(n) if *n == (1i64 << 63)));
+    assert!(
+        has_tag_ptr,
+        "クロージャはタグ付きポインタを返すべき: {:?}",
+        make_adder.body
+    );
 }
 
 #[test]
@@ -1048,10 +1377,21 @@ fn test_closure_no_free_vars_still_allocates() {
         (defn main [] 0)
     "#;
     let module = lower(source);
-    let make_inc = module.functions.iter().find(|f| f.name == "make-inc").unwrap();
+    let make_inc = module
+        .functions
+        .iter()
+        .find(|f| f.name == "make-inc")
+        .unwrap();
     // __alloc への Call が含まれるべき
-    let has_alloc = make_inc.body.iter().any(|i| matches!(i, Instruction::Call(1)));
-    assert!(has_alloc, "自由変数なし Lambda もクロージャオブジェクトを確保すべき: {:?}", make_inc.body);
+    let has_alloc = make_inc
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::Call(1)));
+    assert!(
+        has_alloc,
+        "自由変数なし Lambda もクロージャオブジェクトを確保すべき: {:?}",
+        make_inc.body
+    );
 }
 
 // --- ADT パターンマッチ リニアメモリ版テスト ---
@@ -1068,10 +1408,21 @@ fn test_adt_pattern_match_linear_memory_untags_pointer() {
             [Blue 2]))
     "#;
     let module = lower(source);
-    let func = module.functions.iter().find(|f| f.name == "color-to-int").unwrap();
+    let func = module
+        .functions
+        .iter()
+        .find(|f| f.name == "color-to-int")
+        .unwrap();
     // タグ付きポインタの解除: I32WrapI64 が含まれるべき
-    let has_untag = func.body.iter().any(|i| matches!(i, Instruction::I32WrapI64));
-    assert!(has_untag, "ADT パターンマッチはタグ付きポインタを解除すべき: {:?}", func.body);
+    let has_untag = func
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I32WrapI64));
+    assert!(
+        has_untag,
+        "ADT パターンマッチはタグ付きポインタを解除すべき: {:?}",
+        func.body
+    );
 }
 
 #[test]
@@ -1086,10 +1437,21 @@ fn test_adt_pattern_match_linear_memory_loads_variant_tag() {
             [Blue 2]))
     "#;
     let module = lower(source);
-    let func = module.functions.iter().find(|f| f.name == "color-to-int").unwrap();
+    let func = module
+        .functions
+        .iter()
+        .find(|f| f.name == "color-to-int")
+        .unwrap();
     // variant_tag の読み出し: I32Load { offset: 4 } が含まれるべき
-    let has_tag_load = func.body.iter().any(|i| matches!(i, Instruction::I32Load { offset: 4 }));
-    assert!(has_tag_load, "ADT パターンマッチは variant_tag を offset 4 から読み出すべき: {:?}", func.body);
+    let has_tag_load = func
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I32Load { offset: 4 }));
+    assert!(
+        has_tag_load,
+        "ADT パターンマッチは variant_tag を offset 4 から読み出すべき: {:?}",
+        func.body
+    );
 }
 
 #[test]
@@ -1103,10 +1465,21 @@ fn test_adt_pattern_match_with_fields_loads_from_memory() {
             [Nothing default]))
     "#;
     let module = lower(source);
-    let func = module.functions.iter().find(|f| f.name == "from-maybe").unwrap();
+    let func = module
+        .functions
+        .iter()
+        .find(|f| f.name == "from-maybe")
+        .unwrap();
     // フィールド読み出し: I64Load { offset: 8 } が含まれるべき (field_0)
-    let has_field_load = func.body.iter().any(|i| matches!(i, Instruction::I64Load { offset: 8 }));
-    assert!(has_field_load, "引数付きコンストラクタのパターンマッチはフィールドを offset 8 から読み出すべき: {:?}", func.body);
+    let has_field_load = func
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I64Load { offset: 8 }));
+    assert!(
+        has_field_load,
+        "引数付きコンストラクタのパターンマッチはフィールドを offset 8 から読み出すべき: {:?}",
+        func.body
+    );
 }
 
 #[test]
@@ -1120,10 +1493,21 @@ fn test_adt_pattern_match_with_fields_checks_variant_tag() {
             [Nothing default]))
     "#;
     let module = lower(source);
-    let func = module.functions.iter().find(|f| f.name == "from-maybe").unwrap();
+    let func = module
+        .functions
+        .iter()
+        .find(|f| f.name == "from-maybe")
+        .unwrap();
     // タグ比較: I32Load { offset: 4 } でバリアントタグを読み出す
-    let has_tag_comparison = func.body.iter().any(|i| matches!(i, Instruction::I32Load { offset: 4 }));
-    assert!(has_tag_comparison, "引数付きコンストラクタのパターンマッチはバリアントタグを比較すべき: {:?}", func.body);
+    let has_tag_comparison = func
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I32Load { offset: 4 }));
+    assert!(
+        has_tag_comparison,
+        "引数付きコンストラクタのパターンマッチはバリアントタグを比較すべき: {:?}",
+        func.body
+    );
 }
 
 #[test]
@@ -1138,6 +1522,13 @@ fn test_adt_pattern_match_multi_field_loads() {
     let module = lower(source);
     let func = module.functions.iter().find(|f| f.name == "fst").unwrap();
     // field_0 は offset 8 から読み出されるべき
-    let has_field0 = func.body.iter().any(|i| matches!(i, Instruction::I64Load { offset: 8 }));
-    assert!(has_field0, "MkPair の field_0 は offset 8 から読み出すべき: {:?}", func.body);
+    let has_field0 = func
+        .body
+        .iter()
+        .any(|i| matches!(i, Instruction::I64Load { offset: 8 }));
+    assert!(
+        has_field0,
+        "MkPair の field_0 は offset 8 から読み出すべき: {:?}",
+        func.body
+    );
 }

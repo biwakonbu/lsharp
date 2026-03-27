@@ -59,7 +59,9 @@ impl Lower {
             Pattern::Constructor(_, name, sub_pats) if sub_pats.is_empty() => {
                 // 引数なしコンストラクタ: リニアメモリからバリアントタグを読み出して比較
                 // BUG-3 修正: 最後の腕でもタグ比較を行う（デフォルト扱いしない）
-                let tag = self.adt_variant_indices.get(name)
+                let tag = self
+                    .adt_variant_indices
+                    .get(name)
                     .map(|(_, tag)| *tag as i64)
                     .unwrap_or(idx as i64);
                 ctx.emit(Instruction::LocalGet(scrut_local));
@@ -80,7 +82,9 @@ impl Lower {
             }
             Pattern::Constructor(_, name, sub_pats) => {
                 // 引数付きコンストラクタ: リニアメモリからバリアントタグとフィールドを読み出す
-                let tag = self.adt_variant_indices.get(name)
+                let tag = self
+                    .adt_variant_indices
+                    .get(name)
                     .map(|(_, tag)| *tag as i64)
                     .unwrap_or(idx as i64);
 
@@ -95,9 +99,7 @@ impl Lower {
 
                 // サブパターンを再帰的にバインド（ネストパターン対応）
                 // ネストコンストラクタのタグチェックが失敗した場合、次の腕にフォールスルー
-                self.bind_sub_patterns_with_fallback(
-                    ctx, scrut_local, sub_pats, arms, arm, idx,
-                )?;
+                self.bind_sub_patterns_with_fallback(ctx, scrut_local, sub_pats, arms, arm, idx)?;
 
                 ctx.emit(Instruction::Else);
                 if idx == arms.len() - 1 {
@@ -172,7 +174,9 @@ impl Lower {
         idx: usize,
     ) -> Result<(), LowerError> {
         // ネストコンストラクタパターンがあるかチェック
-        let has_nested_constructor = sub_pats.iter().any(|p| matches!(p, Pattern::Constructor(_, _, _)));
+        let has_nested_constructor = sub_pats
+            .iter()
+            .any(|p| matches!(p, Pattern::Constructor(_, _, _)));
 
         if has_nested_constructor {
             // ネストコンストラクタを含む場合:
@@ -187,7 +191,9 @@ impl Lower {
                 let temp_name = format!("__field_{}_{}", i, ctx.next_local);
                 ctx.emit(Instruction::LocalGet(scrut_local));
                 super::emit_untag_pointer(&mut ctx.instructions);
-                ctx.emit(Instruction::I64Load { offset: 8 + (i as u32) * 8 });
+                ctx.emit(Instruction::I64Load {
+                    offset: 8 + (i as u32) * 8,
+                });
                 let temp_local = ctx.alloc_local(temp_name);
                 ctx.emit(Instruction::LocalSet(temp_local));
                 field_locals.push(temp_local);
@@ -195,7 +201,14 @@ impl Lower {
 
             // 2. ネストコンストラクタのタグチェック条件を積み上げ
             self.emit_nested_checks_and_bind(
-                ctx, scrut_local, sub_pats, &field_locals, 0, arms, arm, idx,
+                ctx,
+                scrut_local,
+                sub_pats,
+                &field_locals,
+                0,
+                arms,
+                arm,
+                idx,
             )?;
         } else {
             // ネストコンストラクタなし: 従来通りの処理
@@ -220,11 +233,16 @@ impl Lower {
         idx: usize,
     ) -> Result<(), LowerError> {
         // 次のネストコンストラクタを見つける
-        let next_nested = sub_pats.iter().enumerate().skip(check_idx)
+        let next_nested = sub_pats
+            .iter()
+            .enumerate()
+            .skip(check_idx)
             .find(|(_, p)| matches!(p, Pattern::Constructor(_, _, _)));
 
         if let Some((i, Pattern::Constructor(_, inner_name, inner_sub_pats))) = next_nested {
-            let inner_tag = self.adt_variant_indices.get(inner_name)
+            let inner_tag = self
+                .adt_variant_indices
+                .get(inner_name)
                 .map(|(_, tag)| *tag as i64)
                 .unwrap_or(0);
 
@@ -239,7 +257,14 @@ impl Lower {
                 ctx.emit(Instruction::If(IrType::I64));
                 // タグ一致: 次のネストチェックに進む
                 self.emit_nested_checks_and_bind(
-                    ctx, scrut_local, sub_pats, field_locals, i + 1, arms, arm, idx,
+                    ctx,
+                    scrut_local,
+                    sub_pats,
+                    field_locals,
+                    i + 1,
+                    arms,
+                    arm,
+                    idx,
                 )?;
                 ctx.emit(Instruction::Else);
                 // タグ不一致: 次の腕にフォールスルー（scrut_local を使用）
@@ -258,7 +283,14 @@ impl Lower {
                 self.bind_simple_sub_patterns(ctx, field_locals[i], inner_sub_pats)?;
                 // 次のネストチェックに進む
                 self.emit_nested_checks_and_bind(
-                    ctx, scrut_local, sub_pats, field_locals, i + 1, arms, arm, idx,
+                    ctx,
+                    scrut_local,
+                    sub_pats,
+                    field_locals,
+                    i + 1,
+                    arms,
+                    arm,
+                    idx,
                 )?;
                 ctx.emit(Instruction::Else);
                 // タグ不一致: 次の腕にフォールスルー（scrut_local を使用）
@@ -298,7 +330,9 @@ impl Lower {
                 Pattern::Var(_, var_name) => {
                     ctx.emit(Instruction::LocalGet(parent_local));
                     super::emit_untag_pointer(&mut ctx.instructions);
-                    ctx.emit(Instruction::I64Load { offset: 8 + (i as u32) * 8 });
+                    ctx.emit(Instruction::I64Load {
+                        offset: 8 + (i as u32) * 8,
+                    });
                     let var_local = ctx.alloc_local(var_name.clone());
                     ctx.emit(Instruction::LocalSet(var_local));
                 }

@@ -52,7 +52,10 @@ fn test_e2e_selfhost_doctools_generate_html_basic() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines, vec!["5", "1", "1", "1", "1", "add", "2", "1", "Num", "1"]);
+    assert_eq!(
+        lines,
+        vec!["5", "1", "1", "1", "1", "add", "2", "1", "Num", "1"]
+    );
 }
 
 /// D-3: DocTools.ls の generate-html が 2 回実行しても同一 payload を返すこと
@@ -165,7 +168,10 @@ fn test_e2e_selfhost_doctools_schema_knowledge() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines, vec!["3", "100", "1", "add", "2", "2", "1", "1", "1", "1"]);
+    assert_eq!(
+        lines,
+        vec!["3", "100", "1", "add", "2", "2", "1", "1", "1", "1"]
+    );
 }
 
 /// DOC-01: DocTools entry list が source 順ではなく deterministic な hash 昇順で並ぶこと
@@ -510,7 +516,10 @@ fn test_e2e_selfhost_doctools_deterministic() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines, vec!["1", "1", "1", "1", "1", "1", "1", "1", "1", "1"]);
+    assert_eq!(
+        lines,
+        vec!["1", "1", "1", "1", "1", "1", "1", "1", "1", "1"]
+    );
 }
 
 /// D-3: HtmlDoc.ls が supported subset の実 HTML を決定的に描画できること
@@ -569,7 +578,11 @@ fn test_e2e_selfhost_cli_parse_diagnostics() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.last().unwrap(), &"0", "正常ソースの parse diagnostics は 0 件であるべき");
+    assert_eq!(
+        lines.last().unwrap(),
+        &"0",
+        "正常ソースの parse diagnostics は 0 件であるべき"
+    );
 }
 
 /// D-4: Cli.ls の parse-diagnostics-count が recovery 対象入力で 1 を返すこと
@@ -587,7 +600,11 @@ fn test_e2e_selfhost_cli_parse_diagnostics_recovery_error() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines, vec!["1"], "unexpected ')' の parse diagnostics は 1 件であるべき");
+    assert_eq!(
+        lines,
+        vec!["1"],
+        "unexpected ')' の parse diagnostics は 1 件であるべき"
+    );
 }
 
 /// D-4: Cli.ls の check-diagnostics-count が正常ソースで 0 を返すこと
@@ -605,7 +622,11 @@ fn test_e2e_selfhost_cli_check_diagnostics() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.last().unwrap(), &"0", "正常ソースの check diagnostics は 0 件であるべき");
+    assert_eq!(
+        lines.last().unwrap(),
+        &"0",
+        "正常ソースの check diagnostics は 0 件であるべき"
+    );
 }
 
 /// D-4: Cli.ls の check-diagnostics-count が型エラー入力で 1 を返すこと
@@ -623,7 +644,11 @@ fn test_e2e_selfhost_cli_check_diagnostics_type_error() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines, vec!["1"], "if 条件の型エラーは check diagnostics 1 件であるべき");
+    assert_eq!(
+        lines,
+        vec!["1"],
+        "if 条件の型エラーは check diagnostics 1 件であるべき"
+    );
 }
 
 // === DOC-02 統合テスト ===

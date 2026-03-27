@@ -1,10 +1,8 @@
 use super::support::*;
 
-
 /// selfhost TypeInfer.ls テスト: 2 引数 lambda はカリー化された関数型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_lambda_two_params_curried() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -61,18 +59,26 @@ fn test_e2e_selfhost_typeinfer_lambda_two_params_curried() {
     assert_eq!(lines[0], "0", "multi-param lambda infer は失敗すべきでない");
     assert_eq!(lines[1], "3", "outer type は Fun であるべき");
     assert_eq!(lines[2], "1", "outer param type は Con であるべき");
-    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[3], "100",
+        "outer param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[4], "3", "outer return type も Fun であるべき");
     assert_eq!(lines[5], "1", "inner param type は Con であるべき");
-    assert_eq!(lines[6], "100", "inner param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[6], "100",
+        "inner param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[7], "1", "inner return type は Con であるべき");
-    assert_eq!(lines[8], "100", "inner return type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[8], "100",
+        "inner return type は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 2 引数 defn はカリー化された関数型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_defn_two_params_curried() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -132,18 +138,26 @@ fn test_e2e_selfhost_typeinfer_defn_two_params_curried() {
     assert_eq!(lines[0], "0", "multi-param defn infer は失敗すべきでない");
     assert_eq!(lines[1], "3", "outer type は Fun であるべき");
     assert_eq!(lines[2], "1", "outer param type は Con であるべき");
-    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[3], "100",
+        "outer param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[4], "3", "outer return type も Fun であるべき");
     assert_eq!(lines[5], "1", "inner param type は Con であるべき");
-    assert_eq!(lines[6], "100", "inner param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[6], "100",
+        "inner param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[7], "1", "inner return type は Con であるべき");
-    assert_eq!(lines[8], "100", "inner return type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[8], "100",
+        "inner return type は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 3 引数 apply はカリー化された関数型をたどれる
 #[test]
 fn test_e2e_selfhost_typeinfer_apply_three_args_curried() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -183,13 +197,15 @@ fn test_e2e_selfhost_typeinfer_apply_three_args_curried() {
     );
     assert_eq!(lines[0], "0", "3 引数 apply infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "3 引数 apply の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "3 引数 apply の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[2], "100",
+        "3 引数 apply の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 4 引数 apply はカリー化された関数型をたどれる
 #[test]
 fn test_e2e_selfhost_typeinfer_apply_four_args_curried() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -231,13 +247,15 @@ fn test_e2e_selfhost_typeinfer_apply_four_args_curried() {
     );
     assert_eq!(lines[0], "0", "4 引数 apply infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "4 引数 apply の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "4 引数 apply の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[2], "100",
+        "4 引数 apply の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 5 引数 apply はカリー化された関数型をたどれる
 #[test]
 fn test_e2e_selfhost_typeinfer_apply_five_args_curried() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -281,13 +299,15 @@ fn test_e2e_selfhost_typeinfer_apply_five_args_curried() {
     );
     assert_eq!(lines[0], "0", "5 引数 apply infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "5 引数 apply の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "5 引数 apply の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[2], "100",
+        "5 引数 apply の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 6 引数 apply はカリー化された関数型をたどれる
 #[test]
 fn test_e2e_selfhost_typeinfer_apply_six_args_curried() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -333,13 +353,15 @@ fn test_e2e_selfhost_typeinfer_apply_six_args_curried() {
     );
     assert_eq!(lines[0], "0", "6 引数 apply infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "6 引数 apply の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "6 引数 apply の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[2], "100",
+        "6 引数 apply の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 7 引数 apply はカリー化された関数型をたどれる
 #[test]
 fn test_e2e_selfhost_typeinfer_apply_seven_args_curried() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -387,13 +409,15 @@ fn test_e2e_selfhost_typeinfer_apply_seven_args_curried() {
     );
     assert_eq!(lines[0], "0", "7 引数 apply infer は失敗すべきでない");
     assert_eq!(lines[1], "1", "7 引数 apply の型タグは Con であるべき");
-    assert_eq!(lines[2], "100", "7 引数 apply の型名は Int hash=100 であるべき");
+    assert_eq!(
+        lines[2], "100",
+        "7 引数 apply の型名は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 3 引数 lambda は 3 段のカリー化型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_lambda_three_params_curried() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -464,21 +488,29 @@ fn test_e2e_selfhost_typeinfer_lambda_three_params_curried() {
     assert_eq!(lines[0], "0", "three-param lambda infer は失敗すべきでない");
     assert_eq!(lines[1], "3", "outer type は Fun であるべき");
     assert_eq!(lines[2], "1", "outer param type は Con であるべき");
-    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[3], "100",
+        "outer param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[4], "3", "mid type は Fun であるべき");
     assert_eq!(lines[5], "1", "mid param type は Con であるべき");
     assert_eq!(lines[6], "100", "mid param type は Int hash=100 であるべき");
     assert_eq!(lines[7], "3", "inner type は Fun であるべき");
     assert_eq!(lines[8], "1", "inner param type は Con であるべき");
-    assert_eq!(lines[9], "100", "inner param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[9], "100",
+        "inner param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[10], "1", "inner return type は Con であるべき");
-    assert_eq!(lines[11], "100", "inner return type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[11], "100",
+        "inner return type は Int hash=100 であるべき"
+    );
 }
 
 /// selfhost TypeInfer.ls テスト: 4 引数 lambda は 4 段のカリー化型になる
 #[test]
 fn test_e2e_selfhost_typeinfer_lambda_four_params_curried() {
-
     let harness = r#"
 (defn main []
   (let [counter (make-var-counter)
@@ -566,16 +598,31 @@ fn test_e2e_selfhost_typeinfer_lambda_four_params_curried() {
     assert_eq!(lines[0], "0", "four-param lambda infer は失敗すべきでない");
     assert_eq!(lines[1], "3", "outer type は Fun であるべき");
     assert_eq!(lines[2], "1", "outer param type は Con であるべき");
-    assert_eq!(lines[3], "100", "outer param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[3], "100",
+        "outer param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[4], "3", "level2 type は Fun であるべき");
     assert_eq!(lines[5], "1", "level2 param type は Con であるべき");
-    assert_eq!(lines[6], "100", "level2 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[6], "100",
+        "level2 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[7], "3", "level3 type は Fun であるべき");
     assert_eq!(lines[8], "1", "level3 param type は Con であるべき");
-    assert_eq!(lines[9], "100", "level3 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[9], "100",
+        "level3 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[10], "3", "level4 type は Fun であるべき");
     assert_eq!(lines[11], "1", "level4 param type は Con であるべき");
-    assert_eq!(lines[12], "100", "level4 param type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[12], "100",
+        "level4 param type は Int hash=100 であるべき"
+    );
     assert_eq!(lines[13], "1", "level4 return type は Con であるべき");
-    assert_eq!(lines[14], "100", "level4 return type は Int hash=100 であるべき");
+    assert_eq!(
+        lines[14], "100",
+        "level4 return type は Int hash=100 であるべき"
+    );
 }

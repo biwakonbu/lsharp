@@ -114,7 +114,9 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
                     supertype_idx: None,
                     composite_type: CompositeType {
                         inner: CompositeInnerType::Array(ArrayType(FieldType {
-                            element_type: StorageType::Val(crate::emit::ir_to_wasm_valtype(*elem_ty)),
+                            element_type: StorageType::Val(crate::emit::ir_to_wasm_valtype(
+                                *elem_ty,
+                            )),
                             mutable: true,
                         })),
                         shared: false,
@@ -127,7 +129,9 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     }
 
     let fd_write_type_idx = types.len();
-    types.ty().function(vec![ValType::I32; 4], vec![ValType::I32]);
+    types
+        .ty()
+        .function(vec![ValType::I32; 4], vec![ValType::I32]);
 
     // proc_exit(code: i32) -> ()
     let proc_exit_type_idx = types.len();
@@ -135,15 +139,21 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
 
     // args_get(argv: i32, argv_buf: i32) -> i32
     let args_get_type_idx = types.len();
-    types.ty().function(vec![ValType::I32; 2], vec![ValType::I32]);
+    types
+        .ty()
+        .function(vec![ValType::I32; 2], vec![ValType::I32]);
 
     // args_sizes_get(argc: i32, argv_buf_size: i32) -> i32
     let args_sizes_get_type_idx = types.len();
-    types.ty().function(vec![ValType::I32; 2], vec![ValType::I32]);
+    types
+        .ty()
+        .function(vec![ValType::I32; 2], vec![ValType::I32]);
 
     // fd_read(fd: i32, iovs: i32, iovs_len: i32, nread: i32) -> i32
     let fd_read_type_idx = types.len();
-    types.ty().function(vec![ValType::I32; 4], vec![ValType::I32]);
+    types
+        .ty()
+        .function(vec![ValType::I32; 4], vec![ValType::I32]);
 
     // fd_close(fd: i32) -> i32
     let fd_close_type_idx = types.len();
@@ -155,9 +165,15 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let path_open_type_idx = types.len();
     types.ty().function(
         vec![
-            ValType::I32, ValType::I32, ValType::I32, ValType::I32,
-            ValType::I32, ValType::I64, ValType::I64,
-            ValType::I32, ValType::I32,
+            ValType::I32,
+            ValType::I32,
+            ValType::I32,
+            ValType::I32,
+            ValType::I32,
+            ValType::I64,
+            ValType::I64,
+            ValType::I32,
+            ValType::I32,
         ],
         vec![ValType::I32],
     );
@@ -171,7 +187,9 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
 
     // fd_filestat_get(fd: i32, buf_ptr: i32) -> i32
     let fd_filestat_get_type_idx = types.len();
-    types.ty().function(vec![ValType::I32, ValType::I32], vec![ValType::I32]);
+    types
+        .ty()
+        .function(vec![ValType::I32, ValType::I32], vec![ValType::I32]);
 
     let print_type_idx = types.len();
     types.ty().function(vec![ValType::I64], vec![]);
@@ -180,10 +198,14 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     types.ty().function(vec![ValType::I64], vec![ValType::I64]);
 
     let string_concat_type_idx = types.len();
-    types.ty().function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
+    types
+        .ty()
+        .function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
 
     let string_eq_type_idx = types.len();
-    types.ty().function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
+    types
+        .ty()
+        .function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
 
     let print_string_type_idx = types.len();
     types.ty().function(vec![ValType::I64], vec![]);
@@ -198,7 +220,9 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
 
     // __write_file: (i64, i64) -> i64 (パス, 内容 → 書き込みバイト数)
     let write_file_type_idx = types.len();
-    types.ty().function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
+    types
+        .ty()
+        .function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
 
     // __file_exists: (i64) -> i64 (パス → 0 or 1)
     let file_exists_type_idx = types.len();
@@ -223,7 +247,11 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let mut user_type_indices = Vec::new();
     for func in &module.functions {
         let type_idx = types.len();
-        let params: Vec<ValType> = func.params.iter().map(|t| crate::emit::ir_to_wasm_valtype(*t)).collect();
+        let params: Vec<ValType> = func
+            .params
+            .iter()
+            .map(|t| crate::emit::ir_to_wasm_valtype(*t))
+            .collect();
         let results = vec![crate::emit::ir_to_wasm_valtype(func.result)];
         types.ty().function(params, results);
         user_type_indices.push(type_idx);
@@ -254,15 +282,51 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
 
     // === Import Section ===
     let mut imports = ImportSection::new();
-    imports.import("wasi_snapshot_preview1", "fd_write", EntityType::Function(fd_write_type_idx));
-    imports.import("wasi_snapshot_preview1", "proc_exit", EntityType::Function(proc_exit_type_idx));
-    imports.import("wasi_snapshot_preview1", "args_get", EntityType::Function(args_get_type_idx));
-    imports.import("wasi_snapshot_preview1", "args_sizes_get", EntityType::Function(args_sizes_get_type_idx));
-    imports.import("wasi_snapshot_preview1", "fd_read", EntityType::Function(fd_read_type_idx));
-    imports.import("wasi_snapshot_preview1", "fd_close", EntityType::Function(fd_close_type_idx));
-    imports.import("wasi_snapshot_preview1", "path_open", EntityType::Function(path_open_type_idx));
-    imports.import("wasi_snapshot_preview1", "fd_seek", EntityType::Function(fd_seek_type_idx));
-    imports.import("wasi_snapshot_preview1", "fd_filestat_get", EntityType::Function(fd_filestat_get_type_idx));
+    imports.import(
+        "wasi_snapshot_preview1",
+        "fd_write",
+        EntityType::Function(fd_write_type_idx),
+    );
+    imports.import(
+        "wasi_snapshot_preview1",
+        "proc_exit",
+        EntityType::Function(proc_exit_type_idx),
+    );
+    imports.import(
+        "wasi_snapshot_preview1",
+        "args_get",
+        EntityType::Function(args_get_type_idx),
+    );
+    imports.import(
+        "wasi_snapshot_preview1",
+        "args_sizes_get",
+        EntityType::Function(args_sizes_get_type_idx),
+    );
+    imports.import(
+        "wasi_snapshot_preview1",
+        "fd_read",
+        EntityType::Function(fd_read_type_idx),
+    );
+    imports.import(
+        "wasi_snapshot_preview1",
+        "fd_close",
+        EntityType::Function(fd_close_type_idx),
+    );
+    imports.import(
+        "wasi_snapshot_preview1",
+        "path_open",
+        EntityType::Function(path_open_type_idx),
+    );
+    imports.import(
+        "wasi_snapshot_preview1",
+        "fd_seek",
+        EntityType::Function(fd_seek_type_idx),
+    );
+    imports.import(
+        "wasi_snapshot_preview1",
+        "fd_filestat_get",
+        EntityType::Function(fd_filestat_get_type_idx),
+    );
     wasm_module.section(&imports);
 
     // === Function Section ===
@@ -312,7 +376,9 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     wasm_module.section(&memories);
 
     // === Global Section ===
-    let total_string_data_size: i32 = module.string_data.iter()
+    let total_string_data_size: i32 = module
+        .string_data
+        .iter()
         .map(|(_, bytes)| bytes.len() as i32)
         .sum();
     let heap_start = ((512 + total_string_data_size) + 7) & !7;
@@ -340,7 +406,7 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
         // テーブル 0 を全関数で初期化
         let func_indices: Vec<u32> = (0..total_funcs).collect();
         elements.active(
-            Some(0), // table index
+            Some(0),                                // table index
             &wasm_encoder::ConstExpr::i32_const(0), // offset
             Elements::Functions(std::borrow::Cow::Owned(func_indices)),
         );
@@ -355,7 +421,14 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     emit_string_eq_func(&mut codes);
     emit_print_string_func(&mut codes);
     emit_int_to_string_func(&mut codes, alloc_func_idx);
-    emit_read_file_func(&mut codes, alloc_func_idx, path_open_idx, fd_read_idx, fd_close_idx, fd_filestat_get_idx);
+    emit_read_file_func(
+        &mut codes,
+        alloc_func_idx,
+        path_open_idx,
+        fd_read_idx,
+        fd_close_idx,
+        fd_filestat_get_idx,
+    );
     emit_write_file_func(&mut codes, path_open_idx, fd_write_idx, fd_close_idx);
     emit_file_exists_func(&mut codes, path_open_idx, fd_close_idx);
     emit_command_line_args_func(&mut codes, args_sizes_get_idx);
@@ -371,13 +444,22 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
                 .collect::<Vec<_>>(),
         );
         emit_instructions_wasi(
-            &mut f, &func.body,
-            print_helper_idx, alloc_func_idx,
-            string_concat_idx, string_eq_idx,
-            print_string_idx, proc_exit_wasm_idx,
-            int_to_string_idx, read_file_idx,
-            write_file_idx, file_exists_idx,
-            command_line_args_idx, command_line_arg_idx, read_stdin_idx, fnv1a_hash_idx,
+            &mut f,
+            &func.body,
+            print_helper_idx,
+            alloc_func_idx,
+            string_concat_idx,
+            string_eq_idx,
+            print_string_idx,
+            proc_exit_wasm_idx,
+            int_to_string_idx,
+            read_file_idx,
+            write_file_idx,
+            file_exists_idx,
+            command_line_args_idx,
+            command_line_arg_idx,
+            read_stdin_idx,
+            fnv1a_hash_idx,
             user_func_base,
             &call_indirect_type_map,
         )?;
@@ -391,7 +473,9 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
         // マルチファイル結合時に各モジュールが (defn main []) を持つため、先頭の main は先頭ファイルのテスト用になる。
         // エントリ Main.ls の main を選ぶため、最後に定義された main を呼ぶ。
         if let Some(main_idx) = module.functions.iter().rposition(|f| f.name == "main") {
-            f.instruction(&wasm_encoder::Instruction::Call(user_func_base + main_idx as u32));
+            f.instruction(&wasm_encoder::Instruction::Call(
+                user_func_base + main_idx as u32,
+            ));
             f.instruction(&wasm_encoder::Instruction::Drop);
         }
         f.instruction(&wasm_encoder::Instruction::End);
@@ -402,10 +486,18 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
 
     // === Data Section ===
     let mut data = DataSection::new();
-    data.active(0, &wasm_encoder::ConstExpr::i32_const(NEWLINE_ADDR), b"\n".iter().copied());
+    data.active(
+        0,
+        &wasm_encoder::ConstExpr::i32_const(NEWLINE_ADDR),
+        b"\n".iter().copied(),
+    );
     let mut str_offset = 512i32;
     for (_label, bytes) in &module.string_data {
-        data.active(0, &wasm_encoder::ConstExpr::i32_const(str_offset), bytes.iter().copied());
+        data.active(
+            0,
+            &wasm_encoder::ConstExpr::i32_const(str_offset),
+            bytes.iter().copied(),
+        );
         str_offset += bytes.len() as i32;
     }
     wasm_module.section(&data);
@@ -418,8 +510,16 @@ fn emit_print_i64_func(codes: &mut CodeSection) {
     use wasm_encoder::Instruction as W;
     use wasm_encoder::MemArg;
 
-    let mem = |offset: u64| MemArg { offset, align: 0, memory_index: 0 };
-    let mem32 = |offset: u64| MemArg { offset, align: 2, memory_index: 0 };
+    let mem = |offset: u64| MemArg {
+        offset,
+        align: 0,
+        memory_index: 0,
+    };
+    let mem32 = |offset: u64| MemArg {
+        offset,
+        align: 2,
+        memory_index: 0,
+    };
 
     let mut f = wasm_encoder::Function::new(vec![
         (1, ValType::I32),
@@ -595,7 +695,11 @@ fn emit_string_concat_func(codes: &mut CodeSection, alloc_func_idx: u32) {
     f.instruction(&W::LocalSet(2));
     // len1 = i32.load(addr1 + 4)
     f.instruction(&W::LocalGet(2));
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(3));
     // addr2 = s2 as i32
     f.instruction(&W::LocalGet(1));
@@ -603,7 +707,11 @@ fn emit_string_concat_func(codes: &mut CodeSection, alloc_func_idx: u32) {
     f.instruction(&W::LocalSet(4));
     // len2 = i32.load(addr2 + 4)
     f.instruction(&W::LocalGet(4));
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(5));
     // total_len = len1 + len2
     f.instruction(&W::LocalGet(3));
@@ -621,11 +729,19 @@ fn emit_string_concat_func(codes: &mut CodeSection, alloc_func_idx: u32) {
     // tag = 1
     f.instruction(&W::LocalGet(7));
     f.instruction(&W::I32Const(1));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
     // len = total_len
     f.instruction(&W::LocalGet(7));
     f.instruction(&W::LocalGet(6));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
     // memory.copy(new_obj + 8, addr1 + 8, len1)
     f.instruction(&W::LocalGet(7));
     f.instruction(&W::I32Const(8));
@@ -634,7 +750,10 @@ fn emit_string_concat_func(codes: &mut CodeSection, alloc_func_idx: u32) {
     f.instruction(&W::I32Const(8));
     f.instruction(&W::I32Add);
     f.instruction(&W::LocalGet(3));
-    f.instruction(&W::MemoryCopy { src_mem: 0, dst_mem: 0 });
+    f.instruction(&W::MemoryCopy {
+        src_mem: 0,
+        dst_mem: 0,
+    });
     // memory.copy(new_obj + 8 + len1, addr2 + 8, len2)
     f.instruction(&W::LocalGet(7));
     f.instruction(&W::I32Const(8));
@@ -645,7 +764,10 @@ fn emit_string_concat_func(codes: &mut CodeSection, alloc_func_idx: u32) {
     f.instruction(&W::I32Const(8));
     f.instruction(&W::I32Add);
     f.instruction(&W::LocalGet(5));
-    f.instruction(&W::MemoryCopy { src_mem: 0, dst_mem: 0 });
+    f.instruction(&W::MemoryCopy {
+        src_mem: 0,
+        dst_mem: 0,
+    });
     // return new_obj as i64
     f.instruction(&W::LocalGet(7));
     f.instruction(&W::I64ExtendI32U);
@@ -672,7 +794,11 @@ fn emit_string_eq_func(codes: &mut CodeSection) {
     f.instruction(&W::LocalSet(2));
     // len1 = i32.load(addr1 + 4)
     f.instruction(&W::LocalGet(2));
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(3));
     // addr2 = s2 as i32
     f.instruction(&W::LocalGet(1));
@@ -680,7 +806,11 @@ fn emit_string_eq_func(codes: &mut CodeSection) {
     f.instruction(&W::LocalSet(4));
     // len2 = i32.load(addr2 + 4)
     f.instruction(&W::LocalGet(4));
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(5));
 
     // 長さ比較
@@ -709,14 +839,22 @@ fn emit_string_eq_func(codes: &mut CodeSection) {
     f.instruction(&W::I32Add);
     f.instruction(&W::LocalGet(6));
     f.instruction(&W::I32Add);
-    f.instruction(&W::I32Load8U(wasm_encoder::MemArg { offset: 0, align: 0, memory_index: 0 }));
+    f.instruction(&W::I32Load8U(wasm_encoder::MemArg {
+        offset: 0,
+        align: 0,
+        memory_index: 0,
+    }));
     // mem[addr2 + 8 + i]
     f.instruction(&W::LocalGet(4));
     f.instruction(&W::I32Const(8));
     f.instruction(&W::I32Add);
     f.instruction(&W::LocalGet(6));
     f.instruction(&W::I32Add);
-    f.instruction(&W::I32Load8U(wasm_encoder::MemArg { offset: 0, align: 0, memory_index: 0 }));
+    f.instruction(&W::I32Load8U(wasm_encoder::MemArg {
+        offset: 0,
+        align: 0,
+        memory_index: 0,
+    }));
     f.instruction(&W::I32Ne);
     f.instruction(&W::If(wasm_encoder::BlockType::Empty));
     f.instruction(&W::I64Const(0));
@@ -741,7 +879,11 @@ fn emit_print_string_func(codes: &mut CodeSection) {
     use wasm_encoder::Instruction as W;
     use wasm_encoder::MemArg;
 
-    let mem32 = |offset: u64| MemArg { offset, align: 2, memory_index: 0 };
+    let mem32 = |offset: u64| MemArg {
+        offset,
+        align: 2,
+        memory_index: 0,
+    };
 
     let mut f = wasm_encoder::Function::new(vec![
         (1, ValType::I32), // local 1: addr (String オブジェクトのアドレス)
@@ -754,7 +896,11 @@ fn emit_print_string_func(codes: &mut CodeSection) {
     f.instruction(&W::LocalSet(1));
     // len = i32.load(addr + 4)
     f.instruction(&W::LocalGet(1));
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(2));
 
     // len == 0 なら何もしない
@@ -792,7 +938,11 @@ fn emit_int_to_string_func(codes: &mut CodeSection, alloc_func_idx: u32) {
     use wasm_encoder::Instruction as W;
     use wasm_encoder::MemArg;
 
-    let mem = |offset: u64| MemArg { offset, align: 0, memory_index: 0 };
+    let mem = |offset: u64| MemArg {
+        offset,
+        align: 0,
+        memory_index: 0,
+    };
 
     // param 0: n (i64)
     // local 1: buf_end (i32) - スクラッチバッファ末尾
@@ -907,12 +1057,20 @@ fn emit_int_to_string_func(codes: &mut CodeSection, alloc_func_idx: u32) {
     f.instruction(&W::LocalGet(5));
     f.instruction(&W::I32WrapI64);
     f.instruction(&W::I32Const(1));
-    f.instruction(&W::I32Store(MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
     // len
     f.instruction(&W::LocalGet(5));
     f.instruction(&W::I32WrapI64);
     f.instruction(&W::LocalGet(4));
-    f.instruction(&W::I32Store(MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
     // memory.copy(new_obj + 8, buf_end, str_len)
     f.instruction(&W::LocalGet(5));
     f.instruction(&W::I32WrapI64);
@@ -920,7 +1078,10 @@ fn emit_int_to_string_func(codes: &mut CodeSection, alloc_func_idx: u32) {
     f.instruction(&W::I32Add);
     f.instruction(&W::LocalGet(1));
     f.instruction(&W::LocalGet(4));
-    f.instruction(&W::MemoryCopy { src_mem: 0, dst_mem: 0 });
+    f.instruction(&W::MemoryCopy {
+        src_mem: 0,
+        dst_mem: 0,
+    });
 
     // String オブジェクトのアドレスを返す
     f.instruction(&W::LocalGet(5));
@@ -963,37 +1124,49 @@ fn emit_read_file_func(
     // path_len = i32.load(path_addr + 4)
     f.instruction(&W::LocalGet(0));
     f.instruction(&W::I32WrapI64);
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(2)); // path_len
 
     // fd を格納するスクラッチ領域 (アドレス 280)
     // path_open(dirfd=3, dirflags=0, path, path_len, oflags=0, rights_base, rights_inheriting, fdflags=0, fd_ptr)
-    f.instruction(&W::I32Const(3));       // dirfd = 3 (preopened dir)
-    f.instruction(&W::I32Const(0));       // dirflags = 0
-    f.instruction(&W::LocalGet(1));       // path
-    f.instruction(&W::LocalGet(2));       // path_len
-    f.instruction(&W::I32Const(0));       // oflags = 0 (read only)
-    f.instruction(&W::I64Const(0x42));    // rights_base = fd_read | fd_seek | fd_filestat_get
-    f.instruction(&W::I64Const(0));       // rights_inheriting
-    f.instruction(&W::I32Const(0));       // fdflags = 0
-    f.instruction(&W::I32Const(280));     // fd_ptr (スクラッチ領域)
+    f.instruction(&W::I32Const(3)); // dirfd = 3 (preopened dir)
+    f.instruction(&W::I32Const(0)); // dirflags = 0
+    f.instruction(&W::LocalGet(1)); // path
+    f.instruction(&W::LocalGet(2)); // path_len
+    f.instruction(&W::I32Const(0)); // oflags = 0 (read only)
+    f.instruction(&W::I64Const(0x42)); // rights_base = fd_read | fd_seek | fd_filestat_get
+    f.instruction(&W::I64Const(0)); // rights_inheriting
+    f.instruction(&W::I32Const(0)); // fdflags = 0
+    f.instruction(&W::I32Const(280)); // fd_ptr (スクラッチ領域)
     f.instruction(&W::Call(path_open_idx));
-    f.instruction(&W::Drop);             // errno を無視 (簡略化)
+    f.instruction(&W::Drop); // errno を無視 (簡略化)
 
     // fd を読み出し
     f.instruction(&W::I32Const(280));
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(3)); // fd
 
     // fd_filestat_get でファイルサイズ取得 (stat バッファは 288 から 64 バイト)
-    f.instruction(&W::LocalGet(3));       // fd
-    f.instruction(&W::I32Const(288));     // stat buf (288..352)
+    f.instruction(&W::LocalGet(3)); // fd
+    f.instruction(&W::I32Const(288)); // stat buf (288..352)
     f.instruction(&W::Call(fd_filestat_get_idx));
-    f.instruction(&W::Drop);             // errno
+    f.instruction(&W::Drop); // errno
 
     // file_size = stat[32..40] の下位 32bit (filesize は offset 32 の i64)
     f.instruction(&W::I32Const(288));
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 32, align: 2, memory_index: 0 })); // stat.st_size の下位 32bit
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 32,
+        align: 2,
+        memory_index: 0,
+    })); // stat.st_size の下位 32bit
     f.instruction(&W::LocalSet(4)); // file_size
 
     // String オブジェクト確保: __alloc(8 + file_size)
@@ -1007,34 +1180,54 @@ fn emit_read_file_func(
     // tag = 1
     f.instruction(&W::LocalGet(5));
     f.instruction(&W::I32Const(1));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
     // len = file_size (後で nread に更新)
     f.instruction(&W::LocalGet(5));
     f.instruction(&W::LocalGet(4));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
 
     // iov を設定: iov[0].buf = buf_addr + 8, iov[0].len = file_size (スクラッチ 352)
     f.instruction(&W::I32Const(352));
     f.instruction(&W::LocalGet(5));
     f.instruction(&W::I32Const(8));
     f.instruction(&W::I32Add);
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 })); // iov.buf
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    })); // iov.buf
 
     f.instruction(&W::I32Const(352));
     f.instruction(&W::LocalGet(4));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 })); // iov.len
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    })); // iov.len
 
     // fd_read(fd, iov_ptr=352, iov_count=1, nread_ptr=360)
-    f.instruction(&W::LocalGet(3));       // fd
-    f.instruction(&W::I32Const(352));     // iovs
-    f.instruction(&W::I32Const(1));       // iovs_len
-    f.instruction(&W::I32Const(360));     // nread ptr
+    f.instruction(&W::LocalGet(3)); // fd
+    f.instruction(&W::I32Const(352)); // iovs
+    f.instruction(&W::I32Const(1)); // iovs_len
+    f.instruction(&W::I32Const(360)); // nread ptr
     f.instruction(&W::Call(fd_read_idx));
-    f.instruction(&W::Drop);             // errno
+    f.instruction(&W::Drop); // errno
 
     // nread を読み取り
     f.instruction(&W::I32Const(360));
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(6)); // nread
 
     // fd_close
@@ -1045,7 +1238,11 @@ fn emit_read_file_func(
     // String オブジェクトの len を nread に更新
     f.instruction(&W::LocalGet(5));
     f.instruction(&W::LocalGet(6));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
     // String オブジェクトのアドレスを返す
     f.instruction(&W::LocalGet(5));
     f.instruction(&W::I64ExtendI32U);
@@ -1084,7 +1281,11 @@ fn emit_write_file_func(
     // path_len = i32.load(path_addr + 4)
     f.instruction(&W::LocalGet(0));
     f.instruction(&W::I32WrapI64);
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(3)); // path_len
 
     // 内容の bytes を取得: content_offset = content_addr + 8
@@ -1097,47 +1298,67 @@ fn emit_write_file_func(
     // content_len = i32.load(content_addr + 4)
     f.instruction(&W::LocalGet(1));
     f.instruction(&W::I32WrapI64);
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(5)); // content_len
 
     // path_open(dirfd=3, dirflags=0, path, path_len, oflags=1(creat)|4(trunc), rights, 0, 0, fd_ptr=280)
-    f.instruction(&W::I32Const(3));       // dirfd = 3
-    f.instruction(&W::I32Const(0));       // dirflags
-    f.instruction(&W::LocalGet(2));       // path
-    f.instruction(&W::LocalGet(3));       // path_len
-    f.instruction(&W::I32Const(5));       // oflags = O_CREAT(1) | O_TRUNC(4)
-    f.instruction(&W::I64Const(0x40));    // rights_base = fd_write
-    f.instruction(&W::I64Const(0));       // rights_inheriting
-    f.instruction(&W::I32Const(0));       // fdflags
-    f.instruction(&W::I32Const(280));     // fd_ptr
+    f.instruction(&W::I32Const(3)); // dirfd = 3
+    f.instruction(&W::I32Const(0)); // dirflags
+    f.instruction(&W::LocalGet(2)); // path
+    f.instruction(&W::LocalGet(3)); // path_len
+    f.instruction(&W::I32Const(5)); // oflags = O_CREAT(1) | O_TRUNC(4)
+    f.instruction(&W::I64Const(0x40)); // rights_base = fd_write
+    f.instruction(&W::I64Const(0)); // rights_inheriting
+    f.instruction(&W::I32Const(0)); // fdflags
+    f.instruction(&W::I32Const(280)); // fd_ptr
     f.instruction(&W::Call(path_open_idx));
     f.instruction(&W::Drop);
 
     // fd を読み出し
     f.instruction(&W::I32Const(280));
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(6)); // fd
 
     // iov 設定 (スクラッチ 352)
     f.instruction(&W::I32Const(352));
     f.instruction(&W::LocalGet(4));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 })); // iov.buf
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    })); // iov.buf
 
     f.instruction(&W::I32Const(352));
     f.instruction(&W::LocalGet(5));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 })); // iov.len
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    })); // iov.len
 
     // fd_write(fd, iovs=352, iovs_len=1, nwritten_ptr=360)
-    f.instruction(&W::LocalGet(6));       // fd
-    f.instruction(&W::I32Const(352));     // iovs
-    f.instruction(&W::I32Const(1));       // iovs_len
-    f.instruction(&W::I32Const(360));     // nwritten
+    f.instruction(&W::LocalGet(6)); // fd
+    f.instruction(&W::I32Const(352)); // iovs
+    f.instruction(&W::I32Const(1)); // iovs_len
+    f.instruction(&W::I32Const(360)); // nwritten
     f.instruction(&W::Call(fd_write_idx));
     f.instruction(&W::Drop);
 
     // nwritten を読み取り
     f.instruction(&W::I32Const(360));
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(7));
 
     // fd_close
@@ -1154,11 +1375,7 @@ fn emit_write_file_func(
 }
 
 /// __file_exists: String オブジェクトパスを受け取り、存在すれば 1、しなければ 0 を返す
-fn emit_file_exists_func(
-    codes: &mut CodeSection,
-    path_open_idx: u32,
-    fd_close_idx: u32,
-) {
+fn emit_file_exists_func(codes: &mut CodeSection, path_open_idx: u32, fd_close_idx: u32) {
     use wasm_encoder::Instruction as W;
 
     // locals: 0=path(i64), 1=path_offset(i32), 2=path_len(i32), 3=errno(i32)
@@ -1179,19 +1396,23 @@ fn emit_file_exists_func(
     // path_len = i32.load(path_addr + 4)
     f.instruction(&W::LocalGet(0));
     f.instruction(&W::I32WrapI64);
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(2)); // path_len
 
     // path_open(dirfd=3, 0, path, path_len, 0, rights, 0, 0, fd_ptr=280)
-    f.instruction(&W::I32Const(3));       // dirfd = 3
-    f.instruction(&W::I32Const(0));       // dirflags
-    f.instruction(&W::LocalGet(1));       // path
-    f.instruction(&W::LocalGet(2));       // path_len
-    f.instruction(&W::I32Const(0));       // oflags = 0 (read)
-    f.instruction(&W::I64Const(0x02));    // rights_base = fd_read
-    f.instruction(&W::I64Const(0));       // rights_inheriting
-    f.instruction(&W::I32Const(0));       // fdflags
-    f.instruction(&W::I32Const(280));     // fd_ptr
+    f.instruction(&W::I32Const(3)); // dirfd = 3
+    f.instruction(&W::I32Const(0)); // dirflags
+    f.instruction(&W::LocalGet(1)); // path
+    f.instruction(&W::LocalGet(2)); // path_len
+    f.instruction(&W::I32Const(0)); // oflags = 0 (read)
+    f.instruction(&W::I64Const(0x02)); // rights_base = fd_read
+    f.instruction(&W::I64Const(0)); // rights_inheriting
+    f.instruction(&W::I32Const(0)); // fdflags
+    f.instruction(&W::I32Const(280)); // fd_ptr
     f.instruction(&W::Call(path_open_idx));
     f.instruction(&W::LocalSet(3)); // errno
 
@@ -1201,7 +1422,11 @@ fn emit_file_exists_func(
     f.instruction(&W::If(wasm_encoder::BlockType::Empty));
     // fd_close
     f.instruction(&W::I32Const(280));
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::Call(fd_close_idx));
     f.instruction(&W::Drop);
     f.instruction(&W::End);
@@ -1216,24 +1441,25 @@ fn emit_file_exists_func(
 }
 
 /// __command_line_args: コマンドライン引数の数を返す
-fn emit_command_line_args_func(
-    codes: &mut CodeSection,
-    args_sizes_get_idx: u32,
-) {
+fn emit_command_line_args_func(codes: &mut CodeSection, args_sizes_get_idx: u32) {
     use wasm_encoder::Instruction as W;
 
     // locals: なし (スクラッチ領域を使用)
     let mut f = wasm_encoder::Function::new(vec![]);
 
     // args_sizes_get(argc_ptr=280, argv_buf_size_ptr=284)
-    f.instruction(&W::I32Const(280));     // argc ptr
-    f.instruction(&W::I32Const(284));     // argv_buf_size ptr
+    f.instruction(&W::I32Const(280)); // argc ptr
+    f.instruction(&W::I32Const(284)); // argv_buf_size ptr
     f.instruction(&W::Call(args_sizes_get_idx));
-    f.instruction(&W::Drop);             // errno
+    f.instruction(&W::Drop); // errno
 
     // argc を読み取って返す
     f.instruction(&W::I32Const(280));
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::I64ExtendI32U);
 
     f.instruction(&W::End);
@@ -1271,10 +1497,18 @@ fn emit_command_line_arg_func(
 
     // argc / argv_buf_size
     f.instruction(&W::I32Const(280));
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(2));
     f.instruction(&W::I32Const(284));
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(3));
 
     // index < 0 -> empty string
@@ -1287,11 +1521,19 @@ fn emit_command_line_arg_func(
     f.instruction(&W::LocalTee(9));
     f.instruction(&W::I32WrapI64);
     f.instruction(&W::I32Const(1));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalGet(9));
     f.instruction(&W::I32WrapI64);
     f.instruction(&W::I32Const(0));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalGet(9));
     f.instruction(&W::Return);
     f.instruction(&W::End);
@@ -1306,11 +1548,19 @@ fn emit_command_line_arg_func(
     f.instruction(&W::LocalTee(9));
     f.instruction(&W::I32WrapI64);
     f.instruction(&W::I32Const(1));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalGet(9));
     f.instruction(&W::I32WrapI64);
     f.instruction(&W::I32Const(0));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalGet(9));
     f.instruction(&W::Return);
     f.instruction(&W::End);
@@ -1343,7 +1593,11 @@ fn emit_command_line_arg_func(
     f.instruction(&W::I32Const(4));
     f.instruction(&W::I32Mul);
     f.instruction(&W::I32Add);
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(6));
 
     // scan_ptr = arg_ptr, arg_len = 0
@@ -1356,7 +1610,11 @@ fn emit_command_line_arg_func(
     f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
     f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
     f.instruction(&W::LocalGet(7));
-    f.instruction(&W::I32Load8U(wasm_encoder::MemArg { offset: 0, align: 0, memory_index: 0 }));
+    f.instruction(&W::I32Load8U(wasm_encoder::MemArg {
+        offset: 0,
+        align: 0,
+        memory_index: 0,
+    }));
     f.instruction(&W::I32Eqz);
     f.instruction(&W::BrIf(1));
     f.instruction(&W::LocalGet(7));
@@ -1380,11 +1638,19 @@ fn emit_command_line_arg_func(
     f.instruction(&W::LocalTee(9));
     f.instruction(&W::I32WrapI64);
     f.instruction(&W::I32Const(1));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalGet(9));
     f.instruction(&W::I32WrapI64);
     f.instruction(&W::LocalGet(8));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
 
     // i = 0
     f.instruction(&W::I32Const(0));
@@ -1406,8 +1672,16 @@ fn emit_command_line_arg_func(
     f.instruction(&W::LocalGet(6));
     f.instruction(&W::LocalGet(10));
     f.instruction(&W::I32Add);
-    f.instruction(&W::I32Load8U(wasm_encoder::MemArg { offset: 0, align: 0, memory_index: 0 }));
-    f.instruction(&W::I32Store8(wasm_encoder::MemArg { offset: 0, align: 0, memory_index: 0 }));
+    f.instruction(&W::I32Load8U(wasm_encoder::MemArg {
+        offset: 0,
+        align: 0,
+        memory_index: 0,
+    }));
+    f.instruction(&W::I32Store8(wasm_encoder::MemArg {
+        offset: 0,
+        align: 0,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalGet(10));
     f.instruction(&W::I32Const(1));
     f.instruction(&W::I32Add);
@@ -1422,11 +1696,7 @@ fn emit_command_line_arg_func(
 }
 
 /// __read_stdin: stdin(fd=0) を最大 4096 byte 読み、String object を返す
-fn emit_read_stdin_func(
-    codes: &mut CodeSection,
-    alloc_func_idx: u32,
-    fd_read_idx: u32,
-) {
+fn emit_read_stdin_func(codes: &mut CodeSection, alloc_func_idx: u32, fd_read_idx: u32) {
     use wasm_encoder::Instruction as W;
 
     // locals: 0=buf_addr(i32), 1=nread(i32)
@@ -1439,20 +1709,36 @@ fn emit_read_stdin_func(
 
     f.instruction(&W::LocalGet(0));
     f.instruction(&W::I32Const(1));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
 
     f.instruction(&W::LocalGet(0));
     f.instruction(&W::I32Const(4096));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
 
     f.instruction(&W::I32Const(352));
     f.instruction(&W::LocalGet(0));
     f.instruction(&W::I32Const(8));
     f.instruction(&W::I32Add);
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::I32Const(352));
     f.instruction(&W::I32Const(4096));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
 
     f.instruction(&W::I32Const(0));
     f.instruction(&W::I32Const(352));
@@ -1462,19 +1748,26 @@ fn emit_read_stdin_func(
     f.instruction(&W::Drop);
 
     f.instruction(&W::I32Const(360));
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 0,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(1));
 
     f.instruction(&W::LocalGet(0));
     f.instruction(&W::LocalGet(1));
-    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
 
     f.instruction(&W::LocalGet(0));
     f.instruction(&W::I64ExtendI32U);
     f.instruction(&W::End);
     codes.function(&f);
 }
-
 
 /// __fnv1a_hash: String オブジェクト (ヒープ上) の FNV-1a ハッシュ値を計算
 /// String オブジェクト: [tag:i32=1][len:i32][bytes:u8*]
@@ -1501,7 +1794,11 @@ fn emit_fnv1a_hash_func(codes: &mut CodeSection) {
     // len = i32.load(addr + 4)
     f.instruction(&W::LocalGet(0));
     f.instruction(&W::I32WrapI64);
-    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg {
+        offset: 4,
+        align: 2,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(2));
 
     // i = 0
@@ -1526,7 +1823,11 @@ fn emit_fnv1a_hash_func(codes: &mut CodeSection) {
     f.instruction(&W::LocalGet(1));
     f.instruction(&W::LocalGet(3));
     f.instruction(&W::I32Add);
-    f.instruction(&W::I32Load8U(wasm_encoder::MemArg { offset: 0, align: 0, memory_index: 0 }));
+    f.instruction(&W::I32Load8U(wasm_encoder::MemArg {
+        offset: 0,
+        align: 0,
+        memory_index: 0,
+    }));
     f.instruction(&W::LocalSet(5));
 
     // hash = hash XOR byte
@@ -1601,62 +1902,94 @@ fn emit_instructions_wasi(
     use wasm_encoder::Instruction as W;
 
     // CallIndirect の型インデックスと FuncIdx をリマップした命令列を作成
-    let remapped: Vec<Instruction> = instructions.iter().map(|instr| {
-        match instr {
-            Instruction::CallIndirect(param_count) => {
-                if let Some(&wasm_type_idx) = call_indirect_type_map.get(param_count) {
-                    Instruction::CallIndirect(wasm_type_idx)
-                } else {
-                    instr.clone()
+    let remapped: Vec<Instruction> = instructions
+        .iter()
+        .map(|instr| {
+            match instr {
+                Instruction::CallIndirect(param_count) => {
+                    if let Some(&wasm_type_idx) = call_indirect_type_map.get(param_count) {
+                        Instruction::CallIndirect(wasm_type_idx)
+                    } else {
+                        instr.clone()
+                    }
                 }
+                Instruction::FuncIdx(ir_idx) => {
+                    // Call と同じリマップ: IR func_idx → Wasm func_idx
+                    let wasm_idx = match *ir_idx {
+                        0 => print_helper_idx,
+                        1 => alloc_func_idx,
+                        2 => string_concat_idx,
+                        3 => string_eq_idx,
+                        4 => print_string_idx,
+                        5 => proc_exit_wasm_idx,
+                        6 => int_to_string_idx,
+                        7 => read_file_idx,
+                        8 => write_file_idx,
+                        9 => file_exists_idx,
+                        10 => command_line_args_idx,
+                        11 => command_line_arg_idx,
+                        12 => read_stdin_idx,
+                        13 => fnv1a_hash_idx,
+                        i => user_func_base + (i - IR_IMPORT_COUNT),
+                    };
+                    Instruction::FuncIdx(wasm_idx)
+                }
+                _ => instr.clone(),
             }
-            Instruction::FuncIdx(ir_idx) => {
-                // Call と同じリマップ: IR func_idx → Wasm func_idx
-                let wasm_idx = match *ir_idx {
-                    0 => print_helper_idx,
-                    1 => alloc_func_idx,
-                    2 => string_concat_idx,
-                    3 => string_eq_idx,
-                    4 => print_string_idx,
-                    5 => proc_exit_wasm_idx,
-                    6 => int_to_string_idx,
-                    7 => read_file_idx,
-                    8 => write_file_idx,
-                    9 => file_exists_idx,
-                    10 => command_line_args_idx,
-                    11 => command_line_arg_idx,
-                    12 => read_stdin_idx,
-                    13 => fnv1a_hash_idx,
-                    i => user_func_base + (i - IR_IMPORT_COUNT),
-                };
-                Instruction::FuncIdx(wasm_idx)
-            }
-            _ => instr.clone(),
-        }
-    }).collect();
+        })
+        .collect();
 
     crate::emit::emit_instructions_common(func, &remapped, |f, i| {
         match i {
-            0 => { f.instruction(&W::Call(print_helper_idx)); }
-            1 => { f.instruction(&W::Call(alloc_func_idx)); }
-            2 => { f.instruction(&W::Call(string_concat_idx)); }
-            3 => { f.instruction(&W::Call(string_eq_idx)); }
-            4 => { f.instruction(&W::Call(print_string_idx)); }
-            5 => { f.instruction(&W::Call(proc_exit_wasm_idx)); }
-            6 => { f.instruction(&W::Call(int_to_string_idx)); }
-            7 => { f.instruction(&W::Call(read_file_idx)); }
-            8 => { f.instruction(&W::Call(write_file_idx)); }
-            9 => { f.instruction(&W::Call(file_exists_idx)); }
-            10 => { f.instruction(&W::Call(command_line_args_idx)); }
-            11 => { f.instruction(&W::Call(command_line_arg_idx)); }
-            12 => { f.instruction(&W::Call(read_stdin_idx)); }
-            13 => { f.instruction(&W::Call(fnv1a_hash_idx)); }
-            _ => { f.instruction(&W::Call(user_func_base + (i - IR_IMPORT_COUNT))); }
+            0 => {
+                f.instruction(&W::Call(print_helper_idx));
+            }
+            1 => {
+                f.instruction(&W::Call(alloc_func_idx));
+            }
+            2 => {
+                f.instruction(&W::Call(string_concat_idx));
+            }
+            3 => {
+                f.instruction(&W::Call(string_eq_idx));
+            }
+            4 => {
+                f.instruction(&W::Call(print_string_idx));
+            }
+            5 => {
+                f.instruction(&W::Call(proc_exit_wasm_idx));
+            }
+            6 => {
+                f.instruction(&W::Call(int_to_string_idx));
+            }
+            7 => {
+                f.instruction(&W::Call(read_file_idx));
+            }
+            8 => {
+                f.instruction(&W::Call(write_file_idx));
+            }
+            9 => {
+                f.instruction(&W::Call(file_exists_idx));
+            }
+            10 => {
+                f.instruction(&W::Call(command_line_args_idx));
+            }
+            11 => {
+                f.instruction(&W::Call(command_line_arg_idx));
+            }
+            12 => {
+                f.instruction(&W::Call(read_stdin_idx));
+            }
+            13 => {
+                f.instruction(&W::Call(fnv1a_hash_idx));
+            }
+            _ => {
+                f.instruction(&W::Call(user_func_base + (i - IR_IMPORT_COUNT)));
+            }
         }
         Ok(())
     })
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1688,7 +2021,9 @@ mod tests {
         let module = wasmtime::Module::new(&engine, wasm_bytes).unwrap();
         let instance = linker.instantiate(&mut store, &module).unwrap();
 
-        let start = instance.get_typed_func::<(), ()>(&mut store, "_start").unwrap();
+        let start = instance
+            .get_typed_func::<(), ()>(&mut store, "_start")
+            .unwrap();
         start.call(&mut store, ()).unwrap();
 
         drop(store);
@@ -1770,7 +2105,11 @@ mod tests {
         let program = lsharp_syntax::parse(source).unwrap();
         let mut infer = Infer::new();
         let result = infer.infer_program(&program);
-        assert!(result.is_ok(), "proc-exit の型チェックが失敗: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "proc-exit の型チェックが失敗: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -1806,7 +2145,9 @@ mod tests {
         let module = wasmtime::Module::new(&engine, &wasm).unwrap();
         let instance = linker.instantiate(&mut store, &module).unwrap();
 
-        let start = instance.get_typed_func::<(), ()>(&mut store, "_start").unwrap();
+        let start = instance
+            .get_typed_func::<(), ()>(&mut store, "_start")
+            .unwrap();
         // proc_exit(0) は I32Exit(0) をトラップするが、exit code 0 は成功
         let result = start.call(&mut store, ());
         match result {
@@ -1847,8 +2188,15 @@ mod tests {
         let engine = Engine::default();
         let module = wasmtime::Module::new(&engine, &wasm).unwrap();
         let imports: Vec<_> = module.imports().collect();
-        assert_eq!(imports.len(), 9, "WASI import 数が 9 でない: {:?}",
-            imports.iter().map(|i| i.name().to_string()).collect::<Vec<_>>());
+        assert_eq!(
+            imports.len(),
+            9,
+            "WASI import 数が 9 でない: {:?}",
+            imports
+                .iter()
+                .map(|i| i.name().to_string())
+                .collect::<Vec<_>>()
+        );
 
         // 各 import 名を検証
         let import_names: Vec<_> = imports.iter().map(|i| i.name().to_string()).collect();
@@ -1878,7 +2226,13 @@ mod tests {
         let module = lower.lower_program(&program, &type_results).unwrap();
         eprintln!("IR dump:\n{}", module.dump());
         for (i, f) in module.functions.iter().enumerate() {
-            eprintln!("func[{}] = {} ({} params, {} locals)", i, f.name, f.params.len(), f.locals.len());
+            eprintln!(
+                "func[{}] = {} ({} params, {} locals)",
+                i,
+                f.name,
+                f.params.len(),
+                f.locals.len()
+            );
             for (j, instr) in f.body.iter().enumerate() {
                 eprintln!("  [{j}] {instr:?}");
             }

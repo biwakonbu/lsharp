@@ -1,13 +1,14 @@
 use super::support::*;
 
-
 #[test]
 fn test_e2e_int_to_string_concat() {
     // int-to-string + string-concat の組み合わせ
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do (print-string (string-concat "value=" (int-to-string 42))) 0))
-    "#);
+    "#,
+    );
     assert_eq!(result, "value=42");
 }
 
@@ -161,31 +162,36 @@ fn test_e2e_list_map_filter_compose() {
 #[test]
 fn test_e2e_vector_new_length() {
     // vector-new で作成したベクタの初期長さは 0
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (vector-length (vector-new 10))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "0");
 }
 
 #[test]
 fn test_e2e_vector_push_length() {
     // vector-push で要素を追加すると長さが増える
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [v (vector-new 4)
                 v1 (vector-push v 10)
                 v2 (vector-push v1 20)
                 v3 (vector-push v2 30)]
             (print (vector-length v3))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "3");
 }
 
 #[test]
 fn test_e2e_vector_get() {
     // vector-get でインデックス指定の要素を取得
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [v (vector-new 4)
                 v1 (vector-push v 100)
@@ -195,14 +201,16 @@ fn test_e2e_vector_get() {
               (print (vector-get v3 0))
               (print (vector-get v3 1))
               (print (vector-get v3 2)))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "100\n200\n300");
 }
 
 #[test]
 fn test_e2e_vector_set() {
     // vector-set でインデックス指定の要素を上書き
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [v (vector-new 4)
                 v1 (vector-push v 10)
@@ -211,14 +219,16 @@ fn test_e2e_vector_set() {
             (do
               (print (vector-get v3 0))
               (print (vector-get v3 1)))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "99\n20");
 }
 
 #[test]
 fn test_e2e_vector_push_beyond_capacity() {
     // capacity を超えて push すると再割り当てされる
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [v (vector-new 2)
                 v1 (vector-push v 1)
@@ -229,7 +239,8 @@ fn test_e2e_vector_push_beyond_capacity() {
               (print (vector-get v3 0))
               (print (vector-get v3 1))
               (print (vector-get v3 2)))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "3\n1\n2\n3");
 }
 
@@ -238,7 +249,8 @@ fn test_e2e_vector_push_beyond_capacity() {
 #[test]
 fn test_e2e_vector_map() {
     // vector-map: ベクタの全要素に関数を適用して新しいベクタを返す
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn vector-map-loop [f v i len acc]
           (if (>= i len)
             acc
@@ -256,7 +268,8 @@ fn test_e2e_vector_map() {
               (print (vector-get result 0))
               (print (vector-get result 1))
               (print (vector-get result 2)))))
-    "#);
+    "#,
+    );
     // 各要素を 2 倍: [10,20,30] -> [20,40,60]
     assert_eq!(result.trim(), "3\n20\n40\n60");
 }
@@ -264,7 +277,8 @@ fn test_e2e_vector_map() {
 #[test]
 fn test_e2e_vector_filter() {
     // vector-filter: 条件を満たす要素のみ残した新しいベクタを返す
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn vector-filter-loop [f v i len acc]
           (if (>= i len)
             acc
@@ -284,7 +298,8 @@ fn test_e2e_vector_filter() {
               (print (vector-length result))
               (print (vector-get result 0))
               (print (vector-get result 1)))))
-    "#);
+    "#,
+    );
     // 15 より大きい要素のみ: [10,25,5,30] -> [25,30]
     assert_eq!(result.trim(), "2\n25\n30");
 }
@@ -294,42 +309,49 @@ fn test_e2e_vector_filter() {
 #[test]
 fn test_e2e_map_new_size() {
     // map-new で作成したマップの初期サイズは 0
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (print (map-size (map-new))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "0");
 }
 
 #[test]
 fn test_e2e_map_insert_size() {
     // map-insert でエントリを追加するとサイズが増える
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [m (map-new)
                 m1 (map-insert m 1 100)
                 m2 (map-insert m1 2 200)]
             (print (map-size m2))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "2");
 }
 
 #[test]
 fn test_e2e_map_insert_get() {
     // map-insert で挿入した値を map-get で取得
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [m (map-new)
                 m1 (map-insert m 42 100)]
             (print (map-get m1 42))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "100");
 }
 
 #[test]
 fn test_e2e_map_insert_get_multiple() {
     // 複数エントリの挿入と取得
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [m (map-new)
                 m1 (map-insert m 1 10)
@@ -339,48 +361,56 @@ fn test_e2e_map_insert_get_multiple() {
               (print (map-get m3 1))
               (print (map-get m3 2))
               (print (map-get m3 3)))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "10\n20\n30");
 }
 
 #[test]
 fn test_e2e_map_get_missing() {
     // 存在しないキーの取得は 0 を返す
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [m (map-new)]
             (print (map-get m 99))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "0");
 }
 
 #[test]
 fn test_e2e_map_contains_true() {
     // 存在するキーの検索
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [m (map-new)
                 m1 (map-insert m 42 100)]
             (print (map-contains? m1 42))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "1");
 }
 
 #[test]
 fn test_e2e_map_contains_false() {
     // 存在しないキーの検索
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [m (map-new)]
             (print (map-contains? m 42))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "0");
 }
 
 #[test]
 fn test_e2e_map_remove() {
     // map-remove でエントリを削除
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [m (map-new)
                 m1 (map-insert m 1 10)
@@ -390,14 +420,16 @@ fn test_e2e_map_remove() {
               (print (map-size m3))
               (print (map-contains? m3 1))
               (print (map-get m3 2)))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "1\n0\n20");
 }
 
 #[test]
 fn test_e2e_map_insert_overwrite() {
     // 同じキーへの再挿入で値が上書きされる
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [m (map-new)
                 m1 (map-insert m 1 10)
@@ -405,17 +437,18 @@ fn test_e2e_map_insert_overwrite() {
             (do
               (print (map-size m2))
               (print (map-get m2 1)))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "1\n99");
 }
-
 
 // === HashMap 文字列キー テスト ===
 
 #[test]
 fn test_e2e_map_string_key_insert_get() {
     // 文字列キーで insert して get で値を取得
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [m (map-new)
                 m1 (map-insert m "hello" 42)
@@ -423,28 +456,32 @@ fn test_e2e_map_string_key_insert_get() {
             (do
               (print (map-get m2 "hello"))
               (print (map-get m2 "world")))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "42\n99");
 }
 
 #[test]
 fn test_e2e_map_string_key_contains() {
     // 文字列キーで contains? の確認
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [m (map-new)
                 m1 (map-insert m "key1" 10)]
             (do
               (print (map-contains? m1 "key1"))
               (print (map-contains? m1 "key2")))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "1\n0");
 }
 
 #[test]
 fn test_e2e_map_string_key_remove() {
     // 文字列キーで remove の確認
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [m (map-new)
                 m1 (map-insert m "alpha" 100)
@@ -454,14 +491,16 @@ fn test_e2e_map_string_key_remove() {
               (print (map-size m3))
               (print (map-contains? m3 "alpha"))
               (print (map-get m3 "beta")))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "1\n0\n200");
 }
 
 #[test]
 fn test_e2e_map_string_key_overwrite() {
     // 同じ文字列キーで上書きされることの確認
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [m (map-new)
                 m1 (map-insert m "x" 10)
@@ -469,7 +508,8 @@ fn test_e2e_map_string_key_overwrite() {
             (do
               (print (map-size m2))
               (print (map-get m2 "x")))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "1\n77");
 }
 // === 標準ライブラリ E2E テスト ===
@@ -477,7 +517,8 @@ fn test_e2e_map_string_key_overwrite() {
 /// stdlib/Core.ls の基本数学関数のテスト (abs, max, min, clamp)
 #[test]
 fn test_e2e_stdlib_core_math() {
-    let output = compile_and_run(r#"
+    let output = compile_and_run(
+        r#"
         (defn abs [x] (if (< x 0) (- 0 x) x))
         (defn max [a b] (if (> a b) a b))
         (defn min [a b] (if (< a b) a b))
@@ -491,14 +532,16 @@ fn test_e2e_stdlib_core_math() {
             (print (clamp (- 0 5) 0 10))
             (print (clamp 5 0 10))
             0))
-    "#);
+    "#,
+    );
     assert_eq!(output.trim(), "5\n3\n7\n3\n10\n0\n5");
 }
 
 /// stdlib/Core.ls の xor 関数テスト
 #[test]
 fn test_e2e_stdlib_core_xor() {
-    let output = compile_and_run(r#"
+    let output = compile_and_run(
+        r#"
         (defn xor [a b] (if a (if b 0 1) (if b 1 0)))
         (defn main [] (do
             (print (xor true true))
@@ -506,28 +549,32 @@ fn test_e2e_stdlib_core_xor() {
             (print (xor false true))
             (print (xor false false))
             0))
-    "#);
+    "#,
+    );
     assert_eq!(output.trim(), "0\n1\n1\n0");
 }
 
 /// stdlib/Core.ls の identity, const, twice 関数テスト
 #[test]
 fn test_e2e_stdlib_core_combinators() {
-    let output = compile_and_run(r#"
+    let output = compile_and_run(
+        r#"
         (defn identity [x] x)
         (defn twice [f x] (f (f x)))
         (defn main [] (do
             (print (identity 42))
             (print (twice (fn [x] (+ x 1)) 10))
             0))
-    "#);
+    "#,
+    );
     assert_eq!(output.trim(), "42\n12");
 }
 
 /// stdlib/Core.ls の Option 型テスト (型チェックのみ - ADT は GC 型)
 #[test]
 fn test_e2e_stdlib_core_option_typecheck() {
-    typecheck_only(r#"
+    typecheck_only(
+        r#"
         (type (Option a) (Some a) None)
         (defn unwrap [opt default]
           (match opt
@@ -542,13 +589,15 @@ fn test_e2e_stdlib_core_option_typecheck() {
             [(Some _) 1]
             [None 0]))
         (defn main [] (print 0))
-    "#);
+    "#,
+    );
 }
 
 /// stdlib/Core.ls の Result 型テスト (型チェックのみ - ADT は GC 型)
 #[test]
 fn test_e2e_stdlib_core_result_typecheck() {
-    typecheck_only(r#"
+    typecheck_only(
+        r#"
         (type (Result a e) (Ok a) (Err e))
         (defn unwrap-ok [res default]
           (match res
@@ -563,13 +612,15 @@ fn test_e2e_stdlib_core_result_typecheck() {
             [(Ok _) 1]
             [(Err _) 0]))
         (defn main [] (print 0))
-    "#);
+    "#,
+    );
 }
 
 /// stdlib/List.ls のリスト型テスト (型チェックのみ - ADT は GC 型)
 #[test]
 fn test_e2e_stdlib_list_typecheck() {
-    typecheck_only(r#"
+    typecheck_only(
+        r#"
         (type (List a) (Cons a (List a)) Nil)
         (defn length [xs]
           (match xs
@@ -608,13 +659,15 @@ fn test_e2e_stdlib_list_typecheck() {
               [Nil Nil]
               [(Cons _ t) (drop (- n 1) t)])))
         (defn main [] (print 0))
-    "#);
+    "#,
+    );
 }
 
 /// stdlib/String.ls の文字列操作テスト (starts-with, ends-with)
 #[test]
 fn test_e2e_stdlib_string_starts_ends_with() {
-    let output = compile_and_run(r#"
+    let output = compile_and_run(
+        r#"
         (defn starts-with [s prefix]
           (if (> (string-length prefix) (string-length s))
             false
@@ -631,14 +684,16 @@ fn test_e2e_stdlib_string_starts_ends_with() {
             (print (if (ends-with "hello world" "world") 1 0))
             (print (if (ends-with "hi" "hello") 1 0))
             0))
-    "#);
+    "#,
+    );
     assert_eq!(output.trim(), "1\n0\n1\n0");
 }
 
 /// stdlib/String.ls の string-repeat テスト
 #[test]
 fn test_e2e_stdlib_string_repeat() {
-    let output = compile_and_run(r#"
+    let output = compile_and_run(
+        r#"
         (defn string-repeat [s n]
           (if (<= n 0) ""
             (if (== n 1) s
@@ -649,14 +704,16 @@ fn test_e2e_stdlib_string_repeat() {
             (print (string-length (string-repeat "y" 0)))
             (print (if (string-eq (string-repeat "ab" 3) "ababab") 1 0))
             0))
-    "#);
+    "#,
+    );
     assert_eq!(output.trim(), "6\n1\n0\n1");
 }
 
 /// stdlib/String.ls の string-contains テスト
 #[test]
 fn test_e2e_stdlib_string_contains() {
-    let output = compile_and_run(r#"
+    let output = compile_and_run(
+        r#"
         (defn string-search-from [haystack needle hlen nlen i]
           (if (> (+ i nlen) hlen)
             (- 0 1)
@@ -677,14 +734,16 @@ fn test_e2e_stdlib_string_contains() {
             (print (string-contains "abc" "abc"))
             (print (string-contains "abc" ""))
             0))
-    "#);
+    "#,
+    );
     assert_eq!(output.trim(), "1\n0\n1\n1");
 }
 
 /// stdlib/String.ls の string-index-of テスト
 #[test]
 fn test_e2e_stdlib_string_index_of() {
-    let output = compile_and_run(r#"
+    let output = compile_and_run(
+        r#"
         (defn string-search-from [haystack needle hlen nlen i]
           (if (> (+ i nlen) hlen)
             (- 0 1)
@@ -702,7 +761,8 @@ fn test_e2e_stdlib_string_index_of() {
             (print (string-index-of "hello" "xyz"))
             (print (string-index-of "abcdef" "cd"))
             0))
-    "#);
+    "#,
+    );
     assert_eq!(output.trim(), "6\n-1\n2");
 }
 
@@ -711,7 +771,8 @@ fn test_e2e_stdlib_string_index_of() {
 #[test]
 fn test_e2e_stdlib_char() {
     // Char.ls: 文字判定関数
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn is-digit [c]
           (if (>= c 48) (<= c 57) false))
         (defn is-upper [c]
@@ -733,7 +794,8 @@ fn test_e2e_stdlib_char() {
             (print (is-alpha 48))
             (print (is-whitespace 32))
             0))
-    "#);
+    "#,
+    );
     // 48='0' is digit=1, 65='A' is not digit=0, 65='A' is alpha=1, 48='0' is not alpha=0, 32=' ' is whitespace=1
     assert_eq!(result.trim(), "1\n0\n1\n0\n1");
 }
@@ -741,7 +803,8 @@ fn test_e2e_stdlib_char() {
 #[test]
 fn test_e2e_stdlib_debug() {
     // Debug.ls: デバッグ・アサーション関数
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn debug-print [x]
           (do (print x) x))
         (defn assert [cond]
@@ -754,7 +817,8 @@ fn test_e2e_stdlib_debug() {
             (assert-eq 42 42)
             (print (debug-print 99))
             0))
-    "#);
+    "#,
+    );
     // debug-print prints 99, then main prints the return value 99 again
     assert_eq!(result.trim(), "99\n99");
 }

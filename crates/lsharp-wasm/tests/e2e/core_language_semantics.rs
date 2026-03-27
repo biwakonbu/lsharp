@@ -1,6 +1,5 @@
 use super::support::*;
 
-
 // === examples/ ディレクトリのサンプルファイル E2E テスト ===
 
 #[test]
@@ -59,9 +58,8 @@ fn test_e2e_trait() {
 
 #[test]
 fn test_e2e_arithmetic() {
-    let output = compile_and_run(
-        "(defn main [] (do (print (+ 10 20)) (print (- 50 8)) (print (* 6 7)) 0))",
-    );
+    let output =
+        compile_and_run("(defn main [] (do (print (+ 10 20)) (print (- 50 8)) (print (* 6 7)) 0))");
     assert_eq!(output, "30\n42\n42\n");
 }
 
@@ -82,9 +80,7 @@ fn test_e2e_comparison() {
 
 #[test]
 fn test_e2e_let_binding() {
-    let output = compile_and_run(
-        "(defn main [] (let [x 10 y 20] (print (+ x y))))",
-    );
+    let output = compile_and_run("(defn main [] (let [x 10 y 20] (print (+ x y))))");
     assert_eq!(output, "30\n");
 }
 
@@ -324,17 +320,13 @@ fn test_e2e_match_multi_arm() {
 
 #[test]
 fn test_e2e_do_multiple_prints() {
-    let output = compile_and_run(
-        "(defn main [] (do (print 1) (print 2) (print 3) 0))",
-    );
+    let output = compile_and_run("(defn main [] (do (print 1) (print 2) (print 3) 0))");
     assert_eq!(output, "1\n2\n3\n");
 }
 
 #[test]
 fn test_e2e_do_nested() {
-    let output = compile_and_run(
-        "(defn main [] (do (do (print 1) 0) (print 2) 0))",
-    );
+    let output = compile_and_run("(defn main [] (do (do (print 1) 0) (print 2) 0))");
     assert_eq!(output, "1\n2\n");
 }
 
@@ -342,33 +334,25 @@ fn test_e2e_do_nested() {
 
 #[test]
 fn test_e2e_modulo() {
-    let output = compile_and_run(
-        "(defn main [] (do (print (% 17 5)) (print (% 10 3)) 0))",
-    );
+    let output = compile_and_run("(defn main [] (do (print (% 17 5)) (print (% 10 3)) 0))");
     assert_eq!(output, "2\n1\n");
 }
 
 #[test]
 fn test_e2e_negative_numbers() {
-    let output = compile_and_run(
-        "(defn main [] (do (print (- 0 42)) (print (- 0 1)) 0))",
-    );
+    let output = compile_and_run("(defn main [] (do (print (- 0 42)) (print (- 0 1)) 0))");
     assert_eq!(output, "-42\n-1\n");
 }
 
 #[test]
 fn test_e2e_large_numbers() {
-    let output = compile_and_run(
-        "(defn main [] (print (* 100000 100000)))",
-    );
+    let output = compile_and_run("(defn main [] (print (* 100000 100000)))");
     assert_eq!(output, "10000000000\n");
 }
 
 #[test]
 fn test_e2e_division() {
-    let output = compile_and_run(
-        "(defn main [] (do (print (/ 42 6)) (print (/ 100 10)) 0))",
-    );
+    let output = compile_and_run("(defn main [] (do (print (/ 42 6)) (print (/ 100 10)) 0))");
     assert_eq!(output, "7\n10\n");
 }
 

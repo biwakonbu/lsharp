@@ -34,36 +34,28 @@ pub fn eval_int_constraint(value: i64, constraint: &ConstraintDef) -> Constraint
             if value >= *min {
                 ConstraintResult::Satisfied
             } else {
-                ConstraintResult::Violated(format!(
-                    "値 {value} は >= {min} を満たしません"
-                ))
+                ConstraintResult::Violated(format!("値 {value} は >= {min} を満たしません"))
             }
         }
         ConstraintDef::Lte(max) => {
             if value <= *max {
                 ConstraintResult::Satisfied
             } else {
-                ConstraintResult::Violated(format!(
-                    "値 {value} は <= {max} を満たしません"
-                ))
+                ConstraintResult::Violated(format!("値 {value} は <= {max} を満たしません"))
             }
         }
         ConstraintDef::Range(lo, hi) => {
             if value >= *lo && value <= *hi {
                 ConstraintResult::Satisfied
             } else {
-                ConstraintResult::Violated(format!(
-                    "値 {value} は範囲 [{lo}, {hi}] に含まれません"
-                ))
+                ConstraintResult::Violated(format!("値 {value} は範囲 [{lo}, {hi}] に含まれません"))
             }
         }
         ConstraintDef::OneOf(values) => {
             if values.contains(&value) {
                 ConstraintResult::Satisfied
             } else {
-                ConstraintResult::Violated(format!(
-                    "値 {value} は許可された値リストに含まれません"
-                ))
+                ConstraintResult::Violated(format!("値 {value} は許可された値リストに含まれません"))
             }
         }
         // 整数値に対して文字列制約は型不一致
@@ -110,7 +102,10 @@ pub fn eval_string_constraint(value: &str, constraint: &ConstraintDef) -> Constr
             }
         }
         // 文字列値に対して整数制約は型不一致
-        ConstraintDef::Gte(_) | ConstraintDef::Lte(_) | ConstraintDef::Range(_, _) | ConstraintDef::OneOf(_) => {
+        ConstraintDef::Gte(_)
+        | ConstraintDef::Lte(_)
+        | ConstraintDef::Range(_, _)
+        | ConstraintDef::OneOf(_) => {
             ConstraintResult::Violated("文字列値に整数制約は適用できません".to_string())
         }
         ConstraintDef::Satisfies(_) => ConstraintResult::Deferred,
@@ -119,17 +114,28 @@ pub fn eval_string_constraint(value: &str, constraint: &ConstraintDef) -> Constr
 
 /// 複数の制約を全て評価
 pub fn eval_int_constraints(value: i64, constraints: &[ConstraintDef]) -> Vec<ConstraintResult> {
-    constraints.iter().map(|c| eval_int_constraint(value, c)).collect()
+    constraints
+        .iter()
+        .map(|c| eval_int_constraint(value, c))
+        .collect()
 }
 
 /// 複数の文字列制約を全て評価
-pub fn eval_string_constraints(value: &str, constraints: &[ConstraintDef]) -> Vec<ConstraintResult> {
-    constraints.iter().map(|c| eval_string_constraint(value, c)).collect()
+pub fn eval_string_constraints(
+    value: &str,
+    constraints: &[ConstraintDef],
+) -> Vec<ConstraintResult> {
+    constraints
+        .iter()
+        .map(|c| eval_string_constraint(value, c))
+        .collect()
 }
 
 /// 全制約が満たされているか
 pub fn all_satisfied(results: &[ConstraintResult]) -> bool {
-    results.iter().all(|r| matches!(r, ConstraintResult::Satisfied))
+    results
+        .iter()
+        .all(|r| matches!(r, ConstraintResult::Satisfied))
 }
 
 /// 違反した制約のメッセージを収集
@@ -153,20 +159,20 @@ pub fn generate_boundary_test_cases(constraints: &[ConstraintDef]) -> Vec<(i64, 
     for constraint in constraints {
         match constraint {
             ConstraintDef::Gte(min) => {
-                cases.push((*min, true));          // 境界: ちょうど min
-                cases.push((*min - 1, false));     // 境界外: min - 1
-                cases.push((*min + 1, true));      // 境界内: min + 1
+                cases.push((*min, true)); // 境界: ちょうど min
+                cases.push((*min - 1, false)); // 境界外: min - 1
+                cases.push((*min + 1, true)); // 境界内: min + 1
             }
             ConstraintDef::Lte(max) => {
-                cases.push((*max, true));           // 境界: ちょうど max
-                cases.push((*max + 1, false));      // 境界外: max + 1
-                cases.push((*max - 1, true));       // 境界内: max - 1
+                cases.push((*max, true)); // 境界: ちょうど max
+                cases.push((*max + 1, false)); // 境界外: max + 1
+                cases.push((*max - 1, true)); // 境界内: max - 1
             }
             ConstraintDef::Range(lo, hi) => {
-                cases.push((*lo, true));            // 下限境界
-                cases.push((*lo - 1, false));       // 下限外
-                cases.push((*hi, true));            // 上限境界
-                cases.push((*hi + 1, false));       // 上限外
+                cases.push((*lo, true)); // 下限境界
+                cases.push((*lo - 1, false)); // 下限外
+                cases.push((*hi, true)); // 上限境界
+                cases.push((*hi + 1, false)); // 上限外
                 if lo < hi {
                     cases.push(((*lo + *hi) / 2, true)); // 中間値
                 }
@@ -205,7 +211,10 @@ enum RegexNode {
     /// 任意の1文字 (.)
     Dot,
     /// 文字クラス ([a-z], [abc])
-    CharClass { chars: Vec<(char, char)>, negated: bool },
+    CharClass {
+        chars: Vec<(char, char)>,
+        negated: bool,
+    },
     /// 0回以上の繰り返し (*)
     Star(Box<RegexNode>),
     /// 1回以上の繰り返し (+)
@@ -283,7 +292,10 @@ fn parse_regex_inner(chars: &[char], start: usize) -> (Vec<RegexNode>, usize) {
                         // 通常のグループとして処理
                         let (group_nodes, end) = parse_regex_inner(chars, i);
                         i = end;
-                        if group_nodes.iter().any(|n| matches!(n, RegexNode::Literal('|'))) {
+                        if group_nodes
+                            .iter()
+                            .any(|n| matches!(n, RegexNode::Literal('|')))
+                        {
                             let mut alternatives = vec![vec![]];
                             for node in group_nodes {
                                 if matches!(node, RegexNode::Literal('|')) {
@@ -301,7 +313,10 @@ fn parse_regex_inner(chars: &[char], start: usize) -> (Vec<RegexNode>, usize) {
                     let (group_nodes, end) = parse_regex_inner(chars, i);
                     i = end;
                     // グループ内の | を処理
-                    if group_nodes.iter().any(|n| matches!(n, RegexNode::Literal('|'))) {
+                    if group_nodes
+                        .iter()
+                        .any(|n| matches!(n, RegexNode::Literal('|')))
+                    {
                         let mut alternatives = vec![vec![]];
                         for node in group_nodes {
                             if matches!(node, RegexNode::Literal('|')) {
@@ -323,7 +338,9 @@ fn parse_regex_inner(chars: &[char], start: usize) -> (Vec<RegexNode>, usize) {
             '[' => {
                 i += 1;
                 let negated = i < chars.len() && chars[i] == '^';
-                if negated { i += 1; }
+                if negated {
+                    i += 1;
+                }
                 let mut ranges = Vec::new();
                 while i < chars.len() && chars[i] != ']' {
                     let start = chars[i];
@@ -336,8 +353,13 @@ fn parse_regex_inner(chars: &[char], start: usize) -> (Vec<RegexNode>, usize) {
                         i += 1;
                     }
                 }
-                if i < chars.len() { i += 1; } // ']'
-                RegexNode::CharClass { chars: ranges, negated }
+                if i < chars.len() {
+                    i += 1;
+                } // ']'
+                RegexNode::CharClass {
+                    chars: ranges,
+                    negated,
+                }
             }
             '\\' => {
                 i += 1;
@@ -345,7 +367,10 @@ fn parse_regex_inner(chars: &[char], start: usize) -> (Vec<RegexNode>, usize) {
                     let ch = chars[i];
                     i += 1;
                     match ch {
-                        'd' => RegexNode::CharClass { chars: vec![('0', '9')], negated: false },
+                        'd' => RegexNode::CharClass {
+                            chars: vec![('0', '9')],
+                            negated: false,
+                        },
                         'w' => RegexNode::CharClass {
                             chars: vec![('a', 'z'), ('A', 'Z'), ('0', '9'), ('_', '_')],
                             negated: false,
@@ -371,9 +396,18 @@ fn parse_regex_inner(chars: &[char], start: usize) -> (Vec<RegexNode>, usize) {
         // 量指定子のチェック
         let node = if i < chars.len() {
             match chars[i] {
-                '*' => { i += 1; RegexNode::Star(Box::new(node)) }
-                '+' => { i += 1; RegexNode::Plus(Box::new(node)) }
-                '?' => { i += 1; RegexNode::Optional(Box::new(node)) }
+                '*' => {
+                    i += 1;
+                    RegexNode::Star(Box::new(node))
+                }
+                '+' => {
+                    i += 1;
+                    RegexNode::Plus(Box::new(node))
+                }
+                '?' => {
+                    i += 1;
+                    RegexNode::Optional(Box::new(node))
+                }
                 _ => node,
             }
         } else {
@@ -422,10 +456,9 @@ fn try_repeat_complex(
         require_end: bool,
     ) -> bool {
         // 最小回数を満たしたら、残りのパターンとマッチ試行
-        if count >= min_count
-            && regex_match(rest_nodes, text, ni + 1, pos, require_end) {
-                return true;
-            }
+        if count >= min_count && regex_match(rest_nodes, text, ni + 1, pos, require_end) {
+            return true;
+        }
 
         if pos >= text.len() {
             return false;
@@ -438,18 +471,38 @@ fn try_repeat_complex(
                 for end in (pos + 1)..=text.len() {
                     if regex_match(group_nodes, text, 0, pos, false)
                         && group_full_match(group_nodes, text, pos, end)
-                        && try_inner(inner, rest_nodes, text, ni, end, count + 1, min_count, require_end) {
-                            return true;
-                        }
+                        && try_inner(
+                            inner,
+                            rest_nodes,
+                            text,
+                            ni,
+                            end,
+                            count + 1,
+                            min_count,
+                            require_end,
+                        )
+                    {
+                        return true;
+                    }
                 }
             }
             RegexNode::Alternation(alternatives) => {
                 for alt in alternatives {
                     for end in (pos + 1)..=text.len() {
                         if group_full_match(alt, text, pos, end)
-                            && try_inner(inner, rest_nodes, text, ni, end, count + 1, min_count, require_end) {
-                                return true;
-                            }
+                            && try_inner(
+                                inner,
+                                rest_nodes,
+                                text,
+                                ni,
+                                end,
+                                count + 1,
+                                min_count,
+                                require_end,
+                            )
+                        {
+                            return true;
+                        }
                     }
                 }
             }
@@ -458,7 +511,16 @@ fn try_repeat_complex(
         false
     }
 
-    try_inner(inner, rest_nodes, text, ni, start, 0, min_count, require_end)
+    try_inner(
+        inner,
+        rest_nodes,
+        text,
+        ni,
+        start,
+        0,
+        min_count,
+        require_end,
+    )
 }
 
 /// グループノードがテキストの [start, end) にフルマッチするか
@@ -477,7 +539,13 @@ thread_local! {
 
 /// NFA ベースの正規表現マッチ（バックトラッキング）
 /// require_end = true の場合、テキスト末尾まで消費されることを要求
-fn regex_match(nodes: &[RegexNode], text: &[char], ni: usize, ti: usize, require_end: bool) -> bool {
+fn regex_match(
+    nodes: &[RegexNode],
+    text: &[char],
+    ni: usize,
+    ti: usize,
+    require_end: bool,
+) -> bool {
     // ステップ制限チェック (NC-11)
     let exceeded = REGEX_STEPS.with(|steps| {
         let current = steps.get();
@@ -519,7 +587,10 @@ fn regex_match(nodes: &[RegexNode], text: &[char], ni: usize, ti: usize, require
                 return true;
             }
             // Group/Alternation の繰り返し
-            if matches!(inner.as_ref(), RegexNode::Group(_) | RegexNode::Alternation(_)) {
+            if matches!(
+                inner.as_ref(),
+                RegexNode::Group(_) | RegexNode::Alternation(_)
+            ) {
                 try_repeat_complex(inner, nodes, text, ni, ti, require_end, 0)
             } else {
                 let mut pos = ti;
@@ -533,7 +604,10 @@ fn regex_match(nodes: &[RegexNode], text: &[char], ni: usize, ti: usize, require
             }
         }
         RegexNode::Plus(inner) => {
-            if matches!(inner.as_ref(), RegexNode::Group(_) | RegexNode::Alternation(_)) {
+            if matches!(
+                inner.as_ref(),
+                RegexNode::Group(_) | RegexNode::Alternation(_)
+            ) {
                 try_repeat_complex(inner, nodes, text, ni, ti, require_end, 1)
             } else {
                 let mut pos = ti;
@@ -629,7 +703,14 @@ fn regex_match_with_captures(
                 let sub = &text[ti..end_pos];
                 if group_full_match(group_nodes, text, ti, end_pos) {
                     captures[group_idx] = Some(sub.to_vec());
-                    if regex_match_with_captures(nodes, text, ni + 1, end_pos, require_end, captures) {
+                    if regex_match_with_captures(
+                        nodes,
+                        text,
+                        ni + 1,
+                        end_pos,
+                        require_end,
+                        captures,
+                    ) {
                         return true;
                     }
                 }
@@ -649,7 +730,14 @@ fn regex_match_with_captures(
                     return false;
                 }
                 if text[ti..ti + cap_len] == captured[..] {
-                    regex_match_with_captures(nodes, text, ni + 1, ti + cap_len, require_end, captures)
+                    regex_match_with_captures(
+                        nodes,
+                        text,
+                        ni + 1,
+                        ti + cap_len,
+                        require_end,
+                        captures,
+                    )
                 } else {
                     false
                 }
@@ -689,7 +777,10 @@ fn regex_match_with_captures(
             if regex_match_with_captures(nodes, text, ni + 1, ti, require_end, captures) {
                 return true;
             }
-            if matches!(inner.as_ref(), RegexNode::Group(_) | RegexNode::Alternation(_)) {
+            if matches!(
+                inner.as_ref(),
+                RegexNode::Group(_) | RegexNode::Alternation(_)
+            ) {
                 try_repeat_complex(inner, nodes, text, ni, ti, require_end, 0)
             } else {
                 let mut pos = ti;
@@ -703,7 +794,10 @@ fn regex_match_with_captures(
             }
         }
         RegexNode::Plus(inner) => {
-            if matches!(inner.as_ref(), RegexNode::Group(_) | RegexNode::Alternation(_)) {
+            if matches!(
+                inner.as_ref(),
+                RegexNode::Group(_) | RegexNode::Alternation(_)
+            ) {
                 try_repeat_complex(inner, nodes, text, ni, ti, require_end, 1)
             } else {
                 let mut pos = ti;
@@ -730,7 +824,8 @@ fn regex_match_with_captures(
                     for alt in alternatives {
                         let mut expanded = alt.clone();
                         expanded.extend_from_slice(&nodes[ni + 1..]);
-                        if regex_match_with_captures(&expanded, text, 0, ti, require_end, captures) {
+                        if regex_match_with_captures(&expanded, text, 0, ti, require_end, captures)
+                        {
                             return true;
                         }
                     }
@@ -738,7 +833,14 @@ fn regex_match_with_captures(
                 }
                 _ => {
                     if ti < text.len() && node_matches_char(inner, text[ti]) {
-                        return regex_match_with_captures(nodes, text, ni + 1, ti + 1, require_end, captures);
+                        return regex_match_with_captures(
+                            nodes,
+                            text,
+                            ni + 1,
+                            ti + 1,
+                            require_end,
+                            captures,
+                        );
                     }
                     false
                 }
@@ -758,19 +860,25 @@ fn regex_match_with_captures(
 fn has_advanced_features(nodes: &[RegexNode]) -> bool {
     for node in nodes {
         match node {
-            RegexNode::Backreference(_)
-            | RegexNode::Lookahead(_)
-            | RegexNode::LookaheadNeg(_) => return true,
+            RegexNode::Backreference(_) | RegexNode::Lookahead(_) | RegexNode::LookaheadNeg(_) => {
+                return true;
+            }
             RegexNode::Group(inner) => {
-                if has_advanced_features(inner) { return true; }
+                if has_advanced_features(inner) {
+                    return true;
+                }
             }
             RegexNode::Alternation(alts) => {
                 for alt in alts {
-                    if has_advanced_features(alt) { return true; }
+                    if has_advanced_features(alt) {
+                        return true;
+                    }
                 }
             }
             RegexNode::Star(inner) | RegexNode::Plus(inner) | RegexNode::Optional(inner) => {
-                if has_advanced_features(&[inner.as_ref().clone()]) { return true; }
+                if has_advanced_features(&[inner.as_ref().clone()]) {
+                    return true;
+                }
             }
             _ => {}
         }
@@ -836,8 +944,8 @@ fn simple_pattern_match(text: &str, pattern: &str) -> bool {
     }
 }
 
-use std::collections::HashMap;
 use crate::types::ConstrainedTypeInfo;
+use std::collections::HashMap;
 
 /// 制約階層の解決
 ///
@@ -852,7 +960,12 @@ pub fn resolve_constraint_hierarchy(
 ) -> Vec<ConstraintDef> {
     let mut all_constraints = Vec::new();
     let mut visited = Vec::new();
-    collect_constraints_recursive(type_name, constrained_types, &mut all_constraints, &mut visited);
+    collect_constraints_recursive(
+        type_name,
+        constrained_types,
+        &mut all_constraints,
+        &mut visited,
+    );
     all_constraints
 }
 
@@ -908,11 +1021,12 @@ pub fn check_constraint_compatibility(
                     _ => None,
                 });
                 if let Some(cm) = child_min
-                    && cm < *parent_min {
-                        errors.push(format!(
-                            "子の下限 ({cm}) が親の下限 ({parent_min}) より小さい"
-                        ));
-                    }
+                    && cm < *parent_min
+                {
+                    errors.push(format!(
+                        "子の下限 ({cm}) が親の下限 ({parent_min}) より小さい"
+                    ));
+                }
             }
             ConstraintDef::Lte(parent_max) => {
                 // 子の Lte が親の Lte 以下であるか
@@ -922,11 +1036,12 @@ pub fn check_constraint_compatibility(
                     _ => None,
                 });
                 if let Some(cm) = child_max
-                    && cm > *parent_max {
-                        errors.push(format!(
-                            "子の上限 ({cm}) が親の上限 ({parent_max}) より大きい"
-                        ));
-                    }
+                    && cm > *parent_max
+                {
+                    errors.push(format!(
+                        "子の上限 ({cm}) が親の上限 ({parent_max}) より大きい"
+                    ));
+                }
             }
             ConstraintDef::Range(parent_lo, parent_hi) => {
                 // 子の範囲が親の範囲内か（Range、Gte、Lte のいずれかから推定）
@@ -956,17 +1071,19 @@ pub fn check_constraint_compatibility(
                         _ => None,
                     });
                     if let Some(clo) = child_lo
-                        && clo < *parent_lo {
-                            errors.push(format!(
-                                "子の下限 ({clo}) が親の範囲下限 ({parent_lo}) より小さい"
-                            ));
-                        }
+                        && clo < *parent_lo
+                    {
+                        errors.push(format!(
+                            "子の下限 ({clo}) が親の範囲下限 ({parent_lo}) より小さい"
+                        ));
+                    }
                     if let Some(chi) = child_hi
-                        && chi > *parent_hi {
-                            errors.push(format!(
-                                "子の上限 ({chi}) が親の範囲上限 ({parent_hi}) より大きい"
-                            ));
-                        }
+                        && chi > *parent_hi
+                    {
+                        errors.push(format!(
+                            "子の上限 ({chi}) が親の範囲上限 ({parent_hi}) より大きい"
+                        ));
+                    }
                 }
             }
             _ => {}
@@ -1283,20 +1400,14 @@ mod tests {
 
     #[test]
     fn test_multiple_constraints() {
-        let constraints = vec![
-            ConstraintDef::Gte(0),
-            ConstraintDef::Lte(100),
-        ];
+        let constraints = vec![ConstraintDef::Gte(0), ConstraintDef::Lte(100)];
         let results = eval_int_constraints(50, &constraints);
         assert!(all_satisfied(&results));
     }
 
     #[test]
     fn test_multiple_constraints_violated() {
-        let constraints = vec![
-            ConstraintDef::Gte(0),
-            ConstraintDef::Lte(100),
-        ];
+        let constraints = vec![ConstraintDef::Gte(0), ConstraintDef::Lte(100)];
         let results = eval_int_constraints(101, &constraints);
         assert!(!all_satisfied(&results));
         let violations = collect_violations(&results);
@@ -1483,27 +1594,36 @@ mod hierarchy_tests {
         let mut registry = HashMap::new();
 
         // Natural: Int (>= 0)
-        registry.insert("Natural".to_string(), ConstrainedTypeInfo {
-            name: "Natural".to_string(),
-            base_type: Type::Con("Int".to_string()),
-            constraints: vec![ConstraintDef::Gte(0)],
-        });
+        registry.insert(
+            "Natural".to_string(),
+            ConstrainedTypeInfo {
+                name: "Natural".to_string(),
+                base_type: Type::Con("Int".to_string()),
+                constraints: vec![ConstraintDef::Gte(0)],
+            },
+        );
 
         // Percentage: Natural (<= 100)
         // -> 継承後は (>= 0, <= 100)
-        registry.insert("Percentage".to_string(), ConstrainedTypeInfo {
-            name: "Percentage".to_string(),
-            base_type: Type::Con("Natural".to_string()),
-            constraints: vec![ConstraintDef::Lte(100)],
-        });
+        registry.insert(
+            "Percentage".to_string(),
+            ConstrainedTypeInfo {
+                name: "Percentage".to_string(),
+                base_type: Type::Con("Natural".to_string()),
+                constraints: vec![ConstraintDef::Lte(100)],
+            },
+        );
 
         // Priority: Percentage (<= 10)
         // -> 継承後は (>= 0, <= 100, <= 10)
-        registry.insert("Priority".to_string(), ConstrainedTypeInfo {
-            name: "Priority".to_string(),
-            base_type: Type::Con("Percentage".to_string()),
-            constraints: vec![ConstraintDef::Lte(10)],
-        });
+        registry.insert(
+            "Priority".to_string(),
+            ConstrainedTypeInfo {
+                name: "Priority".to_string(),
+                base_type: Type::Con("Percentage".to_string()),
+                constraints: vec![ConstraintDef::Lte(10)],
+            },
+        );
 
         registry
     }
@@ -1548,11 +1668,14 @@ mod hierarchy_tests {
     fn test_resolve_base_type_not_constrained() {
         let mut registry = HashMap::new();
         // Port: Int (range 1 65535) - 基底型 Int は制約付き型ではない
-        registry.insert("Port".to_string(), ConstrainedTypeInfo {
-            name: "Port".to_string(),
-            base_type: Type::Con("Int".to_string()),
-            constraints: vec![ConstraintDef::Range(1, 65535)],
-        });
+        registry.insert(
+            "Port".to_string(),
+            ConstrainedTypeInfo {
+                name: "Port".to_string(),
+                base_type: Type::Con("Int".to_string()),
+                constraints: vec![ConstraintDef::Range(1, 65535)],
+            },
+        );
         let constraints = resolve_constraint_hierarchy("Port", &registry);
         assert_eq!(constraints.len(), 1);
         assert!(matches!(constraints[0], ConstraintDef::Range(1, 65535)));
@@ -1600,34 +1723,46 @@ mod conversion_tests {
         let mut registry = HashMap::new();
 
         // Natural: Int (>= 0)
-        registry.insert("Natural".to_string(), ConstrainedTypeInfo {
-            name: "Natural".to_string(),
-            base_type: Type::Con("Int".to_string()),
-            constraints: vec![ConstraintDef::Gte(0)],
-        });
+        registry.insert(
+            "Natural".to_string(),
+            ConstrainedTypeInfo {
+                name: "Natural".to_string(),
+                base_type: Type::Con("Int".to_string()),
+                constraints: vec![ConstraintDef::Gte(0)],
+            },
+        );
 
         // Percentage: Natural (<= 100)
         // 継承後: (>= 0, <= 100)
-        registry.insert("Percentage".to_string(), ConstrainedTypeInfo {
-            name: "Percentage".to_string(),
-            base_type: Type::Con("Natural".to_string()),
-            constraints: vec![ConstraintDef::Lte(100)],
-        });
+        registry.insert(
+            "Percentage".to_string(),
+            ConstrainedTypeInfo {
+                name: "Percentage".to_string(),
+                base_type: Type::Con("Natural".to_string()),
+                constraints: vec![ConstraintDef::Lte(100)],
+            },
+        );
 
         // Priority: Percentage (<= 10)
         // 継承後: (>= 0, <= 100, <= 10)
-        registry.insert("Priority".to_string(), ConstrainedTypeInfo {
-            name: "Priority".to_string(),
-            base_type: Type::Con("Percentage".to_string()),
-            constraints: vec![ConstraintDef::Lte(10)],
-        });
+        registry.insert(
+            "Priority".to_string(),
+            ConstrainedTypeInfo {
+                name: "Priority".to_string(),
+                base_type: Type::Con("Percentage".to_string()),
+                constraints: vec![ConstraintDef::Lte(10)],
+            },
+        );
 
         // Port: Int (range 1 65535)
-        registry.insert("Port".to_string(), ConstrainedTypeInfo {
-            name: "Port".to_string(),
-            base_type: Type::Con("Int".to_string()),
-            constraints: vec![ConstraintDef::Range(1, 65535)],
-        });
+        registry.insert(
+            "Port".to_string(),
+            ConstrainedTypeInfo {
+                name: "Port".to_string(),
+                base_type: Type::Con("Int".to_string()),
+                constraints: vec![ConstraintDef::Range(1, 65535)],
+            },
+        );
 
         registry
     }
@@ -1705,35 +1840,47 @@ mod runtime_check_tests {
         let mut registry = HashMap::new();
 
         // Natural: Int (>= 0)
-        registry.insert("Natural".to_string(), ConstrainedTypeInfo {
-            name: "Natural".to_string(),
-            base_type: Type::Con("Int".to_string()),
-            constraints: vec![ConstraintDef::Gte(0)],
-        });
+        registry.insert(
+            "Natural".to_string(),
+            ConstrainedTypeInfo {
+                name: "Natural".to_string(),
+                base_type: Type::Con("Int".to_string()),
+                constraints: vec![ConstraintDef::Gte(0)],
+            },
+        );
 
         // Percentage: Natural (<= 100)
-        registry.insert("Percentage".to_string(), ConstrainedTypeInfo {
-            name: "Percentage".to_string(),
-            base_type: Type::Con("Natural".to_string()),
-            constraints: vec![ConstraintDef::Lte(100)],
-        });
+        registry.insert(
+            "Percentage".to_string(),
+            ConstrainedTypeInfo {
+                name: "Percentage".to_string(),
+                base_type: Type::Con("Natural".to_string()),
+                constraints: vec![ConstraintDef::Lte(100)],
+            },
+        );
 
         // Email: String (min-length 5, matches "@")
-        registry.insert("Email".to_string(), ConstrainedTypeInfo {
-            name: "Email".to_string(),
-            base_type: Type::Con("String".to_string()),
-            constraints: vec![
-                ConstraintDef::MinLength(5),
-                ConstraintDef::Matches("@".to_string()),
-            ],
-        });
+        registry.insert(
+            "Email".to_string(),
+            ConstrainedTypeInfo {
+                name: "Email".to_string(),
+                base_type: Type::Con("String".to_string()),
+                constraints: vec![
+                    ConstraintDef::MinLength(5),
+                    ConstraintDef::Matches("@".to_string()),
+                ],
+            },
+        );
 
         // Status: Int (one-of [0, 1, 2])
-        registry.insert("Status".to_string(), ConstrainedTypeInfo {
-            name: "Status".to_string(),
-            base_type: Type::Con("Int".to_string()),
-            constraints: vec![ConstraintDef::OneOf(vec![0, 1, 2])],
-        });
+        registry.insert(
+            "Status".to_string(),
+            ConstrainedTypeInfo {
+                name: "Status".to_string(),
+                base_type: Type::Con("Int".to_string()),
+                constraints: vec![ConstraintDef::OneOf(vec![0, 1, 2])],
+            },
+        );
 
         registry
     }
@@ -1764,8 +1911,14 @@ mod runtime_check_tests {
         let check = generate_runtime_checks("Email", &registry);
         assert_eq!(check.type_name, "Email");
         assert_eq!(check.conditions.len(), 2);
-        assert!(matches!(check.conditions[0], RuntimeCondition::StrMinLength(5)));
-        assert!(matches!(check.conditions[1], RuntimeCondition::StrMatches(_)));
+        assert!(matches!(
+            check.conditions[0],
+            RuntimeCondition::StrMinLength(5)
+        ));
+        assert!(matches!(
+            check.conditions[1],
+            RuntimeCondition::StrMatches(_)
+        ));
     }
 
     #[test]
@@ -1791,9 +1944,8 @@ mod runtime_check_tests {
 
     #[test]
     fn test_constraint_to_runtime_satisfies_returns_none() {
-        let result = constraint_to_runtime_condition(
-            &ConstraintDef::Satisfies("is-valid".to_string()),
-        );
+        let result =
+            constraint_to_runtime_condition(&ConstraintDef::Satisfies("is-valid".to_string()));
         assert!(result.is_none());
     }
 

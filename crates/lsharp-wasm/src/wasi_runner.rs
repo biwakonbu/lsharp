@@ -4,7 +4,7 @@
 //! driver, e2e テスト, test_runner の 3 箇所で重複していたコードを統合。
 
 use wasmtime::*;
-use wasmtime_wasi::{preview1::WasiP1Ctx, WasiCtxBuilder};
+use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
 
 /// Wasm バイナリを WASI 環境で実行し、stdout 出力を返す
 pub fn run_wasm_wasi(wasm_bytes: &[u8]) -> Result<String, String> {
@@ -12,7 +12,10 @@ pub fn run_wasm_wasi(wasm_bytes: &[u8]) -> Result<String, String> {
 }
 
 /// Wasm バイナリを WASI 環境で実行 (ファイルシステムアクセス付き)
-pub fn run_wasm_wasi_with_dir(wasm_bytes: &[u8], dir: Option<&std::path::Path>) -> Result<String, String> {
+pub fn run_wasm_wasi_with_dir(
+    wasm_bytes: &[u8],
+    dir: Option<&std::path::Path>,
+) -> Result<String, String> {
     run_wasm_wasi_with_dir_args_and_stdin(wasm_bytes, dir, &[], "")
 }
 
@@ -44,11 +47,14 @@ pub fn run_wasm_wasi_with_dir_args_and_stdin(
     builder.stdin(stdin);
     builder.args(args);
     if let Some(dir_path) = dir {
-        builder.preopened_dir(
-            dir_path, ".",
-            wasmtime_wasi::DirPerms::all(),
-            wasmtime_wasi::FilePerms::all(),
-        ).map_err(|e| format!("preopened_dir に失敗: {e}"))?;
+        builder
+            .preopened_dir(
+                dir_path,
+                ".",
+                wasmtime_wasi::DirPerms::all(),
+                wasmtime_wasi::FilePerms::all(),
+            )
+            .map_err(|e| format!("preopened_dir に失敗: {e}"))?;
     }
     let wasi = builder.build_p1();
     let mut store = Store::new(&engine, wasi);
@@ -82,7 +88,11 @@ mod tests {
         // 不正な Wasm バイナリでエラーが返ること
         let result = run_wasm_wasi(&[0, 1, 2, 3]);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Wasm モジュールの読み込みに失敗"));
+        assert!(
+            result
+                .unwrap_err()
+                .contains("Wasm モジュールの読み込みに失敗")
+        );
     }
 
     #[test]

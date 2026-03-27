@@ -1,6 +1,5 @@
 use super::support::*;
 
-
 #[test]
 fn test_e2e_selfhost_codegen_comparison() {
     // セルフホスト Codegen vs Rust Codegen の比較テスト
@@ -12,7 +11,8 @@ fn test_e2e_selfhost_codegen_comparison() {
     //   L# make-instr(10, 0)  ↔  Rust Instruction::LocalGet(0)
     //   L# make-instr(40, 5)  ↔  Rust Instruction::Call(5)
     //   L# leb128-unsigned    ↔  Rust wasm-encoder の LEB128
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         ;; IR 命令構築 (IR.ls パターン)
         (defn make-instr [opcode operand]
           (vector-push (vector-push (vector-new 2) opcode) operand))
@@ -106,7 +106,8 @@ fn test_e2e_selfhost_codegen_comparison() {
               (print (vector-get header 3))
 
               0)))
-    "#);
+    "#,
+    );
     // IR: const(1,42), get(10,0), call(40,5)
     // LEB128(5)=[5](1byte), LEB128(300)=[172,2](2bytes), LEB128(16384)=[128,128,1](3bytes)
     // Header: 0,97,115,109
@@ -115,7 +116,6 @@ fn test_e2e_selfhost_codegen_comparison() {
         "1\n42\n10\n0\n40\n5\n1\n5\n2\n172\n2\n3\n128\n128\n1\n0\n97\n115\n109"
     );
 }
-
 
 #[test]
 fn test_e2e_bootstrap_stage1_modules() {
@@ -154,8 +154,7 @@ fn test_e2e_bootstrap_stage1_modules() {
         ),
     ];
 
-    let selfhost_dir =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
+    let selfhost_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
 
     // コンパイラの既知の制限により一部モジュールが未対応:
     // - Lexer.ls: 深いネストの if 式でパースエラー
@@ -175,7 +174,12 @@ fn test_e2e_bootstrap_stage1_modules() {
                     passed += 1;
                 } else if is_known_limitation {
                     // 既知の制限: コンパイル成功したが出力不一致 (前方参照解決後の動作検証は別タスク)
-                    eprintln!("  [既知の制限] {}: 出力不一致 (期待: {:?}, 実際: {:?})", name, expected, output.trim());
+                    eprintln!(
+                        "  [既知の制限] {}: 出力不一致 (期待: {:?}, 実際: {:?})",
+                        name,
+                        expected,
+                        output.trim()
+                    );
                     skipped += 1;
                 } else {
                     failed.push(format!(
@@ -235,12 +239,14 @@ fn test_e2e_bootstrap_stage1_modules() {
 #[test]
 fn test_e2e_stdlib_io_file_exists() {
     // IO.ls の main 関数相当: file-exists? でファイルが存在しないことを確認
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (do
             (print (file-exists? "nonexistent.txt"))
             0))
-    "#);
+    "#,
+    );
     // file-exists? は false (0) を返す
     assert_eq!(result.trim(), "0");
 }
@@ -250,7 +256,8 @@ fn test_e2e_stdlib_io_file_exists() {
 fn test_e2e_stdlib_io_read_file_or() {
     let tmpdir = std::env::temp_dir().join("lsharp_test_io_read_file_or");
     std::fs::create_dir_all(&tmpdir).unwrap();
-    let result = compile_and_run_with_dir(r#"
+    let result = compile_and_run_with_dir(
+        r#"
         (defn read-file-or [path default]
           (if (file-exists? path)
             (read-file path)
@@ -260,7 +267,9 @@ fn test_e2e_stdlib_io_read_file_or() {
             (do
               (print (string-length content))
               0)))
-    "#, &tmpdir);
+    "#,
+        &tmpdir,
+    );
     // "fallback" は 8 文字
     assert_eq!(result.trim(), "8");
     let _ = std::fs::remove_dir_all(&tmpdir);
@@ -271,7 +280,8 @@ fn test_e2e_stdlib_io_read_file_or() {
 /// stdlib/Map.ls の map 基本操作テスト (map-new, map-insert, map-get, map-size)
 #[test]
 fn test_e2e_stdlib_map_basic() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [m (map-new)
                 m1 (map-insert m 1 100)
@@ -281,7 +291,8 @@ fn test_e2e_stdlib_map_basic() {
               (print (map-get m2 1))
               (print (map-get m2 2))
               0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "2\n100\n200");
 }
 
@@ -289,7 +300,8 @@ fn test_e2e_stdlib_map_basic() {
 /// 注意: map-insert/map-remove はインプレース変更のため、元変数も変化する
 #[test]
 fn test_e2e_stdlib_map_operations() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn map-empty? [m] (== (map-size m) 0))
         (defn main []
           (do
@@ -305,7 +317,8 @@ fn test_e2e_stdlib_map_operations() {
                 (let [m2 (map-remove m1 10)]
                   (print (map-size m2)))
                 0))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "1\n0\n1\n0\n0");
 }
 
@@ -314,7 +327,8 @@ fn test_e2e_stdlib_map_operations() {
 fn test_e2e_stdlib_map_get_or() {
     // map-contains? は Bool を返すが、map-get は Int を返すため
     // 型推論の互換性のために match + == パターンを使用
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn map-get-or [m key default]
           (let [has (map-contains? m key)]
             (if (== has 1)
@@ -326,7 +340,8 @@ fn test_e2e_stdlib_map_get_or() {
               (print (map-get-or m 1 0))
               (print (map-get-or m 999 -1))
               0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "42\n-1");
 }
 
@@ -335,7 +350,8 @@ fn test_e2e_stdlib_map_get_or() {
 /// stdlib/Vector.ls の基本操作テスト (vector-new, vector-push, vector-get, vector-length)
 #[test]
 fn test_e2e_stdlib_vector_basic() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn main []
           (let [v (vector-push (vector-push (vector-push (vector-new 4) 1) 2) 3)]
             (do
@@ -344,7 +360,8 @@ fn test_e2e_stdlib_vector_basic() {
               (print (vector-get v 1))
               (print (vector-get v 2))
               0)))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "3\n1\n2\n3");
 }
 
@@ -352,7 +369,8 @@ fn test_e2e_stdlib_vector_basic() {
 /// 注意: vector-push はインプレース変更のため、元変数も変化する
 #[test]
 fn test_e2e_stdlib_vector_empty_and_set() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn vector-empty? [v] (== (vector-length v) 0))
         (defn main []
           (do
@@ -366,14 +384,16 @@ fn test_e2e_stdlib_vector_empty_and_set() {
                 (print (vector-get v2 0))
                 (print (vector-get v2 1))
                 0))))
-    "#);
+    "#,
+    );
     assert_eq!(result.trim(), "1\n0\n99\n20");
 }
 
 /// stdlib/Vector.ls の vector-fold (左畳み込み) と vector-sum テスト
 #[test]
 fn test_e2e_stdlib_vector_fold_sum() {
-    let result = compile_and_run(r#"
+    let result = compile_and_run(
+        r#"
         (defn vector-fold-impl [f acc v i len]
           (if (>= i len)
             acc
@@ -388,7 +408,8 @@ fn test_e2e_stdlib_vector_fold_sum() {
               (print (vector-sum v))
               (print (vector-fold (fn [acc x] (+ acc 1)) 0 v))
               0)))
-    "#);
+    "#,
+    );
     // sum = 10 + 20 + 30 = 60, count = 3
     assert_eq!(result.trim(), "60\n3");
 }
@@ -412,40 +433,44 @@ fn test_e2e_selfhost_lexer_comparison() {
     let mut rust_lexer = lsharp_syntax::lexer::Lexer::new(input);
     let rust_tokens = rust_lexer.tokenize().unwrap();
     // Rust トークンを L# Lexer.ls の種別コードに変換
-    let rust_kinds: Vec<i64> = rust_tokens.iter().map(|t| {
-        use lsharp_syntax::token::TokenKind;
-        match &t.kind {
-            TokenKind::LParen => 0,
-            TokenKind::RParen => 1,
-            TokenKind::LBracket => 2,
-            TokenKind::RBracket => 3,
-            TokenKind::LBrace => 4,
-            TokenKind::RBrace => 5,
-            TokenKind::Int(_) => 10,
-            TokenKind::String(_) => 12,
-            TokenKind::Bool(true) => 13,
-            TokenKind::Bool(false) => 14,
-            TokenKind::Symbol(_) => 20,
-            TokenKind::Defn => 30,
-            TokenKind::Let => 31,
-            TokenKind::If => 32,
-            TokenKind::Match => 33,
-            TokenKind::Type => 34,
-            TokenKind::Fn => 35,
-            TokenKind::Do => 36,
-            TokenKind::Module => 37,
-            TokenKind::Import => 38,
-            TokenKind::Colon => 50,
-            TokenKind::Pipe => 52,
-            TokenKind::Eof => 99,
-            // L# Lexer.ls は以下をサポートしていないため、Symbol 扱い
-            _ => 20,
-        }
-    }).collect();
+    let rust_kinds: Vec<i64> = rust_tokens
+        .iter()
+        .map(|t| {
+            use lsharp_syntax::token::TokenKind;
+            match &t.kind {
+                TokenKind::LParen => 0,
+                TokenKind::RParen => 1,
+                TokenKind::LBracket => 2,
+                TokenKind::RBracket => 3,
+                TokenKind::LBrace => 4,
+                TokenKind::RBrace => 5,
+                TokenKind::Int(_) => 10,
+                TokenKind::String(_) => 12,
+                TokenKind::Bool(true) => 13,
+                TokenKind::Bool(false) => 14,
+                TokenKind::Symbol(_) => 20,
+                TokenKind::Defn => 30,
+                TokenKind::Let => 31,
+                TokenKind::If => 32,
+                TokenKind::Match => 33,
+                TokenKind::Type => 34,
+                TokenKind::Fn => 35,
+                TokenKind::Do => 36,
+                TokenKind::Module => 37,
+                TokenKind::Import => 38,
+                TokenKind::Colon => 50,
+                TokenKind::Pipe => 52,
+                TokenKind::Eof => 99,
+                // L# Lexer.ls は以下をサポートしていないため、Symbol 扱い
+                _ => 20,
+            }
+        })
+        .collect();
 
     // --- L# Lexer.ls (Wasm) でトークン化 ---
     // Lexer.ls の関数群をインラインで定義して実行
-    let lsharp_result = compile_and_run(r#"
+    let lsharp_result = compile_and_run(
+        r#"
         (defn is-ws [c]
           (if (== c 32) true (if (== c 9) true (if (== c 10) true (== c 13)))))
         (defn is-digit-char [c]
@@ -538,7 +563,8 @@ fn test_e2e_selfhost_lexer_comparison() {
               (print len)
               (print-tokens tokens 0 len)
               0)))
-    "#);
+    "#,
+    );
 
     // L# Lexer の出力をパース
     let lsharp_lines: Vec<i64> = lsharp_result
@@ -550,14 +576,19 @@ fn test_e2e_selfhost_lexer_comparison() {
     let lsharp_token_count = lsharp_lines[0] as usize;
     let lsharp_kinds: Vec<i64> = lsharp_lines[1..].to_vec();
 
-    assert_eq!(lsharp_token_count, lsharp_kinds.len(),
-        "L# Lexer: トークン数が一致しない");
+    assert_eq!(
+        lsharp_token_count,
+        lsharp_kinds.len(),
+        "L# Lexer: トークン数が一致しない"
+    );
 
     // Rust Lexer と L# Lexer の結果を比較
-    assert_eq!(rust_kinds, lsharp_kinds,
+    assert_eq!(
+        rust_kinds, lsharp_kinds,
         "Rust Lexer と L# Lexer のトークン種別が一致しない\n\
          Rust: {:?}\nL#:   {:?}\n入力: {:?}",
-        rust_kinds, lsharp_kinds, input);
+        rust_kinds, lsharp_kinds, input
+    );
 }
 
 /// Lexer 比較テスト: キーワード・コメント・文字列を含む入力
@@ -571,38 +602,42 @@ fn test_e2e_selfhost_lexer_comparison_keywords() {
     // --- Rust Lexer ---
     let mut rust_lexer = lsharp_syntax::lexer::Lexer::new(input);
     let rust_tokens = rust_lexer.tokenize().unwrap();
-    let rust_kinds: Vec<i64> = rust_tokens.iter().map(|t| {
-        use lsharp_syntax::token::TokenKind;
-        match &t.kind {
-            TokenKind::LParen => 0,
-            TokenKind::RParen => 1,
-            TokenKind::LBracket => 2,
-            TokenKind::RBracket => 3,
-            TokenKind::LBrace => 4,
-            TokenKind::RBrace => 5,
-            TokenKind::Int(_) => 10,
-            TokenKind::String(_) => 12,
-            TokenKind::Bool(true) => 13,
-            TokenKind::Bool(false) => 14,
-            TokenKind::Symbol(_) => 20,
-            TokenKind::Defn => 30,
-            TokenKind::Let => 31,
-            TokenKind::If => 32,
-            TokenKind::Match => 33,
-            TokenKind::Type => 34,
-            TokenKind::Fn => 35,
-            TokenKind::Do => 36,
-            TokenKind::Module => 37,
-            TokenKind::Import => 38,
-            TokenKind::Colon => 50,
-            TokenKind::Pipe => 52,
-            TokenKind::Eof => 99,
-            _ => 20,
-        }
-    }).collect();
+    let rust_kinds: Vec<i64> = rust_tokens
+        .iter()
+        .map(|t| {
+            use lsharp_syntax::token::TokenKind;
+            match &t.kind {
+                TokenKind::LParen => 0,
+                TokenKind::RParen => 1,
+                TokenKind::LBracket => 2,
+                TokenKind::RBracket => 3,
+                TokenKind::LBrace => 4,
+                TokenKind::RBrace => 5,
+                TokenKind::Int(_) => 10,
+                TokenKind::String(_) => 12,
+                TokenKind::Bool(true) => 13,
+                TokenKind::Bool(false) => 14,
+                TokenKind::Symbol(_) => 20,
+                TokenKind::Defn => 30,
+                TokenKind::Let => 31,
+                TokenKind::If => 32,
+                TokenKind::Match => 33,
+                TokenKind::Type => 34,
+                TokenKind::Fn => 35,
+                TokenKind::Do => 36,
+                TokenKind::Module => 37,
+                TokenKind::Import => 38,
+                TokenKind::Colon => 50,
+                TokenKind::Pipe => 52,
+                TokenKind::Eof => 99,
+                _ => 20,
+            }
+        })
+        .collect();
 
     // --- L# Lexer ---
-    let lsharp_result = compile_and_run(r#"
+    let lsharp_result = compile_and_run(
+        r#"
         (defn is-ws [c]
           (if (== c 32) true (if (== c 9) true (if (== c 10) true (== c 13)))))
         (defn is-digit-char [c]
@@ -682,7 +717,8 @@ fn test_e2e_selfhost_lexer_comparison_keywords() {
               (print len)
               (print-tokens tokens 0 len)
               0)))
-    "#);
+    "#,
+    );
 
     let lsharp_lines: Vec<i64> = lsharp_result
         .trim()
@@ -693,37 +729,40 @@ fn test_e2e_selfhost_lexer_comparison_keywords() {
     let lsharp_token_count = lsharp_lines[0] as usize;
     let lsharp_kinds: Vec<i64> = lsharp_lines[1..].to_vec();
 
-    assert_eq!(lsharp_token_count, lsharp_kinds.len(),
-        "L# Lexer: トークン数が一致しない");
+    assert_eq!(
+        lsharp_token_count,
+        lsharp_kinds.len(),
+        "L# Lexer: トークン数が一致しない"
+    );
 
     // 入力 "(let [x 10] (if true x 0))" の期待トークン:
     // ( let [ x 10 ] ( if true x 0 ) ) EOF
     // 0  31  2 20 10 3  0 32  13  20 10 1  1  99
-    assert_eq!(rust_kinds, lsharp_kinds,
+    assert_eq!(
+        rust_kinds, lsharp_kinds,
         "Rust Lexer と L# Lexer のトークン種別が一致しない\n\
          Rust: {:?}\nL#:   {:?}\n入力: {:?}",
-        rust_kinds, lsharp_kinds, input);
+        rust_kinds, lsharp_kinds, input
+    );
 }
-
 
 #[test]
 fn test_e2e_metadata_example_pass() {
     // :example アノテーション付き関数の自動テスト (成功ケース)
-    let results = run_metadata_tests(
-        r#"(defn add [x y] :example [(= (add 1 2) 3)] (+ x y))"#,
-    );
+    let results = run_metadata_tests(r#"(defn add [x y] :example [(= (add 1 2) 3)] (+ x y))"#);
     assert_eq!(results.len(), 1);
     assert!(results[0].passed, ":example テストが成功するはず");
-    assert_eq!(results[0].kind, lsharp_types::metadata_check::TestKind::Example);
+    assert_eq!(
+        results[0].kind,
+        lsharp_types::metadata_check::TestKind::Example
+    );
     assert!(results[0].error.is_none());
 }
 
 #[test]
 fn test_e2e_metadata_example_fail() {
     // :example アノテーション付き関数の自動テスト (失敗ケース)
-    let results = run_metadata_tests(
-        r#"(defn add [x y] :example [(= (add 1 2) 999)] (+ x y))"#,
-    );
+    let results = run_metadata_tests(r#"(defn add [x y] :example [(= (add 1 2) 999)] (+ x y))"#);
     assert_eq!(results.len(), 1);
     assert!(!results[0].passed, ":example テストが失敗するはず");
     assert!(results[0].error.is_some());
@@ -732,12 +771,18 @@ fn test_e2e_metadata_example_fail() {
 #[test]
 fn test_e2e_metadata_invariant_pass() {
     // :invariant アノテーション付き関数の不変条件検証 (成功ケース)
-    let results = run_metadata_tests(
-        r#"(defn abs [x] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"#,
-    );
+    let results =
+        run_metadata_tests(r#"(defn abs [x] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"#);
     assert_eq!(results.len(), 1);
-    assert!(results[0].passed, ":invariant テストが成功するはず: {:?}", results[0].error);
-    assert_eq!(results[0].kind, lsharp_types::metadata_check::TestKind::Invariant);
+    assert!(
+        results[0].passed,
+        ":invariant テストが成功するはず: {:?}",
+        results[0].error
+    );
+    assert_eq!(
+        results[0].kind,
+        lsharp_types::metadata_check::TestKind::Invariant
+    );
 }
 
 #[test]
@@ -747,8 +792,22 @@ fn test_e2e_metadata_example_and_invariant() {
         r#"(defn abs [x] :invariant (>= result 0) :example [(= (abs 5) 5)] (if (< x 0) (- 0 x) x))"#,
     );
     assert_eq!(results.len(), 2);
-    let invariant_result = results.iter().find(|r| r.kind == lsharp_types::metadata_check::TestKind::Invariant).unwrap();
-    assert!(invariant_result.passed, ":invariant テストが成功するはず: {:?}", invariant_result.error);
-    let example_result = results.iter().find(|r| r.kind == lsharp_types::metadata_check::TestKind::Example).unwrap();
-    assert!(example_result.passed, ":example テストが成功するはず: {:?}", example_result.error);
+    let invariant_result = results
+        .iter()
+        .find(|r| r.kind == lsharp_types::metadata_check::TestKind::Invariant)
+        .unwrap();
+    assert!(
+        invariant_result.passed,
+        ":invariant テストが成功するはず: {:?}",
+        invariant_result.error
+    );
+    let example_result = results
+        .iter()
+        .find(|r| r.kind == lsharp_types::metadata_check::TestKind::Example)
+        .unwrap();
+    assert!(
+        example_result.passed,
+        ":example テストが成功するはず: {:?}",
+        example_result.error
+    );
 }

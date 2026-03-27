@@ -58,11 +58,22 @@ pub struct TypeInfo {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TypeKind {
-    Record { fields: Vec<FieldInfo> },
-    Adt { variants: Vec<VariantInfo> },
-    Alias { target: String },
-    Constrained { base: String, constraints: Vec<String> },
-    Trait { methods: Vec<String> },
+    Record {
+        fields: Vec<FieldInfo>,
+    },
+    Adt {
+        variants: Vec<VariantInfo>,
+    },
+    Alias {
+        target: String,
+    },
+    Constrained {
+        base: String,
+        constraints: Vec<String>,
+    },
+    Trait {
+        methods: Vec<String>,
+    },
 }
 
 /// レコードフィールド情報
@@ -138,8 +149,14 @@ mod tests {
                 name: "Point".to_string(),
                 kind: TypeKind::Record {
                     fields: vec![
-                        FieldInfo { name: "x".to_string(), ty: "Float".to_string() },
-                        FieldInfo { name: "y".to_string(), ty: "Float".to_string() },
+                        FieldInfo {
+                            name: "x".to_string(),
+                            ty: "Float".to_string(),
+                        },
+                        FieldInfo {
+                            name: "y".to_string(),
+                            ty: "Float".to_string(),
+                        },
                     ],
                 },
                 type_params: vec![],
@@ -163,8 +180,14 @@ mod tests {
     fn test_type_kind_variants() {
         let adt = TypeKind::Adt {
             variants: vec![
-                VariantInfo { name: "Some".to_string(), fields: vec!["a".to_string()] },
-                VariantInfo { name: "None".to_string(), fields: vec![] },
+                VariantInfo {
+                    name: "Some".to_string(),
+                    fields: vec!["a".to_string()],
+                },
+                VariantInfo {
+                    name: "None".to_string(),
+                    fields: vec![],
+                },
             ],
         };
         let json = serde_json::to_string(&adt).unwrap();
