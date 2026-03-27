@@ -107,8 +107,8 @@
 
 #### Step 4. `CP-04` Public toolchain parity を閉じる
 
-- [~] [`CLI-02 13 command implementations`](docs/development/planning/phase11-implementation-plan.md#cli-02-13-command-implementations) -- `selfhost/Cli.ls` に 13 サブコマンド名、終了コード API (`exit-code-success`/`exit-code-compile-error`/`exit-code-runtime-error`/`exit-code-unknown-command`)、stdout/stderr 分離 (`cli-stdout`/`cli-stderr`)、`run-command`、`format-subcommand-help` と E2E 6 件は追加済み。さらに `test` handler は `TestRunner` と接続され、`:example` / `:invariant` 抽出、example 実行、invariant materialize、failing example の `runtime-error` 返却 (`test_e2e_selfhost_cli_test_source_metadata_pass`, `test_e2e_selfhost_cli_test_source_metadata_fail`) に加えて `examples:N` / `invariants:N` / `failures:N` の labeled summary も返せる。`parse` は `decls:N` / `first-decl:<name>` / `first-body:<name>` に加えて `diagnostics:0` / `diagnostics:1,P0001@1:1,first-body:unexpected token )` / `unexpected token ]` 形式の token-aware summary text、`check` は builtin 型名 text に加えて `diagnostics:0` / `diagnostics:1,T0001@1:1,first-body:if condition must be Bool` / `undefined symbol` 形式の error-code-aware summary text を返せる。`repl` も `type:Int` / `evals:1` / `input-bytes:17` の warmup session summary を返せる。`parse-diagnostics-count` は recovery 対象 `)` / `]` に対して 1 件を返し、`check-diagnostics-count` は top-level `defn` の型エラーを 1 件として返せる。`compile` / `build` は `wasm-size:<n>` text、`install` は deterministic な dry-run plan text、`lsp` は `sync:full` / `hover:true` / `completion:true` / `definition:true` / `references:true` / `rename:true` / `formatting:true` に加えて `requests:1` / `documents:0` / `source-bytes:0` の shared-state summary text も返し、completion item 自体も text label / insertText を返せる。加えて transport slice として `run-lsp-transport-request` が in-memory JSON-RPC request vector を `Content-Length` frame 付き initialize response / Method not found error に変換でき、`run-lsp-transport-sequence` は shared state 上で initialize→shutdown の複数 request を順に処理して frame 群と request-count summary を返せる。今回さらに source-param 付き `goto-definition` request と `hover` request も framed response に落とせるようになり (`test_e2e_selfhost_cli_lsp_transport_goto_definition_frame`, `test_e2e_selfhost_cli_lsp_transport_hover_frame`)、document lifecycle 側でも `lsp-render-didopen-frame` / `lsp-render-didchange-frame` が deterministic notification frame を返し、shared-state dispatch と組み合わせて didOpen→didChange の source-bytes 更新を観測できる (`test_e2e_selfhost_cli_lsp_transport_didopen_frame`, `test_e2e_selfhost_cli_lsp_transport_document_sequence`)。`main-dispatch` helper も追加され、`run-command` への委譲として parse command surface と help/version/unknown command surface を narrow E2E で固定した (`test_e2e_selfhost_cli_main_dispatch_parse_file`, `test_e2e_selfhost_cli_main_dispatch_command_surface`)。`test_e2e_selfhost_cli_lsp_transport_initialize_frame` / `test_e2e_selfhost_cli_lsp_transport_unknown_method_error` / `test_e2e_selfhost_cli_lsp_transport_sequence_summary` / `cargo run --quiet -- check selfhost/Cli.ls` / main-dispatch 2 件 / goto-definition transport 1 件 / hover transport 1 件が green。`fmt` / `review` / `doc` は deterministic な実テキスト surface を返し、`doc` body は `functions:N,types:M,first-fn:...` / `first-type:...` を含む name-aware summary を返せ、`doc-ack` は `ack:recorded` + title/body、`doc-check` は `status:ok` + title/body を返せる。`review` は unused-let / empty-do に対して count/title/body に加えて `warning` と `L0001@1:1` 形式の code/location text、さらに first diagnostic body 付き summary を stdout に出せる。`generate-review` 由来の diagnostics も severity/line/column/code slot まで持てる。加えて `run-fmt-source` / `run-fmt` は `format-program-with-source` を使うようになり、`test_e2e_selfhost_cli_fmt_source_string_literal` と `cargo run --quiet -- check selfhost/Cli.ls` が green。**ただし** transport を持つ実 stdio server、公開コマンド契約 parity には未達。
-- [~] [`LSP-02 10 method parity`](docs/development/planning/phase11-implementation-plan.md#lsp-02-10-method-parity) / [~] [`LSP-03 Diagnostic ordering`](docs/development/planning/phase11-implementation-plan.md#lsp-03-diagnostic-ordering-and-json-snapshots) -- `selfhost/LspServer.ls` に 10 メソッド名、sort/dedup helper、JSON-RPC helper 相当の関数、diagnostics の deterministic JSON text renderer (`render-diagnostic-json` / `render-diagnostics-json`) と representative snapshot files (`tests/snapshots/lsp/diagnostics/*.json`)・関連 E2E は追加済み。加えて diagnostics は same-span / same-severity tie でも rule/message 順で安定ソートされ、parse/type overlap では parse を優先して 1 件へ潰せる。source param がある場合、top-level `defn` に対する hover/definition/references/rename/completion の source-driven subset と、`parse-program` → `format-program-with-source` を使う canonical formatting (`test_e2e_selfhost_lsp_real_shapes_*`, `test_e2e_selfhost_lsp_real_shapes_formatting_preserves_string_literal`) までは動作し、hover contents は `defn <name>` / `symbol <name>` text、completion item も label / kind / insertText の text surface を返せる。さらに repeated symbol source でも hover range は選択 occurrence に残り、definition は直近の top-level `defn` を優先できる (`test_e2e_selfhost_lsp_real_shapes_definition_prefers_nearest_defn`, `test_e2e_selfhost_lsp_real_shapes_hover_keeps_selected_occurrence_with_repeated_defns`)。今回、shared-state server state は URI→source document map に加えて open URI list を保持するようになり、同一 session 上で複数 `didOpen` 済み document を保持したまま、source param なしの definition/hover/formatting/completion 系が要求 URI に対応する open document を引けるようになった。加えて current document に定義がない場合でも、open 済み別 document 群を走査して cross-document definition/hover を返せる (`test_e2e_selfhost_lsp_runtime_multi_document_state`, `test_e2e_selfhost_lsp_real_shapes_definition_uses_uri_document`, `test_e2e_selfhost_lsp_real_shapes_hover_uses_uri_document`, `test_e2e_selfhost_lsp_real_shapes_definition_resolves_open_document`, `test_e2e_selfhost_lsp_real_shapes_hover_resolves_open_document`)。`initialize` capability summary も references/rename/formatting まで宣言でき、shared-state `server-loop-step` / `server-loop-sequence` により同一 session state 上で複数 request を順に dispatch でき、同一 URI への repeated `didOpen` でも doc-count が増殖しないよう dedup された。initialized/shutdown lifecycle flag も観測でき、bootstrap 側 `JsonRpc.ls` も initialize capability vector / shutdown sentinel に加えて deterministic な JSON-RPC response text (`{"jsonrpc":"2.0","id":...,"result":...}`) と `Content-Length: <n>\r\n\r\n<payload>` framing helper (`render-json-rpc-frame`, `parse-content-length`, `render-initialize-frame`, `render-rpc-error-response-frame`) を返せる。さらに `handle-publish-diagnostics` / `lsp-render-publish-diagnostics-frame` により `textDocument/publishDiagnostics` notification payload を deterministic diagnostics JSON と framed notification へ落とせる (`test_e2e_selfhost_cli_lsp_transport_publish_diagnostics_frame`)。今回 `lsp-render-location-frame` / `lsp-render-hover-frame` も追加され、source-param 付き `goto-definition` と `hover` を `Content-Length` 付き response frame へ落とせるようになった (`test_e2e_selfhost_cli_lsp_transport_goto_definition_frame`, `test_e2e_selfhost_cli_lsp_transport_hover_frame`)。`selfhost_jsonrpc_transport` の 3 件、`cargo run --quiet -- check selfhost/JsonRpc.ls`、`cargo run --quiet -- check selfhost/LspServer.ls` が green。**ただし** imported module の filesystem 解決を伴う真の multi-file/nested resolution、実 stdio を伴う JSON-RPC/LSP parity、より広い stateful transport/session は未達。
+- [~] [`CLI-02 13 command implementations`](docs/development/planning/phase11-implementation-plan.md#cli-02-13-command-implementations) -- `selfhost/Cli.ls` に 13 サブコマンド名、終了コード API (`exit-code-success`/`exit-code-compile-error`/`exit-code-runtime-error`/`exit-code-unknown-command`)、stdout/stderr 分離 (`cli-stdout`/`cli-stderr`)、`run-command`、`format-subcommand-help` と E2E 6 件は追加済み。さらに `test` handler は `TestRunner` と接続され、`:example` / `:invariant` 抽出、example 実行、invariant materialize、failing example の `runtime-error` 返却 (`test_e2e_selfhost_cli_test_source_metadata_pass`, `test_e2e_selfhost_cli_test_source_metadata_fail`) に加えて `examples:N` / `invariants:N` / `failures:N` の labeled summary も返せる。`parse` は `decls:N` / `first-decl:<name>` / `first-body:<name>` に加えて `diagnostics:0` / `diagnostics:1,P0001@1:1,first-body:unexpected token )` / `unexpected token ]` 形式の token-aware summary text、`check` は builtin 型名 text に加えて `diagnostics:0` / `diagnostics:1,T0001@1:1,first-body:if condition must be Bool` / `undefined symbol` 形式の error-code-aware summary text を返せる。`repl` も `type:Int` / `evals:1` / `input-bytes:17` の warmup session summary を返せる。`parse-diagnostics-count` は recovery 対象 `)` / `]` に対して 1 件を返し、`check-diagnostics-count` は top-level `defn` の型エラーを 1 件として返せる。`compile` / `build` は `wasm-size:<n>` text、`install` は deterministic な dry-run plan text、`lsp` は `sync:full` / `hover:true` / `completion:true` / `definition:true` / `references:true` / `rename:true` / `formatting:true` に加えて `requests:1` / `documents:0` / `source-bytes:0` の shared-state summary text も返し、completion item 自体も text label / insertText を返せる。加えて transport slice として `run-lsp-transport-request` が in-memory JSON-RPC request vector を `Content-Length` frame 付き initialize response / Method not found error に変換でき、`run-lsp-transport-sequence` は shared state 上で initialize→shutdown の複数 request を順に処理して frame 群と request-count summary を返せる。今回さらに source-param 付き `goto-definition` / `hover` / `references` / `completion` / `formatting` / `rename` request も framed response に落とせるようになり (`test_e2e_selfhost_cli_lsp_transport_goto_definition_frame`, `test_e2e_selfhost_cli_lsp_transport_hover_frame`, `test_e2e_selfhost_cli_lsp_transport_references_frame`, `test_e2e_selfhost_cli_lsp_transport_completion_frame`, `test_e2e_selfhost_cli_lsp_transport_formatting_frame`, `test_e2e_selfhost_cli_lsp_transport_rename_frame`)、document lifecycle 側でも `lsp-render-didopen-frame` / `lsp-render-didchange-frame` が deterministic notification frame を返し、shared-state dispatch と組み合わせて didOpen→didChange の source-bytes 更新を観測できる (`test_e2e_selfhost_cli_lsp_transport_didopen_frame`, `test_e2e_selfhost_cli_lsp_transport_document_sequence`)。`main-dispatch` helper も追加され、`run-command` への委譲として parse command surface と help/version/unknown command surface を narrow E2E で固定した (`test_e2e_selfhost_cli_main_dispatch_parse_file`, `test_e2e_selfhost_cli_main_dispatch_command_surface`)。加えて actual `main` も debug stub ではなく `command-line-args` / `command-line-arg` ベースで no-args help、`--version` / `-v`、`parse input.ls`、`compile input.ls`、`build input.ls`、`parse --help`、`-h`、`help parse` を argv 経由で処理できるようになった (`test_e2e_selfhost_cli_main_no_args_shows_help`, `test_e2e_selfhost_cli_main_with_args_version`, `test_e2e_selfhost_cli_main_with_args_short_version`, `test_e2e_selfhost_cli_main_with_args_parse_file`, `test_e2e_selfhost_cli_main_with_args_compile_file`, `test_e2e_selfhost_cli_main_with_args_build_file`, `test_e2e_selfhost_cli_main_with_args_subcommand_help`, `test_e2e_selfhost_cli_main_with_args_short_help`, `test_e2e_selfhost_cli_main_with_help_command`)。WASI runner / E2E support 側も argv・dir+argv helper を持ち、actual main surface の narrow verify を回せる。さらに selfhost `Compiler.ls` も `command-line-arg` を builtin opcode `67` として lowering できるようになり、CLI source と compiler builtin table のズレを 1 つ潰した (`test_e2e_selfhost_compiler_command_line_arg_builtin_lowering`)。selfhost `WasmEmit.ls` 側でも opcode `67` が `call 3` に落ちる code section slice と、4-import stage2 module (`__alloc` / `print` / `read-file` / `command-line-arg`) を実際に生成・実行できる bootstrap slice を追加した (`test_e2e_selfhost_wasmemit_command_line_arg_instr`, `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_command_line_arg_program`)。`test_e2e_selfhost_cli_lsp_transport_initialize_frame` / `test_e2e_selfhost_cli_lsp_transport_unknown_method_error` / `test_e2e_selfhost_cli_lsp_transport_sequence_summary` / `cargo run --quiet -- check selfhost/Cli.ls` / main-dispatch 2 件 / actual main argv 9 件 / compiler builtin 1 件 / WasmEmit builtin 1 件 / bootstrap argv parity 1 件 / request transport 6 件が green。`fmt` / `review` / `doc` は deterministic な実テキスト surface を返し、`doc` body は `functions:N,types:M,first-fn:...` / `first-type:...` を含む name-aware summary を返せ、`doc-ack` は `ack:recorded` + title/body、`doc-check` は `status:ok` + title/body を返せる。`review` は unused-let / empty-do に対して count/title/body に加えて `warning` と `L0001@1:1` 形式の code/location text、さらに first diagnostic body 付き summary を stdout に出せる。`generate-review` 由来の diagnostics も severity/line/column/code slot まで持てる。加えて `run-fmt-source` / `run-fmt` は `format-program-with-source` を使うようになり、`test_e2e_selfhost_cli_fmt_source_string_literal` と `cargo run --quiet -- check selfhost/Cli.ls` が green。**ただし** transport を持つ実 stdio server と rich option parsing を含む公開コマンド契約 parity には未達。
+- [~] [`LSP-02 10 method parity`](docs/development/planning/phase11-implementation-plan.md#lsp-02-10-method-parity) / [~] [`LSP-03 Diagnostic ordering`](docs/development/planning/phase11-implementation-plan.md#lsp-03-diagnostic-ordering-and-json-snapshots) -- `selfhost/LspServer.ls` に 10 メソッド名、sort/dedup helper、JSON-RPC helper 相当の関数、diagnostics の deterministic JSON text renderer (`render-diagnostic-json` / `render-diagnostics-json`) と representative snapshot files (`tests/snapshots/lsp/diagnostics/*.json`)・関連 E2E は追加済み。加えて diagnostics は same-span / same-severity tie でも rule/message 順で安定ソートされ、parse/type overlap では parse を優先して 1 件へ潰せる。source param がある場合、top-level `defn` に対する hover/definition/references/rename/completion の source-driven subset と、`parse-program` → `format-program-with-source` を使う canonical formatting (`test_e2e_selfhost_lsp_real_shapes_*`, `test_e2e_selfhost_lsp_real_shapes_formatting_preserves_string_literal`) までは動作し、hover contents は `defn <name>` / `symbol <name>` text、completion item も label / kind / insertText の text surface を返せる。さらに repeated symbol source でも hover range は選択 occurrence に残り、definition は直近の top-level `defn` を優先できる (`test_e2e_selfhost_lsp_real_shapes_definition_prefers_nearest_defn`, `test_e2e_selfhost_lsp_real_shapes_hover_keeps_selected_occurrence_with_repeated_defns`)。今回、shared-state server state は URI→source document map に加えて open URI list を保持するようになり、同一 session 上で複数 `didOpen` 済み document を保持したまま、source param なしの definition/hover/formatting/completion 系が要求 URI に対応する open document を引けるようになった。加えて current document に定義がない場合でも、open 済み別 document 群を走査して cross-document definition/hover を返せる (`test_e2e_selfhost_lsp_runtime_multi_document_state`, `test_e2e_selfhost_lsp_real_shapes_definition_uses_uri_document`, `test_e2e_selfhost_lsp_real_shapes_hover_uses_uri_document`, `test_e2e_selfhost_lsp_real_shapes_definition_resolves_open_document`, `test_e2e_selfhost_lsp_real_shapes_hover_resolves_open_document`)。`initialize` capability summary も references/rename/formatting まで宣言でき、shared-state `server-loop-step` / `server-loop-sequence` により同一 session state 上で複数 request を順に dispatch でき、同一 URI への repeated `didOpen` でも doc-count が増殖しないよう dedup された。initialized/shutdown lifecycle flag も観測でき、bootstrap 側 `JsonRpc.ls` も initialize capability vector / shutdown sentinel に加えて deterministic な JSON-RPC response text (`{"jsonrpc":"2.0","id":...,"result":...}`) と `Content-Length: <n>\r\n\r\n<payload>` framing helper (`render-json-rpc-frame`, `parse-content-length`, `render-initialize-frame`, `render-rpc-error-response-frame`) を返せる。さらに `handle-publish-diagnostics` / `lsp-render-publish-diagnostics-frame` により `textDocument/publishDiagnostics` notification payload を deterministic diagnostics JSON と framed notification へ落とせる (`test_e2e_selfhost_cli_lsp_transport_publish_diagnostics_frame`)。今回 `lsp-render-location-frame` / `lsp-render-hover-frame` / `lsp-render-locations-frame` / `lsp-render-completion-frame` / `lsp-render-formatting-frame` / `lsp-render-rename-frame` も追加され、source-param 付き `goto-definition` / `hover` / `references` / `completion` / `formatting` / `rename` を `Content-Length` 付き response frame へ落とせるようになった (`test_e2e_selfhost_cli_lsp_transport_goto_definition_frame`, `test_e2e_selfhost_cli_lsp_transport_hover_frame`, `test_e2e_selfhost_cli_lsp_transport_references_frame`, `test_e2e_selfhost_cli_lsp_transport_completion_frame`, `test_e2e_selfhost_cli_lsp_transport_formatting_frame`, `test_e2e_selfhost_cli_lsp_transport_rename_frame`)。`selfhost_jsonrpc_transport` の 3 件、`cargo run --quiet -- check selfhost/JsonRpc.ls`、`cargo run --quiet -- check selfhost/LspServer.ls` が green。**ただし** imported module の filesystem 解決を伴う真の multi-file/nested resolution、実 stdio を伴う JSON-RPC/LSP parity、より広い stateful transport/session は未達。
 - [~] [`FMT-01 Formatter roundtrip`](docs/development/planning/phase11-implementation-plan.md#fmt-01-formatter-roundtrip) / [~] [`DOC-01 Schemas and snapshots`](docs/development/planning/phase11-implementation-plan.md#doc-01-schemas-and-snapshots) -- supported subset coverage と決定的 roundtrip/idempotency テスト、`docs/schemas/`、`generate-knowledge` / `generate-review` / `generate-doc-output` / `generate-html` と関連 E2E は追加済み。加えて Formatter は expr 側で `int/bool/string/float/unit/var/apply/if/let/fn/do/match/ann/recordlit/fieldaccess/recordupdate/computation/quote/unquote/unquote-splice`、decl 側で `defn/type/record/type-alias/type-constrained/module/import/trait/impl/computation-builder/defmacro`、pattern 側で `wildcard/var/lit/constructor/record` を canonical text または deterministic fallback なしで返せるようになり、source なしの string/float literal も `""` / `0.0` の fallback canonical text を持つ。追加の slice として `format-program-with-source` / `format-expr-with-source` が入り、source がある場合は string/float literal を span から復元できる。`selfhost_formatter_source_roundtrip` の 2 件、`test_e2e_selfhost_formatter_format_expr_lit_string_fallback`、`test_e2e_selfhost_formatter_format_expr_lit_float_fallback`、`test_e2e_selfhost_cli_fmt_source_string_literal`、`test_e2e_selfhost_lsp_real_shapes_formatting_preserves_string_literal`、`cargo run --quiet -- check selfhost/Formatter.ls` が green。CLI `run-fmt-source` / `run-fmt` はその source-aware canonical text を stdout へ返し、LSP formatting も `parse-program` / `format-program-with-source` 経由で `TextEdit.newText` に canonical text を積める。DocTools/HtmlDoc は function/type entry の deterministic sort に加えて再構成した name text を保持・描画でき、body summary も `first-fn` / `first-type` まで返せ、module decl がある場合は `generate` / `generate-doc-output` の title も `module-<name>` へ寄せられる。`generate-review` も unused-let / empty-do に対して severity/line/column/code 付き diagnostics vector を返せ、unused-let の body は binder 名を含む。CLI `run-doc-source` / `run-doc` は name-aware な title/body を、CLI `run-doc-ack` / `run-doc-check` は status line 付きの title/body を、CLI `run-review-source` / `run-review` は count/title/body に加えて severity と `code@line:column`、さらに first diagnostic body を返せる。**ただし** DocTools の diagnostics を含む full schema/html parity は未達。
 - [~] Step 4 exit gate -- CLI/LSP/FMT/DOC の selfhost source、schema/documentation、proxy tests に加え、`test` metadata 実行、top-level `defn` source-driven LSP subset、CLI `parse/check/repl/lsp` の human-readable text surface、canonical text formatter core、CLI fmt 実テキスト出力、CLI review count/title/body/severity/code-location surface、CLI doc title/body surface、CLI doc-ack/doc-check status text、LSP formatting の `newText` 実テキスト化、`initialize` capability summary の references/rename/formatting 露出、deterministic DocTools/HtmlDoc HTML slice までは完了。`docs/development/planning/compatibility-matrix.md` でも更新対象の selfhost source と関連 test を列挙済み。**ただし** public toolchain parity gate（全コマンド実動作、JSON/LSP transport + snapshot parity、full schema/html）は reopen。
 
@@ -240,45 +240,53 @@
 > **目的**: L# は AI が学習していない言語であるため、パッケージやライブラリを AI がブラックボックスで完璧に利用できる仕組みを構築する。同時に、人間・AI 双方が言語を理解しコードを書ける最小限のドキュメント基盤を整備する。
 >
 > **設計原則**:
-> - AI が `llms.txt` + `api.json` を読むだけで、未知のパッケージを正しく利用できること
-> - パッケージは discoverable / versionable / installable であること
-> - ドキュメントは人間と機械の両方に consumable な形式で提供すること
-> - 既存の lsharp.toml / ModuleGraph / DocTools 基盤を拡張して構築すること
+> - 静的ファイル (llms.txt) に頼らず、**MCP Server (`lsharp-mcp`)** が動的に情報を提供する
+> - AI は MCP 経由で言語仕様・パッケージ API・エラー情報をバージョン指定で取得できる
+> - `lsharp.toml` を読んで使用中パッケージを自動認識し、適切なバージョンの API ドキュメントを返す
+> - MCP 対応ツール (Claude Code, Cursor, Codex, Gemini CLI 等) ならどれでも利用可能
+> - 既存の lsharp.toml / ModuleGraph / DocTools 基盤を拡張して構築する
 >
-> **依存関係**: P12-A (ドキュメント基盤) → P12-B (パッケージコア) → P12-C (配布エコシステム)
-> Phase 11 の bootstrap/parity 作業とは独立して着手可能 (A-1〜A-4 は Phase 11 完了を待たない)
+> **依存関係**: P12-A (AI 連携基盤) → P12-B (パッケージコア) → P12-C (配布エコシステム)
+> Phase 11 の bootstrap/parity 作業とは独立して着手可能
+>
+> **ロードマップ詳細**: `docs/development/planning/phase12-package-ai-ecosystem-roadmap.md`
 
-### P12-A: AI フレンドリードキュメント基盤
+### P12-A: AI 連携基盤 (MCP Server + api.json)
 
-> 最優先サブフェーズ。AI が L# を使えるようにする最短経路。
+> 最優先サブフェーズ。L# エコシステム全体を 1 つの MCP Server で AI に公開する。
 
-- [ ] **A-1. llms.txt テンプレートと生成コマンド**
-  - [ ] L# 言語リファレンステンプレート作成 (構文・型システム・標準ライブラリ一覧の静的テンプレート)
-  - [ ] `lsharp doc --llms` コマンド実装 (テンプレート + パッケージ `[project.ai]` 情報 → llms.txt 生成)
-  - [ ] リポジトリルートに llms.txt を配置し、CI で最新性を検証
-  - 修正対象: `crates/lsharp-driver/src/main.rs`, 新規 `crates/lsharp-driver/src/llms.rs`
-
-- [ ] **A-2. 機械可読 API リファレンス (api.json)**
-  - [ ] `knowledge.schema.json` を拡張 (型シグネチャ・パラメータ `:doc` / `:params` / `:returns`・AI hints フィールド追加)
+- [ ] **A-1. api.json スキーマと生成コマンド**
+  - [ ] `knowledge.schema.json` を拡張 (型シグネチャ・パラメータ `:doc` / `:params` / `:returns` フィールド追加)
   - [ ] `lsharp doc --json` コマンド実装 (AST メタデータ + 型推論結果 → api.json)
   - [ ] `:doc` / `:params` / `:returns` メタデータをコンパイラパイプライン全体で伝搬 (parse → infer → output)
   - 修正対象: `docs/schemas/knowledge.schema.json`, `crates/lsharp-driver/src/main.rs`, 新規 `crates/lsharp-driver/src/api_doc.rs`
 
+- [ ] **A-2. lsharp-mcp Server 実装**
+  - [ ] `lsharp mcp-server` サブコマンド (stdio transport MCP Server)
+  - [ ] `lsharp_language_reference` ツール: L# 構文・型システム・パターンの構造化リファレンスを返す
+  - [ ] `lsharp_project_context` ツール: lsharp.toml を読み、使用中パッケージ + バージョン一覧を返す
+  - [ ] `lsharp_package_api` ツール: 指定パッケージ@バージョンの api.json を返す (ローカル → リモートフォールバック)
+  - [ ] `lsharp_stdlib_api` ツール: stdlib の全/指定モジュール API を返す
+  - [ ] `lsharp_check` ツール: ソースコードの型チェック結果を返す
+  - [ ] `lsharp_compile_run` ツール: コンパイル + 実行結果を返す
+  - [ ] `lsharp_errors` ツール: エラーコードの説明と対処法を返す
+  - [ ] `lsharp_search` ツール: パッケージ検索 (C-1 完了後にリモート対応)
+  - 修正対象: `crates/lsharp-driver/src/main.rs`, 新規 `crates/lsharp-driver/src/mcp_server.rs`
+
 - [ ] **A-3. stdlib 全モジュールのメタデータ整備**
   - [ ] stdlib/ の 11 モジュール (Core, List, Map, Set, Vector, String, Char, IO, Json, Path, Debug) 全てに `:doc` / `:params` / `:returns` を付与
   - [ ] stdlib 用 api.json 生成・検証
-  - [ ] stdlib 情報を llms.txt に統合
+  - [ ] MCP Server の `lsharp_stdlib_api` ツールから正しく返せることを検証
   - 修正対象: `stdlib/*.ls` 全ファイル
 
-- [ ] **A-4. 言語リファレンス (ユーザー向け)**
-  - [ ] `docs/guides/language-reference.md`: 構文・型システム・モジュール・パターンマッチ・トレイト・計算式の簡潔なリファレンス
+- [ ] **A-4. 言語リファレンスとガイド**
+  - [ ] 構造化言語リファレンス JSON (MCP Server の `lsharp_language_reference` が返すデータ)
   - [ ] `docs/guides/quick-start.md`: hello world → fibonacci → ADT → record → module の 5 分チュートリアル
-  - [ ] `docs/guides/ai-guide.md`: AI エージェント向け L# 利用ガイド (import パターン・よくあるエラー・イディオム・型推論のコツ)
+  - [ ] `docs/guides/language-reference.md`: 構文・型・モジュール完全リファレンス (人間向け Markdown 版)
 
 - [ ] **A-5. ドキュメントサイト生成**
   - [ ] `lsharp doc-site` コマンド: book/ + api.json + guides/ → 静的 HTML サイト生成
   - [ ] HtmlTemplate.ls / HtmlLayout.ls パイプラインの拡張 (ガイドページ・API リファレンスページ対応)
-  - [ ] llms.txt をサイトルートに配置
   - [ ] stdlib API リファレンスページ (モジュール毎に関数・型一覧)
 
 ### P12-B: パッケージシステムコア
@@ -288,13 +296,12 @@
 - [ ] **B-1. lsharp.toml スキーマ拡張**
   - [ ] `[project]` に description, license, authors, repository, keywords, lsharp-version フィールド追加
   - [ ] `[project.exports]` セクション: 公開モジュール一覧 (省略時は全モジュール公開)
-  - [ ] `[project.ai]` セクション: summary, capabilities (文字列リスト), conventions, examples-entry
   - [ ] `[dev-dependencies]` セクション
   - [ ] 全フィールド optional (`#[serde(default)]`) で後方互換性維持
   - 修正対象: `crates/lsharp-driver/src/config.rs`
 
 - [ ] **B-2. パッケージディレクトリ規約と lsharp init**
-  - [ ] 標準レイアウト定義文書: `src/`, `examples/`, `tests/`, `docs/`, `lsharp.toml`, `llms.txt`
+  - [ ] 標準レイアウト定義文書: `src/`, `examples/`, `tests/`, `docs/`, `lsharp.toml`
   - [ ] `lsharp init` コマンド: スキャフォールド生成 (lsharp.toml, src/Main.ls, .gitignore)
   - [ ] モジュール→ファイルマッピング: `src/` prefix ルール (lsharp.toml 存在時に ModuleGraph が src/ 配下を探索)
   - 修正対象: `crates/lsharp-driver/src/main.rs`, 新規 `crates/lsharp-driver/src/init.rs`
@@ -316,6 +323,7 @@
   - [ ] `.lsharp/lock.toml` ロックファイル生成 (name, version, source, checksum)
   - [ ] ModuleGraph の検索パスに `.lsharp/packages/` を追加
   - [ ] semver 互換範囲の解決 ("1.0.0" → >=1.0.0, <2.0.0)
+  - [ ] インストール時に `lsharp doc --json` を自動実行し `docs/api.json` を生成 (MCP Server が読む)
   - 修正対象: `crates/lsharp-ir/src/module_graph.rs`, `crates/lsharp-driver/src/config.rs`, 新規 `crates/lsharp-driver/src/resolver.rs`
 
 ### P12-C: パッケージ配布 & エコシステム
@@ -324,11 +332,11 @@
 
 - [ ] **C-1. パッケージレジストリプロトコル**
   - [ ] Phase 1: Git-tag ベースの分散レジストリ (registry なし、Git URL + tag が source of truth)
-  - [ ] Phase 2: static HTTP registry プロトコル定義 (Go module proxy / Deno land 方式)
-  - [ ] パッケージメタデータ形式: `meta.json` (name, version, git, tag, checksum, ai_summary)
+  - [ ] Phase 2: HTTP registry プロトコル定義 (`GET /api/v1/packages/{name}/{version}/api.json` — MCP Server のリモートフォールバック)
+  - [ ] パッケージメタデータ形式: `meta.json` (name, version, git, tag, checksum)
 
 - [ ] **C-2. パッケージ公開と検証**
-  - [ ] `lsharp publish` コマンド: lsharp.toml 検証 + api.json 自動生成 + llms.txt 自動生成
+  - [ ] `lsharp publish` コマンド: lsharp.toml 検証 + api.json 自動生成
   - [ ] 破壊的変更の自動検出 (前バージョンの api.json との diff で型シグネチャ変更・関数削除を検知)
   - [ ] checksum (SHA-256) 生成
 
@@ -337,9 +345,9 @@
   - [ ] semver 違反の自動検出 (関数削除・型変更が minor/patch リリースの場合に警告)
 
 - [ ] **C-4. AI パッケージ検索・理解サポート**
-  - [ ] `lsharp search <query>` コマンド: レジストリからパッケージ検索 (名前・キーワード・ai_summary マッチ)
+  - [ ] `lsharp search <query>` コマンド: レジストリからパッケージ検索 (名前・キーワード・description マッチ)
   - [ ] `lsharp info <package>` コマンド: api.json ベースの関数・型一覧を human-readable に表示
-  - [ ] AI エージェントが `lsharp info` 出力 + llms.txt だけでパッケージを完全に利用可能にする
+  - [ ] MCP Server の `lsharp_search` ツールからリモートレジストリ検索に対応
 
 ---
 
