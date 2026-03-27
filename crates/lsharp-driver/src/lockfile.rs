@@ -1,4 +1,4 @@
-//! lsharp.lock ロックファイルの生成・読み書き
+//! .lsharp/lock.toml ロックファイルの生成・読み書き
 
 use crate::config::{Config, DependencySpec};
 use std::path::Path;
@@ -73,7 +73,7 @@ pub fn generate_lockfile(config: &Config, project_dir: &Path) -> Lockfile {
 
 /// Lockfile を TOML 形式でファイルに書き出す
 pub fn write_lockfile(lockfile: &Lockfile, path: &Path) -> Result<(), String> {
-    let mut out = String::from("# lsharp.lock -- 自動生成。手動編集しないでください。\n\n");
+    let mut out = String::from("# .lsharp/lock.toml -- 自動生成。手動編集しないでください。\n\n");
 
     for entry in &lockfile.entries {
         out.push_str("[[package]]\n");
@@ -193,7 +193,7 @@ mod tests {
     fn test_lockfile_write_read_roundtrip() {
         let tmp = std::env::temp_dir().join("lsharp_lockfile_roundtrip");
         std::fs::create_dir_all(&tmp).unwrap();
-        let lock_path = tmp.join("lsharp.lock");
+        let lock_path = tmp.join("lock.toml");
 
         let lockfile = Lockfile {
             entries: vec![
@@ -256,7 +256,7 @@ mod tests {
     /// 存在しないファイルの読み込みはエラーを返す
     #[test]
     fn test_read_lockfile_not_found() {
-        let result = read_lockfile(Path::new("/nonexistent/lsharp.lock"));
+        let result = read_lockfile(Path::new("/nonexistent/.lsharp/lock.toml"));
         assert!(result.is_err());
     }
 }

@@ -354,7 +354,7 @@ pub fn find_definition(source: &str, position: Position) -> Option<Range> {
 }
 
 /// ソースコードをパース・型チェックし、診断情報を返す
-pub(crate) fn parse_and_check(source: &str) -> Vec<Diagnostic> {
+pub fn parse_and_check(source: &str) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
 
     let program = match lsharp_syntax::parse(source) {

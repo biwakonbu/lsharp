@@ -22,6 +22,10 @@ pub struct Config {
     /// [dependencies] セクション (P9-3)
     #[serde(default)]
     pub dependencies: std::collections::HashMap<String, DependencySpec>,
+
+    /// [dev-dependencies] セクション (Phase 12)
+    #[serde(rename = "dev-dependencies", default)]
+    pub dev_dependencies: std::collections::HashMap<String, DependencySpec>,
 }
 
 /// 依存関係の指定 (P9-3)
@@ -60,6 +64,42 @@ pub struct ProjectConfig {
     /// エントリポイント
     #[serde(default = "default_entry")]
     pub entry: String,
+
+    /// 説明
+    #[serde(default)]
+    pub description: String,
+
+    /// ライセンス
+    #[serde(default)]
+    pub license: String,
+
+    /// 著者
+    #[serde(default)]
+    pub authors: Vec<String>,
+
+    /// リポジトリ
+    #[serde(default)]
+    pub repository: String,
+
+    /// キーワード
+    #[serde(default)]
+    pub keywords: Vec<String>,
+
+    /// 要求する L# バージョン
+    #[serde(rename = "lsharp-version", default)]
+    pub lsharp_version: String,
+
+    /// 公開モジュール設定
+    #[serde(default)]
+    pub exports: ProjectExportsConfig,
+}
+
+/// [project.exports] セクション
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ProjectExportsConfig {
+    #[serde(default)]
+    pub modules: Vec<String>,
 }
 
 fn default_version() -> String {
@@ -507,6 +547,40 @@ name = "test"
 "#;
         let config: Config = toml::from_str(content).unwrap();
         assert!(config.dependencies.is_empty());
+    }
+
+    #[test]
+    fn test_parse_project_metadata_exports_and_dev_dependencies() {
+        let content = r#"
+[project]
+name = "demo"
+version = "0.2.0"
+description = "demo package"
+license = "MIT"
+authors = ["A <a@example.com>"]
+repository = "https://github.com/example/demo"
+keywords = ["demo", "lsharp"]
+lsharp-version = ">=0.2.0"
+
+[project.exports]
+modules = ["Demo", "Demo.Util"]
+
+[dev-dependencies]
+testkit = "0.1.0"
+"#;
+
+        let config: Config = toml::from_str(content).unwrap();
+        assert_eq!(config.project.description, "demo package");
+        assert_eq!(config.project.license, "MIT");
+        assert_eq!(config.project.authors, vec!["A <a@example.com>"]);
+        assert_eq!(config.project.repository, "https://github.com/example/demo");
+        assert_eq!(config.project.keywords, vec!["demo", "lsharp"]);
+        assert_eq!(config.project.lsharp_version, ">=0.2.0");
+        assert_eq!(config.project.exports.modules, vec!["Demo", "Demo.Util"]);
+        assert!(matches!(
+            config.dev_dependencies.get("testkit"),
+            Some(DependencySpec::Version(v)) if v == "0.1.0"
+        ));
     }
 
     #[test]

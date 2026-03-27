@@ -5,12 +5,14 @@
 //! - 検証: `scripts/ci/default-path-smoke.sh` が `target/debug/lsharp` のみで `check` / `compile` を通す。
 
 mod commands;
+mod api_doc;
 mod config;
 mod error;
 mod lockfile;
+mod mcp_server;
 
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 #[derive(Parser)]
@@ -121,6 +123,9 @@ enum Command {
     /// LSP サーバーを起動
     Lsp,
 
+    /// MCP サーバーを起動
+    McpServer,
+
     /// ソースコードをフォーマット
     Fmt {
         /// 入力ファイル
@@ -143,6 +148,10 @@ enum Command {
         /// 出力ファイル (デフォルト: stdout)
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        /// api.json を生成する
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -231,55 +240,17 @@ fn main() -> miette::Result<()> {
             // P0-1: git リポジトリ必須チェック
             check_git_repo(&file)?;
 
-            // lsharp.toml 設定読み込み
-            let project_dir = file.parent().unwrap_or(std::path::Path::new("."));
-            let _config = config::load_config(project_dir);
-
-            // P6: マルチファイルコンパイル対応
-            // ファイルに (import ...) が含まれているか確認し、
-            // あればマルチファイルモードで依存関係を解決する
-            let module = if has_file_imports(&file)? {
-                // マルチファイルコンパイル
-                lsharp_ir::compile_multi_file(&file)
-                    .map_err(|e| miette::miette!("{e}"))?
-            } else {
-                // 単一ファイルコンパイル（従来通り）
-                let source = std::fs::read_to_string(&file)
-                    .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
-                let program = lsharp_syntax::parse(&source)
-                    .map_err(|e| miette::miette!("{e}"))?;
-                let mut infer = lsharp_types::infer::Infer::new();
-                let type_results = infer
-                    .infer_program(&program)
-                    .map_err(|e| miette::miette!("{e}"))?;
-                let mut lower = lsharp_ir::lower::Lower::new();
-                lower
-                    .lower_program(&program, &type_results)
-                    .map_err(|e| miette::miette!("{e}"))?
-            };
-
-            if emit_ir {
-                print!("{}", module.dump());
-                return Ok(());
+            let artifacts = commands::compile::compile_file(&file, output.as_deref(), emit_ir)?;
+            if !emit_ir {
+                let wasm_size = std::fs::metadata(&artifacts.output_path)
+                    .map(|metadata| metadata.len())
+                    .unwrap_or(0);
+                println!(
+                    "コンパイル成功: {} ({} bytes)",
+                    artifacts.output_path.display(),
+                    wasm_size
+                );
             }
-
-            // Wasm コード生成 (WASI モード: wasmtime で直接実行可能)
-            let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
-                .map_err(|e| miette::miette!("{e}"))?;
-
-            // 出力
-            let output_path = output.unwrap_or_else(|| {
-                file.with_extension("wasm")
-            });
-
-            std::fs::write(&output_path, &wasm_bytes)
-                .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
-
-            println!(
-                "コンパイル成功: {} ({} bytes)",
-                output_path.display(),
-                wasm_bytes.len()
-            );
         }
 
         Command::Test { file } => {
@@ -415,12 +386,16 @@ fn main() -> miette::Result<()> {
                 .block_on(lsharp_lsp::run_server());
         }
 
+        Command::McpServer => {
+            mcp_server::run_stdio_server()?;
+        }
+
         Command::Fmt { file, check, write } => {
             commands::fmt::cmd_fmt(&file, check, write)?;
         }
 
-        Command::Doc { file, output } => {
-            cmd_doc(&file, output.as_deref())?;
+        Command::Doc { file, output, json } => {
+            cmd_doc(&file, output.as_deref(), json)?;
         }
     }
 
@@ -923,8 +898,12 @@ version = "0.1.0"
     Ok(())
 }
 
-/// P9-4: ドキュメント生成
-fn cmd_doc(file: &PathBuf, output: Option<&std::path::Path>) -> miette::Result<()> {
+/// P9-4 / P12-A1: ドキュメント生成
+fn cmd_doc(file: &PathBuf, output: Option<&Path>, json: bool) -> miette::Result<()> {
+    if json {
+        return cmd_doc_json(file, output);
+    }
+
     let source = std::fs::read_to_string(file)
         .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
 
@@ -1010,16 +989,76 @@ fn cmd_doc(file: &PathBuf, output: Option<&std::path::Path>) -> miette::Result<(
     Ok(())
 }
 
+fn cmd_doc_json(file: &Path, output: Option<&Path>) -> miette::Result<()> {
+    let (project_root, package, version) = package_identity_for_file(file);
+    let api = if project_root.join("src").is_dir() {
+        api_doc::build_api_doc_for_package(&project_root, &package, &version)?
+    } else {
+        api_doc::build_api_doc_for_file(&package, &version, file)?
+    };
+    let json = serde_json::to_string_pretty(&api)
+        .map_err(|e| miette::miette!("api.json の直列化に失敗: {e}"))?;
+
+    let output_path = output
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| project_root.join("docs").join("api.json"));
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| miette::miette!("{}: {}", parent.display(), e))?;
+    }
+    std::fs::write(&output_path, json)
+        .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
+    println!("Generated {}", output_path.display());
+
+    Ok(())
+}
+
+fn package_identity_for_file(file: &Path) -> (PathBuf, String, String) {
+    let start = file.parent().unwrap_or_else(|| Path::new("."));
+    let project_root = find_project_root(start);
+    let config = config::load_config(&project_root);
+    let package = if config.project.name.is_empty() {
+        file.file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("package")
+            .to_string()
+    } else {
+        config.project.name
+    };
+    let version = if config.project.version.is_empty() {
+        "0.1.0".to_string()
+    } else {
+        config.project.version
+    };
+    (project_root, package, version)
+}
+
+fn find_project_root(start: &Path) -> PathBuf {
+    let mut current = start.to_path_buf();
+    loop {
+        if current.join("lsharp.toml").exists() {
+            return current;
+        }
+        let Some(parent) = current.parent() else {
+            return start.to_path_buf();
+        };
+        if parent == current {
+            return start.to_path_buf();
+        }
+        current = parent.to_path_buf();
+    }
+}
+
 /// 依存パッケージをインストール
 ///
 /// lsharp.toml の [dependencies] セクションを読み込み、
-/// Path 依存はシンボリックリンクで `.lsharp/deps/` に配置する。
+/// Path/Git 依存を `.lsharp/packages/<name>-<hash>/` に配置する。
 fn cmd_install() -> miette::Result<()> {
-    cmd_install_in(std::path::Path::new("."))
+    cmd_install_in(Path::new("."))
 }
 
 /// 指定ディレクトリを基点に依存パッケージをインストール (テスト用に分離)
-fn cmd_install_in(project_dir: &std::path::Path) -> miette::Result<()> {
+fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
     let config = config::load_config_result(project_dir)
         .map_err(|e| miette::miette!("{e}"))?;
 
@@ -1030,10 +1069,11 @@ fn cmd_install_in(project_dir: &std::path::Path) -> miette::Result<()> {
         return Ok(());
     }
 
-    // .lsharp/deps/ ディレクトリを作成
-    let deps_dir = project_dir.join(".lsharp").join("deps");
-    std::fs::create_dir_all(&deps_dir)
-        .map_err(|e| miette::miette!(".lsharp/deps/ の作成に失敗: {e}"))?;
+    // .lsharp/packages/ ディレクトリを作成
+    let lsharp_dir = project_dir.join(".lsharp");
+    let packages_dir = lsharp_dir.join("packages");
+    std::fs::create_dir_all(&packages_dir)
+        .map_err(|e| miette::miette!(".lsharp/packages/ の作成に失敗: {e}"))?;
 
     let mut installed = 0u32;
     let mut skipped = 0u32;
@@ -1054,17 +1094,16 @@ fn cmd_install_in(project_dir: &std::path::Path) -> miette::Result<()> {
                     continue;
                 }
 
-                let link_path = deps_dir.join(name);
+                let abs_resolved = resolved.canonicalize()
+                    .map_err(|e| miette::miette!("パスの正規化に失敗 '{}': {e}", resolved.display()))?;
+                let source_id = dependency_source_string(spec, project_dir);
+                let link_path = installed_package_dir(&packages_dir, name, &source_id);
                 // 既存のシンボリックリンクがあれば削除
                 if link_path.exists() || link_path.symlink_metadata().is_ok() {
                     std::fs::remove_file(&link_path)
                         .or_else(|_| std::fs::remove_dir_all(&link_path))
                         .map_err(|e| miette::miette!("既存リンクの削除に失敗: {e}"))?;
                 }
-
-                // 絶対パスに変換してシンボリックリンク作成
-                let abs_resolved = resolved.canonicalize()
-                    .map_err(|e| miette::miette!("パスの正規化に失敗 '{}': {e}", resolved.display()))?;
 
                 #[cfg(unix)]
                 std::os::unix::fs::symlink(&abs_resolved, &link_path)
@@ -1074,11 +1113,13 @@ fn cmd_install_in(project_dir: &std::path::Path) -> miette::Result<()> {
                 std::fs::copy(&abs_resolved, &link_path)
                     .map_err(|e| miette::miette!("依存コピーに失敗 '{name}': {e}"))?;
 
+                let _ = generate_api_json_for_package(&link_path);
                 println!("  インストール: {name} -> {}", abs_resolved.display());
                 installed += 1;
             }
             config::DependencySpec::Git { git, branch, tag } => {
-                let dep_path = deps_dir.join(name);
+                let source_id = dependency_source_string(spec, project_dir);
+                let dep_path = installed_package_dir(&packages_dir, name, &source_id);
                 if dep_path.exists() {
                     println!("  already installed: {name}");
                     skipped += 1;
@@ -1088,6 +1129,7 @@ fn cmd_install_in(project_dir: &std::path::Path) -> miette::Result<()> {
                 let clone_result = git_clone(git, branch.as_deref(), tag.as_deref(), &dep_path);
                 match clone_result {
                     Ok(()) => {
+                        let _ = generate_api_json_for_package(&dep_path);
                         println!("  インストール: {name} (git: {git})");
                         installed += 1;
                     }
@@ -1108,12 +1150,108 @@ fn cmd_install_in(project_dir: &std::path::Path) -> miette::Result<()> {
 
     // ロックファイルを生成・書き出し
     let lock = lockfile::generate_lockfile(&config, project_dir);
-    let lock_path = project_dir.join("lsharp.lock");
+    std::fs::create_dir_all(&lsharp_dir)
+        .map_err(|e| miette::miette!("{}: {}", lsharp_dir.display(), e))?;
+    let lock_path = lsharp_dir.join("lock.toml");
     lockfile::write_lockfile(&lock, &lock_path)
         .map_err(|e| miette::miette!("{e}"))?;
     println!("ロックファイルを生成しました: {}", lock_path.display());
 
     Ok(())
+}
+
+fn dependency_source_string(
+    spec: &config::DependencySpec,
+    project_dir: &Path,
+) -> String {
+    match spec {
+        config::DependencySpec::Path { path } => {
+            let resolved = project_dir.join(path);
+            let resolved = resolved.canonicalize().unwrap_or(resolved);
+            format!("path:{}", resolved.display())
+        }
+        config::DependencySpec::Git { git, branch, tag } => {
+            let ref_part = if let Some(branch) = branch {
+                format!("?branch={branch}")
+            } else if let Some(tag) = tag {
+                format!("?tag={tag}")
+            } else {
+                String::new()
+            };
+            format!("git:{git}{ref_part}")
+        }
+        config::DependencySpec::Version(version) => format!("registry:{version}"),
+    }
+}
+
+fn installed_package_dir(packages_dir: &Path, name: &str, source_id: &str) -> PathBuf {
+    let hash = stable_hash_hex(source_id);
+    packages_dir.join(format!("{name}-{}", &hash[..8]))
+}
+
+fn stable_hash_hex(input: &str) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in input.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
+
+fn generate_api_json_for_package(package_root: &Path) -> miette::Result<Option<PathBuf>> {
+    if !package_root.join("src").is_dir() {
+        return Ok(None);
+    }
+
+    let config = config::load_config(package_root);
+    let package = if config.project.name.is_empty() {
+        package_root
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("package")
+            .to_string()
+    } else {
+        config.project.name
+    };
+    let version = if config.project.version.is_empty() {
+        "0.1.0".to_string()
+    } else {
+        config.project.version
+    };
+    let api = api_doc::build_api_doc_for_package(package_root, &package, &version)?;
+    let json = serde_json::to_string_pretty(&api)
+        .map_err(|e| miette::miette!("api.json の直列化に失敗: {e}"))?;
+    let docs_dir = package_root.join("docs");
+    std::fs::create_dir_all(&docs_dir)
+        .map_err(|e| miette::miette!("{}: {}", docs_dir.display(), e))?;
+    let output_path = docs_dir.join("api.json");
+    std::fs::write(&output_path, json)
+        .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
+    Ok(Some(output_path))
+}
+
+fn list_installed_package_dirs(project_dir: &Path) -> Vec<PathBuf> {
+    let packages_dir = project_dir.join(".lsharp").join("packages");
+    let Ok(entries) = std::fs::read_dir(packages_dir) else {
+        return Vec::new();
+    };
+    let mut paths: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir() || path.symlink_metadata().is_ok())
+        .collect();
+    paths.sort();
+    paths
+}
+
+fn find_installed_package_dir(project_dir: &Path, name: &str) -> Option<PathBuf> {
+    list_installed_package_dirs(project_dir)
+        .into_iter()
+        .find(|path| {
+            path.file_name()
+                .and_then(|entry| entry.to_str())
+                .is_some_and(|entry| entry.starts_with(&format!("{name}-")))
+        })
 }
 
 /// Git リポジトリをクローンする
@@ -1296,6 +1434,34 @@ mod tests {
     }
 
     #[test]
+    fn test_cmd_doc_json_writes_docs_api_json() {
+        let dir = std::env::temp_dir().join("lsharp_test_doc_json");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(
+            dir.join("lsharp.toml"),
+            "[project]\nname = \"demo\"\nversion = \"0.2.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("src/Geometry.ls"),
+            "(module Geometry)\n(defn add [x y] (+ x y))",
+        )
+        .unwrap();
+
+        let result = cmd_doc_json(&dir.join("src/Geometry.ls"), None);
+        assert!(result.is_ok(), "doc --json は成功するべき: {result:?}");
+
+        let api_path = dir.join("docs").join("api.json");
+        let content = std::fs::read_to_string(&api_path).unwrap();
+        assert!(content.contains("\"package\": \"demo\""));
+        assert!(content.contains("\"version\": \"0.2.0\""));
+        assert!(content.contains("\"name\": \"Geometry\""));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn test_cmd_install_path_dependency() {
         // Path 依存のインストールをテスト
         let base_dir = std::env::temp_dir().join("lsharp_test_install_path_dep");
@@ -1304,11 +1470,16 @@ mod tests {
 
         // 依存先ディレクトリを作成 (lsharp.toml を含む)
         let dep_dir = base_dir.join("mylib");
-        std::fs::create_dir_all(&dep_dir).unwrap();
+        std::fs::create_dir_all(dep_dir.join("src")).unwrap();
         std::fs::write(
             dep_dir.join("lsharp.toml"),
             "[project]\nname = \"mylib\"\n",
         ).unwrap();
+        std::fs::write(
+            dep_dir.join("src/Lib.ls"),
+            "(module Lib)\n(defn helper [] 1)",
+        )
+        .unwrap();
 
         // プロジェクトの lsharp.toml を作成
         std::fs::write(
@@ -1319,9 +1490,17 @@ mod tests {
         let result = cmd_install_in(&base_dir);
         assert!(result.is_ok(), "Path 依存のインストールは成功するべき: {:?}", result);
 
-        // シンボリックリンクが作成されていることを確認
-        let link_path = base_dir.join(".lsharp").join("deps").join("mylib");
-        assert!(link_path.exists(), ".lsharp/deps/mylib が存在するべき");
+        let link_path = find_installed_package_dir(&base_dir, "mylib")
+            .expect(".lsharp/packages/<name>-<hash> が必要");
+        assert!(link_path.exists(), "インストール済み package dir が存在するべき");
+        assert!(
+            dep_dir.join("docs/api.json").exists(),
+            "install 時に docs/api.json を生成するべき"
+        );
+        assert!(
+            base_dir.join(".lsharp").join("lock.toml").exists(),
+            "install 時に .lsharp/lock.toml を生成するべき"
+        );
 
         std::fs::remove_dir_all(&base_dir).unwrap();
     }
@@ -1407,12 +1586,12 @@ mod tests {
             "https://github.com/user/repo.git",
             None,
             None,
-            ".lsharp/deps/repo",
+            ".lsharp/packages/repo-12345678",
         );
         assert_eq!(args, vec![
             "clone", "--depth", "1",
             "https://github.com/user/repo.git",
-            ".lsharp/deps/repo",
+            ".lsharp/packages/repo-12345678",
         ]);
     }
 
@@ -1422,13 +1601,13 @@ mod tests {
             "https://github.com/user/repo.git",
             Some("develop"),
             None,
-            ".lsharp/deps/repo",
+            ".lsharp/packages/repo-12345678",
         );
         assert_eq!(args, vec![
             "clone", "--depth", "1",
             "--branch", "develop",
             "https://github.com/user/repo.git",
-            ".lsharp/deps/repo",
+            ".lsharp/packages/repo-12345678",
         ]);
     }
 
@@ -1438,13 +1617,13 @@ mod tests {
             "https://github.com/user/repo.git",
             None,
             Some("v1.0.0"),
-            ".lsharp/deps/repo",
+            ".lsharp/packages/repo-12345678",
         );
         assert_eq!(args, vec![
             "clone", "--depth", "1",
             "--branch", "v1.0.0",
             "https://github.com/user/repo.git",
-            ".lsharp/deps/repo",
+            ".lsharp/packages/repo-12345678",
         ]);
     }
 
@@ -1455,13 +1634,13 @@ mod tests {
             "https://github.com/user/repo.git",
             Some("main"),
             Some("v1.0.0"),
-            ".lsharp/deps/repo",
+            ".lsharp/packages/repo-12345678",
         );
         assert_eq!(args, vec![
             "clone", "--depth", "1",
             "--branch", "main",
             "https://github.com/user/repo.git",
-            ".lsharp/deps/repo",
+            ".lsharp/packages/repo-12345678",
         ]);
     }
 
@@ -1498,7 +1677,19 @@ mod tests {
         std::fs::create_dir_all(&base_dir).unwrap();
 
         // 依存先ディレクトリを手動で作成 (クローン済みを模擬)
-        let deps_dir = base_dir.join(".lsharp").join("deps").join("mylib");
+        let source_id = dependency_source_string(
+            &config::DependencySpec::Git {
+                git: "https://github.com/user/mylib.git".to_string(),
+                branch: Some("main".to_string()),
+                tag: None,
+            },
+            &base_dir,
+        );
+        let deps_dir = installed_package_dir(
+            &base_dir.join(".lsharp").join("packages"),
+            "mylib",
+            &source_id,
+        );
         std::fs::create_dir_all(&deps_dir).unwrap();
 
         std::fs::write(
@@ -1555,8 +1746,8 @@ git = "https://invalid.example.com/no-such-repo.git"
         assert!(result.is_ok(), "lsharp.toml がない依存先でもエラーにはならないべき");
 
         // シンボリックリンクは作成されない
-        let link_path = base_dir.join(".lsharp").join("deps").join("noconfig");
-        assert!(!link_path.exists(), "lsharp.toml がない依存先にはリンクを作らないべき");
+        let link_path = find_installed_package_dir(&base_dir, "noconfig");
+        assert!(link_path.is_none(), "lsharp.toml がない依存先にはリンクを作らないべき");
 
         std::fs::remove_dir_all(&base_dir).unwrap();
     }

@@ -4,6 +4,39 @@
 //! コンパイル順序の決定（トポロジカルソート）と循環依存の検出を行う。
 
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+
+/// モジュール解決に使う探索パス
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleSearchPaths {
+    pub package_root: PathBuf,
+    pub source_root: PathBuf,
+    pub package_sources: Vec<PathBuf>,
+    pub stdlib_root: Option<PathBuf>,
+}
+
+impl ModuleSearchPaths {
+    pub fn discover(entry_file: &Path) -> Self {
+        let entry_dir = entry_file
+            .parent()
+            .unwrap_or_else(|| Path::new("."));
+        let package_root = find_package_root(entry_dir)
+            .unwrap_or_else(|| entry_dir.to_path_buf());
+        let source_root_candidate = package_root.join("src");
+        let source_root = if source_root_candidate.is_dir() {
+            source_root_candidate
+        } else {
+            entry_dir.to_path_buf()
+        };
+        let package_sources = discover_package_sources(&package_root.join(".lsharp/packages"));
+        Self {
+            source_root,
+            package_root,
+            package_sources,
+            stdlib_root: default_stdlib_root(),
+        }
+    }
+}
 
 /// モジュールグラフ
 #[derive(Debug, Default)]
@@ -320,6 +353,32 @@ impl ModuleGraph {
         None
     }
 
+    pub fn resolve_module_file_with_search_paths(
+        name: &str,
+        search_paths: &ModuleSearchPaths,
+    ) -> Option<std::path::PathBuf> {
+        let candidates = Self::module_name_to_paths(name);
+        for candidate in &candidates {
+            let local = search_paths.source_root.join(candidate);
+            if local.exists() {
+                return Some(local);
+            }
+            for package_source in &search_paths.package_sources {
+                let package_path = package_source.join(candidate);
+                if package_path.exists() {
+                    return Some(package_path);
+                }
+            }
+            if let Some(stdlib_root) = &search_paths.stdlib_root {
+                let stdlib_path = stdlib_root.join(candidate);
+                if stdlib_path.exists() {
+                    return Some(stdlib_path);
+                }
+            }
+        }
+        None
+    }
+
     /// ソースファイルから import を抽出し、依存グラフを構築
     ///
     /// `entry_file` をエントリポイントとし、再帰的に依存ファイルを探索する。
@@ -328,7 +387,7 @@ impl ModuleGraph {
     ) -> Result<(Self, Vec<(String, std::path::PathBuf)>), ModuleGraphError> {
         use std::collections::VecDeque;
 
-        let base_dir = entry_file.parent().unwrap_or(std::path::Path::new("."));
+        let search_paths = ModuleSearchPaths::discover(entry_file);
         let mut graph = Self::new();
         // (モジュール名, ファイルパス) のリスト（トポソ順で返す）
         let mut file_list: Vec<(String, std::path::PathBuf)> = Vec::new();
@@ -356,7 +415,7 @@ impl ModuleGraph {
             // 依存モジュールをキューに追加
             for imp in &imports {
                 if !graph.modules.contains_key(imp) {
-                    if let Some(imp_path) = Self::resolve_module_file(imp, base_dir) {
+                    if let Some(imp_path) = Self::resolve_module_file_with_search_paths(imp, &search_paths) {
                         queue.push_back((imp.clone(), imp_path));
                     } else {
                         return Err(ModuleGraphError::ModuleNotFound {
@@ -452,6 +511,55 @@ impl ModuleGraph {
     /// モジュールノードを取得
     pub fn get_module(&self, name: &str) -> Option<&ModuleNode> {
         self.modules.get(name)
+    }
+}
+
+fn find_package_root(start: &Path) -> Option<PathBuf> {
+    let mut current = start.to_path_buf();
+    loop {
+        if current.join("lsharp.toml").exists() {
+            return Some(current);
+        }
+        let Some(parent) = current.parent() else {
+            return None;
+        };
+        if parent == current {
+            return None;
+        }
+        current = parent.to_path_buf();
+    }
+}
+
+fn discover_package_sources(base: &Path) -> Vec<PathBuf> {
+    let mut sources = Vec::new();
+    if !base.exists() {
+        return sources;
+    }
+    let Ok(entries) = std::fs::read_dir(base) else {
+        return sources;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path().join("src");
+        if path.is_dir() {
+            sources.push(path);
+        }
+    }
+    sources.sort();
+    sources
+}
+
+fn default_stdlib_root() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("LSHARP_STDLIB_PATH") {
+        let path = PathBuf::from(path);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../stdlib");
+    if bundled.exists() {
+        Some(bundled)
+    } else {
+        None
     }
 }
 
@@ -811,6 +919,86 @@ mod resolve_tests {
 
         let result = ModuleGraph::build_from_entry(&dir.join("main.ls"));
         assert!(result.is_err());
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_build_from_entry_prefers_package_src_root() {
+        let dir = std::env::temp_dir().join("lsharp_build_package_src_root");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::create_dir_all(dir.join("examples/demo")).unwrap();
+        std::fs::write(dir.join("lsharp.toml"), "[project]\nname=\"demo\"\n").unwrap();
+        std::fs::write(
+            dir.join("src/Utils.ls"),
+            "(module Utils)\n(defn helper [x] (+ x 1))",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("examples/demo/Main.ls"),
+            "(module Main)\n(import Utils)\n(defn main [] (helper 1))",
+        )
+        .unwrap();
+
+        let (graph, files) = ModuleGraph::build_from_entry(&dir.join("examples/demo/Main.ls")).unwrap();
+        assert_eq!(graph.len(), 2);
+        assert!(files.iter().any(|(name, path)| name == "Utils" && path.ends_with("src/Utils.ls")));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_resolve_module_file_with_search_paths_uses_packages_then_stdlib() {
+        let dir = std::env::temp_dir().join("lsharp_resolve_search_paths");
+        let _ = std::fs::remove_dir_all(&dir);
+        let pkg_src = dir.join(".lsharp/packages/demo-123/src");
+        let stdlib = dir.join("custom-stdlib");
+        std::fs::create_dir_all(&pkg_src).unwrap();
+        std::fs::create_dir_all(&stdlib).unwrap();
+        std::fs::write(pkg_src.join("Helpers.ls"), "(module Helpers)\n(defn helper [] 1)").unwrap();
+        std::fs::write(stdlib.join("List.ls"), "(module List)\n(defn length [xs] 0)").unwrap();
+
+        let search_paths = ModuleSearchPaths {
+            package_root: dir.clone(),
+            source_root: dir.join("src"),
+            package_sources: vec![pkg_src],
+            stdlib_root: Some(stdlib.clone()),
+        };
+
+        let pkg_result = ModuleGraph::resolve_module_file_with_search_paths("Helpers", &search_paths);
+        let stdlib_result = ModuleGraph::resolve_module_file_with_search_paths("List", &search_paths);
+
+        assert!(pkg_result.as_ref().is_some_and(|path| path.ends_with("Helpers.ls")));
+        assert!(stdlib_result.as_ref().is_some_and(|path| path.ends_with("List.ls")));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_build_from_entry_resolves_packages_from_project_root() {
+        let dir = std::env::temp_dir().join("lsharp_build_project_root_packages");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("examples/demo")).unwrap();
+        std::fs::create_dir_all(dir.join(".lsharp/packages/pkg-123/src")).unwrap();
+        std::fs::write(dir.join("lsharp.toml"), "[project]\nname=\"demo\"\n").unwrap();
+        std::fs::write(
+            dir.join(".lsharp/packages/pkg-123/src/Helpers.ls"),
+            "(module Helpers)\n(defn helper [] 1)",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("examples/demo/Main.ls"),
+            "(module Main)\n(import Helpers)\n(defn main [] (helper))",
+        )
+        .unwrap();
+
+        let (graph, files) = ModuleGraph::build_from_entry(&dir.join("examples/demo/Main.ls")).unwrap();
+
+        assert_eq!(graph.len(), 2);
+        assert!(files.iter().any(|(name, path)| {
+            name == "Helpers" && path.ends_with(".lsharp/packages/pkg-123/src/Helpers.ls")
+        }));
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

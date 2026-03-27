@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "L# Package API Document",
+  "type": "object",
+  "required": ["package", "version", "modules"],
+  "properties": {
+    "package": { "type": "string" },
+    "version": { "type": "string" },
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "functions", "types"],
+        "properties": {
+          "name": { "type": "string" },
+          "doc": { "type": ["string", "null"] },
+          "functions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "signature", "params", "returns"],
+              "properties": {
+                "name": { "type": "string" },
+                "signature": { "type": "string" },
+                "params": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["name", "type"],
+                    "properties": {
+                      "name": { "type": "string" },
+                      "type": { "type": "string" },
+                      "doc": { "type": ["string", "null"] }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "returns": {
+                  "type": "object",
+                  "required": ["type"],
+                  "properties": {
+                    "type": { "type": "string" },
+                    "doc": { "type": ["string", "null"] }
+                  },
+                  "additionalProperties": false
+                },
+                "doc": { "type": ["string", "null"] },
+                "example": { "type": ["string", "null"] }
+              },
+              "additionalProperties": false
+            }
+          },
+          "types": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "kind"],
+              "properties": {
+                "name": { "type": "string" },
+                "kind": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

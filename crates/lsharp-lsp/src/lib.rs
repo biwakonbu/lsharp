@@ -1,3 +1,5 @@
+mod analysis;
+mod completion;
 mod format;
 mod references;
 mod rename;
@@ -11,8 +13,14 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 
 // 公開 API の再エクスポート
+pub use tower_lsp::lsp_types::{
+    CompletionItem, Hover, HoverContents, MarkedString, Position, Range,
+};
 pub use format::format_source;
 pub use references::find_references;
+pub use analysis::hover as analyze_hover;
+pub use completion::complete as analyze_completion;
+pub use util::parse_and_check;
 pub use util::find_definition;
 
 /// L# 言語サーバーのバックエンド
@@ -55,6 +63,7 @@ impl LanguageServer for LsharpBackend {
                     TextDocumentSyncKind::FULL,
                 )),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
+                completion_provider: Some(CompletionOptions::default()),
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
                 rename_provider: Some(OneOf::Right(RenameOptions {
@@ -97,11 +106,26 @@ impl LanguageServer for LsharpBackend {
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
-        let _uri = params.text_document_position_params.text_document.uri;
-        let _position = params.text_document_position_params.position;
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
 
-        // TODO: URI からソースを取得してホバー情報を返す
-        Ok(None)
+        Ok(self
+            .get_source(&uri)
+            .and_then(|source| analysis::hover(&source, position)))
+    }
+
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let items = self
+            .get_source(&uri)
+            .map(|source| completion::complete(&source, position, &[]))
+            .unwrap_or_default();
+        if items.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(CompletionResponse::Array(items)))
+        }
     }
 
     async fn goto_definition(
@@ -264,6 +288,7 @@ mod tests {
                 TextDocumentSyncKind::FULL,
             )),
             hover_provider: Some(HoverProviderCapability::Simple(true)),
+            completion_provider: Some(CompletionOptions::default()),
             definition_provider: Some(OneOf::Left(true)),
             references_provider: Some(OneOf::Left(true)),
             rename_provider: Some(OneOf::Right(RenameOptions {
@@ -275,6 +300,8 @@ mod tests {
             document_formatting_provider: Some(OneOf::Left(true)),
             ..Default::default()
         };
+        assert!(capabilities.hover_provider.is_some());
+        assert!(capabilities.completion_provider.is_some());
         assert!(capabilities.definition_provider.is_some());
         assert!(capabilities.references_provider.is_some());
         assert!(capabilities.rename_provider.is_some());
