@@ -646,7 +646,7 @@
 
 - Goal: native 配布物だけで Quick Start が完走する配布形を固定する。
 - Current state: package shape と smoke path が未完成。
-- Rust source: `docs/development/operations/release-operations-spec.md`, `docs/development/planning/toolchain-parity-spec.md`
+- Rust source: `docs/development/operations/release-distribution-signing.md`, `docs/development/planning/toolchain-parity-spec.md`
 - L# target: `scripts/ci/release-smoke.sh`, `scripts/smoke_test_readme.sh`, release workflow
 - Implementation direction: 配布アーカイブ内容は `lsharp`, `lsharp-lsp`, `README.md`, `LICENSE`, `checksums.txt`, `CHANGELOG.md` に固定し、Quick Start smoke は展開後 `--version -> check -> build/test/run` を自動化する。
 - Dependencies: `CLI-02`, `LSP-02`, `OPS-06`
@@ -794,7 +794,7 @@
 
 - Goal: native release の build/sign/checksum/changelog を自動化する。
 - Current state: `scripts/release-playbook.sh` は release binary を作り、`compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用して smoke まで回せる。**ただし** tag push 起点の release workflow、署名、checksum / changelog 自動生成は未接続。
-- Rust source: `docs/development/operations/release-playbook.md`
+- Rust source: `docs/development/operations/release-playbook.md`, `docs/development/operations/release-distribution-signing.md`
 - L# target: release workflow, `scripts/generate-changelog.sh`, `scripts/ci/verify-signature.sh`
 - Implementation direction: stable/nightly の 2 チャネルを固定し、release は `version bump -> CI -> artifact -> checksum -> signing -> smoke -> tag -> GitHub Release` の順に自動化する。
 - Dependencies: `PKG-01`, `OPS-01`
@@ -856,7 +856,7 @@
 
 - Goal: Homebrew/apt/scoop 等の package manager 配布を整備する。
 - Current state: v1 は公式アーカイブのみ。
-- Rust source: `docs/development/planning/toolchain-parity-spec.md`, `docs/development/operations/release-operations-spec.md`
+- Rust source: `docs/development/planning/toolchain-parity-spec.md`, `docs/development/operations/release-distribution-signing.md`
 - L# target: formula/manifests
 - Implementation direction: package manager manifest は release artifact を正本とし、checksum と署名検証を流用する。
 - Dependencies: `PKG-01`, `OPS-06`
@@ -868,7 +868,7 @@
 
 - Goal: Linux aarch64 を tier2 常設へ上げる。
 - Current state: v1 tier1 対象外。
-- Rust source: `docs/development/operations/release-operations-spec.md`
+- Rust source: `docs/development/operations/release-distribution-signing.md`
 - L# target: release workflow
 - Implementation direction: cross build descriptor と smoke test を追加し、artifact 名と checksum 規則は tier1 と同一にする。
 - Dependencies: `PKG-01`
@@ -880,7 +880,7 @@
 
 - Goal: Windows 配布物へ Authenticode 署名を導入する。
 - Current state: v1 は Windows 署名なし。
-- Rust source: `docs/development/operations/release-operations-spec.md`
+- Rust source: `docs/development/operations/release-distribution-signing.md`
 - L# target: Windows release workflow
 - Implementation direction: signing secret と verify step を release pipeline へ追加し、zip 内 `.exe` に署名済み stamp を残す。
 - Dependencies: `PKG-01`, `OPS-06`

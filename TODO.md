@@ -209,10 +209,10 @@
 
 ### P11-2e 完了条件フォローアップ
 
-- [~] [P11-2e-2 Documentation completion](docs/development/planning/completion-criteria.md#p11-2e-2-ドキュメント完了条件) -- `TODO.md` の主要バックログとは別に、完了条件上は README / book / 配布運用 docs の同期が残っている。**ただし** 現時点では `README.md` の multi-backend アーキテクチャ図、`book/` の selfhosting 章、CI/配布/署名/クロスビルド手順の一本化は未着手。
-  - [ ] README アーキテクチャ図を Wasm 単独前提から multi-backend 前提へ更新し、native backend の分岐・関連モジュール・ビルド手順を反映する。
-  - [ ] `book/` の selfhosting 章に native backend 設計、`stage0 -> stage1 -> stage2 -> stage3` bootstrap、fixed-point 検証、Wasm/backend の使い分けを追記する。
-  - [ ] CI/配布/署名/クロスビルド手順を `docs/` 配下へ一本化し、job graph / release / signing / tier1/tier2 cross-build の記述重複を解消する。
+- [x] [P11-2e-2 Documentation completion](docs/development/planning/completion-criteria.md#p11-2e-2-ドキュメント完了条件) -- `TODO.md` の主要バックログとは別に、完了条件上で残っていた README / book / 配布運用 docs の同期は完了。`README.md` の multi-backend アーキテクチャ図、`book/` の selfhosting 章、CI/配布/署名/クロスビルド手順の `docs/` 配下への一本化を反映済み。
+  - [x] README アーキテクチャ図を Wasm 単独前提から multi-backend 前提へ更新し、native backend の分岐・関連モジュール・ビルド手順を反映する。 (`README.md` に backend split、関連 crate / selfhost module、`target/debug/lsharp` / `LSHARP_PATH` / `scripts/ci/compile-phase11-inputs.sh` を追記)
+  - [x] `book/` の selfhosting 章に native backend 設計、`stage0 -> stage1 -> stage2 -> stage3` bootstrap、fixed-point 検証、Wasm/backend の使い分けを追記する。 (`book/ch15-selfhosting.md` に multi-backend 設計、4 段 bootstrap、fixed-point 2 段検証、Wasm/Native の用途表を追記)
+  - [x] CI/配布/署名/クロスビルド手順を `docs/` 配下へ一本化し、job graph / release / signing / tier1/tier2 cross-build の記述重複を解消する。 (`docs/development/operations/release-distribution-signing.md` を正本にし、CI / release / v2 design 群から参照整理)
 
 - [~] [P11-2e-3 Pre-removal gates](docs/development/planning/completion-criteria.md#p11-2e-3-撤去前ゲート) -- Rust 撤去前 gate は `TODO.md` の機能バックログとは別に管理が必要。**ただし** Rust 無効化安定期間、native-only RC、rollback review/tag の証跡は未完了。
   - [ ] Rust 無効化状態で 2 週間の mainline CI 安定期間を開始し、開始日と経過を CHANGELOG または ADR に記録する。

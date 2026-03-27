@@ -1,12 +1,16 @@
 # リリースプレイブック
 
-L# のリリース手順を定義する。自動化スクリプト `scripts/release-playbook.sh` と連携して使用する。
+L# の **手元実行手順** を定義する。配布チャネル、tier1/tier2、署名、package manager 方針の正本は [`release-distribution-signing.md`](./release-distribution-signing.md)。このページは自動化スクリプト `scripts/release-playbook.sh` と並走するオペレーター向け runbook に絞る。
 
 ## 概要
 
 ```
 バージョンバンプ → CI 検証 → アーティファクト生成 → チェックサム → タグ作成 → GitHub Release
 ```
+
+- channel / target matrix は `release-distribution-signing.md`
+- artifact retention は `artifact-policy.md`
+- CI gate は `ci-gate-v2-job-graph.md`
 
 ## 手順
 
@@ -49,6 +53,8 @@ vim Cargo.toml   # version = "0.x.y"
 | release playbook 検証成果物 | `target/release-playbook/` 以下の bootstrap / smoke 出力 |
 | チェックサム | SHA-256 チェックサムファイル |
 
+配布対象の tier1 / tier2 切り分けと命名規則は `release-distribution-signing.md` と `artifact-policy.md` を参照。
+
 ### 4. チェックサム生成
 
 ```bash
@@ -76,25 +82,7 @@ git push origin v<version>
 4. アーティファクトをアップロード
 5. チェックサムファイルを添付
 
-## リリースチャネル
-
-| チャネル | 頻度 | 説明 |
-|----------|------|------|
-| **stable** | 月次〜四半期 | 全テスト通過 + 2 週間の RC 期間 |
-| **nightly** | 日次 | main ブランチの HEAD ビルド。安定性保証なし |
-
-### Stable リリース基準
-
-- 全 CI ジョブ（`ci-gate-v2`）が pass
-- RC 期間中に致命的バグ報告なし
-- パフォーマンス回帰なし（ベンチマーク比較）
-- ドキュメント更新完了
-
-### Nightly ビルド
-
-- `main` への push 毎に自動生成
-- タグ: `nightly-{date}` (例: `nightly-2026-01-15`)
-- 保持期間: 7 日
+stable / nightly の扱い、署名順序、package manager 更新順は `release-distribution-signing.md` を参照。
 
 ## ロールバック
 

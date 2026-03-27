@@ -1,6 +1,6 @@
 # CI Gate v2 ジョブグラフ
 
-CI パイプラインのジョブ依存関係と保護ルールを定義する。
+CI パイプラインのジョブ依存関係と保護ルールの正本。release / distribution / signing / tier1/tier2 は [`release-distribution-signing.md`](./release-distribution-signing.md) に分離し、この文書では blocking CI graph に集中する。
 
 ## ジョブ依存関係
 

@@ -78,7 +78,7 @@ Phase 11-2 (Native backend + bootstrap) の完了を判定するための条件�
 - AOT backend 導入後も既存 Wasm backend の E2E テストが全件パスすること
 - E2E テスト: `crates/lsharp-wasm/tests/e2e.rs` の全テストケース
 - 新規テスト追加により E2E テスト数が減少していないこと
-- **達成**: E2E 516 passed / 1 ignored（GC soak `#[ignore]`）。テスト数は単調増加を維持。
+- **達成**: E2E harness は `cargo test -p lsharp-wasm --test e2e -- --list` で 683 tests を列挙し、GC soak `#[ignore]` は 2 件（`test_e2e_gc_compile_run_loop_1000`, `test_e2e_gc_repl_soak_500_eval`）。テスト数は単調増加を維持。
 
 ---
 

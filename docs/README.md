@@ -15,7 +15,7 @@
 ## ディレクトリ構成
 
 - `language/` -- 実装済み、または v1 契約として扱う言語 / runtime / backend の仕様
-- `development/` -- Phase 11 の計画、検証、運用
+- `development/` -- Phase 11 の計画、検証、運用（CI / release / distribution / signing を含む）
 - `adr/` -- 意思決定ログ（JSONL）
 - `guides/` -- 利用者向けチュートリアル / マニュアル（現状はプレースホルダ）
 - `schemas/` -- ドキュメント生成・レビュー管理用の JSON Schema

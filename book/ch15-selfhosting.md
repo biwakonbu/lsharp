@@ -4,17 +4,19 @@
 
 コンパイラのセルフホスティング (self-hosting) とは、コンパイラを自身がコンパイルする言語で書くことである。C コンパイラは C で書かれ、Rust コンパイラは Rust で書かれている。
 
-ブートストラップの過程は以下のようになる:
+ブートストラップの正本フローは以下のようになる:
 
 ```
 Stage 0: 既存のコンパイラ (Rust 版 L# コンパイラ)
-    ↓ コンパイル
+    ↓ selfhost/*.ls をコンパイル
 Stage 1: L# で書かれた L# コンパイラ (stage1.wasm)
-    ↓ stage1.wasm でコンパイル
+    ↓ stage1.wasm で selfhost/*.ls を再コンパイル
 Stage 2: stage1 が生成した L# コンパイラ (stage2.wasm)
+    ↓ stage2.wasm で selfhost/*.ls を再コンパイル
+Stage 3: stage2 が生成した L# コンパイラ (stage3.wasm)
 ```
 
-`stage1.wasm == stage2.wasm` が成立すれば、コンパイラは正しくセルフコンパイルできたことになる (固定点の検証)。
+この章では Wasm backend による `stage0 -> stage1 -> stage2 -> stage3` を bootstrap の正本とみなす。固定点の成立条件は `stage2.wasm == stage3.wasm` であり、stage1 は「Rust 実装が L# 実装を起動できること」の確認、stage2/stage3 は「L# 実装だけで自己再生成が閉じること」の確認を担う。
 
 ## なぜセルフホスティングを行うのか
 
@@ -34,6 +36,25 @@ L# コンパイラの Rust 実装は約 18,000 行ある。これを一度に L#
 1. 各コンパイラフェーズを個別の L# モジュールとして実装
 2. 各モジュールを Rust 版の出力と比較テスト
 3. 全モジュールを統合して stage1 を生成
+
+### Native backend を含む multi-backend 設計
+
+Phase 11 のセルフホスト化では、selfhost compiler の frontend / lowering を 1 つに保ち、その後段だけを backend ごとに分岐させる。用語は `docs/language/backend-boundary.md` に合わせ、`FrontendResult -> LoweredModule -> CodegenArtifact` の 3 層で責務を固定する。
+
+```text
+Source (.ls)
+  -> FrontendResult
+  -> LoweredModule
+  -> CodegenArtifact
+       |- WasmArtifact
+       `- NativeArtifact
+```
+
+- **Wasm backend** は `LoweredModule` から決定的な `.wasm` を生成し、bootstrap と fixed-point 検証の正本を担う
+- **Native backend** は同じ `LoweredModule` から `program.o` / `runtime.o` / `linker-response.txt` / `program.native` を生成し、配布とローカル実行を担う
+- backend 固有の ABI、section、relocation、linker 連携は codegen に閉じ込め、frontend や lowering へ漏らさない
+
+この設計により、「selfhost compiler の意味」は共通 IR で 1 回だけ定義し、Wasm と Native の違いは最終成果物の作り方に限定できる。セルフホスト章では Wasm を bootstrap の基準線、Native を完成後の常用 backend として扱う。
 
 ### 整数タグ方式の採用
 
@@ -219,6 +240,20 @@ Wasm バイナリは以下のセクションで構成される:
 
 Main.ls は 288 行と最大のファイルで、Token/AST/IR/Compiler/WasmEmit モジュールの定義を統合し、E2E テストで検証される。
 
+## Wasm backend と Native backend の使い分け
+
+セルフホスト化では、両 backend は競合するのではなく役割分担する。
+
+| 用途 | 主に使う backend | 理由 |
+|------|------------------|------|
+| stage0 -> stage1 -> stage2 -> stage3 bootstrap | Wasm | 出力が決定的で、`stage2.wasm == stage3.wasm` を byte 単位で比較しやすい |
+| fixed-point 検証と CI の正本比較 | Wasm | section / symbol / data の差分を機械的に回収しやすい |
+| 日常開発での高速なローカル実行 | Native | `program.native` を直接起動でき、WASI runner への依存を減らせる |
+| エンドユーザー向け配布 | Native | プラットフォーム別バイナリを配布でき、CLI/LSP/REPL を単独実行しやすい |
+| backend 間の観測差分チェック | Wasm + Native | 同じ `LoweredModule` から生成した結果を比較し、exit code / stdout / stderr / 生成物 / diagnostics の一致を確認する |
+
+実装順序としては、まず Wasm backend で bootstrap 閉路を安定化し、その後 Native backend に同じ `LoweredModule` を食べさせて self-regeneration と配布経路を閉じる。つまり Wasm は「検証の物差し」、Native は「常用・配布の出口」である。
+
 ## 既知の制限
 
 現在のセルフホストコンパイラにはいくつかの制限がある:
@@ -256,11 +291,24 @@ fn test_selfhost_main_pipeline() { ... }
 fn test_selfhost_main_ast_to_wasm() { ... }
 ```
 
-現在の到達点:
+fixed-point 検証の設計は次の 2 段構えである。
+
+1. **Wasm bootstrap の正本検証**
+   - `stage0 -> stage1.wasm -> stage2.wasm -> stage3.wasm` を生成する
+   - 固定点条件は `stage2.wasm == stage3.wasm`
+   - 不一致時は raw wasm bytes, exported symbol list, data section bytes, compiler diagnostics の 4 層に分けて原因を切り分ける
+2. **Native backend の追従検証**
+   - `stage1-native -> stage2-native -> stage3-native` を生成し、stage2-native と stage3-native の観測値が一致することを確認する
+   - Wasm/native differential test では exit code、stdout、stderr、generated file bytes、diagnostics JSON の 5 観測点を比較する
+
+このため、セルフホスト化の「完了」は単に stage1 が動くことではなく、Wasm 側で fixed-point が閉じ、Native 側でも同じ compiler core を使って自己再生成と差分ゼロ検証が通ることを意味する。
+
+現時点の到達点:
 
 - Rust 版コンパイラが selfhost/*.ls をコンパイルして stage1.wasm を生成できる
 - stage1.wasm が簡単なプログラム (整数演算、条件分岐) をコンパイルできる
-- stage2.wasm の生成 (完全なセルフコンパイル) は今後の目標
+- 最小 subset では `stage1.wasm -> stage2.wasm` の実生成まで確認されている
+- full input set に対する `stage2.wasm == stage3.wasm` の固定点成立と `stage1-native -> stage2-native -> stage3-native` の自己再生成は、引き続き Phase 11 の完了条件として追跡中である
 
 ## セルフホスティングから見える言語の課題
 
