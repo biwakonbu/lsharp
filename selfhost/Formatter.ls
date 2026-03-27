@@ -40,6 +40,12 @@
 (defn format-lit-bool [value]
   (if (= value 0) "false" "true"))
 
+(defn format-lit-string-fallback []
+  "\"\"")
+
+(defn format-lit-float-fallback []
+  "0.0")
+
 ;; unit リテラルのフォーマット
 (defn format-lit-unit []
   "()")
@@ -540,7 +546,7 @@
   (let [tag (vector-get expr 0)]
     (if (= tag 1) (format-lit-int (vector-get expr 1))
     (if (= tag 2) (format-lit-bool (vector-get expr 1))
-    (if (= tag 3) (format-unsupported-expr tag)
+    (if (= tag 3) (format-lit-string-fallback)
     (if (= tag 4) (format-var (vector-get expr 1))
     (if (= tag 5) (format-apply expr indent-level)
     (if (= tag 6) (format-if expr indent-level)
@@ -556,7 +562,7 @@
     (if (= tag 16) (string-concat "'" (format-expr (vector-get expr 1) indent-level))
     (if (= tag 17) (string-concat "~" (format-expr (vector-get expr 1) indent-level))
     (if (= tag 18) (string-concat "~@" (format-expr (vector-get expr 1) indent-level))
-    (if (= tag 19) (format-unsupported-expr tag)
+    (if (= tag 19) (format-lit-float-fallback)
     (if (= tag 32) (format-lit-unit)
     (format-unsupported-expr tag)))))))))))))))))))))))
 

@@ -577,6 +577,27 @@ fn run_native_codegen_harness(entry_source: &str) -> String {
     result
 }
 
+fn run_native_linker_harness(entry_source: &str) -> String {
+    let id = NATIVE_HARNESS_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/e2e-native-fixtures")
+        .join(format!("native-linker-harness-{id}"));
+    std::fs::create_dir_all(&dir).expect("native linker fixture dir 作成失敗");
+
+    let result = (|| {
+        std::fs::write(dir.join("NativeTarget.ls"), selfhost_module("NativeTarget.ls"))
+            .expect("NativeTarget.ls 書き込み失敗");
+        std::fs::write(dir.join("Linker.ls"), selfhost_module("Linker.ls"))
+            .expect("Linker.ls 書き込み失敗");
+        std::fs::write(dir.join("Main.ls"), entry_source)
+            .expect("Main.ls 書き込み失敗");
+        compile_and_run_file(&dir.join("Main.ls"))
+    })();
+
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
 // =============================================================================
 // NATIVE-REAL: ネイティブ実行パリティ (Narrow Slice)
 // =============================================================================
@@ -940,4 +961,289 @@ fn test_native_codegen_processes_multiple_ir_instructions() {
     assert_eq!(lines[3], "200", "2 命令目 add の ModRM は 0xC8");
     assert_eq!(lines[4], "93", "末尾 2 byte 手前は pop rbp (0x5D)");
     assert_eq!(lines[5], "195", "末尾は ret (0xC3)");
+}
+
+/// NATIVE-REAL-09: emit-object が生成した native bytes 全体を object file へ保持すること
+#[test]
+fn test_native_emit_object_keeps_full_native_payload() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+(import NativeEmit)
+
+(defn make-instr [opcode operand]
+  (vector-push (vector-push (vector-new 2) opcode) operand))
+
+(defn main []
+  (let [instr (make-instr 1 42)
+        ir (vector-push (vector-new 1) instr)
+        target (make-target 1)
+        native (emit-native ir target)
+        obj (emit-object native target)]
+    (do
+      (print (vector-length native))
+      (print (vector-length obj))
+      (print (vector-get obj 0))
+      (print (vector-get obj 1))
+      (print (vector-get obj 2))
+      (print (vector-get obj 3))
+      (print (vector-get obj 16))
+      (print (vector-get obj 17))
+      (print (vector-get obj 30))
+      (print (vector-get obj 31))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 10, "native object bytes 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "16", "const native payload は 16 bytes であるべき");
+    assert_eq!(lines[1], "32", "Mach-O header 16 + native payload 16 = 32 bytes であるべき");
+    assert_eq!(lines[2], "207", "object 先頭は Mach-O magic 0xCF");
+    assert_eq!(lines[3], "250", "object 2 byte 目は Mach-O magic 0xFA");
+    assert_eq!(lines[4], "237", "object 3 byte 目は Mach-O magic 0xED");
+    assert_eq!(lines[5], "254", "object 4 byte 目は Mach-O magic 0xFE");
+    assert_eq!(lines[6], "85", "payload 先頭は push rbp (0x55)");
+    assert_eq!(lines[7], "72", "payload 2 byte 目は REX.W (0x48)");
+    assert_eq!(lines[8], "93", "payload 末尾 2 byte 手前は pop rbp (0x5D)");
+    assert_eq!(lines[9], "195", "payload 末尾は ret (0xC3)");
+}
+
+/// NATIVE-REAL-10: ELF object でも native payload 全体を保持すること
+#[test]
+fn test_native_emit_elf_object_keeps_full_native_payload() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+(import NativeEmit)
+
+(defn make-instr [opcode operand]
+  (vector-push (vector-push (vector-new 2) opcode) operand))
+
+(defn main []
+  (let [instr (make-instr 1 42)
+        ir (vector-push (vector-new 1) instr)
+        target (make-target 3)
+        native (emit-native ir target)
+        obj (emit-object native target)]
+    (do
+      (print (vector-length native))
+      (print (vector-length obj))
+      (print (vector-get obj 0))
+      (print (vector-get obj 1))
+      (print (vector-get obj 2))
+      (print (vector-get obj 3))
+      (print (vector-get obj 8))
+      (print (vector-get obj 9))
+      (print (vector-get obj 22))
+      (print (vector-get obj 23))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 10, "ELF object bytes 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "16", "const native payload は 16 bytes であるべき");
+    assert_eq!(lines[1], "24", "ELF header 8 + native payload 16 = 24 bytes であるべき");
+    assert_eq!(lines[2], "127", "ELF 先頭は 0x7F");
+    assert_eq!(lines[3], "69", "ELF 2 byte 目は 'E'");
+    assert_eq!(lines[4], "76", "ELF 3 byte 目は 'L'");
+    assert_eq!(lines[5], "70", "ELF 4 byte 目は 'F'");
+    assert_eq!(lines[6], "85", "payload 先頭は push rbp (0x55)");
+    assert_eq!(lines[7], "72", "payload 2 byte 目は REX.W (0x48)");
+    assert_eq!(lines[8], "93", "payload 末尾 2 byte 手前は pop rbp (0x5D)");
+    assert_eq!(lines[9], "195", "payload 末尾は ret (0xC3)");
+}
+
+/// NATIVE-REAL-10b: 3 target で object header / payload invariants が保たれること
+#[test]
+fn test_native_emit_object_headers_cover_all_three_targets() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+(import NativeEmit)
+
+(defn make-instr [opcode operand]
+  (vector-push (vector-push (vector-new 2) opcode) operand))
+
+(defn emit-summary [triple-id]
+  (let [instr (make-instr 1 42)
+        ir (vector-push (vector-new 1) instr)
+        target (make-target triple-id)
+        native (emit-native ir target)
+        obj (emit-object native target)
+        tail-idx (if (= triple-id 3) 22 30)
+        last-idx (if (= triple-id 3) 23 31)]
+    (do
+      (print (vector-length obj))
+      (print (vector-get obj 0))
+      (print (vector-get obj 4))
+      (print (vector-get obj tail-idx))
+      (print (vector-get obj last-idx)))))
+
+(defn main []
+  (do
+    (emit-summary 1)
+    (emit-summary 2)
+    (emit-summary 3)
+    0))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 15, "3 target object summary 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "32", "target 1 Mach-O object は 32 bytes");
+    assert_eq!(lines[1], "207", "target 1 先頭 byte は Mach-O magic 0xCF");
+    assert_eq!(lines[2], "7", "target 1 cpu byte は x86_64=0x07");
+    assert_eq!(lines[3], "93", "target 1 payload 末尾 2 byte 手前は pop rbp");
+    assert_eq!(lines[4], "195", "target 1 payload 末尾は ret");
+    assert_eq!(lines[5], "32", "target 2 Mach-O object も 32 bytes");
+    assert_eq!(lines[6], "207", "target 2 先頭 byte も Mach-O magic 0xCF");
+    assert_eq!(lines[7], "12", "target 2 cpu byte は arm64=0x0C");
+    assert_eq!(lines[8], "93", "target 2 payload 末尾 2 byte 手前は pop rbp");
+    assert_eq!(lines[9], "195", "target 2 payload 末尾は ret");
+    assert_eq!(lines[10], "24", "target 3 ELF object は 24 bytes");
+    assert_eq!(lines[11], "127", "target 3 先頭 byte は ELF magic 0x7F");
+    assert_eq!(lines[12], "2", "target 3 header byte 4 は ELFCLASS64=2");
+    assert_eq!(lines[13], "93", "target 3 payload 末尾 2 byte 手前は pop rbp");
+    assert_eq!(lines[14], "195", "target 3 payload 末尾は ret");
+}
+
+/// NATIVE-REAL-11: Linker response file が全 object entry を保持すること
+#[test]
+fn test_native_linker_response_keeps_full_object_list() {
+    let output = run_native_linker_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import Linker)
+
+(defn main []
+  (let [target (make-target 1)
+        objects (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push (vector-new 5) 10)
+                        20)
+                      30)
+                    40)
+                  50)
+        args (build-linker-args objects 99 target)
+        response (generate-response-file args)]
+    (do
+      (print (vector-length args))
+      (print (vector-length response))
+      (print (vector-get args 0))
+      (print (vector-get args 1))
+      (print (vector-get args 5))
+      (print (vector-get args 6))
+      (print (vector-get response 10))
+      (print (vector-get response 11))
+      (print (vector-get response 12))
+      (print (vector-get response 13))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 10, "linker response 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "7", "-o, output, object 5 件で args は 7 要素であるべき");
+    assert_eq!(lines[1], "14", "7 要素の response file は 14 bytes であるべき");
+    assert_eq!(lines[2], "1", "先頭 arg は -o フラグ sentinel");
+    assert_eq!(lines[3], "99", "2 番目 arg は output 値");
+    assert_eq!(lines[4], "40", "6 番目 arg は 4 個目 object");
+    assert_eq!(lines[5], "50", "7 番目 arg は 5 個目 object");
+    assert_eq!(lines[6], "40", "response 後半にも 4 個目 object が残ること");
+    assert_eq!(lines[7], "10", "response の各 arg は改行区切りされること");
+    assert_eq!(lines[8], "50", "response 末尾直前にも 5 個目 object が残ること");
+    assert_eq!(lines[9], "10", "response 末尾は改行で終わること");
+}
+
+/// NATIVE-REAL-11b: 3 target で linker selection と response content が安定すること
+#[test]
+fn test_native_linker_response_consistency_across_three_targets() {
+    let output = run_native_linker_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import Linker)
+
+(defn emit-summary [triple-id]
+  (let [target (make-target triple-id)
+        objects (vector-push (vector-push (vector-new 2) 11) 22)
+        linker (select-linker target)
+        args (build-linker-args objects 99 target)
+        response (generate-response-file args)]
+    (do
+      (print linker)
+      (print (vector-length response))
+      (print (vector-get response 0))
+      (print (vector-get response 2))
+      (print (vector-get response 4))
+      (print (vector-get response 6)))))
+
+(defn main []
+  (do
+    (emit-summary 1)
+    (emit-summary 2)
+    (emit-summary 3)
+    0))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 18, "3 target linker summary 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "target 1 linker は ld64");
+    assert_eq!(lines[1], "8", "target 1 response len は 8 bytes");
+    assert_eq!(lines[2], "1", "target 1 response 先頭は -o sentinel");
+    assert_eq!(lines[3], "99", "target 1 response は output=99 を含む");
+    assert_eq!(lines[4], "11", "target 1 response は object 1 を含む");
+    assert_eq!(lines[5], "22", "target 1 response は object 2 を含む");
+    assert_eq!(lines[6], "1", "target 2 linker も ld64");
+    assert_eq!(lines[7], "8", "target 2 response len は 8 bytes");
+    assert_eq!(lines[8], "1", "target 2 response 先頭は -o sentinel");
+    assert_eq!(lines[9], "99", "target 2 response は output=99 を含む");
+    assert_eq!(lines[10], "11", "target 2 response は object 1 を含む");
+    assert_eq!(lines[11], "22", "target 2 response は object 2 を含む");
+    assert_eq!(lines[12], "3", "target 3 linker は GNU ld");
+    assert_eq!(lines[13], "8", "target 3 response len は 8 bytes");
+    assert_eq!(lines[14], "1", "target 3 response 先頭は -o sentinel");
+    assert_eq!(lines[15], "99", "target 3 response は output=99 を含む");
+    assert_eq!(lines[16], "11", "target 3 response は object 1 を含む");
+    assert_eq!(lines[17], "22", "target 3 response は object 2 を含む");
+}
+
+/// NATIVE-REAL-11c: 3 target で multi-object response content が安定すること
+#[test]
+fn test_native_linker_multi_object_response_consistency_across_three_targets() {
+    let output = run_native_linker_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import Linker)
+
+(defn emit-summary [triple-id object-size]
+  (let [target (make-target triple-id)
+        objects (vector-push (vector-push (vector-new 2) object-size) object-size)
+        response (generate-response-file (build-linker-args objects 99 target))]
+    (do
+      (print (vector-length response))
+      (print (vector-get response 4))
+      (print (vector-get response 6)))))
+
+(defn main []
+  (do
+    (emit-summary 1 32)
+    (emit-summary 2 32)
+    (emit-summary 3 24)
+    0))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 9, "3 target multi response 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "8", "target 1 multi response len は 8 bytes");
+    assert_eq!(lines[1], "32", "target 1 multi response は object 1 size=32 を含む");
+    assert_eq!(lines[2], "32", "target 1 multi response は object 2 size=32 を含む");
+    assert_eq!(lines[3], "8", "target 2 multi response len も 8 bytes");
+    assert_eq!(lines[4], "32", "target 2 multi response は object 1 size=32 を含む");
+    assert_eq!(lines[5], "32", "target 2 multi response は object 2 size=32 を含む");
+    assert_eq!(lines[6], "8", "target 3 multi response len も 8 bytes");
+    assert_eq!(lines[7], "24", "target 3 multi response は object 1 size=24 を含む");
+    assert_eq!(lines[8], "24", "target 3 multi response は object 2 size=24 を含む");
 }

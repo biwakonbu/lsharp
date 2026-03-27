@@ -235,6 +235,23 @@
       (print-string "\n")
       (exit-success))))
 
+(defn run-compile-output [file-path output-path]
+  (if (file-exists? file-path)
+    (let [src (read-file file-path)
+          program (parse-program src)
+          ir (lower program)
+          wasm-size (emit-wasm ir)
+          summary (wasm-size-text wasm-size)]
+      (do
+        (write-file output-path summary)
+        (print-string summary)
+        (print-string "\n")
+        (exit-success)))
+    (exit-compile-error)))
+
+(defn run-build-output [file-path output-path]
+  (run-compile-output file-path output-path))
+
 (defn test-examples-text [count]
   (string-concat "examples:" (int-to-string count)))
 
@@ -496,6 +513,225 @@
 (defn lsp-summary-source-bytes-text [summary]
   (string-concat "source-bytes:" (int-to-string (vector-get summary 3))))
 
+(defn lsp-transport-request-id [request]
+  (vector-get request 1))
+
+(defn lsp-transport-method-id [request]
+  (vector-get request 2))
+
+(defn lsp-transport-params [request]
+  (vector-get request 3))
+
+(defn lsp-transport-uri [request]
+  (if (> (vector-length (lsp-transport-params request)) 0)
+    (vector-get (lsp-transport-params request) 0)
+    0))
+
+(defn lsp-transport-method-not-found-code []
+  (- 0 32601))
+
+(defn lsp-transport-dispatch-request [state request]
+  (let [request-id (lsp-transport-request-id request)
+        method-id (lsp-transport-method-id request)
+        params (lsp-transport-params request)
+        uri (lsp-transport-uri request)
+        result (json-rpc-dispatch method-id params state)]
+    (if (= method-id (lsp-method-initialize))
+      (lsp-render-initialize-frame request-id)
+      (if (= method-id (lsp-method-shutdown))
+        (lsp-render-shutdown-frame request-id)
+        (if (= method-id (lsp-method-did-open))
+          (lsp-render-didopen-frame uri (server-state-source-length state))
+          (if (= method-id (lsp-method-did-change))
+            (lsp-render-didchange-frame uri (server-state-source-length state))
+            (if (= method-id (lsp-method-goto-def))
+              (lsp-render-location-frame request-id result)
+              (if (= method-id (lsp-method-hover))
+                (lsp-render-hover-frame request-id result)
+                (if (= method-id (lsp-method-references))
+                  (lsp-render-locations-frame request-id result)
+                  (if (= method-id (lsp-method-completion))
+                    (lsp-render-completion-frame request-id result)
+                    (if (= method-id (lsp-method-formatting))
+                      (lsp-render-formatting-frame request-id result)
+                      (if (= method-id (lsp-method-rename))
+                        (lsp-render-rename-frame request-id result)
+                        (lsp-render-error-frame request-id (lsp-transport-method-not-found-code) "Method not found")))))))))))))
+
+(defn run-lsp-transport-request [request]
+  (let [state (server-state-new)]
+    (lsp-transport-dispatch-request state request)))
+
+(defn lsp-transport-sequence-loop [state requests idx count frames]
+  (if (>= idx count)
+    frames
+    (lsp-transport-sequence-loop
+      state
+      requests
+      (+ idx 1)
+      count
+      (vector-push frames (lsp-transport-dispatch-request state (vector-get requests idx))))))
+
+(defn run-lsp-transport-sequence [requests]
+  (let [state (server-state-new)
+        frames (lsp-transport-sequence-loop state requests 0 (vector-length requests) (vector-new 8))
+        summary (vector-new 4)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push summary frames)
+         (server-state-doc-count state))
+        (server-state-request-count state))
+      (server-state-source-length state))))
+
+(defn lsp-stdio-frame-header [frame]
+  (vector-get frame 0))
+
+(defn lsp-stdio-frame-message [frame]
+  (vector-get frame 1))
+
+(defn lsp-stdio-frame-content-length [frame]
+  (parse-content-length (lsp-stdio-frame-header frame)))
+
+(defn lsp-stdio-message-request [msg]
+  (let [parsed (parse-json-rpc-request msg)
+        request-id (vector-get msg 1)
+        method-id (vector-get parsed 0)
+        params (vector-get parsed 1)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push (vector-new 4) 2)
+          request-id)
+        method-id)
+      params)))
+
+(defn lsp-stdio-dispatch-frame [state frame]
+  (let [request (lsp-stdio-message-request (lsp-stdio-frame-message frame))
+        rendered (lsp-transport-dispatch-request state request)
+        content-length (lsp-stdio-frame-content-length frame)]
+    (vector-push
+      (vector-push (vector-new 2) rendered)
+      content-length)))
+
+(defn run-lsp-stdio-frame [frame]
+  (let [state (server-state-new)]
+    (lsp-stdio-dispatch-frame state frame)))
+
+(defn lsp-stdio-sequence-loop [state frames idx count rendered last-content-length]
+  (if (>= idx count)
+    (vector-push
+      (vector-push (vector-new 2) rendered)
+      last-content-length)
+    (let [result (lsp-stdio-dispatch-frame state (vector-get frames idx))]
+      (lsp-stdio-sequence-loop
+        state
+        frames
+        (+ idx 1)
+        count
+        (vector-push rendered (vector-get result 0))
+        (vector-get result 1)))))
+
+(defn run-lsp-stdio-sequence [frames]
+  (let [state (server-state-new)
+        result (lsp-stdio-sequence-loop state frames 0 (vector-length frames) (vector-new 8) 0)
+        rendered (vector-get result 0)
+        last-content-length (vector-get result 1)
+        summary (vector-new 4)]
+    (vector-push
+      (vector-push
+        (vector-push
+        (vector-push summary rendered)
+          (server-state-request-count state))
+        (server-state-source-length state))
+      last-content-length)))
+
+(defn lsp-stdio-find-header-end-loop [src idx len]
+  (if (> (+ idx 3) len)
+    len
+    (if (= (string-char-at src idx) 13)
+      (if (= (string-char-at src (+ idx 1)) 10)
+        (if (= (string-char-at src (+ idx 2)) 13)
+          (if (= (string-char-at src (+ idx 3)) 10)
+            idx
+            (lsp-stdio-find-header-end-loop src (+ idx 1) len))
+          (lsp-stdio-find-header-end-loop src (+ idx 1) len))
+        (lsp-stdio-find-header-end-loop src (+ idx 1) len))
+      (lsp-stdio-find-header-end-loop src (+ idx 1) len))))
+
+(defn lsp-stdio-find-pattern-loop [src pattern idx len]
+  (if (>= idx len)
+    (- 0 1)
+    (if (lsp-match-at src idx pattern)
+      idx
+      (lsp-stdio-find-pattern-loop src pattern (+ idx 1) len))))
+
+(defn lsp-stdio-is-digit [c]
+  (if (< c 48)
+    false
+    (if (> c 57)
+      false
+      true)))
+
+(defn lsp-stdio-parse-int-loop [src idx len acc started]
+  (if (>= idx len)
+    acc
+    (let [c (string-char-at src idx)]
+      (if (lsp-stdio-is-digit c)
+        (lsp-stdio-parse-int-loop src (+ idx 1) len (+ (- c 48) (* acc 10)) 1)
+        (if (= started 1)
+          acc
+          (lsp-stdio-parse-int-loop src (+ idx 1) len acc 0))))))
+
+(defn lsp-stdio-body-id [body]
+  (let [id-pos (lsp-stdio-find-pattern-loop body "\"id\":" 0 (string-length body))]
+    (if (< id-pos 0)
+      0
+      (lsp-stdio-parse-int-loop body (+ id-pos 5) (string-length body) 0 0))))
+
+(defn lsp-stdio-body-method [body]
+  (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"initialize\"" 0 (string-length body)) 0)
+    (lsp-method-initialize)
+    (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"shutdown\"" 0 (string-length body)) 0)
+      (lsp-method-shutdown)
+      999)))
+
+(defn lsp-stdio-body-message [body]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) 2)
+        (lsp-stdio-body-id body))
+      (lsp-stdio-body-method body))
+    0))
+
+(defn lsp-stdio-wire-loop [state wire idx len out]
+  (if (>= idx len)
+    out
+    (let [header-end (lsp-stdio-find-header-end-loop wire idx len)
+          header (substring wire idx header-end)
+          content-length (parse-content-length header)
+          body-start (+ header-end 4)
+          body-end (+ body-start content-length)
+          body (substring wire body-start body-end)
+          rendered (lsp-transport-dispatch-request state (lsp-stdio-message-request (lsp-stdio-body-message body)))]
+      (lsp-stdio-wire-loop
+        state
+        wire
+        body-end
+        len
+        (string-concat out rendered)))))
+
+(defn run-lsp-stdio-wire [wire]
+  (let [state (server-state-new)]
+    (lsp-stdio-wire-loop state wire 0 (string-length wire) "")))
+
+(defn run-lsp-stdio-server []
+  (let [wire (read-stdin)]
+    (do
+      (print-string (run-lsp-stdio-wire wire))
+      (exit-success))))
+
 ;; lsp サブコマンド: LSP サーバー起動
 (defn run-lsp [opts]
   (let [summary (lsp-init-summary)
@@ -681,15 +917,15 @@
 (defn format-subcommand-help [cmd]
   (if (string-eq cmd "parse") "parse <file> - Parse source and show AST"
   (if (string-eq cmd "check") "check <file> - Type-check source"
-  (if (string-eq cmd "compile") "compile <file> -o <out> - Compile to Wasm"
-  (if (string-eq cmd "build") "build [dir] - Build project"
+  (if (string-eq cmd "compile") "compile <file> [-o <file>] - Compile to Wasm"
+  (if (string-eq cmd "build") "build <file> [--output <file>] - Build project"
   (if (string-eq cmd "test") "test <file> - Run metadata tests"
   (if (string-eq cmd "review") "review <file> - Code review"
   (if (string-eq cmd "doc-ack") "doc-ack <file> - Acknowledge docs"
   (if (string-eq cmd "doc-check") "doc-check <file> - Check doc consistency"
   (if (string-eq cmd "install") "install <pkg> - Install package"
   (if (string-eq cmd "repl") "repl - Interactive REPL"
-  (if (string-eq cmd "lsp") "lsp - Start LSP server"
+  (if (string-eq cmd "lsp") "lsp [--stdio] - Start LSP server"
   (if (string-eq cmd "fmt") "fmt <file> - Format source"
   (if (string-eq cmd "doc") "doc <file> - Generate docs"
   "unknown command"))))))))))))))
@@ -699,32 +935,45 @@
 ;; コマンド名文字列からディスパッチし、終了コードを返す
 ;; --help / --version フラグも処理する
 (defn run-command [cmd-name file-path opts]
-  (if (string-eq cmd-name "--help") (show-help)
-  (if (string-eq cmd-name "--version") (show-version)
-  (let [cmd-id (arg-parse cmd-name)]
-    (if (= cmd-id 0)
-      (do
-        (cli-stderr (string-concat "unknown command: " cmd-name))
-        (exit-code-unknown-command))
-      (dispatch-command cmd-id file-path opts))))))
-
-;; 検証用 main
-(defn main []
-  (let [;; コマンド ID テスト
-        p (cmd-parse)
-        c (cmd-check)
-        b (cmd-build)
-        empty-path ""
-
-        ;; ディスパッチテスト
-        r1 (dispatch-command (cmd-repl) empty-path 0)
-        r2 (dispatch-command (cmd-lsp) empty-path 0)
-        r3 (dispatch-command 0 empty-path 0)]
+  (if (or (string-eq cmd-name "--help") (string-eq cmd-name "-h")) (show-help)
+  (if (or (string-eq cmd-name "--version") (string-eq cmd-name "-v")) (show-version)
+  (if (string-eq cmd-name "help")
     (do
-      (print p)   ;; 1
-      (print c)   ;; 2
-      (print b)   ;; 4
-      (print r1)  ;; 0 (success)
-      (print r2)  ;; 0 (success)
-      (print r3)  ;; 127 (unknown)
-      0)))
+      (cli-stdout (format-subcommand-help file-path))
+      (exit-success))
+  (if (or (string-eq file-path "--help") (string-eq file-path "-h"))
+    (do
+      (cli-stdout (format-subcommand-help cmd-name))
+      (exit-success))
+   (let [cmd-id (arg-parse cmd-name)]
+     (if (= cmd-id 0)
+       (do
+         (cli-stderr (string-concat "unknown command: " cmd-name))
+         (exit-code-unknown-command))
+      (dispatch-command cmd-id file-path opts))))))))
+
+(defn main-dispatch [cmd-name file-path opts]
+  (run-command cmd-name file-path opts))
+
+(defn output-option-flag [arg]
+  (or (string-eq arg "-o") (string-eq arg "--output")))
+
+;; 現状は argc だけ取得できるため、引数未指定時の help surface を先に固定する。
+;; argv[0] を command、argv[1] を file path として扱う。
+(defn main []
+  (let [argc (command-line-args)]
+    (if (= argc 0)
+      (show-help)
+      (let [cmd-name (command-line-arg 0)
+            file-path (if (> argc 1) (command-line-arg 1) "")
+            flag (if (> argc 2) (command-line-arg 2) "")
+            output-path (if (> argc 3) (command-line-arg 3) "")]
+        (if (and (string-eq cmd-name "lsp") (string-eq file-path "--stdio"))
+          (run-lsp-stdio-server)
+          (if (and (> argc 3) (output-option-flag flag))
+            (if (string-eq cmd-name "compile")
+              (run-compile-output file-path output-path)
+              (if (string-eq cmd-name "build")
+                (run-build-output file-path output-path)
+                (run-command cmd-name file-path 0)))
+            (run-command cmd-name file-path 0)))))))

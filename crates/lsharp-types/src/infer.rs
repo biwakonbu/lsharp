@@ -799,6 +799,18 @@ impl Infer {
             TypeScheme::mono(Type::Fun(vec![], Box::new(Type::int()))),
         );
 
+        // command-line-arg: Int -> String (指定 index の argv 要素を返す)
+        env.insert(
+            "command-line-arg".to_string(),
+            TypeScheme::mono(Type::Fun(vec![Type::int()], Box::new(Type::string()))),
+        );
+
+        // read-stdin: () -> String (stdin 全体を読む)
+        env.insert(
+            "read-stdin".to_string(),
+            TypeScheme::mono(Type::Fun(vec![], Box::new(Type::string()))),
+        );
+
         // not: Bool -> Bool
         env.insert(
             "not".to_string(),

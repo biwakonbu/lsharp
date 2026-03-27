@@ -19,18 +19,16 @@
 
 ;; === サーバー状態 ===
 (defn server-state-new []
-  (let [v (vector-new 6)]
-    (vector-push
-      (vector-push
-        (vector-push
-          (vector-push
-            (vector-push
-              (vector-push v (ref-new 0))  ;; initialized フラグ
-              (ref-new 0))                 ;; shutdown フラグ
-            (ref-new 0))                   ;; open document 数
-          (ref-new 0))                     ;; current uri
-        (ref-new ""))                      ;; current source
-      (ref-new 0))))                       ;; request count
+  (let [v0 (vector-new 8)
+        v1 (vector-push v0 (ref-new 0))            ;; initialized フラグ
+        v2 (vector-push v1 (ref-new 0))            ;; shutdown フラグ
+        v3 (vector-push v2 (ref-new 0))            ;; open document 数
+        v4 (vector-push v3 (ref-new 0))            ;; current uri
+        v5 (vector-push v4 (ref-new ""))           ;; current source
+        v6 (vector-push v5 (ref-new 0))            ;; request count
+        v7 (vector-push v6 (ref-new (map-new)))    ;; uri -> source
+        v8 (vector-push v7 (ref-new (vector-new 8)))] ;; open uri list
+    v8))
 
 (defn server-state-doc-count [state]
   (ref-get (vector-get state 2)))
@@ -46,6 +44,35 @@
 
 (defn server-state-source [state]
   (ref-get (vector-get state 4)))
+
+(defn server-state-documents [state]
+  (ref-get (vector-get state 6)))
+
+(defn server-state-uri-list [state]
+  (ref-get (vector-get state 7)))
+
+(defn server-state-uri-known-loop [uris idx count uri]
+  (if (>= idx count)
+    0
+    (if (= (vector-get uris idx) uri)
+      1
+      (server-state-uri-known-loop uris (+ idx 1) count uri))))
+
+(defn server-state-remember-uri [state uri]
+  (let [uris (server-state-uri-list state)]
+    (if (= (server-state-uri-known-loop uris 0 (vector-length uris) uri) 1)
+      0
+      (do
+        (ref-set (vector-get state 7) (vector-push uris uri))
+        1))))
+
+(defn server-state-source-for-uri [state uri]
+  (let [stored (map-get (server-state-documents state) uri)]
+    (if (= stored 0)
+      (if (= (ref-get (vector-get state 3)) uri)
+        (server-state-source state)
+        "")
+      stored)))
 
 (defn server-state-source-length [state]
   (string-length (server-state-source state)))
@@ -63,16 +90,16 @@
   (do
     (ref-set (vector-get state 3) uri)
     (ref-set (vector-get state 4) src)
+    (ref-set (vector-get state 6) (map-insert (server-state-documents state) uri src))
+    (server-state-remember-uri state uri)
     0))
 
 (defn server-state-open-document [state uri src]
-  (let [current-uri (ref-get (vector-get state 3))
-        current-count (server-state-doc-count state)
-        next-count (if (= current-count 0)
-                     1
-                     (if (= current-uri uri)
-                       current-count
-                       (+ current-count 1)))]
+  (let [current-count (server-state-doc-count state)
+        known-src (server-state-source-for-uri state uri)
+        next-count (if (> (string-length known-src) 0)
+                     current-count
+                     (+ current-count 1))]
     (do
       (server-state-set-document state uri src)
       (ref-set (vector-get state 2) next-count)
@@ -94,6 +121,7 @@
 (defn lsp-method-formatting [] 23)
 (defn lsp-method-references [] 24)
 (defn lsp-method-rename [] 25)
+(defn lsp-method-publish-diagnostics [] 30)
 
 ;; === JSON-RPC ディスパッチ ===
 
@@ -107,9 +135,10 @@
   (if (= method-id (lsp-method-goto-def)) (handle-goto-definition params state)
   (if (= method-id (lsp-method-references)) (handle-references params state)
   (if (= method-id (lsp-method-rename)) (handle-rename params state)
+  (if (= method-id (lsp-method-publish-diagnostics)) (handle-publish-diagnostics params state)
   (if (= method-id (lsp-method-formatting)) (handle-formatting params state)
   (if (= method-id (lsp-method-completion)) (handle-completion params state)
-  0)))))))))))
+  0))))))))))))
 
 ;; === LSP メソッドハンドラ ===
 
@@ -159,6 +188,18 @@
       (server-state-change-document state (lsp-nav-uri params) (lsp-document-src params))
       params)))
 
+;; textDocument/publishDiagnostics: 診断通知 payload を決定的 JSON に整形
+;; 戻り値は [uri, diagnostics-json]
+(defn handle-publish-diagnostics [params state]
+  (do
+    (server-state-note-request state)
+    (if (> (lsp-param-count params) 1)
+      (let [uri (vector-get params 0)
+            diagnostics (vector-get params 1)
+            diagnostics-json (render-diagnostics-json diagnostics)]
+        (vector-push (vector-push (vector-new 2) uri) diagnostics-json))
+      params)))
+
 ;; === textDocument 系の簡易ソース解析 ===
 ;; stdio なしでも hover / definition / references / completion / formatting を
 ;; 実ソースに近い形で返せるよう、LspServer 内部で最小限の走査を行う。
@@ -193,12 +234,12 @@
 (defn lsp-session-src [params state]
   (if (= (lsp-has-source-param params) 1)
     (lsp-nav-src params)
-    (server-state-source state)))
+    (server-state-source-for-uri state (lsp-nav-uri params))))
 
 (defn lsp-session-document-src [params state]
   (if (= (lsp-has-document-param params) 1)
     (lsp-document-src params)
-    (server-state-source state)))
+    (server-state-source-for-uri state (lsp-nav-uri params))))
 
 (defn lsp-is-ws [c]
   (if (= c 32) true
@@ -284,6 +325,177 @@
 
 (defn lsp-render-error-frame [request-id error-code error-message]
   (render-rpc-error-response-frame request-id error-code error-message))
+
+(defn lsp-render-publish-diagnostics-frame [uri diagnostics]
+  (let [uri-text (int-to-string uri)
+        diagnostics-json (render-diagnostics-json diagnostics)
+        payload-0 "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":"
+        payload-1 (string-concat payload-0 uri-text)
+        payload-2 (string-concat payload-1 ",\"diagnostics\":")
+        payload-3 (string-concat payload-2 diagnostics-json)
+        payload (string-concat payload-3 "}}")]
+    (render-json-rpc-frame payload)))
+
+(defn lsp-render-didopen-frame [uri source-bytes]
+  (let [uri-text (int-to-string uri)
+        bytes-text (int-to-string source-bytes)
+        payload-0 "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"uri\":"
+        payload-1 (string-concat payload-0 uri-text)
+        payload-2 (string-concat payload-1 ",\"sourceBytes\":")
+        payload-3 (string-concat payload-2 bytes-text)
+        payload (string-concat payload-3 "}}")]
+    (render-json-rpc-frame payload)))
+
+(defn lsp-render-didchange-frame [uri source-bytes]
+  (let [uri-text (int-to-string uri)
+        bytes-text (int-to-string source-bytes)
+        payload-0 "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{\"uri\":"
+        payload-1 (string-concat payload-0 uri-text)
+        payload-2 (string-concat payload-1 ",\"sourceBytes\":")
+        payload-3 (string-concat payload-2 bytes-text)
+        payload (string-concat payload-3 "}}")]
+    (render-json-rpc-frame payload)))
+
+(defn lsp-render-location-frame [request-id location]
+  (render-rpc-int-vector-response-frame request-id location))
+
+(defn lsp-render-hover-frame [request-id hover]
+  (let [range (vector-get hover 0)
+        contents (vector-get hover 1)
+        payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
+        payload-1 (string-concat payload-0 (int-to-string request-id))
+        payload-2 (string-concat payload-1 ",\"result\":{\"range\":[")
+        payload-3 (string-concat payload-2 (int-to-string (vector-get range 0)))
+        payload-4 (string-concat payload-3 ",")
+        payload-5 (string-concat payload-4 (int-to-string (vector-get range 1)))
+        payload-6 (string-concat payload-5 ",")
+        payload-7 (string-concat payload-6 (int-to-string (vector-get range 2)))
+        payload-8 (string-concat payload-7 ",")
+        payload-9 (string-concat payload-8 (int-to-string (vector-get range 3)))
+        payload-10 (string-concat payload-9 "],\"contents\":\"")
+        payload-11 (string-concat payload-10 contents)
+        payload (string-concat payload-11 "\"}}")]
+    (render-json-rpc-frame payload)))
+
+(defn lsp-render-location-json [location]
+  (let [uri-text (int-to-string (vector-get location 0))
+        line-text (int-to-string (vector-get location 1))
+        col-text (int-to-string (vector-get location 2))
+        payload-0 "["
+        payload-1 (string-concat payload-0 uri-text)
+        payload-2 (string-concat payload-1 ",")
+        payload-3 (string-concat payload-2 line-text)
+        payload-4 (string-concat payload-3 ",")
+        payload-5 (string-concat payload-4 col-text)]
+    (string-concat payload-5 "]")))
+
+(defn lsp-render-locations-json-loop [locations idx len out]
+  (if (>= idx len)
+    out
+    (let [elem-text (lsp-render-location-json (vector-get locations idx))
+          next-out (if (= idx 0)
+                     (string-concat out elem-text)
+                     (string-concat out (string-concat "," elem-text)))]
+      (lsp-render-locations-json-loop locations (+ idx 1) len next-out))))
+
+(defn lsp-render-locations-frame [request-id locations]
+  (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
+        payload-1 (string-concat payload-0 (int-to-string request-id))
+        payload-2 (string-concat payload-1 ",\"result\":[")
+        payload-3 (string-concat payload-2
+                   (lsp-render-locations-json-loop locations 0 (vector-length locations) ""))
+        payload (string-concat payload-3 "]}")]
+    (render-json-rpc-frame payload)))
+
+(defn lsp-render-completion-item-json [item]
+  (let [label (vector-get item 0)
+        kind-text (int-to-string (vector-get item 1))
+        insert-text (vector-get item 2)
+        payload-0 "[\""
+        payload-1 (string-concat payload-0 label)
+        payload-2 (string-concat payload-1 "\",")
+        payload-3 (string-concat payload-2 kind-text)
+        payload-4 (string-concat payload-3 ",\"")
+        payload-5 (string-concat payload-4 insert-text)]
+    (string-concat payload-5 "\"]")))
+
+(defn lsp-render-completion-items-json-loop [items idx len out]
+  (if (>= idx len)
+    out
+    (let [elem-text (lsp-render-completion-item-json (vector-get items idx))
+          next-out (if (= idx 0)
+                     (string-concat out elem-text)
+                     (string-concat out (string-concat "," elem-text)))]
+      (lsp-render-completion-items-json-loop items (+ idx 1) len next-out))))
+
+(defn lsp-render-completion-frame [request-id items]
+  (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
+        payload-1 (string-concat payload-0 (int-to-string request-id))
+        payload-2 (string-concat payload-1 ",\"result\":[")
+        payload-3 (string-concat payload-2
+                   (lsp-render-completion-items-json-loop items 0 (vector-length items) ""))
+        payload (string-concat payload-3 "]}")]
+    (render-json-rpc-frame payload)))
+
+(defn lsp-render-text-edit-json [edit]
+  (let [payload-0 "["
+        payload-1 (string-concat payload-0 (int-to-string (vector-get edit 0)))
+        payload-2 (string-concat payload-1 ",")
+        payload-3 (string-concat payload-2 (int-to-string (vector-get edit 1)))
+        payload-4 (string-concat payload-3 ",")
+        payload-5 (string-concat payload-4 (int-to-string (vector-get edit 2)))
+        payload-6 (string-concat payload-5 ",")
+        payload-7 (string-concat payload-6 (int-to-string (vector-get edit 3)))
+        payload-8 (string-concat payload-7 ",\"")
+        payload-9 (string-concat payload-8 (vector-get edit 4))]
+    (string-concat payload-9 "\"]")))
+
+(defn lsp-render-text-edits-json-loop [edits idx len out]
+  (if (>= idx len)
+    out
+    (let [elem-text (lsp-render-text-edit-json (vector-get edits idx))
+          next-out (if (= idx 0)
+                     (string-concat out elem-text)
+                     (string-concat out (string-concat "," elem-text)))]
+      (lsp-render-text-edits-json-loop edits (+ idx 1) len next-out))))
+
+(defn lsp-render-formatting-frame [request-id edits]
+  (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
+        payload-1 (string-concat payload-0 (int-to-string request-id))
+        payload-2 (string-concat payload-1 ",\"result\":[")
+        payload-3 (string-concat payload-2
+                   (lsp-render-text-edits-json-loop edits 0 (vector-length edits) ""))
+        payload (string-concat payload-3 "]}")]
+    (render-json-rpc-frame payload)))
+
+(defn lsp-render-workspace-change-json [change]
+  (let [uri-text (int-to-string (vector-get change 0))
+        edits (vector-get change 1)
+        payload-0 "["
+        payload-1 (string-concat payload-0 uri-text)
+        payload-2 (string-concat payload-1 ",[")
+        payload-3 (string-concat payload-2
+                   (lsp-render-text-edits-json-loop edits 0 (vector-length edits) ""))
+        payload-4 (string-concat payload-3 "]")]
+    (string-concat payload-4 "]")))
+
+(defn lsp-render-workspace-changes-json-loop [changes idx len out]
+  (if (>= idx len)
+    out
+    (let [elem-text (lsp-render-workspace-change-json (vector-get changes idx))
+          next-out (if (= idx 0)
+                     (string-concat out elem-text)
+                     (string-concat out (string-concat "," elem-text)))]
+      (lsp-render-workspace-changes-json-loop changes (+ idx 1) len next-out))))
+
+(defn lsp-render-rename-frame [request-id changes]
+  (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
+        payload-1 (string-concat payload-0 (int-to-string request-id))
+        payload-2 (string-concat payload-1 ",\"result\":[")
+        payload-3 (string-concat payload-2
+                   (lsp-render-workspace-changes-json-loop changes 0 (vector-length changes) ""))
+        payload (string-concat payload-3 "]}")]
+    (render-json-rpc-frame payload)))
 
 (defn lsp-parse-content-length [header-value]
   (parse-content-length header-value))
@@ -450,6 +662,33 @@
       defn-offset
       (lsp-find-defn-offset src target))))
 
+(defn lsp-make-defn-resolution [uri offset]
+  (vector-push (vector-push (vector-new 2) uri) offset))
+
+(defn lsp-defn-resolution-uri [resolution]
+  (vector-get resolution 0))
+
+(defn lsp-defn-resolution-offset [resolution]
+  (vector-get resolution 1))
+
+(defn lsp-find-defn-in-open-docs-loop [state current-uri name idx count]
+  (if (>= idx count)
+    (lsp-make-defn-resolution current-uri (- 0 1))
+    (let [target-uri (vector-get (server-state-uri-list state) idx)]
+      (if (= target-uri current-uri)
+        (lsp-find-defn-in-open-docs-loop state current-uri name (+ idx 1) count)
+        (let [target-src (server-state-source-for-uri state target-uri)
+              target-offset (lsp-find-defn-offset target-src name)]
+          (if (>= target-offset 0)
+            (lsp-make-defn-resolution target-uri target-offset)
+            (lsp-find-defn-in-open-docs-loop state current-uri name (+ idx 1) count)))))))
+
+(defn lsp-resolve-defn-in-open-docs [state uri src name start]
+  (let [local-offset (lsp-resolve-defn-offset src name start)]
+    (if (>= local-offset 0)
+      (lsp-make-defn-resolution uri local-offset)
+      (lsp-find-defn-in-open-docs-loop state uri name 0 (vector-length (server-state-uri-list state))))))
+
 (defn lsp-hover-content-text [defn-offset name]
   (if (>= defn-offset 0)
     (string-concat "defn " name)
@@ -568,7 +807,8 @@
 (defn handle-hover [params state]
   (do
     (server-state-note-request state)
-    (let [src (lsp-session-src params state)
+    (let [uri (lsp-nav-uri params)
+          src (lsp-session-src params state)
           line (lsp-nav-line params)
           col (lsp-nav-col params)
           symbol (lsp-symbol-at src line col)
@@ -576,13 +816,14 @@
           end (symbol-info-end symbol)]
       (if (> (string-length src) 0)
           (if (>= start 0)
-            (let [name (substring src start end)
-                  range (lsp-range-from-offsets src start end)
-                  defn-offset (lsp-resolve-defn-offset src name start)
-                  contents (lsp-hover-content-text defn-offset name)]
-              (vector-push
-                (vector-push (vector-new 2) range)
-                contents))
+             (let [name (substring src start end)
+                   range (lsp-range-from-offsets src start end)
+                   resolution (lsp-resolve-defn-in-open-docs state uri src name start)
+                   defn-offset (lsp-defn-resolution-offset resolution)
+                   contents (lsp-hover-content-text defn-offset name)]
+               (vector-push
+                 (vector-push (vector-new 2) range)
+                 contents))
           (handle-hover-mock params))
         (handle-hover-mock params)))))
 
@@ -613,10 +854,15 @@
       (if (> (string-length src) 0)
         (if (>= start 0)
           (let [name (substring src start end)
-                defn-offset (lsp-resolve-defn-offset src name start)]
+                resolution (lsp-resolve-defn-in-open-docs state uri src name start)
+                target-uri (lsp-defn-resolution-uri resolution)
+                defn-offset (lsp-defn-resolution-offset resolution)]
             (if (>= defn-offset 0)
-              (let [pos (lsp-position-from-offset src defn-offset)]
-                (make-location uri (position-line pos) (position-col pos)))
+              (let [target-src (if (= target-uri uri)
+                                 src
+                                 (server-state-source-for-uri state target-uri))
+                    pos (lsp-position-from-offset target-src defn-offset)]
+                (make-location target-uri (position-line pos) (position-col pos)))
               (handle-goto-definition-mock params)))
           (handle-goto-definition-mock params))
         (handle-goto-definition-mock params)))))

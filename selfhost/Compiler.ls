@@ -55,6 +55,8 @@
 (defn op-read-file [] 64)
 (defn op-map-contains [] 65)
 (defn op-map-remove [] 66)
+(defn op-command-line-arg [] 67)
+(defn op-runtime-hash-string [] 68)
 
 ;; === T3-3: ビルトイン関数のハッシュ定数 ===
 ;; name-hash は文字列の先頭文字の ASCII コード (簡易ハッシュ)
@@ -84,6 +86,7 @@
 (defn builtin-read-file [] 100097347767123)
 (defn builtin-map-contains [] -3820778934353407281)
 (defn builtin-map-remove [] 2967773956947477)
+(defn builtin-command-line-arg [] 4333701572691766591)
 
 ;; ビルトイン演算子か判定し、対応する IR opcode を返す
 ;; 非ビルトインの場合は 0 を返す
@@ -110,10 +113,11 @@
                                           (if (= name-hash 3088214349266) 61 ;; map-size
                                               (if (= name-hash 99619806053) 63 ;; map-get
                                                 (if (= name-hash 2967773707765834) 62 ;; map-insert
-                                                  (if (= name-hash 100097347767123) 64 ;; read-file
-                                                    (if (= name-hash -3820778934353407281) 65 ;; map-contains?
-                                                      (if (= name-hash 2967773956947477) 66 ;; map-remove
-                                                        0))))))))))))))))))))))))))
+                                                   (if (= name-hash 100097347767123) 64 ;; read-file
+                                                     (if (= name-hash -3820778934353407281) 65 ;; map-contains?
+                                                       (if (= name-hash 2967773956947477) 66 ;; map-remove
+                                                         (if (= name-hash 4333701572691766591) 67 ;; command-line-arg
+                                                           0)))))))))))))))))))))))))))
 
 ;; === IR 命令構築ヘルパー ===
 
@@ -162,6 +166,15 @@
                         value-instrs)]
       (compile-do-exprs node env ftable (+ idx 1) expr-count next-instrs))))
 
+(defn compile-do-exprs-with-source [node source env ftable idx expr-count instrs data-ref]
+  (if (>= idx expr-count)
+    instrs
+    (let [value-instrs (compile-expr-with-source (vector-get node (+ 2 idx)) source env ftable instrs data-ref)
+          next-instrs (if (< (+ idx 1) expr-count)
+                        (emit-to value-instrs (op-drop) 0)
+                        value-instrs)]
+      (compile-do-exprs-with-source node source env ftable (+ idx 1) expr-count next-instrs data-ref))))
+
 ;; source 付き string literal lowering 用ヘルパー
 (defn string-literal-data-base [] 1024)
 
@@ -196,28 +209,197 @@
       (ref-set data-ref updated-data)
       instrs1)))
 
+(defn string-key-hash-loop [source pos end acc]
+  (if (>= pos end)
+    acc
+    (string-key-hash-loop
+      source
+      (+ pos 1)
+      end
+      (+ (string-char-at source pos) (* acc 31)))))
+
+(defn normalize-map-key-hash [hash]
+  (if (= hash 0)
+    2
+    (if (= hash -1)
+      1
+      hash)))
+
+(defn compile-string-key-hash-with-source [node source instrs]
+  (let [start (vector-get node 1)
+        end (vector-get node 2)
+        hash (normalize-map-key-hash (string-key-hash-loop source start end 0))]
+    (emit-to instrs (op-i64-const) hash)))
+
+(defn compile-map-builtin-with-source [node source env ftable instrs data-ref bop]
+  (let [map-expr (vector-get node 3)
+        key-expr (vector-get node 4)
+        map-instrs (compile-expr-with-source map-expr source env ftable instrs data-ref)
+        key-instrs (if (= (vector-get key-expr 0) (tag-lit-string))
+                     (compile-string-key-hash-with-source key-expr source map-instrs)
+                     (let [value-instrs (compile-expr-with-source key-expr source env ftable map-instrs data-ref)]
+                       (emit-to value-instrs (op-runtime-hash-string) 0)))]
+    (if (= bop (op-map-insert))
+      (let [value-expr (vector-get node 5)
+            value-instrs (compile-expr-with-source value-expr source env ftable key-instrs data-ref)]
+        (emit-to value-instrs bop (+ 1 (map-size env))))
+      (emit-to key-instrs bop (+ 1 (map-size env))))))
+
+(defn compile-match-pattern-check [pat scr-idx instrs]
+  (let [pat-tag (vector-get pat 0)]
+    (if (= pat-tag (ast-pat-lit))
+      (let [lit (vector-get pat 1)
+            lit-tag (vector-get lit 0)]
+        (if (= lit-tag (ast-lit-int))
+          (let [i1 (emit-to instrs (op-local-get) scr-idx)
+                i2 (emit-to i1 (op-i64-const) (vector-get lit 1))]
+            (emit-to i2 (op-i64-eq) 0))
+          (if (= lit-tag (ast-lit-bool))
+            (let [i1 (emit-to instrs (op-local-get) scr-idx)
+                  i2 (emit-to i1 (op-i64-const) (vector-get lit 1))]
+              (emit-to i2 (op-i64-eq) 0))
+            (if (= lit-tag (ast-lit-unit))
+              (let [i1 (emit-to instrs (op-local-get) scr-idx)
+                    i2 (emit-to i1 (op-i64-const) 0)]
+                (emit-to i2 (op-i64-eq) 0))
+              (emit-to instrs (op-i64-const) 0)))))
+      (if (or (= pat-tag (ast-pat-wildcard)) (= pat-tag (ast-pat-var)))
+        (emit-to instrs (op-i64-const) 1)
+        (emit-to instrs (op-i64-const) 0)))))
+
+(defn compile-apply-with-source [node source env ftable instrs data-ref]
+  (let [func-node (vector-get node 1)
+        func-tag (vector-get func-node 0)
+        func-hash (if (= func-tag (tag-var)) (vector-get func-node 1) 0)
+        arg-count (vector-get node 2)
+        bop (builtin-opcode func-hash)]
+    (if (> bop 0)
+      (if (= bop (op-map-new))
+        (emit-to instrs bop (+ 1 (map-size env)))
+        (if (or (= bop (op-map-insert))
+                (or (= bop (op-map-get))
+                    (or (= bop (op-map-contains)) (= bop (op-map-remove)))))
+          (compile-map-builtin-with-source node source env ftable instrs data-ref bop)
+          (let [instrs1 (compile-expr-with-source (vector-get node 3) source env ftable instrs data-ref)]
+            (if (or (or (or (or (= bop (op-string-length)) (= bop (op-vector-length))) (= bop (op-ref-get)))
+                        (or (or (= bop (op-map-size)) (= bop (op-print)))
+                            (or (= bop (op-read-file)) (= bop (op-command-line-arg)))))
+                    (or (= bop (op-vector-new)) (= bop (op-ref-new))))
+              (if (or (= bop (op-vector-new)) (= bop (op-ref-new)))
+                (emit-to instrs1 bop (+ 1 (map-size env)))
+                (emit-to instrs1 bop 0))
+              (let [instrs2 (compile-expr-with-source (vector-get node 4) source env ftable instrs1 data-ref)]
+                (if (or (or (or (or (= bop (op-string-char-at)) (= bop (op-vector-get))) (= bop (op-vector-push)))
+                            (= bop (op-ref-set)))
+                        (or (= bop (op-map-get))
+                            (or (= bop (op-map-contains)) (= bop (op-map-remove)))))
+                  (emit-to instrs2 bop (+ 1 (map-size env)))
+                  (if (= bop (op-map-insert))
+                    (let [instrs3 (compile-expr-with-source (vector-get node 5) source env ftable instrs2 data-ref)]
+                      (emit-to instrs3 bop (+ 1 (map-size env))))
+                    (emit-to instrs2 bop 0))))))))
+      (let [func-idx (ftable-lookup ftable func-hash)
+            instrs1 (ref-new instrs)]
+        (do
+          (if (> arg-count 0)
+            (do
+              (ref-set instrs1 (compile-expr-with-source (vector-get node 3) source env ftable (ref-get instrs1) data-ref))
+              (if (> arg-count 1)
+                (do
+                  (ref-set instrs1 (compile-expr-with-source (vector-get node 4) source env ftable (ref-get instrs1) data-ref))
+                  0)
+                0))
+            0)
+          (emit-to (ref-get instrs1) (op-call) func-idx))))))
+
 (defn compile-expr-with-source [node source env ftable instrs data-ref]
   (let [tag (vector-get node 0)]
     (if (= tag (tag-lit-string))
       (compile-string-literal-with-source node source instrs data-ref)
-      (if (= tag (tag-do))
-        (let [expr-count (vector-get node 1)]
+        (if (= tag (tag-do))
+          (let [expr-count (vector-get node 1)]
           (if (= expr-count 0)
             instrs
-            (let [instrs1 (compile-expr-with-source (vector-get node 2) source env ftable instrs data-ref)]
-              (if (= expr-count 1)
-                instrs1
-                (let [instrs2 (emit-to instrs1 (op-drop) 0)
-                      instrs3 (compile-expr-with-source (vector-get node 3) source env ftable instrs2 data-ref)]
-                  (if (= expr-count 2)
-                    instrs3
-                    (let [instrs4 (emit-to instrs3 (op-drop) 0)
-                          instrs5 (compile-expr-with-source (vector-get node 4) source env ftable instrs4 data-ref)]
-                      (if (= expr-count 3)
-                        instrs5
-                        (let [instrs6 (emit-to instrs5 (op-drop) 0)]
-                          (compile-expr-with-source (vector-get node 5) source env ftable instrs6 data-ref))))))))))
-        (compile-expr-with-ftable node env ftable instrs)))))
+            (compile-do-exprs-with-source node source env ftable 0 expr-count instrs data-ref)))
+        (if (= tag (tag-if))
+          (let [cond-expr (vector-get node 1)
+                then-expr (vector-get node 2)
+                else-expr (vector-get node 3)
+                instrs1 (compile-expr-with-source cond-expr source env ftable instrs data-ref)
+                instrs2 (emit-to instrs1 (op-if) 0)
+                instrs3 (compile-expr-with-source then-expr source env ftable instrs2 data-ref)
+                instrs4 (emit-to instrs3 (op-end) 0)
+                instrs5 (compile-expr-with-source else-expr source env ftable instrs4 data-ref)]
+            (emit-to instrs5 (op-end) 0))
+        (if (= tag (tag-apply))
+          (compile-apply-with-source node source env ftable instrs data-ref)
+          (if (= tag (tag-let))
+            (let [name-hash (vector-get node 1)
+                  init-expr (vector-get node 2)
+                  body-expr (vector-get node 3)
+                  instrs1 (compile-expr-with-source init-expr source env ftable instrs data-ref)
+                  new-idx (+ 1 (map-size env))
+                  instrs2 (emit-to instrs1 (op-local-set) new-idx)
+                  new-env (env-bind env name-hash new-idx)]
+              (compile-expr-with-source body-expr source new-env ftable instrs2 data-ref))
+            (if (= tag (tag-lambda))
+              (let [param-count (vector-get node 1)
+                    new-env (ref-new env)
+                    new-idx (ref-new (+ 1 (map-size env)))]
+                (do
+                  (if (> param-count 0)
+                    (do
+                      (ref-set new-env (env-bind (ref-get new-env) (vector-get node 2) (ref-get new-idx)))
+                      (ref-set new-idx (+ (ref-get new-idx) 1))
+                      (if (> param-count 1)
+                        (do
+                          (ref-set new-env (env-bind (ref-get new-env) (vector-get node 3) (ref-get new-idx)))
+                          (ref-set new-idx (+ (ref-get new-idx) 1))
+                          0)
+                        0))
+                    0)
+                  (compile-expr-with-source (vector-get node (+ 2 param-count)) source (ref-get new-env) ftable instrs data-ref)))
+            (if (= tag (tag-match))
+              (let [scrutinee (vector-get node 1)
+                    arm-count (vector-get node 2)
+                    scr-idx (+ 1 (map-size env))
+                    instrs1 (compile-expr-with-source scrutinee source env ftable instrs data-ref)
+                    instrs2 (emit-to instrs1 (op-local-set) scr-idx)]
+                (if (> arm-count 0)
+                  (let [pat1 (vector-get node 3)
+                        body1 (vector-get node 4)
+                        i5 (compile-match-pattern-check pat1 scr-idx instrs2)
+                        i6 (emit-to i5 (op-if) 0)
+                        i7 (compile-expr-with-source body1 source env ftable i6 data-ref)
+                        i8 (emit-to i7 (op-end) 0)]
+                    (if (> arm-count 1)
+                      (let [pat2 (vector-get node 5)
+                            body2 (vector-get node 6)
+                            i11 (compile-match-pattern-check pat2 scr-idx i8)
+                            i12 (emit-to i11 (op-if) 0)
+                            i13 (compile-expr-with-source body2 source env ftable i12 data-ref)
+                            i14 (emit-to i13 (op-end) 0)]
+                        (if (> arm-count 2)
+                          (let [pat3 (vector-get node 7)
+                                body3 (vector-get node 8)
+                                i17 (compile-match-pattern-check pat3 scr-idx i14)
+                                i18 (emit-to i17 (op-if) 0)
+                                i19 (compile-expr-with-source body3 source env ftable i18 data-ref)
+                                i20 (emit-to i19 (op-end) 0)
+                                i21 (emit-to i20 (op-i64-const) 0)
+                                i22 (emit-to i21 (op-end) 0)
+                                i23 (emit-to i22 (op-end) 0)
+                                i24 (emit-to i23 (op-end) 0)]
+                            i24)
+                          (let [i15 (emit-to i14 (op-i64-const) 0)
+                                i16 (emit-to i15 (op-end) 0)
+                                i17 (emit-to i16 (op-end) 0)]
+                            i17)))
+                      (let [i9 (emit-to i8 (op-i64-const) 0)
+                            i10 (emit-to i9 (op-end) 0)]
+                        i10)))
+                  (emit-to instrs2 (op-i64-const) 0)))
+              (compile-expr-with-ftable node env ftable instrs))))))))))
 
 (defn compile-defn-with-source [node source ftable data-ref]
   (let [name-hash (vector-get node 1)
@@ -285,7 +467,8 @@
                   (emit-to instrs bop (+ 1 (map-size env)))
                   (let [instrs1 (compile-expr-with-ftable (vector-get node 3) env ftable instrs)]
                     (if (or (or (or (or (= bop (op-string-length)) (= bop (op-vector-length))) (= bop (op-ref-get)))
-                                (or (or (= bop (op-map-size)) (= bop (op-print))) (= bop (op-read-file))))
+                                (or (or (= bop (op-map-size)) (= bop (op-print)))
+                                    (or (= bop (op-read-file)) (= bop (op-command-line-arg)))))
                             (or (= bop (op-vector-new)) (= bop (op-ref-new))))
                       (if (or (= bop (op-vector-new)) (= bop (op-ref-new)))
                         (emit-to instrs1 bop (+ 1 (map-size env)))

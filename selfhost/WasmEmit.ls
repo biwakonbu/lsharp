@@ -314,6 +314,48 @@
         result1 (emit-leb128 result0 body-size)]
     (append-byte-vector result1 body13 0 body-size)))
 
+;; generalized helper pair 用 helper ID
+(defn helper-id-alloc [] 0)
+(defn helper-id-print [] 1)
+(defn helper-id-read-file [] 2)
+(defn helper-id-runtime-hash [] 3)
+(defn helper-id-command-line-arg [] 4)
+
+;; generalized helper pair 版 Type section
+;; 最初の slice では alloc+print のみ既存 narrow helper へ委譲する
+(defn emit-type-section-helper-pair-main [helper-a helper-b]
+  (if (= helper-a (helper-id-alloc))
+    (if (= helper-b (helper-id-print))
+      (emit-type-section-alloc-print-main)
+      (emit-type-section-main))
+    (emit-type-section-main)))
+
+;; generalized helper triple 版 Type section
+;; 最初の slice では alloc+print+read-file のみ既存 narrow helper へ委譲する
+(defn emit-type-section-helper-triple-main [helper-a helper-b helper-c]
+  (if (= helper-a (helper-id-alloc))
+    (if (= helper-b (helper-id-print))
+      (if (= helper-c (helper-id-read-file))
+        (emit-type-section-alloc-print-main)
+        (emit-type-section-main))
+      (emit-type-section-main))
+    (emit-type-section-main)))
+
+;; generalized helper quad 版 Type section
+;; 最初の slice では alloc+print+read-file+command-line-arg / runtime-hash を既存 narrow helper へ委譲する
+(defn emit-type-section-helper-quad-main [helper-a helper-b helper-c helper-d]
+  (if (= helper-a (helper-id-alloc))
+    (if (= helper-b (helper-id-print))
+      (if (= helper-c (helper-id-read-file))
+        (if (= helper-d (helper-id-command-line-arg))
+          (emit-type-section-alloc-print-main)
+          (if (= helper-d (helper-id-runtime-hash))
+            (emit-type-section-alloc-print-main)
+            (emit-type-section-main)))
+        (emit-type-section-main))
+      (emit-type-section-main))
+    (emit-type-section-main)))
+
 ;; === Function セクション生成 ===
 
 ;; type index 0 を func-count 個並べる
@@ -537,6 +579,41 @@
         result1 (emit-leb128 result0 body-size)]
     (append-byte-vector result1 body26 0 body-size)))
 
+;; generalized helper pair 版 Import section
+;; 最初の slice では alloc+print のみ既存 narrow helper へ委譲する
+(defn emit-import-section-helper-pair [helper-a helper-b]
+  (if (= helper-a (helper-id-alloc))
+    (if (= helper-b (helper-id-print))
+      (emit-import-section-alloc-print)
+      (emit-import-section-alloc))
+    (emit-import-section-alloc)))
+
+;; generalized helper triple 版 Import section
+;; 最初の slice では alloc+print+read-file のみ既存 narrow helper へ委譲する
+(defn emit-import-section-helper-triple [helper-a helper-b helper-c]
+  (if (= helper-a (helper-id-alloc))
+    (if (= helper-b (helper-id-print))
+      (if (= helper-c (helper-id-read-file))
+        (emit-import-section-alloc-print-read)
+        (emit-import-section-alloc-print))
+      (emit-import-section-alloc))
+    (emit-import-section-alloc)))
+
+;; generalized helper quad 版 Import section
+;; 最初の slice では alloc+print+read-file+command-line-arg / runtime-hash を既存 narrow helper へ委譲する
+(defn emit-import-section-helper-quad [helper-a helper-b helper-c helper-d]
+  (if (= helper-a (helper-id-alloc))
+    (if (= helper-b (helper-id-print))
+      (if (= helper-c (helper-id-read-file))
+        (if (= helper-d (helper-id-command-line-arg))
+          (emit-import-section-alloc-print-read-arg)
+          (if (= helper-d (helper-id-runtime-hash))
+            (emit-import-section-alloc-print-read-hash)
+            (emit-import-section-alloc-print-read)))
+        (emit-import-section-alloc-print))
+      (emit-import-section-alloc))
+    (emit-import-section-alloc)))
+
 ;; `env.__alloc`, `env.print`, `env.read-file` を import する narrow bootstrap 用 Import section
 ;; import index は alloc=0, print=1, read-file=2 を固定する
 (defn emit-import-section-alloc-print-read []
@@ -591,6 +668,158 @@
         result1 (emit-leb128 result0 body-size)]
     (append-byte-vector result1 body42 0 body-size)))
 
+;; `env.__alloc`, `env.print`, `env.read-file`, `env.__fnv1a_hash` を import する narrow bootstrap 用 Import section
+;; import index は alloc=0, print=1, read-file=2, __fnv1a_hash=3 を固定する
+(defn emit-import-section-alloc-print-read-hash []
+  (let [body0 (emit-leb128 (vector-new 64) 4)
+        ;; import 0: env.__alloc (type 0)
+        body1 (emit-leb128 body0 3)
+        body2 (emit-byte body1 101)
+        body3 (emit-byte body2 110)
+        body4 (emit-byte body3 118)
+        body5 (emit-leb128 body4 7)
+        body6 (emit-byte body5 95)
+        body7 (emit-byte body6 95)
+        body8 (emit-byte body7 97)
+        body9 (emit-byte body8 108)
+        body10 (emit-byte body9 108)
+        body11 (emit-byte body10 111)
+        body12 (emit-byte body11 99)
+        body13 (emit-byte body12 0)
+        body14 (emit-leb128 body13 0)
+        ;; import 1: env.print (type 1)
+        body15 (emit-leb128 body14 3)
+        body16 (emit-byte body15 101)
+        body17 (emit-byte body16 110)
+        body18 (emit-byte body17 118)
+        body19 (emit-leb128 body18 5)
+        body20 (emit-byte body19 112)
+        body21 (emit-byte body20 114)
+        body22 (emit-byte body21 105)
+        body23 (emit-byte body22 110)
+        body24 (emit-byte body23 116)
+        body25 (emit-byte body24 0)
+        body26 (emit-leb128 body25 1)
+        ;; import 2: env.read-file (type 0)
+        body27 (emit-leb128 body26 3)
+        body28 (emit-byte body27 101)
+        body29 (emit-byte body28 110)
+        body30 (emit-byte body29 118)
+        body31 (emit-leb128 body30 9)
+        body32 (emit-byte body31 114)
+        body33 (emit-byte body32 101)
+        body34 (emit-byte body33 97)
+        body35 (emit-byte body34 100)
+        body36 (emit-byte body35 45)
+        body37 (emit-byte body36 102)
+        body38 (emit-byte body37 105)
+        body39 (emit-byte body38 108)
+        body40 (emit-byte body39 101)
+        body41 (emit-byte body40 0)
+        body42 (emit-leb128 body41 0)
+        ;; import 3: env.__fnv1a_hash (type 0)
+        body43 (emit-leb128 body42 3)
+        body44 (emit-byte body43 101)
+        body45 (emit-byte body44 110)
+        body46 (emit-byte body45 118)
+        body47 (emit-leb128 body46 12)
+        body48 (emit-byte body47 95)
+        body49 (emit-byte body48 95)
+        body50 (emit-byte body49 102)
+        body51 (emit-byte body50 110)
+        body52 (emit-byte body51 118)
+        body53 (emit-byte body52 49)
+        body54 (emit-byte body53 97)
+        body55 (emit-byte body54 95)
+        body56 (emit-byte body55 104)
+        body57 (emit-byte body56 97)
+        body58 (emit-byte body57 115)
+        body59 (emit-byte body58 104)
+        body60 (emit-byte body59 0)
+        body61 (emit-leb128 body60 0)
+        body-size (vector-length body61)
+        result0 (emit-byte (vector-new 64) 2)
+        result1 (emit-leb128 result0 body-size)]
+    (append-byte-vector result1 body61 0 body-size)))
+
+;; `env.__alloc`, `env.print`, `env.read-file`, `env.command-line-arg` を import する narrow bootstrap 用 Import section
+;; import index は alloc=0, print=1, read-file=2, command-line-arg=3 を固定する
+(defn emit-import-section-alloc-print-read-arg []
+  (let [body0 (emit-leb128 (vector-new 64) 4)
+        ;; import 0: env.__alloc (type 0)
+        body1 (emit-leb128 body0 3)
+        body2 (emit-byte body1 101)
+        body3 (emit-byte body2 110)
+        body4 (emit-byte body3 118)
+        body5 (emit-leb128 body4 7)
+        body6 (emit-byte body5 95)
+        body7 (emit-byte body6 95)
+        body8 (emit-byte body7 97)
+        body9 (emit-byte body8 108)
+        body10 (emit-byte body9 108)
+        body11 (emit-byte body10 111)
+        body12 (emit-byte body11 99)
+        body13 (emit-byte body12 0)
+        body14 (emit-leb128 body13 0)
+        ;; import 1: env.print (type 1)
+        body15 (emit-leb128 body14 3)
+        body16 (emit-byte body15 101)
+        body17 (emit-byte body16 110)
+        body18 (emit-byte body17 118)
+        body19 (emit-leb128 body18 5)
+        body20 (emit-byte body19 112)
+        body21 (emit-byte body20 114)
+        body22 (emit-byte body21 105)
+        body23 (emit-byte body22 110)
+        body24 (emit-byte body23 116)
+        body25 (emit-byte body24 0)
+        body26 (emit-leb128 body25 1)
+        ;; import 2: env.read-file (type 0)
+        body27 (emit-leb128 body26 3)
+        body28 (emit-byte body27 101)
+        body29 (emit-byte body28 110)
+        body30 (emit-byte body29 118)
+        body31 (emit-leb128 body30 9)
+        body32 (emit-byte body31 114)
+        body33 (emit-byte body32 101)
+        body34 (emit-byte body33 97)
+        body35 (emit-byte body34 100)
+        body36 (emit-byte body35 45)
+        body37 (emit-byte body36 102)
+        body38 (emit-byte body37 105)
+        body39 (emit-byte body38 108)
+        body40 (emit-byte body39 101)
+        body41 (emit-byte body40 0)
+        body42 (emit-leb128 body41 0)
+        ;; import 3: env.command-line-arg (type 0)
+        body43 (emit-leb128 body42 3)
+        body44 (emit-byte body43 101)
+        body45 (emit-byte body44 110)
+        body46 (emit-byte body45 118)
+        body47 (emit-leb128 body46 16)
+        body48 (emit-byte body47 99)
+        body49 (emit-byte body48 111)
+        body50 (emit-byte body49 109)
+        body51 (emit-byte body50 109)
+        body52 (emit-byte body51 97)
+        body53 (emit-byte body52 110)
+        body54 (emit-byte body53 100)
+        body55 (emit-byte body54 45)
+        body56 (emit-byte body55 108)
+        body57 (emit-byte body56 105)
+        body58 (emit-byte body57 110)
+        body59 (emit-byte body58 101)
+        body60 (emit-byte body59 45)
+        body61 (emit-byte body60 97)
+        body62 (emit-byte body61 114)
+        body63 (emit-byte body62 103)
+        body64 (emit-byte body63 0)
+        body65 (emit-leb128 body64 0)
+        body-size (vector-length body65)
+        result0 (emit-byte (vector-new 64) 2)
+        result1 (emit-leb128 result0 body-size)]
+    (append-byte-vector result1 body65 0 body-size)))
+
 ;; === Code セクション生成 ===
 
 ;; バイト列 Vector をすべて出力先へコピーする
@@ -604,17 +833,56 @@
       count)))
 
 ;; IR 命令列をすべて Wasm bytes へ変換する
-(defn append-ir-instrs [body ir-instrs idx count]
+;; selfhost IR では if の else / end を opcode 43 の 2 連続で表現しているため、
+;; WasmEmit 側で if-stack を見ながら最初の 43 を else、2 個目を end に変換する。
+(defn append-ir-instrs-with-if-state [body ir-instrs idx count if-depth if-flags]
   (if (>= idx count)
     body
     (let [instr (vector-get ir-instrs idx)
           opcode (vector-get instr 0)
           operand (vector-get instr 1)]
-      (append-ir-instrs
-        (emit-ir-instr body opcode operand)
-        ir-instrs
-        (+ idx 1)
-        count))))
+      (if (= opcode 41)
+        (append-ir-instrs-with-if-state
+          (emit-ir-instr body opcode operand)
+          ir-instrs
+          (+ idx 1)
+          count
+          (+ if-depth 1)
+          (* if-flags 2))
+        (if (= opcode 43)
+          (if (= if-depth 0)
+            (append-ir-instrs-with-if-state
+              (emit-ir-instr body opcode operand)
+              ir-instrs
+              (+ idx 1)
+              count
+              if-depth
+              if-flags)
+            (if (= (% if-flags 2) 0)
+              (append-ir-instrs-with-if-state
+                (emit-byte body (wasm-else))
+                ir-instrs
+                (+ idx 1)
+                count
+                if-depth
+                (+ if-flags 1))
+              (append-ir-instrs-with-if-state
+                (emit-ir-instr body opcode operand)
+                ir-instrs
+                (+ idx 1)
+                count
+                (- if-depth 1)
+                (/ if-flags 2))))
+          (append-ir-instrs-with-if-state
+            (emit-ir-instr body opcode operand)
+            ir-instrs
+            (+ idx 1)
+            count
+            if-depth
+            if-flags))))))
+
+(defn append-ir-instrs [body ir-instrs idx count]
+  (append-ir-instrs-with-if-state body ir-instrs idx count 0 0))
 
 ;; 単一関数本体を構築する
 (defn build-function-body [ir-instrs]
@@ -710,6 +978,16 @@
 ;; narrow bootstrap slice では import index 2 に env.read-file を置く
 (defn emit-read-file-instr [bytes]
   (emit-leb128 (emit-byte bytes 16) 2))
+
+;; command-line-arg: [index:i64] -> arg:string
+;; narrow bootstrap slice では import index 3 に env.command-line-arg を置く
+(defn emit-command-line-arg-instr [bytes]
+  (emit-leb128 (emit-byte bytes 16) 3))
+
+;; runtime hash: [string-object:i64] -> hash:i64
+;; narrow bootstrap slice では import index 3 に env.__fnv1a_hash を置く
+(defn emit-runtime-hash-string-instr [bytes]
+  (emit-leb128 (emit-byte bytes 16) 3))
 
 ;; vector-push: [Vector ptr:i64, value:i64] -> Vector ptr:i64
 ;; narrow bootstrap slice では __alloc import index 0 を使う
@@ -1330,8 +1608,8 @@
                             ;; call
                                       (emit-leb128 (emit-byte bytes 16) operand)
                                       (if (= opcode 41)
-                                        ;; if (i64 -> i32 変換が必要だが簡易版では省略)
-                                        (emit-byte (emit-byte bytes 4) 64)  ;; if + void block type
+                                        ;; if expression は i64 を返す
+                                        (emit-byte (emit-byte bytes 4) 126)
                                         (if (= opcode 43)
                                           ;; end
                                           (emit-byte bytes 11)
@@ -1471,8 +1749,12 @@
                                               (emit-map-remove-instr bytes operand)
                                             (if (= opcode 64)
                                               (emit-read-file-instr bytes)
+                                            (if (= opcode 67)
+                                              (emit-command-line-arg-instr bytes)
+                                            (if (= opcode 68)
+                                              (emit-runtime-hash-string-instr bytes)
                                             ;; 未知のopcode: スキップ
-                                              bytes))))))))))))))))))))))))))))))))))
+                                              bytes))))))))))))))))))))))))))))))))))))
 
 ;; === Data セクション生成 ===
 

@@ -76,6 +76,14 @@
 
 ;; === オブジェクトファイル出力 ===
 
+;; native code 全体を object result へ追記
+(defn append-native-object-bytes [result native-code idx len]
+  (if (>= idx len)
+    (ref-get result)
+    (do
+      (ref-set result (vector-push (ref-get result) (vector-get native-code idx)))
+      (append-native-object-bytes result native-code (+ idx 1) len))))
+
 ;; ネイティブ機械語からオブジェクトファイルを生成
 ;; native-code: 機械語バイト列
 ;; target: ターゲット記述子
@@ -95,31 +103,8 @@
 (defn emit-macho [native-code target]
   (let [header (emit-macho-header target)
         result (ref-new header)
-        i (ref-new 0)
         n (vector-length native-code)]
-    (do
-      ;; コードセクションのバイトを追加
-      (if (< (ref-get i) n)
-        (do
-          (ref-set result (vector-push (ref-get result) (vector-get native-code (ref-get i))))
-          (ref-set i (+ (ref-get i) 1))
-          (if (< (ref-get i) n)
-            (do
-              (ref-set result (vector-push (ref-get result) (vector-get native-code (ref-get i))))
-              (ref-set i (+ (ref-get i) 1))
-              (if (< (ref-get i) n)
-                (do
-                  (ref-set result (vector-push (ref-get result) (vector-get native-code (ref-get i))))
-                  (ref-set i (+ (ref-get i) 1))
-                  (if (< (ref-get i) n)
-                    (do
-                      (ref-set result (vector-push (ref-get result) (vector-get native-code (ref-get i))))
-                      0)
-                    0))
-                0))
-            0))
-        0)
-      (ref-get result))))
+    (append-native-object-bytes result native-code 0 n)))
 
 ;; ELF オブジェクトファイルを生成
 ;; native-code: 機械語バイト列
@@ -127,30 +112,8 @@
 (defn emit-elf [native-code]
   (let [header (emit-elf-header)
         result (ref-new header)
-        i (ref-new 0)
         n (vector-length native-code)]
-    (do
-      (if (< (ref-get i) n)
-        (do
-          (ref-set result (vector-push (ref-get result) (vector-get native-code (ref-get i))))
-          (ref-set i (+ (ref-get i) 1))
-          (if (< (ref-get i) n)
-            (do
-              (ref-set result (vector-push (ref-get result) (vector-get native-code (ref-get i))))
-              (ref-set i (+ (ref-get i) 1))
-              (if (< (ref-get i) n)
-                (do
-                  (ref-set result (vector-push (ref-get result) (vector-get native-code (ref-get i))))
-                  (ref-set i (+ (ref-get i) 1))
-                  (if (< (ref-get i) n)
-                    (do
-                      (ref-set result (vector-push (ref-get result) (vector-get native-code (ref-get i))))
-                      0)
-                    0))
-                0))
-            0))
-        0)
-      (ref-get result))))
+    (append-native-object-bytes result native-code 0 n)))
 
 ;; === エントリポイント (テスト用) ===
 

@@ -268,6 +268,287 @@ fn run_exported_i64_with_alloc_print_read_imports(
     (value, printed)
 }
 
+fn read_memory_text<T>(caller: &mut wasmtime::Caller<'_, T>, addr: i64, len: usize) -> String {
+    let memory = match caller.get_export("memory") {
+        Some(wasmtime::Extern::Memory(memory)) => memory,
+        _ => panic!("memory export が見つからない"),
+    };
+    let mut bytes = vec![0_u8; len];
+    memory
+        .read(&mut *caller, addr as usize, &mut bytes)
+        .expect("memory text bytes を読めない");
+    String::from_utf8(bytes).expect("string object bytes が UTF-8 ではない")
+}
+
+fn read_string_object_bytes<T>(caller: &mut wasmtime::Caller<'_, T>, addr: i64) -> Vec<u8> {
+    let memory = match caller.get_export("memory") {
+        Some(wasmtime::Extern::Memory(memory)) => memory,
+        _ => panic!("memory export が見つからない"),
+    };
+    let mut len_bytes = [0_u8; 4];
+    memory
+        .read(&mut *caller, addr as usize + 4, &mut len_bytes)
+        .expect("string object length を読めない");
+    let len = i32::from_le_bytes(len_bytes);
+    let len = usize::try_from(len).expect("string object length が負");
+    let mut bytes = vec![0_u8; len];
+    memory
+        .read(&mut *caller, addr as usize + 8, &mut bytes)
+        .expect("string object bytes を読めない");
+    bytes
+}
+
+fn fnv1a_hash_bytes(bytes: &[u8]) -> i64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for &byte in bytes {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash as i64
+}
+
+fn run_exported_i64_with_alloc_print_read_path_imports(
+    wasm: &[u8],
+    export_name: &str,
+    expected_path: &str,
+    file_content: &str,
+) -> (i64, String) {
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, wasm)
+        .expect("alloc/print/read-file import 付き stage2 Wasm の Module 構築に失敗");
+    let mut store = wasmtime::Store::new(
+        &engine,
+        AllocPrintReadState {
+            next_alloc: 1024,
+            printed: String::new(),
+            file_content: file_content.to_string(),
+        },
+    );
+    let alloc = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, AllocPrintReadState>, size: i64| -> i64 {
+            let base = caller.data().next_alloc;
+            caller.data_mut().next_alloc = base + size;
+            base
+        },
+    );
+    let print = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, AllocPrintReadState>, value: i64| {
+            caller.data_mut().printed.push_str(&format!("{value}\n"));
+        },
+    );
+    let expected_path = expected_path.to_string();
+    let read_file = wasmtime::Func::wrap(
+        &mut store,
+        move |mut caller: wasmtime::Caller<'_, AllocPrintReadState>, path: i64| -> i64 {
+            let actual_path = read_memory_text(&mut caller, path, expected_path.len());
+            assert_eq!(actual_path, expected_path, "read-file path string が不正");
+            let content = caller.data().file_content.as_bytes().to_vec();
+            let base = caller.data().next_alloc;
+            caller.data_mut().next_alloc = base + 8 + content.len() as i64;
+            let memory = match caller.get_export("memory") {
+                Some(wasmtime::Extern::Memory(memory)) => memory,
+                _ => panic!("memory export が見つからない"),
+            };
+            let mut object = Vec::with_capacity(8 + content.len());
+            object.extend_from_slice(&1_i32.to_le_bytes());
+            object.extend_from_slice(&(content.len() as i32).to_le_bytes());
+            object.extend_from_slice(&content);
+            memory
+                .write(&mut caller, base as usize, &object)
+                .expect("read-file import が stage2 memory へ書き込めない");
+            base
+        },
+    );
+    let instance = wasmtime::Instance::new(
+        &mut store,
+        &module,
+        &[alloc.into(), print.into(), read_file.into()],
+    )
+    .expect("alloc/print/read-file import 付き stage2 Wasm のインスタンス化に失敗");
+    let func = instance
+        .get_typed_func::<(), i64>(&mut store, export_name)
+        .unwrap_or_else(|e| panic!("{export_name} export の取得に失敗: {e}"));
+    let value = func
+        .call(&mut store, ())
+        .expect("alloc/print/read-file import 付き stage2 Wasm の export 呼び出しに失敗");
+    let printed = store.data().printed.clone();
+    (value, printed)
+}
+
+fn run_exported_i64_with_alloc_print_read_hash_imports(
+    wasm: &[u8],
+    export_name: &str,
+    file_content: &str,
+) -> (i64, String) {
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, wasm)
+        .expect("alloc/print/read-file/fnv1a import 付き stage2 Wasm の Module 構築に失敗");
+    let mut store = wasmtime::Store::new(
+        &engine,
+        AllocPrintReadState {
+            next_alloc: 1024,
+            printed: String::new(),
+            file_content: file_content.to_string(),
+        },
+    );
+    let alloc = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, AllocPrintReadState>, size: i64| -> i64 {
+            let base = caller.data().next_alloc;
+            caller.data_mut().next_alloc = base + size;
+            base
+        },
+    );
+    let print = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, AllocPrintReadState>, value: i64| {
+            caller.data_mut().printed.push_str(&format!("{value}\n"));
+        },
+    );
+    let read_file = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, AllocPrintReadState>, _path: i64| -> i64 {
+            let content = caller.data().file_content.as_bytes().to_vec();
+            let base = caller.data().next_alloc;
+            caller.data_mut().next_alloc = base + 8 + content.len() as i64;
+            let memory = match caller.get_export("memory") {
+                Some(wasmtime::Extern::Memory(memory)) => memory,
+                _ => panic!("memory export が見つからない"),
+            };
+            let mut object = Vec::with_capacity(8 + content.len());
+            object.extend_from_slice(&1_i32.to_le_bytes());
+            object.extend_from_slice(&(content.len() as i32).to_le_bytes());
+            object.extend_from_slice(&content);
+            memory
+                .write(&mut caller, base as usize, &object)
+                .expect("read-file import が stage2 memory へ書き込めない");
+            base
+        },
+    );
+    let fnv1a_hash = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, AllocPrintReadState>, value: i64| -> i64 {
+            fnv1a_hash_bytes(&read_string_object_bytes(&mut caller, value))
+        },
+    );
+    let instance = wasmtime::Instance::new(
+        &mut store,
+        &module,
+        &[alloc.into(), print.into(), read_file.into(), fnv1a_hash.into()],
+    )
+    .expect("alloc/print/read-file/fnv1a import 付き stage2 Wasm のインスタンス化に失敗");
+    let func = instance
+        .get_typed_func::<(), i64>(&mut store, export_name)
+        .unwrap_or_else(|e| panic!("{export_name} export の取得に失敗: {e}"));
+    let value = func
+        .call(&mut store, ())
+        .expect("alloc/print/read-file/fnv1a import 付き stage2 Wasm の export 呼び出しに失敗");
+    let printed = store.data().printed.clone();
+    (value, printed)
+}
+
+#[derive(Default)]
+struct AllocPrintReadArgState {
+    next_alloc: i64,
+    printed: String,
+    file_content: String,
+    args: Vec<String>,
+}
+
+/// `env.__alloc`, `env.print`, `env.read-file`, `env.command-line-arg` import を持つ stage2 Wasm を実行するヘルパー
+fn run_exported_i64_with_alloc_print_read_arg_imports(
+    wasm: &[u8],
+    export_name: &str,
+    file_content: &str,
+    args: &[&str],
+) -> (i64, String) {
+    fn write_string_object<T>(mut caller: wasmtime::Caller<'_, T>, base: i64, content: &[u8]) {
+        let memory = match caller.get_export("memory") {
+            Some(wasmtime::Extern::Memory(memory)) => memory,
+            _ => panic!("memory export が見つからない"),
+        };
+        let mut object = Vec::with_capacity(8 + content.len());
+        object.extend_from_slice(&1_i32.to_le_bytes());
+        object.extend_from_slice(&(content.len() as i32).to_le_bytes());
+        object.extend_from_slice(content);
+        memory
+            .write(&mut caller, base as usize, &object)
+            .expect("string object を stage2 memory へ書き込めない");
+    }
+
+    let engine = wasmtime::Engine::default();
+    let module = wasmtime::Module::new(&engine, wasm)
+        .expect("alloc/print/read-file/command-line-arg import 付き stage2 Wasm の Module 構築に失敗");
+    let mut store = wasmtime::Store::new(
+        &engine,
+        AllocPrintReadArgState {
+            next_alloc: 1024,
+            printed: String::new(),
+            file_content: file_content.to_string(),
+            args: args.iter().map(|arg| (*arg).to_string()).collect(),
+        },
+    );
+    let alloc = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, AllocPrintReadArgState>, size: i64| -> i64 {
+            let base = caller.data().next_alloc;
+            caller.data_mut().next_alloc = base + size;
+            base
+        },
+    );
+    let print = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, AllocPrintReadArgState>, value: i64| {
+            caller.data_mut().printed.push_str(&format!("{value}\n"));
+        },
+    );
+    let read_file = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, AllocPrintReadArgState>, _path: i64| -> i64 {
+            let content = caller.data().file_content.as_bytes().to_vec();
+            let base = caller.data().next_alloc;
+            caller.data_mut().next_alloc = base + 8 + content.len() as i64;
+            write_string_object(caller, base, &content);
+            base
+        },
+    );
+    let command_line_arg = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, AllocPrintReadArgState>, index: i64| -> i64 {
+            let content = usize::try_from(index)
+                .ok()
+                .and_then(|idx| caller.data().args.get(idx))
+                .map(|arg| arg.as_bytes().to_vec())
+                .unwrap_or_default();
+            let base = caller.data().next_alloc;
+            caller.data_mut().next_alloc = base + 8 + content.len() as i64;
+            write_string_object(caller, base, &content);
+            base
+        },
+    );
+    let instance = wasmtime::Instance::new(
+        &mut store,
+        &module,
+        &[
+            alloc.into(),
+            print.into(),
+            read_file.into(),
+            command_line_arg.into(),
+        ],
+    )
+    .expect("alloc/print/read-file/command-line-arg import 付き stage2 Wasm のインスタンス化に失敗");
+    let func = instance
+        .get_typed_func::<(), i64>(&mut store, export_name)
+        .unwrap_or_else(|e| panic!("{export_name} export の取得に失敗: {e}"));
+    let value = func
+        .call(&mut store, ())
+        .expect("alloc/print/read-file/command-line-arg import 付き stage2 Wasm の export 呼び出しに失敗");
+    let printed = store.data().printed.clone();
+    (value, printed)
+}
+
 
 /// BOOT-04: 4 層比較テスト
 ///
@@ -542,6 +823,82 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_minimal_subset() {
 
     assert_eq!(run_exported_i64(&modules[0], "_start"), 42);
     assert_eq!(run_exported_i64(&modules[1], "_start"), 7);
+}
+
+/// BOOT-04: stage1 が同じ tiny source から同一 stage2 Wasm を 2 回生成できること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_identical_stage2_wasm_for_same_tiny_source() {
+    let harness = r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        ir (lower program)
+        header (emit-header)
+        type-sec (emit-type-section-main)
+        function-sec (emit-function-section)
+        export-sec (emit-export-section)
+        code-sec (emit-code-section ir)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 function-sec 0 (vector-length function-sec))
+        bytes3 (bootstrap-append-bytes bytes2 export-sec 0 (vector-length export-sec))]
+    (bootstrap-append-bytes bytes3 code-sec 0 (vector-length code-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [src "(defn main [] 42)"
+        stage2-a (bootstrap-build-stage2 src)
+        stage2-b (bootstrap-build-stage2 src)]
+    (do
+      (bootstrap-print-module stage2-a)
+      (bootstrap-print-module stage2-b)
+      0)))
+"#;
+    let stage1_source = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasmEmit.ls"),
+        harness
+    );
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("same-source stage1 実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 2);
+    assert_eq!(modules.len(), 2, "stage2 モジュール数が不正");
+    assert_eq!(
+        modules[0], modules[1],
+        "同じ tiny source から stage2 Wasm が非決定的に変化した"
+    );
+    assert_valid_wasm(&modules[0]);
+    assert_eq!(run_exported_i64(&modules[0], "_start"), 42);
 }
 
 /// BOOT-04: stage1 が extended do block を含む stage2 Wasm も生成できること
@@ -1111,6 +1468,318 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_nested_string_literal_data_se
     );
 }
 
+/// BOOT-04: stage1 が 5 式以上の do に含まれる source-aware string literal も stage2 Wasm に落とし込めること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_extended_do_string_literal_data_section() {
+    let stage2_source = r#"(defn main [] (do "ab" "c" "de" "fgh" "ijk"))"#.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions-with-source src program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        header (emit-header)
+        type-sec (emit-type-section-functions functions)
+        function-sec (emit-function-section-functions functions)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-index 0)
+        code-sec (emit-code-section-functions functions)
+        data-sec (emit-data-section data 1024)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 function-sec 0 (vector-length function-sec))
+        bytes3 (bootstrap-append-bytes bytes2 memory-sec 0 (vector-length memory-sec))
+        bytes4 (bootstrap-append-bytes bytes3 export-sec 0 (vector-length export-sec))
+        bytes5 (bootstrap-append-bytes bytes4 code-sec 0 (vector-length code-sec))]
+    (bootstrap-append-bytes bytes5 data-sec 0 (vector-length data-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [stage2 (bootstrap-build-stage2 "{}")]
+    (do
+      (bootstrap-print-module stage2)
+      0)))
+"#,
+        stage2_source
+    );
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("extended do string literal program を含む stage1 wasm の実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
+    assert_valid_wasm(&modules[0]);
+    let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
+    assert!(
+        data_section.windows(11).any(|window| window == b"abcdefghijk"),
+        "extended do string literal bytes が data section に連結配置されていない"
+    );
+    assert_eq!(
+        run_exported_i64(&modules[0], "_start"),
+        1032,
+        "extended do string literal の最終 offset が前段 bytes を考慮していない"
+    );
+}
+
+/// BOOT-04: stage1 が if branch 内の source-aware string literal を stage2 Wasm に落とし込めること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_if_string_literal_data_section() {
+    let stage2_source = r#"(defn main [] (if (= 1 1) "hello" "world"))"#.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions-with-source src program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        header (emit-header)
+        type-sec (emit-type-section-functions functions)
+        function-sec (emit-function-section-functions functions)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-index 0)
+        code-sec (emit-code-section-functions functions)
+        data-sec (emit-data-section data 1024)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 function-sec 0 (vector-length function-sec))
+        bytes3 (bootstrap-append-bytes bytes2 memory-sec 0 (vector-length memory-sec))
+        bytes4 (bootstrap-append-bytes bytes3 export-sec 0 (vector-length export-sec))
+        bytes5 (bootstrap-append-bytes bytes4 code-sec 0 (vector-length code-sec))]
+    (bootstrap-append-bytes bytes5 data-sec 0 (vector-length data-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [stage2 (bootstrap-build-stage2 "{}")]
+    (do
+      (bootstrap-print-module stage2)
+      0)))
+"#,
+        stage2_source
+    );
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("if string literal program を含む stage1 wasm の実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
+    assert_valid_wasm(&modules[0]);
+    let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
+    assert!(
+        data_section.windows(10).any(|window| window == b"helloworld"),
+        "if string literal bytes が data section に連結配置されていない"
+    );
+    assert_eq!(
+        run_exported_i64(&modules[0], "_start"),
+        1024,
+        "if string literal の then branch offset が不正"
+    );
+}
+
+/// BOOT-04: stage1 が match arm 内の source-aware string literal を stage2 Wasm に落とし込めること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_match_string_literal_data_section() {
+    let stage2_source = r#"(defn main [] (match 2 [1 "one"] [2 "two"]))"#.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions-with-source src program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        header (emit-header)
+        type-sec (emit-type-section-functions functions)
+        function-sec (emit-function-section-functions functions)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-index 0)
+        code-sec (emit-code-section-functions functions)
+        data-sec (emit-data-section data 1024)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 function-sec 0 (vector-length function-sec))
+        bytes3 (bootstrap-append-bytes bytes2 memory-sec 0 (vector-length memory-sec))
+        bytes4 (bootstrap-append-bytes bytes3 export-sec 0 (vector-length export-sec))
+        bytes5 (bootstrap-append-bytes bytes4 code-sec 0 (vector-length code-sec))]
+    (bootstrap-append-bytes bytes5 data-sec 0 (vector-length data-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [stage2 (bootstrap-build-stage2 "{}")]
+    (do
+      (bootstrap-print-module stage2)
+      0)))
+"#,
+        stage2_source
+    );
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("match string literal program を含む stage1 wasm の実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
+    assert_valid_wasm(&modules[0]);
+    let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
+    assert!(
+        data_section.windows(6).any(|window| window == b"onetwo"),
+        "match string literal bytes が data section に連結配置されていない"
+    );
+    assert_eq!(
+        run_exported_i64(&modules[0], "_start"),
+        1027,
+        "match string literal の selected branch offset が不正"
+    );
+}
+
+/// BOOT-04: stage1 が lambda body 内の source-aware string literal を stage2 Wasm に落とし込めること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_lambda_string_literal_data_section() {
+    let stage2_source = r#"(defn main [] (fn [x] "ok"))"#.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions-with-source src program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        header (emit-header)
+        type-sec (emit-type-section-functions functions)
+        function-sec (emit-function-section-functions functions)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-index 0)
+        code-sec (emit-code-section-functions functions)
+        data-sec (emit-data-section data 1024)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 function-sec 0 (vector-length function-sec))
+        bytes3 (bootstrap-append-bytes bytes2 memory-sec 0 (vector-length memory-sec))
+        bytes4 (bootstrap-append-bytes bytes3 export-sec 0 (vector-length export-sec))
+        bytes5 (bootstrap-append-bytes bytes4 code-sec 0 (vector-length code-sec))]
+    (bootstrap-append-bytes bytes5 data-sec 0 (vector-length data-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [stage2 (bootstrap-build-stage2 "{}")]
+    (do
+      (bootstrap-print-module stage2)
+      0)))
+"#,
+        stage2_source
+    );
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("lambda string literal program を含む stage1 wasm の実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
+    assert_valid_wasm(&modules[0]);
+    let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
+    assert!(
+        data_section.windows(2).any(|window| window == b"ok"),
+        "lambda string literal bytes が data section に配置されていない"
+    );
+    assert_eq!(
+        run_exported_i64(&modules[0], "_start"),
+        1024,
+        "lambda string literal の offset が不正"
+    );
+}
+
 /// BOOT-04: stage1 が vector-length builtin を含む stage2 Wasm を valid module として生成できること
 #[test]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_length_helper_program() {
@@ -1323,6 +1992,81 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_new_program() {
         0,
         "vector-new + vector-length を含む stage2 Wasm が alloc import 付きで実行可能であること"
     );
+}
+
+/// BOOT-04: stage1 が同じ alloc-import tiny source から同一 stage2 Wasm を 2 回生成できること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_identical_alloc_stage2_wasm_for_same_source() {
+    let harness = r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        header (emit-header)
+        type-sec (emit-type-section-alloc-main)
+        import-sec (emit-import-section-alloc)
+        function-sec (emit-function-section-main-type-index 1)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-index 1)
+        code-sec (emit-code-section-functions functions)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
+        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
+        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
+        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))]
+    (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [src "(defn main [] (vector-length (vector-new 4)))"
+        stage2-a (bootstrap-build-stage2 src)
+        stage2-b (bootstrap-build-stage2 src)]
+    (do
+      (bootstrap-print-module stage2-a)
+      (bootstrap-print-module stage2-b)
+      0)))
+"#;
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("same alloc-source stage1 実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 2);
+    assert_eq!(modules.len(), 2, "stage2 モジュール数が不正");
+    assert_eq!(
+        modules[0], modules[1],
+        "同じ alloc-import tiny source から stage2 Wasm が非決定的に変化した"
+    );
+    assert_valid_wasm(&modules[0]);
+    assert!(
+        extract_sections(&modules[0]).iter().any(|(id, _)| *id == 2),
+        "repeatability 対象 stage2 Wasm は alloc import section を持つこと"
+    );
+    assert_eq!(run_exported_i64_with_alloc_import(&modules[0], "_start"), 0);
 }
 
 /// BOOT-04: stage1 が vector-push の in-place + growth を含む stage2 Wasm を生成できること
@@ -1685,6 +2429,332 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_remove_program() {
     );
 }
 
+/// BOOT-04: stage1 が source-aware string key subset の map builtins を含む stage2 Wasm を生成できること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_key_map_program() {
+    let stage2_source = r#"(defn main [] (let [m0 (map-new)] (let [m1 (map-insert m0 "aa" 10)] (let [m2 (map-insert m1 "bb" 20)] (let [m3 (map-remove m2 "aa")] (+ (* 10 (map-size m3)) (map-get m3 "bb")))))))"#.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions-with-source src program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        header (emit-header)
+        type-sec (emit-type-section-alloc-main)
+        import-sec (emit-import-section-alloc)
+        function-sec (emit-function-section-main-type-index 1)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-index 1)
+        code-sec (emit-code-section-functions functions)
+        data-sec (emit-data-section data 1024)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
+        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
+        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
+        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))
+        bytes6 (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))]
+    (bootstrap-append-bytes bytes6 data-sec 0 (vector-length data-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [stage2 (bootstrap-build-stage2 "{}")]
+    (do
+      (bootstrap-print-module stage2)
+      0)))
+"#,
+        stage2_source
+    );
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("string key map program を含む stage1 wasm の実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
+    assert_valid_wasm(&modules[0]);
+    let data_section = extract_section_bytes(&modules[0], 11).unwrap_or_default();
+    assert!(
+        !data_section.windows(2).any(|window| window == [97, 97] || window == [98, 98]),
+        "string key literal bytes は data section に残らず hash const 化されること"
+    );
+    assert_eq!(
+        run_exported_i64_with_alloc_import(&modules[0], "_start"),
+        30,
+        "string key subset の map builtins を含む stage2 Wasm が alloc import 付きで実行可能であること"
+    );
+}
+
+/// BOOT-04: stage1 が non-literal string key map builtins を含む stage2 Wasm を生成できること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_non_literal_string_key_map_program() {
+    let stage2_source = r#"(defn main [] (let [key (read-file "fixture.txt")] (let [m0 (map-new)] (let [m1 (map-insert m0 key 42)] (map-get m1 key)))))"#.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions-with-source src program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        header (emit-header)
+        type-sec (emit-type-section-alloc-print-main)
+        import-sec (emit-import-section-alloc-print-read-hash)
+        function-sec (emit-function-section-main-type-index 2)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-memory-index 4 0)
+        code-sec (emit-code-section-functions functions)
+        data-sec (emit-data-section data 1024)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
+        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
+        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
+        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))
+        bytes6 (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))]
+    (bootstrap-append-bytes bytes6 data-sec 0 (vector-length data-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [stage2 (bootstrap-build-stage2 "{}")]
+    (do
+      (bootstrap-print-module stage2)
+      0)))
+"#,
+        stage2_source
+    );
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("non-literal string key map program を含む stage1 wasm の実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
+    assert_valid_wasm(&modules[0]);
+    let data_section = extract_section_bytes(&modules[0], 11).unwrap_or_default();
+    assert!(
+        data_section.windows("fixture.txt".len()).any(|window| window == b"fixture.txt"),
+        "read-file path literal bytes は data section に配置されること"
+    );
+    assert_eq!(
+        run_exported_i64_with_alloc_print_read_hash_imports(&modules[0], "_start", "aa").0,
+        42,
+        "non-literal string key map builtins を含む stage2 Wasm が alloc/print/read-file/fnv1a import 付きで実行可能であること"
+    );
+}
+
+/// BOOT-04: stage1 が generalized 4-helper path で alloc+print+read-file+__fnv1a_hash stage2 Wasm を生成できること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_generalized_alloc_print_read_hash_helper_quad() {
+    let stage2_source = r#"(defn main [] (let [key (read-file "fixture.txt")] (let [m0 (map-new)] (let [m1 (map-insert m0 key 42)] (map-get m1 key)))))"#.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions-with-source src program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        header (emit-header)
+        type-sec (emit-type-section-helper-quad-main (helper-id-alloc) (helper-id-print) (helper-id-read-file) (helper-id-runtime-hash))
+        import-sec (emit-import-section-helper-quad (helper-id-alloc) (helper-id-print) (helper-id-read-file) (helper-id-runtime-hash))
+        function-sec (emit-function-section-main-type-index 2)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-memory-index 4 0)
+        code-sec (emit-code-section-functions functions)
+        data-sec (emit-data-section data 1024)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
+        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
+        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
+        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))
+        bytes6 (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))]
+    (bootstrap-append-bytes bytes6 data-sec 0 (vector-length data-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [stage2 (bootstrap-build-stage2 "{}")]
+    (do
+      (bootstrap-print-module stage2)
+      0)))
+"#,
+        stage2_source
+    );
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("generalized alloc+print+read-file+__fnv1a_hash quad program を含む stage1 wasm の実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
+    assert_valid_wasm(&modules[0]);
+    let data_section = extract_section_bytes(&modules[0], 11).unwrap_or_default();
+    assert!(
+        data_section.windows("fixture.txt".len()).any(|window| window == b"fixture.txt"),
+        "generalized hash quad でも read-file path literal bytes は data section に配置されること"
+    );
+    assert_eq!(
+        run_exported_i64_with_alloc_print_read_hash_imports(&modules[0], "_start", "aa").0,
+        42,
+        "generalized alloc+print+read-file+__fnv1a_hash quad を含む stage2 Wasm が実行可能であること"
+    );
+}
+
+/// BOOT-04: stage1 が同じ generalized alloc+print+read-file+__fnv1a_hash source から同一 stage2 Wasm を 2 回生成できること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_identical_hash_helper_quad_stage2_wasm_for_same_source() {
+    let stage2_source = r#"(defn main [] (let [key (read-file "fixture.txt")] (let [m0 (map-new)] (let [m1 (map-insert m0 key 42)] (map-get m1 key)))))"#.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions-with-source src program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        header (emit-header)
+        type-sec (emit-type-section-helper-quad-main (helper-id-alloc) (helper-id-print) (helper-id-read-file) (helper-id-runtime-hash))
+        import-sec (emit-import-section-helper-quad (helper-id-alloc) (helper-id-print) (helper-id-read-file) (helper-id-runtime-hash))
+        function-sec (emit-function-section-main-type-index 2)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-memory-index 4 0)
+        code-sec (emit-code-section-functions functions)
+        data-sec (emit-data-section data 1024)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
+        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
+        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
+        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))
+        bytes6 (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))]
+    (bootstrap-append-bytes bytes6 data-sec 0 (vector-length data-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [src "{}"
+        stage2-a (bootstrap-build-stage2 src)
+        stage2-b (bootstrap-build-stage2 src)]
+    (do
+      (bootstrap-print-module stage2-a)
+      (bootstrap-print-module stage2-b)
+      0)))
+"#,
+        stage2_source
+    );
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("same hash-helper quad source stage1 実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 2);
+    assert_eq!(modules.len(), 2, "stage2 モジュール数が不正");
+    assert_eq!(
+        modules[0], modules[1],
+        "同じ generalized hash helper quad source から stage2 Wasm が非決定的に変化した"
+    );
+    assert_valid_wasm(&modules[0]);
+    let data_section = extract_section_bytes(&modules[0], 11).unwrap_or_default();
+    assert!(
+        data_section.windows("fixture.txt".len()).any(|window| window == b"fixture.txt"),
+        "repeatability でも hash quad の read-file path literal bytes は data section に配置されること"
+    );
+    assert_eq!(
+        run_exported_i64_with_alloc_print_read_hash_imports(&modules[0], "_start", "aa").0,
+        42
+    );
+}
+
 /// BOOT-04: stage1 が alloc+print import を伴う print program を stage2 Wasm として生成できること
 #[test]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_print_program() {
@@ -1753,6 +2823,72 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_print_program() {
     let (result, printed) = run_exported_i64_with_alloc_print_imports(&modules[0], "_start");
     assert_eq!(result, 0, "print program を含む stage2 Wasm の戻り値が不正");
     assert_eq!(printed, "42\n7\n", "stage2 print output が不正");
+}
+
+/// BOOT-04: stage1 が generalized 2-helper pair で alloc+print stage2 Wasm を生成できること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_generalized_alloc_print_helper_pair() {
+    let harness = r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        header (emit-header)
+        type-sec (emit-type-section-helper-pair-main (helper-id-alloc) (helper-id-print))
+        import-sec (emit-import-section-helper-pair (helper-id-alloc) (helper-id-print))
+        function-sec (emit-function-section-main-type-index 2)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-index 2)
+        code-sec (emit-code-section-functions functions)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
+        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
+        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
+        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))]
+    (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [stage2 (bootstrap-build-stage2 "(defn main [] (do (print 42) (print 7) 0))")]
+    (do
+      (bootstrap-print-module stage2)
+      0)))
+"#;
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("generalized alloc+print pair program を含む stage1 wasm の実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
+    assert_valid_wasm(&modules[0]);
+    let (result, printed) = run_exported_i64_with_alloc_print_imports(&modules[0], "_start");
+    assert_eq!(result, 0, "generalized alloc+print pair stage2 Wasm の戻り値が不正");
+    assert_eq!(printed, "42\n7\n", "generalized alloc+print pair stage2 print output が不正");
 }
 
 /// BOOT-04: stage1 が alloc+print+read-file import を伴う read-file program を stage2 Wasm として生成できること
@@ -1827,4 +2963,547 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_read_file_program() {
     );
     assert_eq!(result, 15, "read-file program を含む stage2 Wasm の戻り値が不正");
     assert!(printed.is_empty(), "read-file slice では print output は不要");
+}
+
+/// BOOT-04: stage1 が generalized 3-helper triple で alloc+print+read-file stage2 Wasm を生成できること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_generalized_alloc_print_read_helper_triple() {
+    let harness = r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        header (emit-header)
+        type-sec (emit-type-section-helper-triple-main (helper-id-alloc) (helper-id-print) (helper-id-read-file))
+        import-sec (emit-import-section-helper-triple (helper-id-alloc) (helper-id-print) (helper-id-read-file))
+        function-sec (emit-function-section-main-type-index 2)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-memory-index 3 0)
+        code-sec (emit-code-section-functions functions)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
+        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
+        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
+        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))]
+    (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [stage2 (bootstrap-build-stage2 "(defn main [] (string-length (read-file 0)))")]
+    (do
+      (bootstrap-print-module stage2)
+      0)))
+"#;
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("generalized alloc+print+read-file triple program を含む stage1 wasm の実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
+    assert_valid_wasm(&modules[0]);
+    let (result, printed) = run_exported_i64_with_alloc_print_read_imports(
+        &modules[0],
+        "_start",
+        "hello from file",
+    );
+    assert_eq!(
+        result, 15,
+        "generalized alloc+print+read-file triple stage2 Wasm の戻り値が不正"
+    );
+    assert!(
+        printed.is_empty(),
+        "generalized alloc+print+read-file triple slice では print output は不要"
+    );
+}
+
+/// BOOT-04: stage1 が同じ read-file helper source から同一 stage2 Wasm を 2 回生成できること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_identical_read_helper_stage2_wasm_for_same_source() {
+    let harness = r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        header (emit-header)
+        type-sec (emit-type-section-alloc-print-main)
+        import-sec (emit-import-section-alloc-print-read)
+        function-sec (emit-function-section-main-type-index 2)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-memory-index 3 0)
+        code-sec (emit-code-section-functions functions)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
+        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
+        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
+        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))]
+    (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [src "(defn main [] (string-length (read-file 0)))"
+        stage2-a (bootstrap-build-stage2 src)
+        stage2-b (bootstrap-build-stage2 src)]
+    (do
+      (bootstrap-print-module stage2-a)
+      (bootstrap-print-module stage2-b)
+      0)))
+"#;
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("same read-helper source stage1 実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 2);
+    assert_eq!(modules.len(), 2, "stage2 モジュール数が不正");
+    assert_eq!(
+        modules[0], modules[1],
+        "同じ read-file helper source から stage2 Wasm が非決定的に変化した"
+    );
+    assert_valid_wasm(&modules[0]);
+    let (result, printed) =
+        run_exported_i64_with_alloc_print_read_imports(&modules[0], "_start", "hello from file");
+    assert_eq!(result, 15);
+    assert!(printed.is_empty());
+}
+
+/// BOOT-04: stage1 が実 path string を伴う read-file program を stage2 Wasm として生成できること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_read_file_path_string_program() {
+    let stage2_source =
+        r#"(defn main [] (string-length (read-file "fixture.txt")))"#.replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions-with-source src program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        header (emit-header)
+        type-sec (emit-type-section-alloc-print-main)
+        import-sec (emit-import-section-alloc-print-read)
+        function-sec (emit-function-section-main-type-index 2)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-memory-index 3 0)
+        code-sec (emit-code-section-functions functions)
+        data-sec (emit-data-section data 1024)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
+        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
+        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
+        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))
+        bytes6 (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))]
+    (bootstrap-append-bytes bytes6 data-sec 0 (vector-length data-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [stage2 (bootstrap-build-stage2 "{}")]
+    (do
+      (bootstrap-print-module stage2)
+      0)))
+"#,
+        stage2_source
+    );
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("path string read-file program を含む stage1 wasm の実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
+    assert_valid_wasm(&modules[0]);
+    let data_section = extract_section_bytes(&modules[0], 11).unwrap_or_default();
+    assert!(
+        data_section
+            .windows("fixture.txt".len())
+            .any(|window| window == b"fixture.txt"),
+        "read-file path literal は data section に残ること"
+    );
+    let (result, printed) = run_exported_i64_with_alloc_print_read_path_imports(
+        &modules[0],
+        "_start",
+        "fixture.txt",
+        "hello from file",
+    );
+    assert_eq!(
+        result, 15,
+        "path string read-file program を含む stage2 Wasm の戻り値が不正"
+    );
+    assert!(printed.is_empty(), "read-file slice では print output は不要");
+}
+
+/// BOOT-04: stage1 が command-line-arg builtin を含む stage2 Wasm を生成し実行できること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_command_line_arg_program() {
+    let harness = r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        header (emit-header)
+        type-sec (emit-type-section-alloc-print-main)
+        import-sec (emit-import-section-alloc-print-read-arg)
+        function-sec (emit-function-section-main-type-index 2)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-memory-index 4 0)
+        code-sec (emit-code-section-functions functions)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
+        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
+        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
+        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))]
+    (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [stage2 (bootstrap-build-stage2 "(defn main [] (string-length (command-line-arg 1)))")]
+    (do
+      (bootstrap-print-module stage2)
+      0)))
+"#;
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("command-line-arg program を含む stage1 wasm の実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
+    assert_valid_wasm(&modules[0]);
+    assert!(
+        extract_sections(&modules[0]).iter().any(|(id, _)| *id == 2),
+        "command-line-arg program を含む stage2 Wasm は import section を持つこと"
+    );
+    let (result, printed) = run_exported_i64_with_alloc_print_read_arg_imports(
+        &modules[0],
+        "_start",
+        "",
+        &["cli", "hello-argv"],
+    );
+    assert_eq!(result, 10, "command-line-arg program を含む stage2 Wasm の戻り値が不正");
+    assert!(printed.is_empty(), "command-line-arg slice では print output は不要");
+}
+
+/// BOOT-04: stage1 が同じ command-line-arg helper source から同一 stage2 Wasm を 2 回生成できること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_identical_arg_helper_stage2_wasm_for_same_source() {
+    let harness = r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        header (emit-header)
+        type-sec (emit-type-section-alloc-print-main)
+        import-sec (emit-import-section-alloc-print-read-arg)
+        function-sec (emit-function-section-main-type-index 2)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-memory-index 4 0)
+        code-sec (emit-code-section-functions functions)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
+        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
+        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
+        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))]
+    (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [src "(defn main [] (string-length (command-line-arg 1)))"
+        stage2-a (bootstrap-build-stage2 src)
+        stage2-b (bootstrap-build-stage2 src)]
+    (do
+      (bootstrap-print-module stage2-a)
+      (bootstrap-print-module stage2-b)
+      0)))
+"#;
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("same arg-helper source stage1 実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 2);
+    assert_eq!(modules.len(), 2, "stage2 モジュール数が不正");
+    assert_eq!(
+        modules[0], modules[1],
+        "同じ command-line-arg helper source から stage2 Wasm が非決定的に変化した"
+    );
+    assert_valid_wasm(&modules[0]);
+    let (result, printed) =
+        run_exported_i64_with_alloc_print_read_arg_imports(&modules[0], "_start", "", &["cli", "hello-argv"]);
+    assert_eq!(result, 10);
+    assert!(printed.is_empty());
+}
+
+/// BOOT-04: stage1 が generalized 4-helper path で alloc+print+read-file+command-line-arg stage2 Wasm を生成できること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_generalized_alloc_print_read_arg_helper_quad() {
+    let harness = r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        header (emit-header)
+        type-sec (emit-type-section-helper-quad-main (helper-id-alloc) (helper-id-print) (helper-id-read-file) (helper-id-command-line-arg))
+        import-sec (emit-import-section-helper-quad (helper-id-alloc) (helper-id-print) (helper-id-read-file) (helper-id-command-line-arg))
+        function-sec (emit-function-section-main-type-index 2)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-memory-index 4 0)
+        code-sec (emit-code-section-functions functions)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
+        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
+        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
+        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))]
+    (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [stage2 (bootstrap-build-stage2 "(defn main [] (string-length (command-line-arg 1)))")]
+    (do
+      (bootstrap-print-module stage2)
+      0)))
+"#;
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("generalized alloc+print+read-file+command-line-arg quad program を含む stage1 wasm の実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
+    assert_valid_wasm(&modules[0]);
+    let (result, printed) = run_exported_i64_with_alloc_print_read_arg_imports(
+        &modules[0],
+        "_start",
+        "",
+        &["cli", "hello-argv"],
+    );
+    assert_eq!(
+        result, 10,
+        "generalized alloc+print+read-file+command-line-arg quad stage2 Wasm の戻り値が不正"
+    );
+    assert!(
+        printed.is_empty(),
+        "generalized alloc+print+read-file+command-line-arg quad slice では print output は不要"
+    );
+}
+
+/// BOOT-04: stage1 が同じ generalized alloc+print+read-file+command-line-arg source から同一 stage2 Wasm を 2 回生成できること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_identical_arg_helper_quad_stage2_wasm_for_same_source() {
+    let harness = r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        header (emit-header)
+        type-sec (emit-type-section-helper-quad-main (helper-id-alloc) (helper-id-print) (helper-id-read-file) (helper-id-command-line-arg))
+        import-sec (emit-import-section-helper-quad (helper-id-alloc) (helper-id-print) (helper-id-read-file) (helper-id-command-line-arg))
+        function-sec (emit-function-section-main-type-index 2)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-memory-index 4 0)
+        code-sec (emit-code-section-functions functions)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
+        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
+        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
+        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))]
+    (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [src "(defn main [] (string-length (command-line-arg 1)))"
+        stage2-a (bootstrap-build-stage2 src)
+        stage2-b (bootstrap-build-stage2 src)]
+    (do
+      (bootstrap-print-module stage2-a)
+      (bootstrap-print-module stage2-b)
+      0)))
+"#;
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("same arg-helper quad source stage1 実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 2);
+    assert_eq!(modules.len(), 2, "stage2 モジュール数が不正");
+    assert_eq!(
+        modules[0], modules[1],
+        "同じ generalized arg helper quad source から stage2 Wasm が非決定的に変化した"
+    );
+    assert_valid_wasm(&modules[0]);
+    let (result, printed) = run_exported_i64_with_alloc_print_read_arg_imports(
+        &modules[0],
+        "_start",
+        "",
+        &["cli", "hello-argv"],
+    );
+    assert_eq!(result, 10);
+    assert!(printed.is_empty());
 }

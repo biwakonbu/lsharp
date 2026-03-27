@@ -653,6 +653,571 @@ fn test_e2e_selfhost_cli_lsp_core() {
     );
 }
 
+/// TEST-CLI-02-M7: selfhost/Cli.ls の LSP transport helper が initialize request を frame response にできること
+#[test]
+fn test_e2e_selfhost_cli_lsp_transport_initialize_frame() {
+    let body = r#"{"jsonrpc":"2.0","id":7,"result":[1,1,1,1,1,1,1]}"#;
+    let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    let harness = r#"
+(defn main []
+  (let [request
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 2)
+                7)
+              (lsp-method-initialize))
+            0)]
+    (print-string (run-lsp-transport-request request))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+
+    assert_eq!(
+        output, expected,
+        "run-lsp-transport-request は initialize request を framed response に変換すべき"
+    );
+}
+
+/// TEST-CLI-02-M8: selfhost/Cli.ls の LSP transport helper が未知メソッドを JSON-RPC error frame にできること
+#[test]
+fn test_e2e_selfhost_cli_lsp_transport_unknown_method_error() {
+    let body =
+        r#"{"jsonrpc":"2.0","id":9,"error":{"code":-32601,"message":"Method not found"}}"#;
+    let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    let harness = r#"
+(defn main []
+  (let [request
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 2)
+                9)
+              999)
+            0)]
+    (print-string (run-lsp-transport-request request))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+
+    assert_eq!(
+        output, expected,
+        "run-lsp-transport-request は未知メソッドに Method not found frame を返すべき"
+    );
+}
+
+/// TEST-CLI-02-M9: selfhost/Cli.ls の LSP transport helper sequence が shared-state で複数 request を捌けること
+#[test]
+fn test_e2e_selfhost_cli_lsp_transport_goto_definition_frame() {
+    let body = r#"{"jsonrpc":"2.0","id":7,"result":[10,1,7]}"#;
+    let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    let source = "(defn helper [x] x)\n(defn main [] (helper 1))";
+    let harness = format!(
+        r#"
+(defn main []
+  (let [params
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 10)
+                2)
+              16)
+            "{source}")
+        request
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 2)
+                7)
+              (lsp-method-goto-def))
+            params)]
+    (print-string (run-lsp-transport-request request))))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+
+    assert_eq!(
+        output, expected,
+        "run-lsp-transport-request は goto-definition request を framed response に変換すべき"
+    );
+}
+
+/// TEST-CLI-02-M9b: selfhost/Cli.ls の LSP transport helper が hover request を framed response にできること
+#[test]
+fn test_e2e_selfhost_cli_lsp_transport_hover_frame() {
+    let body =
+        r#"{"jsonrpc":"2.0","id":8,"result":{"range":[2,16,2,22],"contents":"defn square"}}"#;
+    let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    let source = "(defn square [x] x)\n(defn main [] (square 1) (square 2))";
+    let harness = format!(
+        r#"
+(defn main []
+  (let [params
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 99)
+                2)
+              17)
+            "{source}")
+        request
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 2)
+                8)
+              (lsp-method-hover))
+            params)]
+    (print-string (run-lsp-transport-request request))))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+
+    assert_eq!(
+        output, expected,
+        "run-lsp-transport-request は hover request を framed response に変換すべき"
+    );
+}
+
+/// TEST-CLI-02-M9c: selfhost/Cli.ls の LSP transport helper が references request を framed response にできること
+#[test]
+fn test_e2e_selfhost_cli_lsp_transport_references_frame() {
+    let body =
+        r#"{"jsonrpc":"2.0","id":10,"result":[[99,1,7],[99,2,16],[99,2,27]]}"#;
+    let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    let source = "(defn square [x] x)\n(defn main [] (square 1) (square 2))";
+    let harness = format!(
+        r#"
+(defn main []
+  (let [params
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 99)
+                2)
+              17)
+            "{source}")
+        request
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 2)
+                10)
+              (lsp-method-references))
+            params)]
+    (print-string (run-lsp-transport-request request))))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+
+    assert_eq!(
+        output, expected,
+        "run-lsp-transport-request は references request を framed response に変換すべき"
+    );
+}
+
+/// TEST-CLI-02-M9d: selfhost/Cli.ls の LSP transport helper が completion request を framed response にできること
+#[test]
+fn test_e2e_selfhost_cli_lsp_transport_completion_frame() {
+    let body = r#"{"jsonrpc":"2.0","id":11,"result":[["defn",14,"defn"],["let",14,"let"],["if",14,"if"],["match",14,"match"],["do",14,"do"],["fn",14,"fn"],["module",14,"module"]]}"#;
+    let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    let harness = r#"
+(defn main []
+  (let [request
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 2)
+                11)
+              (lsp-method-completion))
+            0)]
+    (print-string (run-lsp-transport-request request))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+
+    assert_eq!(
+        output, expected,
+        "run-lsp-transport-request は completion request を framed response に変換すべき"
+    );
+}
+
+/// TEST-CLI-02-M9e: selfhost/Cli.ls の LSP transport helper が formatting request を framed response にできること
+#[test]
+fn test_e2e_selfhost_cli_lsp_transport_formatting_frame() {
+    let body =
+        "{\"jsonrpc\":\"2.0\",\"id\":12,\"result\":[[1,1,2,4,\"(defn main [] 1)\n\"]]}";
+    let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    let source = "(defn main []\n 1)";
+    let harness = format!(
+        r#"
+(defn main []
+  (let [params
+          (vector-push
+            (vector-push (vector-new 2) 77)
+            "{source}")
+        request
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 2)
+                12)
+              (lsp-method-formatting))
+            params)]
+    (print-string (run-lsp-transport-request request))))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+
+    assert_eq!(
+        output, expected,
+        "run-lsp-transport-request は formatting request を framed response に変換すべき"
+    );
+}
+
+/// TEST-CLI-02-M9f: selfhost/Cli.ls の LSP transport helper が rename request を framed response にできること
+#[test]
+fn test_e2e_selfhost_cli_lsp_transport_rename_frame() {
+    let body = r#"{"jsonrpc":"2.0","id":13,"result":[[99,[[1,7,1,13,"cube"],[2,16,2,22,"cube"],[2,27,2,33,"cube"]]]]}"#;
+    let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    let source = "(defn square [x] x)\n(defn main [] (square 1) (square 2))";
+    let harness = format!(
+        r#"
+(defn main []
+  (let [params
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push (vector-new 5) 99)
+                  2)
+                17)
+              "{source}")
+            "cube")
+        request
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 2)
+                13)
+              (lsp-method-rename))
+            params)]
+    (print-string (run-lsp-transport-request request))))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+
+    assert_eq!(
+        output, expected,
+        "run-lsp-transport-request は rename request を framed response に変換すべき"
+    );
+}
+
+/// TEST-CLI-02-M9: selfhost/Cli.ls の LSP transport helper sequence が shared-state で複数 request を捌けること
+#[test]
+fn test_e2e_selfhost_cli_lsp_transport_sequence_summary() {
+    let init_body = r#"{"jsonrpc":"2.0","id":3,"result":[1,1,1,1,1,1,1]}"#;
+    let init_frame = format!("Content-Length: {}\r\n\r\n{}", init_body.len(), init_body);
+    let shutdown_body = r#"{"jsonrpc":"2.0","id":4,"result":0}"#;
+    let shutdown_frame = format!(
+        "Content-Length: {}\r\n\r\n{}",
+        shutdown_body.len(),
+        shutdown_body
+    );
+    let harness = r#"
+(defn main []
+  (let [init-request
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 2)
+                3)
+              (lsp-method-initialize))
+            0)
+        shutdown-request
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 2)
+                4)
+              (lsp-method-shutdown))
+            0)
+        requests
+          (vector-push
+            (vector-push (vector-new 2) init-request)
+            shutdown-request)
+        summary (run-lsp-transport-sequence requests)
+        frames (vector-get summary 0)]
+    (do
+      (print-string (vector-get frames 0))
+      (print-string "\n---\n")
+      (print-string (vector-get frames 1))
+      (print-string "\n---\n")
+      (print (vector-length frames))
+      (print (vector-get summary 2)))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let parts: Vec<&str> = output.split("\n---\n").collect();
+
+    assert_eq!(parts.len(), 3, "transport sequence output format が不正: {:?}", output);
+    assert_eq!(parts[0], init_frame, "frame0 は initialize response であるべき");
+    assert_eq!(parts[1], shutdown_frame, "frame1 は shutdown response であるべき");
+    assert_eq!(
+        parts[2].trim().lines().collect::<Vec<_>>(),
+        vec!["2", "2"],
+        "sequence summary は frame-count=2 / request-count=2 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-M10: publishDiagnostics notification が deterministic JSON/frame と request-count を返すこと
+#[test]
+fn test_e2e_selfhost_cli_lsp_transport_publish_diagnostics_frame() {
+    let diagnostics_json =
+        r#"[{"source":1,"severity":1,"rule":203,"line":2,"col":4,"messageHash":7003}]"#;
+    let notification = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{{"uri":42,"diagnostics":{}}}}}"#,
+        diagnostics_json
+    );
+    let expected_frame = format!(
+        "Content-Length: {}\r\n\r\n{}",
+        notification.len(),
+        notification
+    );
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        diag (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 6) 1)
+                       203)
+                     2)
+                   4)
+                 7003)
+               1)
+        diags (vector-push (vector-new 1) diag)
+        params (vector-push (vector-push (vector-new 2) 42) diags)
+        result (json-rpc-dispatch (lsp-method-publish-diagnostics) params state)]
+    (do
+      (print-string (vector-get result 1))
+      (print-string "\n---\n")
+      (print-string (lsp-render-publish-diagnostics-frame 42 diags))
+      (print-string "\n---\n")
+      (print (server-state-request-count state)))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let parts: Vec<&str> = output.split("\n---\n").collect();
+
+    assert_eq!(parts.len(), 3, "publishDiagnostics output format が不正: {:?}", output);
+    assert_eq!(
+        parts[0], diagnostics_json,
+        "handle-publish-diagnostics は deterministic diagnostics JSON を返すべき"
+    );
+    assert_eq!(
+        parts[1], expected_frame,
+        "lsp-render-publish-diagnostics-frame は notification frame を返すべき"
+    );
+    assert_eq!(parts[2].trim(), "1", "publishDiagnostics dispatch は request-count を 1 増やすべき");
+}
+
+/// TEST-CLI-02-M11: didOpen dispatch + frame helper が deterministic に動くこと
+#[test]
+fn test_e2e_selfhost_cli_lsp_transport_didopen_frame() {
+    let payload =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":16}}"#;
+    let expected = format!("Content-Length: {}\r\n\r\n{}", payload.len(), payload);
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        params (vector-push (vector-push (vector-new 2) 42) "(defn main [] 0)")
+        result (json-rpc-dispatch (lsp-method-did-open) params state)]
+    (do
+      (print result)
+      (print-string "\n---\n")
+      (print-string (lsp-render-didopen-frame 42 result)))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let parts: Vec<&str> = output.split("\n---\n").collect();
+
+    assert_eq!(parts.len(), 2, "didOpen helper output format が不正: {:?}", output);
+    assert_eq!(parts[0].trim(), "16", "didOpen dispatch は source length=16 を返すべき");
+    assert_eq!(parts[1], expected, "didOpen frame は deterministic であるべき");
+}
+
+/// TEST-CLI-02-M12: didOpen -> didChange shared-state sequence が framed notifications と state summary を返すこと
+#[test]
+fn test_e2e_selfhost_cli_lsp_transport_document_sequence() {
+    let open_payload =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":16}}"#;
+    let open_frame = format!(
+        "Content-Length: {}\r\n\r\n{}",
+        open_payload.len(),
+        open_payload
+    );
+    let change_payload =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":22}}"#;
+    let change_frame = format!(
+        "Content-Length: {}\r\n\r\n{}",
+        change_payload.len(),
+        change_payload
+    );
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        open-params (vector-push (vector-push (vector-new 2) 42) "(defn main [] 0)")
+        change-params (vector-push (vector-push (vector-new 2) 42) "(defn main [] (+ 0 1))")
+        open-result (json-rpc-dispatch (lsp-method-did-open) open-params state)
+        change-result (json-rpc-dispatch (lsp-method-did-change) change-params state)]
+    (do
+      (print-string (lsp-render-didopen-frame 42 open-result))
+      (print-string "\n---\n")
+      (print-string (lsp-render-didchange-frame 42 change-result))
+      (print-string "\n---\n")
+      (print (server-state-doc-count state))
+      (print (server-state-request-count state))
+      (print (server-state-source-length state)))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let parts: Vec<&str> = output.split("\n---\n").collect();
+
+    assert_eq!(parts.len(), 3, "document sequence output format が不正: {:?}", output);
+    assert_eq!(parts[0], open_frame, "frame0 は didOpen notification であるべき");
+    assert_eq!(parts[1], change_frame, "frame1 は didChange notification であるべき");
+    assert_eq!(
+        parts[2].trim().lines().collect::<Vec<_>>(),
+        vec!["1", "2", "22"],
+        "sequence summary は doc-count=1 / request-count=2 / source-bytes=22 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-M12b: raw stdio frame helper が Content-Length header 付き initialize request を捌けること
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_frame_initialize() {
+    let body = r#"{"jsonrpc":"2.0","id":14,"result":[1,1,1,1,1,1,1]}"#;
+    let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    let header = format!("Content-Length: {}\r\n\r\n", body.len());
+    let harness = format!(
+        r#"
+(defn main []
+  (let [msg
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 4) 2)
+                14)
+              (lsp-method-initialize))
+            0)
+        frame (vector-push (vector-push (vector-new 2) "{header}") msg)
+        result (run-lsp-stdio-frame frame)]
+    (do
+      (print-string (vector-get result 0))
+      (print-string "\n---\n")
+      (print (vector-get result 1)))))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let parts: Vec<&str> = output.split("\n---\n").collect();
+
+    assert_eq!(parts.len(), 2, "stdio frame output format が不正: {:?}", output);
+    assert_eq!(parts[0], expected, "run-lsp-stdio-frame は initialize frame を返すべき");
+    assert_eq!(
+        parts[1].trim(),
+        body.len().to_string(),
+        "run-lsp-stdio-frame は parsed Content-Length を返すべき"
+    );
+}
+
+/// TEST-CLI-02-M12c: raw stdio frame sequence helper が shared-state で didOpen -> didChange を捌けること
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_frame_sequence() {
+    let open_payload =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":16}}"#;
+    let open_frame = format!(
+        "Content-Length: {}\r\n\r\n{}",
+        open_payload.len(),
+        open_payload
+    );
+    let change_payload =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":22}}"#;
+    let change_frame = format!(
+        "Content-Length: {}\r\n\r\n{}",
+        change_payload.len(),
+        change_payload
+    );
+    let open_header = format!("Content-Length: {}\r\n\r\n", open_payload.len());
+    let change_header = format!("Content-Length: {}\r\n\r\n", change_payload.len());
+    let harness = format!(
+        r#"
+(defn make-wire-msg [id method-id params]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) 2)
+        id)
+      method-id)
+    params))
+
+(defn make-wire-frame [header msg]
+  (vector-push (vector-push (vector-new 2) header) msg))
+
+(defn main []
+  (let [open-params (vector-push (vector-push (vector-new 2) 42) "(defn main [] 0)")
+        change-params (vector-push (vector-push (vector-new 2) 42) "(defn main [] (+ 0 1))")
+        open-frame (make-wire-frame "{open_header}" (make-wire-msg 0 (lsp-method-did-open) open-params))
+        change-frame (make-wire-frame "{change_header}" (make-wire-msg 0 (lsp-method-did-change) change-params))
+        frames (vector-push (vector-push (vector-new 2) open-frame) change-frame)
+        summary (run-lsp-stdio-sequence frames)
+        rendered (vector-get summary 0)]
+    (do
+      (print-string (vector-get rendered 0))
+      (print-string "\n---\n")
+      (print-string (vector-get rendered 1))
+      (print-string "\n---\n")
+      (print (vector-get summary 1))
+      (print (vector-get summary 2))
+      (print (vector-get summary 3)))))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let parts: Vec<&str> = output.split("\n---\n").collect();
+
+    assert_eq!(parts.len(), 3, "stdio frame sequence output format が不正: {:?}", output);
+    assert_eq!(parts[0], open_frame, "frame0 は didOpen notification であるべき");
+    assert_eq!(parts[1], change_frame, "frame1 は didChange notification であるべき");
+    assert_eq!(
+        parts[2].trim().lines().collect::<Vec<_>>(),
+        vec!["2", "22", &change_payload.len().to_string()],
+        "stdio frame sequence summary は request-count=2 / source-length=22 / last-content-length を返すべき"
+    );
+}
+
 /// TEST-CLI-02-N: selfhost/Cli.ls の run-test-source が TestRunner.generate-tests を呼べること
 #[test]
 fn test_e2e_selfhost_cli_test_source_core() {
@@ -1264,6 +1829,437 @@ fn test_e2e_selfhost_cli_stdout_stderr_separation() {
         lines.len() >= 2,
         "cli-stdout と cli-stderr は別行に出力されるべき: {:?}",
         lines
+    );
+}
+
+/// TEST-CLI-02-AB: main-dispatch が parse file handler を entrypoint helper 経由で呼べること
+#[test]
+fn test_e2e_selfhost_cli_main_dispatch_parse_file() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_main_dispatch_parse_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (main-dispatch "parse" "input.ls" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 5, "main-dispatch parse 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "decls:1");
+    assert_eq!(lines[1], "first-decl:defn");
+    assert_eq!(lines[2], "first-body:int");
+    assert_eq!(lines[3], "diagnostics:0");
+    assert_eq!(lines[4], "0");
+}
+
+/// TEST-CLI-02-AC: main-dispatch が help/version/unknown surface を保つこと
+#[test]
+fn test_e2e_selfhost_cli_main_dispatch_command_surface() {
+    let harness = r#"
+(defn main []
+  (let [help-code (main-dispatch "--help" "" 0)
+        version-code (main-dispatch "--version" "" 0)
+        unknown-code (main-dispatch "nonexistent" "" 0)]
+    (do
+      (print-string "\nhelp-code:")
+      (print help-code)
+      (print-string "version-code:")
+      (print version-code)
+      (print-string "unknown-code:")
+      (print unknown-code)
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    assert!(
+        output.contains("Usage: lsharp <command>"),
+        "main-dispatch help は usage を出力すべき: {:?}",
+        output
+    );
+    assert!(
+        output.contains("lsharp 0.1.0"),
+        "main-dispatch version は version text を出力すべき: {:?}",
+        output
+    );
+    assert!(
+        output.contains("error: unknown command: nonexistent"),
+        "main-dispatch unknown は error surface を保つべき: {:?}",
+        output
+    );
+    assert!(
+        output.contains("help-code:0"),
+        "help は success=0 を返すべき: {:?}",
+        output
+    );
+    assert!(
+        output.contains("version-code:0"),
+        "version は success=0 を返すべき: {:?}",
+        output
+    );
+    assert!(
+        output.contains("unknown-code:127"),
+        "unknown command は 127 を返すべき: {:?}",
+        output
+    );
+}
+
+/// TEST-CLI-02-AD: actual Cli main は引数なし実行で help surface を返すこと
+#[test]
+fn test_e2e_selfhost_cli_main_no_args_shows_help() {
+    let output = compile_and_run(selfhost_cli_runtime_bundle());
+
+    assert!(
+        output.contains("Usage: lsharp <command>"),
+        "Cli main の no-args 実行は help usage を返すべき: {:?}",
+        output
+    );
+    assert!(
+        output.contains("Commands:"),
+        "Cli main の no-args 実行は command list を返すべき: {:?}",
+        output
+    );
+}
+
+/// TEST-CLI-02-AE: actual Cli main は argv 経由で --version を処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_version() {
+    let output = compile_and_run_with_args(selfhost_cli_runtime_bundle(), &["--version"]);
+
+    assert!(
+        output.contains("lsharp 0.1.0"),
+        "Cli main の argv 実行は --version を処理すべき: {:?}",
+        output
+    );
+}
+
+/// TEST-CLI-02-AE2: actual Cli main は argv 経由で -v alias を処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_short_version() {
+    let output = compile_and_run_with_args(selfhost_cli_runtime_bundle(), &["-v"]);
+
+    assert!(
+        output.contains("lsharp 0.1.0"),
+        "Cli main の argv 実行は -v alias を処理すべき: {:?}",
+        output
+    );
+}
+
+/// TEST-CLI-02-AF: actual Cli main は argv 経由で parse file command を処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_parse_file() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_main_args_parse_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let output = compile_and_run_with_dir_and_args(
+        selfhost_cli_runtime_bundle(),
+        &dir,
+        &["parse", "input.ls"],
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 4, "Cli main parse argv 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "decls:1");
+    assert_eq!(lines[1], "first-decl:defn");
+    assert_eq!(lines[2], "first-body:int");
+    assert_eq!(lines[3], "diagnostics:0");
+}
+
+/// TEST-CLI-02-AF2: actual Cli main は argv 経由で compile file command を処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_compile_file() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_main_args_compile_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let output = compile_and_run_with_dir_and_args(
+        selfhost_cli_runtime_bundle(),
+        &dir,
+        &["compile", "input.ls"],
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 1, "Cli main compile argv 出力が不足: {:?}", lines);
+    assert!(
+        lines[0].starts_with("wasm-size:"),
+        "Cli main compile argv は wasm-size:<n> を返すべき: {:?}",
+        lines
+    );
+}
+
+/// TEST-CLI-02-AF3: actual Cli main は argv 経由で build file command を処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_build_file() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_main_args_build_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let output = compile_and_run_with_dir_and_args(
+        selfhost_cli_runtime_bundle(),
+        &dir,
+        &["build", "input.ls"],
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 1, "Cli main build argv 出力が不足: {:?}", lines);
+    assert!(
+        lines[0].starts_with("wasm-size:"),
+        "Cli main build argv は wasm-size:<n> を返すべき: {:?}",
+        lines
+    );
+}
+
+/// TEST-CLI-02-AF4: actual Cli main は compile <file> -o <path> で output file を書けること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_compile_output_path() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_main_args_compile_output_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let output = compile_and_run_with_dir_and_args(
+        selfhost_cli_runtime_bundle(),
+        &dir,
+        &["compile", "input.ls", "-o", "out.txt"],
+    );
+    let written = std::fs::read_to_string(dir.join("out.txt")).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 1, "Cli main compile -o 出力が不足: {:?}", lines);
+    assert!(
+        lines[0].starts_with("wasm-size:"),
+        "Cli main compile -o は wasm-size:<n> を返すべき: {:?}",
+        lines
+    );
+    assert_eq!(
+        written.trim(),
+        lines[0],
+        "compile -o は stdout summary を output file にも書くべき"
+    );
+}
+
+/// TEST-CLI-02-AF5: actual Cli main は build <file> --output <path> で output file を書けること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_build_output_path() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_main_args_build_output_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let output = compile_and_run_with_dir_and_args(
+        selfhost_cli_runtime_bundle(),
+        &dir,
+        &["build", "input.ls", "--output", "build.txt"],
+    );
+    let written = std::fs::read_to_string(dir.join("build.txt")).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 1, "Cli main build --output 出力が不足: {:?}", lines);
+    assert!(
+        lines[0].starts_with("wasm-size:"),
+        "Cli main build --output は wasm-size:<n> を返すべき: {:?}",
+        lines
+    );
+    assert_eq!(
+        written.trim(),
+        lines[0],
+        "build --output は stdout summary を output file にも書くべき"
+    );
+}
+
+/// TEST-CLI-02-AG: actual Cli main は subcommand --help を処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_subcommand_help() {
+    let output = compile_and_run_with_args(selfhost_cli_runtime_bundle(), &["parse", "--help"]);
+
+    assert!(
+        output.contains("parse <file> - Parse source and show AST"),
+        "Cli main は subcommand help text を返すべき: {:?}",
+        output
+    );
+}
+
+/// TEST-CLI-02-AH: actual Cli main は `-h` alias で global help を返せること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_short_help() {
+    let output = compile_and_run_with_args(selfhost_cli_runtime_bundle(), &["-h"]);
+
+    assert!(
+        output.contains("Usage: lsharp <command>"),
+        "Cli main は -h alias で global help を返すべき: {:?}",
+        output
+    );
+}
+
+/// TEST-CLI-02-AI: actual Cli main は `help <subcommand>` を処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_help_command() {
+    let output = compile_and_run_with_args(selfhost_cli_runtime_bundle(), &["help", "parse"]);
+
+    assert!(
+        output.contains("parse <file> - Parse source and show AST"),
+        "Cli main は help subcommand surface を返すべき: {:?}",
+        output
+    );
+}
+
+/// TEST-CLI-02-AJ: actual Cli main は help compile に output option surface を含めること
+#[test]
+fn test_e2e_selfhost_cli_main_with_help_compile_output_option() {
+    let output = compile_and_run_with_args(selfhost_cli_runtime_bundle(), &["help", "compile"]);
+
+    assert!(
+        output.contains("compile <file> [-o <file>]"),
+        "Cli main は compile help に output option surface を含めるべき: {:?}",
+        output
+    );
+}
+
+/// TEST-CLI-02-AK: actual Cli main は build --help に output option surface を含めること
+#[test]
+fn test_e2e_selfhost_cli_main_with_build_subcommand_help_output_option() {
+    let output = compile_and_run_with_args(selfhost_cli_runtime_bundle(), &["build", "--help"]);
+
+    assert!(
+        output.contains("build <file> [--output <file>]"),
+        "Cli main は build help に output option surface を含めるべき: {:?}",
+        output
+    );
+}
+
+/// TEST-CLI-02-AL: actual Cli main は `lsp --stdio` で stdin の initialize frame を処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_initialize() {
+    let request_body =
+        r#"{"jsonrpc":"2.0","id":21,"method":"initialize","params":0}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}",
+        request_body.len(),
+        request_body
+    );
+    let response_body = r#"{"jsonrpc":"2.0","id":21,"result":[1,1,1,1,1,1,1]}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}",
+        response_body.len(),
+        response_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は lsp --stdio で initialize frame をそのまま返すべき"
+    );
+}
+
+/// TEST-CLI-02-AM: actual Cli main は `lsp --stdio` で連続 frame を順に処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_initialize_shutdown_sequence() {
+    let init_body =
+        r#"{"jsonrpc":"2.0","id":31,"method":"initialize","params":0}"#;
+    let shutdown_body =
+        r#"{"jsonrpc":"2.0","id":32,"method":"shutdown","params":0}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        init_body.len(),
+        init_body,
+        shutdown_body.len(),
+        shutdown_body
+    );
+    let init_response = r#"{"jsonrpc":"2.0","id":31,"result":[1,1,1,1,1,1,1]}"#;
+    let shutdown_response = r#"{"jsonrpc":"2.0","id":32,"result":0}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        init_response.len(),
+        init_response,
+        shutdown_response.len(),
+        shutdown_response
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は lsp --stdio で initialize→shutdown frame を順に返すべき"
+    );
+}
+
+/// TEST-CLI-02-AN: actual Cli main は `lsp --stdio` で unknown method を Method not found frame にできること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_unknown_method() {
+    let request_body =
+        r#"{"jsonrpc":"2.0","id":41,"method":"workspace/unknown","params":0}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}",
+        request_body.len(),
+        request_body
+    );
+    let response_body =
+        r#"{"jsonrpc":"2.0","id":41,"error":{"code":-32601,"message":"Method not found"}}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}",
+        response_body.len(),
+        response_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は lsp --stdio で unknown method を error frame にすべき"
+    );
+}
+
+/// TEST-CLI-02-AO: actual Cli main は help lsp に `--stdio` surface を含めること
+#[test]
+fn test_e2e_selfhost_cli_main_with_help_lsp_stdio_option() {
+    let output = compile_and_run_with_args(selfhost_cli_runtime_bundle(), &["help", "lsp"]);
+
+    assert!(
+        output.contains("lsp [--stdio] - Start LSP server"),
+        "Cli main は lsp help に --stdio surface を含めるべき: {:?}",
+        output
     );
 }
 

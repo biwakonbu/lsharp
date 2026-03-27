@@ -439,6 +439,99 @@ fn test_e2e_selfhost_compile_stdlib_basic() {
     assert_eq!(ir_operand, 42, "IR operand = 42");
 }
 
+/// selfhost/Main.ls が tiny native pipeline summary を出力できること
+#[test]
+fn test_e2e_selfhost_main_native_pipeline_summary() {
+    let output = compile_and_run_file(&selfhost_main_path());
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 71,
+        "native pipeline summary 出力が不足: {} 行",
+        lines.len()
+    );
+
+    let native_len: i64 = lines[32].parse().unwrap();
+    let object_len: i64 = lines[33].parse().unwrap();
+    let link_response_len: i64 = lines[34].parse().unwrap();
+    let target_arch: i64 = lines[35].parse().unwrap();
+    let target_format: i64 = lines[36].parse().unwrap();
+    let darwin_linker: i64 = lines[37].parse().unwrap();
+    let source_ir_len: i64 = lines[38].parse().unwrap();
+    let linux_native_len: i64 = lines[39].parse().unwrap();
+    let linux_object_len: i64 = lines[40].parse().unwrap();
+    let linux_link_response_len: i64 = lines[41].parse().unwrap();
+    let linux_target_arch: i64 = lines[42].parse().unwrap();
+    let linux_target_format: i64 = lines[43].parse().unwrap();
+    let linux_linker: i64 = lines[44].parse().unwrap();
+    let linux_ir_len: i64 = lines[45].parse().unwrap();
+    let macho_multi_link_response_len: i64 = lines[46].parse().unwrap();
+    let linux_multi_link_response_len: i64 = lines[47].parse().unwrap();
+    let aarch64_native_len: i64 = lines[48].parse().unwrap();
+    let aarch64_object_len: i64 = lines[49].parse().unwrap();
+    let aarch64_link_response_len: i64 = lines[50].parse().unwrap();
+    let aarch64_target_arch: i64 = lines[51].parse().unwrap();
+    let aarch64_target_format: i64 = lines[52].parse().unwrap();
+    let aarch64_linker: i64 = lines[53].parse().unwrap();
+    let aarch64_ir_len: i64 = lines[54].parse().unwrap();
+    let aarch64_multi_link_response_len: i64 = lines[55].parse().unwrap();
+    let macho_magic_byte0: i64 = lines[56].parse().unwrap();
+    let macho_cpu_byte: i64 = lines[57].parse().unwrap();
+    let elf_magic_byte0: i64 = lines[58].parse().unwrap();
+    let elf_class_byte: i64 = lines[59].parse().unwrap();
+    let aarch64_macho_magic_byte0: i64 = lines[60].parse().unwrap();
+    let aarch64_macho_cpu_byte: i64 = lines[61].parse().unwrap();
+    let darwin_response_output_byte: i64 = lines[62].parse().unwrap();
+    let darwin_response_object_byte: i64 = lines[63].parse().unwrap();
+    let linux_response_output_byte: i64 = lines[64].parse().unwrap();
+    let linux_response_object_byte: i64 = lines[65].parse().unwrap();
+    let aarch64_response_output_byte: i64 = lines[66].parse().unwrap();
+    let aarch64_response_object_byte: i64 = lines[67].parse().unwrap();
+    let darwin_multi_response_object2_byte: i64 = lines[68].parse().unwrap();
+    let linux_multi_response_object2_byte: i64 = lines[69].parse().unwrap();
+    let aarch64_multi_response_object2_byte: i64 = lines[70].parse().unwrap();
+
+    assert_eq!(native_len, 16, "tiny native payload は 16 bytes であるべき");
+    assert_eq!(object_len, 32, "tiny Mach-O object は 32 bytes であるべき");
+    assert_eq!(link_response_len, 6, "単一 object の linker response は 6 bytes であるべき");
+    assert_eq!(target_arch, 1, "tiny native pipeline は x86_64 target を使う");
+    assert_eq!(target_format, 1, "tiny native pipeline は Mach-O object format を使う");
+    assert_eq!(darwin_linker, 1, "Darwin summary は ld64 を選ぶ");
+    assert_eq!(source_ir_len, 1, "native summary は compile-source 由来の IR 長を報告する");
+    assert_eq!(linux_native_len, 16, "tiny Linux native payload も 16 bytes であるべき");
+    assert_eq!(linux_object_len, 24, "tiny ELF object は 24 bytes であるべき");
+    assert_eq!(linux_link_response_len, 6, "単一 ELF object の linker response は 6 bytes であるべき");
+    assert_eq!(linux_target_arch, 1, "Linux summary も x86_64 target を使う");
+    assert_eq!(linux_target_format, 2, "Linux summary は ELF object format を使う");
+    assert_eq!(linux_linker, 3, "Linux summary は GNU ld を選ぶ");
+    assert_eq!(linux_ir_len, 1, "Linux summary も compile-source 由来の IR 長を報告する");
+    assert_eq!(macho_multi_link_response_len, 8, "2 object の Mach-O linker response は 8 bytes であるべき");
+    assert_eq!(linux_multi_link_response_len, 8, "2 object の ELF linker response は 8 bytes であるべき");
+    assert_eq!(aarch64_native_len, 16, "tiny aarch64 native payload も 16 bytes であるべき");
+    assert_eq!(aarch64_object_len, 32, "tiny aarch64 Mach-O object は 32 bytes であるべき");
+    assert_eq!(aarch64_link_response_len, 6, "単一 aarch64 object の linker response は 6 bytes であるべき");
+    assert_eq!(aarch64_target_arch, 2, "aarch64 summary は target 2 を使う");
+    assert_eq!(aarch64_target_format, 1, "aarch64 summary は Mach-O object format を使う");
+    assert_eq!(aarch64_linker, 1, "aarch64 summary は ld64 を選ぶ");
+    assert_eq!(aarch64_ir_len, 1, "aarch64 summary も compile-source 由来の IR 長を報告する");
+    assert_eq!(aarch64_multi_link_response_len, 8, "2 object の aarch64 Mach-O linker response は 8 bytes であるべき");
+    assert_eq!(macho_magic_byte0, 207, "Mach-O header 先頭 byte は 0xCF であるべき");
+    assert_eq!(macho_cpu_byte, 7, "x86_64 Mach-O cpu byte は 0x07 であるべき");
+    assert_eq!(elf_magic_byte0, 127, "ELF header 先頭 byte は 0x7F であるべき");
+    assert_eq!(elf_class_byte, 2, "ELF class byte は ELF64=2 であるべき");
+    assert_eq!(aarch64_macho_magic_byte0, 207, "aarch64 Mach-O header 先頭 byte も 0xCF であるべき");
+    assert_eq!(aarch64_macho_cpu_byte, 12, "aarch64 Mach-O cpu byte は 0x0C であるべき");
+    assert_eq!(darwin_response_output_byte, 99, "Darwin response file は output id=99 を含む");
+    assert_eq!(darwin_response_object_byte, 32, "Darwin response file は Mach-O object size=32 を含む");
+    assert_eq!(linux_response_output_byte, 99, "Linux response file も output id=99 を含む");
+    assert_eq!(linux_response_object_byte, 24, "Linux response file は ELF object size=24 を含む");
+    assert_eq!(aarch64_response_output_byte, 99, "aarch64 response file も output id=99 を含む");
+    assert_eq!(aarch64_response_object_byte, 32, "aarch64 response file は Mach-O object size=32 を含む");
+    assert_eq!(darwin_multi_response_object2_byte, 32, "Darwin multi-object response は 2 個目の Mach-O size=32 を含む");
+    assert_eq!(linux_multi_response_object2_byte, 24, "Linux multi-object response は 2 個目の ELF size=24 を含む");
+    assert_eq!(aarch64_multi_response_object2_byte, 32, "aarch64 multi-object response は 2 個目の Mach-O size=32 を含む");
+}
+
 // =================================================
 // P11-2: selfhost 個別モジュールコンパイル・決定性テスト
 // =================================================

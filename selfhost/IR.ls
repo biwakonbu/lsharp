@@ -55,9 +55,10 @@
 (defn ir-map-size [] 61)
 (defn ir-map-insert [] 62)
 (defn ir-map-get [] 63)
+(defn ir-read-file [] 64)
 (defn ir-map-contains [] 65)
 (defn ir-map-remove [] 66)
-(defn ir-read-file [] 64)
+(defn ir-command-line-arg [] 67)
 
 ;; === 命令構築 ===
 

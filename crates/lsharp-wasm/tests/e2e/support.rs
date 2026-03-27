@@ -83,6 +83,46 @@ pub(crate) fn compile_and_run_with_dir(source: &str, dir: &std::path::Path) -> S
     lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(&wasm_bytes, Some(dir)).unwrap()
 }
 
+/// ソースコードをコンパイルしてコマンドライン引数付きで実行
+pub(crate) fn compile_and_run_with_args(source: &str, args: &[&str]) -> String {
+    let program = parse_for_pipeline(source);
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lower = Lower::new();
+    let module = lower.lower_program(&program, &type_results).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
+
+    lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(&wasm_bytes, None, args).unwrap()
+}
+
+/// ソースコードをコンパイルしてコマンドライン引数・stdin 付きで実行
+pub(crate) fn compile_and_run_with_args_and_stdin(source: &str, args: &[&str], stdin: &str) -> String {
+    let program = parse_for_pipeline(source);
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lower = Lower::new();
+    let module = lower.lower_program(&program, &type_results).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
+
+    lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin(&wasm_bytes, None, args, stdin).unwrap()
+}
+
+/// ソースコードをコンパイルしてファイルシステム・argv 付きで実行
+pub(crate) fn compile_and_run_with_dir_and_args(
+    source: &str,
+    dir: &std::path::Path,
+    args: &[&str],
+) -> String {
+    let program = parse_for_pipeline(source);
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lower = Lower::new();
+    let module = lower.lower_program(&program, &type_results).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
+
+    lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(&wasm_bytes, Some(dir), args).unwrap()
+}
+
 /// ソースコードをコンパイルのみ（Wasm バイナリ生成まで）
 pub(crate) fn compile_only(source: &str) -> Vec<u8> {
     let program = parse_for_pipeline(source);

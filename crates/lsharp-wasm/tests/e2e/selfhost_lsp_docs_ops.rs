@@ -394,6 +394,36 @@ fn test_e2e_selfhost_lsp_sort_diagnostics_three() {
     assert_eq!(lines[2], "1050001", "最大の diagnostic key (source=0,sev=1,line=5,col=1) が末尾");
 }
 
+/// TEST-LSP-09e: shared state が複数 URI の document source を保持できること
+#[test]
+fn test_e2e_selfhost_lsp_runtime_multi_document_state() {
+    let source = selfhost_lsp_runtime_bundle();
+    let src_a = "(defn alpha [] 1)";
+    let src_b = "(defn beta [] 2)";
+    let harness = format!(
+        r#"
+(defn main []
+  (let [state (server-state-new)
+        _ (server-state-open-document state 10 "{src_a}")
+        _ (server-state-open-document state 20 "{src_b}")]
+    (do
+      (print (server-state-doc-count state))
+      (print (string-length (server-state-source-for-uri state 10)))
+      (print (string-length (server-state-source-for-uri state 20)))
+      (print (server-state-source-length state))
+      0)))
+"#
+    );
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines[0], "2", "異なる URI の didOpen は doc-count=2 に増えるべき");
+    assert_eq!(lines[1], src_a.len().to_string(), "uri=10 の source を保持するべき");
+    assert_eq!(lines[2], src_b.len().to_string(), "uri=20 の source を保持するべき");
+    assert_eq!(lines[3], src_b.len().to_string(), "current source は最後に開いた document を保持するべき");
+}
+
 /// TEST-LSP-10: handle-hover が型情報文字列を返すこと
 #[test]
 fn test_e2e_selfhost_lsp_hover_returns_type_info() {
@@ -1029,6 +1059,110 @@ fn test_e2e_selfhost_lsp_real_shapes_definition_prefers_nearest_defn() {
     assert_eq!(lines[0], "99", "definition は元の uri を保持するべき");
     assert_eq!(lines[1], "3", "definition は直近の square defn 行を指すべき");
     assert_eq!(lines[2], "7", "definition col は直近 defn 名の先頭であるべき");
+}
+
+/// TEST-LSP-19d: source param なしでも uri に対応する open document から definition を解決できること
+#[test]
+fn test_e2e_selfhost_lsp_real_shapes_definition_uses_uri_document() {
+    let src_a = "(defn alpha [] 1)\n(defn main [] (alpha))";
+    let src_b = "(defn beta [] 2)\n(defn main [] (beta))";
+    let harness = format!(
+        r#"
+(defn main []
+  (let [state (server-state-new)
+        _ (server-state-open-document state 10 "{src_a}")
+        _ (server-state-open-document state 20 "{src_b}")
+        params (vector-push (vector-push (vector-push (vector-new 3) 10) 2) 16)
+        defn-loc (handle-goto-definition params state)]
+    (do
+      (print (vector-get defn-loc 0))
+      (print (vector-get defn-loc 1))
+      (print (vector-get defn-loc 2))
+      0)))
+"#
+    );
+
+    let lines = run_lsp_harness("lsp_real_shapes_definition_uses_uri_document", &harness);
+
+    assert_eq!(lines[0], "10", "definition は要求 URI を返すべき");
+    assert_eq!(lines[1], "1", "definition は uri=10 の 1 行目を指すべき");
+    assert_eq!(lines[2], "7", "definition は alpha defn 名の先頭列を指すべき");
+}
+
+/// TEST-LSP-19e: source param なしでも uri に対応する open document から hover contents を解決できること
+#[test]
+fn test_e2e_selfhost_lsp_real_shapes_hover_uses_uri_document() {
+    let src_a = "(defn alphabet [x] x)\n(defn main [] (alphabet 1))";
+    let src_b = "(defn b [x] x)\n(defn main [] (b 1))";
+    let harness = format!(
+        r#"
+(defn main []
+  (let [state (server-state-new)
+        _ (server-state-open-document state 10 "{src_a}")
+        _ (server-state-open-document state 20 "{src_b}")
+        params (vector-push (vector-push (vector-push (vector-new 3) 10) 2) 19)
+        result (handle-hover params state)]
+    (do
+      (print-string (vector-get result 1))
+      0)))
+"#
+    );
+
+    let lines = run_lsp_harness("lsp_real_shapes_hover_uses_uri_document", &harness);
+
+    assert_eq!(lines[0], "defn alphabet", "hover は uri=10 の document symbol を返すべき");
+}
+
+/// TEST-LSP-19f: open 済み別 document の defn へ cross-document definition を返せること
+#[test]
+fn test_e2e_selfhost_lsp_real_shapes_definition_resolves_open_document() {
+    let helper_src = "(defn helper [x] x)";
+    let main_src = "(import Helper)\n(defn main [] (helper 1))";
+    let harness = format!(
+        r#"
+(defn main []
+  (let [state (server-state-new)
+        _ (server-state-open-document state 11 "{helper_src}")
+        _ (server-state-open-document state 10 "{main_src}")
+        params (vector-push (vector-push (vector-push (vector-new 3) 10) 2) 16)
+        defn-loc (handle-goto-definition params state)]
+    (do
+      (print (vector-get defn-loc 0))
+      (print (vector-get defn-loc 1))
+      (print (vector-get defn-loc 2))
+      0)))
+"#
+    );
+
+    let lines = run_lsp_harness("lsp_real_shapes_definition_resolves_open_document", &harness);
+
+    assert_eq!(lines[0], "11", "definition は helper document の uri を返すべき");
+    assert_eq!(lines[1], "1", "definition は helper defn の 1 行目を指すべき");
+    assert_eq!(lines[2], "7", "definition は helper defn 名の先頭列を指すべき");
+}
+
+/// TEST-LSP-19g: open 済み別 document の defn へ cross-document hover contents を返せること
+#[test]
+fn test_e2e_selfhost_lsp_real_shapes_hover_resolves_open_document() {
+    let helper_src = "(defn helper [x] x)";
+    let main_src = "(import Helper)\n(defn main [] (helper 1))";
+    let harness = format!(
+        r#"
+(defn main []
+  (let [state (server-state-new)
+        _ (server-state-open-document state 11 "{helper_src}")
+        _ (server-state-open-document state 10 "{main_src}")
+        params (vector-push (vector-push (vector-push (vector-new 3) 10) 2) 16)
+        hover (handle-hover params state)]
+    (do
+      (print-string (vector-get hover 1))
+      0)))
+"#
+    );
+
+    let lines = run_lsp_harness("lsp_real_shapes_hover_resolves_open_document", &harness);
+
+    assert_eq!(lines[0], "defn helper", "hover は helper document の defn contents を返すべき");
 }
 
 /// TEST-LSP-19c: repeated symbol source でも hover は選択した occurrence の range を保つこと
@@ -2241,6 +2375,40 @@ fn test_e2e_selfhost_formatter_format_expr_computation() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines.last().unwrap(), &"(computation m (let! x f) (do! y) z (return x))", "computation は canonical text を返すべき");
+}
+
+/// FMT-01: source なしの string literal fallback が canonical text を返すこと
+#[test]
+fn test_e2e_selfhost_formatter_format_expr_lit_string_fallback() {
+    let harness = r#"
+(defn main []
+  (let [node (vector-push (vector-push (vector-push (vector-new 3) 3) 10) 12)
+        result (format-expr node 0)]
+    (do
+      (print-string result)
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.last().unwrap(), &"\"\"", "source なし string literal fallback は空文字 literal を返すべき");
+}
+
+/// FMT-01: source なしの float literal fallback が canonical text を返すこと
+#[test]
+fn test_e2e_selfhost_formatter_format_expr_lit_float_fallback() {
+    let harness = r#"
+(defn main []
+  (let [node (vector-push (vector-push (vector-push (vector-new 3) 19) 10) 13)
+        result (format-expr node 0)]
+    (do
+      (print-string result)
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.last().unwrap(), &"0.0", "source なし float literal fallback は 0.0 を返すべき");
 }
 
 /// FMT-01: format-decl が defn (tag=20) を実テキストへ整形すること

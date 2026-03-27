@@ -28,20 +28,80 @@
 
 - AI は MCP 経由で言語仕様もパッケージ API もバージョン指定で取得する
 - `lsharp.toml` を読んで使用中のパッケージを自動認識する
-- ローカルキャッシュ → リモートレジストリの 2 段構えでドキュメントを解決する
+- パッケージは **GitHub リポジトリ + タグ** のみで配布 (レジストリサーバーは立てない)
+- **`lsharp` バイナリ 1 つに全てが入る**: コンパイラ・LSP・MCP Server・Claude Code プラグイン・stdlib
 - Claude Code, Cursor, Codex, Gemini CLI など MCP 対応ツールならどれでも使える
 
-### AI エージェントの体験
+### バージョニング
+
+**コンパイラバージョン = 言語バージョン** (semver)。edition 制度なし。
+
+```bash
+$ lsharp --version
+lsharp 0.1.0
+```
+
+```toml
+# lsharp.toml — パッケージが要求する最低コンパイラバージョン
+[project]
+lsharp-version = ">=0.1.0"
+```
+
+stdlib はコンパイラに同梱され、常にコンパイラと同じバージョン。
+
+### `lsharp` バイナリの構成
+
+```
+lsharp (単一バイナリ)
+  ├── compile              # format → check → codegen を一括実行 (唯一の CLI コマンド)
+  │     ├── -o foo.wasm    #   → Wasm 出力
+  │     └── -o foo         #   → Native 出力
+  ├── lsp                  # LSP サーバー (IDE 向け — check/hover/completion を提供)
+  ├── mcp-server           # MCP サーバー (AI 向け — LSP をバックエンドに使う)
+  ├── claude-plugin        # Claude Code プラグイン (MCP Server 登録 + Agent Skills インストール)
+  ├── init / install / add # パッケージ管理
+  ├── doc --json / doc-site # ドキュメント生成
+  └── stdlib (埋め込み)     # 標準ライブラリ (バイナリに含む)
+```
+
+**CLI は `compile` に統一。** `check` / `format` / `parse` は CLI サブコマンドとしては廃止し、
+LSP / MCP の内部 API としてのみ残す。CI は `lsharp compile` 一発で format + check + codegen が走る。
+
+`lsharp` をインストールするだけで、IDE 連携も AI 連携もパッケージ管理も全て使える。
+
+### AI エージェントの体験 (2 層構造)
+
+**第 1 層: Agent Skills (常駐コンテキスト)**
+
+`lsharp claude-plugin` を実行すると、Claude Code に L# の Agent Skills がインストールされる。
+AI は会話開始時点で L# の構文・型システム・パターン・イディオムを「知っている」状態になる。
+
+```
+;; Agent Skills としてコンテキストに常駐する情報:
+- L# は S 式構文 + Hindley-Milner 型推論の関数型言語
+- (defn name [params] body) で関数定義
+- (type Point (record (: x Int) (: y Int))) でレコード型
+- (match expr [pattern body] ...) でパターンマッチ
+- (import Module) でモジュール読み込み
+- stdlib: Core, List, Map, Set, Vector, String, Char, IO, Json, Path, Debug
+- ... (概要レベルの全情報)
+```
+
+**第 2 層: MCP ツール (オンデマンド)**
+
+具体的な API・型チェック・パッケージ情報は MCP ツールで動的に取得する。
 
 ```
 ;; ユーザーがプロジェクトを開く (lsharp.toml に my-geometry = "0.1.0" がある)
 
-AI: (MCP 経由で自動取得)
+AI: L# の構文は Agent Skills で既に知っている
+AI: (MCP 経由でプロジェクト固有情報を取得)
   → lsharp_project_context   → 使用中パッケージ一覧: [my-geometry@0.1.0]
-  → lsharp_language_reference → L# の構文・型システム・パターン
   → lsharp_package_api        → my-geometry の全関数・型・使用例
 
-AI: 情報が揃ったので正しいコードを書ける
+AI: コードを書く
+  → lsharp_check              → 型チェック OK
+  → lsharp_hover              → distance の型: Point -> Point -> Int
 ```
 
 ```lisp
@@ -55,7 +115,9 @@ AI: 情報が揃ったので正しいコードを書ける
     (print (distance a b))))
 ```
 
-**ポイント: AI は静的ファイルを読まない。MCP ツールを呼ぶだけ。**
+**ポイント:**
+- **概要は Agent Skills で常駐** → ツール呼び出し不要、レイテンシゼロ
+- **詳細は MCP で動的取得** → パッケージ・バージョンごとに正確な情報
 
 ### ライブラリ作者の体験
 
@@ -104,7 +166,19 @@ $ lsharp install
 
 ---
 
-## 2. アーキテクチャ: lsharp-mcp
+## 2. アーキテクチャ: lsharp-mcp (LSP-over-MCP)
+
+### 設計原則: LSP をバックエンドにする
+
+**MCP Server は LSP の薄いラッパーである。**
+
+型チェック・hover・補完・診断・フォーマットなどの言語機能は全て既存の LSP (`lsharp-lsp`) に委譲する。
+MCP Server が独自にコンパイラパイプラインを呼び出すことはない。
+これにより:
+
+- **コンパイラロジックの重複ゼロ** — 型チェック・診断が 1 箇所で管理される
+- **LSP の改善が AI にも自動反映** — LSP を修正すれば MCP 経由の AI も恩恵を受ける
+- **IDE ユーザーと AI が同じ品質の分析を受けられる**
 
 ### 全体構成
 
@@ -113,28 +187,41 @@ AI Agent (Claude Code / Cursor / Codex / Gemini CLI)
   │
   │ MCP protocol (stdio or HTTP)
   ▼
-lsharp-mcp (ローカル MCP Server)
+lsharp-mcp (ローカル MCP Server — 薄いラッパー)
   │
-  ├── lsharp.toml を読む → 使用中パッケージ + バージョンを把握
-  ├── .lsharp/packages/ を読む → ローカルキャッシュの api.json を返す
-  ├── stdlib/ を読む → 標準ライブラリの API を返す
-  └── registry (HTTP) → 未キャッシュのパッケージ情報をフェッチ
+  ├── LsharpBackend (LSP) ← 型チェック・診断・hover・定義ジャンプ・補完・フォーマット
+  │     └── parse_and_check(), hover(), completion(), formatting() を内部呼び出し
+  ├── api.json reader     ← パッケージ API ドキュメント (バージョン指定取得)
+  ├── lsharp.toml reader  ← プロジェクト情報・依存一覧
+  └── registry client     ← パッケージ検索 (未キャッシュ時のフォールバック)
 ```
+
+**ポイント:** `lsharp-mcp` は `lsharp-lsp` の `LsharpBackend` をライブラリとして組み込む。
+JSON-RPC で LSP プロセスと通信するのではなく、Rust レベルで直接メソッドを呼ぶ。
+LSP の `pub` API (`parse_and_check`, `find_definition`, `find_references`, `format_source`) が
+MCP ツールのバックエンドになる。
 
 ### MCP ツール一覧
 
 AI が呼び出せるツール:
 
-| ツール名 | 引数 | 戻り値 | 用途 |
-|---------|------|--------|------|
-| `lsharp_language_reference` | なし | L# 構文・型・パターン全リファレンス | 言語を理解する |
-| `lsharp_project_context` | なし | lsharp.toml の内容 + 依存一覧 | プロジェクト状態を把握する |
-| `lsharp_package_api` | `name`, `version?` | パッケージの全関数・型・使用例 | パッケージ API を理解する |
-| `lsharp_stdlib_api` | `module?` | stdlib の全/指定モジュール API | 標準ライブラリを使う |
-| `lsharp_search` | `query` | マッチするパッケージ一覧 | パッケージを探す |
-| `lsharp_check` | `source` | 型チェック結果 + エラー | コードを検証する |
-| `lsharp_compile_run` | `source` or `file` | コンパイル + 実行結果 | コードを動かす |
-| `lsharp_errors` | `error_code` | エラーの説明と対処法 | エラーを理解する |
+| ツール名 | 引数 | バックエンド | 戻り値 | 用途 |
+|---------|------|-------------|--------|------|
+| `lsharp_check` | `source` or `file` | **LSP** (parse_and_check) | 診断結果 (エラー・警告) | コードを検証する |
+| `lsharp_hover` | `file`, `line`, `col` | **LSP** (hover) | 型情報 + :doc メタデータ | シンボルの詳細を調べる |
+| `lsharp_completion` | `file`, `line`, `col` | **LSP** (completion) | 補完候補一覧 | コード補完を取得する |
+| `lsharp_format` | `source` | **LSP** (format_source) | フォーマット済みソース | コードを整形する |
+| `lsharp_definition` | `file`, `line`, `col` | **LSP** (find_definition) | 定義位置 | シンボルの定義に飛ぶ |
+| `lsharp_references` | `file`, `line`, `col` | **LSP** (find_references) | 参照位置一覧 | シンボルの使用箇所を探す |
+| `lsharp_project_context` | なし | lsharp.toml | プロジェクト情報 + 依存一覧 | プロジェクト状態を把握する |
+| `lsharp_package_api` | `name`, `version?` | api.json | パッケージの全関数・型・使用例 | パッケージ API を理解する |
+| `lsharp_stdlib_api` | `module?` | api.json | stdlib の全/指定モジュール API | 標準ライブラリを使う |
+| `lsharp_search` | `query` | registry | マッチするパッケージ一覧 | パッケージを探す |
+| `lsharp_compile_run` | `source` or `file` | compile (format+check+codegen) + wasmtime | コンパイル + 実行結果 | コードを動かす |
+| `lsharp_errors` | `error_code` | 静的辞書 | エラーの説明と対処法 | エラーを理解する |
+
+**LSP バックエンド (6 ツール)** vs **MCP 独自 (6 ツール)** で半々。
+言語機能は LSP に集約し、パッケージ・プロジェクト管理は MCP 独自。
 
 ### AI のワークフロー (自動)
 
@@ -143,25 +230,24 @@ AI が呼び出せるツール:
    AI → lsharp_project_context
    戻り値: { packages: [{ name: "my-geometry", version: "0.1.0" }] }
 
-2. 言語仕様を把握 (初回のみ)
-   AI → lsharp_language_reference
-   戻り値: L# の構文早見表・型システム・import パターン
-
-3. 使用パッケージの API を取得
+2. 使用パッケージの API を取得
    AI → lsharp_package_api(name: "my-geometry", version: "0.1.0")
-   戻り値: {
-     modules: [{
-       name: "Geometry",
-       functions: [{ name: "distance", signature: "Point -> Point -> Int", ... }],
-       types: [{ name: "Point", kind: "record", fields: [...] }]
-     }]
-   }
+   戻り値: { modules: [{ name: "Geometry", functions: [...], types: [...] }] }
 
-4. コードを書く (上記情報に基づいて)
+3. コードを書く
 
-5. 検証
-   AI → lsharp_check(source: "...")
-   戻り値: { ok: true } or { errors: [...] }
+4. 型チェック (LSP 経由)
+   AI → lsharp_check(source: "(defn main [] (print (distance ...)))")
+   戻り値: { ok: true, diagnostics: [] }
+   (失敗時: { ok: false, diagnostics: [{ line: 1, message: "type mismatch", code: "E0005" }] })
+
+5. エラーの詳細を調べる (必要に応じて)
+   AI → lsharp_errors(error_code: "E0005")
+   戻り値: { description: "...", fix: "..." }
+
+6. シンボルの型を確認 (必要に応じて)
+   AI → lsharp_hover(file: "src/Main.ls", line: 3, col: 10)
+   戻り値: { type: "Point -> Point -> Int", doc: "2 点間のユークリッド距離を計算する" }
 ```
 
 ### MCP Server の設定例
@@ -195,6 +281,19 @@ AI が呼び出せるツール:
 
 `lsharp mcp-server` は `lsharp` バイナリのサブコマンドとして実装する。
 別途インストール不要で、言語のツールチェインに MCP Server が組み込まれている形。
+
+### LSP の拡張ロードマップ
+
+MCP から活用するために、LSP に以下の機能追加が必要:
+
+| 機能 | 現状 | 追加内容 |
+|------|------|---------|
+| hover | 枠だけ (TODO) | AST の `:doc` メタデータ + 型推論結果を返す |
+| completion | 未実装 | スコープ内シンボル + import 候補 |
+| diagnostics | 実装済み | そのまま MCP に委譲 |
+| definition | 実装済み | そのまま MCP に委譲 |
+| references | 実装済み | そのまま MCP に委譲 |
+| formatting | 実装済み | そのまま MCP に委譲 |
 
 ---
 
@@ -269,29 +368,35 @@ Source (.ls)
 
 ---
 
-### A-2. lsharp-mcp Server 実装
+### A-2. lsharp-mcp Server 実装 (LSP-over-MCP)
 
 **完成後の使い方 (AI 側):**
 
 ```
 ;; Claude Code が自動的にツールとして認識する
-Tool: lsharp_language_reference
-  → L# の構文・型システム・パターンの完全リファレンスを返す
+
+;; --- LSP バックエンドツール (言語機能) ---
+Tool: lsharp_check { source: "(defn main [] (print (+ 1 \"hello\")))" }
+  → { ok: false, diagnostics: [{ line: 1, col: 26, code: "E0005", message: "type mismatch: Int vs String" }] }
+
+Tool: lsharp_hover { file: "src/Main.ls", line: 3, col: 10 }
+  → { type: "Point -> Point -> Int", doc: "2 点間のユークリッド距離を計算する" }
+
+Tool: lsharp_completion { file: "src/Main.ls", line: 5, col: 3 }
+  → [{ label: "distance", type: "Point -> Point -> Int" }, { label: "Point", kind: "type" }]
+
+Tool: lsharp_format { source: "(defn   main  []  ( + 1 2))" }
+  → "(defn main [] (+ 1 2))"
+
+;; --- MCP 独自ツール (パッケージ・プロジェクト管理) ---
+Tool: lsharp_project_context
+  → { name: "my-app", dependencies: [{ name: "my-geometry", version: "0.1.0" }] }
 
 Tool: lsharp_package_api { name: "my-geometry", version: "0.1.0" }
   → api.json の中身をそのまま返す
 
-Tool: lsharp_project_context
-  → { name: "my-app", dependencies: [{ name: "my-geometry", version: "0.1.0" }] }
-
 Tool: lsharp_stdlib_api { module: "List" }
   → List モジュールの全関数・型情報
-
-Tool: lsharp_search { query: "geometry" }
-  → [{ name: "my-geometry", version: "0.1.0", summary: "2D 幾何ライブラリ" }]
-
-Tool: lsharp_check { source: "(defn main [] (print (+ 1 \"hello\")))" }
-  → { ok: false, errors: [{ code: "E0005", message: "type mismatch: Int vs String" }] }
 
 Tool: lsharp_compile_run { file: "src/Main.ls" }
   → { ok: true, stdout: "25", exit_code: 0 }
@@ -304,17 +409,28 @@ Tool: lsharp_errors { error_code: "E0005" }
 
 - `lsharp mcp-server` サブコマンドとして実装 (stdio transport)
 - MCP SDK (Rust) を使用するか、JSON-RPC を直接実装
-- 各ツールは既存の lsharp CLI 機能を呼び出すラッパー:
-  - `lsharp_language_reference` → 静的テンプレート (コンパイラ同梱)
-  - `lsharp_package_api` → `.lsharp/packages/<name>/docs/api.json` を読む
+- **LSP バックエンドツール** は `lsharp-lsp` の `LsharpBackend` をライブラリとして組み込み:
+  - `lsharp_check` → `util::parse_and_check()` を呼び出し、`Diagnostic` を JSON 変換
+  - `lsharp_hover` → `LsharpBackend::hover()` を呼び出し (要: hover の実装完了)
+  - `lsharp_completion` → `LsharpBackend::completion()` を呼び出し (要: completion の新規実装)
+  - `lsharp_format` → `format::format_source()` を呼び出し
+  - `lsharp_definition` → `util::find_definition()` を呼び出し
+  - `lsharp_references` → `references::find_references()` を呼び出し
+- **MCP 独自ツール** は LSP を経由しない:
   - `lsharp_project_context` → `lsharp.toml` を parse
+  - `lsharp_package_api` → `.lsharp/packages/<name>/docs/api.json` を読む
   - `lsharp_stdlib_api` → stdlib の api.json を読む
   - `lsharp_search` → レジストリ HTTP API (C-1 完了後)、それまではローカルのみ
-  - `lsharp_check` → 内部で parse + type check
   - `lsharp_compile_run` → 内部で compile + wasmtime 実行
   - `lsharp_errors` → エラーコード辞書 (静的データ)
 
-**修正対象:** `crates/lsharp-driver/src/main.rs`, 新規 `crates/lsharp-driver/src/mcp_server.rs`
+**前提: LSP の拡張が必要**
+
+A-2 の前に LSP 側で以下を完了する必要がある:
+- hover 実装 (現在 TODO): AST の `:doc` + 型推論結果を返す
+- completion 新規実装: スコープ内シンボル + import 候補
+
+**修正対象:** `crates/lsharp-driver/src/main.rs`, `crates/lsharp-lsp/src/lib.rs`, 新規 `crates/lsharp-driver/src/mcp_server.rs`
 
 ---
 
@@ -369,68 +485,83 @@ Tool: lsharp_stdlib_api { module: "Core" }
 
 ### A-4. 言語リファレンスと利用ガイド
 
-**完成後:**
+**完成後の 2 層構造:**
 
-AI が `lsharp_language_reference` ツールを呼ぶと返ってくるデータ:
+| 層 | 配信手段 | 内容 | AI の体験 |
+|---|---------|------|----------|
+| 概要 | **Claude Code Agent Skills** | 構文・型システム・パターン・イディオム・stdlib 一覧 | コンテキストに常駐。ツール呼び出し不要 |
+| 詳細 | **MCP ツール** (LSP バックエンド) | 関数シグネチャ・型チェック・hover・補完 | 必要時にオンデマンド取得 |
 
-```json
-{
-  "language": "L# (lsharp)",
-  "description": "S 式構文 + Hindley-Milner 型推論の関数型言語。WebAssembly (WASI) ターゲット。",
-  "syntax": {
-    "function_def": "(defn name [params] body)",
-    "lambda": "(fn [params] body)",
-    "let": "(let [x 1 y 2] (+ x y))",
-    "if": "(if cond then else)",
-    "do": "(do expr1 expr2 ... result)",
-    "match": "(match expr [pattern body] ...)",
-    "adt": "(type (Option a) (Some a) None)",
-    "record_def": "(type Point (record (: x Int) (: y Int)))",
-    "record_lit": "{Point x 1 y 2}",
-    "field_access": "(Point.x p)",
-    "module": "(module Name)",
-    "import": "(import Module)",
-    "import_alias": "(import Module :as Alias)",
-    "import_only": "(import Module :only [sym1 sym2])",
-    "trait_def": "(trait (Show a) (defn show [a] : String))",
-    "trait_impl": "(impl (Show Int) (defn show [x] (int-to-string x)))",
-    "metadata": ":doc \"説明\" :params [(x \"説明\")] :returns \"説明\""
-  },
-  "type_system": {
-    "primitives": ["Int", "Float", "String", "Bool", "Unit"],
-    "inference": "Hindley-Milner (型注釈は任意)",
-    "functions": "全てカリー化 (Int -> Int -> Int)",
-    "polymorphism": "パラメトリック多相 (Option a), (Result a e)",
-    "records": "構造的レコード型 {Point x Int y Int}"
-  },
-  "stdlib_modules": ["Core", "List", "Map", "Set", "Vector", "String", "Char", "IO", "Json", "Path", "Debug"],
-  "common_errors": [
-    { "code": "E0001", "name": "undefined symbol", "fix": "(import Module) を追加" },
-    { "code": "E0005", "name": "type mismatch", "fix": "引数の型を確認" },
-    { "code": "E0006", "name": "pattern mismatch", "fix": "match のパターンを見直す" }
-  ],
-  "idioms": [
-    { "name": "Option のアンラップ", "code": "(match opt [(Some x) x] [None default])" },
-    { "name": "リスト変換", "code": "(let [result (map f (filter pred xs))] result)" },
-    { "name": "レコード更新", "code": "{(original) | x 10}" }
-  ]
-}
+**Agent Skills (概要 — コンテキスト常駐):**
+
+`lsharp claude-plugin` を実行すると、以下の Agent Skills がインストールされる:
+
+```markdown
+# L# (lsharp) Language Guide
+
+## 概要
+S 式構文 + Hindley-Milner 型推論の関数型言語。WebAssembly (WASI) / Native をターゲットとする。
+
+## 構文早見表
+- 関数定義: (defn name [params] body)
+- ラムダ: (fn [params] body)
+- let 束縛: (let [x 1 y 2] (+ x y))
+- 条件分岐: (if cond then else)
+- 逐次実行: (do expr1 expr2 ... result)
+- パターンマッチ: (match expr [pattern body] ...)
+- ADT 定義: (type (Option a) (Some a) None)
+- レコード定義: (type Point (record (: x Int) (: y Int)))
+- レコードリテラル: {Point x 1 y 2}
+- フィールドアクセス: (Point.x p)
+- モジュール: (module Name) / (import Module)
+- トレイト: (trait (Show a) (defn show [a] : String))
+- メタデータ: :doc "説明" :params [(x "説明")] :returns "説明"
+
+## 型システム
+- プリミティブ: Int, Float, String, Bool, Unit
+- 推論: Hindley-Milner (型注釈は任意)
+- 関数: 全てカリー化 (Int -> Int -> Int)
+- 多相: パラメトリック多相 (Option a), (Result a e)
+
+## stdlib モジュール
+Core, List, Map, Set, Vector, String, Char, IO, Json, Path, Debug
+
+## よくあるパターン
+- Option: (match opt [(Some x) x] [None default])
+- リスト変換: (map f (filter pred xs))
+- レコード更新: {(original) | x 10}
+
+## MCP ツールで詳細を取得
+- lsharp_hover: シンボルの型と :doc を取得
+- lsharp_completion: スコープ内の補完候補
+- lsharp_check: 型チェック
+- lsharp_package_api: パッケージの全 API
 ```
 
-同じデータを人間向け Markdown (`docs/guides/`) としても生成する:
+**MCP ツール (詳細 — オンデマンド):**
+
+```
+;; AI: distance 関数の詳細を知りたい → lsharp_hover で型 + :doc を取得
+;; AI: 何が使えるか知りたい → lsharp_completion でスコープ内の候補を取得
+;; AI: パッケージの API を知りたい → lsharp_package_api で全関数・型を取得
+```
+
+**人間向けドキュメント:**
+
+Agent Skills と同じ情報源から人間向け Markdown も生成する:
 
 ```
 docs/guides/
   quick-start.md        # 5 分チュートリアル (hello → fib → ADT → record → module)
   language-reference.md  # 構文・型・モジュール完全リファレンス
-  ai-guide.md           # AI エージェント向け利用ガイド
 ```
 
 **実装方針:**
 
-- リファレンスデータは構造化 JSON として `crates/lsharp-driver/` に同梱
-- MCP Server はこの JSON をそのまま返す
-- Markdown ガイドは同じ JSON から生成 (または手書き + JSON を正本として同期)
+- Agent Skills のテンプレートは `crates/lsharp-driver/` にテキストとして同梱
+- `lsharp claude-plugin` が Claude Code の Agent Skills ディレクトリにインストール
+- 個々のシンボル情報は LSP hover/completion 経由で動的に提供 (MCP がラップ)
+- Markdown ガイドは同じテンプレートから生成
 
 ---
 
@@ -598,14 +729,13 @@ my-package/
 **完成後:**
 
 ```bash
-$ lsharp add geometry-utils
-  Added geometry-utils = "0.2.0" to lsharp.toml
+$ lsharp add github.com/user/geometry-utils --tag v0.2.0
+  Added geometry-utils to lsharp.toml
 
 $ lsharp install
-  Resolving dependencies...
-    geometry-utils@0.2.0
-    math-core@1.0.3 (transitive)
-  Downloading ... ok
+  Cloning geometry-utils@v0.2.0 ...
+    math-core@v1.0.3 (transitive)
+  Generating api.json ... ok
   Lock file written: .lsharp/lock.toml
 ```
 
@@ -651,11 +781,18 @@ checksum = "sha256:abc123..."
 
 ## 5. P12-C: パッケージ配布 & エコシステム
 
-### C-1. パッケージレジストリプロトコル
+### 設計方針: GitHub リポジトリのみ
 
-**Phase 1 (Git-tag ベース):**
+**レジストリサーバーは立てない。** GitHub リポジトリ + Git タグが唯一の配布手段。
 
-レジストリなし。Git リポジトリ + タグが source of truth:
+理由:
+- ユーザーが少ない段階でサーバー運用は過剰
+- GitHub は既にバージョン管理・認証・可用性を提供している
+- `git clone --depth 1 --branch <tag>` で十分高速に取得できる
+
+### C-1. GitHub ベースのパッケージ配布
+
+**lsharp.toml での依存宣言:**
 
 ```toml
 [dependencies.my-geometry]
@@ -663,35 +800,32 @@ git = "https://github.com/user/my-geometry.git"
 tag = "v0.1.0"
 ```
 
-**Phase 2 (HTTP レジストリ):**
-
-```
-GET https://registry.lsharp.dev/api/v1/packages/my-geometry
-  → { "versions": ["0.1.0", "0.2.0"], "latest": "0.2.0" }
-
-GET https://registry.lsharp.dev/api/v1/packages/my-geometry/0.1.0/api.json
-  → (api.json をそのまま返す — MCP Server がリモートフォールバックとして使う)
+```bash
+$ lsharp install
+  Cloning my-geometry@v0.1.0 from github.com/user/my-geometry ...
+  Generating api.json ... ok
+  Lock file written: .lsharp/lock.toml
 ```
 
-MCP Server はローカルに api.json がなければレジストリから取得する。
-AI は MCP 経由でアクセスするので、レジストリの存在を意識しない。
+`lsharp install` は以下を行う:
+1. `git clone --depth 1 --branch <tag>` でソースを `.lsharp/packages/` に取得
+2. `lsharp doc --json` を自動実行して `docs/api.json` を生成
+3. MCP Server はこの api.json を読んで AI に返す
 
----
-
-### C-2. パッケージ公開と検証
+### C-2. パッケージ検証 (`lsharp check-package`)
 
 ```bash
-$ lsharp publish
+$ lsharp check-package
   Validating lsharp.toml ... ok
   Generating api.json ... ok
-  Comparing with v0.1.0 ...
+  Comparing with v0.1.0 (previous tag) ...
     + added: rotate (Geometry.Vec2)
     ~ changed: distance return type Int → Float  ⚠ BREAKING
-  ⚠ Breaking change in minor version. Consider 1.0.0.
-  Proceed? [y/N]
+  checksum: sha256:abc123...
 ```
 
----
+パッケージ作者が `git tag` する前にローカルで実行する検証コマンド。
+`lsharp publish` のような中央登録は不要。
 
 ### C-3. API diff & 互換性チェック
 
@@ -700,53 +834,42 @@ $ lsharp api-diff v0.1.0 v0.2.0
   Added:    + Geometry.Vec2.rotate : Vec2 -> Float -> Vec2
   Changed:  ~ Geometry.distance : Int → Float  ⚠ BREAKING
   Removed:  (none)
-  Verdict:  ⚠ BREAKING — semver major bump required
 ```
 
----
+2 つの Git タグ間で api.json を比較する。
 
-### C-4. AI パッケージ検索・理解サポート
+### C-4. AI パッケージ理解サポート
 
 **MCP 経由:**
 
 ```
-Tool: lsharp_search { query: "geometry distance" }
-→ [
-    { name: "my-geometry", version: "0.2.0", summary: "2D 幾何ライブラリ" },
-    { name: "geo-3d", version: "0.1.0", summary: "3D 幾何ライブラリ" }
-  ]
-
 Tool: lsharp_package_api { name: "my-geometry" }
-→ (api.json の完全な中身)
+→ (インストール済みパッケージの api.json を返す)
 ```
 
 **CLI 経由 (人間向け):**
 
 ```bash
-$ lsharp search "geometry distance"
-  my-geometry  0.2.0  — 2D 幾何ライブラリ
-
 $ lsharp info my-geometry
   Package: my-geometry@0.2.0
+  Source: github.com/user/my-geometry
   Modules: Geometry, Geometry.Vec2
   Functions:
     distance : Point -> Point -> Float  — 2 点間の距離
     rotate   : Vec2 -> Float -> Vec2    — ベクトル回転
 ```
 
-**AI のパッケージ発見→利用フロー:**
+**AI のパッケージ利用フロー:**
 
 ```
-1. ユーザー: 「距離計算がしたい」
-2. AI → lsharp_search({ query: "distance" })
-   → my-geometry を発見
-3. AI → lsharp_package_api({ name: "my-geometry" })
-   → 全 API を取得
-4. AI: lsharp.toml に追加するコードを生成
-   → [dependencies] に my-geometry = "0.2.0"
-5. AI → lsharp_compile_run でコードを検証
-6. 完成
+1. ユーザー: 「my-geometry パッケージを使いたい」
+2. AI: lsharp.toml の [dependencies] に git URL + tag を追記
+3. AI → lsharp_compile_run でインストール + コード検証
+4. 完成
 ```
+
+注意: レジストリがないため、パッケージ検索 (`lsharp_search`) はインストール済みパッケージのみ対象。
+新しいパッケージの発見は GitHub 上での検索やコミュニティ情報に委ねる。
 
 ---
 
@@ -756,7 +879,8 @@ $ lsharp info my-geometry
 Phase 12-A (AI 連携基盤) ← Phase 11 と独立して着手可能
 │
 ├─ A-1 api.json スキーマ + 生成     ← 最初に着手 (全ての土台)
-├─ A-2 lsharp-mcp Server 実装       ← A-1 完了後 (api.json を配信)
+├─ A-1.5 LSP 拡張 (hover + completion) ← A-2 の前提条件
+├─ A-2 lsharp-mcp Server 実装       ← A-1, A-1.5 完了後 (LSP + api.json を配信)
 ├─ A-3 stdlib メタデータ整備        ← A-1 完了後 (api.json で検証)
 ├─ A-4 言語リファレンス + ガイド    ← A-2 と並行可能
 └─ A-5 ドキュメントサイト           ← A-1〜A-4 完了後
@@ -769,19 +893,19 @@ Phase 12-B (パッケージコア) ← A-1, A-2 完了後に着手推奨
 ├─ B-4 stdlib 自動リンク            ← B-2 完了後
 └─ B-5 依存解決 + install           ← B-1, B-2, B-4 完了後
 
-Phase 12-C (配布エコシステム) ← B-5 完了後に着手推奨
+Phase 12-C (配布 — GitHub only) ← B-5 完了後に着手推奨
 │
-├─ C-1 レジストリプロトコル         ← B-5 と並行設計可能
-├─ C-2 publish                      ← C-1, A-1 完了後
+├─ C-1 GitHub ベース配布            ← B-5 完了後 (git clone + api.json 自動生成)
+├─ C-2 check-package                ← C-1, A-1 完了後
 ├─ C-3 API diff                     ← A-1 完了後 (api.json 比較)
-└─ C-4 search / info                ← C-1 完了後
+└─ C-4 info                         ← C-1 完了後
 ```
 
 **MVP (最小実用セット):**
 
-A-1 (api.json) + A-2 (lsharp-mcp) + A-3 (stdlib メタデータ) の 3 つで、
-AI が MCP 経由で L# の言語仕様と stdlib API を取得し、正しいコードを書ける状態になる。
-パッケージシステムがなくても、この 3 つで AI 連携の最低ラインを達成できる。
+A-1 (api.json) + A-1.5 (LSP hover/completion) + A-2 (lsharp-mcp) + A-3 (stdlib メタデータ) の 4 つで、
+AI が MCP 経由で L# の型チェック・hover・補完と stdlib API を利用し、正しいコードを書ける状態になる。
+パッケージシステムがなくても、この 4 つで AI 連携の最低ラインを達成できる。
 
 ---
 
@@ -791,18 +915,20 @@ AI が MCP 経由で L# の言語仕様と stdlib API を取得し、正しい�
 
 | 既存 | 拡張内容 |
 |------|---------|
+| `lsharp-lsp` (lib.rs) | hover 実装完了、completion 新規追加、MCP から直接呼び出し可能に |
 | `config.rs` (lsharp.toml) | `[project.exports]`, `[dev-dependencies]` 追加 |
 | `module_graph.rs` | 検索パスに `src/`, `.lsharp/packages/`, `stdlib/` 追加 |
 | `knowledge.schema.json` | 型シグネチャ・パラメータ docs フィールド追加 |
 | `ast.rs` (Metadata) | `:doc` / `:params` / `:returns` をパイプライン全体で伝搬 |
 | `stdlib/*.ls` | 全関数にメタデータ付与 |
-| CLI (main.rs) | `mcp-server`, `doc --json`, `doc-site`, `init`, `install`, `add`, `publish`, `search`, `info`, `api-diff` 追加 |
+| CLI (main.rs) | `mcp-server`, `claude-plugin`, `doc --json`, `doc-site`, `init`, `install`, `add`, `check-package`, `info`, `api-diff` 追加 |
 
 ### 新規作成するもの
 
 | ファイル | 役割 |
 |---------|------|
-| `crates/lsharp-driver/src/mcp_server.rs` | MCP Server (コア — 全 AI ツールのエントリポイント) |
+| `crates/lsharp-driver/src/mcp_server.rs` | MCP Server (コア — LSP ラッパー + パッケージ管理ツール) |
+| `crates/lsharp-lsp/src/completion.rs` | LSP completion 実装 (新規) |
 | `crates/lsharp-driver/src/api_doc.rs` | AST + 型情報 → api.json 生成 |
 | `crates/lsharp-driver/src/init.rs` | `lsharp init` スキャフォールド |
 | `crates/lsharp-driver/src/resolver.rs` | 依存解決・ダウンロード・lock.toml |
@@ -816,6 +942,12 @@ AI が MCP 経由で L# の言語仕様と stdlib API を取得し、正しい�
 | `llms.txt` | MCP Server が動的に情報を提供するため不要 |
 | `[project.ai]` セクション | api.json + lsharp.toml の description で十分 |
 | `crates/lsharp-driver/src/llms.rs` | llms.txt 生成が不要になったため |
+| HTTP レジストリサーバー | GitHub リポジトリ + Git タグで配布。サーバー運用は過剰 |
+| `lsharp publish` | 中央レジストリがないため不要。`git tag` + `git push --tags` で公開 |
+| `lsharp_search` リモート検索 | レジストリがないため。インストール済みパッケージのローカル検索のみ |
+| `lsharp_language_reference` MCP ツール | Agent Skills で概要を常駐提供するため、MCP ツールとしては不要 |
+| MCP リソース `lsharp://language-reference` | 同上。Agent Skills に統合 |
+| CLI `check` / `format` / `parse` | `compile` に統合。LSP / MCP の内部 API としてのみ存続 |
 
 ### 変更しないもの
 

@@ -20,8 +20,8 @@ const IOV_ADDR: i32 = 16;
 const NWRITTEN_ADDR: i32 = 24;
 const BUF_END: i32 = 276;
 
-/// IR 側の内部ヘルパー関数数 (print, __alloc, __string_concat, __string_eq, print-string, proc-exit, __int_to_string, read-file, write-file, file-exists?, command-line-args, __fnv1a_hash)
-const IR_IMPORT_COUNT: u32 = 12;
+/// IR 側の内部ヘルパー関数数 (print, __alloc, __string_concat, __string_eq, print-string, proc-exit, __int_to_string, read-file, write-file, file-exists?, command-line-args, command-line-arg, read-stdin, __fnv1a_hash)
+const IR_IMPORT_COUNT: u32 = 14;
 
 /// WASI import 関数数
 const WASI_IMPORT_COUNT: u32 = 9;
@@ -50,12 +50,14 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     // 16: __write_file
     // 17: __file_exists
     // 18: __command_line_args
-    // 19: __fnv1a_hash
-    // 20..20+N-1: ユーザー関数
-    // 20+N: _start
+    // 19: __command_line_arg
+    // 20: __read_stdin
+    // 21: __fnv1a_hash
+    // 22..22+N-1: ユーザー関数
+    // 22+N: _start
     let fd_write_idx: u32 = 0;
     let proc_exit_wasm_idx: u32 = 1;
-    let _args_get_idx: u32 = 2;
+    let args_get_idx: u32 = 2;
     let args_sizes_get_idx: u32 = 3;
     let fd_read_idx: u32 = 4;
     let fd_close_idx: u32 = 5;
@@ -72,8 +74,10 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let write_file_idx: u32 = WASI_IMPORT_COUNT + 7;
     let file_exists_idx: u32 = WASI_IMPORT_COUNT + 8;
     let command_line_args_idx: u32 = WASI_IMPORT_COUNT + 9;
-    let fnv1a_hash_idx: u32 = WASI_IMPORT_COUNT + 10;
-    let user_func_base: u32 = WASI_IMPORT_COUNT + 11;
+    let command_line_arg_idx: u32 = WASI_IMPORT_COUNT + 10;
+    let read_stdin_idx: u32 = WASI_IMPORT_COUNT + 11;
+    let fnv1a_hash_idx: u32 = WASI_IMPORT_COUNT + 12;
+    let user_func_base: u32 = WASI_IMPORT_COUNT + 13;
     let start_func_idx: u32 = user_func_base + module.functions.len() as u32;
 
     let _gc_type_count = module.gc_types.len() as u32;
@@ -204,6 +208,14 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let command_line_args_type_idx = types.len();
     types.ty().function(vec![], vec![ValType::I64]);
 
+    // __command_line_arg: (i64) -> i64 (index → String object)
+    let command_line_arg_type_idx = types.len();
+    types.ty().function(vec![ValType::I64], vec![ValType::I64]);
+
+    // __read_stdin: () -> i64 (stdin 全体を String object で返す)
+    let read_stdin_type_idx = types.len();
+    types.ty().function(vec![], vec![ValType::I64]);
+
     // __fnv1a_hash: (i64) -> i64 (パック文字列 → FNV-1a ハッシュ値)
     let fnv1a_hash_type_idx = types.len();
     types.ty().function(vec![ValType::I64], vec![ValType::I64]);
@@ -265,6 +277,8 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     functions.function(write_file_type_idx);
     functions.function(file_exists_type_idx);
     functions.function(command_line_args_type_idx);
+    functions.function(command_line_arg_type_idx);
+    functions.function(read_stdin_type_idx);
     functions.function(fnv1a_hash_type_idx);
     for &type_idx in &user_type_indices {
         functions.function(type_idx);
@@ -345,6 +359,8 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     emit_write_file_func(&mut codes, path_open_idx, fd_write_idx, fd_close_idx);
     emit_file_exists_func(&mut codes, path_open_idx, fd_close_idx);
     emit_command_line_args_func(&mut codes, args_sizes_get_idx);
+    emit_command_line_arg_func(&mut codes, alloc_func_idx, args_get_idx, args_sizes_get_idx);
+    emit_read_stdin_func(&mut codes, alloc_func_idx, fd_read_idx);
     emit_fnv1a_hash_func(&mut codes);
 
     for func in &module.functions {
@@ -361,7 +377,7 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
             print_string_idx, proc_exit_wasm_idx,
             int_to_string_idx, read_file_idx,
             write_file_idx, file_exists_idx,
-            command_line_args_idx, fnv1a_hash_idx,
+            command_line_args_idx, command_line_arg_idx, read_stdin_idx, fnv1a_hash_idx,
             user_func_base,
             &call_indirect_type_map,
         )?;
@@ -1224,6 +1240,241 @@ fn emit_command_line_args_func(
     codes.function(&f);
 }
 
+/// __command_line_arg: 指定 index のコマンドライン引数を String オブジェクトで返す
+fn emit_command_line_arg_func(
+    codes: &mut CodeSection,
+    alloc_func_idx: u32,
+    args_get_idx: u32,
+    args_sizes_get_idx: u32,
+) {
+    use wasm_encoder::Instruction as W;
+
+    // locals:
+    // 1=index_i32 2=argc 3=argv_buf_size 4=argv_ptr 5=argv_buf
+    // 6=arg_ptr 7=scan_ptr 8=arg_len 9=str_ptr 10=i
+    let mut f = wasm_encoder::Function::new(vec![
+        (8, ValType::I32),
+        (1, ValType::I64),
+        (1, ValType::I32),
+    ]);
+
+    // index_i32 = i32.wrap_i64(index)
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(1));
+
+    // args_sizes_get(argc_ptr=280, argv_buf_size_ptr=284)
+    f.instruction(&W::I32Const(280));
+    f.instruction(&W::I32Const(284));
+    f.instruction(&W::Call(args_sizes_get_idx));
+    f.instruction(&W::Drop);
+
+    // argc / argv_buf_size
+    f.instruction(&W::I32Const(280));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::LocalSet(2));
+    f.instruction(&W::I32Const(284));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::LocalSet(3));
+
+    // index < 0 -> empty string
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::I32LtS);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::I64Const(8));
+    f.instruction(&W::Call(alloc_func_idx));
+    f.instruction(&W::LocalTee(9));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::LocalGet(9));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::LocalGet(9));
+    f.instruction(&W::Return);
+    f.instruction(&W::End);
+
+    // index >= argc -> empty string
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::LocalGet(2));
+    f.instruction(&W::I32GeS);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::I64Const(8));
+    f.instruction(&W::Call(alloc_func_idx));
+    f.instruction(&W::LocalTee(9));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::LocalGet(9));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+    f.instruction(&W::LocalGet(9));
+    f.instruction(&W::Return);
+    f.instruction(&W::End);
+
+    // argv_ptr = __alloc(argc * 4)
+    f.instruction(&W::LocalGet(2));
+    f.instruction(&W::I32Const(4));
+    f.instruction(&W::I32Mul);
+    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::Call(alloc_func_idx));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(4));
+
+    // argv_buf = __alloc(argv_buf_size)
+    f.instruction(&W::LocalGet(3));
+    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::Call(alloc_func_idx));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(5));
+
+    // args_get(argv_ptr, argv_buf)
+    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::Call(args_get_idx));
+    f.instruction(&W::Drop);
+
+    // arg_ptr = i32.load(argv_ptr + index * 4)
+    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32Const(4));
+    f.instruction(&W::I32Mul);
+    f.instruction(&W::I32Add);
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::LocalSet(6));
+
+    // scan_ptr = arg_ptr, arg_len = 0
+    f.instruction(&W::LocalGet(6));
+    f.instruction(&W::LocalSet(7));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(8));
+
+    // nul 終端まで長さを数える
+    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(7));
+    f.instruction(&W::I32Load8U(wasm_encoder::MemArg { offset: 0, align: 0, memory_index: 0 }));
+    f.instruction(&W::I32Eqz);
+    f.instruction(&W::BrIf(1));
+    f.instruction(&W::LocalGet(7));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(7));
+    f.instruction(&W::LocalGet(8));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(8));
+    f.instruction(&W::Br(0));
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+
+    // str_ptr = __alloc(8 + arg_len)
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::LocalGet(8));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::Call(alloc_func_idx));
+    f.instruction(&W::LocalTee(9));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::LocalGet(9));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalGet(8));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+
+    // i = 0
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(10));
+
+    // bytes を String object に copy
+    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(10));
+    f.instruction(&W::LocalGet(8));
+    f.instruction(&W::I32GeU);
+    f.instruction(&W::BrIf(1));
+    f.instruction(&W::LocalGet(9));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalGet(10));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalGet(6));
+    f.instruction(&W::LocalGet(10));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::I32Load8U(wasm_encoder::MemArg { offset: 0, align: 0, memory_index: 0 }));
+    f.instruction(&W::I32Store8(wasm_encoder::MemArg { offset: 0, align: 0, memory_index: 0 }));
+    f.instruction(&W::LocalGet(10));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(10));
+    f.instruction(&W::Br(0));
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+
+    f.instruction(&W::LocalGet(9));
+    f.instruction(&W::End);
+    codes.function(&f);
+}
+
+/// __read_stdin: stdin(fd=0) を最大 4096 byte 読み、String object を返す
+fn emit_read_stdin_func(
+    codes: &mut CodeSection,
+    alloc_func_idx: u32,
+    fd_read_idx: u32,
+) {
+    use wasm_encoder::Instruction as W;
+
+    // locals: 0=buf_addr(i32), 1=nread(i32)
+    let mut f = wasm_encoder::Function::new(vec![(2, ValType::I32)]);
+
+    f.instruction(&W::I64Const(4104));
+    f.instruction(&W::Call(alloc_func_idx));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(0));
+
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I32Const(4096));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+
+    f.instruction(&W::I32Const(352));
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::I32Const(352));
+    f.instruction(&W::I32Const(4096));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::I32Const(352));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Const(360));
+    f.instruction(&W::Call(fd_read_idx));
+    f.instruction(&W::Drop);
+
+    f.instruction(&W::I32Const(360));
+    f.instruction(&W::I32Load(wasm_encoder::MemArg { offset: 0, align: 2, memory_index: 0 }));
+    f.instruction(&W::LocalSet(1));
+
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32Store(wasm_encoder::MemArg { offset: 4, align: 2, memory_index: 0 }));
+
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::End);
+    codes.function(&f);
+}
+
 
 /// __fnv1a_hash: String オブジェクト (ヒープ上) の FNV-1a ハッシュ値を計算
 /// String オブジェクト: [tag:i32=1][len:i32][bytes:u8*]
@@ -1341,6 +1592,8 @@ fn emit_instructions_wasi(
     write_file_idx: u32,
     file_exists_idx: u32,
     command_line_args_idx: u32,
+    command_line_arg_idx: u32,
+    read_stdin_idx: u32,
     fnv1a_hash_idx: u32,
     user_func_base: u32,
     call_indirect_type_map: &HashMap<u32, u32>,
@@ -1371,7 +1624,9 @@ fn emit_instructions_wasi(
                     8 => write_file_idx,
                     9 => file_exists_idx,
                     10 => command_line_args_idx,
-                    11 => fnv1a_hash_idx,
+                    11 => command_line_arg_idx,
+                    12 => read_stdin_idx,
+                    13 => fnv1a_hash_idx,
                     i => user_func_base + (i - IR_IMPORT_COUNT),
                 };
                 Instruction::FuncIdx(wasm_idx)
@@ -1393,7 +1648,9 @@ fn emit_instructions_wasi(
             8 => { f.instruction(&W::Call(write_file_idx)); }
             9 => { f.instruction(&W::Call(file_exists_idx)); }
             10 => { f.instruction(&W::Call(command_line_args_idx)); }
-            11 => { f.instruction(&W::Call(fnv1a_hash_idx)); }
+            11 => { f.instruction(&W::Call(command_line_arg_idx)); }
+            12 => { f.instruction(&W::Call(read_stdin_idx)); }
+            13 => { f.instruction(&W::Call(fnv1a_hash_idx)); }
             _ => { f.instruction(&W::Call(user_func_base + (i - IR_IMPORT_COUNT))); }
         }
         Ok(())

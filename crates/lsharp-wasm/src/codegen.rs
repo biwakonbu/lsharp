@@ -47,6 +47,14 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let command_line_args_type_idx = types.len();
     types.ty().function(vec![], vec![ValType::I64]);
 
+    // Type 7: command-line-arg 関数の型 (i64) -> (i64)
+    let command_line_arg_type_idx = types.len();
+    types.ty().function(vec![ValType::I64], vec![ValType::I64]);
+
+    // Type 8: read-stdin 関数の型 () -> (i64)
+    let read_stdin_type_idx = types.len();
+    types.ty().function(vec![], vec![ValType::I64]);
+
     // ユーザー定義関数の型を追加
     let mut func_type_indices: Vec<u32> = Vec::new();
     for func in &module.functions {
@@ -82,6 +90,10 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     imports.import("env", "file-exists?", EntityType::Function(alloc_type_idx));
     // command-line-args: () -> (i64) - コマンドライン引数数
     imports.import("env", "command-line-args", EntityType::Function(command_line_args_type_idx));
+    // command-line-arg: (i64) -> (i64) - 指定 index のコマンドライン引数
+    imports.import("env", "command-line-arg", EntityType::Function(command_line_arg_type_idx));
+    // read-stdin: () -> (i64) - stdin 全体を返す
+    imports.import("env", "read-stdin", EntityType::Function(read_stdin_type_idx));
     // __fnv1a_hash: (i64) -> (i64) - FNV-1a ハッシュ
     imports.import("env", "__fnv1a_hash", EntityType::Function(alloc_type_idx));
     wasm_module.section(&imports);
@@ -109,7 +121,7 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     exports.export("memory", ExportKind::Memory, 0);
 
     // main 関数とその他の export
-    let import_count: u32 = 12; // print + __alloc + __string_concat + __string_eq + print-string + proc-exit + __int_to_string + read-file + write-file + file-exists? + command-line-args + __fnv1a_hash
+    let import_count: u32 = 14; // print + __alloc + __string_concat + __string_eq + print-string + proc-exit + __int_to_string + read-file + write-file + file-exists? + command-line-args + command-line-arg + read-stdin + __fnv1a_hash
     for (i, func) in module.functions.iter().enumerate() {
         if func.is_export {
             exports.export(&func.name, ExportKind::Func, import_count + i as u32);
@@ -259,6 +271,20 @@ mod tests {
             Ok(())
         });
 
+        // command-line-arg 関数のスタブ
+        let command_line_arg_ty = FuncType::new(&engine, [ValType::I64], [ValType::I64]);
+        let command_line_arg_func = Func::new(&mut store, command_line_arg_ty, |_caller, _params, results| {
+            results[0] = Val::I64(0);
+            Ok(())
+        });
+
+        // read-stdin 関数のスタブ
+        let read_stdin_ty = FuncType::new(&engine, [], [ValType::I64]);
+        let read_stdin_func = Func::new(&mut store, read_stdin_ty, |_caller, _params, results| {
+            results[0] = Val::I64(0);
+            Ok(())
+        });
+
         // __fnv1a_hash 関数のスタブ
         let fnv1a_hash_ty = FuncType::new(&engine, [ValType::I64], [ValType::I64]);
         let fnv1a_hash_func = Func::new(&mut store, fnv1a_hash_ty, |_caller, _params, results| {
@@ -269,7 +295,7 @@ mod tests {
         let instance = Instance::new(
             &mut store,
             &module,
-            &[print_func.into(), alloc_func.into(), string_concat_func.into(), string_eq_func.into(), print_string_func.into(), proc_exit_func.into(), int_to_string_func.into(), read_file_func.into(), write_file_func.into(), file_exists_func.into(), command_line_args_func.into(), fnv1a_hash_func.into()],
+            &[print_func.into(), alloc_func.into(), string_concat_func.into(), string_eq_func.into(), print_string_func.into(), proc_exit_func.into(), int_to_string_func.into(), read_file_func.into(), write_file_func.into(), file_exists_func.into(), command_line_args_func.into(), command_line_arg_func.into(), read_stdin_func.into(), fnv1a_hash_func.into()],
         ).unwrap();
 
         let main = instance

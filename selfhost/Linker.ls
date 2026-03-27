@@ -27,6 +27,13 @@
 ;; output: 出力ファイルパス (文字列ハッシュ)
 ;; target: ターゲット記述子
 ;; 戻り値: 引数の Vector
+(defn append-linker-objects [args objects idx n]
+  (if (>= idx n)
+    (ref-get args)
+    (do
+      (ref-set args (vector-push (ref-get args) (vector-get objects idx)))
+      (append-linker-objects args objects (+ idx 1) n))))
+
 (defn build-linker-args [objects output target]
   (let [args (ref-new (vector-new 16))
         linker-kind (select-linker target)]
@@ -37,23 +44,7 @@
       ;; オブジェクトファイルを追加
       (let [i (ref-new 0)
             n (vector-length objects)]
-        (do
-          (if (< (ref-get i) n)
-            (do
-              (ref-set args (vector-push (ref-get args) (vector-get objects (ref-get i))))
-              (ref-set i (+ (ref-get i) 1))
-              (if (< (ref-get i) n)
-                (do
-                  (ref-set args (vector-push (ref-get args) (vector-get objects (ref-get i))))
-                  (ref-set i (+ (ref-get i) 1))
-                  (if (< (ref-get i) n)
-                    (do
-                      (ref-set args (vector-push (ref-get args) (vector-get objects (ref-get i))))
-                      0)
-                    0))
-                0))
-            0)
-          (ref-get args))))))
+        (append-linker-objects args objects (ref-get i) n)))))
 
 ;; === Response File 生成 ===
 
@@ -61,38 +52,20 @@
 ;; リンカー引数を改行区切りのバイト列として出力
 ;; args: 引数の Vector (各要素は整数値)
 ;; 戻り値: バイト列 (改行区切りの引数リスト)
+(defn append-response-args [result args idx n]
+  (if (>= idx n)
+    (ref-get result)
+    (do
+      ;; 引数を追加 (簡易版: 整数値としてエンコード)
+      (ref-set result (vector-push (ref-get result) (vector-get args idx)))
+      ;; 改行 (0x0A)
+      (ref-set result (vector-push (ref-get result) 10))
+      (append-response-args result args (+ idx 1) n))))
+
 (defn generate-response-file [args]
   (let [result (ref-new (vector-new 64))
-        i (ref-new 0)
         n (vector-length args)]
-    (do
-      (if (< (ref-get i) n)
-        (do
-          ;; 引数を追加 (簡易版: 整数値としてエンコード)
-          (ref-set result (vector-push (ref-get result) (vector-get args (ref-get i))))
-          ;; 改行 (0x0A)
-          (ref-set result (vector-push (ref-get result) 10))
-          (ref-set i (+ (ref-get i) 1))
-          (if (< (ref-get i) n)
-            (do
-              (ref-set result (vector-push (ref-get result) (vector-get args (ref-get i))))
-              (ref-set result (vector-push (ref-get result) 10))
-              (ref-set i (+ (ref-get i) 1))
-              (if (< (ref-get i) n)
-                (do
-                  (ref-set result (vector-push (ref-get result) (vector-get args (ref-get i))))
-                  (ref-set result (vector-push (ref-get result) 10))
-                  (ref-set i (+ (ref-get i) 1))
-                  (if (< (ref-get i) n)
-                    (do
-                      (ref-set result (vector-push (ref-get result) (vector-get args (ref-get i))))
-                      (ref-set result (vector-push (ref-get result) 10))
-                      0)
-                    0))
-                0))
-            0))
-        0)
-      (ref-get result))))
+    (append-response-args result args 0 n)))
 
 ;; response file を書き出す (将来の実装: ファイル I/O)
 ;; 現在はバイト列を返すのみ
