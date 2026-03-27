@@ -2,6 +2,13 @@ use crate::api_doc::{self, ApiDoc, ApiModule};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GuidePage {
+    slug: String,
+    title: String,
+    markdown: String,
+}
+
 pub fn cmd_doc_site(output: &Path) -> miette::Result<()> {
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     cmd_doc_site_in(&repo_root, output)
@@ -12,27 +19,23 @@ pub(crate) fn cmd_doc_site_in(repo_root: &Path, output: &Path) -> miette::Result
     let stdlib_root = repo_root.join("stdlib");
     let guides_out = output.join("guides");
     let api_out = output.join("api");
+    let guides = collect_guides(&guides_src)?;
 
     fs::create_dir_all(&guides_out)
         .map_err(|e| miette::miette!("{}: {}", guides_out.display(), e))?;
     fs::create_dir_all(&api_out).map_err(|e| miette::miette!("{}: {}", api_out.display(), e))?;
 
-    let guides = [
-        ("quick-start", "Quick Start"),
-        ("language-reference", "Language Reference"),
-    ];
-    for (slug, title) in guides {
-        let markdown_path = guides_src.join(format!("{slug}.md"));
-        let markdown = fs::read_to_string(&markdown_path)
-            .map_err(|e| miette::miette!("{}: {}", markdown_path.display(), e))?;
+    let guide_nav = guide_links(&guides, "");
+    let guide_nav_parent = guide_links(&guides, "../guides/");
+
+    for guide in &guides {
         let html = render_page(
-            title,
-            &render_markdown(&markdown),
+            &guide.title,
+            &render_markdown(&guide.markdown),
             "../index.html",
-            "quick-start.html",
-            "language-reference.html",
+            &guide_nav,
         );
-        fs::write(guides_out.join(format!("{slug}.html")), html)
+        fs::write(guides_out.join(format!("{}.html", guide.slug)), html)
             .map_err(|e| miette::miette!("guide 出力失敗: {e}"))?;
     }
 
@@ -47,8 +50,7 @@ pub(crate) fn cmd_doc_site_in(repo_root: &Path, output: &Path) -> miette::Result
             &format!("API: {}", module.name),
             &render_api_module(module),
             "../index.html",
-            "../guides/quick-start.html",
-            "../guides/language-reference.html",
+            &guide_nav_parent,
         );
         fs::write(api_out.join(format!("{}.html", module.name)), html)
             .map_err(|e| miette::miette!("API ページ出力失敗: {e}"))?;
@@ -56,20 +58,82 @@ pub(crate) fn cmd_doc_site_in(repo_root: &Path, output: &Path) -> miette::Result
 
     let index_html = render_page(
         "L# Documentation",
-        &render_index(&stdlib_api),
+        &render_index(&guides, &stdlib_api),
         "index.html",
-        "guides/quick-start.html",
-        "guides/language-reference.html",
+        &guide_links(&guides, "guides/"),
     );
     fs::write(output.join("index.html"), index_html)
         .map_err(|e| miette::miette!("index.html 出力失敗: {e}"))?;
 
     println!("Language reference ... ok");
     println!("Stdlib API ({} modules) ... ok", stdlib_api.modules.len());
-    println!("Guides (2 pages) ... ok");
+    println!("Guides ({} pages) ... ok", guides.len());
     println!("Site generated: {}", output.display());
 
     Ok(())
+}
+
+fn collect_guides(guides_src: &Path) -> miette::Result<Vec<GuidePage>> {
+    let mut guides = Vec::new();
+    for entry in
+        fs::read_dir(guides_src).map_err(|e| miette::miette!("{}: {}", guides_src.display(), e))?
+    {
+        let path = entry
+            .map_err(|e| miette::miette!("{}: {}", guides_src.display(), e))?
+            .path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
+            continue;
+        }
+        if path.file_name().and_then(|name| name.to_str()) == Some("README.md") {
+            continue;
+        }
+
+        let markdown =
+            fs::read_to_string(&path).map_err(|e| miette::miette!("{}: {}", path.display(), e))?;
+        let slug = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .ok_or_else(|| miette::miette!("guide slug を解決できません: {}", path.display()))?
+            .to_string();
+        let title = guide_title(&slug, &markdown);
+        guides.push(GuidePage {
+            slug,
+            title,
+            markdown,
+        });
+    }
+    guides.sort_by_key(|guide| guide_sort_key(&guide.slug));
+    Ok(guides)
+}
+
+fn guide_sort_key(slug: &str) -> (u8, String) {
+    let priority = match slug {
+        "quick-start" => 0,
+        "language-reference" => 1,
+        "package-layout" => 2,
+        _ => 10,
+    };
+    (priority, slug.to_string())
+}
+
+fn guide_title(slug: &str, markdown: &str) -> String {
+    match slug {
+        "quick-start" => "Quick Start".to_string(),
+        "language-reference" => "Language Reference".to_string(),
+        "package-layout" => "Package Layout".to_string(),
+        _ => markdown
+            .lines()
+            .find_map(|line| line.strip_prefix("# ").map(str::trim))
+            .map(str::to_string)
+            .unwrap_or_else(|| slug.replace('-', " ")),
+    }
+}
+
+fn guide_links(guides: &[GuidePage], prefix: &str) -> Vec<(String, String)> {
+    guides
+        .iter()
+        .map(|guide| (format!("{prefix}{}.html", guide.slug), guide.title.clone()))
+        .collect()
 }
 
 fn build_stdlib_api(stdlib_root: &Path) -> miette::Result<ApiDoc> {
@@ -103,13 +167,18 @@ fn build_stdlib_api(stdlib_root: &Path) -> miette::Result<ApiDoc> {
     })
 }
 
-fn render_index(stdlib_api: &ApiDoc) -> String {
+fn render_index(guides: &[GuidePage], stdlib_api: &ApiDoc) -> String {
     let mut body = String::new();
     body.push_str("<h1>L# Documentation</h1>\n");
     body.push_str("<p>L# のガイドと標準ライブラリ API をまとめた静的サイトです。</p>\n");
     body.push_str("<h2>Guides</h2>\n<ul>\n");
-    body.push_str("<li><a href=\"guides/quick-start.html\">Quick Start</a></li>\n");
-    body.push_str("<li><a href=\"guides/language-reference.html\">Language Reference</a></li>\n");
+    for guide in guides {
+        body.push_str(&format!(
+            "<li><a href=\"guides/{}.html\">{}</a></li>\n",
+            escape_html(&guide.slug),
+            escape_html(&guide.title)
+        ));
+    }
     body.push_str("</ul>\n<h2>Stdlib API</h2>\n<ul>\n");
     for module in &stdlib_api.modules {
         body.push_str(&format!(
@@ -184,15 +253,20 @@ fn render_page(
     title: &str,
     body: &str,
     home_href: &str,
-    quick_start_href: &str,
-    language_reference_href: &str,
+    guide_links: &[(String, String)],
 ) -> String {
+    let mut nav = format!("<a href=\"{}\">Home</a>", escape_html(home_href));
+    for (href, label) in guide_links {
+        nav.push_str(&format!(
+            "<a href=\"{}\">{}</a>",
+            escape_html(href),
+            escape_html(label)
+        ));
+    }
     format!(
-        "<!DOCTYPE html>\n<html lang=\"ja\"><head><meta charset=\"utf-8\"><title>{}</title><style>body{{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;max-width:960px;margin:0 auto;padding:40px;line-height:1.6;color:#222;background:#faf8f3}}nav a{{margin-right:16px}}pre{{background:#f1ece2;padding:16px;border-radius:8px;overflow:auto}}code{{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}}section{{padding-bottom:16px;border-bottom:1px solid #ddd;margin-bottom:16px}}ul{{padding-left:20px}}</style></head><body><nav><a href=\"{}\">Home</a><a href=\"{}\">Quick Start</a><a href=\"{}\">Language Reference</a></nav>{}</body></html>\n",
+        "<!DOCTYPE html>\n<html lang=\"ja\"><head><meta charset=\"utf-8\"><title>{}</title><style>body{{font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif;max-width:960px;margin:0 auto;padding:40px;line-height:1.6;color:#222;background:#faf8f3}}nav a{{margin-right:16px}}pre{{background:#f1ece2;padding:16px;border-radius:8px;overflow:auto}}code{{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}}section{{padding-bottom:16px;border-bottom:1px solid #ddd;margin-bottom:16px}}ul{{padding-left:20px}}</style></head><body><nav>{}</nav>{}</body></html>\n",
         escape_html(title),
-        escape_html(home_href),
-        escape_html(quick_start_href),
-        escape_html(language_reference_href),
+        nav,
         body
     )
 }
@@ -335,11 +409,13 @@ mod tests {
 
         let quick_start = repo_root.join("docs/guides/quick-start.md");
         let language_reference = repo_root.join("docs/guides/language-reference.md");
+        let package_layout = repo_root.join("docs/guides/package-layout.md");
         let skill_template =
             repo_root.join("crates/lsharp-driver/templates/lsharp-language-guide.md");
 
         assert!(quick_start.exists(), "quick-start.md が必要");
         assert!(language_reference.exists(), "language-reference.md が必要");
+        assert!(package_layout.exists(), "package-layout.md が必要");
         assert!(skill_template.exists(), "Agent Skills テンプレートが必要");
     }
 
@@ -361,6 +437,10 @@ mod tests {
             output.join("guides/language-reference.html").exists(),
             "language-reference.html が必要"
         );
+        assert!(
+            output.join("guides/package-layout.html").exists(),
+            "package-layout.html が必要"
+        );
         assert!(output.join("api/Core.html").exists(), "Core.html が必要");
         assert!(
             output.join("api/stdlib.json").exists(),
@@ -369,6 +449,7 @@ mod tests {
 
         let index = std::fs::read_to_string(output.join("index.html")).unwrap();
         assert!(index.contains("Quick Start"));
+        assert!(index.contains("Package Layout"));
         assert!(index.contains("Core"));
 
         let api = std::fs::read_to_string(output.join("api/stdlib.json")).unwrap();
