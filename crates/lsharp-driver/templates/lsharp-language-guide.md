@@ -1,3 +1,9 @@
+---
+name: lsharp-language-guide
+description: L# の構文、型システム、標準ライブラリ、MCP ツールの概要を提供する。Use when user asks about L# syntax, type system, stdlib modules, package layout, or how to use L# through MCP tools.
+context: project
+---
+
 # L# Language Guide
 
 ## 概要

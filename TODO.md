@@ -282,7 +282,7 @@
   - [x] LSP の pub API を MCP から直接呼び出し可能な形に整理 (`parse_and_check`, `find_definition`, `find_references`, `format_source`, `hover`, `completion`)
   - 修正対象: `crates/lsharp-lsp/src/lib.rs`, `crates/lsharp-lsp/src/util.rs`, 新規 `crates/lsharp-lsp/src/completion.rs`
 
-- [~] **A-2. lsharp-mcp Server 実装 (LSP-over-MCP)** (tests: `mcp_server::tests::test_call_hover_tool_returns_doc_and_type`, `mcp_server::tests::test_handle_jsonrpc_tools_list_request_returns_mcp_result`)
+- [x] **A-2. lsharp-mcp Server 実装 (LSP-over-MCP)** (tests: `mcp_server::tests::test_call_hover_tool_returns_doc_and_type`, `mcp_server::tests::test_handle_jsonrpc_tools_list_request_returns_mcp_result`, `claude_plugin::tests::test_cmd_claude_plugin_installs_mcp_server_and_skill`, `claude_plugin::tests::test_cmd_claude_plugin_creates_settings_when_missing`)
   - [x] `lsharp mcp-server` サブコマンド (stdio transport MCP Server)
   - [ ] **LSP バックエンドツール** (LSP の `LsharpBackend` をライブラリとして組み込み):
     - [x] `lsharp_check` ツール: `util::parse_and_check()` → 診断結果を返す
@@ -298,9 +298,9 @@
     - [x] `lsharp_compile_run` ツール: format + check + codegen + 実行結果を返す
     - [x] `lsharp_errors` ツール: エラーコードの説明と対処法を返す
     - [x] `lsharp_search` ツール: インストール済みパッケージのローカル検索
-  - [ ] `lsharp claude-plugin` サブコマンド:
-    - [ ] Claude Code の settings.json に MCP Server 設定を自動登録
-    - [ ] Agent Skills (L# 言語概要) を Claude Code にインストール (構文・型システム・パターン・stdlib 一覧)
+  - [x] `lsharp claude-plugin` サブコマンド:
+    - [x] Claude Code の settings.json に MCP Server 設定を自動登録
+    - [x] Agent Skills (L# 言語概要) を Claude Code にインストール (構文・型システム・パターン・stdlib 一覧)
   - 修正対象: `crates/lsharp-driver/src/main.rs`, `crates/lsharp-lsp/src/lib.rs`, 新規 `crates/lsharp-driver/src/mcp_server.rs`
 
 - [x] **A-3. stdlib 全モジュールのメタデータ整備** (tests: `api_doc::tests::test_build_api_doc_for_file_uses_file_stem_and_header_comment_for_module_metadata`, `api_doc::tests::test_build_api_doc_for_stdlib_public_functions_have_metadata`)

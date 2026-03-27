@@ -5,6 +5,7 @@
 //! - 検証: `scripts/ci/default-path-smoke.sh` が `target/debug/lsharp` のみで `check` / `compile` を通す。
 
 mod api_doc;
+mod claude_plugin;
 mod commands;
 mod config;
 mod doc_site;
@@ -199,6 +200,9 @@ enum Command {
         #[arg(short, long, default_value = "_site")]
         output: PathBuf,
     },
+
+    /// Claude Code へ MCP 設定と L# Skill をインストール
+    ClaudePlugin,
 }
 
 fn main() -> miette::Result<()> {
@@ -477,6 +481,10 @@ fn main() -> miette::Result<()> {
 
         Command::DocSite { output } => {
             doc_site::cmd_doc_site(&output)?;
+        }
+
+        Command::ClaudePlugin => {
+            claude_plugin::cmd_claude_plugin()?;
         }
     }
 
