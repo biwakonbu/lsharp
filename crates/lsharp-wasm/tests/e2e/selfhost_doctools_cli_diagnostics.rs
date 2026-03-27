@@ -251,7 +251,7 @@ fn test_e2e_selfhost_doctools_schema_review() {
             "7",
             "100",
             "unused-let",
-            "let binding is not used",
+            "let binding x is not used",
             "warning",
             "1",
             "1",
@@ -304,6 +304,87 @@ fn test_e2e_selfhost_doctools_schema_review_empty_do() {
             "1",
             "1",
             "L0002",
+        ]
+    );
+}
+
+/// DOC-01: generate-doc-ack が status/title/body と trailer を返すこと
+#[test]
+fn test_e2e_selfhost_doctools_doc_ack_trailer_payload() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(module Demo (defn main [] 42))")
+        ack (generate-doc-ack program "alice")
+        trailers (vector-get ack 3)]
+    (do
+      (print (vector-length ack))
+      (print-string (vector-get ack 0))
+      (print-string "\n")
+      (print-string (vector-get ack 1))
+      (print-string "\n")
+      (print-string (vector-get ack 2))
+      (print-string "\n")
+      (print (vector-length trailers))
+      (print-string (vector-get trailers 0))
+      (print-string "\n")
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "4",
+            "ack:recorded",
+            "module-Demo",
+            "functions:1,types:0,first-fn:main",
+            "1",
+            "Doc-Reviewed-By: alice",
+        ]
+    );
+}
+
+/// DOC-01: generate-doc-check が status/title/body と trailer を返すこと
+#[test]
+fn test_e2e_selfhost_doctools_doc_check_trailer_payload() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(module Demo (defn main [] 42))")
+        check (generate-doc-check program "alice")
+        trailers (vector-get check 3)]
+    (do
+      (print (vector-length check))
+      (print-string (vector-get check 0))
+      (print-string "\n")
+      (print-string (vector-get check 1))
+      (print-string "\n")
+      (print-string (vector-get check 2))
+      (print-string "\n")
+      (print (vector-length trailers))
+      (print-string (vector-get trailers 0))
+      (print-string "\n")
+      (print-string (vector-get trailers 1))
+      (print-string "\n")
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "4",
+            "status:ok",
+            "module-Demo",
+            "functions:1,types:0,first-fn:main",
+            "2",
+            "Doc-Review-Status: Passed",
+            "Doc-Reviewed-By: alice",
         ]
     );
 }

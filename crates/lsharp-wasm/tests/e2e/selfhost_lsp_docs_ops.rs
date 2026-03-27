@@ -820,6 +820,28 @@ fn test_e2e_selfhost_lsp_json_rpc_parse() {
     assert_eq!(lines[2], "55", "params は 55 であるべき");
 }
 
+/// TEST-LSP-17b: JSON-RPC error response が deterministic な wire shape を返すこと
+#[test]
+fn test_e2e_selfhost_lsp_json_rpc_error_encode() {
+    let source = selfhost_lsp_runtime_bundle();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print-string (render-json-rpc-error-response 42 -32601 "Method not found"))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+
+    assert_eq!(
+        output.trim(),
+        r#"{"jsonrpc":"2.0","id":42,"error":{"code":-32601,"message":"Method not found"}}"#,
+        "JSON-RPC error response は固定 shape の JSON text を返すべき"
+    );
+}
+
 /// TEST-LSP-18: hover がソースとカーソル位置から実シンボル情報を返すこと
 #[test]
 fn test_e2e_selfhost_lsp_real_shapes_hover_uses_source_symbol() {
@@ -1015,6 +1037,30 @@ fn test_e2e_selfhost_lsp_real_shapes_formatting_returns_document_edit() {
     assert_eq!(lines[3], "2", "TextEdit end-line は入力全文の終端であるべき");
     assert_eq!(lines[4], "4", "TextEdit end-col は入力全文の終端であるべき");
     assert_eq!(lines[5], "(defn main [] 1)", "TextEdit newText は整形後の全文であるべき");
+}
+
+/// TEST-LSP-21b: formatting が string literal を source-aware formatter 経由で返すこと
+#[test]
+fn test_e2e_selfhost_lsp_real_shapes_formatting_preserves_string_literal() {
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        src "(defn main [] \"abc\")"
+        params (vector-push (vector-push (vector-new 2) 77) src)
+        edits (handle-formatting params state)
+        edit (vector-get edits 0)]
+    (do
+      (print-string (vector-get edit 4))
+      0)))
+"#;
+
+    let lines = run_lsp_harness("lsp_real_shapes_formatting_string_literal", harness);
+
+    assert_eq!(
+        lines[0],
+        "(defn main [] \"abc\")",
+        "LSP formatting は string literal を source-aware formatter で保持するべき"
+    );
 }
 
 /// TEST-FMT-01: selfhost/Formatter.ls に format-program / format-expr 関数が存在すること

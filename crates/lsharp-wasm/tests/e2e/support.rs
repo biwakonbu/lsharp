@@ -354,6 +354,7 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> &'static str {
             "Formatter.ls",
             "TestRunner.ls",
             "DocTools.ls",
+            "JsonRpc.ls",
             "LspServer.ls",
             "Cli.ls",
         ],

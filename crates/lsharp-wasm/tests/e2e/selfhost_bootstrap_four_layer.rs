@@ -934,6 +934,85 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_length_helper_program(
     );
 }
 
+/// BOOT-04: stage1 が string literal を data section に落とし込んだ stage2 Wasm を生成できること
+#[test]
+fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_literal_data_section() {
+    let harness = r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions-with-source src program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        header (emit-header)
+        type-sec (emit-type-section-functions functions)
+        function-sec (emit-function-section-functions functions)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-index 0)
+        code-sec (emit-code-section-functions functions)
+        data-sec (emit-data-section data 1024)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 function-sec 0 (vector-length function-sec))
+        bytes3 (bootstrap-append-bytes bytes2 memory-sec 0 (vector-length memory-sec))
+        bytes4 (bootstrap-append-bytes bytes3 export-sec 0 (vector-length export-sec))
+        bytes5 (bootstrap-append-bytes bytes4 code-sec 0 (vector-length code-sec))]
+    (bootstrap-append-bytes bytes5 data-sec 0 (vector-length data-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [stage2 (bootstrap-build-stage2 "(defn main [] \"abc\")")]
+    (do
+      (bootstrap-print-module stage2)
+      0)))
+"#;
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .expect("string literal data section program を含む stage1 wasm の実行に失敗");
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
+    assert_valid_wasm(&modules[0]);
+    let sections = extract_sections(&modules[0]);
+    assert!(
+        sections.iter().any(|(id, _)| *id == 11),
+        "string literal を含む stage2 Wasm は data section を持つこと"
+    );
+    let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
+    assert!(
+        data_section.windows(3).any(|window| window == [97, 98, 99]),
+        "data section に string literal bytes が含まれていない"
+    );
+    assert_eq!(
+        run_exported_i64(&modules[0], "_start"),
+        1024,
+        "string literal lowering の data base offset が不正"
+    );
+}
+
 /// BOOT-04: stage1 が vector-length builtin を含む stage2 Wasm を valid module として生成できること
 #[test]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_length_helper_program() {

@@ -557,6 +557,47 @@
         title)
       sections)))
 
+;; === doc-ack/doc-check payload ===
+
+(defn doc-ack-status-text []
+  "ack:recorded")
+
+(defn doc-check-status-text []
+  "status:ok")
+
+(defn doc-reviewed-by-line [reviewer]
+  (string-concat "Doc-Reviewed-By: " reviewer))
+
+(defn doc-review-status-line [status]
+  (string-concat "Doc-Review-Status: " status))
+
+(defn generate-doc-ack [ast reviewer]
+  (let [doc (generate ast 0)
+        trailers (vector-push (vector-new 1) (doc-reviewed-by-line reviewer))
+        result (vector-new 4)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push result (doc-ack-status-text))
+          (vector-get doc 0))
+        (vector-get doc 1))
+      trailers)))
+
+(defn generate-doc-check [ast reviewer]
+  (let [doc (generate ast 0)
+        trailers
+          (vector-push
+            (vector-push (vector-new 1) (doc-review-status-line "Passed"))
+            (doc-reviewed-by-line reviewer))
+        result (vector-new 4)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push result (doc-check-status-text))
+          (vector-get doc 0))
+        (vector-get doc 1))
+      trailers)))
+
 ;; 検証用 main
 (defn main []
   (let [program (parse-program "(defn main [] 42) (type Doc Int)")

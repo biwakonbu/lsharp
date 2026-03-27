@@ -218,7 +218,7 @@
 
 (defn run-fmt-source [src opts]
   (let [program (parse-program src)
-        formatted (format-program program opts)]
+        formatted (format-program-with-source program src)]
     (do
       (print-string formatted)
       (exit-success))))
@@ -331,24 +331,45 @@
     (run-review-source (read-file file-path) opts)
     (exit-compile-error)))
 
+(defn print-doc-trailers-loop [trailers idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print-string (vector-get trailers idx))
+      (print-string "\n")
+      (print-doc-trailers-loop trailers (+ idx 1) count))))
+
+(defn print-doc-payload [payload]
+  (let [trailers (vector-get payload 3)]
+    (do
+      (print-string (vector-get payload 0))
+      (print-string "\n")
+      (print-string (vector-get payload 1))
+      (print-string "\n")
+      (print-string (vector-get payload 2))
+      (print-string "\n")
+      (print-doc-trailers-loop trailers 0 (vector-length trailers)))))
+
 ;; doc-ack サブコマンド: ドキュメント確認
 (defn run-doc-ack [file-path opts]
   (if (file-exists? file-path)
-    (let [src (read-file file-path)]
+    (let [src (read-file file-path)
+          program (parse-program src)
+          ack (generate-doc-ack program "anonymous")]
       (do
-        (print-string "ack:recorded")
-        (print-string "\n")
-        (run-doc-source src opts)))
+        (print-doc-payload ack)
+        (exit-success)))
     (exit-compile-error)))
 
 ;; doc-check サブコマンド: ドキュメント整合性チェック
 (defn run-doc-check [file-path opts]
   (if (file-exists? file-path)
-    (let [src (read-file file-path)]
+    (let [src (read-file file-path)
+          program (parse-program src)
+          check (generate-doc-check program "anonymous")]
       (do
-        (print-string "status:ok")
-        (print-string "\n")
-        (run-doc-source src opts)))
+        (print-doc-payload check)
+        (exit-success)))
     (exit-compile-error)))
 
 ;; install サブコマンド: パッケージインストール

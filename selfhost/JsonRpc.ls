@@ -1,6 +1,4 @@
 (module JsonRpc)
-(import Linter)
-(import Formatter)
 
 ;; JsonRpc.ls - JSON-RPC パーサー/シリアライザー
 ;;
@@ -84,6 +82,41 @@
         ",\"result\":"
         (string-concat (render-int-vector-json result) "}")))))
 
+(defn render-rpc-error-response [id error-code error-message]
+  (string-concat
+    "{\"jsonrpc\":\"2.0\",\"id\":"
+    (string-concat
+      (int-to-string id)
+      (string-concat
+        ",\"error\":{"
+        (string-concat
+          "\"code\":"
+          (string-concat
+            (int-to-string error-code)
+              (string-concat
+                ",\"message\":\""
+                (string-concat error-message "\"}}"))))))))
+
+;; JSON-RPC framing helpers
+;; Content-Length は body 長から決定的に計算する
+(defn render-content-length-header [payload]
+  (let [len-text (int-to-string (string-length payload))]
+    (string-concat
+      "Content-Length: "
+      (string-concat len-text "\r\n\r\n"))))
+
+(defn render-json-rpc-frame [payload]
+  (string-concat (render-content-length-header payload) payload))
+
+(defn render-rpc-int-response-frame [id result]
+  (render-json-rpc-frame (render-rpc-int-response id result)))
+
+(defn render-rpc-int-vector-response-frame [id result]
+  (render-json-rpc-frame (render-rpc-int-vector-response id result)))
+
+(defn render-rpc-error-response-frame [id error-code error-message]
+  (render-json-rpc-frame (render-rpc-error-response id error-code error-message)))
+
 ;; メッセージアクセサ
 (defn rpc-type [msg]
   (vector-get msg 0))
@@ -107,8 +140,27 @@
 
 ;; Content-Length ヘッダーのパース (簡易実装)
 ;; 実際の LSP では "Content-Length: N\r\n\r\n" の N を数値化する
+(defn parse-content-length-loop [header-value idx len acc started]
+  (if (>= idx len)
+    acc
+    (let [c (string-char-at header-value idx)]
+      (if (>= c 48)
+        (if (<= c 57)
+          (parse-content-length-loop
+            header-value
+            (+ idx 1)
+            len
+            (+ (* acc 10) (- c 48))
+            1)
+          (if (= started 1)
+            acc
+            (parse-content-length-loop header-value (+ idx 1) len acc started)))
+        (if (= started 1)
+          acc
+          (parse-content-length-loop header-value (+ idx 1) len acc started))))))
+
 (defn parse-content-length [header-value]
-  header-value)
+  (parse-content-length-loop header-value 0 (string-length header-value) 0 0))
 
 ;; === P9-6b: LSP ハンドラ実装 ===
 
@@ -139,6 +191,12 @@
 
 (defn render-shutdown-response [request-id]
   (render-rpc-int-response request-id 0))
+
+(defn render-initialize-frame [request-id]
+  (render-json-rpc-frame (render-initialize-response request-id)))
+
+(defn render-shutdown-frame [request-id]
+  (render-json-rpc-frame (render-shutdown-response request-id)))
 
 ;; handle-did-open: ドキュメントオープン通知 → ソース長を返す
 (defn handle-did-open [source-length]

@@ -11,6 +11,7 @@
 ;; === AST タグ定数 (AST.ls から再定義) ===
 (defn tag-lit-int [] 1)
 (defn tag-lit-bool [] 2)
+(defn tag-lit-string [] 3)
 (defn tag-var [] 4)
 (defn tag-apply [] 5)
 (defn tag-if [] 6)
@@ -154,6 +155,80 @@
                         (emit-to value-instrs (op-drop) 0)
                         value-instrs)]
       (compile-do-exprs node env ftable (+ idx 1) expr-count next-instrs))))
+
+;; source 付き string literal lowering 用ヘルパー
+(defn string-literal-data-base [] 1024)
+
+(defn append-byte-vector [dst src idx count]
+  (if (>= idx count)
+    dst
+    (append-byte-vector
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn string-to-byte-vector [text idx count bytes]
+  (if (>= idx count)
+    bytes
+    (string-to-byte-vector
+      text
+      (+ idx 1)
+      count
+      (vector-push bytes (string-char-at text idx)))))
+
+(defn compile-string-literal-with-source [node source instrs data-ref]
+  (let [start (vector-get node 1)
+        end (vector-get node 2)
+        text (substring source start end)
+        text-len (string-length text)
+        bytes (string-to-byte-vector text 0 text-len (vector-new 8))
+        offset (+ (string-literal-data-base) (vector-length (ref-get data-ref)))
+        updated-data (append-byte-vector (ref-get data-ref) bytes 0 (vector-length bytes))
+        instrs1 (emit-to instrs 1 offset)]
+    (do
+      (ref-set data-ref updated-data)
+      instrs1)))
+
+(defn compile-expr-with-source [node source env ftable instrs data-ref]
+  (let [tag (vector-get node 0)]
+    (if (= tag (tag-lit-string))
+      (compile-string-literal-with-source node source instrs data-ref)
+      (compile-expr-with-ftable node env ftable instrs))))
+
+(defn compile-defn-with-source [node source ftable data-ref]
+  (let [name-hash (vector-get node 1)
+        param-count (vector-get node 2)
+        env (ref-new (env-new))
+        idx (ref-new 1)
+        i (ref-new 0)]
+    (do
+      ;; パラメータを環境に登録 (最大4パラメータ)
+      (if (> param-count 0)
+        (do
+          (ref-set env (env-bind (ref-get env) (vector-get node 3) (ref-get idx)))
+          (ref-set idx (+ (ref-get idx) 1))
+          (if (> param-count 1)
+            (do
+              (ref-set env (env-bind (ref-get env) (vector-get node 4) (ref-get idx)))
+              (ref-set idx (+ (ref-get idx) 1))
+              (if (> param-count 2)
+                (do
+                  (ref-set env (env-bind (ref-get env) (vector-get node 5) (ref-get idx)))
+                  (ref-set idx (+ (ref-get idx) 1))
+                  (if (> param-count 3)
+                    (do
+                      (ref-set env (env-bind (ref-get env) (vector-get node 6) (ref-get idx)))
+                      (ref-set idx (+ (ref-get idx) 1))
+                      0)
+                    0))
+                0))
+            0))
+        0)
+      ;; body をコンパイル (body は params の後の要素)
+      (let [body-idx (+ 3 param-count)
+            body-expr (vector-get node body-idx)]
+        (compile-expr-with-source body-expr source (ref-get env) ftable (vector-new 8) data-ref)))))
 
 ;; AST ノードを IR 命令列に変換 (結果は instrs に追記)
 ;; 戻り値: 更新された instrs
@@ -379,6 +454,48 @@
 
 (defn compile-defn [node]
   (compile-defn-with-ftable node (ftable-new)))
+
+(defn compile-defn-function-with-source [node source ftable data-ref]
+  (let [param-count (vector-get node 2)
+        ir (compile-defn-with-source node source ftable data-ref)
+        local-max (max-local-slot ir 0 (vector-length ir) 0)
+        local-count (if (> local-max param-count) (- local-max param-count) 0)]
+    (make-function-meta param-count local-count ir)))
+
+(defn compile-defn-functions-with-source [decls idx n source ftable data-ref functions]
+  (if (>= idx n)
+    functions
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (compile-defn-functions-with-source
+          decls
+          (+ idx 1)
+          n
+          source
+          ftable
+          data-ref
+          (vector-push functions (compile-defn-function-with-source decl source ftable data-ref)))
+        (compile-defn-functions-with-source decls (+ idx 1) n source ftable data-ref functions)))))
+
+(defn compile-program-functions-with-source [src decls]
+  (let [n (vector-length decls)
+        pass1 (register-defns decls 0 n (ftable-new) 0)
+        ftable (vector-get pass1 0)
+        data-ref (ref-new (vector-new 8))
+        functions (compile-defn-functions-with-source decls 0 n src ftable data-ref (vector-new 8))]
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 3) ftable)
+        functions)
+      (ref-get data-ref))))
+
+(defn compile-program-with-source [src decls]
+  (let [pair (compile-program-functions-with-source src decls)
+        ftable (vector-get pair 0)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        ir-list (collect-function-irs functions 0 (vector-length functions) (vector-new 8))]
+    (vector-push (vector-push (vector-push (vector-new 3) ftable) ir-list) data)))
 
 ;; IR 命令列に含まれる最大ローカルスロット番号を返す
 (defn max-local-slot-op [opcode operand current-max]

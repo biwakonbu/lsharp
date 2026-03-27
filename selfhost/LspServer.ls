@@ -2,6 +2,7 @@
 (import AST)
 (import Parser)
 (import Formatter)
+(import JsonRpc)
 
 ;; LspServer.ls - L# 製 LSP サーバー
 ;;
@@ -271,6 +272,21 @@
   (vector-push
     (vector-push (vector-new 2) uri)
     edits))
+
+(defn lsp-render-json-rpc-frame [payload]
+  (render-json-rpc-frame payload))
+
+(defn lsp-render-initialize-frame [request-id]
+  (render-initialize-frame request-id))
+
+(defn lsp-render-shutdown-frame [request-id]
+  (render-shutdown-frame request-id))
+
+(defn lsp-render-error-frame [request-id error-code error-message]
+  (render-rpc-error-response-frame request-id error-code error-message))
+
+(defn lsp-parse-content-length [header-value]
+  (parse-content-length header-value))
 
 (defn lsp-string-hash-loop [src pos end acc]
   (if (>= pos end)
@@ -661,7 +677,7 @@
       (if (> (string-length src) 0)
         (let [end-pos (lsp-position-from-offset src (string-length src))
               program (parse-program src)
-              formatted (format-program program 0)
+              formatted (format-program-with-source program src)
               edit (make-format-edit 1 1 (position-line end-pos) (position-col end-pos) formatted)]
           (vector-push (vector-new 1) edit))
         (handle-formatting-mock params)))))
@@ -882,6 +898,21 @@
 ;; [jsonrpc-version(=2), id, result]
 (defn encode-json-rpc-response [id result]
   (vector-push (vector-push (vector-push (vector-new 3) 2) id) result))
+
+(defn render-json-rpc-error-response [request-id error-code error-message]
+  (string-concat
+    "{\"jsonrpc\":\"2.0\",\"id\":"
+    (string-concat
+      (int-to-string request-id)
+      (string-concat
+        ",\"error\":{"
+        (string-concat
+          "\"code\":"
+          (string-concat
+            (int-to-string error-code)
+            (string-concat
+              ",\"message\":\""
+              (string-concat error-message "\"}}"))))))))
 
 ;; parse-json-rpc-request: JSON-RPC リクエストから method + params を抽出
 ;; 入力: [jsonrpc-version, id, method-id, params]

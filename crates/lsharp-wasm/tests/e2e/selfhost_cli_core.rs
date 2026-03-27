@@ -410,6 +410,28 @@ fn test_e2e_selfhost_cli_fmt_source_core() {
     assert_eq!(lines[1], "0", "run-fmt-source は success=0 を返すべき");
 }
 
+/// TEST-CLI-02-J2: run-fmt-source が string literal を fallback せず返すこと
+#[test]
+fn test_e2e_selfhost_cli_fmt_source_string_literal() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-fmt-source "\"abc\"" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines.len(), 2, "run-fmt-source string literal は fmt 出力と success code を返すべき");
+    assert_eq!(
+        lines[0], "\"abc\"",
+        "run-fmt-source は string literal を source-aware formatter で返すべき"
+    );
+    assert_eq!(lines[1], "0", "run-fmt-source は success=0 を返すべき");
+}
+
 /// TEST-CLI-02-K: selfhost/Cli.ls の run-fmt が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_fmt_file_handler() {
@@ -1024,8 +1046,14 @@ fn test_e2e_selfhost_cli_doc_ack_file_handler() {
 
     assert_eq!(
         lines,
-        vec!["ack:recorded", "module-global", "functions:1,types:0,first-fn:main", "0"],
-        "run-doc-ack は ack status と title/body と success=0 を返すべき"
+        vec![
+            "ack:recorded",
+            "module-global",
+            "functions:1,types:0,first-fn:main",
+            "Doc-Reviewed-By: anonymous",
+            "0",
+        ],
+        "run-doc-ack は ack status と title/body と trailer と success=0 を返すべき"
     );
 }
 
@@ -1053,8 +1081,15 @@ fn test_e2e_selfhost_cli_doc_check_file_handler() {
 
     assert_eq!(
         lines,
-        vec!["status:ok", "module-global", "functions:1,types:0,first-fn:main", "0"],
-        "run-doc-check は status と title/body と success=0 を返すべき"
+        vec![
+            "status:ok",
+            "module-global",
+            "functions:1,types:0,first-fn:main",
+            "Doc-Review-Status: Passed",
+            "Doc-Reviewed-By: anonymous",
+            "0",
+        ],
+        "run-doc-check は status と title/body と trailer と success=0 を返すべき"
     );
 }
 
