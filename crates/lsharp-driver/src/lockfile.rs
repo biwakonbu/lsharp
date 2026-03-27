@@ -21,13 +21,19 @@ pub struct LockEntry {
     pub source: String,
 }
 
+pub fn generate_lockfile_from_entries(mut entries: Vec<LockEntry>) -> Lockfile {
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
+    Lockfile { entries }
+}
+
 /// Config から Lockfile を生成する
 ///
 /// - Path 依存: 絶対パスに解決して記録
 /// - Version 依存: バージョン文字列を記録 (レジストリ未実装)
 /// - Git 依存: Git URL を記録 (クローン未実装)
+#[allow(dead_code)]
 pub fn generate_lockfile(config: &Config, project_dir: &Path) -> Lockfile {
-    let mut entries: Vec<LockEntry> = config
+    let entries: Vec<LockEntry> = config
         .dependencies
         .iter()
         .map(|(name, spec)| match spec {
@@ -63,10 +69,7 @@ pub fn generate_lockfile(config: &Config, project_dir: &Path) -> Lockfile {
         })
         .collect();
 
-    // 出力順を安定させるためソート
-    entries.sort_by(|a, b| a.name.cmp(&b.name));
-
-    Lockfile { entries }
+    generate_lockfile_from_entries(entries)
 }
 
 /// Lockfile を TOML 形式でファイルに書き出す

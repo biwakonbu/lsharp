@@ -10,6 +10,7 @@ mod config;
 mod error;
 mod lockfile;
 mod mcp_server;
+mod resolver;
 
 use clap::{Parser, Subcommand};
 use sha2::{Digest, Sha256};
@@ -117,6 +118,16 @@ enum Command {
 
     /// 依存パッケージをインストール
     Install,
+
+    /// GitHub パッケージ依存を lsharp.toml に追加
+    Add {
+        /// GitHub URL (`github.com/user/repo` または `https://github.com/user/repo`)
+        github_url: String,
+
+        /// 利用する Git tag
+        #[arg(long)]
+        tag: Option<String>,
+    },
 
     /// パッケージ内容を検証し api.json を生成
     CheckPackage {
@@ -394,6 +405,12 @@ fn main() -> miette::Result<()> {
 
         Command::Install => {
             cmd_install()?;
+        }
+
+        Command::Add { github_url, tag } => {
+            let current_dir = std::env::current_dir()
+                .map_err(|e| miette::miette!("現在ディレクトリを取得できません: {e}"))?;
+            cmd_add_in(&current_dir, &github_url, tag.as_deref())?;
         }
 
         Command::CheckPackage {
@@ -998,10 +1015,14 @@ fn check_git_repo(file: &std::path::Path) -> miette::Result<()> {
 
 /// P0-2: lsharp init コマンドの実装
 fn cmd_init(name: &str) -> miette::Result<()> {
+    cmd_init_in(Path::new("."), name)
+}
+
+fn cmd_init_in(base_dir: &Path, name: &str) -> miette::Result<()> {
     use std::fs;
     use std::process::Command as ProcessCommand;
 
-    let project_dir = PathBuf::from(name);
+    let project_dir = base_dir.join(name);
 
     // ディレクトリ作成
     if project_dir.exists() {
@@ -1010,29 +1031,40 @@ fn cmd_init(name: &str) -> miette::Result<()> {
 
     fs::create_dir_all(&project_dir).map_err(|e| miette::miette!("ディレクトリ作成失敗: {e}"))?;
 
-    // src ディレクトリ作成
+    // 標準ディレクトリ作成
     let src_dir = project_dir.join("src");
+    let examples_dir = project_dir.join("examples");
+    let tests_dir = project_dir.join("tests");
+    let docs_dir = project_dir.join("docs");
     fs::create_dir_all(&src_dir).map_err(|e| miette::miette!("src ディレクトリ作成失敗: {e}"))?;
+    fs::create_dir_all(&examples_dir)
+        .map_err(|e| miette::miette!("examples ディレクトリ作成失敗: {e}"))?;
+    fs::create_dir_all(&tests_dir)
+        .map_err(|e| miette::miette!("tests ディレクトリ作成失敗: {e}"))?;
+    fs::create_dir_all(&docs_dir).map_err(|e| miette::miette!("docs ディレクトリ作成失敗: {e}"))?;
 
     // lsharp.toml 生成
     let toml_content = format!(
         r#"[project]
 name = "{name}"
 version = "0.1.0"
+entry = "src/Main.ls"
 "#
     );
     fs::write(project_dir.join("lsharp.toml"), toml_content)
         .map_err(|e| miette::miette!("lsharp.toml 作成失敗: {e}"))?;
 
-    // main.ls 生成
-    let main_content = r#"(defn main []
+    // Main.ls 生成
+    let main_content = r#"(module Main)
+
+(defn main []
   (print 42))
 "#;
-    fs::write(src_dir.join("main.ls"), main_content)
-        .map_err(|e| miette::miette!("main.ls 作成失敗: {e}"))?;
+    fs::write(src_dir.join("Main.ls"), main_content)
+        .map_err(|e| miette::miette!("Main.ls 作成失敗: {e}"))?;
 
     // .gitignore 生成
-    let gitignore_content = "*.wasm\n/target/\n";
+    let gitignore_content = "*.wasm\n/target/\n/.lsharp/\n";
     fs::write(project_dir.join(".gitignore"), gitignore_content)
         .map_err(|e| miette::miette!(".gitignore 作成失敗: {e}"))?;
 
@@ -1069,10 +1101,10 @@ version = "0.1.0"
 
     println!("プロジェクト '{name}' を作成しました");
     println!("  {}/lsharp.toml", name);
-    println!("  {}/src/main.ls", name);
+    println!("  {}/src/Main.ls", name);
     println!("\n次のステップ:");
     println!("  cd {name}");
-    println!("  lsharp compile src/main.ls");
+    println!("  lsharp compile src/Main.ls");
 
     Ok(())
 }
@@ -1590,6 +1622,76 @@ fn cmd_install() -> miette::Result<()> {
     cmd_install_in(Path::new("."))
 }
 
+fn normalize_github_dependency(input: &str) -> miette::Result<(String, String)> {
+    let trimmed = input.trim().trim_end_matches('/');
+    let path = if let Some(path) = trimmed.strip_prefix("https://github.com/") {
+        path
+    } else if let Some(path) = trimmed.strip_prefix("github.com/") {
+        path
+    } else {
+        return Err(miette::miette!(
+            "GitHub URL は 'github.com/user/repo' 形式で指定してください: {input}"
+        ));
+    };
+
+    let repo_path = path.trim_end_matches(".git");
+    let mut parts = repo_path.split('/');
+    let Some(owner) = parts.next() else {
+        return Err(miette::miette!("GitHub URL の owner が不正です: {input}"));
+    };
+    let Some(repo) = parts.next() else {
+        return Err(miette::miette!(
+            "GitHub URL の repository が不正です: {input}"
+        ));
+    };
+    if owner.is_empty() || repo.is_empty() || parts.next().is_some() {
+        return Err(miette::miette!(
+            "GitHub URL は 'github.com/user/repo' 形式で指定してください: {input}"
+        ));
+    }
+
+    Ok((
+        repo.to_string(),
+        format!("https://github.com/{owner}/{repo}.git"),
+    ))
+}
+
+fn cmd_add_in(project_dir: &Path, github_url: &str, tag: Option<&str>) -> miette::Result<()> {
+    let config_path = project_dir.join("lsharp.toml");
+    if !config_path.exists() {
+        return Err(miette::miette!(
+            "lsharp.toml が見つかりません: {}",
+            config_path.display()
+        ));
+    }
+
+    let (package_name, git_url) = normalize_github_dependency(github_url)?;
+    let config = config::load_config(project_dir);
+    if config.dependencies.contains_key(&package_name) {
+        return Err(miette::miette!(
+            "依存 '{}' は既に lsharp.toml に存在します",
+            package_name
+        ));
+    }
+
+    let mut content = std::fs::read_to_string(&config_path)
+        .map_err(|e| miette::miette!("{}: {}", config_path.display(), e))?;
+    if !content.ends_with('\n') {
+        content.push('\n');
+    }
+    content.push('\n');
+    content.push_str(&format!("[dependencies.{package_name}]\n"));
+    content.push_str(&format!("git = \"{git_url}\"\n"));
+    if let Some(tag) = tag {
+        content.push_str(&format!("tag = \"{tag}\"\n"));
+    }
+
+    std::fs::write(&config_path, content)
+        .map_err(|e| miette::miette!("{}: {}", config_path.display(), e))?;
+    println!("Added {package_name} to lsharp.toml");
+    Ok(())
+}
+
 /// 指定ディレクトリを基点に依存パッケージをインストール (テスト用に分離)
 fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
     let config = config::load_config_result(project_dir).map_err(|e| miette::miette!("{e}"))?;
@@ -1609,6 +1711,7 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
 
     let mut installed = 0u32;
     let mut skipped = 0u32;
+    let mut resolved_entries = Vec::new();
 
     for (name, spec) in deps {
         match spec {
@@ -1654,6 +1757,11 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
 
                 let _ = generate_api_json_for_package(&link_path);
                 println!("  インストール: {name} -> {}", abs_resolved.display());
+                resolved_entries.push(lockfile::LockEntry {
+                    name: name.clone(),
+                    version: resolver::package_version_text(&abs_resolved),
+                    source: dependency_source_string(spec, project_dir),
+                });
                 installed += 1;
             }
             config::DependencySpec::Git { git, branch, tag } => {
@@ -1661,6 +1769,11 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
                 let dep_path = installed_package_dir(&packages_dir, name, &source_id);
                 if dep_path.exists() {
                     println!("  already installed: {name}");
+                    resolved_entries.push(lockfile::LockEntry {
+                        name: name.clone(),
+                        version: resolver::package_version_text(&dep_path),
+                        source: dependency_source_string(spec, project_dir),
+                    });
                     skipped += 1;
                     continue;
                 }
@@ -1670,6 +1783,11 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
                     Ok(()) => {
                         let _ = generate_api_json_for_package(&dep_path);
                         println!("  インストール: {name} (git: {git})");
+                        resolved_entries.push(lockfile::LockEntry {
+                            name: name.clone(),
+                            version: resolver::package_version_text(&dep_path),
+                            source: dependency_source_string(spec, project_dir),
+                        });
                         installed += 1;
                     }
                     Err(e) => {
@@ -1679,8 +1797,15 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
                 }
             }
             config::DependencySpec::Version(v) => {
-                eprintln!("  スキップ: {name} (レジストリ依存はまだサポートされていません: {v})");
-                skipped += 1;
+                let resolved = resolver::resolve_cached_version_dependency(project_dir, name, v)
+                    .map_err(|e| miette::miette!("{e}"))?;
+                println!("  解決: {name}@{} (cached)", resolved.version);
+                resolved_entries.push(lockfile::LockEntry {
+                    name: name.clone(),
+                    version: resolved.version,
+                    source: "registry:default".to_string(),
+                });
+                installed += 1;
             }
         }
     }
@@ -1688,7 +1813,7 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
     println!("\nインストール完了: {installed} 個インストール, {skipped} 個スキップ");
 
     // ロックファイルを生成・書き出し
-    let lock = lockfile::generate_lockfile(&config, project_dir);
+    let lock = lockfile::generate_lockfile_from_entries(resolved_entries);
     std::fs::create_dir_all(&lsharp_dir)
         .map_err(|e| miette::miette!("{}: {}", lsharp_dir.display(), e))?;
     let lock_path = lsharp_dir.join("lock.toml");
@@ -2391,6 +2516,98 @@ source = "git:https://github.com/user/mylib.git?tag=v0.2.0"
     }
 
     #[test]
+    fn test_cmd_init_creates_standard_package_layout() {
+        let base_dir = std::env::temp_dir().join("lsharp_test_init_layout");
+        let _ = std::fs::remove_dir_all(&base_dir);
+        std::fs::create_dir_all(&base_dir).unwrap();
+
+        let result = cmd_init_in(&base_dir, "demo-lib");
+        assert!(result.is_ok(), "init は成功するべき: {result:?}");
+
+        let project_dir = base_dir.join("demo-lib");
+        assert!(project_dir.join("lsharp.toml").exists());
+        assert!(project_dir.join("src/Main.ls").exists());
+        assert!(project_dir.join("examples").is_dir());
+        assert!(project_dir.join("tests").is_dir());
+        assert!(project_dir.join("docs").is_dir());
+        assert!(project_dir.join(".gitignore").exists());
+
+        std::fs::remove_dir_all(&base_dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_init_writes_main_entry_and_gitignore_defaults() {
+        let base_dir = std::env::temp_dir().join("lsharp_test_init_contents");
+        let _ = std::fs::remove_dir_all(&base_dir);
+        std::fs::create_dir_all(&base_dir).unwrap();
+
+        let result = cmd_init_in(&base_dir, "demo-app");
+        assert!(result.is_ok(), "init は成功するべき: {result:?}");
+
+        let project_dir = base_dir.join("demo-app");
+        let toml = std::fs::read_to_string(project_dir.join("lsharp.toml")).unwrap();
+        let main = std::fs::read_to_string(project_dir.join("src/Main.ls")).unwrap();
+        let gitignore = std::fs::read_to_string(project_dir.join(".gitignore")).unwrap();
+
+        assert!(toml.contains("entry = \"src/Main.ls\""));
+        assert!(main.contains("(module Main)"));
+        assert!(gitignore.contains("/.lsharp/"));
+
+        std::fs::remove_dir_all(&base_dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_add_writes_tagged_github_dependency_to_lsharp_toml() {
+        let base_dir = std::env::temp_dir().join("lsharp_test_add_dependency");
+        let _ = std::fs::remove_dir_all(&base_dir);
+        std::fs::create_dir_all(&base_dir).unwrap();
+        std::fs::write(
+            base_dir.join("lsharp.toml"),
+            "[project]\nname = \"demo\"\nversion = \"0.1.0\"\nentry = \"src/Main.ls\"\n",
+        )
+        .unwrap();
+
+        let result = cmd_add_in(&base_dir, "github.com/user/geometry-utils", Some("v0.2.0"));
+        assert!(result.is_ok(), "add は成功するべき: {result:?}");
+
+        let content = std::fs::read_to_string(base_dir.join("lsharp.toml")).unwrap();
+        assert!(content.contains("[dependencies.geometry-utils]"));
+        assert!(content.contains("git = \"https://github.com/user/geometry-utils.git\""));
+        assert!(content.contains("tag = \"v0.2.0\""));
+
+        std::fs::remove_dir_all(&base_dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_add_rejects_duplicate_dependency_name() {
+        let base_dir = std::env::temp_dir().join("lsharp_test_add_dependency_duplicate");
+        let _ = std::fs::remove_dir_all(&base_dir);
+        std::fs::create_dir_all(&base_dir).unwrap();
+        std::fs::write(
+            base_dir.join("lsharp.toml"),
+            r#"[project]
+name = "demo"
+version = "0.1.0"
+entry = "src/Main.ls"
+
+[dependencies.geometry-utils]
+git = "https://github.com/user/geometry-utils.git"
+tag = "v0.1.0"
+"#,
+        )
+        .unwrap();
+
+        let result = cmd_add_in(
+            &base_dir,
+            "https://github.com/user/geometry-utils",
+            Some("v0.2.0"),
+        );
+        assert!(result.is_err(), "重複 dependency は失敗するべき");
+
+        std::fs::remove_dir_all(&base_dir).unwrap();
+    }
+
+    #[test]
     fn test_cmd_install_path_dependency_missing_path() {
         // 存在しないパス依存はスキップされる (エラーにはならない)
         let base_dir = std::env::temp_dir().join("lsharp_test_install_missing_path");
@@ -2840,6 +3057,78 @@ git = "https://invalid.example.com/no-such-repo.git"
         assert!(
             link_path.is_none(),
             "lsharp.toml がない依存先にはリンクを作らないべき"
+        );
+
+        std::fs::remove_dir_all(&base_dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_install_version_dependency_uses_highest_compatible_cached_package() {
+        let base_dir = std::env::temp_dir().join("lsharp_test_install_version_cached");
+        let _ = std::fs::remove_dir_all(&base_dir);
+        std::fs::create_dir_all(base_dir.join(".lsharp/packages/math-core-a/src")).unwrap();
+        std::fs::create_dir_all(base_dir.join(".lsharp/packages/math-core-b/src")).unwrap();
+        std::fs::create_dir_all(base_dir.join(".lsharp/packages/math-core-c/src")).unwrap();
+
+        std::fs::write(
+            base_dir.join(".lsharp/packages/math-core-a/lsharp.toml"),
+            "[project]\nname = \"math-core\"\nversion = \"1.0.1\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            base_dir.join(".lsharp/packages/math-core-b/lsharp.toml"),
+            "[project]\nname = \"math-core\"\nversion = \"1.4.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            base_dir.join(".lsharp/packages/math-core-c/lsharp.toml"),
+            "[project]\nname = \"math-core\"\nversion = \"2.0.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            base_dir.join("lsharp.toml"),
+            "[dependencies]\nmath-core = \"1.0.0\"\n",
+        )
+        .unwrap();
+
+        let result = cmd_install_in(&base_dir);
+        assert!(
+            result.is_ok(),
+            "cache からの semver 解決は成功するべき: {result:?}"
+        );
+
+        let lock = crate::lockfile::read_lockfile(&base_dir.join(".lsharp/lock.toml")).unwrap();
+        let entry = lock
+            .entries
+            .iter()
+            .find(|entry| entry.name == "math-core")
+            .unwrap();
+        assert_eq!(entry.version, "1.4.0");
+
+        std::fs::remove_dir_all(&base_dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_install_version_dependency_errors_when_no_cached_match_exists() {
+        let base_dir = std::env::temp_dir().join("lsharp_test_install_version_missing");
+        let _ = std::fs::remove_dir_all(&base_dir);
+        std::fs::create_dir_all(base_dir.join(".lsharp/packages/math-core-a/src")).unwrap();
+
+        std::fs::write(
+            base_dir.join(".lsharp/packages/math-core-a/lsharp.toml"),
+            "[project]\nname = \"math-core\"\nversion = \"2.0.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            base_dir.join("lsharp.toml"),
+            "[dependencies]\nmath-core = \"1.0.0\"\n",
+        )
+        .unwrap();
+
+        let result = cmd_install_in(&base_dir);
+        assert!(
+            result.is_err(),
+            "一致する cache がない version 依存は失敗するべき"
         );
 
         std::fs::remove_dir_all(&base_dir).unwrap();

@@ -330,10 +330,10 @@
   - [x] 全フィールド optional (`#[serde(default)]`) で後方互換性維持
   - 修正対象: `crates/lsharp-driver/src/config.rs`
 
-- [ ] **B-2. パッケージディレクトリ規約と lsharp init**
-  - [ ] 標準レイアウト定義文書: `src/`, `examples/`, `tests/`, `docs/`, `lsharp.toml`
-  - [ ] `lsharp init` コマンド: スキャフォールド生成 (lsharp.toml, src/Main.ls, .gitignore)
-  - [ ] モジュール→ファイルマッピング: `src/` prefix ルール (lsharp.toml 存在時に ModuleGraph が src/ 配下を探索)
+- [x] **B-2. パッケージディレクトリ規約と lsharp init** (tests: `tests::test_cmd_init_creates_standard_package_layout`, `tests::test_cmd_init_writes_main_entry_and_gitignore_defaults`, `module_graph::resolve_tests::test_build_from_entry_prefers_package_src_root`)
+  - [x] 標準レイアウト定義文書: `src/`, `examples/`, `tests/`, `docs/`, `lsharp.toml`
+  - [x] `lsharp init` コマンド: スキャフォールド生成 (lsharp.toml, src/Main.ls, .gitignore)
+  - [x] モジュール→ファイルマッピング: `src/` prefix ルール (lsharp.toml 存在時に ModuleGraph が src/ 配下を探索)
   - 修正対象: `crates/lsharp-driver/src/main.rs`, 新規 `crates/lsharp-driver/src/init.rs`
 
 - [x] **B-3. 可視性制御の実装** (tests: `tests::test_check_import_only_blocks_non_selected_symbol`, `tests::test_check_private_import_blocks_symbol`, `tests::test_check_rejects_non_exported_package_module`, `multifile_compile_tests::test_compile_multi_file_import_only_blocks_non_selected_symbol`, `multifile_compile_tests::test_compile_multi_file_private_import_blocks_symbol`, `module_graph::resolve_tests::test_build_from_entry_rejects_non_exported_package_module`)
@@ -348,11 +348,11 @@
   - [x] stdlib パスの環境変数 (`LSHARP_STDLIB_PATH`) による上書きサポート
   - 修正対象: `crates/lsharp-ir/src/module_graph.rs`
 
-- [~] **B-5. 依存関係解決とインストール** (tests: `tests::test_cmd_install_path_dependency`)
+- [x] **B-5. 依存関係解決とインストール** (tests: `tests::test_cmd_install_path_dependency`, `tests::test_cmd_install_version_dependency_uses_highest_compatible_cached_package`, `tests::test_cmd_install_version_dependency_errors_when_no_cached_match_exists`, `resolver::tests::test_version_req_plain_string_means_compatible_range`, `resolver::tests::test_version_req_exact_match`, `resolver::tests::test_version_req_minimum_match`)
   - [x] `lsharp install` コマンド: lsharp.toml の dependencies を読み、path/git 依存を `.lsharp/packages/<name>-<hash>/` に配置
   - [x] `.lsharp/lock.toml` ロックファイル生成 (name, version, source)
   - [x] ModuleGraph の検索パスに `.lsharp/packages/` を追加
-  - [ ] semver 互換範囲の解決 ("1.0.0" → >=1.0.0, <2.0.0)
+  - [x] semver 互換範囲の解決 ("1.0.0" → >=1.0.0, <2.0.0)
   - [x] インストール時に `docs/api.json` を生成 (MCP Server が読む)
   - 修正対象: `crates/lsharp-ir/src/module_graph.rs`, `crates/lsharp-driver/src/config.rs`, 新規 `crates/lsharp-driver/src/resolver.rs`
 
@@ -360,10 +360,10 @@
 
 > GitHub リポジトリ + Git タグのみで配布。レジストリサーバーは立てない。P12-B 完了後に着手推奨。
 
-- [ ] **C-1. GitHub ベースのパッケージ配布**
-  - [ ] `lsharp install` で `git clone --depth 1 --branch <tag>` によるパッケージ取得
-  - [ ] インストール後に `lsharp doc --json` を自動実行し api.json を生成 (MCP Server が読む)
-  - [ ] `lsharp add <github-url> --tag <tag>` コマンド: lsharp.toml への依存追加
+- [x] **C-1. GitHub ベースのパッケージ配布** (tests: `tests::test_cmd_install_git_dependency_already_exists`, `tests::test_cmd_add_writes_tagged_github_dependency_to_lsharp_toml`, `tests::test_cmd_add_rejects_duplicate_dependency_name`)
+  - [x] `lsharp install` で `git clone --depth 1 --branch <tag>` によるパッケージ取得
+  - [x] インストール後に `lsharp doc --json` を自動実行し api.json を生成 (MCP Server が読む)
+  - [x] `lsharp add <github-url> --tag <tag>` コマンド: lsharp.toml への依存追加
   - 修正対象: `crates/lsharp-driver/src/resolver.rs`
 
 - [~] **C-2. パッケージ検証 (`lsharp check-package`)** (tests: `tests::test_cmd_check_package_generates_api_json_and_checksum`)
