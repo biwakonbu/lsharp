@@ -16,13 +16,19 @@
 ;; === ユーティリティ ===
 
 ;; ファイルの内容を読み込み、デフォルト値で返す (ファイルが存在しない場合)
-(defn read-file-or [path default]
+(defn read-file-or
+  [path default]
+  :doc "ファイルが存在すれば内容を読み込み、存在しなければデフォルト値を返す。"
+  :params [(path "読み込み対象のパス") (default "ファイルが存在しない場合に返す文字列")]
+  :returns "ファイル内容、または default"
+  :example [(read-file-or "missing.txt" "fallback")]
   (if (file-exists? path)
     (read-file path)
     default))
 
 ;; エントリポイント (テスト用)
-(defn main []
-  (do
-    (print (file-exists? "nonexistent.txt"))
-    0))
+(private
+  (defn main []
+    (do
+      (print (file-exists? "nonexistent.txt"))
+      0)))

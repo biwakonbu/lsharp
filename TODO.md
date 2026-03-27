@@ -303,21 +303,21 @@
     - [ ] Agent Skills (L# 言語概要) を Claude Code にインストール (構文・型システム・パターン・stdlib 一覧)
   - 修正対象: `crates/lsharp-driver/src/main.rs`, `crates/lsharp-lsp/src/lib.rs`, 新規 `crates/lsharp-driver/src/mcp_server.rs`
 
-- [ ] **A-3. stdlib 全モジュールのメタデータ整備**
-  - [ ] stdlib/ の 11 モジュール (Core, List, Map, Set, Vector, String, Char, IO, Json, Path, Debug) 全てに `:doc` / `:params` / `:returns` を付与
-  - [ ] stdlib 用 api.json 生成・検証
-  - [ ] MCP Server の `lsharp_stdlib_api` ツールから正しく返せることを検証
+- [x] **A-3. stdlib 全モジュールのメタデータ整備** (tests: `api_doc::tests::test_build_api_doc_for_file_uses_file_stem_and_header_comment_for_module_metadata`, `api_doc::tests::test_build_api_doc_for_stdlib_public_functions_have_metadata`)
+  - [x] stdlib/ の 11 モジュール (Core, List, Map, Set, Vector, String, Char, IO, Json, Path, Debug) 全てに `:doc` / `:params` / `:returns` を付与
+  - [x] stdlib 用 api.json 生成・検証
+  - [x] MCP Server の `lsharp_stdlib_api` ツールから正しく返せることを検証
   - 修正対象: `stdlib/*.ls` 全ファイル
 
-- [ ] **A-4. 言語リファレンスとガイド**
-  - [ ] Agent Skills テンプレート作成 (L# 概要 — 構文・型システム・パターン・stdlib 一覧・MCP ツール案内)
-  - [ ] `docs/guides/quick-start.md`: hello world → fibonacci → ADT → record → module の 5 分チュートリアル
-  - [ ] `docs/guides/language-reference.md`: 構文・型・モジュール完全リファレンス (人間向け Markdown 版)
+- [x] **A-4. 言語リファレンスとガイド** (tests: `doc_site::tests::test_language_guides_and_agent_skill_template_exist`)
+  - [x] Agent Skills テンプレート作成 (L# 概要 — 構文・型システム・パターン・stdlib 一覧・MCP ツール案内)
+  - [x] `docs/guides/quick-start.md`: hello world → fibonacci → ADT → record → module の 5 分チュートリアル
+  - [x] `docs/guides/language-reference.md`: 構文・型・モジュール完全リファレンス (人間向け Markdown 版)
 
-- [ ] **A-5. ドキュメントサイト生成**
-  - [ ] `lsharp doc-site` コマンド: book/ + api.json + guides/ → 静的 HTML サイト生成
+- [~] **A-5. ドキュメントサイト生成** (tests: `doc_site::tests::test_cmd_doc_site_generates_guides_and_api_site`)
+  - [x] `lsharp doc-site` コマンド: book/ + api.json + guides/ → 静的 HTML サイト生成
   - [ ] HtmlTemplate.ls / HtmlLayout.ls パイプラインの拡張 (ガイドページ・API リファレンスページ対応)
-  - [ ] stdlib API リファレンスページ (モジュール毎に関数・型一覧)
+  - [x] stdlib API リファレンスページ (モジュール毎に関数・型一覧)
 
 ### P12-B: パッケージシステムコア
 

@@ -4,6 +4,8 @@
 
 現時点で利用者向けに整備済みのページ:
 
+- [`quick-start.md`](./quick-start.md) -- hello world から module までの 5 分チュートリアル
+- [`language-reference.md`](./language-reference.md) -- 構文・型・module・metadata・stdlib の利用者向けリファレンス
 - [`package-layout.md`](./package-layout.md) -- パッケージ標準レイアウトと `lsharp init` の生成物
 
 言語の読み物としてはリポジトリ直下の [`book/`](../book/) を参照する。

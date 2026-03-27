@@ -774,4 +774,31 @@ mod tests {
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
+
+    #[test]
+    fn test_stdlib_api_tool_returns_stdlib_modules_with_metadata() {
+        let result = call_tool("lsharp_stdlib_api", &json!({})).expect("stdlib_api が成功するべき");
+        let modules = result["modules"]
+            .as_array()
+            .expect("modules は配列であるべき");
+
+        assert!(modules.len() >= 11, "stdlib module 数が不足している");
+
+        let core = modules
+            .iter()
+            .find(|module| module["name"] == "Core")
+            .expect("Core module が必要");
+        let functions = core["functions"]
+            .as_array()
+            .expect("functions は配列であるべき");
+        let abs = functions
+            .iter()
+            .find(|function| function["name"] == "abs")
+            .expect("Core.abs が必要");
+
+        assert!(core["doc"].is_string());
+        assert_eq!(abs["doc"], "整数の絶対値を返す。");
+        assert_eq!(abs["params"][0]["doc"], "対象の整数");
+        assert_eq!(abs["returns"]["doc"], "x の絶対値");
+    }
 }

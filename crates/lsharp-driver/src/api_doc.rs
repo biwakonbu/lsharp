@@ -188,13 +188,22 @@ pub fn build_api_doc_for_file(package: &str, version: &str, file: &Path) -> miet
     let type_results = infer
         .infer_program(&program)
         .map_err(|e| miette::miette!("{e}"))?;
-    Ok(build_api_doc(
-        package,
-        version,
-        &program,
-        &type_results,
-        &infer,
-    ))
+    let mut api = build_api_doc(package, version, &program, &type_results, &infer);
+    if let Some(module) = api.modules.first_mut() {
+        module.name = infer
+            .module_env
+            .name
+            .clone()
+            .or_else(|| module_name_from_program(&program))
+            .or_else(|| {
+                file.file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .map(|stem| stem.to_string())
+            })
+            .unwrap_or_else(|| "Main".to_string());
+        module.doc = extract_module_doc(&source);
+    }
+    Ok(api)
 }
 
 pub fn build_api_doc_for_package(
@@ -264,6 +273,49 @@ fn split_signature(ty: &lsharp_types::types::Type) -> (Vec<String>, String) {
         ),
         other => (Vec::new(), render_signature(other)),
     }
+}
+
+fn module_name_from_program(program: &Program) -> Option<String> {
+    use lsharp_syntax::ast::Decl;
+
+    program.decls.iter().find_map(|decl| match decl {
+        Decl::ModuleDecl { name, .. } => Some(name.clone()),
+        _ => None,
+    })
+}
+
+fn extract_module_doc(source: &str) -> Option<String> {
+    let mut docs = Vec::new();
+
+    for line in source.lines() {
+        let trimmed = line.trim_start();
+        if let Some(comment) = trimmed.strip_prefix(";;") {
+            docs.push(comment.trim().to_string());
+            continue;
+        }
+        if trimmed.is_empty() {
+            continue;
+        }
+        break;
+    }
+
+    if docs.is_empty() {
+        return None;
+    }
+
+    if docs
+        .first()
+        .is_some_and(|line| line.contains(".ls -") || line.contains(".ls:"))
+    {
+        docs.remove(0);
+    }
+
+    let text = docs
+        .into_iter()
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if text.is_empty() { None } else { Some(text) }
 }
 
 #[cfg(test)]
@@ -340,5 +392,99 @@ mod tests {
         assert_eq!(names, vec!["Alpha", "Beta"]);
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_build_api_doc_for_file_uses_file_stem_and_header_comment_for_module_metadata() {
+        let dir = std::env::temp_dir().join("lsharp_api_doc_module_fallback");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("Sample.ls");
+        std::fs::write(
+            &file,
+            r#";; Sample.ls - 説明
+;;
+;; モジュール概要
+(defn hello
+  [name]
+  :doc "挨拶を返す"
+  :params [(name "対象名")]
+  :returns "挨拶文字列"
+  :example [(hello "L#")]
+  name)
+"#,
+        )
+        .unwrap();
+
+        let api = build_api_doc_for_file("demo", "0.1.0", &file).unwrap();
+        let module = api.modules.first().expect("module が必要");
+
+        assert_eq!(module.name, "Sample");
+        assert_eq!(module.doc.as_deref(), Some("モジュール概要"));
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_build_api_doc_for_stdlib_public_functions_have_metadata() {
+        let stdlib_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../stdlib");
+        let mut public_functions = 0usize;
+
+        for entry in std::fs::read_dir(&stdlib_root).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("ls") {
+                continue;
+            }
+            let api = build_api_doc_for_file("stdlib", "0.1.0", &path).unwrap();
+            let module = api.modules.first().expect("module が必要");
+
+            assert_ne!(module.name, "Main", "{} の module 名が不正", path.display());
+            assert!(
+                module.doc.is_some(),
+                "{} の module doc が欠けている",
+                path.display()
+            );
+
+            for function in &module.functions {
+                assert_ne!(
+                    function.name, "main",
+                    "{} に main が公開 API として出ている",
+                    module.name
+                );
+                assert!(
+                    !function.name.ends_with("-impl"),
+                    "{}::{} が内部 helper のまま公開されている",
+                    module.name,
+                    function.name
+                );
+                assert!(
+                    function.doc.is_some(),
+                    "{}::{} の :doc が欠けている",
+                    module.name,
+                    function.name
+                );
+                assert!(
+                    function.params.iter().all(|param| param.doc.is_some()),
+                    "{}::{} の :params が欠けている",
+                    module.name,
+                    function.name
+                );
+                assert!(
+                    function.returns.doc.is_some(),
+                    "{}::{} の :returns が欠けている",
+                    module.name,
+                    function.name
+                );
+                assert!(
+                    function.example.is_some(),
+                    "{}::{} の :example が欠けている",
+                    module.name,
+                    function.name
+                );
+                public_functions += 1;
+            }
+        }
+
+        assert!(public_functions >= 40, "stdlib 公開関数数が少なすぎる");
     }
 }

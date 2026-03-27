@@ -7,6 +7,7 @@
 mod api_doc;
 mod commands;
 mod config;
+mod doc_site;
 mod error;
 mod lockfile;
 mod mcp_server;
@@ -190,6 +191,13 @@ enum Command {
         /// api.json を生成する
         #[arg(long)]
         json: bool,
+    },
+
+    /// guides と stdlib API から静的ドキュメントサイトを生成
+    DocSite {
+        /// 出力ディレクトリ
+        #[arg(short, long, default_value = "_site")]
+        output: PathBuf,
     },
 }
 
@@ -465,6 +473,10 @@ fn main() -> miette::Result<()> {
 
         Command::Doc { file, output, json } => {
             cmd_doc(&file, output.as_deref(), json)?;
+        }
+
+        Command::DocSite { output } => {
+            doc_site::cmd_doc_site(&output)?;
         }
     }
 
