@@ -49,6 +49,25 @@
     (string-concat "<main><h1>modules</h1><ul>"
       (string-concat modules-html "</ul></main>"))))
 
+;; ガイドページ用レイアウト
+;; title: ページタイトル
+;; content-html: Markdown から変換済みの本文 HTML
+(defn guide-page-layout [title content-html]
+  (base-layout title
+    (string-concat "<main class=\"guide\">"
+      (string-concat content-html "</main>"))))
+
+;; ドキュメントサイトのトップページ用レイアウト
+;; guides-html: ガイド一覧の <li> タグ群
+;; modules-html: API モジュール一覧の <li> タグ群
+(defn doc-site-index-layout [guides-html modules-html]
+  (base-layout "L# Documentation"
+    (string-concat "<main><h1>L# Documentation</h1>"
+      (string-concat "<section id=\"guides\"><h2>Guides</h2><ul>"
+        (string-concat guides-html
+          (string-concat "</ul></section><section id=\"api\"><h2>Modules</h2><ul>"
+            (string-concat modules-html "</ul></section></main>")))))))
+
 ;; 検証用 main
 (defn main []
   (let [html (base-layout "Test" "<p>content</p>")]

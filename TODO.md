@@ -314,9 +314,9 @@
   - [x] `docs/guides/quick-start.md`: hello world → fibonacci → ADT → record → module の 5 分チュートリアル
   - [x] `docs/guides/language-reference.md`: 構文・型・モジュール完全リファレンス (人間向け Markdown 版)
 
-- [~] **A-5. ドキュメントサイト生成** (tests: `doc_site::tests::test_cmd_doc_site_generates_guides_and_api_site`)
+- [x] **A-5. ドキュメントサイト生成** (tests: `doc_site::tests::test_cmd_doc_site_generates_guides_and_api_site`, `e2e::selfhost_doctools_cli_diagnostics::{test_e2e_selfhost_htmldoc_render_guide_page,test_e2e_selfhost_htmldoc_render_doc_site_index}` + HtmlDoc render 8件)
   - [x] `lsharp doc-site` コマンド: book/ + api.json + guides/ → 静的 HTML サイト生成
-  - [ ] HtmlTemplate.ls / HtmlLayout.ls パイプラインの拡張 (ガイドページ・API リファレンスページ対応)
+  - [x] HtmlTemplate.ls / HtmlLayout.ls パイプラインの拡張 (ガイドページ・API リファレンスページ対応)
   - [x] stdlib API リファレンスページ (モジュール毎に関数・型一覧)
 
 ### P12-B: パッケージシステムコア

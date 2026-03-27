@@ -968,3 +968,88 @@ fn test_e2e_selfhost_htmldoc_render_module_page_empty() {
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines, vec!["1", "1", "1"]);
 }
+
+/// HtmlDoc.render-guide-page が guide 本文を含む完全な HTML を返す
+#[test]
+fn test_e2e_selfhost_htmldoc_render_guide_page() {
+    let harness = r#"
+(defn string-contains-loop [haystack needle i hlen nlen]
+  (if (> (+ i nlen) hlen)
+    0
+    (if (string-eq (substring haystack i (+ i nlen)) needle)
+      1
+      (string-contains-loop haystack needle (+ i 1) hlen nlen))))
+
+(defn string-contains [haystack needle]
+  (let [hlen (string-length haystack)
+        nlen (string-length needle)]
+    (if (= nlen 0)
+      1
+      (if (> nlen hlen)
+        0
+        (string-contains-loop haystack needle 0 hlen nlen)))))
+
+(defn main []
+  (let [html (render-guide-page "Quick Start" "<h1>Quick Start</h1><p>hello</p>")]
+    (do
+      (print (if (string-eq (substring html 0 15) "<!doctype html>") 1 0))
+      (print (if (= (string-contains html "<title>Quick Start</title>") 1) 1 0))
+      (print (if (= (string-contains html "<main class=\"guide\">") 1) 1 0))
+      (print (if (= (string-contains html "<h1>Quick Start</h1>") 1) 1 0))
+      (print (if (= (string-contains html "<p>hello</p>") 1) 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines, vec!["1", "1", "1", "1", "1"]);
+}
+
+/// HtmlDoc.render-doc-site-index が guides と modules を並べた index を返す
+#[test]
+fn test_e2e_selfhost_htmldoc_render_doc_site_index() {
+    let harness = r#"
+(defn string-contains-loop [haystack needle i hlen nlen]
+  (if (> (+ i nlen) hlen)
+    0
+    (if (string-eq (substring haystack i (+ i nlen)) needle)
+      1
+      (string-contains-loop haystack needle (+ i 1) hlen nlen))))
+
+(defn string-contains [haystack needle]
+  (let [hlen (string-length haystack)
+        nlen (string-length needle)]
+    (if (= nlen 0)
+      1
+      (if (> nlen hlen)
+        0
+        (string-contains-loop haystack needle 0 hlen nlen)))))
+
+(defn guide-link [href label]
+  (let [node (vector-new 2)]
+    (vector-push
+      (vector-push node href)
+      label)))
+
+(defn main []
+  (let [guides (vector-push
+                 (vector-push
+                   (vector-push (vector-new 3)
+                     (guide-link "guides/quick-start.html" "Quick Start"))
+                   (guide-link "guides/language-reference.html" "Language Reference"))
+                 (guide-link "guides/package-layout.html" "Package Layout"))
+        modules (vector-push (vector-push (vector-new 2) "Core") "List")
+        html (render-doc-site-index guides modules)]
+    (do
+      (print (if (string-eq (substring html 0 15) "<!doctype html>") 1 0))
+      (print (if (= (string-contains html "<h1>L# Documentation</h1>") 1) 1 0))
+      (print (if (= (string-contains html "<a href=\"guides/package-layout.html\">Package Layout</a>") 1) 1 0))
+      (print (if (= (string-contains html "<a href=\"api/Core.html\">Core</a>") 1) 1 0))
+      (print (if (= (string-contains html "<a href=\"api/List.html\">List</a>") 1) 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines, vec!["1", "1", "1", "1", "1"]);
+}

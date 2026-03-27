@@ -106,9 +106,58 @@
   (index-page-layout
     (render-index-items-loop modules 0 (vector-length modules))))
 
+;; === ガイド / サイトインデックス ===
+
+;; リンク先とラベルから <li><a href="...">...</a></li> を組み立てる
+(defn render-link-item [href label]
+  (string-concat "<li><a href=\""
+    (string-concat (html-escape href)
+      (string-concat "\">"
+        (string-concat (html-escape label) "</a></li>")))))
+
+;; guide-link [href, label] の vector から一覧 HTML を生成する
+(defn render-guide-items-loop [guides idx count]
+  (if (>= idx count)
+    ""
+    (let [guide-link (vector-get guides idx)
+          href (vector-get guide-link 0)
+          label (vector-get guide-link 1)]
+      (string-concat
+        (render-link-item href label)
+        (render-guide-items-loop guides (+ idx 1) count)))))
+
+;; module 名 vector から /api/{module}.html への一覧 HTML を生成する
+(defn render-module-link-items-loop [modules idx count]
+  (if (>= idx count)
+    ""
+    (let [module-name (vector-get modules idx)
+          href (string-concat "api/"
+                 (string-concat module-name ".html"))]
+      (string-concat
+        (render-link-item href module-name)
+        (render-module-link-items-loop modules (+ idx 1) count)))))
+
+;; 単一 guide ページを完全な HTML ドキュメントへ変換する
+(defn render-guide-page [title content-html]
+  (guide-page-layout title content-html))
+
+;; guides と modules をまとめた doc site index を生成する
+(defn render-doc-site-index [guides modules]
+  (doc-site-index-layout
+    (render-guide-items-loop guides 0 (vector-length guides))
+    (render-module-link-items-loop modules 0 (vector-length modules))))
+
 ;; 検証用 main
 (defn main []
-  (let [doc (generate-html (parse-program "(defn main [] 42)") 0)]
+  (let [doc (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push (vector-new 5) 0)
+                    "module-global")
+                  "<p>content</p>")
+                (vector-new 0))
+              (vector-new 0))]
     (do
       (print (string-length (render-html doc 0)))
       0)))
