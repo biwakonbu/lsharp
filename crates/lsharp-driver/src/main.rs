@@ -14,7 +14,7 @@ mod lockfile;
 mod mcp_server;
 mod resolver;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -24,6 +24,21 @@ use std::process::Stdio;
 struct Cli {
     #[command(subcommand)]
     command: Command,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum CliCompileTarget {
+    Wasm,
+    Native,
+}
+
+impl From<CliCompileTarget> for commands::compile::CompileTarget {
+    fn from(value: CliCompileTarget) -> Self {
+        match value {
+            CliCompileTarget::Wasm => Self::Wasm,
+            CliCompileTarget::Native => Self::Native,
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -63,6 +78,10 @@ enum Command {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
+        /// コンパイルターゲット (`wasm` / `native`)
+        #[arg(long, value_enum)]
+        target: Option<CliCompileTarget>,
+
         /// IR を表示する
         #[arg(long)]
         emit_ir: bool,
@@ -76,6 +95,10 @@ enum Command {
         /// 出力ファイル
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        /// コンパイルターゲット (`wasm` / `native`)
+        #[arg(long, value_enum)]
+        target: Option<CliCompileTarget>,
 
         /// IR を表示する
         #[arg(long)]
@@ -275,17 +298,24 @@ fn main() -> miette::Result<()> {
         Command::Compile {
             file,
             output,
+            target,
             emit_ir,
         }
         | Command::Build {
             file,
             output,
+            target,
             emit_ir,
         } => {
             // P0-1: git リポジトリ必須チェック
             check_git_repo(&file)?;
 
-            let artifacts = commands::compile::compile_file(&file, output.as_deref(), emit_ir)?;
+            let artifacts = commands::compile::compile_file(
+                &file,
+                output.as_deref(),
+                emit_ir,
+                target.map(Into::into),
+            )?;
             if !emit_ir {
                 let wasm_size = std::fs::metadata(&artifacts.output_path)
                     .map(|metadata| metadata.len())

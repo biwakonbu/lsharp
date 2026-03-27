@@ -407,7 +407,7 @@ fn compile_run_tool(arguments: &Value) -> Result<Value, String> {
         return Err("source または file が必要です".to_string());
     }
 
-    let artifacts = commands::compile::compile_file(&input_path, Some(&output_path), false)
+    let artifacts = commands::compile::compile_file(&input_path, Some(&output_path), false, None)
         .map_err(|e| e.to_string())?;
     let formatted = std::fs::read_to_string(&input_path)
         .map_err(|e| format!("{}: {e}", input_path.display()))?;

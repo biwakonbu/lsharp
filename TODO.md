@@ -259,9 +259,9 @@
 > Phase 12 の前提作業。`compile` を推奨エントリに昇格し、format → check → codegen を一括実行する。
 > `check` / `fmt` / `parse` は互換コマンドとして当面維持し、削除は別タスクに分離する。
 
-- [~] **P12-0. `lsharp compile` パイプライン統合** (tests: `commands::compile::tests::test_compile_file_runs_format_check_codegen_pipeline`)
+- [~] **P12-0. `lsharp compile` パイプライン統合** (tests: `commands::compile::tests::test_compile_file_runs_format_check_codegen_pipeline`, `commands::compile::tests::test_resolve_compile_target_uses_output_extension_when_flag_missing`, `commands::compile::tests::test_compile_file_native_target_returns_explicit_error`)
   - [x] `compile` サブコマンドで format → check → codegen を順に実行
-  - [ ] 出力ファイル拡張子 (`.wasm` / なし) または `--target` フラグでバックエンド判定 (Wasm / Native)
+  - [x] 出力ファイル拡張子 (`.wasm` / なし) または `--target` フラグでバックエンド判定 (Wasm / Native, native は現状 explicit unsupported error)
   - [x] format 差分があればソースファイルを書き換えてから check → codegen に進む
   - [ ] CLI サブコマンドとしての `check` / `format` / `parse` を廃止 (Rust API / LSP / MCP 内部では存続)
   - 修正対象: `crates/lsharp-driver/src/main.rs`
@@ -270,7 +270,7 @@
 
 > 最優先サブフェーズ。既存の LSP をバックエンドに、L# エコシステム全体を 1 つの MCP Server で AI に公開する。
 
-- [~] **A-1. api.json スキーマと生成コマンド** (tests: `api_doc::tests::test_build_api_doc_includes_metadata_signature_and_return_docs`, `api_doc::tests::test_build_api_doc_for_package_collects_modules_from_src_in_sorted_order`, `tests::test_cmd_doc_json_writes_docs_api_json`)
+- [x] **A-1. api.json スキーマと生成コマンド** (tests: `api_doc::tests::test_build_api_doc_includes_metadata_signature_and_return_docs`, `api_doc::tests::test_build_api_doc_for_package_collects_modules_from_src_in_sorted_order`, `tests::test_cmd_doc_json_writes_docs_api_json`)
   - [x] 新規 `docs/schemas/api.schema.json` を追加 (knowledge schema とは分離)
   - [x] `lsharp doc --json` コマンド実装 (AST メタデータ + 型推論結果 → api.json)
   - [x] `:doc` / `:params` / `:returns` メタデータを api.json 出力に反映
@@ -366,7 +366,7 @@
   - [x] `lsharp add <github-url> --tag <tag>` コマンド: lsharp.toml への依存追加
   - 修正対象: `crates/lsharp-driver/src/resolver.rs`
 
-- [~] **C-2. パッケージ検証 (`lsharp check-package`)** (tests: `tests::test_cmd_check_package_generates_api_json_and_checksum`)
+- [x] **C-2. パッケージ検証 (`lsharp check-package`)** (tests: `tests::test_cmd_check_package_generates_api_json_and_checksum`, `tests::test_cmd_check_package_previous_tag_compares_against_git_tag`)
   - [x] lsharp.toml 検証 + api.json 自動生成
   - [x] 前回 API との破壊的変更の自動検出 (`--previous-api <path>` と `--previous-tag <tag>`、tag 未指定時は最新 tag 自動検出)
   - [x] checksum (SHA-256) 生成

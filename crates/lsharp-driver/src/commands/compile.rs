@@ -2,11 +2,51 @@ use std::path::{Path, PathBuf};
 
 use lsharp_ir::Module;
 
+/// compile バックエンドターゲット
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompileTarget {
+    Wasm,
+    Native,
+}
+
 /// compile パイプラインの結果
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompileArtifacts {
     pub output_path: PathBuf,
     pub formatted: bool,
+}
+
+/// 明示指定または出力拡張子から compile target を決定する
+pub fn resolve_compile_target(
+    output: Option<&Path>,
+    requested_target: Option<CompileTarget>,
+) -> miette::Result<(CompileTarget, PathBuf)> {
+    let output_path = output
+        .map(Path::to_path_buf)
+        .ok_or_else(|| miette::miette!("output path が必要です"))?;
+    let target = requested_target.unwrap_or_else(|| infer_target_from_output_path(&output_path));
+    Ok((target, output_path))
+}
+
+fn infer_target_from_output_path(output_path: &Path) -> CompileTarget {
+    match output_path.extension().and_then(|ext| ext.to_str()) {
+        Some("wasm") => CompileTarget::Wasm,
+        _ => CompileTarget::Native,
+    }
+}
+
+fn default_output_path(file: &Path, target: CompileTarget) -> PathBuf {
+    match target {
+        CompileTarget::Wasm => file.with_extension("wasm"),
+        CompileTarget::Native => {
+            let stem = file
+                .file_stem()
+                .map(|stem| stem.to_os_string())
+                .or_else(|| file.file_name().map(|name| name.to_os_string()))
+                .unwrap_or_else(|| "a.out".into());
+            file.with_file_name(stem)
+        }
+    }
 }
 
 /// コンパイル前にフォーマットを適用し、必要ならソースを書き戻す
@@ -56,10 +96,15 @@ pub fn compile_file(
     file: &Path,
     output: Option<&Path>,
     emit_ir: bool,
+    requested_target: Option<CompileTarget>,
 ) -> miette::Result<CompileArtifacts> {
-    let output_path = output
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| file.with_extension("wasm"));
+    let (target, output_path) = if let Some(output_path) = output {
+        resolve_compile_target(Some(output_path), requested_target)?
+    } else {
+        let target = requested_target.unwrap_or(CompileTarget::Wasm);
+        let output_path = default_output_path(file, target);
+        (target, output_path)
+    };
     let (formatted_source, formatted) = prepare_source_for_compile(file)?;
     let module = compile_module_from_formatted_source(file, &formatted_source)?;
 
@@ -71,10 +116,20 @@ pub fn compile_file(
         });
     }
 
-    let wasm_bytes =
-        lsharp_wasm::wasi::emit_wasm_wasi(&module).map_err(|e| miette::miette!("{e}"))?;
-    std::fs::write(&output_path, &wasm_bytes)
-        .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
+    match target {
+        CompileTarget::Wasm => {
+            let wasm_bytes =
+                lsharp_wasm::wasi::emit_wasm_wasi(&module).map_err(|e| miette::miette!("{e}"))?;
+            std::fs::write(&output_path, &wasm_bytes)
+                .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
+        }
+        CompileTarget::Native => {
+            return Err(miette::miette!(
+                "native backend は未サポートです。現在の Rust driver は wasm のみ生成できます: {}",
+                output_path.display()
+            ));
+        }
+    }
     Ok(CompileArtifacts {
         output_path,
         formatted,
@@ -84,6 +139,31 @@ pub fn compile_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_resolve_compile_target_uses_output_extension_when_flag_missing() {
+        let wasm_output = Path::new("demo.wasm");
+        let native_output = Path::new("demo");
+
+        let (wasm_target, wasm_path) = resolve_compile_target(Some(wasm_output), None).unwrap();
+        let (native_target, native_path) =
+            resolve_compile_target(Some(native_output), None).unwrap();
+
+        assert_eq!(wasm_target, CompileTarget::Wasm);
+        assert_eq!(wasm_path, wasm_output);
+        assert_eq!(native_target, CompileTarget::Native);
+        assert_eq!(native_path, native_output);
+    }
+
+    #[test]
+    fn test_resolve_compile_target_prefers_explicit_flag() {
+        let output = Path::new("demo");
+        let (target, resolved_path) =
+            resolve_compile_target(Some(output), Some(CompileTarget::Wasm)).unwrap();
+
+        assert_eq!(target, CompileTarget::Wasm);
+        assert_eq!(resolved_path, output);
+    }
 
     #[test]
     fn test_prepare_source_for_compile_rewrites_file_when_format_diff_exists() {
@@ -121,7 +201,7 @@ mod tests {
         let output = dir.join("Main.wasm");
         std::fs::write(&file, "(defn   main  []   42)\n").unwrap();
 
-        let artifacts = compile_file(&file, Some(&output), false).unwrap();
+        let artifacts = compile_file(&file, Some(&output), false, None).unwrap();
 
         assert_eq!(artifacts.output_path, output);
         assert!(
@@ -129,6 +209,27 @@ mod tests {
             "compile は format 差分を検出して書き戻すべき"
         );
         assert!(output.exists(), "compile は Wasm 出力を生成するべき");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_file_native_target_returns_explicit_error() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_native");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("demo");
+        std::fs::write(&file, "(defn main [] 42)\n").unwrap();
+
+        let err = compile_file(&file, Some(&output), false, None).unwrap_err();
+        let message = err.to_string();
+        assert!(
+            message.contains("native backend は未サポート"),
+            "native target の明示エラーが必要: {message}"
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
