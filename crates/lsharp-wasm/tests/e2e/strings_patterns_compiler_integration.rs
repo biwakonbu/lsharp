@@ -1065,6 +1065,61 @@ fn test_e2e_selfhost_compiler_string_literal_source_data_lowering() {
     assert_eq!(lines[5], "1024", "string literal lowering の定数オフセットが不正");
 }
 
+/// selfhost Compiler.ls: nested string literal lowering が distinct offsets と連結 data bytes を返すこと
+#[test]
+fn test_e2e_selfhost_compiler_nested_string_literal_source_data_lowering() {
+    let harness = r#"
+(defn main []
+  (let [source "(defn main [] (do \"ab\" \"cde\"))"
+        program (parse-program source)
+        pair (compile-program-functions-with-source source program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        main-fn (vector-get functions 0)
+        main-ir (vector-get main-fn 2)
+        first-instr (vector-get main-ir 0)
+        drop-instr (vector-get main-ir 1)
+        second-instr (vector-get main-ir 2)]
+    (do
+      (print (vector-length data))
+      (print (vector-get data 0))
+      (print (vector-get data 1))
+      (print (vector-get data 2))
+      (print (vector-get data 3))
+      (print (vector-get data 4))
+      (print (vector-get first-instr 0))
+      (print (vector-get first-instr 1))
+      (print (vector-get drop-instr 0))
+      (print (vector-get second-instr 0))
+      (print (vector-get second-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(lines.len() >= 11, "nested string literal lowering 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "5", "nested string literal data bytes 長が不正");
+    assert_eq!(lines[1], "97", "1 個目 string literal の先頭 byte が不正");
+    assert_eq!(lines[2], "98", "1 個目 string literal の 2 byte 目が不正");
+    assert_eq!(lines[3], "99", "2 個目 string literal の先頭 byte が不正");
+    assert_eq!(lines[4], "100", "2 個目 string literal の 2 byte 目が不正");
+    assert_eq!(lines[5], "101", "2 個目 string literal の 3 byte 目が不正");
+    assert_eq!(lines[6], "1", "先頭命令は i64.const であるべき");
+    assert_eq!(lines[7], "1024", "先頭 string literal offset が不正");
+    assert_eq!(lines[8], "44", "中間 string literal は drop されるべき");
+    assert_eq!(lines[9], "1", "末尾命令は i64.const であるべき");
+    assert_eq!(lines[10], "1026", "末尾 string literal offset が前段 bytes を考慮していない");
+}
+
 // =====================================================// P1-3: WASI stdin/stdout ラッパーテスト
 // =====================================================
 /// P1-3: write-string が stdout に書き込めることを検証

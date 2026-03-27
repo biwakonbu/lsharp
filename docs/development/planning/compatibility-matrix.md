@@ -22,7 +22,16 @@ Phase 11 完了まで、selfhost パイプラインに影響する PR では本�
 ## CLI サブコマンド
 
 ※ 本節の `Parity test` には wiring / shape coverage を含む。Rust との JSON / golden parity は `Deletion gate` 到達まで pending。
-※ OPS-05 の中間段階として、`crates/lsharp-driver/src/main.rs` は `LSHARP_PATH` 経由で external compiler executable / 配置ディレクトリへ delegation できる。ただし `Default path` 列は切替 PR が入るまで Rust のままとする。
+※ `L# source` 列は selfhost surface の有無と成熟度を示し、`Default path` 列は **組み込み default** のみを示す。selfhost surface が存在しても、cutover PR が入るまで `Default path` は Rust のまま読む。
+※ OPS-05 の中間段階として、`crates/lsharp-driver/src/main.rs` は `LSHARP_PATH` 経由で external compiler executable / 配置ディレクトリへ delegation できる。これは feature ごとの切替ではなく **process-entry delegation** であり、CLI 行に並ぶ 13 サブコマンドはすべて argv 丸ごと外部 `lsharp` binary へ委譲できる。
+
+### Default path / delegation サマリ
+
+| 区分 | 対象コマンド | 意味 |
+|------|--------------|------|
+| Rust built-in default | `parse`, `check`, `compile`, `build`, `test`, `review`, `doc-ack`, `doc-check`, `install`, `repl`, `lsp`, `fmt`, `doc` | 2026-03-27 時点では `LSHARP_PATH` 未設定時の組み込み実装は全行 Rust |
+| L# selfhost surface あり | `parse`, `check`, `compile`, `build`, `test`, `review`, `doc-ack`, `doc-check`, `install`, `repl`, `lsp`, `fmt`, `doc` | `selfhost/Cli.ls` を入口として各コマンドの公開面は存在する。成熟度は行ごとの `L# source` / `Notes` を参照 |
+| `LSHARP_PATH` delegation 対象 | `parse`, `check`, `compile`, `build`, `test`, `review`, `doc-ack`, `doc-check`, `install`, `repl`, `lsp`, `fmt`, `doc` | driver は clap dispatch 前に argv 全体を外部 `lsharp` binary へ渡せる。built-in default 切替とは別の hook |
 
 | Feature | Rust source | L# source | Parity test | Default path | Deletion gate | Evidence | Notes |
 |---------|-------------|-----------|-------------|--------------|---------------|----------|-------|

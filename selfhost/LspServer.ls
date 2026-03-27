@@ -424,8 +424,34 @@
 (defn lsp-find-defn-offset [src target]
   (lsp-find-defn-offset-loop src target 0 (string-length src)))
 
-(defn lsp-hover-content-text [src name]
-  (if (>= (lsp-find-defn-offset src name) 0)
+(defn lsp-find-defn-offset-before-loop [src target idx limit len last-match]
+  (if (>= idx len)
+    last-match
+    (if (> idx limit)
+      last-match
+      (if (lsp-match-at src idx "(defn")
+        (let [name-start (lsp-skip-ws src (+ idx 5) len)
+              name-end (lsp-scan-symbol-end src name-start len)]
+          (if (> name-end name-start)
+            (let [name (substring src name-start name-end)
+                  last-match (if (<= name-start limit)
+                               (if (string-eq name target) name-start last-match)
+                               last-match)]
+              (lsp-find-defn-offset-before-loop src target name-end limit len last-match))
+            (lsp-find-defn-offset-before-loop src target (+ idx 1) limit len last-match)))
+        (lsp-find-defn-offset-before-loop src target (+ idx 1) limit len last-match)))))
+
+(defn lsp-find-defn-offset-before [src target limit]
+  (lsp-find-defn-offset-before-loop src target 0 limit (string-length src) (- 0 1)))
+
+(defn lsp-resolve-defn-offset [src target cursor-start]
+  (let [defn-offset (lsp-find-defn-offset-before src target cursor-start)]
+    (if (>= defn-offset 0)
+      defn-offset
+      (lsp-find-defn-offset src target))))
+
+(defn lsp-hover-content-text [defn-offset name]
+  (if (>= defn-offset 0)
     (string-concat "defn " name)
     (string-concat "symbol " name)))
 
@@ -552,7 +578,8 @@
           (if (>= start 0)
             (let [name (substring src start end)
                   range (lsp-range-from-offsets src start end)
-                  contents (lsp-hover-content-text src name)]
+                  defn-offset (lsp-resolve-defn-offset src name start)
+                  contents (lsp-hover-content-text defn-offset name)]
               (vector-push
                 (vector-push (vector-new 2) range)
                 contents))
@@ -586,7 +613,7 @@
       (if (> (string-length src) 0)
         (if (>= start 0)
           (let [name (substring src start end)
-                defn-offset (lsp-find-defn-offset src name)]
+                defn-offset (lsp-resolve-defn-offset src name start)]
             (if (>= defn-offset 0)
               (let [pos (lsp-position-from-offset src defn-offset)]
                 (make-location uri (position-line pos) (position-col pos)))
@@ -708,7 +735,7 @@
 
 ;; === 診断の安定順序制御 (T4b-3 AC-208/AC-209/AC-210/AC-211) ===
 
-;; sort-diagnostics: 診断をソースごとにグルーピングし行番号昇順にソートする
+;; sort-diagnostics: 診断をソースごとにグルーピングし決定的順序でソートする
 ;; 入力: 診断 Vector [severity, rule-id, line, col, msg-hash, source]
 ;; 出力: ソート済み診断 Vector
 ;; AC-208: source フィールドでグルーピング → 行番号昇順
@@ -725,7 +752,7 @@
       (sort-diag-copy sorted 0 (vector-length sorted) out))
     (let [prev (vector-get sorted (- idx 1))
           prev-key (diagnostic-order-key prev)]
-      (if (< elem-key prev-key)
+      (if (= (diagnostic-order-before elem elem-key prev prev-key) 1)
         ;; まだ前に移動する必要がある
         (sort-diag-insert sorted elem elem-key (- idx 1))
         ;; ここに挿入: 0..idx をコピー → elem → idx..len をコピー
@@ -790,6 +817,22 @@
        (+ (* sev 1000000)
           (+ (* line 10000) col)))))
 
+;; 同じ source/severity/span の診断も rule/message で安定順序化する
+(defn diagnostic-order-before [a a-key b b-key]
+  (if (< a-key b-key)
+    1
+    (if (> a-key b-key)
+      0
+      (let [rule-a (vector-get a 1)
+            rule-b (vector-get b 1)
+            msg-a (vector-get a 4)
+            msg-b (vector-get b 4)]
+        (if (< rule-a rule-b)
+          1
+          (if (> rule-a rule-b)
+            0
+            (if (< msg-a msg-b) 1 0)))))))
+
 ;; === 診断の重複除去 (AC-209) ===
 
 ;; 同一スパン判定: line と col が同じなら 1、異なれば 0
@@ -803,8 +846,14 @@
 ;; severity の高い方 (数値が小さい方) を選択
 (defn dedup-diag-pick-best [a b]
   (let [sev-a (vector-get a 0)
-        sev-b (vector-get b 0)]
-    (if (< sev-a sev-b) a b)))
+        sev-b (vector-get b 0)
+        key-a (diagnostic-order-key a)
+        key-b (diagnostic-order-key b)]
+    (if (< sev-a sev-b)
+      a
+      (if (< sev-b sev-a)
+        b
+        (if (= (diagnostic-order-before a key-a b key-b) 1) a b)))))
 
 ;; result 内で diag と同一スパンの要素を探す (O(n) 走査)
 (defn dedup-find-span [result diag idx len]

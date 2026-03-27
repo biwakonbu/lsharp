@@ -1147,6 +1147,146 @@
         b53 (emit-leb128 (emit-byte b52 32) result-idx)]
     b53))
 
+;; map-contains?: [tagged map ptr:i64, key:i64] -> 1/0
+(defn emit-map-contains-instr [bytes operand]
+  (let [tagged-idx (- operand 1)
+        key-idx operand
+        cap-idx (+ operand 1)
+        result-idx (+ operand 2)
+        i-idx (+ operand 3)
+        ea-idx (+ operand 4)
+        b1 (emit-leb128 (emit-byte bytes 33) key-idx)
+        b2 (emit-leb128 (emit-byte b1 33) tagged-idx)
+        b3 (emit-leb128 (emit-byte b2 32) tagged-idx)
+        b4 (emit-byte b3 167)
+        b5 (emit-byte b4 40)
+        b6 (emit-byte b5 0)
+        b7 (emit-byte b6 4)
+        b8 (emit-byte b7 173)
+        b9 (emit-leb128 (emit-byte b8 33) cap-idx)
+        b10 (emit-leb128-s (emit-byte b9 66) 0)
+        b11 (emit-leb128 (emit-byte b10 33) result-idx)
+        b12 (emit-leb128-s (emit-byte b11 66) 0)
+        b13 (emit-leb128 (emit-byte b12 33) i-idx)
+        b14 (emit-block-empty b13)
+        b15 (emit-loop-empty b14)
+        b16 (emit-leb128 (emit-byte b15 32) i-idx)
+        b17 (emit-leb128 (emit-byte b16 32) cap-idx)
+        b18 (emit-byte b17 89)
+        b19 (emit-br-if b18 1)
+        b20 (emit-leb128 (emit-byte b19 32) tagged-idx)
+        b21 (emit-byte b20 167)
+        b22 (emit-byte b21 173)
+        b23 (emit-leb128-s (emit-byte b22 66) 16)
+        b24 (emit-byte b23 124)
+        b25 (emit-leb128 (emit-byte b24 32) i-idx)
+        b26 (emit-leb128-s (emit-byte b25 66) 16)
+        b27 (emit-byte b26 126)
+        b28 (emit-byte b27 124)
+        b29 (emit-leb128 (emit-byte b28 33) ea-idx)
+        b30 (emit-leb128 (emit-byte b29 32) ea-idx)
+        b31 (emit-byte b30 167)
+        b32 (emit-byte b31 41)
+        b33 (emit-byte b32 0)
+        b34 (emit-byte b33 0)
+        b35 (emit-leb128 (emit-byte b34 32) key-idx)
+        b36 (emit-byte b35 81)
+        b37 (emit-byte (emit-byte b36 4) 64)
+        b38 (emit-leb128-s (emit-byte b37 66) 1)
+        b39 (emit-leb128 (emit-byte b38 33) result-idx)
+        b40 (emit-br b39 2)
+        b41 (emit-byte b40 11)
+        b42 (emit-leb128 (emit-byte b41 32) i-idx)
+        b43 (emit-leb128-s (emit-byte b42 66) 1)
+        b44 (emit-byte b43 124)
+        b45 (emit-leb128 (emit-byte b44 33) i-idx)
+        b46 (emit-br b45 0)
+        b47 (emit-byte b46 11)
+        b48 (emit-byte b47 11)
+        b49 (emit-leb128 (emit-byte b48 32) result-idx)]
+    b49))
+
+;; map-remove: [tagged map ptr:i64, key:i64] -> tagged map ptr:i64
+(defn emit-map-remove-instr [bytes operand]
+  (let [tagged-idx (- operand 1)
+        key-idx operand
+        cap-idx (+ operand 1)
+        i-idx (+ operand 2)
+        ea-idx (+ operand 3)
+        ek-idx (+ operand 4)
+        b1 (emit-leb128 (emit-byte bytes 33) key-idx)
+        b2 (emit-leb128 (emit-byte b1 33) tagged-idx)
+        b3 (emit-leb128 (emit-byte b2 32) tagged-idx)
+        b4 (emit-byte b3 167)
+        b5 (emit-byte b4 40)
+        b6 (emit-byte b5 0)
+        b7 (emit-byte b6 4)
+        b8 (emit-byte b7 173)
+        b9 (emit-leb128 (emit-byte b8 33) cap-idx)
+        b10 (emit-leb128-s (emit-byte b9 66) 0)
+        b11 (emit-leb128 (emit-byte b10 33) i-idx)
+        b12 (emit-block-empty b11)
+        b13 (emit-loop-empty b12)
+        b14 (emit-leb128 (emit-byte b13 32) i-idx)
+        b15 (emit-leb128 (emit-byte b14 32) cap-idx)
+        b16 (emit-byte b15 89)
+        b17 (emit-br-if b16 1)
+        b18 (emit-leb128 (emit-byte b17 32) tagged-idx)
+        b19 (emit-byte b18 167)
+        b20 (emit-byte b19 173)
+        b21 (emit-leb128-s (emit-byte b20 66) 16)
+        b22 (emit-byte b21 124)
+        b23 (emit-leb128 (emit-byte b22 32) i-idx)
+        b24 (emit-leb128-s (emit-byte b23 66) 16)
+        b25 (emit-byte b24 126)
+        b26 (emit-byte b25 124)
+        b27 (emit-leb128 (emit-byte b26 33) ea-idx)
+        b28 (emit-leb128 (emit-byte b27 32) ea-idx)
+        b29 (emit-byte b28 167)
+        b30 (emit-byte b29 41)
+        b31 (emit-byte b30 0)
+        b32 (emit-byte b31 0)
+        b33 (emit-leb128 (emit-byte b32 33) ek-idx)
+        b34 (emit-leb128 (emit-byte b33 32) ek-idx)
+        b35 (emit-leb128 (emit-byte b34 32) key-idx)
+        b36 (emit-byte b35 81)
+        b37 (emit-byte (emit-byte b36 4) 64)
+        b38 (emit-leb128 (emit-byte b37 32) ea-idx)
+        b39 (emit-byte b38 167)
+        b40 (emit-leb128-s (emit-byte b39 66) 0)
+        b41 (emit-byte b40 55)
+        b42 (emit-byte b41 0)
+        b43 (emit-byte b42 0)
+        b44 (emit-leb128 (emit-byte b43 32) ea-idx)
+        b45 (emit-byte b44 167)
+        b46 (emit-leb128-s (emit-byte b45 66) 0)
+        b47 (emit-byte b46 55)
+        b48 (emit-byte b47 0)
+        b49 (emit-byte b48 8)
+        b50 (emit-leb128 (emit-byte b49 32) tagged-idx)
+        b51 (emit-byte b50 167)
+        b52 (emit-leb128 (emit-byte b51 32) tagged-idx)
+        b53 (emit-byte b52 167)
+        b54 (emit-byte b53 40)
+        b55 (emit-byte b54 0)
+        b56 (emit-byte b55 8)
+        b57 (emit-leb128 (emit-byte b56 65) 1)
+        b58 (emit-byte b57 107)
+        b59 (emit-byte b58 54)
+        b60 (emit-byte b59 0)
+        b61 (emit-byte b60 8)
+        b62 (emit-br b61 2)
+        b63 (emit-byte b62 11)
+        b64 (emit-leb128 (emit-byte b63 32) i-idx)
+        b65 (emit-leb128-s (emit-byte b64 66) 1)
+        b66 (emit-byte b65 124)
+        b67 (emit-leb128 (emit-byte b66 33) i-idx)
+        b68 (emit-br b67 0)
+        b69 (emit-byte b68 11)
+        b70 (emit-byte b69 11)
+        b71 (emit-leb128 (emit-byte b70 32) tagged-idx)]
+    b71))
+
 ;; IR opcode を Wasm opcode に変換して bytes に追加
 ;; T3-6: ビルトインヘルパー -- 比較演算子 (i64.gt_s, i64.lt_s, i64.ge_s, i64.le_s) 追加
 (defn emit-ir-instr [bytes opcode operand]
@@ -1325,10 +1465,14 @@
                                               (emit-map-insert-instr bytes operand)
                                             (if (= opcode 63)
                                               (emit-map-get-instr bytes operand)
+                                            (if (= opcode 65)
+                                              (emit-map-contains-instr bytes operand)
+                                            (if (= opcode 66)
+                                              (emit-map-remove-instr bytes operand)
                                             (if (= opcode 64)
                                               (emit-read-file-instr bytes)
                                             ;; 未知のopcode: スキップ
-                                              bytes))))))))))))))))))))))))))))))))
+                                              bytes))))))))))))))))))))))))))))))))))
 
 ;; === Data セクション生成 ===
 
@@ -1337,122 +1481,17 @@
 ;; offset: メモリ上の配置オフセット
 (defn emit-data-section [data-bytes offset]
   (let [data-len (vector-length data-bytes)
-        ;; セクション本体を構築
-        body (ref-new (vector-new 64))
-        ;; データセグメント数 (1個)
-        _ (ref-set body (emit-byte (ref-get body) 1))
-        ;; メモリインデックス (0) + active データ
-        _ (ref-set body (emit-byte (ref-get body) 0))
-        ;; i32.const offset + end でオフセット式
-        _ (ref-set body (emit-byte (ref-get body) 65))  ;; i32.const
-        _ (ref-set body (emit-leb128 (ref-get body) offset))
-        _ (ref-set body (emit-byte (ref-get body) 11))  ;; end
-        ;; データバイト数
-        _ (ref-set body (emit-leb128 (ref-get body) data-len))
-        ;; データバイト列のコピー (最大16バイト)
-        j (ref-new 0)]
-    (do
-      (if (< (ref-get j) data-len)
-        (do
-          (ref-set body (emit-byte (ref-get body) (vector-get data-bytes (ref-get j))))
-          (ref-set j (+ (ref-get j) 1))
-          (if (< (ref-get j) data-len)
-            (do
-              (ref-set body (emit-byte (ref-get body) (vector-get data-bytes (ref-get j))))
-              (ref-set j (+ (ref-get j) 1))
-              (if (< (ref-get j) data-len)
-                (do
-                  (ref-set body (emit-byte (ref-get body) (vector-get data-bytes (ref-get j))))
-                  (ref-set j (+ (ref-get j) 1))
-                  (if (< (ref-get j) data-len)
-                    (do
-                      (ref-set body (emit-byte (ref-get body) (vector-get data-bytes (ref-get j))))
-                      (ref-set j (+ (ref-get j) 1))
-                      (if (< (ref-get j) data-len)
-                        (do
-                          (ref-set body (emit-byte (ref-get body) (vector-get data-bytes (ref-get j))))
-                          (ref-set j (+ (ref-get j) 1))
-                          (if (< (ref-get j) data-len)
-                            (do
-                              (ref-set body (emit-byte (ref-get body) (vector-get data-bytes (ref-get j))))
-                              (ref-set j (+ (ref-get j) 1))
-                              (if (< (ref-get j) data-len)
-                                (do
-                                  (ref-set body (emit-byte (ref-get body) (vector-get data-bytes (ref-get j))))
-                                  (ref-set j (+ (ref-get j) 1))
-                                  (if (< (ref-get j) data-len)
-                                    (do
-                                      (ref-set body (emit-byte (ref-get body) (vector-get data-bytes (ref-get j))))
-                                      0)
-                                    0))
-                                0))
-                            0))
-                        0))
-                    0))
-                0))
-            0))
-        0)
-      ;; セクションヘッダーを追加
-      (let [body-vec (ref-get body)
-            body-size (vector-length body-vec)
-            result (vector-new 64)
-            r1 (emit-byte result 11)            ;; Section ID = 11 (Data)
-            r2 (emit-leb128 r1 body-size)       ;; セクションサイズ
-            ;; body のバイトをコピー
-            k (ref-new 0)
-            out (ref-new r2)]
-        (do
-          (if (< (ref-get k) body-size)
-            (do
-              (ref-set out (emit-byte (ref-get out) (vector-get body-vec (ref-get k))))
-              (ref-set k (+ (ref-get k) 1))
-              (if (< (ref-get k) body-size)
-                (do
-                  (ref-set out (emit-byte (ref-get out) (vector-get body-vec (ref-get k))))
-                  (ref-set k (+ (ref-get k) 1))
-                  (if (< (ref-get k) body-size)
-                    (do
-                      (ref-set out (emit-byte (ref-get out) (vector-get body-vec (ref-get k))))
-                      (ref-set k (+ (ref-get k) 1))
-                      (if (< (ref-get k) body-size)
-                        (do
-                          (ref-set out (emit-byte (ref-get out) (vector-get body-vec (ref-get k))))
-                          (ref-set k (+ (ref-get k) 1))
-                          (if (< (ref-get k) body-size)
-                            (do
-                              (ref-set out (emit-byte (ref-get out) (vector-get body-vec (ref-get k))))
-                              (ref-set k (+ (ref-get k) 1))
-                              (if (< (ref-get k) body-size)
-                                (do
-                                  (ref-set out (emit-byte (ref-get out) (vector-get body-vec (ref-get k))))
-                                  (ref-set k (+ (ref-get k) 1))
-                                  (if (< (ref-get k) body-size)
-                                    (do
-                                      (ref-set out (emit-byte (ref-get out) (vector-get body-vec (ref-get k))))
-                                      (ref-set k (+ (ref-get k) 1))
-                                      (if (< (ref-get k) body-size)
-                                        (do
-                                          (ref-set out (emit-byte (ref-get out) (vector-get body-vec (ref-get k))))
-                                          (ref-set k (+ (ref-get k) 1))
-                                          (if (< (ref-get k) body-size)
-                                            (do
-                                              (ref-set out (emit-byte (ref-get out) (vector-get body-vec (ref-get k))))
-                                              (ref-set k (+ (ref-get k) 1))
-                                              (if (< (ref-get k) body-size)
-                                                (do
-                                                  (ref-set out (emit-byte (ref-get out) (vector-get body-vec (ref-get k))))
-                                                  0)
-                                                0))
-                                            0))
-                                        0))
-                                    0))
-                                0))
-                            0))
-                        0))
-                    0))
-                0))
-            0)
-          (ref-get out))))))
+        body0 (emit-byte (vector-new 64) 1)
+        body1 (emit-byte body0 0)
+        body2 (emit-byte body1 65)
+        body3 (emit-leb128 body2 offset)
+        body4 (emit-byte body3 11)
+        body5 (emit-leb128 body4 data-len)
+        body-vec (append-byte-vector body5 data-bytes 0 data-len)
+        body-size (vector-length body-vec)
+        result0 (emit-byte (vector-new 64) 11)
+        result1 (emit-leb128 result0 body-size)]
+    (append-byte-vector result1 body-vec 0 body-size)))
 
 ;; === エントリポイント (テスト用) ===
 

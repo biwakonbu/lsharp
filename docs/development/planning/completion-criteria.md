@@ -11,7 +11,7 @@ Phase 11-2 (Native backend + bootstrap) の完了を判定するための条件�
 - `scripts/ci/compile-phase11-inputs.sh` により fixed input set の blocking compile gate は導入済み。
 - `cargo run -- compile selfhost/Main.ls` と `cargo run -- compile selfhost/MacroExpand.ls` は成功する。
 - `selfhost/Lower.ls` / `LowerPattern.ls` の stage0 stack overflow は `lsharp-types` の `apply_subst` 改修で解消済み（compile gate に含める）。
-- **OPS-05 第1段**: `scripts/ci/default-path-smoke.sh` + CI job `default-path-smoke` でビルド済み `lsharp` バイナリ経路を blocking 検証。
+- **OPS-05 第1段**: `scripts/ci/default-path-smoke.sh` + CI job `default-path-smoke` でビルド済み `lsharp` バイナリ経路を blocking 検証。command surface 上の Rust built-in default / selfhost surface / `LSHARP_PATH` delegation の読み分けは `docs/development/operations/default-path-migration.md` と `docs/development/planning/compatibility-matrix.md` を正本とする。
 - **OPS-07 暫定 gate**: `scripts/ci/test-fresh-clone.sh` + CI job `fresh-clone-smoke` で clean checkout 相当コピーからの `lsharp` 再ビルド、default-path smoke 再実行、`selfhost/Token.ls` / `stdlib/Core.ls` の代表 compile までは blocking 化された。**ただし** Rust 不要 `test-fresh-clone` ではない。
 - **OPS-06 暫定 gate**: `scripts/release-playbook.sh` は release binary を用いて `compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用する。**ただし** tag push だけでの release 自動化、署名、checksum / note 生成の完全自動化は未完了。
 - **監査整理 / bootstrap**: 現時点で完了証跡として確認できるのは stage0 による selfhost 再コンパイル、stage1 実行、および `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_minimal_subset` による最小 subset `(defn main [] 42)` の `stage1.wasm -> stage2.wasm` 実生成までである。**ただし** full input set に対する `stage1.wasm -> stage2.wasm -> stage3.wasm` の実体生成・比較・固定点成立は BOOT-04 完了証跡として未提示。

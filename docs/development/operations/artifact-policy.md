@@ -7,7 +7,7 @@ CI / CD パイプラインで生成されるアーティファクトの命名規
 | アーティファクト | 命名パターン | 説明 |
 |---|---|---|
 | CI Gate v2 結果 | `ci-gate-v2-results` | gate-v2 の全ジョブ結果サマリー |
-| GC metrics | `gc-metrics-{sha}` | runtime stability 用の GC/alloc metrics JSON |
+| GC metrics | `gc-metrics-{commit_sha}` | runtime stability 用の GC/alloc metrics JSON |
 | Bootstrap stages | `bootstrap-stages-{sha}` | selfhost ブートストラップの中間成果物 |
 | Bootstrap diff | `bootstrap-diff-{sha}` | stage 間の差分レポート |
 | Native binaries | `native-binaries-{os}-{arch}` | ネイティブビルド成果物 |
@@ -17,7 +17,8 @@ CI / CD パイプラインで生成されるアーティファクトの命名規
 
 ### 命名規則の詳細
 
-- `{sha}`: Git コミットの短縮 SHA（7 文字）
+- `{commit_sha}`: GitHub Actions の `github.sha` が指すフルコミット SHA
+- `{sha}`: Git コミット SHA。短縮形を使う場合は各 workflow 側で明示する
 - `{os}`: `linux` / `macos` / `windows`
 - `{arch}`: `x86_64` / `aarch64`
 - `{version}`: セマンティックバージョン（例: `0.2.0`）
@@ -60,11 +61,38 @@ sha256sum release-*.tar.gz > SHA256SUMS
 - GitHub Actions のアーティファクトストレージ上限に注意する
 - 不要な中間成果物は `if-no-files-found: ignore` で欠落を許容する
 - 大容量アーティファクト（Wasm バイナリ等）は圧縮して保存する
-- `gc-metrics-{sha}` は `ci-artifacts/gc-metrics/{commit_sha}/summary.json` を正本とし、PR では 5 日、main では 30 日保持する
+- `gc-metrics-{commit_sha}` は `ci-artifacts/gc-metrics/{commit_sha}/summary.json` を正本とし、PR では 5 日、main では 30 日保持する
+
+## GC metrics artifact の受理 / 却下
+
+`gc-metrics-artifact` は required job であり、他の「欠落を許容する中間成果物」と扱いを分ける。
+
+### 正本
+
+- workflow: `.github/workflows/ci.yml`
+- collector script: `scripts/ci/collect-gc-metrics.sh`
+- 正本パス: `ci-artifacts/gc-metrics/{commit_sha}/summary.json`
+- upload 名: `gc-metrics-{commit_sha}`
+
+### 却下条件
+
+次のいずれかに当てはまる場合、artifact は運用上 **却下** とみなす。
+
+1. `test_e2e_alloc_metrics_ci_artifact_payload` が失敗
+2. `summary.json` が存在しない、または読めない
+3. JSON parse に失敗
+4. `allocator_mode`, `ci_level`, `peak_alloc_bytes`, `total_alloc_count`, `live_alloc_count`, `max_single_alloc`, `alloc_span`, `leak_growing_count`, `leak_total`, `leak_suspect` のいずれかが欠落
+
+### 受理の意味
+
+- 受理は「GC-06 の第 1 段 artifact が構造的に有効」という意味であり、S14-S16 の full gate 達成を意味しない。
+- bump allocator の proxy metrics は collector 有効 GC の単調増加判定 / fixed-point / crash-free を直接閉じない。
+- そのため `gc-metrics-artifact` が green でも、`docs/development/planning/runtime-stability-spec.md` S14-S16 は別途 `blocked` のまま残りうる。
 
 ## 証跡
 
 - `.github/workflows/ci.yml` (`retention-days` 設定)
 - `scripts/ci/collect-gc-metrics.sh`
+- `docs/development/planning/gc-ci-gate-spec.md`
 - `scripts/checksum.sh`
 - `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs` (`test_e2e_ops02_artifact_policy`)

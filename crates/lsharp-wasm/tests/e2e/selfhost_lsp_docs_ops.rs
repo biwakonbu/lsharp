@@ -21,6 +21,31 @@ fn run_lsp_harness(_name: &str, harness: &str) -> Vec<String> {
         .collect()
 }
 
+fn lsp_diagnostic_helpers_source() -> String {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let lsp_path = project_root.join("selfhost/LspServer.ls");
+    let source = std::fs::read_to_string(&lsp_path)
+        .unwrap_or_else(|e| panic!("{} の読み込みに失敗: {}", lsp_path.display(), e));
+    let start = source
+        .find(";; === 診断の安定順序制御")
+        .expect("diagnostics section start が見つからない");
+    let end = source
+        .find(";; === 診断 JSON text renderer ===")
+        .expect("diagnostics section end が見つからない");
+    source[start..end].to_string()
+}
+
+fn run_lsp_diagnostic_harness(harness: &str) -> Vec<String> {
+    let source = lsp_diagnostic_helpers_source();
+    let output = compile_and_run(&format!("{}\n{}", source, harness));
+    output
+        .trim()
+        .lines()
+        .map(std::string::ToString::to_string)
+        .collect()
+}
+
 
 /// TEST-LSP-03: selfhost/LspServer.ls に diagnostics の安定ソート機構
 ///
@@ -571,6 +596,69 @@ fn test_e2e_selfhost_lsp_diagnostic_dedup() {
     assert_eq!(lines[2], "2", "別 span は severity=2 のまま残るべき");
 }
 
+/// TEST-LSP-15a: 同一 source/severity/span は rule/message 順で安定ソートされること
+#[test]
+fn test_e2e_selfhost_lsp_diagnostic_sort_same_span_tiebreak() {
+    let harness = r#"
+(defn make-diag [sev rule line col msg src]
+  (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) sev) rule) line) col) msg) src))
+
+(defn main []
+  (let [diag-b (make-diag 1 200 4 8 9001 1)
+        diag-a (make-diag 1 100 4 8 7001 1)
+        diag-c (make-diag 1 100 4 8 8001 1)
+        diags (vector-push (vector-push (vector-push (vector-new 3) diag-b) diag-c) diag-a)
+        sorted (sort-diagnostics diags)]
+    (do
+      (print (vector-get (vector-get sorted 0) 1))
+      (print (vector-get (vector-get sorted 0) 4))
+      (print (vector-get (vector-get sorted 1) 1))
+      (print (vector-get (vector-get sorted 1) 4))
+      (print (vector-get (vector-get sorted 2) 1))
+      0)))
+"#;
+
+    let lines = run_lsp_diagnostic_harness(harness);
+
+    assert!(lines.len() >= 5, "same-span sort 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "100", "rule が小さい diagnostic が先頭であるべき");
+    assert_eq!(lines[1], "7001", "rule 同値なら messageHash が小さい方が先頭であるべき");
+    assert_eq!(lines[2], "100", "同一 rule の次要素も rule=100 であるべき");
+    assert_eq!(lines[3], "8001", "messageHash が大きい方は後ろに来るべき");
+    assert_eq!(lines[4], "200", "rule が大きい diagnostic は末尾であるべき");
+}
+
+/// TEST-LSP-15a: 同一 span / 同一 severity の parse/type 重複は parse を優先すること
+#[test]
+fn test_e2e_selfhost_lsp_diagnostic_dedup_prefers_parse_same_span() {
+    let harness = r#"
+(defn make-diag [sev rule line col msg src]
+  (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) sev) rule) line) col) msg) src))
+
+(defn main []
+  (let [parse-diag (make-diag 1 100 4 8 7001 1)
+        type-diag (make-diag 1 200 4 8 8001 2)
+        lint-diag (make-diag 2 300 9 1 9001 3)
+        diags (vector-push (vector-push (vector-push (vector-new 3) type-diag) lint-diag) parse-diag)
+        sorted (sort-diagnostics diags)
+        deduped (dedup-diagnostics sorted)]
+    (do
+      (print (vector-length deduped))
+      (print (vector-get (vector-get deduped 0) 5))
+      (print (vector-get (vector-get deduped 0) 1))
+      (print (vector-get (vector-get deduped 1) 5))
+      0)))
+"#;
+
+    let lines = run_lsp_diagnostic_harness(harness);
+
+    assert!(lines.len() >= 4, "same-span dedup 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "2", "同一 span の parse/type は 1 件へ集約されるべき");
+    assert_eq!(lines[1], "1", "同一 severity では parse(source=1) を優先するべき");
+    assert_eq!(lines[2], "100", "parse diagnostic の rule を保持するべき");
+    assert_eq!(lines[3], "3", "別 span の lint diagnostic は残るべき");
+}
+
 /// TEST-LSP-15b: diagnostics を deterministic JSON text に render できること
 #[test]
 fn test_e2e_selfhost_lsp_render_diagnostic_json() {
@@ -912,6 +1000,72 @@ fn test_e2e_selfhost_lsp_real_shapes_definition_and_references_use_source() {
     assert_eq!(lines[7], "16", "2 件目は 1 つ目の square 呼び出しであるべき");
     assert_eq!(lines[8], "2", "3 件目は 2 行目の呼び出しであるべき");
     assert_eq!(lines[9], "27", "3 件目は 2 つ目の square 呼び出しであるべき");
+}
+
+/// TEST-LSP-19b: repeated symbol source では definition が直近の defn を安定して使うこと
+#[test]
+fn test_e2e_selfhost_lsp_real_shapes_definition_prefers_nearest_defn() {
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        src (string-concat
+              "(defn square [x] x)\n"
+              (string-concat
+                "(defn caller [] (square 1))\n"
+                (string-concat
+                  "(defn square [y] y)\n"
+                  "(defn main [] (square 2) (square 3))")))
+        params (vector-push (vector-push (vector-push (vector-push (vector-new 4) 99) 4) 17) src)
+        defn-loc (handle-goto-definition params state)]
+    (do
+      (print (vector-get defn-loc 0))
+      (print (vector-get defn-loc 1))
+      (print (vector-get defn-loc 2))
+      0)))
+"#;
+
+    let lines = run_lsp_harness("lsp_real_shapes_definition_nearest_defn", harness);
+
+    assert_eq!(lines[0], "99", "definition は元の uri を保持するべき");
+    assert_eq!(lines[1], "3", "definition は直近の square defn 行を指すべき");
+    assert_eq!(lines[2], "7", "definition col は直近 defn 名の先頭であるべき");
+}
+
+/// TEST-LSP-19c: repeated symbol source でも hover は選択した occurrence の range を保つこと
+#[test]
+fn test_e2e_selfhost_lsp_real_shapes_hover_keeps_selected_occurrence_with_repeated_defns() {
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        src (string-concat
+              "(defn square [x] x)\n"
+              (string-concat
+                "(defn caller [] (square 1))\n"
+                (string-concat
+                  "(defn square [y] y)\n"
+                  "(defn main [] (square 2) (square 3))")))
+        params (vector-push (vector-push (vector-push (vector-push (vector-new 4) 99) 4) 17) src)
+        result (handle-hover params state)
+        range (vector-get result 0)]
+    (do
+      (print (vector-length result))
+      (print (vector-get range 0))
+      (print (vector-get range 1))
+      (print (vector-get range 2))
+      (print (vector-get range 3))
+      (print-string (vector-get result 1))
+      (print-string "\n")
+      0)))
+"#;
+
+    let lines = run_lsp_harness("lsp_real_shapes_hover_repeated_defns", harness);
+
+    assert_eq!(lines[0], "2", "hover response は [range, contents] の 2 要素であるべき");
+    assert_eq!(lines[1], "4", "hover range start-line は 4 行目の呼び出しであるべき");
+    assert_eq!(lines[2], "16", "hover range start-col は 4 行目の最初の square 呼び出しであるべき");
+    assert_eq!(lines[3], "4", "hover range end-line は 4 行目の呼び出しであるべき");
+    assert_eq!(lines[4], "22", "hover range end-col は square 終端であるべき");
+    assert_eq!(lines[5], "defn square", "hover contents は安定して defn text を返すべき");
 }
 
 /// TEST-LSP-20: completion が prefix とシンボル表から安定した item を返すこと
@@ -1610,6 +1764,30 @@ fn test_e2e_ops05_default_path_migration() {
         doc_content.contains("default_path_delegation"),
         "default-path-migration.md は delegation test の証跡を記載すること"
     );
+    assert!(
+        doc_content.contains("process-entry delegation"),
+        "default-path-migration.md は LSHARP_PATH が process-entry delegation であることを明記すること"
+    );
+    assert!(
+        doc_content.contains("13 CLI サブコマンド"),
+        "default-path-migration.md は公開 command surface 全体を明記すること"
+    );
+    let matrix =
+        project_root.join("docs/development/planning/compatibility-matrix.md");
+    assert!(
+        matrix.is_file(),
+        "docs/development/planning/compatibility-matrix.md が存在しない"
+    );
+    let matrix_content = std::fs::read_to_string(&matrix)
+        .expect("compatibility-matrix.md の読み込みに失敗");
+    assert!(
+        matrix_content.contains("Default path / delegation サマリ"),
+        "compatibility-matrix.md は default path / delegation サマリを持つこと"
+    );
+    assert!(
+        matrix_content.contains("argv 丸ごと外部 `lsharp` binary へ委譲"),
+        "compatibility-matrix.md は LSHARP_PATH の argv delegation を明記すること"
+    );
 }
 
 /// TEST-OPS-06: scripts/ に release playbook + ドキュメント
@@ -2215,6 +2393,45 @@ fn test_e2e_selfhost_formatter_format_program_module_decl() {
         output,
         "(module Demo (import Core))\n",
         "format-program は module body を canonical text へ整形するべき"
+    );
+}
+
+/// FMT-01: format-program が簡易 decl payload の type 系宣言を canonical text へ整形できること
+#[test]
+fn test_e2e_selfhost_formatter_format_program_missing_type_family_decls() {
+    let source = "  (type Point) (type Pair (record (: x Int) (: y Int))) (type-alias Str String) (type-constrained Natural Int :constraints [(>= 0)])  ";
+    let output = formatter_output_for_source(source);
+
+    assert_eq!(
+        output,
+        "(type Point)\n(type Pair (record))\n(type-alias Str Str)\n(type-constrained Natural Natural)\n",
+        "format-program は簡易 payload の type 系宣言を decl kind を保った canonical text へ整形するべき"
+    );
+}
+
+/// FMT-01: format-program が trait 宣言を canonical text へ整形できること
+#[test]
+fn test_e2e_selfhost_formatter_format_program_trait_decl() {
+    let source = "  (trait (Show a) (defn show [self] self))  ";
+    let output = formatter_output_for_source(source);
+
+    assert_eq!(
+        output,
+        "(trait (Show) (defn show [self] self))\n",
+        "format-program は trait 宣言を canonical text へ整形するべき"
+    );
+}
+
+/// FMT-01: format-program が defmacro 宣言を canonical text へ整形できること
+#[test]
+fn test_e2e_selfhost_formatter_format_program_defmacro_decl() {
+    let source = "  (defmacro double [x] '(+ ~x ~x))  ";
+    let output = formatter_output_for_source(source);
+
+    assert_eq!(
+        output,
+        "(defmacro double [x] '(+ ~x ~x))\n",
+        "format-program は defmacro 宣言を canonical text へ整形するべき"
     );
 }
 

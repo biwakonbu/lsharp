@@ -53,6 +53,8 @@
 (defn op-map-insert [] 62)
 (defn op-map-get [] 63)
 (defn op-read-file [] 64)
+(defn op-map-contains [] 65)
+(defn op-map-remove [] 66)
 
 ;; === T3-3: ビルトイン関数のハッシュ定数 ===
 ;; name-hash は文字列の先頭文字の ASCII コード (簡易ハッシュ)
@@ -80,6 +82,8 @@
 (defn builtin-map-get [] 99619806053)
 (defn builtin-map-insert [] 2967773707765834)
 (defn builtin-read-file [] 100097347767123)
+(defn builtin-map-contains [] -3820778934353407281)
+(defn builtin-map-remove [] 2967773956947477)
 
 ;; ビルトイン演算子か判定し、対応する IR opcode を返す
 ;; 非ビルトインの場合は 0 を返す
@@ -104,10 +108,12 @@
                                       (if (= name-hash 106934957) 59 ;; print
                                         (if (= name-hash 99619812783) 60 ;; map-new
                                           (if (= name-hash 3088214349266) 61 ;; map-size
-                                            (if (= name-hash 99619806053) 63 ;; map-get
-                                              (if (= name-hash 2967773707765834) 62 ;; map-insert
-                                                (if (= name-hash 100097347767123) 64 ;; read-file
-                                                  0))))))))))))))))))))))))
+                                              (if (= name-hash 99619806053) 63 ;; map-get
+                                                (if (= name-hash 2967773707765834) 62 ;; map-insert
+                                                  (if (= name-hash 100097347767123) 64 ;; read-file
+                                                    (if (= name-hash -3820778934353407281) 65 ;; map-contains?
+                                                      (if (= name-hash 2967773956947477) 66 ;; map-remove
+                                                        0))))))))))))))))))))))))))
 
 ;; === IR 命令構築ヘルパー ===
 
@@ -194,7 +200,24 @@
   (let [tag (vector-get node 0)]
     (if (= tag (tag-lit-string))
       (compile-string-literal-with-source node source instrs data-ref)
-      (compile-expr-with-ftable node env ftable instrs))))
+      (if (= tag (tag-do))
+        (let [expr-count (vector-get node 1)]
+          (if (= expr-count 0)
+            instrs
+            (let [instrs1 (compile-expr-with-source (vector-get node 2) source env ftable instrs data-ref)]
+              (if (= expr-count 1)
+                instrs1
+                (let [instrs2 (emit-to instrs1 (op-drop) 0)
+                      instrs3 (compile-expr-with-source (vector-get node 3) source env ftable instrs2 data-ref)]
+                  (if (= expr-count 2)
+                    instrs3
+                    (let [instrs4 (emit-to instrs3 (op-drop) 0)
+                          instrs5 (compile-expr-with-source (vector-get node 4) source env ftable instrs4 data-ref)]
+                      (if (= expr-count 3)
+                        instrs5
+                        (let [instrs6 (emit-to instrs5 (op-drop) 0)]
+                          (compile-expr-with-source (vector-get node 5) source env ftable instrs6 data-ref))))))))))
+        (compile-expr-with-ftable node env ftable instrs)))))
 
 (defn compile-defn-with-source [node source ftable data-ref]
   (let [name-hash (vector-get node 1)
@@ -270,7 +293,8 @@
                       (let [instrs2 (compile-expr-with-ftable (vector-get node 4) env ftable instrs1)]
                         (if (or (or (or (or (= bop (op-string-char-at)) (= bop (op-vector-get))) (= bop (op-vector-push)))
                                     (= bop (op-ref-set)))
-                                (= bop (op-map-get)))
+                                (or (= bop (op-map-get))
+                                    (or (= bop (op-map-contains)) (= bop (op-map-remove)))))
                           (emit-to instrs2 bop (+ 1 (map-size env)))
                           (if (= bop (op-map-insert))
                             (let [instrs3 (compile-expr-with-ftable (vector-get node 5) env ftable instrs2)]
@@ -515,7 +539,11 @@
                 (if (> (+ operand 5) current-max) (+ operand 5) current-max)
                 (if (= opcode 63)
                   (if (> (+ operand 5) current-max) (+ operand 5) current-max)
-                  current-max)))))))))
+                  (if (= opcode 65)
+                    (if (> (+ operand 5) current-max) (+ operand 5) current-max)
+                    (if (= opcode 66)
+                      (if (> (+ operand 5) current-max) (+ operand 5) current-max)
+                      current-max)))))))))))
 
 (defn max-local-slot [instrs idx count current-max]
   (if (>= idx count)

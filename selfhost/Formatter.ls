@@ -617,6 +617,35 @@
         body-text (format-expr-with-source (vector-get decl (+ 3 param-count)) indent-level source)]
     (str7 "(defn " name-text " [" params-text "] " body-text ")")))
 
+(defn format-type-decl [decl]
+  (str3 "(type " (symbol-from-hash (vector-get decl 1)) ")"))
+
+(defn format-record-def [decl]
+  (str3 "(type " (symbol-from-hash (vector-get decl 1)) " (record))"))
+
+(defn format-type-alias [decl]
+  (let [name-text (symbol-from-hash (vector-get decl 1))]
+    (str5 "(type-alias " name-text " " name-text ")")))
+
+(defn format-type-constrained [decl]
+  (let [name-text (symbol-from-hash (vector-get decl 1))]
+    (str5 "(type-constrained " name-text " " name-text ")")))
+
+(defn format-trait-decl-with-source [decl indent-level source]
+  (let [name-text (symbol-from-hash (vector-get decl 1))
+        body-count (vector-get decl 2)]
+    (if (= body-count 0)
+      (str3 "(trait (" name-text "))")
+      (let [body-text (format-decl-list-with-source decl 3 body-count indent-level source)]
+        (str5 "(trait (" name-text ") " body-text ")")))))
+
+(defn format-defmacro-decl-with-source [decl indent-level source]
+  (let [name-text (symbol-from-hash (vector-get decl 1))
+        param-count (vector-get decl 2)
+        params-text (format-hash-list decl 3 param-count)
+        body-text (format-expr-with-source (vector-get decl (+ 3 param-count)) indent-level source)]
+    (str7 "(defmacro " name-text " [" params-text "] " body-text ")")))
+
 (defn format-module-decl-with-source [decl indent-level source]
   (let [name-text (symbol-from-hash (vector-get decl 1))
         body-count (vector-get decl 2)]
@@ -637,12 +666,18 @@
 (defn format-decl-with-source [decl indent-level source]
   (let [tag (vector-get decl 0)]
     (if (= tag 20) (format-defn-with-source decl indent-level source)
+    (if (= tag 21) (format-type-decl decl)
+    (if (= tag 22) (format-record-def decl)
+    (if (= tag 23) (format-type-alias decl)
+    (if (= tag 24) (format-type-constrained decl)
     (if (= tag 25) (format-module-decl-with-source decl indent-level source)
     (if (= tag 26) (format-import-decl decl)
+    (if (= tag 27) (format-trait-decl-with-source decl indent-level source)
     (if (= tag 28) (format-impl-decl-with-source decl indent-level source)
     (if (= tag 29) (str3 "(private " (format-decl-with-source (vector-get decl 1) indent-level source) ")")
     (if (= tag 30) (format-computation-builder-decl decl)
-    (format-unsupported-decl tag)))))))))
+    (if (= tag 31) (format-defmacro-decl-with-source decl indent-level source)
+    (format-unsupported-decl tag)))))))))))))))
 
 (defn format-program-item-with-source [item indent-level source]
   (let [tag (vector-get item 0)]
@@ -670,6 +705,21 @@
         params-text (format-hash-list decl 3 param-count)
         body-text (format-expr (vector-get decl (+ 3 param-count)) indent-level)]
     (str7 "(defn " name-text " [" params-text "] " body-text ")")))
+
+(defn format-trait-decl [decl indent-level]
+  (let [name-text (symbol-from-hash (vector-get decl 1))
+        body-count (vector-get decl 2)]
+    (if (= body-count 0)
+      (str3 "(trait (" name-text "))")
+      (let [body-text (format-decl-list decl 3 body-count indent-level)]
+        (str5 "(trait (" name-text ") " body-text ")")))))
+
+(defn format-defmacro-decl [decl indent-level]
+  (let [name-text (symbol-from-hash (vector-get decl 1))
+        param-count (vector-get decl 2)
+        params-text (format-hash-list decl 3 param-count)
+        body-text (format-expr (vector-get decl (+ 3 param-count)) indent-level)]
+    (str7 "(defmacro " name-text " [" params-text "] " body-text ")")))
 
 (defn format-module-decl [decl indent-level]
   (let [name-text (symbol-from-hash (vector-get decl 1))
@@ -700,12 +750,18 @@
 (defn format-decl [decl indent-level]
   (let [tag (vector-get decl 0)]
     (if (= tag 20) (format-defn decl indent-level)
+    (if (= tag 21) (format-type-decl decl)
+    (if (= tag 22) (format-record-def decl)
+    (if (= tag 23) (format-type-alias decl)
+    (if (= tag 24) (format-type-constrained decl)
     (if (= tag 25) (format-module-decl decl indent-level)
     (if (= tag 26) (format-import-decl decl)
+    (if (= tag 27) (format-trait-decl decl indent-level)
     (if (= tag 28) (format-impl-decl decl indent-level)
     (if (= tag 29) (str3 "(private " (format-decl (vector-get decl 1) indent-level) ")")
     (if (= tag 30) (format-computation-builder-decl decl)
-    (format-unsupported-decl tag)))))))))
+    (if (= tag 31) (format-defmacro-decl decl indent-level)
+    (format-unsupported-decl tag)))))))))))))))
 
 (defn format-program-item [item indent-level]
   (let [tag (vector-get item 0)]

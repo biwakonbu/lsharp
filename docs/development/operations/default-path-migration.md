@@ -10,7 +10,7 @@
 
 ## 現状
 
-2026-03-26 時点では **第 1 段 + delegation hook** まで完了している。
+2026-03-27 時点では **第 1 段 + delegation hook + command-surface 明文化** まで完了している。
 
 - `crates/lsharp-driver/src/main.rs` の `LSHARP_PATH` は、external compiler executable またはその配置ディレクトリへ実際に delegation できる。
 - `scripts/ci/default-path-smoke.sh` が、ビルド済み `lsharp` バイナリ単体で `check` / `compile` を実行できることに加え、`LSHARP_PATH` の executable path / directory path delegation と invalid path error を検証する。
@@ -19,32 +19,38 @@
 - `.github/workflows/ci.yml` の `default-path-smoke` は `ci-gate` / `ci-gate-v2` の required job に含まれる。
 - `.github/workflows/ci.yml` の `fresh-clone-smoke` も required job に含まれる。
 - `cargo test -p lsharp-driver --test default_path_delegation` が、`LSHARP_PATH` の executable path / directory path / invalid path error を固定する。
+- `selfhost/Cli.ls` は `init` を除く公開 13 CLI サブコマンド (`parse` / `check` / `compile` / `build` / `test` / `review` / `doc-ack` / `doc-check` / `install` / `repl` / `lsp` / `fmt` / `doc`) すべてに対応する selfhost surface を持つ。ただし **組み込み default path はまだ全行 Rust** であり、cutover PR が入るまで `compatibility-matrix.md` の `Default path` は Rust のまま読む。
 
 この段階では **バイナリ経路の固定**まではできているが、実際の default implementation はまだ主に Rust 版であり、完全な Rust 非依存 default path ではない。
 
 ## 切替順
 
-`docs/development/planning/phase11-implementation-plan.md` の OPS-05 に従い、default path の切替順は次で固定する。全 13 コマンドを対象とする。
+`docs/development/planning/phase11-implementation-plan.md` の OPS-05 に従い、default path の切替順は次で固定する。対象は `init` を除く公開 13 CLI サブコマンドである。
 
 ### コマンド別移行マトリクス
 
-| # | コマンド | 現在の default | 移行先 | Parity テスト | ステータス |
-|---|----------|---------------|--------|--------------|-----------|
-| 1 | `compile` | Rust (`lsharp-wasm`) | L# (`selfhost/Compiler.ls`) | `test_e2e_selfhost_wasm_native_differential` | 🔶 第1段完了 |
-| 2 | `check` | Rust (`lsharp-types`) | L# (`selfhost/TypeInfer.ls`) | `test_check_selfhost_typeinfer_standalone_import_path` | 🔶 第1段完了 |
-| 3 | `parse` | Rust (`lsharp-syntax`) | L# (`selfhost/Parser.ls`) | `test_e2e_selfhost_parser_*` | 🔶 smoke 通過 |
-| 4 | `test` | Rust (`lsharp-driver`) | L# (`selfhost/TestRunner.ls`) | — | ⬜ 未着手 |
-| 5 | `build` | Rust (`lsharp-driver`) | L# (`selfhost/Cli.ls`) | — | ⬜ 未着手 |
-| 6 | `fmt` | Rust (`lsharp-driver`) | L# (`selfhost/Formatter.ls`) | `test_e2e_selfhost_formatter_*` | 🔶 部分実装 |
-| 7 | `lsp` | Rust (`lsharp-lsp`) | L# (`selfhost/LspServer.ls`) | `test_e2e_selfhost_lsp_*` | 🔶 部分実装 |
-| 8 | `docs` | Rust (`lsharp-docs`) | L# (`selfhost/DocTools.ls`) | `test_e2e_selfhost_doctools_*` | 🔶 部分実装 |
-| 9 | `review` | Rust (`lsharp-docs`) | L# (未定) | — | ⬜ 未着手 |
-| 10 | `doc-ack` | Rust (`lsharp-docs`) | L# (未定) | — | ⬜ 未着手 |
-| 11 | `doc-check` | Rust (`lsharp-docs`) | L# (未定) | — | ⬜ 未着手 |
-| 12 | `install` | Rust (`lsharp-driver`) | L# (未定) | — | ⬜ 未着手 |
-| 13 | `repl` | Rust (`lsharp-driver`) | L# (未定) | — | ⬜ 未着手 |
+| # | コマンド | 組み込み default path | selfhost surface の現況 | `LSHARP_PATH` delegation 時 | 次の主要 gate |
+|---|----------|----------------------|-------------------------|-----------------------------|---------------|
+| 1 | `parse` | Rust (`lsharp-syntax`) | `selfhost/Cli.ls` + `selfhost/Parser.ls` に parse text/diagnostics subset あり | 外部 `lsharp parse ...` へ argv 全体を委譲 | AST pretty-print / diagnostics snapshot parity |
+| 2 | `check` | Rust (`lsharp-types`) | `selfhost/Cli.ls` + `selfhost/TypeInfer.ls` に type/diagnostics subset あり | 外部 `lsharp check ...` へ argv 全体を委譲 | type display / diagnostics JSON parity |
+| 3 | `compile` | Rust (`lsharp-wasm`) | `selfhost/Cli.ls` + `selfhost/Compiler.ls` + `selfhost/WasmEmit.ls` に compile surface あり | 外部 `lsharp compile ...` へ argv 全体を委譲 | artifact / `-o` / bootstrap fixed-point parity |
+| 4 | `build` | Rust (`lsharp-driver`) | `selfhost/Cli.ls` に compile alias surface あり | 外部 `lsharp build ...` へ argv 全体を委譲 | project build contract / artifact parity |
+| 5 | `test` | Rust (`lsharp-driver`) | `selfhost/Cli.ls` + `selfhost/TestRunner.ls` に metadata suite subset あり | 外部 `lsharp test ...` へ argv 全体を委譲 | metadata semantics / exit code parity |
+| 6 | `review` | Rust (`lsharp-docs`) | `selfhost/Cli.ls` + `selfhost/DocTools.ls` に deterministic review text surface あり | 外部 `lsharp review ...` へ argv 全体を委譲 | diagnostics schema / severity / exit code parity |
+| 7 | `doc-ack` | Rust (`lsharp-docs`) | `selfhost/Cli.ls` + `selfhost/DocTools.ls` に ack text surface あり | 外部 `lsharp doc-ack ...` へ argv 全体を委譲 | state/update semantics parity |
+| 8 | `doc-check` | Rust (`lsharp-docs`) | `selfhost/Cli.ls` + `selfhost/DocTools.ls` に check text surface あり | 外部 `lsharp doc-check ...` へ argv 全体を委譲 | schema / failure surface parity |
+| 9 | `install` | Rust (`lsharp-driver`) | `selfhost/Cli.ls` に dry-run install plan surface あり | 外部 `lsharp install ...` へ argv 全体を委譲 | package/archive/checksum parity |
+| 10 | `repl` | Rust (`lsharp-driver`) | `selfhost/Cli.ls` に warmup session summary surface あり | 外部 `lsharp repl` へ argv 全体を委譲 | interactive loop / history / runtime stability gate |
+| 11 | `lsp` | Rust (`lsharp-lsp`) | `selfhost/Cli.ls` + `selfhost/LspServer.ls` + `selfhost/JsonRpc.ls` に capability / handler subset あり | 外部 `lsharp lsp` へ argv 全体を委譲 | JSON-RPC transport / snapshot parity / soak gate |
+| 12 | `fmt` | Rust (`lsharp-driver`) | `selfhost/Cli.ls` + `selfhost/Formatter.ls` に canonical text surface あり | 外部 `lsharp fmt ...` へ argv 全体を委譲 | roundtrip / idempotency / CLI-LSP parity |
+| 13 | `doc` | Rust (`lsharp-docs`) | `selfhost/Cli.ls` + `selfhost/DocTools.ls` + `selfhost/HtmlDoc.ls` に doc title/body + HTML subset あり | 外部 `lsharp doc ...` へ argv 全体を委譲 | JSON/HTML snapshot / distribution parity |
 
-凡例: 🔶 = 進行中 / 部分完了、⬜ = 未着手
+### この表の読み方
+
+- **組み込み default path**: `LSHARP_PATH` を設定しない通常起動時に、driver が使う内蔵実装。2026-03-27 時点では 13 行すべて Rust のまま。
+- **selfhost surface**: `selfhost/Cli.ls` から見える L# 側の公開面。`Default path` の切替前でも、実装の存在と narrow parity 証跡はここで追跡する。
+- **`LSHARP_PATH` delegation**: 行ごとの feature flag ではなく **process-entry delegation**。`main.rs` は clap dispatch 前に `LSHARP_PATH` を評価し、設定されていれば受け取った argv 全体を外部 `lsharp` binary へ渡す。
+- したがって、`LSHARP_PATH` は「built-in default を L# に切り替えた」ことを意味しない。現時点では **Rust built-in default を維持したまま、外部 selfhost/native binary を shadow smoke できる hook** と読む。
 
 ### 切替の前提条件
 
@@ -88,6 +94,11 @@
 - 現状: Rust 実装を内蔵した `lsharp` バイナリだが、`LSHARP_PATH` を通じて compiler executable または配置ディレクトリを差し替え可能
 - 移行中: invalid path は明示エラーにしつつ、外部 compiler path へ委譲できる
 - 最終像: `lsharp` が native selfhost toolchain を既定で選び、Rust 経路は fallback ではなく shadow になる
+
+補足:
+
+- delegation は **`compile` だけでなく全 13 CLI サブコマンドに対する process-entry hook** である
+- `default-path-smoke.sh` は `--version` で smoke しているが、`crates/lsharp-driver/tests/default_path_delegation.rs` は `parse dummy.ls` など任意 argv が実際に委譲されることも固定している
 
 ## 完了までに残ること
 
