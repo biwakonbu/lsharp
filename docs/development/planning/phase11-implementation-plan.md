@@ -131,13 +131,13 @@
 ### BOOT-04 True stage1-stage2-stage3 bootstrap
 
 - Goal: proxy bootstrap を本物の 3 段固定点検証へ置換する。
-- Current state: `test_e2e_bootstrap_four_layer_comparison` と `test_e2e_bootstrap_stage_chain_verification` により、stage0(Rust) の決定性と stage1.wasm の実行可能性までは確認できる。**ただし** `test_e2e_bootstrap_stage1_stage2_match` / `test_e2e_bootstrap_fixed_point_stage2_stage3` は依然 proxy 判定で、stage1.wasm が自分で stage2/stage3 を生成する true self-bootstrap は未接続。
+- Current state: `test_e2e_bootstrap_four_layer_comparison` と `test_e2e_bootstrap_stage_chain_verification` により、stage0(Rust) の決定性と stage1.wasm の実行可能性は確認できる。さらに `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_minimal_subset` / `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_extended_do_block` / `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_zero_arg_call_program` / `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_single_param_call_program` / `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_let_local_program` / `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_char_at_helper_program` / `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_length_helper_program` / `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_length_helper_program` / `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_get_helper_program` / `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_new_program` / `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_push_program` / `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_ref_program` / `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_program` / `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_print_program` / `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_read_file_program` と compiler fast tests 群により、stage1.wasm が multi-function・1 引数 call・let local・5 defn loop に加えて memory-only builtin (`string-char-at` / `string-length` / `vector-length` / `vector-get`)、allocation/mutation/state slice (`vector-*` / `ref-*` + `env.__alloc` import)、integer-key `map-new` / `map-insert` / `map-get` / `map-size`、narrow `env.__alloc` + `env.print` import を使う `print`、さらに exported memory へ host mock が String object を書き込む dummy-path `read-file` を含む入力からも stage2 wasm を実生成できる slice まで通った。対応として `selfhost/Compiler.ls` は `do` 中間式の `drop`、全式 loop、arbitrary decl loop、`compile-program-functions` による per-function metadata `[param-count, local-count, ir]`、memory-only builtin opcode、`vector-*` / `ref-*` / `map-*` / `print` / `read-file` subset lowering を持ち、`selfhost/WasmEmit.ls` も function metadata 由来の type/function/code section、0-based local index emit、memory section、`emit-type-section-alloc-main` / `emit-import-section-alloc` / `emit-type-section-alloc-print-main` / `emit-import-section-alloc-print` / `emit-import-section-alloc-print-read`、`emit-export-section-main-memory-index` による narrow import/helper、`memory.copy` を伴う vector growth emission、ref cell emission、fixed-capacity map emission、`print` / `read-file` import emissionを持つ。**ただし** full input set を用いた stage1.wasm -> stage2.wasm -> stage3.wasm の self-feeding fixed point には、actual path string を伴う `read-file` semantics、string literal / data section lowering、alloc-only / alloc+print+read-file を超える一般化された import/memory/helper lowering がまだ必要で、selfhost map 側も `map-contains?` / `map-remove` / string-key hashing (`__fnv1a_hash`) は未対応。
 - Rust source: `docs/development/validation/verification-spec.md`, `crates/lsharp-wasm/tests/e2e.rs`
 - L# target: `crates/lsharp-wasm/tests/e2e.rs`, `.github/workflows/ci.yml`, `ci-artifacts/bootstrap-diff/`
 - Implementation direction: stage0(Rust) -> stage1.wasm -> stage2.wasm -> stage3.wasm を必ず実体生成し、比較層は `raw wasm bytes`, `exported symbol list`, `data section bytes`, `compiler diagnostics` の 4 つに固定する。失敗時 diff は artifact へ保存する。
 - Dependencies: `BOOT-01`, `BOOT-03`, `WASM-03`
 - Acceptance: `test_e2e_bootstrap_stage1_stage2_match`, `test_e2e_bootstrap_fixed_point_stage2_stage3`, `test_e2e_bootstrap_stage1_section_stability`, `test_e2e_bootstrap_stage1_symbol_stability` が実体比較で pass する。
-- Evidence: `crates/lsharp-wasm/tests/e2e.rs`, `ci-artifacts/bootstrap-diff/`
+- Evidence: `crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer.rs`, `crates/lsharp-wasm/tests/e2e/strings_patterns_compiler_integration.rs`, `ci-artifacts/bootstrap-diff/`
 
 ## WS-SYNTAX Frontend syntax parity
 
@@ -437,13 +437,13 @@
 ### WASM-05 Test runner
 
 - Goal: `:example` / `:invariant` から自動テストを生成する。
-- Current state: `TestRunner.ls` が存在せず、docs metadata と test harness が接続されていない。
+- Current state: `selfhost/TestRunner.ls` と `test_e2e_selfhost_test_runner_extracts_supported_metadata_suite`, `test_e2e_selfhost_test_runner_executes_examples_only`, `test_e2e_selfhost_test_runner_executes_invariant_only`, `test_e2e_selfhost_test_runner_executes_supported_metadata_suite` により、`:example` / `:invariant` の抽出、example 実行、invariant materialize までは追加済み。CLI 側も `test_e2e_selfhost_cli_test_source_metadata_pass` / `test_e2e_selfhost_cli_test_source_metadata_fail` で failing example -> `runtime-error` を確認できる。**ただし** 実行対象は算術/比較/if/let/do/トップレベル `defn` 呼び出しの supported subset に限られ、full metadata semantics / multi-file parity は未達。
 - Rust source: `crates/lsharp-wasm/src/test_runner.rs`
 - L# target: `selfhost/TestRunner.ls`
 - Implementation direction: metadata を走査し、example は compile-and-run assertion、invariant は compile-time property check へ変換する。生成 test 名は `test_generated_example_<symbol>` 形式に固定する。
 - Dependencies: `TYPE-05`, `WASM-04`
 - Acceptance: example/invariant 付き宣言から deterministic な generated test suite が得られる。
-- Evidence: `selfhost/TestRunner.ls`, `test_generated_example_*`
+- Evidence: `selfhost/TestRunner.ls`, `test_e2e_selfhost_test_runner_extracts_supported_metadata_suite`, `test_e2e_selfhost_test_runner_executes_examples_only`, `test_e2e_selfhost_test_runner_executes_invariant_only`, `test_e2e_selfhost_test_runner_executes_supported_metadata_suite`, `test_e2e_selfhost_cli_test_source_metadata_pass`, `test_e2e_selfhost_cli_test_source_metadata_fail`
 
 <a id="wasm-06-wasm-golden"></a>
 ### WASM-06 Wasm golden
@@ -511,7 +511,7 @@
 ### NATIVE-05 Stage1-native self-regeneration
 
 - Goal: stage1-native が selfhost compiler を自分で再生成できるようにする。
-- Current state: `selfhost/NativeCodegen.ls` / `selfhost/NativeEmit.ls` / `selfhost/NativeTarget.ls` と `test_e2e_native_self_regeneration_functional_equivalence` / `test_e2e_native_stage_chain_structure` により、native module skeleton と Wasm 基準の structural parity は追加済み。**ただし** stage1-native -> stage2-native -> stage3-native の実バイナリ再生成・実行比較は未達。
+- Current state: `selfhost/NativeCodegen.ls` / `selfhost/NativeEmit.ls` / `selfhost/NativeTarget.ls` と `test_e2e_native_self_regeneration_functional_equivalence` / `test_e2e_native_stage_chain_structure` により、native module skeleton と Wasm 基準の structural parity は追加済み。さらに `test_native_pipeline_complete_chain`, `test_native_codegen_emit_standalone_execution`, `test_native_codegen_real_execution`, `test_native_codegen_emits_full_const_instruction_bytes` で NativeTarget→NativeCodegen→NativeEmit の実行 slice、full-width const bytecode 生成、非空 bytecode 生成までは確認できる。**ただし** stage1-native -> stage2-native -> stage3-native の実バイナリ再生成・実行比較は未達。
 - Rust source: `docs/development/planning/completion-criteria.md`
 - L# target: `scripts/ci/build-native.sh`, `.github/workflows/ci.yml`
 - Implementation direction: `stage1-native` の build entry は `selfhost/Main.ls` compile で固定し、`stage1-native -> stage2-native -> stage3-native` の functional equivalence を gate にする。
@@ -523,7 +523,7 @@
 ### NATIVE-06 Wasm/native differential
 
 - Goal: Wasm と native の観測差分をゼロにする。
-- Current state: differential harness、`tests/differential-allowlist.yaml`、5 観測点 proxy test は追加済み。**ただし** 現状の比較は file structure / diagnostics / Wasm 由来の structural parity が中心で、tier1 native artifact の zero diff と実 native regeneration は未証明。
+- Current state: differential harness、`tests/differential-allowlist.yaml`、5 観測点 proxy test は追加済み。加えて `test_wasm_native_execution_parity_double`, `test_native_codegen_processes_multiple_ir_instructions` などの narrow execution parity slice があり、`NativeCodegen.ls` は 1 命令 3 byte の placeholder ではなく複数 IR 命令を順に full byte 列へ落とせる。**ただし** 現状の比較は file structure / diagnostics / 限定入力での proxy parity が中心で、tier1 native artifact の zero diff と実 native regeneration は未証明。
 - Rust source: `docs/development/validation/verification-spec.md`
 - L# target: `tests/differential-allowlist.yaml`, `.github/workflows/ci.yml`, `scripts/ci/compare-differential.sh`
 - Implementation direction: 7 カテゴリ入力に対し `exit code`, `stdout`, `stderr`, `generated file bytes`, `diagnostics JSON` を比較する。差分は allowlist へ退避できるが、Phase 11 完了前に 0 件へ戻す。
@@ -549,19 +549,19 @@
 ### CLI-02 13 command implementations
 
 - Goal: `parse/check/compile/build/test/review/doc-ack/doc-check/install/repl/lsp/fmt/doc` を L# 実装で提供する。
-- Current state: 13 サブコマンド名、終了コード API、stdout/stderr 分離、help/version smoke は揃っている。**ただし** `selfhost/Cli.ls` の多くの handler は PoC のままで、公開コマンド契約 / default path 切替に必要な実動作は未完。
+- Current state: 13 サブコマンド名、終了コード API、stdout/stderr 分離、help/version smoke は揃っている。さらに `parse` は `decls:N` / `first-decl:<name>` / `first-body:<name>` の deterministic text に加えて `diagnostics:0` / `diagnostics:1,P0001@1:1,first-body:unexpected token )` / `unexpected token ]` 形式の token-aware summary text を返し、`parse-diagnostics-count` は `parse-with-recovery` 経由で recovery 対象の `)` / `]` を 1 件として数えられる。`test` command は `TestRunner` と接続され、supported subset の metadata suite を抽出・実行し、failing example を `runtime-error` で返せる。さらに `run-test-source` / `run-test` は `examples:N` / `invariants:N` / `failures:N` の labeled summary text を返せる。`check` は builtin 型名 text と `diagnostics:0` / `diagnostics:1,T0001@1:1,first-body:if condition must be Bool` / `undefined symbol` summary text を返し、`repl` は `type:Int` / `evals:1` / `input-bytes:17` の warmup session summary を返せ、`check-diagnostics-count` は top-level `defn` の型エラーを数えられる。`compile` / `build` は `wasm-size:<n>` text、`install` は deterministic な dry-run plan text、`lsp` は `sync:full` / `hover:true` / `completion:true` / `definition:true` / `references:true` / `rename:true` / `formatting:true` に加えて `requests:1` / `documents:0` / `source-bytes:0` の shared-state summary text を返し、completion item も text label / insertText を返せる。`fmt` / `review` / `doc` は deterministic な実テキスト surface を返せ、`doc-ack` は `ack:recorded` + title/body、`doc-check` は `status:ok` + title/body を返せる。`review` は count/title/body に加えて `warning` や `L0001@1:1` 形式の code/location text を stdout に出せ、summary body には `first-body:` detail も含められる。`generate-review` 由来の diagnostics も `severity` / `line` / `column` / `code` slot まで持て、unused-let body は binder 名を含められる。**ただし** 実 stdio server、公開コマンド契約 / default path 切替に必要な実動作は未完。
 - Rust source: Rust CLI 実装群
-- L# target: `selfhost/Cli.ls`, `selfhost/Main.ls`, `selfhost/JsonRpc.ls`, `selfhost/Formatter.ls`, `selfhost/Linter.ls`
+- L# target: `selfhost/Cli.ls`, `selfhost/Main.ls`, `selfhost/JsonRpc.ls`, `selfhost/Formatter.ls`, `selfhost/Linter.ls`, `selfhost/TestRunner.ls`
 - Implementation direction: `selfhost/Cli.ls` を新設し、arg parse と subcommand dispatch を一元化する。`Main.ls` は compiler core only にし、CLI entry はここへ移す。
 - Dependencies: `CLI-01`, `BOOT-01`, `LSP-01`, `FMT-01`, `DOC-01`
 - Acceptance: 13 command すべてが help/version/exit code contract を満たし、default path を Rust から切り替えられる。
-- Evidence: `test_snapshot_cli_help_*`, `scripts/smoke_test_readme.sh`
+- Evidence: `test_e2e_selfhost_cli_help_output`, `test_e2e_selfhost_cli_version_output`, `test_e2e_selfhost_test_runner_executes_supported_metadata_suite`, `test_e2e_selfhost_cli_test_source_metadata_pass`, `test_e2e_selfhost_cli_test_source_metadata_fail`, `scripts/smoke_test_readme.sh`
 
 <a id="lsp-01-full-sync-skeleton"></a>
 ### LSP-01 Full-sync skeleton
 
 - Goal: JSON-RPC PoC を full-sync LSP server の骨格へ引き上げる。
-- Current state: [JsonRpc.ls](/Users/biwakonbu/github/lsharp/selfhost/JsonRpc.ls) は整数タグベースの PoC で、JSON schema 互換ではない。
+- Current state: [JsonRpc.ls](/Users/biwakonbu/github/lsharp/selfhost/JsonRpc.ls) は整数タグベースの PoC だが、bootstrap helper としては initialize/didOpen/didChange/shutdown の skeleton response を返せる。initialize result は 7 slot capability vector、shutdown は response-wrapped sentinel まで持ち、さらに initialize/shutdown については deterministic な JSON-RPC response text (`{"jsonrpc":"2.0","id":...,"result":...}`) も生成できる。一方で true JSON schema 互換ではない。
 - Rust source: Rust LSP server, `docs/development/planning/toolchain-parity-spec.md`
 - L# target: `selfhost/JsonRpc.ls`, `selfhost/LspServer.ls`
 - Implementation direction: `JsonRpc.ls` は codec のみに限定し、`LspServer.ls` を新設して session state, full document sync, request dispatch を担当させる。v1 は `TextDocumentSyncKind.Full` に固定する。
@@ -573,37 +573,37 @@
 ### LSP-02 10 method parity
 
 - Goal: 10 LSP method の公開挙動を Rust 版互換にする。
-- Current state: 10 メソッド名、dispatch、helper 群、vector ベースの response stub は揃っている。**ただし** hover/definition/references/completion は hash / 固定 location / keyword vector など mock 値が中心で、JSON-RPC 2.0 / LSP 3.17 schema parity と stateful session は未達。
+- Current state: 10 メソッド名、dispatch、helper 群は揃っている。hover/definition/references/rename/completion は source param がある場合、top-level `defn` に対する source-driven subset (`test_e2e_selfhost_lsp_real_shapes_*`) まで動き、hover は `defn <name>` / `symbol <name>` の text contents、completion は `[label, kind, insertText]` の text item、rename は単一 URI の `WorkspaceEdit` 風 `[uri, edits]` を返せる。`initialize` capability vector も sync/hover/completion/definition に加えて references/rename/formatting まで宣言でき、initialized/shutdown flag も getter で観測できる。formatting も `parse-program` → `format-program` を使う canonical full-document edit まで前進し、shared-state `server-loop-step` / `server-loop-sequence` により multi-request sequence を同一 state で dispatch できる。同一 URI への repeated `didOpen` でも `server-state-doc-count` が増殖しないよう state update を整理した。bootstrap `JsonRpc.ls` 側では initialize/shutdown response の deterministic text も生成できる。**ただし** nested/multi-file 解決、true JSON-RPC 2.0 / LSP 3.17 schema parity、transport、長寿命 server parity は未達。
 - Rust source: Rust LSP 実装, `docs/development/planning/toolchain-parity-spec.md`
 - L# target: `selfhost/LspServer.ls`, `selfhost/Formatter.ls`, `selfhost/Linter.ls`
 - Implementation direction: method 実装順は `initialize`, `shutdown`, `didOpen`, `didChange`, `hover`, `goto_definition`, `references`, `rename`, `formatting`, `completion` に固定する。レスポンス shape は JSON snapshot を正本にする。
 - Dependencies: `LSP-01`, `FMT-01`, `LINT-01`, `TYPE-07`
 - Acceptance: 10 method が JSON schema 互換レスポンスを返し、VSCode extension から spawn できる。
-- Evidence: `test_snapshot_lsp_hover`, `test_snapshot_lsp_definition`, `test_snapshot_lsp_references`, `test_snapshot_lsp_rename`, `test_snapshot_lsp_completion`
+- Evidence: `test_e2e_selfhost_lsp_10_methods`, `test_e2e_selfhost_lsp_real_shapes_hover_uses_source_symbol`, `test_e2e_selfhost_lsp_real_shapes_definition_and_references_use_source`, `test_e2e_selfhost_lsp_real_shapes_rename_returns_workspace_edit`, `test_e2e_selfhost_lsp_real_shapes_completion_uses_prefix_and_symbols`, `test_e2e_selfhost_lsp_real_shapes_formatting_returns_document_edit`
 
 <a id="lsp-03-diagnostic-ordering-and-json-snapshots"></a>
 ### LSP-03 Diagnostic ordering and JSON snapshots
 
 - Goal: diagnostics の順序と schema を安定化する。
-- Current state: `sort-diagnostics` / `dedup-diagnostics` helper と関連 E2E は追加済み。**ただし** 診断 JSON snapshot の正本や transport 経由の end-to-end ordering gate は未固定で、現在の検証は vector ベース helper の structural check が中心。
+- Current state: `sort-diagnostics` / `dedup-diagnostics` helper と関連 E2E に加え、`render-diagnostic-json` / `render-diagnostics-json` で diagnostics を deterministic JSON text へ落とせるようになった。sort/dedup 後の固定順 JSON array まで targeted E2E で確認済みで、`tests/snapshots/lsp/diagnostics/` に representative snapshot files も配置した。**ただし** transport 経由の end-to-end ordering gate や snapshot coverage の拡張は未固定で、まだ stdio transport parity には届いていない。
 - Rust source: Rust LSP diagnostics path
 - L# target: `selfhost/LspServer.ls`, `tests/snapshots/lsp/`
 - Implementation direction: diagnostics は `source(parse/type/lint)`, `severity`, `line`, `column` の順で sort し、同一 span は最も severity の高いものだけを残す。
 - Dependencies: `SYNTAX-03`, `TYPE-07`, `LINT-01`
 - Acceptance: 同一ファイルを再パースしても diagnostics JSON diff が空になる。
-- Evidence: `tests/snapshots/lsp/diagnostics/*.json`, `test_snapshot_lsp_diagnostics_*`
+- Evidence: `selfhost/LspServer.ls`, `test_e2e_selfhost_lsp_runtime_sort_diagnostics`, `test_e2e_selfhost_lsp_diagnostic_dedup`, `test_e2e_selfhost_lsp_render_diagnostic_json`, `test_e2e_selfhost_lsp_render_sorted_deduped_diagnostics_json`, `test_e2e_selfhost_lsp_render_diagnostic_json_snapshot`, `test_e2e_selfhost_lsp_render_sorted_deduped_diagnostics_json_snapshot`, `tests/snapshots/lsp/diagnostics/*.json`
 
 <a id="fmt-01-formatter-roundtrip"></a>
 ### FMT-01 Formatter roundtrip
 
 - Goal: formatter を AST 全体対応 + roundtrip/idempotency gate へ引き上げる。
-- Current state: [Formatter.ls](/Users/biwakonbu/github/lsharp/selfhost/Formatter.ls) は AST tag coverage と fingerprint ベース roundtrip/idempotency test までは追加済み。**ただし** public API は formatted text ではなく整数 fingerprint を返しており、CLI/LSP が要求する実テキスト formatter parity には未達。
+- Current state: [Formatter.ls](/Users/biwakonbu/github/lsharp/selfhost/Formatter.ls) は roundtrip/idempotency test に加え、`format-program` 自体が `defn/int/bool/unit/var/apply/if/let/fn/do/match/recordlit/fieldaccess/recordupdate/computation` を canonical な実テキストへ整形し、decl 側でも `defn/module/impl/computation-builder` を deterministic text へ整形できる。`module body` / `impl` / `computation-builder` も parser→formatter 経路で canonical text を維持できる。未対応ノードは fallback へ退避できる。CLI `run-fmt-source` / `run-fmt` はこの canonical text を stdout へ返し、LSP formatting も `parse-program` → `format-program` 経由で `TextEdit.newText` に canonical text を積める。**ただし** full formatted text parity と AST 全体 coverage、JSON/LSP snapshot parity には未達。
 - Rust source: Rust formatter path, `docs/development/planning/toolchain-parity-spec.md`
 - L# target: `selfhost/Formatter.ls`
 - Implementation direction: formatter の public API は `format-program ast -> text` に固定し、parser と対で `parse(format(parse(src))) == parse(src)` を gate にする。短形式/長形式/let 整列ルールは spec に従う。
 - Dependencies: `SYNTAX-02`, `SYNTAX-06`
 - Acceptance: AST 全 node coverage, roundtrip, idempotency が CI gate に入る。
-- Evidence: `test_snapshot_formatter_*`, `test_roundtrip_formatter_*`
+- Evidence: `test_e2e_selfhost_formatter_roundtrip_v2`, `test_e2e_selfhost_formatter_format_expr_lit_int`, `test_e2e_selfhost_formatter_format_expr_apply`, `test_e2e_selfhost_formatter_format_expr_let`, `test_e2e_selfhost_formatter_format_expr_if`, `test_e2e_selfhost_formatter_format_expr_lambda`, `test_e2e_selfhost_formatter_format_expr_do`, `test_e2e_selfhost_formatter_format_expr_match`, `test_e2e_selfhost_formatter_format_expr_recordlit`, `test_e2e_selfhost_formatter_format_expr_fieldaccess`, `test_e2e_selfhost_formatter_format_expr_recordupdate`, `test_e2e_selfhost_formatter_format_expr_computation`, `test_e2e_selfhost_formatter_format_decl_defn`, `test_e2e_selfhost_formatter_format_decl_module_with_body`, `test_e2e_selfhost_formatter_format_decl_impl`, `test_e2e_selfhost_formatter_format_decl_computation_builder`, `test_e2e_selfhost_formatter_format_program_recordupdate_expr`, `test_e2e_selfhost_formatter_format_program_computation_expr`, `test_e2e_selfhost_formatter_format_program_module_decl`, `test_e2e_selfhost_formatter_format_program_impl_decl`, `test_e2e_selfhost_formatter_format_program_computation_builder_decl`
 
 <a id="lint-01-rule-ids-and-clilsp-parity"></a>
 ### LINT-01 Rule IDs and CLI/LSP parity
@@ -621,13 +621,13 @@
 ### DOC-01 Schemas and snapshots
 
 - Goal: knowledge/review/doc output の schema を固定する。
-- Current state: `docs/schemas/` と `selfhost/DocTools.ls` の helper 群、deterministic/no-timestamp test は追加済み。**ただし** 出力は vector/count と placeholder HTML が中心で、配布 schema / HTML parity を満たす full document payload は未完成。
+- Current state: `docs/schemas/` と `selfhost/DocTools.ls` の helper 群、deterministic/no-timestamp test は追加済み。DocTools は function/type entry の決定的 sort に加えて hash から再構成した name text を保持した `[title, body, functions, types]` / `[module-id, functions, types]` slice を返し、body summary も `functions:N,types:M,first-fn:...,first-type:...` まで返せる。module decl がある場合、`generate` / `generate-doc-output` の title も `module-<name>` へ寄せられる。`generate-review` も unused-let / empty-do に対する deterministic diagnostics vector `[rule-id, title, body, severity, line, column, code]` を返せ、unused-let body は binder 名を含められる。CLI `run-doc-source` / `run-doc` はこの name-aware な title/body を、CLI `run-doc-ack` / `run-doc-check` は status line 付き title/body を、CLI `run-review-source` / `run-review` は count/title/body に加えて severity と `code@line:column`、さらに first diagnostic body を stdout へ返せる。HtmlDoc/HtmlTemplate/HtmlLayout はその name-aware entry を使う実 HTML section/layout を返せる。**ただし** 診断の fidelity は限定的で、配布 schema / HTML parity を満たす full document payload は未完成。
 - Rust source: Rust docs/review path, `docs/development/planning/toolchain-parity-spec.md`
-- L# target: `docs/schemas/knowledge.schema.json`, `docs/schemas/review.schema.json`, `docs/schemas/doc-output.schema.json`
+- L# target: `docs/schemas/knowledge.schema.json`, `docs/schemas/review.schema.json`, `docs/schemas/doc-output.schema.json`, `selfhost/DocTools.ls`, `selfhost/HtmlDoc.ls`, `selfhost/HtmlTemplate.ls`, `selfhost/HtmlLayout.ls`
 - Implementation direction: docs 系は structured JSON schema を先に固定し、CLI/LSP/extension はその schema だけを見る。snapshot test は JSON canonicalization 後に比較する。
 - Dependencies: `META-01`
 - Acceptance: 3 schema が配布物に同梱され、knowledge/review/doc 出力が snapshot gate を持つ。
-- Evidence: `docs/schemas/*.json`, `test_snapshot_docs_*`
+- Evidence: `docs/schemas/*.json`, `test_e2e_selfhost_doc_deterministic_html`, `test_e2e_selfhost_doctools_extract_public_functions_runtime`, `test_e2e_selfhost_doctools_extract_type_definitions_runtime`, `test_e2e_selfhost_doctools_extract_module_public_functions_runtime`, `test_e2e_selfhost_doctools_extract_module_type_definitions_runtime`, `test_e2e_selfhost_doctools_generate_structured_doc_payload`, `test_e2e_selfhost_doctools_module_title_uses_name`, `test_e2e_selfhost_doctools_schema_knowledge`, `test_e2e_selfhost_doctools_schema_doc_output`, `test_e2e_selfhost_doctools_schema_doc_output_module_title_name`, `test_e2e_selfhost_doctools_generate_html_basic`, `test_e2e_selfhost_doctools_generate_html_idempotent`, `test_e2e_selfhost_doctools_schema_review`, `test_e2e_selfhost_doctools_schema_review_empty_do`, `test_e2e_selfhost_htmldoc_render_function_signature`, `test_e2e_selfhost_htmldoc_render_type_definition`, `test_e2e_selfhost_htmldoc_render_module_page_structure`
 
 <a id="doc-02-trailer-and-deterministic-html"></a>
 ### DOC-02 Trailer and deterministic HTML
@@ -707,7 +707,7 @@
 ### GC-05 LSP soak and REPL GC
 
 - Goal: LSP と REPL の長寿命挙動を GC 前提で検証する。
-- Current state: compile+run loop と REPL eval loop の soak test は追加済み。**ただし** 実 LSP server の `open -> edit -> diagnostics -> hover -> completion` を同一セッションで回す stateful soak や、単一 REPL プロセス長寿命 GC を測る gate ではなく、alloc/collect proxy workload が中心。
+- Current state: compile+run loop と REPL eval loop の soak testに加え、`test_e2e_gc_repl_stateful_single_session_metrics`, `test_e2e_gc_repl_session_batch_metrics`, `test_e2e_gc_repl_stateful_long_session_metrics`, `test_e2e_gc_lsp_stateful_session_sequence_metrics`, `test_e2e_gc_lsp_stateful_repeated_sequence_metrics` で単一 Wasm セッション上の REPL 継続評価メトリクス、REPL batch helper、200-step single-session REPL soak、`didOpen -> hover -> didChange -> completion -> formatting` の stateful / repeated sequence は固定済み。さらに `test_e2e_selfhost_lsp_runtime_server_loop_stateful_sequence` で `server-loop-step` の shared-state dispatch も固定し、same-URI repeated `didOpen` でも doc-count が増殖しないことを確認した。**ただし** 実 stdio transport server / collector 有効の長寿命 GC gate ではなく、依然として harness 内 proxy workload が中心。
 - Rust source: `docs/development/planning/runtime-stability-spec.md`
 - L# target: LSP server, REPL implementation, test harness
 - Implementation direction: LSP は `open -> edit -> diagnostics -> hover -> completion` を 1000 サイクル、REPL は single-session 500 eval を固定 workload にする。両方とも同じ root API を使用する。
@@ -719,13 +719,13 @@
 ### GC-06 Leak detection and metrics
 
 - Goal: leak suspect 検知と metrics 出力を CI gate にする。
-- Current state: metrics API / leak suspect test / CI gate spec 文書は追加済み。**ただし** 収集は structural proxy に留まり、S14-S16 を機械判定する artifact / blocking CI と GC fixed-point proof は未完成。
+- Current state: metrics API / leak suspect test / CI gate spec 文書に加えて、`test_e2e_alloc_metrics_ci_artifact_payload` と `scripts/ci/collect-gc-metrics.sh` により `ci-artifacts/gc-metrics/{sha}/summary.json` を生成し、required CI job `gc-metrics-artifact` から `gc-metrics-{sha}` artifact を保存できる。**ただし** payload は bump allocator 前提の proxy metrics で、S14-S16 を本当に閉じる collector 有効 fixed-point / monotonic-trend 判定は未完成。
 - Rust source: `docs/development/planning/runtime-stability-spec.md`
 - L# target: runtime metrics collector, CI jobs
 - Implementation direction: CI では `peak RSS` と `full GC count` だけを fail threshold に使い、手元実行では live object count と pause histogram まで出す。 leak suspect は tag ごと単調増加を検出して stderr 出力する。
 - Dependencies: `GC-03`, `GC-04`, `GC-05`
 - Acceptance: runtime metrics が CI artifact 化され、S14-S16 を機械判定できる。
-- Evidence: `benchmark-results/*.json`, `test_runtime_metrics_*`
+- Evidence: `scripts/ci/collect-gc-metrics.sh`, `.github/workflows/ci.yml`, `ci-artifacts/gc-metrics/`, `test_e2e_alloc_metrics_ci_artifact_payload`
 
 ## WS-OPS CI / release / removal
 
@@ -733,7 +733,7 @@
 ### OPS-01 CI gate-v2 job graph
 
 - Goal: CI の主経路を L# ベース job graph へ切り替える。
-- Current state: bootstrap 強化は一部済みだが、job graph 全体は未再編。
+- Current state: `ci-gate` / `ci-gate-v2` に `default-path-smoke` と `fresh-clone-smoke` を required job として組み込み、compile/docs/default-path/clean-checkout の blocking graph までは導入済み。**ただし** branch protection 側の required check 移行証跡と native/release job graph への再編は未完。
 - Rust source: `docs/development/operations/ci-gate-v2-job-graph.md`, `.github/workflows/ci.yml`
 - L# target: `.github/workflows/ci.yml`
 - Implementation direction: job graph は `bootstrap-wasm -> bootstrap-native -> golden-parity -> release-smoke -> packaging`, `docs` 独立、`ci-gate-v2` 集約に固定する。required checks もこの名前に合わせる。
@@ -745,7 +745,7 @@
 ### OPS-02 Artifact policy
 
 - Goal: bootstrap/native/differential/release の artifact 保存規則を固定する。
-- Current state: artifact 種別と retention policy が未統一。
+- Current state: `ci-gate-v2-results` (30 日) と `shadow-oracle-results` (14 日) は workflow に入ったが、bootstrap/native/release artifact 名と retention はまだ統一されていない。
 - Rust source: `docs/development/operations/artifact-policy.md`
 - L# target: `.github/workflows/ci.yml`
 - Implementation direction: artifact は `bootstrap-stages`, `bootstrap-diff`, `native-binaries`, `differential-report`, `release-artifacts`, `benchmark-results` に固定し、PR/main/tag ごとの retention day を spec どおりに設定する。
@@ -781,7 +781,7 @@
 ### OPS-05 Default path migration
 
 - Goal: public command の default path を Rust から L# へ切り替える。
-- Current state: compatibility matrix の `Default path` はほぼ Rust のまま。
+- Current state: `default-path-smoke.sh` でビルド済み `lsharp` バイナリ経路は blocking 化され、さらに `fresh-clone-smoke` で clean checkout 由来の同経路も継続検証できる。加えて `crates/lsharp-driver/src/main.rs` の `LSHARP_PATH` が external compiler executable / 配置ディレクトリへの delegation hook を持ち、`crates/lsharp-driver/tests/default_path_delegation.rs` で executable path / directory path / invalid path error を固定した。**ただし** compatibility matrix の `Default path` 自体はほぼ Rust のまま。
 - Rust source: `docs/development/planning/compatibility-matrix.md`, `docs/development/operations/default-path-migration.md`
 - L# target: `docs/development/planning/compatibility-matrix.md`, CLI/LSP entrypoints
 - Implementation direction: 切替順は `compile -> check -> parse -> test -> build -> fmt -> lsp -> docs` に固定し、各切替前に parity/golden/smoke を通す。切替後の Rust path は shadow へ下げる。
@@ -793,7 +793,7 @@
 ### OPS-06 Release playbook
 
 - Goal: native release の build/sign/checksum/changelog を自動化する。
-- Current state: release playbook は仕様だけで、実 workflow と scripts が未接続。
+- Current state: `scripts/release-playbook.sh` は release binary を作り、`compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用して smoke まで回せる。**ただし** tag push 起点の release workflow、署名、checksum / changelog 自動生成は未接続。
 - Rust source: `docs/development/operations/release-playbook.md`
 - L# target: release workflow, `scripts/generate-changelog.sh`, `scripts/ci/verify-signature.sh`
 - Implementation direction: stable/nightly の 2 チャネルを固定し、release は `version bump -> CI -> artifact -> checksum -> signing -> smoke -> tag -> GitHub Release` の順に自動化する。
@@ -805,7 +805,7 @@
 ### OPS-07 Fresh clone without Rust
 
 - Goal: Rust 未導入環境から bootstrap と native release を再現する。
-- Current state: fresh clone without Rust の自動検証がない。
+- Current state: `scripts/ci/test-fresh-clone.sh` + `fresh-clone-smoke` により clean checkout 相当コピーからの再ビルド / smoke は blocking 化された。**ただし** Rust 未導入環境での `fetch-stage0 -> bootstrap -> native-release -> test -> release-bundle` を通す true no-Rust job は未実装。
 - Rust source: `docs/development/operations/fresh-clone-spec.md`
 - L# target: `make fetch-stage0`, `make bootstrap`, `make native-release`, `make test`, `make release-bundle`
 - Implementation direction: `test-fresh-clone` job を追加し、Rust toolchain を含まない container/runner で `fetch-stage0 -> bootstrap -> native-release -> test -> release-bundle` を通す。

@@ -51,6 +51,39 @@
         id)
       error-code)))
 
+(defn render-int-vector-json-loop [values idx len out]
+  (if (>= idx len)
+    out
+    (let [elem-text (int-to-string (vector-get values idx))
+          next-out (if (= idx 0)
+                     (string-concat out elem-text)
+                     (string-concat out (string-concat "," elem-text)))]
+      (render-int-vector-json-loop values (+ idx 1) len next-out))))
+
+(defn render-int-vector-json [values]
+  (string-concat "["
+    (string-concat
+      (render-int-vector-json-loop values 0 (vector-length values) "")
+      "]")))
+
+(defn render-rpc-int-response [id result]
+  (string-concat
+    "{\"jsonrpc\":\"2.0\",\"id\":"
+    (string-concat
+      (int-to-string id)
+      (string-concat
+        ",\"result\":"
+        (string-concat (int-to-string result) "}")))))
+
+(defn render-rpc-int-vector-response [id result]
+  (string-concat
+    "{\"jsonrpc\":\"2.0\",\"id\":"
+    (string-concat
+      (int-to-string id)
+      (string-concat
+        ",\"result\":"
+        (string-concat (render-int-vector-json result) "}")))))
+
 ;; メッセージアクセサ
 (defn rpc-type [msg]
   (vector-get msg 0))
@@ -82,14 +115,30 @@
 ;; 追加 LSP メソッド定数
 (defn method-publish-diagnostics [] 30)
 
-;; サーバー capabilities: [sync, hover, completion, goto-def, formatting]
+;; サーバー capabilities: [sync, hover, completion, goto-def, references, rename, formatting]
 (defn make-server-capabilities []
-  (let [v (vector-new 5)]
-    (vector-push (vector-push (vector-push (vector-push (vector-push v 1) 1) 1) 1) 1)))
+  (let [v (vector-new 7)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push v 1) 1) 1) 1) 1) 1) 1)))
 
-;; handle-initialize: 初期化リクエスト → capabilities レスポンス
-(defn handle-initialize [request-id]
-  (make-rpc-response request-id 1))
+;; jsonrpc-handle-initialize: 初期化リクエスト → capabilities レスポンス
+(defn jsonrpc-handle-initialize [request-id]
+  (make-rpc-response request-id (make-server-capabilities)))
+
+;; jsonrpc-handle-shutdown: shutdown リクエスト → sentinel result を返す
+(defn jsonrpc-handle-shutdown [request-id]
+  (make-rpc-response request-id 0))
+
+(defn render-initialize-response [request-id]
+  (render-rpc-int-vector-response request-id (make-server-capabilities)))
+
+(defn render-shutdown-response [request-id]
+  (render-rpc-int-response request-id 0))
 
 ;; handle-did-open: ドキュメントオープン通知 → ソース長を返す
 (defn handle-did-open [source-length]
@@ -99,8 +148,8 @@
 (defn handle-did-change [source-length]
   source-length)
 
-;; handle-hover: 型ホバー → 型タグをレスポンスで返す
-(defn handle-hover [request-id type-tag]
+;; jsonrpc-handle-hover: 型ホバー → 型タグをレスポンスで返す
+(defn jsonrpc-handle-hover [request-id type-tag]
   (make-rpc-response request-id type-tag))
 
 ;; handle-goto-def: 定義ジャンプ → [line, col] をレスポンスで返す
@@ -140,20 +189,28 @@
       ;; server capabilities
       (let [caps (make-server-capabilities)]
         (do
-          (print (vector-length caps))   ;; 5
+          (print (vector-length caps))   ;; 7
           (print (vector-get caps 0))))  ;; 1 (text-document-sync)
 
-      ;; handle-initialize
-      (let [init-resp (handle-initialize 1)]
+      ;; jsonrpc-handle-initialize
+      (let [init-resp (jsonrpc-handle-initialize 1)]
         (do
           (print (rpc-type init-resp))   ;; 1 (response)
-          (print (rpc-id init-resp))))   ;; 1
+          (print (rpc-id init-resp))
+          (print (vector-length (vector-get init-resp 2)))))   ;; 1 / capabilities len
+
+      ;; jsonrpc-handle-shutdown
+      (let [shutdown-resp (jsonrpc-handle-shutdown 9)]
+        (do
+          (print (rpc-type shutdown-resp))  ;; 1 (response)
+          (print (rpc-id shutdown-resp))
+          (print (vector-get shutdown-resp 2))))  ;; 0 (result)
 
       ;; handle-did-open
       (print (handle-did-open 100))      ;; 100
 
-      ;; handle-hover
-      (let [hover-resp (handle-hover 2 1)]
+      ;; jsonrpc-handle-hover
+      (let [hover-resp (jsonrpc-handle-hover 2 1)]
         (do
           (print (rpc-type hover-resp))  ;; 1 (response)
           (print (rpc-id hover-resp))))  ;; 2
@@ -173,5 +230,11 @@
       ;; 追加メソッド定数
       (print (method-formatting))         ;; 23
       (print (method-publish-diagnostics)) ;; 30
+
+      ;; deterministic JSON-RPC text
+      (print-string (render-initialize-response 1))
+      (print-string "\n")
+      (print-string (render-shutdown-response 9))
+      (print-string "\n")
 
       0)))

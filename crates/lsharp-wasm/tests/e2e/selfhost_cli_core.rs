@@ -107,14 +107,15 @@ fn test_e2e_selfhost_cli_parse_source_core() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
-        lines.len() >= 4,
+        lines.len() >= 5,
         "cli parse core 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "1", "program decl-count は 1 であるべき");
-    assert_eq!(lines[1], "20", "先頭 decl は defn tag=20 であるべき");
-    assert_eq!(lines[2], "1", "defn body は lit-int tag=1 であるべき");
-    assert_eq!(lines[3], "0", "run-parse-source の終了コードは success であるべき");
+    assert_eq!(lines[0], "decls:1", "program decl-count text は 1 であるべき");
+    assert_eq!(lines[1], "first-decl:defn", "先頭 decl は defn text であるべき");
+    assert_eq!(lines[2], "first-body:int", "defn body は int text であるべき");
+    assert_eq!(lines[3], "diagnostics:0", "parse diagnostics summary は 0 件であるべき");
+    assert_eq!(lines[4], "0", "run-parse-source の終了コードは success であるべき");
 }
 
 /// TEST-CLI-02-E: selfhost/Cli.ls の check core helper が source を型推論できること
@@ -138,8 +139,8 @@ fn test_e2e_selfhost_cli_check_source_core() {
         "cli check core 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "1", "check 結果の型タグは Con=1 であるべき");
-    assert_eq!(lines[1], "100", "check 結果の型名は Int=100 であるべき");
+    assert_eq!(lines[0], "Int", "check 結果は型名 Int を返すべき");
+    assert_eq!(lines[1], "diagnostics:0", "check diagnostics summary は 0 件であるべき");
     assert_eq!(lines[2], "0", "run-check-source の終了コードは success であるべき");
 }
 
@@ -166,14 +167,15 @@ fn test_e2e_selfhost_cli_parse_file_handler() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
-        lines.len() >= 4,
+        lines.len() >= 5,
         "cli parse file handler 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "1", "program decl-count は 1 であるべき");
-    assert_eq!(lines[1], "20", "先頭 decl は defn tag=20 であるべき");
-    assert_eq!(lines[2], "1", "defn body は lit-int tag=1 であるべき");
-    assert_eq!(lines[3], "0", "run-parse の終了コードは success であるべき");
+    assert_eq!(lines[0], "decls:1", "program decl-count text は 1 であるべき");
+    assert_eq!(lines[1], "first-decl:defn", "先頭 decl は defn text であるべき");
+    assert_eq!(lines[2], "first-body:int", "defn body は int text であるべき");
+    assert_eq!(lines[3], "diagnostics:0", "parse diagnostics summary は 0 件であるべき");
+    assert_eq!(lines[4], "0", "run-parse の終了コードは success であるべき");
 }
 
 /// TEST-CLI-02-G: selfhost/Cli.ls の run-check が file-path から source を読めること
@@ -203,9 +205,125 @@ fn test_e2e_selfhost_cli_check_file_handler() {
         "cli check file handler 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "1", "check 結果の型タグは Con=1 であるべき");
-    assert_eq!(lines[1], "100", "check 結果の型名は Int=100 であるべき");
+    assert_eq!(lines[0], "Int", "check 結果は型名 Int を返すべき");
+    assert_eq!(lines[1], "diagnostics:0", "check diagnostics summary は 0 件であるべき");
     assert_eq!(lines[2], "0", "run-check の終了コードは success であるべき");
+}
+
+/// TEST-CLI-02-G2: run-parse-source が recovery 入力でも diagnostics summary を返すこと
+#[test]
+fn test_e2e_selfhost_cli_parse_source_recovery_summary() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-parse-source ")" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "cli parse recovery 出力が不足: {:?}",
+        lines
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| *line == "diagnostics:1,P0001@1:1,first-body:unexpected token )"),
+        "parse recovery summary は code/location を含むべき: {:?}",
+        lines
+    );
+    assert_eq!(lines.last(), Some(&"0"), "run-parse-source は recovery summary 後も success を返すべき");
+}
+
+/// TEST-CLI-02-G2b: run-parse-source が `]` recovery でも token 別 diagnostics body を返すこと
+#[test]
+fn test_e2e_selfhost_cli_parse_source_recovery_unexpected_bracket_summary() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-parse-source "]" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "cli parse recovery `]` 出力が不足: {:?}",
+        lines
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| *line == "diagnostics:1,P0001@1:1,first-body:unexpected token ]"),
+        "parse recovery summary は unexpected token ] を含むべき: {:?}",
+        lines
+    );
+    assert_eq!(lines.last(), Some(&"0"), "run-parse-source は recovery summary 後も success を返すべき");
+}
+
+/// TEST-CLI-02-G3: run-check-source が型エラー入力でも diagnostics summary を返すこと
+#[test]
+fn test_e2e_selfhost_cli_check_source_type_error_summary() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-check-source "(defn main [] (if 42 1 0))" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "cli check type-error 出力が不足: {:?}",
+        lines
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| *line == "diagnostics:1,T0001@1:1,first-body:if condition must be Bool"),
+        "check type-error summary は code/location を含むべき: {:?}",
+        lines
+    );
+    assert_eq!(lines.last(), Some(&"0"), "run-check-source は type-error summary 後も success を返すべき");
+}
+
+/// TEST-CLI-02-G3b: run-check-source が未定義シンボルでも code 別 diagnostics body を返すこと
+#[test]
+fn test_e2e_selfhost_cli_check_source_undefined_symbol_summary() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-check-source "(defn main [] missing)" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "cli check undefined-symbol 出力が不足: {:?}",
+        lines
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|line| *line == "diagnostics:1,T0001@1:1,first-body:undefined symbol"),
+        "check undefined-symbol summary は code 別 body を含むべき: {:?}",
+        lines
+    );
+    assert_eq!(lines.last(), Some(&"0"), "run-check-source は diagnostics summary 後も success を返すべき");
 }
 
 /// TEST-CLI-02-H: selfhost/Cli.ls の file-path handler は missing file を compile error で返す
@@ -285,9 +403,9 @@ fn test_e2e_selfhost_cli_fmt_source_core() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(lines.len(), 2, "run-fmt-source は 1 つの fmt 出力と success code を返すべき");
-    assert_ne!(
-        lines[0], "0",
-        "run-fmt-source の先頭出力は旧 fingerprint=0 ではなく、現状は Cli.ls の print 経由の opaque handle になる"
+    assert_eq!(
+        lines[0], "(defn a [] 42)",
+        "run-fmt-source は format-program の canonical text を stdout へ返すべき"
     );
     assert_eq!(lines[1], "0", "run-fmt-source は success=0 を返すべき");
 }
@@ -315,9 +433,9 @@ fn test_e2e_selfhost_cli_fmt_file_handler() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(lines.len(), 2, "run-fmt は 1 つの fmt 出力と success code を返すべき");
-    assert_ne!(
-        lines[0], "0",
-        "run-fmt の先頭出力は旧 fingerprint=0 ではなく、現状は Cli.ls の print 経由の opaque handle になる"
+    assert_eq!(
+        lines[0], "(defn a [] 42)",
+        "run-fmt は file-path 経由でも canonical text を stdout へ返すべき"
     );
     assert_eq!(lines[1], "0", "run-fmt は success=0 を返すべき");
 }
@@ -337,7 +455,14 @@ fn test_e2e_selfhost_cli_compile_source_core() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(lines.len() >= 2, "run-compile-source 出力が不足: {:?}", lines);
-    let wasm_size: i64 = lines[0].parse().expect("wasm size は整数であるべき");
+    assert!(
+        lines[0].starts_with("wasm-size:"),
+        "run-compile-source は wasm-size:<n> を返すべき: {:?}",
+        lines
+    );
+    let wasm_size: i64 = lines[0]["wasm-size:".len()..]
+        .parse()
+        .expect("wasm size は整数であるべき");
     assert!(wasm_size > 8, "wasm size は header 超であるべき: {}", wasm_size);
     assert_eq!(lines[1], "0", "run-compile-source の終了コードは success であるべき");
 }
@@ -365,7 +490,14 @@ fn test_e2e_selfhost_cli_compile_file_handler() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(lines.len() >= 2, "run-compile 出力が不足: {:?}", lines);
-    let wasm_size: i64 = lines[0].parse().expect("wasm size は整数であるべき");
+    assert!(
+        lines[0].starts_with("wasm-size:"),
+        "run-compile は wasm-size:<n> を返すべき: {:?}",
+        lines
+    );
+    let wasm_size: i64 = lines[0]["wasm-size:".len()..]
+        .parse()
+        .expect("wasm size は整数であるべき");
     assert!(wasm_size > 8, "wasm size は header 超であるべき: {}", wasm_size);
     assert_eq!(lines[1], "0", "run-compile の終了コードは success であるべき");
 }
@@ -393,12 +525,19 @@ fn test_e2e_selfhost_cli_build_file_handler() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(lines.len() >= 2, "run-build 出力が不足: {:?}", lines);
-    let wasm_size: i64 = lines[0].parse().expect("wasm size は整数であるべき");
+    assert!(
+        lines[0].starts_with("wasm-size:"),
+        "run-build は wasm-size:<n> を返すべき: {:?}",
+        lines
+    );
+    let wasm_size: i64 = lines[0]["wasm-size:".len()..]
+        .parse()
+        .expect("wasm size は整数であるべき");
     assert!(wasm_size > 8, "wasm size は header 超であるべき: {}", wasm_size);
     assert_eq!(lines[1], "0", "run-build の終了コードは success であるべき");
 }
 
-/// TEST-CLI-02-M3: selfhost/Cli.ls の run-install が package 名を受け取れること
+/// TEST-CLI-02-M3: selfhost/Cli.ls の run-install が install plan text を返せること
 #[test]
 fn test_e2e_selfhost_cli_install_package_core() {
     let harness = r#"
@@ -414,8 +553,8 @@ fn test_e2e_selfhost_cli_install_package_core() {
 
     assert_eq!(
         lines,
-        vec!["4", "0"],
-        "run-install は package 名長=4 と success=0 を返すべき"
+        vec!["package:core", "status:planned", "0"],
+        "run-install は package install plan text と success=0 を返すべき"
     );
 }
 
@@ -438,7 +577,7 @@ fn test_e2e_selfhost_cli_install_empty_package() {
     );
 }
 
-/// TEST-CLI-02-M5: selfhost/Cli.ls の run-repl が warmup type を返せること
+/// TEST-CLI-02-M5: selfhost/Cli.ls の run-repl が warmup session summary を返せること
 #[test]
 fn test_e2e_selfhost_cli_repl_core() {
     let harness = r#"
@@ -454,12 +593,12 @@ fn test_e2e_selfhost_cli_repl_core() {
 
     assert_eq!(
         lines,
-        vec!["100", "0"],
-        "run-repl は warmup type Int=100 と success=0 を返すべき"
+        vec!["type:Int", "evals:1", "input-bytes:17", "0"],
+        "run-repl は warmup session summary と success=0 を返すべき"
     );
 }
 
-/// TEST-CLI-02-M6: selfhost/Cli.ls の run-lsp が capability count を返せること
+/// TEST-CLI-02-M6: selfhost/Cli.ls の run-lsp が capability summary text を返せること
 #[test]
 fn test_e2e_selfhost_cli_lsp_core() {
     let harness = r#"
@@ -475,8 +614,20 @@ fn test_e2e_selfhost_cli_lsp_core() {
 
     assert_eq!(
         lines,
-        vec!["4", "0"],
-        "run-lsp は capability count=4 と success=0 を返すべき"
+        vec![
+            "sync:full",
+            "hover:true",
+            "completion:true",
+            "definition:true",
+            "references:true",
+            "rename:true",
+            "formatting:true",
+            "requests:1",
+            "documents:0",
+            "source-bytes:0",
+            "0",
+        ],
+        "run-lsp は capability + shared-state summary text と success=0 を返すべき"
     );
 }
 
@@ -496,8 +647,8 @@ fn test_e2e_selfhost_cli_test_source_core() {
 
     assert_eq!(
         lines,
-        vec!["0", "0", "0"],
-        "run-test-source は example=0 invariant=0 success=0 を返すべき"
+        vec!["examples:0", "invariants:0", "failures:0", "0"],
+        "run-test-source は labeled summary と success=0 を返すべき"
     );
 }
 
@@ -525,8 +676,8 @@ fn test_e2e_selfhost_cli_test_file_handler() {
 
     assert_eq!(
         lines,
-        vec!["0", "0", "0"],
-        "run-test は example=0 invariant=0 success=0 を返すべき"
+        vec!["examples:0", "invariants:0", "failures:0", "0"],
+        "run-test は labeled summary と success=0 を返すべき"
     );
 }
 
@@ -659,8 +810,8 @@ fn test_e2e_selfhost_cli_test_source_metadata_pass() {
 
     assert_eq!(
         lines,
-        vec!["2", "1", "0"],
-        "run-test-source は passing metadata suite に example=2 invariant=1 success=0 を返すべき"
+        vec!["examples:2", "invariants:1", "failures:0", "0"],
+        "run-test-source は passing metadata suite に labeled summary と success=0 を返すべき"
     );
 }
 
@@ -681,8 +832,8 @@ fn test_e2e_selfhost_cli_test_source_metadata_fail() {
 
     assert_eq!(
         lines,
-        vec!["1", "0", "2"],
-        "run-test-source は failing example に example=1 invariant=0 runtime-error=2 を返すべき"
+        vec!["examples:1", "invariants:0", "failures:1", "2"],
+        "run-test-source は failing example に labeled summary と runtime-error=2 を返すべき"
     );
 }
 
@@ -716,12 +867,12 @@ fn test_e2e_selfhost_cli_test_file_handler_metadata_pass() {
 
     assert_eq!(
         lines,
-        vec!["2", "1", "0"],
-        "run-test は file-path 経由でも passing metadata suite を実行できるべき"
+        vec!["examples:2", "invariants:1", "failures:0", "0"],
+        "run-test は file-path 経由でも labeled summary を返せるべき"
     );
 }
 
-/// TEST-CLI-02-P: selfhost/Cli.ls の run-review-source が review count を返せること
+/// TEST-CLI-02-P: selfhost/Cli.ls の run-review-source が review title/body を返せること
 #[test]
 fn test_e2e_selfhost_cli_review_source_core() {
     let harness = r#"
@@ -737,12 +888,12 @@ fn test_e2e_selfhost_cli_review_source_core() {
 
     assert_eq!(
         lines,
-        vec!["1", "0"],
-        "run-review-source は review count=1 と success=0 を返すべき"
+        vec!["1", "unused-let", "diagnostics:1,first-body:let binding x is not used", "warning", "L0001@1:1", "0"],
+        "run-review-source は review count/title/body/severity/code-location と success=0 を返すべき"
     );
 }
 
-/// TEST-CLI-02-Q: selfhost/Cli.ls の run-review が file-path から source を読めること
+/// TEST-CLI-02-Q: selfhost/Cli.ls の run-review が file-path から review title/body を返せること
 #[test]
 fn test_e2e_selfhost_cli_review_file_handler() {
     let dir = std::env::temp_dir().join(format!(
@@ -766,8 +917,36 @@ fn test_e2e_selfhost_cli_review_file_handler() {
 
     assert_eq!(
         lines,
-        vec!["1", "0"],
-        "run-review は review count=1 と success=0 を返すべき"
+        vec!["1", "unused-let", "diagnostics:1,first-body:let binding x is not used", "warning", "L0001@1:1", "0"],
+        "run-review は review count/title/body/severity/code-location と success=0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-Q2: selfhost/Cli.ls の run-review-source が empty-do rule も返せること
+#[test]
+fn test_e2e_selfhost_cli_review_source_empty_do() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-review-source "(defn main [] (do))" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "1",
+            "empty-do",
+            "diagnostics:1,first-body:do block has no expressions",
+            "warning",
+            "L0002@1:1",
+            "0",
+        ],
+        "run-review-source は empty-do rule でも review summary/severity/code-location を返すべき"
     );
 }
 
@@ -787,8 +966,8 @@ fn test_e2e_selfhost_cli_doc_source_core() {
 
     assert_eq!(
         lines,
-        vec!["4", "0"],
-        "run-doc-source は doc vector length=4 と success=0 を返すべき"
+        vec!["module-global", "functions:1,types:0,first-fn:main", "0"],
+        "run-doc-source は deterministic な title/body と success=0 を返すべき"
     );
 }
 
@@ -816,8 +995,8 @@ fn test_e2e_selfhost_cli_doc_file_handler() {
 
     assert_eq!(
         lines,
-        vec!["4", "0"],
-        "run-doc は doc vector length=4 と success=0 を返すべき"
+        vec!["module-global", "functions:1,types:0,first-fn:main", "0"],
+        "run-doc は file-path 経由でも deterministic な title/body と success=0 を返すべき"
     );
 }
 
@@ -845,8 +1024,8 @@ fn test_e2e_selfhost_cli_doc_ack_file_handler() {
 
     assert_eq!(
         lines,
-        vec!["4", "0"],
-        "run-doc-ack は doc summary size=4 と success=0 を返すべき"
+        vec!["ack:recorded", "module-global", "functions:1,types:0,first-fn:main", "0"],
+        "run-doc-ack は ack status と title/body と success=0 を返すべき"
     );
 }
 
@@ -874,8 +1053,8 @@ fn test_e2e_selfhost_cli_doc_check_file_handler() {
 
     assert_eq!(
         lines,
-        vec!["4", "0"],
-        "run-doc-check は doc summary size=4 と success=0 を返すべき"
+        vec!["status:ok", "module-global", "functions:1,types:0,first-fn:main", "0"],
+        "run-doc-check は status と title/body と success=0 を返すべき"
     );
 }
 

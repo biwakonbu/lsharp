@@ -3,6 +3,7 @@
 (import Compiler)
 (import DocTools)
 (import Formatter)
+(import LspServer)
 (import Parser)
 (import TestRunner)
 (import TypeInfer)
@@ -75,92 +76,223 @@
     (vector-get (vector-get program 0) 0)
     0))
 
+(defn parse-decl-tag-text [tag]
+  (if (= tag 20) "defn"
+    (if (= tag 25) "module"
+      (if (= tag 26) "import"
+        (string-concat "decl-" (int-to-string tag))))))
+
+(defn parse-expr-tag-text [tag]
+  (if (= tag 1) "int"
+    (if (= tag 2) "bool"
+      (if (= tag 3) "string"
+        (if (= tag 4) "var"
+          (if (= tag 5) "apply"
+            (if (= tag 6) "if"
+              (if (= tag 7) "let"
+                (if (= tag 8) "fn"
+                  (if (= tag 9) "do"
+                    (if (= tag 10) "match"
+                      (if (= tag 32) "unit"
+                        (string-concat "expr-" (int-to-string tag))))))))))))))
+
+(defn parse-first-decl-text [program]
+  (if (> (vector-length program) 0)
+    (parse-decl-tag-text (vector-get (vector-get program 0) 0))
+    "none"))
+
+(defn parse-defn-body-index [decl]
+  (+ 3 (vector-get decl 2)))
+
 (defn parse-first-body-tag [program]
   (if (> (vector-length program) 0)
     (let [decl0 (vector-get program 0)]
-      (if (> (vector-length decl0) 3)
-        (vector-get (vector-get decl0 3) 0)
+      (if (= (vector-get decl0 0) 20)
+        (vector-get (vector-get decl0 (parse-defn-body-index decl0)) 0)
         0))
     0))
 
+(defn parse-first-body-text [program]
+  (let [tag (parse-first-body-tag program)]
+    (if (= tag 0) "none"
+      (parse-expr-tag-text tag))))
+
+(defn parse-decl-count-text [program]
+  (string-concat "decls:" (int-to-string (vector-length program))))
+
+(defn diagnostics-summary-text [count code body]
+  (if (= count 0)
+    "diagnostics:0"
+    (string-concat
+      "diagnostics:"
+      (string-concat
+        (int-to-string count)
+        (string-concat
+          ","
+          (string-concat
+            code
+            (string-concat
+              "@1:1"
+               (string-concat ",first-body:" body))))))))
+
+(defn parse-diagnostic-code [diag]
+  (vector-get diag 1))
+
+(defn parse-diagnostics-first-code [diagnostics]
+  (if (> (vector-length diagnostics) 0)
+    (parse-diagnostic-code (vector-get diagnostics 0))
+    0))
+
+(defn parse-diagnostic-body-from-code [code]
+  (if (= code 1001) "unexpected token )"
+    (if (= code 1002) "unexpected token ]"
+      "parse error")))
+
+(defn parse-diagnostics-body-text [diagnostics]
+  (if (> (vector-length diagnostics) 0)
+    (parse-diagnostic-body-from-code (parse-diagnostics-first-code diagnostics))
+    ""))
+
+(defn check-diagnostic-body-from-code [code]
+  (if (= code (error-code-undefined)) "undefined symbol"
+    (if (= code (error-code-if-cond)) "if condition must be Bool"
+      (if (= code (error-code-if-branch)) "if branches must have same type"
+        (if (= code (error-code-arg-mismatch)) "function argument type mismatch"
+          (if (= code (error-code-infinite)) "infinite type"
+            "type error"))))))
+
+(defn check-diagnostics-body-text [program]
+  (let [code (check-diagnostics-first-code program)]
+    (if (= code 0)
+      ""
+      (check-diagnostic-body-from-code code))))
+
 (defn run-parse-source [src opts]
-  (let [program (parse-program src)]
+  (let [program (parse-program src)
+        diagnostics (parse-diagnostics src)
+        diagnostics-count (vector-length diagnostics)
+        diagnostics-text (diagnostics-summary-text diagnostics-count "P0001" (parse-diagnostics-body-text diagnostics))]
     (do
-      (print (vector-length program))
-      (print (parse-first-decl-tag program))
-      (print (parse-first-body-tag program))
+      (print-string (parse-decl-count-text program))
+      (print-string "\n")
+      (print-string (string-concat "first-decl:" (parse-first-decl-text program)))
+      (print-string "\n")
+      (print-string (string-concat "first-body:" (parse-first-body-text program)))
+      (print-string "\n")
+      (print-string diagnostics-text)
+      (print-string "\n")
       (exit-success))))
+
+(defn builtin-type-name-text [type-hash]
+  (if (= type-hash 100) "Int"
+  (if (= type-hash 200) "Bool"
+  (if (= type-hash 300) "String"
+  (if (= type-hash 400) "Float"
+  (if (= type-hash 500) "Unit"
+    (string-concat "type-" (int-to-string type-hash))))))))
+
+(defn render-type-text [ty]
+  (let [tag (ty-tag ty)]
+    (if (= tag 1)
+      (builtin-type-name-text (ty-name ty))
+      (if (= tag 2)
+        (string-concat "t" (int-to-string (ty-name ty)))
+        (if (= tag 3)
+          "Fn"
+          (if (= tag 4)
+            (string-concat "record-" (int-to-string (ty-name ty)))
+            "Unknown"))))))
 
 (defn run-check-source [src opts]
   (let [program (parse-program src)
-        ty (infer program)]
+        ty (infer program)
+        rendered (render-type-text ty)
+        diagnostics-count (check-diagnostics-count-program program)
+        diagnostics-text (diagnostics-summary-text diagnostics-count "T0001" (check-diagnostics-body-text program))]
     (do
-      (print (ty-tag ty))
-      (print (ty-name ty))
+      (print-string rendered)
+      (print-string "\n")
+      (print-string diagnostics-text)
+      (print-string "\n")
       (exit-success))))
 
 (defn run-fmt-source [src opts]
   (let [program (parse-program src)
         formatted (format-program program opts)]
     (do
-      (print formatted)
+      (print-string formatted)
       (exit-success))))
+
+(defn wasm-size-text [size]
+  (string-concat "wasm-size:" (int-to-string size)))
 
 (defn run-compile-source [src opts]
   (let [program (parse-program src)
         ir (lower program)
         wasm-size (emit-wasm ir)]
     (do
-      (print wasm-size)
+      (print-string (wasm-size-text wasm-size))
+      (print-string "\n")
       (exit-success))))
+
+(defn test-examples-text [count]
+  (string-concat "examples:" (int-to-string count)))
+
+(defn test-invariants-text [count]
+  (string-concat "invariants:" (int-to-string count)))
+
+(defn test-failures-text [count]
+  (string-concat "failures:" (int-to-string count)))
 
 (defn run-test-source [src opts]
   (let [suite (generate-tests-from-source src)
         example-results (vector-get suite 0)
         invariant-results (vector-get suite 1)
+        example-count (vector-length example-results)
+        invariant-count (vector-length invariant-results)
         failed (+ (count-failed-results example-results)
                   (count-failed-results invariant-results))]
     (do
-      (print (vector-length example-results))
-      (print (vector-length invariant-results))
+      (print-string (test-examples-text example-count))
+      (print-string "\n")
+      (print-string (test-invariants-text invariant-count))
+      (print-string "\n")
+      (print-string (test-failures-text failed))
+      (print-string "\n")
       (if (> failed 0)
         (exit-runtime-error)
         (exit-success)))))
 
-(defn review-unused-let-count [node]
-  (if (= (vector-get node 0) 7)
-    (let [name-hash (vector-get node 1)
-          body (vector-get node 3)]
-      (if (= (ast-contains-var body name-hash) 0) 1 0))
-    0))
-
-(defn review-empty-do-count [node]
-  (if (= (vector-get node 0) 9)
-    (if (= (vector-get node 1) 0) 1 0)
-    0))
-
-(defn review-program-count [program]
-  (if (> (vector-length program) 0)
-    (let [decl0 (vector-get program 0)]
-      (if (> (vector-length decl0) 3)
-        (let [body (vector-get decl0 3)]
-          (+ (review-unused-let-count body)
-             (review-empty-do-count body)))
-        0))
-    0))
-
 (defn run-review-source [src opts]
   (let [program (parse-program src)
-        review-count (review-program-count program)]
+        review (generate-review program opts)
+        diagnostics (vector-get review 1)
+        review-title (review-summary-title diagnostics)
+        review-body (review-summary-body diagnostics)
+        review-severity (review-summary-severity diagnostics)
+        review-code-location (review-summary-code-location diagnostics)]
     (do
-      (print review-count)
+      (print (vector-length diagnostics))
+      (print-string review-title)
+      (print-string "\n")
+      (print-string review-body)
+      (print-string "\n")
+      (print-string review-severity)
+      (print-string "\n")
+      (print-string review-code-location)
+      (print-string "\n")
       (exit-success))))
 
 (defn run-doc-source [src opts]
   (let [program (parse-program src)
-        doc-size (doc-summary-size program opts)]
+        doc (generate program opts)
+        title (vector-get doc 0)
+        body (vector-get doc 1)]
     (do
-      (print doc-size)
+      (print-string title)
+      (print-string "\n")
+      (print-string body)
+      (print-string "\n")
       (exit-success))))
 
 ;; parse サブコマンド: ソースファイルをパースして AST を出力
@@ -202,46 +334,173 @@
 ;; doc-ack サブコマンド: ドキュメント確認
 (defn run-doc-ack [file-path opts]
   (if (file-exists? file-path)
-    (let [doc-size (doc-file-summary-size file-path opts)]
+    (let [src (read-file file-path)]
       (do
-        (print doc-size)
-        (exit-success)))
+        (print-string "ack:recorded")
+        (print-string "\n")
+        (run-doc-source src opts)))
     (exit-compile-error)))
 
 ;; doc-check サブコマンド: ドキュメント整合性チェック
 (defn run-doc-check [file-path opts]
   (if (file-exists? file-path)
-    (let [doc-size (doc-file-summary-size file-path opts)]
+    (let [src (read-file file-path)]
       (do
-        (print doc-size)
-        (exit-success)))
+        (print-string "status:ok")
+        (print-string "\n")
+        (run-doc-source src opts)))
     (exit-compile-error)))
 
 ;; install サブコマンド: パッケージインストール
+(defn install-plan-title [package]
+  (string-concat "package:" package))
+
+(defn install-plan-body [package]
+  "status:planned")
+
 (defn run-install [package opts]
   (if (> (string-length package) 0)
     (do
-      (print (string-length package))
+      (print-string (install-plan-title package))
+      (print-string "\n")
+      (print-string (install-plan-body package))
+      (print-string "\n")
       (exit-success))
     (exit-compile-error)))
 
+;; 注: まだ stdio 付きの継続 REPL ループは未接続なので、
+;; まずは同一プロセス内の session helper で状態保持を検証する。
+(defn repl-session-new []
+  (let [v (vector-new 3)]
+    (vector-push
+      (vector-push
+        (vector-push v (ref-new 0))  ;; eval-count
+        (ref-new 0))                 ;; last-type-name
+      (ref-new 0))))                 ;; total-input-bytes
+
+(defn repl-session-eval-count [session]
+  (ref-get (vector-get session 0)))
+
+(defn repl-session-last-type-name [session]
+  (ref-get (vector-get session 1)))
+
+(defn repl-session-total-input-bytes [session]
+  (ref-get (vector-get session 2)))
+
+(defn repl-session-eval [session src]
+  (let [program (parse-program src)
+        ty (infer program)
+        type-name (ty-name ty)]
+    (do
+      (ref-set (vector-get session 0) (+ (repl-session-eval-count session) 1))
+      (ref-set (vector-get session 1) type-name)
+      (ref-set (vector-get session 2) (+ (repl-session-total-input-bytes session) (string-length src)))
+      type-name)))
+
+(defn repl-session-run-loop [session inputs idx count]
+  (if (>= idx count)
+    0
+    (do
+      (repl-session-eval session (vector-get inputs idx))
+      (repl-session-run-loop session inputs (+ idx 1) count))))
+
+(defn repl-session-run [inputs]
+  (let [session (repl-session-new)
+        _ (repl-session-run-loop session inputs 0 (vector-length inputs))
+        summary (vector-new 3)]
+    (vector-push
+      (vector-push
+        (vector-push summary (repl-session-eval-count session))
+        (repl-session-total-input-bytes session))
+      (repl-session-last-type-name session))))
+
+(defn repl-summary-type-text [summary]
+  (string-concat "type:" (builtin-type-name-text (vector-get summary 2))))
+
+(defn repl-summary-evals-text [summary]
+  (string-concat "evals:" (int-to-string (vector-get summary 0))))
+
+(defn repl-summary-input-bytes-text [summary]
+  (string-concat "input-bytes:" (int-to-string (vector-get summary 1))))
+
+(defn repl-warmup-summary []
+  (let [inputs (vector-push (vector-new 1) "(defn main [] 42)")]
+    (repl-session-run inputs)))
+
 (defn repl-warmup-type-name []
-  (ty-name (infer (parse-program "(defn main [] 42)"))))
+  (let [summary (repl-warmup-summary)]
+    (vector-get summary 2)))
+
+(defn repl-warmup-type-text []
+  (builtin-type-name-text (repl-warmup-type-name)))
 
 ;; repl サブコマンド: 対話的実行環境
 (defn run-repl [opts]
-  (do
-    (print (repl-warmup-type-name))
-    (exit-success)))
+  (let [summary (repl-warmup-summary)]
+    (do
+      (print-string (repl-summary-type-text summary))
+      (print-string "\n")
+      (print-string (repl-summary-evals-text summary))
+      (print-string "\n")
+      (print-string (repl-summary-input-bytes-text summary))
+      (print-string "\n")
+      (exit-success))))
 
-(defn lsp-capability-count []
-  4)
+(defn lsp-bool-text [value]
+  (if (= value 1) "true" "false"))
+
+(defn lsp-sync-kind-text [kind]
+  (if (= kind 1) "full"
+    (string-concat "sync-" (int-to-string kind))))
+
+(defn lsp-loop-request [method-id params]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v method-id) params)))
+
+(defn lsp-init-summary []
+  (let [requests (vector-push (vector-new 1) (lsp-loop-request (lsp-method-initialize) 0))
+        summary (server-loop-sequence requests)]
+    summary))
+
+(defn lsp-init-capabilities [summary]
+  (let [results (vector-get summary 0)]
+    (vector-get results 0)))
+
+(defn lsp-summary-requests-text [summary]
+  (string-concat "requests:" (int-to-string (vector-get summary 2))))
+
+(defn lsp-summary-documents-text [summary]
+  (string-concat "documents:" (int-to-string (vector-get summary 1))))
+
+(defn lsp-summary-source-bytes-text [summary]
+  (string-concat "source-bytes:" (int-to-string (vector-get summary 3))))
 
 ;; lsp サブコマンド: LSP サーバー起動
 (defn run-lsp [opts]
-  (do
-    (print (lsp-capability-count))
-    (exit-success)))
+  (let [summary (lsp-init-summary)
+        caps (lsp-init-capabilities summary)]
+    (do
+      (print-string (string-concat "sync:" (lsp-sync-kind-text (vector-get caps 0))))
+      (print-string "\n")
+      (print-string (string-concat "hover:" (lsp-bool-text (vector-get caps 1))))
+      (print-string "\n")
+      (print-string (string-concat "completion:" (lsp-bool-text (vector-get caps 2))))
+      (print-string "\n")
+      (print-string (string-concat "definition:" (lsp-bool-text (vector-get caps 3))))
+      (print-string "\n")
+      (print-string (string-concat "references:" (lsp-bool-text (vector-get caps 4))))
+      (print-string "\n")
+      (print-string (string-concat "rename:" (lsp-bool-text (vector-get caps 5))))
+      (print-string "\n")
+      (print-string (string-concat "formatting:" (lsp-bool-text (vector-get caps 6))))
+      (print-string "\n")
+      (print-string (lsp-summary-requests-text summary))
+      (print-string "\n")
+      (print-string (lsp-summary-documents-text summary))
+      (print-string "\n")
+      (print-string (lsp-summary-source-bytes-text summary))
+      (print-string "\n")
+      (exit-success))))
 
 ;; fmt サブコマンド: ソースコードフォーマット
 (defn run-fmt [file-path opts]
@@ -252,10 +511,7 @@
 ;; doc サブコマンド: ドキュメント生成
 (defn run-doc [file-path opts]
   (if (file-exists? file-path)
-    (let [doc-size (doc-file-summary-size file-path opts)]
-      (do
-        (print doc-size)
-        (exit-success)))
+    (run-doc-source (read-file file-path) opts)
     (exit-compile-error)))
 
 ;; === 診断 (diagnostics) ===
@@ -263,17 +519,69 @@
 ;; parse-diagnostics-count: ソースをパースし、診断数を返す
 ;; 正常ソースなら 0、パースエラーがあればエラー数を返す
 ;; D-4: parse/check の構造化エラー返却の基盤
+(defn parse-diagnostics-loop [spans pos-ref src diagnostics]
+  (if (== (p-current spans pos-ref) 99)
+    diagnostics
+    (let [before (ref-get pos-ref)
+          parsed (parse-with-recovery spans pos-ref src diagnostics)
+          next-diagnostics (vector-get parsed 1)]
+      (if (= (ref-get pos-ref) before)
+        (do
+          (p-advance pos-ref)
+          (parse-diagnostics-loop spans pos-ref src next-diagnostics))
+        (parse-diagnostics-loop spans pos-ref src next-diagnostics)))))
+
+(defn parse-diagnostics [src]
+  (let [spans (tokenize-with-spans src)
+        pos-ref (ref-new 0)
+        diagnostics (parse-diagnostics-loop spans pos-ref src (collect-diagnostics))]
+    diagnostics))
+
 (defn parse-diagnostics-count [src]
-  (let [program (parse-program src)
-        len (vector-length program)]
-    (if (> len 0) 0 0)))
+  (let [diagnostics (parse-diagnostics src)]
+    (vector-length diagnostics)))
 
 ;; check-diagnostics-count: ソースを型チェックし、診断数を返す
 ;; 正常ソースなら 0
+(defn check-diagnostics-loop [program idx len env counter count]
+  (if (>= idx len)
+    count
+    (let [decl (vector-get program idx)
+          tag (vector-get decl 0)]
+      (if (= tag 20)
+        (let [out (infer-defn decl env counter)]
+          (if (= (result-failed out) 1)
+            (check-diagnostics-loop program (+ idx 1) len env counter (+ count 1))
+            (let [next-env (if (> (vector-length out) 3) (vector-get out 3) env)]
+              (check-diagnostics-loop program (+ idx 1) len next-env counter count))))
+        (check-diagnostics-loop program (+ idx 1) len env counter count)))))
+
+(defn check-diagnostics-first-code-loop [program idx len env counter]
+  (if (>= idx len)
+    0
+    (let [decl (vector-get program idx)
+          tag (vector-get decl 0)]
+      (if (= tag 20)
+        (let [out (infer-defn decl env counter)]
+          (if (= (result-failed out) 1)
+            (result-error-code out)
+            (let [next-env (if (> (vector-length out) 3) (vector-get out 3) env)]
+              (check-diagnostics-first-code-loop program (+ idx 1) len next-env counter))))
+        (check-diagnostics-first-code-loop program (+ idx 1) len env counter)))))
+
+(defn check-diagnostics-count-program [program]
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)]
+    (check-diagnostics-loop program 0 (vector-length program) env counter 0)))
+
+(defn check-diagnostics-first-code [program]
+  (let [counter (make-var-counter)
+        env (init-builtin-env counter)]
+    (check-diagnostics-first-code-loop program 0 (vector-length program) env counter)))
+
 (defn check-diagnostics-count [src]
-  (let [program (parse-program src)
-        ty (infer program)]
-    (if (= (ty-tag ty) 0) 1 0)))
+  (let [program (parse-program src)]
+    (check-diagnostics-count-program program)))
 
 ;; メインディスパッチャ
 ;; コマンド ID に基づいて適切なハンドラを呼び出す

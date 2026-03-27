@@ -10,7 +10,9 @@ lint ──────────────┤
 format ────────────┤
 bootstrap ─────────┤──→ ci-gate ──→ ci-gate-v2
 audit-docs ────────┤
-default-path-smoke ┘
+default-path-smoke ─┤
+fresh-clone-smoke ──┤
+gc-metrics-artifact ─┘
 shadow-oracle ─────────→ ci-gate-v2 (non-blocking)
 ```
 
@@ -18,9 +20,11 @@ shadow-oracle ─────────→ ci-gate-v2 (non-blocking)
 
 - `bootstrap` は `test` 完了後に開始する（`needs: [test]`）
 - `default-path-smoke` は `test` 完了後に開始する（`needs: [test]`）
+- `fresh-clone-smoke` は `test` 完了後に開始する（`needs: [test]`）
+- `gc-metrics-artifact` は `test` 完了後に開始し、targeted GC metrics JSON を回収する（`needs: [test]`）
 - `shadow-oracle` は `test` 完了後に開始する（`needs: [test]`、`continue-on-error: true`）
-- `ci-gate` は上記 6 ジョブの全成功を要求する
-- `ci-gate-v2` は `ci-gate` の 6 ジョブ + `shadow-oracle` を集約する
+- `ci-gate` は上記 8 ジョブの全成功を要求する
+- `ci-gate-v2` は `ci-gate` の 8 ジョブ + `shadow-oracle` を集約する
 
 ## 必須ジョブ (ci-gate)
 
@@ -32,12 +36,14 @@ shadow-oracle ─────────→ ci-gate-v2 (non-blocking)
 | 4 | **bootstrap** | `bash scripts/ci/compile-phase11-inputs.sh` | selfhost 入力セットのコンパイル |
 | 5 | **audit-docs** | `bash scripts/audit_docs.sh` | ドキュメント整合性チェック |
 | 6 | **default-path-smoke** | `bash scripts/ci/default-path-smoke.sh` | `lsharp` バイナリ経路検証 |
+| 7 | **fresh-clone-smoke** | `bash scripts/ci/test-fresh-clone.sh` | clean checkout 相当での再ビルド / smoke |
+| 8 | **gc-metrics-artifact** | `bash scripts/ci/collect-gc-metrics.sh` | runtime stability 用の GC metrics JSON を生成 |
 
 ### ci-gate の判定ロジック
 
 ```yaml
 if: always()
-# 6 ジョブすべてが success でなければ exit 1
+# 8 ジョブすべてが success でなければ exit 1
 ```
 
 ## オプショナルジョブ (ci-gate-v2)
@@ -48,7 +54,8 @@ if: always()
 
 ### ci-gate-v2 の判定ロジック
 
-1. 必須 6 ジョブのいずれかが失敗 → **exit 1**
+1. 必須 7 ジョブのいずれかが失敗 → **exit 1**
+1. 必須 8 ジョブのいずれかが失敗 → **exit 1**
 2. `shadow-oracle` が失敗 → **WARNING ログのみ**（非ブロッキング）
 3. 全ジョブ成功 → **pass**
 
@@ -57,11 +64,11 @@ if: always()
 | ブランチ | 必須ジョブ | 説明 |
 |----------|-----------|------|
 | `main` | `ci-gate-v2` | shadow-oracle を含む全検証 |
-| PRs | `ci-gate` | 必須 6 ジョブの成功 |
+| PRs | `ci-gate` | 必須 8 ジョブの成功 |
 
 ## アーティファクト
 
-`ci-gate-v2` はジョブ結果サマリーを `ci-gate-v2-results` として保存する（`retention-days: 30`）。
+`ci-gate-v2` はジョブ結果サマリーを `ci-gate-v2-results` として保存する（`retention-days: 30`）。`gc-metrics-artifact` は `gc-metrics-{sha}` として `ci-artifacts/gc-metrics/{commit_sha}/summary.json` を保存する。
 
 ## 同時実行制御
 

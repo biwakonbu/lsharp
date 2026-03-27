@@ -38,9 +38,13 @@ fn test_e2e_selfhost_doctools_generate_html_basic() {
       (print (if (string-eq (vector-get html 1) "module-global") 1 0))
       (print (if (> (string-length (vector-get html 2)) 0) 1 0))
       (print (vector-length functions))
-      (print (vector-get fn0 1))
+      (print-string (vector-get fn0 1))
+      (print-string "\n")
+      (print (vector-get fn0 2))
       (print (vector-length types))
-      (print (if (string-eq (vector-get type0 1) "type") 1 0))
+      (print-string (vector-get type0 1))
+      (print-string "\n")
+      (print (if (string-eq (vector-get type0 2) "type") 1 0))
       0)))
 "#;
 
@@ -48,7 +52,7 @@ fn test_e2e_selfhost_doctools_generate_html_basic() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines, vec!["5", "1", "1", "1", "1", "2", "1", "1"]);
+    assert_eq!(lines, vec!["5", "1", "1", "1", "1", "add", "2", "1", "Num", "1"]);
 }
 
 /// D-3: DocTools.ls の generate-html が 2 回実行しても同一 payload を返すこと
@@ -72,8 +76,10 @@ fn test_e2e_selfhost_doctools_generate_html_idempotent() {
       (print (if (string-eq (vector-get html1 2) (vector-get html2 2)) 1 0))
       (print (if (= (vector-length functions1) (vector-length functions2)) 1 0))
       (print (if (= (vector-get fn1 0) (vector-get fn2 0)) 1 0))
-      (print (if (= (vector-get fn1 1) (vector-get fn2 1)) 1 0))
+      (print (if (string-eq (vector-get fn1 1) (vector-get fn2 1)) 1 0))
+      (print (if (= (vector-get fn1 2) (vector-get fn2 2)) 1 0))
       (print (if (string-eq (vector-get type1 1) (vector-get type2 1)) 1 0))
+      (print (if (string-eq (vector-get type1 2) (vector-get type2 2)) 1 0))
       0)))
 "#;
 
@@ -81,7 +87,7 @@ fn test_e2e_selfhost_doctools_generate_html_idempotent() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines, vec!["1", "1", "1", "1", "1", "1"]);
+    assert_eq!(lines, vec!["1", "1", "1", "1", "1", "1", "1", "1"]);
 }
 
 /// DOC-01: generate が title/body/function/type payload を返すこと
@@ -96,7 +102,7 @@ fn test_e2e_selfhost_doctools_generate_structured_doc_payload() {
     (do
       (print (vector-length doc))
       (print (if (string-eq (vector-get doc 0) "module-global") 1 0))
-      (print (if (> (string-length (vector-get doc 1)) 0) 1 0))
+      (print (if (string-eq (vector-get doc 1) "functions:1,types:1,first-fn:main,first-type:Doc") 1 0))
       (print (vector-length functions))
       (print (vector-length types))
       0)))
@@ -107,6 +113,25 @@ fn test_e2e_selfhost_doctools_generate_structured_doc_payload() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(lines, vec!["4", "1", "1", "1", "1"]);
+}
+
+/// DOC-01: module decl がある場合は title に module 名を反映すること
+#[test]
+fn test_e2e_selfhost_doctools_module_title_uses_name() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(module Demo (defn main [] 42))")
+        doc (generate program 0)]
+    (do
+      (print (if (string-eq (vector-get doc 0) "module-Demo") 1 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["1"]);
 }
 
 /// DOC-01: generate-knowledge の出力が module + function entries + type entries を返すこと
@@ -125,10 +150,14 @@ fn test_e2e_selfhost_doctools_schema_knowledge() {
       (print (vector-length kb))
       (print (vector-get kb 0))
       (print (vector-length functions))
-      (print (vector-get fn0 1))
+      (print-string (vector-get fn0 1))
+      (print-string "\n")
+      (print (vector-get fn0 2))
       (print (vector-length types))
-      (print (if (string-eq (vector-get type0 1) "type") 1 0))
-      (print (if (string-eq (vector-get type1 1) "typealias") 1 0))
+      (print (if (string-eq (vector-get type0 1) "Doc") 1 0))
+      (print (if (string-eq (vector-get type0 2) "type") 1 0))
+      (print (if (string-eq (vector-get type1 1) "Alias") 1 0))
+      (print (if (string-eq (vector-get type1 2) "typealias") 1 0))
       0)))
 "#;
 
@@ -136,20 +165,76 @@ fn test_e2e_selfhost_doctools_schema_knowledge() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines, vec!["3", "100", "1", "2", "2", "1", "1"]);
+    assert_eq!(lines, vec!["3", "100", "1", "add", "2", "2", "1", "1", "1", "1"]);
 }
 
-/// DOC-01: generate-review の diagnostics slot が vector であること
+/// DOC-01: DocTools entry list が source 順ではなく deterministic な hash 昇順で並ぶこと
+#[test]
+fn test_e2e_selfhost_doctools_sorts_entries_by_hash() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn zebra [] 0) (defn add [] 1) (type Zebra Int) (type Alias Int)")
+        kb (generate-knowledge program 100)
+        fns (vector-get kb 1)
+        tys (vector-get kb 2)
+        fn0 (vector-get fns 0)
+        fn1 (vector-get fns 1)
+        ty0 (vector-get tys 0)
+        ty1 (vector-get tys 1)
+        zebra-hash (name-hash "zebra" 0 5)
+        add-hash (name-hash "add" 0 3)
+        zebra-type-hash (name-hash "Zebra" 0 5)
+        alias-hash (name-hash "Alias" 0 5)]
+    (do
+      (print (vector-length fns))
+      (print (if (< add-hash zebra-hash)
+               (= (vector-get fn0 0) add-hash)
+               (= (vector-get fn0 0) zebra-hash)))
+      (print (if (< add-hash zebra-hash)
+               (= (vector-get fn1 0) zebra-hash)
+               (= (vector-get fn1 0) add-hash)))
+      (print (vector-length tys))
+      (print (if (< alias-hash zebra-type-hash)
+               (= (vector-get ty0 0) alias-hash)
+               (= (vector-get ty0 0) zebra-type-hash)))
+      (print (if (< alias-hash zebra-type-hash)
+               (= (vector-get ty1 0) zebra-type-hash)
+               (= (vector-get ty1 0) alias-hash)))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["2", "1", "1", "2", "1", "1"]);
+}
+
+/// DOC-01: generate-review が unused-let を deterministic diagnostic として返すこと
 #[test]
 fn test_e2e_selfhost_doctools_schema_review() {
     let harness = r#"
 (defn main []
-  (let [program (parse-program "(defn main [] 42)")
-        rev (generate-review program 200)]
+  (let [program (parse-program "(defn main [] (let [x 42] 0))")
+        rev (generate-review program 200)
+        diags (vector-get rev 1)
+        diag0 (vector-get diags 0)]
     (do
       (print (vector-length rev))
       (print (vector-get rev 0))
-      (print (vector-length (vector-get rev 1)))
+      (print (vector-length diags))
+      (print (vector-length diag0))
+      (print (vector-get diag0 0))
+      (print-string (vector-get diag0 1))
+      (print-string "\n")
+      (print-string (vector-get diag0 2))
+      (print-string "\n")
+      (print-string (vector-get diag0 3))
+      (print-string "\n")
+      (print (vector-get diag0 4))
+      (print (vector-get diag0 5))
+      (print-string (vector-get diag0 6))
+      (print-string "\n")
       0)))
 "#;
 
@@ -157,7 +242,70 @@ fn test_e2e_selfhost_doctools_schema_review() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines, vec!["2", "200", "0"]);
+    assert_eq!(
+        lines,
+        vec![
+            "2",
+            "200",
+            "1",
+            "7",
+            "100",
+            "unused-let",
+            "let binding is not used",
+            "warning",
+            "1",
+            "1",
+            "L0001",
+        ]
+    );
+}
+
+/// DOC-01: generate-review が empty-do を deterministic diagnostic として返すこと
+#[test]
+fn test_e2e_selfhost_doctools_schema_review_empty_do() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (do))")
+        rev (generate-review program 300)
+        diags (vector-get rev 1)
+        diag0 (vector-get diags 0)]
+    (do
+      (print (vector-get rev 0))
+      (print (vector-length diags))
+      (print (vector-length diag0))
+      (print (vector-get diag0 0))
+      (print-string (vector-get diag0 1))
+      (print-string "\n")
+      (print-string (vector-get diag0 2))
+      (print-string "\n")
+      (print-string (vector-get diag0 3))
+      (print-string "\n")
+      (print (vector-get diag0 4))
+      (print (vector-get diag0 5))
+      (print-string (vector-get diag0 6))
+      (print-string "\n")
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "300",
+            "1",
+            "7",
+            "104",
+            "empty-do",
+            "do block has no expressions",
+            "warning",
+            "1",
+            "1",
+            "L0002",
+        ]
+    );
 }
 
 /// DOC-01: generate-doc-output の出力が function/type entries と title を含むこと
@@ -182,6 +330,26 @@ fn test_e2e_selfhost_doctools_schema_doc_output() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(lines, vec!["5", "300", "1", "1", "1", "2"]);
+}
+
+/// DOC-01: generate-doc-output も module decl がある場合は module 名 title を使うこと
+#[test]
+fn test_e2e_selfhost_doctools_schema_doc_output_module_title_name() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(module Demo (defn main [] 42))")
+        doc-out (generate-doc-output program 300)]
+    (do
+      (print (if (string-eq (vector-get doc-out 3) "module-Demo") 1 0))
+      (print (vector-get doc-out 4))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["1", "1"]);
 }
 
 /// DOC-01: ドキュメント文字列がタイムスタンプ・ホスト名・絶対パスを含まないこと
@@ -248,7 +416,7 @@ fn test_e2e_selfhost_doctools_deterministic() {
       (print (if (string-eq (vector-get html1 2) (vector-get html2 2)) 1 0))
       (print (if (= (vector-get kb1 0) (vector-get kb2 0)) 1 0))
       (print (if (= (vector-get kb-fn1 0) (vector-get kb-fn2 0)) 1 0))
-      (print (if (= (vector-get kb-fn1 1) (vector-get kb-fn2 1)) 1 0))
+      (print (if (string-eq (vector-get kb-fn1 1) (vector-get kb-fn2 1)) 1 0))
       (print (if (string-eq (vector-get kb-type1 1) (vector-get kb-type2 1)) 1 0))
       (print (if (string-eq (vector-get doc1 3) (vector-get doc2 3)) 1 0))
       (print (if (= (vector-get doc1 4) (vector-get doc2 4)) 1 0))
@@ -323,6 +491,24 @@ fn test_e2e_selfhost_cli_parse_diagnostics() {
     assert_eq!(lines.last().unwrap(), &"0", "正常ソースの parse diagnostics は 0 件であるべき");
 }
 
+/// D-4: Cli.ls の parse-diagnostics-count が recovery 対象入力で 1 を返すこと
+#[test]
+fn test_e2e_selfhost_cli_parse_diagnostics_recovery_error() {
+    let harness = r#"
+(defn main []
+  (let [diag-count (parse-diagnostics-count ")")]
+    (do
+      (print diag-count)
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["1"], "unexpected ')' の parse diagnostics は 1 件であるべき");
+}
+
 /// D-4: Cli.ls の check-diagnostics-count が正常ソースで 0 を返すこと
 #[test]
 fn test_e2e_selfhost_cli_check_diagnostics() {
@@ -339,6 +525,24 @@ fn test_e2e_selfhost_cli_check_diagnostics() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(lines.last().unwrap(), &"0", "正常ソースの check diagnostics は 0 件であるべき");
+}
+
+/// D-4: Cli.ls の check-diagnostics-count が型エラー入力で 1 を返すこと
+#[test]
+fn test_e2e_selfhost_cli_check_diagnostics_type_error() {
+    let harness = r#"
+(defn main []
+  (let [diag-count (check-diagnostics-count "(defn main [] (if 42 1 0))")]
+    (do
+      (print diag-count)
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["1"], "if 条件の型エラーは check diagnostics 1 件であるべき");
 }
 
 // === DOC-02 統合テスト ===
@@ -461,10 +665,10 @@ fn test_e2e_selfhost_doctools_html_template_no_timestamp() {
 fn test_e2e_selfhost_htmldoc_render_function_signature() {
     let harness = r#"
 (defn main []
-  (let [func-doc (vector-push (vector-push (vector-new 2) 42) 3)
+  (let [func-doc (vector-push (vector-push (vector-push (vector-new 3) 42) "add") 3)
         result (render-function-signature func-doc)]
     (do
-      (print (if (string-eq result "<li>fn-42/3</li>") 1 0))
+      (print (if (string-eq result "<li>add/3</li>") 1 0))
       0)))
 "#;
     let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
@@ -472,15 +676,15 @@ fn test_e2e_selfhost_htmldoc_render_function_signature() {
     assert_eq!(output.trim(), "1");
 }
 
-/// HtmlDoc.render-type-definition が "<li>{kind}-{id}</li>" 形式を返す
+/// HtmlDoc.render-type-definition が "<li>{kind} {name}</li>" 形式を返す
 #[test]
 fn test_e2e_selfhost_htmldoc_render_type_definition() {
     let harness = r#"
 (defn main []
-  (let [type-doc (vector-push (vector-push (vector-new 2) 99) "recorddef")
+  (let [type-doc (vector-push (vector-push (vector-push (vector-new 3) 99) "Pair") "recorddef")
         result (render-type-definition type-doc)]
     (do
-      (print (if (string-eq result "<li>recorddef-99</li>") 1 0))
+      (print (if (string-eq result "<li>recorddef Pair</li>") 1 0))
       0)))
 "#;
     let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
@@ -522,10 +726,10 @@ fn test_e2e_selfhost_htmldoc_render_module_page_structure() {
       (print (if (= (string-contains page "<section id=\"functions\">") 1) 1 0))
       ;; 型セクションが存在する
       (print (if (= (string-contains page "<section id=\"types\">") 1) 1 0))
-      ;; 関数エントリが <li> に含まれる
-      (print (if (= (string-contains page "<li>fn-") 1) 1 0))
-      ;; 型エントリが <li> に含まれる
-      (print (if (= (string-contains page "<li>type-") 1) 1 0))
+      ;; 関数エントリが名前つきで <li> に含まれる
+      (print (if (= (string-contains page "<li>add/2</li>") 1) 1 0))
+      ;; 型エントリが kind + name で <li> に含まれる
+      (print (if (= (string-contains page "<li>type Pair</li>") 1) 1 0))
       0)))
 "#;
     let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);

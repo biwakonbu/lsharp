@@ -28,6 +28,7 @@
 - cargo test test_e2e_gc_light_compile_run_loop
 - cargo test test_e2e_gc_repl_soak_50_eval
 - cargo test test_e2e_alloc_metrics
+- bash scripts/ci/collect-gc-metrics.sh
 ```
 
 ### Nightly (拡張)
@@ -64,6 +65,26 @@
 3. **live_alloc_count**: bump allocator では total と同一
 4. **max_single_alloc**: 最大要求サイズと一致
 5. **alloc_span**: 最初と最後のアドレス距離 ≥ 合計確保サイズ
+
+## CI artifact
+
+- script: `scripts/ci/collect-gc-metrics.sh`
+- targeted test: `test_e2e_alloc_metrics_ci_artifact_payload`
+- artifact path: `ci-artifacts/gc-metrics/{commit_sha}/summary.json`
+- artifact name: `gc-metrics-{sha}`
+- payload fields:
+  - `allocator_mode`
+  - `ci_level`
+  - `peak_alloc_bytes`
+  - `total_alloc_count`
+  - `live_alloc_count`
+  - `max_single_alloc`
+  - `alloc_span`
+  - `leak_growing_count`
+  - `leak_total`
+  - `leak_suspect`
+
+この artifact は bump allocator 時点でも deterministic な proxy metrics を JSON 化し、PR/main の required CI から回収する。S14-S16 の full gate は未達だが、runtime stability の blocking artifact 面はこの payload を基点に拡張する。
 
 ## 今後のロードマップ
 

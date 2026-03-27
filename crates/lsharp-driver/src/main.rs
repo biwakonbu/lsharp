@@ -1,7 +1,7 @@
 //! # Default path / compiler path (OPS-05)
 //!
 //! - 現行: 本バイナリが Rust 実装パイプライン（syntax → types → ir → wasm）を**内蔵**する。
-//! - 移行予定: 環境変数 `LSHARP_PATH`（予約）で selfhost / 外部コンパイラを指す拡張余地。
+//! - 移行中: 環境変数 `LSHARP_PATH` で selfhost / 外部コンパイラ executable またはその配置ディレクトリを指せる。
 //! - 検証: `scripts/ci/default-path-smoke.sh` が `target/debug/lsharp` のみで `check` / `compile` を通す。
 
 mod commands;
@@ -11,6 +11,7 @@ mod lockfile;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+use std::process::Stdio;
 
 #[derive(Parser)]
 #[command(name = "lsharp", version, about = "L# コンパイラ")]
@@ -146,12 +147,7 @@ enum Command {
 }
 
 fn main() -> miette::Result<()> {
-    // L# compiler path 設定
-    // LSHARP_PATH 環境変数でコンパイラのルートディレクトリを指定可能。
-    // 未設定の場合はカレントディレクトリを使用する。
-    // selfhost 移行後はこのパスで L# コンパイラバイナリを検索する。
-    let _lsharp_path = std::env::var("LSHARP_PATH")
-        .unwrap_or_else(|_| ".".to_string());
+    maybe_delegate_to_external_compiler()?;
 
     let cli = Cli::parse();
 
@@ -429,6 +425,98 @@ fn main() -> miette::Result<()> {
     }
 
     Ok(())
+}
+
+fn maybe_delegate_to_external_compiler() -> miette::Result<()> {
+    let Some(raw_path) = std::env::var_os("LSHARP_PATH") else {
+        return Ok(());
+    };
+
+    let configured_path = PathBuf::from(raw_path);
+    if configured_path.as_os_str().is_empty() {
+        return Err(miette::miette!("LSHARP_PATH が空です"));
+    }
+
+    let delegate_path = resolve_external_lsharp_path(&configured_path)?;
+    let current_exe = std::env::current_exe()
+        .map_err(|e| miette::miette!("current exe の取得に失敗: {e}"))?;
+
+    let delegate_canonical = std::fs::canonicalize(&delegate_path)
+        .unwrap_or_else(|_| delegate_path.clone());
+    let current_canonical = std::fs::canonicalize(&current_exe)
+        .unwrap_or(current_exe);
+    if delegate_canonical == current_canonical {
+        return Err(miette::miette!(
+            "LSHARP_PATH が現在の lsharp バイナリ自身を指しています: {}",
+            delegate_path.display()
+        ));
+    }
+
+    let status = std::process::Command::new(&delegate_path)
+        .args(std::env::args_os().skip(1))
+        .env_remove("LSHARP_PATH")
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .map_err(|e| {
+            miette::miette!(
+                "LSHARP_PATH 先の compiler 実行に失敗しました ({}): {e}",
+                delegate_path.display()
+            )
+        })?;
+
+    match status.code() {
+        Some(code) => std::process::exit(code),
+        None => Err(miette::miette!(
+            "LSHARP_PATH 先の compiler がシグナル終了しました: {}",
+            delegate_path.display()
+        )),
+    }
+}
+
+fn resolve_external_lsharp_path(configured_path: &std::path::Path) -> miette::Result<PathBuf> {
+    let candidate = if configured_path.is_dir() {
+        configured_path.join("lsharp")
+    } else {
+        configured_path.to_path_buf()
+    };
+
+    if !candidate.exists() {
+        return Err(miette::miette!(
+            "LSHARP_PATH が指す compiler が存在しません: {}",
+            candidate.display()
+        ));
+    }
+    if !candidate.is_file() {
+        return Err(miette::miette!(
+            "LSHARP_PATH が指す compiler は通常ファイルである必要があります: {}",
+            candidate.display()
+        ));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mode = std::fs::metadata(&candidate)
+            .map_err(|e| {
+                miette::miette!(
+                    "LSHARP_PATH 先の metadata 取得に失敗しました ({}): {e}",
+                    candidate.display()
+                )
+            })?
+            .permissions()
+            .mode();
+        if mode & 0o111 == 0 {
+            return Err(miette::miette!(
+                "LSHARP_PATH が指す compiler に実行権限がありません: {}",
+                candidate.display()
+            ));
+        }
+    }
+
+    Ok(candidate)
 }
 
 /// P3-3: メタデータテスト実行 (:example, :invariant の自動検証)

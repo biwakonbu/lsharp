@@ -10,11 +10,15 @@
 
 ## 現状
 
-2026-03-25 時点では **第 1 段**のみ完了している。
+2026-03-26 時点では **第 1 段 + delegation hook** まで完了している。
 
-- `crates/lsharp-driver/src/main.rs` に `LSHARP_PATH` 予約コメントと compiler path の移行余地がある。
-- `scripts/ci/default-path-smoke.sh` が、ビルド済み `lsharp` バイナリ単体で `check` / `compile` を実行できることを検証する。
+- `crates/lsharp-driver/src/main.rs` の `LSHARP_PATH` は、external compiler executable またはその配置ディレクトリへ実際に delegation できる。
+- `scripts/ci/default-path-smoke.sh` が、ビルド済み `lsharp` バイナリ単体で `check` / `compile` を実行できることに加え、`LSHARP_PATH` の executable path / directory path delegation と invalid path error を検証する。
+- `scripts/ci/compile-phase11-inputs.sh` も `LSHARP_BIN` を受け取り、Phase 11 固定入力セットを `lsharp` バイナリ経路でコンパイルする。
+- `fresh-clone-smoke` が clean checkout 相当のコピー上で `lsharp` を再ビルドし、default-path smoke + 代表的な selfhost / stdlib compile を実行する。
 - `.github/workflows/ci.yml` の `default-path-smoke` は `ci-gate` / `ci-gate-v2` の required job に含まれる。
+- `.github/workflows/ci.yml` の `fresh-clone-smoke` も required job に含まれる。
+- `cargo test -p lsharp-driver --test default_path_delegation` が、`LSHARP_PATH` の executable path / directory path / invalid path error を固定する。
 
 この段階では **バイナリ経路の固定**まではできているが、実際の default implementation はまだ主に Rust 版であり、完全な Rust 非依存 default path ではない。
 
@@ -61,15 +65,28 @@
 2. `target/debug/lsharp check examples/fib.ls`
 3. `target/debug/lsharp compile examples/fib.ls -o <tmp>`
 4. 生成物が空でないこと
+5. `LSHARP_PATH=<delegate-exec> target/debug/lsharp --version` が delegate 側の stdout / exit code をそのまま返すこと
+6. `LSHARP_PATH=<delegate-dir> target/debug/lsharp --version` が `<delegate-dir>/lsharp` へ委譲できること
+7. 不正な `LSHARP_PATH` が明示エラーになること
 
-この smoke は「`cargo run` ではなく、配布対象に近い `lsharp` バイナリ経路が動く」ことを保証する第 1 段の gate である。
+この smoke は「`cargo run` ではなく、配布対象に近い `lsharp` バイナリ経路が動く」ことに加え、「default path を external compiler へ差し替える delegation hook が壊れていない」ことも保証する gate である。
 
-### `main.rs` の path 予約
+### `compile-phase11-inputs.sh`
 
-`crates/lsharp-driver/src/main.rs` では、`LSHARP_PATH` を将来の selfhost / 外部 compiler path として予約している。
+`scripts/ci/compile-phase11-inputs.sh` は次を確認する。
 
-- 現状: Rust 実装を内蔵した `lsharp` バイナリ
-- 移行中: `LSHARP_PATH` を通じて compiler root / binary path を差し替え可能にする
+1. `LSHARP_BIN` が指定されていればそれを使い、未指定なら `target/debug/lsharp` をビルドする
+2. selfhost / stdlib / examples の固定入力セットを `"$LSHARP_BIN" compile ...` で順にコンパイルする
+3. CI `bootstrap` job / release playbook から同じスクリプトを共有し、`cargo run -- compile` の多重呼び出しを避ける
+
+これにより、Phase 11 入力セットの compile gate も default-path migration の証跡として使えるようになった。
+
+### `main.rs` の path delegation
+
+`crates/lsharp-driver/src/main.rs` では、`LSHARP_PATH` を selfhost / 外部 compiler への delegation hook として使う。
+
+- 現状: Rust 実装を内蔵した `lsharp` バイナリだが、`LSHARP_PATH` を通じて compiler executable または配置ディレクトリを差し替え可能
+- 移行中: invalid path は明示エラーにしつつ、外部 compiler path へ委譲できる
 - 最終像: `lsharp` が native selfhost toolchain を既定で選び、Rust 経路は fallback ではなく shadow になる
 
 ## 完了までに残ること
@@ -83,7 +100,9 @@
 ## 証跡
 
 - `scripts/ci/default-path-smoke.sh`
+- `scripts/ci/compile-phase11-inputs.sh`
 - `crates/lsharp-driver/src/main.rs`
+- `crates/lsharp-driver/tests/default_path_delegation.rs`
 - `.github/workflows/ci.yml`
 - `docs/development/planning/compatibility-matrix.md`
 - `docs/development/planning/phase11-implementation-plan.md#ops-05-default-path-migration`

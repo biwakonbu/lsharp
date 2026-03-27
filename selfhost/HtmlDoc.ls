@@ -10,22 +10,21 @@
 
 ;; === 関数エントリ → HTML 文字列 ===
 
-;; 関数エントリ [id, arity] を "<li>fn-{id}/{arity}</li>" に変換する
+;; 関数エントリ [hash, name, arity] を "<li>{name}/{arity}</li>" に変換する
 (defn render-function-signature [func-doc]
   (render-node
     (elem "li" (vector-new 0)
       (vector-push (vector-new 1)
-        (raw-node (string-concat "fn-"
-          (string-concat (int-to-string (vector-get func-doc 0))
-            (string-concat "/" (int-to-string (vector-get func-doc 1))))))))))
+        (raw-node (string-concat (vector-get func-doc 1)
+          (string-concat "/" (int-to-string (vector-get func-doc 2)))))))))
 
-;; 型エントリ [id, kind] を "<li>{kind}-{id}</li>" に変換する
+;; 型エントリ [hash, name, kind] を "<li>{kind} {name}</li>" に変換する
 (defn render-type-definition [type-doc]
   (render-node
     (elem "li" (vector-new 0)
       (vector-push (vector-new 1)
-        (raw-node (string-concat (vector-get type-doc 1)
-          (string-concat "-" (int-to-string (vector-get type-doc 0)))))))))
+        (raw-node (string-concat (vector-get type-doc 2)
+          (string-concat " " (vector-get type-doc 1))))))))
 
 ;; === リスト項目ループ ===
 

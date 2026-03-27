@@ -7,6 +7,7 @@ CI / CD パイプラインで生成されるアーティファクトの命名規
 | アーティファクト | 命名パターン | 説明 |
 |---|---|---|
 | CI Gate v2 結果 | `ci-gate-v2-results` | gate-v2 の全ジョブ結果サマリー |
+| GC metrics | `gc-metrics-{sha}` | runtime stability 用の GC/alloc metrics JSON |
 | Bootstrap stages | `bootstrap-stages-{sha}` | selfhost ブートストラップの中間成果物 |
 | Bootstrap diff | `bootstrap-diff-{sha}` | stage 間の差分レポート |
 | Native binaries | `native-binaries-{os}-{arch}` | ネイティブビルド成果物 |
@@ -59,9 +60,11 @@ sha256sum release-*.tar.gz > SHA256SUMS
 - GitHub Actions のアーティファクトストレージ上限に注意する
 - 不要な中間成果物は `if-no-files-found: ignore` で欠落を許容する
 - 大容量アーティファクト（Wasm バイナリ等）は圧縮して保存する
+- `gc-metrics-{sha}` は `ci-artifacts/gc-metrics/{commit_sha}/summary.json` を正本とし、PR では 5 日、main では 30 日保持する
 
 ## 証跡
 
 - `.github/workflows/ci.yml` (`retention-days` 設定)
+- `scripts/ci/collect-gc-metrics.sh`
 - `scripts/checksum.sh`
 - `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs` (`test_e2e_ops02_artifact_policy`)

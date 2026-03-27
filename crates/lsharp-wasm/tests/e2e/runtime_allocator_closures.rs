@@ -183,6 +183,96 @@ fn test_e2e_alloc_metrics_leak_suspect_detection() {
     assert_eq!(leak_suspect, 1, "bump allocator ではリーク疑惑あり (全アドレスが単調増加)");
 }
 
+/// GC-06: CI artifact 用の JSON payload を生成できること
+#[test]
+fn test_e2e_alloc_metrics_ci_artifact_payload() {
+    let metrics_result = compile_and_run(r#"
+        (defn collect-metrics []
+          (let [a1 (__alloc 16)
+                a2 (__alloc 64)
+                a3 (__alloc 32)
+                a4 (__alloc 128)
+                a5 (__alloc 8)
+                peak-alloc-bytes (- a5 a1)
+                total-alloc-count 5
+                live-alloc-count 5
+                max-single-alloc 128
+                alloc-span (- a5 a1)]
+            (do
+              (print peak-alloc-bytes)
+              (print total-alloc-count)
+              (print live-alloc-count)
+              (print max-single-alloc)
+              (print alloc-span)
+              0)))
+        (defn main []
+          (collect-metrics))
+    "#);
+    let metric_lines: Vec<&str> = metrics_result.trim().lines().collect();
+    assert_eq!(metric_lines.len(), 5, "GC artifact metrics 出力が不足: {:?}", metric_lines);
+
+    let peak_alloc_bytes: i64 = metric_lines[0].parse().unwrap();
+    let total_alloc_count: i64 = metric_lines[1].parse().unwrap();
+    let live_alloc_count: i64 = metric_lines[2].parse().unwrap();
+    let max_single_alloc: i64 = metric_lines[3].parse().unwrap();
+    let alloc_span: i64 = metric_lines[4].parse().unwrap();
+
+    let leak_result = compile_and_run(r#"
+        (defn detect-leak-loop [n prev-addr growing-count]
+          (if (<= n 0)
+            growing-count
+            (let [addr (__alloc 16)
+                  new-count (if (> addr prev-addr) (+ growing-count 1) growing-count)]
+              (detect-leak-loop (- n 1) addr new-count))))
+        (defn main []
+          (let [first (__alloc 16)
+                growing (detect-leak-loop 50 first 0)
+                total 50
+                leak-suspect (if (= growing total) 1 0)]
+            (do
+              (print growing)
+              (print total)
+              (print leak-suspect)
+              0)))
+    "#);
+    let leak_lines: Vec<&str> = leak_result.trim().lines().collect();
+    assert_eq!(leak_lines.len(), 3, "GC leak artifact 出力が不足: {:?}", leak_lines);
+
+    let leak_growing_count: i64 = leak_lines[0].parse().unwrap();
+    let leak_total: i64 = leak_lines[1].parse().unwrap();
+    let leak_suspect: i64 = leak_lines[2].parse().unwrap();
+
+    let payload = serde_json::json!({
+        "allocator_mode": "bump",
+        "ci_level": "simple",
+        "peak_alloc_bytes": peak_alloc_bytes,
+        "total_alloc_count": total_alloc_count,
+        "live_alloc_count": live_alloc_count,
+        "max_single_alloc": max_single_alloc,
+        "alloc_span": alloc_span,
+        "leak_growing_count": leak_growing_count,
+        "leak_total": leak_total,
+        "leak_suspect": leak_suspect,
+    });
+
+    assert_eq!(payload["allocator_mode"], "bump");
+    assert_eq!(payload["ci_level"], "simple");
+    assert_eq!(payload["total_alloc_count"], 5);
+    assert_eq!(payload["live_alloc_count"], 5);
+    assert_eq!(payload["max_single_alloc"], 128);
+    assert_eq!(payload["leak_total"], 50);
+    assert_eq!(payload["leak_suspect"], 1);
+
+    if let Ok(out_path) = std::env::var("LSHARP_GC_METRICS_OUT") {
+        let path = std::path::PathBuf::from(out_path);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(&path, serde_json::to_string_pretty(&payload).unwrap())
+            .unwrap_or_else(|e| panic!("GC metrics artifact 書き込み失敗 {}: {}", path.display(), e));
+    }
+}
+
 // === Phase 0-3: タグ付きワードテスト ===
 
 #[test]

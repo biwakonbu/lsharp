@@ -454,26 +454,42 @@ fn test_e2e_selfhost_jsonrpc_lsp_handlers() {
     let output = compile_and_run(source);
     let lines: Vec<&str> = output.trim().split('\n').collect();
     // 既存 9 行の後に LSP ハンドラテスト出力
-    // server capabilities: 5 要素
-    assert_eq!(lines[9], "5", "capabilities: vector length");
+    // server capabilities: 7 要素
+    assert_eq!(lines[9], "7", "capabilities: vector length");
     assert_eq!(lines[10], "1", "capabilities: text-document-sync");
-    // handle-initialize: response type=1, id=1
+    // handle-initialize: response type=1, id=1, result=capabilities
     assert_eq!(lines[11], "1", "initialize: response type");
     assert_eq!(lines[12], "1", "initialize: response id");
+    assert_eq!(lines[13], "7", "initialize: capabilities length");
+    // handle-shutdown: response type=1, id=9, result=0
+    assert_eq!(lines[14], "1", "shutdown: response type");
+    assert_eq!(lines[15], "9", "shutdown: response id");
+    assert_eq!(lines[16], "0", "shutdown: result sentinel");
     // handle-did-open: source length returned
-    assert_eq!(lines[13], "100", "did-open: source length");
+    assert_eq!(lines[17], "100", "did-open: source length");
     // handle-hover: response type=1, id=2, type-tag=1(int)
-    assert_eq!(lines[14], "1", "hover: response type");
-    assert_eq!(lines[15], "2", "hover: response id");
+    assert_eq!(lines[18], "1", "hover: response type");
+    assert_eq!(lines[19], "2", "hover: response id");
     // handle-goto-def: response type=1, line=10, col=5
-    assert_eq!(lines[16], "1", "goto-def: response type");
-    assert_eq!(lines[17], "10", "goto-def: line");
-    assert_eq!(lines[18], "5", "goto-def: col");
+    assert_eq!(lines[20], "1", "goto-def: response type");
+    assert_eq!(lines[21], "10", "goto-def: line");
+    assert_eq!(lines[22], "5", "goto-def: col");
     // handle-completion: keyword count
-    assert_eq!(lines[19], "7", "completion: keyword count");
+    assert_eq!(lines[23], "7", "completion: keyword count");
     // 追加メソッド定数
-    assert_eq!(lines[20], "23", "method: formatting");
-    assert_eq!(lines[21], "30", "method: publish-diagnostics");
+    assert_eq!(lines[24], "23", "method: formatting");
+    assert_eq!(lines[25], "30", "method: publish-diagnostics");
+    // deterministic JSON-RPC text rendering
+    assert_eq!(
+        lines[26],
+        r#"{"jsonrpc":"2.0","id":1,"result":[1,1,1,1,1,1,1]}"#,
+        "initialize response text"
+    );
+    assert_eq!(
+        lines[27],
+        r#"{"jsonrpc":"2.0","id":9,"result":0}"#,
+        "shutdown response text"
+    );
 }
 
 // =====================================================// P9-6c: リンター LSP 統合 (selfhost/Linter.ls)

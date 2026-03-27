@@ -557,6 +557,471 @@ fn test_e2e_selfhost_mutual_recursion_compilation() {
     assert_eq!(result.trim(), "1\n1\n0\n0");
 }
 
+/// selfhost Compiler.ls: 2 関数プログラムで call operand が関数インデックスになること
+#[test]
+fn test_e2e_selfhost_compiler_two_zero_arg_defns_call_index() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn helper [] 42) (defn main [] (helper))")
+        pair (compile-program program)
+        ir-list (vector-get pair 1)
+        helper-ir (vector-get ir-list 0)
+        main-ir (vector-get ir-list 1)
+        helper-instr (vector-get helper-ir 0)
+        main-instr (vector-get main-ir 0)]
+    (do
+      (print (vector-length ir-list))
+      (print (vector-get helper-instr 0))
+      (print (vector-get helper-instr 1))
+      (print (vector-get main-instr 0))
+      (print (vector-get main-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(lines.len() >= 5, "2 関数 compile-program 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "2", "helper/main の 2 関数が必要");
+    assert_eq!(lines[1], "1", "helper body は i64.const で始まること");
+    assert_eq!(lines[2], "42", "helper body operand は 42");
+    assert_eq!(lines[3], "40", "main body は call 命令で始まること");
+    assert_eq!(lines[4], "0", "main は helper の関数インデックス 0 を call すること");
+}
+
+/// selfhost Compiler.ls: 5 関数プログラムでも全 defn を compile-program-functions が保持できること
+#[test]
+fn test_e2e_selfhost_compiler_five_zero_arg_defns_metadata_loop() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn a [] 1) (defn b [] 2) (defn c [] 3) (defn d [] 4) (defn main [] (d))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        main-fn (vector-get functions 4)
+        main-ir (vector-get main-fn 2)
+        main-instr (vector-get main-ir 0)]
+    (do
+      (print (vector-length functions))
+      (print (vector-get main-instr 0))
+      (print (vector-get main-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(lines.len() >= 3, "5 関数 metadata 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "5", "5 defn 全てが metadata に残ること");
+    assert_eq!(lines[1], "40", "5 個目の main body は call 命令で始まること");
+    assert_eq!(lines[2], "3", "main は 4 個目の helper(d) を関数インデックス 3 で call すること");
+}
+
+/// selfhost Compiler.ls: string-char-at を builtin として lowering し、補助 local を metadata に反映すること
+#[test]
+fn test_e2e_selfhost_compiler_string_char_at_builtin_lowering() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn first [s] (string-char-at s 0)) (defn main [] 0)")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        first-fn (vector-get functions 0)
+        first-ir (vector-get first-fn 2)
+        last-instr (vector-get first-ir 2)]
+    (do
+      (print (vector-get first-fn 0))
+      (print (vector-get first-fn 1))
+      (print (vector-length first-ir))
+      (print (vector-get last-instr 0))
+      (print (vector-get last-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(lines.len() >= 5, "string-char-at lowering 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "first は 1 引数関数であること");
+    assert_eq!(lines[1], "1", "string-char-at lowering 用の補助 local が 1 個必要");
+    assert_eq!(lines[2], "3", "body は local.get / i64.const / string-char-at の 3 命令であること");
+    assert_eq!(lines[3], "50", "末尾命令は string-char-at builtin opcode であること");
+    assert_eq!(lines[4], "2", "補助 local index は 2 であること");
+}
+
+/// selfhost Compiler.ls: string-length を builtin として lowering できること
+#[test]
+fn test_e2e_selfhost_compiler_string_length_builtin_lowering() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn len1 [s] (string-length s)) (defn main [] 0)")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        len-fn (vector-get functions 0)
+        len-ir (vector-get len-fn 2)
+        last-instr (vector-get len-ir 1)]
+    (do
+      (print (vector-get len-fn 0))
+      (print (vector-get len-fn 1))
+      (print (vector-length len-ir))
+      (print (vector-get last-instr 0))
+      (print (vector-get last-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(lines.len() >= 5, "string-length lowering 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "len1 は 1 引数関数であること");
+    assert_eq!(lines[1], "0", "string-length lowering に補助 local は不要");
+    assert_eq!(lines[2], "2", "body は local.get / string-length の 2 命令であること");
+    assert_eq!(lines[3], "51", "末尾命令は string-length builtin opcode であること");
+    assert_eq!(lines[4], "0", "string-length opcode operand は 0 であること");
+}
+
+/// selfhost Compiler.ls: vector-length を builtin として lowering できること
+#[test]
+fn test_e2e_selfhost_compiler_vector_length_builtin_lowering() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn vlen [v] (vector-length v)) (defn main [] 0)")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        vlen-fn (vector-get functions 0)
+        vlen-ir (vector-get vlen-fn 2)
+        last-instr (vector-get vlen-ir 1)]
+    (do
+      (print (vector-get vlen-fn 0))
+      (print (vector-get vlen-fn 1))
+      (print (vector-length vlen-ir))
+      (print (vector-get last-instr 0))
+      (print (vector-get last-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(lines.len() >= 5, "vector-length lowering 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "vlen は 1 引数関数であること");
+    assert_eq!(lines[1], "0", "vector-length lowering に補助 local は不要");
+    assert_eq!(lines[2], "2", "body は local.get / vector-length の 2 命令であること");
+    assert_eq!(lines[3], "52", "末尾命令は vector-length builtin opcode であること");
+    assert_eq!(lines[4], "0", "vector-length opcode operand は 0 であること");
+}
+
+/// selfhost Compiler.ls: vector-get を builtin として lowering し、補助 local を metadata に反映すること
+#[test]
+fn test_e2e_selfhost_compiler_vector_get_builtin_lowering() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn vget0 [v] (vector-get v 0)) (defn main [] 0)")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        vget-fn (vector-get functions 0)
+        vget-ir (vector-get vget-fn 2)
+        last-instr (vector-get vget-ir 2)]
+    (do
+      (print (vector-get vget-fn 0))
+      (print (vector-get vget-fn 1))
+      (print (vector-length vget-ir))
+      (print (vector-get last-instr 0))
+      (print (vector-get last-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(lines.len() >= 5, "vector-get lowering 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "1", "vget0 は 1 引数関数であること");
+    assert_eq!(lines[1], "1", "vector-get lowering 用の補助 local が 1 個必要");
+    assert_eq!(lines[2], "3", "body は local.get / i64.const / vector-get の 3 命令であること");
+    assert_eq!(lines[3], "53", "末尾命令は vector-get builtin opcode であること");
+    assert_eq!(lines[4], "2", "補助 local index は 2 であること");
+}
+
+/// selfhost Compiler.ls: vector-new を builtin として lowering し、補助 locals を metadata に反映すること
+#[test]
+fn test_e2e_selfhost_compiler_vector_new_builtin_lowering() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (vector-new 4))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        main-fn (vector-get functions 0)
+        main-ir (vector-get main-fn 2)
+        last-instr (vector-get main-ir 1)]
+    (do
+      (print (vector-get main-fn 0))
+      (print (vector-get main-fn 1))
+      (print (vector-length main-ir))
+      (print (vector-get last-instr 0))
+      (print (vector-get last-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(lines.len() >= 5, "vector-new lowering 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "0", "main は 0 引数関数であること");
+    assert_eq!(lines[1], "2", "vector-new lowering 用の補助 local が 2 個必要");
+    assert_eq!(lines[2], "2", "body は i64.const / vector-new の 2 命令であること");
+    assert_eq!(lines[3], "54", "末尾命令は vector-new builtin opcode であること");
+    assert_eq!(lines[4], "1", "補助 local base index は 1 であること");
+}
+
+/// selfhost Compiler.ls: vector-push を builtin として lowering し、growth 用 locals を metadata に反映すること
+#[test]
+fn test_e2e_selfhost_compiler_vector_push_builtin_lowering() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (vector-push (vector-new 1) 99))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        main-fn (vector-get functions 0)
+        main-ir (vector-get main-fn 2)
+        last-instr (vector-get main-ir 3)]
+    (do
+      (print (vector-get main-fn 0))
+      (print (vector-get main-fn 1))
+      (print (vector-length main-ir))
+      (print (vector-get last-instr 0))
+      (print (vector-get last-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(lines.len() >= 5, "vector-push lowering 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "0", "main は 0 引数関数であること");
+    assert_eq!(lines[1], "6", "vector-push growth lowering 用の補助 local が 6 個必要");
+    assert_eq!(lines[2], "4", "body は vector-new を含めて 4 命令であること");
+    assert_eq!(lines[3], "55", "末尾命令は vector-push builtin opcode であること");
+    assert_eq!(lines[4], "1", "補助 local base index は 1 であること");
+}
+
+/// selfhost Compiler.ls: ref-new を builtin として lowering し、alloc 用 locals を metadata に反映すること
+#[test]
+fn test_e2e_selfhost_compiler_ref_new_builtin_lowering() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (ref-new 1))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        main-fn (vector-get functions 0)
+        main-ir (vector-get main-fn 2)
+        last-instr (vector-get main-ir 1)]
+    (do
+      (print (vector-get main-fn 0))
+      (print (vector-get main-fn 1))
+      (print (vector-length main-ir))
+      (print (vector-get last-instr 0))
+      (print (vector-get last-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(lines.len() >= 5, "ref-new lowering 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "0", "main は 0 引数関数であること");
+    assert_eq!(lines[1], "2", "ref-new lowering 用の補助 local が 2 個必要");
+    assert_eq!(lines[2], "2", "body は i64.const / ref-new の 2 命令であること");
+    assert_eq!(lines[3], "56", "末尾命令は ref-new builtin opcode であること");
+    assert_eq!(lines[4], "1", "補助 local base index は 1 であること");
+}
+
+/// selfhost Compiler.ls: map-new を builtin として lowering し、alloc 用 locals を metadata に反映すること
+#[test]
+fn test_e2e_selfhost_compiler_map_new_builtin_lowering() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (map-new))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        main-fn (vector-get functions 0)
+        main-ir (vector-get main-fn 2)
+        last-instr (vector-get main-ir 0)]
+    (do
+      (print (vector-get main-fn 0))
+      (print (vector-get main-fn 1))
+      (print (vector-length main-ir))
+      (print (vector-get last-instr 0))
+      (print (vector-get last-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(lines.len() >= 5, "map-new lowering 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "0", "main は 0 引数関数であること");
+    assert_eq!(lines[1], "1", "map-new lowering 用の補助 local が 1 個必要");
+    assert_eq!(lines[2], "1", "body は map-new の 1 命令であること");
+    assert_eq!(lines[3], "60", "末尾命令は map-new builtin opcode であること");
+    assert_eq!(lines[4], "1", "補助 local base index は 1 であること");
+}
+
+/// selfhost Compiler.ls: print を builtin として lowering できること
+#[test]
+fn test_e2e_selfhost_compiler_print_builtin_lowering() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (print 7))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        main-fn (vector-get functions 0)
+        main-ir (vector-get main-fn 2)
+        last-instr (vector-get main-ir 1)]
+    (do
+      (print (vector-get main-fn 0))
+      (print (vector-get main-fn 1))
+      (print (vector-length main-ir))
+      (print (vector-get last-instr 0))
+      (print (vector-get last-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(lines.len() >= 5, "print lowering 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "0", "main は 0 引数関数であること");
+    assert_eq!(lines[1], "0", "print lowering に補助 local は不要");
+    assert_eq!(lines[2], "2", "body は i64.const / print の 2 命令であること");
+    assert_eq!(lines[3], "59", "末尾命令は print builtin opcode であること");
+    assert_eq!(lines[4], "0", "print opcode operand は 0 であること");
+}
+
+/// selfhost Compiler.ls: read-file を builtin として lowering できること
+#[test]
+fn test_e2e_selfhost_compiler_read_file_builtin_lowering() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (read-file 0))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        main-fn (vector-get functions 0)
+        main-ir (vector-get main-fn 2)
+        last-instr (vector-get main-ir 1)]
+    (do
+      (print (vector-get main-fn 0))
+      (print (vector-get main-fn 1))
+      (print (vector-length main-ir))
+      (print (vector-get last-instr 0))
+      (print (vector-get last-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(lines.len() >= 5, "read-file lowering 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "0", "main は 0 引数関数であること");
+    assert_eq!(lines[1], "0", "read-file lowering に補助 local は不要");
+    assert_eq!(lines[2], "2", "body は i64.const / read-file の 2 命令であること");
+    assert_eq!(lines[3], "64", "末尾命令は read-file builtin opcode であること");
+    assert_eq!(lines[4], "0", "read-file opcode operand は 0 であること");
+}
+
 // =====================================================// P1-3: WASI stdin/stdout ラッパーテスト
 // =====================================================
 /// P1-3: write-string が stdout に書き込めることを検証

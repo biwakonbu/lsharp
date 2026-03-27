@@ -8,7 +8,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+ROOT_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
+PLAYBOOK_DIR="${PLAYBOOK_DIR:-$ROOT_DIR/target/release-playbook}"
 VERSION="${1:-}"
+LSHARP_BIN="${LSHARP_BIN:-$ROOT_DIR/target/release/lsharp}"
 
 if [[ -z "$VERSION" ]]; then
     echo "使い方: $0 <version>"
@@ -16,12 +20,19 @@ if [[ -z "$VERSION" ]]; then
     exit 1
 fi
 
+mkdir -p "$PLAYBOOK_DIR"
+cd "$ROOT_DIR"
+
 echo "=== L# リリースプレイブック v${VERSION} ==="
 echo ""
 
 # 1. ビルド検証
 echo "--- Step 1: ビルド検証 ---"
 cargo build --release
+if [[ ! -x "$LSHARP_BIN" ]]; then
+    echo "ERROR: release binary not executable: $LSHARP_BIN"
+    exit 1
+fi
 echo "PASS: ビルド成功"
 
 # 2. テスト実行
@@ -45,15 +56,17 @@ echo "PASS: フォーマット OK"
 # 5. ブートストラップ検証
 echo ""
 echo "--- Step 5: ブートストラップ検証 ---"
-for module in Token AST IR Type TypeScheme Compiler WasmEmit Lexer Parser; do
-    echo "  Compiling selfhost/${module}.ls..."
-    cargo run --release -- compile selfhost/${module}.ls -o /tmp/release_${module}.wasm
-done
+OUT_DIR="$PLAYBOOK_DIR/bootstrap" \
+LSHARP_BIN="$LSHARP_BIN" \
+    bash scripts/ci/compile-phase11-inputs.sh
 echo "PASS: ブートストラップ成功"
 
 # 6. smoke test
 echo ""
 echo "--- Step 6: Smoke Test ---"
+OUT_DIR="$PLAYBOOK_DIR/default-path-smoke" \
+LSHARP_BIN="$LSHARP_BIN" \
+    bash scripts/ci/default-path-smoke.sh
 if [[ -f scripts/smoke_test_readme.sh ]]; then
     bash scripts/smoke_test_readme.sh
     echo "PASS: Smoke test 成功"
@@ -70,11 +83,9 @@ else
     echo "WARN: checksum.sh が見つからない"
 fi
 
-# クリーンアップ
-rm -f /tmp/release_*.wasm
-
 echo ""
 echo "=== リリース準備完了: v${VERSION} ==="
+echo "検証成果物: $PLAYBOOK_DIR"
 echo ""
 echo "次のステップ:"
 echo "  1. git tag v${VERSION}"

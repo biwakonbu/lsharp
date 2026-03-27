@@ -99,6 +99,17 @@ test-fresh-clone:
 - Rust ツールチェーン無しコンテナ使用（`dtolnay/rust-toolchain` ステップなし）
 - 全ステップの成功を検証
 
+### `fresh-clone-smoke`（現行の暫定 gate）
+
+`test-fresh-clone` を mainline に入れる前段として、現在は Rust 依存のままでも **clean checkout 由来のビルド回帰** を継続検知する `fresh-clone-smoke` を運用する。
+
+- `scripts/ci/test-fresh-clone.sh` が `target/ci/fresh-clone-smoke/` に clean checkout 相当のコピーを作る
+- そのコピー上で `cargo build -p lsharp-driver -q` を実行し、ビルド済み `lsharp` バイナリを得る
+- `scripts/ci/default-path-smoke.sh` を再利用して `check` / `compile` の default-path smoke を再実行する
+- 追加で `selfhost/Token.ls` と `stdlib/Core.ls` をコンパイルし、selfhost / stdlib の代表 slice が clean checkout でも壊れていないことを確認する
+
+このジョブは **Rust 非依存化の完了を主張しない**。あくまで `test-fresh-clone` の前段で、clean checkout 経路の regressions を CI gate に載せるための暫定措置である。
+
 ## 前提条件
 
 | 条件 | 依存タスク | 説明 |
@@ -115,10 +126,12 @@ test-fresh-clone:
 - stage0 プリビルトバイナリの GitHub Releases 配布は未実装
 - ブートストラップの完全閉包（BOOT-04）は proxy 段階
 - `scripts/smoke_test_readme.sh` は Rust 前提の smoke テスト
+- `fresh-clone-smoke` は clean checkout の smoke までであり、Rust 非依存 `test-fresh-clone` の代替ではない
 
-これらが解決された後、本仕様に基づく `test-fresh-clone` ジョブを CI に追加する。
+これらが解決された後、本仕様に基づく `test-fresh-clone` ジョブを CI に追加し、`fresh-clone-smoke` は置き換える。
 
 ## 証跡
 
 - `scripts/smoke_test_readme.sh`（現行の Rust 依存 smoke）
+- `scripts/ci/test-fresh-clone.sh`（clean checkout 回帰の暫定 smoke）
 - `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs` (`test_e2e_ops07_fresh_clone_no_rust`)

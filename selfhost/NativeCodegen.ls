@@ -98,6 +98,25 @@
 
 ;; === コード生成メイン関数 ===
 
+(defn append-native-bytes-loop [result native idx len]
+  (if (>= idx len)
+    0
+    (do
+      (ref-set result (vector-push (ref-get result) (vector-get native idx)))
+      (append-native-bytes-loop result native (+ idx 1) len))))
+
+(defn generate-native-instr-loop [ir-func result idx len]
+  (if (>= idx len)
+    0
+    (let [instr (vector-get ir-func idx)
+          opcode (vector-get instr 0)
+          operand (vector-get instr 1)
+          native (codegen-ir-instr opcode operand)
+          native-len (vector-length native)]
+      (do
+        (append-native-bytes-loop result native 0 native-len)
+        (generate-native-instr-loop ir-func result (+ idx 1) len)))))
+
 ;; IR 関数をネイティブコードに変換
 ;; ir-func: IR 命令列の Vector [[opcode, operand], ...]
 ;; target: ターゲット記述子
@@ -111,36 +130,10 @@
         _ (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 0)))
         _ (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 1)))
         _ (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 2)))
-        ;; IR 命令を変換 (最大4命令)
-        n (vector-length ir-func)
-        i (ref-new 0)]
+        ;; IR 命令列を順にネイティブ bytes へ落とす
+        n (vector-length ir-func)]
     (do
-      (if (< (ref-get i) n)
-        (let [instr (vector-get ir-func (ref-get i))
-              opcode (vector-get instr 0)
-              operand (vector-get instr 1)
-              native (codegen-ir-instr opcode operand)
-              native-len (vector-length native)
-              j (ref-new 0)]
-          (do
-            (if (< (ref-get j) native-len)
-              (do
-                (ref-set result (vector-push (ref-get result) (vector-get native (ref-get j))))
-                (ref-set j (+ (ref-get j) 1))
-                (if (< (ref-get j) native-len)
-                  (do
-                    (ref-set result (vector-push (ref-get result) (vector-get native (ref-get j))))
-                    (ref-set j (+ (ref-get j) 1))
-                    (if (< (ref-get j) native-len)
-                      (do
-                        (ref-set result (vector-push (ref-get result) (vector-get native (ref-get j))))
-                        0)
-                      0))
-                  0))
-              0)
-            (ref-set i (+ (ref-get i) 1))
-            0))
-        0)
+      (generate-native-instr-loop ir-func result 0 n)
       ;; 関数エピローグ
       (let [epilogue-pop (emit-pop-rbp)
             epilogue-ret (emit-ret)]

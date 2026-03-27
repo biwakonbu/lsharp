@@ -1,4 +1,5 @@
 use super::support::*;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 // =============================================================================
 // NATIVE-05: Stage1-native 自己再生成 — 機能的等価性テスト
@@ -549,6 +550,33 @@ fn try_compile_and_run(source: &str) -> Result<String, String> {
         .map_err(|e| format!("実行エラー: {:?}", e))
 }
 
+static NATIVE_HARNESS_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+fn run_native_codegen_harness(entry_source: &str) -> String {
+    let id = NATIVE_HARNESS_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/e2e-native-fixtures")
+        .join(format!("native-harness-{id}"));
+    std::fs::create_dir_all(&dir).expect("native fixture dir 作成失敗");
+
+    let result = (|| {
+        std::fs::write(dir.join("IR.ls"), selfhost_module("IR.ls"))
+            .expect("IR.ls 書き込み失敗");
+        std::fs::write(dir.join("NativeTarget.ls"), selfhost_module("NativeTarget.ls"))
+            .expect("NativeTarget.ls 書き込み失敗");
+        std::fs::write(dir.join("NativeCodegen.ls"), selfhost_module("NativeCodegen.ls"))
+            .expect("NativeCodegen.ls 書き込み失敗");
+        std::fs::write(dir.join("NativeEmit.ls"), selfhost_module("NativeEmit.ls"))
+            .expect("NativeEmit.ls 書き込み失敗");
+        std::fs::write(dir.join("Main.ls"), entry_source)
+            .expect("Main.ls 書き込み失敗");
+        compile_and_run_file(&dir.join("Main.ls"))
+    })();
+
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
 // =============================================================================
 // NATIVE-REAL: ネイティブ実行パリティ (Narrow Slice)
 // =============================================================================
@@ -831,4 +859,85 @@ fn test_native_codegen_real_execution() {
             eprintln!("  (This is expected - full integration testing in Phase 2)");
         }
     }
+}
+
+/// NATIVE-REAL-07: i64.const を full-width native bytes として出力できること
+#[test]
+fn test_native_codegen_emits_full_const_instruction_bytes() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn make-instr [opcode operand]
+  (vector-push (vector-push (vector-new 2) opcode) operand))
+
+(defn main []
+  (let [instr (make-instr 1 42)
+        ir (vector-push (vector-new 1) instr)
+        target (make-target 2)
+        native (emit-native ir target)]
+    (do
+      (print (vector-length native))
+      (print (vector-get native 0))
+      (print (vector-get native 1))
+      (print (vector-get native 2))
+      (print (vector-get native 3))
+      (print (vector-get native 4))
+      (print (vector-get native 5))
+      (print (vector-get native 6))
+      (print (vector-get native 14))
+      (print (vector-get native 15))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 10, "native const bytes 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "16", "push/movrbp/const/pop/ret で 16 bytes であるべき");
+    assert_eq!(lines[1], "85", "先頭は push rbp (0x55)");
+    assert_eq!(lines[2], "72", "2 byte 目は REX.W (0x48)");
+    assert_eq!(lines[3], "137", "3 byte 目は MOV opcode (0x89)");
+    assert_eq!(lines[4], "229", "4 byte 目は mov rbp,rsp suffix (0xE5)");
+    assert_eq!(lines[5], "72", "const 命令の先頭は REX.W (0x48)");
+    assert_eq!(lines[6], "184", "const 命令の opcode は MOV rax, imm64 (0xB8)");
+    assert_eq!(lines[7], "42", "const 命令の即値下位 byte は 42");
+    assert_eq!(lines[8], "93", "末尾 2 byte 手前は pop rbp (0x5D)");
+    assert_eq!(lines[9], "195", "末尾は ret (0xC3)");
+}
+
+/// NATIVE-REAL-08: 複数 IR 命令を順に native bytes へ落とせること
+#[test]
+fn test_native_codegen_processes_multiple_ir_instructions() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn make-instr [opcode operand]
+  (vector-push (vector-push (vector-new 2) opcode) operand))
+
+(defn main []
+  (let [instr1 (make-instr 1 42)
+        instr2 (make-instr 20 0)
+        ir (vector-push (vector-push (vector-new 2) instr1) instr2)
+        target (make-target 2)
+        native (emit-native ir target)]
+    (do
+      (print (vector-length native))
+      (print (vector-get native 14))
+      (print (vector-get native 15))
+      (print (vector-get native 16))
+      (print (vector-get native 17))
+      (print (vector-get native 18))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 6, "multi native bytes 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "19", "const + add まで含めると 19 bytes であるべき");
+    assert_eq!(lines[1], "72", "2 命令目 add の先頭は REX.W (0x48)");
+    assert_eq!(lines[2], "1", "2 命令目 add の opcode は 0x01");
+    assert_eq!(lines[3], "200", "2 命令目 add の ModRM は 0xC8");
+    assert_eq!(lines[4], "93", "末尾 2 byte 手前は pop rbp (0x5D)");
+    assert_eq!(lines[5], "195", "末尾は ret (0xC3)");
 }

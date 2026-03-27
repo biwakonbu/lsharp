@@ -16,7 +16,23 @@
 
 pub(crate) use lsharp_ir::lower::Lower;
 pub(crate) use lsharp_types::infer::Infer;
-use std::sync::OnceLock;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    OnceLock,
+};
+
+const SELFHOST_LSP_RUNTIME_SENTINEL: &str = ";;__SELFHOST_LSP_RUNTIME__";
+const SELFHOST_LSP_RUNTIME_MODULES: &[&str] = &[
+    "Token.ls",
+    "AST.ls",
+    "Lexer.ls",
+    "Parser.ls",
+    "Formatter.ls",
+    "Linter.ls",
+    "JsonRpc.ls",
+    "LspServer.ls",
+];
+static SELFHOST_FIXTURE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// ソースコードをパースする
 pub(crate) fn parse_for_pipeline(source: &str) -> lsharp_syntax::ast::Program {
@@ -30,6 +46,9 @@ pub(crate) fn parse_for_expanded_pipeline(source: &str) -> lsharp_syntax::ast::P
 
 /// ソースコードをコンパイルして WASI 環境で実行し、stdout 出力を返す
 pub(crate) fn compile_and_run(source: &str) -> String {
+    if let Some(result) = try_compile_and_run_lsp_runtime(source) {
+        return result.unwrap();
+    }
     let program = parse_for_pipeline(source);
     let mut infer = Infer::new();
     let type_results = infer.infer_program(&program).unwrap();
@@ -180,12 +199,96 @@ pub(crate) fn selfhost_module(name: &str) -> &'static str {
         "Formatter.ls" => include_str!("../../../../selfhost/Formatter.ls"),
         "TestRunner.ls" => include_str!("../../../../selfhost/TestRunner.ls"),
         "DocTools.ls" => include_str!("../../../../selfhost/DocTools.ls"),
+        "JsonRpc.ls" => include_str!("../../../../selfhost/JsonRpc.ls"),
+        "Linter.ls" => include_str!("../../../../selfhost/Linter.ls"),
         "Cli.ls" => include_str!("../../../../selfhost/Cli.ls"),
+        "LspServer.ls" => include_str!("../../../../selfhost/LspServer.ls"),
         "NativeTarget.ls" => include_str!("../../../../selfhost/NativeTarget.ls"),
         "NativeCodegen.ls" => include_str!("../../../../selfhost/NativeCodegen.ls"),
         "NativeEmit.ls" => include_str!("../../../../selfhost/NativeEmit.ls"),
         "Linker.ls" => include_str!("../../../../selfhost/Linker.ls"),
         other => panic!("不明な selfhost モジュール: {other}"),
+    }
+}
+
+fn selfhost_fixture_dir(prefix: &str) -> std::path::PathBuf {
+    let id = SELFHOST_FIXTURE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/e2e-selfhost-fixtures")
+        .join(format!("{prefix}-{id}"))
+}
+
+fn write_selfhost_fixture_modules(
+    dir: &std::path::Path,
+    modules: &[&str],
+) -> Result<(), String> {
+    for name in modules {
+        let path = dir.join(name);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        std::fs::write(&path, selfhost_module(name))
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
+fn try_compile_and_run_selfhost_fixture_entry(
+    fixture_name: &str,
+    modules: &[&str],
+    entry_file: &str,
+    entry_source: &str,
+) -> Result<String, String> {
+    let dir = selfhost_fixture_dir(fixture_name);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let result = (|| {
+        write_selfhost_fixture_modules(&dir, modules)?;
+        let entry_path = dir.join(entry_file);
+        if let Some(parent) = entry_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        std::fs::write(&entry_path, entry_source)
+            .map_err(|e| format!("{}: {e}", entry_path.display()))?;
+        try_compile_and_run_file(&entry_path)
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+fn try_compile_and_run_selfhost_fixture_module(
+    fixture_name: &str,
+    modules: &[&str],
+    entry_file: &str,
+) -> Result<String, String> {
+    let dir = selfhost_fixture_dir(fixture_name);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let result = (|| {
+        write_selfhost_fixture_modules(&dir, modules)?;
+        try_compile_and_run_file(&dir.join(entry_file))
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+fn try_compile_and_run_lsp_runtime(source: &str) -> Option<Result<String, String>> {
+    let harness = source.strip_prefix(SELFHOST_LSP_RUNTIME_SENTINEL)?;
+    let harness = harness.trim_start_matches('\n');
+    if harness.trim().is_empty() {
+        Some(try_compile_and_run_selfhost_fixture_module(
+            "lsp-runtime",
+            SELFHOST_LSP_RUNTIME_MODULES,
+            "LspServer.ls",
+        ))
+    } else {
+        let entry_source = format!("(module Main)\n(import LspServer)\n{harness}");
+        Some(try_compile_and_run_selfhost_fixture_entry(
+            "lsp-harness",
+            SELFHOST_LSP_RUNTIME_MODULES,
+            "Main.ls",
+            &entry_source,
+        ))
     }
 }
 
@@ -251,9 +354,14 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> &'static str {
             "Formatter.ls",
             "TestRunner.ls",
             "DocTools.ls",
+            "LspServer.ls",
             "Cli.ls",
         ],
     )
+}
+
+pub(crate) fn selfhost_lsp_runtime_bundle() -> &'static str {
+    SELFHOST_LSP_RUNTIME_SENTINEL
 }
 
 /// native code generation (NativeCodegen + NativeEmit + NativeTarget)

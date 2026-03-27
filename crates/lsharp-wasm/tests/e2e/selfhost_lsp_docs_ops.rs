@@ -12,10 +12,7 @@ fn selfhost_doctools_runtime_bundle() -> String {
 }
 
 fn run_lsp_harness(_name: &str, harness: &str) -> Vec<String> {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let source = selfhost_lsp_runtime_bundle();
     let output = compile_and_run(&format!("{}\n{}", source, harness));
     output
         .trim()
@@ -52,14 +49,11 @@ fn test_e2e_selfhost_lsp_diagnostic_ordering() {
 /// TEST-LSP-04: selfhost/LspServer.ls の主要ハンドラが runtime で観測できること
 #[test]
 fn test_e2e_selfhost_lsp_runtime_handlers() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let source = selfhost_lsp_runtime_bundle();
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines[0], "4", "initialize capability count は 4 であるべき");
+    assert_eq!(lines[0], "7", "initialize capability count は 7 であるべき");
     assert_eq!(lines[1], "1", "textDocumentSync=Full であるべき");
     assert_eq!(lines[2], "1", "hoverProvider=true であるべき");
     assert_eq!(lines[3], "1", "completionProvider=true であるべき");
@@ -73,10 +67,7 @@ fn test_e2e_selfhost_lsp_runtime_handlers() {
 /// TEST-LSP-05: selfhost/LspServer.ls の sort-diagnostics が 2 要素を行番号順に並べること
 #[test]
 fn test_e2e_selfhost_lsp_runtime_sort_diagnostics() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let source = selfhost_lsp_runtime_bundle();
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
 
@@ -87,10 +78,7 @@ fn test_e2e_selfhost_lsp_runtime_sort_diagnostics() {
 /// TEST-LSP-06: selfhost/LspServer.ls の merge-duplicate-diagnostics が同一 span を 1 件へ潰すこと
 #[test]
 fn test_e2e_selfhost_lsp_runtime_merge_duplicates() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let source = selfhost_lsp_runtime_bundle();
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
 
@@ -101,10 +89,7 @@ fn test_e2e_selfhost_lsp_runtime_merge_duplicates() {
 /// TEST-LSP-07: selfhost/LspServer.ls の navigation handler shape が runtime で観測できること
 #[test]
 fn test_e2e_selfhost_lsp_runtime_navigation_shapes() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let source = selfhost_lsp_runtime_bundle();
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
 
@@ -117,10 +102,7 @@ fn test_e2e_selfhost_lsp_runtime_navigation_shapes() {
 /// TEST-LSP-08: selfhost/LspServer.ls が JsonRpc method 定数で dispatch できること
 #[test]
 fn test_e2e_selfhost_lsp_runtime_jsonrpc_method_dispatch() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let source = selfhost_lsp_runtime_bundle();
     let harness = r#"
 (defn main []
   (let [state (server-state-new)
@@ -148,7 +130,7 @@ fn test_e2e_selfhost_lsp_runtime_jsonrpc_method_dispatch() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines[0], "4", "initialize dispatch は capability vector を返すべき");
+    assert_eq!(lines[0], "7", "initialize dispatch は capability vector を返すべき");
     assert_eq!(lines[1], "14", "didOpen dispatch は source length を返すべき");
     assert_eq!(lines[2], "9", "didChange dispatch は source length を返すべき");
     assert_eq!(lines[3], "2", "hover dispatch は response shape length=2 を返すべき");
@@ -161,18 +143,19 @@ fn test_e2e_selfhost_lsp_runtime_jsonrpc_method_dispatch() {
 /// TEST-LSP-09: selfhost/LspServer.ls の server-loop が 1 メッセージ dispatch を観測できること
 #[test]
 fn test_e2e_selfhost_lsp_runtime_server_loop_single_message() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let source = selfhost_lsp_runtime_bundle();
     let harness = r#"
 (defn make-loop-request [method-id params]
   (let [v (vector-new 2)]
     (vector-push (vector-push v method-id) params)))
 
+(defn make-doc-params [uri src]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v uri) src)))
+
 (defn main []
-  (let [open-req (make-loop-request (lsp-method-did-open) 15)
-        change-req (make-loop-request (lsp-method-did-change) 9)
+  (let [open-req (make-loop-request (lsp-method-did-open) (make-doc-params 1 "abcdefghijklmno"))
+        change-req (make-loop-request (lsp-method-did-change) (make-doc-params 1 "abcdefghi"))
         completion-req (make-loop-request (lsp-method-completion) 0)]
     (do
       (print (server-loop open-req))
@@ -190,13 +173,173 @@ fn test_e2e_selfhost_lsp_runtime_server_loop_single_message() {
     assert_eq!(lines[2], "7", "server-loop は completion request を dispatch できるべき");
 }
 
+/// TEST-LSP-09b: server-loop-step が shared state 上で複数 request を順に dispatch できること
+#[test]
+fn test_e2e_selfhost_lsp_runtime_server_loop_stateful_sequence() {
+    let source = selfhost_lsp_runtime_bundle();
+    let open_src_literal = "(defn helper [] 1)\\n(defn main [] (helper 1))";
+    let change_src_literal = "(defn helper [] 1)\\n(defn main []  (he))";
+
+    let harness = format!(
+        r#"
+(defn make-loop-request [method-id params]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v method-id) params)))
+
+(defn make-doc-params [uri src]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v uri) src)))
+
+(defn main []
+  (let [state (server-state-new)
+        init-req (make-loop-request (lsp-method-initialize) 0)
+        open-req (make-loop-request (lsp-method-did-open) (make-doc-params 77 "{open_src_literal}"))
+        change-req (make-loop-request (lsp-method-did-change) (make-doc-params 77 "{change_src_literal}"))
+        completion-params (vector-push (vector-push (vector-push (vector-new 3) 77) 2) 19)
+        completion-req (make-loop-request (lsp-method-completion) completion-params)
+        init (server-loop-step state init-req)
+        open (server-loop-step state open-req)
+        change (server-loop-step state change-req)
+        completion (server-loop-step state completion-req)]
+    (do
+      (print (vector-length init))
+      (print open)
+      (print change)
+      (print (vector-length completion))
+      (print (server-state-doc-count state))
+      (print (server-state-request-count state))
+      (print (server-state-source-length state))
+      0)))
+"#
+    );
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines[0], "7", "server-loop-step initialize は 7 slot capability vector を返すべき");
+    assert_eq!(
+        lines[1],
+        "(defn helper [] 1)\n(defn main [] (helper 1))".len().to_string(),
+        "server-loop-step didOpen は source length を返すべき"
+    );
+    assert_eq!(
+        lines[2],
+        "(defn helper [] 1)\n(defn main []  (he))".len().to_string(),
+        "server-loop-step didChange は更新後 source length を返すべき"
+    );
+    assert_eq!(lines[3], "1", "server-loop-step completion は session source から 1 件返すべき");
+    assert_eq!(lines[4], "1", "shared state の open document 数は 1 のままであるべき");
+    assert_eq!(lines[5], "4", "shared state の request count は 4 件まで蓄積されるべき");
+    assert_eq!(
+        lines[6],
+        "(defn helper [] 1)\n(defn main []  (he))".len().to_string(),
+        "shared state の source length は didChange 後の最新値を保持するべき"
+    );
+}
+
+/// TEST-LSP-09c: initialize / shutdown が server-state lifecycle flag を更新すること
+#[test]
+fn test_e2e_selfhost_lsp_runtime_lifecycle_flags() {
+    let source = selfhost_lsp_runtime_bundle();
+
+    let harness = r#"
+(defn make-loop-request [method-id params]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v method-id) params)))
+
+(defn main []
+  (let [state (server-state-new)
+        _ (server-loop-step state (make-loop-request (lsp-method-initialize) 0))
+        _ (server-loop-step state (make-loop-request (lsp-method-shutdown) 0))]
+    (do
+      (print (server-state-initialized state))
+      (print (server-state-shutdown state))
+      (print (server-state-request-count state))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines[0], "1", "initialize 後は initialized flag が立つべき");
+    assert_eq!(lines[1], "1", "shutdown 後は shutdown flag が立つべき");
+    assert_eq!(lines[2], "2", "initialize + shutdown で request count は 2 になるべき");
+}
+
+/// TEST-LSP-09d: server-loop-sequence が shared state で request 群を順に処理できること
+#[test]
+fn test_e2e_selfhost_lsp_runtime_server_loop_sequence() {
+    let source = selfhost_lsp_runtime_bundle();
+    let open_src_literal = "(defn helper [] 1)\\n(defn main [] (helper 1))";
+    let change_src_literal = "(defn helper [] 1)\\n(defn main []  (he))";
+
+    let harness = format!(
+        r#"
+(defn make-loop-request [method-id params]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v method-id) params)))
+
+(defn make-doc-params [uri src]
+  (let [v (vector-new 2)]
+    (vector-push (vector-push v uri) src)))
+
+(defn main []
+  (let [completion-params (vector-push (vector-push (vector-push (vector-new 3) 77) 2) 19)
+        requests (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 4)
+                         (make-loop-request (lsp-method-initialize) 0))
+                       (make-loop-request (lsp-method-did-open) (make-doc-params 77 "{open_src_literal}")))
+                     (make-loop-request (lsp-method-did-change) (make-doc-params 77 "{change_src_literal}")))
+                   (make-loop-request (lsp-method-completion) completion-params))
+        summary (server-loop-sequence requests)
+        results (vector-get summary 0)]
+    (do
+      (print (vector-length results))
+      (print (vector-length (vector-get results 0)))
+      (print (vector-get results 1))
+      (print (vector-get results 2))
+      (print (vector-length (vector-get results 3)))
+      (print (vector-get summary 1))
+      (print (vector-get summary 2))
+      (print (vector-get summary 3))
+      0)))
+"#
+    );
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines[0], "4", "server-loop-sequence は 4 件の結果を返すべき");
+    assert_eq!(lines[1], "7", "1 件目は initialize capability vector であるべき");
+    assert_eq!(
+        lines[2],
+        "(defn helper [] 1)\n(defn main [] (helper 1))".len().to_string(),
+        "2 件目は didOpen source length であるべき"
+    );
+    assert_eq!(
+        lines[3],
+        "(defn helper [] 1)\n(defn main []  (he))".len().to_string(),
+        "3 件目は didChange source length であるべき"
+    );
+    assert_eq!(lines[4], "1", "4 件目は completion 1 件であるべき");
+    assert_eq!(lines[5], "1", "summary の document count は 1 件であるべき");
+    assert_eq!(lines[6], "4", "summary の request count は 4 件であるべき");
+    assert_eq!(
+        lines[7],
+        "(defn helper [] 1)\n(defn main []  (he))".len().to_string(),
+        "summary の source length は最新 document に一致するべき"
+    );
+}
+
 /// TEST-LSP-08: sort-diagnostics が 3 要素以上を行番号順にソートできること
 #[test]
 fn test_e2e_selfhost_lsp_sort_diagnostics_three() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let source = selfhost_lsp_runtime_bundle();
 
     // 3 つの診断を逆順で作成し、sort-diagnostics でソートされることを検証
     let harness = r#"
@@ -229,10 +372,7 @@ fn test_e2e_selfhost_lsp_sort_diagnostics_three() {
 /// TEST-LSP-10: handle-hover が型情報文字列を返すこと
 #[test]
 fn test_e2e_selfhost_lsp_hover_returns_type_info() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let source = selfhost_lsp_runtime_bundle();
 
     let harness = r#"
 (defn main []
@@ -243,8 +383,9 @@ fn test_e2e_selfhost_lsp_hover_returns_type_info() {
     (do
       ;; result は [range, contents] の 2 要素
       (print (vector-length result))
-      ;; contents スロットに型情報ハッシュが格納されている
-      (print (vector-get result 1))
+      ;; contents スロットに型情報文字列が格納されている
+      (print-string (vector-get result 1))
+      (print-string "\n")
       0)))
 "#;
 
@@ -254,18 +395,13 @@ fn test_e2e_selfhost_lsp_hover_returns_type_info() {
 
     assert!(lines.len() >= 2, "hover 出力が不足: {:?}", lines);
     assert_eq!(lines[0], "2", "hover response は 2 要素であるべき");
-    // contents に型情報ハッシュ (非ゼロ) が入る
-    let type_info: i64 = lines[1].parse().unwrap_or(0);
-    assert!(type_info != 0, "hover contents に型情報が含まれるべき (got {})", type_info);
+    assert_eq!(lines[1], "type-info:10:5", "hover contents は型情報 text であるべき");
 }
 
 /// TEST-LSP-11: handle-goto-definition がソース位置構造を返すこと
 #[test]
 fn test_e2e_selfhost_lsp_definition_returns_location() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let source = selfhost_lsp_runtime_bundle();
 
     let harness = r#"
 (defn main []
@@ -293,10 +429,7 @@ fn test_e2e_selfhost_lsp_definition_returns_location() {
 /// TEST-LSP-12: handle-references が位置リストを返すこと
 #[test]
 fn test_e2e_selfhost_lsp_references_returns_locations() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let source = selfhost_lsp_runtime_bundle();
 
     let harness = r#"
 (defn main []
@@ -327,10 +460,7 @@ fn test_e2e_selfhost_lsp_references_returns_locations() {
 /// TEST-LSP-13: handle-completion がキーワード補完候補を返すこと
 #[test]
 fn test_e2e_selfhost_lsp_completion_returns_keywords() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let source = selfhost_lsp_runtime_bundle();
 
     let harness = r#"
 (defn main []
@@ -340,12 +470,16 @@ fn test_e2e_selfhost_lsp_completion_returns_keywords() {
     (do
       ;; result は completion items のリスト
       (print (vector-length result))
-      ;; 各 item は [label-hash, kind] の 2 要素
+      ;; 各 item は [label, kind, insertText] の 3 要素
       (let [item0 (vector-get result 0)]
         (do
           (print (vector-length item0))
+          (print-string (vector-get item0 0))
+          (print-string "\n")
           ;; kind=14 は Keyword
           (print (vector-get item0 1))
+          (print-string (vector-get item0 2))
+          (print-string "\n")
           0)))))
 "#;
 
@@ -353,20 +487,19 @@ fn test_e2e_selfhost_lsp_completion_returns_keywords() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "completion 出力が不足: {:?}", lines);
+    assert!(lines.len() >= 5, "completion 出力が不足: {:?}", lines);
     let item_count: i64 = lines[0].parse().unwrap_or(0);
     assert!(item_count >= 7, "completion は 7 件以上のキーワードを返すべき (got {})", item_count);
-    assert_eq!(lines[1], "2", "各 completion item は [label-hash, kind] の 2 要素であるべき");
-    assert_eq!(lines[2], "14", "completion kind は 14 (Keyword) であるべき");
+    assert_eq!(lines[1], "3", "各 completion item は [label, kind, insertText] の 3 要素であるべき");
+    assert_eq!(lines[2], "defn", "先頭 keyword label は defn であるべき");
+    assert_eq!(lines[3], "14", "completion kind は 14 (Keyword) であるべき");
+    assert_eq!(lines[4], "defn", "先頭 keyword insertText は defn であるべき");
 }
 
 /// TEST-LSP-14: sort-diagnostics が source 優先 → severity → line → col の順で並べること
 #[test]
 fn test_e2e_selfhost_lsp_diagnostic_ordering_source_priority() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let source = selfhost_lsp_runtime_bundle();
 
     // source=3(lint) が source=1(parse) より後に来ることを検証
     let harness = r#"
@@ -403,10 +536,7 @@ fn test_e2e_selfhost_lsp_diagnostic_ordering_source_priority() {
 /// TEST-LSP-15: dedup-diagnostics が同一 span で severity の高い方を残すこと
 #[test]
 fn test_e2e_selfhost_lsp_diagnostic_dedup() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let source = selfhost_lsp_runtime_bundle();
 
     let harness = r#"
 (defn make-diag [sev rule line col msg src]
@@ -441,13 +571,198 @@ fn test_e2e_selfhost_lsp_diagnostic_dedup() {
     assert_eq!(lines[2], "2", "別 span は severity=2 のまま残るべき");
 }
 
+/// TEST-LSP-15b: diagnostics を deterministic JSON text に render できること
+#[test]
+fn test_e2e_selfhost_lsp_render_diagnostic_json() {
+    let source = selfhost_lsp_runtime_bundle();
+
+    let harness = r#"
+(defn main []
+  (let [diag (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 6) 2)
+                       101)
+                     3)
+                   7)
+                 9001)
+               1)]
+    (do
+      (print-string (render-diagnostic-json diag))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(
+        output.trim(),
+        r#"{"source":1,"severity":2,"rule":101,"line":3,"col":7,"messageHash":9001}"#,
+        "render-diagnostic-json は固定順の JSON text を返すべき"
+    );
+}
+
+/// TEST-LSP-15c: sort/dedup 後 diagnostics 群を deterministic JSON array に render できること
+#[test]
+fn test_e2e_selfhost_lsp_render_sorted_deduped_diagnostics_json() {
+    let source = selfhost_lsp_runtime_bundle();
+
+    let harness = r#"
+(defn main []
+  (let [diag-a (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push (vector-new 6) 2)
+                         201)
+                       5)
+                     9)
+                   7001)
+                 3)
+        diag-b (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push (vector-new 6) 1)
+                         202)
+                       5)
+                     9)
+                   7002)
+                 3)
+        diag-c (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push (vector-new 6) 1)
+                         203)
+                       2)
+                     4)
+                   7003)
+                 1)
+        diags (vector-push (vector-push (vector-push (vector-new 3) diag-a) diag-b) diag-c)
+        sorted (sort-diagnostics diags)
+        deduped (dedup-diagnostics sorted)]
+    (do
+      (print-string (render-diagnostics-json deduped))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(
+        output.trim(),
+        r#"[{"source":1,"severity":1,"rule":203,"line":2,"col":4,"messageHash":7003},{"source":3,"severity":1,"rule":202,"line":5,"col":9,"messageHash":7002}]"#,
+        "render-diagnostics-json は sort/dedup 後の diagnostics を固定 JSON array で返すべき"
+    );
+}
+
+fn lsp_diagnostic_snapshot(name: &str) -> String {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/snapshots/lsp/diagnostics")
+        .join(name);
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("snapshot 読み込み失敗 {}: {}", path.display(), e))
+}
+
+/// TEST-LSP-15d: single diagnostic JSON が snapshot file と一致すること
+#[test]
+fn test_e2e_selfhost_lsp_render_diagnostic_json_snapshot() {
+    let source = selfhost_lsp_runtime_bundle();
+
+    let harness = r#"
+(defn main []
+  (let [diag (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 6) 2)
+                       101)
+                     3)
+                   7)
+                 9001)
+               1)]
+    (do
+      (print-string (render-diagnostic-json diag))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let expected = lsp_diagnostic_snapshot("single-diagnostic.json");
+    assert_eq!(
+        output.trim(),
+        expected.trim(),
+        "single diagnostic JSON snapshot が一致するべき"
+    );
+}
+
+/// TEST-LSP-15e: sort/dedup 後 diagnostics JSON array が snapshot file と一致すること
+#[test]
+fn test_e2e_selfhost_lsp_render_sorted_deduped_diagnostics_json_snapshot() {
+    let source = selfhost_lsp_runtime_bundle();
+
+    let harness = r#"
+(defn main []
+  (let [diag-a (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push (vector-new 6) 2)
+                         201)
+                       5)
+                     9)
+                   7001)
+                 3)
+        diag-b (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push (vector-new 6) 1)
+                         202)
+                       5)
+                     9)
+                   7002)
+                 3)
+        diag-c (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push (vector-new 6) 1)
+                         203)
+                       2)
+                     4)
+                   7003)
+                 1)
+        diags (vector-push (vector-push (vector-push (vector-new 3) diag-a) diag-b) diag-c)
+        sorted (sort-diagnostics diags)
+        deduped (dedup-diagnostics sorted)]
+    (do
+      (print-string (render-diagnostics-json deduped))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", source, harness);
+    let output = compile_and_run(&combined);
+    let expected = lsp_diagnostic_snapshot("sorted-deduped-diagnostics.json");
+    assert_eq!(
+        output.trim(),
+        expected.trim(),
+        "sorted/dedup diagnostics JSON snapshot が一致するべき"
+    );
+}
+
 /// TEST-LSP-16: encode-json-rpc-response が決定的な JSON-RPC 構造を生成すること
 #[test]
 fn test_e2e_selfhost_lsp_json_rpc_encode() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let source = selfhost_lsp_runtime_bundle();
 
     let harness = r#"
 (defn main []
@@ -478,10 +793,7 @@ fn test_e2e_selfhost_lsp_json_rpc_encode() {
 /// TEST-LSP-17: parse-json-rpc-request が method + params を抽出すること
 #[test]
 fn test_e2e_selfhost_lsp_json_rpc_parse() {
-    let project_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let source = std::fs::read_to_string(project_root.join("selfhost/LspServer.ls"))
-        .expect("selfhost/LspServer.ls の読み込みに失敗");
+    let source = selfhost_lsp_runtime_bundle();
 
     let harness = r#"
 (defn main []
@@ -524,7 +836,8 @@ fn test_e2e_selfhost_lsp_real_shapes_hover_uses_source_symbol() {
       (print (vector-get range 1))
       (print (vector-get range 2))
       (print (vector-get range 3))
-      (print (= (vector-get result 1) (lsp-string-hash "defn square")))
+      (print-string (vector-get result 1))
+      (print-string "\n")
       0)))
 "#;
 
@@ -535,7 +848,7 @@ fn test_e2e_selfhost_lsp_real_shapes_hover_uses_source_symbol() {
     assert_eq!(lines[2], "16", "hover range start-col は square 呼び出し先頭であるべき");
     assert_eq!(lines[3], "2", "hover range end-line は参照箇所の 2 行目であるべき");
     assert_eq!(lines[4], "22", "hover range end-col は symbol 終端であるべき");
-    assert_eq!(lines[5], "1", "hover contents は \"defn square\" であるべき");
+    assert_eq!(lines[5], "defn square", "hover contents は \"defn square\" text であるべき");
 }
 
 /// TEST-LSP-19: definition / references がソース走査結果を返すこと
@@ -581,6 +894,71 @@ fn test_e2e_selfhost_lsp_real_shapes_definition_and_references_use_source() {
 
 /// TEST-LSP-20: completion が prefix とシンボル表から安定した item を返すこと
 #[test]
+fn test_e2e_selfhost_lsp_real_shapes_rename_returns_workspace_edit() {
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        src "(defn square [x] x)\n(defn main [] (square 1) (square 2))"
+        params (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 5) 99)
+                       2)
+                     17)
+                   src)
+                 "cube")
+        changes (handle-rename params state)
+        change0 (vector-get changes 0)
+        edits (vector-get change0 1)
+        edit0 (vector-get edits 0)
+        edit1 (vector-get edits 1)
+        edit2 (vector-get edits 2)]
+    (do
+      (print (vector-length changes))
+      (print (vector-length change0))
+      (print (vector-get change0 0))
+      (print (vector-length edits))
+      (print (vector-get edit0 0))
+      (print (vector-get edit0 1))
+      (print (vector-get edit0 2))
+      (print (vector-get edit0 3))
+      (print-string (vector-get edit0 4))
+      (print-string "\n")
+      (print (vector-get edit1 0))
+      (print (vector-get edit1 1))
+      (print (vector-get edit1 2))
+      (print (vector-get edit1 3))
+      (print (vector-get edit2 0))
+      (print (vector-get edit2 1))
+      (print (vector-get edit2 2))
+      (print (vector-get edit2 3))
+      0)))
+"#;
+
+    let lines = run_lsp_harness("lsp_real_shapes_rename", harness);
+
+    assert_eq!(lines[0], "1", "rename changes は単一 URI 変更 1 件であるべき");
+    assert_eq!(lines[1], "2", "rename change は [uri, edits] の 2 要素であるべき");
+    assert_eq!(lines[2], "99", "rename change は元の uri を保持するべき");
+    assert_eq!(lines[3], "3", "rename edits は定義 + 2 参照の合計 3 件であるべき");
+    assert_eq!(lines[4], "1", "1 件目の edit start-line は定義行であるべき");
+    assert_eq!(lines[5], "7", "1 件目の edit start-col は square 定義名の先頭であるべき");
+    assert_eq!(lines[6], "1", "1 件目の edit end-line は定義行であるべき");
+    assert_eq!(lines[7], "13", "1 件目の edit end-col は square 終端であるべき");
+    assert_eq!(lines[8], "cube", "1 件目の edit newText は新しい名前であるべき");
+    assert_eq!(lines[9], "2", "2 件目の edit start-line は 2 行目であるべき");
+    assert_eq!(lines[10], "16", "2 件目の edit start-col は最初の呼び出しであるべき");
+    assert_eq!(lines[11], "2", "2 件目の edit end-line は 2 行目であるべき");
+    assert_eq!(lines[12], "22", "2 件目の edit end-col は最初の呼び出し終端であるべき");
+    assert_eq!(lines[13], "2", "3 件目の edit start-line は 2 行目であるべき");
+    assert_eq!(lines[14], "27", "3 件目の edit start-col は 2 つ目の呼び出しであるべき");
+    assert_eq!(lines[15], "2", "3 件目の edit end-line は 2 行目であるべき");
+    assert_eq!(lines[16], "33", "3 件目の edit end-col は 2 つ目の呼び出し終端であるべき");
+}
+
+/// TEST-LSP-20: completion が prefix とシンボル表から安定した item を返すこと
+#[test]
 fn test_e2e_selfhost_lsp_real_shapes_completion_uses_prefix_and_symbols() {
     let harness = r#"
 (defn main []
@@ -592,9 +970,11 @@ fn test_e2e_selfhost_lsp_real_shapes_completion_uses_prefix_and_symbols() {
     (do
       (print (vector-length items))
       (print (vector-length item0))
-      (print (= (vector-get item0 0) (lsp-string-hash "helper")))
+      (print-string (vector-get item0 0))
+      (print-string "\n")
       (print (vector-get item0 1))
-      (print (= (vector-get item0 2) (lsp-string-hash "helper")))
+      (print-string (vector-get item0 2))
+      (print-string "\n")
       0)))
 "#;
 
@@ -602,9 +982,9 @@ fn test_e2e_selfhost_lsp_real_shapes_completion_uses_prefix_and_symbols() {
 
     assert_eq!(lines[0], "1", "completion は prefix=he に対して helper のみ返すべき");
     assert_eq!(lines[1], "3", "completion item は [label, kind, insertText] の 3 要素であるべき");
-    assert_eq!(lines[2], "1", "completion label は helper であるべき");
+    assert_eq!(lines[2], "helper", "completion label は helper であるべき");
     assert_eq!(lines[3], "3", "completion kind は関数 (3) であるべき");
-    assert_eq!(lines[4], "1", "completion insertText は helper であるべき");
+    assert_eq!(lines[4], "helper", "completion insertText は helper であるべき");
 }
 
 /// TEST-LSP-21: formatting が実ソース長に基づく full-document edit を返すこと
@@ -613,18 +993,18 @@ fn test_e2e_selfhost_lsp_real_shapes_formatting_returns_document_edit() {
     let harness = r#"
 (defn main []
   (let [state (server-state-new)
-        src "(defn main [] 1)"
+        src "(defn main []\n 1)"
         params (vector-push (vector-push (vector-new 2) 77) src)
         edits (handle-formatting params state)
         edit (vector-get edits 0)]
     (do
       (print (vector-length edits))
       (print (vector-get edit 0))
-      (print (vector-get edit 1))
-      (print (vector-get edit 2))
-      (print (vector-get edit 3))
-      (print (= (vector-get edit 4) (lsp-string-hash "(defn main [] 1)\n")))
-      0)))
+        (print (vector-get edit 1))
+        (print (vector-get edit 2))
+        (print (vector-get edit 3))
+        (print-string (vector-get edit 4))
+        0)))
 "#;
 
     let lines = run_lsp_harness("lsp_real_shapes_formatting", harness);
@@ -632,9 +1012,9 @@ fn test_e2e_selfhost_lsp_real_shapes_formatting_returns_document_edit() {
     assert_eq!(lines[0], "1", "formatting は 1 件の TextEdit を返すべき");
     assert_eq!(lines[1], "1", "TextEdit start-line は 1 であるべき");
     assert_eq!(lines[2], "1", "TextEdit start-col は 1 であるべき");
-    assert_eq!(lines[3], "1", "TextEdit end-line は 1 であるべき");
-    assert_eq!(lines[4], "17", "TextEdit end-col は入力全文の終端であるべき");
-    assert_eq!(lines[5], "1", "TextEdit newText は整形後の全文であるべき");
+    assert_eq!(lines[3], "2", "TextEdit end-line は入力全文の終端であるべき");
+    assert_eq!(lines[4], "4", "TextEdit end-col は入力全文の終端であるべき");
+    assert_eq!(lines[5], "(defn main [] 1)", "TextEdit newText は整形後の全文であるべき");
 }
 
 /// TEST-FMT-01: selfhost/Formatter.ls に format-program / format-expr 関数が存在すること
@@ -1075,6 +1455,53 @@ fn test_e2e_ops03_shadow_oracle() {
     );
 }
 
+/// TEST-GC-06: GC metrics artifact script / workflow / docs が揃っていること
+#[test]
+fn test_e2e_gc06_ci_artifact_contract() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let script = project_root.join("scripts/ci/collect-gc-metrics.sh");
+    assert!(
+        script.is_file(),
+        "scripts/ci/collect-gc-metrics.sh が存在しない"
+    );
+
+    let ci_path = project_root.join(".github/workflows/ci.yml");
+    assert!(ci_path.is_file(), "ci.yml が存在しない");
+    let ci_content = std::fs::read_to_string(&ci_path)
+        .expect("ci.yml の読み込みに失敗");
+    assert!(
+        ci_content.contains("gc-metrics-artifact"),
+        "ci.yml に gc-metrics-artifact ジョブが存在しない"
+    );
+    assert!(
+        ci_content.contains("collect-gc-metrics.sh"),
+        "ci.yml は collect-gc-metrics.sh を実行すること"
+    );
+    assert!(
+        ci_content.contains("gc-metrics-"),
+        "ci.yml は gc-metrics artifact 名を保持すること"
+    );
+
+    let policy = project_root.join("docs/development/operations/artifact-policy.md");
+    assert!(policy.is_file(), "artifact-policy.md が存在しない");
+    let policy_content = std::fs::read_to_string(&policy)
+        .expect("artifact-policy.md の読み込みに失敗");
+    assert!(
+        policy_content.contains("GC metrics"),
+        "artifact-policy.md に GC metrics artifact 規則が存在しない"
+    );
+
+    let spec = project_root.join("docs/development/planning/gc-ci-gate-spec.md");
+    assert!(spec.is_file(), "gc-ci-gate-spec.md が存在しない");
+    let spec_content = std::fs::read_to_string(&spec)
+        .expect("gc-ci-gate-spec.md の読み込みに失敗");
+    assert!(
+        spec_content.contains("collect-gc-metrics.sh"),
+        "gc-ci-gate-spec.md は collect-gc-metrics.sh を参照すること"
+    );
+}
+
 /// TEST-OPS-04: legacy-rust-bootstrap/ ディレクトリ構造
 #[test]
 fn test_e2e_ops04_legacy_isolation() {
@@ -1112,10 +1539,30 @@ fn test_e2e_ops05_default_path_migration() {
         smoke.is_file(),
         "scripts/ci/default-path-smoke.sh が存在しない (OPS-05 CI gate)"
     );
+    let smoke_content = std::fs::read_to_string(&smoke)
+        .expect("default-path-smoke.sh の読み込みに失敗");
+    assert!(
+        smoke_content.contains("LSHARP_PATH"),
+        "default-path-smoke.sh は LSHARP_PATH delegation hook も検証すること"
+    );
+    assert!(
+        smoke_content.contains("delegated-exec:--version"),
+        "default-path-smoke.sh は executable path delegation を smoke すること"
+    );
+    assert!(
+        smoke_content.contains("delegated-dir:--version"),
+        "default-path-smoke.sh は directory path delegation を smoke すること"
+    );
     let doc = project_root.join("docs/development/operations/default-path-migration.md");
     assert!(
         doc.is_file(),
         "docs/development/operations/default-path-migration.md が存在しない"
+    );
+    let doc_content = std::fs::read_to_string(&doc)
+        .expect("default-path-migration.md の読み込みに失敗");
+    assert!(
+        doc_content.contains("default_path_delegation"),
+        "default-path-migration.md は delegation test の証跡を記載すること"
     );
 }
 
@@ -1220,6 +1667,78 @@ fn test_e2e_ops08_final_removal_rollback() {
     assert!(
         adr_doc.is_file(),
         "docs/development/operations/adr-rust-removal.md が存在しない"
+    );
+}
+
+/// TEST-OPS-09: fresh clone smoke ジョブが clean checkout + binary path を検証する
+#[test]
+fn test_fresh_clone_smoke_ci_job() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let ci_path = project_root.join(".github/workflows/ci.yml");
+    assert!(ci_path.exists(), "ci.yml が存在しない");
+    let ci_content = std::fs::read_to_string(&ci_path)
+        .expect("ci.yml の読み込みに失敗");
+    assert!(
+        ci_content.contains("fresh-clone-smoke"),
+        "ci.yml に fresh-clone-smoke ジョブが存在しない"
+    );
+    assert!(
+        ci_content.contains("bash scripts/ci/test-fresh-clone.sh"),
+        "ci.yml が scripts/ci/test-fresh-clone.sh を実行していない"
+    );
+
+    let smoke_script = project_root.join("scripts/ci/test-fresh-clone.sh");
+    assert!(
+        smoke_script.is_file(),
+        "scripts/ci/test-fresh-clone.sh が存在しない"
+    );
+    let script_content = std::fs::read_to_string(&smoke_script)
+        .expect("test-fresh-clone.sh の読み込みに失敗");
+    assert!(
+        script_content.contains("git archive"),
+        "test-fresh-clone.sh は clean checkout を git archive で再現すること"
+    );
+    assert!(
+        script_content.contains("default-path-smoke.sh"),
+        "test-fresh-clone.sh は既存の default-path-smoke.sh を再利用すること"
+    );
+    assert!(
+        script_content.contains("selfhost/Token.ls")
+            || script_content.contains("stdlib/Core.ls"),
+        "test-fresh-clone.sh は clean checkout 上で selfhost/stdlib の実コンパイルを行うこと"
+    );
+
+    let fresh_clone_doc = project_root
+        .join("docs/development/operations/fresh-clone-spec.md");
+    let doc_content = std::fs::read_to_string(&fresh_clone_doc)
+        .expect("fresh-clone-spec.md の読み込みに失敗");
+    assert!(
+        doc_content.contains("fresh-clone-smoke"),
+        "fresh-clone-spec.md に現行の fresh-clone-smoke ジョブを記載すること"
+    );
+}
+
+/// TEST-OPS-10: phase11 compile gate は cargo run ではなくビルド済み lsharp バイナリを使う
+#[test]
+fn test_phase11_compile_gate_uses_lsharp_binary() {
+    let project_root =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let script_path = project_root.join("scripts/ci/compile-phase11-inputs.sh");
+    assert!(
+        script_path.is_file(),
+        "scripts/ci/compile-phase11-inputs.sh が存在しない"
+    );
+    let content = std::fs::read_to_string(&script_path)
+        .expect("compile-phase11-inputs.sh の読み込みに失敗");
+    assert!(
+        content.contains("LSHARP_BIN"),
+        "compile-phase11-inputs.sh は LSHARP_BIN を受け取れること"
+    );
+    assert!(
+        content.contains("\"$LSHARP_BIN\" compile")
+            || content.contains("\"${LSHARP_BIN}\" compile"),
+        "compile-phase11-inputs.sh はビルド済み lsharp バイナリで compile を実行すること"
     );
 }
 
@@ -1371,15 +1890,17 @@ fn test_e2e_selfhost_formatter_format_expr_do() {
     assert_eq!(lines.last().unwrap(), &"(do 1 2 3)", "do は実テキストへ整形されるべき");
 }
 
-/// FMT-01: 未対応の match は明示的な fallback テキストを返すこと
+/// FMT-01: match が canonical な実テキストへ整形されること
 #[test]
 fn test_e2e_selfhost_formatter_format_expr_match() {
     let harness = r#"
 (defn main []
   (let [scr (vector-push (vector-push (vector-new 2) 4) 120)
-        pat1 (vector-push (vector-push (vector-new 2) 42) 1)
+        lit1 (vector-push (vector-push (vector-new 2) 1) 1)
+        pat1 (vector-push (vector-push (vector-new 2) 42) lit1)
         body1 (vector-push (vector-push (vector-new 2) 1) 10)
-        pat2 (vector-push (vector-push (vector-new 2) 42) 2)
+        lit2 (vector-push (vector-push (vector-new 2) 1) 2)
+        pat2 (vector-push (vector-push (vector-new 2) 42) lit2)
         body2 (vector-push (vector-push (vector-new 2) 1) 20)
         node (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 7) 10) scr) 2) pat1) body1) pat2) body2)
         result (format-expr node 0)]
@@ -1390,17 +1911,17 @@ fn test_e2e_selfhost_formatter_format_expr_match() {
     let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.last().unwrap(), &"(unsupported-expr 10)", "match は未対応 fallback を返すべき");
+    assert_eq!(lines.last().unwrap(), &"(match x [1 10] [2 20])", "match は canonical text を返すべき");
 }
 
-/// FMT-01: 未対応の recordlit は明示的な fallback テキストを返すこと
+/// FMT-01: recordlit が canonical な実テキストへ整形されること
 #[test]
 fn test_e2e_selfhost_formatter_format_expr_recordlit() {
     let harness = r#"
 (defn main []
   (let [f1-expr (vector-push (vector-push (vector-new 2) 1) 1)
         f2-expr (vector-push (vector-push (vector-new 2) 1) 2)
-        node (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 7) 12) 99) 2) 10) f1-expr) 20) f2-expr)
+        node (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 7) 12) 80) 2) 120) f1-expr) 121) f2-expr)
         result (format-expr node 0)]
     (do
       (print-string result)
@@ -1409,16 +1930,16 @@ fn test_e2e_selfhost_formatter_format_expr_recordlit() {
     let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.last().unwrap(), &"(unsupported-expr 12)", "recordlit は未対応 fallback を返すべき");
+    assert_eq!(lines.last().unwrap(), &"{P x 1 y 2}", "recordlit は canonical text を返すべき");
 }
 
-/// FMT-01: 未対応の fieldaccess は明示的な fallback テキストを返すこと
+/// FMT-01: fieldaccess が canonical な実テキストへ整形されること
 #[test]
 fn test_e2e_selfhost_formatter_format_expr_fieldaccess() {
     let harness = r#"
 (defn main []
   (let [inner (vector-push (vector-push (vector-new 2) 4) 120)
-        node (vector-push (vector-push (vector-push (vector-new 3) 13) inner) 77)
+        node (vector-push (vector-push (vector-push (vector-new 3) 13) inner) 121)
         result (format-expr node 0)]
     (do
       (print-string result)
@@ -1427,7 +1948,75 @@ fn test_e2e_selfhost_formatter_format_expr_fieldaccess() {
     let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
-    assert_eq!(lines.last().unwrap(), &"(unsupported-expr 13)", "fieldaccess は未対応 fallback を返すべき");
+    assert_eq!(lines.last().unwrap(), &"(. x y)", "fieldaccess は canonical text を返すべき");
+}
+
+/// FMT-01: recordupdate が canonical な実テキストへ整形されること
+#[test]
+fn test_e2e_selfhost_formatter_format_expr_recordupdate() {
+    let harness = r#"
+(defn main []
+  (let [base (vector-push (vector-push (vector-new 2) 4) 112)
+        x-expr (vector-push (vector-push (vector-new 2) 1) 10)
+        y-expr (vector-push (vector-push (vector-new 2) 1) 20)
+        node (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 7) 14) base) 2) 120) x-expr) 121) y-expr)
+        result (format-expr node 0)]
+    (do
+      (print-string result)
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.last().unwrap(), &"{p | x 10 y 20}", "recordupdate は canonical text を返すべき");
+}
+
+/// FMT-01: computation が canonical な実テキストへ整形されること
+#[test]
+fn test_e2e_selfhost_formatter_format_expr_computation() {
+    let harness = r#"
+(defn main []
+  (let [step1-expr (vector-push (vector-push (vector-new 2) 4) 102)
+        step2-expr (vector-push (vector-push (vector-new 2) 4) 121)
+        step3-expr (vector-push (vector-push (vector-new 2) 4) 122)
+        step4-expr (vector-push (vector-push (vector-new 2) 4) 120)
+        node (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push
+                           (vector-push
+                             (vector-push
+                               (vector-push
+                                 (vector-push
+                                   (vector-push
+                                     (vector-push
+                                       (vector-push (vector-new 15) 15)
+                                       109)
+                                     4)
+                                   (computation-step-let-bang))
+                                 120)
+                               step1-expr)
+                             (computation-step-do-bang))
+                           0)
+                         step2-expr)
+                       (computation-step-expr))
+                     0)
+                   step3-expr)
+                 (computation-step-return))
+               0)
+        node (vector-push node step4-expr)
+        result (format-expr node 0)]
+    (do
+      (print-string result)
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.last().unwrap(), &"(computation m (let! x f) (do! y) z (return x))", "computation は canonical text を返すべき");
 }
 
 /// FMT-01: format-decl が defn (tag=20) を実テキストへ整形すること
@@ -1448,6 +2037,60 @@ fn test_e2e_selfhost_formatter_format_decl_defn() {
     assert_eq!(lines.last().unwrap(), &"(defn a [x y z] 0)", "defn は実テキストへ整形されるべき");
 }
 
+/// FMT-01: format-decl が body 付き module (tag=25) を実テキストへ整形すること
+#[test]
+fn test_e2e_selfhost_formatter_format_decl_module_with_body() {
+    let harness = r#"
+(defn main []
+  (let [body (vector-push (vector-push (vector-new 2) 26) 97)
+        node (vector-push (vector-push (vector-push (vector-new 4) 25) 77) 1)
+        node (vector-push node body)
+        result (format-decl node 0)]
+    (do
+      (print-string result)
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.last().unwrap(), &"(module M (import a))", "module は body 付き実テキストへ整形されるべき");
+}
+
+/// FMT-01: format-decl が computation-builder (tag=30) を実テキストへ整形すること
+#[test]
+fn test_e2e_selfhost_formatter_format_decl_computation_builder() {
+    let harness = r#"
+(defn main []
+  (let [node (vector-push (vector-push (vector-push (vector-push (vector-new 4) 30) 109) 98) 105)
+        result (format-decl node 0)]
+    (do
+      (print-string result)
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.last().unwrap(), &"(computation-builder m b i)", "computation-builder は実テキストへ整形されるべき");
+}
+
+/// FMT-01: format-decl が impl (tag=28) を実テキストへ整形すること
+#[test]
+fn test_e2e_selfhost_formatter_format_decl_impl() {
+    let harness = r#"
+(defn main []
+  (let [body (vector-push (vector-push (vector-new 2) 26) 97)
+        node (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 5) 28) 83) 73) 1) body)
+        result (format-decl node 0)]
+    (do
+      (print-string result)
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_formatter_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines.last().unwrap(), &"(impl (S I) (import a))", "impl は実テキストへ整形されるべき");
+}
+
 /// FMT-01: format-program が supported subset を実テキストへ整形すること
 #[test]
 fn test_e2e_selfhost_formatter_format_program_text_simple_program() {
@@ -1462,6 +2105,71 @@ fn test_e2e_selfhost_formatter_format_program_text_simple_program() {
 
     let parsed = parse_for_pipeline(&output);
     assert_eq!(parsed.decls.len(), 1, "format-program の出力は Rust parser でも再パースできるべき");
+}
+
+/// FMT-01: format-program が recordupdate を canonical text へ整形できること
+#[test]
+fn test_e2e_selfhost_formatter_format_program_recordupdate_expr() {
+    let source = "  {p | x 10 y 20}  ";
+    let output = formatter_output_for_source(source);
+
+    assert_eq!(
+        output,
+        "{p | x 10 y 20}\n",
+        "format-program は recordupdate を canonical text へ整形するべき"
+    );
+}
+
+/// FMT-01: format-program が computation を canonical text へ整形できること
+#[test]
+fn test_e2e_selfhost_formatter_format_program_computation_expr() {
+    let source = "  (computation m (let! x f) (do! y) z (return x))  ";
+    let output = formatter_output_for_source(source);
+
+    assert_eq!(
+        output,
+        "(computation m (let! x f) (do! y) z (return x))\n",
+        "format-program は computation を canonical text へ整形するべき"
+    );
+}
+
+/// FMT-01: format-program が computation-builder 宣言を canonical text へ整形できること
+#[test]
+fn test_e2e_selfhost_formatter_format_program_computation_builder_decl() {
+    let source = "  (computation-builder m b i)  ";
+    let output = formatter_output_for_source(source);
+
+    assert_eq!(
+        output,
+        "(computation-builder m b i)\n",
+        "format-program は computation-builder 宣言を canonical text へ整形するべき"
+    );
+}
+
+/// FMT-01: format-program が impl 宣言を canonical text へ整形できること
+#[test]
+fn test_e2e_selfhost_formatter_format_program_impl_decl() {
+    let source = "  (impl (S I) (import a))  ";
+    let output = formatter_output_for_source(source);
+
+    assert_eq!(
+        output,
+        "(impl (S I) (import a))\n",
+        "format-program は impl 宣言を canonical text へ整形するべき"
+    );
+}
+
+/// FMT-01: format-program が module body を canonical text へ整形できること
+#[test]
+fn test_e2e_selfhost_formatter_format_program_module_decl() {
+    let source = "  (module Demo (import Core))  ";
+    let output = formatter_output_for_source(source);
+
+    assert_eq!(
+        output,
+        "(module Demo (import Core))\n",
+        "format-program は module body を canonical text へ整形するべき"
+    );
 }
 
 /// FMT-01 AC-300: parse(format(src)) 後に再 format しても同じ実テキストになること

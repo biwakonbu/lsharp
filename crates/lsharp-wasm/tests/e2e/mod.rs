@@ -25,6 +25,7 @@ mod selfhost_parser_forms;
 mod selfhost_parser_metadata_forms;
 mod selfhost_lowering_ir_bootstrap;
 mod selfhost_gc_runtime_bootstrap;
+mod selfhost_gc_stateful_soak;
 mod selfhost_cli_core;
 mod selfhost_lsp_docs_ops;
 mod selfhost_doctools_cli_diagnostics;

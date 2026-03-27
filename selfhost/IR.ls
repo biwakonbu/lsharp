@@ -35,6 +35,28 @@
 (defn ir-block [] 42)
 (defn ir-end [] 43)
 
+;; スタック操作
+(defn ir-drop [] 44)
+
+;; 文字列 builtin
+(defn ir-string-char-at [] 50)
+(defn ir-string-length [] 51)
+
+;; ベクタ builtin
+(defn ir-vector-length [] 52)
+(defn ir-vector-get [] 53)
+(defn ir-vector-new [] 54)
+(defn ir-vector-push [] 55)
+(defn ir-ref-new [] 56)
+(defn ir-ref-get [] 57)
+(defn ir-ref-set [] 58)
+(defn ir-print [] 59)
+(defn ir-map-new [] 60)
+(defn ir-map-size [] 61)
+(defn ir-map-insert [] 62)
+(defn ir-map-get [] 63)
+(defn ir-read-file [] 64)
+
 ;; === 命令構築 ===
 
 ;; 命令は [opcode, operand] の Vector

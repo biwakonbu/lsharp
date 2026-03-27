@@ -3,9 +3,8 @@
 set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "$0")/../.." && pwd)
-OUT_DIR="${OUT_DIR:-/tmp/lsharp-phase11-compile}"
-
-mkdir -p "$OUT_DIR"
+OUT_DIR="${OUT_DIR:-$ROOT_DIR/target/ci/phase11-compile}"
+LSHARP_BIN="${LSHARP_BIN:-$ROOT_DIR/target/debug/lsharp}"
 
 SELFHOST_MODULES=(
   AST
@@ -76,13 +75,30 @@ compile_target() {
   local output_name="$3"
 
   echo "=== [${label}] ${source} ==="
-  cargo run -- compile "${source}" -o "${OUT_DIR}/${output_name}"
+  "$LSHARP_BIN" compile "${source}" -o "${OUT_DIR}/${output_name}"
+}
+
+ensure_lsharp_bin() {
+  if [[ -x "$LSHARP_BIN" ]]; then
+    return
+  fi
+
+  echo "=== compile-phase11-inputs: build lsharp binary ==="
+  cargo build -p lsharp-driver -q
+
+  if [[ ! -x "$LSHARP_BIN" ]]; then
+    echo "ERROR: lsharp binary not executable: $LSHARP_BIN"
+    exit 1
+  fi
 }
 
 cd "$ROOT_DIR"
+mkdir -p "$OUT_DIR"
+ensure_lsharp_bin
 
 echo "=== Phase 11 fixed input set compile gate ==="
 echo "output dir: ${OUT_DIR}"
+echo "compiler: ${LSHARP_BIN}"
 echo ""
 
 for module in "${SELFHOST_MODULES[@]}"; do

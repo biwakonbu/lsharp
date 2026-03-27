@@ -35,8 +35,8 @@ vim Cargo.toml   # version = "0.x.y"
 | 2 | `cargo test` | 全テスト実行 |
 | 3 | `cargo clippy -- -D warnings` | リント |
 | 4 | `cargo fmt --check` | フォーマット検証 |
-| 5 | Bootstrap 検証 | selfhost モジュール群のコンパイル |
-| 6 | `scripts/smoke_test_readme.sh` | Smoke テスト |
+| 5 | `LSHARP_BIN=target/release/lsharp bash scripts/ci/compile-phase11-inputs.sh` | release バイナリで selfhost / stdlib / examples の固定入力セットを検証 |
+| 6 | `LSHARP_BIN=target/release/lsharp bash scripts/ci/default-path-smoke.sh` + `scripts/smoke_test_readme.sh` | release バイナリ smoke + README smoke |
 | 7 | チェックサム生成 | `scripts/checksum.sh` |
 
 ### 3. アーティファクト生成
@@ -46,7 +46,7 @@ vim Cargo.toml   # version = "0.x.y"
 | アーティファクト | 説明 |
 |---|---|
 | `lsharp` バイナリ | `target/release/lsharp` |
-| selfhost Wasm | selfhost モジュールの `.wasm` ファイル群 |
+| release playbook 検証成果物 | `target/release-playbook/` 以下の bootstrap / smoke 出力 |
 | チェックサム | SHA-256 チェックサムファイル |
 
 ### 4. チェックサム生成

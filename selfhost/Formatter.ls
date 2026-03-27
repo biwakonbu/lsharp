@@ -99,6 +99,9 @@
 (defn format-unsupported-decl [tag]
   (str3 "(unsupported-decl " (int-to-string tag) ")"))
 
+(defn format-unsupported-pat [tag]
+  (str3 "(unsupported-pat " (int-to-string tag) ")"))
+
 (defn format-hash-list [node idx count]
   (if (<= count 0) ""
     (let [name-text (symbol-from-hash (vector-get node idx))]
@@ -112,6 +115,13 @@
       (if (= count 1)
         expr-text
         (str3 expr-text " " (format-expr-list node (+ idx 1) (- count 1) indent-level))))))
+
+(defn format-decl-list [node idx count indent-level]
+  (if (<= count 0) ""
+    (let [decl-text (format-decl (vector-get node idx) indent-level)]
+      (if (= count 1)
+        decl-text
+        (str3 decl-text " " (format-decl-list node (+ idx 1) (- count 1) indent-level))))))
 
 ;; S 式のフォーマット (簡易)
 ;; 開き括弧 + 要素 + 閉じ括弧
@@ -228,6 +238,138 @@
       (let [expr-text (format-expr-list node 2 expr-count indent-level)]
         (str3 "(do " expr-text ")")))))
 
+(defn format-pattern-list [node idx count indent-level]
+  (if (<= count 0) ""
+    (let [pat-text (format-pattern (vector-get node idx) indent-level)]
+      (if (= count 1)
+        pat-text
+        (str3 pat-text " " (format-pattern-list node (+ idx 1) (- count 1) indent-level))))))
+
+(defn format-recordpat-fields [node idx count indent-level]
+  (if (<= count 0) ""
+    (let [field-text (symbol-from-hash (vector-get node idx))
+          pat-text (format-pattern (vector-get node (+ idx 1)) indent-level)
+          pair-text (str3 field-text " " pat-text)]
+      (if (= count 1)
+        pair-text
+        (str3 pair-text " " (format-recordpat-fields node (+ idx 2) (- count 1) indent-level))))))
+
+(defn format-pattern [pat indent-level]
+  (let [tag (vector-get pat 0)]
+    (if (= tag 40) "_"
+    (if (= tag 41) (symbol-from-hash (vector-get pat 1))
+    (if (= tag 42) (format-expr (vector-get pat 1) indent-level)
+    (if (= tag 43)
+      (let [ctor-text (symbol-from-hash (vector-get pat 1))
+            arg-count (vector-get pat 2)]
+        (if (= arg-count 0)
+          ctor-text
+          (let [args-text (format-pattern-list pat 3 arg-count indent-level)]
+            (str5 "(" ctor-text " " args-text ")"))))
+    (if (= tag 44)
+      (let [field-count (vector-get pat 1)]
+        (if (= field-count 0)
+          "{}"
+          (let [fields-text (format-recordpat-fields pat 2 field-count indent-level)]
+            (str3 "{" fields-text "}"))))
+    (format-unsupported-pat tag))))))))
+
+(defn format-match-arms [node idx count indent-level]
+  (if (<= count 0) ""
+    (let [pat-text (format-pattern (vector-get node idx) indent-level)
+          body-text (format-expr (vector-get node (+ idx 1)) indent-level)
+          arm-text (str5 "[" pat-text " " body-text "]")]
+      (if (= count 1)
+        arm-text
+        (str3 arm-text " " (format-match-arms node (+ idx 2) (- count 1) indent-level))))))
+
+(defn format-match [node indent-level]
+  (let [scrutinee-text (format-expr (vector-get node 1) indent-level)
+        arm-count (vector-get node 2)]
+    (if (= arm-count 0)
+      (str3 "(match " scrutinee-text ")")
+      (let [arms-text (format-match-arms node 3 arm-count indent-level)]
+        (str5 "(match " scrutinee-text " " arms-text ")")))))
+
+(defn format-recordlit-fields [node idx count indent-level]
+  (if (<= count 0) ""
+    (let [field-text (symbol-from-hash (vector-get node idx))
+          expr-text (format-expr (vector-get node (+ idx 1)) indent-level)
+          pair-text (str3 field-text " " expr-text)]
+      (if (= count 1)
+        pair-text
+        (str3 pair-text " " (format-recordlit-fields node (+ idx 2) (- count 1) indent-level))))))
+
+(defn format-recordlit [node indent-level]
+  (let [type-text (symbol-from-hash (vector-get node 1))
+        field-count (vector-get node 2)]
+    (if (= field-count 0)
+      (if (> (string-length type-text) 0)
+        (str3 "{" type-text "}")
+        "{}")
+      (let [fields-text (format-recordlit-fields node 3 field-count indent-level)]
+        (if (> (string-length type-text) 0)
+          (str5 "{" type-text " " fields-text "}")
+          (str3 "{" fields-text "}"))))))
+
+(defn format-fieldaccess [node indent-level]
+  (let [base-text (format-expr (vector-get node 1) indent-level)
+        field-text (symbol-from-hash (vector-get node 2))]
+    (str5 "(. " base-text " " field-text ")")))
+
+(defn format-recordupdate-fields [node idx count indent-level]
+  (if (<= count 0) ""
+    (let [field-text (symbol-from-hash (vector-get node idx))
+          expr-text (format-expr (vector-get node (+ idx 1)) indent-level)
+          pair-text (str3 field-text " " expr-text)]
+      (if (= count 1)
+        pair-text
+        (str3 pair-text " " (format-recordupdate-fields node (+ idx 2) (- count 1) indent-level))))))
+
+(defn format-recordupdate [node indent-level]
+  (let [base-text (format-expr (vector-get node 1) indent-level)
+        field-count (vector-get node 2)]
+    (if (= field-count 0)
+      (str3 "{" (string-concat base-text " |}") "")
+      (let [fields-text (format-recordupdate-fields node 3 field-count indent-level)]
+        (str5 "{" base-text " | " fields-text "}")))))
+
+(defn format-computation-step [step-kind aux expr indent-level]
+  (let [expr-text (format-expr expr indent-level)]
+    (if (= step-kind 0)
+      expr-text
+      (if (= step-kind 1)
+        (str5 "(let! " (symbol-from-hash aux) " " expr-text ")")
+        (if (= step-kind 2)
+          (str3 "(do! " expr-text ")")
+          (if (= step-kind 3)
+            (str3 "(return " expr-text ")")
+            expr-text))))))
+
+(defn format-computation-steps [node idx count indent-level]
+  (if (<= count 0) ""
+    (let [step-text
+            (format-computation-step
+              (vector-get node idx)
+              (vector-get node (+ idx 1))
+              (vector-get node (+ idx 2))
+              indent-level)]
+      (if (= count 1)
+        step-text
+        (str3 step-text " " (format-computation-steps node (+ idx 3) (- count 1) indent-level))))))
+
+(defn format-computation [node indent-level]
+  (let [builder-text (symbol-from-hash (vector-get node 1))
+        step-count (vector-get node 2)]
+    (if (= step-count 0)
+      (if (> (string-length builder-text) 0)
+        (str3 "(computation " builder-text ")")
+        "(computation)")
+      (let [steps-text (format-computation-steps node 3 step-count indent-level)]
+        (if (> (string-length builder-text) 0)
+          (str5 "(computation " builder-text " " steps-text ")")
+          (str3 "(computation " steps-text ")"))))))
+
 ;; format-expr: 全式ノードをフォーマットする
 ;; 入力: AST (Expr) + インデントレベル
 ;; 出力: canonical な実テキスト。未対応ノードは fallback フォームを返す。
@@ -242,12 +384,12 @@
     (if (= tag 7) (format-let-expr expr indent-level)
     (if (= tag 8) (format-lambda expr indent-level)
     (if (= tag 9) (format-do expr indent-level)
-    (if (= tag 10) (format-unsupported-expr tag)
+    (if (= tag 10) (format-match expr indent-level)
     (if (= tag 11) (format-expr (vector-get expr 1) indent-level)
-    (if (= tag 12) (format-unsupported-expr tag)
-    (if (= tag 13) (format-unsupported-expr tag)
-    (if (= tag 14) (format-unsupported-expr tag)
-    (if (= tag 15) (format-unsupported-expr tag)
+    (if (= tag 12) (format-recordlit expr indent-level)
+    (if (= tag 13) (format-fieldaccess expr indent-level)
+    (if (= tag 14) (format-recordupdate expr indent-level)
+    (if (= tag 15) (format-computation expr indent-level)
     (if (= tag 16) (string-concat "'" (format-expr (vector-get expr 1) indent-level))
     (if (= tag 17) (string-concat "~" (format-expr (vector-get expr 1) indent-level))
     (if (= tag 18) (string-concat "~@" (format-expr (vector-get expr 1) indent-level))
@@ -263,19 +405,41 @@
         body-text (format-expr (vector-get decl (+ 3 param-count)) indent-level)]
     (str7 "(defn " name-text " [" params-text "] " body-text ")")))
 
-(defn format-module-decl [decl]
-  (str3 "(module " (symbol-from-hash (vector-get decl 1)) ")"))
+(defn format-module-decl [decl indent-level]
+  (let [name-text (symbol-from-hash (vector-get decl 1))
+        body-count (vector-get decl 2)]
+    (if (= body-count 0)
+      (str3 "(module " name-text ")")
+      (let [body-text (format-decl-list decl 3 body-count indent-level)]
+        (str5 "(module " name-text " " body-text ")")))))
 
 (defn format-import-decl [decl]
   (str3 "(import " (symbol-from-hash (vector-get decl 1)) ")"))
 
+(defn format-impl-decl [decl indent-level]
+  (let [trait-text (symbol-from-hash (vector-get decl 1))
+        type-text (symbol-from-hash (vector-get decl 2))
+        body-count (vector-get decl 3)]
+    (if (= body-count 0)
+      (str5 "(impl (" trait-text " " type-text "))")
+      (let [body-text (format-decl-list decl 4 body-count indent-level)]
+        (str7 "(impl (" trait-text " " type-text ") " body-text ")")))))
+
+(defn format-computation-builder-decl [decl]
+  (let [name-text (symbol-from-hash (vector-get decl 1))
+        bind-text (symbol-from-hash (vector-get decl 2))
+        return-text (symbol-from-hash (vector-get decl 3))]
+    (str7 "(computation-builder " name-text " " bind-text " " return-text ")")))
+
 (defn format-decl [decl indent-level]
   (let [tag (vector-get decl 0)]
     (if (= tag 20) (format-defn decl indent-level)
-    (if (= tag 25) (format-module-decl decl)
+    (if (= tag 25) (format-module-decl decl indent-level)
     (if (= tag 26) (format-import-decl decl)
+    (if (= tag 28) (format-impl-decl decl indent-level)
     (if (= tag 29) (str3 "(private " (format-decl (vector-get decl 1) indent-level) ")")
-    (format-unsupported-decl tag)))))))
+    (if (= tag 30) (format-computation-builder-decl decl)
+    (format-unsupported-decl tag)))))))))
 
 (defn format-program-item [item indent-level]
   (let [tag (vector-get item 0)]

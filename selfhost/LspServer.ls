@@ -1,7 +1,6 @@
 (module LspServer)
-(import JsonRpc)
 (import AST)
-(import Linter)
+(import Parser)
 (import Formatter)
 
 ;; LspServer.ls - L# 製 LSP サーバー
@@ -19,12 +18,69 @@
 
 ;; === サーバー状態 ===
 (defn server-state-new []
-  (let [v (vector-new 3)]
+  (let [v (vector-new 6)]
     (vector-push
       (vector-push
-        (vector-push v 0)   ;; initialized フラグ
-        0)                   ;; shutdown フラグ
-      0)))                   ;; ドキュメント数
+        (vector-push
+          (vector-push
+            (vector-push
+              (vector-push v (ref-new 0))  ;; initialized フラグ
+              (ref-new 0))                 ;; shutdown フラグ
+            (ref-new 0))                   ;; open document 数
+          (ref-new 0))                     ;; current uri
+        (ref-new ""))                      ;; current source
+      (ref-new 0))))                       ;; request count
+
+(defn server-state-doc-count [state]
+  (ref-get (vector-get state 2)))
+
+(defn server-state-initialized [state]
+  (ref-get (vector-get state 0)))
+
+(defn server-state-shutdown [state]
+  (ref-get (vector-get state 1)))
+
+(defn server-state-request-count [state]
+  (ref-get (vector-get state 5)))
+
+(defn server-state-source [state]
+  (ref-get (vector-get state 4)))
+
+(defn server-state-source-length [state]
+  (string-length (server-state-source state)))
+
+(defn server-state-set-initialized [state value]
+  (ref-set (vector-get state 0) value))
+
+(defn server-state-set-shutdown [state value]
+  (ref-set (vector-get state 1) value))
+
+(defn server-state-note-request [state]
+  (ref-set (vector-get state 5) (+ (server-state-request-count state) 1)))
+
+(defn server-state-set-document [state uri src]
+  (do
+    (ref-set (vector-get state 3) uri)
+    (ref-set (vector-get state 4) src)
+    0))
+
+(defn server-state-open-document [state uri src]
+  (let [current-uri (ref-get (vector-get state 3))
+        current-count (server-state-doc-count state)
+        next-count (if (= current-count 0)
+                     1
+                     (if (= current-uri uri)
+                       current-count
+                       (+ current-count 1)))]
+    (do
+      (server-state-set-document state uri src)
+      (ref-set (vector-get state 2) next-count)
+      (string-length src))))
+
+(defn server-state-change-document [state uri src]
+  (do
+    (server-state-set-document state uri src)
+    (string-length src)))
 
 ;; JsonRpc.ls と揃えた method hash
 (defn lsp-method-initialize [] 1)
@@ -59,28 +115,48 @@
 ;; initialize: サーバー機能の宣言
 ;; TextDocumentSyncKind.Full を返す (AC-200)
 (defn handle-initialize [params state]
-  (let [capabilities (vector-new 4)]
-    (vector-push
+  (do
+    (server-state-set-initialized state 1)
+    (server-state-note-request state)
+    (let [capabilities (vector-new 7)]
       (vector-push
         (vector-push
-          (vector-push capabilities 1)  ;; textDocumentSync: Full
-          1)                             ;; hoverProvider
-        1)                               ;; completionProvider
-      1)))                               ;; definitionProvider
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push capabilities 1)  ;; textDocumentSync: Full
+                  1)                             ;; hoverProvider
+                1)                               ;; completionProvider
+              1)                                 ;; definitionProvider
+            1)                                   ;; referencesProvider
+          1)                                     ;; renameProvider
+        1))))                                    ;; documentFormattingProvider
 
 ;; shutdown: サーバー終了準備
 (defn handle-shutdown [params state]
-  0)
+  (do
+    (server-state-set-shutdown state 1)
+    (server-state-note-request state)
+    0))
 
 ;; textDocument/didOpen: ドキュメントオープン通知
 ;; フルテキストを受け取りパースして診断を生成
 (defn handle-didOpen [params state]
-  params)
+  (do
+    (server-state-note-request state)
+    (if (= (lsp-has-document-param params) 1)
+      (server-state-open-document state (lsp-nav-uri params) (lsp-document-src params))
+      params)))
 
 ;; textDocument/didChange: ドキュメント変更通知
 ;; Full sync: 全文を受け取りパースし直す (AC-201)
 (defn handle-didChange [params state]
-  params)
+  (do
+    (server-state-note-request state)
+    (if (= (lsp-has-document-param params) 1)
+      (server-state-change-document state (lsp-nav-uri params) (lsp-document-src params))
+      params)))
 
 ;; === textDocument 系の簡易ソース解析 ===
 ;; stdio なしでも hover / definition / references / completion / formatting を
@@ -96,19 +172,32 @@
   (if (> (lsp-param-count params) 1) 1 0))
 
 (defn lsp-nav-uri [params]
-  (if (= (lsp-has-source-param params) 1) (vector-get params 0) 0))
+  (if (> (lsp-param-count params) 0) (vector-get params 0) 0))
 
 (defn lsp-nav-line [params]
-  (if (= (lsp-has-source-param params) 1) (vector-get params 1) 0))
+  (if (> (lsp-param-count params) 1) (vector-get params 1) 0))
 
 (defn lsp-nav-col [params]
-  (if (= (lsp-has-source-param params) 1) (vector-get params 2) 0))
+  (if (> (lsp-param-count params) 2) (vector-get params 2) 0))
 
 (defn lsp-nav-src [params]
   (if (= (lsp-has-source-param params) 1) (vector-get params 3) ""))
 
+(defn lsp-rename-new-name [params]
+  (if (> (lsp-param-count params) 4) (vector-get params 4) ""))
+
 (defn lsp-document-src [params]
   (if (= (lsp-has-document-param params) 1) (vector-get params 1) ""))
+
+(defn lsp-session-src [params state]
+  (if (= (lsp-has-source-param params) 1)
+    (lsp-nav-src params)
+    (server-state-source state)))
+
+(defn lsp-session-document-src [params state]
+  (if (= (lsp-has-document-param params) 1)
+    (lsp-document-src params)
+    (server-state-source state)))
 
 (defn lsp-is-ws [c]
   (if (= c 32) true
@@ -164,7 +253,7 @@
       end-line)
     end-col))
 
-(defn make-format-edit [start-line start-col end-line end-col new-text]
+(defn make-text-edit [start-line start-col end-line end-col new-text]
   (vector-push
     (vector-push
       (vector-push
@@ -174,6 +263,14 @@
         end-line)
       end-col)
     new-text))
+
+(defn make-format-edit [start-line start-col end-line end-col new-text]
+  (make-text-edit start-line start-col end-line end-col new-text))
+
+(defn make-workspace-change [uri edits]
+  (vector-push
+    (vector-push (vector-new 2) uri)
+    edits))
 
 (defn lsp-string-hash-loop [src pos end acc]
   (if (>= pos end)
@@ -311,10 +408,10 @@
 (defn lsp-find-defn-offset [src target]
   (lsp-find-defn-offset-loop src target 0 (string-length src)))
 
-(defn lsp-hover-content-hash [src name]
+(defn lsp-hover-content-text [src name]
   (if (>= (lsp-find-defn-offset src name) 0)
-    (lsp-string-hash (string-concat "defn " name))
-    (lsp-string-hash (string-concat "symbol " name))))
+    (string-concat "defn " name)
+    (string-concat "symbol " name)))
 
 (defn lsp-symbol-start-at [src idx]
   (if (= idx 0)
@@ -359,17 +456,16 @@
         false
         (string-eq (substring label 0 prefix-len) prefix)))))
 
-(defn lsp-make-completion-item [label-hash kind insert-hash]
+(defn lsp-make-completion-item [label kind insert-text]
   (vector-push
     (vector-push
-      (vector-push (vector-new 3) label-hash)
+      (vector-push (vector-new 3) label)
       kind)
-    insert-hash))
+    insert-text))
 
 (defn lsp-append-keyword-item [label prefix kind items]
   (if (lsp-prefix-matches label prefix)
-    (let [label-hash (lsp-string-hash label)]
-      (vector-push items (lsp-make-completion-item label-hash kind label-hash)))
+    (vector-push items (lsp-make-completion-item label kind label))
     items))
 
 (defn lsp-append-keyword-completions [prefix items]
@@ -390,9 +486,8 @@
             name-end (lsp-scan-symbol-end src name-start len)]
         (if (> name-end name-start)
           (let [name (substring src name-start name-end)
-                label-hash (lsp-substring-hash src name-start name-end)
                 items (if (lsp-prefix-matches name prefix)
-                        (vector-push items (lsp-make-completion-item label-hash 3 label-hash))
+                        (vector-push items (lsp-make-completion-item name 3 name))
                         items)]
             (lsp-append-defn-completions-loop src name-end len prefix items))
           (lsp-append-defn-completions-loop src (+ idx 1) len prefix items)))
@@ -412,33 +507,41 @@
 ;; textDocument/hover: ホバー情報の提供
 ;; カーソル位置の型情報をマークダウン形式で返す (AC-205)
 ;; params=[uri, line, col, source] の場合はソース走査で symbol 情報を返す
+(defn lsp-hover-mock-text [params]
+  (let [line (if (= params 0) 0 (vector-get params 1))
+        col (if (= params 0) 0 (vector-get params 2))]
+    (string-concat
+      "type-info:"
+      (string-concat
+        (int-to-string line)
+        (string-concat ":" (int-to-string col))))))
+
 (defn handle-hover-mock [params]
   (let [v (vector-new 2)
-        ;; params が vector の場合、line 情報から型情報ハッシュを生成
-        type-hash (if (= params 0)
-                    1
-                    (+ (* (vector-get params 1) 100) (vector-get params 2)))]
+        contents (lsp-hover-mock-text params)]
     (vector-push
       (vector-push v 0)     ;; range
-      type-hash)))           ;; contents: 型情報ハッシュ
+      contents)))            ;; contents: 型情報 text
 
 (defn handle-hover [params state]
-  (if (= (lsp-has-source-param params) 1)
-    (let [src (lsp-nav-src params)
+  (do
+    (server-state-note-request state)
+    (let [src (lsp-session-src params state)
           line (lsp-nav-line params)
           col (lsp-nav-col params)
           symbol (lsp-symbol-at src line col)
           start (symbol-info-start symbol)
           end (symbol-info-end symbol)]
-      (if (>= start 0)
-        (let [name (substring src start end)
-              range (lsp-range-from-offsets src start end)
-              contents (lsp-hover-content-hash src name)]
-          (vector-push
-            (vector-push (vector-new 2) range)
-            contents))
-        (handle-hover-mock params)))
-    (handle-hover-mock params)))
+      (if (> (string-length src) 0)
+          (if (>= start 0)
+            (let [name (substring src start end)
+                  range (lsp-range-from-offsets src start end)
+                  contents (lsp-hover-content-text src name)]
+              (vector-push
+                (vector-push (vector-new 2) range)
+                contents))
+          (handle-hover-mock params))
+        (handle-hover-mock params)))))
 
 ;; textDocument/goto-definition: 定義ジャンプ
 ;; シンボルの定義位置を Location [uri, line, col] として返す (AC-206)
@@ -455,23 +558,25 @@
       col)))                 ;; col
 
 (defn handle-goto-definition [params state]
-  (if (= (lsp-has-source-param params) 1)
+  (do
+    (server-state-note-request state)
     (let [uri (lsp-nav-uri params)
-          src (lsp-nav-src params)
+          src (lsp-session-src params state)
           line (lsp-nav-line params)
           col (lsp-nav-col params)
           symbol (lsp-symbol-at src line col)
           start (symbol-info-start symbol)
           end (symbol-info-end symbol)]
-      (if (>= start 0)
-        (let [name (substring src start end)
-              defn-offset (lsp-find-defn-offset src name)]
-          (if (>= defn-offset 0)
-            (let [pos (lsp-position-from-offset src defn-offset)]
-              (make-location uri (position-line pos) (position-col pos)))
-            (handle-goto-definition-mock params)))
-        (handle-goto-definition-mock params)))
-    (handle-goto-definition-mock params)))
+      (if (> (string-length src) 0)
+        (if (>= start 0)
+          (let [name (substring src start end)
+                defn-offset (lsp-find-defn-offset src name)]
+            (if (>= defn-offset 0)
+              (let [pos (lsp-position-from-offset src defn-offset)]
+                (make-location uri (position-line pos) (position-col pos)))
+              (handle-goto-definition-mock params)))
+          (handle-goto-definition-mock params))
+        (handle-goto-definition-mock params)))))
 
 ;; textDocument/references: 参照箇所の検索
 ;; シンボルの参照位置リストを返す (AC-206)
@@ -488,24 +593,60 @@
     (vector-push (vector-new 1) loc)))
 
 (defn handle-references [params state]
-  (if (= (lsp-has-source-param params) 1)
+  (do
+    (server-state-note-request state)
     (let [uri (lsp-nav-uri params)
-          src (lsp-nav-src params)
+          src (lsp-session-src params state)
           line (lsp-nav-line params)
           col (lsp-nav-col params)
           symbol (lsp-symbol-at src line col)
           start (symbol-info-start symbol)
           end (symbol-info-end symbol)]
-      (if (>= start 0)
-        (lsp-find-occurrences src (substring src start end) uri)
-        (handle-references-mock params)))
-    (handle-references-mock params)))
+      (if (> (string-length src) 0)
+        (if (>= start 0)
+          (lsp-find-occurrences src (substring src start end) uri)
+          (handle-references-mock params))
+        (handle-references-mock params)))))
 
 ;; textDocument/rename: リネーム
 ;; シンボルのリネーム用 WorkspaceEdit を返す
-(defn handle-rename [params state]
+(defn handle-rename-mock [params]
   (let [v (vector-new 1)]
-    (vector-push v 0)))  ;; changes
+    (vector-push v 0)))
+
+(defn lsp-append-rename-edits-loop [locs idx len old-name-len new-name edits]
+  (if (>= idx len)
+    edits
+    (let [loc (vector-get locs idx)
+          line (vector-get loc 1)
+          col (vector-get loc 2)
+          edit (make-text-edit line col line (+ col old-name-len) new-name)]
+      (lsp-append-rename-edits-loop locs (+ idx 1) len old-name-len new-name (vector-push edits edit)))))
+
+(defn lsp-build-rename-edits [locs old-name-len new-name]
+  (lsp-append-rename-edits-loop locs 0 (vector-length locs) old-name-len new-name (vector-new 4)))
+
+(defn handle-rename [params state]
+  (do
+    (server-state-note-request state)
+    (let [uri (lsp-nav-uri params)
+          src (lsp-session-src params state)
+          line (lsp-nav-line params)
+          col (lsp-nav-col params)
+          new-name (lsp-rename-new-name params)
+          symbol (lsp-symbol-at src line col)
+          start (symbol-info-start symbol)
+          end (symbol-info-end symbol)]
+      (if (> (string-length src) 0)
+        (if (>= start 0)
+          (if (> (string-length new-name) 0)
+            (let [name (substring src start end)
+                  locs (lsp-find-occurrences src name uri)
+                  edits (lsp-build-rename-edits locs (string-length name) new-name)]
+              (vector-push (vector-new 1) (make-workspace-change uri edits)))
+            (handle-rename-mock params))
+          (handle-rename-mock params))
+        (handle-rename-mock params)))))  ;; changes
 
 ;; textDocument/formatting: ドキュメントフォーマット
 ;; Formatter.ls の format-program を呼び出して TextEdit リストを返す (AC-010)
@@ -514,39 +655,40 @@
     (vector-push edit 0)))
 
 (defn handle-formatting [params state]
-  (if (= (lsp-has-document-param params) 1)
-    (let [src (lsp-document-src params)
-          end-pos (lsp-position-from-offset src (string-length src))
-          formatted (lsp-ensure-trailing-newline src)
-          edit (make-format-edit 1 1 (position-line end-pos) (position-col end-pos) (lsp-string-hash formatted))]
-      (vector-push (vector-new 1) edit))
-    (handle-formatting-mock params)))
+  (do
+    (server-state-note-request state)
+    (let [src (lsp-session-document-src params state)]
+      (if (> (string-length src) 0)
+        (let [end-pos (lsp-position-from-offset src (string-length src))
+              program (parse-program src)
+              formatted (format-program program 0)
+              edit (make-format-edit 1 1 (position-line end-pos) (position-col end-pos) formatted)]
+          (vector-push (vector-new 1) edit))
+        (handle-formatting-mock params)))))
 
 ;; textDocument/completion: コード補完
 ;; カーソル位置に基づいてキーワード補完候補リストを返す (AC-207)
-;; 各 item は [label-hash, kind] の 2 要素。kind=14 は LSP CompletionItemKind.Keyword
-(defn make-completion-item-hash [label-hash kind]
-  (vector-push (vector-push (vector-new 2) label-hash) kind))
-
 (defn handle-completion [params state]
-  (if (= (lsp-has-source-param params) 1)
-    (let [src (lsp-nav-src params)
+  (do
+    (server-state-note-request state)
+    (let [src (lsp-session-src params state)
           line (lsp-nav-line params)
-          col (lsp-nav-col params)
-          prefix (lsp-prefix-at src line col)
-          items (lsp-append-defn-completions src prefix)
-          items (lsp-append-keyword-completions prefix items)]
-      items)
-    (let [items (vector-new 7)
-          ;; L# キーワード: defn, let, if, match, do, fn, module
-          items (vector-push items (make-completion-item-hash 1 14))   ;; defn
-          items (vector-push items (make-completion-item-hash 2 14))   ;; let
-          items (vector-push items (make-completion-item-hash 3 14))   ;; if
-          items (vector-push items (make-completion-item-hash 4 14))   ;; match
-          items (vector-push items (make-completion-item-hash 5 14))   ;; do
-          items (vector-push items (make-completion-item-hash 6 14))   ;; fn
-          items (vector-push items (make-completion-item-hash 7 14))]  ;; module
-      items)))
+          col (lsp-nav-col params)]
+      (if (> (string-length src) 0)
+        (let [prefix (lsp-prefix-at src line col)
+              items (lsp-append-defn-completions src prefix)
+              items (lsp-append-keyword-completions prefix items)]
+          items)
+        (let [items (vector-new 7)
+              ;; L# キーワード: defn, let, if, match, do, fn, module
+              items (vector-push items (lsp-make-completion-item "defn" 14 "defn"))
+              items (vector-push items (lsp-make-completion-item "let" 14 "let"))
+              items (vector-push items (lsp-make-completion-item "if" 14 "if"))
+              items (vector-push items (lsp-make-completion-item "match" 14 "match"))
+              items (vector-push items (lsp-make-completion-item "do" 14 "do"))
+              items (vector-push items (lsp-make-completion-item "fn" 14 "fn"))
+              items (vector-push items (lsp-make-completion-item "module" 14 "module"))]
+          items)))))
 
 ;; === 診断の安定順序制御 (T4b-3 AC-208/AC-209/AC-210/AC-211) ===
 
@@ -687,6 +829,53 @@
       diags
       (dedup-build diags (vector-new 0) 0 len))))
 
+;; === 診断 JSON text renderer ===
+
+;; 現在の diagnostics shape は [severity, rule-id, line, col, msg-hash, source]
+;; なので int-only の deterministic JSON text に落とし込む。
+(defn render-diagnostic-json [diag]
+  (let [severity (vector-get diag 0)
+        rule-id (vector-get diag 1)
+        line (vector-get diag 2)
+        col (vector-get diag 3)
+        message-hash (vector-get diag 4)
+        source (vector-get diag 5)
+        source-text (int-to-string source)
+        severity-text (int-to-string severity)
+        rule-text (int-to-string rule-id)
+        line-text (int-to-string line)
+        col-text (int-to-string col)
+        message-text (int-to-string message-hash)
+        out0 "{\"source\":"
+        out1 (string-concat out0 source-text)
+        out2 (string-concat out1 ",\"severity\":")
+        out3 (string-concat out2 severity-text)
+        out4 (string-concat out3 ",\"rule\":")
+        out5 (string-concat out4 rule-text)
+        out6 (string-concat out5 ",\"line\":")
+        out7 (string-concat out6 line-text)
+        out8 (string-concat out7 ",\"col\":")
+        out9 (string-concat out8 col-text)
+        out10 (string-concat out9 ",\"messageHash\":")
+        out11 (string-concat out10 message-text)]
+    (string-concat out11 "}")))
+
+(defn render-diagnostics-json-loop [diags idx len out]
+  (if (>= idx len)
+    out
+    (let [elem-text (render-diagnostic-json (vector-get diags idx))
+          next-out (if (= idx 0)
+                     (string-concat out elem-text)
+                     (string-concat out (string-concat "," elem-text)))]
+      (render-diagnostics-json-loop diags (+ idx 1) len next-out))))
+
+(defn render-diagnostics-json [diags]
+  (string-concat
+    "["
+    (string-concat
+      (render-diagnostics-json-loop diags 0 (vector-length diags) "")
+      "]")))
+
 ;; === JSON-RPC エンコード/パース ===
 
 ;; encode-json-rpc-response: JSON-RPC 2.0 レスポンス構造を生成
@@ -705,12 +894,38 @@
 ;; === メインループ ===
 
 ;; LSP サーバーのメインループ
-;; 現段階では 1 メッセージ request vector [method-id, params] を dispatch する PoC
-(defn server-loop [request]
-  (let [state (server-state-new)
-        method-id (vector-get request 0)
+;; 現段階では 1 メッセージ request vector [method-id, params] を dispatch する PoC。
+;; stateful/session 系は server-loop-step で shared state を再利用できる。
+(defn server-loop-step [state request]
+  (let [method-id (vector-get request 0)
         params (vector-get request 1)]
     (json-rpc-dispatch method-id params state)))
+
+(defn server-loop-sequence-loop [state requests idx count results]
+  (if (>= idx count)
+    results
+    (server-loop-sequence-loop
+      state
+      requests
+      (+ idx 1)
+      count
+      (vector-push results (server-loop-step state (vector-get requests idx))))))
+
+(defn server-loop-sequence [requests]
+  (let [state (server-state-new)
+        results (server-loop-sequence-loop state requests 0 (vector-length requests) (vector-new 8))
+        summary (vector-new 4)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push summary results)
+          (server-state-doc-count state))
+        (server-state-request-count state))
+      (server-state-source-length state))))
+
+(defn server-loop [request]
+  (let [state (server-state-new)]
+    (server-loop-step state request)))
 
 ;; 検証用 main
 (defn main []
@@ -737,7 +952,7 @@
         merged (merge-duplicate-diagnostics dup-diags)]
     (do
       ;; capabilities の検証
-      (print (vector-length caps)) ;; 4
+      (print (vector-length caps)) ;; 7
       (print (vector-get caps 0))  ;; 1 (textDocumentSync: Full)
       (print (vector-get caps 1))  ;; 1 (hoverProvider)
       (print (vector-get caps 2))  ;; 1 (completionProvider)
