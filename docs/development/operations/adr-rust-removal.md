@@ -2,7 +2,12 @@
 
 ## ステータス
 
-提案
+提案 (レビュー待ち)
+
+> **関連ドキュメント**
+> - 撤去前ゲート定義: [`docs/development/planning/completion-criteria.md` § P11-2e-3](../planning/completion-criteria.md)
+> - ロールバック手順詳細: [`docs/development/operations/rollback-procedure.md`](./rollback-procedure.md)
+> - 配布・署名: [`docs/development/operations/release-distribution-signing.md`](./release-distribution-signing.md)
 
 ## コンテキスト
 
@@ -12,13 +17,17 @@ L# セルフホストコンパイラが Phase 11 完了基準を満たした後�
 
 ### 撤去前提条件
 
-以下の全条件を満たした後に撤去を開始する:
+以下の全条件を満たした後に撤去を開始する。各条件の現在ステータスを示す。
 
-1. `ci-gate-v2` が native-only パイプラインで 2 週間安定
-2. fresh clone テスト（OPS-07）が Rust 無しで pass
-3. パフォーマンスベンチマークで Rust 版比 2x 以内
-4. ステークホルダーによる ADR レビュー完了
-5. `v0.x.y-rust-final` タグの作成
+| # | 条件 | ステータス | 備考 |
+|---|------|-----------|------|
+| 1 | `ci-gate-v2` が native-only パイプラインで 2 週間安定 | **PENDING** | 安定期間未開始 |
+| 2 | fresh clone テスト（OPS-07）が Rust 無しで pass | **PENDING** | 現行 OPS-07 は Rust 不要ではない |
+| 3 | パフォーマンスベンチマークで Rust 版比 2x 以内 | **PENDING** | ベンチマーク未実施 |
+| 4 | ステークホルダーによる ADR レビュー完了 | **PENDING** | レビュー証跡なし (下記「レビュー記録」参照) |
+| 5 | `v0.x.y-rust-final` タグの作成 | **PENDING** | タグ未作成 |
+
+> ※ 上記は `completion-criteria.md` の P11-2e-3 ゲートと対応する。条件が満たされた時点で各行を更新し、evidence (CI run URL / tag URL / reviewer) を追記する。
 
 ### 撤去スコープ
 
@@ -136,7 +145,34 @@ bash scripts/rollback.sh            # 実行
 
 ## 証跡
 
+### 実装済み証跡
+
 - `scripts/rollback.sh`
 - `docs/development/operations/rollback-procedure.md`
 - `legacy-rust-bootstrap/`
 - `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs` (`test_e2e_ops08_final_removal_rollback`)
+
+### レビュー記録
+
+> **PENDING**: ADR レビューはまだ完了していない。レビュー完了時に以下を記録する。
+
+| 項目 | 内容 |
+|------|------|
+| レビュアー | (未定) |
+| レビュー日 | (未完了) |
+| レビュー形式 | PR コメント / 対面 / async |
+| 指摘事項 | (なし or 箇条書き) |
+| 承認コミット/PR | (URL) |
+
+### 撤去開始承認
+
+> **PENDING**: 撤去前提条件の全チェックが完了した後、ここに承認記録を追記する。
+
+| 項目 | 内容 |
+|------|------|
+| `v0.x.y-rust-final` タグ | (URL / SHA) |
+| CI 安定期間開始日 | (未開始) |
+| CI 安定期間終了日 | (未完了) |
+| CHANGELOG / ADR 記録箇所 | (未記録) |
+| native-only RC バージョン | (未作成) |
+| RC 検証者 | (未定) |
