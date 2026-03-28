@@ -3788,3 +3788,195 @@ fn test_e2e_bootstrap_stage1_emits_identical_arg_helper_quad_stage2_wasm_for_sam
     assert_eq!(result, 10);
     assert!(printed.is_empty());
 }
+
+// =============================================================================
+// BOOT-04 リグレッション: file-fed stage2 generator self-feed proxy / deep recursive trap
+// =============================================================================
+
+/// BOOT-04 リグレッション: bootstrap-append-bytes の末尾再帰トラップ再現
+///
+/// `bootstrap-append-bytes` はバイト列を 1 バイトずつコピーする直接再帰で実装されており、
+/// TCO (末尾呼び出し最適化) なしの Wasm では大きな配列に対してスタックオーバーフローが発生する。
+///
+/// この問題を最小限の形で再現する:
+/// - stage2 ソース = N 個の単純な 0 引数関数からなるプログラム
+/// - stage1 (selfhost CLI runtime) がそのプログラムをコンパイルして Wasm を組み立てる
+/// - code section が大きくなるほど bootstrap-append-bytes の再帰深度が増す
+/// - N が十分に大きいとき、stage1 実行時に Wasm スタックトラップが発生する
+#[test]
+fn test_e2e_boot04_bootstrap_append_bytes_deep_recursion_trap_repro() {
+    let build_stage2_src = |n_funcs: usize| -> String {
+        let mut s = String::new();
+        for i in 0..n_funcs {
+            s.push_str(&format!("(defn fn{i:04} [] {i}) "));
+        }
+        s.push_str("(defn main [] 0)");
+        s
+    };
+
+    let make_harness = |stage2_src: &str| -> String {
+        format!(
+            concat!(
+                "(defn bootstrap-append-bytes [dst src idx count]\n",
+                "  (if (>= idx count)\n",
+                "    dst\n",
+                "    (bootstrap-append-bytes\n",
+                "      (vector-push dst (vector-get src idx))\n",
+                "      src (+ idx 1) count)))\n",
+                "(defn bootstrap-build-stage2 [src]\n",
+                "  (let [program (parse-program src)\n",
+                "        pair (compile-program-functions program)\n",
+                "        functions (vector-get pair 1)\n",
+                "        func-count (vector-length functions)\n",
+                "        header (emit-header)\n",
+                "        type-sec (emit-type-section-functions functions)\n",
+                "        function-sec (emit-function-section-functions functions)\n",
+                "        export-sec (emit-export-section-main-index (- func-count 1))\n",
+                "        code-sec (emit-code-section-functions functions)\n",
+                "        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))\n",
+                "        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))\n",
+                "        bytes2 (bootstrap-append-bytes bytes1 function-sec 0 (vector-length function-sec))\n",
+                "        bytes3 (bootstrap-append-bytes bytes2 export-sec 0 (vector-length export-sec))]\n",
+                "    (bootstrap-append-bytes bytes3 code-sec 0 (vector-length code-sec))))\n",
+                "(defn bootstrap-print-module-bytes [bytes idx count]\n",
+                "  (if (>= idx count) 0\n",
+                "    (do (print (vector-get bytes idx))\n",
+                "        (bootstrap-print-module-bytes bytes (+ idx 1) count))))\n",
+                "(defn bootstrap-print-module [bytes]\n",
+                "  (let [count (vector-length bytes)]\n",
+                "    (do (print count) (bootstrap-print-module-bytes bytes 0 count) 0)))\n",
+                "(defn main []\n",
+                "  (let [stage2 (bootstrap-build-stage2 \"{s2}\")]\n",
+                "    (do (bootstrap-print-module stage2) 0)))\n",
+            ),
+            s2 = stage2_src
+        )
+    };
+
+    // N=5: code section ~100 bytes → 再帰は浅い → 成功するはず
+    {
+        let small_src = build_stage2_src(5);
+        let harness = make_harness(&small_src);
+        let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+        let stage1_wasm = compile_only(&stage1_source);
+        assert_valid_wasm(&stage1_wasm);
+        let result = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm);
+        assert!(
+            result.is_ok(),
+            "N=5 では bootstrap-append-bytes トラップが発生しないはず: {:?}",
+            result.err()
+        );
+        let output = result.unwrap();
+        let modules = parse_emitted_wasm_modules(&output, 1);
+        assert_eq!(modules.len(), 1, "N=5 では stage2 モジュールが 1 つ生成されるはず");
+        assert_valid_wasm(&modules[0]);
+    }
+
+    // N=2000: code section ~30,000 bytes
+    // BOOT-04 修正済み: self-TCO (自己末尾呼び出し最適化) により再帰がループに変換される
+    // lsharp-ir/src/lower/decl.rs の apply_self_tco により、
+    // bootstrap-append-bytes のような自己末尾再帰関数がスタックを消費しなくなった
+    {
+        let large_src = build_stage2_src(2000);
+        let harness = make_harness(&large_src);
+        let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+        let stage1_wasm = compile_only(&stage1_source);
+        assert_valid_wasm(&stage1_wasm);
+        let result = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm);
+        assert!(
+            result.is_ok(),
+            "BOOT-04 リグレッション: N=2000 で bootstrap-append-bytes がトラップした。\n\
+             self-TCO が正しく動作していない可能性があります。\n\
+             エラー: {:?}",
+            result.err()
+        );
+        let output = result.unwrap();
+        let modules = parse_emitted_wasm_modules(&output, 1);
+        assert_eq!(modules.len(), 1, "N=2000 では stage2 モジュールが 1 つ生成されるはず");
+        assert_valid_wasm(&modules[0]);
+    }
+}
+
+/// BOOT-04 リグレッション: 再帰深度境界の観測記録
+///
+/// bootstrap-append-bytes が何個の関数 (≈ code section バイト数) から失敗するかの境界を確認する。
+/// 結果を eprintln で出力し、修正後の境界比較に利用する。
+#[test]
+fn test_e2e_boot04_bootstrap_append_bytes_recursion_depth_boundary() {
+    let make_full_source = |n_funcs: usize| -> Vec<u8> {
+        let mut src = String::new();
+        for i in 0..n_funcs {
+            src.push_str(&format!("(defn fn{i:04} [] {i}) "));
+        }
+        src.push_str("(defn main [] 0)");
+        let harness = format!(
+            concat!(
+                "(defn bootstrap-append-bytes [dst s idx count]\n",
+                "  (if (>= idx count) dst\n",
+                "    (bootstrap-append-bytes (vector-push dst (vector-get s idx)) s (+ idx 1) count)))\n",
+                "(defn bootstrap-build-stage2 [src]\n",
+                "  (let [program (parse-program src)\n",
+                "        pair (compile-program-functions program)\n",
+                "        functions (vector-get pair 1)\n",
+                "        func-count (vector-length functions)\n",
+                "        header (emit-header)\n",
+                "        type-sec (emit-type-section-functions functions)\n",
+                "        function-sec (emit-function-section-functions functions)\n",
+                "        export-sec (emit-export-section-main-index (- func-count 1))\n",
+                "        code-sec (emit-code-section-functions functions)\n",
+                "        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))\n",
+                "        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))\n",
+                "        bytes2 (bootstrap-append-bytes bytes1 function-sec 0 (vector-length function-sec))\n",
+                "        bytes3 (bootstrap-append-bytes bytes2 export-sec 0 (vector-length export-sec))]\n",
+                "    (bootstrap-append-bytes bytes3 code-sec 0 (vector-length code-sec))))\n",
+                "(defn main []\n",
+                "  (let [stage2 (bootstrap-build-stage2 \"{src}\")]\n",
+                "    (print (vector-length stage2))))\n",
+            ),
+            src = src
+        );
+        let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+        compile_only(&stage1_source)
+    };
+
+    let try_n = |n: usize| -> bool {
+        let wasm = make_full_source(n);
+        lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm).is_ok()
+    };
+
+    let n10_ok = try_n(10);
+    let n50_ok = try_n(50);
+    let n200_ok = try_n(200);
+    let n500_ok = try_n(500);
+    let n1000_ok = try_n(1000);
+
+    eprintln!(
+        "BOOT-04 bootstrap-append-bytes 再帰深度境界 (Wasm 関数数):\n  \
+         N=10:   {}\n  \
+         N=50:   {}\n  \
+         N=200:  {}\n  \
+         N=500:  {}\n  \
+         N=1000: {}",
+        if n10_ok { "OK" } else { "TRAP" },
+        if n50_ok { "OK" } else { "TRAP" },
+        if n200_ok { "OK" } else { "TRAP" },
+        if n500_ok { "OK" } else { "TRAP" },
+        if n1000_ok { "OK" } else { "TRAP" },
+    );
+
+    // N=10 は必ず成功 (code section ~150 bytes)
+    assert!(n10_ok, "N=10 は必ず成功するはず");
+
+    // 単調性: 成功から失敗への遷移は一方向のみ
+    if !n50_ok {
+        assert!(!n200_ok, "N=50 で TRAP なら N=200 も TRAP のはず");
+        assert!(!n500_ok, "N=50 で TRAP なら N=500 も TRAP のはず");
+    }
+    if !n200_ok {
+        assert!(!n500_ok, "N=200 で TRAP なら N=500 も TRAP のはず");
+        assert!(!n1000_ok, "N=200 で TRAP なら N=1000 も TRAP のはず");
+    }
+    if !n500_ok {
+        assert!(!n1000_ok, "N=500 で TRAP なら N=1000 も TRAP のはず");
+    }
+}

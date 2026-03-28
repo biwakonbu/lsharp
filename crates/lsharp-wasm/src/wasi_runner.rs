@@ -40,7 +40,7 @@ pub fn run_wasm_wasi_with_dir_args_and_stdin(
     wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |t| t)
         .map_err(|e| format!("WASI リンクに失敗: {e}"))?;
 
-    let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(4096);
+    let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(4 * 1024 * 1024);
     let stdin = wasmtime_wasi::pipe::MemoryInputPipe::new(stdin.as_bytes().to_vec());
     let mut builder = WasiCtxBuilder::new();
     builder.stdout(stdout.clone());
