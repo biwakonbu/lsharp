@@ -138,10 +138,11 @@
   (let [v (vector-new 8)]
     (vector-push (vector-push (vector-push v (ast-module-decl)) name-hash) 0)))
 
-;; import 宣言: [26, name-hash]
-(defn make-import-decl [name-hash]
-  (let [v (vector-new 2)]
-    (vector-push (vector-push v (ast-import-decl)) name-hash)))
+;; import 宣言: [26, name-hash, name-start, name-end]
+;; name-start/name-end はソーステキスト内のモジュール名スパン
+(defn make-import-decl [name-hash name-start name-end]
+  (let [v (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push v (ast-import-decl)) name-hash) name-start) name-end)))
 
 ;; trait 宣言: [27, name-hash, decl-count, decl1, ...]
 (defn make-trait-def [name-hash]

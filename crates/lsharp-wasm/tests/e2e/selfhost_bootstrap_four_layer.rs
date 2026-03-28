@@ -4417,3 +4417,61 @@ fn test_e2e_boot04_self_hosted_stage2_compiler_blocker() {
         }
     }
 }
+
+/// BOOT-04: compiler-mode が import 宣言を解決できること
+///
+/// stage1 (Rust bootstrap wasm) を compiler-mode で実行したとき、
+/// (import ...) 宣言を持つファイルを正しく処理できることを検証する。
+///
+/// simple_main.ls: (import SimpleHelper) + (defn main [] (helper-value))
+/// simple_helper.ls: (defn helper-value [] 42)
+///
+/// import 解決後:
+/// - helper-value, main の両関数が ftable に登録される
+/// - 生成 wasm は valid wasm
+/// - _start → main → helper-value → 42 が正常実行される
+#[test]
+fn test_e2e_boot04_compiler_mode_import_resolution() {
+    let main_path = selfhost_main_path();
+    let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures");
+
+    assert!(
+        fixture_dir.join("SimpleMain.ls").exists(),
+        "fixture ファイル tests/fixtures/SimpleMain.ls が存在しない"
+    );
+    assert!(
+        fixture_dir.join("SimpleHelper.ls").exists(),
+        "fixture ファイル tests/fixtures/SimpleHelper.ls が存在しない"
+    );
+
+    // stage1 (Rust bootstrap) wasm
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    // compiler-mode で SimpleMain.ls をコンパイル (import SimpleHelper を解決する必要あり)
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&fixture_dir),
+        &["compiler", "SimpleMain.ls"],
+    )
+    .expect("BOOT-04 import-resolution: compiler-mode が SimpleMain.ls をコンパイルできなかった");
+
+    // 出力が length-prefixed wasm バイト列であること
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    let result_wasm = &modules[0];
+    assert_valid_wasm(result_wasm);
+
+    // 生成 wasm が正常実行できること (helper-value を呼び出す main が動く)
+    let run_result = lsharp_wasm::wasi_runner::run_wasm_wasi(result_wasm);
+    assert!(
+        run_result.is_ok(),
+        "BOOT-04 import-resolution: 生成 wasm の WASI 実行に失敗: {:?}",
+        run_result.err()
+    );
+
+    eprintln!(
+        "BOOT-04 import-resolution GREEN: SimpleMain.ls + SimpleHelper → {} bytes の wasm を生成・実行 OK",
+        result_wasm.len()
+    );
+}

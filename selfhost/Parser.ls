@@ -23,7 +23,7 @@
 ;; tag=20: defn [20, name-hash, param-count, param-hash1, ..., body]
 ;; tag=21: type-decl [21, name-hash]
 ;; tag=25: module-decl [25, name-hash]
-;; tag=26: import-decl [26, name-hash]
+;; tag=26: import-decl [26, name-hash, name-start, name-end]
 
 ;; トークン種別定数 (Token.ls より)
 ;; 0=LParen, 1=RParen, 2=LBracket, 3=RBracket, 4=LBrace, 5=RBrace
@@ -1119,7 +1119,7 @@
       (do
         (p-advance pos-ref)  ;; name を消費
         (p-expect spans pos-ref 1)  ;; ) を消費
-        (make-import-decl name-h)))))
+        (make-import-decl name-h name-start name-end)))))
 
 ;; === apply (関数呼び出し) ===
 (defn parse-apply-v3 [spans pos-ref src]
