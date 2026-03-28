@@ -10,8 +10,16 @@
 
 このコードには型注釈がない。しかし L# コンパイラは `+` が `(Int, Int) -> Int` であることを知っているので、`x` と `y` は `Int` であり、`add` の型は `(Int, Int) -> Int` だと推論できる。
 
+公開 CLI では `compile` が型検査を含む入口なので、日常的には次の 1 コマンドで frontend を通す:
+
 ```bash
-$ cargo run -- check examples/fib.ls
+$ cargo run -- compile examples/fib.ls -o fib.wasm
+```
+
+型の詳細表示は LSP / MCP の hover / diagnostics で参照する。内部的な型推論結果を要約すると、
+`examples/fib.ls` は次のような型を持つ:
+
+```text
 fib : (Int) -> Int
 main : () -> Unit
 ```

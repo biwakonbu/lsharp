@@ -145,7 +145,7 @@ fn test_e2e_bootstrap_stage1_modules() {
         // Compiler.ls: コンパイラ操作 (命令数=1, op=1/42, LEB128検証)
         (
             "Compiler.ls",
-            "1\n1\n42\n2\n1\n5\n2\n172\n2\n3\n1\n3\n1\n4\n20",
+            "1\n1\n42\n3\n1\n5\n2\n172\n2\n3\n1\n3\n1\n4\n40",
         ),
         // WasmEmit.ls: Wasmバイナリ生成 (header + type section + LEB128)
         (

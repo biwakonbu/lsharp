@@ -15,16 +15,17 @@ F# のような強い静的型付けと Lisp の S 式構文を融合したプ�
 # 開発用 CLI をビルド
 cargo build -p lsharp-driver
 
-# ソースファイルの型チェック
-target/debug/lsharp check examples/fib.ls
-
-# Wasm/WASI backend でコンパイル
+# 公開 CLI の基本動線: compile で frontend 検証と Wasm 出力をまとめて行う
 target/debug/lsharp compile examples/fib.ls -o fib.wasm
 
 # wasmtime で実行
 wasmtime fib.wasm
 # => 55
 ```
+
+公開 CLI は `compile` を中心に整理しており、`parse` / `check` / `fmt` はエディタ連携や AI 連携で使う
+LSP / MCP の内部 API として扱う。AST・型情報・formatting の詳細確認は、CLI を直叩きする代わりに
+`lsharp lsp` / `lsharp mcp-server` を経由する想定である。
 
 native 配布物や selfhost compiler への経路を試す場合は、`LSHARP_PATH` で委譲先を差し替えられる。
 
@@ -73,14 +74,18 @@ L# source (.ls)
        -> native artifact / release binary
 ```
 
-現在の公開 CLI は主に `crates/lsharp-driver` が担い、`check` / `compile` / `parse` などの入口を提供する。selfhost 側では `selfhost/Cli.ls`, `selfhost/LspServer.ls`, `selfhost/DocTools.ls`, `selfhost/TestRunner.ls` が対応するツール群で、default path migration の進行に合わせて native 配布物へ寄せていく。
+現在の公開 CLI は主に `crates/lsharp-driver` の `compile` を入口にし、`parse` / `check` / `fmt` は
+`lsharp lsp` / `lsharp mcp-server` が利用する内部 API 側へ寄せていく。selfhost 側では
+`selfhost/Cli.ls`, `selfhost/LspServer.ls`, `selfhost/DocTools.ls`, `selfhost/TestRunner.ls` が対応する
+ツール群で、default path migration の進行に合わせて native 配布物へ寄せていく。
 
 ## Build / Use Paths
 
 | 用途 | 現在の実用経路 | 主な実装 |
 |------|----------------|----------|
-| 日常開発・型検査 | `cargo build -p lsharp-driver` → `target/debug/lsharp check ...` | `crates/lsharp-driver`, `crates/lsharp-types` |
+| 日常開発・公開 CLI | `cargo build -p lsharp-driver` → `target/debug/lsharp compile ... -o out.wasm` | `crates/lsharp-driver`, `crates/lsharp-types`, `crates/lsharp-wasm` |
 | Wasm 生成・実行 | `target/debug/lsharp compile ... -o out.wasm` → `wasmtime out.wasm` | `crates/lsharp-wasm`, `selfhost/WasmEmit.ls` |
+| IDE / AI 連携 | `target/debug/lsharp lsp` / `target/debug/lsharp mcp-server` | `crates/lsharp-lsp`, internal parse/check/fmt APIs |
 | native compiler / 配布物の接続確認 | `LSHARP_PATH=/path/to/lsharp target/debug/lsharp --version` | `crates/lsharp-driver`, `scripts/ci/default-path-smoke.sh` |
 | selfhost / stdlib の固定入力 compile gate | `bash scripts/ci/compile-phase11-inputs.sh` | `selfhost/Compiler.ls`, `selfhost/Native*`, `selfhost/Wasi*` |
 

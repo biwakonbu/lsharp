@@ -1,5 +1,6 @@
 ---
 source: crates/lsharp-ir/src/lower/tests.rs
+assertion_line: 19
 expression: module.dump()
 ---
 fn fib(i64) -> i64:
@@ -14,14 +15,14 @@ fn fib(i64) -> i64:
   local.get 0
   i64.const 1
   i64.sub
-  call 12
+  call 14
   local.get 0
   i64.const 2
   i64.sub
-  call 12
+  call 14
   i64.add
   end
 
 fn main() -> i64:
   i64.const 10
-  call 12
+  call 14

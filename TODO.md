@@ -256,14 +256,14 @@
 
 ### P12-0: CLI 統一 (`compile` 一本化)
 
-> Phase 12 の前提作業。`compile` を推奨エントリに昇格し、format → check → codegen を一括実行する。
-> `check` / `fmt` / `parse` は互換コマンドとして当面維持し、削除は別タスクに分離する。
+> Phase 12 の入口整理。`compile` を公開 CLI の単一エントリにし、format → check → codegen を一括実行する。
+> `check` / `fmt` / `parse` は公開 CLI から外し、Rust API / LSP / MCP の内部利用へ寄せる。
 
-- [~] **P12-0. `lsharp compile` パイプライン統合** (tests: `commands::compile::tests::test_compile_file_runs_format_check_codegen_pipeline`, `commands::compile::tests::test_resolve_compile_target_uses_output_extension_when_flag_missing`, `commands::compile::tests::test_compile_file_native_target_returns_explicit_error`)
+- [x] **P12-0. `lsharp compile` パイプライン統合** (tests: `test_cli_help_excludes_removed_parse_check_fmt_subcommands`, `test_cli_try_parse_from_rejects_removed_parse_check_fmt_subcommands`, `commands::compile::tests::test_compile_file_runs_format_check_codegen_pipeline`, `commands::compile::tests::test_resolve_compile_target_uses_output_extension_when_flag_missing`, `commands::compile::tests::test_compile_file_native_target_returns_explicit_error`; scripts: `scripts/audit_docs.sh`, `scripts/smoke_test_readme.sh`)
   - [x] `compile` サブコマンドで format → check → codegen を順に実行
   - [x] 出力ファイル拡張子 (`.wasm` / なし) または `--target` フラグでバックエンド判定 (Wasm / Native, native は現状 explicit unsupported error)
   - [x] format 差分があればソースファイルを書き換えてから check → codegen に進む
-  - [ ] CLI サブコマンドとしての `check` / `format` / `parse` を廃止 (Rust API / LSP / MCP 内部では存続)
+  - [x] CLI サブコマンドとしての `check` / `format` / `parse` を廃止 (Rust API / LSP / MCP 内部では存続)
   - 修正対象: `crates/lsharp-driver/src/main.rs`
 
 ### P12-A: AI 連携基盤 (LSP-over-MCP + api.json)

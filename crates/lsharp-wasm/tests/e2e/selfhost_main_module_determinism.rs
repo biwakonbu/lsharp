@@ -25,6 +25,10 @@ fn test_e2e_selfhost_main_module_structure() {
         "TypeInfer",
         "Compiler",
         "WasmEmit",
+        "NativeTarget",
+        "NativeCodegen",
+        "NativeEmit",
+        "Linker",
     ];
     for imp in &expected_imports {
         let import_decl = format!("(import {})", imp);
@@ -77,13 +81,15 @@ fn test_e2e_selfhost_main_module_structure() {
 /// topological sort でコンパイル順を決定。依存先が依存元より前に来ることを検証する。
 ///
 /// 期待されるコンパイル順 (依存深度レベル):
-///   Level 0 (依存なし): Token, IR, Type
-///   Level 1: AST (-> Token), TypeScheme (-> Type), Lexer (-> Token), WasmEmit (-> IR)
+///   Level 0 (依存なし): Token, IR, Type, JsonRpc, NativeTarget
+///   Level 1: AST (-> Token), TypeScheme (-> Type), Lexer (-> Token), WasmEmit (-> IR),
+///            NativeCodegen (-> NativeTarget, IR), NativeEmit (-> NativeTarget),
+///            Linker (-> NativeTarget)
 ///   Level 2: Parser (-> Token, AST), MacroExpand (-> AST, Token),
 ///            TypeInfer (-> AST, Type, TypeScheme), Compiler (-> AST, IR),
 ///            Linter (-> AST), Formatter (-> AST)
-///   Level 3: JsonRpc (-> Linter, Formatter),
-///            Main (-> Lexer, Parser, MacroExpand, TypeInfer, Compiler, WasmEmit)
+///   Level 3: Main (-> Lexer, Parser, MacroExpand, TypeInfer, Compiler, WasmEmit,
+///                  NativeTarget, NativeCodegen, NativeEmit, Linker)
 #[test]
 fn test_e2e_selfhost_module_graph_topological_sort() {
     use std::collections::{HashMap, HashSet, VecDeque};
@@ -261,8 +267,11 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         levels.insert(module.clone(), level);
     }
 
-    // Level 0: Token, IR, Type (依存なし)
-    let level_0: HashSet<&str> = ["Token", "IR", "Type"].iter().copied().collect();
+    // Level 0: Token, IR, Type, JsonRpc, NativeTarget (依存なし)
+    let level_0: HashSet<&str> = ["Token", "IR", "Type", "JsonRpc", "NativeTarget"]
+        .iter()
+        .copied()
+        .collect();
     for module in &level_0 {
         assert_eq!(
             levels[*module], 0,
@@ -271,8 +280,18 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         );
     }
 
-    // Level 1: AST, TypeScheme, Lexer
-    let level_1: HashSet<&str> = ["AST", "TypeScheme", "Lexer"].iter().copied().collect();
+    // Level 1: AST, TypeScheme, Lexer, NativeCodegen, NativeEmit, Linker
+    let level_1: HashSet<&str> = [
+        "AST",
+        "TypeScheme",
+        "Lexer",
+        "NativeCodegen",
+        "NativeEmit",
+        "Linker",
+    ]
+    .iter()
+    .copied()
+    .collect();
     for module in &level_1 {
         assert_eq!(
             levels[*module], 1,
@@ -309,8 +328,8 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         );
     }
 
-    // Level 3: JsonRpc (-> Linter, Formatter), Main (-> Parser, TypeInfer 等の Level 2)
-    let level_3: HashSet<&str> = ["JsonRpc", "Main"].iter().copied().collect();
+    // Level 3: Main (-> Parser, TypeInfer 等の Level 2)
+    let level_3: HashSet<&str> = ["Main"].iter().copied().collect();
     for module in &level_3 {
         assert_eq!(
             levels[*module], 3,
@@ -686,45 +705,7 @@ fn test_e2e_selfhost_main_fixed_api_calls() {
 /// Red Phase: import 解決が未実装のため、モジュール連結コンパイルが FAIL する。
 #[test]
 fn test_e2e_selfhost_main_full_compile() {
-    // 全依存モジュールのソースを読み込む
-    let module_files = [
-        "../../selfhost/Token.ls",
-        "../../selfhost/AST.ls",
-        "../../selfhost/IR.ls",
-        "../../selfhost/Type.ls",
-        "../../selfhost/TypeScheme.ls",
-        "../../selfhost/Lexer.ls",
-        "../../selfhost/Parser.ls",
-        "../../selfhost/MacroExpand.ls",
-        "../../selfhost/TypeInfer.ls",
-        "../../selfhost/Compiler.ls",
-        "../../selfhost/WasmEmit.ls",
-        "../../selfhost/Main.ls",
-    ];
-
-    let mut combined_source = String::new();
-    for path in &module_files {
-        let source =
-            std::fs::read_to_string(path).unwrap_or_else(|_| panic!("{} が存在しない", path));
-        combined_source.push_str(&source);
-        combined_source.push('\n');
-    }
-
-    // フルコンパイル: 全モジュールを連結してパース -> 型チェック -> IR -> Wasm
-    let program = parse_for_pipeline(&combined_source);
-
-    let mut infer = Infer::new();
-    let type_results = infer
-        .infer_program(&program)
-        .expect("Main.ls フルコンパイル: 型チェックが失敗");
-
-    let mut lower = Lower::new();
-    let module = lower
-        .lower_program(&program, &type_results)
-        .expect("Main.ls フルコンパイル: IR 変換が失敗");
-
-    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
-        .expect("Main.ls フルコンパイル: Wasm 生成が失敗");
+    let wasm_bytes = compile_file_only(&selfhost_main_path());
 
     // Wasm バイナリが有効であること
     assert!(

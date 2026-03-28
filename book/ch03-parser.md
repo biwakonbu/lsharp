@@ -341,15 +341,20 @@ pub enum ParseError {
 
 ## AST の表示
 
-L# の AST は `Display` トレイトを実装しており、パース結果を人間が読める形で表示できる:
+L# の AST は `Display` トレイトを実装しており、パース結果を人間が読める形で表示できる。
+公開 CLI は `compile` 中心に整理しているため、AST の可視化は `parse` コマンドを直接案内する代わりに
+LSP / MCP の内部 parser API 側へ寄せる。`examples/fib.ls` は内部的には次のように表示される:
 
-```bash
-$ cargo run -- parse examples/fib.ls
+```text
 (defn fib [n] (if (<= n 1) n (+ (fib (- n 1)) (fib (- n 2)))))
 (defn main [] (print (fib 10)))
 ```
 
-入力と出力がほぼ同じ形であることに注目してほしい。S 式では AST の構造とソースコードの見た目が一致するため、パース結果の検証が容易である。
+日常的な確認は `cargo run -- compile examples/fib.ls -o fib.wasm` を入口にし、AST を覗きたい場合は
+IDE / AI 連携から同じ parser API を呼ぶ、という役割分担になる。
+
+入力と出力がほぼ同じ形であることに注目してほしい。S 式では AST の構造とソースコードの見た目が一致するため、
+パース結果の検証が容易である。
 
 ## まとめ
 

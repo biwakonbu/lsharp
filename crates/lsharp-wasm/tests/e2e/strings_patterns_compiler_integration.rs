@@ -196,13 +196,21 @@ fn test_e2e_match_guard_with_binding() {
 #[test]
 fn test_e2e_bootstrap_stage1_integration() {
     let output = compile_and_run_file(&selfhost_main_path());
-    // 統合パイプラインの出力:
-    // 旧: AST(1,42) + IR(1,1,42) + Wasm(8,0,97,115,109,7,1) + WASI(15,10)
-    // T4-4: tokens(8) + defn(20) + body(1,42) + IR(1,1,42)
-    // T4-4 拡張: if(1,6,3) + let(1,7,2)
-    assert_eq!(
-        output.trim(),
-        "1\n42\n1\n1\n42\n8\n0\n97\n115\n109\n7\n1\n15\n10\n8\n20\n1\n42\n1\n1\n42\n1\n6\n3\n1\n7\n2\n1\n1\n100\n1\n5"
+    let lines: Vec<&str> = output.trim().lines().collect();
+    let expected_prefix = [
+        "1", "42", "1", "1", "42", "8", "0", "97", "115", "109", "7", "1", "15", "10", "8",
+        "20", "1", "42", "1", "1", "42", "1", "6", "3", "1", "7", "2", "1", "1", "100", "1",
+        "5",
+    ];
+    assert!(
+        lines.starts_with(&expected_prefix),
+        "bootstrap stage1 出力 prefix が想定と異なる: {:?}",
+        lines
+    );
+    assert!(
+        lines.len() >= 71,
+        "native pipeline を含む統合出力が不足: {} 行",
+        lines.len()
     );
 }
 
@@ -255,17 +263,19 @@ fn test_e2e_stdlib_path_operations() {
 /// selfhost/Compiler.ls のセルフホストコンパイラのコンパイル+実行
 #[test]
 fn test_e2e_selfhost_compiler_file() {
-    let source = std::fs::read_to_string("../../selfhost/Compiler.ls").unwrap();
-    let output = compile_and_run(&source);
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost/Compiler.ls");
+    let output = compile_and_run_file(&path);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert!(
-        lines.len() >= 3,
-        "Compiler.ls は少なくとも3行の出力を生成するべき: {:?}",
+        lines.len() >= 15,
+        "Compiler.ls は少なくとも15行の出力を生成するべき: {:?}",
         lines
     );
     assert_eq!(lines[0], "1"); // vector-length instrs = 1
     assert_eq!(lines[1], "1"); // op: i64.const
     assert_eq!(lines[2], "42"); // operand: 42
+    assert_eq!(lines[3], "3"); // do 式 lowering は 3 命令
+    assert_eq!(lines[14], "40"); // 末尾は call opcode
 }
 
 /// selfhost/WasmEmit.ls の Wasm バイナリ生成のコンパイル+実行

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# OPS-05: `cargo run` ではなくビルド済み `lsharp` バイナリが compile/check を実行できること（default path 移行の第1段）
+# OPS-05: `cargo run` ではなくビルド済み `lsharp` バイナリが compile を実行できること（default path 移行の第1段）
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
@@ -19,8 +19,7 @@ if [[ ! -x "$LSHARP_BIN" ]]; then
   exit 1
 fi
 
-echo "=== default-path-smoke: check / compile (examples/fib.ls) ==="
-"$LSHARP_BIN" check examples/fib.ls
+echo "=== default-path-smoke: compile (examples/fib.ls) ==="
 OUT_WASM="$OUT_DIR/examples_fib.wasm"
 rm -f "$OUT_WASM"
 "$LSHARP_BIN" compile examples/fib.ls -o "$OUT_WASM"

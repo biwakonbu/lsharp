@@ -868,7 +868,11 @@ fn test_e2e_selfhost_module_declarations() {
         ("WasmEmit.ls", "WasmEmit", &["IR"]),
         ("Linter.ls", "Linter", &["AST"]),
         ("Formatter.ls", "Formatter", &["AST"]),
-        ("JsonRpc.ls", "JsonRpc", &["Linter", "Formatter"]),
+        ("JsonRpc.ls", "JsonRpc", &[]),
+        ("NativeTarget.ls", "NativeTarget", &[]),
+        ("NativeCodegen.ls", "NativeCodegen", &["NativeTarget", "IR"]),
+        ("NativeEmit.ls", "NativeEmit", &["NativeTarget"]),
+        ("Linker.ls", "Linker", &["NativeTarget"]),
         (
             "Main.ls",
             "Main",
@@ -879,6 +883,10 @@ fn test_e2e_selfhost_module_declarations() {
                 "TypeInfer",
                 "Compiler",
                 "WasmEmit",
+                "NativeTarget",
+                "NativeCodegen",
+                "NativeEmit",
+                "Linker",
             ],
         ),
     ];
@@ -898,7 +906,7 @@ fn test_e2e_selfhost_module_declarations() {
         let source =
             std::fs::read_to_string(&path).expect(&format!("{} の読み込みに失敗", filename));
 
-        // テキストベースで module 宣言の存在を確認（全15ファイル）
+        // テキストベースで module 宣言の存在を確認
         let module_decl = format!("(module {})", expected_module);
         assert!(
             source.contains(&module_decl),
@@ -907,7 +915,7 @@ fn test_e2e_selfhost_module_declarations() {
             module_decl
         );
 
-        // テキストベースで import 宣言の存在を確認（全15ファイル）
+        // テキストベースで import 宣言の存在を確認
         for imp in *expected_imports {
             let import_decl = format!("(import {})", imp);
             assert!(
@@ -931,9 +939,9 @@ fn test_e2e_selfhost_module_declarations() {
         }
     }
 
-    assert_eq!(text_verified, 16, "全 16 モジュールでテキスト検証すべき");
+    assert_eq!(text_verified, 20, "全 20 モジュールでテキスト検証すべき");
     assert_eq!(
-        parse_verified, 14,
-        "パース可能な 14 モジュールで AST 検証すべき"
+        parse_verified, 18,
+        "パース可能な 18 モジュールで AST 検証すべき"
     );
 }

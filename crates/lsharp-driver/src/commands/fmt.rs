@@ -38,6 +38,7 @@ pub fn check_format(source: &str) -> Result<FmtResult, String> {
 }
 
 /// fmt サブコマンドのエントリポイント
+#[allow(dead_code)]
 pub fn cmd_fmt(file: &Path, check: bool, write: bool) -> miette::Result<()> {
     let source =
         std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;

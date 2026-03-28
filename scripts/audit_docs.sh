@@ -3,6 +3,7 @@
 # 完了表示 ([x]) に一次エビデンス (テスト名, commit hash) が紐付いているか検証
 # P11-1c: 差分5種の自動検出機能
 # P11-1d: エビデンス紐付け検証強化 + README smoke test 統合
+# P12-0: 公開 CLI の docs/script を compile 中心に統一しているか確認
 
 set -euo pipefail
 
@@ -90,18 +91,51 @@ else
 fi
 
 # =============================================================================
-# 2. README.md の導入手順が有効か確認 (P11-1c: 仕様差分)
+# 2. 公開 CLI ドキュメントが compile 中心か確認 (P12-0)
 # =============================================================================
 echo ""
-echo "--- [仕様差分] README.md: コマンド例の存在確認 ---"
-for CMD in "cargo build" "cargo run" "cargo run -- check" "cargo run -- compile"; do
-    if grep -q "$CMD" README.md; then
-        echo "  OK: '$CMD' 記載あり"
+echo "--- [P12-0] 公開 CLI ドキュメントの compile 統一確認 ---"
+for SPEC in \
+    "README.md|target/debug/lsharp compile|README compile 導線" \
+    "README.md|LSP / MCP|README の内部 API 説明" \
+    "AGENTS.md|cargo run -- compile|AGENTS compile 導線" \
+    "AGENTS.md|LSP / MCP|AGENTS の内部 API 説明" \
+    "CLAUDE.md|cargo run -- compile|CLAUDE compile 導線" \
+    "CLAUDE.md|LSP / MCP|CLAUDE の内部 API 説明"; do
+    FILE=$(echo "$SPEC" | cut -d'|' -f1)
+    PATTERN=$(echo "$SPEC" | cut -d'|' -f2)
+    LABEL=$(echo "$SPEC" | cut -d'|' -f3)
+    if grep -q "$PATTERN" "$FILE"; then
+        echo "  OK: $LABEL"
     else
-        echo "  WARNING: '$CMD' 記載なし"
+        echo "  WARNING: $LABEL が見つからない"
         WARNINGS=$((WARNINGS + 1))
     fi
 done
+
+echo ""
+echo "--- [P12-0] 非推奨の公開 CLI 例が残っていないか確認 ---"
+DEPRECATED_PUBLIC_DOCS=0
+DEPRECATED_PATTERN='(cargo run -- (parse|check|fmt)|target/debug/lsharp (parse|check|fmt))'
+for FILE in README.md AGENTS.md CLAUDE.md book/ch03-parser.md book/ch04-type-inference.md scripts/smoke_test_readme.sh; do
+    if grep -qE "$DEPRECATED_PATTERN" "$FILE"; then
+        echo "  ERROR: 非推奨の公開 CLI 例が残存: $FILE"
+        grep -nE "$DEPRECATED_PATTERN" "$FILE" | sed 's/^/    /'
+        DEPRECATED_PUBLIC_DOCS=$((DEPRECATED_PUBLIC_DOCS + 1))
+    fi
+done
+if [ "$DEPRECATED_PUBLIC_DOCS" -eq 0 ]; then
+    echo "  OK: 直接影響する docs/scripts から旧 CLI 例を除去済み"
+else
+    ERRORS=$((ERRORS + DEPRECATED_PUBLIC_DOCS))
+fi
+
+if grep -q '/tmp/' scripts/smoke_test_readme.sh; then
+    echo "  ERROR: scripts/smoke_test_readme.sh に /tmp 依存が残っている"
+    ERRORS=$((ERRORS + 1))
+else
+    echo "  OK: scripts/smoke_test_readme.sh に /tmp 依存なし"
+fi
 
 # =============================================================================
 # 3. selfhost ファイルの存在確認 (P11-1c: 実装欠落)

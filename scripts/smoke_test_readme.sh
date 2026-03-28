@@ -1,52 +1,81 @@
 #!/bin/bash
-# P11-1d: README.md の導入手順が現行 mainline で再現できることを smoke test で確認する
-# README.md と book/ に記載されたコマンド例を抽出して実行し、再現性を検証する
+# P12-0: compile 中心の公開 CLI ドキュメントが現行 mainline で再現できることを smoke test で確認する
+# README.md / AGENTS.md / CLAUDE.md で案内する compile / lsp / mcp-server の導線を軽量に検証する
 
 set -euo pipefail
 
 ERRORS=0
 PASS=0
+SMOKE_DIR="ci-artifacts/readme-smoke"
+SMOKE_SOURCE="$SMOKE_DIR/fib_smoke.ls"
+SMOKE_WASM="$SMOKE_DIR/fib_smoke.wasm"
 
-echo "=== README / book smoke test ==="
+mkdir -p "$SMOKE_DIR"
+trap 'rm -f "$SMOKE_SOURCE" "$SMOKE_WASM"' EXIT
+cp examples/fib.ls "$SMOKE_SOURCE"
+
+echo "=== README / docs smoke test ==="
 echo ""
 
-# 1. cargo build が通ること
-echo "--- cargo build ---"
-if cargo build 2>&1 | tail -1; then
-    echo "PASS: cargo build"
+# 1. 開発用 CLI をビルドできること
+echo "--- cargo build -p lsharp-driver ---"
+if cargo build -p lsharp-driver 2>&1 | tail -3; then
+    echo "PASS: cargo build -p lsharp-driver"
     PASS=$((PASS + 1))
 else
-    echo "FAIL: cargo build"
+    echo "FAIL: cargo build -p lsharp-driver"
     ERRORS=$((ERRORS + 1))
 fi
 
-# 2. cargo run -- check examples/fib.ls が通ること (README Quick Start)
+# 2. README Quick Start の compile 導線が通ること
 echo ""
-echo "--- cargo run -- check examples/fib.ls ---"
-if cargo run -- check examples/fib.ls 2>&1 | tail -3; then
-    echo "PASS: cargo run -- check examples/fib.ls"
+echo "--- target/debug/lsharp compile $SMOKE_SOURCE ---"
+if target/debug/lsharp compile "$SMOKE_SOURCE" -o "$SMOKE_WASM" 2>&1 | tail -3; then
+    echo "PASS: target/debug/lsharp compile $SMOKE_SOURCE"
     PASS=$((PASS + 1))
 else
-    echo "FAIL: cargo run -- check examples/fib.ls"
+    echo "FAIL: target/debug/lsharp compile $SMOKE_SOURCE"
     ERRORS=$((ERRORS + 1))
 fi
 
-# 3. cargo run -- compile examples/fib.ls -o /tmp/fib_smoke.wasm が通ること
+# 3. Wasm artifact が生成されること
 echo ""
-echo "--- cargo run -- compile examples/fib.ls ---"
-if cargo run -- compile examples/fib.ls -o /tmp/fib_smoke.wasm 2>&1 | tail -3; then
-    echo "PASS: cargo run -- compile examples/fib.ls"
+echo "--- artifact check: $SMOKE_WASM ---"
+if [ -s "$SMOKE_WASM" ]; then
+    echo "PASS: wasm artifact generated ($SMOKE_WASM)"
     PASS=$((PASS + 1))
 else
-    echo "FAIL: cargo run -- compile examples/fib.ls"
+    echo "FAIL: wasm artifact not generated ($SMOKE_WASM)"
     ERRORS=$((ERRORS + 1))
 fi
 
-# 4. wasmtime で実行できること (wasmtime が利用可能な場合のみ)
+# 4. LSP backend の入口が存在すること
 echo ""
-echo "--- wasmtime /tmp/fib_smoke.wasm ---"
+echo "--- target/debug/lsharp lsp --help ---"
+if target/debug/lsharp lsp --help 2>&1 | head -5; then
+    echo "PASS: target/debug/lsharp lsp --help"
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: target/debug/lsharp lsp --help"
+    ERRORS=$((ERRORS + 1))
+fi
+
+# 5. MCP backend の入口が存在すること
+echo ""
+echo "--- target/debug/lsharp mcp-server --help ---"
+if target/debug/lsharp mcp-server --help 2>&1 | head -5; then
+    echo "PASS: target/debug/lsharp mcp-server --help"
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: target/debug/lsharp mcp-server --help"
+    ERRORS=$((ERRORS + 1))
+fi
+
+# 6. wasmtime で実行できること (wasmtime が利用可能な場合のみ)
+echo ""
+echo "--- wasmtime $SMOKE_WASM ---"
 if command -v wasmtime &> /dev/null; then
-    OUTPUT=$(wasmtime /tmp/fib_smoke.wasm 2>&1 || true)
+    OUTPUT=$(wasmtime "$SMOKE_WASM" 2>&1 || true)
     if echo "$OUTPUT" | grep -q "55"; then
         echo "PASS: wasmtime fib.wasm => 55"
         PASS=$((PASS + 1))
@@ -57,31 +86,6 @@ if command -v wasmtime &> /dev/null; then
 else
     echo "SKIP: wasmtime が見つからない (任意依存)"
 fi
-
-# 5. cargo run -- parse examples/fib.ls --ast が通ること (README Architecture 例)
-echo ""
-echo "--- cargo run -- parse examples/fib.ls --ast ---"
-if cargo run -- parse examples/fib.ls --ast 2>&1 | head -5; then
-    echo "PASS: cargo run -- parse examples/fib.ls --ast"
-    PASS=$((PASS + 1))
-else
-    echo "FAIL: cargo run -- parse examples/fib.ls --ast"
-    ERRORS=$((ERRORS + 1))
-fi
-
-# 6. cargo test が通ること
-echo ""
-echo "--- cargo test (quick check) ---"
-if cargo test 2>&1 | tail -3; then
-    echo "PASS: cargo test"
-    PASS=$((PASS + 1))
-else
-    echo "FAIL: cargo test"
-    ERRORS=$((ERRORS + 1))
-fi
-
-# クリーンアップ
-rm -f /tmp/fib_smoke.wasm
 
 echo ""
 echo "=== smoke test 完了: PASS=$PASS, FAIL=$ERRORS ==="

@@ -3,10 +3,12 @@
 (import Compiler)
 (import DocTools)
 (import Formatter)
+(import Lexer)
 (import LspServer)
 (import Parser)
 (import TestRunner)
 (import TypeInfer)
+(import TypeScheme)
 (import WasmEmit)
 
 ;; Cli.ls - L# 製 CLI エントリポイント
@@ -591,7 +593,7 @@
   (vector-get frame 1))
 
 (defn lsp-stdio-frame-content-length [frame]
-  (parse-content-length (lsp-stdio-frame-header frame)))
+  (lsp-parse-content-length (lsp-stdio-frame-header frame)))
 
 (defn lsp-stdio-message-request [msg]
   (let [parsed (parse-json-rpc-request msg)
@@ -710,7 +712,7 @@
     out
     (let [header-end (lsp-stdio-find-header-end-loop wire idx len)
           header (substring wire idx header-end)
-          content-length (parse-content-length header)
+          content-length (lsp-parse-content-length header)
           body-start (+ header-end 4)
           body-end (+ body-start content-length)
           body (substring wire body-start body-end)

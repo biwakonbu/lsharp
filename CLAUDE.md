@@ -26,11 +26,14 @@ cargo clippy                       # リント
 ## CLI コマンド
 
 ```bash
-cargo run -- parse examples/fib.ls --ast    # AST 表示
-cargo run -- check examples/fib.ls          # 型チェック
-cargo run -- compile examples/fib.ls -o fib.wasm  # Wasm コンパイル
-cargo run -- test examples/fib.ls           # メタデータテスト (:example, :invariant)
+cargo run -- compile examples/fib.ls -o fib.wasm  # 公開 CLI の基本動線
+cargo run -- test examples/fib.ls                 # メタデータテスト (:example, :invariant)
+cargo run -- lsp                                  # IDE 向けバックエンド
+cargo run -- mcp-server                           # AI 向けバックエンド
 ```
+
+公開 CLI は `compile` 中心で案内する。`parse` / `check` / `fmt` は LSP / MCP が利用する内部 API として扱い、
+ユーザー向けの手順や smoke test には載せない。
 
 ## ワークスペース構成
 

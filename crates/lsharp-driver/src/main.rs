@@ -2,7 +2,7 @@
 //!
 //! - 現行: 本バイナリが Rust 実装パイプライン（syntax → types → ir → wasm）を**内蔵**する。
 //! - 移行中: 環境変数 `LSHARP_PATH` で selfhost / 外部コンパイラ executable またはその配置ディレクトリを指せる。
-//! - 検証: `scripts/ci/default-path-smoke.sh` が `target/debug/lsharp` のみで `check` / `compile` を通す。
+//! - 検証: `scripts/ci/default-path-smoke.sh` が `target/debug/lsharp` のみで `compile` を通す。
 
 mod api_doc;
 mod claude_plugin;
@@ -47,26 +47,6 @@ enum Command {
     Init {
         /// プロジェクト名
         name: String,
-    },
-
-    /// ソースファイルをパースして AST を表示
-    Parse {
-        /// 入力ファイル
-        file: PathBuf,
-
-        /// AST を表示する
-        #[arg(long)]
-        ast: bool,
-    },
-
-    /// ソースファイルを型チェック
-    Check {
-        /// 入力ファイル
-        file: PathBuf,
-
-        /// Knowledge JSON を出力する
-        #[arg(long)]
-        emit_knowledge: bool,
     },
 
     /// ソースファイルを Wasm にコンパイル
@@ -189,20 +169,6 @@ enum Command {
     /// MCP サーバーを起動
     McpServer,
 
-    /// ソースコードをフォーマット
-    Fmt {
-        /// 入力ファイル
-        file: PathBuf,
-
-        /// フォーマット差分があればエラー終了 (CI 用)
-        #[arg(long)]
-        check: bool,
-
-        /// ファイルを上書きフォーマット
-        #[arg(short, long)]
-        write: bool,
-    },
-
     /// ドキュメント生成 (:doc メタデータから HTML 生成)
     Doc {
         /// 入力ファイル
@@ -236,63 +202,6 @@ fn main() -> miette::Result<()> {
     match cli.command {
         Command::Init { name } => {
             cmd_init(&name)?;
-        }
-
-        Command::Parse { file, ast } => {
-            let source = std::fs::read_to_string(&file)
-                .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
-
-            let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{e}"))?;
-
-            if ast {
-                println!("{program:#?}");
-            } else {
-                println!("{program}");
-            }
-        }
-
-        Command::Check {
-            file,
-            emit_knowledge,
-        } => {
-            let source = std::fs::read_to_string(&file)
-                .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
-
-            let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{e}"))?;
-
-            let mut infer = lsharp_types::infer::Infer::new();
-
-            // import 宣言を再帰的に解決し、可視な外部シンボルだけを注入する
-            let mut resolved_modules = std::collections::HashSet::new();
-            resolve_imports_recursive(&program, &file, &mut infer, &mut resolved_modules)?;
-
-            let results = infer
-                .infer_program(&program)
-                .map_err(|e| miette::miette!("{e}"))?;
-
-            if emit_knowledge {
-                let knowledge = build_knowledge(&program, &results, &infer);
-                let json = knowledge
-                    .to_json()
-                    .map_err(|e| miette::miette!("Knowledge JSON 生成失敗: {e}"))?;
-                println!("{json}");
-                return Ok(());
-            }
-
-            for (name, scheme) in &results {
-                println!("{name} : {scheme}");
-            }
-
-            // メタデータ検証
-            let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
-            if !diagnostics.is_empty() {
-                println!("\nメタデータ検証:");
-                for diag in &diagnostics {
-                    println!("  {diag}");
-                }
-            }
-
-            println!("\n型チェック成功 ({} 個の定義)", results.len());
         }
 
         Command::Compile {
@@ -501,10 +410,6 @@ fn main() -> miette::Result<()> {
             mcp_server::run_stdio_server()?;
         }
 
-        Command::Fmt { file, check, write } => {
-            commands::fmt::cmd_fmt(&file, check, write)?;
-        }
-
         Command::Doc { file, output, json } => {
             cmd_doc(&file, output.as_deref(), json)?;
         }
@@ -701,6 +606,7 @@ fn run_wasm_wasi(wasm_bytes: &[u8]) -> Result<String, String> {
 }
 
 /// Knowledge JSON を構築
+#[allow(dead_code)]
 fn build_knowledge(
     program: &lsharp_syntax::ast::Program,
     type_results: &[(String, lsharp_types::types::TypeScheme)],
@@ -998,7 +904,7 @@ fn resolve_import_module_recursive(
     result
 }
 
-/// check コマンド用: import 宣言を再帰的に解決する
+/// 型チェック内部用: import 宣言を再帰的に解決する
 ///
 /// package root / src / .lsharp/packages / stdlib の探索順に従って import を解決し、
 /// 各 import ごとに `:only` / `private` / package exports を反映した型環境だけを注入する。
@@ -2129,6 +2035,41 @@ fn cmd_repl() -> miette::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::CommandFactory;
+
+    fn command_names_from_help(help: &str) -> Vec<&str> {
+        help.lines()
+            .filter_map(|line| line.strip_prefix("  "))
+            .filter_map(|line| {
+                let name = line.split_whitespace().next()?;
+                (!name.starts_with('-')).then_some(name)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_cli_help_excludes_removed_parse_check_fmt_subcommands() {
+        let help = Cli::command().render_long_help().to_string();
+        let commands = command_names_from_help(&help);
+
+        assert!(commands.contains(&"compile"));
+        assert!(!commands.contains(&"parse"));
+        assert!(!commands.contains(&"check"));
+        assert!(!commands.contains(&"fmt"));
+    }
+
+    #[test]
+    fn test_cli_try_parse_from_rejects_removed_parse_check_fmt_subcommands() {
+        for subcommand in ["parse", "check", "fmt"] {
+            let err = match Cli::try_parse_from(["lsharp", subcommand, "examples/fib.ls"]) {
+                Ok(_) => panic!("旧 CLI サブコマンドは拒否されるべき: {subcommand}"),
+                Err(err) => err,
+            };
+
+            assert_eq!(err.kind(), clap::error::ErrorKind::InvalidSubcommand);
+            assert!(err.to_string().contains(subcommand));
+        }
+    }
 
     #[test]
     fn test_cmd_install_no_dependencies() {
