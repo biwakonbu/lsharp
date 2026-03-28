@@ -64,7 +64,7 @@ bash scripts/checksum.sh
 
 全リリースアーティファクトに SHA-256 チェックサムを付与する。
 
-### 5. タグ作成
+### 5. タグ作成と自動リリース
 
 ```bash
 git tag v<version>
@@ -73,8 +73,24 @@ git push origin v<version>
 
 - タグ名は `v` プレフィックス付き（例: `v0.2.0`）
 - タグはリリースコミットに対して作成する
+- `v*` タグの push により `.github/workflows/release.yml` が自動起動する
 
-### 6. GitHub Release 公開
+### 6. 自動リリース workflow (`.github/workflows/release.yml`)
+
+`v*` タグを push すると以下の順で自動実行される:
+
+| ジョブ | 内容 |
+|------|------|
+| `verify` | `cargo test` + `cargo clippy` + `cargo fmt --check` |
+| `build` | Tier1 の 4 プラットフォームで `cargo build --release` + `scripts/release.sh` でアーカイブ作成 |
+| `release` | `softprops/action-gh-release` で GitHub Release を作成し、全アーティファクトを添付 |
+
+- バージョン文字列にハイフンが含まれる場合 (例: `v0.2.0-rc1`) はプレリリースとして公開
+- `release_notes` は GitHub の自動生成を使用
+
+#### 手動公開が必要な場合のみ
+
+自動 workflow を使わず手動で GitHub Release を作成する場合:
 
 1. GitHub Releases ページで新規リリースを作成
 2. タグ `v<version>` を選択
@@ -97,6 +113,8 @@ stable / nightly の扱い、署名順序、package manager 更新順は `releas
 ## 証跡
 
 - `scripts/release-playbook.sh`
+- `scripts/release.sh`
 - `scripts/checksum.sh`
 - `scripts/smoke_test_readme.sh`
+- `.github/workflows/release.yml`
 - `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs` (`test_e2e_ops06_release_playbook`)

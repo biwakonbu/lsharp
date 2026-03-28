@@ -2170,7 +2170,7 @@ fn test_e2e_ops05_default_path_migration() {
     );
 }
 
-/// TEST-OPS-06: scripts/ に release playbook + ドキュメント
+/// TEST-OPS-06: scripts/ に release playbook + ドキュメント + tag push 自動化 workflow
 #[test]
 fn test_e2e_ops06_release_playbook() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -2191,6 +2191,19 @@ fn test_e2e_ops06_release_playbook() {
     assert!(
         playbook_doc.is_file(),
         "docs/development/operations/release-playbook.md が存在しない"
+    );
+    // tag push による自動リリース workflow が存在すること (OPS-06 tag-push automation)
+    let release_workflow = project_root.join(".github/workflows/release.yml");
+    assert!(
+        release_workflow.is_file(),
+        ".github/workflows/release.yml が存在しない -- tag push 自動リリースが未実装"
+    );
+    // workflow が v* タグトリガーを含むこと
+    let workflow_content =
+        std::fs::read_to_string(&release_workflow).expect("release.yml の読み込みに失敗");
+    assert!(
+        workflow_content.contains("v*") || workflow_content.contains("'v"),
+        "release.yml に v* タグトリガーが設定されていない"
     );
 }
 
