@@ -92,6 +92,61 @@ exit 23
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
+/// check コマンドを LSHARP_PATH 未設定で実行すると LSHARP_PATH ヒントを含むエラーになるべき
+#[test]
+fn test_check_without_lsharp_path_suggests_lsharp_path() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("check")
+        .arg("dummy.ls")
+        .env_remove("LSHARP_PATH")
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        !output.status.success(),
+        "LSHARP_PATH 未設定時の check は失敗するべき"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("LSHARP_PATH"),
+        "LSHARP_PATH 未設定時の check は LSHARP_PATH ヒントを含むエラーを出すべき: {stderr}"
+    );
+}
+
+/// check コマンドを LSHARP_PATH 設定済みで実行すると外部 compiler へ委譲されるべき
+#[test]
+fn test_driver_delegates_check_command_via_lsharp_path() {
+    let temp_dir = unique_temp_dir("check_delegation");
+    let script_path = temp_dir.join("lsharp-check.sh");
+    write_executable_script(
+        &script_path,
+        r#"#!/usr/bin/env bash
+set -euo pipefail
+echo "check-delegated:$*"
+exit 0
+"#,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("check")
+        .arg("selfhost/TypeInfer.ls")
+        .env("LSHARP_PATH", &script_path)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "LSHARP_PATH 設定時の check は外部 compiler 終了コードを返すべき"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("check-delegated:check selfhost/TypeInfer.ls"),
+        "check コマンドは LSHARP_PATH 先へ argv を委譲するべき: {stdout}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
 #[test]
 fn test_driver_rejects_invalid_lsharp_path() {
     let temp_dir = unique_temp_dir("default_path_invalid");

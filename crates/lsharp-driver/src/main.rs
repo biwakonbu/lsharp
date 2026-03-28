@@ -196,6 +196,7 @@ enum Command {
 
 fn main() -> miette::Result<()> {
     maybe_delegate_to_external_compiler()?;
+    maybe_hint_check_requires_selfhost()?;
 
     let cli = Cli::parse();
 
@@ -423,6 +424,21 @@ fn main() -> miette::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// `check` サブコマンドが LSHARP_PATH なしで呼ばれた場合、selfhost コンパイラへの案内を出す。
+/// clap のパース前に argv を直接確認し、ユーザーが LSHARP_PATH を設定するよう誘導する。
+fn maybe_hint_check_requires_selfhost() -> miette::Result<()> {
+    let first_arg = std::env::args_os().nth(1);
+    if first_arg.as_deref() == Some(std::ffi::OsStr::new("check")) {
+        return Err(miette::miette!(
+            "サブコマンド 'check' は selfhost コンパイラが必要です。\n\
+             LSHARP_PATH 環境変数で selfhost コンパイラを指定してください:\n\
+             \n\
+             LSHARP_PATH=/path/to/selfhost/lsharp lsharp check ..."
+        ));
+    }
     Ok(())
 }
 
