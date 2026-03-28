@@ -64,12 +64,18 @@
 
 ### payload schema
 
-現行の `summary.json` は次の 10 キーを必須とする。
+現行の `summary.json` は次の 14 キーを必須とする。
+`gate_status` / `s14_status` / `s15_status` / `s16_status` は artifact が自己記述する gate 状態であり、
+仕様の 4 値 (`pass` / `fail` / `blocked` / `n/a`) を直接保持する。
 
 ```json
 {
   "allocator_mode": "bump",
   "ci_level": "simple",
+  "gate_status": "accepted",
+  "s14_status": "n/a",
+  "s15_status": "n/a",
+  "s16_status": "n/a",
   "peak_alloc_bytes": 0,
   "total_alloc_count": 0,
   "live_alloc_count": 0,
@@ -81,16 +87,20 @@
 }
 ```
 
+`gate_status` は artifact が構造・proxy metrics の採取に成功した場合は `"accepted"` となる。
+`s14_status` / `s15_status` / `s16_status` は bump allocator では常に `"n/a"` であり、
+collector 有効になって初めて `"pass"` / `"fail"` / `"blocked"` に変わる。
+
 ### artifact rejection criteria
 
 `gc-metrics-artifact` job は、次のいずれかで **reject / fail** とみなす。
 
 | ID | 条件 | 現在の実装根拠 | CI への影響 |
 |---|---|---|---|
-| AR-01 | `test_e2e_alloc_metrics_ci_artifact_payload` が失敗する | `scripts/ci/collect-gc-metrics.sh` の `cargo test ... test_e2e_alloc_metrics_ci_artifact_payload` | required job fail |
+| AR-01 | `test_e2e_alloc_metrics_ci_artifact_payload` が失敗する / `gate_status != "accepted"` / `sXX_status = "fail"` | `scripts/ci/collect-gc-metrics.sh` の `cargo test` と Python 検証 | required job fail |
 | AR-02 | `ci-artifacts/gc-metrics/{commit_sha}/summary.json` を読めない | 同 script の Python 検証がファイルを開く | required job fail |
 | AR-03 | JSON として parse できない | Python `json.loads(...)` | required job fail |
-| AR-04 | 必須 10 キーのいずれかが欠落 | Python の `missing GC metrics keys` 検証 | required job fail |
+| AR-04 | 必須 14 キーのいずれかが欠落、または `sXX_status` が 4 値外 | Python の key/value 検証 | required job fail |
 
 ### artifact acceptance の意味
 

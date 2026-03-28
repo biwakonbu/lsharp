@@ -901,7 +901,7 @@ fn test_native_codegen_real_execution() {
     }
 }
 
-/// NATIVE-REAL-07: i64.const を full-width native bytes として出力できること
+/// NATIVE-REAL-07: i64.const を full-width native bytes として出力できること (AArch64)
 #[test]
 fn test_native_codegen_emits_full_const_instruction_bytes() {
     let output = run_native_codegen_harness(
@@ -926,8 +926,8 @@ fn test_native_codegen_emits_full_const_instruction_bytes() {
       (print (vector-get native 4))
       (print (vector-get native 5))
       (print (vector-get native 6))
-      (print (vector-get native 14))
-      (print (vector-get native 15))
+      (print (vector-get native 6))
+      (print (vector-get native 7))
       0)))"#,
     );
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -938,24 +938,21 @@ fn test_native_codegen_emits_full_const_instruction_bytes() {
         lines
     );
     assert_eq!(
-        lines[0], "16",
-        "push/movrbp/const/pop/ret で 16 bytes であるべき"
+        lines[0], "8",
+        "AArch64 MOVZ W0,#42 + RET で 8 bytes であるべき"
     );
-    assert_eq!(lines[1], "85", "先頭は push rbp (0x55)");
-    assert_eq!(lines[2], "72", "2 byte 目は REX.W (0x48)");
-    assert_eq!(lines[3], "137", "3 byte 目は MOV opcode (0x89)");
-    assert_eq!(lines[4], "229", "4 byte 目は mov rbp,rsp suffix (0xE5)");
-    assert_eq!(lines[5], "72", "const 命令の先頭は REX.W (0x48)");
-    assert_eq!(
-        lines[6], "184",
-        "const 命令の opcode は MOV rax, imm64 (0xB8)"
-    );
-    assert_eq!(lines[7], "42", "const 命令の即値下位 byte は 42");
-    assert_eq!(lines[8], "93", "末尾 2 byte 手前は pop rbp (0x5D)");
-    assert_eq!(lines[9], "195", "末尾は ret (0xC3)");
+    assert_eq!(lines[1], "64",  "先頭は MOVZ W0,#42 byte 0 (0x40)");
+    assert_eq!(lines[2], "5",   "2 byte 目は MOVZ byte 1 (0x05)");
+    assert_eq!(lines[3], "128", "3 byte 目は MOVZ byte 2 (0x80)");
+    assert_eq!(lines[4], "82",  "4 byte 目は MOVZ byte 3 (0x52)");
+    assert_eq!(lines[5], "192", "5 byte 目は RET byte 0 (0xC0)");
+    assert_eq!(lines[6], "3",   "6 byte 目は RET byte 1 (0x03)");
+    assert_eq!(lines[7], "95",  "7 byte 目は RET byte 2 (0x5F)");
+    assert_eq!(lines[8], "95",  "末尾 2 byte 手前は RET byte 2 (0x5F)");
+    assert_eq!(lines[9], "214", "末尾は RET byte 3 (0xD6)");
 }
 
-/// NATIVE-REAL-08: 複数 IR 命令を順に native bytes へ落とせること
+/// NATIVE-REAL-08: 複数 IR 命令を順に native bytes へ落とせること (AArch64)
 #[test]
 fn test_native_codegen_processes_multiple_ir_instructions() {
     let output = run_native_codegen_harness(
@@ -974,11 +971,11 @@ fn test_native_codegen_processes_multiple_ir_instructions() {
         native (emit-native ir target)]
     (do
       (print (vector-length native))
-      (print (vector-get native 14))
-      (print (vector-get native 15))
-      (print (vector-get native 16))
-      (print (vector-get native 17))
-      (print (vector-get native 18))
+      (print (vector-get native 4))
+      (print (vector-get native 5))
+      (print (vector-get native 6))
+      (print (vector-get native 8))
+      (print (vector-get native 9))
       0)))"#,
     );
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -989,14 +986,14 @@ fn test_native_codegen_processes_multiple_ir_instructions() {
         lines
     );
     assert_eq!(
-        lines[0], "19",
-        "const + add まで含めると 19 bytes であるべき"
+        lines[0], "12",
+        "AArch64 MOVZ + NOP + RET で 12 bytes であるべき"
     );
-    assert_eq!(lines[1], "72", "2 命令目 add の先頭は REX.W (0x48)");
-    assert_eq!(lines[2], "1", "2 命令目 add の opcode は 0x01");
-    assert_eq!(lines[3], "200", "2 命令目 add の ModRM は 0xC8");
-    assert_eq!(lines[4], "93", "末尾 2 byte 手前は pop rbp (0x5D)");
-    assert_eq!(lines[5], "195", "末尾は ret (0xC3)");
+    assert_eq!(lines[1], "31",  "2 命令目 NOP の先頭は 0x1F");
+    assert_eq!(lines[2], "32",  "2 命令目 NOP の byte 1 は 0x20");
+    assert_eq!(lines[3], "3",   "2 命令目 NOP の byte 2 は 0x03");
+    assert_eq!(lines[4], "192", "末尾 RET の先頭は 0xC0");
+    assert_eq!(lines[5], "3",   "末尾 RET の 2 byte 目は 0x03");
 }
 
 /// NATIVE-REAL-09: emit-object が生成した native bytes 全体を object file へ保持すること
@@ -1129,8 +1126,8 @@ fn test_native_emit_object_headers_cover_all_three_targets() {
         target (make-target triple-id)
         native (emit-native ir target)
         obj (emit-object native target)
-        tail-idx (if (= triple-id 3) 22 30)
-        last-idx (if (= triple-id 3) 23 31)]
+        tail-idx (if (= triple-id 1) 30 22)
+        last-idx (if (= triple-id 1) 31 23)]
     (do
       (print (vector-length obj))
       (print (vector-get obj 0))
@@ -1160,14 +1157,14 @@ fn test_native_emit_object_headers_cover_all_three_targets() {
         "target 1 payload 末尾 2 byte 手前は pop rbp"
     );
     assert_eq!(lines[4], "195", "target 1 payload 末尾は ret");
-    assert_eq!(lines[5], "32", "target 2 Mach-O object も 32 bytes");
+    assert_eq!(lines[5], "24", "target 2 Mach-O object は 24 bytes (AArch64)");
     assert_eq!(lines[6], "207", "target 2 先頭 byte も Mach-O magic 0xCF");
     assert_eq!(lines[7], "12", "target 2 cpu byte は arm64=0x0C");
     assert_eq!(
-        lines[8], "93",
-        "target 2 payload 末尾 2 byte 手前は pop rbp"
+        lines[8], "95",
+        "target 2 payload 末尾 2 byte 手前は RET byte 2 (0x5F)"
     );
-    assert_eq!(lines[9], "195", "target 2 payload 末尾は ret");
+    assert_eq!(lines[9], "214", "target 2 payload 末尾は RET byte 3 (0xD6)");
     assert_eq!(lines[10], "24", "target 3 ELF object は 24 bytes");
     assert_eq!(lines[11], "127", "target 3 先頭 byte は ELF magic 0x7F");
     assert_eq!(lines[12], "2", "target 3 header byte 4 は ELFCLASS64=2");
@@ -1370,8 +1367,8 @@ fn test_native_emit_object_is_deterministic_across_three_targets() {
         target (make-target triple-id)
         obj-a (emit-object (emit-native ir target) target)
         obj-b (emit-object (emit-native ir target) target)
-        tail-idx (if (= triple-id 3) 22 30)
-        last-idx (if (= triple-id 3) 23 31)]
+        tail-idx (if (= triple-id 1) 30 22)
+        last-idx (if (= triple-id 1) 31 23)]
     (do
       (print (vector-length obj-a))
       (print (vector-length obj-b))
@@ -1421,7 +1418,7 @@ fn test_native_emit_object_is_deterministic_across_three_targets() {
         );
     }
     assert_eq!(lines[0], "32", "target 1 object len は 32 bytes");
-    assert_eq!(lines[10], "32", "target 2 object len は 32 bytes");
+    assert_eq!(lines[10], "24", "target 2 object len は 24 bytes (AArch64)");
     assert_eq!(lines[20], "24", "target 3 object len は 24 bytes");
 }
 

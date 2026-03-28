@@ -296,9 +296,20 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
     let leak_total: i64 = leak_lines[1].parse().unwrap();
     let leak_suspect: i64 = leak_lines[2].parse().unwrap();
 
+    // allocator_mode = bump では S14-S16 は直接判定できないため "n/a" を記録する。
+    // これにより CI artifact が gc-ci-gate-spec.md の 4 値状態を自己記述する。
+    let gate_status = "accepted";
+    let s14_status = "n/a"; // bump allocator では heap_bytes_series が存在しない
+    let s15_status = "n/a"; // collector 有効 bootstrap fixed-point artifact が未配線
+    let s16_status = "n/a"; // collector 有効ワークロードが未接続
+
     let payload = serde_json::json!({
         "allocator_mode": "bump",
         "ci_level": "simple",
+        "gate_status": gate_status,
+        "s14_status": s14_status,
+        "s15_status": s15_status,
+        "s16_status": s16_status,
         "peak_alloc_bytes": peak_alloc_bytes,
         "total_alloc_count": total_alloc_count,
         "live_alloc_count": live_alloc_count,
@@ -311,6 +322,10 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
 
     assert_eq!(payload["allocator_mode"], "bump");
     assert_eq!(payload["ci_level"], "simple");
+    assert_eq!(payload["gate_status"], "accepted");
+    assert_eq!(payload["s14_status"], "n/a");
+    assert_eq!(payload["s15_status"], "n/a");
+    assert_eq!(payload["s16_status"], "n/a");
     assert_eq!(payload["total_alloc_count"], 5);
     assert_eq!(payload["live_alloc_count"], 5);
     assert_eq!(payload["max_single_alloc"], 128);

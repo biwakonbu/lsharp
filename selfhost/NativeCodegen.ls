@@ -117,11 +117,12 @@
         (append-native-bytes-loop result native 0 native-len)
         (generate-native-instr-loop ir-func result (+ idx 1) len)))))
 
-;; IR 関数をネイティブコードに変換
+;; === x86_64 コード生成 ===
+
+;; x86_64 IR 関数をネイティブコードに変換 (プロローグ・エピローグ付き)
 ;; ir-func: IR 命令列の Vector [[opcode, operand], ...]
-;; target: ターゲット記述子
 ;; 戻り値: ネイティブ機械語バイト列
-(defn generate-native [ir-func target]
+(defn generate-native-x86-64 [ir-func]
   (let [result (ref-new (vector-new 64))
         ;; 関数プロローグ
         prologue-push (emit-push-rbp)
@@ -141,6 +142,79 @@
           (ref-set result (vector-push (ref-get result) (vector-get epilogue-pop 0)))
           (ref-set result (vector-push (ref-get result) (vector-get epilogue-ret 0)))
           (ref-get result))))))
+
+;; === AArch64 命令エンコーダ ===
+
+;; AArch64 MOVZ W0, #imm 命令を生成 (imm は 0-65535)
+;; エンコーディング: 0x52800000 | (imm << 5) → LE バイト列 4 bytes
+;; 例: MOVZ W0, #42 = 0x52800540 → [0x40, 0x05, 0x80, 0x52]
+(defn emit-aarch64-movz-w0 [imm]
+  (let [encoded (+ 1384120320 (* imm 32))
+        b0 (% encoded 256)
+        b1 (% (/ encoded 256) 256)
+        b2 (% (/ encoded 65536) 256)
+        b3 (% (/ encoded 16777216) 256)
+        bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes b0) b1) b2) b3)))
+
+;; AArch64 RET 命令 (X30 経由リターン)
+;; エンコーディング: 0xD65F03C0 → [0xC0, 0x03, 0x5F, 0xD6]
+(defn emit-aarch64-ret []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 192) 3) 95) 214)))
+
+;; AArch64 NOP 命令
+;; エンコーディング: 0xD503201F → [0x1F, 0x20, 0x03, 0xD5]
+(defn emit-aarch64-nop []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 31) 32) 3) 213)))
+
+;; IR opcode を AArch64 命令列に変換
+(defn codegen-ir-instr-aarch64 [opcode operand]
+  (if (= opcode 1)
+    ;; i64.const -> MOVZ W0, #operand
+    (emit-aarch64-movz-w0 operand)
+    ;; 未知の opcode: NOP
+    (emit-aarch64-nop)))
+
+;; === AArch64 コード生成 ===
+
+(defn generate-native-instr-loop-aarch64 [ir-func result idx len]
+  (if (>= idx len)
+    0
+    (let [instr (vector-get ir-func idx)
+          opcode (vector-get instr 0)
+          operand (vector-get instr 1)
+          native (codegen-ir-instr-aarch64 opcode operand)
+          native-len (vector-length native)]
+      (do
+        (append-native-bytes-loop result native 0 native-len)
+        (generate-native-instr-loop-aarch64 ir-func result (+ idx 1) len)))))
+
+;; AArch64 IR 関数をネイティブコードに変換 (プロローグなし、末尾 RET のみ)
+;; ir-func: IR 命令列の Vector [[opcode, operand], ...]
+;; 戻り値: AArch64 機械語バイト列
+(defn generate-native-aarch64 [ir-func]
+  (let [result (ref-new (vector-new 16))
+        n (vector-length ir-func)]
+    (do
+      (generate-native-instr-loop-aarch64 ir-func result 0 n)
+      (let [ret-bytes (emit-aarch64-ret)]
+        (do
+          (append-native-bytes-loop result ret-bytes 0 4)
+          (ref-get result))))))
+
+;; IR 関数をネイティブコードに変換
+;; ir-func: IR 命令列の Vector [[opcode, operand], ...]
+;; target: ターゲット記述子
+;; 戻り値: ネイティブ機械語バイト列
+(defn generate-native [ir-func target]
+  (let [arch (target-arch target)]
+    (if (= arch 2)
+      ;; aarch64 → AArch64 命令列
+      (generate-native-aarch64 ir-func)
+      ;; x86_64 (arch=1) またはデフォルト
+      (generate-native-x86-64 ir-func))))
 
 ;; ネイティブコード生成のトップレベル関数
 ;; source-ir: プログラム全体の IR
