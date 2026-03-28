@@ -1,4 +1,5 @@
 mod bootstrap_selfhost_lsp_integration;
+mod selfhost_bootstrap_acceptance;
 mod builtins_hof_collections;
 mod core_language_semantics;
 mod file_io_selfhost_compiler_ir;
@@ -19,6 +20,7 @@ mod selfhost_lsp_docs_ops;
 mod selfhost_macro_compiler;
 mod selfhost_main_module_determinism;
 mod selfhost_native_differential;
+mod selfhost_native_stage_chain;
 mod selfhost_parser_forms;
 mod selfhost_parser_metadata_forms;
 mod selfhost_type_parser_parity;

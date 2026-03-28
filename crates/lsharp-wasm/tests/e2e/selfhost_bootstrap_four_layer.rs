@@ -3980,3 +3980,55 @@ fn test_e2e_boot04_bootstrap_append_bytes_recursion_depth_boundary() {
         assert!(!n1000_ok, "N=500 で TRAP なら N=1000 も TRAP のはず");
     }
 }
+
+// =============================================================================
+// BOOT-04: read-file compiler-mode — Main.ls のコンパイラモードエントリポイント検証
+// =============================================================================
+
+/// BOOT-04: read-file compiler-mode — stage1 (Main.ls compiled by Rust) が
+/// ファイル引数を受け取りコンパイラとして動作すること
+///
+/// Main.ls の compiler-mode を検証:
+/// - argv[1] にソースファイルパスが渡されたとき、そのファイルを read-file で読み込み
+/// - parse-program → compile-program-functions → emit-*-wasi でコンパイルし
+/// - WASM バイトを length-prefixed 形式で stdout に出力すること
+#[test]
+fn test_e2e_boot04_read_file_compiler_mode() {
+    let main_path = selfhost_main_path();
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    // テスト用 L# ソースファイルを用意
+    let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures");
+    assert!(
+        fixture_dir.join("minimal.ls").exists(),
+        "fixture ファイル tests/fixtures/minimal.ls が存在しない"
+    );
+
+    // compiler-mode で stage1 を実行 (argv[1] = "minimal.ls")
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&fixture_dir),
+        &["compiler", "minimal.ls"],
+    )
+    .expect("BOOT-04 compiler-mode: stage1 実行失敗");
+
+    // 出力が length-prefixed Wasm バイト列であること
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    let stage2_wasm = &modules[0];
+    assert_valid_wasm(stage2_wasm);
+
+    // stage2 が WASI 実行可能であること (_start: () -> () ラッパー付き)
+    let wasi_result = lsharp_wasm::wasi_runner::run_wasm_wasi(stage2_wasm);
+    assert!(
+        wasi_result.is_ok(),
+        "BOOT-04 compiler-mode: stage2 の WASI 実行に失敗: {:?}",
+        wasi_result.err()
+    );
+
+    eprintln!(
+        "BOOT-04 compiler-mode: stage1 が minimal.ls をコンパイルして stage2 ({} bytes) を生成 OK",
+        stage2_wasm.len()
+    );
+}
