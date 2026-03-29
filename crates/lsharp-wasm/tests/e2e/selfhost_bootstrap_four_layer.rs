@@ -4725,6 +4725,57 @@ fn test_e2e_boot04_compiler_mode_dotted_import_resolution_from_src_root() {
 }
 
 #[test]
+fn test_e2e_boot04_compiler_mode_package_index_resolution() {
+    let main_path = selfhost_main_path();
+    let fixture_dir = std::env::temp_dir().join(format!(
+        "lsharp_selfhost_package_index_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&fixture_dir);
+    std::fs::create_dir_all(fixture_dir.join("src")).unwrap();
+    std::fs::create_dir_all(fixture_dir.join(".lsharp/packages/demo-123/src")).unwrap();
+    std::fs::create_dir_all(fixture_dir.join(".lsharp/module-index")).unwrap();
+
+    std::fs::write(
+        fixture_dir.join("src/Main.ls"),
+        "(module Main)\n(import Geometry)\n(defn main [] (distance))",
+    )
+    .unwrap();
+    std::fs::write(
+        fixture_dir.join(".lsharp/packages/demo-123/src/Geometry.ls"),
+        "(module Geometry)\n(defn distance [] 42)",
+    )
+    .unwrap();
+    std::fs::write(
+        fixture_dir.join(".lsharp/module-index/Geometry.path"),
+        ".lsharp/packages/demo-123/src/Geometry.ls\n",
+    )
+    .unwrap();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&fixture_dir),
+        &["compiler", "src/Main.ls"],
+    )
+    .expect("BOOT-04 package-index-resolution: compiler-mode が src/Main.ls をコンパイルできなかった");
+
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    let result_wasm = &modules[0];
+    assert_valid_wasm(result_wasm);
+
+    let run_result = run_wasm_with_six_imports_compiler_mode(result_wasm, "", &[]);
+    let _ = std::fs::remove_dir_all(&fixture_dir);
+    assert!(
+        run_result.is_ok(),
+        "BOOT-04 package-index-resolution: 生成 wasm の WASI 実行に失敗: {:?}",
+        run_result.err()
+    );
+}
+
+#[test]
 fn test_i64_if_condition_validity() {
     // i64 を if 条件に使う wasm を wasmparser と wasmtime で検証
     let wasm = include_bytes!("../../../../test_i64_if.wasm");

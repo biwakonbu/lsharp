@@ -39,6 +39,7 @@ my-package/
 - `(import MyModule.Sub)` は `src/MyModule/Sub.ls` を解決する
 - 公開 package の解決順序は `src/` → `.lsharp/packages/*/src/` → `stdlib/`
 - `lsharp.toml` がない内部 source root でも、entry file から最も近い `src/` 祖先を source root として同じ規約を使う
+- selfhost compiler-mode は installed package を直接 directory scan せず、`lsharp install` が生成する `.lsharp/module-index/*.path` を内部 index として参照する
 - 例: `selfhost/src/App/Main.ls` から `(import Syntax.Token)` は `selfhost/src/Syntax/Token.ls` を解決する
 
 ## 移行方針

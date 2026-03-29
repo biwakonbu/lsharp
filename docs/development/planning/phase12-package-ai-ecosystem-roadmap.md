@@ -598,7 +598,7 @@ _site/
 
 > `package` は公開・配布単位を指す。`selfhost` は公開 package ではなく、同じ `src/` / dotted import 規約を使う **内部 source root** として扱う。
 > 正本 entrypoint は `selfhost/src/App/Main.ls`。互換移行のため flat な `selfhost/*.ls` を一時的に残しても、仕様上の基準は `selfhost/src/**` とする。
-> 現時点の実装では、Rust 側は package src / `.lsharp/packages/*/src` / stdlib の探索順を満たし、selfhost 側は `src/` 祖先 discovery と dotted local import / stdlib fallback まで反映済みである。selfhost compiler-mode の `.lsharp/packages/*/src` parity は後続タスク。
+> 現時点の実装では、Rust 側は package src / `.lsharp/packages/*/src` / stdlib の探索順を満たし、selfhost 側も `src/` 祖先 discovery・dotted local import・stdlib fallback に加えて `.lsharp/module-index/*.path` 経由の installed package 解決まで反映済みである。repo 内の旧 flat `selfhost/*.ls` 参照整理は後続タスク。
 
 ### B-1. lsharp.toml スキーマ拡張
 
@@ -745,7 +745,7 @@ selfhost/
 - `selfhost/src/**` を local source root として優先する
 - dotted module 名は `/` に変換して解決する
 - 移行期間は flat fallback (`Foo.ls`) を残してもよいが、正本は nested path
-- selfhost compiler-mode の `.lsharp/packages/*/src` 探索は後続 parity タスク
+- installed package は `lsharp install` が生成する `.lsharp/module-index/*.path` を経由して解決する
 
 ---
 

@@ -325,7 +325,7 @@
 ### P12-B: パッケージシステムコア
 
 > `lsharp.toml` 拡張・可視性制御・依存解決の実装。P12-A 完了後に着手推奨。
-> Rust/公開 package 側の `src/`・`.lsharp/packages/*/src`・stdlib 解決は完了済み。selfhost は公開 package ではなく **内部 source root** として扱い、同じ `src/` / dotted import 規約への parity を別タスクで追う。
+> Rust/公開 package 側の `src/`・`.lsharp/packages/*/src`・stdlib 解決は完了済み。selfhost は公開 package ではなく **内部 source root** として扱い、同じ `src/` / dotted import 規約に加えて `.lsharp/module-index` 経由の installed package 解決を追従させる。
 
 - [x] **B-1. lsharp.toml スキーマ拡張** (tests: `config::tests::test_parse_project_metadata_exports_and_dev_dependencies`)
   - [x] `[project]` に description, license, authors, repository, keywords, lsharp-version フィールド追加
@@ -360,11 +360,11 @@
   - [x] インストール時に `docs/api.json` を生成 (MCP Server が読む)
   - 修正対象: `crates/lsharp-ir/src/module_graph.rs`, `crates/lsharp-driver/src/config.rs`, 新規 `crates/lsharp-driver/src/resolver.rs`
 
-- [~] **B-6. selfhost internal source root parity** (tests: `module_graph::resolve_tests::test_build_from_entry_prefers_nearest_src_ancestor_without_manifest`, `e2e::selfhost_bootstrap_four_layer::test_e2e_boot04_compiler_mode_dotted_import_resolution_from_src_root`, `e2e::selfhost_bootstrap_contracts::test_e2e_selfhost_main_import_only_pipeline`, `e2e::selfhost_typeinfer_pipeline_bootstrap::test_e2e_selfhost_pipeline_complete_stages`)
+- [~] **B-6. selfhost internal source root parity** (tests: `module_graph::resolve_tests::test_build_from_entry_prefers_nearest_src_ancestor_without_manifest`, `tests::test_cmd_install_path_dependency_writes_module_index_for_exported_modules`, `e2e::selfhost_bootstrap_four_layer::{test_e2e_boot04_compiler_mode_dotted_import_resolution_from_src_root,test_e2e_boot04_compiler_mode_package_index_resolution}`, `e2e::selfhost_bootstrap_contracts::test_e2e_selfhost_main_import_only_pipeline`, `e2e::selfhost_typeinfer_pipeline_bootstrap::test_e2e_selfhost_pipeline_complete_stages`)
   - [x] Rust `ModuleGraph` が `lsharp.toml` なしでも最も近い `src/` 祖先を source root として解決できる
   - [x] selfhost の正本 tree を `selfhost/src/**` に追加し、`selfhost/src/App/Main.ls` を canonical entrypoint に切り替えた
   - [x] selfhost compiler-mode が dotted import を `A/B.ls` に解決し、local `src/` と stdlib fallback を扱える
-  - [ ] selfhost compiler-mode の `.lsharp/packages/*/src` parity は未完了
+  - [x] `lsharp install` が `.lsharp/module-index/*.path` を生成し、selfhost compiler-mode が installed package module を index 経由で解決できる
   - [ ] repo 内の旧 `selfhost/*.ls` 直参照の全面整理は未完了
 
 ### P12-C: パッケージ配布 & エコシステム (GitHub only)

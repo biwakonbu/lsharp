@@ -16,6 +16,7 @@ mod resolver;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -1670,16 +1671,16 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
 
     let deps = &config.dependencies;
 
-    if deps.is_empty() {
-        println!("依存パッケージはありません");
-        return Ok(());
-    }
-
-    // .lsharp/packages/ ディレクトリを作成
     let lsharp_dir = project_dir.join(".lsharp");
     let packages_dir = lsharp_dir.join("packages");
     std::fs::create_dir_all(&packages_dir)
         .map_err(|e| miette::miette!(".lsharp/packages/ の作成に失敗: {e}"))?;
+
+    if deps.is_empty() {
+        rebuild_installed_module_index(project_dir)?;
+        println!("依存パッケージはありません");
+        return Ok(());
+    }
 
     let mut installed = 0u32;
     let mut skipped = 0u32;
@@ -1791,6 +1792,7 @@ fn cmd_install_in(project_dir: &Path) -> miette::Result<()> {
     let lock_path = lsharp_dir.join("lock.toml");
     lockfile::write_lockfile(&lock, &lock_path).map_err(|e| miette::miette!("{e}"))?;
     println!("ロックファイルを生成しました: {}", lock_path.display());
+    rebuild_installed_module_index(project_dir)?;
 
     Ok(())
 }
@@ -1860,6 +1862,114 @@ fn generate_api_json_for_package(package_root: &Path) -> miette::Result<Option<P
     std::fs::write(&output_path, json)
         .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
     Ok(Some(output_path))
+}
+
+fn rebuild_installed_module_index(project_dir: &Path) -> miette::Result<()> {
+    let index_root = project_dir.join(".lsharp").join("module-index");
+    if index_root.exists() {
+        std::fs::remove_dir_all(&index_root)
+            .map_err(|e| miette::miette!("{}: {}", index_root.display(), e))?;
+    }
+
+    let package_dirs = list_installed_package_dirs(project_dir);
+    for package_dir in package_dirs {
+        write_package_module_index(project_dir, &index_root, &package_dir)?;
+    }
+    Ok(())
+}
+
+fn write_package_module_index(
+    project_dir: &Path,
+    index_root: &Path,
+    package_dir: &Path,
+) -> miette::Result<()> {
+    let source_root = package_dir.join("src");
+    if !source_root.is_dir() {
+        return Ok(());
+    }
+
+    let config = config::load_config(package_dir);
+    let exports = if config.project.exports.modules.is_empty() {
+        None
+    } else {
+        Some(
+            config
+                .project
+                .exports
+                .modules
+                .into_iter()
+                .collect::<BTreeSet<_>>(),
+        )
+    };
+
+    let mut files = Vec::new();
+    collect_package_source_files(&source_root, &mut files)?;
+    files.sort();
+
+    for file in files {
+        let Some(module_name) = module_name_for_source_file(&source_root, &file) else {
+            continue;
+        };
+        if exports
+            .as_ref()
+            .is_some_and(|allowed| !allowed.contains(&module_name))
+        {
+            continue;
+        }
+
+        let index_rel = format!("{}.path", module_name.replace('.', "/"));
+        let index_path = index_root.join(index_rel);
+        if index_path.exists() {
+            continue;
+        }
+        if let Some(parent) = index_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| miette::miette!("{}: {}", parent.display(), e))?;
+        }
+
+        let target = file
+            .strip_prefix(project_dir)
+            .unwrap_or(file.as_path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        std::fs::write(&index_path, target)
+            .map_err(|e| miette::miette!("{}: {}", index_path.display(), e))?;
+    }
+
+    Ok(())
+}
+
+fn collect_package_source_files(dir: &Path, out: &mut Vec<PathBuf>) -> miette::Result<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    let entries =
+        std::fs::read_dir(dir).map_err(|e| miette::miette!("{}: {}", dir.display(), e))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| miette::miette!("{}: {}", dir.display(), e))?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_package_source_files(&path, out)?;
+        } else if path.extension().and_then(|ext| ext.to_str()) == Some("ls") {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn module_name_for_source_file(source_root: &Path, file: &Path) -> Option<String> {
+    let relative = file.strip_prefix(source_root).ok()?;
+    let stem = relative.with_extension("");
+    let parts: Option<Vec<&str>> = stem
+        .iter()
+        .map(|part| part.to_str())
+        .collect();
+    let parts = parts?;
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("."))
+    }
 }
 
 fn list_installed_package_dirs(project_dir: &Path) -> Vec<PathBuf> {
@@ -2517,6 +2627,82 @@ source = "git:https://github.com/user/mylib.git?tag=v0.2.0"
         assert!(
             base_dir.join(".lsharp").join("lock.toml").exists(),
             "install 時に .lsharp/lock.toml を生成するべき"
+        );
+
+        std::fs::remove_dir_all(&base_dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_install_path_dependency_writes_module_index_for_exported_modules() {
+        let base_dir = std::env::temp_dir().join("lsharp_test_install_module_index");
+        let _ = std::fs::remove_dir_all(&base_dir);
+        std::fs::create_dir_all(&base_dir).unwrap();
+
+        let dep_dir = base_dir.join("mylib");
+        std::fs::create_dir_all(dep_dir.join("src/Geometry")).unwrap();
+        std::fs::write(
+            dep_dir.join("lsharp.toml"),
+            "[project]\nname = \"mylib\"\n[project.exports]\nmodules = [\"Geometry\", \"Geometry.Vec2\"]\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dep_dir.join("src/Geometry.ls"),
+            "(module Geometry)\n(defn distance [] 1)",
+        )
+        .unwrap();
+        std::fs::write(
+            dep_dir.join("src/Geometry/Vec2.ls"),
+            "(module Geometry.Vec2)\n(defn zero [] 0)",
+        )
+        .unwrap();
+        std::fs::write(
+            dep_dir.join("src/Hidden.ls"),
+            "(module Hidden)\n(defn secret [] 99)",
+        )
+        .unwrap();
+
+        std::fs::write(
+            base_dir.join("lsharp.toml"),
+            "[dependencies.mylib]\npath = \"mylib\"\n",
+        )
+        .unwrap();
+
+        let result = cmd_install_in(&base_dir);
+        assert!(result.is_ok(), "install は成功するべき: {result:?}");
+
+        let installed_dir = find_installed_package_dir(&base_dir, "mylib")
+            .expect(".lsharp/packages/<name>-<hash> が必要");
+        let index_dir = base_dir.join(".lsharp/module-index");
+        let geometry_index = index_dir.join("Geometry.path");
+        let vec2_index = index_dir.join("Geometry/Vec2.path");
+        let hidden_index = index_dir.join("Hidden.path");
+
+        assert!(
+            geometry_index.exists(),
+            "exported module の index が生成されるべき"
+        );
+        assert!(
+            vec2_index.exists(),
+            "nested exported module の index が生成されるべき"
+        );
+        assert!(
+            !hidden_index.exists(),
+            "非公開 module の index は生成しないべき"
+        );
+
+        let geometry_target = std::fs::read_to_string(&geometry_index).unwrap();
+        let vec2_target = std::fs::read_to_string(&vec2_index).unwrap();
+        let installed_relative = installed_dir.strip_prefix(&base_dir).unwrap();
+        assert_eq!(
+            geometry_target.trim(),
+            installed_relative.join("src/Geometry.ls").display().to_string()
+        );
+        assert_eq!(
+            vec2_target.trim(),
+            installed_relative
+                .join("src/Geometry/Vec2.ls")
+                .display()
+                .to_string()
         );
 
         std::fs::remove_dir_all(&base_dir).unwrap();
