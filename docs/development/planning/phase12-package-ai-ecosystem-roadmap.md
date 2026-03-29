@@ -596,6 +596,10 @@ _site/
 
 ## 4. P12-B: パッケージシステムコア
 
+> `package` は公開・配布単位を指す。`selfhost` は公開 package ではなく、同じ `src/` / dotted import 規約を使う **内部 source root** として扱う。
+> 正本 entrypoint は `selfhost/src/App/Main.ls`。互換移行のため flat な `selfhost/*.ls` を一時的に残しても、仕様上の基準は `selfhost/src/**` とする。
+> 現時点の実装では、Rust 側は package src / `.lsharp/packages/*/src` / stdlib の探索順を満たし、selfhost 側は `src/` 祖先 discovery と dotted local import / stdlib fallback まで反映済みである。selfhost compiler-mode の `.lsharp/packages/*/src` parity は後続タスク。
+
 ### B-1. lsharp.toml スキーマ拡張
 
 **完成後の lsharp.toml:**
@@ -678,6 +682,20 @@ my-package/
   3. <stdlib-path>/Utils.ls (標準ライブラリ)
 ```
 
+**内部 source root への適用:**
+
+```text
+selfhost/
+  src/
+    App/
+      Main.ls
+    Syntax/
+      Token.ls
+```
+
+- `selfhost` は publish 対象ではないが、`selfhost/src/App/Main.ls` を entry にすると `(import Syntax.Token)` は `selfhost/src/Syntax/Token.ls` を解決する
+- `lsharp.toml` が無い場合も、entry から最も近い `src/` 祖先を source root として扱う
+
 ---
 
 ### B-3. 可視性制御の実装
@@ -720,7 +738,14 @@ my-package/
   (print (length (Cons 1 (Cons 2 Nil)))))
 ```
 
-**解決順序:** local src/ → .lsharp/packages/ → stdlib/ → $LSHARP_STDLIB_PATH
+**公開 package の解決順序:** local src/ → .lsharp/packages/ → stdlib/ → $LSHARP_STDLIB_PATH
+
+**内部 source root (`selfhost`) の現行方針:**
+
+- `selfhost/src/**` を local source root として優先する
+- dotted module 名は `/` に変換して解決する
+- 移行期間は flat fallback (`Foo.ls`) を残してもよいが、正本は nested path
+- selfhost compiler-mode の `.lsharp/packages/*/src` 探索は後続 parity タスク
 
 ---
 

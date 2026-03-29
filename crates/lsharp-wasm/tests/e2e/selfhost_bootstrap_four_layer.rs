@@ -4684,6 +4684,46 @@ fn test_e2e_boot04_compiler_mode_import_resolution() {
     );
 }
 
+/// BOOT-04: compiler-mode が manifest なし source root 配下の dotted import を解決できること
+#[test]
+fn test_e2e_boot04_compiler_mode_dotted_import_resolution_from_src_root() {
+    let main_path = selfhost_main_path();
+    let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/hier-selfhost");
+
+    assert!(
+        fixture_dir.join("src/App/Main.ls").exists(),
+        "fixture ファイル tests/fixtures/hier-selfhost/src/App/Main.ls が存在しない"
+    );
+    assert!(
+        fixture_dir.join("src/Syntax/SimpleHelper.ls").exists(),
+        "fixture ファイル tests/fixtures/hier-selfhost/src/Syntax/SimpleHelper.ls が存在しない"
+    );
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&fixture_dir),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect(
+        "BOOT-04 dotted-import-resolution: compiler-mode が src/App/Main.ls をコンパイルできなかった",
+    );
+
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    let result_wasm = &modules[0];
+    assert_valid_wasm(result_wasm);
+
+    let run_result = run_wasm_with_six_imports_compiler_mode(result_wasm, "", &[]);
+    assert!(
+        run_result.is_ok(),
+        "BOOT-04 dotted-import-resolution: 生成 wasm の WASI 実行に失敗: {:?}",
+        run_result.err()
+    );
+}
+
 #[test]
 fn test_i64_if_condition_validity() {
     // i64 を if 条件に使う wasm を wasmparser と wasmtime で検証

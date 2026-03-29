@@ -225,9 +225,9 @@ pub(crate) fn example_path(name: &str) -> std::path::PathBuf {
         .join(name)
 }
 
-/// selfhost/Main.ls のパス (import 解決にはマルチファイルコンパイルが必要)
+/// selfhost/src/App/Main.ls のパス (import 解決にはマルチファイルコンパイルが必要)
 pub(crate) fn selfhost_main_path() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost/Main.ls")
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost/src/App/Main.ls")
 }
 
 /// selfhost モジュールの埋め込みソースを返す

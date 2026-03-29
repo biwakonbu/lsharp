@@ -18,7 +18,7 @@ bootstrap 固定点、Wasm/native differential test、テスト行列、性能�
 - 観測結果の定義: 終了コード、stdout、生成物ハッシュ、型エラー出力
 
 ### 両コンパイル結果比較
-- selfhost/*.ls, stdlib/*.ls, examples/ の全ソースに対して Wasm/native 両系統でコンパイルを実行する
+- `selfhost/src/**/*.ls`, `stdlib/*.ls`, `examples/` の全ソースに対して Wasm/native 両系統でコンパイルを実行する
 - 終了コード、stdout、生成物ハッシュ、型エラー出力の 4 点を比較する
 
 ### 最適化レベルの固定
@@ -32,11 +32,13 @@ bootstrap 固定点、Wasm/native differential test、テスト行列、性能�
 
 ### 正本入力集合
 固定点検証に使用するソースファイル群を以下に固定する:
-- `selfhost/*.ls` -- selfhost compiler 本体
+- `selfhost/src/**/*.ls` -- selfhost compiler 本体の正本
 - `stdlib/*.ls` -- 標準ライブラリ
 - `examples/fib.ls` -- 再帰・数値計算の代表例
 - `examples/module.ls` -- モジュールシステムの代表例
 - `examples/trait.ls` -- トレイトシステムの代表例
+
+互換移行のために残る `selfhost/*.ls` は検証入力の正本に含めない。entrypoint は `selfhost/src/App/Main.ls` を基準にする。
 
 入力集合の変更は ADR を経由し、CI の正本入力リストを一箇所で管理する。
 
@@ -177,7 +179,7 @@ native backend v1 は正しさ優先だが、以下のベンチマークを基�
 | ベンチマーク | 入力 | 計測内容 |
 |-------------|------|----------|
 | fib | examples/fib.ls | 実行時間 (wall clock) |
-| selfhost compile | selfhost/*.ls 全体 | コンパイル時間 |
+| selfhost compile | selfhost/src/**/*.ls 全体 | コンパイル時間 |
 | LSP initialize | VSCode 拡張初期化 | 応答時間 |
 | formatter on stdlib | stdlib/*.ls 全体 | 整形完了時間 |
 

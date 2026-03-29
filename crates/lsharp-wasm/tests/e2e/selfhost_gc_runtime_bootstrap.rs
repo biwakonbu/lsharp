@@ -543,16 +543,17 @@ fn test_e2e_selfhost_native_self_regeneration() {
         );
     }
 
-    // Main.ls にネイティブバックエンド関連の import が存在すること
-    let main_source = std::fs::read_to_string(project_root.join("selfhost/Main.ls"))
-        .expect("selfhost/Main.ls の読み込みに失敗");
+    // canonical Main にネイティブバックエンド関連の import が存在すること
+    let main_path = selfhost_main_path();
+    let main_source = std::fs::read_to_string(&main_path)
+        .unwrap_or_else(|_| panic!("{} の読み込みに失敗", main_path.display()));
 
     assert!(
         main_source.contains("NativeTarget")
             || main_source.contains("NativeCodegen")
             || main_source.contains("native"),
-        "selfhost/Main.ls にネイティブバックエンド関連の参照がない -- \
-         自己再生成にはネイティブコンパイルパスが Main.ls に統合されている必要がある"
+        "canonical Main にネイティブバックエンド関連の参照がない -- \
+         自己再生成にはネイティブコンパイルパスが Main に統合されている必要がある"
     );
 
     // NativeCodegen.ls がコンパイルパイプライン関数を持つこと

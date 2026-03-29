@@ -18,12 +18,19 @@ pub struct ModuleSearchPaths {
 impl ModuleSearchPaths {
     pub fn discover(entry_file: &Path) -> Self {
         let entry_dir = entry_file.parent().unwrap_or_else(|| Path::new("."));
-        let package_root = find_package_root(entry_dir).unwrap_or_else(|| entry_dir.to_path_buf());
+        let nearest_src_root = nearest_src_root(entry_dir);
+        let package_root = find_package_root(entry_dir)
+            .or_else(|| {
+                nearest_src_root
+                    .as_ref()
+                    .and_then(|src_root| src_root.parent().map(Path::to_path_buf))
+            })
+            .unwrap_or_else(|| entry_dir.to_path_buf());
         let source_root_candidate = package_root.join("src");
         let source_root = if source_root_candidate.is_dir() {
             source_root_candidate
         } else {
-            entry_dir.to_path_buf()
+            nearest_src_root.unwrap_or_else(|| entry_dir.to_path_buf())
         };
         let package_sources = discover_package_sources(&package_root.join(".lsharp/packages"));
         Self {
@@ -545,6 +552,24 @@ fn find_package_root(start: &Path) -> Option<PathBuf> {
     }
 }
 
+fn nearest_src_root(start: &Path) -> Option<PathBuf> {
+    let mut current = if start.is_dir() {
+        start.to_path_buf()
+    } else {
+        start.parent()?.to_path_buf()
+    };
+    loop {
+        if current.file_name().and_then(|name| name.to_str()) == Some("src") {
+            return Some(current);
+        }
+        let parent = current.parent()?;
+        if parent == current {
+            return None;
+        }
+        current = parent.to_path_buf();
+    }
+}
+
 fn discover_package_sources(base: &Path) -> Vec<PathBuf> {
     let mut sources = Vec::new();
     if !base.exists() {
@@ -1028,6 +1053,33 @@ mod resolve_tests {
                 .iter()
                 .any(|(name, path)| name == "Utils" && path.ends_with("src/Utils.ls"))
         );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_build_from_entry_prefers_nearest_src_ancestor_without_manifest() {
+        let dir = std::env::temp_dir().join("lsharp_build_nearest_src_ancestor");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("selfhost/src/App")).unwrap();
+        std::fs::create_dir_all(dir.join("selfhost/src/Syntax")).unwrap();
+        std::fs::write(
+            dir.join("selfhost/src/Syntax/Token.ls"),
+            "(module Syntax.Token)\n(defn token-tag [] 1)",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("selfhost/src/App/Main.ls"),
+            "(module App.Main)\n(import Syntax.Token)\n(defn main [] (token-tag))",
+        )
+        .unwrap();
+
+        let (graph, files) =
+            ModuleGraph::build_from_entry(&dir.join("selfhost/src/App/Main.ls")).unwrap();
+        assert_eq!(graph.len(), 2);
+        assert!(files.iter().any(|(name, path)| {
+            name == "Syntax.Token" && path.ends_with("selfhost/src/Syntax/Token.ls")
+        }));
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

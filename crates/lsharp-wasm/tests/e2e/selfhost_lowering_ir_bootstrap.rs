@@ -531,13 +531,15 @@ fn test_e2e_selfhost_all_files_compile() {
 /// TEST-BOOT-04: 実体3段固定点検証 (stage0 -> stage1 -> stage2 -> stage3)
 #[test]
 fn test_e2e_selfhost_true_bootstrap_fixed_point() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    // canonical entrypoint が存在することを前提とする
+    let main_path = selfhost_main_path();
+    assert!(
+        main_path.exists(),
+        "{} が存在しない",
+        main_path.display()
+    );
 
-    // selfhost/Main.ls が存在することを前提とする
-    let main_path = project_root.join("selfhost/Main.ls");
-    assert!(main_path.exists(), "selfhost/Main.ls が存在しない");
-
-    // stage0: Rust コンパイラで selfhost/Main.ls をマルチファイル経路でコンパイル -> stage1 wasm
+    // stage0: Rust コンパイラで canonical Main をマルチファイル経路でコンパイル -> stage1 wasm
     let stage1_wasm = compile_file_only(&main_path);
     assert_valid_wasm(&stage1_wasm);
 

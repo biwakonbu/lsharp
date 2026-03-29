@@ -1,8 +1,8 @@
 use super::support::*;
 
-// === TEST-BOOT-01-A: Main.ls import-only パイプラインの compile 成功テスト ===
+// === TEST-BOOT-01-A: canonical Main import-only パイプラインの compile 成功テスト ===
 
-/// Main.ls が import-only パイプラインとして構成されていること、
+/// `selfhost/src/App/Main.ls` が import-only パイプラインとして構成されていること、
 /// つまりインライン再定義がなく、各モジュール固定 API (Lexer.tokenize,
 /// Parser.parse-program) が import 経由で呼ばれていることを検証する。
 ///
@@ -10,23 +10,24 @@ use super::support::*;
 /// import-only 化が完了するまで FAIL する (Red Phase)。
 #[test]
 fn test_e2e_selfhost_main_import_only_pipeline() {
-    let main_source =
-        std::fs::read_to_string("../../selfhost/Main.ls").expect("selfhost/Main.ls が読み込めない");
+    let main_path = selfhost_main_path();
+    let main_source = std::fs::read_to_string(&main_path)
+        .unwrap_or_else(|_| panic!("{} が読み込めない", main_path.display()));
 
     // 1. 必須 import 宣言の存在確認
     let required_imports = [
-        "AST",
-        "Lexer",
-        "Parser",
-        "MacroExpand",
-        "TypeInfer",
-        "Compiler",
-        "WasmEmit",
+        "Syntax.AST",
+        "Syntax.Lexer",
+        "Syntax.Parser",
+        "Syntax.MacroExpand",
+        "Types.TypeInfer",
+        "Backend.Wasm.Compiler",
+        "Backend.Wasm.WasmEmit",
     ];
     for module in &required_imports {
         assert!(
             main_source.contains(&format!("(import {})", module)),
-            "Main.ls に (import {}) がない",
+            "canonical Main に (import {}) がない",
             module
         );
     }
@@ -73,7 +74,7 @@ fn test_e2e_selfhost_main_import_only_pipeline() {
         let has_unqualified = main_source.contains(&format!("({}", unqualified));
         assert!(
             has_qualified || has_unqualified,
-            "Main.ls に {} または {} の呼び出しが見つからない (import 経由の API 呼び出しが必要)",
+            "canonical Main に {} または {} の呼び出しが見つからない (import 経由の API 呼び出しが必要)",
             qualified,
             unqualified
         );

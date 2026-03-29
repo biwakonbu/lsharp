@@ -13,7 +13,8 @@
 
 > **直近反映 (2026-03-27)** — 実測・コードベース同期:
 > - E2E: `cargo test -p lsharp-wasm --test e2e -- --list` の実測は **683 tests**。`#[ignore]` は `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs` の GC soak 2 件（`test_e2e_gc_compile_run_loop_1000`, `test_e2e_gc_repl_soak_500_eval`）。ブートストラップ検証の主経路は `try_compile_and_run_file` / `compile_and_run_file`（マルチファイル・import）。インラインソース用の `try_compile_and_run` は将来の最小再現テスト用に **残置**（`crates/lsharp-wasm/tests/e2e/support.rs`、現状 `#[allow(dead_code)]`）。
-> - `selfhost/Main.ls` は import-only パイプライン (BOOT-01)。マルチファイル Wasm は `ModuleGraph::topological_sort` でモジュール名・import 名をソートし出力の再現性を担保。複数 `main` 定義がある場合は **最後**の `main` をエントリにする（`crates/lsharp-wasm/src/wasi.rs`）。
+> - selfhost の正本 entrypoint は `selfhost/src/App/Main.ls`。import-only パイプライン (BOOT-01) はこの正本で維持し、マルチファイル Wasm は `ModuleGraph::topological_sort` でモジュール名・import 名をソートして出力の再現性を担保する。複数 `main` 定義がある場合は **最後**の `main` をエントリにする（`crates/lsharp-wasm/src/wasi.rs`）。
+> - `selfhost/src/**` が正本 source root。flat な `selfhost/*.ls` は互換移行のための一時コピーとして残しており、新規検証・ドキュメント・entrypoint 参照は `selfhost/src/**` を基準に更新する。
 > - `Lower.ls` / `LowerPattern.ls` の stage0 stack overflow は `lsharp-types` の `Type::apply_subst` ループ化・Var サイクル打ち切りで解消。`scripts/ci/compile-phase11-inputs.sh` に含め、`KNOWN_BLOCKERS` なし。
 > - `test_e2e_bootstrap_stage1_stage2_match` 等は proxy のまま。加え `test_e2e_bootstrap_stage0_oracle_chain_four_way_identity` で Rust oracle 4 連一致を固定。
 > - `scripts/ci/compile-phase11-inputs.sh` は known blocker なしで通過。
@@ -87,7 +88,7 @@
 
 #### Step 1. `CP-01` Frontend unblock / bootstrap 入力集合を閉じる
 
-- [x] [`BOOT-01 Main.ls import path consolidation`](docs/development/planning/phase11-implementation-plan.md#boot-01-mainls-import-path-consolidation) -- Evidence: `selfhost/Main.ls`, `test_e2e_selfhost_main_import_only_pipeline`, `test_e2e_selfhost_pipeline_complete_stages`（マルチファイル `compile_and_run_file`）。
+- [x] [`BOOT-01 Main.ls import path consolidation`](docs/development/planning/phase11-implementation-plan.md#boot-01-mainls-import-path-consolidation) -- Evidence: `selfhost/src/App/Main.ls`, `test_e2e_selfhost_main_import_only_pipeline`, `test_e2e_selfhost_pipeline_complete_stages`（マルチファイル `compile_and_run_file`）。
 - [x] [`IR-02 Lower split`](docs/development/planning/phase11-implementation-plan.md#ir-02-lower-split) / [`IR-04 Pattern lowering`](docs/development/planning/phase11-implementation-plan.md#ir-04-pattern-lowering) -- Evidence: `crates/lsharp-types/src/types.rs` `apply_subst` + `apply_subst_tests`、`selfhost/Lower*.ls` が `compile-phase11-inputs.sh` で通過。
 - [x] [`BOOT-03 stdlib direct compile blockers`](docs/development/planning/phase11-implementation-plan.md#boot-03-stdlib-direct-compile-blockers) の残件 -- `scripts/ci/compile-phase11-inputs.sh` に Lower/LowerPattern を含め `KNOWN_BLOCKERS` 撤去済み。
 - [x] Step 1 exit gate -- `scripts/ci/compile-phase11-inputs.sh` known blocker なしで通過。
@@ -323,7 +324,8 @@
 
 ### P12-B: パッケージシステムコア
 
-> lsharp.toml 拡張・可視性制御・依存解決の実装。P12-A 完了後に着手推奨。
+> `lsharp.toml` 拡張・可視性制御・依存解決の実装。P12-A 完了後に着手推奨。
+> Rust/公開 package 側の `src/`・`.lsharp/packages/*/src`・stdlib 解決は完了済み。selfhost は公開 package ではなく **内部 source root** として扱い、同じ `src/` / dotted import 規約への parity を別タスクで追う。
 
 - [x] **B-1. lsharp.toml スキーマ拡張** (tests: `config::tests::test_parse_project_metadata_exports_and_dev_dependencies`)
   - [x] `[project]` に description, license, authors, repository, keywords, lsharp-version フィールド追加
@@ -357,6 +359,13 @@
   - [x] semver 互換範囲の解決 ("1.0.0" → >=1.0.0, <2.0.0)
   - [x] インストール時に `docs/api.json` を生成 (MCP Server が読む)
   - 修正対象: `crates/lsharp-ir/src/module_graph.rs`, `crates/lsharp-driver/src/config.rs`, 新規 `crates/lsharp-driver/src/resolver.rs`
+
+- [~] **B-6. selfhost internal source root parity** (tests: `module_graph::resolve_tests::test_build_from_entry_prefers_nearest_src_ancestor_without_manifest`, `e2e::selfhost_bootstrap_four_layer::test_e2e_boot04_compiler_mode_dotted_import_resolution_from_src_root`, `e2e::selfhost_bootstrap_contracts::test_e2e_selfhost_main_import_only_pipeline`, `e2e::selfhost_typeinfer_pipeline_bootstrap::test_e2e_selfhost_pipeline_complete_stages`)
+  - [x] Rust `ModuleGraph` が `lsharp.toml` なしでも最も近い `src/` 祖先を source root として解決できる
+  - [x] selfhost の正本 tree を `selfhost/src/**` に追加し、`selfhost/src/App/Main.ls` を canonical entrypoint に切り替えた
+  - [x] selfhost compiler-mode が dotted import を `A/B.ls` に解決し、local `src/` と stdlib fallback を扱える
+  - [ ] selfhost compiler-mode の `.lsharp/packages/*/src` parity は未完了
+  - [ ] repo 内の旧 `selfhost/*.ls` 直参照の全面整理は未完了
 
 ### P12-C: パッケージ配布 & エコシステム (GitHub only)
 
