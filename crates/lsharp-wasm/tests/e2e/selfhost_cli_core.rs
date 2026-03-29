@@ -22,6 +22,17 @@ fn test_e2e_selfhost_cli_repl_lsp_fmt() {
     }
 }
 
+/// TEST-CLI-02-C2: canonical App/Cli.ls が file-path compile gate を通過すること
+#[test]
+fn test_e2e_selfhost_cli_canonical_file_compile() {
+    let wasm = compile_file_only(&selfhost_source_path("Cli.ls"));
+    assert!(
+        wasm.len() > 1000,
+        "canonical Cli.ls の Wasm が小さすぎる: {} bytes",
+        wasm.len()
+    );
+}
+
 /// TEST-CLI-01-B: selfhost/Cli.ls の --help 相当出力が主要コマンドを列挙できること
 ///
 /// T4a-2 AC-104/AC-106: help 出力が usage とサブコマンド一覧を含むこと

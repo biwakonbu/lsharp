@@ -106,30 +106,30 @@
 ;;   例: "i64.const:42\n", "local.get:0\n"
 (defn ir-to-snapshot [instructions]
   (let [n (vector-length instructions)
-        lines (ref-new (vector-new n))
-        i (ref-new 0)]
+    lines (ref-new (vector-new n))
+    i (ref-new 0)]
     (do
       ;; 各命令を行に変換
       (if (> n 0)
         (do
           (ref-set lines (vector-push (ref-get lines)
-            (instr-to-line (vector-get instructions 0))))
+              (instr-to-line (vector-get instructions 0))))
           (if (> n 1)
             (do
               (ref-set lines (vector-push (ref-get lines)
-                (instr-to-line (vector-get instructions 1))))
+                  (instr-to-line (vector-get instructions 1))))
               (if (> n 2)
                 (do
                   (ref-set lines (vector-push (ref-get lines)
-                    (instr-to-line (vector-get instructions 2))))
+                      (instr-to-line (vector-get instructions 2))))
                   (if (> n 3)
                     (do
                       (ref-set lines (vector-push (ref-get lines)
-                        (instr-to-line (vector-get instructions 3))))
+                          (instr-to-line (vector-get instructions 3))))
                       (if (> n 4)
                         (do
                           (ref-set lines (vector-push (ref-get lines)
-                            (instr-to-line (vector-get instructions 4))))
+                              (instr-to-line (vector-get instructions 4))))
                           0)
                         0))
                     0))
@@ -143,19 +143,19 @@
 ;; 戻り値: opcode と operand のペア (newline 区切り出力用)
 (defn instr-to-line [instr]
   (let [opcode (vector-get instr 0)
-        operand (vector-get instr 1)
-        ;; opcode 名を数値エンコード + operand を組み合わせた行データ
-        ;; line-format: [opcode-id, operand, newline-marker]
-        line (vector-new 3)]
-    (vector-push (vector-push (vector-push line opcode) operand) 10)))  ;; 10 = newline ASCII
+    operand (vector-get instr 1)
+    ;; opcode 名を数値エンコード + operand を組み合わせた行データ
+    ;; line-format: [opcode-id, operand, newline-marker]
+    line (vector-new 3)]
+    (vector-push (vector-push (vector-push line opcode) operand) 10))) ;; 10 = newline ASCII
 
 ;; エントリポイント (テスト用)
 (defn main []
   (let [c (make-i64-const 42)
-        g (make-local-get 0)]
+    g (make-local-get 0)]
     (do
-      (print (vector-get c 0))  ;; 1 (i64.const)
-      (print (vector-get c 1))  ;; 42
-      (print (vector-get g 0))  ;; 10 (local.get)
-      (print (vector-get g 1))  ;; 0
+      (print (vector-get c 0)) ;; 1 (i64.const)
+      (print (vector-get c 1)) ;; 42
+      (print (vector-get g 0)) ;; 10 (local.get)
+      (print (vector-get g 1)) ;; 0
       0)))

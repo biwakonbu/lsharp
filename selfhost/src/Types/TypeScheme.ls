@@ -46,7 +46,7 @@
   (if (>= idx len)
     subst
     (let [old-var (vector-get vars idx)
-          new-ty (make-type-var (next-var counter))]
+      new-ty (make-type-var (next-var counter))]
       (instantiate-build-subst
         vars
         (+ idx 1)
@@ -59,7 +59,7 @@
   (if (>= idx len)
     out
     (let [field-hash (vector-get ty idx)
-          field-ty (vector-get ty (+ idx 1))]
+      field-ty (vector-get ty (+ idx 1))]
       (instantiate-apply-record-fields
         subst
         ty
@@ -74,8 +74,8 @@
 ;; 戻り値: 具体化された型
 (defn instantiate [scheme counter]
   (let [ty (scheme-type scheme)
-        vars (scheme-vars scheme)
-        n (vector-length vars)]
+    vars (scheme-vars scheme)
+    n (vector-length vars)]
     (if (= n 0)
       ;; 単相型: そのまま返す
       ty
@@ -153,10 +153,10 @@
   (if (>= idx len)
     bound
     (let [v (vector-get free idx)
-          next-bound
-            (if (= (map-get env-vars v) 0)
-              (vector-push bound v)
-              bound)]
+      next-bound
+      (if (= (map-get env-vars v) 0)
+        (vector-push bound v)
+        bound)]
       (generalize-collect-bound free (+ idx 1) len env-vars next-bound))))
 
 ;; 型を一般化: 環境に出現しない自由変数を束縛
@@ -164,9 +164,9 @@
 ;; 戻り値: TypeScheme
 (defn generalize [ty env-vars]
   (let [free (free-vars ty)
-        bound
-          (generalize-collect-bound
-            free 0 (vector-length free) env-vars (vector-new (vector-length free)))]
+    bound
+    (generalize-collect-bound
+      free 0 (vector-length free) env-vars (vector-new (vector-length free)))]
     (poly ty bound)))
 
 ;; 型の自由変数を収集
@@ -178,7 +178,7 @@
       (if (= tag 3)
         ;; Fun: パラメータと戻り値の自由変数を結合
         (let [pv (free-vars (vector-get ty 1))
-              rv (free-vars (vector-get ty 2))]
+          rv (free-vars (vector-get ty 2))]
           (free-vars-append-unique pv rv 0 (vector-length rv)))
         (if (= tag 4)
           ;; Record: field type を左から走査
@@ -190,35 +190,35 @@
 
 (defn main []
   (let [;; 単相型スキーム
-        int-ty (vector-push (vector-push (vector-new 2) 1) 100)
-        int-scheme (mono int-ty)
+    int-ty (vector-push (vector-push (vector-new 2) 1) 100)
+    int-scheme (mono int-ty)
 
-        ;; 多相型スキーム: ∀a. a -> a
-        var-a (vector-push (vector-push (vector-new 2) 2) 1)
-        fun-ty (vector-push (vector-push (vector-push (vector-new 3) 3) var-a) var-a)
-        bound (vector-push (vector-new 1) 1)
-        id-scheme (poly fun-ty bound)
+    ;; 多相型スキーム: ∀a. a -> a
+    var-a (vector-push (vector-push (vector-new 2) 2) 1)
+    fun-ty (vector-push (vector-push (vector-push (vector-new 3) 3) var-a) var-a)
+    bound (vector-push (vector-new 1) 1)
+    id-scheme (poly fun-ty bound)
 
-        ;; instantiate テスト
-        counter (make-var-counter)
-        inst1 (instantiate int-scheme counter)
-        inst2 (instantiate id-scheme counter)]
+    ;; instantiate テスト
+    counter (make-var-counter)
+    inst1 (instantiate int-scheme counter)
+    inst2 (instantiate id-scheme counter)]
     (do
       ;; 単相の instantiate: そのまま返る
-      (print (vector-get inst1 0))  ;; 1 (Con)
-      (print (vector-get inst1 1))  ;; 100 (Int hash)
+      (print (vector-get inst1 0)) ;; 1 (Con)
+      (print (vector-get inst1 1)) ;; 100 (Int hash)
 
       ;; 多相の instantiate: 型変数が新しい ID に
-      (print (vector-get inst2 0))  ;; 3 (Fun)
+      (print (vector-get inst2 0)) ;; 3 (Fun)
       ;; パラメータと戻り値は新しい型変数 (ID=1000)
       (let [param (vector-get inst2 1)]
         (do
-          (print (vector-get param 0))  ;; 2 (Var)
-          (print (vector-get param 1))))  ;; 1000
+          (print (vector-get param 0)) ;; 2 (Var)
+          (print (vector-get param 1)))) ;; 1000
 
       ;; free-vars テスト
-      (print (vector-length (free-vars int-ty)))    ;; 0
-      (print (vector-length (free-vars var-a)))     ;; 1
-      (print (vector-get (free-vars var-a) 0))      ;; 1
+      (print (vector-length (free-vars int-ty))) ;; 0
+      (print (vector-length (free-vars var-a))) ;; 1
+      (print (vector-get (free-vars var-a) 0)) ;; 1
 
       0)))

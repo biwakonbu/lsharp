@@ -78,6 +78,17 @@ compile_target() {
   "$LSHARP_BIN" compile "${source}" -o "${OUT_DIR}/${output_name}"
 }
 
+resolve_selfhost_source() {
+  local module="$1"
+  local path
+  path="$(find selfhost/src -name "${module}.ls" -print -quit)"
+  if [[ -z "$path" ]]; then
+    echo "ERROR: canonical selfhost source for ${module}.ls not found"
+    exit 1
+  fi
+  printf '%s\n' "$path"
+}
+
 ensure_lsharp_bin() {
   if [[ -x "$LSHARP_BIN" ]]; then
     return
@@ -102,7 +113,7 @@ echo "compiler: ${LSHARP_BIN}"
 echo ""
 
 for module in "${SELFHOST_MODULES[@]}"; do
-  compile_target "selfhost" "selfhost/${module}.ls" "selfhost_${module}.wasm"
+  compile_target "selfhost" "$(resolve_selfhost_source "$module")" "selfhost_${module}.wasm"
 done
 
 for module in "${STDLIB_MODULES[@]}"; do

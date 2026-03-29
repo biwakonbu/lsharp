@@ -170,24 +170,24 @@
 ;; 成功時: 置換 (map), 失敗時: エラーマーカー付き map
 (defn unify [t1 t2 subst]
   (let [ty1 (apply-subst subst t1)
-        ty2 (apply-subst subst t2)]
+    ty2 (apply-subst subst t2)]
     (if (= (types-eq ty1 ty2) 1)
       ;; 同じ型なら置換をそのまま返す
       subst
-        (if (= (type-tag ty1) 2)
-          ;; ty1 が Var
-          (if (= (occurs-check (type-name ty1) ty2) 1)
+      (if (= (type-tag ty1) 2)
+        ;; ty1 が Var
+        (if (= (occurs-check (type-name ty1) ty2) 1)
+          (unify-error)
+          (subst-bind subst (type-name ty1) ty2))
+        (if (= (type-tag ty2) 2)
+          ;; ty2 が Var
+          (if (= (occurs-check (type-name ty2) ty1) 1)
             (unify-error)
-            (subst-bind subst (type-name ty1) ty2))
-          (if (= (type-tag ty2) 2)
-            ;; ty2 が Var
-            (if (= (occurs-check (type-name ty2) ty1) 1)
-              (unify-error)
-              (subst-bind subst (type-name ty2) ty1))
-            (if (= (type-tag ty1) 1)
-              ;; 両方 Con: 名前が一致しないなら失敗
-              (unify-error)
-              (if (= (type-tag ty1) 3)
+            (subst-bind subst (type-name ty2) ty1))
+          (if (= (type-tag ty1) 1)
+            ;; 両方 Con: 名前が一致しないなら失敗
+            (unify-error)
+            (if (= (type-tag ty1) 3)
               ;; 両方 Fun: パラメータを単一化してから戻り値を単一化
               (if (= (type-tag ty2) 3)
                 (let [s1 (unify (type-fun-param ty1) (type-fun-param ty2) subst)]
@@ -200,12 +200,12 @@
 ;; エントリポイント (テスト用)
 (defn main []
   (let [int-ty (make-type-int)
-        var-ty (make-type-var 42)
-        s (subst-new)
-        s1 (subst-bind s 42 int-ty)]
+    var-ty (make-type-var 42)
+    s (subst-new)
+    s1 (subst-bind s 42 int-ty)]
     (do
-      (print (type-tag int-ty))      ;; 1 (Con)
-      (print (type-tag var-ty))      ;; 2 (Var)
-      (print (type-name var-ty))     ;; 42
-      (print (type-tag (subst-lookup s1 42)))  ;; 1 (Con)
+      (print (type-tag int-ty)) ;; 1 (Con)
+      (print (type-tag var-ty)) ;; 2 (Var)
+      (print (type-name var-ty)) ;; 42
+      (print (type-tag (subst-lookup s1 42))) ;; 1 (Con)
       0)))

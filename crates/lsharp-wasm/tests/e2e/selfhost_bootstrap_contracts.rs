@@ -86,20 +86,20 @@ fn test_e2e_selfhost_main_import_only_pipeline() {
 
 // === TEST-BOOT-02-A: MacroExpand.ls direct compile テスト ===
 
-/// MacroExpand.ls を直接コンパイルして成功することを検証する。
+/// canonical MacroExpand.ls を直接コンパイルして成功することを検証する。
 ///
 /// 現状の MacroExpand.ls は hashmap-new, hashmap-set, hashmap-get 等の
 /// Rust parser が未対応の構文を含む可能性があるため、
 /// 直接コンパイルが成功するまで FAIL する (Red Phase)。
 #[test]
 fn test_e2e_selfhost_macroexpand_direct_compile() {
-    let macroexpand_source = std::fs::read_to_string("../../selfhost/MacroExpand.ls")
-        .expect("selfhost/MacroExpand.ls が読み込めない");
+    let macroexpand_source = std::fs::read_to_string(selfhost_source_path("MacroExpand.ls"))
+        .expect("canonical MacroExpand.ls が読み込めない");
 
     // 1. モジュール宣言の存在確認
     assert!(
-        macroexpand_source.contains("(module MacroExpand)"),
-        "MacroExpand.ls に (module MacroExpand) 宣言がない"
+        macroexpand_source.contains("(module Syntax.MacroExpand)"),
+        "MacroExpand.ls に (module Syntax.MacroExpand) 宣言がない"
     );
 
     // 2. 主要な公開 API 関数の存在確認
@@ -137,7 +137,7 @@ fn test_e2e_selfhost_macroexpand_direct_compile() {
 
 // === TEST-TYPE-01: Type/TypeScheme/TypeInfer 責務分離テスト ===
 
-/// selfhost/Type.ls, selfhost/TypeScheme.ls, selfhost/TypeInfer.ls がそれぞれ存在し、
+/// canonical Type.ls, TypeScheme.ls, TypeInfer.ls がそれぞれ存在し、
 /// 責務が適切に分離されていることを検証する。
 ///
 /// - Type.ls: 型表現 (type representation) のみ -- unify, apply-subst, occurs-check 等は含むが
@@ -149,15 +149,13 @@ fn test_e2e_selfhost_macroexpand_direct_compile() {
 /// 責務分離の assert が FAIL する。
 #[test]
 fn test_e2e_selfhost_type_responsibility_separation() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
     // 各ファイルの存在確認
-    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
-        .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-        .expect("selfhost/TypeScheme.ls が読み込めない");
-    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-        .expect("selfhost/TypeInfer.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(selfhost_source_path("Type.ls"))
+        .expect("canonical Type.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(selfhost_source_path("TypeScheme.ls"))
+        .expect("canonical TypeScheme.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
+        .expect("canonical TypeInfer.ls が読み込めない");
 
     // === Type.ls の責務: 型表現のみ ===
     // Type.ls には generalize / instantiate が含まれてはいけない
@@ -215,12 +213,12 @@ fn test_e2e_selfhost_type_responsibility_separation() {
     // TypeInfer.ls は Type.ls / TypeScheme.ls を import し、
     // unify/generalize/instantiate 等を再定義していないこと
     assert!(
-        type_infer_ls.contains("(import Type)"),
-        "TypeInfer.ls が Type.ls を import していない"
+        type_infer_ls.contains("(import Types.Type)"),
+        "TypeInfer.ls が Types.Type を import していない"
     );
     assert!(
-        type_infer_ls.contains("(import TypeScheme)"),
-        "TypeInfer.ls が TypeScheme.ls を import していない"
+        type_infer_ls.contains("(import Types.TypeScheme)"),
+        "TypeInfer.ls が Types.TypeScheme を import していない"
     );
 
     // 重複定義の検出: TypeInfer.ls に unify/apply-subst/generalize が再定義されている場合 FAIL
@@ -311,9 +309,9 @@ fn test_e2e_selfhost_ast_full_coverage() {
     // Rust AST の Pattern variant 列挙
     let rust_pattern_variants = ["Wildcard", "Var", "Lit", "Constructor", "RecordPat"];
 
-    // selfhost/AST.ls を読み込む
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
+    // canonical AST.ls を読み込む
+    let ast_ls = std::fs::read_to_string(selfhost_source_path("AST.ls"))
+        .expect("canonical AST.ls が読み込めない");
 
     // golden fixture の expr_variants と実際の Rust variants が一致すること
     let golden_expr = golden.get("expr_variants").expect("expr_variants がない");
@@ -490,19 +488,18 @@ fn test_e2e_selfhost_type_hm_core_golden() {
     );
 
     // 5. selfhost TypeInfer.ls を全依存モジュール連結でコンパイル + 実行
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
-        .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-        .expect("selfhost/TypeScheme.ls が読み込めない");
-    let type_infer_core_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
-            .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-        .expect("selfhost/TypeInfer.ls が読み込めない");
+    let token_ls = std::fs::read_to_string(selfhost_source_path("Token.ls"))
+        .expect("canonical Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(selfhost_source_path("AST.ls"))
+        .expect("canonical AST.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(selfhost_source_path("Type.ls"))
+        .expect("canonical Type.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(selfhost_source_path("TypeScheme.ls"))
+        .expect("canonical TypeScheme.ls が読み込めない");
+    let type_infer_core_ls = std::fs::read_to_string(selfhost_source_path("TypeInferCore.ls"))
+        .expect("canonical TypeInferCore.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
+        .expect("canonical TypeInfer.ls が読み込めない");
 
     // モジュール連結 (依存順)
     let combined = format!(
@@ -559,24 +556,22 @@ fn test_e2e_selfhost_type_hm_core_golden() {
 
 #[test]
 fn test_e2e_selfhost_metadata_check() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    // 1. selfhost/MetadataCheck.ls が存在すること
-    let metadata_check_path = project_root.join("selfhost/MetadataCheck.ls");
+    // 1. canonical MetadataCheck.ls が存在すること
+    let metadata_check_path = selfhost_source_path("MetadataCheck.ls");
     assert!(
         metadata_check_path.exists(),
-        "selfhost/MetadataCheck.ls が存在しない。\
+        "canonical MetadataCheck.ls が存在しない。\
          メタデータ検証モジュールを作成してください。"
     );
 
     // 2. ソースを読み込み、必須関数が定義されていることを検証
     let source = std::fs::read_to_string(&metadata_check_path)
-        .expect("selfhost/MetadataCheck.ls の読み込みに失敗");
+        .expect("canonical MetadataCheck.ls の読み込みに失敗");
 
     // module 宣言の確認
     assert!(
-        source.contains("(module MetadataCheck)"),
-        "MetadataCheck.ls に (module MetadataCheck) 宣言がない"
+        source.contains("(module Types.MetadataCheck)"),
+        "MetadataCheck.ls に (module Types.MetadataCheck) 宣言がない"
     );
 
     // :doc メタデータの validation 関数
@@ -598,12 +593,12 @@ fn test_e2e_selfhost_metadata_check() {
     );
 
     // 3. コンパイルが通ること (全依存モジュール連結)
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("Token.ls 読み込み失敗");
-    let ast_ls =
-        std::fs::read_to_string(project_root.join("selfhost/AST.ls")).expect("AST.ls 読み込み失敗");
-    let span_ls = std::fs::read_to_string(project_root.join("selfhost/Span.ls"))
-        .expect("Span.ls 読み込み失敗");
+    let token_ls = std::fs::read_to_string(selfhost_source_path("Token.ls"))
+        .expect("canonical Token.ls 読み込み失敗");
+    let ast_ls = std::fs::read_to_string(selfhost_source_path("AST.ls"))
+        .expect("canonical AST.ls 読み込み失敗");
+    let span_ls = std::fs::read_to_string(selfhost_source_path("Span.ls"))
+        .expect("canonical Span.ls 読み込み失敗");
 
     let combined = format!("{}\n{}\n{}\n{}", token_ls, ast_ls, span_ls, source);
 
@@ -625,16 +620,14 @@ fn test_e2e_selfhost_metadata_check() {
 
 #[test]
 fn test_e2e_selfhost_hkt_gadt_alias_record() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    // selfhost/TypeInfer.ls を読み込み
-    let type_infer_path = project_root.join("selfhost/TypeInfer.ls");
+    // canonical TypeInfer.ls を読み込み
+    let type_infer_path = selfhost_source_path("TypeInfer.ls");
     assert!(
         type_infer_path.exists(),
-        "selfhost/TypeInfer.ls が存在しない"
+        "canonical TypeInfer.ls が存在しない"
     );
     let source =
-        std::fs::read_to_string(&type_infer_path).expect("selfhost/TypeInfer.ls の読み込みに失敗");
+        std::fs::read_to_string(&type_infer_path).expect("canonical TypeInfer.ls の読み込みに失敗");
 
     // HKT (Higher-Kinded Types) 関連関数
     assert!(

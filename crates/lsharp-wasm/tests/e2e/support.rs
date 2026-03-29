@@ -225,36 +225,99 @@ pub(crate) fn example_path(name: &str) -> std::path::PathBuf {
         .join(name)
 }
 
+pub(crate) fn selfhost_project_root() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+pub(crate) fn selfhost_package_root() -> std::path::PathBuf {
+    selfhost_project_root().join("selfhost")
+}
+
+pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
+    selfhost_project_root().join(match name {
+        "Main.ls" => "selfhost/src/App/Main.ls",
+        "Cli.ls" => "selfhost/src/App/Cli.ls",
+        "Token.ls" => "selfhost/src/Syntax/Token.ls",
+        "AST.ls" => "selfhost/src/Syntax/AST.ls",
+        "Span.ls" => "selfhost/src/Syntax/Span.ls",
+        "Lexer.ls" => "selfhost/src/Syntax/Lexer.ls",
+        "Parser.ls" => "selfhost/src/Syntax/Parser.ls",
+        "MacroExpand.ls" => "selfhost/src/Syntax/MacroExpand.ls",
+        "Derive.ls" => "selfhost/src/Syntax/Derive.ls",
+        "Hygiene.ls" => "selfhost/src/Syntax/Hygiene.ls",
+        "IR.ls" => "selfhost/src/IR/IR.ls",
+        "Lower.ls" => "selfhost/src/IR/Lower.ls",
+        "LowerExpr.ls" => "selfhost/src/IR/LowerExpr.ls",
+        "LowerDecl.ls" => "selfhost/src/IR/LowerDecl.ls",
+        "LowerPattern.ls" => "selfhost/src/IR/LowerPattern.ls",
+        "Closure.ls" => "selfhost/src/IR/Closure.ls",
+        "ModuleGraph.ls" => "selfhost/src/IR/ModuleGraph.ls",
+        "Type.ls" => "selfhost/src/Types/Type.ls",
+        "TypeScheme.ls" => "selfhost/src/Types/TypeScheme.ls",
+        "TypeInferCore.ls" => "selfhost/src/Types/TypeInferCore.ls",
+        "TypeInfer.ls" => "selfhost/src/Types/TypeInfer.ls",
+        "Constraints.ls" => "selfhost/src/Types/Constraints.ls",
+        "MetadataCheck.ls" => "selfhost/src/Types/MetadataCheck.ls",
+        "Compiler.ls" => "selfhost/src/Backend/Wasm/Compiler.ls",
+        "WasmEmit.ls" => "selfhost/src/Backend/Wasm/WasmEmit.ls",
+        "Codegen.ls" => "selfhost/src/Backend/Wasm/Codegen.ls",
+        "Emit.ls" => "selfhost/src/Backend/Wasm/Emit.ls",
+        "WasiBackend.ls" => "selfhost/src/Backend/Wasm/WasiBackend.ls",
+        "WasiRunner.ls" => "selfhost/src/Backend/Wasm/WasiRunner.ls",
+        "NativeTarget.ls" => "selfhost/src/Backend/Native/NativeTarget.ls",
+        "NativeCodegen.ls" => "selfhost/src/Backend/Native/NativeCodegen.ls",
+        "NativeEmit.ls" => "selfhost/src/Backend/Native/NativeEmit.ls",
+        "Linker.ls" => "selfhost/src/Backend/Native/Linker.ls",
+        "Formatter.ls" => "selfhost/src/Tools/Text/Formatter.ls",
+        "Linter.ls" => "selfhost/src/Tools/Text/Linter.ls",
+        "JsonRpc.ls" => "selfhost/src/Tools/Lsp/JsonRpc.ls",
+        "LspServer.ls" => "selfhost/src/Tools/Lsp/LspServer.ls",
+        "DocTools.ls" => "selfhost/src/Tools/Doc/DocTools.ls",
+        "HtmlDoc.ls" => "selfhost/src/Tools/Doc/HtmlDoc.ls",
+        "HtmlLayout.ls" => "selfhost/src/Tools/Doc/HtmlLayout.ls",
+        "HtmlTemplate.ls" => "selfhost/src/Tools/Doc/HtmlTemplate.ls",
+        "TestRunner.ls" => "selfhost/src/Tools/Test/TestRunner.ls",
+        "GC.ls" => "selfhost/src/Runtime/GC.ls",
+        other => panic!("不明な selfhost canonical module path: {other}"),
+    })
+}
+
 /// selfhost/src/App/Main.ls のパス (import 解決にはマルチファイルコンパイルが必要)
 pub(crate) fn selfhost_main_path() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost/src/App/Main.ls")
+    selfhost_source_path("Main.ls")
 }
 
 /// selfhost モジュールの埋め込みソースを返す
 pub(crate) fn selfhost_module(name: &str) -> &'static str {
     match name {
-        "Token.ls" => include_str!("../../../../selfhost/Token.ls"),
-        "AST.ls" => include_str!("../../../../selfhost/AST.ls"),
-        "Lexer.ls" => include_str!("../../../../selfhost/Lexer.ls"),
-        "Parser.ls" => include_str!("../../../../selfhost/Parser.ls"),
-        "IR.ls" => include_str!("../../../../selfhost/IR.ls"),
-        "Type.ls" => include_str!("../../../../selfhost/Type.ls"),
-        "TypeScheme.ls" => include_str!("../../../../selfhost/TypeScheme.ls"),
-        "TypeInferCore.ls" => include_str!("../../../../selfhost/TypeInferCore.ls"),
-        "TypeInfer.ls" => include_str!("../../../../selfhost/TypeInfer.ls"),
-        "Compiler.ls" => include_str!("../../../../selfhost/Compiler.ls"),
-        "WasmEmit.ls" => include_str!("../../../../selfhost/WasmEmit.ls"),
-        "Formatter.ls" => include_str!("../../../../selfhost/Formatter.ls"),
-        "TestRunner.ls" => include_str!("../../../../selfhost/TestRunner.ls"),
-        "DocTools.ls" => include_str!("../../../../selfhost/DocTools.ls"),
-        "JsonRpc.ls" => include_str!("../../../../selfhost/JsonRpc.ls"),
-        "Linter.ls" => include_str!("../../../../selfhost/Linter.ls"),
-        "Cli.ls" => include_str!("../../../../selfhost/Cli.ls"),
-        "LspServer.ls" => include_str!("../../../../selfhost/LspServer.ls"),
-        "NativeTarget.ls" => include_str!("../../../../selfhost/NativeTarget.ls"),
-        "NativeCodegen.ls" => include_str!("../../../../selfhost/NativeCodegen.ls"),
-        "NativeEmit.ls" => include_str!("../../../../selfhost/NativeEmit.ls"),
-        "Linker.ls" => include_str!("../../../../selfhost/Linker.ls"),
+        "Main.ls" => include_str!("../../../../selfhost/src/App/Main.ls"),
+        "Cli.ls" => include_str!("../../../../selfhost/src/App/Cli.ls"),
+        "Token.ls" => include_str!("../../../../selfhost/src/Syntax/Token.ls"),
+        "AST.ls" => include_str!("../../../../selfhost/src/Syntax/AST.ls"),
+        "Span.ls" => include_str!("../../../../selfhost/src/Syntax/Span.ls"),
+        "Lexer.ls" => include_str!("../../../../selfhost/src/Syntax/Lexer.ls"),
+        "Parser.ls" => include_str!("../../../../selfhost/src/Syntax/Parser.ls"),
+        "IR.ls" => include_str!("../../../../selfhost/src/IR/IR.ls"),
+        "Type.ls" => include_str!("../../../../selfhost/src/Types/Type.ls"),
+        "TypeScheme.ls" => include_str!("../../../../selfhost/src/Types/TypeScheme.ls"),
+        "TypeInferCore.ls" => include_str!("../../../../selfhost/src/Types/TypeInferCore.ls"),
+        "TypeInfer.ls" => include_str!("../../../../selfhost/src/Types/TypeInfer.ls"),
+        "Compiler.ls" => include_str!("../../../../selfhost/src/Backend/Wasm/Compiler.ls"),
+        "WasmEmit.ls" => include_str!("../../../../selfhost/src/Backend/Wasm/WasmEmit.ls"),
+        "Formatter.ls" => include_str!("../../../../selfhost/src/Tools/Text/Formatter.ls"),
+        "TestRunner.ls" => include_str!("../../../../selfhost/src/Tools/Test/TestRunner.ls"),
+        "DocTools.ls" => include_str!("../../../../selfhost/src/Tools/Doc/DocTools.ls"),
+        "HtmlDoc.ls" => include_str!("../../../../selfhost/src/Tools/Doc/HtmlDoc.ls"),
+        "HtmlLayout.ls" => include_str!("../../../../selfhost/src/Tools/Doc/HtmlLayout.ls"),
+        "HtmlTemplate.ls" => include_str!("../../../../selfhost/src/Tools/Doc/HtmlTemplate.ls"),
+        "JsonRpc.ls" => include_str!("../../../../selfhost/src/Tools/Lsp/JsonRpc.ls"),
+        "Linter.ls" => include_str!("../../../../selfhost/src/Tools/Text/Linter.ls"),
+        "LspServer.ls" => include_str!("../../../../selfhost/src/Tools/Lsp/LspServer.ls"),
+        "NativeTarget.ls" => include_str!("../../../../selfhost/src/Backend/Native/NativeTarget.ls"),
+        "NativeCodegen.ls" => include_str!("../../../../selfhost/src/Backend/Native/NativeCodegen.ls"),
+        "NativeEmit.ls" => include_str!("../../../../selfhost/src/Backend/Native/NativeEmit.ls"),
+        "Linker.ls" => include_str!("../../../../selfhost/src/Backend/Native/Linker.ls"),
+        "MacroExpand.ls" => include_str!("../../../../selfhost/src/Syntax/MacroExpand.ls"),
         other => panic!("不明な selfhost モジュール: {other}"),
     }
 }
@@ -461,6 +524,37 @@ pub(crate) fn run_metadata_tests(source: &str) -> Vec<lsharp_wasm::test_runner::
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_support_selfhost_source_path_prefers_canonical_tree() {
+        assert!(
+            selfhost_source_path("Main.ls")
+                .ends_with("selfhost/src/App/Main.ls"),
+            "Main.ls は canonical entrypoint を指すべき"
+        );
+        assert!(
+            selfhost_source_path("Cli.ls")
+                .ends_with("selfhost/src/App/Cli.ls"),
+            "Cli.ls は App/Cli.ls を指すべき"
+        );
+        assert!(
+            selfhost_source_path("TypeInfer.ls")
+                .ends_with("selfhost/src/Types/TypeInfer.ls"),
+            "TypeInfer.ls は Types/TypeInfer.ls を指すべき"
+        );
+        assert!(
+            selfhost_source_path("WasmEmit.ls")
+                .ends_with("selfhost/src/Backend/Wasm/WasmEmit.ls"),
+            "WasmEmit.ls は Backend/Wasm/WasmEmit.ls を指すべき"
+        );
+    }
+
+    #[test]
+    fn test_support_selfhost_module_reads_canonical_sources() {
+        assert!(selfhost_module("Main.ls").contains("(module App.Main)"));
+        assert!(selfhost_module("Cli.ls").contains("(module App.Cli)"));
+        assert!(selfhost_module("TypeInfer.ls").contains("(module Types.TypeInfer)"));
+    }
 
     #[test]
     fn test_support_selfhost_cli_runtime_bundle_cached() {

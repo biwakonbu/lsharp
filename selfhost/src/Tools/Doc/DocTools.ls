@@ -13,10 +13,10 @@
 ;; 出力: [title, body, functions, types]
 (defn generate [ast opts]
   (let [functions (sort-doc-entries (extract-function-entries ast))
-        types (sort-doc-entries (extract-type-entries ast))
-        title (title-from-ast ast)
-        body (make-doc-body-summary functions types)
-        doc (vector-new 4)]
+    types (sort-doc-entries (extract-type-entries ast))
+    title (title-from-ast ast)
+    body (make-doc-body-summary functions types)
+    doc (vector-new 4)]
     (vector-push
       (vector-push
         (vector-push
@@ -64,7 +64,7 @@
   (if (>= idx count)
     result
     (let [decl (vector-get ast idx)
-          next-result (extract-public-functions-decl decl result)]
+      next-result (extract-public-functions-decl decl result)]
       (extract-public-functions-loop ast next-result (+ idx 1) count))))
 
 (defn extract-public-functions-decl [decl result]
@@ -79,7 +79,7 @@
   (if (>= idx count)
     result
     (let [inner-decl (vector-get decl (+ idx 3))
-          next-result (extract-public-functions-decl inner-decl result)]
+      next-result (extract-public-functions-decl inner-decl result)]
       (extract-public-functions-module-body decl next-result (+ idx 1) count))))
 
 ;; モジュール内の型定義リストを抽出
@@ -90,7 +90,7 @@
   (if (>= idx count)
     result
     (let [decl (vector-get ast idx)
-          next-result (extract-type-definitions-decl decl result)]
+      next-result (extract-type-definitions-decl decl result)]
       (extract-type-definitions-loop ast next-result (+ idx 1) count))))
 
 (defn extract-type-definitions-decl [decl result]
@@ -105,7 +105,7 @@
   (if (>= idx count)
     result
     (let [inner-decl (vector-get decl (+ idx 3))
-          next-result (extract-type-definitions-decl inner-decl result)]
+      next-result (extract-type-definitions-decl inner-decl result)]
       (extract-type-definitions-module-body decl next-result (+ idx 1) count))))
 
 ;; :doc メタデータからドキュメント文字列を抽出
@@ -150,7 +150,7 @@
         (symbol-from-hash-search hash candidates (+ idx 1) len)
         (if (= (% (- hash code) 31) 0)
           (let [prefix-hash (/ (- hash code) 31)
-                ch (substring candidates idx (+ idx 1))]
+            ch (substring candidates idx (+ idx 1))]
             (if (= prefix-hash 0)
               ch
               (let [prefix (symbol-from-hash-search prefix-hash candidates 0 len)]
@@ -161,17 +161,17 @@
 
 (defn symbol-from-hash [hash]
   (let [candidates (symbol-candidates)
-        result
-          (if (> hash 0)
-            (symbol-from-hash-search hash candidates 0 (string-length candidates))
-            "")]
+    result
+    (if (> hash 0)
+      (symbol-from-hash-search hash candidates 0 (string-length candidates))
+      "")]
     (if (> (string-length result) 0)
       result
       (string-concat "h" (int-to-string hash)))))
 
 (defn make-function-entry [decl]
   (let [name-hash (vector-get decl 1)
-        entry (vector-new 3)]
+    entry (vector-new 3)]
     (vector-push
       (vector-push
         (vector-push entry name-hash)
@@ -204,7 +204,7 @@
 
 (defn make-type-entry [decl]
   (let [name-hash (vector-get decl 1)
-        entry (vector-new 3)]
+    entry (vector-new 3)]
     (vector-push
       (vector-push
         (vector-push entry name-hash)
@@ -231,15 +231,15 @@
 
 (defn make-doc-body-summary [functions types]
   (let [fn-count (vector-length functions)
-        type-count (vector-length types)
-        base
-          (string-concat "functions:"
-            (string-concat (int-to-string fn-count)
-              (string-concat ",types:" (int-to-string type-count))))]
+    type-count (vector-length types)
+    base
+    (string-concat "functions:"
+      (string-concat (int-to-string fn-count)
+        (string-concat ",types:" (int-to-string type-count))))]
     (if (> fn-count 0)
       (let [with-fn
-              (string-concat base
-                (string-concat ",first-fn:" (doc-entry-name (vector-get functions 0))))]
+        (string-concat base
+          (string-concat ",first-fn:" (doc-entry-name (vector-get functions 0))))]
         (if (> type-count 0)
           (string-concat with-fn
             (string-concat ",first-type:" (doc-entry-name (vector-get types 0))))
@@ -265,15 +265,15 @@
 (defn sort-doc-insert [sorted elem elem-key idx]
   (if (= idx 0)
     (let [out (vector-new (+ (vector-length sorted) 1))
-          out (vector-push out elem)]
+      out (vector-push out elem)]
       (sort-doc-copy sorted 0 (vector-length sorted) out))
     (let [prev (vector-get sorted (- idx 1))
-          prev-key (doc-entry-key prev)]
+      prev-key (doc-entry-key prev)]
       (if (< elem-key prev-key)
         (sort-doc-insert sorted elem elem-key (- idx 1))
         (let [out (vector-new (+ (vector-length sorted) 1))
-              out (sort-doc-copy sorted 0 idx out)
-              out (vector-push out elem)]
+          out (sort-doc-copy sorted 0 idx out)
+          out (vector-push out elem)]
           (sort-doc-copy sorted idx (vector-length sorted) out))))))
 
 ;; entries の idx 番目以降を順に挿入する
@@ -281,8 +281,8 @@
   (if (>= idx len)
     sorted
     (let [elem (vector-get entries idx)
-          elem-key (doc-entry-key elem)
-          next-sorted (sort-doc-insert sorted elem elem-key (vector-length sorted))]
+      elem-key (doc-entry-key elem)
+      next-sorted (sort-doc-insert sorted elem elem-key (vector-length sorted))]
       (sort-doc-loop entries next-sorted (+ idx 1) len))))
 
 ;; ドキュメント要素をソートして決定的順序にする
@@ -291,7 +291,7 @@
     (if (< len 2)
       entries
       (let [first (vector-get entries 0)
-            initial (vector-push (vector-new 1) first)]
+        initial (vector-push (vector-new 1) first)]
         (sort-doc-loop entries initial 1 len)))))
 
 ;; 環境依存情報のフィルタリング
@@ -304,10 +304,10 @@
 ;; 出力: [tag, title, body, functions, types]
 (defn generate-html [ast opts]
   (let [functions (sort-doc-entries (extract-function-entries ast))
-        types (sort-doc-entries (extract-type-entries ast))
-        title (title-from-ast ast)
-        body (make-doc-body-summary functions types)
-        doc (vector-new 5)]
+    types (sort-doc-entries (extract-type-entries ast))
+    title (title-from-ast ast)
+    body (make-doc-body-summary functions types)
+    doc (vector-new 5)]
     (vector-push
       (vector-push
         (vector-push
@@ -323,8 +323,8 @@
 ;; generate-knowledge: [module-id, functions, types]
 (defn generate-knowledge [ast module-id]
   (let [functions (sort-doc-entries (extract-function-entries ast))
-        types (sort-doc-entries (extract-type-entries ast))
-        doc (vector-new 3)]
+    types (sort-doc-entries (extract-type-entries ast))
+    doc (vector-new 3)]
     (vector-push
       (vector-push
         (vector-push doc module-id)
@@ -364,7 +364,7 @@
 (defn review-unused-let-diagnostic [node]
   (if (= (vector-get node 0) (ast-let))
     (let [name-hash (vector-get node 1)
-          body (vector-get node 3)]
+      body (vector-get node 3)]
       (if (= (ast-contains-var body name-hash) 0)
         (make-review-diagnostic
           100
@@ -440,42 +440,42 @@
 
 (defn review-collect-node [node results]
   (let [with-unused (review-add results (review-unused-let-diagnostic node))
-        with-rules (review-add with-unused (review-empty-do-diagnostic node))
-        tag (vector-get node 0)]
+    with-rules (review-add with-unused (review-empty-do-diagnostic node))
+    tag (vector-get node 0)]
     (if (= tag (ast-ann))
       (review-collect-node (vector-get node 1) with-rules)
       (if (= tag (ast-recordlit))
         (review-collect-recordlit-loop node with-rules 0 (vector-get node 2))
-      (if (= tag (ast-fieldaccess))
-        (review-collect-node (vector-get node 1) with-rules)
-      (if (= tag (ast-recordupdate))
-        (let [with-base (review-collect-node (vector-get node 1) with-rules)]
-          (review-collect-recordupdate-loop node with-base 0 (vector-get node 2)))
-      (if (= tag (ast-computation))
-        (review-collect-computation-loop node with-rules 0 (vector-get node 2))
-      (if (= tag (ast-quote))
-        (review-collect-node (vector-get node 1) with-rules)
-      (if (= tag (ast-unquote))
-        (review-collect-node (vector-get node 1) with-rules)
-      (if (= tag (ast-unquote-splice))
-        (review-collect-node (vector-get node 1) with-rules)
-      (if (= tag (ast-if))
-        (let [with-cond (review-collect-node (vector-get node 1) with-rules)
-              with-then (review-collect-node (vector-get node 2) with-cond)]
-          (review-collect-node (vector-get node 3) with-then))
-      (if (= tag (ast-let))
-        (let [with-init (review-collect-node (vector-get node 2) with-rules)]
-          (review-collect-node (vector-get node 3) with-init))
-      (if (= tag (ast-apply))
-        (review-collect-apply-loop node with-rules 0 (vector-get node 2))
-      (if (= tag (ast-lambda))
-        (review-collect-node (vector-get node (+ 2 (vector-get node 1))) with-rules)
-      (if (= tag (ast-do))
-        (review-collect-do-loop node with-rules 0 (vector-get node 1))
-      (if (= tag (ast-match))
-        (let [with-scrutinee (review-collect-node (vector-get node 1) with-rules)]
-          (review-collect-match-loop node with-scrutinee 0 (vector-get node 2)))
-        with-rules))))))))))))))))
+        (if (= tag (ast-fieldaccess))
+          (review-collect-node (vector-get node 1) with-rules)
+          (if (= tag (ast-recordupdate))
+            (let [with-base (review-collect-node (vector-get node 1) with-rules)]
+              (review-collect-recordupdate-loop node with-base 0 (vector-get node 2)))
+            (if (= tag (ast-computation))
+              (review-collect-computation-loop node with-rules 0 (vector-get node 2))
+              (if (= tag (ast-quote))
+                (review-collect-node (vector-get node 1) with-rules)
+                (if (= tag (ast-unquote))
+                  (review-collect-node (vector-get node 1) with-rules)
+                  (if (= tag (ast-unquote-splice))
+                    (review-collect-node (vector-get node 1) with-rules)
+                    (if (= tag (ast-if))
+                      (let [with-cond (review-collect-node (vector-get node 1) with-rules)
+                        with-then (review-collect-node (vector-get node 2) with-cond)]
+                        (review-collect-node (vector-get node 3) with-then))
+                      (if (= tag (ast-let))
+                        (let [with-init (review-collect-node (vector-get node 2) with-rules)]
+                          (review-collect-node (vector-get node 3) with-init))
+                        (if (= tag (ast-apply))
+                          (review-collect-apply-loop node with-rules 0 (vector-get node 2))
+                          (if (= tag (ast-lambda))
+                            (review-collect-node (vector-get node (+ 2 (vector-get node 1))) with-rules)
+                            (if (= tag (ast-do))
+                              (review-collect-do-loop node with-rules 0 (vector-get node 1))
+                              (if (= tag (ast-match))
+                                (let [with-scrutinee (review-collect-node (vector-get node 1) with-rules)]
+                                  (review-collect-match-loop node with-scrutinee 0 (vector-get node 2)))
+                                with-rules))))))))))))))))
 
 (defn review-defn-body [decl]
   (vector-get decl (+ 3 (vector-get decl 2))))
@@ -492,8 +492,8 @@
 ;; generate-review: [source-id, diagnostics]
 (defn generate-review [ast source-id]
   (let [functions (extract-public-functions ast)
-        diagnostics (review-functions-loop functions (review-diagnostics-new) 0 (vector-length functions))
-        doc (vector-new 2)]
+    diagnostics (review-functions-loop functions (review-diagnostics-new) 0 (vector-length functions))
+    doc (vector-new 2)]
     (vector-push
       (vector-push doc source-id)
       diagnostics)))
@@ -521,9 +521,9 @@
 (defn review-summary-code-location [diagnostics]
   (if (> (vector-length diagnostics) 0)
     (let [diag (vector-get diagnostics 0)
-          code (vector-get diag 6)
-          line (vector-get diag 4)
-          column (vector-get diag 5)]
+      code (vector-get diag 6)
+      line (vector-get diag 4)
+      column (vector-get diag 5)]
       (string-concat
         code
         (string-concat
@@ -536,17 +536,17 @@
 ;; doc-output のセクション数を計算
 (defn count-doc-sections [fn-count type-count]
   (let [s1 (if (> fn-count 0) 1 0)
-        s2 (if (> type-count 0) 1 0)]
+    s2 (if (> type-count 0) 1 0)]
     (+ s1 s2)))
 
 ;; generate-doc-output: [module-id, functions, types, html-title, html-sections]
 (defn generate-doc-output [ast module-id]
   (let [functions (sort-doc-entries (extract-function-entries ast))
-        types (sort-doc-entries (extract-type-entries ast))
-        sections (count-doc-sections (vector-length functions) (vector-length types))
-        module-hash (find-module-hash ast)
-        title (if (= module-hash 0) (title-from-module-id module-id) (title-from-hash module-hash))
-        doc (vector-new 5)]
+    types (sort-doc-entries (extract-type-entries ast))
+    sections (count-doc-sections (vector-length functions) (vector-length types))
+    module-hash (find-module-hash ast)
+    title (if (= module-hash 0) (title-from-module-id module-id) (title-from-hash module-hash))
+    doc (vector-new 5)]
     (vector-push
       (vector-push
         (vector-push
@@ -573,8 +573,8 @@
 
 (defn generate-doc-ack [ast reviewer]
   (let [doc (generate ast 0)
-        trailers (vector-push (vector-new 1) (doc-reviewed-by-line reviewer))
-        result (vector-new 4)]
+    trailers (vector-push (vector-new 1) (doc-reviewed-by-line reviewer))
+    result (vector-new 4)]
     (vector-push
       (vector-push
         (vector-push
@@ -585,11 +585,11 @@
 
 (defn generate-doc-check [ast reviewer]
   (let [doc (generate ast 0)
-        trailers
-          (vector-push
-            (vector-push (vector-new 1) (doc-review-status-line "Passed"))
-            (doc-reviewed-by-line reviewer))
-        result (vector-new 4)]
+    trailers
+    (vector-push
+      (vector-push (vector-new 1) (doc-review-status-line "Passed"))
+      (doc-reviewed-by-line reviewer))
+    result (vector-new 4)]
     (vector-push
       (vector-push
         (vector-push
@@ -601,7 +601,7 @@
 ;; 検証用 main
 (defn main []
   (let [program (parse-program "(defn main [] 42) (type Doc Int)")
-        doc (generate program 0)]
+    doc (generate program 0)]
     (do
       (print (vector-length doc))
       (print (vector-length (vector-get doc 2)))

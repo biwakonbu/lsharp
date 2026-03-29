@@ -1,24 +1,24 @@
 use super::support::*;
 
+fn run_parser_runtime(harness: &str) -> String {
+    compile_and_run(&format!("{}\n{}", selfhost_parser_runtime_bundle(), harness))
+}
+
+fn run_parser_macroexpand_runtime(harness: &str) -> String {
+    compile_and_run(&format!(
+        "{}\n{}\n{}",
+        selfhost_parser_runtime_bundle(),
+        selfhost_module("MacroExpand.ls"),
+        harness
+    ))
+}
+
 /// TEST-SYNTAX-02g: defmacro が canonical tag でパースされ collect-macros に拾われる
 ///
 /// selfhost Parser が `(defmacro ...)` を ast-defmacro として返し、
 /// MacroExpand.collect-macros がそのノードを収集できることを検証する。
 #[test]
 fn test_e2e_selfhost_parser_defmacro_collect() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
-    let macroexpand_ls = std::fs::read_to_string(project_root.join("selfhost/MacroExpand.ls"))
-        .expect("selfhost/MacroExpand.ls が読み込めない");
-
     let harness = r#"
 (defn main []
   (let [src "(defmacro double [x] '(+ ~x ~x))"
@@ -39,11 +39,7 @@ fn test_e2e_selfhost_parser_defmacro_collect() {
       0)))
 "#;
 
-    let combined = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}",
-        token_ls, ast_ls, lexer_ls, parser_ls, macroexpand_ls, harness
-    );
-    let output = compile_and_run(&combined);
+    let output = run_parser_macroexpand_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(lines.len() >= 7, "defmacro parser 出力が不足: {:?}", lines);
@@ -59,16 +55,6 @@ fn test_e2e_selfhost_parser_defmacro_collect() {
 /// TEST-SYNTAX-02h: private 宣言が canonical tag でパースされる
 #[test]
 fn test_e2e_selfhost_parser_private_decl() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -81,11 +67,7 @@ fn test_e2e_selfhost_parser_private_decl() {
       0)))
 "#;
 
-    let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        token_ls, ast_ls, lexer_ls, parser_ls, harness
-    );
-    let output = compile_and_run(&combined);
+    let output = run_parser_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(lines.len() >= 3, "private parser 出力が不足: {:?}", lines);
@@ -97,16 +79,6 @@ fn test_e2e_selfhost_parser_private_decl() {
 /// TEST-SYNTAX-02i: record update を AST ノードにパースできる
 #[test]
 fn test_e2e_selfhost_parser_record_update() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -124,11 +96,7 @@ fn test_e2e_selfhost_parser_record_update() {
       0)))
 "#;
 
-    let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        token_ls, ast_ls, lexer_ls, parser_ls, harness
-    );
-    let output = compile_and_run(&combined);
+    let output = run_parser_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
@@ -152,16 +120,6 @@ fn test_e2e_selfhost_parser_record_update() {
 /// TEST-SYNTAX-02j: type-alias / type-constrained / computation-builder / impl を decl tag にパースできる
 #[test]
 fn test_e2e_selfhost_parser_extended_decl_forms() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -184,11 +142,7 @@ fn test_e2e_selfhost_parser_extended_decl_forms() {
       0)))
 "#;
 
-    let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        token_ls, ast_ls, lexer_ls, parser_ls, harness
-    );
-    let output = compile_and_run(&combined);
+    let output = run_parser_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
@@ -218,16 +172,6 @@ fn test_e2e_selfhost_parser_extended_decl_forms() {
 /// TEST-SYNTAX-02j2: trait / impl の body decl を最小 payload で保持できる
 #[test]
 fn test_e2e_selfhost_parser_trait_impl_bodies() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -250,11 +194,7 @@ fn test_e2e_selfhost_parser_trait_impl_bodies() {
       0)))
 "#;
 
-    let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        token_ls, ast_ls, lexer_ls, parser_ls, harness
-    );
-    let output = compile_and_run(&combined);
+    let output = run_parser_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
@@ -278,16 +218,6 @@ fn test_e2e_selfhost_parser_trait_impl_bodies() {
 /// TEST-SYNTAX-02j3: type-constrained の主要 constraint 形式をスキップできる
 #[test]
 fn test_e2e_selfhost_parser_type_constrained_constraint_forms() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -304,11 +234,7 @@ fn test_e2e_selfhost_parser_type_constrained_constraint_forms() {
       0)))
 "#;
 
-    let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        token_ls, ast_ls, lexer_ls, parser_ls, harness
-    );
-    let output = compile_and_run(&combined);
+    let output = run_parser_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
@@ -336,16 +262,6 @@ fn test_e2e_selfhost_parser_type_constrained_constraint_forms() {
 /// TEST-SYNTAX-02j4: 空 S 式 `()` を unit literal としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_unit_literal() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -356,11 +272,7 @@ fn test_e2e_selfhost_parser_unit_literal() {
       0)))
 "#;
 
-    let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        token_ls, ast_ls, lexer_ls, parser_ls, harness
-    );
-    let output = compile_and_run(&combined);
+    let output = run_parser_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(lines.len() >= 2, "unit parser 出力が不足: {:?}", lines);
@@ -371,16 +283,6 @@ fn test_e2e_selfhost_parser_unit_literal() {
 /// TEST-SYNTAX-02k: if 式を明示的に ast-if としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_if_expr() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -398,11 +300,7 @@ fn test_e2e_selfhost_parser_if_expr() {
       0)))
 "#;
 
-    let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        token_ls, ast_ls, lexer_ls, parser_ls, harness
-    );
-    let output = compile_and_run(&combined);
+    let output = run_parser_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(lines.len() >= 6, "if expr parser 出力が不足: {:?}", lines);
@@ -417,16 +315,6 @@ fn test_e2e_selfhost_parser_if_expr() {
 /// TEST-SYNTAX-02l1: match の `_` パターンを wildcard としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_match_wildcard_pattern() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -444,11 +332,7 @@ fn test_e2e_selfhost_parser_match_wildcard_pattern() {
       0)))
 "#;
 
-    let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        token_ls, ast_ls, lexer_ls, parser_ls, harness
-    );
-    let output = compile_and_run(&combined);
+    let output = run_parser_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
@@ -473,16 +357,6 @@ fn test_e2e_selfhost_parser_match_wildcard_pattern() {
 /// TEST-SYNTAX-02l2: match の symbol pattern を pattern tag としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_match_var_pattern_tag() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -494,11 +368,7 @@ fn test_e2e_selfhost_parser_match_var_pattern_tag() {
       0)))
 "#;
 
-    let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        token_ls, ast_ls, lexer_ls, parser_ls, harness
-    );
-    let output = compile_and_run(&combined);
+    let output = run_parser_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(lines.len() >= 2, "match var parser 出力が不足: {:?}", lines);
@@ -512,16 +382,6 @@ fn test_e2e_selfhost_parser_match_var_pattern_tag() {
 /// TEST-SYNTAX-02l3: match の constructor pattern を canonical tag としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_match_constructor_pattern_tag() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -536,11 +396,7 @@ fn test_e2e_selfhost_parser_match_constructor_pattern_tag() {
       0)))
 "#;
 
-    let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        token_ls, ast_ls, lexer_ls, parser_ls, harness
-    );
-    let output = compile_and_run(&combined);
+    let output = run_parser_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
@@ -566,16 +422,6 @@ fn test_e2e_selfhost_parser_match_constructor_pattern_tag() {
 /// TEST-SYNTAX-02l4: match の record pattern を canonical tag としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_match_record_pattern_tag() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -590,11 +436,7 @@ fn test_e2e_selfhost_parser_match_record_pattern_tag() {
       0)))
 "#;
 
-    let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        token_ls, ast_ls, lexer_ls, parser_ls, harness
-    );
-    let output = compile_and_run(&combined);
+    let output = run_parser_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
@@ -617,16 +459,6 @@ fn test_e2e_selfhost_parser_match_record_pattern_tag() {
 /// TEST-SYNTAX-02l5: match の int/bool literal pattern を canonical tag としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_match_literal_pattern_tag() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -645,11 +477,7 @@ fn test_e2e_selfhost_parser_match_literal_pattern_tag() {
       0)))
 "#;
 
-    let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        token_ls, ast_ls, lexer_ls, parser_ls, harness
-    );
-    let output = compile_and_run(&combined);
+    let output = run_parser_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
@@ -683,16 +511,6 @@ fn test_e2e_selfhost_parser_match_literal_pattern_tag() {
 /// TEST-SYNTAX-02l5b: match の unit literal pattern を canonical tag としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_match_unit_literal_pattern_tag() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -706,11 +524,7 @@ fn test_e2e_selfhost_parser_match_unit_literal_pattern_tag() {
       0)))
 "#;
 
-    let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        token_ls, ast_ls, lexer_ls, parser_ls, harness
-    );
-    let output = compile_and_run(&combined);
+    let output = run_parser_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
@@ -732,16 +546,6 @@ fn test_e2e_selfhost_parser_match_unit_literal_pattern_tag() {
 /// TEST-SYNTAX-02l6: nested constructor/record child でも literal pattern を canonicalize できる
 #[test]
 fn test_e2e_selfhost_parser_match_nested_literal_pattern_tag() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -762,11 +566,7 @@ fn test_e2e_selfhost_parser_match_nested_literal_pattern_tag() {
       0)))
 "#;
 
-    let combined = format!(
-        "{}\n{}\n{}\n{}\n{}",
-        token_ls, ast_ls, lexer_ls, parser_ls, harness
-    );
-    let output = compile_and_run(&combined);
+    let output = run_parser_runtime(harness);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(

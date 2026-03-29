@@ -27,29 +27,29 @@
 ;; x86_64-apple-darwin ターゲット記述子
 (defn target-x86-64-darwin []
   (vector-push (vector-push (vector-push (vector-push
-    (vector-new 4)
-    (arch-x86-64))    ;; arch = x86_64
-    (os-darwin))       ;; os = darwin
-    (obj-macho))       ;; format = Mach-O
-    1))                ;; triple-id = 1
+          (vector-new 4)
+          (arch-x86-64)) ;; arch = x86_64
+        (os-darwin)) ;; os = darwin
+      (obj-macho)) ;; format = Mach-O
+    1)) ;; triple-id = 1
 
 ;; aarch64-apple-darwin ターゲット記述子
 (defn target-aarch64-darwin []
   (vector-push (vector-push (vector-push (vector-push
-    (vector-new 4)
-    (arch-aarch64))    ;; arch = aarch64
-    (os-darwin))       ;; os = darwin
-    (obj-macho))       ;; format = Mach-O
-    2))                ;; triple-id = 2
+          (vector-new 4)
+          (arch-aarch64)) ;; arch = aarch64
+        (os-darwin)) ;; os = darwin
+      (obj-macho)) ;; format = Mach-O
+    2)) ;; triple-id = 2
 
 ;; x86_64-unknown-linux-gnu ターゲット記述子
 (defn target-x86-64-linux []
   (vector-push (vector-push (vector-push (vector-push
-    (vector-new 4)
-    (arch-x86-64))    ;; arch = x86_64
-    (os-linux))        ;; os = linux
-    (obj-elf))         ;; format = ELF
-    3))                ;; triple-id = 3
+          (vector-new 4)
+          (arch-x86-64)) ;; arch = x86_64
+        (os-linux)) ;; os = linux
+      (obj-elf)) ;; format = ELF
+    3)) ;; triple-id = 3
 
 ;; === ターゲット取得関数 ===
 
@@ -91,22 +91,22 @@
 
 (defn main []
   (let [t1 (make-target 1)
-        t2 (make-target 2)
-        t3 (make-target 3)]
+    t2 (make-target 2)
+    t3 (make-target 3)]
     (do
       ;; x86_64-apple-darwin
-      (print (target-arch t1))     ;; 1 (x86_64)
-      (print (target-os t1))       ;; 1 (darwin)
-      (print (target-triple t1))   ;; 1
+      (print (target-arch t1)) ;; 1 (x86_64)
+      (print (target-os t1)) ;; 1 (darwin)
+      (print (target-triple t1)) ;; 1
 
       ;; aarch64-apple-darwin
-      (print (target-arch t2))     ;; 2 (aarch64)
-      (print (target-os t2))       ;; 1 (darwin)
-      (print (target-triple t2))   ;; 2
+      (print (target-arch t2)) ;; 2 (aarch64)
+      (print (target-os t2)) ;; 1 (darwin)
+      (print (target-triple t2)) ;; 2
 
       ;; x86_64-unknown-linux-gnu
-      (print (target-arch t3))     ;; 1 (x86_64)
-      (print (target-os t3))       ;; 2 (linux)
-      (print (target-triple t3))   ;; 3
+      (print (target-arch t3)) ;; 1 (x86_64)
+      (print (target-os t3)) ;; 2 (linux)
+      (print (target-triple t3)) ;; 3
 
       0)))

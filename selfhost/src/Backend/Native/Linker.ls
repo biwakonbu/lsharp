@@ -7,9 +7,9 @@
 ;; response file (@file) 方式でリンカー引数を渡す。
 
 ;; === リンカー種別定数 ===
-(defn linker-ld64 [] 1)    ;; macOS ld64
-(defn linker-lld [] 2)     ;; LLVM lld
-(defn linker-gnu-ld [] 3)  ;; GNU ld
+(defn linker-ld64 [] 1) ;; macOS ld64
+(defn linker-lld [] 2) ;; LLVM lld
+(defn linker-gnu-ld [] 3) ;; GNU ld
 
 ;; === リンカーコマンド構築 ===
 
@@ -36,14 +36,14 @@
 
 (defn build-linker-args [objects output target]
   (let [args (ref-new (vector-new 16))
-        linker-kind (select-linker target)]
+    linker-kind (select-linker target)]
     (do
       ;; 出力ファイル指定
-      (ref-set args (vector-push (ref-get args) 1))   ;; -o フラグ
+      (ref-set args (vector-push (ref-get args) 1)) ;; -o フラグ
       (ref-set args (vector-push (ref-get args) output))
       ;; オブジェクトファイルを追加
       (let [i (ref-new 0)
-            n (vector-length objects)]
+        n (vector-length objects)]
         (append-linker-objects args objects (ref-get i) n)))))
 
 ;; === Response File 生成 ===
@@ -64,7 +64,7 @@
 
 (defn generate-response-file [args]
   (let [result (ref-new (vector-new 64))
-        n (vector-length args)]
+    n (vector-length args)]
     (append-response-args result args 0 n)))
 
 ;; response file を書き出す (将来の実装: ファイル I/O)
@@ -81,7 +81,7 @@
 ;; 戻り値: 0 (成功) / 1 (失敗)
 (defn link-objects [objects output target]
   (let [args (build-linker-args objects output target)
-        response (generate-response-file args)]
+    response (generate-response-file args)]
     ;; 将来: response file を書き出してリンカーを exec する
     ;; 現在は引数構築の検証のみ
     (vector-length response)))
@@ -98,11 +98,11 @@
 ;; === エントリポイント (テスト用) ===
 
 (defn main []
-  (let [target (make-target 1)  ;; x86_64-apple-darwin
-        objects (vector-push (vector-push (vector-new 4) 100) 200)
-        result (link-objects objects 42 target)
-        linker (select-linker target)]
+  (let [target (make-target 1) ;; x86_64-apple-darwin
+    objects (vector-push (vector-push (vector-new 4) 100) 200)
+    result (link-objects objects 42 target)
+    linker (select-linker target)]
     (do
-      (print linker)   ;; 1 (ld64)
-      (print result)   ;; response file のバイト数
+      (print linker) ;; 1 (ld64)
+      (print result) ;; response file のバイト数
       0)))

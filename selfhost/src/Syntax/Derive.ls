@@ -36,14 +36,14 @@
   (if (>= idx (vector-length decls))
     result
     (let [decl (vector-get decls idx)
-          tag (vector-get decl 0)]
+      tag (vector-get decl 0)]
       ;; ast-type-decl は型宣言タグ
       ;; type 宣言に :derive メタデータがあるか検査
       (if (has-derive-metadata decl)
         ;; derive 対象: 元宣言を追加 + ヘルパー関数を生成して追加
         (let [result1 (vector-push result decl)
-              helpers (generate-derive-helpers decl)
-              result2 (append-all result1 helpers 0)]
+          helpers (generate-derive-helpers decl)
+          result2 (append-all result1 helpers 0)]
           (expand-derives-loop decls result2 (+ idx 1)))
         ;; derive 対象外: そのまま追加
         (expand-derives-loop decls (vector-push result decl) (+ idx 1))))))
@@ -57,10 +57,10 @@
 
 (defn has-derive-metadata-loop [decl idx]
   (if (>= idx (vector-length decl))
-    0  ;; false: derive なし
+    0 ;; false: derive なし
     (let [elem (vector-get decl idx)]
-      (if (== elem 200)  ;; derive マーカータグ
-        1  ;; true: derive あり
+      (if (== elem 200) ;; derive マーカータグ
+        1 ;; true: derive あり
         (has-derive-metadata-loop decl (+ idx 1))))))
 
 ;; === ヘルパー関数生成 ===
@@ -69,10 +69,10 @@
 ;; 戻り値: 生成された宣言の vector
 (defn generate-derive-helpers [decl]
   (let [helpers (vector-new 4)
-        ;; 型名ハッシュを取得 (vector の index 1 が名前ハッシュの想定)
-        type-name-hash (if (>= (vector-length decl) 2)
-                         (vector-get decl 1)
-                         0)]
+    ;; 型名ハッシュを取得 (vector の index 1 が名前ハッシュの想定)
+    type-name-hash (if (>= (vector-length decl) 2)
+      (vector-get decl 1)
+      0)]
     ;; Eq ヘルパー: 等価性比較 (簡易スタブ)
     (let [eq-fn (make-eq-helper type-name-hash)]
       (vector-push helpers eq-fn))))
@@ -81,14 +81,14 @@
 ;; tag=20 (defn), name-hash=eq_{type}, params=2, body=比較
 (defn make-eq-helper [type-name-hash]
   (let [;; 関数名: type-name-hash + "eq" のハッシュ (簡易結合)
-        fn-name-hash (+ (* type-name-hash 31) 101)  ;; 'e'=101 に基づく簡易ハッシュ
-        n (vector-new 8)]
+    fn-name-hash (+ (* type-name-hash 31) 101) ;; 'e'=101 に基づく簡易ハッシュ
+    n (vector-new 8)]
     ;; [20, fn-name-hash, param-count=2, param1-hash, param2-hash, body]
     (let [n1 (vector-push n 20)
-          n2 (vector-push n1 fn-name-hash)
-          n3 (vector-push n2 2)          ;; param-count
-          n4 (vector-push n3 97)         ;; param 'a' のハッシュ
-          n5 (vector-push n4 98)]        ;; param 'b' のハッシュ
+      n2 (vector-push n1 fn-name-hash)
+      n3 (vector-push n2 2) ;; param-count
+      n4 (vector-push n3 97) ;; param 'a' のハッシュ
+      n5 (vector-push n4 98)] ;; param 'b' のハッシュ
       ;; body: (== a b) -> 簡易的に 0 を返す (スタブ)
       (vector-push n5 0))))
 
@@ -103,14 +103,14 @@
 ;; エントリポイント (テスト用)
 (defn main []
   (let [;; 空の宣言リストに対して derive 展開
-        empty-decls (vector-new 2)
-        result1 (expand-derives empty-decls)
-        ;; derive マーカー付き type 宣言で展開テスト
-        type-decl (let [d (vector-new 4)]
-                    (vector-push (vector-push (vector-push d (ast-type-decl)) 12345) 200))
-        decls2 (vector-push (vector-new 2) type-decl)
-        result2 (expand-derives decls2)]
+    empty-decls (vector-new 2)
+    result1 (expand-derives empty-decls)
+    ;; derive マーカー付き type 宣言で展開テスト
+    type-decl (let [d (vector-new 4)]
+      (vector-push (vector-push (vector-push d (ast-type-decl)) 12345) 200))
+    decls2 (vector-push (vector-new 2) type-decl)
+    result2 (expand-derives decls2)]
     (do
-      (print (vector-length result1))  ;; 0 (空入力)
-      (print (vector-length result2))  ;; 2 (元宣言 + Eq ヘルパー)
+      (print (vector-length result1)) ;; 0 (空入力)
+      (print (vector-length result2)) ;; 2 (元宣言 + Eq ヘルパー)
       0)))

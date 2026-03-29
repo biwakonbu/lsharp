@@ -20,14 +20,14 @@
 ;; === サーバー状態 ===
 (defn server-state-new []
   (let [v0 (vector-new 8)
-        v1 (vector-push v0 (ref-new 0))            ;; initialized フラグ
-        v2 (vector-push v1 (ref-new 0))            ;; shutdown フラグ
-        v3 (vector-push v2 (ref-new 0))            ;; open document 数
-        v4 (vector-push v3 (ref-new 0))            ;; current uri
-        v5 (vector-push v4 (ref-new ""))           ;; current source
-        v6 (vector-push v5 (ref-new 0))            ;; request count
-        v7 (vector-push v6 (ref-new (map-new)))    ;; uri -> source
-        v8 (vector-push v7 (ref-new (vector-new 8)))] ;; open uri list
+    v1 (vector-push v0 (ref-new 0)) ;; initialized フラグ
+    v2 (vector-push v1 (ref-new 0)) ;; shutdown フラグ
+    v3 (vector-push v2 (ref-new 0)) ;; open document 数
+    v4 (vector-push v3 (ref-new 0)) ;; current uri
+    v5 (vector-push v4 (ref-new "")) ;; current source
+    v6 (vector-push v5 (ref-new 0)) ;; request count
+    v7 (vector-push v6 (ref-new (map-new))) ;; uri -> source
+    v8 (vector-push v7 (ref-new (vector-new 8)))] ;; open uri list
     v8))
 
 (defn server-state-doc-count [state]
@@ -96,10 +96,10 @@
 
 (defn server-state-open-document [state uri src]
   (let [current-count (server-state-doc-count state)
-        known-src (server-state-source-for-uri state uri)
-        next-count (if (> (string-length known-src) 0)
-                     current-count
-                     (+ current-count 1))]
+    known-src (server-state-source-for-uri state uri)
+    next-count (if (> (string-length known-src) 0)
+      current-count
+      (+ current-count 1))]
     (do
       (server-state-set-document state uri src)
       (ref-set (vector-get state 2) next-count)
@@ -128,17 +128,17 @@
 ;; メソッド名に基づいてハンドラを呼び出す json-rpc-dispatch
 (defn json-rpc-dispatch [method-id params state]
   (if (= method-id (lsp-method-initialize)) (handle-initialize params state)
-  (if (= method-id (lsp-method-shutdown)) (handle-shutdown params state)
-  (if (= method-id (lsp-method-did-open)) (handle-didOpen params state)
-  (if (= method-id (lsp-method-did-change)) (handle-didChange params state)
-  (if (= method-id (lsp-method-hover)) (handle-hover params state)
-  (if (= method-id (lsp-method-goto-def)) (handle-goto-definition params state)
-  (if (= method-id (lsp-method-references)) (handle-references params state)
-  (if (= method-id (lsp-method-rename)) (handle-rename params state)
-  (if (= method-id (lsp-method-publish-diagnostics)) (handle-publish-diagnostics params state)
-  (if (= method-id (lsp-method-formatting)) (handle-formatting params state)
-  (if (= method-id (lsp-method-completion)) (handle-completion params state)
-  0))))))))))))
+    (if (= method-id (lsp-method-shutdown)) (handle-shutdown params state)
+      (if (= method-id (lsp-method-did-open)) (handle-didOpen params state)
+        (if (= method-id (lsp-method-did-change)) (handle-didChange params state)
+          (if (= method-id (lsp-method-hover)) (handle-hover params state)
+            (if (= method-id (lsp-method-goto-def)) (handle-goto-definition params state)
+              (if (= method-id (lsp-method-references)) (handle-references params state)
+                (if (= method-id (lsp-method-rename)) (handle-rename params state)
+                  (if (= method-id (lsp-method-publish-diagnostics)) (handle-publish-diagnostics params state)
+                    (if (= method-id (lsp-method-formatting)) (handle-formatting params state)
+                      (if (= method-id (lsp-method-completion)) (handle-completion params state)
+                        0))))))))))))
 
 ;; === LSP メソッドハンドラ ===
 
@@ -155,13 +155,13 @@
             (vector-push
               (vector-push
                 (vector-push
-                  (vector-push capabilities 1)  ;; textDocumentSync: Full
-                  1)                             ;; hoverProvider
-                1)                               ;; completionProvider
-              1)                                 ;; definitionProvider
-            1)                                   ;; referencesProvider
-          1)                                     ;; renameProvider
-        1))))                                    ;; documentFormattingProvider
+                  (vector-push capabilities 1) ;; textDocumentSync: Full
+                  1) ;; hoverProvider
+                1) ;; completionProvider
+              1) ;; definitionProvider
+            1) ;; referencesProvider
+          1) ;; renameProvider
+        1)))) ;; documentFormattingProvider
 
 ;; shutdown: サーバー終了準備
 (defn handle-shutdown [params state]
@@ -195,8 +195,8 @@
     (server-state-note-request state)
     (if (> (lsp-param-count params) 1)
       (let [uri (vector-get params 0)
-            diagnostics (vector-get params 1)
-            diagnostics-json (render-diagnostics-json diagnostics)]
+        diagnostics (vector-get params 1)
+        diagnostics-json (render-diagnostics-json diagnostics)]
         (vector-push (vector-push (vector-new 2) uri) diagnostics-json))
       params)))
 
@@ -328,32 +328,32 @@
 
 (defn lsp-render-publish-diagnostics-frame [uri diagnostics]
   (let [uri-text (int-to-string uri)
-        diagnostics-json (render-diagnostics-json diagnostics)
-        payload-0 "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":"
-        payload-1 (string-concat payload-0 uri-text)
-        payload-2 (string-concat payload-1 ",\"diagnostics\":")
-        payload-3 (string-concat payload-2 diagnostics-json)
-        payload (string-concat payload-3 "}}")]
+    diagnostics-json (render-diagnostics-json diagnostics)
+    payload-0 "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":"
+    payload-1 (string-concat payload-0 uri-text)
+    payload-2 (string-concat payload-1 ",\"diagnostics\":")
+    payload-3 (string-concat payload-2 diagnostics-json)
+    payload (string-concat payload-3 "}}")]
     (render-json-rpc-frame payload)))
 
 (defn lsp-render-didopen-frame [uri source-bytes]
   (let [uri-text (int-to-string uri)
-        bytes-text (int-to-string source-bytes)
-        payload-0 "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"uri\":"
-        payload-1 (string-concat payload-0 uri-text)
-        payload-2 (string-concat payload-1 ",\"sourceBytes\":")
-        payload-3 (string-concat payload-2 bytes-text)
-        payload (string-concat payload-3 "}}")]
+    bytes-text (int-to-string source-bytes)
+    payload-0 "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didOpen\",\"params\":{\"uri\":"
+    payload-1 (string-concat payload-0 uri-text)
+    payload-2 (string-concat payload-1 ",\"sourceBytes\":")
+    payload-3 (string-concat payload-2 bytes-text)
+    payload (string-concat payload-3 "}}")]
     (render-json-rpc-frame payload)))
 
 (defn lsp-render-didchange-frame [uri source-bytes]
   (let [uri-text (int-to-string uri)
-        bytes-text (int-to-string source-bytes)
-        payload-0 "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{\"uri\":"
-        payload-1 (string-concat payload-0 uri-text)
-        payload-2 (string-concat payload-1 ",\"sourceBytes\":")
-        payload-3 (string-concat payload-2 bytes-text)
-        payload (string-concat payload-3 "}}")]
+    bytes-text (int-to-string source-bytes)
+    payload-0 "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/didChange\",\"params\":{\"uri\":"
+    payload-1 (string-concat payload-0 uri-text)
+    payload-2 (string-concat payload-1 ",\"sourceBytes\":")
+    payload-3 (string-concat payload-2 bytes-text)
+    payload (string-concat payload-3 "}}")]
     (render-json-rpc-frame payload)))
 
 (defn lsp-render-location-frame [request-id location]
@@ -361,140 +361,140 @@
 
 (defn lsp-render-hover-frame [request-id hover]
   (let [range (vector-get hover 0)
-        contents (vector-get hover 1)
-        payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
-        payload-1 (string-concat payload-0 (int-to-string request-id))
-        payload-2 (string-concat payload-1 ",\"result\":{\"range\":[")
-        payload-3 (string-concat payload-2 (int-to-string (vector-get range 0)))
-        payload-4 (string-concat payload-3 ",")
-        payload-5 (string-concat payload-4 (int-to-string (vector-get range 1)))
-        payload-6 (string-concat payload-5 ",")
-        payload-7 (string-concat payload-6 (int-to-string (vector-get range 2)))
-        payload-8 (string-concat payload-7 ",")
-        payload-9 (string-concat payload-8 (int-to-string (vector-get range 3)))
-        payload-10 (string-concat payload-9 "],\"contents\":\"")
-        payload-11 (string-concat payload-10 contents)
-        payload (string-concat payload-11 "\"}}")]
+    contents (vector-get hover 1)
+    payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
+    payload-1 (string-concat payload-0 (int-to-string request-id))
+    payload-2 (string-concat payload-1 ",\"result\":{\"range\":[")
+    payload-3 (string-concat payload-2 (int-to-string (vector-get range 0)))
+    payload-4 (string-concat payload-3 ",")
+    payload-5 (string-concat payload-4 (int-to-string (vector-get range 1)))
+    payload-6 (string-concat payload-5 ",")
+    payload-7 (string-concat payload-6 (int-to-string (vector-get range 2)))
+    payload-8 (string-concat payload-7 ",")
+    payload-9 (string-concat payload-8 (int-to-string (vector-get range 3)))
+    payload-10 (string-concat payload-9 "],\"contents\":\"")
+    payload-11 (string-concat payload-10 contents)
+    payload (string-concat payload-11 "\"}}")]
     (render-json-rpc-frame payload)))
 
 (defn lsp-render-location-json [location]
   (let [uri-text (int-to-string (vector-get location 0))
-        line-text (int-to-string (vector-get location 1))
-        col-text (int-to-string (vector-get location 2))
-        payload-0 "["
-        payload-1 (string-concat payload-0 uri-text)
-        payload-2 (string-concat payload-1 ",")
-        payload-3 (string-concat payload-2 line-text)
-        payload-4 (string-concat payload-3 ",")
-        payload-5 (string-concat payload-4 col-text)]
+    line-text (int-to-string (vector-get location 1))
+    col-text (int-to-string (vector-get location 2))
+    payload-0 "["
+    payload-1 (string-concat payload-0 uri-text)
+    payload-2 (string-concat payload-1 ",")
+    payload-3 (string-concat payload-2 line-text)
+    payload-4 (string-concat payload-3 ",")
+    payload-5 (string-concat payload-4 col-text)]
     (string-concat payload-5 "]")))
 
 (defn lsp-render-locations-json-loop [locations idx len out]
   (if (>= idx len)
     out
     (let [elem-text (lsp-render-location-json (vector-get locations idx))
-          next-out (if (= idx 0)
-                     (string-concat out elem-text)
-                     (string-concat out (string-concat "," elem-text)))]
+      next-out (if (= idx 0)
+        (string-concat out elem-text)
+        (string-concat out (string-concat "," elem-text)))]
       (lsp-render-locations-json-loop locations (+ idx 1) len next-out))))
 
 (defn lsp-render-locations-frame [request-id locations]
   (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
-        payload-1 (string-concat payload-0 (int-to-string request-id))
-        payload-2 (string-concat payload-1 ",\"result\":[")
-        payload-3 (string-concat payload-2
-                   (lsp-render-locations-json-loop locations 0 (vector-length locations) ""))
-        payload (string-concat payload-3 "]}")]
+    payload-1 (string-concat payload-0 (int-to-string request-id))
+    payload-2 (string-concat payload-1 ",\"result\":[")
+    payload-3 (string-concat payload-2
+      (lsp-render-locations-json-loop locations 0 (vector-length locations) ""))
+    payload (string-concat payload-3 "]}")]
     (render-json-rpc-frame payload)))
 
 (defn lsp-render-completion-item-json [item]
   (let [label (vector-get item 0)
-        kind-text (int-to-string (vector-get item 1))
-        insert-text (vector-get item 2)
-        payload-0 "[\""
-        payload-1 (string-concat payload-0 label)
-        payload-2 (string-concat payload-1 "\",")
-        payload-3 (string-concat payload-2 kind-text)
-        payload-4 (string-concat payload-3 ",\"")
-        payload-5 (string-concat payload-4 insert-text)]
+    kind-text (int-to-string (vector-get item 1))
+    insert-text (vector-get item 2)
+    payload-0 "[\""
+    payload-1 (string-concat payload-0 label)
+    payload-2 (string-concat payload-1 "\",")
+    payload-3 (string-concat payload-2 kind-text)
+    payload-4 (string-concat payload-3 ",\"")
+    payload-5 (string-concat payload-4 insert-text)]
     (string-concat payload-5 "\"]")))
 
 (defn lsp-render-completion-items-json-loop [items idx len out]
   (if (>= idx len)
     out
     (let [elem-text (lsp-render-completion-item-json (vector-get items idx))
-          next-out (if (= idx 0)
-                     (string-concat out elem-text)
-                     (string-concat out (string-concat "," elem-text)))]
+      next-out (if (= idx 0)
+        (string-concat out elem-text)
+        (string-concat out (string-concat "," elem-text)))]
       (lsp-render-completion-items-json-loop items (+ idx 1) len next-out))))
 
 (defn lsp-render-completion-frame [request-id items]
   (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
-        payload-1 (string-concat payload-0 (int-to-string request-id))
-        payload-2 (string-concat payload-1 ",\"result\":[")
-        payload-3 (string-concat payload-2
-                   (lsp-render-completion-items-json-loop items 0 (vector-length items) ""))
-        payload (string-concat payload-3 "]}")]
+    payload-1 (string-concat payload-0 (int-to-string request-id))
+    payload-2 (string-concat payload-1 ",\"result\":[")
+    payload-3 (string-concat payload-2
+      (lsp-render-completion-items-json-loop items 0 (vector-length items) ""))
+    payload (string-concat payload-3 "]}")]
     (render-json-rpc-frame payload)))
 
 (defn lsp-render-text-edit-json [edit]
   (let [payload-0 "["
-        payload-1 (string-concat payload-0 (int-to-string (vector-get edit 0)))
-        payload-2 (string-concat payload-1 ",")
-        payload-3 (string-concat payload-2 (int-to-string (vector-get edit 1)))
-        payload-4 (string-concat payload-3 ",")
-        payload-5 (string-concat payload-4 (int-to-string (vector-get edit 2)))
-        payload-6 (string-concat payload-5 ",")
-        payload-7 (string-concat payload-6 (int-to-string (vector-get edit 3)))
-        payload-8 (string-concat payload-7 ",\"")
-        payload-9 (string-concat payload-8 (vector-get edit 4))]
+    payload-1 (string-concat payload-0 (int-to-string (vector-get edit 0)))
+    payload-2 (string-concat payload-1 ",")
+    payload-3 (string-concat payload-2 (int-to-string (vector-get edit 1)))
+    payload-4 (string-concat payload-3 ",")
+    payload-5 (string-concat payload-4 (int-to-string (vector-get edit 2)))
+    payload-6 (string-concat payload-5 ",")
+    payload-7 (string-concat payload-6 (int-to-string (vector-get edit 3)))
+    payload-8 (string-concat payload-7 ",\"")
+    payload-9 (string-concat payload-8 (vector-get edit 4))]
     (string-concat payload-9 "\"]")))
 
 (defn lsp-render-text-edits-json-loop [edits idx len out]
   (if (>= idx len)
     out
     (let [elem-text (lsp-render-text-edit-json (vector-get edits idx))
-          next-out (if (= idx 0)
-                     (string-concat out elem-text)
-                     (string-concat out (string-concat "," elem-text)))]
+      next-out (if (= idx 0)
+        (string-concat out elem-text)
+        (string-concat out (string-concat "," elem-text)))]
       (lsp-render-text-edits-json-loop edits (+ idx 1) len next-out))))
 
 (defn lsp-render-formatting-frame [request-id edits]
   (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
-        payload-1 (string-concat payload-0 (int-to-string request-id))
-        payload-2 (string-concat payload-1 ",\"result\":[")
-        payload-3 (string-concat payload-2
-                   (lsp-render-text-edits-json-loop edits 0 (vector-length edits) ""))
-        payload (string-concat payload-3 "]}")]
+    payload-1 (string-concat payload-0 (int-to-string request-id))
+    payload-2 (string-concat payload-1 ",\"result\":[")
+    payload-3 (string-concat payload-2
+      (lsp-render-text-edits-json-loop edits 0 (vector-length edits) ""))
+    payload (string-concat payload-3 "]}")]
     (render-json-rpc-frame payload)))
 
 (defn lsp-render-workspace-change-json [change]
   (let [uri-text (int-to-string (vector-get change 0))
-        edits (vector-get change 1)
-        payload-0 "["
-        payload-1 (string-concat payload-0 uri-text)
-        payload-2 (string-concat payload-1 ",[")
-        payload-3 (string-concat payload-2
-                   (lsp-render-text-edits-json-loop edits 0 (vector-length edits) ""))
-        payload-4 (string-concat payload-3 "]")]
+    edits (vector-get change 1)
+    payload-0 "["
+    payload-1 (string-concat payload-0 uri-text)
+    payload-2 (string-concat payload-1 ",[")
+    payload-3 (string-concat payload-2
+      (lsp-render-text-edits-json-loop edits 0 (vector-length edits) ""))
+    payload-4 (string-concat payload-3 "]")]
     (string-concat payload-4 "]")))
 
 (defn lsp-render-workspace-changes-json-loop [changes idx len out]
   (if (>= idx len)
     out
     (let [elem-text (lsp-render-workspace-change-json (vector-get changes idx))
-          next-out (if (= idx 0)
-                     (string-concat out elem-text)
-                     (string-concat out (string-concat "," elem-text)))]
+      next-out (if (= idx 0)
+        (string-concat out elem-text)
+        (string-concat out (string-concat "," elem-text)))]
       (lsp-render-workspace-changes-json-loop changes (+ idx 1) len next-out))))
 
 (defn lsp-render-rename-frame [request-id changes]
   (let [payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
-        payload-1 (string-concat payload-0 (int-to-string request-id))
-        payload-2 (string-concat payload-1 ",\"result\":[")
-        payload-3 (string-concat payload-2
-                   (lsp-render-workspace-changes-json-loop changes 0 (vector-length changes) ""))
-        payload (string-concat payload-3 "]}")]
+    payload-1 (string-concat payload-0 (int-to-string request-id))
+    payload-2 (string-concat payload-1 ",\"result\":[")
+    payload-3 (string-concat payload-2
+      (lsp-render-workspace-changes-json-loop changes 0 (vector-length changes) ""))
+    payload (string-concat payload-3 "]}")]
     (render-json-rpc-frame payload)))
 
 (defn lsp-parse-content-length [header-value]
@@ -555,7 +555,7 @@
 
 (defn lsp-range-from-offsets [src start end]
   (let [start-pos (lsp-position-from-offset src start)
-        end-pos (lsp-position-from-offset src end)]
+    end-pos (lsp-position-from-offset src end)]
     (make-range
       (position-line start-pos)
       (position-col start-pos)
@@ -596,18 +596,18 @@
     (if (= len 0)
       (empty-symbol-info)
       (let [offset (lsp-offset-from-line-col src line col)
-            offset (lsp-normalize-symbol-offset src offset len)]
+        offset (lsp-normalize-symbol-offset src offset len)]
         (if (>= offset len)
           (empty-symbol-info)
           (if (lsp-is-symbol-char (string-char-at src offset))
             (let [start (lsp-find-symbol-start src offset)
-                  end (lsp-scan-symbol-end src offset len)]
+              end (lsp-scan-symbol-end src offset len)]
               (make-symbol-info start end))
             (empty-symbol-info)))))))
 
 (defn lsp-match-at [src idx pattern]
   (let [plen (string-length pattern)
-        len (string-length src)]
+    len (string-length src)]
     (if (> (+ idx plen) len)
       false
       (string-eq (substring src idx (+ idx plen)) pattern))))
@@ -624,7 +624,7 @@
     (- 0 1)
     (if (lsp-match-at src idx "(defn")
       (let [name-start (lsp-skip-ws src (+ idx 5) len)
-            name-end (lsp-scan-symbol-end src name-start len)]
+        name-end (lsp-scan-symbol-end src name-start len)]
         (if (> name-end name-start)
           (let [name (substring src name-start name-end)]
             (if (string-eq name target)
@@ -643,12 +643,12 @@
       last-match
       (if (lsp-match-at src idx "(defn")
         (let [name-start (lsp-skip-ws src (+ idx 5) len)
-              name-end (lsp-scan-symbol-end src name-start len)]
+          name-end (lsp-scan-symbol-end src name-start len)]
           (if (> name-end name-start)
             (let [name (substring src name-start name-end)
-                  last-match (if (<= name-start limit)
-                               (if (string-eq name target) name-start last-match)
-                               last-match)]
+              last-match (if (<= name-start limit)
+                (if (string-eq name target) name-start last-match)
+                last-match)]
               (lsp-find-defn-offset-before-loop src target name-end limit len last-match))
             (lsp-find-defn-offset-before-loop src target (+ idx 1) limit len last-match)))
         (lsp-find-defn-offset-before-loop src target (+ idx 1) limit len last-match)))))
@@ -678,7 +678,7 @@
       (if (= target-uri current-uri)
         (lsp-find-defn-in-open-docs-loop state current-uri name (+ idx 1) count)
         (let [target-src (server-state-source-for-uri state target-uri)
-              target-offset (lsp-find-defn-offset target-src name)]
+          target-offset (lsp-find-defn-offset target-src name)]
           (if (>= target-offset 0)
             (lsp-make-defn-resolution target-uri target-offset)
             (lsp-find-defn-in-open-docs-loop state current-uri name (+ idx 1) count)))))))
@@ -706,10 +706,10 @@
       (if (lsp-is-symbol-char c)
         (if (= (lsp-symbol-start-at src idx) 1)
           (let [end (lsp-scan-symbol-end src idx len)
-                name (substring src idx end)]
+            name (substring src idx end)]
             (if (string-eq name target)
               (let [pos (lsp-position-from-offset src idx)
-                    loc (make-location uri (position-line pos) (position-col pos))]
+                loc (make-location uri (position-line pos) (position-col pos))]
                 (lsp-find-occurrences-loop src target uri end len (vector-push results loc)))
               (lsp-find-occurrences-loop src target uri end len results)))
           (lsp-find-occurrences-loop src target uri (+ idx 1) len results))
@@ -730,7 +730,7 @@
 
 (defn lsp-prefix-matches [label prefix]
   (let [prefix-len (string-length prefix)
-        label-len (string-length label)]
+    label-len (string-length label)]
     (if (= prefix-len 0)
       true
       (if (> prefix-len label-len)
@@ -751,12 +751,12 @@
 
 (defn lsp-append-keyword-completions [prefix items]
   (let [items (lsp-append-keyword-item "defn" prefix 14 items)
-        items (lsp-append-keyword-item "let" prefix 14 items)
-        items (lsp-append-keyword-item "if" prefix 14 items)
-        items (lsp-append-keyword-item "match" prefix 14 items)
-        items (lsp-append-keyword-item "do" prefix 14 items)
-        items (lsp-append-keyword-item "fn" prefix 14 items)
-        items (lsp-append-keyword-item "module" prefix 14 items)]
+    items (lsp-append-keyword-item "let" prefix 14 items)
+    items (lsp-append-keyword-item "if" prefix 14 items)
+    items (lsp-append-keyword-item "match" prefix 14 items)
+    items (lsp-append-keyword-item "do" prefix 14 items)
+    items (lsp-append-keyword-item "fn" prefix 14 items)
+    items (lsp-append-keyword-item "module" prefix 14 items)]
     items))
 
 (defn lsp-append-defn-completions-loop [src idx len prefix items]
@@ -764,12 +764,12 @@
     items
     (if (lsp-match-at src idx "(defn")
       (let [name-start (lsp-skip-ws src (+ idx 5) len)
-            name-end (lsp-scan-symbol-end src name-start len)]
+        name-end (lsp-scan-symbol-end src name-start len)]
         (if (> name-end name-start)
           (let [name (substring src name-start name-end)
-                items (if (lsp-prefix-matches name prefix)
-                        (vector-push items (lsp-make-completion-item name 3 name))
-                        items)]
+            items (if (lsp-prefix-matches name prefix)
+              (vector-push items (lsp-make-completion-item name 3 name))
+              items)]
             (lsp-append-defn-completions-loop src name-end len prefix items))
           (lsp-append-defn-completions-loop src (+ idx 1) len prefix items)))
       (lsp-append-defn-completions-loop src (+ idx 1) len prefix items))))
@@ -790,7 +790,7 @@
 ;; params=[uri, line, col, source] の場合はソース走査で symbol 情報を返す
 (defn lsp-hover-mock-text [params]
   (let [line (if (= params 0) 0 (vector-get params 1))
-        col (if (= params 0) 0 (vector-get params 2))]
+    col (if (= params 0) 0 (vector-get params 2))]
     (string-concat
       "type-info:"
       (string-concat
@@ -799,31 +799,31 @@
 
 (defn handle-hover-mock [params]
   (let [v (vector-new 2)
-        contents (lsp-hover-mock-text params)]
+    contents (lsp-hover-mock-text params)]
     (vector-push
-      (vector-push v 0)     ;; range
-      contents)))            ;; contents: 型情報 text
+      (vector-push v 0) ;; range
+      contents))) ;; contents: 型情報 text
 
 (defn handle-hover [params state]
   (do
     (server-state-note-request state)
     (let [uri (lsp-nav-uri params)
-          src (lsp-session-src params state)
-          line (lsp-nav-line params)
-          col (lsp-nav-col params)
-          symbol (lsp-symbol-at src line col)
-          start (symbol-info-start symbol)
-          end (symbol-info-end symbol)]
+      src (lsp-session-src params state)
+      line (lsp-nav-line params)
+      col (lsp-nav-col params)
+      symbol (lsp-symbol-at src line col)
+      start (symbol-info-start symbol)
+      end (symbol-info-end symbol)]
       (if (> (string-length src) 0)
-          (if (>= start 0)
-             (let [name (substring src start end)
-                   range (lsp-range-from-offsets src start end)
-                   resolution (lsp-resolve-defn-in-open-docs state uri src name start)
-                   defn-offset (lsp-defn-resolution-offset resolution)
-                   contents (lsp-hover-content-text defn-offset name)]
-               (vector-push
-                 (vector-push (vector-new 2) range)
-                 contents))
+        (if (>= start 0)
+          (let [name (substring src start end)
+            range (lsp-range-from-offsets src start end)
+            resolution (lsp-resolve-defn-in-open-docs state uri src name start)
+            defn-offset (lsp-defn-resolution-offset resolution)
+            contents (lsp-hover-content-text defn-offset name)]
+            (vector-push
+              (vector-push (vector-new 2) range)
+              contents))
           (handle-hover-mock params))
         (handle-hover-mock params)))))
 
@@ -831,37 +831,37 @@
 ;; シンボルの定義位置を Location [uri, line, col] として返す (AC-206)
 (defn handle-goto-definition-mock [params]
   (let [v (vector-new 3)
-        ;; params が vector の場合、元の位置情報をもとにモック位置を返す
-        uri (if (= params 0) 0 (vector-get params 0))
-        line (if (= params 0) 0 1)
-        col 0]
+    ;; params が vector の場合、元の位置情報をもとにモック位置を返す
+    uri (if (= params 0) 0 (vector-get params 0))
+    line (if (= params 0) 0 1)
+    col 0]
     (vector-push
       (vector-push
-        (vector-push v uri)  ;; uri
-        line)                ;; line
-      col)))                 ;; col
+        (vector-push v uri) ;; uri
+        line) ;; line
+      col))) ;; col
 
 (defn handle-goto-definition [params state]
   (do
     (server-state-note-request state)
     (let [uri (lsp-nav-uri params)
-          src (lsp-session-src params state)
-          line (lsp-nav-line params)
-          col (lsp-nav-col params)
-          symbol (lsp-symbol-at src line col)
-          start (symbol-info-start symbol)
-          end (symbol-info-end symbol)]
+      src (lsp-session-src params state)
+      line (lsp-nav-line params)
+      col (lsp-nav-col params)
+      symbol (lsp-symbol-at src line col)
+      start (symbol-info-start symbol)
+      end (symbol-info-end symbol)]
       (if (> (string-length src) 0)
         (if (>= start 0)
           (let [name (substring src start end)
-                resolution (lsp-resolve-defn-in-open-docs state uri src name start)
-                target-uri (lsp-defn-resolution-uri resolution)
-                defn-offset (lsp-defn-resolution-offset resolution)]
+            resolution (lsp-resolve-defn-in-open-docs state uri src name start)
+            target-uri (lsp-defn-resolution-uri resolution)
+            defn-offset (lsp-defn-resolution-offset resolution)]
             (if (>= defn-offset 0)
               (let [target-src (if (= target-uri uri)
-                                 src
-                                 (server-state-source-for-uri state target-uri))
-                    pos (lsp-position-from-offset target-src defn-offset)]
+                  src
+                  (server-state-source-for-uri state target-uri))
+                pos (lsp-position-from-offset target-src defn-offset)]
                 (make-location target-uri (position-line pos) (position-col pos)))
               (handle-goto-definition-mock params)))
           (handle-goto-definition-mock params))
@@ -875,22 +875,22 @@
 
 (defn handle-references-mock [params]
   (let [;; モック: params の位置自体を 1 つの参照として返す
-         uri (if (= params 0) 0 (vector-get params 0))
-         line (if (= params 0) 0 (vector-get params 1))
-         col (if (= params 0) 0 (vector-get params 2))
-         loc (make-location uri line col)]
+    uri (if (= params 0) 0 (vector-get params 0))
+    line (if (= params 0) 0 (vector-get params 1))
+    col (if (= params 0) 0 (vector-get params 2))
+    loc (make-location uri line col)]
     (vector-push (vector-new 1) loc)))
 
 (defn handle-references [params state]
   (do
     (server-state-note-request state)
     (let [uri (lsp-nav-uri params)
-          src (lsp-session-src params state)
-          line (lsp-nav-line params)
-          col (lsp-nav-col params)
-          symbol (lsp-symbol-at src line col)
-          start (symbol-info-start symbol)
-          end (symbol-info-end symbol)]
+      src (lsp-session-src params state)
+      line (lsp-nav-line params)
+      col (lsp-nav-col params)
+      symbol (lsp-symbol-at src line col)
+      start (symbol-info-start symbol)
+      end (symbol-info-end symbol)]
       (if (> (string-length src) 0)
         (if (>= start 0)
           (lsp-find-occurrences src (substring src start end) uri)
@@ -907,9 +907,9 @@
   (if (>= idx len)
     edits
     (let [loc (vector-get locs idx)
-          line (vector-get loc 1)
-          col (vector-get loc 2)
-          edit (make-text-edit line col line (+ col old-name-len) new-name)]
+      line (vector-get loc 1)
+      col (vector-get loc 2)
+      edit (make-text-edit line col line (+ col old-name-len) new-name)]
       (lsp-append-rename-edits-loop locs (+ idx 1) len old-name-len new-name (vector-push edits edit)))))
 
 (defn lsp-build-rename-edits [locs old-name-len new-name]
@@ -919,23 +919,23 @@
   (do
     (server-state-note-request state)
     (let [uri (lsp-nav-uri params)
-          src (lsp-session-src params state)
-          line (lsp-nav-line params)
-          col (lsp-nav-col params)
-          new-name (lsp-rename-new-name params)
-          symbol (lsp-symbol-at src line col)
-          start (symbol-info-start symbol)
-          end (symbol-info-end symbol)]
+      src (lsp-session-src params state)
+      line (lsp-nav-line params)
+      col (lsp-nav-col params)
+      new-name (lsp-rename-new-name params)
+      symbol (lsp-symbol-at src line col)
+      start (symbol-info-start symbol)
+      end (symbol-info-end symbol)]
       (if (> (string-length src) 0)
         (if (>= start 0)
           (if (> (string-length new-name) 0)
             (let [name (substring src start end)
-                  locs (lsp-find-occurrences src name uri)
-                  edits (lsp-build-rename-edits locs (string-length name) new-name)]
+              locs (lsp-find-occurrences src name uri)
+              edits (lsp-build-rename-edits locs (string-length name) new-name)]
               (vector-push (vector-new 1) (make-workspace-change uri edits)))
             (handle-rename-mock params))
           (handle-rename-mock params))
-        (handle-rename-mock params)))))  ;; changes
+        (handle-rename-mock params))))) ;; changes
 
 ;; textDocument/formatting: ドキュメントフォーマット
 ;; Formatter.ls の format-program を呼び出して TextEdit リストを返す (AC-010)
@@ -949,9 +949,9 @@
     (let [src (lsp-session-document-src params state)]
       (if (> (string-length src) 0)
         (let [end-pos (lsp-position-from-offset src (string-length src))
-              program (parse-program src)
-              formatted (format-program-with-source program src)
-              edit (make-format-edit 1 1 (position-line end-pos) (position-col end-pos) formatted)]
+          program (parse-program src)
+          formatted (format-program-with-source program src)
+          edit (make-format-edit 1 1 (position-line end-pos) (position-col end-pos) formatted)]
           (vector-push (vector-new 1) edit))
         (handle-formatting-mock params)))))
 
@@ -961,22 +961,22 @@
   (do
     (server-state-note-request state)
     (let [src (lsp-session-src params state)
-          line (lsp-nav-line params)
-          col (lsp-nav-col params)]
+      line (lsp-nav-line params)
+      col (lsp-nav-col params)]
       (if (> (string-length src) 0)
         (let [prefix (lsp-prefix-at src line col)
-              items (lsp-append-defn-completions src prefix)
-              items (lsp-append-keyword-completions prefix items)]
+          items (lsp-append-defn-completions src prefix)
+          items (lsp-append-keyword-completions prefix items)]
           items)
         (let [items (vector-new 7)
-              ;; L# キーワード: defn, let, if, match, do, fn, module
-              items (vector-push items (lsp-make-completion-item "defn" 14 "defn"))
-              items (vector-push items (lsp-make-completion-item "let" 14 "let"))
-              items (vector-push items (lsp-make-completion-item "if" 14 "if"))
-              items (vector-push items (lsp-make-completion-item "match" 14 "match"))
-              items (vector-push items (lsp-make-completion-item "do" 14 "do"))
-              items (vector-push items (lsp-make-completion-item "fn" 14 "fn"))
-              items (vector-push items (lsp-make-completion-item "module" 14 "module"))]
+          ;; L# キーワード: defn, let, if, match, do, fn, module
+          items (vector-push items (lsp-make-completion-item "defn" 14 "defn"))
+          items (vector-push items (lsp-make-completion-item "let" 14 "let"))
+          items (vector-push items (lsp-make-completion-item "if" 14 "if"))
+          items (vector-push items (lsp-make-completion-item "match" 14 "match"))
+          items (vector-push items (lsp-make-completion-item "do" 14 "do"))
+          items (vector-push items (lsp-make-completion-item "fn" 14 "fn"))
+          items (vector-push items (lsp-make-completion-item "module" 14 "module"))]
           items)))))
 
 ;; === 診断の安定順序制御 (T4b-3 AC-208/AC-209/AC-210/AC-211) ===
@@ -994,17 +994,17 @@
   (if (= idx 0)
     ;; 先頭に挿入
     (let [out (vector-new (+ (vector-length sorted) 1))
-          out (vector-push out elem)]
+      out (vector-push out elem)]
       (sort-diag-copy sorted 0 (vector-length sorted) out))
     (let [prev (vector-get sorted (- idx 1))
-          prev-key (diagnostic-order-key prev)]
+      prev-key (diagnostic-order-key prev)]
       (if (= (diagnostic-order-before elem elem-key prev prev-key) 1)
         ;; まだ前に移動する必要がある
         (sort-diag-insert sorted elem elem-key (- idx 1))
         ;; ここに挿入: 0..idx をコピー → elem → idx..len をコピー
         (let [out (vector-new (+ (vector-length sorted) 1))
-              out (sort-diag-copy sorted 0 idx out)
-              out (vector-push out elem)]
+          out (sort-diag-copy sorted 0 idx out)
+          out (vector-push out elem)]
           (sort-diag-copy sorted idx (vector-length sorted) out))))))
 
 ;; sorted の from..to をコピーして out に追加する
@@ -1018,8 +1018,8 @@
   (if (>= idx len)
     sorted
     (let [elem (vector-get diagnostics idx)
-          elem-key (diagnostic-order-key elem)
-          new-sorted (sort-diag-insert sorted elem elem-key (vector-length sorted))]
+      elem-key (diagnostic-order-key elem)
+      new-sorted (sort-diag-insert sorted elem elem-key (vector-length sorted))]
       (sort-diag-loop diagnostics new-sorted (+ idx 1) len))))
 
 (defn sort-diagnostics [diagnostics]
@@ -1027,7 +1027,7 @@
     (if (< len 2)
       diagnostics
       (let [first (vector-get diagnostics 0)
-            initial (vector-push (vector-new 1) first)]
+        initial (vector-push (vector-new 1) first)]
         (sort-diag-loop diagnostics initial 1 len)))))
 
 ;; 診断の重複マージ (AC-209)
@@ -1036,13 +1036,13 @@
   (let [len (vector-length diagnostics)]
     (if (= len 2)
       (let [diag0 (vector-get diagnostics 0)
-            diag1 (vector-get diagnostics 1)
-            line0 (vector-get diag0 2)
-            col0 (vector-get diag0 3)
-            line1 (vector-get diag1 2)
-            col1 (vector-get diag1 3)
-            sev0 (vector-get diag0 0)
-            sev1 (vector-get diag1 0)]
+        diag1 (vector-get diagnostics 1)
+        line0 (vector-get diag0 2)
+        col0 (vector-get diag0 3)
+        line1 (vector-get diag1 2)
+        col1 (vector-get diag1 3)
+        sev0 (vector-get diag0 0)
+        sev1 (vector-get diag1 0)]
         (if (= line0 line1)
           (if (= col0 col1)
             (if (< sev0 sev1)
@@ -1056,12 +1056,12 @@
 ;; source(1=parse,2=type,3=lint) → severity(1=error,2=warning,3=info,4=hint) → line → col
 (defn diagnostic-order-key [diag]
   (let [source (vector-get diag 5)
-        sev (vector-get diag 0)
-        line (vector-get diag 2)
-        col (vector-get diag 3)]
+    sev (vector-get diag 0)
+    line (vector-get diag 2)
+    col (vector-get diag 3)]
     (+ (* source 100000000)
-       (+ (* sev 1000000)
-          (+ (* line 10000) col)))))
+      (+ (* sev 1000000)
+        (+ (* line 10000) col)))))
 
 ;; 同じ source/severity/span の診断も rule/message で安定順序化する
 (defn diagnostic-order-before [a a-key b b-key]
@@ -1070,9 +1070,9 @@
     (if (> a-key b-key)
       0
       (let [rule-a (vector-get a 1)
-            rule-b (vector-get b 1)
-            msg-a (vector-get a 4)
-            msg-b (vector-get b 4)]
+        rule-b (vector-get b 1)
+        msg-a (vector-get a 4)
+        msg-b (vector-get b 4)]
         (if (< rule-a rule-b)
           1
           (if (> rule-a rule-b)
@@ -1084,17 +1084,17 @@
 ;; 同一スパン判定: line と col が同じなら 1、異なれば 0
 (defn dedup-diag-same-span [a b]
   (let [line-a (vector-get a 2)
-        col-a (vector-get a 3)
-        line-b (vector-get b 2)
-        col-b (vector-get b 3)]
+    col-a (vector-get a 3)
+    line-b (vector-get b 2)
+    col-b (vector-get b 3)]
     (if (= line-a line-b) (if (= col-a col-b) 1 0) 0)))
 
 ;; severity の高い方 (数値が小さい方) を選択
 (defn dedup-diag-pick-best [a b]
   (let [sev-a (vector-get a 0)
-        sev-b (vector-get b 0)
-        key-a (diagnostic-order-key a)
-        key-b (diagnostic-order-key b)]
+    sev-b (vector-get b 0)
+    key-a (diagnostic-order-key a)
+    key-b (diagnostic-order-key b)]
     (if (< sev-a sev-b)
       a
       (if (< sev-b sev-a)
@@ -1125,12 +1125,12 @@
   (if (>= idx len)
     result
     (let [diag (vector-get diags idx)
-          existing-idx (dedup-find-span result diag 0 (vector-length result))]
+      existing-idx (dedup-find-span result diag 0 (vector-length result))]
       (if (< existing-idx 0)
         (dedup-build diags (vector-push result diag) (+ idx 1) len)
         (let [existing (vector-get result existing-idx)
-              best (dedup-diag-pick-best existing diag)
-              new-result (dedup-replace result existing-idx best)]
+          best (dedup-diag-pick-best existing diag)
+          new-result (dedup-replace result existing-idx best)]
           (dedup-build diags new-result (+ idx 1) len))))))
 
 ;; dedup-diagnostics: 同一 span の診断は severity 最高のみ残す (AC-209)
@@ -1146,38 +1146,38 @@
 ;; なので int-only の deterministic JSON text に落とし込む。
 (defn render-diagnostic-json [diag]
   (let [severity (vector-get diag 0)
-        rule-id (vector-get diag 1)
-        line (vector-get diag 2)
-        col (vector-get diag 3)
-        message-hash (vector-get diag 4)
-        source (vector-get diag 5)
-        source-text (int-to-string source)
-        severity-text (int-to-string severity)
-        rule-text (int-to-string rule-id)
-        line-text (int-to-string line)
-        col-text (int-to-string col)
-        message-text (int-to-string message-hash)
-        out0 "{\"source\":"
-        out1 (string-concat out0 source-text)
-        out2 (string-concat out1 ",\"severity\":")
-        out3 (string-concat out2 severity-text)
-        out4 (string-concat out3 ",\"rule\":")
-        out5 (string-concat out4 rule-text)
-        out6 (string-concat out5 ",\"line\":")
-        out7 (string-concat out6 line-text)
-        out8 (string-concat out7 ",\"col\":")
-        out9 (string-concat out8 col-text)
-        out10 (string-concat out9 ",\"messageHash\":")
-        out11 (string-concat out10 message-text)]
+    rule-id (vector-get diag 1)
+    line (vector-get diag 2)
+    col (vector-get diag 3)
+    message-hash (vector-get diag 4)
+    source (vector-get diag 5)
+    source-text (int-to-string source)
+    severity-text (int-to-string severity)
+    rule-text (int-to-string rule-id)
+    line-text (int-to-string line)
+    col-text (int-to-string col)
+    message-text (int-to-string message-hash)
+    out0 "{\"source\":"
+    out1 (string-concat out0 source-text)
+    out2 (string-concat out1 ",\"severity\":")
+    out3 (string-concat out2 severity-text)
+    out4 (string-concat out3 ",\"rule\":")
+    out5 (string-concat out4 rule-text)
+    out6 (string-concat out5 ",\"line\":")
+    out7 (string-concat out6 line-text)
+    out8 (string-concat out7 ",\"col\":")
+    out9 (string-concat out8 col-text)
+    out10 (string-concat out9 ",\"messageHash\":")
+    out11 (string-concat out10 message-text)]
     (string-concat out11 "}")))
 
 (defn render-diagnostics-json-loop [diags idx len out]
   (if (>= idx len)
     out
     (let [elem-text (render-diagnostic-json (vector-get diags idx))
-          next-out (if (= idx 0)
-                     (string-concat out elem-text)
-                     (string-concat out (string-concat "," elem-text)))]
+      next-out (if (= idx 0)
+        (string-concat out elem-text)
+        (string-concat out (string-concat "," elem-text)))]
       (render-diagnostics-json-loop diags (+ idx 1) len next-out))))
 
 (defn render-diagnostics-json [diags]
@@ -1214,7 +1214,7 @@
 ;; 出力: [method-id, params]
 (defn parse-json-rpc-request [msg]
   (let [method-id (vector-get msg 2)
-        params (vector-get msg 3)]
+    params (vector-get msg 3)]
     (vector-push (vector-push (vector-new 2) method-id) params)))
 
 ;; === メインループ ===
@@ -1224,7 +1224,7 @@
 ;; stateful/session 系は server-loop-step で shared state を再利用できる。
 (defn server-loop-step [state request]
   (let [method-id (vector-get request 0)
-        params (vector-get request 1)]
+    params (vector-get request 1)]
     (json-rpc-dispatch method-id params state)))
 
 (defn server-loop-sequence-loop [state requests idx count results]
@@ -1239,8 +1239,8 @@
 
 (defn server-loop-sequence [requests]
   (let [state (server-state-new)
-        results (server-loop-sequence-loop state requests 0 (vector-length requests) (vector-new 8))
-        summary (vector-new 4)]
+    results (server-loop-sequence-loop state requests 0 (vector-length requests) (vector-new 8))
+    summary (vector-new 4)]
     (vector-push
       (vector-push
         (vector-push
@@ -1256,39 +1256,39 @@
 ;; 検証用 main
 (defn main []
   (let [;; サーバー状態の初期化
-        state (server-state-new)
-        ;; initialize ハンドラ
-        caps (handle-initialize 0 state)
-        did-open (handle-didOpen 12 state)
-        did-change (handle-didChange 8 state)
-        hover (handle-hover 0 state)
-        goto-def (handle-goto-definition 0 state)
-        refs (handle-references 0 state)
-        rename (handle-rename 0 state)
-        formatting (handle-formatting 0 state)
-        completions (handle-completion 0 state)
-        r2 (json-rpc-dispatch (lsp-method-shutdown) 0 state)
-        diag-a (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 1) 100) 3) 2) 0) 0)
-        diag-b (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 1) 100) 1) 1) 0) 0)
-        diags (vector-push (vector-push (vector-new 2) diag-a) diag-b)
-        sorted (sort-diagnostics diags)
-        dup-a (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 2) 101) 5) 7) 0) 0)
-        dup-b (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 1) 102) 5) 7) 0) 0)
-        dup-diags (vector-push (vector-push (vector-new 2) dup-a) dup-b)
-        merged (merge-duplicate-diagnostics dup-diags)]
+    state (server-state-new)
+    ;; initialize ハンドラ
+    caps (handle-initialize 0 state)
+    did-open (handle-didOpen 12 state)
+    did-change (handle-didChange 8 state)
+    hover (handle-hover 0 state)
+    goto-def (handle-goto-definition 0 state)
+    refs (handle-references 0 state)
+    rename (handle-rename 0 state)
+    formatting (handle-formatting 0 state)
+    completions (handle-completion 0 state)
+    r2 (json-rpc-dispatch (lsp-method-shutdown) 0 state)
+    diag-a (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 1) 100) 3) 2) 0) 0)
+    diag-b (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 1) 100) 1) 1) 0) 0)
+    diags (vector-push (vector-push (vector-new 2) diag-a) diag-b)
+    sorted (sort-diagnostics diags)
+    dup-a (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 2) 101) 5) 7) 0) 0)
+    dup-b (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 1) 102) 5) 7) 0) 0)
+    dup-diags (vector-push (vector-push (vector-new 2) dup-a) dup-b)
+    merged (merge-duplicate-diagnostics dup-diags)]
     (do
       ;; capabilities の検証
       (print (vector-length caps)) ;; 7
-      (print (vector-get caps 0))  ;; 1 (textDocumentSync: Full)
-      (print (vector-get caps 1))  ;; 1 (hoverProvider)
-      (print (vector-get caps 2))  ;; 1 (completionProvider)
+      (print (vector-get caps 0)) ;; 1 (textDocumentSync: Full)
+      (print (vector-get caps 1)) ;; 1 (hoverProvider)
+      (print (vector-get caps 2)) ;; 1 (completionProvider)
       ;; basic handler の検証
-      (print did-open)             ;; 12
-      (print did-change)           ;; 8
+      (print did-open) ;; 12
+      (print did-change) ;; 8
       (print (vector-length formatting)) ;; 1
       (print (vector-length completions)) ;; 7
       ;; shutdown の検証
-      (print r2)                    ;; 0
+      (print r2) ;; 0
       ;; sort-diagnostics の検証 (source=0, sev=1 → key = 0*100M + 1*1M + line*10K + col)
       (print (diagnostic-order-key (vector-get sorted 0))) ;; 1010001
       (print (diagnostic-order-key (vector-get sorted 1))) ;; 1030002

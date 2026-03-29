@@ -20,7 +20,7 @@
 (defn tok-string [] 12)
 (defn tok-bool-true [] 13)
 (defn tok-bool-false [] 14)
-(defn tok-string-escape [] 15)  ;; エスケープ付き文字列
+(defn tok-string-escape [] 15) ;; エスケープ付き文字列
 
 ;; 識別子
 (defn tok-symbol [] 20)
@@ -40,23 +40,23 @@
 (defn tok-impl [] 41)
 (defn tok-where [] 42)
 (defn tok-private [] 43)
-(defn tok-defmacro [] 44)       ;; defmacro
-(defn tok-type-alias [] 45)     ;; type (エイリアス用)
-(defn tok-constrained [] 46)    ;; constrained
-(defn tok-computation [] 47)    ;; computation
-(defn tok-builder [] 48)        ;; builder
-(defn tok-open-kw [] 49)        ;; open
+(defn tok-defmacro [] 44) ;; defmacro
+(defn tok-type-alias [] 45) ;; type (エイリアス用)
+(defn tok-constrained [] 46) ;; constrained
+(defn tok-computation [] 47) ;; computation
+(defn tok-builder [] 48) ;; builder
+(defn tok-open-kw [] 49) ;; open
 
 ;; 特殊記号
 (defn tok-colon [] 50)
-(defn tok-arrow [] 51)          ;; ->
+(defn tok-arrow [] 51) ;; ->
 (defn tok-pipe [] 52)
-(defn tok-dot [] 53)            ;; .
-(defn tok-quote [] 54)          ;; '
-(defn tok-unquote [] 55)        ;; ~
+(defn tok-dot [] 53) ;; .
+(defn tok-quote [] 54) ;; '
+(defn tok-unquote [] 55) ;; ~
 (defn tok-splice-unquote [] 56) ;; ~@
-(defn tok-hash [] 57)           ;; #
-(defn tok-at [] 58)             ;; @
+(defn tok-hash [] 57) ;; #
+(defn tok-at [] 58) ;; @
 
 ;; 終端
 (defn tok-eof [] 99)

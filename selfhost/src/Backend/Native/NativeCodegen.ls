@@ -37,44 +37,44 @@
 ;; 戻り値: バイト列 Vector
 (defn emit-mov-imm64 [reg value]
   (let [bytes (vector-new 10)
-        ;; REX.W プリフィックス
-        b1 (vector-push bytes 72)       ;; 0x48 (REX.W)
-        ;; MOV opcode + レジスタ
-        b2 (vector-push b1 (+ 184 reg)) ;; 0xB8 + rd
-        ;; 64bit 即値 (リトルエンディアン、最大8バイト)
-        ;; 簡易版: 下位4バイトのみ (上位4バイトは 0)
-        byte0 (% value 256)
-        byte1 (% (/ value 256) 256)
-        byte2 (% (/ value 65536) 256)
-        byte3 (% (/ value 16777216) 256)
-        b3 (vector-push b2 byte0)
-        b4 (vector-push b3 byte1)
-        b5 (vector-push b4 byte2)
-        b6 (vector-push b5 byte3)
-        b7 (vector-push b6 0)
-        b8 (vector-push b7 0)
-        b9 (vector-push b8 0)
-        b10 (vector-push b9 0)]
+    ;; REX.W プリフィックス
+    b1 (vector-push bytes 72) ;; 0x48 (REX.W)
+    ;; MOV opcode + レジスタ
+    b2 (vector-push b1 (+ 184 reg)) ;; 0xB8 + rd
+    ;; 64bit 即値 (リトルエンディアン、最大8バイト)
+    ;; 簡易版: 下位4バイトのみ (上位4バイトは 0)
+    byte0 (% value 256)
+    byte1 (% (/ value 256) 256)
+    byte2 (% (/ value 65536) 256)
+    byte3 (% (/ value 16777216) 256)
+    b3 (vector-push b2 byte0)
+    b4 (vector-push b3 byte1)
+    b5 (vector-push b4 byte2)
+    b6 (vector-push b5 byte3)
+    b7 (vector-push b6 0)
+    b8 (vector-push b7 0)
+    b9 (vector-push b8 0)
+    b10 (vector-push b9 0)]
     b10))
 
 ;; x86_64 の RET 命令
 (defn emit-ret []
-  (vector-push (vector-new 1) 195))  ;; 0xC3
+  (vector-push (vector-new 1) 195)) ;; 0xC3
 
 ;; x86_64 の PUSH rbp
 (defn emit-push-rbp []
-  (vector-push (vector-new 1) 85))   ;; 0x55
+  (vector-push (vector-new 1) 85)) ;; 0x55
 
 ;; x86_64 の POP rbp
 (defn emit-pop-rbp []
-  (vector-push (vector-new 1) 93))   ;; 0x5D
+  (vector-push (vector-new 1) 93)) ;; 0x5D
 
 ;; x86_64 の MOV rbp, rsp
 (defn emit-mov-rbp-rsp []
   (let [bytes (vector-new 3)]
     (vector-push (vector-push (vector-push bytes
-      72)    ;; 0x48 REX.W
-      137)   ;; 0x89
+          72) ;; 0x48 REX.W
+        137) ;; 0x89
       229))) ;; 0xE5 (rsp -> rbp)
 
 ;; === IR -> ネイティブ変換 ===
@@ -94,7 +94,7 @@
         ;; 0x48 0x29 0xC8
         (vector-push (vector-push (vector-push (vector-new 3) 72) 41) 200)
         ;; 未知の opcode: NOP
-        (vector-push (vector-new 1) 144)))))  ;; 0x90
+        (vector-push (vector-new 1) 144))))) ;; 0x90
 
 ;; === コード生成メイン関数 ===
 
@@ -109,10 +109,10 @@
   (if (>= idx len)
     0
     (let [instr (vector-get ir-func idx)
-          opcode (vector-get instr 0)
-          operand (vector-get instr 1)
-          native (codegen-ir-instr opcode operand)
-          native-len (vector-length native)]
+      opcode (vector-get instr 0)
+      operand (vector-get instr 1)
+      native (codegen-ir-instr opcode operand)
+      native-len (vector-length native)]
       (do
         (append-native-bytes-loop result native 0 native-len)
         (generate-native-instr-loop ir-func result (+ idx 1) len)))))
@@ -124,20 +124,20 @@
 ;; 戻り値: ネイティブ機械語バイト列
 (defn generate-native-x86-64 [ir-func]
   (let [result (ref-new (vector-new 64))
-        ;; 関数プロローグ
-        prologue-push (emit-push-rbp)
-        prologue-mov (emit-mov-rbp-rsp)
-        _ (ref-set result (vector-push (ref-get result) (vector-get prologue-push 0)))
-        _ (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 0)))
-        _ (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 1)))
-        _ (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 2)))
-        ;; IR 命令列を順にネイティブ bytes へ落とす
-        n (vector-length ir-func)]
+    ;; 関数プロローグ
+    prologue-push (emit-push-rbp)
+    prologue-mov (emit-mov-rbp-rsp)
+    _ (ref-set result (vector-push (ref-get result) (vector-get prologue-push 0)))
+    _ (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 0)))
+    _ (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 1)))
+    _ (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 2)))
+    ;; IR 命令列を順にネイティブ bytes へ落とす
+    n (vector-length ir-func)]
     (do
       (generate-native-instr-loop ir-func result 0 n)
       ;; 関数エピローグ
       (let [epilogue-pop (emit-pop-rbp)
-            epilogue-ret (emit-ret)]
+        epilogue-ret (emit-ret)]
         (do
           (ref-set result (vector-push (ref-get result) (vector-get epilogue-pop 0)))
           (ref-set result (vector-push (ref-get result) (vector-get epilogue-ret 0)))
@@ -150,11 +150,11 @@
 ;; 例: MOVZ W0, #42 = 0x52800540 → [0x40, 0x05, 0x80, 0x52]
 (defn emit-aarch64-movz-w0 [imm]
   (let [encoded (+ 1384120320 (* imm 32))
-        b0 (% encoded 256)
-        b1 (% (/ encoded 256) 256)
-        b2 (% (/ encoded 65536) 256)
-        b3 (% (/ encoded 16777216) 256)
-        bytes (vector-new 4)]
+    b0 (% encoded 256)
+    b1 (% (/ encoded 256) 256)
+    b2 (% (/ encoded 65536) 256)
+    b3 (% (/ encoded 16777216) 256)
+    bytes (vector-new 4)]
     (vector-push (vector-push (vector-push (vector-push bytes b0) b1) b2) b3)))
 
 ;; AArch64 RET 命令 (X30 経由リターン)
@@ -183,10 +183,10 @@
   (if (>= idx len)
     0
     (let [instr (vector-get ir-func idx)
-          opcode (vector-get instr 0)
-          operand (vector-get instr 1)
-          native (codegen-ir-instr-aarch64 opcode operand)
-          native-len (vector-length native)]
+      opcode (vector-get instr 0)
+      operand (vector-get instr 1)
+      native (codegen-ir-instr-aarch64 opcode operand)
+      native-len (vector-length native)]
       (do
         (append-native-bytes-loop result native 0 native-len)
         (generate-native-instr-loop-aarch64 ir-func result (+ idx 1) len)))))
@@ -196,7 +196,7 @@
 ;; 戻り値: AArch64 機械語バイト列
 (defn generate-native-aarch64 [ir-func]
   (let [result (ref-new (vector-new 16))
-        n (vector-length ir-func)]
+    n (vector-length ir-func)]
     (do
       (generate-native-instr-loop-aarch64 ir-func result 0 n)
       (let [ret-bytes (emit-aarch64-ret)]
@@ -237,10 +237,10 @@
 
 (defn main []
   (let [;; i64.const 42 の IR 命令
-        instr (vector-push (vector-push (vector-new 2) 1) 42)
-        ir (vector-push (vector-new 2) instr)
-        target (make-target 2)  ;; aarch64-apple-darwin
-        native-code (emit-native ir target)]
+    instr (vector-push (vector-push (vector-new 2) 1) 42)
+    ir (vector-push (vector-new 2) instr)
+    target (make-target 2) ;; aarch64-apple-darwin
+    native-code (emit-native ir target)]
     (do
-      (print (vector-length native-code))  ;; ネイティブコードのバイト数
+      (print (vector-length native-code)) ;; ネイティブコードのバイト数
       0)))

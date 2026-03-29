@@ -12,7 +12,7 @@
 
 (defn string-eq [s1 s2]
   (let [len1 (string-length s1)
-        len2 (string-length s2)]
+    len2 (string-length s2)]
     (if (= len1 len2)
       (string-eq-loop s1 s2 0 len1)
       false)))
@@ -21,10 +21,10 @@
 
 ;; 空白文字か
 (defn is-ws [c]
-  (if (== c 32) true    ;; space
-    (if (== c 9) true   ;; tab
+  (if (== c 32) true ;; space
+    (if (== c 9) true ;; tab
       (if (== c 10) true ;; newline
-        (== c 13)))))    ;; return
+        (== c 13))))) ;; return
 
 ;; 数字か (0-9: ASCII 48-57)
 (defn is-digit-char [c]
@@ -33,15 +33,15 @@
 ;; アルファベットか
 (defn is-alpha-char [c]
   (if (>= c 65)
-    (if (<= c 90) true    ;; A-Z
-      (if (>= c 97) (<= c 122) false))  ;; a-z
+    (if (<= c 90) true ;; A-Z
+      (if (>= c 97) (<= c 122) false)) ;; a-z
     false))
 
 ;; シンボル開始文字か
 (defn is-symbol-start [c]
   (if (is-alpha-char c) true
-    (if (== c 95) true     ;; _
-      (if (== c 43) true   ;; +
+    (if (== c 95) true ;; _
+      (if (== c 43) true ;; +
         (if (== c 45) true ;; -
           (if (== c 42) true ;; *
             (if (== c 47) true ;; /
@@ -58,7 +58,7 @@
   (if (is-symbol-start c) true
     (if (is-digit-char c) true
       (if (== c 46) true ;; .
-        (== c 45)))))    ;; -
+        (== c 45))))) ;; -
 
 ;; === 空白・コメントスキップ ===
 
@@ -166,53 +166,53 @@
 ;; ペア表現: kind * 1000000 + end_pos (簡易エンコード)
 (defn lex-one [src pos len]
   (if (>= pos len)
-    (+ (* 99 1000000) pos)  ;; tok-eof
+    (+ (* 99 1000000) pos) ;; tok-eof
     (let [c (string-char-at src pos)]
-      (if (== c 40) (+ (* 0 1000000) (+ pos 1))  ;; ( -> LParen
-        (if (== c 41) (+ (* 1 1000000) (+ pos 1))  ;; ) -> RParen
-          (if (== c 91) (+ (* 2 1000000) (+ pos 1))  ;; [ -> LBracket
-            (if (== c 93) (+ (* 3 1000000) (+ pos 1))  ;; ] -> RBracket
-              (if (== c 123) (+ (* 4 1000000) (+ pos 1))  ;; { -> LBrace
-                (if (== c 125) (+ (* 5 1000000) (+ pos 1))  ;; } -> RBrace
-                  (if (== c 58) (+ (* 50 1000000) (+ pos 1))  ;; : -> Colon
-                    (if (== c 124) (+ (* 52 1000000) (+ pos 1))  ;; | -> Pipe
-                        (if (== c 46) (+ (* 53 1000000) (+ pos 1))  ;; . -> Dot
-                          (if (== c 39) (+ (* 54 1000000) (+ pos 1))  ;; ' -> Quote
-                            (if (== c 126) ;; ~ -> Unquote / SpliceUnquote
-                              (if (< (+ pos 1) len)
-                                (if (== (string-char-at src (+ pos 1)) 64) ;; @
-                                  (+ (* 56 1000000) (+ pos 2))  ;; ~@ -> SpliceUnquote
-                                  (+ (* 55 1000000) (+ pos 1))) ;; ~ -> Unquote
-                                (+ (* 55 1000000) (+ pos 1)))
-                              (if (== c 35) (+ (* 57 1000000) (+ pos 1))  ;; # -> Hash
-                                (if (== c 64) (+ (* 58 1000000) (+ pos 1))  ;; @ -> At
-                                  (if (== c 34) ;; " -> String
-                                    (let [end (scan-string-end src (+ pos 1) len)]
-                                      (+ (* 12 1000000) end))
-                                    ;; -> (arrow) の特殊処理: - の後に > が続く場合
-                                    (if (== c 45)
-                                      (if (< (+ pos 1) len)
-                                        (if (== (string-char-at src (+ pos 1)) 62) ;; >
-                                          (+ (* 51 1000000) (+ pos 2))  ;; -> -> Arrow
-                                          ;; - で始まるシンボル
-                                          (let [end (scan-symbol-end src (+ pos 1) len)
-                                                name (substring src pos end)
-                                                kind (classify-symbol name)]
-                                            (+ (* kind 1000000) end)))
-                                        ;; ソース末尾の - (シンボル)
-                                        (+ (* 20 1000000) (+ pos 1)))
-                                      (if (is-digit-char c)
-                                        (let [int-end (scan-digits src (+ pos 1) len)
-                                              end (scan-number-end src int-end len)]
-                                          (if (> end int-end)
-                                            (+ (* 11 1000000) end)  ;; Float
-                                            (+ (* 10 1000000) end)))  ;; Int
-                                        (if (is-symbol-start c)
-                                          (let [end (scan-symbol-end src (+ pos 1) len)
-                                                name (substring src pos end)
-                                                kind (classify-symbol name)]
-                                            (+ (* kind 1000000) end))
-                                          (+ (* 99 1000000) (+ pos 1)))))))))))))))))))))) ;; unknown -> skip
+      (if (== c 40) (+ (* 0 1000000) (+ pos 1)) ;; ( -> LParen
+        (if (== c 41) (+ (* 1 1000000) (+ pos 1)) ;; ) -> RParen
+          (if (== c 91) (+ (* 2 1000000) (+ pos 1)) ;; [ -> LBracket
+            (if (== c 93) (+ (* 3 1000000) (+ pos 1)) ;; ] -> RBracket
+              (if (== c 123) (+ (* 4 1000000) (+ pos 1)) ;; { -> LBrace
+                (if (== c 125) (+ (* 5 1000000) (+ pos 1)) ;; } -> RBrace
+                  (if (== c 58) (+ (* 50 1000000) (+ pos 1)) ;; : -> Colon
+                    (if (== c 124) (+ (* 52 1000000) (+ pos 1)) ;; | -> Pipe
+                      (if (== c 46) (+ (* 53 1000000) (+ pos 1)) ;; . -> Dot
+                        (if (== c 39) (+ (* 54 1000000) (+ pos 1)) ;; ' -> Quote
+                          (if (== c 126) ;; ~ -> Unquote / SpliceUnquote
+                            (if (< (+ pos 1) len)
+                              (if (== (string-char-at src (+ pos 1)) 64) ;; @
+                                (+ (* 56 1000000) (+ pos 2)) ;; ~@ -> SpliceUnquote
+                                (+ (* 55 1000000) (+ pos 1))) ;; ~ -> Unquote
+                              (+ (* 55 1000000) (+ pos 1)))
+                            (if (== c 35) (+ (* 57 1000000) (+ pos 1)) ;; # -> Hash
+                              (if (== c 64) (+ (* 58 1000000) (+ pos 1)) ;; @ -> At
+                                (if (== c 34) ;; " -> String
+                                  (let [end (scan-string-end src (+ pos 1) len)]
+                                    (+ (* 12 1000000) end))
+                                  ;; -> (arrow) の特殊処理: - の後に > が続く場合
+                                  (if (== c 45)
+                                    (if (< (+ pos 1) len)
+                                      (if (== (string-char-at src (+ pos 1)) 62) ;; >
+                                        (+ (* 51 1000000) (+ pos 2)) ;; -> -> Arrow
+                                        ;; - で始まるシンボル
+                                        (let [end (scan-symbol-end src (+ pos 1) len)
+                                          name (substring src pos end)
+                                          kind (classify-symbol name)]
+                                          (+ (* kind 1000000) end)))
+                                      ;; ソース末尾の - (シンボル)
+                                      (+ (* 20 1000000) (+ pos 1)))
+                                    (if (is-digit-char c)
+                                      (let [int-end (scan-digits src (+ pos 1) len)
+                                        end (scan-number-end src int-end len)]
+                                        (if (> end int-end)
+                                          (+ (* 11 1000000) end) ;; Float
+                                          (+ (* 10 1000000) end))) ;; Int
+                                      (if (is-symbol-start c)
+                                        (let [end (scan-symbol-end src (+ pos 1) len)
+                                          name (substring src pos end)
+                                          kind (classify-symbol name)]
+                                          (+ (* kind 1000000) end))
+                                        (+ (* 99 1000000) (+ pos 1)))))))))))))))))))))) ;; unknown -> skip
 
 ;; 全トークンを Vector に収集 (kind のみ、後方互換)
 (defn tokenize-loop [src pos len tokens]
@@ -220,8 +220,8 @@
     (if (>= ws-pos len)
       (vector-push tokens 99) ;; EOF トークン (kind=99)
       (let [result (lex-one src ws-pos len)
-            kind (/ result 1000000)
-            end-pos (- result (* kind 1000000))]
+        kind (/ result 1000000)
+        end-pos (- result (* kind 1000000))]
         (if (== kind 99)
           (vector-push tokens 99)
           (tokenize-loop src end-pos len
@@ -241,8 +241,8 @@
       ;; EOF トークン: (99, pos, pos)
       (vector-push (vector-push (vector-push tokens 99) ws-pos) ws-pos)
       (let [result (lex-one src ws-pos len)
-            kind (/ result 1000000)
-            end-pos (- result (* kind 1000000))]
+        kind (/ result 1000000)
+        end-pos (- result (* kind 1000000))]
         (if (== kind 99)
           (vector-push (vector-push (vector-push tokens 99) ws-pos) ws-pos)
           (tokenize-spans-loop src end-pos len
@@ -273,7 +273,7 @@
 ;; 整数トークンの値を取得 (ソース文字列から数値をパース)
 (defn token-int-value [src tokens n]
   (let [start (token-start tokens n)
-        end (token-end tokens n)]
+    end (token-end tokens n)]
     (parse-int-from-string src start end 0)))
 
 ;; 数字文字列を整数に変換 (再帰ヘルパー)
@@ -290,35 +290,35 @@
 ;; エントリポイント (テスト用)
 (defn main []
   (let [;; 後方互換テスト
-        tokens (tokenize "(defn main [] 42)")
-        len (vector-length tokens)]
+    tokens (tokenize "(defn main [] 42)")
+    len (vector-length tokens)]
     (do
-      (print len)  ;; トークン数
+      (print len) ;; トークン数
       ;; 各トークンを出力
-      (print (vector-get tokens 0))  ;; ( -> 0 (LParen)
-      (print (vector-get tokens 1))  ;; defn -> 30 (Defn)
-      (print (vector-get tokens 2))  ;; main -> 20 (Symbol)
-      (print (vector-get tokens 3))  ;; [ -> 2 (LBracket)
-      (print (vector-get tokens 4))  ;; ] -> 3 (RBracket)
-      (print (vector-get tokens 5))  ;; 42 -> 10 (Int)
-      (print (vector-get tokens 6))  ;; ) -> 1 (RParen)
-      (print (vector-get tokens 7))  ;; EOF -> 99
+      (print (vector-get tokens 0)) ;; ( -> 0 (LParen)
+      (print (vector-get tokens 1)) ;; defn -> 30 (Defn)
+      (print (vector-get tokens 2)) ;; main -> 20 (Symbol)
+      (print (vector-get tokens 3)) ;; [ -> 2 (LBracket)
+      (print (vector-get tokens 4)) ;; ] -> 3 (RBracket)
+      (print (vector-get tokens 5)) ;; 42 -> 10 (Int)
+      (print (vector-get tokens 6)) ;; ) -> 1 (RParen)
+      (print (vector-get tokens 7)) ;; EOF -> 99
 
       ;; T2-1: 値つきトークンのテスト
       (let [spans (tokenize-with-spans "(+ 42 x)")
-            n (token-count spans)]
+        n (token-count spans)]
         (do
-          (print n)                          ;; トークン数 = 6
-          (print (token-kind spans 0))       ;; ( -> 0 (LParen)
-          (print (token-kind spans 1))       ;; + -> 20 (Symbol)
-          (print (token-kind spans 2))       ;; 42 -> 10 (Int)
-          (print (token-kind spans 3))       ;; x -> 20 (Symbol)
-          (print (token-kind spans 4))       ;; ) -> 1 (RParen)
-          (print (token-kind spans 5))       ;; EOF -> 99
+          (print n) ;; トークン数 = 6
+          (print (token-kind spans 0)) ;; ( -> 0 (LParen)
+          (print (token-kind spans 1)) ;; + -> 20 (Symbol)
+          (print (token-kind spans 2)) ;; 42 -> 10 (Int)
+          (print (token-kind spans 3)) ;; x -> 20 (Symbol)
+          (print (token-kind spans 4)) ;; ) -> 1 (RParen)
+          (print (token-kind spans 5)) ;; EOF -> 99
           ;; 整数値の取得
-          (print (token-int-value "(+ 42 x)" spans 2))  ;; 42
+          (print (token-int-value "(+ 42 x)" spans 2)) ;; 42
           ;; スパン情報
-          (print (token-start spans 1))      ;; 1 (+ の開始位置)
-          (print (token-end spans 1))        ;; 2 (+ の終了位置)
+          (print (token-start spans 1)) ;; 1 (+ の開始位置)
+          (print (token-end spans 1)) ;; 2 (+ の終了位置)
           0))
       0)))

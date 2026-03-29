@@ -78,7 +78,7 @@
 
 (defn values-equal [left right]
   (let [ltag (value-tag left)
-        rtag (value-tag right)]
+    rtag (value-tag right)]
     (if (= ltag rtag)
       (if (= ltag (ast-lit-unit))
         1
@@ -99,26 +99,26 @@
 
 (defn builtin-hash-arith? [name-hash]
   (if (= name-hash (hash-plus)) 1
-  (if (= name-hash (hash-minus)) 1
-  (if (= name-hash (hash-mul)) 1
-  (if (= name-hash (hash-div)) 1
-  (if (= name-hash (hash-mod)) 1
-  0))))))
+    (if (= name-hash (hash-minus)) 1
+      (if (= name-hash (hash-mul)) 1
+        (if (= name-hash (hash-div)) 1
+          (if (= name-hash (hash-mod)) 1
+            0))))))
 
 (defn builtin-hash-compare? [name-hash]
   (if (= name-hash (hash-eq)) 1
-  (if (= name-hash (hash-ne)) 1
-  (if (= name-hash (hash-lt)) 1
-  (if (= name-hash (hash-gt)) 1
-  (if (= name-hash (hash-le)) 1
-  (if (= name-hash (hash-ge)) 1
-  0)))))))
+    (if (= name-hash (hash-ne)) 1
+      (if (= name-hash (hash-lt)) 1
+        (if (= name-hash (hash-gt)) 1
+          (if (= name-hash (hash-le)) 1
+            (if (= name-hash (hash-ge)) 1
+              0)))))))
 
 (defn builtin-hash-logic? [name-hash]
   (if (= name-hash (hash-and)) 1
-  (if (= name-hash (hash-or)) 1
-  (if (= name-hash (hash-not)) 1
-  0))))
+    (if (= name-hash (hash-or)) 1
+      (if (= name-hash (hash-not)) 1
+        0))))
 
 (defn builtin-hash? [name-hash]
   (if (= (builtin-hash-arith? name-hash) 1)
@@ -146,7 +146,7 @@
   (if (>= idx count)
     env
     (let [param-hash (vector-get decl (+ 3 idx))
-          arg (arg-value args idx)]
+      arg (arg-value args idx)]
       (bind-params-loop
         (env-bind env param-hash arg)
         decl
@@ -168,29 +168,29 @@
 
 (defn apply-builtin-arith [callee-hash args left right]
   (if (= callee-hash (hash-plus)) (value-int (+ left right))
-  (if (= callee-hash (hash-minus))
-    (if (= (vector-length args) 1)
-      (value-int (- 0 left))
-      (value-int (- left right)))
-  (if (= callee-hash (hash-mul)) (value-int (* left right))
-  (if (= callee-hash (hash-div))
-    (if (= right 0)
-      (value-int 0)
-      (value-int (/ left right)))
-  (if (= callee-hash (hash-mod))
-    (if (= right 0)
-      (value-int 0)
-      (value-int (% left right)))
-  0))))))
+    (if (= callee-hash (hash-minus))
+      (if (= (vector-length args) 1)
+        (value-int (- 0 left))
+        (value-int (- left right)))
+      (if (= callee-hash (hash-mul)) (value-int (* left right))
+        (if (= callee-hash (hash-div))
+          (if (= right 0)
+            (value-int 0)
+            (value-int (/ left right)))
+          (if (= callee-hash (hash-mod))
+            (if (= right 0)
+              (value-int 0)
+              (value-int (% left right)))
+            0))))))
 
 (defn apply-builtin-compare [callee-hash arg0 arg1 left right]
   (if (= callee-hash (hash-eq)) (value-bool (values-equal arg0 arg1))
-  (if (= callee-hash (hash-ne)) (value-bool (if (= (values-equal arg0 arg1) 1) 0 1))
-  (if (= callee-hash (hash-lt)) (value-bool (if (< left right) 1 0))
-  (if (= callee-hash (hash-gt)) (value-bool (if (> left right) 1 0))
-  (if (= callee-hash (hash-le)) (value-bool (if (<= left right) 1 0))
-  (if (= callee-hash (hash-ge)) (value-bool (if (>= left right) 1 0))
-  0)))))))
+    (if (= callee-hash (hash-ne)) (value-bool (if (= (values-equal arg0 arg1) 1) 0 1))
+      (if (= callee-hash (hash-lt)) (value-bool (if (< left right) 1 0))
+        (if (= callee-hash (hash-gt)) (value-bool (if (> left right) 1 0))
+          (if (= callee-hash (hash-le)) (value-bool (if (<= left right) 1 0))
+            (if (= callee-hash (hash-ge)) (value-bool (if (>= left right) 1 0))
+              0)))))))
 
 (defn apply-builtin-logic [callee-hash arg0 arg1]
   (if (= callee-hash (hash-and))
@@ -198,21 +198,21 @@
       (if (= (value-truthy arg0) 1)
         (if (= (value-truthy arg1) 1) 1 0)
         0))
-  (if (= callee-hash (hash-or))
-    (value-bool
-      (if (= (value-truthy arg0) 1)
-        1
-        (if (= (value-truthy arg1) 1) 1 0)))
-  (if (= callee-hash (hash-not))
-    (value-bool (if (= (value-truthy arg0) 1) 0 1))
-  0))))
+    (if (= callee-hash (hash-or))
+      (value-bool
+        (if (= (value-truthy arg0) 1)
+          1
+          (if (= (value-truthy arg1) 1) 1 0)))
+      (if (= callee-hash (hash-not))
+        (value-bool (if (= (value-truthy arg0) 1) 0 1))
+        0))))
 
 (defn apply-builtin [callee-hash args]
   (let [arg0 (arg-value args 0)
-        arg1 (arg-value args 1)
-        left (value-int-or-bool arg0)
-        right (value-int-or-bool arg1)
-        arith (apply-builtin-arith callee-hash args left right)]
+    arg1 (arg-value args 1)
+    left (value-int-or-bool arg0)
+    right (value-int-or-bool arg1)
+    arith (apply-builtin-arith callee-hash args left right)]
     (if (= arith 0)
       (let [compare (apply-builtin-compare callee-hash arg0 arg1 left right)]
         (if (= compare 0)
@@ -225,14 +225,14 @@
 
 (defn eval-defn-call [program decl args]
   (let [param-count (vector-get decl 2)
-        env (bind-params-loop (env-new) decl args 0 param-count)
-        body (vector-get decl (+ 3 param-count))]
+    env (bind-params-loop (env-new) decl args 0 param-count)
+    body (vector-get decl (+ 3 param-count))]
     (eval-node program body env)))
 
 (defn eval-apply [program node env]
   (let [callee (vector-get node 1)
-        argc (vector-get node 2)
-        args (eval-args-loop program node env 0 argc (vector-new (+ argc 1)))]
+    argc (vector-get node 2)
+    args (eval-args-loop program node env 0 argc (vector-new (+ argc 1)))]
     (if (= (vector-get callee 0) (ast-var))
       (let [callee-hash (vector-get callee 1)]
         (if (= (builtin-hash? callee-hash) 1)
@@ -260,8 +260,8 @@
                   (eval-node program (vector-get node 3) env)))
               (if (= tag (ast-let))
                 (let [name-hash (vector-get node 1)
-                      init-value (eval-node program (vector-get node 2) env)
-                      body-env (env-bind env name-hash init-value)]
+                  init-value (eval-node program (vector-get node 2) env)
+                  body-env (env-bind env name-hash init-value)]
                   (eval-node program (vector-get node 3) body-env))
                 (if (= tag (ast-do))
                   (eval-do-loop program node env 0 (vector-get node 1) (value-unit))
@@ -301,9 +301,9 @@
     (if (<= (depth-total paren-depth bracket-depth brace-depth) 0)
       idx
       (let [kind (token-kind tokens idx)
-            next-paren (step-paren-depth kind paren-depth)
-            next-bracket (step-bracket-depth kind bracket-depth)
-            next-brace (step-brace-depth kind brace-depth)]
+        next-paren (step-paren-depth kind paren-depth)
+        next-bracket (step-bracket-depth kind bracket-depth)
+        next-brace (step-brace-depth kind brace-depth)]
         (consume-form-loop tokens (+ idx 1) n next-paren next-bracket next-brace)))))
 
 (defn consume-form [tokens idx]
@@ -368,23 +368,23 @@
             (let [payload-start (+ idx 2)]
               (if (< payload-start end)
                 (let [name (directive-name src tokens idx end)
-                      payload-end (consume-form tokens payload-start)
-                      next-spans (if (= (supported-test-directive? name) 1)
-                                   (append-skip-span spans
-                                     (token-start tokens idx)
-                                     (token-end tokens (- payload-end 1)))
-                                   spans)]
+                  payload-end (consume-form tokens payload-start)
+                  next-spans (if (= (supported-test-directive? name) 1)
+                    (append-skip-span spans
+                      (token-start tokens idx)
+                      (token-end tokens (- payload-end 1)))
+                    spans)]
                   (collect-defn-test-skip-spans-loop src tokens payload-end end next-spans 1 0 0))
                 spans))
             (let [next-paren (step-paren-depth kind paren-depth)
-                  next-bracket (step-bracket-depth kind bracket-depth)
-                  next-brace (step-brace-depth kind brace-depth)]
+              next-bracket (step-bracket-depth kind bracket-depth)
+              next-brace (step-brace-depth kind brace-depth)]
               (collect-defn-test-skip-spans-loop
                 src tokens (+ idx 1) end spans
                 next-paren next-bracket next-brace)))
           (let [next-paren (step-paren-depth kind paren-depth)
-                next-bracket (step-bracket-depth kind bracket-depth)
-                next-brace (step-brace-depth kind brace-depth)]
+            next-bracket (step-bracket-depth kind bracket-depth)
+            next-brace (step-brace-depth kind brace-depth)]
             (collect-defn-test-skip-spans-loop
               src tokens (+ idx 1) end spans
               next-paren next-bracket next-brace)))))))
@@ -409,13 +409,13 @@
   (if (>= idx count)
     (string-concat out (substring src last-pos (string-length src)))
     (let [skip-start (vector-get spans (* idx 2))
-          skip-end (vector-get spans (+ (* idx 2) 1))
-          next-out (string-concat out (substring src last-pos skip-start))]
+      skip-end (vector-get spans (+ (* idx 2) 1))
+      next-out (string-concat out (substring src last-pos skip-start))]
       (rebuild-source-with-skips-loop src spans (+ idx 1) count skip-end next-out))))
 
 (defn strip-test-metadata [src]
   (let [tokens (tokenize-with-spans src)
-        spans (collect-test-skip-spans-loop src tokens 0 (token-count tokens) (vector-new 8))]
+    spans (collect-test-skip-spans-loop src tokens 0 (token-count tokens) (vector-new 8))]
     (rebuild-source-with-skips-loop src spans 0 (/ (vector-length spans) 2) 0 "")))
 
 (defn append-parsed-cases-loop [exprs fn-hash idx count results]
@@ -455,24 +455,24 @@
             (let [payload-start (+ idx 2)]
               (if (< payload-start end)
                 (let [name (directive-name src tokens idx end)
-                      payload-end (consume-form tokens payload-start)
-                      next-examples (if (string-eq name "example")
-                                      (append-example-payload src tokens payload-start payload-end fn-hash examples)
-                                      examples)
-                      next-invariants (if (string-eq name "invariant")
-                                        (append-invariant-payload src tokens payload-start payload-end fn-hash invariants)
-                                        invariants)]
+                  payload-end (consume-form tokens payload-start)
+                  next-examples (if (string-eq name "example")
+                    (append-example-payload src tokens payload-start payload-end fn-hash examples)
+                    examples)
+                  next-invariants (if (string-eq name "invariant")
+                    (append-invariant-payload src tokens payload-start payload-end fn-hash invariants)
+                    invariants)]
                   (collect-defn-metadata-loop src tokens payload-end end fn-hash next-examples next-invariants 1 0 0))
                 (make-suite examples invariants)))
             (let [next-paren (step-paren-depth kind paren-depth)
-                  next-bracket (step-bracket-depth kind bracket-depth)
-                  next-brace (step-brace-depth kind brace-depth)]
+              next-bracket (step-bracket-depth kind bracket-depth)
+              next-brace (step-brace-depth kind brace-depth)]
               (collect-defn-metadata-loop
                 src tokens (+ idx 1) end fn-hash examples invariants
                 next-paren next-bracket next-brace)))
           (let [next-paren (step-paren-depth kind paren-depth)
-                next-bracket (step-bracket-depth kind bracket-depth)
-                next-brace (step-brace-depth kind brace-depth)]
+            next-bracket (step-bracket-depth kind bracket-depth)
+            next-brace (step-brace-depth kind brace-depth)]
             (collect-defn-metadata-loop
               src tokens (+ idx 1) end fn-hash examples invariants
               next-paren next-bracket next-brace)))))))
@@ -488,7 +488,7 @@
             (if (< (+ idx 2) count)
               (if (= (token-kind tokens (+ idx 1)) (tok-defn))
                 (let [fn-hash (name-hash src (token-start tokens (+ idx 2)) (token-end tokens (+ idx 2)))
-                      pair (collect-defn-metadata-loop src tokens (+ idx 3) next-idx fn-hash examples invariants 1 0 0)]
+                  pair (collect-defn-metadata-loop src tokens (+ idx 3) next-idx fn-hash examples invariants 1 0 0)]
                   (extract-test-cases-loop src tokens next-idx count (vector-get pair 0) (vector-get pair 1)))
                 (extract-test-cases-loop src tokens next-idx count examples invariants))
               (extract-test-cases-loop src tokens next-idx count examples invariants))
@@ -510,10 +510,10 @@
   (if (>= idx count)
     results
     (let [tc (vector-get test-cases idx)
-          name (vector-get tc 0)
-          expr (vector-get tc 2)
-          actual (eval-node program expr (env-new))
-          passed (value-truthy actual)]
+      name (vector-get tc 0)
+      expr (vector-get tc 2)
+      actual (eval-node program expr (env-new))
+      passed (value-truthy actual)]
       (run-examples-loop program test-cases (+ idx 1) count
         (vector-push results (make-test-result name passed passed))))))
 
@@ -529,12 +529,12 @@
 
 (defn materialize-invariant [program tc]
   (let [name (vector-get tc 0)
-        fn-hash (vector-get tc 1)
-        decl (find-defn-by-hash program fn-hash 0 (vector-length program))
-        sample-count (if (> (vector-length decl) 0)
-                       (invariant-sample-count (vector-get decl 2))
-                       0)
-        passed (if (> sample-count 0) 1 0)]
+    fn-hash (vector-get tc 1)
+    decl (find-defn-by-hash program fn-hash 0 (vector-length program))
+    sample-count (if (> (vector-length decl) 0)
+      (invariant-sample-count (vector-get decl 2))
+      0)
+    passed (if (> sample-count 0) 1 0)]
     (make-test-result name passed sample-count)))
 
 (defn run-invariants [program invariants]
@@ -545,7 +545,7 @@
         (vector-push (vector-new 1)
           (materialize-invariant program (vector-get invariants 0)))
         (let [results (vector-push (vector-new count)
-                        (materialize-invariant program (vector-get invariants 0)))]
+            (materialize-invariant program (vector-get invariants 0)))]
           (vector-push results
             (materialize-invariant program (vector-get invariants 1))))))))
 
@@ -564,11 +564,11 @@
 ;; generate-tests: source からテストスイート全体を生成・実行
 (defn generate-tests [src]
   (let [program (parse-program (strip-test-metadata src))
-        cases (extract-test-cases src)
-        examples (vector-get cases 0)
-        invariants (vector-get cases 1)
-        example-results (run-examples program examples)
-        invariant-results (run-invariants program invariants)]
+    cases (extract-test-cases src)
+    examples (vector-get cases 0)
+    invariants (vector-get cases 1)
+    example-results (run-examples program examples)
+    invariant-results (run-invariants program invariants)]
     (make-suite example-results invariant-results)))
 
 (defn generate-tests-from-source [src]
@@ -577,7 +577,7 @@
 ;; エントリポイント (テスト用)
 (defn main []
   (let [src "(defn abs [x] :example [(= (abs 5) 5)] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"
-        suite (generate-tests src)]
+    suite (generate-tests src)]
     (do
       (print (vector-length suite))
       (print (vector-length (vector-get suite 0)))

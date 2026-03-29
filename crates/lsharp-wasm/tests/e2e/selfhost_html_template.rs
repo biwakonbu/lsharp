@@ -1,7 +1,7 @@
 use super::support::*;
 
 fn selfhost_html_template_runtime_bundle() -> String {
-    include_str!("../../../../selfhost/HtmlTemplate.ls").to_string()
+    selfhost_module("HtmlTemplate.ls").to_string()
 }
 
 // === Step 1: html-escape テスト ===

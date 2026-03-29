@@ -146,51 +146,78 @@ pub(crate) fn example_path(name: &str) -> std::path::PathBuf {
         .join(name)
 }
 
+pub(crate) fn selfhost_project_root() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
+    selfhost_project_root().join(match name {
+        "Main.ls" => "selfhost/src/App/Main.ls",
+        "Cli.ls" => "selfhost/src/App/Cli.ls",
+        "Token.ls" => "selfhost/src/Syntax/Token.ls",
+        "AST.ls" => "selfhost/src/Syntax/AST.ls",
+        "Lexer.ls" => "selfhost/src/Syntax/Lexer.ls",
+        "Parser.ls" => "selfhost/src/Syntax/Parser.ls",
+        "IR.ls" => "selfhost/src/IR/IR.ls",
+        "Type.ls" => "selfhost/src/Types/Type.ls",
+        "TypeScheme.ls" => "selfhost/src/Types/TypeScheme.ls",
+        "TypeInferCore.ls" => "selfhost/src/Types/TypeInferCore.ls",
+        "TypeInfer.ls" => "selfhost/src/Types/TypeInfer.ls",
+        "Compiler.ls" => "selfhost/src/Backend/Wasm/Compiler.ls",
+        "WasmEmit.ls" => "selfhost/src/Backend/Wasm/WasmEmit.ls",
+        "Formatter.ls" => "selfhost/src/Tools/Text/Formatter.ls",
+        "TestRunner.ls" => "selfhost/src/Tools/Test/TestRunner.ls",
+        "DocTools.ls" => "selfhost/src/Tools/Doc/DocTools.ls",
+        "HtmlDoc.ls" => "selfhost/src/Tools/Doc/HtmlDoc.ls",
+        "HtmlLayout.ls" => "selfhost/src/Tools/Doc/HtmlLayout.ls",
+        "HtmlTemplate.ls" => "selfhost/src/Tools/Doc/HtmlTemplate.ls",
+        "JsonRpc.ls" => "selfhost/src/Tools/Lsp/JsonRpc.ls",
+        "Linter.ls" => "selfhost/src/Tools/Text/Linter.ls",
+        "MacroExpand.ls" => "selfhost/src/Syntax/MacroExpand.ls",
+        other => panic!("不明な selfhost canonical module path: {other}"),
+    })
+}
+
 /// selfhost/src/App/Main.ls のパス (import 解決にはマルチファイルコンパイルが必要)
 pub(crate) fn selfhost_main_path() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost/src/App/Main.ls")
+    selfhost_source_path("Main.ls")
 }
 
 /// selfhost/Cli.ls を直接実行するための最小 runtime bundle
 pub(crate) fn selfhost_cli_runtime_bundle() -> String {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
-    let ir_ls = std::fs::read_to_string(project_root.join("selfhost/IR.ls"))
-        .expect("selfhost/IR.ls が読み込めない");
-    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
-        .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-        .expect("selfhost/TypeScheme.ls が読み込めない");
-    let type_infer_core_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInferCore.ls"))
-            .expect("selfhost/TypeInferCore.ls が読み込めない");
-    let type_infer_defn_ls =
-        std::fs::read_to_string(project_root.join("selfhost/TypeInferDefn.ls"))
-            .expect("selfhost/TypeInferDefn.ls が読み込めない");
-    let type_infer_ls = std::fs::read_to_string(project_root.join("selfhost/TypeInfer.ls"))
-        .expect("selfhost/TypeInfer.ls が読み込めない");
-    let compiler_ls = std::fs::read_to_string(project_root.join("selfhost/Compiler.ls"))
-        .expect("selfhost/Compiler.ls が読み込めない");
-    let wasm_emit_ls = std::fs::read_to_string(project_root.join("selfhost/WasmEmit.ls"))
-        .expect("selfhost/WasmEmit.ls が読み込めない");
-    let formatter_ls = std::fs::read_to_string(project_root.join("selfhost/Formatter.ls"))
-        .expect("selfhost/Formatter.ls が読み込めない");
-    let test_runner_ls = std::fs::read_to_string(project_root.join("selfhost/TestRunner.ls"))
-        .expect("selfhost/TestRunner.ls が読み込めない");
-    let doc_tools_ls = std::fs::read_to_string(project_root.join("selfhost/DocTools.ls"))
-        .expect("selfhost/DocTools.ls が読み込めない");
-    let cli_ls = std::fs::read_to_string(project_root.join("selfhost/Cli.ls"))
-        .expect("selfhost/Cli.ls が読み込めない");
+    let token_ls = std::fs::read_to_string(selfhost_source_path("Token.ls"))
+        .expect("canonical Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(selfhost_source_path("AST.ls"))
+        .expect("canonical AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(selfhost_source_path("Lexer.ls"))
+        .expect("canonical Lexer.ls が読み込めない");
+    let parser_ls = std::fs::read_to_string(selfhost_source_path("Parser.ls"))
+        .expect("canonical Parser.ls が読み込めない");
+    let ir_ls = std::fs::read_to_string(selfhost_source_path("IR.ls"))
+        .expect("canonical IR.ls が読み込めない");
+    let type_ls = std::fs::read_to_string(selfhost_source_path("Type.ls"))
+        .expect("canonical Type.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(selfhost_source_path("TypeScheme.ls"))
+        .expect("canonical TypeScheme.ls が読み込めない");
+    let type_infer_core_ls = std::fs::read_to_string(selfhost_source_path("TypeInferCore.ls"))
+        .expect("canonical TypeInferCore.ls が読み込めない");
+    let type_infer_ls = std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
+        .expect("canonical TypeInfer.ls が読み込めない");
+    let compiler_ls = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
+        .expect("canonical Compiler.ls が読み込めない");
+    let wasm_emit_ls = std::fs::read_to_string(selfhost_source_path("WasmEmit.ls"))
+        .expect("canonical WasmEmit.ls が読み込めない");
+    let formatter_ls = std::fs::read_to_string(selfhost_source_path("Formatter.ls"))
+        .expect("canonical Formatter.ls が読み込めない");
+    let test_runner_ls = std::fs::read_to_string(selfhost_source_path("TestRunner.ls"))
+        .expect("canonical TestRunner.ls が読み込めない");
+    let doc_tools_ls = std::fs::read_to_string(selfhost_source_path("DocTools.ls"))
+        .expect("canonical DocTools.ls が読み込めない");
+    let cli_ls = std::fs::read_to_string(selfhost_source_path("Cli.ls"))
+        .expect("canonical Cli.ls が読み込めない");
 
     format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
         token_ls,
         ast_ls,
         lexer_ls,
@@ -199,7 +226,6 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
         type_ls,
         type_scheme_ls,
         type_infer_core_ls,
-        type_infer_defn_ls,
         type_infer_ls,
         compiler_ls,
         wasm_emit_ls,

@@ -2864,7 +2864,7 @@ tag = "v0.1.0"
     #[test]
     fn test_check_selfhost_typeinfer_standalone_import_path() {
         let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let file = project_root.join("selfhost/TypeInfer.ls");
+        let file = project_root.join("selfhost/src/Types/TypeInfer.ls");
         let source = std::fs::read_to_string(&file).unwrap();
         let program = lsharp_syntax::parse(&source).unwrap();
         let mut infer = lsharp_types::infer::Infer::new();
@@ -2875,7 +2875,7 @@ tag = "v0.1.0"
 
         assert!(
             results.is_ok(),
-            "selfhost/TypeInfer.ls standalone check path は成功するべき: {:?}",
+            "selfhost/src/Types/TypeInfer.ls standalone check path は成功するべき: {:?}",
             results.err()
         );
     }

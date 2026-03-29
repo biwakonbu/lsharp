@@ -53,9 +53,9 @@
   (if (>= idx len)
     out
     (let [elem-text (int-to-string (vector-get values idx))
-          next-out (if (= idx 0)
-                     (string-concat out elem-text)
-                     (string-concat out (string-concat "," elem-text)))]
+      next-out (if (= idx 0)
+        (string-concat out elem-text)
+        (string-concat out (string-concat "," elem-text)))]
       (render-int-vector-json-loop values (+ idx 1) len next-out))))
 
 (defn render-int-vector-json [values]
@@ -93,9 +93,9 @@
           "\"code\":"
           (string-concat
             (int-to-string error-code)
-              (string-concat
-                ",\"message\":\""
-                (string-concat error-message "\"}}"))))))))
+            (string-concat
+              ",\"message\":\""
+              (string-concat error-message "\"}}"))))))))
 
 ;; JSON-RPC framing helpers
 ;; Content-Length は body 長から決定的に計算する
@@ -223,70 +223,70 @@
 ;; 検証用 main
 (defn main []
   (let [req (make-rpc-request 1 (method-initialize) 0)
-        resp (make-rpc-response 1 42)
-        notif (make-rpc-notification (method-did-open))
-        err (make-rpc-error 1 -32600)]
+    resp (make-rpc-response 1 42)
+    notif (make-rpc-notification (method-did-open))
+    err (make-rpc-error 1 -32600)]
     (do
       ;; メッセージ種別の検証
-      (print (rpc-type req))      ;; 0 (request)
-      (print (rpc-type resp))     ;; 1 (response)
-      (print (rpc-type notif))    ;; 2 (notification)
-      (print (rpc-type err))      ;; 3 (error)
+      (print (rpc-type req)) ;; 0 (request)
+      (print (rpc-type resp)) ;; 1 (response)
+      (print (rpc-type notif)) ;; 2 (notification)
+      (print (rpc-type err)) ;; 3 (error)
 
       ;; ID の検証
-      (print (rpc-id req))        ;; 1
-      (print (rpc-id resp))       ;; 1
-      (print (rpc-id err))        ;; 1
+      (print (rpc-id req)) ;; 1
+      (print (rpc-id resp)) ;; 1
+      (print (rpc-id err)) ;; 1
 
       ;; メソッドハッシュの検証
       (print (method-initialize)) ;; 1
-      (print (method-shutdown))   ;; 2
+      (print (method-shutdown)) ;; 2
 
       ;; === P9-6b: LSP ハンドラ検証 ===
 
       ;; server capabilities
       (let [caps (make-server-capabilities)]
         (do
-          (print (vector-length caps))   ;; 7
-          (print (vector-get caps 0))))  ;; 1 (text-document-sync)
+          (print (vector-length caps)) ;; 7
+          (print (vector-get caps 0)))) ;; 1 (text-document-sync)
 
       ;; jsonrpc-handle-initialize
       (let [init-resp (jsonrpc-handle-initialize 1)]
         (do
-          (print (rpc-type init-resp))   ;; 1 (response)
+          (print (rpc-type init-resp)) ;; 1 (response)
           (print (rpc-id init-resp))
-          (print (vector-length (vector-get init-resp 2)))))   ;; 1 / capabilities len
+          (print (vector-length (vector-get init-resp 2))))) ;; 1 / capabilities len
 
       ;; jsonrpc-handle-shutdown
       (let [shutdown-resp (jsonrpc-handle-shutdown 9)]
         (do
-          (print (rpc-type shutdown-resp))  ;; 1 (response)
+          (print (rpc-type shutdown-resp)) ;; 1 (response)
           (print (rpc-id shutdown-resp))
-          (print (vector-get shutdown-resp 2))))  ;; 0 (result)
+          (print (vector-get shutdown-resp 2)))) ;; 0 (result)
 
       ;; handle-did-open
-      (print (handle-did-open 100))      ;; 100
+      (print (handle-did-open 100)) ;; 100
 
       ;; jsonrpc-handle-hover
       (let [hover-resp (jsonrpc-handle-hover 2 1)]
         (do
-          (print (rpc-type hover-resp))  ;; 1 (response)
-          (print (rpc-id hover-resp))))  ;; 2
+          (print (rpc-type hover-resp)) ;; 1 (response)
+          (print (rpc-id hover-resp)))) ;; 2
 
       ;; handle-goto-def
       (let [def-resp (handle-goto-def 3 10 5)]
         (do
-          (print (rpc-type def-resp))    ;; 1 (response)
+          (print (rpc-type def-resp)) ;; 1 (response)
           (let [def-pos (vector-get def-resp 2)]
             (do
-              (print (vector-get def-pos 0))  ;; 10 (line)
-              (print (vector-get def-pos 1))))))  ;; 5 (col)
+              (print (vector-get def-pos 0)) ;; 10 (line)
+              (print (vector-get def-pos 1)))))) ;; 5 (col)
 
       ;; handle-completion
-      (print (make-keyword-completions))  ;; 7
+      (print (make-keyword-completions)) ;; 7
 
       ;; 追加メソッド定数
-      (print (method-formatting))         ;; 23
+      (print (method-formatting)) ;; 23
       (print (method-publish-diagnostics)) ;; 30
 
       ;; deterministic JSON-RPC text

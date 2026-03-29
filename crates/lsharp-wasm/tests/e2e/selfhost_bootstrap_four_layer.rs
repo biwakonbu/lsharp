@@ -4497,9 +4497,16 @@ fn test_e2e_boot04_stage2_compiler_to_stage3_minimal() {
 #[test]
 fn test_e2e_boot04_self_hosted_stage2_compiler_blocker() {
     let main_path = selfhost_main_path();
-    let selfhost_dir = main_path
+    // selfhost/ ルート（src/ の親）を WASI dir として設定する。
+    // selfhost/src/App/Main.ls は dotted import (Syntax.AST 等) を使うため、
+    // source_root = "src" が正しく解決されるには WASI dir = selfhost/ が必要。
+    let selfhost_root = main_path
         .parent()
-        .expect("selfhost/ ディレクトリが取得できない")
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
         .to_path_buf();
     let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/fixtures");
@@ -4508,12 +4515,12 @@ fn test_e2e_boot04_self_hosted_stage2_compiler_blocker() {
     let stage1_wasm = compile_file_only(&main_path);
     assert_valid_wasm(&stage1_wasm);
 
-    // stage1 が compiler-mode で Main.ls 自身をコンパイル → stage2_self_compiler を試みる
-    // (import 宣言があるため、compile-program-functions は import を無視する)
+    // stage1 が compiler-mode で src/App/Main.ls 自身をコンパイル → stage2_self_compiler を試みる
+    // WASI dir = selfhost/ にすることで dotted import (Syntax.AST → src/Syntax/AST.ls) が解決される
     let stage2_result = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
         &stage1_wasm,
-        Some(&selfhost_dir),
-        &["compiler", "Main.ls"],
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
     );
 
     match stage2_result {
@@ -4825,12 +4832,12 @@ fn test_parse_caws_standalone() {
 fn test_debug_stage2_output_minimal() {
     // stage2 が minimal.ls をコンパイルした出力を保存・検証する
     let main_path = selfhost_main_path();
-    let selfhost_dir = main_path.parent().unwrap().to_path_buf();
+    let selfhost_root = main_path.parent().unwrap().parent().unwrap().parent().unwrap().to_path_buf();
     let stage1_wasm = compile_file_only(&main_path);
 
-    // stage1 で Main.ls をコンパイル → stage2
+    // stage1 で src/App/Main.ls をコンパイル → stage2
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm, Some(&selfhost_dir), &["compiler", "Main.ls"],
+        &stage1_wasm, Some(&selfhost_root), &["compiler", "src/App/Main.ls"],
     ).expect("stage1 failed");
     let modules = parse_emitted_wasm_modules(&output, 1);
     let stage2 = &modules[0];
@@ -4857,10 +4864,10 @@ fn test_debug_stage2_output_minimal() {
 fn test_validate_stage2_wasm() {
     // stage2 を詳細バリデーション
     let main_path = selfhost_main_path();
-    let selfhost_dir = main_path.parent().unwrap().to_path_buf();
+    let selfhost_root = main_path.parent().unwrap().parent().unwrap().parent().unwrap().to_path_buf();
     let stage1_wasm = compile_file_only(&main_path);
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm, Some(&selfhost_dir), &["compiler", "Main.ls"],
+        &stage1_wasm, Some(&selfhost_root), &["compiler", "src/App/Main.ls"],
     ).expect("stage1 failed");
     let modules = parse_emitted_wasm_modules(&output, 1);
     let stage2 = &modules[0];
@@ -4874,10 +4881,10 @@ fn test_validate_stage2_wasm() {
 fn test_debug_func_49_context() {
     // stage2 のwasm 49 番の関数が何をしているか確認
     let main_path = selfhost_main_path();
-    let selfhost_dir = main_path.parent().unwrap().to_path_buf();
+    let selfhost_root = main_path.parent().unwrap().parent().unwrap().parent().unwrap().to_path_buf();
     let stage1_wasm = compile_file_only(&main_path);
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm, Some(&selfhost_dir), &["compiler", "Main.ls"],
+        &stage1_wasm, Some(&selfhost_root), &["compiler", "src/App/Main.ls"],
     ).expect("stage1 failed");
     let modules = parse_emitted_wasm_modules(&output, 1);
     let stage2 = &modules[0];

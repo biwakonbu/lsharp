@@ -3,8 +3,8 @@ use super::support::*;
 fn selfhost_html_layout_runtime_bundle() -> String {
     format!(
         "{}\n{}",
-        include_str!("../../../../selfhost/HtmlTemplate.ls"),
-        include_str!("../../../../selfhost/HtmlLayout.ls")
+        selfhost_module("HtmlTemplate.ls"),
+        selfhost_module("HtmlLayout.ls")
     )
 }
 

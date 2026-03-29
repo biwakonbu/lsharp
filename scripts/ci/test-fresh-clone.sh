@@ -43,12 +43,23 @@ OUT_DIR="$WORK_DIR/default-path-smoke" \
 LSHARP_BIN="$LSHARP_BIN" \
   bash scripts/ci/default-path-smoke.sh
 
+resolve_selfhost_source() {
+  local module="$1"
+  local path
+  path="$(find selfhost/src -name "${module}.ls" -print -quit)"
+  if [[ -z "$path" ]]; then
+    echo "ERROR: canonical selfhost source for ${module}.ls not found" >&2
+    exit 1
+  fi
+  printf '%s\n' "$path"
+}
+
 echo "=== fresh-clone-smoke: compile representative selfhost / stdlib slices ==="
-"$LSHARP_BIN" compile selfhost/Token.ls -o "$SMOKE_OUT_DIR/selfhost_Token.wasm"
+"$LSHARP_BIN" compile "$(resolve_selfhost_source Token)" -o "$SMOKE_OUT_DIR/selfhost_Token.wasm"
 "$LSHARP_BIN" compile stdlib/Core.ls -o "$SMOKE_OUT_DIR/stdlib_Core.wasm"
 
 if [[ ! -s "$SMOKE_OUT_DIR/selfhost_Token.wasm" ]]; then
-  echo "ERROR: selfhost/Token.ls compile output is empty"
+  echo "ERROR: canonical selfhost Token compile output is empty"
   exit 1
 fi
 

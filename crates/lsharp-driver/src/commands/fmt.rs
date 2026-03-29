@@ -14,16 +14,11 @@ pub enum FmtResult {
 
 /// L# ソースコードをフォーマットする
 ///
-/// パース → Display でフォーマット済み S 式を生成する。
+/// パースで妥当性だけを確認し、source-aware formatter で文字列リテラルを保持したまま整形する。
 /// 末尾改行を付与して返す。
 pub fn format_source(source: &str) -> Result<String, String> {
-    let program = lsharp_syntax::parse(source).map_err(|e| format!("{e}"))?;
-    let mut formatted = format!("{program}");
-    // 末尾改行を保証
-    if !formatted.ends_with('\n') {
-        formatted.push('\n');
-    }
-    Ok(formatted)
+    lsharp_syntax::parse(source).map_err(|e| format!("{e}"))?;
+    Ok(lsharp_lsp::format_source(source))
 }
 
 /// ソースのフォーマット差分を検出する

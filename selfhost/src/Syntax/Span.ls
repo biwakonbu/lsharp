@@ -30,11 +30,11 @@
 ;; 二つの Span をマージ: 最小の start と最大の end を取る
 (defn span-merge [s1 s2]
   (let [start1 (span-start s1)
-        start2 (span-start s2)
-        end1 (span-end s1)
-        end2 (span-end s2)
-        min-start (if (< start1 start2) start1 start2)
-        max-end (if (> end1 end2) end1 end2)]
+    start2 (span-start s2)
+    end1 (span-end s1)
+    end2 (span-end s2)
+    min-start (if (< start1 start2) start1 start2)
+    max-end (if (> end1 end2) end1 end2)]
     (span-new min-start max-end)))
 
 ;; ダミー Span (位置情報なし): [0, 0]
@@ -47,7 +47,7 @@
 ;; 改行文字 (ASCII 10) をカウント
 (defn span-line [src pos]
   (let [line (ref-new 1)
-        i (ref-new 0)]
+    i (ref-new 0)]
     (do
       ;; 最大 256 文字分の改行をスキャン (展開ループ)
       (if (< (ref-get i) pos)
@@ -85,7 +85,7 @@
 ;; 直前の改行からの距離
 (defn span-column [src pos]
   (let [col (ref-new 1)
-        i (ref-new (- pos 1))]
+    i (ref-new (- pos 1))]
     (do
       ;; 後方に改行を探す
       (if (>= (ref-get i) 0)
@@ -115,17 +115,17 @@
 
 (defn main []
   (let [s1 (span-new 0 10)
-        s2 (span-new 5 20)
-        merged (span-merge s1 s2)
-        dummy (span-dummy)]
+    s2 (span-new 5 20)
+    merged (span-merge s1 s2)
+    dummy (span-dummy)]
     (do
       ;; 基本アクセサ
-      (print (span-start s1))    ;; 0
-      (print (span-end s1))      ;; 10
+      (print (span-start s1)) ;; 0
+      (print (span-end s1)) ;; 10
       ;; マージ
       (print (span-start merged)) ;; 0
-      (print (span-end merged))   ;; 20
+      (print (span-end merged)) ;; 20
       ;; ダミー
-      (print (span-start dummy))  ;; 0
-      (print (span-end dummy))    ;; 0
+      (print (span-start dummy)) ;; 0
+      (print (span-end dummy)) ;; 0
       0)))

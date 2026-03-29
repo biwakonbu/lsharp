@@ -16,26 +16,26 @@
 ;; 戻り値: IR モジュール (関数 IR のリスト)
 (defn lower-module [program]
   (let [n (vector-length program)
-        ir-funcs (ref-new (vector-new n))
-        i (ref-new 0)]
+    ir-funcs (ref-new (vector-new n))
+    i (ref-new 0)]
     (do
       ;; 各宣言を lowering
       (if (> n 0)
         (do
           (ref-set ir-funcs (vector-push (ref-get ir-funcs)
-            (lower-decl-dispatch (vector-get program 0))))
+              (lower-decl-dispatch (vector-get program 0))))
           (if (> n 1)
             (do
               (ref-set ir-funcs (vector-push (ref-get ir-funcs)
-                (lower-decl-dispatch (vector-get program 1))))
+                  (lower-decl-dispatch (vector-get program 1))))
               (if (> n 2)
                 (do
                   (ref-set ir-funcs (vector-push (ref-get ir-funcs)
-                    (lower-decl-dispatch (vector-get program 2))))
+                      (lower-decl-dispatch (vector-get program 2))))
                   (if (> n 3)
                     (do
                       (ref-set ir-funcs (vector-push (ref-get ir-funcs)
-                        (lower-decl-dispatch (vector-get program 3))))
+                          (lower-decl-dispatch (vector-get program 3))))
                       0)
                     0))
                 0))
@@ -55,10 +55,10 @@
 ;; defn 宣言を IR 関数に変換
 (defn lower-defn-to-ir [decl]
   (let [name-hash (vector-get decl 1)
-        param-count (vector-get decl 2)
-        body-idx (+ 3 param-count)
-        body (vector-get decl body-idx)
-        ir-body (lower-expr-to-ir body)]
+    param-count (vector-get decl 2)
+    body-idx (+ 3 param-count)
+    body (vector-get decl body-idx)
+    ir-body (lower-expr-to-ir body)]
     ;; IR 関数: [name-hash, param-count, ir-body]
     (vector-push (vector-push (vector-push (vector-new 3) name-hash) param-count) ir-body)))
 
@@ -74,8 +74,8 @@
 
 (defn main []
   (let [;; テスト: 空プログラム
-        empty-prog (vector-new 0)
-        result (lower-module empty-prog)]
+    empty-prog (vector-new 0)
+    result (lower-module empty-prog)]
     (do
-      (print (vector-length result))  ;; 0
+      (print (vector-length result)) ;; 0
       0)))

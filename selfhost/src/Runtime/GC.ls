@@ -57,7 +57,7 @@
 ;; add-root: GC ルートにポインタを登録
 (defn add-root [root-set ptr]
   (let [count (vector-get root-set 0)
-        new-set (vector-push root-set ptr)]
+    new-set (vector-push root-set ptr)]
     new-set))
 
 ;; remove-root: GC ルートからポインタを解除
@@ -77,10 +77,10 @@
 ;; free-list にブロックを追加
 (defn free-list-add [flist addr size]
   (let [entry (vector-push
-                (vector-push
-                  (vector-push (vector-new 3) addr)
-                  size)
-                0)]
+      (vector-push
+        (vector-push (vector-new 3) addr)
+        size)
+      0)]
     (vector-push flist entry)))
 
 ;; free-list から指定サイズ以上のブロックを検索して割り当て
@@ -90,7 +90,7 @@
     (if (= len 0)
       0
       (let [entry (vector-get flist 0)
-            block-size (vector-get entry 1)]
+        block-size (vector-get entry 1)]
         (if (>= block-size size)
           (vector-get entry 0)
           0)))))
@@ -158,7 +158,7 @@
 ;; mark-phase の実装: ルート集合を起点に深さ優先探索
 (defn gc-mark [root-set heap]
   (let [count (vector-get root-set 0)
-        marked (ref-new 0)]
+    marked (ref-new 0)]
     (do
       ;; ルートセットの各エントリをマークする
       (if (> count 0)
@@ -169,7 +169,7 @@
 ;; sweep: ヒープ全体を走査し、未マークオブジェクトを回収
 (defn sweep [heap heap-size free-list]
   (let [freed (ref-new 0)
-        offset (ref-new 0)]
+    offset (ref-new 0)]
     (do
       ;; ヒープを走査して未マークオブジェクトを free-list に追加
       (if (< (ref-get offset) heap-size)
@@ -196,7 +196,7 @@
 ;; nursery からオブジェクトを割り当て
 (defn nursery-alloc [nursery size]
   (let [ptr (vector-get nursery 2)
-        end (vector-get nursery 1)]
+    end (vector-get nursery 1)]
     (if (< (+ ptr size) end)
       ptr
       0)))
@@ -229,8 +229,8 @@
 ;; 生存オブジェクトは旧世代に昇格 (promotion)
 (defn minor-gc [nursery remembered-set old-gen]
   (let [nursery-start (vector-get nursery 0)
-        nursery-end (vector-get nursery 1)
-        promoted-count (ref-new 0)]
+    nursery-end (vector-get nursery 1)
+    promoted-count (ref-new 0)]
     (do
       ;; remembered-set のルートからマーク
       ;; 生存オブジェクトを promote
@@ -244,12 +244,12 @@
 ;; mark-sweep の完全なサイクルを実行
 (defn gc-collect [gc-state]
   (let [root-set (vector-get gc-state 3)
-        heap-start (vector-get gc-state 0)
-        heap-end (vector-get gc-state 1)
-        heap-size (- heap-end heap-start)
-        flist (vector-get gc-state 4)
-        marked (gc-mark root-set heap-start)
-        freed (sweep heap-start heap-size flist)]
+    heap-start (vector-get gc-state 0)
+    heap-end (vector-get gc-state 1)
+    heap-size (- heap-end heap-start)
+    flist (vector-get gc-state 4)
+    marked (gc-mark root-set heap-start)
+    freed (sweep heap-start heap-size flist)]
     freed))
 
 ;; collect: gc-collect のエイリアス
@@ -259,7 +259,7 @@
 ;; heap-used: 現在のヒープ使用量を返す
 (defn heap-used [gc-state]
   (let [heap-start (vector-get gc-state 0)
-        bump-ptr (vector-get gc-state 2)]
+    bump-ptr (vector-get gc-state 2)]
     (- bump-ptr heap-start)))
 
 ;; =============================================================================
@@ -285,7 +285,7 @@
 ;; gc-reset: GC 状態をリセットする (REPL セッション間で使用)
 (defn gc-reset [gc-state]
   (let [heap-start (vector-get gc-state 0)
-        heap-end (vector-get gc-state 1)]
+    heap-end (vector-get gc-state 1)]
     (make-gc-state heap-start (- heap-end heap-start))))
 
 ;; =============================================================================
@@ -305,5 +305,5 @@
 ;; 戻り値: リーク疑いのオブジェクト数 (0 = リークなし)
 (defn detect-leak [gc-state]
   (let [allocs (alloc-count gc-state)
-        freed (freed-count gc-state)]
+    freed (freed-count gc-state)]
     (- allocs freed)))

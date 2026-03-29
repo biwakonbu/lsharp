@@ -107,10 +107,10 @@
     ;; 全制約チェック済み: 成功
     0
     (let [c (constraint-at clist i)
-          t-hash (constraint-trait c)
-          ty (constraint-type c)
-          ;; 置換を適用して具体型を取得
-          resolved-ty (apply-subst subst ty)]
+      t-hash (constraint-trait c)
+      ty (constraint-type c)
+      ;; 置換を適用して具体型を取得
+      resolved-ty (apply-subst subst ty)]
       ;; トレイトが登録されているか
       (if (= (lookup-trait trait-reg t-hash) 0)
         ;; 未登録トレイト: エラー (制約インデックス + 1)
@@ -120,7 +120,7 @@
           (if (= ty-tag-val 1)
             ;; 具体型: 実装があるか確認
             (let [ty-hash (type-name resolved-ty)
-                  impl-found (lookup-impl impl-reg t-hash ty-hash)]
+              impl-found (lookup-impl impl-reg t-hash ty-hash)]
               (if (= impl-found 0)
                 ;; 実装なし: エラー
                 (+ i 1)
@@ -135,15 +135,15 @@
 
 (defn main []
   (let [t-reg (make-trait-registry)
-        i-reg (make-impl-registry)
-        ;; Show トレイトを登録 (hash=500)
-        t-reg2 (register-trait t-reg 500 (vector-push (vector-new 1) 1))
-        ;; Int に Show を実装 (Int hash=100)
-        i-reg2 (register-impl i-reg 500 100 (vector-push (vector-new 1) 1))
-        ;; 制約: Show Int
-        cs (add-constraint (constraints-new) 500 (make-type-int))
-        ;; 制約解決
-        result (solve-constraints cs t-reg2 i-reg2 (map-new))]
+    i-reg (make-impl-registry)
+    ;; Show トレイトを登録 (hash=500)
+    t-reg2 (register-trait t-reg 500 (vector-push (vector-new 1) 1))
+    ;; Int に Show を実装 (Int hash=100)
+    i-reg2 (register-impl i-reg 500 100 (vector-push (vector-new 1) 1))
+    ;; 制約: Show Int
+    cs (add-constraint (constraints-new) 500 (make-type-int))
+    ;; 制約解決
+    result (solve-constraints cs t-reg2 i-reg2 (map-new))]
     (do
-      (print result)  ;; 0 (成功)
+      (print result) ;; 0 (成功)
       0)))

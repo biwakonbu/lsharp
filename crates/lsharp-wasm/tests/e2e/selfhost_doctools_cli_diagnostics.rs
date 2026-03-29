@@ -2,11 +2,11 @@ use super::support::*;
 
 fn selfhost_doctools_runtime_bundle() -> String {
     [
-        include_str!("../../../../selfhost/Token.ls"),
-        include_str!("../../../../selfhost/AST.ls"),
-        include_str!("../../../../selfhost/Lexer.ls"),
-        include_str!("../../../../selfhost/Parser.ls"),
-        include_str!("../../../../selfhost/DocTools.ls"),
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("DocTools.ls"),
     ]
     .join("\n")
 }
@@ -14,9 +14,9 @@ fn selfhost_doctools_runtime_bundle() -> String {
 fn selfhost_cli_html_runtime_bundle() -> String {
     [
         &selfhost_doctools_runtime_bundle(),
-        include_str!("../../../../selfhost/HtmlTemplate.ls"),
-        include_str!("../../../../selfhost/HtmlLayout.ls"),
-        include_str!("../../../../selfhost/HtmlDoc.ls"),
+        selfhost_module("HtmlTemplate.ls"),
+        selfhost_module("HtmlLayout.ls"),
+        selfhost_module("HtmlDoc.ls"),
     ]
     .join("\n")
 }

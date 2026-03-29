@@ -9,9 +9,9 @@
 (defn is-digit
   [c]
   :doc "ASCII コードが数字かどうかを判定する。"
-  :params [(c "判定対象の ASCII コード")]
+  :params [ (c "判定対象の ASCII コード")]
   :returns "0-9 の範囲なら true、そうでなければ false"
-  :example [(is-digit 48)]
+  :example [ (is-digit 48)]
   (if (>= c 48)
     (<= c 57)
     false))
@@ -20,9 +20,9 @@
 (defn is-upper
   [c]
   :doc "ASCII コードが大文字アルファベットかどうかを判定する。"
-  :params [(c "判定対象の ASCII コード")]
+  :params [ (c "判定対象の ASCII コード")]
   :returns "A-Z の範囲なら true、そうでなければ false"
-  :example [(is-upper 65)]
+  :example [ (is-upper 65)]
   (if (>= c 65)
     (<= c 90)
     false))
@@ -31,9 +31,9 @@
 (defn is-lower
   [c]
   :doc "ASCII コードが小文字アルファベットかどうかを判定する。"
-  :params [(c "判定対象の ASCII コード")]
+  :params [ (c "判定対象の ASCII コード")]
   :returns "a-z の範囲なら true、そうでなければ false"
-  :example [(is-lower 97)]
+  :example [ (is-lower 97)]
   (if (>= c 97)
     (<= c 122)
     false))
@@ -42,9 +42,9 @@
 (defn is-alpha
   [c]
   :doc "ASCII コードが英字かどうかを判定する。"
-  :params [(c "判定対象の ASCII コード")]
+  :params [ (c "判定対象の ASCII コード")]
   :returns "英字なら true、そうでなければ false"
-  :example [(is-alpha 65)]
+  :example [ (is-alpha 65)]
   (if (is-upper c)
     true
     (is-lower c)))
@@ -53,9 +53,9 @@
 (defn is-alphanumeric
   [c]
   :doc "ASCII コードが英数字かどうかを判定する。"
-  :params [(c "判定対象の ASCII コード")]
+  :params [ (c "判定対象の ASCII コード")]
   :returns "英字または数字なら true、そうでなければ false"
-  :example [(is-alphanumeric 48)]
+  :example [ (is-alphanumeric 48)]
   (if (is-alpha c)
     true
     (is-digit c)))
@@ -64,9 +64,9 @@
 (defn is-whitespace
   [c]
   :doc "ASCII コードが代表的な空白文字かどうかを判定する。"
-  :params [(c "判定対象の ASCII コード")]
+  :params [ (c "判定対象の ASCII コード")]
   :returns "space, tab, newline, return のいずれかなら true、そうでなければ false"
-  :example [(is-whitespace 32)]
+  :example [ (is-whitespace 32)]
   (if (== c 32) true
     (if (== c 9) true
       (if (== c 10) true

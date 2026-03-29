@@ -46,41 +46,41 @@
 ;; 戻り値: Wasm 命令列の Vector
 (defn emit-function [ir-func]
   (let [body (vector-get ir-func 2)
-        result (ref-new (vector-new 16))
-        i (ref-new 0)
-        n (vector-length body)]
+    result (ref-new (vector-new 16))
+    i (ref-new 0)
+    n (vector-length body)]
     (do
       ;; 各 IR 命令を変換
       (if (< (ref-get i) n)
         (do
           (let [instr (vector-get body (ref-get i))
-                opcode (vector-get instr 0)
-                operand (vector-get instr 1)
-                wasm-instr (emit-instruction opcode operand)]
+            opcode (vector-get instr 0)
+            operand (vector-get instr 1)
+            wasm-instr (emit-instruction opcode operand)]
             (ref-set result (vector-push (ref-get result) wasm-instr)))
           (ref-set i (+ (ref-get i) 1))
           (if (< (ref-get i) n)
             (do
               (let [instr (vector-get body (ref-get i))
-                    opcode (vector-get instr 0)
-                    operand (vector-get instr 1)
-                    wasm-instr (emit-instruction opcode operand)]
+                opcode (vector-get instr 0)
+                operand (vector-get instr 1)
+                wasm-instr (emit-instruction opcode operand)]
                 (ref-set result (vector-push (ref-get result) wasm-instr)))
               (ref-set i (+ (ref-get i) 1))
               (if (< (ref-get i) n)
                 (do
                   (let [instr (vector-get body (ref-get i))
-                        opcode (vector-get instr 0)
-                        operand (vector-get instr 1)
-                        wasm-instr (emit-instruction opcode operand)]
+                    opcode (vector-get instr 0)
+                    operand (vector-get instr 1)
+                    wasm-instr (emit-instruction opcode operand)]
                     (ref-set result (vector-push (ref-get result) wasm-instr)))
                   (ref-set i (+ (ref-get i) 1))
                   (if (< (ref-get i) n)
                     (do
                       (let [instr (vector-get body (ref-get i))
-                            opcode (vector-get instr 0)
-                            operand (vector-get instr 1)
-                            wasm-instr (emit-instruction opcode operand)]
+                        opcode (vector-get instr 0)
+                        operand (vector-get instr 1)
+                        wasm-instr (emit-instruction opcode operand)]
                         (ref-set result (vector-push (ref-get result) wasm-instr)))
                       0)
                     0))
@@ -93,6 +93,6 @@
 (defn main []
   (let [instr (emit-instruction 1 42)]
     (do
-      (print (vector-get instr 0))   ;; 66 (wasm i64.const)
-      (print (vector-get instr 1))   ;; 42
+      (print (vector-get instr 0)) ;; 66 (wasm i64.const)
+      (print (vector-get instr 1)) ;; 42
       0)))

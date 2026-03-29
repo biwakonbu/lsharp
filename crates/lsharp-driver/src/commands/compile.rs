@@ -191,6 +191,36 @@ mod tests {
     }
 
     #[test]
+    fn test_prepare_source_for_compile_preserves_escaped_quotes_in_strings() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_escape_quotes");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let file = dir.join("Main.ls");
+        std::fs::write(
+            &file,
+            "(defn   main  []   (print \"\\\"id\\\":\"))\n(defn parse [] (print \"\\\"method\\\":\\\"initialize\\\"\"))\n",
+        )
+        .unwrap();
+
+        let (formatted, changed) = prepare_source_for_compile(&file).unwrap();
+        let on_disk = std::fs::read_to_string(&file).unwrap();
+
+        assert!(changed, "format 差分があるので changed=true を返すべき");
+        assert_eq!(formatted, on_disk, "compile 前に書き戻した内容を返すべき");
+        assert!(
+            formatted.contains("\"\\\"id\\\":\""),
+            "escaped quote を含む文字列リテラルが壊れている: {formatted}"
+        );
+        assert!(
+            formatted.contains("\"\\\"method\\\":\\\"initialize\\\"\""),
+            "escaped quote を含む method 文字列が壊れている: {formatted}"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn test_compile_file_runs_format_check_codegen_pipeline() {
         let dir = std::env::temp_dir().join("lsharp_compile_pipeline_codegen");
         let _ = std::fs::remove_dir_all(&dir);

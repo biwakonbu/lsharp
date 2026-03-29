@@ -42,9 +42,9 @@
   ;; fd_write(fd=1, iovs_ptr, iovs_len=1, nwritten_ptr)
   ;; iov: [buf_ptr, buf_len]
   (let [fd 1
-        iovs-ptr 0
-        iovs-len 1
-        nwritten-ptr 8]
+    iovs-ptr 0
+    iovs-len 1
+    nwritten-ptr 8]
     (do
       ;; 実際の WASI 呼び出しはランタイムが処理
       ;; ここでは引数構造の定義のみ
@@ -58,8 +58,8 @@
 (defn wasi-read-file [fd buf-ptr buf-len]
   ;; fd_read(fd, iovs_ptr, iovs_len=1, nread_ptr)
   (let [iovs-ptr 0
-        iovs-len 1
-        nread-ptr 8]
+    iovs-len 1
+    nread-ptr 8]
     ;; 読み込みバイト数を返す (暫定: 0)
     0))
 
@@ -70,8 +70,8 @@
 (defn wasi-write-file [fd buf-ptr buf-len]
   ;; fd_write(fd, iovs_ptr, iovs_len=1, nwritten_ptr)
   (let [iovs-ptr 0
-        iovs-len 1
-        nwritten-ptr 8]
+    iovs-len 1
+    nwritten-ptr 8]
     ;; 書き込みバイト数を返す (暫定: buf-len)
     buf-len))
 
@@ -80,8 +80,8 @@
 (defn wasi-clock-now []
   ;; clock_time_get(clock_id=0 (realtime), precision=0, timestamp_ptr)
   (let [clock-id 0
-        precision 0
-        timestamp-ptr 16]
+    precision 0
+    timestamp-ptr 16]
     ;; タイムスタンプを返す (暫定: 0)
     0))
 
@@ -92,20 +92,20 @@
   ;; [module-name, func-name, type-idx] の Vector
   (vector-push
     (vector-push
-      (vector-push (vector-new 3) 0)   ;; module: wasi_snapshot_preview1
-      0)                                ;; func: fd_write
-    0))                                 ;; type index
+      (vector-push (vector-new 3) 0) ;; module: wasi_snapshot_preview1
+      0) ;; func: fd_write
+    0)) ;; type index
 
 ;; WASI メモリ定義
 (defn wasi-memory []
   ;; [initial-pages, max-pages] の Vector
   (vector-push
-    (vector-push (vector-new 2) 1)      ;; initial: 1 page
-    256))                               ;; max: 256 pages (16MB)
+    (vector-push (vector-new 2) 1) ;; initial: 1 page
+    256)) ;; max: 256 pages (16MB)
 
 ;; エントリポイント (テスト用)
 (defn main []
   (do
     (wasi-print 42)
-    (print (wasi-clock-now))            ;; 0
+    (print (wasi-clock-now)) ;; 0
     0))

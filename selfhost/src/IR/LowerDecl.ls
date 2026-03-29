@@ -17,9 +17,9 @@
     (if (= tag 20)
       ;; defn: パラメータを環境に登録して body を lowering
       (let [name-hash (vector-get decl 1)
-            param-count (vector-get decl 2)
-            env (ref-new (map-new))
-            idx (ref-new 1)]
+        param-count (vector-get decl 2)
+        env (ref-new (map-new))
+        idx (ref-new 1)]
         (do
           ;; パラメータを環境に登録 (最大4つ)
           (if (> param-count 0)
@@ -35,7 +35,7 @@
             0)
           ;; body を lowering
           (let [body-idx (+ 3 param-count)
-                body (vector-get decl body-idx)]
+            body (vector-get decl body-idx)]
             (lower-expr body (ref-get env) (vector-new 8)))))
       ;; その他の宣言: そのまま返す
       decl)))
@@ -50,11 +50,11 @@
 ;; 戻り値: 辞書引数を先頭に追加した関数呼び出し IR
 (defn lower-trait-call [call-node dict]
   (let [method-hash (vector-get call-node 1)
-        arg-count (vector-get call-node 2)
-        ;; 辞書からメソッドの実装関数インデックスを取得
-        impl-idx (map-get dict method-hash)
-        ;; 辞書引数を先頭に追加した新しい呼び出しを構築
-        result (ref-new (vector-new 8))]
+    arg-count (vector-get call-node 2)
+    ;; 辞書からメソッドの実装関数インデックスを取得
+    impl-idx (map-get dict method-hash)
+    ;; 辞書引数を先頭に追加した新しい呼び出しを構築
+    result (ref-new (vector-new 8))]
     (do
       ;; 辞書引数をまず push
       (ref-set result (vector-push (ref-get result) (make-instr 1 impl-idx)))
@@ -62,7 +62,7 @@
       (if (> arg-count 0)
         (do
           (ref-set result (vector-push (ref-get result)
-            (make-instr 10 1)))  ;; 仮: 最初の引数を local.get
+              (make-instr 10 1))) ;; 仮: 最初の引数を local.get
           0)
         0)
       ;; 関数呼び出し命令
@@ -73,11 +73,11 @@
 
 (defn main []
   (let [;; defn 宣言の lowering テスト
-        ;; (defn f [x] x) -> [20, hash-f, 1, hash-x, var(hash-x)]
-        var-node (vector-push (vector-push (vector-new 2) 4) 99)
-        decl (vector-push (vector-push (vector-push (vector-push (vector-push
-          (vector-new 5) 20) 100) 1) 99) var-node)
-        result (lower-decl decl)]
+    ;; (defn f [x] x) -> [20, hash-f, 1, hash-x, var(hash-x)]
+    var-node (vector-push (vector-push (vector-new 2) 4) 99)
+    decl (vector-push (vector-push (vector-push (vector-push (vector-push
+              (vector-new 5) 20) 100) 1) 99) var-node)
+    result (lower-decl decl)]
     (do
-      (print (vector-length result))  ;; IR 命令数
+      (print (vector-length result)) ;; IR 命令数
       0)))

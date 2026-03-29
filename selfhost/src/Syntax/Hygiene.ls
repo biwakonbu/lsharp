@@ -22,8 +22,8 @@
 (defn gensym [counter-ref]
   (let [id (ref-get counter-ref)]
     (do (ref-set counter-ref (+ id 1))
-        (let [sym (vector-new 2)]
-          (vector-push (vector-push sym 100) id)))))
+      (let [sym (vector-new 2)]
+        (vector-push (vector-push sym 100) id)))))
 
 ;; gensym シンボルかどうかを判定
 (defn gensym? [node]
@@ -44,8 +44,8 @@
 (defn scope-id [depth scope-counter-ref]
   (let [num (ref-get scope-counter-ref)]
     (do (ref-set scope-counter-ref (+ num 1))
-        (let [sid (vector-new 2)]
-          (vector-push (vector-push sid depth) num)))))
+      (let [sid (vector-new 2)]
+        (vector-push (vector-push sid depth) num)))))
 
 ;; make-scope-id: scope-id のエイリアス (後方互換)
 (defn make-scope-id [depth scope-counter-ref]
@@ -108,21 +108,21 @@
 ;; エントリポイント (テスト用)
 (defn main []
   (let [counter (ref-new 0)
-        scope-counter (ref-new 0)
-        ;; gensym テスト
-        g1 (gensym counter)
-        g2 (gensym counter)
-        ;; scope-id テスト
-        s1 (scope-id 0 scope-counter)
-        s2 (scope-id 1 scope-counter)
-        ;; expansion-trace テスト
-        trace (expansion-trace)]
+    scope-counter (ref-new 0)
+    ;; gensym テスト
+    g1 (gensym counter)
+    g2 (gensym counter)
+    ;; scope-id テスト
+    s1 (scope-id 0 scope-counter)
+    s2 (scope-id 1 scope-counter)
+    ;; expansion-trace テスト
+    trace (expansion-trace)]
     (do
-      (print (gensym-id g1))      ;; 0
-      (print (gensym-id g2))      ;; 1
-      (print (scope-depth s1))    ;; 0
-      (print (scope-number s1))   ;; 0
-      (print (scope-depth s2))    ;; 1
-      (print (scope-number s2))   ;; 1
+      (print (gensym-id g1)) ;; 0
+      (print (gensym-id g2)) ;; 1
+      (print (scope-depth s1)) ;; 0
+      (print (scope-number s1)) ;; 0
+      (print (scope-depth s2)) ;; 1
+      (print (scope-number s2)) ;; 1
       (print (trace-length trace)) ;; 0
       0)))

@@ -24,13 +24,13 @@
   ;; 実際の実行はホストランタイム (wasmtime) が担当
   ;; ここではインターフェースの定義のみ
   (let [exit-code 0
-        stdout (vector-new 256)
-        stderr (vector-new 256)]
+    stdout (vector-new 256)
+    stderr (vector-new 256)]
     (make-run-result exit-code stdout stderr)))
 
 ;; エントリポイント (テスト用)
 (defn main []
   (let [result (run-wasi (vector-new 0))]
     (do
-      (print (vector-get result 0))   ;; exit-code: 0
+      (print (vector-get result 0)) ;; exit-code: 0
       0)))

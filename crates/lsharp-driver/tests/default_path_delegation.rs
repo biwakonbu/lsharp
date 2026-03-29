@@ -129,7 +129,7 @@ exit 0
 
     let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
         .arg("check")
-        .arg("selfhost/TypeInfer.ls")
+        .arg("selfhost/src/Types/TypeInfer.ls")
         .env("LSHARP_PATH", &script_path)
         .output()
         .expect("driver execution failed");
@@ -140,7 +140,7 @@ exit 0
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("check-delegated:check selfhost/TypeInfer.ls"),
+        stdout.contains("check-delegated:check selfhost/src/Types/TypeInfer.ls"),
         "check コマンドは LSHARP_PATH 先へ argv を委譲するべき: {stdout}"
     );
 

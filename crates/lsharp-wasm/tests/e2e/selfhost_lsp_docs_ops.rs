@@ -2,11 +2,11 @@ use super::support::*;
 
 fn selfhost_doctools_runtime_bundle() -> String {
     [
-        include_str!("../../../../selfhost/Token.ls"),
-        include_str!("../../../../selfhost/AST.ls"),
-        include_str!("../../../../selfhost/Lexer.ls"),
-        include_str!("../../../../selfhost/Parser.ls"),
-        include_str!("../../../../selfhost/DocTools.ls"),
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("DocTools.ls"),
     ]
     .join("\n")
 }
@@ -22,8 +22,7 @@ fn run_lsp_harness(_name: &str, harness: &str) -> Vec<String> {
 }
 
 fn lsp_diagnostic_helpers_source() -> String {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let lsp_path = project_root.join("selfhost/LspServer.ls");
+    let lsp_path = selfhost_source_path("LspServer.ls");
     let source = std::fs::read_to_string(&lsp_path)
         .unwrap_or_else(|e| panic!("{} の読み込みに失敗: {}", lsp_path.display(), e));
     let start = source
@@ -51,16 +50,15 @@ fn run_lsp_diagnostic_harness(harness: &str) -> Vec<String> {
 /// Red Phase: selfhost/LspServer.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_lsp_diagnostic_ordering() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let lsp_path = project_root.join("selfhost/LspServer.ls");
-    assert!(lsp_path.exists(), "selfhost/LspServer.ls が存在しない");
+    let lsp_path = selfhost_source_path("LspServer.ls");
+    assert!(lsp_path.exists(), "canonical LspServer.ls が存在しない");
     let source =
-        std::fs::read_to_string(&lsp_path).expect("selfhost/LspServer.ls の読み込みに失敗");
+        std::fs::read_to_string(&lsp_path).expect("canonical LspServer.ls の読み込みに失敗");
 
     // T4b-3 AC-208: 診断は source フィールドでグルーピングされ行番号昇順
     assert!(
         source.contains("sort") || source.contains("order") || source.contains("diagnostic"),
-        "selfhost/LspServer.ls に diagnostics のソート/順序制御がない (AC-208)"
+        "canonical LspServer.ls に diagnostics のソート/順序制御がない (AC-208)"
     );
 }
 

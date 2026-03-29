@@ -143,11 +143,20 @@ fi
 echo ""
 echo "--- [実装欠落] selfhost: ファイル存在確認 ---"
 MISSING_CORE=0
-for f in Lexer.ls Parser.ls AST.ls Type.ls TypeScheme.ls Compiler.ls WasmEmit.ls Main.ls; do
-    if [ -f "selfhost/$f" ]; then
-        echo "  OK: selfhost/$f"
+for f in \
+    selfhost/src/Syntax/Lexer.ls \
+    selfhost/src/Syntax/Parser.ls \
+    selfhost/src/Syntax/AST.ls \
+    selfhost/src/Types/Type.ls \
+    selfhost/src/Types/TypeScheme.ls \
+    selfhost/src/Backend/Wasm/Compiler.ls \
+    selfhost/src/Backend/Wasm/WasmEmit.ls \
+    selfhost/src/App/Main.ls
+do
+    if [ -f "$f" ]; then
+        echo "  OK: $f"
     else
-        echo "  MISSING: selfhost/$f"
+        echo "  MISSING: $f"
         MISSING_CORE=$((MISSING_CORE + 1))
         ERRORS=$((ERRORS + 1))
     fi
@@ -155,12 +164,12 @@ done
 
 echo ""
 echo "--- [実装欠落] selfhost: 追加コンポーネント確認 ---"
-for f in MacroExpand.ls TypeInfer.ls; do
-    if [ -f "selfhost/$f" ]; then
-        LINES=$(wc -l < "selfhost/$f" | tr -d ' ')
-        echo "  EXISTS: selfhost/$f ($LINES 行)"
+for f in selfhost/src/Syntax/MacroExpand.ls selfhost/src/Types/TypeInfer.ls; do
+    if [ -f "$f" ]; then
+        LINES=$(wc -l < "$f" | tr -d ' ')
+        echo "  EXISTS: $f ($LINES 行)"
     else
-        echo "  MISSING: selfhost/$f"
+        echo "  MISSING: $f"
         ERRORS=$((ERRORS + 1))
     fi
 done

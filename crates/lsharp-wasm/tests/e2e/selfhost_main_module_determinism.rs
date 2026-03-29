@@ -8,27 +8,27 @@ use super::support::*;
 /// モジュール依存関係のドキュメントコメントを含むことを検証する。
 #[test]
 fn test_e2e_selfhost_main_module_structure() {
-    let source = include_str!("../../../../selfhost/Main.ls");
+    let source = selfhost_module("Main.ls");
 
     // 1. module 宣言の存在
     assert!(
-        source.contains("(module Main)"),
-        "Main.ls に (module Main) 宣言が必要"
+        source.contains("(module App.Main)"),
+        "Main.ls に (module App.Main) 宣言が必要"
     );
 
     // 2. 全ての import 宣言の存在
     let expected_imports = [
-        "AST",
-        "Lexer",
-        "Parser",
-        "MacroExpand",
-        "TypeInfer",
-        "Compiler",
-        "WasmEmit",
-        "NativeTarget",
-        "NativeCodegen",
-        "NativeEmit",
-        "Linker",
+        "Syntax.AST",
+        "Syntax.Lexer",
+        "Syntax.Parser",
+        "Syntax.MacroExpand",
+        "Types.TypeInfer",
+        "Backend.Wasm.Compiler",
+        "Backend.Wasm.WasmEmit",
+        "Backend.Native.NativeTarget",
+        "Backend.Native.NativeCodegen",
+        "Backend.Native.NativeEmit",
+        "Backend.Native.Linker",
     ];
     for imp in &expected_imports {
         let import_decl = format!("(import {})", imp);
@@ -45,19 +45,18 @@ fn test_e2e_selfhost_main_module_structure() {
         "Main.ls に compile-full-pipeline 関数が必要"
     );
 
-    // 4. モジュール依存関係のドキュメントコメントの存在
-    // 各モジュール名が依存関係コメント中に記載されていること
+    // 4. selfhost canonical resolver が Main.ls に統合されていること
     assert!(
-        source.contains(";; Module Dependencies") || source.contains(";; モジュール依存関係"),
-        "Main.ls にモジュール依存関係のドキュメントコメントが必要"
+        source.contains("(defn resolve-source-root")
+            && source.contains("(defn resolve-package-root")
+            && source.contains("(defn resolve-module-path"),
+        "Main.ls に canonical resolver 関数群が必要"
     );
 
-    // 5. import 経由の API 注記（旧: import から取得予定 / import で置換予定）
+    // 5. compiler-mode 用 entrypoint が残っていること
     assert!(
-        source.contains("import から取得予定")
-            || source.contains("import で置換予定")
-            || source.contains("import 経由"),
-        "Main.ls に import 経由 API への注記コメントが必要"
+        source.contains("(defn compile-file-mode"),
+        "Main.ls に compile-file-mode 関数が必要"
     );
 
     // 6. Main.ls 固有の関数が残っていること
@@ -81,32 +80,40 @@ fn test_e2e_selfhost_main_module_structure() {
 /// topological sort でコンパイル順を決定。依存先が依存元より前に来ることを検証する。
 ///
 /// 期待されるコンパイル順 (依存深度レベル):
-///   Level 0 (依存なし): Token, IR, Type, JsonRpc, NativeTarget
-///   Level 1: AST (-> Token), TypeScheme (-> Type), Lexer (-> Token), WasmEmit (-> IR),
-///            NativeCodegen (-> NativeTarget, IR), NativeEmit (-> NativeTarget),
-///            Linker (-> NativeTarget)
-///   Level 2: Parser (-> Token, AST), MacroExpand (-> AST, Token),
-///            TypeInfer (-> AST, Type, TypeScheme), Compiler (-> AST, IR),
-///            Linter (-> AST), Formatter (-> AST)
-///   Level 3: Main (-> Lexer, Parser, MacroExpand, TypeInfer, Compiler, WasmEmit,
-///                  NativeTarget, NativeCodegen, NativeEmit, Linker)
+///   Level 0 (依存なし): Syntax.Token, IR.IR, Types.Type, Tools.Lsp.JsonRpc, Backend.Native.NativeTarget
+///   Level 1: Syntax.AST, Types.TypeScheme, Syntax.Lexer, Backend.Wasm.WasmEmit,
+///            Backend.Native.NativeCodegen, Backend.Native.NativeEmit, Backend.Native.Linker
+///   Level 2: Syntax.Parser, Syntax.MacroExpand, Types.TypeInfer, Backend.Wasm.Compiler,
+///            Tools.Text.Linter, Tools.Text.Formatter
+///   Level 3: App.Main
 #[test]
 fn test_e2e_selfhost_module_graph_topological_sort() {
     use std::collections::{HashMap, HashSet, VecDeque};
 
-    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
+    let base_dir = selfhost_package_root().join("src");
+    let mut pending_dirs = vec![base_dir.clone()];
+    let mut source_paths = Vec::new();
 
-    // 1. selfhost/*.ls を読み込み、module/import を抽出
+    while let Some(dir) = pending_dirs.pop() {
+        for entry in std::fs::read_dir(&dir)
+            .unwrap_or_else(|e| panic!("{:?} の読み込みに失敗: {}", dir, e))
+        {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.is_dir() {
+                pending_dirs.push(path);
+                continue;
+            }
+            if path.extension().is_some_and(|ext| ext == "ls") {
+                source_paths.push(path);
+            }
+        }
+    }
+
+    // 1. selfhost/src/**/*.ls を読み込み、module/import を抽出
     let mut module_imports: HashMap<String, Vec<String>> = HashMap::new();
 
-    for entry in std::fs::read_dir(&base_dir).expect("selfhost ディレクトリの読み込みに失敗")
-    {
-        let entry = entry.unwrap();
-        let path = entry.path();
-        if path.extension().map_or(true, |ext| ext != "ls") {
-            continue;
-        }
-
+    for path in &source_paths {
         let source = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("{:?} の読み込みに失敗: {}", path, e));
 
@@ -146,10 +153,11 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         module_imports.insert(module_name, imports);
     }
 
-    // 全モジュールが検出されること (selfhost/*.ls の実際の数に合わせる)
-    assert!(
-        module_imports.len() >= 15,
-        "selfhost に少なくとも 15 モジュールが存在すべき。検出: {:?}",
+    // 全 source file が module 宣言を持つこと
+    assert_eq!(
+        module_imports.len(),
+        source_paths.len(),
+        "selfhost/src/**/*.ls の全ファイルが module 宣言を持つべき。検出: {:?}",
         module_imports.keys().collect::<Vec<_>>()
     );
 
@@ -267,8 +275,14 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         levels.insert(module.clone(), level);
     }
 
-    // Level 0: Token, IR, Type, JsonRpc, NativeTarget (依存なし)
-    let level_0: HashSet<&str> = ["Token", "IR", "Type", "JsonRpc", "NativeTarget"]
+    // Level 0: Syntax.Token, IR.IR, Types.Type, Tools.Lsp.JsonRpc, Backend.Native.NativeTarget (依存なし)
+    let level_0: HashSet<&str> = [
+        "Syntax.Token",
+        "IR.IR",
+        "Types.Type",
+        "Tools.Lsp.JsonRpc",
+        "Backend.Native.NativeTarget",
+    ]
         .iter()
         .copied()
         .collect();
@@ -280,14 +294,15 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         );
     }
 
-    // Level 1: AST, TypeScheme, Lexer, NativeCodegen, NativeEmit, Linker
+    // Level 1: Syntax.AST, Types.TypeScheme, Syntax.Lexer, Backend.Native.NativeCodegen,
+    // Backend.Native.NativeEmit, Backend.Native.Linker
     let level_1: HashSet<&str> = [
-        "AST",
-        "TypeScheme",
-        "Lexer",
-        "NativeCodegen",
-        "NativeEmit",
-        "Linker",
+        "Syntax.AST",
+        "Types.TypeScheme",
+        "Syntax.Lexer",
+        "Backend.Native.NativeCodegen",
+        "Backend.Native.NativeEmit",
+        "Backend.Native.Linker",
     ]
     .iter()
     .copied()
@@ -300,22 +315,23 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         );
     }
 
-    // Level 1 にも属する: WasmEmit (-> IR のみ)
+    // Level 1 にも属する: Backend.Wasm.WasmEmit (-> IR.IR のみ)
     assert_eq!(
-        levels["WasmEmit"], 1,
-        "WasmEmit は Level 1 であるべき (IR のみに依存)。実際: Level {}",
-        levels["WasmEmit"]
+        levels["Backend.Wasm.WasmEmit"], 1,
+        "Backend.Wasm.WasmEmit は Level 1 であるべき (IR.IR のみに依存)。実際: Level {}",
+        levels["Backend.Wasm.WasmEmit"]
     );
 
-    // Level 2: Parser, MacroExpand, TypeInfer, Compiler, Linter, Formatter
+    // Level 2: Syntax.Parser, Syntax.MacroExpand, Types.TypeInfer, Backend.Wasm.Compiler,
+    // Tools.Text.Linter, Tools.Text.Formatter
     // (Level 1 のモジュールに依存)
     let level_2: HashSet<&str> = [
-        "Parser",
-        "MacroExpand",
-        "TypeInfer",
-        "Compiler",
-        "Linter",
-        "Formatter",
+        "Syntax.Parser",
+        "Syntax.MacroExpand",
+        "Types.TypeInfer",
+        "Backend.Wasm.Compiler",
+        "Tools.Text.Linter",
+        "Tools.Text.Formatter",
     ]
     .iter()
     .copied()
@@ -328,8 +344,8 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         );
     }
 
-    // Level 3: Main (-> Parser, TypeInfer 等の Level 2)
-    let level_3: HashSet<&str> = ["Main"].iter().copied().collect();
+    // Level 3: App.Main (-> Syntax.Parser, Types.TypeInfer 等の Level 2)
+    let level_3: HashSet<&str> = ["App.Main"].iter().copied().collect();
     for module in &level_3 {
         assert_eq!(
             levels[*module], 3,
@@ -360,31 +376,33 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
 #[test]
 fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
     // 1. MacroExpand.ls と TypeInfer.ls にモジュール宣言が存在することを検証
-    let macroexpand_source = std::fs::read_to_string("../../selfhost/MacroExpand.ls").unwrap();
-    let typeinfer_source = std::fs::read_to_string("../../selfhost/TypeInfer.ls").unwrap();
+    let macroexpand_source = std::fs::read_to_string(selfhost_source_path("MacroExpand.ls"))
+        .expect("canonical MacroExpand.ls が読み込めない");
+    let typeinfer_source = std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
+        .expect("canonical TypeInfer.ls が読み込めない");
 
-    // MacroExpand.ls: (module MacroExpand) + (import AST) + (import Token)
+    // MacroExpand.ls: (module Syntax.MacroExpand) + (import Syntax.AST) + (import Syntax.Token)
     assert!(
-        macroexpand_source.contains("(module MacroExpand)"),
-        "MacroExpand.ls に (module MacroExpand) 宣言がない"
+        macroexpand_source.contains("(module Syntax.MacroExpand)"),
+        "MacroExpand.ls に (module Syntax.MacroExpand) 宣言がない"
     );
     assert!(
-        macroexpand_source.contains("(import AST)"),
-        "MacroExpand.ls に (import AST) がない"
+        macroexpand_source.contains("(import Syntax.AST)"),
+        "MacroExpand.ls に (import Syntax.AST) がない"
     );
 
-    // TypeInfer.ls: (module TypeInfer) + (import AST) + (import Type) + (import TypeScheme)
+    // TypeInfer.ls: (module Types.TypeInfer) + (import Syntax.AST) + (import Types.Type) + (import Types.TypeScheme)
     assert!(
-        typeinfer_source.contains("(module TypeInfer)"),
-        "TypeInfer.ls に (module TypeInfer) 宣言がない"
+        typeinfer_source.contains("(module Types.TypeInfer)"),
+        "TypeInfer.ls に (module Types.TypeInfer) 宣言がない"
     );
     assert!(
-        typeinfer_source.contains("(import Type)"),
-        "TypeInfer.ls に (import Type) がない"
+        typeinfer_source.contains("(import Types.Type)"),
+        "TypeInfer.ls に (import Types.Type) がない"
     );
     assert!(
-        typeinfer_source.contains("(import TypeScheme)"),
-        "TypeInfer.ls に (import TypeScheme) がない"
+        typeinfer_source.contains("(import Types.TypeScheme)"),
+        "TypeInfer.ls に (import Types.TypeScheme) がない"
     );
 
     // 2. Main.ls の compile-full-pipeline が 5ステージを統合していることを検証
@@ -444,47 +462,28 @@ fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
 /// コンパイル可能な 13 モジュールはバイト列一致で決定性を検証。
 #[test]
 fn test_e2e_bootstrap_selfhost_full_deterministic() {
-    let selfhost_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
     // コンパイル可能なモジュール: 2回コンパイルでバイト列一致
     let compilable_modules: &[(&str, &str)] = &[
-        ("Lexer.ls", include_str!("../../../../selfhost/Lexer.ls")),
-        ("Parser.ls", include_str!("../../../../selfhost/Parser.ls")),
-        ("AST.ls", include_str!("../../../../selfhost/AST.ls")),
-        ("Token.ls", include_str!("../../../../selfhost/Token.ls")),
-        (
-            "Compiler.ls",
-            include_str!("../../../../selfhost/Compiler.ls"),
-        ),
-        ("Type.ls", include_str!("../../../../selfhost/Type.ls")),
-        ("IR.ls", include_str!("../../../../selfhost/IR.ls")),
-        (
-            "WasmEmit.ls",
-            include_str!("../../../../selfhost/WasmEmit.ls"),
-        ),
-        (
-            "TypeScheme.ls",
-            include_str!("../../../../selfhost/TypeScheme.ls"),
-        ),
-        (
-            "TypeInferCore.ls",
-            include_str!("../../../../selfhost/TypeInferCore.ls"),
-        ),
-        (
-            "Formatter.ls",
-            include_str!("../../../../selfhost/Formatter.ls"),
-        ),
-        (
-            "JsonRpc.ls",
-            include_str!("../../../../selfhost/JsonRpc.ls"),
-        ),
-        ("Linter.ls", include_str!("../../../../selfhost/Linter.ls")),
-        ("Main.ls", include_str!("../../../../selfhost/Main.ls")),
+        ("Lexer.ls", selfhost_module("Lexer.ls")),
+        ("Parser.ls", selfhost_module("Parser.ls")),
+        ("AST.ls", selfhost_module("AST.ls")),
+        ("Token.ls", selfhost_module("Token.ls")),
+        ("Compiler.ls", selfhost_module("Compiler.ls")),
+        ("Type.ls", selfhost_module("Type.ls")),
+        ("IR.ls", selfhost_module("IR.ls")),
+        ("WasmEmit.ls", selfhost_module("WasmEmit.ls")),
+        ("TypeScheme.ls", selfhost_module("TypeScheme.ls")),
+        ("TypeInferCore.ls", selfhost_module("TypeInferCore.ls")),
+        ("Formatter.ls", selfhost_module("Formatter.ls")),
+        ("JsonRpc.ls", selfhost_module("JsonRpc.ls")),
+        ("Linter.ls", selfhost_module("Linter.ls")),
+        ("Main.ls", selfhost_module("Main.ls")),
     ];
 
     let mut deterministic_count = 0;
 
     for (name, source) in compilable_modules {
-        let path = selfhost_dir.join(name);
+        let path = selfhost_source_path(name);
         let wasm1 = compile_file_only(&path);
         let wasm2 = compile_file_only(&path);
         assert_eq!(
@@ -524,19 +523,23 @@ fn test_e2e_bootstrap_selfhost_full_deterministic() {
     let text_only_modules: &[(&str, &str, &[&str])] = &[
         (
             "MacroExpand.ls",
-            include_str!("../../../../selfhost/MacroExpand.ls"),
-            &["AST", "Token"],
+            selfhost_module("MacroExpand.ls"),
+            &["Syntax.AST", "Syntax.Token"],
         ),
         (
             "TypeInfer.ls",
-            include_str!("../../../../selfhost/TypeInfer.ls"),
-            &["AST", "Type", "TypeScheme"],
+            selfhost_module("TypeInfer.ls"),
+            &["Syntax.AST", "Types.Type", "Types.TypeScheme"],
         ),
     ];
 
     for (name, source, expected_imports) in text_only_modules {
         // module 宣言の存在
-        let module_name = name.trim_end_matches(".ls");
+        let module_name = match *name {
+            "MacroExpand.ls" => "Syntax.MacroExpand",
+            "TypeInfer.ls" => "Types.TypeInfer",
+            other => panic!("不明な text-only selfhost module: {other}"),
+        };
         assert!(
             source.contains(&format!("(module {})", module_name)),
             "{} に (module {}) 宣言がない",
@@ -591,13 +594,13 @@ fn test_e2e_bootstrap_selfhost_full_deterministic() {
 #[test]
 fn test_e2e_selfhost_span_model() {
     // Span.ls のソースを読み込む
-    let span_source = std::fs::read_to_string("../../selfhost/Span.ls")
-        .expect("selfhost/Span.ls が存在しない (Span モジュール未作成)");
+    let span_source = std::fs::read_to_string(selfhost_source_path("Span.ls"))
+        .expect("canonical Span.ls が存在しない (Span モジュール未作成)");
 
     // モジュール宣言の検証
     assert!(
-        span_source.contains("(module Span)"),
-        "Span.ls に (module Span) 宣言がない"
+        span_source.contains("(module Syntax.Span)"),
+        "Span.ls に (module Syntax.Span) 宣言がない"
     );
 
     // constructor: span-new または make-span ([start end] 形式)
@@ -643,7 +646,7 @@ fn test_e2e_selfhost_span_model() {
 #[test]
 fn test_e2e_selfhost_main_fixed_api_calls() {
     let main_source =
-        std::fs::read_to_string("../../selfhost/Main.ls").expect("selfhost/Main.ls が存在しない");
+        std::fs::read_to_string(selfhost_main_path()).expect("canonical Main.ls が存在しない");
 
     // 固定 API: Lexer.tokenize (または tokenize を Lexer モジュールから呼び出し)
     let has_lexer_tokenize =

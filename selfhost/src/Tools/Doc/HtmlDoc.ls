@@ -16,7 +16,7 @@
     (elem "li" (vector-new 0)
       (vector-push (vector-new 1)
         (raw-node (string-concat (vector-get func-doc 1)
-          (string-concat "/" (int-to-string (vector-get func-doc 2)))))))))
+            (string-concat "/" (int-to-string (vector-get func-doc 2)))))))))
 
 ;; 型エントリ [hash, name, kind] を "<li>{kind} {name}</li>" に変換する
 (defn render-type-definition [type-doc]
@@ -24,7 +24,7 @@
     (elem "li" (vector-new 0)
       (vector-push (vector-new 1)
         (raw-node (string-concat (vector-get type-doc 2)
-          (string-concat " " (vector-get type-doc 1))))))))
+            (string-concat " " (vector-get type-doc 1))))))))
 
 ;; === リスト項目ループ ===
 
@@ -69,16 +69,16 @@
 ;; module-doc [tag, title, body, functions, types] からモジュールページを生成する
 (defn render-module-page [module-doc]
   (let [title (vector-get module-doc 1)
-        functions (vector-get module-doc 3)
-        types (vector-get module-doc 4)
-        functions-section (render-functions-section-html functions)
-        types-section (render-types-section-html types)
-        body
-          (if (> (string-length functions-section) 0)
-            (string-concat functions-section types-section)
-            (if (> (string-length types-section) 0)
-              types-section
-              (vector-get module-doc 2)))]
+    functions (vector-get module-doc 3)
+    types (vector-get module-doc 4)
+    functions-section (render-functions-section-html functions)
+    types-section (render-types-section-html types)
+    body
+    (if (> (string-length functions-section) 0)
+      (string-concat functions-section types-section)
+      (if (> (string-length types-section) 0)
+        types-section
+        (vector-get module-doc 2)))]
     (string-concat "<main><h1>"
       (string-concat title
         (string-concat "</h1>"
@@ -89,7 +89,7 @@
 ;; doc payload + opts から完全な HTML ドキュメントを生成する
 (defn render-html [doc opts]
   (let [title (vector-get doc 1)
-        page-content (render-module-page doc)]
+    page-content (render-module-page doc)]
     (base-layout title page-content)))
 
 ;; === インデックスページ ===
@@ -120,8 +120,8 @@
   (if (>= idx count)
     ""
     (let [guide-link (vector-get guides idx)
-          href (vector-get guide-link 0)
-          label (vector-get guide-link 1)]
+      href (vector-get guide-link 0)
+      label (vector-get guide-link 1)]
       (string-concat
         (render-link-item href label)
         (render-guide-items-loop guides (+ idx 1) count)))))
@@ -131,8 +131,8 @@
   (if (>= idx count)
     ""
     (let [module-name (vector-get modules idx)
-          href (string-concat "api/"
-                 (string-concat module-name ".html"))]
+      href (string-concat "api/"
+        (string-concat module-name ".html"))]
       (string-concat
         (render-link-item href module-name)
         (render-module-link-items-loop modules (+ idx 1) count)))))
@@ -150,14 +150,14 @@
 ;; 検証用 main
 (defn main []
   (let [doc (vector-push
-              (vector-push
-                (vector-push
-                  (vector-push
-                    (vector-push (vector-new 5) 0)
-                    "module-global")
-                  "<p>content</p>")
-                (vector-new 0))
-              (vector-new 0))]
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push (vector-new 5) 0)
+            "module-global")
+          "<p>content</p>")
+        (vector-new 0))
+      (vector-new 0))]
     (do
       (print (string-length (render-html doc 0)))
       0)))

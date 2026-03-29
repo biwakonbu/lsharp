@@ -13,10 +13,10 @@
 ;; メタデータ種別タグ
 ;; ============================================================
 
-(defn meta-doc [] 1)       ;; :doc メタデータ
-(defn meta-params [] 2)    ;; :params メタデータ
-(defn meta-returns [] 3)   ;; :returns メタデータ
-(defn meta-example [] 4)   ;; :example メタデータ
+(defn meta-doc [] 1) ;; :doc メタデータ
+(defn meta-params [] 2) ;; :params メタデータ
+(defn meta-returns [] 3) ;; :returns メタデータ
+(defn meta-example [] 4) ;; :example メタデータ
 (defn meta-invariant [] 5) ;; :invariant メタデータ
 
 ;; ============================================================
@@ -53,7 +53,7 @@
 
 (defn validate-doc [meta]
   (let [tag (vector-get meta 0)
-        value (vector-get meta 1)]
+    value (vector-get meta 1)]
     (if (= tag (meta-doc))
       ;; :doc の値ノードを検証
       (let [value-tag (vector-get value 0)]
@@ -87,7 +87,7 @@
   (let [tag (vector-get meta 0)]
     (if (= tag (meta-params))
       (let [param-count (vector-get meta 1)
-            expected-count (vector-length param-names)]
+        expected-count (vector-length param-names)]
         ;; パラメータ数の一致を検証
         (if (= param-count expected-count)
           (check-ok)
@@ -111,7 +111,7 @@
   (let [tag (vector-get meta 0)]
     (if (= tag (meta-returns))
       (let [value (vector-get meta 1)
-            value-tag (vector-get value 0)]
+        value-tag (vector-get value 0)]
         (if (= value-tag 3)
           ;; 文字列リテラル: OK
           (let [payload (vector-get value 1)]
@@ -145,14 +145,14 @@
       (check-ok)
       (check-error errors))
     (let [meta (vector-get metadata-list i)
-          tag (vector-get meta 0)
-          r (if (= tag (meta-doc))
-              (validate-doc meta)
-              (if (= tag (meta-params))
-                (validate-params meta param-names)
-                (if (= tag (meta-returns))
-                  (validate-returns meta)
-                  (check-ok))))]
+      tag (vector-get meta 0)
+      r (if (= tag (meta-doc))
+        (validate-doc meta)
+        (if (= tag (meta-params))
+          (validate-params meta param-names)
+          (if (= tag (meta-returns))
+            (validate-returns meta)
+            (check-ok))))]
       (if (check-result-ok r)
         (validate-all-loop metadata-list param-names (+ i 1) count errors)
         ;; エラー: 蓄積して続行
@@ -167,14 +167,14 @@
   (do
     ;; テスト: :doc 検証 (正常)
     (let [doc-meta (vector-push (vector-push (vector-new 2) (meta-doc))
-                     (vector-push (vector-push (vector-new 2) 3) 5))
-          r1 (validate-doc doc-meta)]
-      (print (vector-get r1 0)))  ;; 0 (OK)
+        (vector-push (vector-push (vector-new 2) 3) 5))
+      r1 (validate-doc doc-meta)]
+      (print (vector-get r1 0))) ;; 0 (OK)
 
     ;; テスト: :returns 検証 (正常)
     (let [ret-meta (vector-push (vector-push (vector-new 2) (meta-returns))
-                     (vector-push (vector-push (vector-new 2) 3) 10))
-          r2 (validate-returns ret-meta)]
-      (print (vector-get r2 0)))  ;; 0 (OK)
+        (vector-push (vector-push (vector-new 2) 3) 10))
+      r2 (validate-returns ret-meta)]
+      (print (vector-get r2 0))) ;; 0 (OK)
 
     0))
