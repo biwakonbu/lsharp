@@ -1,0 +1,1 @@
+コンパイル成功: selfhost/Main.wasm (244026 bytes)

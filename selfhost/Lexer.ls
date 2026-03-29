@@ -2,13 +2,20 @@
 (import Token)
 
 ;; Lexer.ls - L# セルフホスティング: 字句解析器
-;;
-;; ソース文字列を受け取り、トークン列 (Vector) を返す。
-;; Rust 版 lexer.rs の L# 移植版。
-;;
-;; T2-1: 値つきトークン対応
-;; tokenize-with-spans: (kind, start, end) 3つ組を返す
-;; トークン値の取得: token-int-value, token-string-value, token-symbol-name
+
+;; === 文字列比較 (ビルトイン非対応のため自前実装) ===
+(defn string-eq-loop [s1 s2 i n]
+  (if (>= i n) true
+    (if (= (string-char-at s1 i) (string-char-at s2 i))
+      (string-eq-loop s1 s2 (+ i 1) n)
+      false)))
+
+(defn string-eq [s1 s2]
+  (let [len1 (string-length s1)
+        len2 (string-length s2)]
+    (if (= len1 len2)
+      (string-eq-loop s1 s2 0 len1)
+      false)))
 
 ;; === 文字判定 ===
 

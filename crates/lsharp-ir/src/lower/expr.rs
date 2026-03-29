@@ -730,8 +730,8 @@ impl Lower {
                     // エントリ: [key: i64, value: i64] (16バイト) — key=0 は空スロット
                     // 合計: 16 + 16 * 16 = 272 bytes
                     Expr::Var(_, name) if name == "map-new" => {
-                        let default_cap: i32 = 16;
-                        let alloc_size: i64 = 16 + (default_cap as i64) * 16; // 272
+                        let default_cap: i32 = 2048;
+                        let alloc_size: i64 = 16 + (default_cap as i64) * 16; // 32784
                         ctx.emit(Instruction::I64Const(alloc_size));
                         let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
                             LowerError::UndefinedFunction {

@@ -436,3 +436,162 @@ fn test_e2e_native_host_binary_link_and_execute() {
         code_bytes
     );
 }
+
+// =============================================================================
+// ZERO-DIFF サンプル: Wasm 出力と native exit code の一致検証
+//
+// 前提: L# の `(defn main [] N)` 相当プログラムにおいて
+//   - Wasm パス: `(print N)` → stdout "N"
+//   - Native パス: IR {opcode=1, operand=N} → exit code N
+// の両者が整数 N で一致することを示す。
+// =============================================================================
+
+/// host-target 向けに定数 N を返す AArch64 バイト列を生成して実行し、exit code を返す。
+fn native_exit_code_for_const(n: u32) -> i32 {
+    let source = format!(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+(import IR)
+
+(defn print-bytes [bytes idx len]
+  (if (>= idx len)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) len))))
+
+(defn main []
+  (let [instr (vector-push (vector-push (vector-new 2) 1) {n})
+        ir (vector-push (vector-new 1) instr)
+        target (host-target)
+        code (emit-native ir target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+        n = n
+    );
+    let code_bytes = run_native_codegen_host_bytes_harness(&source);
+    assert!(
+        !code_bytes.is_empty(),
+        "native const {}: コードバイト列が空",
+        n
+    );
+    link_and_run_native_host_binary(&code_bytes)
+        .unwrap_or_else(|e| panic!("native const {}: リンク・実行失敗: {}", n, e))
+}
+
+/// ZERO-DIFF-01: const 0 — Wasm stdout と native exit code がともに 0
+#[test]
+fn test_e2e_zero_diff_const_0() {
+    let wasm_output = compile_and_run("(defn main [] (do (print 0) 0))");
+    assert_eq!(wasm_output.trim(), "0", "Wasm: const 0 を print すること");
+
+    let exit_code = native_exit_code_for_const(0);
+    assert_eq!(exit_code, 0, "Native: const 0 → exit code 0");
+
+    assert_eq!(
+        wasm_output.trim().parse::<i32>().unwrap(),
+        exit_code,
+        "ZERO-DIFF: Wasm stdout と native exit code が一致すること (const 0)"
+    );
+}
+
+/// ZERO-DIFF-02: const 1 — Wasm stdout と native exit code がともに 1
+#[test]
+fn test_e2e_zero_diff_const_1() {
+    let wasm_output = compile_and_run("(defn main [] (do (print 1) 0))");
+    assert_eq!(wasm_output.trim(), "1", "Wasm: const 1 を print すること");
+
+    let exit_code = native_exit_code_for_const(1);
+    assert_eq!(exit_code, 1, "Native: const 1 → exit code 1");
+
+    assert_eq!(
+        wasm_output.trim().parse::<i32>().unwrap(),
+        exit_code,
+        "ZERO-DIFF: Wasm stdout と native exit code が一致すること (const 1)"
+    );
+}
+
+/// ZERO-DIFF-03: const 42 — Wasm stdout と native exit code がともに 42
+///
+/// `test_e2e_native_host_binary_link_and_execute` で native 側は確認済み。
+/// このテストでは Wasm 側も含めた完全な zero-diff を検証する。
+#[test]
+fn test_e2e_zero_diff_const_42() {
+    let wasm_output = compile_and_run("(defn main [] (do (print 42) 0))");
+    assert_eq!(wasm_output.trim(), "42", "Wasm: const 42 を print すること");
+
+    let exit_code = native_exit_code_for_const(42);
+    assert_eq!(exit_code, 42, "Native: const 42 → exit code 42");
+
+    assert_eq!(
+        wasm_output.trim().parse::<i32>().unwrap(),
+        exit_code,
+        "ZERO-DIFF: Wasm stdout と native exit code が一致すること (const 42)"
+    );
+}
+
+/// ZERO-DIFF-04: const 100 — Wasm stdout と native exit code がともに 100
+#[test]
+fn test_e2e_zero_diff_const_100() {
+    let wasm_output = compile_and_run("(defn main [] (do (print 100) 0))");
+    assert_eq!(wasm_output.trim(), "100", "Wasm: const 100 を print すること");
+
+    let exit_code = native_exit_code_for_const(100);
+    assert_eq!(exit_code, 100, "Native: const 100 → exit code 100");
+
+    assert_eq!(
+        wasm_output.trim().parse::<i32>().unwrap(),
+        exit_code,
+        "ZERO-DIFF: Wasm stdout と native exit code が一致すること (const 100)"
+    );
+}
+
+/// ZERO-DIFF-SUMMARY: 代表 4 サンプル (0, 1, 42, 100) の一括 zero-diff レポート
+///
+/// 各サンプルについて Wasm stdout と native exit code の一致を確認し、
+/// zero-diff サンプルの全件合否を出力する。
+#[test]
+fn test_e2e_zero_diff_sample_summary() {
+    let samples: &[(u32, &str)] = &[(0, "0"), (1, "1"), (42, "42"), (100, "100")];
+    let mut passed = 0usize;
+    let mut failed_cases: Vec<String> = Vec::new();
+
+    for &(n, expected_str) in samples {
+        let wasm_output = compile_and_run(&format!(
+            "(defn main [] (do (print {n}) 0))",
+            n = n
+        ));
+        let wasm_ok = wasm_output.trim() == expected_str;
+
+        let exit_code = native_exit_code_for_const(n);
+        let native_ok = exit_code == n as i32;
+
+        let zero_diff_ok =
+            wasm_ok && native_ok && wasm_output.trim().parse::<i32>().ok() == Some(exit_code);
+
+        if zero_diff_ok {
+            passed += 1;
+        } else {
+            failed_cases.push(format!(
+                "const {n}: wasm={:?} native_exit={exit_code}",
+                wasm_output.trim()
+            ));
+        }
+    }
+
+    assert!(
+        failed_cases.is_empty(),
+        "ZERO-DIFF-SUMMARY: {} / {} サンプルが不一致:\n{}",
+        failed_cases.len(),
+        samples.len(),
+        failed_cases.join("\n")
+    );
+    assert_eq!(
+        passed,
+        samples.len(),
+        "ZERO-DIFF-SUMMARY: 全 {} サンプルが通過すること",
+        samples.len()
+    );
+}

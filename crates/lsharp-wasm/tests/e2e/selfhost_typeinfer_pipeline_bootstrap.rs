@@ -548,12 +548,12 @@ fn test_e2e_selfhost_main_native_pipeline_summary() {
         "2 object の ELF linker response は 8 bytes であるべき"
     );
     assert_eq!(
-        aarch64_native_len, 16,
-        "tiny aarch64 native payload も 16 bytes であるべき"
+        aarch64_native_len, 8,
+        "tiny aarch64 native payload は 8 bytes であるべき (AArch64: MOVZ W0,#42 + RET)"
     );
     assert_eq!(
-        aarch64_object_len, 32,
-        "tiny aarch64 Mach-O object は 32 bytes であるべき"
+        aarch64_object_len, 24,
+        "tiny aarch64 Mach-O object は 24 bytes であるべき (16-byte header + 8-byte AArch64 code)"
     );
     assert_eq!(
         aarch64_link_response_len, 6,
@@ -615,8 +615,8 @@ fn test_e2e_selfhost_main_native_pipeline_summary() {
         "aarch64 response file も output id=99 を含む"
     );
     assert_eq!(
-        aarch64_response_object_byte, 32,
-        "aarch64 response file は Mach-O object size=32 を含む"
+        aarch64_response_object_byte, 24,
+        "aarch64 response file は Mach-O object size=24 を含む (AArch64)"
     );
     assert_eq!(
         darwin_multi_response_object2_byte, 32,
@@ -627,8 +627,8 @@ fn test_e2e_selfhost_main_native_pipeline_summary() {
         "Linux multi-object response は 2 個目の ELF size=24 を含む"
     );
     assert_eq!(
-        aarch64_multi_response_object2_byte, 32,
-        "aarch64 multi-object response は 2 個目の Mach-O size=32 を含む"
+        aarch64_multi_response_object2_byte, 24,
+        "aarch64 multi-object response は 2 個目の Mach-O size=24 を含む (AArch64)"
     );
 }
 
