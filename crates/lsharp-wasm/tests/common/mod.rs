@@ -158,11 +158,14 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "AST.ls" => "selfhost/src/Syntax/AST.ls",
         "Lexer.ls" => "selfhost/src/Syntax/Lexer.ls",
         "Parser.ls" => "selfhost/src/Syntax/Parser.ls",
+        "Derive.ls" => "selfhost/src/Syntax/Derive.ls",
+        "Hygiene.ls" => "selfhost/src/Syntax/Hygiene.ls",
         "IR.ls" => "selfhost/src/IR/IR.ls",
         "Type.ls" => "selfhost/src/Types/Type.ls",
         "TypeScheme.ls" => "selfhost/src/Types/TypeScheme.ls",
         "TypeInferCore.ls" => "selfhost/src/Types/TypeInferCore.ls",
         "TypeInfer.ls" => "selfhost/src/Types/TypeInfer.ls",
+        "Constraints.ls" => "selfhost/src/Types/Constraints.ls",
         "Compiler.ls" => "selfhost/src/Backend/Wasm/Compiler.ls",
         "WasmEmit.ls" => "selfhost/src/Backend/Wasm/WasmEmit.ls",
         "Formatter.ls" => "selfhost/src/Tools/Text/Formatter.ls",
@@ -181,6 +184,25 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
 /// selfhost/src/App/Main.ls のパス (import 解決にはマルチファイルコンパイルが必要)
 pub(crate) fn selfhost_main_path() -> std::path::PathBuf {
     selfhost_source_path("Main.ls")
+}
+
+pub(crate) fn parser_runtime_modules() -> (String, String, String, String) {
+    let token_ls = std::fs::read_to_string(selfhost_source_path("Token.ls"))
+        .expect("canonical Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(selfhost_source_path("AST.ls"))
+        .expect("canonical AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(selfhost_source_path("Lexer.ls"))
+        .expect("canonical Lexer.ls が読み込めない");
+    let parser_ls = std::fs::read_to_string(selfhost_source_path("Parser.ls"))
+        .expect("canonical Parser.ls が読み込めない");
+    (token_ls, ast_ls, lexer_ls, parser_ls)
+}
+
+pub(crate) fn parser_macroexpand_runtime_modules() -> (String, String, String, String, String) {
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+    let macroexpand_ls = std::fs::read_to_string(selfhost_source_path("MacroExpand.ls"))
+        .expect("canonical MacroExpand.ls が読み込めない");
+    (token_ls, ast_ls, lexer_ls, parser_ls, macroexpand_ls)
 }
 
 /// selfhost/Cli.ls を直接実行するための最小 runtime bundle

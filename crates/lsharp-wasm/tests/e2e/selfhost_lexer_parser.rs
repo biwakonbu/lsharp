@@ -218,11 +218,10 @@ fn test_e2e_selfhost_lexer_additional_keywords() {
 
 #[test]
 fn test_e2e_selfhost_lexer_keyword_token_consistency() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
+    let token_ls = std::fs::read_to_string(selfhost_source_path("Token.ls"))
+        .expect("canonical Token.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(selfhost_source_path("Lexer.ls"))
+        .expect("canonical Lexer.ls が読み込めない");
 
     let harness = r#"
 (defn main []
@@ -259,11 +258,10 @@ fn test_e2e_selfhost_lexer_keyword_token_consistency() {
 
 #[test]
 fn test_e2e_selfhost_lexer_special_token_consistency() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
+    let token_ls = std::fs::read_to_string(selfhost_source_path("Token.ls"))
+        .expect("canonical Token.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(selfhost_source_path("Lexer.ls"))
+        .expect("canonical Lexer.ls が読み込めない");
 
     let harness = r#"
 (defn main []

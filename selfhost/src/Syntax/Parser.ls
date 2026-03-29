@@ -50,7 +50,10 @@
 
 ;; 現在のトークン kind を取得
 (defn p-current [spans pos-ref]
-  (span-kind spans (ref-get pos-ref)))
+  (let [pos (ref-get pos-ref)]
+    (if (>= (* pos 3) (vector-length spans))
+      99 ;; EOF ガード: spans 境界外は EOF として扱う
+      (span-kind spans pos))))
 
 ;; パーサー位置を1つ進める
 (defn p-advance [pos-ref]
@@ -982,9 +985,11 @@
 (defn parse-params-v3 [spans pos-ref src result count]
   (if (== (p-current spans pos-ref) 3) ;; ] で終了
     (do (p-advance pos-ref) result)
-    (let [h (parse-param-hash-v3 spans pos-ref src)]
-      (parse-params-v3 spans pos-ref src
-        (vector-push result h) (+ count 1)))))
+    (if (== (p-current spans pos-ref) 99) ;; EOF ガード: 無限ループ防止
+      result
+      (let [h (parse-param-hash-v3 spans pos-ref src)]
+        (parse-params-v3 spans pos-ref src
+          (vector-push result h) (+ count 1))))))
 
 ;; === defn 式 ===
 (defn parse-defn-v3 [spans pos-ref src]
@@ -1133,9 +1138,11 @@
 (defn parse-apply-args-v3 [spans pos-ref src result count]
   (if (== (p-current spans pos-ref) 1) ;; ) で終了
     (do (p-advance pos-ref) result)
-    (let [arg (parse-expr-v3 spans pos-ref src)]
-      (parse-apply-args-v3 spans pos-ref src
-        (vector-push result arg) (+ count 1)))))
+    (if (== (p-current spans pos-ref) 99) ;; EOF ガード: 無限ループ防止
+      result
+      (let [arg (parse-expr-v3 spans pos-ref src)]
+        (parse-apply-args-v3 spans pos-ref src
+          (vector-push result arg) (+ count 1))))))
 
 ;; === Recovery + 診断収集 ===
 
@@ -1199,13 +1206,14 @@
 (defn parse-skip-to-close-v3 [spans pos-ref depth]
   (if (<= depth 0) 0
     (let [kind (p-current spans pos-ref)]
-      (do
-        (p-advance pos-ref)
-        (if (== kind 0) ;; ( でネスト深くなる
-          (parse-skip-to-close-v3 spans pos-ref (+ depth 1))
-          (if (== kind 1) ;; ) でネスト浅くなる
-            (parse-skip-to-close-v3 spans pos-ref (- depth 1))
-            (parse-skip-to-close-v3 spans pos-ref depth)))))))
+      (if (== kind 99) 0 ;; EOF ガード: 無限ループ防止
+        (do
+          (p-advance pos-ref)
+          (if (== kind 0) ;; ( でネスト深くなる
+            (parse-skip-to-close-v3 spans pos-ref (+ depth 1))
+            (if (== kind 1) ;; ) でネスト浅くなる
+              (parse-skip-to-close-v3 spans pos-ref (- depth 1))
+              (parse-skip-to-close-v3 spans pos-ref depth))))))))
 
 ;; === トップレベルパース ===
 

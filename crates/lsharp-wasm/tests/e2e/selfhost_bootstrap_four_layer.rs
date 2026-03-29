@@ -4811,7 +4811,7 @@ fn test_debug_stage2_save() {
 #[test]
 fn test_parse_compiler_ls() {
     // Compiler.ls をパースして構文エラーを検出する
-    let source = std::fs::read_to_string("../../selfhost/Compiler.ls").expect("read file");
+    let source = std::fs::read_to_string(selfhost_source_path("Compiler.ls")).expect("read file");
     match lsharp_syntax::parse(&source) {
         Ok(_) => eprintln!("Compiler.ls パース成功"),
         Err(e) => eprintln!("Compiler.ls パースエラー: {:?}", e),
@@ -5061,4 +5061,72 @@ fn test_debug_token_ls_compilation() {
         func_99_idx
     });
     eprintln!("tok-eof in Token.ls compilation: {:?}", found_99);
+}
+
+#[test]
+fn test_debug_stage3_output_chars() {
+    // stage2 が minimal.ls をコンパイルした出力の最初の 200 文字を確認する
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent().unwrap().parent().unwrap().parent().unwrap().to_path_buf();
+    let stage1_wasm = compile_file_only(&main_path);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm, Some(&selfhost_root), &["compiler", "src/App/Main.ls"],
+    ).expect("stage1 failed");
+
+    let modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2 = &modules[0];
+
+    let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
+    let minimal_ls = std::fs::read_to_string(fixture_dir.join("minimal.ls"))
+        .unwrap_or_else(|_| "(defn main [] 42)".to_string());
+
+    let stage3_result = run_wasm_with_six_imports_compiler_mode(
+        stage2,
+        &minimal_ls,
+        &["compiler", "minimal.ls"],
+    );
+
+    match stage3_result {
+        Err(e) => eprintln!("stage3 実行失敗: {}", e),
+        Ok(out) => {
+            eprintln!("stage3 output length: {} chars", out.len());
+            let lines: Vec<&str> = out.lines().filter(|l| !l.is_empty()).collect();
+            eprintln!("stage3 line count: {}", lines.len());
+            if let Some(first) = lines.first() {
+                eprintln!("stage3 first line (count?): {}", first);
+            }
+            // 最初の30個の値を表示
+            let values: Vec<i64> = lines.iter()
+                .take(30)
+                .filter_map(|l| l.trim().parse::<i64>().ok())
+                .collect();
+            eprintln!("stage3 first 30 values: {:?}", values);
+            // 全 i64 値を収集（範囲外を含む）
+            let all_values: Vec<i64> = lines.iter()
+                .filter_map(|l| l.trim().parse::<i64>().ok())
+                .collect();
+            // 有効バイト範囲外の値を探す
+            let out_of_range: Vec<(usize, i64)> = all_values.iter().enumerate()
+                .filter(|&(_, &v)| v < 0 || v > 255)
+                .take(5)
+                .map(|(i, &v)| (i, v))
+                .collect();
+            eprintln!("out-of-range byte values (pos, val): {:?}", out_of_range);
+            // stage3 bytes を保存
+            if !all_values.is_empty() {
+                let count = all_values[0] as usize;
+                if all_values.len() >= count + 1 {
+                    let bytes: Vec<u8> = all_values[1..=count].iter()
+                        .map(|&v| (v & 0xFF) as u8)
+                        .collect();
+                    let _ = std::fs::write("stage3_from_debug.wasm", &bytes);
+                    eprintln!("stage3 bytes saved ({} bytes, {} may be truncated)", count, bytes.len());
+                }
+            }
+            // 全値を print
+            eprintln!("stage3 all {} values: {:?}", all_values.len(), &all_values[..all_values.len().min(200)]);
+        }
+    }
 }

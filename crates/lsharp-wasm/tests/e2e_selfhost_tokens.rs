@@ -55,7 +55,7 @@ fn test_e2e_selfhost_lexer_escape_sequence_codes() {
 #[test]
 fn test_e2e_selfhost_token_constants() {
     // Token.ls の新トークン定数が正しくコンパイル・実行できることを検証
-    let source = include_str!("../../../selfhost/Token.ls");
+    let source = include_str!("../../../selfhost/src/Syntax/Token.ls");
     let result = compile_and_run(source);
     // Token.ls の main は lparen(0), rparen(1), eof(99) を出力
     assert_eq!(result.trim(), "0\n1\n99");

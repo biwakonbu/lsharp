@@ -35,10 +35,10 @@ fn test_e2e_selfhost_main_native_summary_matches_direct_pipeline_harness() {
 
     let direct_output = run_native_pipeline_harness(
         r#"(module Main)
-(import NativeTarget)
-(import NativeCodegen)
-(import NativeEmit)
-(import Linker)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+(import Backend.Native.Linker)
 
 (defn make-instr [opcode operand]
   (vector-push (vector-push (vector-new 2) opcode) operand))
@@ -190,6 +190,52 @@ fn parse_main_summary(lines: &[i64], kind: NativeSummaryKind) -> NativeTargetSum
     }
 }
 
+/// NATIVE-02: NativeTarget descriptor が policy field を公開すること。
+///
+/// target descriptor を単なる triple から一段拡張し、calling convention /
+/// stack alignment / section policy / relocation call policy /
+/// response file style / runtime object kind を取得できることを固定する。
+#[test]
+fn test_e2e_native_target_descriptor_exposes_policy_fields() {
+    let output = run_native_pipeline_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+
+(defn emit-target [triple-id]
+  (let [target (make-target triple-id)]
+    (do
+      (print (vector-length target))
+      (print (target-arch target))
+      (print (target-calling-convention target))
+      (print (target-stack-alignment target))
+      (print (target-section-policy target))
+      (print (target-reloc-call target))
+      (print (target-linker-flavor target))
+      (print (target-response-file-style target))
+      (print (target-runtime-policy target))
+      (print (target-runtime-object-kind target))
+      0)))
+
+(defn main []
+  (do
+    (emit-target 1)
+    (emit-target 3)
+    (emit-target 2)
+    0))"#,
+    );
+
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines,
+        vec![
+            12, 1, 1, 16, 1, 1, 1, 1, 1, 1, // x86_64-apple-darwin
+            12, 1, 1, 16, 2, 1, 2, 1, 1, 1, // x86_64-unknown-linux-gnu
+            12, 2, 2, 16, 1, 2, 1, 1, 1, 1, // aarch64-apple-darwin
+        ],
+        "NativeTarget descriptor policy field が期待値と一致しない"
+    );
+}
+
 /// NATIVE-05: stage1-native 二回実行の決定性 (stage1→stage2 等価の前提証明)
 ///
 /// `selfhost/Main.ls` を二度独立にコンパイル・実行し、全出力行が一致することを確認する。
@@ -278,21 +324,14 @@ fn run_native_pipeline_harness(entry_source: &str) -> String {
     std::fs::create_dir_all(&dir).expect("native stage-chain fixture dir 作成失敗");
 
     let result = (|| {
-        std::fs::write(dir.join("IR.ls"), selfhost_module("IR.ls")).expect("IR.ls 書き込み失敗");
-        std::fs::write(
-            dir.join("NativeTarget.ls"),
-            selfhost_module("NativeTarget.ls"),
-        )
-        .expect("NativeTarget.ls 書き込み失敗");
-        std::fs::write(
-            dir.join("NativeCodegen.ls"),
-            selfhost_module("NativeCodegen.ls"),
-        )
-        .expect("NativeCodegen.ls 書き込み失敗");
-        std::fs::write(dir.join("NativeEmit.ls"), selfhost_module("NativeEmit.ls"))
-            .expect("NativeEmit.ls 書き込み失敗");
-        std::fs::write(dir.join("Linker.ls"), selfhost_module("Linker.ls"))
-            .expect("Linker.ls 書き込み失敗");
+        for name in ["IR.ls", "NativeTarget.ls", "NativeCodegen.ls", "NativeEmit.ls", "Linker.ls"] {
+            let path = dir.join(selfhost_fixture_module_relative_path(name));
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).expect("native stage-chain parent dir 作成失敗");
+            }
+            std::fs::write(&path, selfhost_module(name))
+                .unwrap_or_else(|_| panic!("{name} 書き込み失敗"));
+        }
         std::fs::write(dir.join("Main.ls"), entry_source).expect("Main.ls 書き込み失敗");
         compile_and_run_file(&dir.join("Main.ls"))
     })();
@@ -318,11 +357,14 @@ fn run_native_codegen_host_bytes_harness(entry_source: &str) -> Vec<u8> {
     std::fs::create_dir_all(&dir).expect("native host-bytes fixture dir 作成失敗");
 
     let result = (|| {
-        std::fs::write(dir.join("IR.ls"), selfhost_module("IR.ls")).expect("IR.ls 書き込み失敗");
-        std::fs::write(dir.join("NativeTarget.ls"), selfhost_module("NativeTarget.ls"))
-            .expect("NativeTarget.ls 書き込み失敗");
-        std::fs::write(dir.join("NativeCodegen.ls"), selfhost_module("NativeCodegen.ls"))
-            .expect("NativeCodegen.ls 書き込み失敗");
+        for name in ["IR.ls", "NativeTarget.ls", "NativeCodegen.ls"] {
+            let path = dir.join(selfhost_fixture_module_relative_path(name));
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).expect("native host-bytes parent dir 作成失敗");
+            }
+            std::fs::write(&path, selfhost_module(name))
+                .unwrap_or_else(|_| panic!("{name} 書き込み失敗"));
+        }
         std::fs::write(dir.join("Main.ls"), entry_source).expect("Main.ls 書き込み失敗");
         let output = compile_and_run_file(&dir.join("Main.ls"));
         output
@@ -396,9 +438,9 @@ fn link_and_run_native_host_binary(code: &[u8]) -> Result<i32, String> {
 fn test_e2e_native_host_binary_link_and_execute() {
     let code_bytes = run_native_codegen_host_bytes_harness(
         r#"(module Main)
-(import NativeTarget)
-(import NativeCodegen)
-(import IR)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
 
 (defn print-bytes [bytes idx n]
   (if (>= idx n)
@@ -450,9 +492,9 @@ fn test_e2e_native_host_binary_link_and_execute() {
 fn native_exit_code_for_const(n: u32) -> i32 {
     let source = format!(
         r#"(module Main)
-(import NativeTarget)
-(import NativeCodegen)
-(import IR)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
 
 (defn print-bytes [bytes idx len]
   (if (>= idx len)

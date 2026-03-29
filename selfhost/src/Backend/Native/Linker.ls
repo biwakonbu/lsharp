@@ -6,21 +6,11 @@
 ;; オブジェクトファイル群をリンクして実行可能バイナリを生成する。
 ;; response file (@file) 方式でリンカー引数を渡す。
 
-;; === リンカー種別定数 ===
-(defn linker-ld64 [] 1) ;; macOS ld64
-(defn linker-lld [] 2) ;; LLVM lld
-(defn linker-gnu-ld [] 3) ;; GNU ld
-
 ;; === リンカーコマンド構築 ===
 
 ;; ターゲットに応じたリンカー種別を選択
 (defn select-linker [target]
-  (let [os (target-os target)]
-    (if (= os 1)
-      ;; darwin -> ld64
-      (linker-ld64)
-      ;; linux -> GNU ld
-      (linker-gnu-ld))))
+  (target-linker-flavor target))
 
 ;; リンカー引数をリスト形式で構築
 ;; objects: オブジェクトファイルパスの Vector

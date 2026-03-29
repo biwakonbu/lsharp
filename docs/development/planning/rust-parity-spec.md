@@ -270,10 +270,11 @@ Rust `lsharp-wasm` の以下の機能を L# で再実装する:
 - 片系だけ先行する変更を禁止
 - runtime helper の公開 API:
   - `lsharp_runtime_init`: ランタイム初期化
-  - `lsharp_alloc`: メモリ割り当て
+  - `lsharp_alloc_words` / `lsharp_alloc_bytes`: メモリ割り当て
   - `lsharp_print`: 標準出力
-  - `lsharp_read_file` / `lsharp_write_file`: ファイル I/O
-  - `lsharp_clock_now`: 時刻取得
+  - `lsharp_eprint`: 標準エラー出力
+  - `lsharp_read_file` / `lsharp_write_file` / `lsharp_file_exists` / `lsharp_read_dir`: ファイル I/O
+  - `lsharp_clock_now_millis`: 時刻取得
 
 ### P11-3d-4: backend 差分の閉じ込め
 

@@ -384,10 +384,7 @@ fn test_e2e_selfhost_typeinfer_defn_seven_params_curried() {
 /// selfhost AST.ls テスト: field access constructor / traversal
 #[test]
 fn test_e2e_selfhost_ast_fieldaccess_helpers() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
+    let ast_ls = selfhost_module("AST.ls").to_string();
 
     let harness = r#"
 (defn main []
@@ -422,16 +419,7 @@ fn test_e2e_selfhost_ast_fieldaccess_helpers() {
 /// selfhost Parser.ls テスト: field access expression を最小 payload でパースできる
 #[test]
 fn test_e2e_selfhost_parser_field_access_expr() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
 
     let harness = r#"
 (defn main []

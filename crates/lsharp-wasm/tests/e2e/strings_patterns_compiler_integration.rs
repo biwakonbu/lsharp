@@ -263,7 +263,7 @@ fn test_e2e_stdlib_path_operations() {
 /// selfhost/Compiler.ls のセルフホストコンパイラのコンパイル+実行
 #[test]
 fn test_e2e_selfhost_compiler_file() {
-    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost/Compiler.ls");
+    let path = selfhost_source_path("Compiler.ls");
     let output = compile_and_run_file(&path);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert!(
@@ -281,7 +281,7 @@ fn test_e2e_selfhost_compiler_file() {
 /// selfhost/WasmEmit.ls の Wasm バイナリ生成のコンパイル+実行
 #[test]
 fn test_e2e_selfhost_wasmemit() {
-    let source = std::fs::read_to_string("../../selfhost/WasmEmit.ls").unwrap();
+    let source = std::fs::read_to_string(selfhost_source_path("WasmEmit.ls")).unwrap();
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert!(
@@ -347,7 +347,7 @@ fn test_e2e_selfhost_main_integration() {
 /// T2-1: Lexer.ls 値つきトークン (kind, start, end) 3つ組のテスト
 #[test]
 fn test_e2e_selfhost_lexer_value_tokens() {
-    let source = std::fs::read_to_string("../../selfhost/Lexer.ls").unwrap();
+    let source = std::fs::read_to_string(selfhost_source_path("Lexer.ls")).unwrap();
     let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().lines().collect();
 

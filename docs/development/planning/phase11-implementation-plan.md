@@ -463,10 +463,10 @@
 ### NATIVE-01 Target descriptors
 
 - Goal: tier1 native target ごとの差分を descriptor に閉じ込める。
-- Current state: native backend 実装自体が未着手。
+- Current state: `selfhost/NativeTarget.ls` に skeleton はあるが、descriptor は `arch`, `os`, `obj-format`, `triple-id` の narrow slice に留まる。
 - Rust source: `docs/language/native-backend-spec.md`
 - L# target: `selfhost/NativeTarget.ls`
-- Implementation direction: `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-unknown-linux-gnu` の target descriptor を `abi`, `section names`, `relocation types`, `linker flavor` の 4 項目で定義する。
+- Implementation direction: `x86_64-apple-darwin`, `aarch64-apple-darwin`, `x86_64-unknown-linux-gnu` の target descriptor を `abi`, `section names`, `relocation types`, `linker flavor`, `runtime artifact policy` の 5 項目で定義する。
 - Dependencies: `IR-06`
 - Acceptance: target 固有条件分岐が codegen 本体ではなく descriptor 参照だけになる。
 - Evidence: `selfhost/NativeTarget.ls`
@@ -475,10 +475,10 @@
 ### NATIVE-02 Object emitter
 
 - Goal: LoweredModule から relocation 付き object を生成する。
-- Current state: object emitter が存在しない。
+- Current state: `selfhost/NativeCodegen.ls` / `selfhost/NativeEmit.ls` の skeleton と narrow execution slice はあるが、relocation 付き object の product path と `runtime.o` 分離契約は未固定。
 - Rust source: `docs/language/native-backend-spec.md`
 - L# target: `selfhost/NativeCodegen.ls`, `selfhost/NativeEmit.ls`
-- Implementation direction: codegen は machine-instr list を生成し、emit は Mach-O/ELF object と runtime object を別出力する。標準 artifact 名は `program.o`, `runtime.o`, `linker-response.txt`, `program.native` に固定する。
+- Implementation direction: codegen は machine-instr list を生成し、emit は `program.o` を中心に artifact 契約を閉じる。shadow path を早く閉じるため、必要なら補助的な external object-generation path を許容するが、product path では `program.o`, `runtime.o`, `linker-response.txt`, `program.native` の契約と determinism を固定する。
 - Dependencies: `NATIVE-01`, `IR-02`
 - Acceptance: tier1 target で object file が生成され、linker 手前で停止できる。
 - Evidence: `build/native/*`, `test_unit_native_emit_*`
@@ -487,10 +487,10 @@
 ### NATIVE-03 Linker response
 
 - Goal: linker invocation を deterministic response file 化する。
-- Current state: linker path と引数の置き場が未定。
+- Current state: `selfhost/Linker.ls` に response file skeleton はあるが、tier1 linker flavor (`ld64`, `ld.lld`, `ld`) と product path の引数契約は未固定。
 - Rust source: `docs/language/native-backend-spec.md`, `docs/development/operations/ci-migration-spec.md`
 - L# target: `selfhost/Linker.ls`
-- Implementation direction: linker 呼び出しは command line 直打ちではなく response file 経由に固定する。response file には object 順、runtime object、output path、system libs を source order で記載する。
+- Implementation direction: linker 呼び出しは command line 直打ちではなく response file 経由に固定する。response file には object 順、runtime object、output path、system libs を source order で記載し、Darwin は `ld64`、Linux は `ld.lld` 優先で固定する。
 - Dependencies: `NATIVE-02`
 - Acceptance: 2 回の native build で response file と linked binary hash が一致する。
 - Evidence: `build/native/linker-response.txt`, `test_unit_native_linker_*`
@@ -499,7 +499,7 @@
 ### NATIVE-04 Deterministic codegen
 
 - Goal: native backend を fixed-point を壊さない deterministic backend にする。
-- Current state: native backend 未実装のため determinism も未確認。
+- Current state: narrow deterministic slices はあるが、`program.o`, `runtime.o`, `linker-response.txt`, `program.native` の end-to-end determinism は未証明。
 - Rust source: `docs/language/native-backend-spec.md`, `docs/development/planning/completion-criteria.md`
 - L# target: `selfhost/NativeCodegen.ls`, `selfhost/NativeEmit.ls`
 - Implementation direction: function order, static data order, relocation order, symbol numbering は source order + stable sort に固定する。debug info は v1 では出さない。

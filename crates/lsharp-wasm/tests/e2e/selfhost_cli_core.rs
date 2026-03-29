@@ -6,17 +6,16 @@ use super::support::*;
 /// Red Phase: selfhost/Cli.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_cli_repl_lsp_fmt() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let cli_path = project_root.join("selfhost/Cli.ls");
-    assert!(cli_path.exists(), "selfhost/Cli.ls が存在しない");
-    let source = std::fs::read_to_string(&cli_path).expect("selfhost/Cli.ls の読み込みに失敗");
+    let cli_path = selfhost_source_path("Cli.ls");
+    assert!(cli_path.exists(), "selfhost/src/App/Cli.ls が存在しない");
+    let source = std::fs::read_to_string(&cli_path).expect("selfhost/src/App/Cli.ls の読み込みに失敗");
 
     // ユーティリティコマンドの定義を確認 (T4-4 AC-013)
     let commands = ["repl", "lsp", "fmt", "doc"];
     for cmd in &commands {
         assert!(
             source.contains(cmd),
-            "selfhost/Cli.ls に '{}' コマンドの定義がない (AC-013)",
+            "selfhost/src/App/Cli.ls に '{}' コマンドの定義がない (AC-013)",
             cmd
         );
     }
@@ -2440,14 +2439,13 @@ fn test_e2e_selfhost_cli_main_with_help_lsp_stdio_option() {
 /// Red Phase: selfhost/LspServer.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_lsp_skeleton_v2() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let lsp_path = project_root.join("selfhost/LspServer.ls");
+    let lsp_path = selfhost_source_path("LspServer.ls");
     assert!(
         lsp_path.exists(),
-        "selfhost/LspServer.ls が存在しない (T4-2: L# 製 LSP の正式化)"
+        "selfhost/src/Tools/Lsp/LspServer.ls が存在しない (T4-2: L# 製 LSP の正式化)"
     );
     let source =
-        std::fs::read_to_string(&lsp_path).expect("selfhost/LspServer.ls の読み込みに失敗");
+        std::fs::read_to_string(&lsp_path).expect("selfhost/src/Tools/Lsp/LspServer.ls の読み込みに失敗");
 
     // JSON-RPC dispatch 構造を確認
     assert!(
@@ -2455,12 +2453,12 @@ fn test_e2e_selfhost_lsp_skeleton_v2() {
             || source.contains("json-rpc")
             || source.contains("JsonRpc")
             || source.contains("dispatch"),
-        "selfhost/LspServer.ls に JSON-RPC dispatch 構造がない"
+        "selfhost/src/Tools/Lsp/LspServer.ls に JSON-RPC dispatch 構造がない"
     );
     // module 宣言
     assert!(
-        source.contains("(module LspServer)") || source.contains("(module Lsp"),
-        "selfhost/LspServer.ls に module 宣言がない"
+        source.contains("(module Tools.Lsp.LspServer)") || source.contains("(module Tools.Lsp"),
+        "selfhost/src/Tools/Lsp/LspServer.ls に module 宣言がない"
     );
 }
 
@@ -2471,11 +2469,10 @@ fn test_e2e_selfhost_lsp_skeleton_v2() {
 /// Red Phase: selfhost/LspServer.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_lsp_10_methods() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let lsp_path = project_root.join("selfhost/LspServer.ls");
-    assert!(lsp_path.exists(), "selfhost/LspServer.ls が存在しない");
+    let lsp_path = selfhost_source_path("LspServer.ls");
+    assert!(lsp_path.exists(), "selfhost/src/Tools/Lsp/LspServer.ls が存在しない");
     let source =
-        std::fs::read_to_string(&lsp_path).expect("selfhost/LspServer.ls の読み込みに失敗");
+        std::fs::read_to_string(&lsp_path).expect("selfhost/src/Tools/Lsp/LspServer.ls の読み込みに失敗");
 
     // T4-2 AC-005: 10 メソッドが LSP 3.17 仕様に準拠
     let methods = [

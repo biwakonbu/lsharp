@@ -1,6 +1,6 @@
 #!/bin/bash
 # P12-0: compile 中心の公開 CLI ドキュメントが現行 mainline で再現できることを smoke test で確認する
-# README.md / AGENTS.md / CLAUDE.md で案内する compile / lsp / mcp-server の導線を軽量に検証する
+# README.md / AGENTS.md / CLAUDE.md で案内する compile / test / lsp / mcp-server の導線を軽量に検証する
 
 set -euo pipefail
 
@@ -49,7 +49,18 @@ else
     ERRORS=$((ERRORS + 1))
 fi
 
-# 4. LSP backend の入口が存在すること
+# 4. README の metadata test 導線が通ること
+echo ""
+echo "--- target/debug/lsharp test examples/metadata.ls ---"
+if target/debug/lsharp test examples/metadata.ls 2>&1 | tail -6; then
+    echo "PASS: target/debug/lsharp test examples/metadata.ls"
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: target/debug/lsharp test examples/metadata.ls"
+    ERRORS=$((ERRORS + 1))
+fi
+
+# 5. LSP backend の入口が存在すること
 echo ""
 echo "--- target/debug/lsharp lsp --help ---"
 if target/debug/lsharp lsp --help 2>&1 | head -5; then
@@ -60,7 +71,7 @@ else
     ERRORS=$((ERRORS + 1))
 fi
 
-# 5. MCP backend の入口が存在すること
+# 6. MCP backend の入口が存在すること
 echo ""
 echo "--- target/debug/lsharp mcp-server --help ---"
 if target/debug/lsharp mcp-server --help 2>&1 | head -5; then
@@ -71,7 +82,7 @@ else
     ERRORS=$((ERRORS + 1))
 fi
 
-# 6. wasmtime で実行できること (wasmtime が利用可能な場合のみ)
+# 7. wasmtime で実行できること (wasmtime が利用可能な場合のみ)
 echo ""
 echo "--- wasmtime $SMOKE_WASM ---"
 if command -v wasmtime &> /dev/null; then

@@ -444,7 +444,7 @@ fn test_e2e_gc_hashmap_memory_stable() {
 /// P9-6b: JSON-RPC モジュールがコンパイル+実行できることを検証
 #[test]
 fn test_e2e_selfhost_jsonrpc() {
-    let source = include_str!("../../../../selfhost/JsonRpc.ls");
+    let source = selfhost_module("JsonRpc.ls");
     let output = compile_and_run(source);
     let lines: Vec<&str> = output.trim().split('\n').collect();
     // メッセージ種別: request=0, response=1, notification=2, error=3
@@ -464,7 +464,7 @@ fn test_e2e_selfhost_jsonrpc() {
 /// P9-6b: JSON-RPC モジュールの Wasm バイナリが有効であることを検証
 #[test]
 fn test_e2e_selfhost_jsonrpc_wasm_valid() {
-    let source = include_str!("../../../../selfhost/JsonRpc.ls");
+    let source = selfhost_module("JsonRpc.ls");
     let wasm = compile_only(source);
     assert_valid_wasm(&wasm);
 }
@@ -474,7 +474,7 @@ fn test_e2e_selfhost_jsonrpc_wasm_valid() {
 /// P9-6c: リンターモジュールがコンパイル+実行できることを検証
 #[test]
 fn test_e2e_selfhost_linter() {
-    let source = include_str!("../../../../selfhost/Linter.ls");
+    let source = selfhost_module("Linter.ls");
     let output = compile_and_run(source);
     let lines: Vec<&str> = output.trim().split('\n').collect();
     // 診断: severity=1(warning), rule=100(unused-var), line=10
@@ -515,7 +515,7 @@ fn test_e2e_selfhost_linter() {
 /// P9-6d: フォーマッタモジュールがコンパイル+実行できることを検証
 #[test]
 fn test_e2e_selfhost_formatter() {
-    let source = include_str!("../../../../selfhost/Formatter.ls");
+    let source = selfhost_module("Formatter.ls");
     let output = compile_and_run(source);
     let lines: Vec<&str> = output.trim().split('\n').collect();
     // インデント設定
@@ -547,7 +547,7 @@ fn test_e2e_selfhost_formatter() {
 /// P9-6b: LSP ハンドラ関数がコンパイル+実行できることを検証
 #[test]
 fn test_e2e_selfhost_jsonrpc_lsp_handlers() {
-    let source = include_str!("../../../../selfhost/JsonRpc.ls");
+    let source = selfhost_module("JsonRpc.ls");
     let output = compile_and_run(source);
     let lines: Vec<&str> = output.trim().split('\n').collect();
     // 既存 9 行の後に LSP ハンドラテスト出力
@@ -592,7 +592,7 @@ fn test_e2e_selfhost_jsonrpc_lsp_handlers() {
 /// P9-6c: リンター診断を LSP Diagnostic 形式に変換できることを検証
 #[test]
 fn test_e2e_selfhost_linter_lsp_integration() {
-    let source = include_str!("../../../../selfhost/Linter.ls");
+    let source = selfhost_module("Linter.ls");
     let output = compile_and_run(source);
     let lines: Vec<&str> = output.trim().split('\n').collect();
     // 既存 19 行の後に LSP 統合テスト出力
@@ -610,7 +610,7 @@ fn test_e2e_selfhost_linter_lsp_integration() {
 /// P9-6d: フォーマッタが LSP TextEdit を生成できることを検証
 #[test]
 fn test_e2e_selfhost_formatter_lsp_integration() {
-    let source = include_str!("../../../../selfhost/Formatter.ls");
+    let source = selfhost_module("Formatter.ls");
     let output = compile_and_run(source);
     let lines: Vec<&str> = output.trim().split('\n').collect();
     // 既存 15 行の後に LSP 統合テスト出力 (format-program 2 行追加)

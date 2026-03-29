@@ -104,7 +104,7 @@ differential test で比較する観測点を以下に固定する:
 ### nondeterministic 要素の固定
 以下の非決定性要素は test fixture 側で固定し、観測値に混入させない:
 
-- **時計**: `lsharp_clock_now` を固定値 (epoch 0) を返す stub に差し替える
+- **時計**: `lsharp_clock_now_millis` を固定値 (epoch 0) を返す stub に差し替える
 - **一時ファイル**: テスト用の deterministic な tmpdir を使用する
 - **絶対パス**: ソースパスを相対パスに正規化してから比較する
 - **ハッシュ/乱数**: seed を固定する (該当機能がある場合)

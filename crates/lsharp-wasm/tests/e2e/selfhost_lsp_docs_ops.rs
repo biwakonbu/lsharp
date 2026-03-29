@@ -1609,24 +1609,23 @@ fn test_e2e_selfhost_lsp_real_shapes_formatting_preserves_string_literal() {
 /// Red Phase: Formatter.ls に format-program / format-expr が未定義のため FAIL する。
 #[test]
 fn test_e2e_selfhost_formatter_roundtrip_v2() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let fmt_path = project_root.join("selfhost/Formatter.ls");
+    let fmt_path = selfhost_source_path("Formatter.ls");
     assert!(
         fmt_path.exists(),
-        "selfhost/Formatter.ls が存在しない (T4-3)"
+        "selfhost/src/Tools/Text/Formatter.ls が存在しない (T4-3)"
     );
     let source =
-        std::fs::read_to_string(&fmt_path).expect("selfhost/Formatter.ls の読み込みに失敗");
+        std::fs::read_to_string(&fmt_path).expect("selfhost/src/Tools/Text/Formatter.ls の読み込みに失敗");
 
     // T4c-1 AC-300: parse-format-parse roundtrip
     // format-program と format-expr (または同等関数) が定義されていること
     assert!(
         source.contains("format-program") || source.contains("format_program"),
-        "selfhost/Formatter.ls に format-program 関数がない (AC-300)"
+        "selfhost/src/Tools/Text/Formatter.ls に format-program 関数がない (AC-300)"
     );
     assert!(
         source.contains("format-expr") || source.contains("format_expr"),
-        "selfhost/Formatter.ls に format-expr 関数がない (AC-300)"
+        "selfhost/src/Tools/Text/Formatter.ls に format-expr 関数がない (AC-300)"
     );
 }
 
@@ -1636,10 +1635,10 @@ fn test_e2e_selfhost_formatter_roundtrip_v2() {
 /// Red Phase: Linter.ls に L0001 形式の rule ID が未定義のため FAIL する。
 #[test]
 fn test_e2e_selfhost_linter_rule_ids_v2() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let lint_path = project_root.join("selfhost/Linter.ls");
-    assert!(lint_path.exists(), "selfhost/Linter.ls が存在しない (T4-3)");
-    let source = std::fs::read_to_string(&lint_path).expect("selfhost/Linter.ls の読み込みに失敗");
+    let lint_path = selfhost_source_path("Linter.ls");
+    assert!(lint_path.exists(), "selfhost/src/Tools/Text/Linter.ls が存在しない (T4-3)");
+    let source =
+        std::fs::read_to_string(&lint_path).expect("selfhost/src/Tools/Text/Linter.ls の読み込みに失敗");
 
     // T4c-2 AC-304: 各 lint rule に一意の rule id (L0001 形式) が付与されている
     // L + 4桁の数字パターンを手動検索
@@ -1660,7 +1659,7 @@ fn test_e2e_selfhost_linter_rule_ids_v2() {
     });
     assert!(
         has_rule_id,
-        "selfhost/Linter.ls に L0001 形式の rule ID がない (AC-304)"
+        "selfhost/src/Tools/Text/Linter.ls に L0001 形式の rule ID がない (AC-304)"
     );
 }
 
@@ -1716,35 +1715,35 @@ fn test_e2e_selfhost_doc_schemas() {
 /// Red Phase: selfhost/DocTools.ls, HtmlDoc.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_doc_deterministic_html() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
     // DocTools.ls の存在確認 (T4d-3)
-    let doctools_path = project_root.join("selfhost/DocTools.ls");
+    let doctools_path = selfhost_source_path("DocTools.ls");
     assert!(
         doctools_path.exists(),
-        "selfhost/DocTools.ls が存在しない (T4d-3: HTML doc 生成)"
+        "selfhost/src/Tools/Doc/DocTools.ls が存在しない (T4d-3: HTML doc 生成)"
     );
 
     // HtmlDoc.ls の存在確認
-    let htmldoc_path = project_root.join("selfhost/HtmlDoc.ls");
+    let htmldoc_path = selfhost_source_path("HtmlDoc.ls");
     assert!(
         htmldoc_path.exists(),
-        "selfhost/HtmlDoc.ls が存在しない (T4d-3: HTML doc 生成)"
+        "selfhost/src/Tools/Doc/HtmlDoc.ls が存在しない (T4d-3: HTML doc 生成)"
     );
 
     let doctools_source =
-        std::fs::read_to_string(&doctools_path).expect("selfhost/DocTools.ls の読み込みに失敗");
+        std::fs::read_to_string(&doctools_path).expect("selfhost/src/Tools/Doc/DocTools.ls の読み込みに失敗");
     let htmldoc_source =
-        std::fs::read_to_string(&htmldoc_path).expect("selfhost/HtmlDoc.ls の読み込みに失敗");
+        std::fs::read_to_string(&htmldoc_path).expect("selfhost/src/Tools/Doc/HtmlDoc.ls の読み込みに失敗");
 
     // module 宣言の存在確認
     assert!(
-        doctools_source.contains("(module DocTools)") || doctools_source.contains("(module Doc"),
-        "selfhost/DocTools.ls に module 宣言がない"
+        doctools_source.contains("(module Tools.Doc.DocTools)")
+            || doctools_source.contains("(module Tools.Doc"),
+        "selfhost/src/Tools/Doc/DocTools.ls に module 宣言がない"
     );
     assert!(
-        htmldoc_source.contains("(module HtmlDoc)") || htmldoc_source.contains("(module Html"),
-        "selfhost/HtmlDoc.ls に module 宣言がない"
+        htmldoc_source.contains("(module Tools.Doc.HtmlDoc)")
+            || htmldoc_source.contains("(module Tools.Doc.Html"),
+        "selfhost/src/Tools/Doc/HtmlDoc.ls に module 宣言がない"
     );
 
     // doc 生成関数の存在確認
@@ -1752,7 +1751,7 @@ fn test_e2e_selfhost_doc_deterministic_html() {
         doctools_source.contains("generate")
             || doctools_source.contains("gen-doc")
             || doctools_source.contains("doc-generate"),
-        "selfhost/DocTools.ls に doc 生成関数がない"
+        "selfhost/src/Tools/Doc/DocTools.ls に doc 生成関数がない"
     );
 }
 

@@ -282,9 +282,37 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
     })
 }
 
+pub(crate) fn selfhost_fixture_module_relative_path(name: &str) -> std::path::PathBuf {
+    let src_root = selfhost_project_root().join("selfhost/src");
+    selfhost_source_path(name)
+        .strip_prefix(&src_root)
+        .unwrap_or_else(|_| panic!("fixture relative path へ変換できない: {name}"))
+        .to_path_buf()
+}
+
 /// selfhost/src/App/Main.ls のパス (import 解決にはマルチファイルコンパイルが必要)
 pub(crate) fn selfhost_main_path() -> std::path::PathBuf {
     selfhost_source_path("Main.ls")
+}
+
+pub(crate) fn parser_runtime_modules() -> (String, String, String, String) {
+    let token_ls = std::fs::read_to_string(selfhost_source_path("Token.ls"))
+        .expect("canonical Token.ls が読み込めない");
+    let ast_ls = std::fs::read_to_string(selfhost_source_path("AST.ls"))
+        .expect("canonical AST.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(selfhost_source_path("Lexer.ls"))
+        .expect("canonical Lexer.ls が読み込めない");
+    let parser_ls = std::fs::read_to_string(selfhost_source_path("Parser.ls"))
+        .expect("canonical Parser.ls が読み込めない");
+    (token_ls, ast_ls, lexer_ls, parser_ls)
+}
+
+pub(crate) fn typescheme_runtime_modules() -> (String, String) {
+    let type_ls = std::fs::read_to_string(selfhost_source_path("Type.ls"))
+        .expect("canonical Type.ls が読み込めない");
+    let type_scheme_ls = std::fs::read_to_string(selfhost_source_path("TypeScheme.ls"))
+        .expect("canonical TypeScheme.ls が読み込めない");
+    (type_ls, type_scheme_ls)
 }
 
 /// selfhost モジュールの埋め込みソースを返す

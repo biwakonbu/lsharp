@@ -191,12 +191,7 @@ fn test_e2e_selfhost_type_deterministic_ordering() {
 /// selfhost TypeScheme.ls テスト: generalize は source order の自由変数を漏れなく束縛する
 #[test]
 fn test_e2e_selfhost_typescheme_generalize_preserves_four_var_order() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
-        .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-        .expect("selfhost/TypeScheme.ls が読み込めない");
+    let (type_ls, type_scheme_ls) = typescheme_runtime_modules();
 
     let harness = r#"
 (defn main []
@@ -235,12 +230,7 @@ fn test_e2e_selfhost_typescheme_generalize_preserves_four_var_order() {
 /// selfhost TypeScheme.ls テスト: instantiate は bound-vars 全件を順序通り新鮮化する
 #[test]
 fn test_e2e_selfhost_typescheme_instantiate_rewrites_all_bound_vars() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
-        .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-        .expect("selfhost/TypeScheme.ls が読み込めない");
+    let (type_ls, type_scheme_ls) = typescheme_runtime_modules();
 
     let harness = r#"
 (defn main []
@@ -287,12 +277,7 @@ fn test_e2e_selfhost_typescheme_instantiate_rewrites_all_bound_vars() {
 /// selfhost TypeScheme.ls テスト: record field 型の free vars も source order で一般化する
 #[test]
 fn test_e2e_selfhost_typescheme_generalize_record_field_vars() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
-        .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-        .expect("selfhost/TypeScheme.ls が読み込めない");
+    let (type_ls, type_scheme_ls) = typescheme_runtime_modules();
 
     let harness = r#"
 (defn main []
@@ -333,12 +318,7 @@ fn test_e2e_selfhost_typescheme_generalize_record_field_vars() {
 /// selfhost TypeScheme.ls テスト: record field 型の bound-vars も instantiate で fresh 化する
 #[test]
 fn test_e2e_selfhost_typescheme_instantiate_record_field_vars() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let type_ls = std::fs::read_to_string(project_root.join("selfhost/Type.ls"))
-        .expect("selfhost/Type.ls が読み込めない");
-    let type_scheme_ls = std::fs::read_to_string(project_root.join("selfhost/TypeScheme.ls"))
-        .expect("selfhost/TypeScheme.ls が読み込めない");
+    let (type_ls, type_scheme_ls) = typescheme_runtime_modules();
 
     let harness = r#"
 (defn main []
@@ -382,31 +362,32 @@ fn test_e2e_selfhost_typescheme_instantiate_record_field_vars() {
 
 /// TEST-SYNTAX-03: Parser recovery + 複数診断収集
 ///
-/// selfhost/Parser.ls に recovery point が実装されていること、
+/// selfhost/src/Syntax/Parser.ls に recovery point が実装されていること、
 /// 不正入力で複数の診断 [severity code span message-hash] を収集できることを検証。
 /// 現状: Parser.ls に recovery 機構なし → FAIL
 #[test]
 fn test_e2e_selfhost_parser_recovery_diagnostics() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
     // Parser.ls を読み込み
-    let parser_ls_path = project_root.join("selfhost/Parser.ls");
-    assert!(parser_ls_path.exists(), "selfhost/Parser.ls が存在しない");
+    let parser_ls_path = selfhost_source_path("Parser.ls");
+    assert!(
+        parser_ls_path.exists(),
+        "selfhost/src/Syntax/Parser.ls が存在しない"
+    );
     let parser_content =
-        std::fs::read_to_string(&parser_ls_path).expect("selfhost/Parser.ls の読み込みに失敗");
+        std::fs::read_to_string(&parser_ls_path).expect("selfhost/src/Syntax/Parser.ls の読み込みに失敗");
 
     // recovery 関連の関数が定義されていることを検証
     assert!(
         parser_content.contains("parse-with-recovery")
             || parser_content.contains("recover-to-next"),
-        "selfhost/Parser.ls に recovery 機構 (parse-with-recovery / recover-to-next) が未実装"
+        "selfhost/src/Syntax/Parser.ls に recovery 機構 (parse-with-recovery / recover-to-next) が未実装"
     );
 
     // 診断収集関数が定義されていることを検証
     assert!(
         parser_content.contains("collect-diagnostics")
             || parser_content.contains("make-diagnostic"),
-        "selfhost/Parser.ls に診断収集 (collect-diagnostics / make-diagnostic) が未実装"
+        "selfhost/src/Syntax/Parser.ls に診断収集 (collect-diagnostics / make-diagnostic) が未実装"
     );
 }
 
@@ -417,16 +398,7 @@ fn test_e2e_selfhost_parser_recovery_diagnostics() {
 /// で返すことを、selfhost 実装自身を実行して検証する。
 #[test]
 fn test_e2e_selfhost_parser_decl_ast_tags() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
 
     let harness = r#"
 (defn main []
@@ -485,16 +457,7 @@ fn test_e2e_selfhost_parser_decl_ast_tags() {
 /// 正しく更新して返すことを検証する。
 #[test]
 fn test_e2e_selfhost_parser_count_fields() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
 
     let harness = r#"
 (defn main []
@@ -530,16 +493,7 @@ fn test_e2e_selfhost_parser_count_fields() {
 /// TEST-SYNTAX-02c2: nested module を body 付きでパースできる
 #[test]
 fn test_e2e_selfhost_parser_nested_module_decl() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
 
     let harness = r#"
 (defn main []
@@ -587,16 +541,7 @@ fn test_e2e_selfhost_parser_nested_module_decl() {
 /// 内側の式もそのまま保持することを検証する。
 #[test]
 fn test_e2e_selfhost_parser_quote_forms() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
 
     let harness = r#"
 (defn main []
@@ -648,16 +593,7 @@ fn test_e2e_selfhost_parser_quote_forms() {
 /// 先頭名の hash も保持することを検証する。
 #[test]
 fn test_e2e_selfhost_parser_record_and_trait_decl_tags() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
 
     let harness = r#"
 (defn main []
@@ -698,16 +634,7 @@ fn test_e2e_selfhost_parser_record_and_trait_decl_tags() {
 /// type 名と field-count / field 名 / 値ノードを保持することを検証する。
 #[test]
 fn test_e2e_selfhost_parser_record_literal() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let token_ls = std::fs::read_to_string(project_root.join("selfhost/Token.ls"))
-        .expect("selfhost/Token.ls が読み込めない");
-    let ast_ls = std::fs::read_to_string(project_root.join("selfhost/AST.ls"))
-        .expect("selfhost/AST.ls が読み込めない");
-    let lexer_ls = std::fs::read_to_string(project_root.join("selfhost/Lexer.ls"))
-        .expect("selfhost/Lexer.ls が読み込めない");
-    let parser_ls = std::fs::read_to_string(project_root.join("selfhost/Parser.ls"))
-        .expect("selfhost/Parser.ls が読み込めない");
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
 
     let harness = r#"
 (defn main []

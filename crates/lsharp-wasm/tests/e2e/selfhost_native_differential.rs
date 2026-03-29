@@ -1,6 +1,23 @@
 use super::support::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+fn selfhost_native_label(name: &str) -> &'static str {
+    match name {
+        "NativeTarget.ls" => "selfhost/src/Backend/Native/NativeTarget.ls",
+        "NativeCodegen.ls" => "selfhost/src/Backend/Native/NativeCodegen.ls",
+        "NativeEmit.ls" => "selfhost/src/Backend/Native/NativeEmit.ls",
+        "Linker.ls" => "selfhost/src/Backend/Native/Linker.ls",
+        other => panic!("不明な native selfhost module: {other}"),
+    }
+}
+
+fn read_selfhost_native_source(name: &str) -> String {
+    let path = selfhost_source_path(name);
+    let label = selfhost_native_label(name);
+    assert!(path.exists(), "{label} が存在しない");
+    std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{label} 読み込み失敗"))
+}
+
 // =============================================================================
 // NATIVE-05: Stage1-native 自己再生成 — 機能的等価性テスト
 // =============================================================================
@@ -12,20 +29,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// ビット一致ではなく、機能レベルの等価性を検証する。
 #[test]
 fn test_e2e_native_self_regeneration_functional_equivalence() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
     // --- 前提: ネイティブバックエンドモジュールの存在確認 ---
-    let native_modules = [
-        "selfhost/NativeTarget.ls",
-        "selfhost/NativeCodegen.ls",
-        "selfhost/NativeEmit.ls",
-        "selfhost/Linker.ls",
-    ];
-    for module in &native_modules {
+    let native_modules = ["NativeTarget.ls", "NativeCodegen.ls", "NativeEmit.ls", "Linker.ls"];
+    for module in native_modules {
+        let path = selfhost_source_path(module);
         assert!(
-            project_root.join(module).exists(),
+            path.exists(),
             "{} が存在しない — ネイティブ自己再生成の前提モジュール",
-            module
+            selfhost_native_label(module)
         );
     }
 
@@ -52,7 +63,7 @@ fn test_e2e_native_self_regeneration_functional_equivalence() {
     // NativeCodegen.ls を selfhost bundle としてコンパイル・実行し、
     // ネイティブコード生成が決定的であることを確認
     let native_codegen_source =
-        std::fs::read_to_string(project_root.join("selfhost/NativeCodegen.ls"))
+        std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
             .expect("NativeCodegen.ls 読み込み失敗");
 
     // NativeCodegen.ls が Wasm コンパイルパイプラインを通ること (構造的等価性の前提)
@@ -64,7 +75,7 @@ fn test_e2e_native_self_regeneration_functional_equivalence() {
     );
 
     // NativeEmit.ls も同様にパースできること
-    let native_emit_source = std::fs::read_to_string(project_root.join("selfhost/NativeEmit.ls"))
+    let native_emit_source = std::fs::read_to_string(selfhost_source_path("NativeEmit.ls"))
         .expect("NativeEmit.ls 読み込み失敗");
     let native_emit_parse = lsharp_syntax::parse(&native_emit_source);
     assert!(
@@ -113,10 +124,8 @@ fn test_e2e_native_self_regeneration_functional_equivalence() {
 /// エクスポートシンボル・データセクション・型セクションの構造一致を検証する。
 #[test]
 fn test_e2e_native_stage_chain_structure() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
     // --- NativeCodegen.ls の決定的コンパイル ---
-    let codegen_path = project_root.join("selfhost/NativeCodegen.ls");
+    let codegen_path = selfhost_source_path("NativeCodegen.ls");
     let codegen_source =
         std::fs::read_to_string(&codegen_path).expect("NativeCodegen.ls 読み込み失敗");
 
@@ -130,7 +139,7 @@ fn test_e2e_native_stage_chain_structure() {
     );
 
     // --- NativeTarget.ls の決定的コンパイル ---
-    let target_path = project_root.join("selfhost/NativeTarget.ls");
+    let target_path = selfhost_source_path("NativeTarget.ls");
     let target_source =
         std::fs::read_to_string(&target_path).expect("NativeTarget.ls 読み込み失敗");
 
@@ -143,7 +152,7 @@ fn test_e2e_native_stage_chain_structure() {
     );
 
     // --- NativeEmit.ls の決定的コンパイル ---
-    let emit_path = project_root.join("selfhost/NativeEmit.ls");
+    let emit_path = selfhost_source_path("NativeEmit.ls");
     let emit_source = std::fs::read_to_string(&emit_path).expect("NativeEmit.ls 読み込み失敗");
 
     let emit_ast1 = lsharp_syntax::parse(&emit_source).expect("パース失敗 (1回目)");
@@ -216,8 +225,6 @@ fn test_e2e_native_stage_chain_structure() {
 ///   5. 診断メッセージ数 (diagnostics count)
 #[test]
 fn test_e2e_wasm_native_differential_five_observation_points() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
     // テスト対象ソース
     let test_source = r#"
         (defn factorial [n]
@@ -234,7 +241,7 @@ fn test_e2e_wasm_native_differential_five_observation_points() {
     assert!(wasm_exit_ok, "Wasm パスの実行が失敗");
 
     // ネイティブパス: NativeCodegen.ls がパース可能であること (exit code = 0 相当)
-    let codegen_source = std::fs::read_to_string(project_root.join("selfhost/NativeCodegen.ls"))
+    let codegen_source = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
         .expect("NativeCodegen.ls 読み込み失敗");
     let native_parse_ok = lsharp_syntax::parse(&codegen_source).is_ok();
     assert!(
@@ -258,9 +265,9 @@ fn test_e2e_wasm_native_differential_five_observation_points() {
 
     // ネイティブパスのソースがパースエラーなしであること
     let native_target_source =
-        std::fs::read_to_string(project_root.join("selfhost/NativeTarget.ls"))
+        std::fs::read_to_string(selfhost_source_path("NativeTarget.ls"))
             .expect("NativeTarget.ls 読み込み失敗");
-    let native_emit_source = std::fs::read_to_string(project_root.join("selfhost/NativeEmit.ls"))
+    let native_emit_source = std::fs::read_to_string(selfhost_source_path("NativeEmit.ls"))
         .expect("NativeEmit.ls 読み込み失敗");
 
     let native_parse_errors: usize = [
@@ -382,8 +389,6 @@ fn test_e2e_differential_allowlist_empty() {
 /// 同等の構造 (関数定義・ターゲット対応) を持つことを検証する。
 #[test]
 fn test_e2e_wasm_native_differential_structural_parity() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
     // --- Wasm 決定性: 3回連続コンパイルでバイナリ一致 ---
     let test_source = r#"
         (defn add [a b] (+ a b))
@@ -399,19 +404,19 @@ fn test_e2e_wasm_native_differential_structural_parity() {
     // --- ネイティブモジュールの構造整合 ---
     // NativeCodegen → NativeTarget → NativeEmit の import chain が閉じていること
     let codegen_src =
-        std::fs::read_to_string(project_root.join("selfhost/NativeCodegen.ls")).unwrap();
-    let emit_src = std::fs::read_to_string(project_root.join("selfhost/NativeEmit.ls")).unwrap();
+        std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls")).unwrap();
+    let emit_src = std::fs::read_to_string(selfhost_source_path("NativeEmit.ls")).unwrap();
 
-    // NativeCodegen が NativeTarget を import していること
+    // NativeCodegen が canonical NativeTarget を import していること
     assert!(
-        codegen_src.contains("(import NativeTarget)"),
-        "NativeCodegen.ls が NativeTarget を import していない"
+        codegen_src.contains("(import Backend.Native.NativeTarget)"),
+        "NativeCodegen.ls が Backend.Native.NativeTarget を import していない"
     );
 
-    // NativeEmit が NativeTarget を import していること
+    // NativeEmit が canonical NativeTarget を import していること
     assert!(
-        emit_src.contains("(import NativeTarget)"),
-        "NativeEmit.ls が NativeTarget を import していない"
+        emit_src.contains("(import Backend.Native.NativeTarget)"),
+        "NativeEmit.ls が Backend.Native.NativeTarget を import していない"
     );
 
     // --- Wasm 出力のセクション検証 ---
@@ -428,7 +433,7 @@ fn test_e2e_wasm_native_differential_structural_parity() {
 
     // ネイティブ側の対応: 3ターゲットを NativeTarget.ls がサポートしていること
     let target_src =
-        std::fs::read_to_string(project_root.join("selfhost/NativeTarget.ls")).unwrap();
+        std::fs::read_to_string(selfhost_source_path("NativeTarget.ls")).unwrap();
     assert!(
         target_src.contains("x86_64-apple-darwin") || target_src.contains("target-x86-64-darwin"),
         "NativeTarget.ls に x86_64-apple-darwin サポートがない"
@@ -607,10 +612,8 @@ fn run_native_linker_harness(entry_source: &str) -> String {
 /// 戻り値: ネイティブコード バイト列が0でないサイズであること
 #[test]
 fn test_native_codegen_produces_executable_bytecode() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
     // --- セットアップ: NativeCodegen.ls を Wasm にコンパイルし、L# 関数として実行可能にする ---
-    let codegen_source = std::fs::read_to_string(project_root.join("selfhost/NativeCodegen.ls"))
+    let codegen_source = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
         .expect("NativeCodegen.ls 読み込み失敗");
 
     // NativeCodegen.ls を直接パイプラインでコンパイルする
@@ -649,10 +652,8 @@ fn test_native_codegen_produces_executable_bytecode() {
 /// 実行パリティの前提: Mach-O / ELF ヘッダーが正しくフォーマットされていること
 #[test]
 fn test_native_emit_generates_valid_object_headers() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
     // --- NativeEmit.ls がヘッダー生成関数を持つこと ---
-    let emit_source = std::fs::read_to_string(project_root.join("selfhost/NativeEmit.ls"))
+    let emit_source = std::fs::read_to_string(selfhost_source_path("NativeEmit.ls"))
         .expect("NativeEmit.ls 読み込み失敗");
 
     let parse_result = lsharp_syntax::parse(&emit_source);
@@ -683,10 +684,8 @@ fn test_native_emit_generates_valid_object_headers() {
 /// (実際にバイナリを実行するのではなく、パイプラインが完結して出力を生成することをテスト)
 #[test]
 fn test_native_pipeline_complete_chain() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
     // --- NativeTarget.ls: ターゲット記述子をサポート ---
-    let target_src = std::fs::read_to_string(project_root.join("selfhost/NativeTarget.ls"))
+    let target_src = std::fs::read_to_string(selfhost_source_path("NativeTarget.ls"))
         .expect("NativeTarget.ls 読み込み失敗");
 
     let target_parse = lsharp_syntax::parse(&target_src);
@@ -707,7 +706,7 @@ fn test_native_pipeline_complete_chain() {
     );
 
     // --- NativeCodegen.ls: ネイティブコード生成 ---
-    let codegen_src = std::fs::read_to_string(project_root.join("selfhost/NativeCodegen.ls"))
+    let codegen_src = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
         .expect("NativeCodegen.ls 読み込み失敗");
 
     let codegen_parse = lsharp_syntax::parse(&codegen_src);
@@ -725,7 +724,7 @@ fn test_native_pipeline_complete_chain() {
     );
 
     // --- NativeEmit.ls: オブジェクトファイル生成 ---
-    let emit_src = std::fs::read_to_string(project_root.join("selfhost/NativeEmit.ls"))
+    let emit_src = std::fs::read_to_string(selfhost_source_path("NativeEmit.ls"))
         .expect("NativeEmit.ls 読み込み失敗");
 
     let emit_parse = lsharp_syntax::parse(&emit_src);
@@ -736,16 +735,16 @@ fn test_native_pipeline_complete_chain() {
     assert!(emit_src.contains("(defn emit-elf"), "emit-elf が欠落");
 
     // --- パイプラインの依存関係整合性 ---
-    // NativeCodegen → NativeTarget
+    // NativeCodegen → canonical NativeTarget
     assert!(
-        codegen_src.contains("(import NativeTarget)"),
-        "NativeCodegen.ls が NativeTarget を import していない"
+        codegen_src.contains("(import Backend.Native.NativeTarget)"),
+        "NativeCodegen.ls が Backend.Native.NativeTarget を import していない"
     );
 
-    // NativeEmit → NativeTarget
+    // NativeEmit → canonical NativeTarget
     assert!(
-        emit_src.contains("(import NativeTarget)"),
-        "NativeEmit.ls が NativeTarget を import していない"
+        emit_src.contains("(import Backend.Native.NativeTarget)"),
+        "NativeEmit.ls が Backend.Native.NativeTarget を import していない"
     );
 
     eprintln!("✓ ネイティブパイプライン (Target → Codegen → Emit) チェーン確認");
@@ -758,8 +757,6 @@ fn test_native_pipeline_complete_chain() {
 /// Wasm 経由で実行してネイティブコード生成・出力が機能することを確認する。
 #[test]
 fn test_native_codegen_emit_standalone_execution() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
     // --- NativeTarget を簡略版で実装 (テスト用) ---
     // 実際にはこれらを統合して実行する必要があるが、
     // ここでは独立した単体テストとして、ネイティブコード生成パスが
@@ -769,7 +766,7 @@ fn test_native_codegen_emit_standalone_execution() {
     // i64.const 42 の IR を ネイティブコードに変換して、
     // そのバイト数を print すること
 
-    let codegen_source = std::fs::read_to_string(project_root.join("selfhost/NativeCodegen.ls"))
+    let codegen_source = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
         .expect("NativeCodegen.ls 読み込み失敗");
 
     // main() が定義されていること
@@ -826,20 +823,13 @@ fn test_wasm_native_execution_parity_double() {
     // 実装側: L# の selfhost で NativeCodegen/Emit 呼び出し
     // テスト側: これらが Wasm 経由で実行できることを確認
 
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
     // 必要なモジュール確認
-    let modules = [
-        "selfhost/NativeTarget.ls",
-        "selfhost/NativeCodegen.ls",
-        "selfhost/NativeEmit.ls",
-    ];
+    let modules = ["NativeTarget.ls", "NativeCodegen.ls", "NativeEmit.ls"];
 
-    for module_path in &modules {
-        let src = std::fs::read_to_string(project_root.join(module_path))
-            .expect(&format!("{} 読み込み失敗", module_path));
+    for module in modules {
+        let src = read_selfhost_native_source(module);
         let parse = lsharp_syntax::parse(&src);
-        assert!(parse.is_ok(), "{} パース失敗", module_path);
+        assert!(parse.is_ok(), "{} パース失敗", selfhost_native_label(module));
     }
 
     eprintln!("✓ Native pipeline modules all parse successfully");
@@ -862,15 +852,14 @@ fn test_native_codegen_real_execution() {
     // main() は i64.const 42 の IR をネイティブコードに変換してサイズを print する
 
     let native_codegen_src = std::fs::read_to_string(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../selfhost/NativeCodegen.ls"),
+        selfhost_source_path("NativeCodegen.ls"),
     )
     .expect("NativeCodegen.ls 読み込み失敗");
 
     // NativeCodegen は NativeTarget を import しているため、
     // 単独で実行するには両方を結合する必要がある
     let native_target_src = std::fs::read_to_string(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost/NativeTarget.ls"),
+        selfhost_source_path("NativeTarget.ls"),
     )
     .expect("NativeTarget.ls 読み込み失敗");
 

@@ -46,6 +46,43 @@ v1 で対象とするターゲットは次のとおりである。
 
 追加ターゲットを導入する場合でも、`LoweredModule` や runtime 契約の共有を前提にしなければならない。
 
+## Target descriptor schema
+
+`NativeTarget` は単なる triple 文字列ではなく、backend 差分を閉じ込めるための **target descriptor** として扱う。v1 では少なくとも次の論理項目を持つことを前提にする。
+
+| 区分 | 項目 | 役割 |
+|------|------|------|
+| identity | `triple_id`, `arch`, `os`, `object_format` | target の基本識別 |
+| ABI | `word_size`, `endianness`, `stack_alignment` | 値表現とフレーム生成の基礎 |
+| calling convention | `arg_registers`, `return_registers`, `callee_saved`, `caller_saved` | 関数呼び出し規約 |
+| emit policy | `text_section`, `rodata_section`, `data_section`, `bss_section`, `symbol_prefix`, `visibility_policy` | object 出力時の section / symbol 規約 |
+| relocation policy | `reloc_call`, `reloc_abs`, `reloc_data` | codegen / emit が使う relocation 種別 |
+| toolchain | `linker_flavor`, `response_file_style` | 最終 link の実行方法 |
+| runtime | `runtime_object_name`, `runtime_symbol_prefix`, `gc_root_policy` | `runtime.o` との接続規約 |
+
+実装言語上の表現は struct, record, vector のいずれでもよいが、**codegen / emit / linker 本体が target 固有 if を散らさず、この descriptor を参照するだけで切り替わること**を acceptance とする。
+
+## v1 delivery model
+
+v1 の native backend は、**compiler core が全てを自前で完結させること**よりも、**selfhost 後も維持できる artifact 契約を固定すること**を優先する。
+
+責務分担は次で固定する。
+
+- **compiler core (`NativeTarget` / `NativeCodegen` / `NativeEmit` / `Linker`)**
+  - `LoweredModule` から target-specific native artifact を生成する
+  - `program.o`, `linker-response.txt`, `program.native` の契約を決める
+  - target 差分を descriptor と runtime boundary に閉じ込める
+  - source order / stable sort / no timestamp の determinism を守る
+- **external toolchain**
+  - 最終 link を担当する
+  - Darwin では `ld64`、Linux では `ld.lld` を優先し、必要に応じて `ld` fallback を許容する
+- **runtime artifact**
+  - `runtime.o` は compiler core に埋め込まず、target ごとの別 artifact として扱う
+  - tier1 配布物では対応する `runtime.o` を同梱することを推奨する
+  - 開発中の shadow path では、CI や補助 build step による `runtime.o` 生成を許容する
+
+Mach-O / ELF の完全手書きは v1 の必須要件ではない。shadow path を閉じるために必要であれば、`NativeEmit` が補助的な外部 object-generation path を使って `program.o` へ到達してよい。ただし default-path cutover 前には、product path の artifact 契約と再現性を固定しなければならない。
+
 ## ABI 契約
 
 ### Internal ABI
@@ -61,7 +98,7 @@ L# 内部の呼び出し規約は、少なくとも次を満たす。
 
 ### External ABI
 
-native backend の外部境界は runtime を介して定義する。
+native backend の外部境界は runtime を介して定義する。論理的な runtime API (`alloc_words`, `alloc_bytes`, `print`, `read_file`, `clock_now_millis` など) は、native 側では `lsharp_` 接頭辞付き symbol へ写像する。
 
 - エントリポイントは `runtime init -> L# main 呼び出し` の thin stub で構成する
 - 外部公開シンボルは runtime boundary に限定する
@@ -71,11 +108,18 @@ native backend の外部境界は runtime を介して定義する。
 v1 で想定する代表的な公開シンボルは次のとおりである。
 
 - `lsharp_runtime_init`
-- `lsharp_alloc`
+- `lsharp_alloc_words`
+- `lsharp_alloc_bytes`
 - `lsharp_print`
+- `lsharp_eprint`
 - `lsharp_read_file`
 - `lsharp_write_file`
-- `lsharp_clock_now`
+- `lsharp_file_exists`
+- `lsharp_read_dir`
+- `lsharp_clock_now_millis`
+- `lsharp_root_push`
+- `lsharp_root_pop`
+- `lsharp_root_set`
 
 ## ターゲット別 calling convention
 
@@ -134,7 +178,7 @@ Mach-O と ELF の差分は target descriptor に閉じ込め、codegen の共�
 | `linker-response.txt` | linker へ渡す補助情報 |
 | `program.native` | 最終ネイティブバイナリ |
 
-Mach-O / ELF を完全に手書きすることは v1 の必須要件ではない。必要に応じて `cc` や `ld` へ委譲してよい。
+Mach-O / ELF を完全に手書きすることは v1 の必須要件ではない。必要に応じて補助的な object-generation path を許容するが、最終 link は response file 経由で system linker に委譲し、artifact 契約と determinism は compiler 側で担保する。
 
 ## 決定的コード生成
 

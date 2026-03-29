@@ -1,24 +1,35 @@
 use super::support::*;
 
+fn selfhost_test_label(name: &str) -> &'static str {
+    match name {
+        "GC.ls" => "selfhost/src/Runtime/GC.ls",
+        "NativeTarget.ls" => "selfhost/src/Backend/Native/NativeTarget.ls",
+        "NativeCodegen.ls" => "selfhost/src/Backend/Native/NativeCodegen.ls",
+        "NativeEmit.ls" => "selfhost/src/Backend/Native/NativeEmit.ls",
+        "Linker.ls" => "selfhost/src/Backend/Native/Linker.ls",
+        "Cli.ls" => "selfhost/src/App/Cli.ls",
+        other => panic!("不明な selfhost test label: {other}"),
+    }
+}
+
+fn read_selfhost_test_source(name: &str, missing_hint: &str) -> String {
+    let path = selfhost_source_path(name);
+    let label = selfhost_test_label(name);
+    assert!(path.exists(), "{label} が存在しない -- {missing_hint}");
+    std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{label} の読み込みに失敗"))
+}
+
 /// TEST-GC-03: 世代別 GC (nursery, write-barrier, promotion)
 #[test]
 fn test_e2e_selfhost_gc_generational() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let gc_path = project_root.join("selfhost/GC.ls");
-    assert!(
-        gc_path.exists(),
-        "selfhost/GC.ls が存在しない -- GC モジュールを作成してください"
-    );
-
-    let gc_source = std::fs::read_to_string(&gc_path).expect("selfhost/GC.ls の読み込みに失敗");
+    let gc_source = read_selfhost_test_source("GC.ls", "GC モジュールを作成してください");
 
     // nursery (若い世代の領域)
     assert!(
         gc_source.contains("nursery")
             || gc_source.contains("Nursery")
             || gc_source.contains("young-gen"),
-        "selfhost/GC.ls に nursery / young generation 関連の定義がない"
+        "selfhost/src/Runtime/GC.ls に nursery / young generation 関連の定義がない"
     );
 
     // write-barrier (古い世代から若い世代へのポインタ書き込み検知)
@@ -26,7 +37,7 @@ fn test_e2e_selfhost_gc_generational() {
         gc_source.contains("write-barrier")
             || gc_source.contains("write_barrier")
             || gc_source.contains("WriteBarrier"),
-        "selfhost/GC.ls に write-barrier 関連の定義がない"
+        "selfhost/src/Runtime/GC.ls に write-barrier 関連の定義がない"
     );
 
     // promotion (若い世代から古い世代への昇格)
@@ -34,14 +45,14 @@ fn test_e2e_selfhost_gc_generational() {
         gc_source.contains("promote")
             || gc_source.contains("promotion")
             || gc_source.contains("tenure"),
-        "selfhost/GC.ls に promotion / tenure 関連の定義がない"
+        "selfhost/src/Runtime/GC.ls に promotion / tenure 関連の定義がない"
     );
 
     // コンパイルが通ること
     let program = lsharp_syntax::parse(&gc_source);
     assert!(
         program.is_ok(),
-        "selfhost/GC.ls のパースに失敗: {:?}",
+        "selfhost/src/Runtime/GC.ls のパースに失敗: {:?}",
         program.err()
     );
     let program = program.unwrap();
@@ -50,7 +61,7 @@ fn test_e2e_selfhost_gc_generational() {
     let types = infer.infer_program(&program);
     assert!(
         types.is_ok(),
-        "selfhost/GC.ls の型チェックに失敗: {:?}",
+        "selfhost/src/Runtime/GC.ls の型チェックに失敗: {:?}",
         types.err()
     );
 }
@@ -58,22 +69,14 @@ fn test_e2e_selfhost_gc_generational() {
 /// TEST-GC-04: 長寿命ベンチマーク -- GC が大量割り当て後も安定動作すること
 #[test]
 fn test_e2e_selfhost_gc_longevity_benchmark() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let gc_path = project_root.join("selfhost/GC.ls");
-    assert!(
-        gc_path.exists(),
-        "selfhost/GC.ls が存在しない -- GC モジュールを作成してください"
-    );
-
-    let gc_source = std::fs::read_to_string(&gc_path).expect("selfhost/GC.ls の読み込みに失敗");
+    let gc_source = read_selfhost_test_source("GC.ls", "GC モジュールを作成してください");
 
     // gc-collect または collect 関数 (手動/自動 GC トリガー)
     assert!(
         gc_source.contains("gc-collect")
             || gc_source.contains("collect")
             || gc_source.contains("(defn gc"),
-        "selfhost/GC.ls に collect / gc トリガー関数がない"
+        "selfhost/src/Runtime/GC.ls に collect / gc トリガー関数がない"
     );
 
     // 大量割り当てテスト用のコード: GC モジュールをインポートして繰り返し alloc する
@@ -105,14 +108,14 @@ fn test_e2e_selfhost_gc_longevity_benchmark() {
 
     // GC モジュール自体が型チェックを通ること
     let gc_program = lsharp_syntax::parse(&gc_source);
-    assert!(gc_program.is_ok(), "selfhost/GC.ls のパースに失敗");
+    assert!(gc_program.is_ok(), "selfhost/src/Runtime/GC.ls のパースに失敗");
     let gc_program = gc_program.unwrap();
 
     let mut infer = Infer::new();
     let types = infer.infer_program(&gc_program);
     assert!(
         types.is_ok(),
-        "selfhost/GC.ls の型チェックに失敗: {:?}",
+        "selfhost/src/Runtime/GC.ls の型チェックに失敗: {:?}",
         types.err()
     );
 
@@ -121,29 +124,21 @@ fn test_e2e_selfhost_gc_longevity_benchmark() {
         gc_source.contains("heap-used")
             || gc_source.contains("heap_used")
             || gc_source.contains("HeapUsed"),
-        "selfhost/GC.ls に heap-used メトリクス関数がない"
+        "selfhost/src/Runtime/GC.ls に heap-used メトリクス関数がない"
     );
 }
 
 /// TEST-GC-05: LSP soak + REPL GC テスト -- 長時間稼働で GC が正しく動作すること
 #[test]
 fn test_e2e_selfhost_gc_lsp_soak_repl() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let gc_path = project_root.join("selfhost/GC.ls");
-    assert!(
-        gc_path.exists(),
-        "selfhost/GC.ls が存在しない -- GC モジュールを作成してください"
-    );
-
-    let gc_source = std::fs::read_to_string(&gc_path).expect("selfhost/GC.ls の読み込みに失敗");
+    let gc_source = read_selfhost_test_source("GC.ls", "GC モジュールを作成してください");
 
     // GC 統計情報 API (LSP soak テストで使用)
     assert!(
         gc_source.contains("gc-stats")
             || gc_source.contains("gc_stats")
             || gc_source.contains("GcStats"),
-        "selfhost/GC.ls に gc-stats 関連の定義がない"
+        "selfhost/src/Runtime/GC.ls に gc-stats 関連の定義がない"
     );
 
     // LSP soak テスト: 繰り返し型チェック + GC を行うシナリオ
@@ -178,7 +173,7 @@ fn test_e2e_selfhost_gc_lsp_soak_repl() {
         gc_source.contains("total-collections")
             || gc_source.contains("total_collections")
             || gc_source.contains("num-collections"),
-        "selfhost/GC.ls に total-collections メトリクス関数がない"
+        "selfhost/src/Runtime/GC.ls に total-collections メトリクス関数がない"
     );
 
     // REPL 用途: セッション間の GC リセット
@@ -186,22 +181,14 @@ fn test_e2e_selfhost_gc_lsp_soak_repl() {
         gc_source.contains("gc-reset")
             || gc_source.contains("gc_reset")
             || gc_source.contains("reset-heap"),
-        "selfhost/GC.ls に gc-reset / reset-heap 関連の定義がない"
+        "selfhost/src/Runtime/GC.ls に gc-reset / reset-heap 関連の定義がない"
     );
 }
 
 /// TEST-GC-06: leak detection + metrics -- メモリリーク検知と GC メトリクス
 #[test]
 fn test_e2e_selfhost_gc_leak_detection() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    let gc_path = project_root.join("selfhost/GC.ls");
-    assert!(
-        gc_path.exists(),
-        "selfhost/GC.ls が存在しない -- GC モジュールを作成してください"
-    );
-
-    let gc_source = std::fs::read_to_string(&gc_path).expect("selfhost/GC.ls の読み込みに失敗");
+    let gc_source = read_selfhost_test_source("GC.ls", "GC モジュールを作成してください");
 
     // leak detection 機能
     assert!(
@@ -209,7 +196,7 @@ fn test_e2e_selfhost_gc_leak_detection() {
             || gc_source.contains("detect_leak")
             || gc_source.contains("leak-check")
             || gc_source.contains("LeakDetector"),
-        "selfhost/GC.ls に leak detection 関連の定義がない"
+        "selfhost/src/Runtime/GC.ls に leak detection 関連の定義がない"
     );
 
     // メトリクス: 割り当て数
@@ -217,7 +204,7 @@ fn test_e2e_selfhost_gc_leak_detection() {
         gc_source.contains("alloc-count")
             || gc_source.contains("alloc_count")
             || gc_source.contains("total-allocs"),
-        "selfhost/GC.ls に alloc-count メトリクス関数がない"
+        "selfhost/src/Runtime/GC.ls に alloc-count メトリクス関数がない"
     );
 
     // メトリクス: 回収数
@@ -225,7 +212,7 @@ fn test_e2e_selfhost_gc_leak_detection() {
         gc_source.contains("freed-count")
             || gc_source.contains("freed_count")
             || gc_source.contains("total-freed"),
-        "selfhost/GC.ls に freed-count メトリクス関数がない"
+        "selfhost/src/Runtime/GC.ls に freed-count メトリクス関数がない"
     );
 
     // leak detection テスト: alloc → collect 後に leak がないことを検証
@@ -254,14 +241,14 @@ fn test_e2e_selfhost_gc_leak_detection() {
 
     // GC モジュール自体が型チェックを通ること
     let gc_program = lsharp_syntax::parse(&gc_source);
-    assert!(gc_program.is_ok(), "selfhost/GC.ls のパースに失敗");
+    assert!(gc_program.is_ok(), "selfhost/src/Runtime/GC.ls のパースに失敗");
     let gc_program = gc_program.unwrap();
 
     let mut infer = Infer::new();
     let types = infer.infer_program(&gc_program);
     assert!(
         types.is_ok(),
-        "selfhost/GC.ls の型チェックに失敗: {:?}",
+        "selfhost/src/Runtime/GC.ls の型チェックに失敗: {:?}",
         types.err()
     );
 }
@@ -277,22 +264,15 @@ fn test_e2e_selfhost_gc_leak_detection() {
 /// Red Phase: NativeTarget.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_native_target_descriptors() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    // NativeTarget.ls が存在すること
-    let target_path = project_root.join("selfhost/NativeTarget.ls");
-    assert!(
-        target_path.exists(),
-        "selfhost/NativeTarget.ls が存在しない -- ネイティブターゲットモジュールを作成してください"
+    let source = read_selfhost_test_source(
+        "NativeTarget.ls",
+        "ネイティブターゲットモジュールを作成してください",
     );
-
-    let source =
-        std::fs::read_to_string(&target_path).expect("selfhost/NativeTarget.ls の読み込みに失敗");
 
     // モジュール宣言
     assert!(
-        source.contains("(module NativeTarget)"),
-        "selfhost/NativeTarget.ls に (module NativeTarget) 宣言がない"
+        source.contains("(module Backend.Native.NativeTarget)"),
+        "selfhost/src/Backend/Native/NativeTarget.ls に namespaced module 宣言がない"
     );
 
     // x86_64-apple-darwin ターゲット記述子
@@ -300,7 +280,7 @@ fn test_e2e_selfhost_native_target_descriptors() {
         source.contains("x86_64-apple-darwin")
             || source.contains("x86-64-macos")
             || source.contains("target-x86-64-darwin"),
-        "selfhost/NativeTarget.ls に x86_64-apple-darwin ターゲット記述子がない"
+        "selfhost/src/Backend/Native/NativeTarget.ls に x86_64-apple-darwin ターゲット記述子がない"
     );
 
     // aarch64-apple-darwin ターゲット記述子
@@ -308,7 +288,7 @@ fn test_e2e_selfhost_native_target_descriptors() {
         source.contains("aarch64-apple-darwin")
             || source.contains("arm64-macos")
             || source.contains("target-aarch64-darwin"),
-        "selfhost/NativeTarget.ls に aarch64-apple-darwin ターゲット記述子がない"
+        "selfhost/src/Backend/Native/NativeTarget.ls に aarch64-apple-darwin ターゲット記述子がない"
     );
 
     // x86_64-unknown-linux-gnu ターゲット記述子
@@ -316,7 +296,7 @@ fn test_e2e_selfhost_native_target_descriptors() {
         source.contains("x86_64-unknown-linux-gnu")
             || source.contains("x86-64-linux")
             || source.contains("target-x86-64-linux"),
-        "selfhost/NativeTarget.ls に x86_64-unknown-linux-gnu ターゲット記述子がない"
+        "selfhost/src/Backend/Native/NativeTarget.ls に x86_64-unknown-linux-gnu ターゲット記述子がない"
     );
 
     // ターゲット取得関数が存在すること
@@ -324,7 +304,7 @@ fn test_e2e_selfhost_native_target_descriptors() {
         source.contains("(defn get-target")
             || source.contains("(defn native-target")
             || source.contains("(defn make-target"),
-        "selfhost/NativeTarget.ls にターゲット取得関数が未定義"
+        "selfhost/src/Backend/Native/NativeTarget.ls にターゲット取得関数が未定義"
     );
 }
 
@@ -335,22 +315,15 @@ fn test_e2e_selfhost_native_target_descriptors() {
 /// Red Phase: 両ファイルが未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_native_object_emitter() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    // NativeCodegen.ls が存在すること
-    let codegen_path = project_root.join("selfhost/NativeCodegen.ls");
-    assert!(
-        codegen_path.exists(),
-        "selfhost/NativeCodegen.ls が存在しない -- ネイティブコード生成モジュールを作成してください"
+    let codegen_source = read_selfhost_test_source(
+        "NativeCodegen.ls",
+        "ネイティブコード生成モジュールを作成してください",
     );
-
-    let codegen_source =
-        std::fs::read_to_string(&codegen_path).expect("selfhost/NativeCodegen.ls の読み込みに失敗");
 
     // モジュール宣言
     assert!(
-        codegen_source.contains("(module NativeCodegen)"),
-        "selfhost/NativeCodegen.ls に (module NativeCodegen) 宣言がない"
+        codegen_source.contains("(module Backend.Native.NativeCodegen)"),
+        "selfhost/src/Backend/Native/NativeCodegen.ls に namespaced module 宣言がない"
     );
 
     // コード生成関数が定義されていること
@@ -358,23 +331,18 @@ fn test_e2e_selfhost_native_object_emitter() {
         codegen_source.contains("(defn emit-native")
             || codegen_source.contains("(defn codegen-native")
             || codegen_source.contains("(defn generate-native"),
-        "selfhost/NativeCodegen.ls にネイティブコード生成関数が未定義"
+        "selfhost/src/Backend/Native/NativeCodegen.ls にネイティブコード生成関数が未定義"
     );
 
-    // NativeEmit.ls が存在すること
-    let emit_path = project_root.join("selfhost/NativeEmit.ls");
-    assert!(
-        emit_path.exists(),
-        "selfhost/NativeEmit.ls が存在しない -- ネイティブバイナリ出力モジュールを作成してください"
+    let emit_source = read_selfhost_test_source(
+        "NativeEmit.ls",
+        "ネイティブバイナリ出力モジュールを作成してください",
     );
-
-    let emit_source =
-        std::fs::read_to_string(&emit_path).expect("selfhost/NativeEmit.ls の読み込みに失敗");
 
     // モジュール宣言
     assert!(
-        emit_source.contains("(module NativeEmit)"),
-        "selfhost/NativeEmit.ls に (module NativeEmit) 宣言がない"
+        emit_source.contains("(module Backend.Native.NativeEmit)"),
+        "selfhost/src/Backend/Native/NativeEmit.ls に namespaced module 宣言がない"
     );
 
     // オブジェクトファイル出力関数が定義されていること
@@ -383,7 +351,7 @@ fn test_e2e_selfhost_native_object_emitter() {
             || emit_source.contains("(defn write-object")
             || emit_source.contains("(defn emit-elf")
             || emit_source.contains("(defn emit-macho"),
-        "selfhost/NativeEmit.ls にオブジェクトファイル出力関数が未定義"
+        "selfhost/src/Backend/Native/NativeEmit.ls にオブジェクトファイル出力関数が未定義"
     );
 }
 
@@ -394,22 +362,13 @@ fn test_e2e_selfhost_native_object_emitter() {
 /// Red Phase: Linker.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_linker_response() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    // Linker.ls が存在すること
-    let linker_path = project_root.join("selfhost/Linker.ls");
-    assert!(
-        linker_path.exists(),
-        "selfhost/Linker.ls が存在しない -- リンカーモジュールを作成してください"
-    );
-
     let source =
-        std::fs::read_to_string(&linker_path).expect("selfhost/Linker.ls の読み込みに失敗");
+        read_selfhost_test_source("Linker.ls", "リンカーモジュールを作成してください");
 
     // モジュール宣言
     assert!(
-        source.contains("(module Linker)"),
-        "selfhost/Linker.ls に (module Linker) 宣言がない"
+        source.contains("(module Backend.Native.Linker)"),
+        "selfhost/src/Backend/Native/Linker.ls に namespaced module 宣言がない"
     );
 
     // リンカー呼び出し関数
@@ -417,7 +376,7 @@ fn test_e2e_selfhost_linker_response() {
         source.contains("(defn link")
             || source.contains("(defn invoke-linker")
             || source.contains("(defn run-linker"),
-        "selfhost/Linker.ls にリンカー呼び出し関数が未定義"
+        "selfhost/src/Backend/Native/Linker.ls にリンカー呼び出し関数が未定義"
     );
 
     // response file 生成関数
@@ -425,7 +384,7 @@ fn test_e2e_selfhost_linker_response() {
         source.contains("response-file")
             || source.contains("write-response")
             || source.contains("generate-response"),
-        "selfhost/Linker.ls に response file 関連関数が未定義"
+        "selfhost/src/Backend/Native/Linker.ls に response file 関連関数が未定義"
     );
 }
 
@@ -436,17 +395,10 @@ fn test_e2e_selfhost_linker_response() {
 /// Red Phase: NativeCodegen.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_native_deterministic_codegen() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
-    // NativeCodegen.ls が存在することを前提とする
-    let codegen_path = project_root.join("selfhost/NativeCodegen.ls");
-    assert!(
-        codegen_path.exists(),
-        "selfhost/NativeCodegen.ls が存在しない -- 決定的コンパイルの検証にはネイティブコード生成モジュールが必要"
+    let codegen_source = read_selfhost_test_source(
+        "NativeCodegen.ls",
+        "決定的コンパイルの検証にはネイティブコード生成モジュールが必要",
     );
-
-    let codegen_source =
-        std::fs::read_to_string(&codegen_path).expect("selfhost/NativeCodegen.ls の読み込みに失敗");
 
     // 決定的コード生成を保証する関数やメカニズムが存在すること
     assert!(
@@ -454,14 +406,14 @@ fn test_e2e_selfhost_native_deterministic_codegen() {
             || codegen_source.contains("reproducible")
             || codegen_source.contains("(defn codegen")
             || codegen_source.contains("(defn emit-native"),
-        "selfhost/NativeCodegen.ls に決定的コード生成メカニズムがない"
+        "selfhost/src/Backend/Native/NativeCodegen.ls に決定的コード生成メカニズムがない"
     );
 
     // NativeCodegen.ls がコンパイル可能であることを検証
     let program = lsharp_syntax::parse(&codegen_source);
     assert!(
         program.is_ok(),
-        "selfhost/NativeCodegen.ls のパースに失敗: {:?}",
+        "selfhost/src/Backend/Native/NativeCodegen.ls のパースに失敗: {:?}",
         program.err()
     );
     let program = program.unwrap();
@@ -479,7 +431,7 @@ fn test_e2e_selfhost_native_deterministic_codegen() {
         assert_eq!(
             format!("{:?}", program.decls.len()),
             format!("{:?}", program2.decls.len()),
-            "selfhost/NativeCodegen.ls の2回パースで宣言数が一致しない (非決定的パース)"
+            "selfhost/src/Backend/Native/NativeCodegen.ls の2回パースで宣言数が一致しない (非決定的パース)"
         );
         return;
     }
@@ -489,7 +441,7 @@ fn test_e2e_selfhost_native_deterministic_codegen() {
     let types1 = infer1.infer_program(&program);
     assert!(
         types1.is_ok(),
-        "selfhost/NativeCodegen.ls の型チェック (1回目) に失敗: {:?}",
+        "selfhost/src/Backend/Native/NativeCodegen.ls の型チェック (1回目) に失敗: {:?}",
         types1.err()
     );
     let types1 = types1.unwrap();
@@ -498,7 +450,7 @@ fn test_e2e_selfhost_native_deterministic_codegen() {
     let module1 = lower1.lower_program(&program, &types1);
     assert!(
         module1.is_ok(),
-        "selfhost/NativeCodegen.ls の IR lowering (1回目) に失敗: {:?}",
+        "selfhost/src/Backend/Native/NativeCodegen.ls の IR lowering (1回目) に失敗: {:?}",
         module1.err()
     );
     let wasm1 = lsharp_wasm::wasi::emit_wasm_wasi(&module1.unwrap()).unwrap();
@@ -513,7 +465,7 @@ fn test_e2e_selfhost_native_deterministic_codegen() {
 
     assert_eq!(
         wasm1, wasm2,
-        "selfhost/NativeCodegen.ls の2回コンパイルでバイナリが一致しない (非決定的コンパイル)"
+        "selfhost/src/Backend/Native/NativeCodegen.ls の2回コンパイルでバイナリが一致しない (非決定的コンパイル)"
     );
 }
 
@@ -524,22 +476,20 @@ fn test_e2e_selfhost_native_deterministic_codegen() {
 /// Red Phase: ネイティブバックエンドが未実装のため FAIL する。
 #[test]
 fn test_e2e_selfhost_native_self_regeneration() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
     // ネイティブバックエンドの主要モジュールが全て存在すること
-    let required_files = [
-        "selfhost/NativeTarget.ls",
-        "selfhost/NativeCodegen.ls",
-        "selfhost/NativeEmit.ls",
-        "selfhost/Linker.ls",
+    let required_modules = [
+        "NativeTarget.ls",
+        "NativeCodegen.ls",
+        "NativeEmit.ls",
+        "Linker.ls",
     ];
 
-    for file in &required_files {
-        let path = project_root.join(file);
+    for name in &required_modules {
+        let path = selfhost_source_path(name);
         assert!(
             path.exists(),
             "{} が存在しない -- ネイティブバックエンドの自己再生成には全モジュールが必要",
-            file
+            selfhost_test_label(name)
         );
     }
 
@@ -557,14 +507,16 @@ fn test_e2e_selfhost_native_self_regeneration() {
     );
 
     // NativeCodegen.ls がコンパイルパイプライン関数を持つこと
-    let codegen_source = std::fs::read_to_string(project_root.join("selfhost/NativeCodegen.ls"))
-        .expect("selfhost/NativeCodegen.ls の読み込みに失敗");
+    let codegen_source = read_selfhost_test_source(
+        "NativeCodegen.ls",
+        "ネイティブバックエンドの自己再生成にはコード生成モジュールが必要",
+    );
 
     assert!(
         codegen_source.contains("(defn compile-to-native")
             || codegen_source.contains("(defn emit-native")
             || codegen_source.contains("(defn native-pipeline"),
-        "selfhost/NativeCodegen.ls にネイティブコンパイルパイプライン関数がない"
+        "selfhost/src/Backend/Native/NativeCodegen.ls にネイティブコンパイルパイプライン関数がない"
     );
 }
 
@@ -575,19 +527,17 @@ fn test_e2e_selfhost_native_self_regeneration() {
 /// Red Phase: ネイティブバックエンドが未実装のため FAIL する。
 #[test]
 fn test_e2e_selfhost_wasm_native_differential() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-
     // ネイティブバックエンドの主要モジュールが存在すること
-    let codegen_path = project_root.join("selfhost/NativeCodegen.ls");
+    let codegen_path = selfhost_source_path("NativeCodegen.ls");
     assert!(
         codegen_path.exists(),
-        "selfhost/NativeCodegen.ls が存在しない -- Wasm/native 差分比較にはネイティブバックエンドが必要"
+        "selfhost/src/Backend/Native/NativeCodegen.ls が存在しない -- Wasm/native 差分比較にはネイティブバックエンドが必要"
     );
 
-    let emit_path = project_root.join("selfhost/NativeEmit.ls");
+    let emit_path = selfhost_source_path("NativeEmit.ls");
     assert!(
         emit_path.exists(),
-        "selfhost/NativeEmit.ls が存在しない -- Wasm/native 差分比較にはネイティブバイナリ出力が必要"
+        "selfhost/src/Backend/Native/NativeEmit.ls が存在しない -- Wasm/native 差分比較にはネイティブバイナリ出力が必要"
     );
 
     // テスト対象のシンプルなソース
@@ -617,13 +567,13 @@ fn test_e2e_selfhost_wasm_native_differential() {
 
     // ネイティブバックエンド用のコンパイル関数が NativeCodegen.ls に存在すること
     let codegen_source =
-        std::fs::read_to_string(&codegen_path).expect("selfhost/NativeCodegen.ls の読み込みに失敗");
+        std::fs::read_to_string(&codegen_path).expect("selfhost/src/Backend/Native/NativeCodegen.ls の読み込みに失敗");
 
     assert!(
         codegen_source.contains("(defn compile-and-run-native")
             || codegen_source.contains("(defn native-run")
             || codegen_source.contains("(defn emit-and-execute"),
-        "selfhost/NativeCodegen.ls にネイティブ実行関数が未定義 -- \
+        "selfhost/src/Backend/Native/NativeCodegen.ls にネイティブ実行関数が未定義 -- \
          Wasm/native 差分比較にはネイティブコンパイル + 実行関数が必要"
     );
 
@@ -707,20 +657,14 @@ fn test_e2e_selfhost_cli_command_contracts() {
 /// Red Phase: selfhost/Cli.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_cli_parse_check_compile() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let cli_path = project_root.join("selfhost/Cli.ls");
-    assert!(
-        cli_path.exists(),
-        "selfhost/Cli.ls が存在しない (T4-1: L# 製 CLI の正式化)"
-    );
-    let source = std::fs::read_to_string(&cli_path).expect("selfhost/Cli.ls の読み込みに失敗");
+    let source = read_selfhost_test_source("Cli.ls", "T4-1: L# 製 CLI の正式化");
 
     // 基本コンパイラコマンドの定義を確認
     let commands = ["parse", "check", "compile", "build", "test"];
     for cmd in &commands {
         assert!(
             source.contains(cmd),
-            "selfhost/Cli.ls に '{}' コマンドの定義がない",
+            "selfhost/src/App/Cli.ls に '{}' コマンドの定義がない",
             cmd
         );
     }
@@ -732,17 +676,14 @@ fn test_e2e_selfhost_cli_parse_check_compile() {
 /// Red Phase: selfhost/Cli.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_cli_review_doc() {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let cli_path = project_root.join("selfhost/Cli.ls");
-    assert!(cli_path.exists(), "selfhost/Cli.ls が存在しない");
-    let source = std::fs::read_to_string(&cli_path).expect("selfhost/Cli.ls の読み込みに失敗");
+    let source = read_selfhost_test_source("Cli.ls", "L# 製 CLI の正式化");
 
     // docs/review 系コマンドの定義を確認 (T4-4 AC-013)
     let commands = ["review", "doc-ack", "doc-check", "install"];
     for cmd in &commands {
         assert!(
             source.contains(cmd),
-            "selfhost/Cli.ls に '{}' コマンドの定義がない (AC-013)",
+            "selfhost/src/App/Cli.ls に '{}' コマンドの定義がない (AC-013)",
             cmd
         );
     }

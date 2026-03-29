@@ -55,6 +55,20 @@ runtime 実装は少なくとも次の API を提供しなければならない�
 
 compiler core は `malloc` や OS syscall を直接呼び出してはならず、必ず上記 API か同等の runtime service を経由する。
 
+native backend では、これらの runtime service をそのままの論理名で扱いつつ、外部 ABI では `lsharp_` 接頭辞付き symbol へ写像してよい。v1 の標準的な対応は次を基準にする。
+
+| Runtime API | Native ABI symbol |
+|-------------|-------------------|
+| `alloc_words` | `lsharp_alloc_words` |
+| `alloc_bytes` | `lsharp_alloc_bytes` |
+| `print` | `lsharp_print` |
+| `eprint` | `lsharp_eprint` |
+| `read_file` | `lsharp_read_file` |
+| `write_file` | `lsharp_write_file` |
+| `file_exists` | `lsharp_file_exists` |
+| `read_dir` | `lsharp_read_dir` |
+| `clock_now_millis` | `lsharp_clock_now_millis` |
+
 ### 内部管理 API
 
 GC を導入する runtime は、少なくとも次の root 管理 API を備える。
@@ -66,6 +80,8 @@ GC を導入する runtime は、少なくとも次の root 管理 API を備え
 | `root_set` | 既存 root slot を更新する |
 
 これらは主に compiler が生成するコードや runtime 内部から利用されるものであり、ユーザー向け API ではない。
+
+native backend では内部管理 API も必要に応じて `lsharp_root_push`, `lsharp_root_pop`, `lsharp_root_set` のような symbol へ写像してよい。GC 未導入段階では no-op 互換実装を許容する。
 
 ## 値表現
 

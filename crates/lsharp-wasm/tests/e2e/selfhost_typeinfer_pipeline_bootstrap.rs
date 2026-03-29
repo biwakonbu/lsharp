@@ -339,8 +339,7 @@ fn test_e2e_bootstrap_stage0_oracle_chain_four_way_identity() {
 /// WASM-03: import なし単一モジュール (Token) の compile も連続一致すること
 #[test]
 fn test_e2e_wasm03_token_module_compile_deterministic() {
-    let token_path =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost/Token.ls");
+    let token_path = selfhost_source_path("Token.ls");
     let w1 = compile_file_only(&token_path);
     let w2 = compile_file_only(&token_path);
     assert_eq!(
@@ -695,45 +694,26 @@ fn test_e2e_selfhost_module_compile_individual() {
 /// Formatter, JsonRpc, Linter, TypeScheme を含む拡張版。
 #[test]
 fn test_e2e_selfhost_all_modules_deterministic() {
-    let selfhost_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
     // Rust parser で正常にコンパイルできるモジュール一覧
     let modules: &[(&str, &str)] = &[
-        ("Lexer.ls", include_str!("../../../../selfhost/Lexer.ls")),
-        ("Parser.ls", include_str!("../../../../selfhost/Parser.ls")),
-        ("AST.ls", include_str!("../../../../selfhost/AST.ls")),
-        ("Token.ls", include_str!("../../../../selfhost/Token.ls")),
-        (
-            "Compiler.ls",
-            include_str!("../../../../selfhost/Compiler.ls"),
-        ),
-        ("Type.ls", include_str!("../../../../selfhost/Type.ls")),
-        ("IR.ls", include_str!("../../../../selfhost/IR.ls")),
-        (
-            "WasmEmit.ls",
-            include_str!("../../../../selfhost/WasmEmit.ls"),
-        ),
-        (
-            "TypeScheme.ls",
-            include_str!("../../../../selfhost/TypeScheme.ls"),
-        ),
-        (
-            "TypeInferCore.ls",
-            include_str!("../../../../selfhost/TypeInferCore.ls"),
-        ),
-        (
-            "Formatter.ls",
-            include_str!("../../../../selfhost/Formatter.ls"),
-        ),
-        (
-            "JsonRpc.ls",
-            include_str!("../../../../selfhost/JsonRpc.ls"),
-        ),
-        ("Linter.ls", include_str!("../../../../selfhost/Linter.ls")),
-        ("Main.ls", include_str!("../../../../selfhost/Main.ls")),
+        ("Lexer.ls", selfhost_module("Lexer.ls")),
+        ("Parser.ls", selfhost_module("Parser.ls")),
+        ("AST.ls", selfhost_module("AST.ls")),
+        ("Token.ls", selfhost_module("Token.ls")),
+        ("Compiler.ls", selfhost_module("Compiler.ls")),
+        ("Type.ls", selfhost_module("Type.ls")),
+        ("IR.ls", selfhost_module("IR.ls")),
+        ("WasmEmit.ls", selfhost_module("WasmEmit.ls")),
+        ("TypeScheme.ls", selfhost_module("TypeScheme.ls")),
+        ("TypeInferCore.ls", selfhost_module("TypeInferCore.ls")),
+        ("Formatter.ls", selfhost_module("Formatter.ls")),
+        ("JsonRpc.ls", selfhost_module("JsonRpc.ls")),
+        ("Linter.ls", selfhost_module("Linter.ls")),
+        ("Main.ls", selfhost_module("Main.ls")),
     ];
 
     for (name, _source) in modules {
-        let path = selfhost_dir.join(name);
+        let path = selfhost_source_path(name);
         let wasm1 = compile_file_only(&path);
         let wasm2 = compile_file_only(&path);
         assert_eq!(
