@@ -257,9 +257,9 @@ fn test_e2e_selfhost_gc_leak_detection() {
 // Phase 6 Group G: Native Backend テスト (TDD Red Phase)
 // =============================================================================
 
-/// TEST-NATIVE-01: selfhost/NativeTarget.ls の存在 + ターゲット記述子定義
+/// TEST-NATIVE-01: selfhost/src/Backend/Native/NativeTarget.ls の存在 + ターゲット記述子定義
 ///
-/// selfhost/NativeTarget.ls が存在し、x86_64-apple-darwin, aarch64-apple-darwin,
+/// selfhost/src/Backend/Native/NativeTarget.ls が存在し、x86_64-apple-darwin, aarch64-apple-darwin,
 /// x86_64-unknown-linux-gnu の3つのターゲット記述子が定義されていることを検証する。
 /// Red Phase: NativeTarget.ls が未作成のため FAIL する。
 #[test]
@@ -308,7 +308,7 @@ fn test_e2e_selfhost_native_target_descriptors() {
     );
 }
 
-/// TEST-NATIVE-02: selfhost/NativeCodegen.ls + NativeEmit.ls の存在
+/// TEST-NATIVE-02: selfhost/src/Backend/Native/NativeCodegen.ls + NativeEmit.ls の存在
 ///
 /// ネイティブコード生成モジュール (NativeCodegen.ls) と
 /// ネイティブバイナリ出力モジュール (NativeEmit.ls) が存在することを検証する。
@@ -355,9 +355,9 @@ fn test_e2e_selfhost_native_object_emitter() {
     );
 }
 
-/// TEST-NATIVE-03: selfhost/Linker.ls の存在 + response file 関連関数
+/// TEST-NATIVE-03: selfhost/src/Backend/Native/Linker.ls の存在 + response file 関連関数
 ///
-/// selfhost/Linker.ls が存在し、リンカー呼び出しと
+/// selfhost/src/Backend/Native/Linker.ls が存在し、リンカー呼び出しと
 /// response file (@file) 生成関数が定義されていることを検証する。
 /// Red Phase: Linker.ls が未作成のため FAIL する。
 #[test]
@@ -390,7 +390,7 @@ fn test_e2e_selfhost_linker_response() {
 
 /// TEST-NATIVE-04: ネイティブビルドの決定性検証 -- 2回ビルドで同一バイナリハッシュ
 ///
-/// selfhost/NativeCodegen.ls を使用して同じソースを2回コンパイルし、
+/// selfhost/src/Backend/Native/NativeCodegen.ls を使用して同じソースを2回コンパイルし、
 /// 生成されるバイナリが同一であること (決定的コンパイル) を検証する。
 /// Red Phase: NativeCodegen.ls が未作成のため FAIL する。
 #[test]
@@ -651,10 +651,10 @@ fn test_e2e_selfhost_cli_command_contracts() {
     );
 }
 
-/// TEST-CLI-02-A: selfhost/Cli.ls 存在 + parse/check/compile/build/test コマンド定義
+/// TEST-CLI-02-A: selfhost/src/App/Cli.ls 存在 + parse/check/compile/build/test コマンド定義
 ///
 /// T4-1: L# 製 CLI の正式化 -- 基本コンパイラコマンドが定義されていること
-/// Red Phase: selfhost/Cli.ls が未作成のため FAIL する。
+/// Red Phase: selfhost/src/App/Cli.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_cli_parse_check_compile() {
     let source = read_selfhost_test_source("Cli.ls", "T4-1: L# 製 CLI の正式化");
@@ -670,10 +670,10 @@ fn test_e2e_selfhost_cli_parse_check_compile() {
     }
 }
 
-/// TEST-CLI-02-B: selfhost/Cli.ls に review/doc-ack/doc-check/install コマンド定義
+/// TEST-CLI-02-B: selfhost/src/App/Cli.ls に review/doc-ack/doc-check/install コマンド定義
 ///
 /// T4-4 AC-013: docs/review 系コマンドが L# 実装で動作すること
-/// Red Phase: selfhost/Cli.ls が未作成のため FAIL する。
+/// Red Phase: selfhost/src/App/Cli.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_cli_review_doc() {
     let source = read_selfhost_test_source("Cli.ls", "L# 製 CLI の正式化");

@@ -44,10 +44,10 @@ fn run_lsp_diagnostic_harness(harness: &str) -> Vec<String> {
         .collect()
 }
 
-/// TEST-LSP-03: selfhost/LspServer.ls に diagnostics の安定ソート機構
+/// TEST-LSP-03: selfhost/src/Tools/Lsp/LspServer.ls に diagnostics の安定ソート機構
 ///
 /// T4b-3 AC-208/AC-209/AC-210/AC-211: 診断のグルーピング・ソート・重複マージ・決定的順序
-/// Red Phase: selfhost/LspServer.ls が未作成のため FAIL する。
+/// Red Phase: selfhost/src/Tools/Lsp/LspServer.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_lsp_diagnostic_ordering() {
     let lsp_path = selfhost_source_path("LspServer.ls");
@@ -62,7 +62,7 @@ fn test_e2e_selfhost_lsp_diagnostic_ordering() {
     );
 }
 
-/// TEST-LSP-04: selfhost/LspServer.ls の主要ハンドラが runtime で観測できること
+/// TEST-LSP-04: selfhost/src/Tools/Lsp/LspServer.ls の主要ハンドラが runtime で観測できること
 #[test]
 fn test_e2e_selfhost_lsp_runtime_handlers() {
     let source = selfhost_lsp_runtime_bundle();
@@ -80,7 +80,7 @@ fn test_e2e_selfhost_lsp_runtime_handlers() {
     assert_eq!(lines[8], "0", "shutdown は 0 を返すべき");
 }
 
-/// TEST-LSP-05: selfhost/LspServer.ls の sort-diagnostics が 2 要素を行番号順に並べること
+/// TEST-LSP-05: selfhost/src/Tools/Lsp/LspServer.ls の sort-diagnostics が 2 要素を行番号順に並べること
 #[test]
 fn test_e2e_selfhost_lsp_runtime_sort_diagnostics() {
     let source = selfhost_lsp_runtime_bundle();
@@ -97,7 +97,7 @@ fn test_e2e_selfhost_lsp_runtime_sort_diagnostics() {
     );
 }
 
-/// TEST-LSP-06: selfhost/LspServer.ls の merge-duplicate-diagnostics が同一 span を 1 件へ潰すこと
+/// TEST-LSP-06: selfhost/src/Tools/Lsp/LspServer.ls の merge-duplicate-diagnostics が同一 span を 1 件へ潰すこと
 #[test]
 fn test_e2e_selfhost_lsp_runtime_merge_duplicates() {
     let source = selfhost_lsp_runtime_bundle();
@@ -111,7 +111,7 @@ fn test_e2e_selfhost_lsp_runtime_merge_duplicates() {
     );
 }
 
-/// TEST-LSP-07: selfhost/LspServer.ls の navigation handler shape が runtime で観測できること
+/// TEST-LSP-07: selfhost/src/Tools/Lsp/LspServer.ls の navigation handler shape が runtime で観測できること
 #[test]
 fn test_e2e_selfhost_lsp_runtime_navigation_shapes() {
     let source = selfhost_lsp_runtime_bundle();
@@ -130,7 +130,7 @@ fn test_e2e_selfhost_lsp_runtime_navigation_shapes() {
     assert_eq!(lines[16], "1", "rename changes length は 1 であるべき");
 }
 
-/// TEST-LSP-08: selfhost/LspServer.ls が JsonRpc method 定数で dispatch できること
+/// TEST-LSP-08: selfhost/src/Tools/Lsp/LspServer.ls が JsonRpc method 定数で dispatch できること
 #[test]
 fn test_e2e_selfhost_lsp_runtime_jsonrpc_method_dispatch() {
     let source = selfhost_lsp_runtime_bundle();
@@ -192,7 +192,7 @@ fn test_e2e_selfhost_lsp_runtime_jsonrpc_method_dispatch() {
     assert_eq!(lines[7], "0", "shutdown dispatch は 0 を返すべき");
 }
 
-/// TEST-LSP-09: selfhost/LspServer.ls の server-loop が 1 メッセージ dispatch を観測できること
+/// TEST-LSP-09: selfhost/src/Tools/Lsp/LspServer.ls の server-loop が 1 メッセージ dispatch を観測できること
 #[test]
 fn test_e2e_selfhost_lsp_runtime_server_loop_single_message() {
     let source = selfhost_lsp_runtime_bundle();
@@ -1603,7 +1603,7 @@ fn test_e2e_selfhost_lsp_real_shapes_formatting_preserves_string_literal() {
     );
 }
 
-/// TEST-FMT-01: selfhost/Formatter.ls に format-program / format-expr 関数が存在すること
+/// TEST-FMT-01: selfhost/src/Tools/Text/Formatter.ls に format-program / format-expr 関数が存在すること
 ///
 /// T4c-1 AC-300: parse-format-parse roundtrip のための format-program / format-expr
 /// Red Phase: Formatter.ls に format-program / format-expr が未定義のため FAIL する。
@@ -1629,7 +1629,7 @@ fn test_e2e_selfhost_formatter_roundtrip_v2() {
     );
 }
 
-/// TEST-LINT-01: selfhost/Linter.ls に L0001 形式の rule ID が定義されていること
+/// TEST-LINT-01: selfhost/src/Tools/Text/Linter.ls に L0001 形式の rule ID が定義されていること
 ///
 /// T4c-2 AC-304: 各 lint rule に一意の rule id (L0001 形式) が付与されている
 /// Red Phase: Linter.ls に L0001 形式の rule ID が未定義のため FAIL する。
@@ -1709,10 +1709,10 @@ fn test_e2e_selfhost_doc_schemas() {
     }
 }
 
-/// TEST-DOC-02: selfhost/DocTools.ls + HtmlDoc.ls が存在し deterministic HTML 生成に対応
+/// TEST-DOC-02: selfhost/src/Tools/Doc/DocTools.ls + HtmlDoc.ls が存在し deterministic HTML 生成に対応
 ///
 /// T4d-3 AC-408/AC-409: deterministic 出力、タイムスタンプ非埋め込み
-/// Red Phase: selfhost/DocTools.ls, HtmlDoc.ls が未作成のため FAIL する。
+/// Red Phase: selfhost/src/Tools/Doc/DocTools.ls, HtmlDoc.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_doc_deterministic_html() {
     // DocTools.ls の存在確認 (T4d-3)
@@ -1755,7 +1755,7 @@ fn test_e2e_selfhost_doc_deterministic_html() {
     );
 }
 
-/// TEST-DOC-03: selfhost/DocTools.ls が top-level defn を公開関数として抽出できること
+/// TEST-DOC-03: selfhost/src/Tools/Doc/DocTools.ls が top-level defn を公開関数として抽出できること
 #[test]
 fn test_e2e_selfhost_doctools_extract_public_functions_runtime() {
     let harness = r#"
@@ -1774,7 +1774,7 @@ fn test_e2e_selfhost_doctools_extract_public_functions_runtime() {
     assert_eq!(lines, vec!["2"], "public defn 2 件を抽出できるべき");
 }
 
-/// TEST-DOC-04: selfhost/DocTools.ls が type/type-alias を抽出できること
+/// TEST-DOC-04: selfhost/src/Tools/Doc/DocTools.ls が type/type-alias を抽出できること
 #[test]
 fn test_e2e_selfhost_doctools_extract_type_definitions_runtime() {
     let harness = r#"
@@ -1793,7 +1793,7 @@ fn test_e2e_selfhost_doctools_extract_type_definitions_runtime() {
     assert_eq!(lines, vec!["2"], "type 定義 2 件を抽出できるべき");
 }
 
-/// TEST-DOC-05: selfhost/DocTools.ls が module body の公開 defn を抽出できること
+/// TEST-DOC-05: selfhost/src/Tools/Doc/DocTools.ls が module body の公開 defn を抽出できること
 #[test]
 fn test_e2e_selfhost_doctools_extract_module_public_functions_runtime() {
     let harness = r#"
@@ -1816,7 +1816,7 @@ fn test_e2e_selfhost_doctools_extract_module_public_functions_runtime() {
     );
 }
 
-/// TEST-DOC-06: selfhost/DocTools.ls が module body の type 宣言を抽出できること
+/// TEST-DOC-06: selfhost/src/Tools/Doc/DocTools.ls が module body の type 宣言を抽出できること
 #[test]
 fn test_e2e_selfhost_doctools_extract_module_type_definitions_runtime() {
     let harness = r#"
@@ -2310,8 +2310,13 @@ fn test_fresh_clone_smoke_ci_job() {
         "test-fresh-clone.sh は既存の default-path-smoke.sh を再利用すること"
     );
     assert!(
-        script_content.contains("selfhost/Token.ls") || script_content.contains("stdlib/Core.ls"),
-        "test-fresh-clone.sh は clean checkout 上で selfhost/stdlib の実コンパイルを行うこと"
+        script_content.contains("resolve_selfhost_source Token")
+            || script_content.contains("selfhost/src/Syntax/Token.ls"),
+        "test-fresh-clone.sh は clean checkout 上で canonical selfhost source を実コンパイルすること"
+    );
+    assert!(
+        script_content.contains("stdlib/Core.ls"),
+        "test-fresh-clone.sh は clean checkout 上で stdlib の実コンパイルを行うこと"
     );
 
     let fresh_clone_doc = project_root.join("docs/development/operations/fresh-clone-spec.md");

@@ -466,7 +466,7 @@ pub(crate) fn selfhost_typeinfer_runtime_bundle() -> &'static str {
     )
 }
 
-/// selfhost/Cli.ls を直接実行するための最小 runtime bundle
+/// selfhost/src/App/Cli.ls を直接実行するための最小 runtime bundle
 pub(crate) fn selfhost_cli_runtime_bundle() -> &'static str {
     cached_selfhost_bundle(
         &SELFHOST_CLI_RUNTIME_BUNDLE,

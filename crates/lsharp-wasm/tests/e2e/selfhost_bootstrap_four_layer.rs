@@ -746,7 +746,7 @@ fn run_wasm_with_six_imports_compiler_mode(
 fn test_e2e_bootstrap_four_layer_comparison() {
     let main_path = selfhost_main_path();
 
-    // stage0 (Rust) で selfhost/Main.ls を 2 回コンパイル
+    // stage0 (Rust) で selfhost/src/App/Main.ls を 2 回コンパイル
     let wasm_a = compile_file_only(&main_path);
     let wasm_b = compile_file_only(&main_path);
 
@@ -823,17 +823,16 @@ fn test_e2e_bootstrap_four_layer_comparison() {
 /// stage0 の決定性 + stage1 の実行可能性を証明する。
 #[test]
 fn test_e2e_bootstrap_stage_chain_verification() {
-    let selfhost_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
-    let main_path = selfhost_dir.join("Main.ls");
+    let main_path = selfhost_main_path();
 
     // --- Phase 1: stage0 で最小サブセットをコンパイル ---
     // Token.ls は依存なしの最小モジュール
-    let token_path = selfhost_dir.join("Token.ls");
+    let token_path = selfhost_source_path("Token.ls");
     let token_wasm_1 = compile_file_only(&token_path);
     let token_wasm_2 = compile_file_only(&token_path);
     assert_eq!(
         token_wasm_1, token_wasm_2,
-        "Phase1: Token.ls の stage0 コンパイルが非決定的"
+        "Phase1: canonical Token.ls の stage0 コンパイルが非決定的"
     );
     assert_valid_wasm(&token_wasm_1);
 
@@ -842,7 +841,7 @@ fn test_e2e_bootstrap_stage_chain_verification() {
     let stage1_wasm_b = compile_file_only(&main_path);
     assert_eq!(
         stage1_wasm_a, stage1_wasm_b,
-        "Phase2: Main.ls の stage0 コンパイルが非決定的"
+        "Phase2: canonical Main.ls の stage0 コンパイルが非決定的"
     );
     assert_valid_wasm(&stage1_wasm_a);
 
@@ -4798,9 +4797,9 @@ fn test_debug_stage2_save() {
     // stage2 を生成してファイルに保存する (デバッグ用)
     let main_path = selfhost_main_path();
     let stage1_wasm = compile_file_only(&main_path);
-    let selfhost_dir = main_path.parent().unwrap().to_path_buf();
+    let selfhost_dir = selfhost_package_root();
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm, Some(&selfhost_dir), &["compiler", "Main.ls"],
+        &stage1_wasm, Some(&selfhost_dir), &["compiler", "src/App/Main.ls"],
     ).expect("stage1 failed");
     let modules = parse_emitted_wasm_modules(&output, 1);
     let stage2 = &modules[0];
@@ -4933,10 +4932,10 @@ fn test_debug_tok_eof_in_stage2() {
     // Token.ls main が tok-eof を正しく呼べるか確認
     // stage2の func 49 (Token::main) がちゃんと call 48 を使うか確認
     let main_path = selfhost_main_path();
-    let selfhost_dir = main_path.parent().unwrap().to_path_buf();
+    let selfhost_dir = selfhost_package_root();
     let stage1_wasm = compile_file_only(&main_path);
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm, Some(&selfhost_dir), &["compiler", "Main.ls"],
+        &stage1_wasm, Some(&selfhost_dir), &["compiler", "src/App/Main.ls"],
     ).expect("stage1 failed");
     let modules = parse_emitted_wasm_modules(&output, 1);
     let stage2 = &modules[0];
@@ -4987,9 +4986,7 @@ fn test_debug_tok_eof_in_stage2() {
 #[test]
 fn test_debug_token_ls_compilation() {
     // Token.ls だけをコンパイルして tok-eof (func 42) が正しい index を持つか確認
-    let token_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap().parent().unwrap()
-        .join("selfhost").join("Token.ls");
+    let token_path = selfhost_source_path("Token.ls");
     let token_src = std::fs::read_to_string(&token_path).unwrap();
     eprintln!("Token.ls: {} chars", token_src.len());
     
@@ -5006,12 +5003,12 @@ fn test_debug_token_ls_compilation() {
     
     // Manually check: compile Token.ls with selfhost (via stage1)
     let main_path = selfhost_main_path();
-    let selfhost_dir = main_path.parent().unwrap().to_path_buf();
+    let selfhost_dir = selfhost_package_root();
     let stage1_wasm = compile_file_only(&main_path);
     
     // compile Token.ls with stage1
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm, Some(&selfhost_dir), &["compiler", "Token.ls"],
+        &stage1_wasm, Some(&selfhost_dir), &["compiler", "src/Syntax/Token.ls"],
     ).expect("stage1 failed to compile Token.ls");
     eprintln!("Token.ls compiled, output {} chars", output.len());
     let modules = parse_emitted_wasm_modules(&output, 1);

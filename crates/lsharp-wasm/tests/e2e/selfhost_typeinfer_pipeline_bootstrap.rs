@@ -442,7 +442,7 @@ fn test_e2e_selfhost_compile_stdlib_basic() {
     assert_eq!(ir_operand, 42, "IR operand = 42");
 }
 
-/// selfhost/Main.ls が tiny native pipeline summary を出力できること
+/// selfhost/src/App/Main.ls が tiny native pipeline summary を出力できること
 #[test]
 fn test_e2e_selfhost_main_native_pipeline_summary() {
     let output = compile_and_run_file(&selfhost_main_path());

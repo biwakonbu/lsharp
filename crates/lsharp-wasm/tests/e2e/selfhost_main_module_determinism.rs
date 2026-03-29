@@ -588,7 +588,7 @@ fn test_e2e_bootstrap_selfhost_full_deterministic() {
 
 // === TEST-SYNTAX-01: Span.ls の unit + golden テスト ===
 
-/// selfhost/Span.ls が存在し、[start end] 形式の constructor/accessor、
+/// selfhost/src/Syntax/Span.ls が存在し、[start end] 形式の constructor/accessor、
 /// merge、dummy 関数を公開していることを検証する。
 /// Red Phase: Span.ls が未作成のため FAIL する。
 #[test]
@@ -702,7 +702,7 @@ fn test_e2e_selfhost_main_fixed_api_calls() {
 
 // === TEST-BOOT-02-B: Main.ls フルコンパイル成功テスト ===
 
-/// selfhost/Main.ls の全モジュール import 付きフルコンパイルが成功することを検証。
+/// selfhost/src/App/Main.ls の全モジュール import 付きフルコンパイルが成功することを検証。
 /// Main.ls が依存する全モジュール (Lexer, Parser, MacroExpand, TypeInfer,
 /// Compiler, WasmEmit) を連結してフルコンパイルする。
 /// Red Phase: import 解決が未実装のため、モジュール連結コンパイルが FAIL する。

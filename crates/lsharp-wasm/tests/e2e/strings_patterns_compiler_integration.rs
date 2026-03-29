@@ -191,7 +191,7 @@ fn test_e2e_match_guard_with_binding() {
 // =====================================================// P8-5: ブートストラップ統合検証
 // selfhost/ の複数モジュールを結合した統合パイプラインの検証
 // =====================================================
-/// 統合テスト: selfhost/Main.ls を Rust コンパイラでコンパイル・実行し、
+/// 統合テスト: selfhost/src/App/Main.ls を Rust コンパイラでコンパイル・実行し、
 /// AST 構築 → IR 変換 → Wasm バイナリ生成の統合パイプラインを検証する。
 #[test]
 fn test_e2e_bootstrap_stage1_integration() {
@@ -260,7 +260,7 @@ fn test_e2e_stdlib_path_operations() {
     assert_eq!(lines[3], "4"); // path-dirname "/tmp/file.txt" = "/tmp" (4文字)
 }
 
-/// selfhost/Compiler.ls のセルフホストコンパイラのコンパイル+実行
+/// selfhost/src/Backend/Wasm/Compiler.ls のセルフホストコンパイラのコンパイル+実行
 #[test]
 fn test_e2e_selfhost_compiler_file() {
     let path = selfhost_source_path("Compiler.ls");
@@ -278,7 +278,7 @@ fn test_e2e_selfhost_compiler_file() {
     assert_eq!(lines[14], "40"); // 末尾は call opcode
 }
 
-/// selfhost/WasmEmit.ls の Wasm バイナリ生成のコンパイル+実行
+/// selfhost/src/Backend/Wasm/WasmEmit.ls の Wasm バイナリ生成のコンパイル+実行
 #[test]
 fn test_e2e_selfhost_wasmemit() {
     let source = std::fs::read_to_string(selfhost_source_path("WasmEmit.ls")).unwrap();
@@ -297,7 +297,7 @@ fn test_e2e_selfhost_wasmemit() {
     assert_eq!(lines[5], "1"); // version
 }
 
-/// T1-9: selfhost/Main.ls 統合 E2E テスト
+/// T1-9: selfhost/src/App/Main.ls 統合 E2E テスト
 /// AST 構築 → IR 変換 → Wasm ヘッダー生成の統合パイプラインを検証
 #[test]
 fn test_e2e_selfhost_main_integration() {

@@ -38,7 +38,7 @@ bootstrap 固定点、Wasm/native differential test、テスト行列、性能�
 - `examples/module.ls` -- モジュールシステムの代表例
 - `examples/trait.ls` -- トレイトシステムの代表例
 
-互換移行のために残る `selfhost/*.ls` は検証入力の正本に含めない。entrypoint は `selfhost/src/App/Main.ls` を基準にする。
+entrypoint は `selfhost/src/App/Main.ls` を基準にする。検証入力の selfhost ソースは `selfhost/src/**/*.ls` のみを正本として扱う。
 
 入力集合の変更は ADR を経由し、CI の正本入力リストを一箇所で管理する。
 

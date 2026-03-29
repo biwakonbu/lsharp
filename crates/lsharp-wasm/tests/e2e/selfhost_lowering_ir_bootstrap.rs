@@ -43,7 +43,7 @@ fn collect_ls_files_recursive(dir: &std::path::Path, files: &mut Vec<std::path::
 
 // === Phase 6 Group E: IR / WASM / BOOT 系テスト ===
 
-/// TEST-IR-01: selfhost/ModuleGraph.ls の存在 + topological-sort, detect-cycle 関数
+/// TEST-IR-01: selfhost/src/IR/ModuleGraph.ls の存在 + topological-sort, detect-cycle 関数
 #[test]
 fn test_e2e_selfhost_module_graph() {
     let mg_content = read_selfhost_lowering_source("ModuleGraph.ls", "モジュール依存グラフ未作成");
@@ -67,7 +67,7 @@ fn test_e2e_selfhost_module_graph() {
     );
 }
 
-/// TEST-IR-02: selfhost/Lower.ls, LowerExpr.ls, LowerDecl.ls, LowerPattern.ls の存在
+/// TEST-IR-02: selfhost/src/IR/Lower.ls, LowerExpr.ls, LowerDecl.ls, LowerPattern.ls の存在
 #[test]
 fn test_e2e_selfhost_lower_split() {
     let files = ["Lower.ls", "LowerExpr.ls", "LowerDecl.ls", "LowerPattern.ls"];
@@ -98,7 +98,7 @@ fn test_e2e_selfhost_lower_split() {
     }
 }
 
-/// TEST-IR-03: selfhost/Closure.ls の存在 + free-vars, capture-env 関数
+/// TEST-IR-03: selfhost/src/IR/Closure.ls の存在 + free-vars, capture-env 関数
 #[test]
 fn test_e2e_selfhost_closure_conversion() {
     let content = read_selfhost_lowering_source("Closure.ls", "クロージャ変換モジュール未作成");
@@ -216,7 +216,7 @@ fn test_e2e_selfhost_backend_boundary() {
     );
 }
 
-/// TEST-WASM-02: selfhost/Codegen.ls, Emit.ls, WasiBackend.ls の存在
+/// TEST-WASM-02: selfhost/src/Backend/Wasm/Codegen.ls, Emit.ls, WasiBackend.ls の存在
 #[test]
 fn test_e2e_selfhost_section_builders() {
     let files = [
@@ -321,7 +321,7 @@ fn test_e2e_selfhost_wasi_helpers() {
     );
 }
 
-/// TEST-WASM-05: selfhost/TestRunner.ls の存在 + :example/:invariant テスト生成
+/// TEST-WASM-05: selfhost/src/Tools/Test/TestRunner.ls の存在 + :example/:invariant テスト生成
 #[test]
 fn test_e2e_selfhost_test_runner() {
     let content = read_selfhost_lowering_source("TestRunner.ls", "テストランナーモジュール未作成");
@@ -527,7 +527,7 @@ fn test_e2e_selfhost_true_bootstrap_fixed_point() {
 // Phase 6 Group K: GC Runtime テスト (TDD Red Phase)
 // =============================================================================
 
-/// TEST-GC-01: selfhost/GC.ls が存在し、object header / trace map / root API を持つ
+/// TEST-GC-01: selfhost/src/Runtime/GC.ls が存在し、object header / trace map / root API を持つ
 #[test]
 fn test_e2e_selfhost_gc_object_model() {
     let gc_source = read_selfhost_lowering_source("GC.ls", "GC モジュールを作成してください");

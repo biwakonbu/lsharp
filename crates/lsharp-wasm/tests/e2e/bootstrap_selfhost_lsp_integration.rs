@@ -101,7 +101,7 @@ fn test_e2e_json_value_construction() {
 // =====================================================// P8-9 T4-3: stage1 E2E テスト
 // =====================================================
 /// P8-9 T4-3: stage1.wasm (selfhost コンパイラ) のコンパイル+実行検証
-/// Rust 版コンパイラで selfhost/Main.ls をコンパイルし、
+/// Rust 版コンパイラで selfhost/src/App/Main.ls をコンパイルし、
 /// 出力される stage1.wasm が正しく動作することを検証
 #[test]
 fn test_e2e_bootstrap_stage1_compile_and_run() {
@@ -439,7 +439,7 @@ fn test_e2e_gc_hashmap_memory_stable() {
     assert_eq!(result.trim(), "3\n100\n200\n300");
 }
 
-// =====================================================// P9-6b: JSON-RPC パーサー/シリアライザー (selfhost/JsonRpc.ls)
+// =====================================================// P9-6b: JSON-RPC パーサー/シリアライザー (selfhost/src/Tools/Lsp/JsonRpc.ls)
 // =====================================================
 /// P9-6b: JSON-RPC モジュールがコンパイル+実行できることを検証
 #[test]
@@ -469,7 +469,7 @@ fn test_e2e_selfhost_jsonrpc_wasm_valid() {
     assert_valid_wasm(&wasm);
 }
 
-// =====================================================// P9-6c: リンター (selfhost/Linter.ls)
+// =====================================================// P9-6c: リンター (selfhost/src/Tools/Text/Linter.ls)
 // =====================================================
 /// P9-6c: リンターモジュールがコンパイル+実行できることを検証
 #[test]
@@ -510,7 +510,7 @@ fn test_e2e_selfhost_linter() {
     assert_eq!(lines[18], "0", "match: used var no diagnostic");
 }
 
-// =====================================================// P9-6d: フォーマッタ (selfhost/Formatter.ls)
+// =====================================================// P9-6d: フォーマッタ (selfhost/src/Tools/Text/Formatter.ls)
 // =====================================================
 /// P9-6d: フォーマッタモジュールがコンパイル+実行できることを検証
 #[test]
@@ -542,7 +542,7 @@ fn test_e2e_selfhost_formatter() {
     assert_eq!(lines[14], "1", "format-program idempotent");
 }
 
-// =====================================================// P9-6b: LSP ハンドラ統合 (selfhost/JsonRpc.ls)
+// =====================================================// P9-6b: LSP ハンドラ統合 (selfhost/src/Tools/Lsp/JsonRpc.ls)
 // =====================================================
 /// P9-6b: LSP ハンドラ関数がコンパイル+実行できることを検証
 #[test]
@@ -587,7 +587,7 @@ fn test_e2e_selfhost_jsonrpc_lsp_handlers() {
     );
 }
 
-// =====================================================// P9-6c: リンター LSP 統合 (selfhost/Linter.ls)
+// =====================================================// P9-6c: リンター LSP 統合 (selfhost/src/Tools/Text/Linter.ls)
 // =====================================================
 /// P9-6c: リンター診断を LSP Diagnostic 形式に変換できることを検証
 #[test]
@@ -605,7 +605,7 @@ fn test_e2e_selfhost_linter_lsp_integration() {
     assert_eq!(lines[23], "3", "publish-diagnostics: count");
 }
 
-// =====================================================// P9-6d: フォーマッタ LSP 統合 (selfhost/Formatter.ls)
+// =====================================================// P9-6d: フォーマッタ LSP 統合 (selfhost/src/Tools/Text/Formatter.ls)
 // =====================================================
 /// P9-6d: フォーマッタが LSP TextEdit を生成できることを検証
 #[test]

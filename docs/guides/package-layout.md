@@ -42,9 +42,9 @@ my-package/
 - selfhost compiler-mode は installed package を直接 directory scan せず、`lsharp install` が生成する `.lsharp/module-index/*.path` を内部 index として参照する
 - 例: `selfhost/src/App/Main.ls` から `(import Syntax.Token)` は `selfhost/src/Syntax/Token.ls` を解決する
 
-## 移行方針
+## selfhost の扱い
 
-- `selfhost/src/**` が正本であり、flat な `selfhost/*.ls` は互換移行のための一時コピーとして扱う
+- `selfhost/src/**` が selfhost compiler の正本 source tree
 - 新規実装・検証・ドキュメントは `selfhost/src/**` と `selfhost/src/App/Main.ls` を基準に更新する
 
 ## `lsharp init` が生成する最小構成

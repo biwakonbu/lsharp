@@ -16,10 +16,10 @@ P11-3 は L# セルフホスティングにおいて、Rust で実装された�
 
 | Rust クレート | Rust モジュール | L# 移植先 (想定) |
 |--------------|----------------|-----------------|
-| `lsharp-syntax` | `span.rs`, `token.rs`, `lexer.rs`, `parser.rs`, `ast.rs`, `hygiene.rs`, `macro_expand.rs`, `derive.rs` | `selfhost/Span.ls`, `selfhost/Token.ls`, `selfhost/Lexer.ls`, `selfhost/Parser.ls`, `selfhost/Ast.ls`, `selfhost/Hygiene.ls`, `selfhost/MacroExpand.ls`, `selfhost/Derive.ls` |
-| `lsharp-types` | `types.rs`, `infer.rs`, `constraints.rs`, `metadata_check.rs` | `selfhost/Types.ls`, `selfhost/TypeInfer.ls`, `selfhost/Constraints.ls`, `selfhost/MetadataCheck.ls` |
-| `lsharp-ir` | `lib.rs`, `lower/mod.rs`, `lower/expr.rs`, `lower/decl.rs`, `lower/pattern.rs`, `closure.rs`, `module_graph.rs` | `selfhost/Ir.ls`, `selfhost/Lower.ls`, `selfhost/LowerExpr.ls`, `selfhost/LowerDecl.ls`, `selfhost/LowerPattern.ls`, `selfhost/Closure.ls`, `selfhost/ModuleGraph.ls` |
-| `lsharp-wasm` | `wasi.rs`, `codegen.rs`, `emit.rs`, `test_runner.rs`, `wasi_runner.rs` | `selfhost/WasiBackend.ls`, `selfhost/Codegen.ls`, `selfhost/Emit.ls`, `selfhost/TestRunner.ls`, `selfhost/WasiRunner.ls` |
+| `lsharp-syntax` | `span.rs`, `token.rs`, `lexer.rs`, `parser.rs`, `ast.rs`, `hygiene.rs`, `macro_expand.rs`, `derive.rs` | `selfhost/src/Syntax/Span.ls`, `selfhost/src/Syntax/Token.ls`, `selfhost/src/Syntax/Lexer.ls`, `selfhost/src/Syntax/Parser.ls`, `selfhost/src/Syntax/AST.ls`, `selfhost/src/Syntax/Hygiene.ls`, `selfhost/src/Syntax/MacroExpand.ls`, `selfhost/src/Syntax/Derive.ls` |
+| `lsharp-types` | `types.rs`, `infer.rs`, `constraints.rs`, `metadata_check.rs` | `selfhost/src/Types/Type.ls`, `selfhost/src/Types/TypeInfer.ls`, `selfhost/src/Types/Constraints.ls`, `selfhost/src/Types/MetadataCheck.ls` |
+| `lsharp-ir` | `lib.rs`, `lower/mod.rs`, `lower/expr.rs`, `lower/decl.rs`, `lower/pattern.rs`, `closure.rs`, `module_graph.rs` | `selfhost/src/IR/IR.ls`, `selfhost/src/IR/Lower.ls`, `selfhost/src/IR/LowerExpr.ls`, `selfhost/src/IR/LowerDecl.ls`, `selfhost/src/IR/LowerPattern.ls`, `selfhost/src/IR/Closure.ls`, `selfhost/src/IR/ModuleGraph.ls` |
+| `lsharp-wasm` | `wasi.rs`, `codegen.rs`, `emit.rs`, `test_runner.rs`, `wasi_runner.rs` | `selfhost/src/Backend/Wasm/WasiBackend.ls`, `selfhost/src/Backend/Wasm/Codegen.ls`, `selfhost/src/Backend/Wasm/Emit.ls`, `selfhost/src/Tools/Test/TestRunner.ls`, `selfhost/src/Backend/Wasm/WasiRunner.ls` |
 
 ---
 
@@ -27,7 +27,7 @@ P11-3 は L# セルフホスティングにおいて、Rust で実装された�
 
 ### P11-3-1: syntax 移植方針
 
-L# の `selfhost/Lexer.ls`, `selfhost/Parser.ls` は既に v3 まで拡張されているが、
+L# の `selfhost/src/Syntax/Lexer.ls`, `selfhost/src/Syntax/Parser.ls` は既に v3 まで拡張されているが、
 Rust 側の `lsharp-syntax` が持つ以下の機能との parity を完了条件とする:
 
 - span 付きトークン生成 (ソース位置追跡)
@@ -105,14 +105,14 @@ tests/golden/
 
 | Rust モジュール | 責務 | L# 移植先 |
 |----------------|------|-----------|
-| `span.rs` | ソース位置 (byte offset, line, column) | `selfhost/Span.ls` |
-| `token.rs` | トークン種別の定義 | `selfhost/Token.ls` (既存拡張) |
-| `lexer.rs` | 字句解析 | `selfhost/Lexer.ls` (既存拡張) |
-| `parser.rs` | 構文解析 → AST 生成 | `selfhost/Parser.ls` (既存拡張) |
-| `ast.rs` | AST ノード型定義 | `selfhost/Ast.ls` |
-| `hygiene.rs` | 衛生マクロのスコープ管理 | `selfhost/Hygiene.ls` |
-| `macro_expand.rs` | マクロ展開エンジン | `selfhost/MacroExpand.ls` (既存拡張) |
-| `derive.rs` | derive マクロ展開 | `selfhost/Derive.ls` |
+| `span.rs` | ソース位置 (byte offset, line, column) | `selfhost/src/Syntax/Span.ls` |
+| `token.rs` | トークン種別の定義 | `selfhost/src/Syntax/Token.ls` (既存拡張) |
+| `lexer.rs` | 字句解析 | `selfhost/src/Syntax/Lexer.ls` (既存拡張) |
+| `parser.rs` | 構文解析 → AST 生成 | `selfhost/src/Syntax/Parser.ls` (既存拡張) |
+| `ast.rs` | AST ノード型定義 | `selfhost/src/Syntax/AST.ls` |
+| `hygiene.rs` | 衛生マクロのスコープ管理 | `selfhost/src/Syntax/Hygiene.ls` |
+| `macro_expand.rs` | マクロ展開エンジン | `selfhost/src/Syntax/MacroExpand.ls` (既存拡張) |
+| `derive.rs` | derive マクロ展開 | `selfhost/src/Syntax/Derive.ls` |
 
 ### P11-3a-2: golden fixture 化
 

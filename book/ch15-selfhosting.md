@@ -8,11 +8,11 @@
 
 ```
 Stage 0: 既存のコンパイラ (Rust 版 L# コンパイラ)
-    ↓ selfhost/*.ls をコンパイル
+    ↓ selfhost/src/**/*.ls をコンパイル
 Stage 1: L# で書かれた L# コンパイラ (stage1.wasm)
-    ↓ stage1.wasm で selfhost/*.ls を再コンパイル
+    ↓ stage1.wasm で selfhost/src/**/*.ls を再コンパイル
 Stage 2: stage1 が生成した L# コンパイラ (stage2.wasm)
-    ↓ stage2.wasm で selfhost/*.ls を再コンパイル
+    ↓ stage2.wasm で selfhost/src/**/*.ls を再コンパイル
 Stage 3: stage2 が生成した L# コンパイラ (stage3.wasm)
 ```
 
@@ -305,7 +305,7 @@ fixed-point 検証の設計は次の 2 段構えである。
 
 現時点の到達点:
 
-- Rust 版コンパイラが selfhost/*.ls をコンパイルして stage1.wasm を生成できる
+- Rust 版コンパイラが `selfhost/src/**/*.ls` をコンパイルして stage1.wasm を生成できる
 - stage1.wasm が簡単なプログラム (整数演算、条件分岐) をコンパイルできる
 - 最小 subset では `stage1.wasm -> stage2.wasm` の実生成まで確認されている
 - full input set に対する `stage2.wasm == stage3.wasm` の固定点成立と `stage1-native -> stage2-native -> stage3-native` の自己再生成は、引き続き Phase 11 の完了条件として追跡中である

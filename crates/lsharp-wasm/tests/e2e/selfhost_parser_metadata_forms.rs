@@ -371,7 +371,7 @@ fn test_e2e_selfhost_parser_defn_params_metadata() {
 
 /// TEST-SYNTAX-04: Hygiene.ls gensym/scope-id/expansion trace
 ///
-/// selfhost/Hygiene.ls が存在し、gensym, scope-id, expansion-trace 関数を公開していることを検証。
+/// selfhost/src/Syntax/Hygiene.ls が存在し、gensym, scope-id, expansion-trace 関数を公開していることを検証。
 /// 現状: Hygiene.ls 未作成 → FAIL
 #[test]
 fn test_e2e_selfhost_hygiene_gensym() {
@@ -408,7 +408,7 @@ fn test_e2e_selfhost_hygiene_gensym() {
 
 /// TEST-SYNTAX-05: Derive.ls expand-derives
 ///
-/// selfhost/Derive.ls が存在し、expand-derives 関数がヘルパー decl を生成できることを検証。
+/// selfhost/src/Syntax/Derive.ls が存在し、expand-derives 関数がヘルパー decl を生成できることを検証。
 /// 現状: Derive.ls 未作成 → FAIL
 #[test]
 fn test_e2e_selfhost_derive_expansion() {
@@ -545,7 +545,7 @@ fn test_e2e_syntax_golden_fixtures() {
 
 /// TEST-TYPE-03: match 型推論 + infer-pattern
 ///
-/// selfhost/TypeInfer.ls に infer-pattern 関数があり、
+/// selfhost/src/Types/TypeInfer.ls に infer-pattern 関数があり、
 /// match 式の型推論でコンストラクタパターンに対応していることを検証。
 /// 現状: infer-pattern 関数未実装 → FAIL
 #[test]
@@ -578,7 +578,7 @@ fn test_e2e_selfhost_match_inference() {
 
 /// TEST-TYPE-04: Constraints.ls trait/where/constraint solving
 ///
-/// selfhost/Constraints.ls が存在し、trait registry, impl registry,
+/// selfhost/src/Types/Constraints.ls が存在し、trait registry, impl registry,
 /// constraint solver を公開していることを検証。
 /// 現状: Constraints.ls 未作成 → FAIL
 #[test]

@@ -9,10 +9,10 @@ Phase 11-2 (Native backend + bootstrap) の完了を判定するための条件�
 ## 2026-03-25 現況メモ
 
 - `scripts/ci/compile-phase11-inputs.sh` により fixed input set の blocking compile gate は導入済み。
-- `cargo run -- compile selfhost/Main.ls` と `cargo run -- compile selfhost/MacroExpand.ls` は成功する。
-- `selfhost/Lower.ls` / `LowerPattern.ls` の stage0 stack overflow は `lsharp-types` の `apply_subst` 改修で解消済み（compile gate に含める）。
+- `cargo run -- compile selfhost/src/App/Main.ls` と `cargo run -- compile selfhost/src/Syntax/MacroExpand.ls` は成功する。
+- `selfhost/src/IR/Lower.ls` / `LowerPattern.ls` の stage0 stack overflow は `lsharp-types` の `apply_subst` 改修で解消済み（compile gate に含める）。
 - **OPS-05 第1段**: `scripts/ci/default-path-smoke.sh` + CI job `default-path-smoke` でビルド済み `lsharp` バイナリ経路を blocking 検証。command surface 上の Rust built-in default / selfhost surface / `LSHARP_PATH` delegation の読み分けは `docs/development/operations/default-path-migration.md` と `docs/development/planning/compatibility-matrix.md` を正本とする。
-- **OPS-07 暫定 gate**: `scripts/ci/test-fresh-clone.sh` + CI job `fresh-clone-smoke` で clean checkout 相当コピーからの `lsharp` 再ビルド、default-path smoke 再実行、`selfhost/Token.ls` / `stdlib/Core.ls` の代表 compile までは blocking 化された。**ただし** Rust 不要 `test-fresh-clone` ではない。
+- **OPS-07 暫定 gate**: `scripts/ci/test-fresh-clone.sh` + CI job `fresh-clone-smoke` で clean checkout 相当コピーからの `lsharp` 再ビルド、default-path smoke 再実行、`selfhost/src/Syntax/Token.ls` / `stdlib/Core.ls` の代表 compile までは blocking 化された。**ただし** Rust 不要 `test-fresh-clone` ではない。
 - **OPS-06 暫定 gate**: `scripts/release-playbook.sh` は release binary を用いて `compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用する。**ただし** tag push だけでの release 自動化、署名、checksum / note 生成の完全自動化は未完了。
 - **監査整理 / bootstrap**: 現時点で完了証跡として確認できるのは stage0 による selfhost 再コンパイル、stage1 実行、および `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_minimal_subset` による最小 subset `(defn main [] 42)` の `stage1.wasm -> stage2.wasm` 実生成までである。**ただし** full input set に対する `stage1.wasm -> stage2.wasm -> stage3.wasm` の実体生成・比較・固定点成立は BOOT-04 完了証跡として未提示。
 - **監査整理 / native**: native 系の既存テストは stage chain の構造確認や 5 観測点比較フレームワークの存在確認として読む。true native self-regeneration と allowlist なし differential zero の完了証跡ではない。
@@ -56,14 +56,14 @@ Phase 11-2 (Native backend + bootstrap) の完了を判定するための条件�
 
 ### 条件 1: stage1-native の単独コンパイル能力 [pending]
 - stage1-native が以下を Rust compiler の助けなしに単独でコンパイルできること:
-  - `selfhost/*.ls` -- selfhost compiler 本体
+  - `selfhost/src/**/*.ls` -- selfhost compiler 本体の正本
   - `stdlib/*.ls` -- 標準ライブラリ
   - `examples/fib.ls`, `examples/module.ls`, `examples/trait.ls` -- 代表例
 - コンパイル結果が stage1.wasm の出力と観測的に同値であること
 - **現況メモ**: 現在の compile gate は stage0 からの再コンパイル成功を示す証跡であり、`stage1-native` 単独で上記入力群を閉じた実行証跡ではない。
 
 ### 条件 2: stage1-native の自己再生成 [pending]
-- stage1-native が自分自身のソースコード (selfhost/*.ls) から stage2-native を生成できること
+- stage1-native が自分自身の正本ソースコード (`selfhost/src/**/*.ls`) から stage2-native を生成できること
 - stage2-native が stage1-native と機能的に同値であること (同一入力に対して同一出力)
 - 固定点検証: stage2-native で再度コンパイルした stage3-native が stage2-native と同値
 - **現況メモ**: 既存の native stage chain テストは structural / observation-framework の確認に留まり、`stage1-native -> stage2-native -> stage3-native` の実体生成と functional fixed-point は未確認。

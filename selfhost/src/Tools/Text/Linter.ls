@@ -4,7 +4,7 @@
 ;; Linter.ls - AST ベースのリントルール基盤
 ;;
 ;; P9-6c: L# で実装されたリンター
-;; selfhost/AST.ls の AST ノードを走査して、
+;; selfhost/src/Syntax/AST.ls の AST ノードを走査して、
 ;; コーディング規約違反や潜在的バグを検出する。
 ;;
 ;; リントルール:

@@ -205,7 +205,7 @@ pub(crate) fn parser_macroexpand_runtime_modules() -> (String, String, String, S
     (token_ls, ast_ls, lexer_ls, parser_ls, macroexpand_ls)
 }
 
-/// selfhost/Cli.ls を直接実行するための最小 runtime bundle
+/// selfhost/src/App/Cli.ls を直接実行するための最小 runtime bundle
 pub(crate) fn selfhost_cli_runtime_bundle() -> String {
     let token_ls = std::fs::read_to_string(selfhost_source_path("Token.ls"))
         .expect("canonical Token.ls が読み込めない");

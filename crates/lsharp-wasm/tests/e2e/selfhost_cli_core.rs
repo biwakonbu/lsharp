@@ -1,9 +1,9 @@
 use super::support::*;
 
-/// TEST-CLI-02-C: selfhost/Cli.ls に repl/lsp/fmt/doc コマンド定義
+/// TEST-CLI-02-C: selfhost/src/App/Cli.ls に repl/lsp/fmt/doc コマンド定義
 ///
 /// T4-4 AC-013: ユーティリティコマンドが L# 実装で動作すること
-/// Red Phase: selfhost/Cli.ls が未作成のため FAIL する。
+/// Red Phase: selfhost/src/App/Cli.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_cli_repl_lsp_fmt() {
     let cli_path = selfhost_source_path("Cli.ls");
@@ -32,7 +32,7 @@ fn test_e2e_selfhost_cli_canonical_file_compile() {
     );
 }
 
-/// TEST-CLI-01-B: selfhost/Cli.ls の --help 相当出力が主要コマンドを列挙できること
+/// TEST-CLI-01-B: selfhost/src/App/Cli.ls の --help 相当出力が主要コマンドを列挙できること
 ///
 /// T4a-2 AC-104/AC-106: help 出力が usage とサブコマンド一覧を含むこと
 #[test]
@@ -76,7 +76,7 @@ fn test_e2e_selfhost_cli_help_output() {
     }
 }
 
-/// TEST-CLI-01-C: selfhost/Cli.ls の --version 相当出力が `lsharp x.y.z` 形式であること
+/// TEST-CLI-01-C: selfhost/src/App/Cli.ls の --version 相当出力が `lsharp x.y.z` 形式であること
 ///
 /// T4a-2 AC-105: version 出力形式を固定する
 #[test]
@@ -94,7 +94,7 @@ fn test_e2e_selfhost_cli_version_output() {
     assert_eq!(output.trim(), "lsharp 0.1.0");
 }
 
-/// TEST-CLI-02-D: selfhost/Cli.ls の parse core helper が source を parse できること
+/// TEST-CLI-02-D: selfhost/src/App/Cli.ls の parse core helper が source を parse できること
 ///
 /// CLI-02 の最小 tranche として、file I/O 抜きで parse-program を CLI helper へ接続する。
 #[test]
@@ -133,7 +133,7 @@ fn test_e2e_selfhost_cli_parse_source_core() {
     );
 }
 
-/// TEST-CLI-02-E: selfhost/Cli.ls の check core helper が source を型推論できること
+/// TEST-CLI-02-E: selfhost/src/App/Cli.ls の check core helper が source を型推論できること
 ///
 /// CLI-02 の最小 tranche として、file I/O 抜きで TypeInfer.infer を CLI helper へ接続する。
 #[test]
@@ -161,7 +161,7 @@ fn test_e2e_selfhost_cli_check_source_core() {
     );
 }
 
-/// TEST-CLI-02-F: selfhost/Cli.ls の run-parse が file-path から source を読めること
+/// TEST-CLI-02-F: selfhost/src/App/Cli.ls の run-parse が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_parse_file_handler() {
     let dir =
@@ -205,7 +205,7 @@ fn test_e2e_selfhost_cli_parse_file_handler() {
     assert_eq!(lines[4], "0", "run-parse の終了コードは success であるべき");
 }
 
-/// TEST-CLI-02-G: selfhost/Cli.ls の run-check が file-path から source を読めること
+/// TEST-CLI-02-G: selfhost/src/App/Cli.ls の run-check が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_check_file_handler() {
     let dir =
@@ -370,7 +370,7 @@ fn test_e2e_selfhost_cli_check_source_undefined_symbol_summary() {
     );
 }
 
-/// TEST-CLI-02-H: selfhost/Cli.ls の file-path handler は missing file を compile error で返す
+/// TEST-CLI-02-H: selfhost/src/App/Cli.ls の file-path handler は missing file を compile error で返す
 #[test]
 fn test_e2e_selfhost_cli_file_handler_missing_file() {
     let dir = std::env::temp_dir().join(format!(
@@ -407,7 +407,7 @@ fn test_e2e_selfhost_cli_file_handler_missing_file() {
     );
 }
 
-/// TEST-CLI-02-I: selfhost/Cli.ls の arg-parse がコマンド文字列を command id へ変換できること
+/// TEST-CLI-02-I: selfhost/src/App/Cli.ls の arg-parse がコマンド文字列を command id へ変換できること
 #[test]
 fn test_e2e_selfhost_cli_arg_parse_strings() {
     let harness = r#"
@@ -432,7 +432,7 @@ fn test_e2e_selfhost_cli_arg_parse_strings() {
     );
 }
 
-/// TEST-CLI-02-J: selfhost/Cli.ls の run-fmt-source が format-program を呼べること
+/// TEST-CLI-02-J: selfhost/src/App/Cli.ls の run-fmt-source が format-program を呼べること
 #[test]
 fn test_e2e_selfhost_cli_fmt_source_core() {
     let harness = r#"
@@ -484,7 +484,7 @@ fn test_e2e_selfhost_cli_fmt_source_string_literal() {
     assert_eq!(lines[1], "0", "run-fmt-source は success=0 を返すべき");
 }
 
-/// TEST-CLI-02-K: selfhost/Cli.ls の run-fmt が file-path から source を読めること
+/// TEST-CLI-02-K: selfhost/src/App/Cli.ls の run-fmt が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_fmt_file_handler() {
     let dir = std::env::temp_dir().join(format!("lsharp_test_cli_fmt_file_{}", std::process::id()));
@@ -515,7 +515,7 @@ fn test_e2e_selfhost_cli_fmt_file_handler() {
     assert_eq!(lines[1], "0", "run-fmt は success=0 を返すべき");
 }
 
-/// TEST-CLI-02-L: selfhost/Cli.ls の run-compile-source が compile PoC を呼べること
+/// TEST-CLI-02-L: selfhost/src/App/Cli.ls の run-compile-source が compile PoC を呼べること
 #[test]
 fn test_e2e_selfhost_cli_compile_source_core() {
     let harness = r#"
@@ -553,7 +553,7 @@ fn test_e2e_selfhost_cli_compile_source_core() {
     );
 }
 
-/// TEST-CLI-02-M: selfhost/Cli.ls の run-compile が file-path から source を読めること
+/// TEST-CLI-02-M: selfhost/src/App/Cli.ls の run-compile が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_compile_file_handler() {
     let dir = std::env::temp_dir().join(format!(
@@ -595,7 +595,7 @@ fn test_e2e_selfhost_cli_compile_file_handler() {
     );
 }
 
-/// TEST-CLI-02-M2: selfhost/Cli.ls の run-build が file-path から source を読めること
+/// TEST-CLI-02-M2: selfhost/src/App/Cli.ls の run-build が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_build_file_handler() {
     let dir =
@@ -632,7 +632,7 @@ fn test_e2e_selfhost_cli_build_file_handler() {
     assert_eq!(lines[1], "0", "run-build の終了コードは success であるべき");
 }
 
-/// TEST-CLI-02-M3: selfhost/Cli.ls の run-install が install plan text を返せること
+/// TEST-CLI-02-M3: selfhost/src/App/Cli.ls の run-install が install plan text を返せること
 #[test]
 fn test_e2e_selfhost_cli_install_package_core() {
     let harness = r#"
@@ -653,7 +653,7 @@ fn test_e2e_selfhost_cli_install_package_core() {
     );
 }
 
-/// TEST-CLI-02-M4: selfhost/Cli.ls の run-install は空 package を compile error にする
+/// TEST-CLI-02-M4: selfhost/src/App/Cli.ls の run-install は空 package を compile error にする
 #[test]
 fn test_e2e_selfhost_cli_install_empty_package() {
     let harness = r#"
@@ -672,7 +672,7 @@ fn test_e2e_selfhost_cli_install_empty_package() {
     );
 }
 
-/// TEST-CLI-02-M5: selfhost/Cli.ls の run-repl が warmup session summary を返せること
+/// TEST-CLI-02-M5: selfhost/src/App/Cli.ls の run-repl が warmup session summary を返せること
 #[test]
 fn test_e2e_selfhost_cli_repl_core() {
     let harness = r#"
@@ -693,7 +693,7 @@ fn test_e2e_selfhost_cli_repl_core() {
     );
 }
 
-/// TEST-CLI-02-M6: selfhost/Cli.ls の run-lsp が capability summary text を返せること
+/// TEST-CLI-02-M6: selfhost/src/App/Cli.ls の run-lsp が capability summary text を返せること
 #[test]
 fn test_e2e_selfhost_cli_lsp_core() {
     let harness = r#"
@@ -726,7 +726,7 @@ fn test_e2e_selfhost_cli_lsp_core() {
     );
 }
 
-/// TEST-CLI-02-M7: selfhost/Cli.ls の LSP transport helper が initialize request を frame response にできること
+/// TEST-CLI-02-M7: selfhost/src/App/Cli.ls の LSP transport helper が initialize request を frame response にできること
 #[test]
 fn test_e2e_selfhost_cli_lsp_transport_initialize_frame() {
     let body = r#"{"jsonrpc":"2.0","id":7,"result":[1,1,1,1,1,1,1]}"#;
@@ -753,7 +753,7 @@ fn test_e2e_selfhost_cli_lsp_transport_initialize_frame() {
     );
 }
 
-/// TEST-CLI-02-M8: selfhost/Cli.ls の LSP transport helper が未知メソッドを JSON-RPC error frame にできること
+/// TEST-CLI-02-M8: selfhost/src/App/Cli.ls の LSP transport helper が未知メソッドを JSON-RPC error frame にできること
 #[test]
 fn test_e2e_selfhost_cli_lsp_transport_unknown_method_error() {
     let body = r#"{"jsonrpc":"2.0","id":9,"error":{"code":-32601,"message":"Method not found"}}"#;
@@ -780,7 +780,7 @@ fn test_e2e_selfhost_cli_lsp_transport_unknown_method_error() {
     );
 }
 
-/// TEST-CLI-02-M9: selfhost/Cli.ls の LSP transport helper sequence が shared-state で複数 request を捌けること
+/// TEST-CLI-02-M9: selfhost/src/App/Cli.ls の LSP transport helper sequence が shared-state で複数 request を捌けること
 #[test]
 fn test_e2e_selfhost_cli_lsp_transport_goto_definition_frame() {
     let body = r#"{"jsonrpc":"2.0","id":7,"result":[10,1,7]}"#;
@@ -818,7 +818,7 @@ fn test_e2e_selfhost_cli_lsp_transport_goto_definition_frame() {
     );
 }
 
-/// TEST-CLI-02-M9b: selfhost/Cli.ls の LSP transport helper が hover request を framed response にできること
+/// TEST-CLI-02-M9b: selfhost/src/App/Cli.ls の LSP transport helper が hover request を framed response にできること
 #[test]
 fn test_e2e_selfhost_cli_lsp_transport_hover_frame() {
     let body =
@@ -857,7 +857,7 @@ fn test_e2e_selfhost_cli_lsp_transport_hover_frame() {
     );
 }
 
-/// TEST-CLI-02-M9c: selfhost/Cli.ls の LSP transport helper が references request を framed response にできること
+/// TEST-CLI-02-M9c: selfhost/src/App/Cli.ls の LSP transport helper が references request を framed response にできること
 #[test]
 fn test_e2e_selfhost_cli_lsp_transport_references_frame() {
     let body = r#"{"jsonrpc":"2.0","id":10,"result":[[99,1,7],[99,2,16],[99,2,27]]}"#;
@@ -895,7 +895,7 @@ fn test_e2e_selfhost_cli_lsp_transport_references_frame() {
     );
 }
 
-/// TEST-CLI-02-M9d: selfhost/Cli.ls の LSP transport helper が completion request を framed response にできること
+/// TEST-CLI-02-M9d: selfhost/src/App/Cli.ls の LSP transport helper が completion request を framed response にできること
 #[test]
 fn test_e2e_selfhost_cli_lsp_transport_completion_frame() {
     let body = r#"{"jsonrpc":"2.0","id":11,"result":[["defn",14,"defn"],["let",14,"let"],["if",14,"if"],["match",14,"match"],["do",14,"do"],["fn",14,"fn"],["module",14,"module"]]}"#;
@@ -922,7 +922,7 @@ fn test_e2e_selfhost_cli_lsp_transport_completion_frame() {
     );
 }
 
-/// TEST-CLI-02-M9e: selfhost/Cli.ls の LSP transport helper が formatting request を framed response にできること
+/// TEST-CLI-02-M9e: selfhost/src/App/Cli.ls の LSP transport helper が formatting request を framed response にできること
 #[test]
 fn test_e2e_selfhost_cli_lsp_transport_formatting_frame() {
     let body = "{\"jsonrpc\":\"2.0\",\"id\":12,\"result\":[[1,1,2,4,\"(defn main [] 1)\n\"]]}";
@@ -956,7 +956,7 @@ fn test_e2e_selfhost_cli_lsp_transport_formatting_frame() {
     );
 }
 
-/// TEST-CLI-02-M9f: selfhost/Cli.ls の LSP transport helper が rename request を framed response にできること
+/// TEST-CLI-02-M9f: selfhost/src/App/Cli.ls の LSP transport helper が rename request を framed response にできること
 #[test]
 fn test_e2e_selfhost_cli_lsp_transport_rename_frame() {
     let body = r#"{"jsonrpc":"2.0","id":13,"result":[[99,[[1,7,1,13,"cube"],[2,16,2,22,"cube"],[2,27,2,33,"cube"]]]]}"#;
@@ -996,7 +996,7 @@ fn test_e2e_selfhost_cli_lsp_transport_rename_frame() {
     );
 }
 
-/// TEST-CLI-02-M9: selfhost/Cli.ls の LSP transport helper sequence が shared-state で複数 request を捌けること
+/// TEST-CLI-02-M9: selfhost/src/App/Cli.ls の LSP transport helper sequence が shared-state で複数 request を捌けること
 #[test]
 fn test_e2e_selfhost_cli_lsp_transport_sequence_summary() {
     let init_body = r#"{"jsonrpc":"2.0","id":3,"result":[1,1,1,1,1,1,1]}"#;
@@ -1348,7 +1348,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_frame_sequence() {
     );
 }
 
-/// TEST-CLI-02-N: selfhost/Cli.ls の run-test-source が TestRunner.generate-tests を呼べること
+/// TEST-CLI-02-N: selfhost/src/App/Cli.ls の run-test-source が TestRunner.generate-tests を呼べること
 #[test]
 fn test_e2e_selfhost_cli_test_source_core() {
     let harness = r#"
@@ -1369,7 +1369,7 @@ fn test_e2e_selfhost_cli_test_source_core() {
     );
 }
 
-/// TEST-CLI-02-O: selfhost/Cli.ls の run-test が file-path から source を読めること
+/// TEST-CLI-02-O: selfhost/src/App/Cli.ls の run-test が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_test_file_handler() {
     let dir =
@@ -1396,7 +1396,7 @@ fn test_e2e_selfhost_cli_test_file_handler() {
     );
 }
 
-/// TEST-CLI-02-O2: selfhost/TestRunner.ls が supported subset の metadata suite を実行できること
+/// TEST-CLI-02-O2: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
 fn test_e2e_selfhost_test_runner_extracts_supported_metadata_suite() {
     let harness = r#"
@@ -1421,7 +1421,7 @@ fn test_e2e_selfhost_test_runner_extracts_supported_metadata_suite() {
     );
 }
 
-/// TEST-CLI-02-O2b: selfhost/TestRunner.ls が supported subset の metadata suite を実行できること
+/// TEST-CLI-02-O2b: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
 fn test_e2e_selfhost_test_runner_executes_examples_only() {
     let harness = r#"
@@ -1449,7 +1449,7 @@ fn test_e2e_selfhost_test_runner_executes_examples_only() {
     );
 }
 
-/// TEST-CLI-02-O2c: selfhost/TestRunner.ls が supported invariant suite を materialize できること
+/// TEST-CLI-02-O2c: selfhost/src/Tools/Test/TestRunner.ls が supported invariant suite を materialize できること
 #[test]
 fn test_e2e_selfhost_test_runner_executes_invariant_only() {
     let harness = r#"
@@ -1475,7 +1475,7 @@ fn test_e2e_selfhost_test_runner_executes_invariant_only() {
         "run-invariants は supported invariant を 5 サンプル計画付きで materialize できるべき"
     );
 }
-/// TEST-CLI-02-O2d: selfhost/TestRunner.ls が supported subset の metadata suite を実行できること
+/// TEST-CLI-02-O2d: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
 fn test_e2e_selfhost_test_runner_executes_supported_metadata_suite() {
     let harness = r#"
@@ -1508,7 +1508,7 @@ fn test_e2e_selfhost_test_runner_executes_supported_metadata_suite() {
     );
 }
 
-/// TEST-CLI-02-O3: selfhost/Cli.ls の run-test-source が supported subset の metadata を成功終了できること
+/// TEST-CLI-02-O3: selfhost/src/App/Cli.ls の run-test-source が supported subset の metadata を成功終了できること
 #[test]
 fn test_e2e_selfhost_cli_test_source_metadata_pass() {
     let harness = r#"
@@ -1530,7 +1530,7 @@ fn test_e2e_selfhost_cli_test_source_metadata_pass() {
     );
 }
 
-/// TEST-CLI-02-O4: selfhost/Cli.ls の run-test-source が failing example を runtime error にできること
+/// TEST-CLI-02-O4: selfhost/src/App/Cli.ls の run-test-source が failing example を runtime error にできること
 #[test]
 fn test_e2e_selfhost_cli_test_source_metadata_fail() {
     let harness = r#"
@@ -1552,7 +1552,7 @@ fn test_e2e_selfhost_cli_test_source_metadata_fail() {
     );
 }
 
-/// TEST-CLI-02-O5: selfhost/Cli.ls の run-test が file-path 経由の metadata suite も実行できること
+/// TEST-CLI-02-O5: selfhost/src/App/Cli.ls の run-test が file-path 経由の metadata suite も実行できること
 #[test]
 fn test_e2e_selfhost_cli_test_file_handler_metadata_pass() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -1587,7 +1587,7 @@ fn test_e2e_selfhost_cli_test_file_handler_metadata_pass() {
     );
 }
 
-/// TEST-CLI-02-P: selfhost/Cli.ls の run-review-source が review title/body を返せること
+/// TEST-CLI-02-P: selfhost/src/App/Cli.ls の run-review-source が review title/body を返せること
 #[test]
 fn test_e2e_selfhost_cli_review_source_core() {
     let harness = r#"
@@ -1615,7 +1615,7 @@ fn test_e2e_selfhost_cli_review_source_core() {
     );
 }
 
-/// TEST-CLI-02-Q: selfhost/Cli.ls の run-review が file-path から review title/body を返せること
+/// TEST-CLI-02-Q: selfhost/src/App/Cli.ls の run-review が file-path から review title/body を返せること
 #[test]
 fn test_e2e_selfhost_cli_review_file_handler() {
     let dir = std::env::temp_dir().join(format!(
@@ -1651,7 +1651,7 @@ fn test_e2e_selfhost_cli_review_file_handler() {
     );
 }
 
-/// TEST-CLI-02-Q2: selfhost/Cli.ls の run-review-source が empty-do rule も返せること
+/// TEST-CLI-02-Q2: selfhost/src/App/Cli.ls の run-review-source が empty-do rule も返せること
 #[test]
 fn test_e2e_selfhost_cli_review_source_empty_do() {
     let harness = r#"
@@ -1679,7 +1679,7 @@ fn test_e2e_selfhost_cli_review_source_empty_do() {
     );
 }
 
-/// TEST-CLI-02-R: selfhost/Cli.ls の run-doc-source が DocTools.generate を呼べること
+/// TEST-CLI-02-R: selfhost/src/App/Cli.ls の run-doc-source が DocTools.generate を呼べること
 #[test]
 fn test_e2e_selfhost_cli_doc_source_core() {
     let harness = r#"
@@ -1700,7 +1700,7 @@ fn test_e2e_selfhost_cli_doc_source_core() {
     );
 }
 
-/// TEST-CLI-02-S: selfhost/Cli.ls の run-doc が file-path から source を読めること
+/// TEST-CLI-02-S: selfhost/src/App/Cli.ls の run-doc が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_doc_file_handler() {
     let dir = std::env::temp_dir().join(format!("lsharp_test_cli_doc_file_{}", std::process::id()));
@@ -1726,7 +1726,7 @@ fn test_e2e_selfhost_cli_doc_file_handler() {
     );
 }
 
-/// TEST-CLI-02-T: selfhost/Cli.ls の run-doc-ack が file-path から source を読めること
+/// TEST-CLI-02-T: selfhost/src/App/Cli.ls の run-doc-ack が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_doc_ack_file_handler() {
     let dir = std::env::temp_dir().join(format!(
@@ -1761,7 +1761,7 @@ fn test_e2e_selfhost_cli_doc_ack_file_handler() {
     );
 }
 
-/// TEST-CLI-02-U: selfhost/Cli.ls の run-doc-check が file-path から source を読めること
+/// TEST-CLI-02-U: selfhost/src/App/Cli.ls の run-doc-check が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_doc_check_file_handler() {
     let dir = std::env::temp_dir().join(format!(
@@ -2433,10 +2433,10 @@ fn test_e2e_selfhost_cli_main_with_help_lsp_stdio_option() {
     );
 }
 
-/// TEST-LSP-01: selfhost/LspServer.ls 存在 + JSON-RPC dispatch 構造
+/// TEST-LSP-01: selfhost/src/Tools/Lsp/LspServer.ls 存在 + JSON-RPC dispatch 構造
 ///
 /// T4-2: L# 製 LSP の正式化 -- LspServer.ls が存在し JSON-RPC dispatch を持つこと
-/// Red Phase: selfhost/LspServer.ls が未作成のため FAIL する。
+/// Red Phase: selfhost/src/Tools/Lsp/LspServer.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_lsp_skeleton_v2() {
     let lsp_path = selfhost_source_path("LspServer.ls");
@@ -2462,11 +2462,11 @@ fn test_e2e_selfhost_lsp_skeleton_v2() {
     );
 }
 
-/// TEST-LSP-02: selfhost/LspServer.ls に LSP 3.17 の 10 メソッドが定義されていること
+/// TEST-LSP-02: selfhost/src/Tools/Lsp/LspServer.ls に LSP 3.17 の 10 メソッドが定義されていること
 ///
 /// T4-2 AC-005: initialize/shutdown/didOpen/didChange/hover/goto_definition/
 ///              references/rename/formatting/completion の 10 メソッド
-/// Red Phase: selfhost/LspServer.ls が未作成のため FAIL する。
+/// Red Phase: selfhost/src/Tools/Lsp/LspServer.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_lsp_10_methods() {
     let lsp_path = selfhost_source_path("LspServer.ls");
@@ -2494,7 +2494,7 @@ fn test_e2e_selfhost_lsp_10_methods() {
         let found = source.contains(&snake) || source.contains(&kebab);
         assert!(
             found,
-            "selfhost/LspServer.ls に LSP メソッド '{}' の定義がない (AC-005)",
+            "selfhost/src/Tools/Lsp/LspServer.ls に LSP メソッド '{}' の定義がない (AC-005)",
             method
         );
     }

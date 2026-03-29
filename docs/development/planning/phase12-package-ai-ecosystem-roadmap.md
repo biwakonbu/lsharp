@@ -597,8 +597,8 @@ _site/
 ## 4. P12-B: パッケージシステムコア
 
 > `package` は公開・配布単位を指す。`selfhost` は公開 package ではなく、同じ `src/` / dotted import 規約を使う **内部 source root** として扱う。
-> 正本 entrypoint は `selfhost/src/App/Main.ls`。互換移行のため flat な `selfhost/*.ls` を一時的に残しても、仕様上の基準は `selfhost/src/**` とする。
-> 現時点の実装では、Rust 側は package src / `.lsharp/packages/*/src` / stdlib の探索順を満たし、selfhost 側も `src/` 祖先 discovery・dotted local import・stdlib fallback に加えて `.lsharp/module-index/*.path` 経由の installed package 解決まで反映済みである。repo 内の旧 flat `selfhost/*.ls` 参照整理は後続タスク。
+> 正本 entrypoint は `selfhost/src/App/Main.ls`。仕様上の selfhost source tree 基準は `selfhost/src/**` とする。
+> 現時点の実装では、Rust 側は package src / `.lsharp/packages/*/src` / stdlib の探索順を満たし、selfhost 側も `src/` 祖先 discovery・dotted local import・stdlib fallback に加えて `.lsharp/module-index/*.path` 経由の installed package 解決まで反映済みである。flat な旧互換コピーは撤去済みで、repo 内参照も `selfhost/src/**` 基準へ統一した。
 
 ### B-1. lsharp.toml スキーマ拡張
 

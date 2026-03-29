@@ -21,7 +21,7 @@ struct NativeTargetSummary {
     multi_link_response_len: i64,
 }
 
-/// NATIVE-05/NATIVE-06: selfhost/Main.ls の native summary が
+/// NATIVE-05/NATIVE-06: selfhost/src/App/Main.ls の native summary が
 /// direct native pipeline harness と一致すること。
 #[test]
 fn test_e2e_selfhost_main_native_summary_matches_direct_pipeline_harness() {
@@ -29,7 +29,7 @@ fn test_e2e_selfhost_main_native_summary_matches_direct_pipeline_harness() {
     let main_lines = parse_numeric_lines(&main_output);
     assert!(
         main_lines.len() >= 71,
-        "selfhost/Main.ls native summary 出力が不足: {:?}",
+        "selfhost/src/App/Main.ls native summary 出力が不足: {:?}",
         main_lines
     );
 
@@ -93,7 +93,7 @@ fn test_e2e_selfhost_main_native_summary_matches_direct_pipeline_harness() {
 
     assert_eq!(
         actual, expected,
-        "selfhost/Main.ls native summary が direct native pipeline harness と一致しない"
+        "selfhost/src/App/Main.ls native summary が direct native pipeline harness と一致しない"
     );
 }
 
@@ -238,7 +238,7 @@ fn test_e2e_native_target_descriptor_exposes_policy_fields() {
 
 /// NATIVE-05: stage1-native 二回実行の決定性 (stage1→stage2 等価の前提証明)
 ///
-/// `selfhost/Main.ls` を二度独立にコンパイル・実行し、全出力行が一致することを確認する。
+/// `selfhost/src/App/Main.ls` を二度独立にコンパイル・実行し、全出力行が一致することを確認する。
 /// これは「stage0 が生成する stage1 は決定的であり、stage1 が生成する stage2 と一致する」
 /// というブートストラップ等価性の基盤となる証拠である。
 #[test]
@@ -253,7 +253,7 @@ fn test_e2e_stage1_native_two_run_determinism() {
 
     assert!(
         lines1.len() >= 71,
-        "run1: selfhost/Main.ls 出力行数が不足 (got {}): {:?}",
+        "run1: selfhost/src/App/Main.ls 出力行数が不足 (got {}): {:?}",
         lines1.len(),
         &lines1[..lines1.len().min(10)]
     );

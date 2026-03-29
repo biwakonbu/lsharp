@@ -19,7 +19,7 @@
 - `.github/workflows/ci.yml` の `default-path-smoke` は `ci-gate` / `ci-gate-v2` の required job に含まれる。
 - `.github/workflows/ci.yml` の `fresh-clone-smoke` も required job に含まれる。
 - `cargo test -p lsharp-driver --test default_path_delegation` が、`LSHARP_PATH` の executable path / directory path / invalid path error を固定する。
-- `selfhost/Cli.ls` は `init` を除く公開 13 CLI サブコマンド (`parse` / `check` / `compile` / `build` / `test` / `review` / `doc-ack` / `doc-check` / `install` / `repl` / `lsp` / `fmt` / `doc`) すべてに対応する selfhost surface を持つ。ただし **組み込み default path はまだ全行 Rust** であり、cutover PR が入るまで `compatibility-matrix.md` の `Default path` は Rust のまま読む。
+- `selfhost/src/App/Cli.ls` は `init` を除く公開 13 CLI サブコマンド (`parse` / `check` / `compile` / `build` / `test` / `review` / `doc-ack` / `doc-check` / `install` / `repl` / `lsp` / `fmt` / `doc`) すべてに対応する selfhost surface を持つ。ただし **組み込み default path はまだ全行 Rust** であり、cutover PR が入るまで `compatibility-matrix.md` の `Default path` は Rust のまま読む。
 
 この段階では **バイナリ経路の固定**まではできているが、実際の default implementation はまだ主に Rust 版であり、完全な Rust 非依存 default path ではない。
 
@@ -31,24 +31,24 @@
 
 | # | コマンド | 組み込み default path | selfhost surface の現況 | `LSHARP_PATH` delegation 時 | 次の主要 gate |
 |---|----------|----------------------|-------------------------|-----------------------------|---------------|
-| 1 | `parse` | Rust (`lsharp-syntax`) | `selfhost/Cli.ls` + `selfhost/Parser.ls` に parse text/diagnostics subset あり | 外部 `lsharp parse ...` へ argv 全体を委譲 | AST pretty-print / diagnostics snapshot parity |
-| 2 | `check` | Rust (`lsharp-types`) | `selfhost/Cli.ls` + `selfhost/TypeInfer.ls` に type/diagnostics subset あり | 外部 `lsharp check ...` へ argv 全体を委譲 | type display / diagnostics JSON parity |
-| 3 | `compile` | Rust (`lsharp-wasm`) | `selfhost/Cli.ls` + `selfhost/Compiler.ls` + `selfhost/WasmEmit.ls` に compile surface あり | 外部 `lsharp compile ...` へ argv 全体を委譲 | artifact / `-o` / bootstrap fixed-point parity |
-| 4 | `build` | Rust (`lsharp-driver`) | `selfhost/Cli.ls` に compile alias surface あり | 外部 `lsharp build ...` へ argv 全体を委譲 | project build contract / artifact parity |
-| 5 | `test` | Rust (`lsharp-driver`) | `selfhost/Cli.ls` + `selfhost/TestRunner.ls` に metadata suite subset あり | 外部 `lsharp test ...` へ argv 全体を委譲 | metadata semantics / exit code parity |
-| 6 | `review` | Rust (`lsharp-docs`) | `selfhost/Cli.ls` + `selfhost/DocTools.ls` に deterministic review text surface あり | 外部 `lsharp review ...` へ argv 全体を委譲 | diagnostics schema / severity / exit code parity |
-| 7 | `doc-ack` | Rust (`lsharp-docs`) | `selfhost/Cli.ls` + `selfhost/DocTools.ls` に ack text surface あり | 外部 `lsharp doc-ack ...` へ argv 全体を委譲 | state/update semantics parity |
-| 8 | `doc-check` | Rust (`lsharp-docs`) | `selfhost/Cli.ls` + `selfhost/DocTools.ls` に check text surface あり | 外部 `lsharp doc-check ...` へ argv 全体を委譲 | schema / failure surface parity |
-| 9 | `install` | Rust (`lsharp-driver`) | `selfhost/Cli.ls` に dry-run install plan surface あり | 外部 `lsharp install ...` へ argv 全体を委譲 | package/archive/checksum parity |
-| 10 | `repl` | Rust (`lsharp-driver`) | `selfhost/Cli.ls` に warmup session summary surface あり | 外部 `lsharp repl` へ argv 全体を委譲 | interactive loop / history / runtime stability gate |
-| 11 | `lsp` | Rust (`lsharp-lsp`) | `selfhost/Cli.ls` + `selfhost/LspServer.ls` + `selfhost/JsonRpc.ls` に capability / handler subset あり | 外部 `lsharp lsp` へ argv 全体を委譲 | JSON-RPC transport / snapshot parity / soak gate |
-| 12 | `fmt` | Rust (`lsharp-driver`) | `selfhost/Cli.ls` + `selfhost/Formatter.ls` に canonical text surface あり | 外部 `lsharp fmt ...` へ argv 全体を委譲 | roundtrip / idempotency / CLI-LSP parity |
-| 13 | `doc` | Rust (`lsharp-docs`) | `selfhost/Cli.ls` + `selfhost/DocTools.ls` + `selfhost/HtmlDoc.ls` に doc title/body + HTML subset あり | 外部 `lsharp doc ...` へ argv 全体を委譲 | JSON/HTML snapshot / distribution parity |
+| 1 | `parse` | Rust (`lsharp-syntax`) | `selfhost/src/App/Cli.ls` + `selfhost/src/Syntax/Parser.ls` に parse text/diagnostics subset あり | 外部 `lsharp parse ...` へ argv 全体を委譲 | AST pretty-print / diagnostics snapshot parity |
+| 2 | `check` | Rust (`lsharp-types`) | `selfhost/src/App/Cli.ls` + `selfhost/src/Types/TypeInfer.ls` に type/diagnostics subset あり | 外部 `lsharp check ...` へ argv 全体を委譲 | type display / diagnostics JSON parity |
+| 3 | `compile` | Rust (`lsharp-wasm`) | `selfhost/src/App/Cli.ls` + `selfhost/src/Backend/Wasm/Compiler.ls` + `selfhost/src/Backend/Wasm/WasmEmit.ls` に compile surface あり | 外部 `lsharp compile ...` へ argv 全体を委譲 | artifact / `-o` / bootstrap fixed-point parity |
+| 4 | `build` | Rust (`lsharp-driver`) | `selfhost/src/App/Cli.ls` に compile alias surface あり | 外部 `lsharp build ...` へ argv 全体を委譲 | project build contract / artifact parity |
+| 5 | `test` | Rust (`lsharp-driver`) | `selfhost/src/App/Cli.ls` + `selfhost/src/Tools/Test/TestRunner.ls` に metadata suite subset あり | 外部 `lsharp test ...` へ argv 全体を委譲 | metadata semantics / exit code parity |
+| 6 | `review` | Rust (`lsharp-docs`) | `selfhost/src/App/Cli.ls` + `selfhost/src/Tools/Doc/DocTools.ls` に deterministic review text surface あり | 外部 `lsharp review ...` へ argv 全体を委譲 | diagnostics schema / severity / exit code parity |
+| 7 | `doc-ack` | Rust (`lsharp-docs`) | `selfhost/src/App/Cli.ls` + `selfhost/src/Tools/Doc/DocTools.ls` に ack text surface あり | 外部 `lsharp doc-ack ...` へ argv 全体を委譲 | state/update semantics parity |
+| 8 | `doc-check` | Rust (`lsharp-docs`) | `selfhost/src/App/Cli.ls` + `selfhost/src/Tools/Doc/DocTools.ls` に check text surface あり | 外部 `lsharp doc-check ...` へ argv 全体を委譲 | schema / failure surface parity |
+| 9 | `install` | Rust (`lsharp-driver`) | `selfhost/src/App/Cli.ls` に dry-run install plan surface あり | 外部 `lsharp install ...` へ argv 全体を委譲 | package/archive/checksum parity |
+| 10 | `repl` | Rust (`lsharp-driver`) | `selfhost/src/App/Cli.ls` に warmup session summary surface あり | 外部 `lsharp repl` へ argv 全体を委譲 | interactive loop / history / runtime stability gate |
+| 11 | `lsp` | Rust (`lsharp-lsp`) | `selfhost/src/App/Cli.ls` + `selfhost/src/Tools/Lsp/LspServer.ls` + `selfhost/src/Tools/Lsp/JsonRpc.ls` に capability / handler subset あり | 外部 `lsharp lsp` へ argv 全体を委譲 | JSON-RPC transport / snapshot parity / soak gate |
+| 12 | `fmt` | Rust (`lsharp-driver`) | `selfhost/src/App/Cli.ls` + `selfhost/src/Tools/Text/Formatter.ls` に canonical text surface あり | 外部 `lsharp fmt ...` へ argv 全体を委譲 | roundtrip / idempotency / CLI-LSP parity |
+| 13 | `doc` | Rust (`lsharp-docs`) | `selfhost/src/App/Cli.ls` + `selfhost/src/Tools/Doc/DocTools.ls` + `selfhost/src/Tools/Doc/HtmlDoc.ls` に doc title/body + HTML subset あり | 外部 `lsharp doc ...` へ argv 全体を委譲 | JSON/HTML snapshot / distribution parity |
 
 ### この表の読み方
 
 - **組み込み default path**: `LSHARP_PATH` を設定しない通常起動時に、driver が使う内蔵実装。2026-03-27 時点では 13 行すべて Rust のまま。
-- **selfhost surface**: `selfhost/Cli.ls` から見える L# 側の公開面。`Default path` の切替前でも、実装の存在と narrow parity 証跡はここで追跡する。
+- **selfhost surface**: `selfhost/src/App/Cli.ls` から見える L# 側の公開面。`Default path` の切替前でも、実装の存在と narrow parity 証跡はここで追跡する。
 - **`LSHARP_PATH` delegation**: 行ごとの feature flag ではなく **process-entry delegation**。`main.rs` は clap dispatch 前に `LSHARP_PATH` を評価し、設定されていれば受け取った argv 全体を外部 `lsharp` binary へ渡す。
 - したがって、`LSHARP_PATH` は「built-in default を L# に切り替えた」ことを意味しない。現時点では **Rust built-in default を維持したまま、外部 selfhost/native binary を shadow smoke できる hook** と読む。
 

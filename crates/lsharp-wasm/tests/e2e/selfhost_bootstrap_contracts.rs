@@ -84,6 +84,22 @@ fn test_e2e_selfhost_main_import_only_pipeline() {
     let _wasm = compile_file_only(&selfhost_main_path());
 }
 
+#[test]
+fn test_e2e_selfhost_flat_compat_sources_removed() {
+    let top_level_ls_files: Vec<_> = std::fs::read_dir(selfhost_package_root())
+        .expect("selfhost ディレクトリの読み込みに失敗")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "ls"))
+        .collect();
+
+    assert!(
+        top_level_ls_files.is_empty(),
+        "selfhost 直下の flat 互換コピーは削除済みであること: {:?}",
+        top_level_ls_files
+    );
+}
+
 // === TEST-BOOT-02-A: MacroExpand.ls direct compile テスト ===
 
 /// canonical MacroExpand.ls を直接コンパイルして成功することを検証する。
@@ -249,11 +265,11 @@ fn test_e2e_selfhost_type_responsibility_separation() {
 // === TEST-SYNTAX-02: Rust AST 全ノード型の 1:1 対応 golden fixture ===
 
 /// Rust の AST ノード型 (Expr/Decl/Pattern enum variants) を列挙し、
-/// selfhost/AST.ls に対応する constructor が全て存在することを検証する。
+/// selfhost/src/Syntax/AST.ls に対応する constructor が全て存在することを検証する。
 ///
 /// Golden fixture: tests/golden/syntax/ast_node_map.json
 ///
-/// Red Phase: selfhost/AST.ls は基本的な Expr バリアントのみ実装しているため、
+/// Red Phase: selfhost/src/Syntax/AST.ls は基本的な Expr バリアントのみ実装しているため、
 /// 多くのバリアント (Ann, RecordLit, FieldAccess, 等) に対応する constructor がなく FAIL する。
 #[test]
 fn test_e2e_selfhost_ast_full_coverage() {
@@ -345,7 +361,7 @@ fn test_e2e_selfhost_ast_full_coverage() {
         );
     }
 
-    // selfhost/AST.ls に全 Expr variant の constructor が存在すること
+    // selfhost/src/Syntax/AST.ls に全 Expr variant の constructor が存在すること
     // 各 variant にはタグ定数 (defn ast-xxx) または構築関数 (defn make-xxx) が必要
     let mut missing_expr: Vec<&str> = Vec::new();
     for variant in &rust_expr_variants {
@@ -368,13 +384,13 @@ fn test_e2e_selfhost_ast_full_coverage() {
 
     assert!(
         missing_expr.is_empty(),
-        "selfhost/AST.ls に以下の Expr variant の constructor がない: {:?}\n\
+        "selfhost/src/Syntax/AST.ls に以下の Expr variant の constructor がない: {:?}\n\
          全 {} variant に対応する ast-xxx タグ定数 or make-xxx 構築関数が必要",
         missing_expr,
         rust_expr_variants.len()
     );
 
-    // selfhost/AST.ls に全 Decl variant の constructor が存在すること
+    // selfhost/src/Syntax/AST.ls に全 Decl variant の constructor が存在すること
     let mut missing_decl: Vec<&str> = Vec::new();
     for variant in &rust_decl_variants {
         let variant_lower = variant.to_lowercase();
@@ -388,13 +404,13 @@ fn test_e2e_selfhost_ast_full_coverage() {
 
     assert!(
         missing_decl.is_empty(),
-        "selfhost/AST.ls に以下の Decl variant の constructor がない: {:?}\n\
+        "selfhost/src/Syntax/AST.ls に以下の Decl variant の constructor がない: {:?}\n\
          全 {} variant に対応する ast-xxx タグ定数 or make-xxx 構築関数が必要",
         missing_decl,
         rust_decl_variants.len()
     );
 
-    // selfhost/AST.ls に全 Pattern variant の constructor が存在すること
+    // selfhost/src/Syntax/AST.ls に全 Pattern variant の constructor が存在すること
     let mut missing_pat: Vec<&str> = Vec::new();
     for variant in &rust_pattern_variants {
         let variant_lower = variant.to_lowercase();
@@ -409,7 +425,7 @@ fn test_e2e_selfhost_ast_full_coverage() {
 
     assert!(
         missing_pat.is_empty(),
-        "selfhost/AST.ls に以下の Pattern variant の constructor がない: {:?}\n\
+        "selfhost/src/Syntax/AST.ls に以下の Pattern variant の constructor がない: {:?}\n\
          全 {} variant に対応する ast-pat-xxx タグ定数 or make-pat-xxx 構築関数が必要",
         missing_pat,
         rust_pattern_variants.len()
@@ -550,7 +566,7 @@ fn test_e2e_selfhost_type_hm_core_golden() {
 
 // =============================================================================
 // TEST-TYPE-05: MetadataCheck.ls metadata validation
-// selfhost/MetadataCheck.ls が存在し、:doc, :params, :returns メタデータの
+// selfhost/src/Types/MetadataCheck.ls が存在し、:doc, :params, :returns メタデータの
 // validation を行う関数を公開していることを検証
 // =============================================================================
 

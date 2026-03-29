@@ -37,8 +37,8 @@ Rust ツールチェーン（`rustc`, `cargo`）は不要。
 
 | ステージ | 入力 | 出力 | 説明 |
 |----------|------|------|------|
-| stage0 → stage1 | selfhost/*.ls | stage1/lsharp.wasm | プリビルトコンパイラで selfhost をコンパイル |
-| stage1 → stage2 | selfhost/*.ls | stage2/lsharp.wasm | stage1 出力で selfhost を再コンパイル |
+| stage0 → stage1 | selfhost/src/**/*.ls | stage1/lsharp.wasm | プリビルトコンパイラで selfhost 正本 source root をコンパイル |
+| stage1 → stage2 | selfhost/src/**/*.ls | stage2/lsharp.wasm | stage1 出力で selfhost 正本 source root を再コンパイル |
 | stage2 検証 | — | — | stage1 と stage2 の出力が一致することを確認 |
 
 ### 4. ネイティブリリースビルド
@@ -106,7 +106,7 @@ test-fresh-clone:
 - `scripts/ci/test-fresh-clone.sh` が `target/ci/fresh-clone-smoke/` に clean checkout 相当のコピーを作る
 - そのコピー上で `cargo build -p lsharp-driver -q` を実行し、ビルド済み `lsharp` バイナリを得る
 - `scripts/ci/default-path-smoke.sh` を再利用して `check` / `compile` の default-path smoke を再実行する
-- 追加で `selfhost/Token.ls` と `stdlib/Core.ls` をコンパイルし、selfhost / stdlib の代表 slice が clean checkout でも壊れていないことを確認する
+- 追加で `selfhost/src/Syntax/Token.ls` と `stdlib/Core.ls` をコンパイルし、selfhost / stdlib の代表 slice が clean checkout でも壊れていないことを確認する
 
 このジョブは **Rust 非依存化の完了を主張しない**。あくまで `test-fresh-clone` の前段で、clean checkout 経路の regressions を CI gate に載せるための暫定措置である。
 
