@@ -6,6 +6,8 @@ fn selfhost_formatter_source_bundle() -> String {
         "AST.ls",
         "Lexer.ls",
         "Parser.ls",
+        "FormatterExpr.ls",
+        "FormatterDecl.ls",
         "Formatter.ls",
     ]
     .into_iter()

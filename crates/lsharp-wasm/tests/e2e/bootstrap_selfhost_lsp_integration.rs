@@ -515,8 +515,13 @@ fn test_e2e_selfhost_linter() {
 /// P9-6d: フォーマッタモジュールがコンパイル+実行できることを検証
 #[test]
 fn test_e2e_selfhost_formatter() {
-    let source = selfhost_module("Formatter.ls");
-    let output = compile_and_run(source);
+    let source = format!(
+        "{}\n{}\n{}",
+        selfhost_module("FormatterExpr.ls"),
+        selfhost_module("FormatterDecl.ls"),
+        selfhost_module("Formatter.ls"),
+    );
+    let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().split('\n').collect();
     // インデント設定
     assert_eq!(lines[0], "2", "indent-width");
@@ -610,8 +615,13 @@ fn test_e2e_selfhost_linter_lsp_integration() {
 /// P9-6d: フォーマッタが LSP TextEdit を生成できることを検証
 #[test]
 fn test_e2e_selfhost_formatter_lsp_integration() {
-    let source = selfhost_module("Formatter.ls");
-    let output = compile_and_run(source);
+    let source = format!(
+        "{}\n{}\n{}",
+        selfhost_module("FormatterExpr.ls"),
+        selfhost_module("FormatterDecl.ls"),
+        selfhost_module("Formatter.ls"),
+    );
+    let output = compile_and_run(&source);
     let lines: Vec<&str> = output.trim().split('\n').collect();
     // 既存 15 行の後に LSP 統合テスト出力 (format-program 2 行追加)
     // make-text-edit: [start-line, start-col, end-line, end-col, text-hash]

@@ -22,16 +22,13 @@ fn run_lsp_harness(_name: &str, harness: &str) -> Vec<String> {
 }
 
 fn lsp_diagnostic_helpers_source() -> String {
-    let lsp_path = selfhost_source_path("LspServer.ls");
-    let source = std::fs::read_to_string(&lsp_path)
-        .unwrap_or_else(|e| panic!("{} の読み込みに失敗: {}", lsp_path.display(), e));
+    let nav_path = selfhost_source_path("LspServerNav.ls");
+    let source = std::fs::read_to_string(&nav_path)
+        .unwrap_or_else(|e| panic!("{} の読み込みに失敗: {}", nav_path.display(), e));
     let start = source
         .find(";; === 診断の安定順序制御")
-        .expect("diagnostics section start が見つからない");
-    let end = source
-        .find(";; === 診断 JSON text renderer ===")
-        .expect("diagnostics section end が見つからない");
-    source[start..end].to_string()
+        .expect("diagnostics section start が LspServerNav.ls に見つからない");
+    source[start..].to_string()
 }
 
 fn run_lsp_diagnostic_harness(harness: &str) -> Vec<String> {
@@ -2375,6 +2372,8 @@ fn selfhost_formatter_runtime_bundle() -> String {
         "AST.ls",
         "Lexer.ls",
         "Parser.ls",
+        "FormatterExpr.ls",
+        "FormatterDecl.ls",
         "Formatter.ls",
     ]
     .into_iter()

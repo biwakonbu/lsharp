@@ -178,6 +178,8 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "Constraints.ls" => "selfhost/src/Types/Constraints.ls",
         "Compiler.ls" => "selfhost/src/Backend/Wasm/Compiler.ls",
         "WasmEmit.ls" => "selfhost/src/Backend/Wasm/WasmEmit.ls",
+        "FormatterExpr.ls" => "selfhost/src/Tools/Text/FormatterExpr.ls",
+        "FormatterDecl.ls" => "selfhost/src/Tools/Text/FormatterDecl.ls",
         "Formatter.ls" => "selfhost/src/Tools/Text/Formatter.ls",
         "TestRunner.ls" => "selfhost/src/Tools/Test/TestRunner.ls",
         "DocTools.ls" => "selfhost/src/Tools/Doc/DocTools.ls",
@@ -257,6 +259,10 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
         .expect("canonical Compiler.ls が読み込めない");
     let wasm_emit_ls = std::fs::read_to_string(selfhost_source_path("WasmEmit.ls"))
         .expect("canonical WasmEmit.ls が読み込めない");
+    let formatter_expr_ls = std::fs::read_to_string(selfhost_source_path("FormatterExpr.ls"))
+        .expect("canonical FormatterExpr.ls が読み込めない");
+    let formatter_decl_ls = std::fs::read_to_string(selfhost_source_path("FormatterDecl.ls"))
+        .expect("canonical FormatterDecl.ls が読み込めない");
     let formatter_ls = std::fs::read_to_string(selfhost_source_path("Formatter.ls"))
         .expect("canonical Formatter.ls が読み込めない");
     let test_runner_ls = std::fs::read_to_string(selfhost_source_path("TestRunner.ls"))
@@ -267,7 +273,7 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
         .expect("canonical Cli.ls が読み込めない");
 
     format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
         token_ls,
         ast_ls,
         lexer_ls,
@@ -285,6 +291,8 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
         type_infer_record_ls,
         compiler_ls,
         wasm_emit_ls,
+        formatter_expr_ls,
+        formatter_decl_ls,
         formatter_ls,
         test_runner_ls,
         doc_tools_ls,

@@ -122,8 +122,8 @@ fn test_e2e_selfhost_main_module_structure() {
 ///   Level 1: Syntax.AST, Types.TypeScheme, Syntax.Lexer, Backend.Wasm.WasmEmit,
 ///            Backend.Native.NativeCodegen, Backend.Native.NativeEmit, Backend.Native.Linker
 ///   Level 2: Syntax.Parser, Syntax.MacroExpand, Types.TypeInferCore, Backend.Wasm.Compiler,
-///            Tools.Text.Linter, Tools.Text.Formatter
-///   Level 3: Types.TypeInferFunctions, Types.TypeInferBuiltins, App.CompilerMode
+///            Tools.Text.Linter, Tools.Text.FormatterExpr, Tools.Text.FormatterDecl
+///   Level 3: Types.TypeInferFunctions, Types.TypeInferBuiltins, App.CompilerMode, Tools.Text.Formatter
 ///   Level 4: Types.TypeInfer
 ///   Level 5: App.PipelineSmoke
 ///   Level 6: App.Main
@@ -365,7 +365,7 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
     );
 
     // Level 2: Syntax.Parser, Syntax.MacroExpand, Types.TypeInferCore, Backend.Wasm.Compiler,
-    // Tools.Text.Linter, Tools.Text.Formatter
+    // Tools.Text.Linter, Tools.Text.FormatterExpr, Tools.Text.FormatterDecl
     // (Level 1 のモジュールに依存)
     let level_2: HashSet<&str> = [
         "Syntax.Parser",
@@ -373,7 +373,8 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         "Types.TypeInferCore",
         "Backend.Wasm.Compiler",
         "Tools.Text.Linter",
-        "Tools.Text.Formatter",
+        "Tools.Text.FormatterExpr",
+        "Tools.Text.FormatterDecl",
     ]
     .iter()
     .copied()
@@ -386,11 +387,12 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         );
     }
 
-    // Level 3: Types.TypeInferFunctions, Types.TypeInferBuiltins, App.CompilerMode
+    // Level 3: Types.TypeInferFunctions, Types.TypeInferBuiltins, App.CompilerMode, Tools.Text.Formatter
     let level_3: HashSet<&str> = [
         "Types.TypeInferFunctions",
         "Types.TypeInferBuiltins",
         "App.CompilerMode",
+        "Tools.Text.Formatter",
     ]
         .iter()
         .copied()
@@ -701,6 +703,8 @@ fn test_e2e_bootstrap_selfhost_full_deterministic() {
         ("WasmEmit.ls", selfhost_module("WasmEmit.ls")),
         ("TypeScheme.ls", selfhost_module("TypeScheme.ls")),
         ("TypeInferCore.ls", selfhost_module("TypeInferCore.ls")),
+        ("FormatterExpr.ls", selfhost_module("FormatterExpr.ls")),
+        ("FormatterDecl.ls", selfhost_module("FormatterDecl.ls")),
         ("Formatter.ls", selfhost_module("Formatter.ls")),
         ("JsonRpc.ls", selfhost_module("JsonRpc.ls")),
         ("Linter.ls", selfhost_module("Linter.ls")),
