@@ -1,14 +1,147 @@
 (module App.CompilerMode)
 (import App.ModuleResolver)
 (import Syntax.Parser)
+(import Syntax.Lexer)
 (import Backend.Wasm.Compiler)
 (import Backend.Wasm.WasmEmit)
+(defn decl-tag-or-minus-one [decls idx] (if (< idx (vector-length decls)) (vector-get (vector-get decls idx) 0) -1))
+(defn text-char-or-minus-one [text idx] (if (< idx (string-length text)) (string-char-at text idx) -1))
+(defn span-kind-or-minus-one [spans idx] (if (< (* idx 3) (vector-length spans)) (span-kind spans idx) -1))
+(defn span-start-or-minus-one [spans idx] (if (< (+ (* idx 3) 1) (vector-length spans)) (span-start spans idx) -1))
+(defn span-end-or-minus-one [spans idx] (if (< (+ (* idx 3) 2) (vector-length spans)) (span-end spans idx) -1))
 (defn make-src-decl-pair [src decls] (vector-push (vector-push (vector-new 2) src) decls))
-(defn load-imports-from-decls [decls src idx n seen-ref pairs source-root package-root] (if (>= idx n) pairs (let [decl (vector-get decls idx)] (if (= (vector-get decl 0) 26) (let [name-start (vector-get decl 2) name-end (vector-get decl 3) module-name (substring src name-start name-end) updated-pairs (load-module-if-new module-name source-root package-root seen-ref pairs)] (load-imports-from-decls decls src (+ idx 1) n seen-ref updated-pairs source-root package-root)) (load-imports-from-decls decls src (+ idx 1) n seen-ref pairs source-root package-root)))))
+(defn make-pairs-step-state [done next-idx next-pairs] (vector-push (vector-push (vector-push (vector-new 3) done) next-idx) next-pairs))
+(defn load-imports-from-decls-step [decls src idx n seen-ref pairs source-root package-root] (if (>= idx n) (make-pairs-step-state 1 idx pairs) (let [decl (vector-get decls idx)] (if (= (vector-get decl 0) 26) (let [name-start (vector-get decl 2) name-end (vector-get decl 3) module-name (substring src name-start name-end) updated-pairs (load-module-if-new module-name source-root package-root seen-ref pairs)] (make-pairs-step-state 0 (+ idx 1) updated-pairs)) (make-pairs-step-state 0 (+ idx 1) pairs)))))
+(defn continue-load-imports-from-decls-step [decls src n seen-ref source-root package-root state] (if (= (vector-get state 0) 1) state (load-imports-from-decls-step decls src (vector-get state 1) n seen-ref (vector-get state 2) source-root package-root)))
+(defn load-imports-from-decls-step-8 [decls src idx n seen-ref pairs source-root package-root] (let [step1 (load-imports-from-decls-step decls src idx n seen-ref pairs source-root package-root) step2 (continue-load-imports-from-decls-step decls src n seen-ref source-root package-root step1) step3 (continue-load-imports-from-decls-step decls src n seen-ref source-root package-root step2) step4 (continue-load-imports-from-decls-step decls src n seen-ref source-root package-root step3) step5 (continue-load-imports-from-decls-step decls src n seen-ref source-root package-root step4) step6 (continue-load-imports-from-decls-step decls src n seen-ref source-root package-root step5) step7 (continue-load-imports-from-decls-step decls src n seen-ref source-root package-root step6) step8 (continue-load-imports-from-decls-step decls src n seen-ref source-root package-root step7)] step8))
+(defn continue-load-imports-from-decls-step-8 [decls src n seen-ref source-root package-root state] (if (= (vector-get state 0) 1) state (load-imports-from-decls-step-8 decls src (vector-get state 1) n seen-ref (vector-get state 2) source-root package-root)))
+(defn load-imports-from-decls-step-64 [decls src idx n seen-ref pairs source-root package-root] (let [step1 (load-imports-from-decls-step-8 decls src idx n seen-ref pairs source-root package-root) step2 (continue-load-imports-from-decls-step-8 decls src n seen-ref source-root package-root step1) step3 (continue-load-imports-from-decls-step-8 decls src n seen-ref source-root package-root step2) step4 (continue-load-imports-from-decls-step-8 decls src n seen-ref source-root package-root step3) step5 (continue-load-imports-from-decls-step-8 decls src n seen-ref source-root package-root step4) step6 (continue-load-imports-from-decls-step-8 decls src n seen-ref source-root package-root step5) step7 (continue-load-imports-from-decls-step-8 decls src n seen-ref source-root package-root step6) step8 (continue-load-imports-from-decls-step-8 decls src n seen-ref source-root package-root step7)] step8))
+(defn load-imports-from-decls [decls src idx n seen-ref pairs source-root package-root] (let [step (load-imports-from-decls-step-64 decls src idx n seen-ref pairs source-root package-root)] (if (= (vector-get step 0) 1) (vector-get step 2) (load-imports-from-decls decls src (vector-get step 1) n seen-ref (vector-get step 2) source-root package-root))))
 (defn load-module-if-new [module-name source-root package-root seen-ref pairs] (let [module-key (name-hash module-name 0 (string-length module-name))] (if (= 0 (map-get (ref-get seen-ref) module-key)) (do (ref-set seen-ref (map-insert (ref-get seen-ref) module-key 1)) (let [path (resolve-module-path module-name source-root package-root) src (read-file path) decls (parse-program src) pairs-with-deps (load-imports-from-decls decls src 0 (vector-length decls) seen-ref pairs source-root package-root)] (vector-push pairs-with-deps (make-src-decl-pair src decls)))) pairs)))
-(defn register-all-pairs [pairs idx n ftable func-idx] (if (>= idx n) (vector-push (vector-push (vector-new 2) ftable) func-idx) (let [pair (vector-get pairs idx) decls (vector-get pair 1) result (register-defns decls 0 (vector-length decls) ftable func-idx)] (register-all-pairs pairs (+ idx 1) n (vector-get result 0) (vector-get result 1)))))
-(defn compile-all-src-decl-pairs [pairs idx n ftable data-ref functions] (if (>= idx n) functions (let [pair (vector-get pairs idx) src (vector-get pair 0) decls (vector-get pair 1) updated-functions (compile-defn-functions-with-source decls 0 (vector-length decls) src ftable data-ref functions)] (compile-all-src-decl-pairs pairs (+ idx 1) n ftable data-ref updated-functions))))
-(defn print-module-bytes-loop [bytes idx count] (if (>= idx count) 0 (do (print (vector-get bytes idx)) (print-module-bytes-loop bytes (+ idx 1) count))))
+(defn make-register-pairs-state [done next-idx next-ftable next-func-idx] (vector-push (vector-push (vector-push (vector-push (vector-new 4) done) next-idx) next-ftable) next-func-idx))
+(defn register-all-pairs-step [pairs idx n ftable func-idx] (if (>= idx n) (make-register-pairs-state 1 idx ftable func-idx) (let [pair (vector-get pairs idx) decls (vector-get pair 1) result (register-defns decls 0 (vector-length decls) ftable func-idx)] (make-register-pairs-state 0 (+ idx 1) (vector-get result 0) (vector-get result 1)))))
+(defn continue-register-all-pairs-step [pairs n state] (if (= (vector-get state 0) 1) state (register-all-pairs-step pairs (vector-get state 1) n (vector-get state 2) (vector-get state 3))))
+(defn register-all-pairs-step-8 [pairs idx n ftable func-idx] (let [step1 (register-all-pairs-step pairs idx n ftable func-idx) step2 (continue-register-all-pairs-step pairs n step1) step3 (continue-register-all-pairs-step pairs n step2) step4 (continue-register-all-pairs-step pairs n step3) step5 (continue-register-all-pairs-step pairs n step4) step6 (continue-register-all-pairs-step pairs n step5) step7 (continue-register-all-pairs-step pairs n step6) step8 (continue-register-all-pairs-step pairs n step7)] step8))
+(defn continue-register-all-pairs-step-8 [pairs n state] (if (= (vector-get state 0) 1) state (register-all-pairs-step-8 pairs (vector-get state 1) n (vector-get state 2) (vector-get state 3))))
+(defn register-all-pairs-step-64 [pairs idx n ftable func-idx] (let [step1 (register-all-pairs-step-8 pairs idx n ftable func-idx) step2 (continue-register-all-pairs-step-8 pairs n step1) step3 (continue-register-all-pairs-step-8 pairs n step2) step4 (continue-register-all-pairs-step-8 pairs n step3) step5 (continue-register-all-pairs-step-8 pairs n step4) step6 (continue-register-all-pairs-step-8 pairs n step5) step7 (continue-register-all-pairs-step-8 pairs n step6) step8 (continue-register-all-pairs-step-8 pairs n step7)] step8))
+(defn register-all-pairs [pairs idx n ftable func-idx] (let [step (register-all-pairs-step-64 pairs idx n ftable func-idx)] (if (= (vector-get step 0) 1) (vector-push (vector-push (vector-new 2) (vector-get step 2)) (vector-get step 3)) (register-all-pairs pairs (vector-get step 1) n (vector-get step 2) (vector-get step 3)))))
+(defn compile-src-decl-pairs-step [pairs idx n ftable data-ref functions] (if (>= idx n) (make-pairs-step-state 1 idx functions) (let [pair (vector-get pairs idx) src (vector-get pair 0) decls (vector-get pair 1) updated-functions (compile-defn-functions-with-source decls 0 (vector-length decls) src ftable data-ref functions)] (make-pairs-step-state 0 (+ idx 1) updated-functions))))
+(defn continue-compile-src-decl-pairs-step [pairs n ftable data-ref state] (if (= (vector-get state 0) 1) state (compile-src-decl-pairs-step pairs (vector-get state 1) n ftable data-ref (vector-get state 2))))
+(defn compile-src-decl-pairs-step-8 [pairs idx n ftable data-ref functions] (let [step1 (compile-src-decl-pairs-step pairs idx n ftable data-ref functions) step2 (continue-compile-src-decl-pairs-step pairs n ftable data-ref step1) step3 (continue-compile-src-decl-pairs-step pairs n ftable data-ref step2) step4 (continue-compile-src-decl-pairs-step pairs n ftable data-ref step3) step5 (continue-compile-src-decl-pairs-step pairs n ftable data-ref step4) step6 (continue-compile-src-decl-pairs-step pairs n ftable data-ref step5) step7 (continue-compile-src-decl-pairs-step pairs n ftable data-ref step6) step8 (continue-compile-src-decl-pairs-step pairs n ftable data-ref step7)] step8))
+(defn continue-compile-src-decl-pairs-step-8 [pairs n ftable data-ref state] (if (= (vector-get state 0) 1) state (compile-src-decl-pairs-step-8 pairs (vector-get state 1) n ftable data-ref (vector-get state 2))))
+(defn compile-src-decl-pairs-step-64 [pairs idx n ftable data-ref functions] (let [step1 (compile-src-decl-pairs-step-8 pairs idx n ftable data-ref functions) step2 (continue-compile-src-decl-pairs-step-8 pairs n ftable data-ref step1) step3 (continue-compile-src-decl-pairs-step-8 pairs n ftable data-ref step2) step4 (continue-compile-src-decl-pairs-step-8 pairs n ftable data-ref step3) step5 (continue-compile-src-decl-pairs-step-8 pairs n ftable data-ref step4) step6 (continue-compile-src-decl-pairs-step-8 pairs n ftable data-ref step5) step7 (continue-compile-src-decl-pairs-step-8 pairs n ftable data-ref step6) step8 (continue-compile-src-decl-pairs-step-8 pairs n ftable data-ref step7)] step8))
+(defn compile-all-src-decl-pairs [pairs idx n ftable data-ref functions] (let [step (compile-src-decl-pairs-step-64 pairs idx n ftable data-ref functions)] (if (= (vector-get step 0) 1) (vector-get step 2) (compile-all-src-decl-pairs pairs (vector-get step 1) n ftable data-ref (vector-get step 2)))))
+(defn compile-defn-functions-progress-debug [decls idx n src ftable data-ref functions] (if (>= idx n) functions (let [decl (vector-get decls idx)] (do (print 40) (print idx) (print (vector-get decl 0)) (compile-defn-functions-progress-debug decls (+ idx 1) n src ftable data-ref (if (= (vector-get decl 0) 20) (vector-push functions (compile-defn-function-with-source decl src ftable data-ref)) functions))))))
+(defn compile-all-src-decl-pairs-progress-debug [pairs idx n ftable data-ref functions] (if (>= idx n) functions (let [pair (vector-get pairs idx) src (vector-get pair 0) decls (vector-get pair 1)] (do (print 30) (print idx) (print (string-length src)) (print (vector-length decls)) (compile-all-src-decl-pairs-progress-debug pairs (+ idx 1) n ftable data-ref (compile-defn-functions-progress-debug decls 0 (vector-length decls) src ftable data-ref functions))))))
+(defn make-print-step-state [done next-idx] (vector-push (vector-push (vector-new 2) done) next-idx))
+(defn print-module-bytes-step [bytes idx count] (if (>= idx count) (make-print-step-state 1 idx) (let [value (vector-get bytes idx)] (do (print (if (< value 0) (+ value 256) value)) (make-print-step-state 0 (+ idx 1))))))
+(defn continue-print-module-bytes-step [bytes count state] (if (= (vector-get state 0) 1) state (print-module-bytes-step bytes (vector-get state 1) count)))
+(defn print-module-bytes-step-8 [bytes idx count] (let [step1 (print-module-bytes-step bytes idx count) step2 (continue-print-module-bytes-step bytes count step1) step3 (continue-print-module-bytes-step bytes count step2) step4 (continue-print-module-bytes-step bytes count step3) step5 (continue-print-module-bytes-step bytes count step4) step6 (continue-print-module-bytes-step bytes count step5) step7 (continue-print-module-bytes-step bytes count step6) step8 (continue-print-module-bytes-step bytes count step7)] step8))
+(defn continue-print-module-bytes-step-8 [bytes count state] (if (= (vector-get state 0) 1) state (print-module-bytes-step-8 bytes (vector-get state 1) count)))
+(defn print-module-bytes-step-64 [bytes idx count] (let [step1 (print-module-bytes-step-8 bytes idx count) step2 (continue-print-module-bytes-step-8 bytes count step1) step3 (continue-print-module-bytes-step-8 bytes count step2) step4 (continue-print-module-bytes-step-8 bytes count step3) step5 (continue-print-module-bytes-step-8 bytes count step4) step6 (continue-print-module-bytes-step-8 bytes count step5) step7 (continue-print-module-bytes-step-8 bytes count step6) step8 (continue-print-module-bytes-step-8 bytes count step7)] step8))
+(defn continue-print-module-bytes-step-64 [bytes count state] (if (= (vector-get state 0) 1) state (print-module-bytes-step-64 bytes (vector-get state 1) count)))
+(defn print-module-bytes-step-512 [bytes idx count] (let [step1 (print-module-bytes-step-64 bytes idx count) step2 (continue-print-module-bytes-step-64 bytes count step1) step3 (continue-print-module-bytes-step-64 bytes count step2) step4 (continue-print-module-bytes-step-64 bytes count step3) step5 (continue-print-module-bytes-step-64 bytes count step4) step6 (continue-print-module-bytes-step-64 bytes count step5) step7 (continue-print-module-bytes-step-64 bytes count step6) step8 (continue-print-module-bytes-step-64 bytes count step7)] step8))
+(defn continue-print-module-bytes-step-512 [bytes count state] (if (= (vector-get state 0) 1) state (print-module-bytes-step-512 bytes (vector-get state 1) count)))
+(defn print-module-bytes-step-4096 [bytes idx count] (let [step1 (print-module-bytes-step-512 bytes idx count) step2 (continue-print-module-bytes-step-512 bytes count step1) step3 (continue-print-module-bytes-step-512 bytes count step2) step4 (continue-print-module-bytes-step-512 bytes count step3) step5 (continue-print-module-bytes-step-512 bytes count step4) step6 (continue-print-module-bytes-step-512 bytes count step5) step7 (continue-print-module-bytes-step-512 bytes count step6) step8 (continue-print-module-bytes-step-512 bytes count step7)] step8))
+(defn print-module-bytes-loop [bytes idx count] (let [step (print-module-bytes-step-4096 bytes idx count)] (if (= (vector-get step 0) 1) 0 (print-module-bytes-loop bytes (vector-get step 1) count))))
 (defn print-wasm-module [bytes] (let [count (vector-length bytes)] (do (print count) (print-module-bytes-loop bytes 0 count) 0)))
-(defn build-wasm-bytes-wasi [functions data] (let [func-count (vector-length functions) header (emit-header) type-sec (emit-type-section-wasi-quad-functions functions) import-sec (emit-import-section-alloc-print-read-arg-concat-sub) func-sec (emit-function-section-wasi-quad-functions functions) memory-sec (emit-memory-section) export-sec (emit-export-section-main-memory-index (+ 6 func-count) 0) code-sec (emit-code-section-wasi-quad-functions functions) data-sec (emit-data-section data 1024) b0 (append-byte-vector (vector-new 64) header 0 (vector-length header)) b1 (append-byte-vector b0 type-sec 0 (vector-length type-sec)) b2 (append-byte-vector b1 import-sec 0 (vector-length import-sec)) b3 (append-byte-vector b2 func-sec 0 (vector-length func-sec)) b4 (append-byte-vector b3 memory-sec 0 (vector-length memory-sec)) b5 (append-byte-vector b4 export-sec 0 (vector-length export-sec)) b6 (append-byte-vector b5 code-sec 0 (vector-length code-sec))] (append-byte-vector b6 data-sec 0 (vector-length data-sec))))
+(defn append-section-bytes [dst section] (append-byte-vector dst section 0 (vector-length section)))
+(defn print-ir-pairs [ir idx count] (if (>= idx count) 0 (let [instr (vector-get ir idx)] (do (print (vector-get instr 0)) (print (vector-get instr 1)) (print-ir-pairs ir (+ idx 1) count)))))
+(defn print-token-triples [spans idx count] (if (>= idx count) 0 (do (print (token-kind spans idx)) (print (token-start spans idx)) (print (token-end spans idx)) (print-token-triples spans (+ idx 1) count))))
+(defn build-wasm-bytes-wasi [functions data]
+  (let [func-count (vector-length functions)
+    header (emit-header)]
+    (let [type-sec (emit-type-section-wasi-quad-functions functions)]
+      (let [import-sec (emit-import-section-alloc-print-read-arg-concat-sub)]
+        (let [func-sec (emit-function-section-wasi-quad-functions functions)]
+          (let [memory-sec (emit-memory-section)]
+            (let [export-sec (emit-export-section-main-memory-index (+ 6 func-count) 0)]
+              (let [code-sec (emit-code-section-wasi-quad-functions functions)]
+                (let [data-sec (emit-data-section data 1024)]
+                  (let [b0 (append-section-bytes (vector-new 64) header)
+                    b1 (append-section-bytes b0 type-sec)
+                    b2 (append-section-bytes b1 import-sec)
+                    b3 (append-section-bytes b2 func-sec)
+                    b4 (append-section-bytes b3 memory-sec)
+                    b5 (append-section-bytes b4 export-sec)
+                    b6 (append-section-bytes b5 code-sec)]
+                    (append-section-bytes b6 data-sec)))))))))))
+(defn build-wasm-bytes-wasi-progress-debug [functions data]
+  (let [func-count (vector-length functions)
+    data-len (vector-length data)]
+    (do
+      (print 50)
+      (print func-count)
+      (print data-len)
+      (let [header (emit-header)]
+        (do
+          (print 51)
+          (print (vector-length header))
+          (let [type-sec (emit-type-section-wasi-quad-functions functions)]
+            (do
+              (print 52)
+              (print (vector-length type-sec))
+              (let [import-sec (emit-import-section-alloc-print-read-arg-concat-sub)]
+                (do
+                  (print 53)
+                  (print (vector-length import-sec))
+                  (let [func-sec (emit-function-section-wasi-quad-functions functions)]
+                    (do
+                      (print 54)
+                      (print (vector-length func-sec))
+                      (let [memory-sec (emit-memory-section)]
+                        (do
+                          (print 55)
+                          (print (vector-length memory-sec))
+                          (let [export-sec (emit-export-section-main-memory-index (+ 6 func-count) 0)]
+                            (do
+                              (print 56)
+                              (print (vector-length export-sec))
+                              (let [code-sec (emit-code-section-wasi-quad-functions functions)]
+                                (do
+                                  (print 57)
+                                  (print (vector-length code-sec))
+                                  (let [data-sec (emit-data-section data 1024)]
+                                    (do
+                                      (print 58)
+                                      (print (vector-length data-sec))
+                                      (let [b0 (append-byte-vector (vector-new 64) header 0 (vector-length header))]
+                                        (do
+                                          (print 59)
+                                          (print (vector-length b0))
+                                          (let [b1 (append-byte-vector b0 type-sec 0 (vector-length type-sec))]
+                                            (do
+                                              (print 60)
+                                              (print (vector-length b1))
+                                              (let [b2 (append-byte-vector b1 import-sec 0 (vector-length import-sec))]
+                                                (do
+                                                  (print 61)
+                                                  (print (vector-length b2))
+                                                  (let [b3 (append-byte-vector b2 func-sec 0 (vector-length func-sec))]
+                                                    (do
+                                                      (print 62)
+                                                      (print (vector-length b3))
+                                                      (let [b4 (append-byte-vector b3 memory-sec 0 (vector-length memory-sec))]
+                                                        (do
+                                                          (print 63)
+                                                          (print (vector-length b4))
+                                                          (let [b5 (append-byte-vector b4 export-sec 0 (vector-length export-sec))]
+                                                            (do
+                                                              (print 64)
+                                                              (print (vector-length b5))
+                                                              (let [b6 (append-byte-vector b5 code-sec 0 (vector-length code-sec))]
+                                                                (do
+                                                                  (print 65)
+                                                                  (print (vector-length b6))
+                                                                  (let [b7 (append-byte-vector b6 data-sec 0 (vector-length data-sec))]
+                                                                    (do
+                                                                      (print 66)
+                                                                      (print (vector-length b7))
+                                                                      b7)))))))))))))))))))))))))))))))))))
 (defn compile-file-mode [] (let [path (command-line-arg 1) src (read-file path) program (parse-program src) source-root (resolve-source-root path) package-root (resolve-package-root path) seen-ref (ref-new (map-new)) imported-pairs (load-imports-from-decls program src 0 (vector-length program) seen-ref (vector-new 8) source-root package-root) all-pairs (vector-push imported-pairs (make-src-decl-pair src program)) n (vector-length all-pairs) reg-result (register-all-pairs all-pairs 0 n (ftable-new) 6) ftable (vector-get reg-result 0) data-ref (ref-new (vector-new 8)) functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8)) wasm-bytes (build-wasm-bytes-wasi functions (ref-get data-ref))] (print-wasm-module wasm-bytes)))
+(defn compile-file-mode-build-progress-debug [] (let [path (command-line-arg 1) src (read-file path) program (parse-program src) source-root (resolve-source-root path) package-root (resolve-package-root path) seen-ref (ref-new (map-new)) imported-pairs (load-imports-from-decls program src 0 (vector-length program) seen-ref (vector-new 8) source-root package-root) all-pairs (vector-push imported-pairs (make-src-decl-pair src program)) n (vector-length all-pairs) reg-result (register-all-pairs all-pairs 0 n (ftable-new) 6) ftable (vector-get reg-result 0) data-ref (ref-new (vector-new 8)) functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8)) wasm-bytes (build-wasm-bytes-wasi-progress-debug functions (ref-get data-ref))] (do (print 67) (print (vector-length wasm-bytes)) 0)))
+(defn compile-file-mode-progress-debug [] (let [path (command-line-arg 1) src (read-file path) program (parse-program src)] (do (print 1) (print (vector-length program)) (let [source-root (resolve-source-root path) package-root (resolve-package-root path) seen-ref (ref-new (map-new)) imported-pairs (load-imports-from-decls program src 0 (vector-length program) seen-ref (vector-new 8) source-root package-root)] (do (print 2) (print (vector-length imported-pairs)) (let [all-pairs (vector-push imported-pairs (make-src-decl-pair src program)) n (vector-length all-pairs) reg-result (register-all-pairs all-pairs 0 n (ftable-new) 6) ftable (vector-get reg-result 0)] (do (print 3) (print (- (vector-get reg-result 1) 6)) (let [data-ref (ref-new (vector-new 8)) functions (compile-all-src-decl-pairs-progress-debug all-pairs 0 n ftable data-ref (vector-new 8))] (do (print 4) (print (vector-length functions)) 0)))))))))
+(defn compile-file-mode-token-debug [] (let [path (command-line-arg 1) src (read-file path) spans (tokenize-with-spans src) token-count (/ (vector-length spans) 3) sample-count (if (> token-count 14) 14 token-count) sample-hash (if (> token-count 10) (name-hash src (token-start spans 10) (token-end spans 10)) 0)] (do (print 72) (print token-count) (print sample-hash) (print-token-triples spans 0 sample-count) 0)))
+(defn compile-file-mode-ir-debug [] (let [path (command-line-arg 1) src (read-file path) program (parse-program src) decl-count (vector-length program)] (do (print 71) (print decl-count) (print (if (> decl-count 0) (vector-get (vector-get program (- decl-count 1)) 0) -1)) 0)))
+(defn compile-file-mode-debug [] (let [path (command-line-arg 1) src (read-file path) src-len (string-length src) lex8 (lex-one src 8 src-len) spans (tokenize-with-spans src) program (parse-program src) source-root (resolve-source-root path) package-root (resolve-package-root path) seen-ref (ref-new (map-new)) imported-pairs (load-imports-from-decls program src 0 (vector-length program) seen-ref (vector-new 8) source-root package-root) all-pairs (vector-push imported-pairs (make-src-decl-pair src program)) n (vector-length all-pairs) reg-result (register-all-pairs all-pairs 0 n (ftable-new) 6) ftable (vector-get reg-result 0) data-ref (ref-new (vector-new 8)) functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8)) wasm-bytes (build-wasm-bytes-wasi functions (ref-get data-ref))] (do (print (vector-length program)) (print (decl-tag-or-minus-one program 0)) (print (decl-tag-or-minus-one program 1)) (print (vector-length imported-pairs)) (print (vector-length all-pairs)) (print (- (vector-get reg-result 1) 6)) (print (vector-length functions)) (print (vector-length wasm-bytes)) (print (vector-length spans)) (print (span-kind-or-minus-one spans 0)) (print (span-kind-or-minus-one spans 1)) (print (span-kind-or-minus-one spans 2)) (print (span-kind-or-minus-one spans 3)) (print (span-kind-or-minus-one spans 4)) (print (span-kind-or-minus-one spans 5)) (print (span-kind-or-minus-one spans 6)) (print (span-kind-or-minus-one spans 7)) (print (span-start-or-minus-one spans 2)) (print (span-end-or-minus-one spans 2)) (print (span-start-or-minus-one spans 3)) (print (span-end-or-minus-one spans 3)) (print src-len) (print (string-char-at src 7)) (print (string-char-at src 8)) (print (string-char-at src 15)) (print (string-char-at src 16)) (print (string-char-at src 17)) (print (string-char-at src 18)) (print (string-char-at src 19)) (print (skip-ws-loop src 7 src-len)) (print (skip-ws-loop src 8 src-len)) (print (/ lex8 1000000)) (print (- lex8 (* (/ lex8 1000000) 1000000))) (print (is-symbol-char (string-char-at src 15))) (print (is-symbol-char (string-char-at src 16))) (print (is-symbol-char (string-char-at src 17))) (print (is-symbol-char (string-char-at src 18))) (print (is-symbol-char (string-char-at src 19))) (print (scan-symbol-step src 16 src-len)) (print (scan-symbol-step src 17 src-len)) (print (scan-symbol-end-step-8 src 9 src-len)) (print (scan-symbol-end src 9 src-len)) 0)))
+(defn compile-file-mode-path-debug [] (let [path (command-line-arg 1) entry-dir (path-parent path) parent-dir (path-parent entry-dir) entry-base (path-basename entry-dir) parent-base (path-basename parent-dir) src-ancestor (find-src-ancestor entry-dir) source-root (resolve-source-root path) package-root (resolve-package-root path)] (do (print (string-length path)) (print (string-length entry-dir)) (print (string-length parent-dir)) (print (string-length entry-base)) (print (text-char-or-minus-one entry-base 0)) (print (text-char-or-minus-one entry-base 1)) (print (text-char-or-minus-one entry-base 2)) (print (string-length parent-base)) (print (text-char-or-minus-one parent-base 0)) (print (text-char-or-minus-one parent-base 1)) (print (text-char-or-minus-one parent-base 2)) (print (if (is-src-dir-name parent-base) 1 0)) (print (string-length src-ancestor)) (print (text-char-or-minus-one src-ancestor 0)) (print (text-char-or-minus-one src-ancestor 1)) (print (text-char-or-minus-one src-ancestor 2)) (print (string-length source-root)) (print (text-char-or-minus-one source-root 0)) (print (text-char-or-minus-one source-root 1)) (print (text-char-or-minus-one source-root 2)) (print (text-char-or-minus-one source-root 3)) (print (string-length package-root)) (print (text-char-or-minus-one package-root 0)) (print (text-char-or-minus-one package-root 1)) (print (text-char-or-minus-one package-root 2)) (print (text-char-or-minus-one package-root 3)) (print (text-char-or-minus-one package-root 4)) (print (text-char-or-minus-one package-root 5)) (print (text-char-or-minus-one package-root 6)) 0)))

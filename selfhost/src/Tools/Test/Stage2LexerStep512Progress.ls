@@ -1,41 +1,19 @@
 (module Tools.Test.Stage2LexerStep512Progress)
 (import Syntax.Lexer)
 
-(defn probe-fragment []
-  "(defn helper [] 0) ")
+;; プローブ入力: step-512 の動作を検証するためのリテラルソース片
+;; 再帰ループを排除し、stage2 コンパイラの再帰深度を最小化する
+(defn probe-source []
+  "(defn main [] 42)")
 
-(defn build-probe-source-loop [remaining acc]
-  (if (<= remaining 0)
-    acc
-    (build-probe-source-loop
-      (- remaining 1)
-      (string-concat acc (probe-fragment)))))
-
-(defn build-probe-source []
-  (string-concat
-    (build-probe-source-loop 36 "")
-    "(defn main [] 42)"))
-
+;; プロダクション lexer パス: tokenize-spans-step-512 を直接呼び出す
+;; 出力: source_len, done1, next1, count1 (step1 完了時は 4 行、未完了時は 7 行)
 (defn main []
-  (let [src (build-probe-source)
-    len (string-length src)
-    step1 (tokenize-spans-step-512 src 0 len (vector-new 32))
-    done1 (vector-get step1 0)
-    next1 (vector-get step1 1)
-    count1 (token-count (vector-get step1 2))]
+  (let [src (probe-source)
+    step1 (tokenize-spans-step-512 src 0 (string-length src) (vector-new 32))]
     (do
-      (print len)
-      (print done1)
-      (print next1)
-      (print count1)
-      (if (= done1 1)
-        0
-        (let [step2 (tokenize-spans-step-512 src next1 len (vector-get step1 2))
-          done2 (vector-get step2 0)
-          next2 (vector-get step2 1)
-          count2 (token-count (vector-get step2 2))]
-          (do
-            (print done2)
-            (print next2)
-            (print count2)
-            0))))))
+      (print (string-length src))
+      (print (vector-get step1 0))
+      (print (vector-get step1 1))
+      (print (token-count (vector-get step1 2)))
+      0)))

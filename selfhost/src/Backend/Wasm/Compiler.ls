@@ -70,10 +70,124 @@
 (defn builtin-map-get [] 99619806053)
 (defn builtin-map-insert [] 2967773707765834)
 (defn builtin-read-file [] 100097347767123)
-(defn builtin-map-contains [] -3820778934353407281)
+(defn builtin-map-contains [] (- 0 3820778934353407281))
 (defn builtin-map-remove [] 2967773956947477)
 (defn builtin-command-line-arg [] 4333701572691766591)
-(defn builtin-opcode [name-hash] (if (= name-hash 43) 20 (if (= name-hash 45) 21 (if (= name-hash 42) 22 (if (= name-hash 47) 23 (if (= name-hash 61) 30 (if (= name-hash 62) 31 (if (= name-hash 60) 32 (if (= name-hash 37) 24 (if (= name-hash 6233512424790686798) 50 (if (= name-hash 1391193567100747810) 51 (if (= name-hash 3361052332089172656) 52 (if (= name-hash 3208847393524684) 53 (if (= name-hash 3208847393531414) 54 (if (= name-hash 99474269199548772) 55 (if (= name-hash 104162612582) 56 (if (= name-hash 104162605852) 57 (if (= name-hash 104162617384) 58 (if (= name-hash 106934957) 59 (if (= name-hash 99619812783) 60 (if (= name-hash 3088214349266) 61 (if (= name-hash 99619806053) 63 (if (= name-hash 2967773707765834) 62 (if (= name-hash 100097347767123) 64 (if (= name-hash -3820778934353407281) 65 (if (= name-hash 2967773956947477) 66 (if (= name-hash 4333701572691766591) 67 (if (= name-hash 1921) 34 (if (= name-hash 1983) 33 (if (= name-hash 1391193566852316240) 70 (if (= name-hash 101391823498833) 69 (if (= name-hash 96727) 71 (if (= name-hash 3555) 72 (if (= name-hash 1952) 30 0)))))))))))))))))))))))))))))))))) (defn emit-instr [opcode operand] (vector-push (vector-push (vector-new 2) opcode) operand))
+(defn builtin-basic-opcode [name-hash]
+  (if (= name-hash (builtin-add))
+    (op-i64-add)
+    (if (= name-hash (builtin-sub))
+      (op-i64-sub)
+      (if (= name-hash (builtin-mul))
+        (op-i64-mul)
+        (if (= name-hash (builtin-div))
+          (op-i64-div)
+          (if (= name-hash (builtin-mod))
+            24
+            (if (= name-hash (builtin-eq))
+              (op-i64-eq)
+              (if (= name-hash (builtin-gt))
+                (op-i64-gt)
+                (if (= name-hash (builtin-lt))
+                  (op-i64-lt)
+                  (if (= name-hash 1983)
+                    (op-i64-ge)
+                    (if (= name-hash 1921)
+                      (op-i64-le)
+                      (if (= name-hash 1952)
+                        (op-i64-eq)
+                        0))))))))))))
+
+(defn builtin-string-opcode [name-hash]
+  (if (= name-hash (builtin-string-char-at))
+    (op-string-char-at)
+    (if (= name-hash (builtin-string-length))
+      (op-string-length)
+      (if (= name-hash (builtin-print))
+        (op-print)
+        (if (= name-hash 1391193566852316240)
+          70
+          (if (= name-hash 101391823498833)
+            69
+            0))))))
+
+(defn builtin-vector-ref-opcode [name-hash]
+  (if (= name-hash (builtin-vector-length))
+    (op-vector-length)
+    (if (= name-hash (builtin-vector-get))
+      (op-vector-get)
+      (if (= name-hash (builtin-vector-new))
+        (op-vector-new)
+        (if (= name-hash (builtin-vector-push))
+          (op-vector-push)
+          (if (= name-hash (builtin-ref-new))
+            (op-ref-new)
+            (if (= name-hash (builtin-ref-get))
+              (op-ref-get)
+              (if (= name-hash (builtin-ref-set))
+                (op-ref-set)
+                0))))))))
+
+(defn builtin-map-core-opcode [name-hash]
+  (if (= name-hash (builtin-map-new))
+    (op-map-new)
+    (if (= name-hash (builtin-map-size))
+      (op-map-size)
+      (if (= name-hash (builtin-map-get))
+        (op-map-get)
+        (if (= name-hash (builtin-map-insert))
+          (op-map-insert)
+          0)))))
+
+(defn builtin-io-opcode [name-hash]
+  (if (= name-hash (builtin-read-file))
+    (op-read-file)
+    (if (= name-hash (builtin-command-line-arg))
+      (op-command-line-arg)
+      0)))
+
+(defn builtin-map-extra-opcode [name-hash]
+  (if (= name-hash (builtin-map-contains))
+    (op-map-contains)
+    (if (= name-hash (builtin-map-remove))
+      (op-map-remove)
+      0)))
+
+(defn builtin-map-runtime-opcode [name-hash]
+  (let [core-op (builtin-map-core-opcode name-hash)]
+    (if (> core-op 0)
+      core-op
+      (let [io-op (builtin-io-opcode name-hash)]
+        (if (> io-op 0)
+          io-op
+          (builtin-map-extra-opcode name-hash))))))
+
+(defn builtin-logic-opcode [name-hash]
+  (if (= name-hash 96727)
+    71
+    (if (= name-hash 3555)
+      72
+      0)))
+
+(defn builtin-runtime-opcode [name-hash]
+  (let [string-op (builtin-string-opcode name-hash)]
+    (if (> string-op 0)
+      string-op
+      (let [vector-op (builtin-vector-ref-opcode name-hash)]
+        (if (> vector-op 0)
+          vector-op
+          (let [map-op (builtin-map-runtime-opcode name-hash)]
+            (if (> map-op 0)
+              map-op
+              (builtin-logic-opcode name-hash))))))))
+
+(defn builtin-opcode [name-hash]
+  (let [basic (builtin-basic-opcode name-hash)]
+    (if (> basic 0)
+      basic
+      (builtin-runtime-opcode name-hash))))
+
+(defn emit-instr [opcode operand] (vector-push (vector-push (vector-new 2) opcode) operand))
 (defn emit-to [instrs opcode operand] (vector-push instrs (emit-instr opcode operand)))
 (defn env-new [] (map-new))
 (defn env-bind [env name-hash idx] (map-insert env name-hash idx))
@@ -81,44 +195,663 @@
 (defn ftable-new [] (map-new))
 (defn ftable-register [ftable name-hash func-idx] (map-insert ftable name-hash func-idx))
 (defn ftable-lookup [ftable name-hash] (map-get ftable name-hash))
-(defn bind-node-params [node param-base idx param-count env next-idx] (if (>= idx param-count) env (bind-node-params node param-base (+ idx 1) param-count (env-bind env (vector-get node (+ param-base idx)) next-idx) (+ next-idx 1))))
-(defn compile-call-args-with-source [node source env ftable arg-idx arg-count instrs data-ref] (if (>= arg-idx arg-count) instrs (compile-call-args-with-source node source env ftable (+ arg-idx 1) arg-count (compile-expr-with-source (vector-get node (+ 3 arg-idx)) source env ftable instrs data-ref) data-ref)))
-(defn compile-call-args-with-ftable [node env ftable arg-idx arg-count instrs] (if (>= arg-idx arg-count) instrs (compile-call-args-with-ftable node env ftable (+ arg-idx 1) arg-count (compile-expr-with-ftable (vector-get node (+ 3 arg-idx)) env ftable instrs))))
+(defn make-loop-step-state [done next-idx next-value]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) done)
+      next-idx)
+    next-value))
+
+(defn make-bind-node-params-state [done next-param-idx next-env next-local-idx]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) done)
+        next-param-idx)
+      next-env)
+    next-local-idx))
+
+(defn bind-node-params-step [node param-base idx param-count env next-idx]
+  (if (>= idx param-count)
+    (make-bind-node-params-state 1 idx env next-idx)
+    (make-bind-node-params-state
+      0
+      (+ idx 1)
+      (env-bind env (vector-get node (+ param-base idx)) next-idx)
+      (+ next-idx 1))))
+
+(defn continue-bind-node-params-step [node param-base param-count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (bind-node-params-step
+      node
+      param-base
+      (vector-get state 1)
+      param-count
+      (vector-get state 2)
+      (vector-get state 3))))
+
+(defn bind-node-params-step-8 [node param-base idx param-count env next-idx]
+  (let [step1 (bind-node-params-step node param-base idx param-count env next-idx)
+    step2 (continue-bind-node-params-step node param-base param-count step1)
+    step3 (continue-bind-node-params-step node param-base param-count step2)
+    step4 (continue-bind-node-params-step node param-base param-count step3)
+    step5 (continue-bind-node-params-step node param-base param-count step4)
+    step6 (continue-bind-node-params-step node param-base param-count step5)
+    step7 (continue-bind-node-params-step node param-base param-count step6)
+    step8 (continue-bind-node-params-step node param-base param-count step7)]
+    step8))
+
+(defn continue-bind-node-params-step-8 [node param-base param-count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (bind-node-params-step-8
+      node
+      param-base
+      (vector-get state 1)
+      param-count
+      (vector-get state 2)
+      (vector-get state 3))))
+
+(defn bind-node-params-step-64 [node param-base idx param-count env next-idx]
+  (let [step1 (bind-node-params-step-8 node param-base idx param-count env next-idx)
+    step2 (continue-bind-node-params-step-8 node param-base param-count step1)
+    step3 (continue-bind-node-params-step-8 node param-base param-count step2)
+    step4 (continue-bind-node-params-step-8 node param-base param-count step3)
+    step5 (continue-bind-node-params-step-8 node param-base param-count step4)
+    step6 (continue-bind-node-params-step-8 node param-base param-count step5)
+    step7 (continue-bind-node-params-step-8 node param-base param-count step6)
+    step8 (continue-bind-node-params-step-8 node param-base param-count step7)]
+    step8))
+
+(defn bind-node-params [node param-base idx param-count env next-idx]
+  (let [step (bind-node-params-step-64 node param-base idx param-count env next-idx)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (bind-node-params
+        node
+        param-base
+        (vector-get step 1)
+        param-count
+        (vector-get step 2)
+        (vector-get step 3)))))
+(defn make-compile-step-state [done next-idx next-value]
+  (make-loop-step-state done next-idx next-value))
+
+(defn compile-call-args-step-with-source [node source env ftable arg-idx arg-count instrs data-ref]
+  (if (>= arg-idx arg-count)
+    (make-compile-step-state 1 arg-idx instrs)
+    (make-compile-step-state
+      0
+      (+ arg-idx 1)
+      (compile-expr-with-source (vector-get node (+ 3 arg-idx)) source env ftable instrs data-ref))))
+
+(defn continue-compile-call-args-step-with-source [node source env ftable arg-count state data-ref]
+  (if (= (vector-get state 0) 1)
+    state
+    (compile-call-args-step-with-source node source env ftable (vector-get state 1) arg-count (vector-get state 2) data-ref)))
+
+(defn compile-call-args-step-8-with-source [node source env ftable arg-idx arg-count instrs data-ref]
+  (let [step1 (compile-call-args-step-with-source node source env ftable arg-idx arg-count instrs data-ref)
+    step2 (continue-compile-call-args-step-with-source node source env ftable arg-count step1 data-ref)
+    step3 (continue-compile-call-args-step-with-source node source env ftable arg-count step2 data-ref)
+    step4 (continue-compile-call-args-step-with-source node source env ftable arg-count step3 data-ref)
+    step5 (continue-compile-call-args-step-with-source node source env ftable arg-count step4 data-ref)
+    step6 (continue-compile-call-args-step-with-source node source env ftable arg-count step5 data-ref)
+    step7 (continue-compile-call-args-step-with-source node source env ftable arg-count step6 data-ref)
+    step8 (continue-compile-call-args-step-with-source node source env ftable arg-count step7 data-ref)]
+    step8))
+
+(defn continue-compile-call-args-step-8-with-source [node source env ftable arg-count state data-ref]
+  (if (= (vector-get state 0) 1)
+    state
+    (compile-call-args-step-8-with-source node source env ftable (vector-get state 1) arg-count (vector-get state 2) data-ref)))
+
+(defn compile-call-args-step-64-with-source [node source env ftable arg-idx arg-count instrs data-ref]
+  (let [step1 (compile-call-args-step-8-with-source node source env ftable arg-idx arg-count instrs data-ref)
+    step2 (continue-compile-call-args-step-8-with-source node source env ftable arg-count step1 data-ref)
+    step3 (continue-compile-call-args-step-8-with-source node source env ftable arg-count step2 data-ref)
+    step4 (continue-compile-call-args-step-8-with-source node source env ftable arg-count step3 data-ref)
+    step5 (continue-compile-call-args-step-8-with-source node source env ftable arg-count step4 data-ref)
+    step6 (continue-compile-call-args-step-8-with-source node source env ftable arg-count step5 data-ref)
+    step7 (continue-compile-call-args-step-8-with-source node source env ftable arg-count step6 data-ref)
+    step8 (continue-compile-call-args-step-8-with-source node source env ftable arg-count step7 data-ref)]
+    step8))
+
+(defn compile-call-args-with-source [node source env ftable arg-idx arg-count instrs data-ref]
+  (let [step (compile-call-args-step-64-with-source node source env ftable arg-idx arg-count instrs data-ref)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (compile-call-args-with-source node source env ftable (vector-get step 1) arg-count (vector-get step 2) data-ref))))
+(defn compile-call-args-step-with-ftable [node env ftable arg-idx arg-count instrs]
+  (if (>= arg-idx arg-count)
+    (make-compile-step-state 1 arg-idx instrs)
+    (make-compile-step-state
+      0
+      (+ arg-idx 1)
+      (compile-expr-with-ftable (vector-get node (+ 3 arg-idx)) env ftable instrs))))
+
+(defn continue-compile-call-args-step-with-ftable [node env ftable arg-count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (compile-call-args-step-with-ftable node env ftable (vector-get state 1) arg-count (vector-get state 2))))
+
+(defn compile-call-args-step-8-with-ftable [node env ftable arg-idx arg-count instrs]
+  (let [step1 (compile-call-args-step-with-ftable node env ftable arg-idx arg-count instrs)
+    step2 (continue-compile-call-args-step-with-ftable node env ftable arg-count step1)
+    step3 (continue-compile-call-args-step-with-ftable node env ftable arg-count step2)
+    step4 (continue-compile-call-args-step-with-ftable node env ftable arg-count step3)
+    step5 (continue-compile-call-args-step-with-ftable node env ftable arg-count step4)
+    step6 (continue-compile-call-args-step-with-ftable node env ftable arg-count step5)
+    step7 (continue-compile-call-args-step-with-ftable node env ftable arg-count step6)
+    step8 (continue-compile-call-args-step-with-ftable node env ftable arg-count step7)]
+    step8))
+
+(defn continue-compile-call-args-step-8-with-ftable [node env ftable arg-count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (compile-call-args-step-8-with-ftable node env ftable (vector-get state 1) arg-count (vector-get state 2))))
+
+(defn compile-call-args-step-64-with-ftable [node env ftable arg-idx arg-count instrs]
+  (let [step1 (compile-call-args-step-8-with-ftable node env ftable arg-idx arg-count instrs)
+    step2 (continue-compile-call-args-step-8-with-ftable node env ftable arg-count step1)
+    step3 (continue-compile-call-args-step-8-with-ftable node env ftable arg-count step2)
+    step4 (continue-compile-call-args-step-8-with-ftable node env ftable arg-count step3)
+    step5 (continue-compile-call-args-step-8-with-ftable node env ftable arg-count step4)
+    step6 (continue-compile-call-args-step-8-with-ftable node env ftable arg-count step5)
+    step7 (continue-compile-call-args-step-8-with-ftable node env ftable arg-count step6)
+    step8 (continue-compile-call-args-step-8-with-ftable node env ftable arg-count step7)]
+    step8))
+
+(defn compile-call-args-with-ftable [node env ftable arg-idx arg-count instrs]
+  (let [step (compile-call-args-step-64-with-ftable node env ftable arg-idx arg-count instrs)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (compile-call-args-with-ftable node env ftable (vector-get step 1) arg-count (vector-get step 2)))))
 (defn compile-user-call-with-source [node source env ftable instrs data-ref func-hash arg-count] (let [func-idx (ftable-lookup ftable func-hash) arg-instrs (compile-call-args-with-source node source env ftable 0 arg-count instrs data-ref)] (emit-to arg-instrs (op-call) func-idx)))
 (defn compile-user-call-with-ftable [node env ftable instrs func-hash arg-count] (let [func-idx (ftable-lookup ftable func-hash) arg-instrs (compile-call-args-with-ftable node env ftable 0 arg-count instrs)] (emit-to arg-instrs 40 func-idx)))
-(defn compile-builtin-apply-with-source [node source env ftable instrs data-ref bop] (if (= bop (op-map-new)) (emit-to instrs bop (+ 1 (map-size env))) (if (or (= bop (op-map-insert)) (or (= bop (op-map-get)) (or (= bop (op-map-contains)) (= bop (op-map-remove))))) (compile-map-builtin-with-source node source env ftable instrs data-ref bop) (let [instrs1 (compile-expr-with-source (vector-get node 3) source env ftable instrs data-ref)] (if (or (or (or (or (= bop (op-string-length)) (= bop (op-vector-length))) (= bop (op-ref-get))) (or (or (= bop (op-map-size)) (= bop (op-print))) (or (= bop (op-read-file)) (= bop (op-command-line-arg))))) (or (= bop (op-vector-new)) (= bop (op-ref-new)))) (if (or (= bop (op-vector-new)) (= bop (op-ref-new))) (emit-to instrs1 bop (+ 1 (map-size env))) (emit-to instrs1 bop 0)) (let [instrs2 (compile-expr-with-source (vector-get node 4) source env ftable instrs1 data-ref)] (if (or (or (or (or (= bop (op-string-char-at)) (= bop (op-vector-get))) (= bop (op-vector-push))) (= bop (op-ref-set))) (or (= bop (op-map-get)) (or (= bop (op-map-contains)) (= bop (op-map-remove))))) (emit-to instrs2 bop (+ 1 (map-size env))) (if (= bop (op-map-insert)) (let [instrs3 (compile-expr-with-source (vector-get node 5) source env ftable instrs2 data-ref)] (emit-to instrs3 bop (+ 1 (map-size env)))) (if (= bop 69) (let [instrs3 (compile-expr-with-source (vector-get node 5) source env ftable instrs2 data-ref)] (emit-to instrs3 bop 0)) (emit-to instrs2 bop 0))))))))))
-(defn compile-builtin-apply-with-ftable [node env ftable instrs bop] (if (= bop (op-map-new)) (emit-to instrs bop (+ 1 (map-size env))) (let [instrs1 (compile-expr-with-ftable (vector-get node 3) env ftable instrs)] (if (or (or (or (or (= bop (op-string-length)) (= bop (op-vector-length))) (= bop (op-ref-get))) (or (or (= bop (op-map-size)) (= bop (op-print))) (or (= bop (op-read-file)) (= bop (op-command-line-arg))))) (or (= bop (op-vector-new)) (= bop (op-ref-new)))) (if (or (= bop (op-vector-new)) (= bop (op-ref-new))) (emit-to instrs1 bop (+ 1 (map-size env))) (emit-to instrs1 bop 0)) (let [instrs2 (compile-expr-with-ftable (vector-get node 4) env ftable instrs1)] (if (or (or (or (or (= bop (op-string-char-at)) (= bop (op-vector-get))) (= bop (op-vector-push))) (= bop (op-ref-set))) (or (= bop (op-map-get)) (or (= bop (op-map-contains)) (= bop (op-map-remove))))) (emit-to instrs2 bop (+ 1 (map-size env))) (if (= bop (op-map-insert)) (let [instrs3 (compile-expr-with-ftable (vector-get node 5) env ftable instrs2)] (emit-to instrs3 bop (+ 1 (map-size env)))) (if (= bop 69) (let [instrs3 (compile-expr-with-ftable (vector-get node 5) env ftable instrs2)] (emit-to instrs3 bop 0)) (emit-to instrs2 bop 0)))))))))
-(defn compile-do-exprs [node env ftable idx expr-count instrs] (if (>= idx expr-count) instrs (let [value-instrs (compile-expr-with-ftable (vector-get node (+ 2 idx)) env ftable instrs) next-instrs (if (< (+ idx 1) expr-count) (emit-to value-instrs (op-drop) 0) value-instrs)] (compile-do-exprs node env ftable (+ idx 1) expr-count next-instrs))))
-(defn compile-do-exprs-with-source [node source env ftable idx expr-count instrs data-ref] (if (>= idx expr-count) instrs (let [value-instrs (compile-expr-with-source (vector-get node (+ 2 idx)) source env ftable instrs data-ref) next-instrs (if (< (+ idx 1) expr-count) (emit-to value-instrs (op-drop) 0) value-instrs)] (compile-do-exprs-with-source node source env ftable (+ idx 1) expr-count next-instrs data-ref))))
+(defn source-builtin-map-op [bop] (or (= bop (op-map-insert)) (or (= bop (op-map-get)) (or (= bop (op-map-contains)) (= bop (op-map-remove))))))
+(defn map-insert-op [bop] (= bop (op-map-insert)))
+(defn unary-builtin-op [bop] (or (or (or (or (= bop (op-string-length)) (= bop (op-vector-length))) (= bop (op-ref-get))) (or (or (= bop (op-map-size)) (= bop (op-print))) (or (= bop (op-read-file)) (= bop (op-command-line-arg))))) (or (= bop (op-vector-new)) (= bop (op-ref-new)))))
+(defn alloc-builtin-op [bop] (or (= bop (op-vector-new)) (= bop (op-ref-new))))
+(defn env-slot-builtin-op [bop] (or (or (or (or (= bop (op-string-char-at)) (= bop (op-vector-get))) (= bop (op-vector-push))) (= bop (op-ref-set))) (or (= bop (op-map-get)) (or (= bop (op-map-contains)) (= bop (op-map-remove))))))
+(defn ternary-builtin-op [bop] (= bop 69))
+(defn emit-unary-builtin-with-source [instrs bop env] (if (alloc-builtin-op bop) (emit-to instrs bop (+ 1 (map-size env))) (emit-to instrs bop 0)))
+(defn emit-unary-builtin-with-ftable [instrs bop env] (if (alloc-builtin-op bop) (emit-to instrs bop (+ 1 (map-size env))) (emit-to instrs bop 0)))
+(defn compile-binary-or-ternary-builtin-with-source [node source env ftable instrs1 data-ref bop] (let [instrs2 (compile-expr-with-source (vector-get node 4) source env ftable instrs1 data-ref)] (if (env-slot-builtin-op bop) (emit-to instrs2 bop (+ 1 (map-size env))) (if (ternary-builtin-op bop) (let [instrs3 (compile-expr-with-source (vector-get node 5) source env ftable instrs2 data-ref)] (emit-to instrs3 bop 0)) (emit-to instrs2 bop 0)))))
+(defn compile-binary-or-ternary-builtin-with-ftable [node env ftable instrs1 bop] (let [instrs2 (compile-expr-with-ftable (vector-get node 4) env ftable instrs1)] (if (env-slot-builtin-op bop) (emit-to instrs2 bop (+ 1 (map-size env))) (if (map-insert-op bop) (let [instrs3 (compile-expr-with-ftable (vector-get node 5) env ftable instrs2)] (emit-to instrs3 bop (+ 1 (map-size env)))) (if (ternary-builtin-op bop) (let [instrs3 (compile-expr-with-ftable (vector-get node 5) env ftable instrs2)] (emit-to instrs3 bop 0)) (emit-to instrs2 bop 0))))))
+(defn compile-builtin-apply-with-source [node source env ftable instrs data-ref bop] (if (= bop (op-map-new)) (emit-to instrs bop (+ 1 (map-size env))) (if (source-builtin-map-op bop) (compile-map-builtin-with-source node source env ftable instrs data-ref bop) (let [instrs1 (compile-expr-with-source (vector-get node 3) source env ftable instrs data-ref)] (if (unary-builtin-op bop) (emit-unary-builtin-with-source instrs1 bop env) (compile-binary-or-ternary-builtin-with-source node source env ftable instrs1 data-ref bop))))))
+(defn compile-builtin-apply-with-ftable [node env ftable instrs bop] (if (= bop (op-map-new)) (emit-to instrs bop (+ 1 (map-size env))) (let [instrs1 (compile-expr-with-ftable (vector-get node 3) env ftable instrs)] (if (unary-builtin-op bop) (emit-unary-builtin-with-ftable instrs1 bop env) (compile-binary-or-ternary-builtin-with-ftable node env ftable instrs1 bop)))))
+(defn compile-do-exprs-step [node env ftable idx expr-count instrs]
+  (if (>= idx expr-count)
+    (make-compile-step-state 1 idx instrs)
+    (let [value-instrs (compile-expr-with-ftable (vector-get node (+ 2 idx)) env ftable instrs)
+      next-instrs (if (< (+ idx 1) expr-count) (emit-to value-instrs (op-drop) 0) value-instrs)]
+      (make-compile-step-state 0 (+ idx 1) next-instrs))))
+
+(defn continue-compile-do-exprs-step [node env ftable expr-count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (compile-do-exprs-step node env ftable (vector-get state 1) expr-count (vector-get state 2))))
+
+(defn compile-do-exprs-step-8 [node env ftable idx expr-count instrs]
+  (let [step1 (compile-do-exprs-step node env ftable idx expr-count instrs)
+    step2 (continue-compile-do-exprs-step node env ftable expr-count step1)
+    step3 (continue-compile-do-exprs-step node env ftable expr-count step2)
+    step4 (continue-compile-do-exprs-step node env ftable expr-count step3)
+    step5 (continue-compile-do-exprs-step node env ftable expr-count step4)
+    step6 (continue-compile-do-exprs-step node env ftable expr-count step5)
+    step7 (continue-compile-do-exprs-step node env ftable expr-count step6)
+    step8 (continue-compile-do-exprs-step node env ftable expr-count step7)]
+    step8))
+
+(defn continue-compile-do-exprs-step-8 [node env ftable expr-count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (compile-do-exprs-step-8 node env ftable (vector-get state 1) expr-count (vector-get state 2))))
+
+(defn compile-do-exprs-step-64 [node env ftable idx expr-count instrs]
+  (let [step1 (compile-do-exprs-step-8 node env ftable idx expr-count instrs)
+    step2 (continue-compile-do-exprs-step-8 node env ftable expr-count step1)
+    step3 (continue-compile-do-exprs-step-8 node env ftable expr-count step2)
+    step4 (continue-compile-do-exprs-step-8 node env ftable expr-count step3)
+    step5 (continue-compile-do-exprs-step-8 node env ftable expr-count step4)
+    step6 (continue-compile-do-exprs-step-8 node env ftable expr-count step5)
+    step7 (continue-compile-do-exprs-step-8 node env ftable expr-count step6)
+    step8 (continue-compile-do-exprs-step-8 node env ftable expr-count step7)]
+    step8))
+
+(defn compile-do-exprs [node env ftable idx expr-count instrs]
+  (let [step (compile-do-exprs-step-64 node env ftable idx expr-count instrs)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (compile-do-exprs node env ftable (vector-get step 1) expr-count (vector-get step 2)))))
+(defn compile-do-exprs-step-with-source [node source env ftable idx expr-count instrs data-ref]
+  (if (>= idx expr-count)
+    (make-compile-step-state 1 idx instrs)
+    (let [value-instrs (compile-expr-with-source (vector-get node (+ 2 idx)) source env ftable instrs data-ref)
+      next-instrs (if (< (+ idx 1) expr-count) (emit-to value-instrs (op-drop) 0) value-instrs)]
+      (make-compile-step-state 0 (+ idx 1) next-instrs))))
+
+(defn continue-compile-do-exprs-step-with-source [node source env ftable expr-count state data-ref]
+  (if (= (vector-get state 0) 1)
+    state
+    (compile-do-exprs-step-with-source node source env ftable (vector-get state 1) expr-count (vector-get state 2) data-ref)))
+
+(defn compile-do-exprs-step-8-with-source [node source env ftable idx expr-count instrs data-ref]
+  (let [step1 (compile-do-exprs-step-with-source node source env ftable idx expr-count instrs data-ref)
+    step2 (continue-compile-do-exprs-step-with-source node source env ftable expr-count step1 data-ref)
+    step3 (continue-compile-do-exprs-step-with-source node source env ftable expr-count step2 data-ref)
+    step4 (continue-compile-do-exprs-step-with-source node source env ftable expr-count step3 data-ref)
+    step5 (continue-compile-do-exprs-step-with-source node source env ftable expr-count step4 data-ref)
+    step6 (continue-compile-do-exprs-step-with-source node source env ftable expr-count step5 data-ref)
+    step7 (continue-compile-do-exprs-step-with-source node source env ftable expr-count step6 data-ref)
+    step8 (continue-compile-do-exprs-step-with-source node source env ftable expr-count step7 data-ref)]
+    step8))
+
+(defn continue-compile-do-exprs-step-8-with-source [node source env ftable expr-count state data-ref]
+  (if (= (vector-get state 0) 1)
+    state
+    (compile-do-exprs-step-8-with-source node source env ftable (vector-get state 1) expr-count (vector-get state 2) data-ref)))
+
+(defn compile-do-exprs-step-64-with-source [node source env ftable idx expr-count instrs data-ref]
+  (let [step1 (compile-do-exprs-step-8-with-source node source env ftable idx expr-count instrs data-ref)
+    step2 (continue-compile-do-exprs-step-8-with-source node source env ftable expr-count step1 data-ref)
+    step3 (continue-compile-do-exprs-step-8-with-source node source env ftable expr-count step2 data-ref)
+    step4 (continue-compile-do-exprs-step-8-with-source node source env ftable expr-count step3 data-ref)
+    step5 (continue-compile-do-exprs-step-8-with-source node source env ftable expr-count step4 data-ref)
+    step6 (continue-compile-do-exprs-step-8-with-source node source env ftable expr-count step5 data-ref)
+    step7 (continue-compile-do-exprs-step-8-with-source node source env ftable expr-count step6 data-ref)
+    step8 (continue-compile-do-exprs-step-8-with-source node source env ftable expr-count step7 data-ref)]
+    step8))
+
+(defn compile-do-exprs-with-source [node source env ftable idx expr-count instrs data-ref]
+  (let [step (compile-do-exprs-step-64-with-source node source env ftable idx expr-count instrs data-ref)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (compile-do-exprs-with-source node source env ftable (vector-get step 1) expr-count (vector-get step 2) data-ref))))
 (defn string-literal-data-base [] 1024)
-(defn append-byte-vector [dst src idx count] (if (>= idx count) dst (append-byte-vector (vector-push dst (vector-get src idx)) src (+ idx 1) count)))
-(defn string-to-byte-vector [text idx count bytes] (if (>= idx count) bytes (string-to-byte-vector text (+ idx 1) count (vector-push bytes (string-char-at text idx)))))
+(defn append-byte-vector-step [dst src idx count]
+  (if (>= idx count)
+    (make-loop-step-state 1 idx dst)
+    (make-loop-step-state 0 (+ idx 1) (vector-push dst (vector-get src idx)))))
+
+(defn continue-append-byte-vector-step [src count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (append-byte-vector-step (vector-get state 2) src (vector-get state 1) count)))
+
+(defn append-byte-vector-step-8 [dst src idx count]
+  (let [step1 (append-byte-vector-step dst src idx count)
+    step2 (continue-append-byte-vector-step src count step1)
+    step3 (continue-append-byte-vector-step src count step2)
+    step4 (continue-append-byte-vector-step src count step3)
+    step5 (continue-append-byte-vector-step src count step4)
+    step6 (continue-append-byte-vector-step src count step5)
+    step7 (continue-append-byte-vector-step src count step6)
+    step8 (continue-append-byte-vector-step src count step7)]
+    step8))
+
+(defn continue-append-byte-vector-step-8 [src count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (append-byte-vector-step-8 (vector-get state 2) src (vector-get state 1) count)))
+
+(defn append-byte-vector-step-64 [dst src idx count]
+  (let [step1 (append-byte-vector-step-8 dst src idx count)
+    step2 (continue-append-byte-vector-step-8 src count step1)
+    step3 (continue-append-byte-vector-step-8 src count step2)
+    step4 (continue-append-byte-vector-step-8 src count step3)
+    step5 (continue-append-byte-vector-step-8 src count step4)
+    step6 (continue-append-byte-vector-step-8 src count step5)
+    step7 (continue-append-byte-vector-step-8 src count step6)
+    step8 (continue-append-byte-vector-step-8 src count step7)]
+    step8))
+
+(defn append-byte-vector [dst src idx count]
+  (let [step (append-byte-vector-step-64 dst src idx count)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (append-byte-vector (vector-get step 2) src (vector-get step 1) count))))
+
+(defn string-to-byte-vector-step [text idx count bytes]
+  (if (>= idx count)
+    (make-loop-step-state 1 idx bytes)
+    (make-loop-step-state 0 (+ idx 1) (vector-push bytes (string-char-at text idx)))))
+
+(defn continue-string-to-byte-vector-step [text count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (string-to-byte-vector-step text (vector-get state 1) count (vector-get state 2))))
+
+(defn string-to-byte-vector-step-8 [text idx count bytes]
+  (let [step1 (string-to-byte-vector-step text idx count bytes)
+    step2 (continue-string-to-byte-vector-step text count step1)
+    step3 (continue-string-to-byte-vector-step text count step2)
+    step4 (continue-string-to-byte-vector-step text count step3)
+    step5 (continue-string-to-byte-vector-step text count step4)
+    step6 (continue-string-to-byte-vector-step text count step5)
+    step7 (continue-string-to-byte-vector-step text count step6)
+    step8 (continue-string-to-byte-vector-step text count step7)]
+    step8))
+
+(defn continue-string-to-byte-vector-step-8 [text count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (string-to-byte-vector-step-8 text (vector-get state 1) count (vector-get state 2))))
+
+(defn string-to-byte-vector-step-64 [text idx count bytes]
+  (let [step1 (string-to-byte-vector-step-8 text idx count bytes)
+    step2 (continue-string-to-byte-vector-step-8 text count step1)
+    step3 (continue-string-to-byte-vector-step-8 text count step2)
+    step4 (continue-string-to-byte-vector-step-8 text count step3)
+    step5 (continue-string-to-byte-vector-step-8 text count step4)
+    step6 (continue-string-to-byte-vector-step-8 text count step5)
+    step7 (continue-string-to-byte-vector-step-8 text count step6)
+    step8 (continue-string-to-byte-vector-step-8 text count step7)]
+    step8))
+
+(defn string-to-byte-vector [text idx count bytes]
+  (let [step (string-to-byte-vector-step-64 text idx count bytes)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (string-to-byte-vector text (vector-get step 1) count (vector-get step 2)))))
 (defn write-i32-le [vec value] (vector-push (vector-push (vector-push (vector-push vec (% value 256)) (% (/ value 256) 256)) (% (/ value 65536) 256)) (% (/ value 16777216) 256)))
 (defn compile-string-literal-with-source [node source instrs data-ref] (let [start (vector-get node 1) end (vector-get node 2) text (substring source start end) text-len (string-length text) bytes (string-to-byte-vector text 0 text-len (vector-new 8)) offset (+ (string-literal-data-base) (vector-length (ref-get data-ref))) header (write-i32-le (write-i32-le (vector-new 8) 1) text-len) data-with-header (append-byte-vector (ref-get data-ref) header 0 8) updated-data (append-byte-vector data-with-header bytes 0 (vector-length bytes)) instrs1 (emit-to instrs 1 offset)] (do (ref-set data-ref updated-data) instrs1)))
-(defn string-key-hash-loop [source pos end acc] (if (>= pos end) acc (string-key-hash-loop source (+ pos 1) end (+ (string-char-at source pos) (* acc 31)))))
+(defn string-key-hash-step [source pos end acc]
+  (if (>= pos end)
+    (make-loop-step-state 1 pos acc)
+    (make-loop-step-state 0 (+ pos 1) (+ (string-char-at source pos) (* acc 31)))))
+
+(defn continue-string-key-hash-step [source end state]
+  (if (= (vector-get state 0) 1)
+    state
+    (string-key-hash-step source (vector-get state 1) end (vector-get state 2))))
+
+(defn string-key-hash-step-8 [source pos end acc]
+  (let [step1 (string-key-hash-step source pos end acc)
+    step2 (continue-string-key-hash-step source end step1)
+    step3 (continue-string-key-hash-step source end step2)
+    step4 (continue-string-key-hash-step source end step3)
+    step5 (continue-string-key-hash-step source end step4)
+    step6 (continue-string-key-hash-step source end step5)
+    step7 (continue-string-key-hash-step source end step6)
+    step8 (continue-string-key-hash-step source end step7)]
+    step8))
+
+(defn continue-string-key-hash-step-8 [source end state]
+  (if (= (vector-get state 0) 1)
+    state
+    (string-key-hash-step-8 source (vector-get state 1) end (vector-get state 2))))
+
+(defn string-key-hash-step-64 [source pos end acc]
+  (let [step1 (string-key-hash-step-8 source pos end acc)
+    step2 (continue-string-key-hash-step-8 source end step1)
+    step3 (continue-string-key-hash-step-8 source end step2)
+    step4 (continue-string-key-hash-step-8 source end step3)
+    step5 (continue-string-key-hash-step-8 source end step4)
+    step6 (continue-string-key-hash-step-8 source end step5)
+    step7 (continue-string-key-hash-step-8 source end step6)
+    step8 (continue-string-key-hash-step-8 source end step7)]
+    step8))
+
+(defn string-key-hash-loop [source pos end acc]
+  (let [step (string-key-hash-step-64 source pos end acc)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (string-key-hash-loop source (vector-get step 1) end (vector-get step 2)))))
 (defn normalize-map-key-hash [hash] (if (= hash 0) 2 (if (= hash -1) 1 hash)))
 (defn compile-string-key-hash-with-source [node source instrs] (let [start (vector-get node 1) end (vector-get node 2) hash (normalize-map-key-hash (string-key-hash-loop source start end 0))] (emit-to instrs (op-i64-const) hash)))
 (defn compile-map-builtin-with-source [node source env ftable instrs data-ref bop] (let [map-expr (vector-get node 3) key-expr (vector-get node 4) map-instrs (compile-expr-with-source map-expr source env ftable instrs data-ref) key-instrs (if (= (vector-get key-expr 0) (tag-lit-string)) (compile-string-key-hash-with-source key-expr source map-instrs) (compile-expr-with-source key-expr source env ftable map-instrs data-ref))] (if (= bop (op-map-insert)) (let [value-expr (vector-get node 5) value-instrs (compile-expr-with-source value-expr source env ftable key-instrs data-ref)] (emit-to value-instrs bop (+ 1 (map-size env)))) (emit-to key-instrs bop (+ 1 (map-size env))))))
 (defn compile-match-pattern-check [pat scr-idx instrs] (let [pat-tag (vector-get pat 0)] (if (= pat-tag (ast-pat-lit)) (let [lit (vector-get pat 1) lit-tag (vector-get lit 0)] (if (= lit-tag (ast-lit-int)) (let [i1 (emit-to instrs (op-local-get) scr-idx) i2 (emit-to i1 (op-i64-const) (vector-get lit 1))] (emit-to i2 (op-i64-eq) 0)) (if (= lit-tag (ast-lit-bool)) (let [i1 (emit-to instrs (op-local-get) scr-idx) i2 (emit-to i1 (op-i64-const) (vector-get lit 1))] (emit-to i2 (op-i64-eq) 0)) (if (= lit-tag (ast-lit-unit)) (let [i1 (emit-to instrs (op-local-get) scr-idx) i2 (emit-to i1 (op-i64-const) 0)] (emit-to i2 (op-i64-eq) 0)) (emit-to instrs (op-i64-const) 0))))) (if (or (= pat-tag (ast-pat-wildcard)) (= pat-tag (ast-pat-var))) (emit-to instrs (op-i64-const) 1) (emit-to instrs (op-i64-const) 0)))))
 (defn compile-apply-with-source [node source env ftable instrs data-ref] (let [func-node (vector-get node 1) func-tag (vector-get func-node 0) func-hash (if (= func-tag (tag-var)) (vector-get func-node 1) 0) arg-count (vector-get node 2) bop (builtin-opcode func-hash)] (if (> bop 0) (compile-builtin-apply-with-source node source env ftable instrs data-ref bop) (compile-user-call-with-source node source env ftable instrs data-ref func-hash arg-count))))
-
-(defn compile-expr-with-source [node source env ftable instrs data-ref] (let [tag (vector-get node 0)] (if (= tag (tag-lit-string)) (compile-string-literal-with-source node source instrs data-ref) (if (= tag (tag-do)) (let [expr-count (vector-get node 1)] (if (= expr-count 0) instrs (compile-do-exprs-with-source node source env ftable 0 expr-count instrs data-ref))) (if (= tag (tag-if)) (let [cond-expr (vector-get node 1) then-expr (vector-get node 2) else-expr (vector-get node 3) instrs1 (compile-expr-with-source cond-expr source env ftable instrs data-ref) instrs2 (emit-to instrs1 (op-if) 0) instrs3 (compile-expr-with-source then-expr source env ftable instrs2 data-ref) instrs4 (emit-to instrs3 (op-end) 0) instrs5 (compile-expr-with-source else-expr source env ftable instrs4 data-ref)] (emit-to instrs5 (op-end) 0)) (if (= tag (tag-apply)) (compile-apply-with-source node source env ftable instrs data-ref) (if (= tag (tag-let)) (let [name-hash (vector-get node 1) init-expr (vector-get node 2) body-expr (vector-get node 3) instrs1 (compile-expr-with-source init-expr source env ftable instrs data-ref) new-idx (+ 1 (map-size env)) instrs2 (emit-to instrs1 (op-local-set) new-idx) new-env (env-bind env name-hash new-idx)] (compile-expr-with-source body-expr source new-env ftable instrs2 data-ref)) (if (= tag (tag-lambda)) (let [param-count (vector-get node 1) new-env (bind-node-params node 2 0 param-count env (+ 1 (map-size env)))] (compile-expr-with-source (vector-get node (+ 2 param-count)) source new-env ftable instrs data-ref)) (if (= tag (tag-match)) (let [scrutinee (vector-get node 1) arm-count (vector-get node 2) scr-idx (+ 1 (map-size env)) instrs1 (compile-expr-with-source scrutinee source env ftable instrs data-ref) instrs2 (emit-to instrs1 (op-local-set) scr-idx)] (if (> arm-count 0) (let [pat1 (vector-get node 3) body1 (vector-get node 4) i5 (compile-match-pattern-check pat1 scr-idx instrs2) i6 (emit-to i5 (op-if) 0) i7 (compile-expr-with-source body1 source env ftable i6 data-ref) i8 (emit-to i7 (op-end) 0)] (if (> arm-count 1) (let [pat2 (vector-get node 5) body2 (vector-get node 6) i11 (compile-match-pattern-check pat2 scr-idx i8) i12 (emit-to i11 (op-if) 0) i13 (compile-expr-with-source body2 source env ftable i12 data-ref) i14 (emit-to i13 (op-end) 0)] (if (> arm-count 2) (let [pat3 (vector-get node 7) body3 (vector-get node 8) i17 (compile-match-pattern-check pat3 scr-idx i14) i18 (emit-to i17 (op-if) 0) i19 (compile-expr-with-source body3 source env ftable i18 data-ref) i20 (emit-to i19 (op-end) 0) i21 (emit-to i20 (op-i64-const) 0) i22 (emit-to i21 (op-end) 0) i23 (emit-to i22 (op-end) 0) i24 (emit-to i23 (op-end) 0)] i24) (let [i15 (emit-to i14 (op-i64-const) 0) i16 (emit-to i15 (op-end) 0) i17 (emit-to i16 (op-end) 0)] i17))) (let [i9 (emit-to i8 (op-i64-const) 0) i10 (emit-to i9 (op-end) 0)] i10))) (emit-to instrs2 (op-i64-const) 0))) (compile-expr-with-ftable node env ftable instrs))))))))))
+(defn compile-do-with-source [node source env ftable instrs data-ref] (let [expr-count (vector-get node 1)] (if (= expr-count 0) instrs (compile-do-exprs-with-source node source env ftable 0 expr-count instrs data-ref))))
+(defn compile-if-with-source [node source env ftable instrs data-ref] (let [cond-expr (vector-get node 1) then-expr (vector-get node 2) else-expr (vector-get node 3) instrs1 (compile-expr-with-source cond-expr source env ftable instrs data-ref) instrs2 (emit-to instrs1 (op-if) 0) instrs3 (compile-expr-with-source then-expr source env ftable instrs2 data-ref) instrs4 (emit-to instrs3 (op-end) 0) instrs5 (compile-expr-with-source else-expr source env ftable instrs4 data-ref)] (emit-to instrs5 (op-end) 0)))
+(defn compile-let-with-source [node source env ftable instrs data-ref] (let [name-hash (vector-get node 1) init-expr (vector-get node 2) body-expr (vector-get node 3) instrs1 (compile-expr-with-source init-expr source env ftable instrs data-ref) new-idx (+ 1 (map-size env)) instrs2 (emit-to instrs1 (op-local-set) new-idx) new-env (env-bind env name-hash new-idx)] (compile-expr-with-source body-expr source new-env ftable instrs2 data-ref)))
+(defn compile-lambda-with-source [node source env ftable instrs data-ref] (let [param-count (vector-get node 1) new-env (bind-node-params node 2 0 param-count env (+ 1 (map-size env)))] (compile-expr-with-source (vector-get node (+ 2 param-count)) source new-env ftable instrs data-ref)))
+(defn compile-match-with-source [node source env ftable instrs data-ref] (let [scrutinee (vector-get node 1) arm-count (vector-get node 2) scr-idx (+ 1 (map-size env)) instrs1 (compile-expr-with-source scrutinee source env ftable instrs data-ref) instrs2 (emit-to instrs1 (op-local-set) scr-idx)] (if (> arm-count 0) (let [pat1 (vector-get node 3) body1 (vector-get node 4) i5 (compile-match-pattern-check pat1 scr-idx instrs2) i6 (emit-to i5 (op-if) 0) i7 (compile-expr-with-source body1 source env ftable i6 data-ref) i8 (emit-to i7 (op-end) 0)] (if (> arm-count 1) (let [pat2 (vector-get node 5) body2 (vector-get node 6) i11 (compile-match-pattern-check pat2 scr-idx i8) i12 (emit-to i11 (op-if) 0) i13 (compile-expr-with-source body2 source env ftable i12 data-ref) i14 (emit-to i13 (op-end) 0)] (if (> arm-count 2) (let [pat3 (vector-get node 7) body3 (vector-get node 8) i17 (compile-match-pattern-check pat3 scr-idx i14) i18 (emit-to i17 (op-if) 0) i19 (compile-expr-with-source body3 source env ftable i18 data-ref) i20 (emit-to i19 (op-end) 0) i21 (emit-to i20 (op-i64-const) 0) i22 (emit-to i21 (op-end) 0) i23 (emit-to i22 (op-end) 0) i24 (emit-to i23 (op-end) 0)] i24) (let [i15 (emit-to i14 (op-i64-const) 0) i16 (emit-to i15 (op-end) 0) i17 (emit-to i16 (op-end) 0)] i17))) (let [i9 (emit-to i8 (op-i64-const) 0) i10 (emit-to i9 (op-end) 0)] i10))) (emit-to instrs2 (op-i64-const) 0))))
+(defn compile-expr-with-source [node source env ftable instrs data-ref] (let [tag (vector-get node 0)] (if (= tag (tag-lit-string)) (compile-string-literal-with-source node source instrs data-ref) (if (= tag (tag-do)) (compile-do-with-source node source env ftable instrs data-ref) (if (= tag (tag-if)) (compile-if-with-source node source env ftable instrs data-ref) (if (= tag (tag-apply)) (compile-apply-with-source node source env ftable instrs data-ref) (if (= tag (tag-let)) (compile-let-with-source node source env ftable instrs data-ref) (if (= tag (tag-lambda)) (compile-lambda-with-source node source env ftable instrs data-ref) (if (= tag (tag-match)) (compile-match-with-source node source env ftable instrs data-ref) (compile-expr-with-ftable node env ftable instrs))))))))))
 (defn compile-defn-with-source [node source ftable data-ref] (let [param-count (vector-get node 2) env (bind-node-params node 3 0 param-count (env-new) 1) body-idx (+ 3 param-count) body-expr (vector-get node body-idx)] (compile-expr-with-source body-expr source env ftable (vector-new 8) data-ref)))
 (defn compile-expr-with-ftable [node env ftable instrs] (let [tag (vector-get node 0)] (if (= tag 1) (emit-to instrs 1 (vector-get node 1)) (if (= tag 2) (emit-to instrs 1 (vector-get node 1)) (if (= tag 4) (let [name-hash (vector-get node 1) idx (env-lookup env name-hash)] (if (= idx 0) (emit-to instrs 1 0) (emit-to instrs 10 idx))) (if (= tag 5) (let [func-node (vector-get node 1) func-tag (vector-get func-node 0) func-hash (if (= func-tag 4) (vector-get func-node 1) 0) arg-count (vector-get node 2) bop (builtin-opcode func-hash)] (if (> bop 0) (compile-builtin-apply-with-ftable node env ftable instrs bop) (compile-user-call-with-ftable node env ftable instrs func-hash arg-count))) (if (= tag 6) (let [cond-expr (vector-get node 1) then-expr (vector-get node 2) else-expr (vector-get node 3) instrs1 (compile-expr-with-ftable cond-expr env ftable instrs) instrs2 (emit-to instrs1 41 0) instrs3 (compile-expr-with-ftable then-expr env ftable instrs2) instrs4 (emit-to instrs3 43 0) instrs5 (compile-expr-with-ftable else-expr env ftable instrs4)] (emit-to instrs5 43 0)) (if (= tag 7) (let [name-hash (vector-get node 1) init-expr (vector-get node 2) body-expr (vector-get node 3) instrs1 (compile-expr-with-ftable init-expr env ftable instrs) new-idx (+ 1 (map-size env)) instrs2 (emit-to instrs1 11 new-idx) new-env (env-bind env name-hash new-idx)] (compile-expr-with-ftable body-expr new-env ftable instrs2)) (if (= tag 8) (let [param-count (vector-get node 1) new-env (bind-node-params node 2 0 param-count env (+ 1 (map-size env)))] (compile-expr-with-ftable (vector-get node (+ 2 param-count)) new-env ftable instrs)) (if (= tag 9) (let [expr-count (vector-get node 1)] (compile-do-exprs node env ftable 0 expr-count instrs)) (if (= tag 10) (let [scrutinee (vector-get node 1) arm-count (vector-get node 2) scr-idx (+ 1 (map-size env)) instrs1 (compile-expr-with-ftable scrutinee env ftable instrs) instrs2 (emit-to instrs1 11 scr-idx)] (if (> arm-count 0) (let [pat1 (vector-get node 3) body1 (vector-get node 4) i3 (emit-to instrs2 10 scr-idx) i4 (emit-to i3 1 pat1) i5 (emit-to i4 30 0) i6 (emit-to i5 41 0) i7 (compile-expr-with-ftable body1 env ftable i6) i8 (emit-to i7 43 0)] (if (> arm-count 1) (let [pat2 (vector-get node 5) body2 (vector-get node 6) i9 (emit-to i8 10 scr-idx) i10 (emit-to i9 1 pat2) i11 (emit-to i10 30 0) i12 (emit-to i11 41 0) i13 (compile-expr-with-ftable body2 env ftable i12) i14 (emit-to i13 43 0)] (if (> arm-count 2) (let [pat3 (vector-get node 7) body3 (vector-get node 8) i15 (emit-to i14 10 scr-idx) i16 (emit-to i15 1 pat3) i17 (emit-to i16 30 0) i18 (emit-to i17 41 0) i19 (compile-expr-with-ftable body3 env ftable i18) i20 (emit-to i19 43 0) i21 (emit-to i20 1 0) i22 (emit-to i21 43 0)] (emit-to i22 43 0)) (let [i15 (emit-to i14 1 0) i16 (emit-to i15 43 0)] (emit-to i16 43 0)))) (let [i9 (emit-to i8 1 0) i10 (emit-to i9 43 0)] i10))) (emit-to instrs2 1 0))) (emit-to instrs 1 0))))))))))))
 (defn compile-expr [node env instrs] (compile-expr-with-ftable node env (ftable-new) instrs))
 (defn compile-defn-with-ftable [node ftable] (let [param-count (vector-get node 2) env (bind-node-params node 3 0 param-count (env-new) 1) body-idx (+ 3 param-count) body-expr (vector-get node body-idx)] (compile-expr-with-ftable body-expr env ftable (vector-new 8))))
 (defn compile-defn [node] (compile-defn-with-ftable node (ftable-new)))
 (defn compile-defn-function-with-source [node source ftable data-ref] (let [param-count (vector-get node 2) ir (compile-defn-with-source node source ftable data-ref) local-max (max-local-slot ir 0 (vector-length ir) 0) local-count (if (> local-max param-count) (- local-max param-count) 0)] (make-function-meta param-count local-count ir)))
-(defn compile-defn-functions-with-source [decls idx n source ftable data-ref functions] (if (>= idx n) functions (let [decl (vector-get decls idx)] (if (= (vector-get decl 0) 20) (compile-defn-functions-with-source decls (+ idx 1) n source ftable data-ref (vector-push functions (compile-defn-function-with-source decl source ftable data-ref))) (compile-defn-functions-with-source decls (+ idx 1) n source ftable data-ref functions)))))
+(defn compile-defn-functions-step-with-source [decls idx n source ftable data-ref functions]
+  (if (>= idx n)
+    (make-compile-step-state 1 idx functions)
+    (let [decl (vector-get decls idx)
+      next-functions (if (= (vector-get decl 0) 20) (vector-push functions (compile-defn-function-with-source decl source ftable data-ref)) functions)]
+      (make-compile-step-state 0 (+ idx 1) next-functions))))
+
+(defn continue-compile-defn-functions-step-with-source [decls n source ftable data-ref state]
+  (if (= (vector-get state 0) 1)
+    state
+    (compile-defn-functions-step-with-source decls (vector-get state 1) n source ftable data-ref (vector-get state 2))))
+
+(defn compile-defn-functions-step-8-with-source [decls idx n source ftable data-ref functions]
+  (let [step1 (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)
+    step2 (continue-compile-defn-functions-step-with-source decls n source ftable data-ref step1)
+    step3 (continue-compile-defn-functions-step-with-source decls n source ftable data-ref step2)
+    step4 (continue-compile-defn-functions-step-with-source decls n source ftable data-ref step3)
+    step5 (continue-compile-defn-functions-step-with-source decls n source ftable data-ref step4)
+    step6 (continue-compile-defn-functions-step-with-source decls n source ftable data-ref step5)
+    step7 (continue-compile-defn-functions-step-with-source decls n source ftable data-ref step6)
+    step8 (continue-compile-defn-functions-step-with-source decls n source ftable data-ref step7)]
+    step8))
+
+(defn continue-compile-defn-functions-step-8-with-source [decls n source ftable data-ref state]
+  (if (= (vector-get state 0) 1)
+    state
+    (compile-defn-functions-step-8-with-source decls (vector-get state 1) n source ftable data-ref (vector-get state 2))))
+
+(defn compile-defn-functions-step-64-with-source [decls idx n source ftable data-ref functions]
+  (let [step1 (compile-defn-functions-step-8-with-source decls idx n source ftable data-ref functions)
+    step2 (continue-compile-defn-functions-step-8-with-source decls n source ftable data-ref step1)
+    step3 (continue-compile-defn-functions-step-8-with-source decls n source ftable data-ref step2)
+    step4 (continue-compile-defn-functions-step-8-with-source decls n source ftable data-ref step3)
+    step5 (continue-compile-defn-functions-step-8-with-source decls n source ftable data-ref step4)
+    step6 (continue-compile-defn-functions-step-8-with-source decls n source ftable data-ref step5)
+    step7 (continue-compile-defn-functions-step-8-with-source decls n source ftable data-ref step6)
+    step8 (continue-compile-defn-functions-step-8-with-source decls n source ftable data-ref step7)]
+    step8))
+
+(defn compile-defn-functions-with-source [decls idx n source ftable data-ref functions]
+  (let [step (compile-defn-functions-step-64-with-source decls idx n source ftable data-ref functions)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (compile-defn-functions-with-source decls (vector-get step 1) n source ftable data-ref (vector-get step 2)))))
 (defn compile-program-functions-with-source [src decls] (let [n (vector-length decls) pass1 (register-defns decls 0 n (ftable-new) 0) ftable (vector-get pass1 0) data-ref (ref-new (vector-new 8)) functions (compile-defn-functions-with-source decls 0 n src ftable data-ref (vector-new 8))] (vector-push (vector-push (vector-push (vector-new 3) ftable) functions) (ref-get data-ref))))
 (defn compile-program-with-source [src decls] (let [pair (compile-program-functions-with-source src decls) ftable (vector-get pair 0) functions (vector-get pair 1) data (vector-get pair 2) ir-list (collect-function-irs functions 0 (vector-length functions) (vector-new 8))] (vector-push (vector-push (vector-push (vector-new 3) ftable) ir-list) data)))
 (defn max-local-slot-op [opcode operand current-max] (if (or (or (= opcode 10) (= opcode 11)) (or (= opcode 50) (= opcode 53))) (if (> operand current-max) operand current-max) (if (= opcode 54) (if (> (+ operand 1) current-max) (+ operand 1) current-max) (if (= opcode 55) (if (> (+ operand 5) current-max) (+ operand 5) current-max) (if (= opcode 56) (if (> (+ operand 1) current-max) (+ operand 1) current-max) (if (= opcode 58) (if (> operand current-max) operand current-max) (if (= opcode 60) (if (> operand current-max) operand current-max) (if (= opcode 62) (if (> (+ operand 5) current-max) (+ operand 5) current-max) (if (= opcode 63) (if (> (+ operand 5) current-max) (+ operand 5) current-max) (if (= opcode 65) (if (> (+ operand 5) current-max) (+ operand 5) current-max) (if (= opcode 66) (if (> (+ operand 5) current-max) (+ operand 5) current-max) current-max)))))))))))
-(defn max-local-slot [instrs idx count current-max] (if (>= idx count) current-max (let [instr (vector-get instrs idx) opcode (vector-get instr 0) operand (vector-get instr 1) next-max (max-local-slot-op opcode operand current-max)] (max-local-slot instrs (+ idx 1) count next-max))))
+(defn max-local-slot-step [instrs idx count current-max]
+  (if (>= idx count)
+    (make-compile-step-state 1 idx current-max)
+    (let [instr (vector-get instrs idx)
+      opcode (vector-get instr 0)
+      operand (vector-get instr 1)
+      next-max (max-local-slot-op opcode operand current-max)]
+      (make-compile-step-state 0 (+ idx 1) next-max))))
+
+(defn continue-max-local-slot-step [instrs count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (max-local-slot-step instrs (vector-get state 1) count (vector-get state 2))))
+
+(defn max-local-slot-step-8 [instrs idx count current-max]
+  (let [step1 (max-local-slot-step instrs idx count current-max)
+    step2 (continue-max-local-slot-step instrs count step1)
+    step3 (continue-max-local-slot-step instrs count step2)
+    step4 (continue-max-local-slot-step instrs count step3)
+    step5 (continue-max-local-slot-step instrs count step4)
+    step6 (continue-max-local-slot-step instrs count step5)
+    step7 (continue-max-local-slot-step instrs count step6)
+    step8 (continue-max-local-slot-step instrs count step7)]
+    step8))
+
+(defn continue-max-local-slot-step-8 [instrs count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (max-local-slot-step-8 instrs (vector-get state 1) count (vector-get state 2))))
+
+(defn max-local-slot-step-64 [instrs idx count current-max]
+  (let [step1 (max-local-slot-step-8 instrs idx count current-max)
+    step2 (continue-max-local-slot-step-8 instrs count step1)
+    step3 (continue-max-local-slot-step-8 instrs count step2)
+    step4 (continue-max-local-slot-step-8 instrs count step3)
+    step5 (continue-max-local-slot-step-8 instrs count step4)
+    step6 (continue-max-local-slot-step-8 instrs count step5)
+    step7 (continue-max-local-slot-step-8 instrs count step6)
+    step8 (continue-max-local-slot-step-8 instrs count step7)]
+    step8))
+
+(defn max-local-slot [instrs idx count current-max]
+  (let [step (max-local-slot-step-64 instrs idx count current-max)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (max-local-slot instrs (vector-get step 1) count (vector-get step 2)))))
 (defn make-function-meta [param-count local-count ir] (vector-push (vector-push (vector-push (vector-new 3) param-count) local-count) ir))
 (defn compile-defn-function [node ftable] (let [param-count (vector-get node 2) ir (compile-defn-with-ftable node ftable) local-max (max-local-slot ir 0 (vector-length ir) 0) local-count (if (> local-max param-count) (- local-max param-count) 0)] (make-function-meta param-count local-count ir)))
-(defn register-defns [decls idx n ftable func-idx] (if (>= idx n) (vector-push (vector-push (vector-new 2) ftable) func-idx) (let [decl (vector-get decls idx)] (if (= (vector-get decl 0) 20) (register-defns decls (+ idx 1) n (ftable-register ftable (vector-get decl 1) func-idx) (+ func-idx 1)) (register-defns decls (+ idx 1) n ftable func-idx)))))
-(defn compile-defn-functions [decls idx n ftable functions] (if (>= idx n) functions (let [decl (vector-get decls idx)] (if (= (vector-get decl 0) 20) (compile-defn-functions decls (+ idx 1) n ftable (vector-push functions (compile-defn-function decl ftable))) (compile-defn-functions decls (+ idx 1) n ftable functions)))))
-(defn collect-function-irs [functions idx count ir-list] (if (>= idx count) ir-list (collect-function-irs functions (+ idx 1) count (vector-push ir-list (vector-get (vector-get functions idx) 2)))))
+(defn make-register-state [done next-idx next-ftable next-func-idx]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) done)
+        next-idx)
+      next-ftable)
+    next-func-idx))
+
+(defn register-defns-step [decls idx n ftable func-idx]
+  (if (>= idx n)
+    (make-register-state 1 idx ftable func-idx)
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (make-register-state 0 (+ idx 1) (ftable-register ftable (vector-get decl 1) func-idx) (+ func-idx 1))
+        (make-register-state 0 (+ idx 1) ftable func-idx)))))
+
+(defn continue-register-defns-step [decls n state]
+  (if (= (vector-get state 0) 1)
+    state
+    (register-defns-step decls (vector-get state 1) n (vector-get state 2) (vector-get state 3))))
+
+(defn register-defns-step-8 [decls idx n ftable func-idx]
+  (let [step1 (register-defns-step decls idx n ftable func-idx)
+    step2 (continue-register-defns-step decls n step1)
+    step3 (continue-register-defns-step decls n step2)
+    step4 (continue-register-defns-step decls n step3)
+    step5 (continue-register-defns-step decls n step4)
+    step6 (continue-register-defns-step decls n step5)
+    step7 (continue-register-defns-step decls n step6)
+    step8 (continue-register-defns-step decls n step7)]
+    step8))
+
+(defn continue-register-defns-step-8 [decls n state]
+  (if (= (vector-get state 0) 1)
+    state
+    (register-defns-step-8 decls (vector-get state 1) n (vector-get state 2) (vector-get state 3))))
+
+(defn register-defns-step-64 [decls idx n ftable func-idx]
+  (let [step1 (register-defns-step-8 decls idx n ftable func-idx)
+    step2 (continue-register-defns-step-8 decls n step1)
+    step3 (continue-register-defns-step-8 decls n step2)
+    step4 (continue-register-defns-step-8 decls n step3)
+    step5 (continue-register-defns-step-8 decls n step4)
+    step6 (continue-register-defns-step-8 decls n step5)
+    step7 (continue-register-defns-step-8 decls n step6)
+    step8 (continue-register-defns-step-8 decls n step7)]
+    step8))
+
+(defn register-defns [decls idx n ftable func-idx]
+  (let [step (register-defns-step-64 decls idx n ftable func-idx)]
+    (if (= (vector-get step 0) 1)
+      (vector-push (vector-push (vector-new 2) (vector-get step 2)) (vector-get step 3))
+      (register-defns decls (vector-get step 1) n (vector-get step 2) (vector-get step 3)))))
+(defn compile-defn-functions-step [decls idx n ftable functions]
+  (if (>= idx n)
+    (make-compile-step-state 1 idx functions)
+    (let [decl (vector-get decls idx)
+      next-functions (if (= (vector-get decl 0) 20) (vector-push functions (compile-defn-function decl ftable)) functions)]
+      (make-compile-step-state 0 (+ idx 1) next-functions))))
+
+(defn continue-compile-defn-functions-step [decls n ftable state]
+  (if (= (vector-get state 0) 1)
+    state
+    (compile-defn-functions-step decls (vector-get state 1) n ftable (vector-get state 2))))
+
+(defn compile-defn-functions-step-8 [decls idx n ftable functions]
+  (let [step1 (compile-defn-functions-step decls idx n ftable functions)
+    step2 (continue-compile-defn-functions-step decls n ftable step1)
+    step3 (continue-compile-defn-functions-step decls n ftable step2)
+    step4 (continue-compile-defn-functions-step decls n ftable step3)
+    step5 (continue-compile-defn-functions-step decls n ftable step4)
+    step6 (continue-compile-defn-functions-step decls n ftable step5)
+    step7 (continue-compile-defn-functions-step decls n ftable step6)
+    step8 (continue-compile-defn-functions-step decls n ftable step7)]
+    step8))
+
+(defn continue-compile-defn-functions-step-8 [decls n ftable state]
+  (if (= (vector-get state 0) 1)
+    state
+    (compile-defn-functions-step-8 decls (vector-get state 1) n ftable (vector-get state 2))))
+
+(defn compile-defn-functions-step-64 [decls idx n ftable functions]
+  (let [step1 (compile-defn-functions-step-8 decls idx n ftable functions)
+    step2 (continue-compile-defn-functions-step-8 decls n ftable step1)
+    step3 (continue-compile-defn-functions-step-8 decls n ftable step2)
+    step4 (continue-compile-defn-functions-step-8 decls n ftable step3)
+    step5 (continue-compile-defn-functions-step-8 decls n ftable step4)
+    step6 (continue-compile-defn-functions-step-8 decls n ftable step5)
+    step7 (continue-compile-defn-functions-step-8 decls n ftable step6)
+    step8 (continue-compile-defn-functions-step-8 decls n ftable step7)]
+    step8))
+
+(defn compile-defn-functions [decls idx n ftable functions]
+  (let [step (compile-defn-functions-step-64 decls idx n ftable functions)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (compile-defn-functions decls (vector-get step 1) n ftable (vector-get step 2)))))
+(defn collect-function-irs-step [functions idx count ir-list]
+  (if (>= idx count)
+    (make-compile-step-state 1 idx ir-list)
+    (make-compile-step-state 0 (+ idx 1) (vector-push ir-list (vector-get (vector-get functions idx) 2)))))
+
+(defn continue-collect-function-irs-step [functions count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (collect-function-irs-step functions (vector-get state 1) count (vector-get state 2))))
+
+(defn collect-function-irs-step-8 [functions idx count ir-list]
+  (let [step1 (collect-function-irs-step functions idx count ir-list)
+    step2 (continue-collect-function-irs-step functions count step1)
+    step3 (continue-collect-function-irs-step functions count step2)
+    step4 (continue-collect-function-irs-step functions count step3)
+    step5 (continue-collect-function-irs-step functions count step4)
+    step6 (continue-collect-function-irs-step functions count step5)
+    step7 (continue-collect-function-irs-step functions count step6)
+    step8 (continue-collect-function-irs-step functions count step7)]
+    step8))
+
+(defn continue-collect-function-irs-step-8 [functions count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (collect-function-irs-step-8 functions (vector-get state 1) count (vector-get state 2))))
+
+(defn collect-function-irs-step-64 [functions idx count ir-list]
+  (let [step1 (collect-function-irs-step-8 functions idx count ir-list)
+    step2 (continue-collect-function-irs-step-8 functions count step1)
+    step3 (continue-collect-function-irs-step-8 functions count step2)
+    step4 (continue-collect-function-irs-step-8 functions count step3)
+    step5 (continue-collect-function-irs-step-8 functions count step4)
+    step6 (continue-collect-function-irs-step-8 functions count step5)
+    step7 (continue-collect-function-irs-step-8 functions count step6)
+    step8 (continue-collect-function-irs-step-8 functions count step7)]
+    step8))
+
+(defn collect-function-irs [functions idx count ir-list]
+  (let [step (collect-function-irs-step-64 functions idx count ir-list)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (collect-function-irs functions (vector-get step 1) count (vector-get step 2)))))
 (defn compile-program-functions [decls] (let [n (vector-length decls) pass1 (register-defns decls 0 n (ftable-new) 0) ftable (vector-get pass1 0) functions (compile-defn-functions decls 0 n ftable (vector-new 8))] (vector-push (vector-push (vector-new 2) ftable) functions)))
 (defn compile-program [decls] (let [pair (compile-program-functions decls) ftable (vector-get pair 0) functions (vector-get pair 1) ir-list (collect-function-irs functions 0 (vector-length functions) (vector-new 8))] (vector-push (vector-push (vector-new 2) ftable) ir-list)))
 (defn lower [x] (let [n (vector-length x)] (if (= n 0) (vector-new 0) (if (and (= n 2) (or (= (vector-get x 0) 1) (= (vector-get x 0) 2))) (compile-expr x (env-new) (vector-new 8)) (let [pair (compile-program x) ir-list (vector-get pair 1)] (if (> (vector-length ir-list) 0) (vector-get ir-list 0) (vector-new 0)))))))

@@ -534,6 +534,156 @@ fn test_e2e_selfhost_parser_nested_module_decl() {
     assert_eq!(lines[7], "1", "inner defn 名 hash が一致すべき");
 }
 
+/// TEST-SYNTAX-02c3: bare module の後ろに複数 import と defn を top-level で保持できる
+#[test]
+fn test_e2e_selfhost_parser_bare_module_with_multiple_imports() {
+    let (token_ls, ast_ls, lexer_ls, parser_ls) = parser_runtime_modules();
+
+    let harness = r#"
+(defn main []
+  (let [src "(module App.Main)\n(import App.CompilerMode)\n(import App.PipelineSmoke)\n(defn main [] 0)"
+        program (parse-program src)
+        node0 (vector-get program 0)
+        node1 (vector-get program 1)
+        node2 (vector-get program 2)
+        node3 (vector-get program 3)]
+    (do
+      (print (vector-length program))
+      (print (if (= (vector-get node0 0) (ast-module-decl)) 1 0))
+      (print (if (= (vector-get node0 1) (name-hash "App.Main" 0 8)) 1 0))
+      (print (if (= (vector-get node1 0) (ast-import-decl)) 1 0))
+      (print (if (= (vector-get node1 1) (name-hash "App.CompilerMode" 0 16)) 1 0))
+      (print (if (= (name-hash src (vector-get node1 2) (vector-get node1 3)) (name-hash "App.CompilerMode" 0 16)) 1 0))
+      (print (if (= (vector-get node2 0) (ast-import-decl)) 1 0))
+      (print (if (= (vector-get node2 1) (name-hash "App.PipelineSmoke" 0 17)) 1 0))
+      (print (if (= (name-hash src (vector-get node2 2) (vector-get node2 3)) (name-hash "App.PipelineSmoke" 0 17)) 1 0))
+      (print (if (= (vector-get node3 0) (ast-defn)) 1 0))
+      (print (if (= (vector-get node3 1) (name-hash "main" 0 4)) 1 0))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 11,
+        "multiple-import parser 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "4", "program は top-level 4 node を返すべき");
+    assert_eq!(lines[1], "1", "node0 は module decl であるべき");
+    assert_eq!(lines[2], "1", "module 名 hash が一致すべき");
+    assert_eq!(lines[3], "1", "node1 は import decl であるべき");
+    assert_eq!(lines[4], "1", "1 個目 import 名 hash が一致すべき");
+    assert_eq!(lines[5], "1", "1 個目 import の start/end から再計算した hash が一致すべき");
+    assert_eq!(lines[6], "1", "node2 は import decl であるべき");
+    assert_eq!(lines[7], "1", "2 個目 import 名 hash が一致すべき");
+    assert_eq!(lines[8], "1", "2 個目 import の start/end から再計算した hash が一致すべき");
+    assert_eq!(lines[9], "1", "node3 は defn であるべき");
+    assert_eq!(lines[10], "1", "defn 名 hash が一致すべき");
+}
+
+/// TEST-SYNTAX-02c4: 2 import 後の defn は compiler register/compile でも拾える
+#[test]
+fn test_e2e_selfhost_compiler_sees_defn_after_multiple_imports() {
+    let token_ls = selfhost_module("Token.ls").to_string();
+    let ast_ls = selfhost_module("AST.ls").to_string();
+    let lexer_ls = selfhost_module("Lexer.ls").to_string();
+    let parser_ls = selfhost_module("Parser.ls").to_string();
+    let ir_ls = selfhost_module("IR.ls").to_string();
+    let compiler_ls = selfhost_module("Compiler.ls").to_string();
+
+    let harness = r#"
+(defn main []
+  (let [src "(module App.Main)\n(import App.CompilerMode)\n(import App.PipelineSmoke)\n(defn main [] 0)"
+        program (parse-program src)
+        reg (register-defns program 0 (vector-length program) (ftable-new) 6)
+        ftable (vector-get reg 0)
+        functions (compile-defn-functions-with-source program 0 (vector-length program) src ftable (ref-new (vector-new 8)) (vector-new 8))]
+    (do
+      (print (vector-length program))
+      (print (ftable-lookup ftable (name-hash "main" 0 4)))
+      (print (vector-length functions))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        token_ls, ast_ls, lexer_ls, parser_ls, ir_ls, compiler_ls, harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(lines.len() >= 3, "compiler multiple-import 出力が不足: {:?}", lines);
+    assert_eq!(lines[0], "4", "program は top-level 4 node を返すべき");
+    assert_eq!(lines[1], "6", "main は func index 6 に登録されるべき");
+    assert_eq!(lines[2], "1", "compiler は defn main を 1 関数として拾うべき");
+}
+
+/// TEST-SYNTAX-02c5: fabricated src-decl pairs では multiple import 相当でも functions を落とさない
+#[test]
+fn test_e2e_selfhost_compiler_mode_pair_pipeline_keeps_functions() {
+    let token_ls = selfhost_module("Token.ls").to_string();
+    let ast_ls = selfhost_module("AST.ls").to_string();
+    let lexer_ls = selfhost_module("Lexer.ls").to_string();
+    let parser_ls = selfhost_module("Parser.ls").to_string();
+    let ir_ls = selfhost_module("IR.ls").to_string();
+    let compiler_ls = selfhost_module("Compiler.ls").to_string();
+    let module_resolver_ls = selfhost_module("ModuleResolver.ls").to_string();
+    let wasm_emit_ls = selfhost_module("WasmEmit.ls").to_string();
+    let compiler_mode_ls = selfhost_module("CompilerMode.ls").to_string();
+
+    let harness = r#"
+(defn main []
+  (let [src-main "(module App.Main)\n(import App.CompilerMode)\n(import App.PipelineSmoke)\n(defn main [] 0)"
+        src-a "(module App.CompilerMode)\n(defn compile-file-mode [] 1)"
+        src-b "(module App.PipelineSmoke)\n(defn run-main-smoke [] 2)"
+        pair-a (make-src-decl-pair src-a (parse-program src-a))
+        pair-b (make-src-decl-pair src-b (parse-program src-b))
+        pair-main (make-src-decl-pair src-main (parse-program src-main))
+        pairs1 (vector-push (vector-new 8) pair-a)
+        pairs2 (vector-push pairs1 pair-b)
+        all-pairs (vector-push pairs2 pair-main)
+        n (vector-length all-pairs)
+        reg (register-all-pairs all-pairs 0 n (ftable-new) 6)
+        ftable (vector-get reg 0)
+        functions (compile-all-src-decl-pairs all-pairs 0 n ftable (ref-new (vector-new 8)) (vector-new 8))]
+    (do
+      (print n)
+      (print (ftable-lookup ftable (name-hash "main" 0 4)))
+      (print (vector-length functions))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        token_ls,
+        ast_ls,
+        lexer_ls,
+        parser_ls,
+        ir_ls,
+        compiler_ls,
+        module_resolver_ls,
+        wasm_emit_ls,
+        compiler_mode_ls,
+    ) + "\n" + harness;
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "compiler-mode pair pipeline 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "3", "fabricated pair 数は 3 であるべき");
+    assert_eq!(lines[1], "8", "main は 3 個目の関数 index 8 に登録されるべき");
+    assert_eq!(lines[2], "3", "functions は 3 個保持されるべき");
+}
+
 /// TEST-SYNTAX-02d: quote/unquote 系トークンを AST ノードへパースできる
 ///
 /// selfhost Parser が `'expr`, `~expr`, `~@expr` を
