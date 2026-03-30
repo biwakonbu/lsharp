@@ -169,6 +169,10 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "TypeInferCore.ls" => "selfhost/src/Types/TypeInferCore.ls",
         "TypeInferFunctions.ls" => "selfhost/src/Types/TypeInferFunctions.ls",
         "TypeInferBuiltins.ls" => "selfhost/src/Types/TypeInferBuiltins.ls",
+        "TypeInferApply.ls" => "selfhost/src/Types/TypeInferApply.ls",
+        "TypeInferBlock.ls" => "selfhost/src/Types/TypeInferBlock.ls",
+        "TypeInferPattern.ls" => "selfhost/src/Types/TypeInferPattern.ls",
+        "TypeInferRecord.ls" => "selfhost/src/Types/TypeInferRecord.ls",
         "TypeInferSmoke.ls" => "selfhost/src/Types/TypeInferSmoke.ls",
         "TypeInfer.ls" => "selfhost/src/Types/TypeInfer.ls",
         "Constraints.ls" => "selfhost/src/Types/Constraints.ls",
@@ -235,6 +239,18 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
     let type_infer_builtins_ls =
         std::fs::read_to_string(selfhost_source_path("TypeInferBuiltins.ls"))
             .expect("canonical TypeInferBuiltins.ls が読み込めない");
+    let type_infer_apply_ls =
+        std::fs::read_to_string(selfhost_source_path("TypeInferApply.ls"))
+            .expect("canonical TypeInferApply.ls が読み込めない");
+    let type_infer_block_ls =
+        std::fs::read_to_string(selfhost_source_path("TypeInferBlock.ls"))
+            .expect("canonical TypeInferBlock.ls が読み込めない");
+    let type_infer_pattern_ls =
+        std::fs::read_to_string(selfhost_source_path("TypeInferPattern.ls"))
+            .expect("canonical TypeInferPattern.ls が読み込めない");
+    let type_infer_record_ls =
+        std::fs::read_to_string(selfhost_source_path("TypeInferRecord.ls"))
+            .expect("canonical TypeInferRecord.ls が読み込めない");
     let type_infer_ls = std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
         .expect("canonical TypeInfer.ls が読み込めない");
     let compiler_ls = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
@@ -251,7 +267,7 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
         .expect("canonical Cli.ls が読み込めない");
 
     format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
         token_ls,
         ast_ls,
         lexer_ls,
@@ -263,6 +279,10 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
         type_infer_functions_ls,
         type_infer_builtins_ls,
         type_infer_ls,
+        type_infer_apply_ls,
+        type_infer_block_ls,
+        type_infer_pattern_ls,
+        type_infer_record_ls,
         compiler_ls,
         wasm_emit_ls,
         formatter_ls,

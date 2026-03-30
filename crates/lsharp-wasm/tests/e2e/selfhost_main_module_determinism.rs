@@ -472,6 +472,18 @@ fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
     let typeinfer_smoke_source =
         std::fs::read_to_string(selfhost_source_path("TypeInferSmoke.ls"))
             .expect("canonical TypeInferSmoke.ls が読み込めない");
+    let typeinfer_apply_source =
+        std::fs::read_to_string(selfhost_source_path("TypeInferApply.ls"))
+            .expect("canonical TypeInferApply.ls が読み込めない");
+    let typeinfer_block_source =
+        std::fs::read_to_string(selfhost_source_path("TypeInferBlock.ls"))
+            .expect("canonical TypeInferBlock.ls が読み込めない");
+    let typeinfer_pattern_source =
+        std::fs::read_to_string(selfhost_source_path("TypeInferPattern.ls"))
+            .expect("canonical TypeInferPattern.ls が読み込めない");
+    let typeinfer_record_source =
+        std::fs::read_to_string(selfhost_source_path("TypeInferRecord.ls"))
+            .expect("canonical TypeInferRecord.ls が読み込めない");
 
     // MacroExpand.ls: (module Syntax.MacroExpand) + (import Syntax.AST) + (import Syntax.Token)
     assert!(
@@ -595,16 +607,31 @@ fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
     let typeinfer_defn_count = typeinfer_source.matches("(defn ").count();
     let typeinfer_core_defn_count = typeinfer_core_source.matches("(defn ").count();
     let typeinfer_functions_defn_count = typeinfer_functions_source.matches("(defn ").count();
+    let typeinfer_apply_defn_count = typeinfer_apply_source.matches("(defn ").count();
+    let typeinfer_block_defn_count = typeinfer_block_source.matches("(defn ").count();
+    let typeinfer_pattern_defn_count = typeinfer_pattern_source.matches("(defn ").count();
+    let typeinfer_record_defn_count = typeinfer_record_source.matches("(defn ").count();
+    let typeinfer_total = typeinfer_defn_count
+        + typeinfer_core_defn_count
+        + typeinfer_functions_defn_count
+        + typeinfer_apply_defn_count
+        + typeinfer_block_defn_count
+        + typeinfer_pattern_defn_count
+        + typeinfer_record_defn_count;
     assert!(
-        typeinfer_defn_count + typeinfer_core_defn_count + typeinfer_functions_defn_count >= 55,
-        "TypeInfer 系の関数数が不足: TypeInfer={} TypeInferCore={} TypeInferFunctions={} (合計55以上必要)",
+        typeinfer_total >= 55,
+        "TypeInfer 系の関数数が不足: TypeInfer={} Core={} Functions={} Apply={} Block={} Pattern={} Record={} (合計55以上必要)",
         typeinfer_defn_count,
         typeinfer_core_defn_count,
-        typeinfer_functions_defn_count
+        typeinfer_functions_defn_count,
+        typeinfer_apply_defn_count,
+        typeinfer_block_defn_count,
+        typeinfer_pattern_defn_count,
+        typeinfer_record_defn_count
     );
     assert!(
-        typeinfer_defn_count >= 30,
-        "TypeInfer.ls 本体の関数数が不足: {} (30以上必要)",
+        typeinfer_defn_count >= 5,
+        "TypeInfer.ls 本体の関数数が不足: {} (5以上必要、dispatcher+公開API)",
         typeinfer_defn_count
     );
     assert!(
@@ -616,6 +643,26 @@ fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
         typeinfer_functions_defn_count >= 4,
         "TypeInferFunctions.ls の関数数が不足: {} (4以上必要)",
         typeinfer_functions_defn_count
+    );
+    assert!(
+        typeinfer_apply_defn_count >= 2,
+        "TypeInferApply.ls の関数数が不足: {} (2以上必要)",
+        typeinfer_apply_defn_count
+    );
+    assert!(
+        typeinfer_block_defn_count >= 3,
+        "TypeInferBlock.ls の関数数が不足: {} (3以上必要)",
+        typeinfer_block_defn_count
+    );
+    assert!(
+        typeinfer_pattern_defn_count >= 5,
+        "TypeInferPattern.ls の関数数が不足: {} (5以上必要)",
+        typeinfer_pattern_defn_count
+    );
+    assert!(
+        typeinfer_record_defn_count >= 5,
+        "TypeInferRecord.ls の関数数が不足: {} (5以上必要)",
+        typeinfer_record_defn_count
     );
 
     // 5. expand/infer ステージの出力検証

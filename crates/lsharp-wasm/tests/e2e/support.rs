@@ -260,6 +260,10 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "TypeInferCore.ls" => "selfhost/src/Types/TypeInferCore.ls",
         "TypeInferFunctions.ls" => "selfhost/src/Types/TypeInferFunctions.ls",
         "TypeInferBuiltins.ls" => "selfhost/src/Types/TypeInferBuiltins.ls",
+        "TypeInferApply.ls" => "selfhost/src/Types/TypeInferApply.ls",
+        "TypeInferBlock.ls" => "selfhost/src/Types/TypeInferBlock.ls",
+        "TypeInferPattern.ls" => "selfhost/src/Types/TypeInferPattern.ls",
+        "TypeInferRecord.ls" => "selfhost/src/Types/TypeInferRecord.ls",
         "TypeInferSmoke.ls" => "selfhost/src/Types/TypeInferSmoke.ls",
         "TypeInfer.ls" => "selfhost/src/Types/TypeInfer.ls",
         "Constraints.ls" => "selfhost/src/Types/Constraints.ls",
@@ -342,6 +346,10 @@ pub(crate) fn selfhost_module(name: &str) -> &'static str {
             include_str!("../../../../selfhost/src/Types/TypeInferFunctions.ls")
         },
         "TypeInferBuiltins.ls" => include_str!("../../../../selfhost/src/Types/TypeInferBuiltins.ls"),
+        "TypeInferApply.ls" => include_str!("../../../../selfhost/src/Types/TypeInferApply.ls"),
+        "TypeInferBlock.ls" => include_str!("../../../../selfhost/src/Types/TypeInferBlock.ls"),
+        "TypeInferPattern.ls" => include_str!("../../../../selfhost/src/Types/TypeInferPattern.ls"),
+        "TypeInferRecord.ls" => include_str!("../../../../selfhost/src/Types/TypeInferRecord.ls"),
         "TypeInferSmoke.ls" => include_str!("../../../../selfhost/src/Types/TypeInferSmoke.ls"),
         "TypeInfer.ls" => include_str!("../../../../selfhost/src/Types/TypeInfer.ls"),
         "Compiler.ls" => include_str!("../../../../selfhost/src/Backend/Wasm/Compiler.ls"),
@@ -478,6 +486,10 @@ pub(crate) fn selfhost_typeinfer_runtime_bundle() -> &'static str {
             "TypeInferFunctions.ls",
             "TypeInferBuiltins.ls",
             "TypeInfer.ls",
+            "TypeInferApply.ls",
+            "TypeInferBlock.ls",
+            "TypeInferPattern.ls",
+            "TypeInferRecord.ls",
         ],
     )
 }
@@ -498,6 +510,10 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> &'static str {
             "TypeInferFunctions.ls",
             "TypeInferBuiltins.ls",
             "TypeInfer.ls",
+            "TypeInferApply.ls",
+            "TypeInferBlock.ls",
+            "TypeInferPattern.ls",
+            "TypeInferRecord.ls",
             "Compiler.ls",
             "WasmEmit.ls",
             "Formatter.ls",
@@ -652,6 +668,10 @@ mod tests {
         let bundle = selfhost_typeinfer_runtime_bundle();
         assert!(bundle.contains(selfhost_module("TypeInferFunctions.ls").trim()));
         assert!(bundle.contains(selfhost_module("TypeInferBuiltins.ls").trim()));
+        assert!(bundle.contains(selfhost_module("TypeInferApply.ls").trim()));
+        assert!(bundle.contains(selfhost_module("TypeInferBlock.ls").trim()));
+        assert!(bundle.contains(selfhost_module("TypeInferPattern.ls").trim()));
+        assert!(bundle.contains(selfhost_module("TypeInferRecord.ls").trim()));
         assert!(bundle.contains(selfhost_module("TypeInfer.ls").trim()));
         assert_eq!(
             bundle.as_ptr(),

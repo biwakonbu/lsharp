@@ -1572,33 +1572,32 @@ fn test_e2e_syntax_golden_fixtures() {
 
 /// TEST-TYPE-03: match 型推論 + infer-pattern
 ///
-/// selfhost/src/Types/TypeInfer.ls に infer-pattern 関数があり、
+/// selfhost/src/Types/TypeInferPattern.ls に infer-pattern 関数があり、
 /// match 式の型推論でコンストラクタパターンに対応していることを検証。
-/// 現状: infer-pattern 関数未実装 → FAIL
 #[test]
 fn test_e2e_selfhost_match_inference() {
-    // TypeInfer.ls を読み込み
-    let type_infer_path = selfhost_source_path("TypeInfer.ls");
+    // TypeInferPattern.ls を読み込み (infer-pattern は TypeInferPattern.ls へ分離済み)
+    let type_infer_pattern_path = selfhost_source_path("TypeInferPattern.ls");
     assert!(
-        type_infer_path.exists(),
-        "selfhost/src/Types/TypeInfer.ls が存在しない"
+        type_infer_pattern_path.exists(),
+        "selfhost/src/Types/TypeInferPattern.ls が存在しない"
     );
-    let type_infer_content =
-        std::fs::read_to_string(&type_infer_path).expect("selfhost/src/Types/TypeInfer.ls の読み込みに失敗");
+    let type_infer_pattern_content =
+        std::fs::read_to_string(&type_infer_pattern_path).expect("selfhost/src/Types/TypeInferPattern.ls の読み込みに失敗");
 
     // infer-pattern 関数が定義されていることを検証
     assert!(
-        type_infer_content.contains("(defn infer-pattern"),
-        "selfhost/src/Types/TypeInfer.ls に infer-pattern 関数が未定義 -- \
+        type_infer_pattern_content.contains("(defn infer-pattern"),
+        "selfhost/src/Types/TypeInferPattern.ls に infer-pattern 関数が未定義 -- \
          match 式のパターン型推論が未実装"
     );
 
     // infer-pattern がコンストラクタパターン対応していることを検証
     assert!(
-        type_infer_content.contains("constructor-pattern")
-            || type_infer_content.contains("ctor-pattern")
-            || type_infer_content.contains("tag-pattern"),
-        "selfhost/src/Types/TypeInfer.ls の infer-pattern が \
+        type_infer_pattern_content.contains("constructor-pattern")
+            || type_infer_pattern_content.contains("ctor-pattern")
+            || type_infer_pattern_content.contains("tag-pattern"),
+        "selfhost/src/Types/TypeInferPattern.ls の infer-pattern が \
          コンストラクタパターンに対応していない"
     );
 }
