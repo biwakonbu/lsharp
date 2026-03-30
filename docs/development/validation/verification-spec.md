@@ -2,7 +2,7 @@
 
 ## 概要
 L# selfhost compiler の正しさを保証するための検証戦略。
-bootstrap 固定点、Wasm/native differential test、テスト行列、性能ゲートの 4 軸で構成する。
+bootstrap 固定点、**guest Wasm component / host launcher differential test**、テスト行列、性能ゲートの 4 軸で構成する。
 
 ---
 
@@ -13,16 +13,16 @@ bootstrap 固定点、Wasm/native differential test、テスト行列、性能�
 - stage2 と stage3 の出力が bit-identical であることが固定点成立の条件
 - 固定点が成立しない場合、そのコミットは CI で reject する
 
-### Wasm/native differential test
-- `stageN.wasm` と `stageN-native` が同じソースに対して同値な観測結果を返すことを検証する
+### guest component / host launcher differential test
+- `stageN.wasm` と、それを host launcher 経由で実行した配布経路が同じソースに対して同値な観測結果を返すことを検証する
 - 観測結果の定義: 終了コード、stdout、生成物ハッシュ、型エラー出力
 
-### 両コンパイル結果比較
-- `selfhost/src/**/*.ls`, `stdlib/*.ls`, `examples/` の全ソースに対して Wasm/native 両系統でコンパイルを実行する
+### 両実行経路比較
+- `selfhost/src/**/*.ls`, `stdlib/*.ls`, `examples/` の全ソースに対して guest component 単体出力と host launcher 経由の配布経路を比較する
 - 終了コード、stdout、生成物ハッシュ、型エラー出力の 4 点を比較する
 
 ### 最適化レベルの固定
-- Native backend v1 は非最適化 (`-O0` 相当) で固定する
+- deferred native backend v1 は非最適化 (`-O0` 相当) で固定する
 - 性能最適化は固定点と互換性が安定した後に別 Phase で扱う
 - `-O0` 固定の理由: 最適化パスによる非決定性を排除し、固定点検証の信頼性を確保するため
 
@@ -75,7 +75,7 @@ stage2.wasm            --[selfhost src]--> stage3.wasm
 
 ---
 
-## P11-2d-2: Wasm/native differential test
+## P11-2d-2: guest component / host launcher differential test
 
 ### 観測点 (5 点)
 differential test で比較する観測点を以下に固定する:
@@ -110,7 +110,7 @@ differential test で比較する観測点を以下に固定する:
 - **ハッシュ/乱数**: seed を固定する (該当機能がある場合)
 
 ### 既知差分の allowlist
-- native-only または Wasm-only の既知差分が発生する場合、allowlist ファイルで管理する
+- host-launcher-only または component-only の既知差分が発生する場合、allowlist ファイルで管理する
 - allowlist の各エントリに理由と解消条件を記載する
 - allowlist に追加する場合は ADR を作成し、TODO に解消タスクを登録する
 - allowlist のエントリ数が 10 を超えた場合は技術負債として優先対応する
@@ -118,10 +118,10 @@ differential test で比較する観測点を以下に固定する:
 allowlist フォーマット:
 ```yaml
 # tests/differential-allowlist.yaml
-- id: "native-stderr-path-format"
+- id: "launcher-stderr-path-format"
   category: "file I/O"
   observation: "stderr"
-  reason: "native は OS パス、Wasm は WASI パスを出力"
+  reason: "host launcher は OS パス、guest component は WASI パスを出力"
   resolve_condition: "パス正規化レイヤーを統一"
   tracking_issue: null
 ```
@@ -135,9 +135,9 @@ tier1 は全テストを実行する最優先プラットフォーム:
 
 | OS | arch | 実行内容 |
 |----|------|----------|
-| macOS | arm64 (Apple Silicon) | bootstrap + Wasm + native 全テスト |
-| macOS | x86_64 (Intel) | bootstrap + Wasm + native 全テスト |
-| Linux | x86_64 | bootstrap + Wasm + native 全テスト |
+| macOS | arm64 (Apple Silicon) | bootstrap + host launcher / component differential 全テスト |
+| macOS | x86_64 (Intel) | bootstrap + host launcher / component differential 全テスト |
+| Linux | x86_64 | bootstrap + host launcher / component differential 全テスト |
 
 tier1 で 1 つでも失敗した場合、PR はマージ不可。
 
@@ -146,7 +146,7 @@ tier2 は段階的にカバレッジを拡大するプラットフォーム:
 
 | OS | arch | 実行内容 |
 |----|------|----------|
-| Windows | x86_64 | native artifact 起動 + CLI smoke test |
+| Windows | x86_64 | host launcher 起動 + embedded guest component CLI smoke |
 
 - Windows での fixed-point 検証は後段対応とする
 - tier2 の失敗は warning 扱いとし、マージをブロックしない (ただし連続失敗は対応必須)
@@ -167,14 +167,14 @@ tier2 は段階的にカバレッジを拡大するプラットフォーム:
 
 - 命名規則: `test_{分類}_{段階}_{内容}`
 - 段階一覧: `frontend`, `type`, `ir`, `backend`, `runtime`, `link`, `package`
-- 例: `test_e2e_backend_native_fib`, `test_bootstrap_link_stage2_symbols`
+- 例: `test_e2e_backend_component_fib`, `test_bootstrap_link_stage2_symbols`
 
 ---
 
 ## P11-2d-4: 性能・回帰ゲート
 
 ### ベンチマーク基準点
-native backend v1 は正しさ優先だが、以下のベンチマークを基準点として保存する:
+host launcher + embedded component の release 経路は正しさ優先だが、以下のベンチマークを基準点として保存する:
 
 | ベンチマーク | 入力 | 計測内容 |
 |-------------|------|----------|

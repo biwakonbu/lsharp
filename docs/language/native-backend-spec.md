@@ -1,5 +1,12 @@
 # Native Backend 仕様
 
+> **Status: Deferred (2026-03-30)**
+>
+> Wasmtime embedding + Component Model を正式配布モデルに据える方針転換により、native backend は Phase 11 の completion gate から外れ Deferred/v2 (V2-08, V2-09) へ移動した。
+> 主配布モデルは Component Model embedding であり、native backend は将来の探求用に保持する。
+> コードは `selfhost/src/Backend/Native/` に残存し、既存 50+ E2E tests も維持される。
+> 詳細は `TODO.md` の Deferred/v2 セクションおよび `backend-boundary.md` を参照。
+
 ## 目的
 
 本書は、L# compiler の native backend が満たすべき契約を定義する。

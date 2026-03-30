@@ -3,7 +3,7 @@
 ## 目的
 
 本書は、L# compiler の frontend、lowering、codegen の間にある境界契約を定義する。
-目的は、Wasm backend と Native backend が同一の Lowered IR を共有し、backend 固有の判断を codegen に閉じ込めることにある。
+目的は、Wasm backend、Component Model backend、Native backend (deferred) が同一の Lowered IR を共有し、backend 固有の判断を codegen に閉じ込めることにある。
 
 ## 適用範囲
 
@@ -28,7 +28,7 @@ Source (.ls)
   -> FrontendResult
   -> Lowering
   -> LoweredModule
-  -> Codegen (Wasm / Native)
+  -> Codegen (Wasm / Component / Native (deferred))
   -> CodegenArtifact
 ```
 
@@ -53,7 +53,7 @@ Source (.ls)
 
 ### LoweredModule
 
-`LoweredModule` は backend 非依存の IR モジュールであり、Wasm backend と Native backend の共通入力となる。
+`LoweredModule` は backend 非依存の IR モジュールであり、Wasm backend、Component Model backend、Native backend (deferred) の共通入力となる。
 
 | フィールド | 内容 |
 |------------|------|
@@ -77,7 +77,8 @@ Source (.ls)
 | 種別 | 内容 |
 |------|------|
 | `WasmArtifact` | `.wasm` バイナリと、その生成に付随する補助情報 |
-| `NativeArtifact` | `.o` などのネイティブ成果物と、リンクに必要な補助情報 |
+| `ComponentArtifact` | `.component.wasm` — core Wasm に Component Model adapter を適用した成果物。WIT world 契約に従う |
+| `NativeArtifact` | `.o` などのネイティブ成果物と、リンクに必要な補助情報 (deferred) |
 
 codegen は `CodegenArtifact` を生成する責務のみを持ち、frontend や lowering の意味解析を再実装してはならない。
 
@@ -104,23 +105,25 @@ lowering は次を担当する。
 lowering は次を行ってはならない。
 
 - 特定ターゲットのレジスタや命令セットに依存した最適化
-- Wasm 専用 / Native 専用の artifact 形式の決定
+- Wasm / Component / Native (deferred) の artifact 形式の決定
 
 ### Codegen の責務
 
 codegen は次を担当する。
 
 - `LoweredModule` を backend 固有のバイナリ表現へ変換する
+- Wasm / Component / Native (deferred) の artifact 分岐を `CodegenArtifact` 境界で完結させる
 - target ごとの ABI、section、relocation、linker 連携を解決する
 - runtime との接続点を具体化する
+- Component Model backend では core Wasm 生成後の post-processing を管理し、WIT world 契約に沿った Component artifact を確定する
 
 codegen は IR 自体の意味を変更してはならない。意味変換が必要な場合は lowering 境界へ戻して設計する。
 
 ## IR 共有方針
 
-Wasm backend と Native backend は、次の原則に従って同一 IR を共有する。
+Wasm backend、Component Model backend、Native backend (deferred) は、次の原則に従って同一 IR を共有する。
 
-1. 両 backend は同じ `LoweredModule` を入力とする
+1. 各 backend は同じ `LoweredModule` を入力とする
 2. backend 固有の変換は codegen の内部に閉じる
 3. calling convention、レジスタ割付、ABI などの情報は IR へ持ち込まない
 4. runtime 依存は import / runtime 契約として明示し、暗黙の host 依存を作らない
@@ -147,8 +150,10 @@ Wasm backend と Native backend は、次の原則に従って同一 IR を共�
 |------|------------------|------------|
 | bootstrap | Wasm | `stageN.wasm` |
 | 固定点検証 | Wasm | 同一入力からの再現可能な `.wasm` |
-| エンドユーザー配布 | Native | プラットフォーム別バイナリ |
-| CI の相互検証 | Wasm + Native | backend 間で同値なテスト結果 |
+| エンドユーザー配布 (正式) | Component | host launcher に embedded `.component.wasm` |
+| HTTP server | Component | `wasi:http/incoming-handler` world の component |
+| ブラウザ配布 | Wasm | browser 向け core `.wasm` |
+| エンドユーザー配布 (deferred) | Native | プラットフォーム別バイナリ |
 
 ## 進化方針
 
@@ -158,7 +163,24 @@ Wasm backend と Native backend は、次の原則に従って同一 IR を共�
 - 新しい backend 固有要件は、まず codegen 側の契約として局所化できるかを検討する
 - frontend と lowering の境界を変更する場合は、型情報と意味解析の責務分担を明文化してから適用する
 
+## Component Model 向け post-processing
+
+Component Model backend は、core Wasm codegen の出力に post-processing を適用する形で実装する。
+
+```text
+LoweredModule
+  -> Wasm Codegen (既存)
+  -> core .wasm
+  -> Component Adapter (wasm-tools / wit-component)
+  -> .component.wasm
+```
+
+selfhost emitter は core Wasm のみを出力する責務を持ち、Component Model wrapping は host 側 (Rust) で行う。これにより selfhost emitter の複雑化を避ける。
+
+WIT world 定義と host/guest 境界の詳細は [`component-model-spec.md`](./component-model-spec.md) を参照。
+
 ## 関連文書
 
 - [`runtime-spec.md`](./runtime-spec.md)
-- [`native-backend-spec.md`](./native-backend-spec.md)
+- [`component-model-spec.md`](./component-model-spec.md)
+- [`native-backend-spec.md`](./native-backend-spec.md) (deferred)

@@ -1,96 +1,100 @@
-# ADR: Rust コードベース撤去
+# ADR: Rust ワークスペース維持と配布モデル転換
 
 ## ステータス
 
 提案 (レビュー待ち)
 
 > **関連ドキュメント**
-> - 撤去前ゲート定義: [`docs/development/planning/completion-criteria.md` § P11-2e-3](../planning/completion-criteria.md)
+> - Phase 13 移行前ゲート定義: [`docs/development/planning/completion-criteria.md` § P11-2e-3](../planning/completion-criteria.md)
 > - ロールバック手順詳細: [`docs/development/operations/rollback-procedure.md`](./rollback-procedure.md)
 > - 配布・署名: [`docs/development/operations/release-distribution-signing.md`](./release-distribution-signing.md)
 
 ## コンテキスト
 
-L# セルフホストコンパイラが Phase 11 完了基準を満たした後、Rust 実装を撤去する。撤去は不可逆な操作であるため、明確なスコープ・順序・ロールバック手順を事前に定義する。
+当初は、L# セルフホストコンパイラが Phase 11 完了基準を満たした後に Rust 実装を物理撤去する方針だった。しかし 2026-03-30 の Component Model pivot により、正式配布モデルは **Wasmtime embedding + guest Wasm component + host launcher single binary** に変更された。これに伴い、Rust workspace は host launcher / component tooling context として継続利用し、物理削除を完了条件から外す必要がある。
 
 ## 決定
 
-### 撤去前提条件
+### 方針転換の前提条件
 
-以下の全条件を満たした後に撤去を開始する。各条件の現在ステータスを示す。
+以下の全条件を満たした後に、新配布モデルへの運用移行を正式化する。各条件の現在ステータスを示す。
 
 | # | 条件 | ステータス | 備考 |
 |---|------|-----------|------|
-| 1 | `ci-gate-v2` が native-only パイプラインで 2 週間安定 | **PENDING** | 安定期間未開始 |
-| 2 | fresh clone テスト（OPS-07）が Rust 無しで pass | **PENDING** | 現行 OPS-07 は Rust 不要ではない |
-| 3 | パフォーマンスベンチマークで Rust 版比 2x 以内 | **PENDING** | ベンチマーク未実施 |
+| 1 | `ci-gate-v2` が host launcher + component パイプラインで 2 週間安定 | **PENDING** | 安定期間未開始 |
+| 2 | fresh clone テスト（OPS-07）がエンドユーザー視点で Rust 無しで pass | **PENDING** | 現行 OPS-07 は clean checkout smoke の暫定 gate |
+| 3 | host launcher 経由の component smoke が release gate に固定 | **PENDING** | release / README smoke の更新途中 |
 | 4 | ステークホルダーによる ADR レビュー完了 | **PENDING** | レビュー証跡なし (下記「レビュー記録」参照) |
-| 5 | `v0.x.y-rust-final` タグの作成 | **PENDING** | タグ未作成 |
+| 5 | rollback 手順が「embedded compiler component の巻き戻し」として確定 | **PENDING** | 文書更新は完了。last-known-good release tag / package 運用の固定が残る |
 
 > ※ 上記は `completion-criteria.md` の P11-2e-3 ゲートと対応する。条件が満たされた時点で各行を更新し、evidence (CI run URL / tag URL / reviewer) を追記する。
 
-### 撤去スコープ
+### 取り下げた前提
 
-以下を **削除順** に処理する。依存度の低い周辺クレートから先に削除し、コアコンパイラは最後に削除する。
+以下の前提は **withdrawn** とする。
 
-| 順序 | 対象 | 説明 |
+- Phase 11 の完了が Rust workspace の物理削除を含む
+- fresh clone / release / rollback の主経路が native-only artifact である
+- rollback の最終到達点が「Rust 実装の復元」である
+
+### 維持スコープ
+
+以下を **維持対象** として扱う。削除順ではなく、Phase 13 配布モデルでの責務を明示する。
+
+| 対象 | 役割 | 備考 |
 |------|------|------|
-| 1 | `crates/lsharp-docs/` | ドキュメントツール |
-| 2 | `crates/lsharp-lsp/` | LSP サーバー |
-| 3 | `crates/lsharp-driver/` | CLI ドライバー |
-| 4 | `crates/lsharp-wasm/` | Wasm コード生成 |
-| 5 | `crates/lsharp-ir/` | 中間表現 (IR) |
-| 6 | `crates/lsharp-types/` | 型推論・制約解決 |
-| 7 | `crates/lsharp-syntax/` | 字句解析・構文解析 |
-| 8 | `Cargo.toml`, `Cargo.lock` | Rust ワークスペース定義 |
-| 9 | `rust-toolchain.toml`, `.cargo/` | Rust ツールチェーン設定 |
+| `crates/lsharp-driver/` | host launcher / CLI エントリポイント | Wasmtime embedding と配布単一バイナリの中心 |
+| `crates/lsharp-wasm/` | guest compiler component の codegen / packaging 補助 | component 出力の検証と build bridge を担う |
+| `crates/lsharp-lsp/`, `crates/lsharp-docs/` | host 側の運用・IDE・文書 tooling | guest component と同じ配布面に接続 |
+| `crates/lsharp-ir/`, `crates/lsharp-types/`, `crates/lsharp-syntax/` | stage0 / tooling / oracle 比較 | selfhost bootstrap と検証文脈で継続利用 |
+| `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `.cargo/` | Rust ワークスペース定義 | 物理削除しない |
 
-### 段階的削除の手順
+### 運用移行の手順
 
 各ステップで以下を実施する:
 
-1. 対象クレートを削除
-2. `Cargo.toml` の workspace members から除外
-3. CI ジョブが pass することを確認
+1. host launcher + embedded component を正本配布物として扱う
+2. fresh clone / release / rollback / verification 文書を同じ用語で揃える
+3. CI ジョブが component smoke を blocking で実行することを確認
 4. コミット・プッシュ
 
-最終ステップ（#8, #9）では `Cargo.toml` 自体を削除するため、CI パイプラインは事前に selfhost ベースに完全移行済みであること。
+Rust workspace 自体は削除しないため、最終ステップは「workspace の責務を host launcher / component tooling へ限定したことの確認」とする。
 
 ### ロールバック手順
 
-#### 即時ロールバック（撤去中）
+#### 即時ロールバック（リリース運用中）
 
-撤去途中で問題が発見された場合:
+host launcher / embedded component の配布切替中に問題が発見された場合:
 
 ```bash
-git revert <removal-commit>
-cargo build   # Rust コンパイラ復元
+git revert <cutover-commit>
+cargo build   # host launcher が再ビルドできることを確認
 ```
 
-#### 完全ロールバック（撤去完了後）
+#### 配布物ロールバック（公開済みリリース）
 
-撤去完了後にロールバックが必要な場合:
+公開済みリリースにロールバックが必要な場合:
 
-1. `v0.x.y-rust-final` タグからチェックアウト
+1. 直前の正常タグからチェックアウト
    ```bash
-   git checkout v0.x.y-rust-final
+   git checkout v<last-known-good>
    ```
-2. Rust コンパイラをビルド
+2. host launcher をビルド
    ```bash
    cargo build --release
    ```
-3. CI ジョブを Rust パスに切り替え
+3. 正常な guest component を再埋め込み、または前回の component package を再採用
    ```bash
    bash scripts/rollback.sh
    ```
-4. テスト実行で復元を検証
+4. Wasm component smoke で復元を検証
    ```bash
    cargo test
    ```
 
-#### `legacy-rust-bootstrap/` からの復元
+#### source snapshot の参照
 
-`legacy-rust-bootstrap/` ディレクトリにスナップショットが保存されている場合:
+`legacy-rust-bootstrap/` ディレクトリが存在しても、それは比較・監査用スナップショットであり primary rollback path ではない。必要時のみ差分確認に使う。
 
 ```bash
 # rollback-procedure.md の手順に従う
@@ -102,46 +106,46 @@ bash scripts/rollback.sh            # 実行
 
 | シナリオ | 重大度 | 対応 |
 |----------|--------|------|
-| L# コンパイラの致命的バグ発見 | Critical | 即時ロールバック + ホットフィックス |
-| パフォーマンス回帰 (>2x) | High | ベンチマーク調査 + 条件付きロールバック |
-| プラットフォーム互換性問題 | High | 対象プラットフォームのみ Rust fallback |
-| ブートストラップ破損 | Critical | stage0 バイナリから復元 |
+| embedded compiler component の致命的バグ発見 | Critical | 直前の正常 component へ巻き戻し + ホットフィックス |
+| host launcher と component の ABI 不整合 | Critical | 同一タグの組へ再パッケージ |
+| プラットフォーム互換性問題 | High | 対象プラットフォームの host launcher package を差し替え |
+| ブートストラップ破損 | Critical | stage0 package から再構成 |
 | CI パイプライン障害 | Medium | CI 設定の修正で対応 |
 
 ### CI リカバリー手順
 
-撤去後の CI で問題が発生した場合:
+新配布モデル移行後の CI で問題が発生した場合:
 
 1. `scripts/rollback.sh` スクリプト実行
    ```bash
    bash scripts/rollback.sh
    ```
-2. `.github/workflows/ci.yml` を Rust パスに切り替え
-   - `cargo test` / `cargo clippy` / `cargo fmt` ジョブを復元
-   - `dtolnay/rust-toolchain` ステップを追加
+2. `.github/workflows/ci.yml` で前回正常な host launcher / component package を使う経路に戻す
+   - `cargo test` / `cargo clippy` / `cargo fmt` は継続利用する
+   - release / smoke job が正常な component smoke に向くことを確認する
 3. `ci-gate` の必須ジョブを更新
-   - selfhost ベースのジョブを Rust ベースに差し替え
+   - 失敗している新配布経路を last-known-good package に差し替え
 4. Branch Protection Rules を更新
 
 ## 結果
 
 ### メリット
 
-- リポジトリサイズの削減（Rust ソース + `target/` キャッシュ）
-- ビルド依存の簡素化（Rust ツールチェーン不要）
-- メンテナンスコストの削減（2 つのコンパイラ実装を維持しない）
+- host launcher / guest component という正式配布モデルを明示できる
+- Rust workspace を削らず、tooling / rollback / packaging の安全弁を維持できる
+- fresh clone / release / rollback 文書を同じアーキテクチャ前提に揃えられる
 
 ### リスク
 
-- ロールバック時の復元コスト
-- Rust エコシステムツール（clippy, miri 等）の喪失
+- host launcher と guest component の責務境界が曖昧だと文書が再び分岐する
+- Rust workspace 維持により「完全 selfhost 完了」と誤解される可能性がある
 - 過渡期の CI 不安定性
 
 ### 緩和策
 
-- `v0.x.y-rust-final` タグによる完全復元ポイント
-- `legacy-rust-bootstrap/` スナップショット保持
-- 段階的削除による影響範囲の最小化
+- rollback 対象を host launcher / embedded component の組み合わせとして固定する
+- `legacy-rust-bootstrap/` を監査用スナップショットとして保持する
+- Phase 13 完了条件と運用 runbook を相互参照にする
 
 ## 証跡
 
@@ -150,7 +154,7 @@ bash scripts/rollback.sh            # 実行
 - `scripts/rollback.sh`
 - `docs/development/operations/rollback-procedure.md`
 - `legacy-rust-bootstrap/`
-- `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs` (`test_e2e_ops08_final_removal_rollback`)
+- `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs`（OPS 系 rollback E2E）
 
 ### レビュー記録
 
@@ -164,15 +168,15 @@ bash scripts/rollback.sh            # 実行
 | 指摘事項 | (なし or 箇条書き) |
 | 承認コミット/PR | (URL) |
 
-### 撤去開始承認
+### 運用移行承認
 
-> **PENDING**: 撤去前提条件の全チェックが完了した後、ここに承認記録を追記する。
+> **PENDING**: 方針転換の前提条件が全て満たされた後、ここに承認記録を追記する。
 
 | 項目 | 内容 |
 |------|------|
-| `v0.x.y-rust-final` タグ | (URL / SHA) |
+| last-known-good release tag | (URL / SHA) |
 | CI 安定期間開始日 | (未開始) |
 | CI 安定期間終了日 | (未完了) |
 | CHANGELOG / ADR 記録箇所 | (未記録) |
-| native-only RC バージョン | (未作成) |
+| host-launcher RC バージョン | (未作成) |
 | RC 検証者 | (未定) |

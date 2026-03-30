@@ -20,10 +20,10 @@
 |----|------|-----------|
 | `CP-01` | selfhost frontend を Rust fallback なしで回す | `BOOT-01`〜`BOOT-04` 完了 |
 | `CP-02` | syntax/type parity の土台を固める | `SYNTAX-01`〜`SYNTAX-06`, `TYPE-01`〜`TYPE-08` 完了 |
-| `CP-03` | IR/backend/native/bootstrap parity を成立させる | `IR-01`〜`IR-06`, `WASM-01`〜`WASM-06`, `NATIVE-01`〜`NATIVE-06` 完了 |
+| `CP-03` | IR/backend/Wasm bootstrap parity を成立させる（native parity は Deferred/v2） | `IR-01`〜`IR-06`, `WASM-01`〜`WASM-06` 完了。`NATIVE-01`〜`NATIVE-06` は Gate 外 / v2 |
 | `CP-04` | 公開 toolchain を L# 実装へ移す | `CLI-01`〜`PKG-01` 完了 |
 | `CP-05` | 長寿命 runtime を gate 化する | `GC-01`〜`GC-06` 完了 |
-| `CP-06` | CI/release/default path を L# 正本へ切り替え、Rust を撤去する | `OPS-01`〜`OPS-08` 完了 |
+| `CP-06` | CI/release/default path を L# 正本へ切り替え、host launcher + guest component 配布へ収束させる | `OPS-01`〜`OPS-08` 完了（Rust 物理撤去は含まない） |
 
 ## Workstream Details
 
@@ -644,13 +644,13 @@
 <a id="pkg-01-archives-checksums-and-quick-start"></a>
 ### PKG-01 Archives checksums and Quick Start
 
-- Goal: native 配布物だけで Quick Start が完走する配布形を固定する。
-- Current state: package shape と smoke path が未完成。
+- Goal: host launcher + embedded guest component の single binary 配布で Quick Start が完走する配布形を固定する。
+- Current state: package shape と smoke path は未完成で、Component Model pivot 後の single-binary artifact 契約も未固定。
 - Rust source: `docs/development/operations/release-distribution-signing.md`, `docs/development/planning/toolchain-parity-spec.md`
 - L# target: `scripts/ci/release-smoke.sh`, `scripts/smoke_test_readme.sh`, release workflow
-- Implementation direction: 配布アーカイブ内容は `lsharp`, `lsharp-lsp`, `README.md`, `LICENSE`, `checksums.txt`, `CHANGELOG.md` に固定し、Quick Start smoke は展開後 `--version -> check -> build/test/run` を自動化する。
+- Implementation direction: 配布アーカイブ内容は host launcher としての `lsharp`, `lsharp-lsp`, `README.md`, `LICENSE`, `checksums.txt`, `CHANGELOG.md` に固定し、各バイナリには guest component を内包する。Quick Start smoke は展開後 `--version -> check -> build/test/run` を自動化する。
 - Dependencies: `CLI-02`, `LSP-02`, `OPS-06`
-- Acceptance: release artifact 展開だけで README Quick Start が通り、checksum 検証も自動化される。
+- Acceptance: single-binary release artifact 展開だけで README Quick Start が通り、checksum 検証も自動化される。
 - Evidence: `scripts/smoke_test_readme.sh`, `scripts/ci/release-smoke.sh`
 
 ## WS-RUNTIME Long-lived runtime stability
@@ -792,38 +792,38 @@
 <a id="ops-06-release-playbook"></a>
 ### OPS-06 Release playbook
 
-- Goal: native release の build/sign/checksum/changelog を自動化する。
-- Current state: `scripts/release-playbook.sh` は release binary を作り、`compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用して smoke まで回せる。**ただし** tag push 起点の release workflow、署名、checksum / changelog 自動生成は未接続。
+- Goal: host launcher + embedded guest component 配布の build/sign/checksum/changelog を自動化する。
+- Current state: `scripts/release-playbook.sh` は release binary を作り、`compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用して smoke まで回せる。**ただし** tag push 起点の release workflow、署名、checksum / changelog 自動生成と single-binary artifact 命名の固定は未接続。
 - Rust source: `docs/development/operations/release-playbook.md`, `docs/development/operations/release-distribution-signing.md`
 - L# target: release workflow, `scripts/generate-changelog.sh`, `scripts/ci/verify-signature.sh`
-- Implementation direction: stable/nightly の 2 チャネルを固定し、release は `version bump -> CI -> artifact -> checksum -> signing -> smoke -> tag -> GitHub Release` の順に自動化する。
+- Implementation direction: stable/nightly の 2 チャネルを固定し、release は `version bump -> CI -> host-launcher artifact -> checksum -> signing -> smoke -> tag -> GitHub Release` の順に自動化する。
 - Dependencies: `PKG-01`, `OPS-01`
-- Acceptance: tag push だけで tier1 release artifact, checksums, notes が生成される。
+- Acceptance: tag push だけで tier1 host launcher release artifact, checksums, notes が生成される。
 - Evidence: release workflow, GitHub Releases, `checksums-*.txt`
 
 <a id="ops-07-fresh-clone-without-rust"></a>
 ### OPS-07 Fresh clone without Rust
 
-- Goal: Rust 未導入環境から bootstrap と native release を再現する。
-- Current state: `scripts/ci/test-fresh-clone.sh` + `fresh-clone-smoke` により clean checkout 相当コピーからの再ビルド / smoke は blocking 化された。**ただし** Rust 未導入環境での `fetch-stage0 -> bootstrap -> native-release -> test -> release-bundle` を通す true no-Rust job は未実装。
+- Goal: Rust 未導入の利用者環境から host launcher single binary release smoke を再現する。
+- Current state: `scripts/ci/test-fresh-clone.sh` + `fresh-clone-smoke` により clean checkout 相当コピーからの再ビルド / smoke は blocking 化された。**ただし** Rust 未導入環境で release artifact を展開し、embedded guest component 経由で `default-path-smoke` / Quick Start を通す true no-Rust job は未実装。
 - Rust source: `docs/development/operations/fresh-clone-spec.md`
-- L# target: `make fetch-stage0`, `make bootstrap`, `make native-release`, `make test`, `make release-bundle`
-- Implementation direction: `test-fresh-clone` job を追加し、Rust toolchain を含まない container/runner で `fetch-stage0 -> bootstrap -> native-release -> test -> release-bundle` を通す。
-- Dependencies: `OPS-06`, `NATIVE-05`
-- Acceptance: fresh clone CI が main merge ごとに green になる。
-- Evidence: `test-fresh-clone` job, `docs/development/operations/fresh-clone-spec.md`
+- L# target: `scripts/ci/test-fresh-clone.sh`, `scripts/ci/release-smoke.sh`, `scripts/smoke_test_readme.sh`
+- Implementation direction: `test-fresh-clone` job を Component Model pivot 後の single-binary smoke に再定義し、Rust toolchain を含まない container/runner で `download release artifact -> verify checksum -> default-path-smoke -> README Quick Start smoke` を通す。
+- Dependencies: `OPS-06`, `PKG-01`
+- Acceptance: fresh clone / release smoke CI が main merge ごとに green になる。
+- Evidence: `test-fresh-clone` job, `release-smoke` job, `docs/development/operations/fresh-clone-spec.md`
 
 <a id="ops-08-final-removal-and-rollback"></a>
-### OPS-08 Final removal and rollback
+### OPS-08 Host launcher cutover and rollback
 
-- Goal: Rust 最終撤去と rollback 手順を decision-complete にする。
-- Current state: final removal checklist と rollback plan は仕様だけで、repo state へ未反映。
+- Goal: host launcher + guest component 構成の最終切替と rollback 手順を decision-complete にする。
+- Current state: rollback plan は存在するが、final removal 前提の checklist が残っており、Component Model pivot 後の host/guest 境界に合わせた運用へ未更新。
 - Rust source: `docs/development/operations/adr-rust-removal.md`, `docs/development/planning/completion-criteria.md`
 - L# target: root tree, `docs/adr/`, release docs
-- Implementation direction: removal は `Cargo.toml`, `Cargo.lock`, `crates/`, `rust-toolchain.toml`, `.cargo/`, workflow 内 `cargo` を段階削除し、同時に `v0.x.y-rust-final` tag, rollback ADR, CI 復旧手順を固定する。
+- Implementation direction: Rust workspace は host launcher として残存させ、`adr-rust-removal.md` / rollback docs / release docs を「embedded compiler component の差し戻し」「host capability 変更の巻き戻し」「last-known-good single-binary tag」基準へ再定義する。
 - Dependencies: `OPS-04`, `OPS-05`, `OPS-07`
-- Acceptance: Rust 依存ファイルが repo から消え、rollback 手順が release docs と ADR で追える。
-- Evidence: `git ls-files '*rs'`, `git tag -l 'v*-rust-final'`, rollback ADR
+- Acceptance: Rust 物理撤去を前提にせず、host launcher / guest component の rollback 手順が release docs と ADR で追える。
+- Evidence: `docs/development/operations/adr-rust-removal.md`, `docs/development/operations/rollback-procedure.md`, release docs
 
 ## Gate 外 / v2
 

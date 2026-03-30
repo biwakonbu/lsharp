@@ -306,8 +306,9 @@ fi
 echo ""
 echo "  定義済み語彙:"
 echo "    - bootstrap oracle: Rust 実装を stage0 として使用する参照実装"
-echo "    - legacy reference: 比較検証用に一時保持する旧 Rust 実装"
-echo "    - native release: L# 製ネイティブバイナリの正式配布物"
+echo "    - host launcher: Wasmtime と guest component を束ねる正式配布用バイナリ"
+echo '    - guest component: host launcher に埋め込む `.component.wasm` の正本成果物'
+echo "    - single binary distribution: host launcher + embedded guest component + stdlib の配布形態"
 
 # =============================================================================
 # サマリ

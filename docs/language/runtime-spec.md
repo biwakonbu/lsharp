@@ -2,7 +2,7 @@
 
 ## 目的
 
-本書は、Wasm backend と Native backend が共有する L# runtime の契約を定義する。
+本書は、Wasm backend、Component Model backend、Native backend (deferred) が共有する L# runtime の契約を定義する。
 runtime はメモリ確保、値表現、GC root 管理、I/O、診断の共通基盤を提供し、compiler core が host 環境へ直接依存しないようにする。
 
 ## 適用範囲
@@ -31,7 +31,7 @@ runtime はメモリ確保、値表現、GC root 管理、I/O、診断の共通�
 runtime は次の原則に従う。
 
 1. compiler は runtime API を通じてのみメモリと host 機能へアクセスする
-2. Wasm / Native の両 backend は同一の値表現と root 管理モデルを共有する
+2. Wasm / Component Model / Native (deferred) は同一の値表現と root 管理モデルを共有する
 3. GC 導入前後で compiler 側の API 契約を変えない
 4. host 依存の差分は runtime boundary で吸収し、compiler core へ漏らさない
 
@@ -41,17 +41,17 @@ runtime は次の原則に従う。
 
 runtime 実装は少なくとも次の API を提供しなければならない。
 
-| 関数 | シグネチャ | 役割 |
-|------|-----------|------|
-| `alloc_words` | `(size: Int, tag: Int) -> LsharpWord` | ワード単位のヒープ確保 |
-| `alloc_bytes` | `(size: Int, tag: Int) -> LsharpWord` | バイト単位のヒープ確保 |
-| `print` | `(value: LsharpWord) -> void` | 標準出力への出力 |
-| `eprint` | `(value: LsharpWord) -> void` | 標準エラー出力への出力 |
-| `read_file` | `(path: LsharpWord) -> LsharpWord` | ファイル読み込み。結果は `Result` 相当の値で返す |
-| `write_file` | `(path: LsharpWord, content: LsharpWord) -> LsharpWord` | ファイル書き込み。結果は `Result` 相当の値で返す |
-| `file_exists` | `(path: LsharpWord) -> LsharpWord` | ファイル存在確認。結果は `Bool` 相当の値で返す |
-| `read_dir` | `(path: LsharpWord) -> LsharpWord` | ディレクトリ一覧取得。結果は `Result` 相当の値で返す |
-| `clock_now_millis` | `() -> LsharpWord` | 現在時刻をミリ秒で返す |
+| 関数 | シグネチャ | 役割 | Component Model (WIT) |
+|------|-----------|------|----------------------|
+| `alloc_words` | `(size: Int, tag: Int) -> LsharpWord` | ワード単位のヒープ確保 | guest 内部 (host 非公開) |
+| `alloc_bytes` | `(size: Int, tag: Int) -> LsharpWord` | バイト単位のヒープ確保 | guest 内部 (host 非公開) |
+| `print` | `(value: LsharpWord) -> void` | 標準出力への出力 | `wasi:io/streams.output-stream` |
+| `eprint` | `(value: LsharpWord) -> void` | 標準エラー出力への出力 | `wasi:io/streams.output-stream` |
+| `read_file` | `(path: LsharpWord) -> LsharpWord` | ファイル読み込み | `wasi:filesystem/types` |
+| `write_file` | `(path: LsharpWord, content: LsharpWord) -> LsharpWord` | ファイル書き込み | `wasi:filesystem/types` |
+| `file_exists` | `(path: LsharpWord) -> LsharpWord` | ファイル存在確認 | `wasi:filesystem/types` |
+| `read_dir` | `(path: LsharpWord) -> LsharpWord` | ディレクトリ一覧取得 | `wasi:filesystem/types` |
+| `clock_now_millis` | `() -> LsharpWord` | 現在時刻をミリ秒で返す | `wasi:clocks/monotonic-clock` |
 
 compiler core は `malloc` や OS syscall を直接呼び出してはならず、必ず上記 API か同等の runtime service を経由する。
 

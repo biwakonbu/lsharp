@@ -1,12 +1,12 @@
 # P11-4 ツールチェイン parity 仕様書
 
-**最終更新**: 2026-03-25
+**最終更新**: 2026-03-30
 
 ---
 
 ## 概要
 
-L# 製ツールチェイン (CLI, LSP, formatter, linter, docs) を正式化し、Rust ホストや Wasm ランタイムなしでエンドユーザーが開発フローを完走できるようにする。
+L# 製ツールチェイン (CLI, LSP, formatter, linter, docs) を正式化し、エンドユーザーが Rust 開発環境や外部 Wasm ランタイムの事前準備なしに single binary (host launcher + embedded guest component) で開発フローを完走できるようにする。
 
 本仕様は以下に依存する:
 
@@ -14,7 +14,7 @@ L# 製ツールチェイン (CLI, LSP, formatter, linter, docs) を正式化し�
 - **P11-2** stdlib parity
 - **P11-3** compiler parity
 
-これらが満たされた上で、ツールチェイン全体をネイティブ L# 実装に置き換え、自己完結した開発体験を提供する。
+これらが満たされた上で、ツールチェイン全体を L# guest component として供給し、Wasmtime embedding を行う host launcher から利用する自己完結した開発体験を提供する。
 
 ---
 
@@ -55,35 +55,35 @@ L# 製 formatter/linter を AST 全体対応に拡張し、CLI と LSP の両経
 
 ### T4-4: docs/review/knowledge 等の L# 移植
 
-docs/review/knowledge/doc-check/doc-ack/install/repl を L# 側へ移植し、VSCode 拡張のバックエンドを Rust LSP からネイティブな L# 実装へ切り替える。
+docs/review/knowledge/doc-check/doc-ack/install/repl を L# 側へ移植し、VSCode 拡張のバックエンドを Rust LSP から host launcher 同梱の L# 実装へ切り替える。
 
 **受入基準:**
 
 - AC-013: `lsharp doc`, `lsharp review`, `lsharp doc-check`, `lsharp doc-ack`, `lsharp install`, `lsharp repl` が L# 実装で動作する
 - AC-014: knowledge JSON の schema が Rust 版と互換である
-- AC-015: VSCode 拡張が L# ネイティブバイナリをバックエンドとして使用する
+- AC-015: VSCode 拡張が host launcher 同梱の L# バックエンドを使用する
 - AC-016: Rust LSP への依存が拡張から除去されている
 
-### T4-5: ネイティブ配布形式の固定
+### T4-5: single binary 配布形式の固定
 
-macOS/Linux/Windows 向けのネイティブ配布形式、クロスビルド手順、署名/パッケージング方針を固定する。
+macOS/Linux/Windows 向けの host launcher + embedded guest component 配布形式、クロスビルド手順、署名/パッケージング方針を固定する。
 
 **受入基準:**
 
-- AC-017: macOS 向け .tar.gz (署名/公証付き)、Linux 向け .tar.gz、Windows 向け .zip + .exe が CI で生成される
+- AC-017: macOS 向け .tar.gz (署名/公証付き)、Linux 向け .tar.gz、Windows 向け .zip + .exe の host launcher 配布物が CI で生成される
 - AC-018: クロスビルド手順がドキュメント化され、CI で再現可能である
 - AC-019: 全配布物に checksums.txt が同梱される
 - AC-020: 署名検証手順がドキュメント化されている
 
 ### T4-6: 完了条件
 
-エンドユーザーが Rust バイナリにも Wasm ランタイムにも触れずにネイティブ配布物だけで開発フローを完走できる。
+エンドユーザーが Rust 開発環境にも外部 Wasm ランタイムにも触れず、single binary 配布物だけで開発フローを完走できる。
 
 **受入基準:**
 
 - AC-021: Rust/wasmtime/clang 未インストール環境で配布アーカイブを展開し、`lsharp build` → `lsharp test` → `lsharp run` が成功する
-- AC-022: VSCode 拡張が同梱ネイティブバイナリだけで全機能を提供する
-- AC-023: README の Quick Start が native 配布物のみで完走する
+- AC-022: VSCode 拡張が同梱 host launcher バイナリだけで全機能を提供する
+- AC-023: README の Quick Start が single binary 配布物のみで完走する
 
 ---
 
@@ -172,7 +172,7 @@ hover/definition/references/rename/formatting/completion のレスポンス形�
 
 ### T4b-4: VSCode 拡張の spawn 方式
 
-VSCode 拡張はネイティブ LSP バイナリを spawn する方式に固定し、Node 側で解析ロジックを持たない。
+VSCode 拡張は host launcher 形式の LSP バイナリを spawn する方式に固定し、Node 側で解析ロジックを持たない。
 
 **受入基準:**
 
@@ -246,7 +246,7 @@ knowledge JSON, review output, doc generator の schema を固定し、CI で sn
 
 ### T4d-2: doc-ack/doc-check trailer 仕様の維持
 
-doc-ack/doc-check の trailer 仕様を native CLI でも維持する。
+doc-ack/doc-check の trailer 仕様を host launcher CLI でも維持する。
 
 **受入基準:**
 
@@ -294,7 +294,7 @@ macOS は .tar.gz + 署名/公証、Linux は .tar.gz、Windows は .zip + .exe 
 
 ### T4e-2: release artifact の同梱物
 
-release artifact には lsharp, lsharp-lsp, README, LICENSE, checksums.txt を同梱する。
+release artifact には host launcher としての `lsharp`, `lsharp-lsp`, `README.md`, `LICENSE`, `checksums.txt` を同梱する。
 
 **受入基準:**
 
@@ -316,7 +316,7 @@ Homebrew/apt/scoop 等のパッケージマネージャ対応は v1 では任意
 
 ### T4e-4: VSCode 拡張の LSP バイナリ探索
 
-VSCode 拡張は同梱ネイティブ LSP を優先し、PATH 探索は fallback に限定する。
+VSCode 拡張は同梱 host launcher LSP を優先し、PATH 探索は fallback に限定する。
 
 **受入基準:**
 
@@ -341,7 +341,7 @@ VSCode 拡張は同梱ネイティブ LSP を優先し、PATH 探索は fallback
 
 ### T4f-2: 同一 artifact からの供給
 
-全主要ツールが同一 native release artifact 群から供給される。
+全主要ツールが同一 single-binary release artifact 群から供給される。
 
 **受入基準:**
 
@@ -351,7 +351,7 @@ VSCode 拡張は同梱ネイティブ LSP を優先し、PATH 探索は fallback
 
 ### T4f-3: Quick Start の完走
 
-README の Quick Start が native 配布物だけで完走できる。
+README の Quick Start が single binary 配布物だけで完走できる。
 
 **受入基準:**
 
@@ -404,7 +404,7 @@ README の Quick Start が native 配布物だけで完走できる。
 |--------|----------|------|
 | **P11-1** 言語機能 parity | L# のセルフホスト言語機能が Rust 実装と同等 | ツールチェイン自体を L# で記述するために必要 |
 | **P11-2** stdlib parity | 標準ライブラリが IO, ファイルシステム, プロセス起動を提供 | CLI/LSP が OS とやり取りするために必要 |
-| **P11-3** compiler parity | L# 製コンパイラがネイティブバイナリを生成可能 | ツールチェイン自体をネイティブ配布するために必要 |
+| **P11-3** compiler parity | L# 製コンパイラが `wasi-component` / `web-wasm` target を安定生成できる | guest component を host launcher 配布へ組み込むために必要 |
 
 **P11-1 → P11-2 → P11-3 → P11-4** の順序依存があり、各フェーズの完了が次のフェーズの着手条件となる。
 
@@ -414,7 +414,7 @@ README の Quick Start が native 配布物だけで完走できる。
 
 | リスク | 影響 | 緩和策 |
 |--------|------|--------|
-| ネイティブバイナリのクロスコンパイルが不安定 | 配布物の品質低下 | CI で 3 OS x 2 arch のビルドマトリクスを維持 |
+| host launcher のクロスビルドまたは component embedding が不安定 | 配布物の品質低下 | CI で 3 OS x 2 arch の host launcher ビルドと component smoke を維持 |
 | Apple 公証の審査遅延 | macOS リリースの遅延 | 公証をリリースパイプラインの早期ステージに配置 |
 | LSP full sync のパフォーマンス不足 | 大規模ファイルでの応答遅延 | 1000 行以下を v1 ターゲットとし、incremental sync を v2 で対応 |
 | formatter/linter の AST 全ノード対応の工数 | スケジュール超過 | builtin rule を最小セットに絞り段階的に拡張 |
@@ -427,7 +427,9 @@ README の Quick Start が native 配布物だけで完走できる。
 
 | 用語 | 定義 |
 |------|------|
-| **ネイティブバイナリ** | L# コンパイラが生成する OS ネイティブの実行可能ファイル (Wasm 中間形式を経由しない) |
+| **host launcher** | Wasmtime を内包し、L# 製 guest component を実行する配布用バイナリ |
+| **guest component** | L# で実装された compiler/toolchain を Wasm Component Model 形式で包んだ成果物 |
+| **single binary 配布** | host launcher に guest component を同梱した正式配布形 |
 | **配布アーカイブ** | リリース時に提供される .tar.gz / .zip 形式のアーカイブ |
 | **CLI parity** | L# 製 CLI が Rust 製 CLI と同一の引数・出力・終了コードを持つこと |
 | **LSP parity** | L# 製 LSP が Rust 製 LSP と同一の JSON レスポンスを返すこと |

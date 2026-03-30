@@ -1,11 +1,11 @@
 # リリースプレイブック
 
-L# の **手元実行手順** を定義する。配布チャネル、tier1/tier2、署名、package manager 方針の正本は [`release-distribution-signing.md`](./release-distribution-signing.md)。このページは自動化スクリプト `scripts/release-playbook.sh` と並走するオペレーター向け runbook に絞る。
+L# の **手元実行手順** を定義する。配布チャネル、tier1/tier2、署名、package manager 方針の正本は [`release-distribution-signing.md`](./release-distribution-signing.md)。このページは自動化スクリプト `scripts/release-playbook.sh` と並走するオペレーター向け runbook に絞る。配布モデルは **Wasmtime embedding + guest Wasm component + host launcher single binary** を前提とする。
 
 ## 概要
 
 ```
-バージョンバンプ → CI 検証 → アーティファクト生成 → チェックサム → タグ作成 → GitHub Release
+バージョンバンプ → CI 検証 → host launcher / component package 生成 → チェックサム → タグ作成 → GitHub Release
 ```
 
 - channel / target matrix は `release-distribution-signing.md`
@@ -39,8 +39,8 @@ vim Cargo.toml   # version = "0.x.y"
 | 2 | `cargo test` | 全テスト実行 |
 | 3 | `cargo clippy -- -D warnings` | リント |
 | 4 | `cargo fmt --check` | フォーマット検証 |
-| 5 | `LSHARP_BIN=target/release/lsharp bash scripts/ci/compile-phase11-inputs.sh` | release バイナリで selfhost / stdlib / examples の固定入力セットを検証 |
-| 6 | `LSHARP_BIN=target/release/lsharp bash scripts/ci/default-path-smoke.sh` + `scripts/smoke_test_readme.sh` | release バイナリ smoke + README smoke |
+| 5 | `LSHARP_BIN=target/release/lsharp bash scripts/ci/compile-phase11-inputs.sh` | release host launcher で selfhost / stdlib / examples の固定入力セットを検証 |
+| 6 | `LSHARP_BIN=target/release/lsharp bash scripts/ci/default-path-smoke.sh` + `scripts/smoke_test_readme.sh` | release host launcher + guest component の smoke + README smoke |
 | 7 | チェックサム生成 | `scripts/checksum.sh` |
 
 ### 3. アーティファクト生成
@@ -49,7 +49,8 @@ vim Cargo.toml   # version = "0.x.y"
 
 | アーティファクト | 説明 |
 |---|---|
-| `lsharp` バイナリ | `target/release/lsharp` |
+| `lsharp` host launcher | `target/release/lsharp` |
+| guest component package | `target/release-playbook/` 以下の component / bundle 出力（埋め込み用または検証用 sidecar） |
 | release playbook 検証成果物 | `target/release-playbook/` 以下の bootstrap / smoke 出力 |
 | チェックサム | SHA-256 チェックサムファイル |
 
@@ -62,7 +63,7 @@ vim Cargo.toml   # version = "0.x.y"
 bash scripts/checksum.sh
 ```
 
-全リリースアーティファクトに SHA-256 チェックサムを付与する。
+全リリースアーティファクトに SHA-256 チェックサムを付与する。single-binary host launcher と sidecar component を併売する場合は、両方に個別チェックサムを付ける。
 
 ### 5. タグ作成と自動リリース
 
@@ -82,7 +83,7 @@ git push origin v<version>
 | ジョブ | 内容 |
 |------|------|
 | `verify` | `cargo test` + `cargo clippy` + `cargo fmt --check` |
-| `build` | Tier1 の 4 プラットフォームで `cargo build --release` + `scripts/release.sh` でアーカイブ作成 |
+| `build` | Tier1 の 4 プラットフォームで `cargo build --release` + `scripts/release.sh` で host launcher archive / component package を作成 |
 | `release` | `softprops/action-gh-release` で GitHub Release を作成し、全アーティファクトを添付 |
 
 - バージョン文字列にハイフンが含まれる場合 (例: `v0.2.0-rc1`) はプレリリースとして公開
@@ -106,7 +107,7 @@ stable / nightly の扱い、署名順序、package manager 更新順は `releas
 
 1. 該当リリースを GitHub Releases で `pre-release` に変更
 2. 修正版を緊急リリース（パッチバージョン）
-3. 必要に応じて `scripts/rollback.sh` で Rust 実装に切り戻し
+3. 必要に応じて `docs/development/operations/rollback-procedure.md` に従い、直前の正常な host launcher / guest component 組へ巻き戻す
 
 詳細は `docs/development/operations/rollback-procedure.md` を参照。
 
