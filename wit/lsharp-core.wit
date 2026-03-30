@@ -1,0 +1,68 @@
+/// L# Core Compilation Interface
+///
+/// コンパイラ・ランタイムの共有インターフェース定義。
+/// host launcher と guest component 間の batch API contract。
+/// P13-B-3 (Coarse-grained host API) の基盤。
+
+package lsharp:core@0.1.0;
+
+/// コンパイルターゲット
+interface targets {
+  /// Wasm 出力ターゲット
+  enum wasm-target {
+    /// WASI Preview1 core module (既存デフォルト)
+    wasi-preview1,
+    /// WASI Preview2 component (Component Model)
+    wasi-component,
+    /// ブラウザ向け pure Wasm (WASI なし)
+    web-wasm,
+  }
+}
+
+/// コンパイラインターフェース
+interface compiler {
+  use targets.{wasm-target};
+
+  /// コンパイル結果
+  record compile-result {
+    /// 生成された Wasm バイナリ
+    binary: list<u8>,
+    /// 警告・情報メッセージ
+    diagnostics: list<string>,
+  }
+
+  /// L# ソースコードをコンパイルして Wasm バイナリを返す
+  compile: func(source: string, target: wasm-target) -> result<compile-result, string>;
+}
+
+/// ホスト提供の batch ファイル操作 (P13-B-3 用)
+interface host-fs {
+  /// ファイル読み込み (パス → 内容)
+  read-file: func(path: string) -> result<string, string>;
+
+  /// ファイル書き込み
+  write-file: func(path: string, content: list<u8>) -> result<_, string>;
+
+  /// 複数ファイルの一括読み込み
+  read-files: func(paths: list<string>) -> list<result<string, string>>;
+}
+
+/// ホスト提供のプロセス実行 (P13-B-3 用)
+interface host-process {
+  /// 外部プロセス実行結果
+  record process-result {
+    exit-code: s32,
+    stdout: string,
+    stderr: string,
+  }
+
+  /// 外部プロセスを実行
+  run-process: func(command: string, args: list<string>) -> result<process-result, string>;
+}
+
+/// Core library world — compiler + host capabilities
+world lsharp-core {
+  import host-fs;
+  import host-process;
+  export compiler;
+}
