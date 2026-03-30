@@ -781,7 +781,7 @@
 ### OPS-05 Default path migration
 
 - Goal: public command の default path を Rust から L# へ切り替える。
-- Current state: `default-path-smoke.sh` でビルド済み `lsharp` バイナリ経路は blocking 化され、さらに `fresh-clone-smoke` で clean checkout 由来の同経路も継続検証できる。加えて `crates/lsharp-driver/src/main.rs` の `LSHARP_PATH` が external compiler executable / 配置ディレクトリへの delegation hook を持ち、`crates/lsharp-driver/tests/default_path_delegation.rs` で executable path / directory path / invalid path error を固定した。**ただし** compatibility matrix の `Default path` 自体はほぼ Rust のまま。
+- Current state: `default-path-smoke.sh` でビルド済み `lsharp` バイナリ経路は blocking 化され、さらに `fresh-clone-smoke` で clean checkout 由来の同経路も継続検証できる。加えて `crates/lsharp-driver/src/main.rs` の `LSHARP_PATH` は external compiler executable / 配置ディレクトリに加えて preview1 `.wasm` selfhost artifact も受け付けるようになり、`crates/lsharp-driver/tests/default_path_delegation.rs` では executable path / directory path / preview1 `.wasm` artifact / invalid path error を固定した。`scripts/ci/default-path-smoke.sh` も `selfhost/src/App/SmokeCli.ls` を stage1 Wasm smoke artifact として生成し、`check` / `fmt` / `compile -o` の narrow daily smoke を relative path 上で検証できる。**ただし** compatibility matrix の `Default path` 自体はほぼ Rust のまま。
 - Rust source: `docs/development/planning/compatibility-matrix.md`, `docs/development/operations/default-path-migration.md`
 - L# target: `docs/development/planning/compatibility-matrix.md`, CLI/LSP entrypoints
 - Implementation direction: 切替順は `compile -> check -> parse -> test -> build -> fmt -> lsp -> docs` に固定し、各切替前に parity/golden/smoke を通す。切替後の Rust path は shadow へ下げる。
@@ -817,13 +817,13 @@
 ### OPS-08 Host launcher cutover and rollback
 
 - Goal: host launcher + guest component 構成の最終切替と rollback 手順を decision-complete にする。
-- Current state: rollback plan は存在するが、final removal 前提の checklist が残っており、Component Model pivot 後の host/guest 境界に合わせた運用へ未更新。
+- Current state: rollback docs / release docs / playbook / script は host launcher + guest component 基準へ同期済み。GitHub Release notes の `Rollback anchor` を last-known-good release tag / host launcher asset / guest component asset / checksum の正本として運用する契約まで固定した。
 - Rust source: `docs/development/operations/adr-rust-removal.md`, `docs/development/planning/completion-criteria.md`
 - L# target: root tree, `docs/adr/`, release docs
-- Implementation direction: Rust workspace は host launcher として残存させ、`adr-rust-removal.md` / rollback docs / release docs を「embedded compiler component の差し戻し」「host capability 変更の巻き戻し」「last-known-good single-binary tag」基準へ再定義する。
+- Implementation direction: Rust workspace は host launcher として残存させ、rollback は GitHub Release 上の `Rollback anchor` から同一 tag の host launcher / guest component asset set を復元する運用に統一する。
 - Dependencies: `OPS-04`, `OPS-05`, `OPS-07`
 - Acceptance: Rust 物理撤去を前提にせず、host launcher / guest component の rollback 手順が release docs と ADR で追える。
-- Evidence: `docs/development/operations/adr-rust-removal.md`, `docs/development/operations/rollback-procedure.md`, release docs
+- Evidence: `docs/development/operations/adr-rust-removal.md`, `docs/development/operations/rollback-procedure.md`, `docs/development/operations/release-distribution-signing.md`, `docs/development/operations/release-playbook.md`, `scripts/rollback.sh`, `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs` (`test_e2e_ops08_final_removal_rollback`, `test_e2e_ops08_rollback_lkg_contract`)
 
 ## Gate 外 / v2
 

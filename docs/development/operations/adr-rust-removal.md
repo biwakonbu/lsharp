@@ -25,7 +25,7 @@
 | 2 | fresh clone テスト（OPS-07）がエンドユーザー視点で Rust 無しで pass | **PENDING** | 現行 OPS-07 は clean checkout smoke の暫定 gate |
 | 3 | host launcher 経由の component smoke が release gate に固定 | **PENDING** | release / README smoke の更新途中 |
 | 4 | ステークホルダーによる ADR レビュー完了 | **PENDING** | レビュー証跡なし (下記「レビュー記録」参照) |
-| 5 | rollback 手順が「embedded compiler component の巻き戻し」として確定 | **PENDING** | 文書更新は完了。last-known-good release tag / package 運用の固定が残る |
+| 5 | rollback 手順が「embedded compiler component の巻き戻し」として確定 | **DONE** | GitHub Release notes の `Rollback anchor` を last-known-good release tag / host asset / guest component asset / checksum の正本として固定済み |
 
 > ※ 上記は `completion-criteria.md` の P11-2e-3 ゲートと対応する。条件が満たされた時点で各行を更新し、evidence (CI run URL / tag URL / reviewer) を追記する。
 
@@ -75,19 +75,21 @@ cargo build   # host launcher が再ビルドできることを確認
 
 公開済みリリースにロールバックが必要な場合:
 
-1. 直前の正常タグからチェックアウト
+1. GitHub Release notes の `Rollback anchor` から `last-known-good release tag` と asset 名を確認
+2. 直前の正常タグからチェックアウト
    ```bash
    git checkout v<last-known-good>
    ```
-2. host launcher をビルド
+3. host launcher をビルド
    ```bash
    cargo build --release
    ```
-3. 正常な guest component を再埋め込み、または前回の component package を再採用
+4. 正常な guest component を再埋め込み、または同じ anchor の component package を再採用
    ```bash
-   bash scripts/rollback.sh
+   bash scripts/rollback.sh --dry-run v<last-known-good>
+   bash scripts/rollback.sh v<last-known-good> <guest-component-asset>
    ```
-4. Wasm component smoke で復元を検証
+5. Wasm component smoke で復元を検証
    ```bash
    cargo test
    ```
@@ -98,8 +100,8 @@ cargo build   # host launcher が再ビルドできることを確認
 
 ```bash
 # rollback-procedure.md の手順に従う
-bash scripts/rollback.sh --dry-run  # シミュレーション
-bash scripts/rollback.sh            # 実行
+bash scripts/rollback.sh --dry-run v<last-known-good>             # シミュレーション
+bash scripts/rollback.sh v<last-known-good> <guest-component-asset>  # 実行
 ```
 
 ### ロールバックが必要なシナリオ
@@ -116,16 +118,18 @@ bash scripts/rollback.sh            # 実行
 
 新配布モデル移行後の CI で問題が発生した場合:
 
-1. `scripts/rollback.sh` スクリプト実行
+1. GitHub Release notes の `Rollback anchor` から前回正常な tag / asset 名を確認
+2. `scripts/rollback.sh` スクリプト実行
    ```bash
-   bash scripts/rollback.sh
+   bash scripts/rollback.sh --dry-run v<last-known-good>
+   bash scripts/rollback.sh v<last-known-good> <guest-component-asset>
    ```
-2. `.github/workflows/ci.yml` で前回正常な host launcher / component package を使う経路に戻す
-   - `cargo test` / `cargo clippy` / `cargo fmt` は継続利用する
-   - release / smoke job が正常な component smoke に向くことを確認する
-3. `ci-gate` の必須ジョブを更新
-   - 失敗している新配布経路を last-known-good package に差し替え
-4. Branch Protection Rules を更新
+3. `.github/workflows/ci.yml` で前回正常な host launcher / component package を使う経路に戻す
+    - `cargo test` / `cargo clippy` / `cargo fmt` は継続利用する
+    - release / smoke job が正常な component smoke に向くことを確認する
+4. `ci-gate` の必須ジョブを更新
+    - 失敗している新配布経路を last-known-good package に差し替え
+5. Branch Protection Rules を更新
 
 ## 結果
 
@@ -174,7 +178,7 @@ bash scripts/rollback.sh            # 実行
 
 | 項目 | 内容 |
 |------|------|
-| last-known-good release tag | (URL / SHA) |
+| last-known-good release tag | GitHub Release notes の `Rollback anchor` を正本とする |
 | CI 安定期間開始日 | (未開始) |
 | CI 安定期間終了日 | (未完了) |
 | CHANGELOG / ADR 記録箇所 | (未記録) |

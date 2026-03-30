@@ -2109,6 +2109,10 @@ fn test_e2e_ops05_default_path_migration() {
             || content.contains("compiler path"),
         "main.rs に L# compiler path 設定が存在しない"
     );
+    assert!(
+        content.contains(".wasm"),
+        "main.rs は preview1 .wasm selfhost artifact delegation を説明すること"
+    );
     let smoke = project_root.join("scripts/ci/default-path-smoke.sh");
     assert!(
         smoke.is_file(),
@@ -2128,6 +2132,14 @@ fn test_e2e_ops05_default_path_migration() {
         smoke_content.contains("delegated-dir:--version"),
         "default-path-smoke.sh は directory path delegation を smoke すること"
     );
+    assert!(
+        smoke_content.contains("SmokeCli.ls"),
+        "default-path-smoke.sh は selfhost Wasm smoke artifact を生成すること"
+    );
+    assert!(
+        smoke_content.contains("fmt smoke_input.ls"),
+        "default-path-smoke.sh は selfhost Wasm 経由の fmt smoke を持つこと"
+    );
     let doc = project_root.join("docs/development/operations/default-path-migration.md");
     assert!(
         doc.is_file(),
@@ -2142,6 +2154,14 @@ fn test_e2e_ops05_default_path_migration() {
     assert!(
         doc_content.contains("process-entry delegation"),
         "default-path-migration.md は LSHARP_PATH が process-entry delegation であることを明記すること"
+    );
+    assert!(
+        doc_content.contains("App/SmokeCli.ls"),
+        "default-path-migration.md は STR-03 用の narrow selfhost Wasm artifact を記載すること"
+    );
+    assert!(
+        doc_content.contains("preview1 `.wasm`"),
+        "default-path-migration.md は preview1 .wasm selfhost smoke を記載すること"
     );
     assert!(
         doc_content.contains("13 CLI サブコマンド"),
@@ -2161,6 +2181,10 @@ fn test_e2e_ops05_default_path_migration() {
     assert!(
         matrix_content.contains("argv 丸ごと外部 `lsharp` binary へ委譲"),
         "compatibility-matrix.md は LSHARP_PATH の argv delegation を明記すること"
+    );
+    assert!(
+        matrix_content.contains("`LSHARP_PATH=<*.wasm>` smoke 対象"),
+        "compatibility-matrix.md は preview1 .wasm smoke path を明記すること"
     );
 }
 
@@ -2272,6 +2296,84 @@ fn test_e2e_ops08_final_removal_rollback() {
     assert!(
         adr_doc.is_file(),
         "docs/development/operations/adr-rust-removal.md が存在しない"
+    );
+}
+
+/// TEST-OPS-08b: rollback docs/script が host launcher + guest component + LKG 運用に揃うこと
+#[test]
+fn test_e2e_ops08_rollback_lkg_contract() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let rollback_doc = project_root.join("docs/development/operations/rollback-procedure.md");
+    let release_doc = project_root.join("docs/development/operations/release-distribution-signing.md");
+    let phase11_plan = project_root.join("docs/development/planning/phase11-implementation-plan.md");
+    let rollback_adr = project_root.join("docs/development/operations/adr-rust-removal.md");
+    let rollback_script = project_root.join("scripts/rollback.sh");
+
+    let rollback_doc_text =
+        std::fs::read_to_string(&rollback_doc).expect("rollback-procedure.md の読み込みに失敗");
+    let release_doc_text = std::fs::read_to_string(&release_doc)
+        .expect("release-distribution-signing.md の読み込みに失敗");
+    let phase11_plan_text =
+        std::fs::read_to_string(&phase11_plan).expect("phase11-implementation-plan.md の読み込みに失敗");
+    let rollback_adr_text =
+        std::fs::read_to_string(&rollback_adr).expect("adr-rust-removal.md の読み込みに失敗");
+    let rollback_script_text =
+        std::fs::read_to_string(&rollback_script).expect("rollback.sh の読み込みに失敗");
+
+    assert!(
+        rollback_doc_text.contains("last-known-good release tag")
+            || rollback_doc_text.contains("last-known-good release tag または package"),
+        "rollback-procedure.md に LKG tag/package 契約が明記されていない"
+    );
+    assert!(
+        !rollback_doc_text.contains("bash scripts/rollback.sh --dry-run  # シミュレーション")
+            && !rollback_doc_text.contains("bash scripts/rollback.sh            # 実行"),
+        "rollback-procedure.md が rollback.sh の旧引数なし呼び方を案内している"
+    );
+    assert!(
+        rollback_doc_text.contains("host launcher")
+            && rollback_doc_text.contains("guest component"),
+        "rollback-procedure.md が host launcher + guest component 前提を明記していない"
+    );
+    assert!(
+        release_doc_text.contains("last-known-good"),
+        "release-distribution-signing.md に last-known-good 運用が記載されていない"
+    );
+    assert!(
+        phase11_plan_text.contains("Rollback anchor")
+            || phase11_plan_text.contains("GitHub Release notes")
+            || phase11_plan_text.contains("last-known-good"),
+        "phase11-implementation-plan.md の OPS-08 節が LKG rollback contract を参照していない"
+    );
+    assert!(
+        !phase11_plan_text.contains("運用へ未更新"),
+        "phase11-implementation-plan.md の OPS-08 節に stale な未更新記述が残っている"
+    );
+    assert!(
+        rollback_adr_text.contains("Rollback anchor")
+            || rollback_adr_text.contains("GitHub Release notes")
+            || rollback_adr_text.contains("last-known-good release tag"),
+        "adr-rust-removal.md が LKG rollback anchor 契約を参照していない"
+    );
+    assert!(
+        !rollback_adr_text.contains("| 5 | rollback 手順が「embedded compiler component の巻き戻し」として確定 | **PENDING** |"),
+        "adr-rust-removal.md に stale な rollback pending 行が残っている"
+    );
+    assert!(
+        !rollback_adr_text.contains("bash scripts/rollback.sh\n")
+            || rollback_adr_text.contains("bash scripts/rollback.sh --dry-run v<last-known-good>")
+            || rollback_adr_text.contains("bash scripts/rollback.sh v<last-known-good>"),
+        "adr-rust-removal.md が rollback.sh の旧呼び方を案内している"
+    );
+    assert!(
+        rollback_script_text.contains("last-known-good")
+            || rollback_script_text.contains("host launcher")
+            || rollback_script_text.contains("guest component"),
+        "rollback.sh が current rollback contract を案内していない"
+    );
+    assert!(
+        !rollback_script_text.contains("legacy-rust-bootstrap"),
+        "rollback.sh が旧 Rust fallback 前提をまだ参照している"
     );
 }
 

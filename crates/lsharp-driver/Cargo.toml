@@ -24,3 +24,6 @@ serde_json.workspace = true
 sha2 = "0.10"
 rustyline = "15"
 dirs = "6"
+
+[dev-dependencies]
+wat = "1"

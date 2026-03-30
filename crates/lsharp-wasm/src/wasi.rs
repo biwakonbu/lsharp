@@ -505,6 +505,14 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     Ok(wasm_module.finish())
 }
 
+/// Preview2/component 化向けの core Wasm を生成する。
+///
+/// 現段階では selfhost emitter の責務を core Wasm 生成に留め、
+/// 実際の component wrapping は `component_adapter` 側で後段処理する。
+pub fn emit_wasm_wasi_p2(module: &Module) -> Result<Vec<u8>, CodegenError> {
+    emit_wasm_wasi(module)
+}
+
 /// __print_i64: i64 の値を10進文字列に変換して stdout に出力
 fn emit_print_i64_func(codes: &mut CodeSection) {
     use wasm_encoder::Instruction as W;
@@ -2006,6 +2014,15 @@ mod tests {
         emit_wasm_wasi(&module).unwrap()
     }
 
+    fn compile_wasi_p2(source: &str) -> Vec<u8> {
+        let program = lsharp_syntax::parse(source).unwrap();
+        let mut infer = Infer::new();
+        let type_results = infer.infer_program(&program).unwrap();
+        let mut lower = Lower::new();
+        let module = lower.lower_program(&program, &type_results).unwrap();
+        emit_wasm_wasi_p2(&module).unwrap()
+    }
+
     fn run_wasi(wasm_bytes: &[u8]) -> String {
         use wasmtime::*;
         use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
@@ -2096,6 +2113,31 @@ mod tests {
         assert_eq!(&wasm[0..4], b"\0asm");
         let wasm_no_gc = compile_wasi("(defn main [] (print 42))");
         assert!(wasm.len() > wasm_no_gc.len());
+    }
+
+    #[test]
+    fn test_emit_wasm_wasi_p2_basic_program_compiles() {
+        let wasm = compile_wasi_p2("(defn main [] (print 42))");
+        assert!(wasm.len() > 8);
+        assert_eq!(&wasm[0..4], b"\0asm");
+    }
+
+    #[test]
+    fn test_emit_wasm_wasi_p2_keeps_preview1_core_imports_for_adapter_layer() {
+        let wasm = compile_wasi_p2("(defn main [] (print 42))");
+
+        use wasmtime::Engine;
+        let engine = Engine::default();
+        let module = wasmtime::Module::new(&engine, &wasm).unwrap();
+        let imports: Vec<_> = module.imports().collect();
+
+        assert_eq!(imports.len(), 9, "P2 entrypoint should still emit the 9 core WASI imports");
+        assert!(
+            imports
+                .iter()
+                .all(|import| import.module() == "wasi_snapshot_preview1"),
+            "component adapter 前の core module は preview1 imports を維持する"
+        );
     }
 
     #[test]

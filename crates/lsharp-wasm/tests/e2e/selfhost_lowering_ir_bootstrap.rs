@@ -321,6 +321,29 @@ fn test_e2e_selfhost_wasi_helpers() {
     );
 }
 
+/// TEST-WASM-04B: WasiBackend.ls に preview1/component target 切替の足場があること
+#[test]
+fn test_e2e_selfhost_wasi_backend_target_flag_scaffold() {
+    let content = read_selfhost_lowering_source("WasiBackend.ls", "WASI target flag 未実装");
+
+    assert!(
+        content.contains("(defn wasi-target-preview1"),
+        "WasiBackend.ls に wasi-target-preview1 定数が必要"
+    );
+    assert!(
+        content.contains("(defn wasi-target-component"),
+        "WasiBackend.ls に wasi-target-component 定数が必要"
+    );
+    assert!(
+        content.contains("(defn wasi-module-name-length-for-target"),
+        "WasiBackend.ls に target 別 module name length helper が必要"
+    );
+    assert!(
+        content.contains("(defn wasi-imports-for-target"),
+        "WasiBackend.ls に target 別 import helper が必要"
+    );
+}
+
 /// TEST-WASM-05: selfhost/src/Tools/Test/TestRunner.ls の存在 + :example/:invariant テスト生成
 #[test]
 fn test_e2e_selfhost_test_runner() {

@@ -603,6 +603,21 @@
       (parse-computation-steps-v3 spans pos-ref src
         (make-computation-node 0)))))
 
+(defn parse-symbol-var-v3 [spans pos-ref src]
+  (let [start (p-start spans pos-ref)
+    end (p-end spans pos-ref)
+    h (name-hash src start end)]
+    (do
+      (p-advance pos-ref)
+      (make-var-node h))))
+
+(defn parse-string-node-v3 [spans pos-ref]
+  (let [start (p-start spans pos-ref)
+    end (p-end spans pos-ref)]
+    (do
+      (p-advance pos-ref)
+      (make-string-node (+ start 1) (- end 1)))))
+
 ;; 式のパース (メインディスパッチ)
 (defn parse-expr-v3 [spans pos-ref src]
   (let [kind (p-current spans pos-ref)]
@@ -622,10 +637,7 @@
           (if (== kind 14) ;; false
             (do (p-advance pos-ref) (make-bool-node 0))
             (if (== kind 12) ;; String
-              (let [start (p-start spans pos-ref)
-                end (p-end spans pos-ref)]
-                (do (p-advance pos-ref)
-                  (make-string-node (+ start 1) (- end 1)))) ;; 引用符を除く
+              (parse-string-node-v3 spans pos-ref) ;; 引用符を除く
               (if (== kind 54) ;; '
                 (parse-quote-v3 spans pos-ref src)
                 (if (== kind 55) ;; ~
@@ -637,11 +649,7 @@
                         (parse-recordlit-v3 spans pos-ref src)
                         (parse-recordupdate-v3 spans pos-ref src))
                       (if (== kind 20) ;; Symbol (変数参照)
-                        (let [start (p-start spans pos-ref)
-                          end (p-end spans pos-ref)
-                          h (name-hash src start end)]
-                          (do (p-advance pos-ref)
-                            (make-var-node h)))
+                        (parse-symbol-var-v3 spans pos-ref src)
                         (if (== kind 0) ;; LParen -> S 式
                           (parse-sexp-v3 spans pos-ref src)
                           ;; unknown token

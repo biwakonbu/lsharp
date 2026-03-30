@@ -5,7 +5,8 @@ use lsharp_ir::Module;
 /// compile バックエンドターゲット
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompileTarget {
-    Wasm,
+    WasiComponent,
+    WebWasm,
     Native,
 }
 
@@ -29,15 +30,21 @@ pub fn resolve_compile_target(
 }
 
 fn infer_target_from_output_path(output_path: &Path) -> CompileTarget {
-    match output_path.extension().and_then(|ext| ext.to_str()) {
-        Some("wasm") => CompileTarget::Wasm,
-        _ => CompileTarget::Native,
+    let output_name = output_path.file_name().and_then(|name| name.to_str()).unwrap_or("");
+    if output_name.ends_with(".component.wasm") {
+        CompileTarget::WasiComponent
+    } else {
+        match output_path.extension().and_then(|ext| ext.to_str()) {
+            Some("wasm") => CompileTarget::WasiComponent,
+            _ => CompileTarget::Native,
+        }
     }
 }
 
 fn default_output_path(file: &Path, target: CompileTarget) -> PathBuf {
     match target {
-        CompileTarget::Wasm => file.with_extension("wasm"),
+        CompileTarget::WasiComponent => file.with_extension("component.wasm"),
+        CompileTarget::WebWasm => file.with_extension("wasm"),
         CompileTarget::Native => {
             let stem = file
                 .file_stem()
@@ -101,7 +108,7 @@ pub fn compile_file(
     let (target, output_path) = if let Some(output_path) = output {
         resolve_compile_target(Some(output_path), requested_target)?
     } else {
-        let target = requested_target.unwrap_or(CompileTarget::Wasm);
+        let target = requested_target.unwrap_or(CompileTarget::WasiComponent);
         let output_path = default_output_path(file, target);
         (target, output_path)
     };
@@ -117,9 +124,15 @@ pub fn compile_file(
     }
 
     match target {
-        CompileTarget::Wasm => {
+        CompileTarget::WasiComponent => {
             let wasm_bytes =
-                lsharp_wasm::wasi::emit_wasm_wasi(&module).map_err(|e| miette::miette!("{e}"))?;
+                lsharp_wasm::wasi::emit_wasm_wasi_p2(&module).map_err(|e| miette::miette!("{e}"))?;
+            std::fs::write(&output_path, &wasm_bytes)
+                .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
+        }
+        CompileTarget::WebWasm => {
+            let wasm_bytes =
+                lsharp_wasm::codegen::emit_wasm(&module).map_err(|e| miette::miette!("{e}"))?;
             std::fs::write(&output_path, &wasm_bytes)
                 .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
         }
@@ -142,14 +155,19 @@ mod tests {
 
     #[test]
     fn test_resolve_compile_target_uses_output_extension_when_flag_missing() {
+        let component_output = Path::new("demo.component.wasm");
         let wasm_output = Path::new("demo.wasm");
         let native_output = Path::new("demo");
 
+        let (component_target, component_path) =
+            resolve_compile_target(Some(component_output), None).unwrap();
         let (wasm_target, wasm_path) = resolve_compile_target(Some(wasm_output), None).unwrap();
         let (native_target, native_path) =
             resolve_compile_target(Some(native_output), None).unwrap();
 
-        assert_eq!(wasm_target, CompileTarget::Wasm);
+        assert_eq!(component_target, CompileTarget::WasiComponent);
+        assert_eq!(component_path, component_output);
+        assert_eq!(wasm_target, CompileTarget::WasiComponent);
         assert_eq!(wasm_path, wasm_output);
         assert_eq!(native_target, CompileTarget::Native);
         assert_eq!(native_path, native_output);
@@ -157,12 +175,29 @@ mod tests {
 
     #[test]
     fn test_resolve_compile_target_prefers_explicit_flag() {
-        let output = Path::new("demo");
+        let output = Path::new("demo.component.wasm");
         let (target, resolved_path) =
-            resolve_compile_target(Some(output), Some(CompileTarget::Wasm)).unwrap();
+            resolve_compile_target(Some(output), Some(CompileTarget::WebWasm)).unwrap();
 
-        assert_eq!(target, CompileTarget::Wasm);
+        assert_eq!(target, CompileTarget::WebWasm);
         assert_eq!(resolved_path, output);
+    }
+
+    #[test]
+    fn test_compile_file_defaults_to_wasi_component_output_extension() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_default_component_target");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        std::fs::write(&file, "(defn main [] 42)\n").unwrap();
+
+        let artifacts = compile_file(&file, None, false, None).unwrap();
+        assert_eq!(artifacts.output_path, dir.join("Main.component.wasm"));
+        assert!(artifacts.output_path.exists());
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -228,7 +263,7 @@ mod tests {
         std::fs::create_dir_all(dir.join(".git")).unwrap();
 
         let file = dir.join("Main.ls");
-        let output = dir.join("Main.wasm");
+        let output = dir.join("Main.component.wasm");
         std::fs::write(&file, "(defn   main  []   42)\n").unwrap();
 
         let artifacts = compile_file(&file, Some(&output), false, None).unwrap();
@@ -239,6 +274,63 @@ mod tests {
             "compile は format 差分を検出して書き戻すべき"
         );
         assert!(output.exists(), "compile は Wasm 出力を生成するべき");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_file_web_wasm_target_uses_core_codegen_path() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_web_wasm");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(&file, "(defn main [] 42)\n").unwrap();
+
+        let artifacts = compile_file(&file, Some(&output), false, Some(CompileTarget::WebWasm))
+            .unwrap();
+        assert_eq!(artifacts.output_path, output);
+
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+        assert!(
+            wasm_bytes
+                .windows(b"env".len())
+                .any(|window| window == b"env"),
+            "web-wasm 出力には env import 名が含まれるべき"
+        );
+        assert!(
+            !wasm_bytes
+                .windows(b"wasi_snapshot_preview1".len())
+                .any(|window| window == b"wasi_snapshot_preview1"),
+            "web-wasm は preview1 import 名を含むべきではない"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_file_plain_wasm_output_without_target_keeps_wasi_codegen() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_plain_wasm_default");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(&file, "(defn main [] 42)\n").unwrap();
+
+        let artifacts = compile_file(&file, Some(&output), false, None).unwrap();
+        assert_eq!(artifacts.output_path, output);
+
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+        assert!(
+            wasm_bytes
+                .windows(b"wasi_snapshot_preview1".len())
+                .any(|window| window == b"wasi_snapshot_preview1"),
+            "plain .wasm output は後方互換のため preview1 import を維持するべき"
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }

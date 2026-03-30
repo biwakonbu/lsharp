@@ -160,6 +160,7 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "Token.ls" => "selfhost/src/Syntax/Token.ls",
         "AST.ls" => "selfhost/src/Syntax/AST.ls",
         "Lexer.ls" => "selfhost/src/Syntax/Lexer.ls",
+        "LexerCompat.ls" => "selfhost/src/Syntax/LexerCompat.ls",
         "Parser.ls" => "selfhost/src/Syntax/Parser.ls",
         "Derive.ls" => "selfhost/src/Syntax/Derive.ls",
         "Hygiene.ls" => "selfhost/src/Syntax/Hygiene.ls",

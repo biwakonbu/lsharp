@@ -89,6 +89,22 @@ git push origin v<version>
 - バージョン文字列にハイフンが含まれる場合 (例: `v0.2.0-rc1`) はプレリリースとして公開
 - `release_notes` は GitHub の自動生成を使用
 
+### 7. Rollback anchor の記録
+
+stable release を publish したら、同じ GitHub Release notes に以下の `Rollback anchor` セクションを追記する。
+
+```text
+Rollback anchor
+- last-known-good release tag: v<version>
+- host launcher assets: <attached asset names>
+- guest component assets: <attached asset names>
+- checksum: <attached checksum file>
+```
+
+- asset 名は **実際に添付したファイル名** をそのまま書く。
+- package manager package は二次配布なので anchor には含めない。
+- rollback 手順はこの anchor を起点に `rollback-procedure.md` の B/C フローへ入る。
+
 #### 手動公開が必要な場合のみ
 
 自動 workflow を使わず手動で GitHub Release を作成する場合:
@@ -98,6 +114,7 @@ git push origin v<version>
 3. リリースノートを記載（変更点、破壊的変更、移行手順）
 4. アーティファクトをアップロード
 5. チェックサムファイルを添付
+6. `Rollback anchor` セクションに tag / asset 名 / checksum 名を記録
 
 stable / nightly の扱い、署名順序、package manager 更新順は `release-distribution-signing.md` を参照。
 

@@ -15,5 +15,5 @@
       (print (string-length src))
       (print (vector-get step1 0))
       (print (vector-get step1 1))
-      (print (token-count (vector-get step1 2)))
+      (print (/ (vector-length (vector-get step1 2)) 3))
       0)))

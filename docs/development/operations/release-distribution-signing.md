@@ -19,12 +19,24 @@ version bump
   -> signing
   -> release smoke
   -> tag / GitHub Release
+  -> rollback anchor
   -> package manager update
 ```
 
 - `ci-gate-v2` が release 前提の blocking gate。
 - 署名と package manager 更新は **公式アーカイブを正本** にしてぶら下げる。
 - 詳細な手元実行コマンドは `scripts/release-playbook.sh` と `release-playbook.md` に寄せる。
+
+## last-known-good (LKG) rollback anchor
+
+- stable release は毎回 1 つの **rollback anchor** を持つ。
+- rollback anchor の正本は **GitHub Release 上の stable tag + asset set** とし、package manager package は二次配布なので anchor にはしない。
+- anchor に最低限含める情報は以下の 3 点:
+  1. `last-known-good release tag` (`vX.Y.Z`)
+  2. 同じ tag に紐づく host launcher archive / guest component package の asset 名
+  3. 同じ release に添付した checksum file 名
+- stable release は GitHub Release notes に `Rollback anchor` セクションを追記し、上記 3 点を明記してから完了扱いにする。
+- nightly は継続検証チャネルであり、LKG anchor は更新しない。
 
 ## 公開チャネル
 
@@ -81,6 +93,7 @@ signtool verify /pa lsharp.exe
 - version と checksum は GitHub Release 上の正本 artifact と一致させる。
 - package manager 更新は release 後段に置き、24 時間以内の反映を目標にする。
 - v1 では package manager 自体は best-effort で、正本は公式アーカイブ。
+- rollback 時の復旧元も package manager package ではなく、LKG rollback anchor で指定した GitHub Release asset を使う。
 
 ## cross-build 方針
 

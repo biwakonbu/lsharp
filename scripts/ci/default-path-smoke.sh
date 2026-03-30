@@ -28,6 +28,45 @@ if [[ ! -s "$OUT_WASM" ]]; then
   exit 1
 fi
 
+echo "=== default-path-smoke: selfhost wasm smoke ==="
+WASM_SMOKE_DIR="$OUT_DIR/wasm-smoke"
+WASM_SMOKE_ARTIFACT="$WASM_SMOKE_DIR/selfhost-smoke.wasm"
+WASM_SMOKE_INPUT="$WASM_SMOKE_DIR/smoke_input.ls"
+WASM_SMOKE_OUTPUT="$WASM_SMOKE_DIR/smoke_output.txt"
+rm -rf "$WASM_SMOKE_DIR"
+mkdir -p "$WASM_SMOKE_DIR"
+printf '(defn main [] 42)\n' > "$WASM_SMOKE_INPUT"
+"$LSHARP_BIN" compile selfhost/src/App/SmokeCli.ls -o "$WASM_SMOKE_ARTIFACT"
+if [[ ! -s "$WASM_SMOKE_ARTIFACT" ]]; then
+  echo "ERROR: selfhost wasm artifact empty: $WASM_SMOKE_ARTIFACT"
+  exit 1
+fi
+
+WASM_CHECK_OUTPUT="$(cd "$WASM_SMOKE_DIR" && LSHARP_PATH="$WASM_SMOKE_ARTIFACT" "$LSHARP_BIN" check smoke_input.ls)"
+if [[ "$WASM_CHECK_OUTPUT" != *"check:ok"* ]] || [[ "$WASM_CHECK_OUTPUT" != *"diagnostics:0"* ]]; then
+  echo "ERROR: selfhost wasm check output mismatch"
+  echo "$WASM_CHECK_OUTPUT"
+  exit 1
+fi
+
+WASM_FMT_OUTPUT="$(cd "$WASM_SMOKE_DIR" && LSHARP_PATH="$WASM_SMOKE_ARTIFACT" "$LSHARP_BIN" fmt smoke_input.ls)"
+if [[ "$WASM_FMT_OUTPUT" != "$(cat "$WASM_SMOKE_INPUT")" ]]; then
+  echo "ERROR: selfhost wasm fmt output mismatch"
+  printf 'expected:\n%s\nactual:\n%s\n' "$(cat "$WASM_SMOKE_INPUT")" "$WASM_FMT_OUTPUT"
+  exit 1
+fi
+
+WASM_COMPILE_OUTPUT="$(cd "$WASM_SMOKE_DIR" && LSHARP_PATH="$WASM_SMOKE_ARTIFACT" "$LSHARP_BIN" compile smoke_input.ls -o smoke_output.txt)"
+if [[ "$WASM_COMPILE_OUTPUT" != *"wasm-size:"* ]]; then
+  echo "ERROR: selfhost wasm compile output mismatch"
+  echo "$WASM_COMPILE_OUTPUT"
+  exit 1
+fi
+if [[ ! -s "$WASM_SMOKE_OUTPUT" ]]; then
+  echo "ERROR: selfhost wasm compile output file empty: $WASM_SMOKE_OUTPUT"
+  exit 1
+fi
+
 echo "=== default-path-smoke: LSHARP_PATH delegation ==="
 DELEGATE_ROOT="$OUT_DIR/delegation"
 DELEGATE_EXEC="$DELEGATE_ROOT/delegate-exec.sh"

@@ -11,12 +11,15 @@ wasm-encoder.workspace = true
 thiserror.workspace = true
 wasmtime.workspace = true
 wasmtime-wasi.workspace = true
+wit-component = "0.245.1"
+wit-parser = "0.245.1"
 
 [dev-dependencies]
 insta.workspace = true
 criterion.workspace = true
 serde_json.workspace = true
 wasmparser = "0.221"
+wat = "1"
 
 [[bench]]
 name = "compiler_pipeline"

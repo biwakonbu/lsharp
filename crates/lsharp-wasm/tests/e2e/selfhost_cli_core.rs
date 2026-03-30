@@ -76,6 +76,67 @@ fn test_e2e_selfhost_cli_help_output() {
     }
 }
 
+/// TEST-CLI-01-B2: selfhost/src/App/Cli.ls の compile target parser helper が preview1/component/alias を区別できること
+#[test]
+fn test_e2e_selfhost_cli_compile_target_parser_helper() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (parse-compile-target-name "wasi-preview1"))
+    (print (parse-compile-target-name "wasi-component"))
+    (print (parse-compile-target-name "wasm"))
+    (print (parse-compile-target-name "bogus"))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["0", "1", "1", "-1"],
+        "compile target parser helper は preview1/component/alias/invalid を区別するべき: {:?}",
+        lines
+    );
+}
+
+/// TEST-CLI-01-B3: compile/build subcommand help に target option が明示されること
+#[test]
+fn test_e2e_selfhost_cli_compile_help_mentions_target_option() {
+    let harness = r#"
+(defn main []
+  (do
+    (print-string (format-subcommand-help "compile"))
+    (print-string "
+")
+    (print-string (format-subcommand-help "build"))
+    (print-string "
+")
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 2,
+        "subcommand help 出力が不足: {:?}",
+        lines
+    );
+    assert!(
+        lines[0].contains("--target"),
+        "compile help は --target option を案内するべき: {:?}",
+        lines[0]
+    );
+    assert!(
+        lines[1].contains("--target"),
+        "build help は --target option を案内するべき: {:?}",
+        lines[1]
+    );
+}
+
 /// TEST-CLI-01-C: selfhost/src/App/Cli.ls の --version 相当出力が `lsharp x.y.z` 形式であること
 ///
 /// T4a-2 AC-105: version 出力形式を固定する
@@ -2267,6 +2328,78 @@ fn test_e2e_selfhost_cli_main_with_args_build_output_path() {
         written.trim(),
         lines[0],
         "build --output は stdout summary を output file にも書くべき"
+    );
+}
+
+/// TEST-CLI-02-AF6: actual Cli main は compile <file> --target ... -o <path> を併用できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_compile_target_and_output_path() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_main_args_compile_target_output_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let output = compile_and_run_with_dir_and_args(
+        selfhost_cli_runtime_bundle(),
+        &dir,
+        &["compile", "input.ls", "--target", "wasi-component", "-o", "targeted.txt"],
+    );
+    let written = std::fs::read_to_string(dir.join("targeted.txt")).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 1,
+        "Cli main compile --target ... -o 出力が不足: {:?}",
+        lines
+    );
+    assert!(
+        lines[0].starts_with("wasm-size:"),
+        "Cli main compile --target ... -o は wasm-size:<n> を返すべき: {:?}",
+        lines
+    );
+    assert_eq!(
+        written.trim(),
+        lines[0],
+        "compile --target ... -o は stdout summary を output file にも書くべき"
+    );
+}
+
+/// TEST-CLI-02-AF7: actual Cli main は build <file> --output <path> --target wasm を併用できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_build_output_path_and_target_alias() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_main_args_build_output_target_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let output = compile_and_run_with_dir_and_args(
+        selfhost_cli_runtime_bundle(),
+        &dir,
+        &["build", "input.ls", "--output", "build-target.txt", "--target", "wasm"],
+    );
+    let written = std::fs::read_to_string(dir.join("build-target.txt")).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 1,
+        "Cli main build --output ... --target 出力が不足: {:?}",
+        lines
+    );
+    assert!(
+        lines[0].starts_with("wasm-size:"),
+        "Cli main build --output ... --target は wasm-size:<n> を返すべき: {:?}",
+        lines
+    );
+    assert_eq!(
+        written.trim(),
+        lines[0],
+        "build --output ... --target は stdout summary を output file にも書くべき"
     );
 }
 

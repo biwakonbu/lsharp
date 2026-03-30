@@ -114,10 +114,10 @@ Phase 13 (Component Model) に進む前に、以下のゲートを全て通過�
 - 長寿命 stateful LSP/REPL workload で GC 有効時にメモリが単調増加しないこと
 - `docs/development/planning/runtime-stability-spec.md` の S14/S15/S16 を満たすこと
 
-### ゲート 3: rollback 手順の確定 [in-progress]
+### ゲート 3: rollback 手順の確定 [done]
 - rollback 対象を「embedded compiler component の巻き戻し」として再定義する
 - `docs/development/operations/rollback-procedure.md` を Component Model 構成に合わせて更新する
-- **現況**: rollback 文書は host launcher + embedded guest component 基準へ更新済み。残る論点は last-known-good release tag / package を release gate にどう固定するかである。
+- **現況**: rollback 文書・release playbook・配布運用 docs で、GitHub Release notes の `Rollback anchor` を last-known-good release tag / host launcher asset / guest component asset / checksum の正本として固定済み。
 
 ---
 

@@ -1,7 +1,7 @@
 //! # Default path / compiler path (OPS-05)
 //!
 //! - 現行: 本バイナリが Rust 実装パイプライン（syntax → types → ir → wasm）を**内蔵**する。
-//! - 移行中: 環境変数 `LSHARP_PATH` で selfhost / 外部コンパイラ executable またはその配置ディレクトリを指せる。
+//! - 移行中: 環境変数 `LSHARP_PATH` で selfhost / 外部コンパイラ executable・その配置ディレクトリ・`.wasm` / `.component.wasm` guest artifact を指せる。
 //! - 検証: `scripts/ci/default-path-smoke.sh` が `target/debug/lsharp` のみで `compile` を通す。
 
 mod api_doc;
@@ -20,6 +20,9 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
+const EMBEDDED_COMPONENT_BYTES: &[u8] =
+    include_bytes!(concat!(env!("OUT_DIR"), "/embedded-lsharp.component.wasm"));
+
 #[derive(Parser)]
 #[command(name = "lsharp", version, about = "L# コンパイラ")]
 struct Cli {
@@ -27,16 +30,20 @@ struct Cli {
     command: Command,
 }
 
-#[derive(Clone, Copy, Debug, ValueEnum)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 enum CliCompileTarget {
-    Wasm,
+    #[value(name = "wasi-component", alias("wasm"))]
+    WasiComponent,
+    #[value(name = "web-wasm")]
+    WebWasm,
     Native,
 }
 
 impl From<CliCompileTarget> for commands::compile::CompileTarget {
     fn from(value: CliCompileTarget) -> Self {
         match value {
-            CliCompileTarget::Wasm => Self::Wasm,
+            CliCompileTarget::WasiComponent => Self::WasiComponent,
+            CliCompileTarget::WebWasm => Self::WebWasm,
             CliCompileTarget::Native => Self::Native,
         }
     }
@@ -59,7 +66,7 @@ enum Command {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
-        /// コンパイルターゲット (`wasm` / `native`)
+        /// コンパイルターゲット (`wasi-component` / `web-wasm` / `native`, `wasm` は alias)
         #[arg(long, value_enum)]
         target: Option<CliCompileTarget>,
 
@@ -77,7 +84,7 @@ enum Command {
         #[arg(short, long)]
         output: Option<PathBuf>,
 
-        /// コンパイルターゲット (`wasm` / `native`)
+        /// コンパイルターゲット (`wasi-component` / `web-wasm` / `native`, `wasm` は alias)
         #[arg(long, value_enum)]
         target: Option<CliCompileTarget>,
 
@@ -197,7 +204,8 @@ enum Command {
 
 fn main() -> miette::Result<()> {
     maybe_delegate_to_external_compiler()?;
-    maybe_hint_check_requires_selfhost()?;
+    maybe_delegate_to_embedded_component()?;
+    maybe_hint_shadow_command_requires_lsharp_path()?;
 
     let cli = Cli::parse();
 
@@ -428,17 +436,45 @@ fn main() -> miette::Result<()> {
     Ok(())
 }
 
-/// `check` サブコマンドが LSHARP_PATH なしで呼ばれた場合、selfhost コンパイラへの案内を出す。
+fn maybe_delegate_to_embedded_component() -> miette::Result<()> {
+    if option_env!("LSHARP_EMBEDDED_COMPONENT_PRESENT") != Some("1") {
+        return Ok(());
+    }
+    if std::env::var_os("LSHARP_DISABLE_EMBEDDED_COMPONENT").is_some_and(|value| value != "0") {
+        return Ok(());
+    }
+
+    let current_dir =
+        std::env::current_dir().map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
+        EMBEDDED_COMPONENT_BYTES,
+        Some(&current_dir),
+        &arg_refs,
+    )
+    .map_err(|e| miette::miette!("embedded component 実行に失敗しました: {e}"))?;
+    print!("{}", output.stdout);
+    std::process::exit(output.exit_code);
+}
+
+/// selfhost shadow command が LSHARP_PATH なしで呼ばれた場合、外部 compiler への案内を出す。
 /// clap のパース前に argv を直接確認し、ユーザーが LSHARP_PATH を設定するよう誘導する。
-fn maybe_hint_check_requires_selfhost() -> miette::Result<()> {
+fn maybe_hint_shadow_command_requires_lsharp_path() -> miette::Result<()> {
     let first_arg = std::env::args_os().nth(1);
-    if first_arg.as_deref() == Some(std::ffi::OsStr::new("check")) {
-        return Err(miette::miette!(
-            "サブコマンド 'check' は selfhost コンパイラが必要です。\n\
-             LSHARP_PATH 環境変数で selfhost コンパイラを指定してください:\n\
-             \n\
-             LSHARP_PATH=/path/to/selfhost/lsharp lsharp check ..."
-        ));
+    if let Some(command) = first_arg.as_deref() {
+        if command == std::ffi::OsStr::new("parse")
+            || command == std::ffi::OsStr::new("check")
+            || command == std::ffi::OsStr::new("fmt")
+        {
+            let command = command.to_string_lossy();
+            return Err(miette::miette!(
+                "サブコマンド '{command}' は現在 selfhost compiler への delegation が必要です。\n\
+                 LSHARP_PATH 環境変数で外部 lsharp/compiler を指定してください:\n\
+                 \n\
+                 LSHARP_PATH=/path/to/selfhost/lsharp lsharp {command} ..."
+            ));
+        }
     }
     Ok(())
 }
@@ -453,44 +489,105 @@ fn maybe_delegate_to_external_compiler() -> miette::Result<()> {
         return Err(miette::miette!("LSHARP_PATH が空です"));
     }
 
-    let delegate_path = resolve_external_lsharp_path(&configured_path)?;
-    let current_exe =
-        std::env::current_exe().map_err(|e| miette::miette!("current exe の取得に失敗: {e}"))?;
+    match resolve_external_lsharp_path(&configured_path)? {
+        ExternalLsharpPath::Executable(delegate_path) => {
+            let current_exe = std::env::current_exe()
+                .map_err(|e| miette::miette!("current exe の取得に失敗: {e}"))?;
 
-    let delegate_canonical =
-        std::fs::canonicalize(&delegate_path).unwrap_or_else(|_| delegate_path.clone());
-    let current_canonical = std::fs::canonicalize(&current_exe).unwrap_or(current_exe);
-    if delegate_canonical == current_canonical {
-        return Err(miette::miette!(
-            "LSHARP_PATH が現在の lsharp バイナリ自身を指しています: {}",
-            delegate_path.display()
-        ));
-    }
+            let delegate_canonical =
+                std::fs::canonicalize(&delegate_path).unwrap_or_else(|_| delegate_path.clone());
+            let current_canonical = std::fs::canonicalize(&current_exe).unwrap_or(current_exe);
+            if delegate_canonical == current_canonical {
+                return Err(miette::miette!(
+                    "LSHARP_PATH が現在の lsharp バイナリ自身を指しています: {}",
+                    delegate_path.display()
+                ));
+            }
 
-    let status = std::process::Command::new(&delegate_path)
-        .args(std::env::args_os().skip(1))
-        .env_remove("LSHARP_PATH")
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .map_err(|e| {
-            miette::miette!(
-                "LSHARP_PATH 先の compiler 実行に失敗しました ({}): {e}",
-                delegate_path.display()
+            let status = std::process::Command::new(&delegate_path)
+                .args(std::env::args_os().skip(1))
+                .env_remove("LSHARP_PATH")
+                .stdin(Stdio::inherit())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .status()
+                .map_err(|e| {
+                    miette::miette!(
+                        "LSHARP_PATH 先の compiler 実行に失敗しました ({}): {e}",
+                        delegate_path.display()
+                    )
+                })?;
+
+            match status.code() {
+                Some(code) => std::process::exit(code),
+                None => Err(miette::miette!(
+                    "LSHARP_PATH 先の compiler がシグナル終了しました: {}",
+                    delegate_path.display()
+                )),
+            }
+        }
+        ExternalLsharpPath::Wasm(delegate_path) => {
+            let wasm_bytes = std::fs::read(&delegate_path).map_err(|e| {
+                miette::miette!(
+                    "LSHARP_PATH 先の Wasm artifact 読み込みに失敗しました ({}): {e}",
+                    delegate_path.display()
+                )
+            })?;
+            let current_dir =
+                std::env::current_dir().map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
+            let args: Vec<String> = std::env::args()
+                .skip(1)
+                .collect();
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args_inherit_stdin_capture(
+                &wasm_bytes,
+                Some(&current_dir),
+                &arg_refs,
             )
-        })?;
-
-    match status.code() {
-        Some(code) => std::process::exit(code),
-        None => Err(miette::miette!(
-            "LSHARP_PATH 先の compiler がシグナル終了しました: {}",
-            delegate_path.display()
-        )),
+            .map_err(|e| {
+                miette::miette!(
+                    "LSHARP_PATH 先の Wasm artifact 実行に失敗しました ({}): {e}",
+                    delegate_path.display()
+                )
+            })?;
+            print!("{}", output.stdout);
+            std::process::exit(output.exit_code);
+        }
+        ExternalLsharpPath::Component(delegate_path) => {
+            let component_bytes = std::fs::read(&delegate_path).map_err(|e| {
+                miette::miette!(
+                    "LSHARP_PATH 先の component artifact 読み込みに失敗しました ({}): {e}",
+                    delegate_path.display()
+                )
+            })?;
+            let current_dir =
+                std::env::current_dir().map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
+            let args: Vec<String> = std::env::args().skip(1).collect();
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            let output = lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
+                &component_bytes,
+                Some(&current_dir),
+                &arg_refs,
+            )
+            .map_err(|e| {
+                miette::miette!(
+                    "LSHARP_PATH 先の component artifact 実行に失敗しました ({}): {e}",
+                    delegate_path.display()
+                )
+            })?;
+            print!("{}", output.stdout);
+            std::process::exit(output.exit_code);
+        }
     }
 }
 
-fn resolve_external_lsharp_path(configured_path: &std::path::Path) -> miette::Result<PathBuf> {
+enum ExternalLsharpPath {
+    Executable(PathBuf),
+    Wasm(PathBuf),
+    Component(PathBuf),
+}
+
+fn resolve_external_lsharp_path(configured_path: &std::path::Path) -> miette::Result<ExternalLsharpPath> {
     let candidate = if configured_path.is_dir() {
         configured_path.join("lsharp")
     } else {
@@ -508,6 +605,22 @@ fn resolve_external_lsharp_path(configured_path: &std::path::Path) -> miette::Re
             "LSHARP_PATH が指す compiler は通常ファイルである必要があります: {}",
             candidate.display()
         ));
+    }
+
+    if candidate
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".component.wasm"))
+    {
+        return Ok(ExternalLsharpPath::Component(candidate));
+    }
+
+    if candidate
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".wasm"))
+    {
+        return Ok(ExternalLsharpPath::Wasm(candidate));
     }
 
     #[cfg(unix)]
@@ -531,7 +644,7 @@ fn resolve_external_lsharp_path(configured_path: &std::path::Path) -> miette::Re
         }
     }
 
-    Ok(candidate)
+    Ok(ExternalLsharpPath::Executable(candidate))
 }
 
 /// P3-3: メタデータテスト実行 (:example, :invariant の自動検証)
@@ -2195,6 +2308,48 @@ mod tests {
             assert_eq!(err.kind(), clap::error::ErrorKind::InvalidSubcommand);
             assert!(err.to_string().contains(subcommand));
         }
+    }
+
+    #[test]
+    fn test_cli_compile_target_accepts_wasi_component_alias_and_web_wasm() {
+        let cli = Cli::try_parse_from([
+            "lsharp",
+            "compile",
+            "examples/fib.ls",
+            "--target",
+            "wasi-component",
+        ])
+        .expect("wasi-component target should parse");
+        let Command::Compile { target, .. } = cli.command else {
+            panic!("compile subcommand should parse");
+        };
+        assert_eq!(target, Some(CliCompileTarget::WasiComponent));
+
+        let cli = Cli::try_parse_from([
+            "lsharp",
+            "compile",
+            "examples/fib.ls",
+            "--target",
+            "wasm",
+        ])
+        .expect("wasm alias should parse");
+        let Command::Compile { target, .. } = cli.command else {
+            panic!("compile subcommand should parse");
+        };
+        assert_eq!(target, Some(CliCompileTarget::WasiComponent));
+
+        let cli = Cli::try_parse_from([
+            "lsharp",
+            "compile",
+            "examples/fib.ls",
+            "--target",
+            "web-wasm",
+        ])
+        .expect("web-wasm target should parse");
+        let Command::Compile { target, .. } = cli.command else {
+            panic!("compile subcommand should parse");
+        };
+        assert_eq!(target, Some(CliCompileTarget::WebWasm));
     }
 
     #[test]

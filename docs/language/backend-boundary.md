@@ -177,6 +177,8 @@ LoweredModule
 
 selfhost emitter は core Wasm のみを出力する責務を持ち、Component Model wrapping は host 側 (Rust) で行う。これにより selfhost emitter の複雑化を避ける。
 
+現状の host 側 adapter layer は `crates/lsharp-wasm/src/component_adapter.rs` にあり、`embed_component_metadata_for_world()` で core/adaptor module へ `component-type` metadata を埋め込み、`componentize_core_module()` で `wit-component` を使って guest component を生成する。これにより adapter bytes の供給元と WIT world を切り替えつつ、selfhost emitter 側は core Wasm binary format に専念できる。
+
 WIT world 定義と host/guest 境界の詳細は [`component-model-spec.md`](./component-model-spec.md) を参照。
 
 ## 関連文書

@@ -1,6 +1,7 @@
 (module App.PipelineSmoke)
 (import Syntax.AST)
 (import Syntax.Lexer)
+(import Syntax.LexerCompat)
 (import Syntax.Parser)
 (import Syntax.MacroExpand)
 (import Types.TypeInfer)

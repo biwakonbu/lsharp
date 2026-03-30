@@ -1,4 +1,8 @@
 use super::support::*;
+use super::selfhost_bootstrap_four_layer::{
+    run_wasm_with_six_imports_compiler_mode,
+    run_wasm_with_six_imports_compiler_mode_fs,
+};
 
 // =============================================================================
 // BOOT-04 受入テスト: True stage1-stage2-stage3 bootstrap の実体比較テスト
@@ -67,6 +71,20 @@ fn extract_section_bytes(wasm: &[u8], target_id: u8) -> Option<Vec<u8>> {
         pos += size;
     }
     None
+}
+
+/// 2つの Wasm バイト列が最初に食い違う位置を返す
+fn first_diff_index(left: &[u8], right: &[u8]) -> Option<usize> {
+    left.iter()
+        .zip(right.iter())
+        .position(|(a, b)| a != b)
+        .or_else(|| {
+            if left.len() == right.len() {
+                None
+            } else {
+                Some(left.len().min(right.len()))
+            }
+        })
 }
 
 /// stage1 が stdout に出力した length-prefixed Wasm バイト列を復元する
@@ -301,117 +319,122 @@ fn test_e2e_bootstrap_stage1_stage2_match() {
 ///
 /// 固定点とは: stage2 を使って同じソースを再コンパイルしても stage3 == stage2 になること。
 ///
-/// **現在の実装状態**:
-///   Phase A (達成済み): stage1 が同一入力から byte-identical な stage2 を 2 回出力できる。
-///   Phase B (ブロック中): stage2 自体を WASI コンパイラとして実行して stage3 を取得するには、
-///     selfhost WasmEmit が生成する Wasm が env.* カスタム import を使っており、
-///     WASI ランタイムで直接実行できないため、実体比較は未達。
-///     ブロッカー: read-file semantics の完全実装と WASI-compatible な出力形式。
-///
-/// このテストは Phase A を GREEN 検証し、Phase B の精確な失敗を記録する。
+/// real compiler-mode / self-feed path で `stage2 == stage3` の byte identity を
+/// 直接 assert し、stage3 から minimal.ls の再コンパイルまで通す。
 #[test]
 fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
-    let src = "(defn main [] (* 6 7))";
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+    let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures");
 
-    // --- Phase A: stage1 が 2 回実行で byte-identical な stage2 を出力すること ---
-    let harness = build_simple_bootstrap_harness(src);
-    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
-    let stage1_wasm = compile_only(&stage1_source);
+    let stage1_wasm = compile_file_only(&main_path);
     assert_valid_wasm(&stage1_wasm);
 
-    let out_run1 = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
-        .expect("fixed-point Phase A: stage1 run_1 失敗");
-    let out_run2 = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
-        .expect("fixed-point Phase A: stage1 run_2 失敗");
+    // --- Phase A: stage1 が Main.ls から stage2 self compiler を決定論的に出力すること ---
+    let stage2_output_run1 = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("fixed-point Phase A: stage1 run_1 が Main.ls の self-compile に失敗");
+    let stage2_output_run2 = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("fixed-point Phase A: stage1 run_2 が Main.ls の self-compile に失敗");
 
     assert_eq!(
-        out_run1, out_run2,
-        "BOOT-04 fixed-point Phase A 失敗: stage1 が非決定的な stage2 を出力"
+        stage2_output_run1, stage2_output_run2,
+        "BOOT-04 fixed-point Phase A 失敗: stage1 が非決定的な stage2 self compiler を出力"
     );
 
-    let modules_run1 = parse_emitted_wasm_modules(&out_run1, 1);
-    let modules_run2 = parse_emitted_wasm_modules(&out_run2, 1);
+    let stage2_modules_run1 = parse_emitted_wasm_modules(&stage2_output_run1, 1);
+    let stage2_modules_run2 = parse_emitted_wasm_modules(&stage2_output_run2, 1);
 
     assert_eq!(
-        modules_run1[0], modules_run2[0],
-        "BOOT-04 fixed-point Phase A 失敗: stage2 bytes が 2 回の実行で一致しない"
+        stage2_modules_run1[0], stage2_modules_run2[0],
+        "BOOT-04 fixed-point Phase A 失敗: stage2 self compiler bytes が 2 回の実行で一致しない"
     );
-    assert_valid_wasm(&modules_run1[0]);
+    assert_valid_wasm(&stage2_modules_run1[0]);
 
-    let stage2_wasm = modules_run1[0].clone();
+    let stage2_self_compiler = stage2_modules_run1[0].clone();
 
-    // stage2 が正しく動作することを確認 (pure な整数計算)
-    let stage2_result = run_exported_i64_no_imports(&stage2_wasm, "_start");
+    eprintln!(
+        "BOOT-04 fixed-point Phase A: stage2 self compiler ({} bytes) は決定的",
+        stage2_self_compiler.len()
+    );
+
+    // --- Phase B: stage2 が Main.ls から stage3 self compiler を決定論的に出力すること ---
+    let stage3_output_run1 = run_wasm_with_six_imports_compiler_mode_fs(
+        &stage2_self_compiler,
+        &selfhost_root,
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("fixed-point Phase B: stage2 run_1 が Main.ls の再コンパイルに失敗");
+    let stage3_output_run2 = run_wasm_with_six_imports_compiler_mode_fs(
+        &stage2_self_compiler,
+        &selfhost_root,
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("fixed-point Phase B: stage2 run_2 が Main.ls の再コンパイルに失敗");
+
     assert_eq!(
-        stage2_result, 42,
-        "BOOT-04 fixed-point: stage2 の計算結果が期待値と一致しない"
+        stage3_output_run1, stage3_output_run2,
+        "BOOT-04 fixed-point Phase B 失敗: stage2 が非決定的な stage3 self compiler を出力"
+    );
+
+    let stage3_modules_run1 = parse_emitted_wasm_modules(&stage3_output_run1, 1);
+    let stage3_modules_run2 = parse_emitted_wasm_modules(&stage3_output_run2, 1);
+    assert_eq!(
+        stage3_modules_run1[0], stage3_modules_run2[0],
+        "BOOT-04 fixed-point Phase B 失敗: stage3 self compiler bytes が 2 回の実行で一致しない"
+    );
+    assert_valid_wasm(&stage3_modules_run1[0]);
+
+    let stage3_self_compiler = stage3_modules_run1[0].clone();
+
+    // stage3 も実際に自己ホストコンパイラとして minimal.ls をコンパイルできることを確認する。
+    let stage4_output = run_wasm_with_six_imports_compiler_mode_fs(
+        &stage3_self_compiler,
+        &fixture_dir,
+        &["compiler", "minimal.ls"],
+    )
+    .expect("fixed-point Phase B: stage3 self compiler が minimal.ls をコンパイルできない");
+    let stage4_modules = parse_emitted_wasm_modules(&stage4_output, 1);
+    let stage4_wasm = &stage4_modules[0];
+    assert_valid_wasm(stage4_wasm);
+    let stage4_run = run_wasm_with_six_imports_compiler_mode(stage4_wasm, "", &[]);
+    assert!(
+        stage4_run.is_ok(),
+        "fixed-point Phase B: stage4 minimal 実行失敗: {:?}",
+        stage4_run.err()
+    );
+
+    let stage2_sections = extract_sections(&stage2_self_compiler);
+    let stage3_sections = extract_sections(&stage3_self_compiler);
+    let diff_at = first_diff_index(&stage2_self_compiler, &stage3_self_compiler);
+
+    assert!(
+        stage2_self_compiler == stage3_self_compiler,
+        "BOOT-04 fixed-point 失敗: stage2 ({} bytes) != stage3 ({} bytes), \
+         first_diff={diff_at:?}, stage2_sections={stage2_sections:?}, stage3_sections={stage3_sections:?}",
+        stage2_self_compiler.len(),
+        stage3_self_compiler.len(),
     );
 
     eprintln!(
-        "BOOT-04 fixed-point Phase A: stage2 ({} bytes) は決定的かつ正確",
-        stage2_wasm.len()
+        "BOOT-04 fixed-point 達成: stage2 == stage3 ({} bytes)",
+        stage2_self_compiler.len()
     );
-
-    // --- Phase B: stage2 を WASI コンパイラとして実行して stage3 を試みる ---
-    // selfhost WasmEmit が生成する stage2 は env.* カスタム import を使っているか、
-    // または `_start: () -> i64` 型 (WASI 期待は () -> ()) のため WASI 実行が失敗する。
-    // この失敗は BOOT-04 fixed-point の現在のブロッカーを精確に示す。
-    let stage3_attempt = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage2_wasm);
-    match stage3_attempt {
-        Ok(stage3_output) => {
-            // Phase B が成功した場合: stage3 bytes を取得して固定点を検証
-            let stage3_modules_result = std::panic::catch_unwind(|| {
-                parse_emitted_wasm_modules(&stage3_output, 1)
-            });
-            match stage3_modules_result {
-                Ok(stage3_modules) if !stage3_modules.is_empty() => {
-                    assert_eq!(
-                        stage2_wasm, stage3_modules[0],
-                        "BOOT-04 fixed-point 不成立: stage2 ({} bytes) != stage3 ({} bytes)\n\
-                         差異の先頭バイト位置: {:?}",
-                        stage2_wasm.len(),
-                        stage3_modules[0].len(),
-                        stage2_wasm
-                            .iter()
-                            .zip(stage3_modules[0].iter())
-                            .enumerate()
-                            .find(|(_, (a, b))| a != b)
-                            .map(|(i, _)| i)
-                    );
-                    eprintln!(
-                        "BOOT-04 fixed-point Phase B 達成: stage2 ({} bytes) == stage3",
-                        stage2_wasm.len()
-                    );
-                }
-                _ => {
-                    eprintln!(
-                        "BOOT-04 fixed-point Phase B: stage3 出力が Wasm モジュール形式ではない。\n\
-                         stage3 stdout ({} bytes): {:?}",
-                        stage3_output.len(),
-                        &stage3_output[..stage3_output.len().min(200)]
-                    );
-                }
-            }
-        }
-        Err(e) => {
-            // 現在の期待される動作: stage2 は WASI 実行不可 (import 不一致 or 型不一致)
-            // この精確なエラーが BOOT-04 fixed-point の現在のブロッカーを示す
-            eprintln!(
-                "BOOT-04 fixed-point Phase B (現在のブロッカー):\n\
-                 stage2 を WASI ランタイムで直接実行できない。\n\
-                 原因: selfhost WasmEmit が生成する stage2 は env.* カスタム import を持つか、\n\
-                       _start が i64 を返す型 (WASI は () -> () を期待) のため不整合。\n\
-                 エラー詳細: {e}\n\
-                 \n\
-                 真の固定点 (stage2 → stage3) 達成には以下が必要:\n\
-                   1. selfhost WasmEmit が WASI 互換な `_start: () -> ()` を生成すること\n\
-                   2. read-file semantics の完全実装 (実際のファイルパスでの selfhost コンパイル)\n\
-                   3. Main.ls が stdin/argv からソースを読み込めるコンパイラとして動作すること"
-            );
-            // Phase A (決定論) は達成済み。Phase B はブロッカーを精確に記録。
-            // テストは Phase A のアサーションで PASS する。
-        }
-    }
 }
 
 // =============================================================================

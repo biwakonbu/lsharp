@@ -10,6 +10,21 @@
 ;; source 文字列から :example / :invariant を抽出し、
 ;; 算術・比較・if/let/do・トップレベル defn 呼び出しの subset を実行する。
 
+(defn token-count [tokens]
+  (/ (vector-length tokens) 3))
+
+(defn token-kind [tokens n]
+  (span-kind tokens n))
+
+(defn token-start [tokens n]
+  (span-start tokens n))
+
+(defn token-end [tokens n]
+  (span-end tokens n))
+
+(defn token-text [src tokens n]
+  (substring src (token-start tokens n) (token-end tokens n)))
+
 ;; === テストケース構造 ===
 
 ;; テストケース: [name-id, function-name-hash, expr]

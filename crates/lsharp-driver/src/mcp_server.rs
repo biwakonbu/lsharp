@@ -801,4 +801,21 @@ mod tests {
         assert_eq!(abs["params"][0]["doc"], "対象の整数");
         assert_eq!(abs["returns"]["doc"], "x の絶対値");
     }
+
+    #[test]
+    fn test_compile_run_tool_uses_wasi_default_for_wasm_output() {
+        let result = compile_run_tool(&json!({
+            "source": "(defn main [] (print 42))\n",
+        }))
+        .expect("compile_run が成功するべき");
+
+        assert_eq!(result["ok"], true);
+        assert_eq!(result["exit_code"], 0);
+        assert!(
+            result["stdout"]
+                .as_str()
+                .is_some_and(|stdout| stdout.contains("42")),
+            "WASI 実行結果に 42 が含まれるべき"
+        );
+    }
 }

@@ -62,7 +62,7 @@ lsharp (host launcher)
   + embedded stdlib
 ```
 
-host launcher は `include_bytes!` 等で guest component を埋め込み、起動時に `Component::new` で instantiate する。core `.wasm` を直接配布の正本として扱わず、配布境界では常に guest component を正とする。
+host launcher は `include_bytes!` 等で guest component を埋め込み、起動時に `Component::new` で instantiate する。現行 Rust driver には build-time 環境変数 `LSHARP_EMBED_COMPONENT_PATH` から `.component.wasm` を埋め込む interim hook があり、default path cutover の前段として narrow test / custom build で使える。移行中の safety valve として runtime `LSHARP_DISABLE_EMBEDDED_COMPONENT=1` も用意し、embedded guest を明示的に無効化して built-in path へ戻せる。core `.wasm` を直接配布の正本として扱わず、配布境界では常に guest component を正とする。
 
 ### 配布成果物
 
@@ -156,6 +156,8 @@ host 側のミュータブルオブジェクトを guest に渡してはなら�
 - guest component は OS 固有ハンドルや file descriptor 番号を内部表現として保持しない
 - capability 追加が必要な場合は、先に WIT world を拡張し、runtime API と docs を同期してから host 実装を増やす
 
+現状の host capability bridge は `crates/lsharp-wasm/src/host_bridge.rs` にあり、`wit/lsharp-core.wit` を `wasmtime::component::bindgen!` で束ねた `HostCapabilities` / `HostCapabilitiesView` / `link_host_capabilities()` を提供する。これにより host launcher は `host-fs` / `host-process` の batch API を Wasmtime component linker へ一括登録し、guest component 側へ coarse-grained capability を渡せる。
+
 ## 2 Target Compilation
 
 | Target | 用途 | 成果物 |
@@ -190,10 +192,17 @@ host 側のミュータブルオブジェクトを guest に渡してはなら�
 core Wasm module を component へ変換する際は post-processing approach を採用する。
 
 ```text
-selfhost emitter -> core .wasm -> wasm-tools component new -> .component.wasm
+selfhost emitter -> core .wasm -> component_adapter (wit-component) -> .component.wasm
 ```
 
 これにより selfhost emitter は core Wasm binary format のみを理解すればよく、Component Model binary format を直接出力する必要がない。
+
+現状は `crates/lsharp-wasm/src/component_adapter.rs` の generic helper がこの責務を担う。
+
+- `embed_component_metadata_for_world()` -- core module / adapter module に指定 world の `component-type` metadata を埋め込む
+- `componentize_core_module()` -- metadata 埋め込み済み main module と named adapter 群から guest component bytes を生成する
+
+official WASI Preview2 import mapping や selfhost compiler world への適用は `P13-A-2` / `P13-A-3` の責務として分離し、B-2 では host 側の generic post-processing layer を正本化する。
 
 ## 関連文書
 

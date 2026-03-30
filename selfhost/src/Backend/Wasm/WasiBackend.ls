@@ -7,9 +7,24 @@
 
 ;; === WASI インポート定義 ===
 
+;; WASI ターゲット定数
+(defn wasi-target-preview1 [] 0)
+(defn wasi-target-component [] 1)
+
 ;; WASI snapshot preview1 のモジュール名エンコーディング
 ;; "wasi_snapshot_preview1" = 21 バイト
 (defn wasi-module-name-length [] 21)
+(defn wasi-module-name-length-for-target [target]
+  (if (= target (wasi-target-component))
+    4
+    (wasi-module-name-length)))
+
+;; import vector 内で使う module tag
+;; 0 = wasi_snapshot_preview1, 1 = wasi component path
+(defn wasi-module-tag-for-target [target]
+  (if (= target (wasi-target-component))
+    1
+    0))
 
 ;; WASI fd_write の型インデックス
 ;; (i32, i32, i32, i32) -> i32
@@ -88,13 +103,16 @@
 ;; === WASI インポートセクション生成 ===
 
 ;; WASI fd_write インポートの生成
-(defn wasi-imports []
+(defn wasi-imports-for-target [target]
   ;; [module-name, func-name, type-idx] の Vector
   (vector-push
     (vector-push
-      (vector-push (vector-new 3) 0) ;; module: wasi_snapshot_preview1
+      (vector-push (vector-new 3) (wasi-module-tag-for-target target))
       0) ;; func: fd_write
     0)) ;; type index
+
+(defn wasi-imports []
+  (wasi-imports-for-target (wasi-target-preview1)))
 
 ;; WASI メモリ定義
 (defn wasi-memory []
