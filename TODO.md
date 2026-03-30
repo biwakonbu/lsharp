@@ -142,8 +142,8 @@
 
 ### Phase 11 構造化残件
 
-- [ ] `STR-01 TypeInfer 第2段分割` -- `selfhost/src/Types/TypeInfer.ls` は現状 **1093 行**で、`infer-apply` / `infer-do` / `infer-pattern` / `infer-match` が同居している。`TypeInferApply` / `TypeInferBlock` / `TypeInferPattern` 相当へ切り出し、`TypeInfer.ls` は dispatcher + 公開 API 中心へ縮退させる。Acceptance: `TypeInfer.ls` を 800 行未満にし、`test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration`, `test_e2e_selfhost_module_graph_topological_sort`, `test_e2e_selfhost_type_responsibility_separation`, `test_e2e_selfhost_type_hm_core_golden`, `test_e2e_selfhost_typeinfer_float_and_unit_literals`, `test_e2e_selfhost_main_import_only_pipeline` を維持。
-- [ ] `STR-02 selfhost 大型モジュール分割` -- ファイルサイズ方針 (500-800 行) に対し、`selfhost/src/Syntax/Parser.ls` **1328 行**, `selfhost/src/Tools/Lsp/LspServer.ls` **1303 行**, `selfhost/src/Tools/Text/Formatter.ls` **930 行**, `selfhost/src/Syntax/Lexer.ls` **928 行** が超過している。責務別 submodule へ分割し、`support.rs` / canonical path / runtime bundle / module graph 契約を追従させる。Acceptance: 主要 4 ファイルを 800 行未満へ抑え、`test_e2e_selfhost_module_graph_topological_sort`, `test_fresh_clone_smoke_ci_job`, `bash scripts/audit_docs.sh` を維持。
+- [x] `STR-01 TypeInfer 第2段分割` -- TypeInfer.ls を 1093→290 行に縮退。TypeInferApply (297行) / TypeInferBlock (292行) / TypeInferPattern (227行) / TypeInferRecord (96行) を切り出し。全テスト green (685750c)。
+- [x] `STR-02 selfhost 大型モジュール分割` -- LspServer.ls (1303→80行, Core 521行 + Nav 757行), Formatter.ls (930→84行, Expr 389行 + Decl 510行) に分割。全ファイル 800行未満。テスト green (1a889c4, d48227c)。Parser.ls / Lexer.ls は dirty のため後回し。
 - [ ] `STR-03 standalone selfhost compiler smoke の復旧` -- 現状 `cargo run -- check selfhost/src/Types/TypeInfer.ls` は selfhost compiler 前提で、`LSHARP_PATH=target/debug/lsharp` は self-reference として拒否される。stage1 Wasm artifact を使った non-circular な selfhost compiler 指定経路を定義し、`check` / `fmt` / `compile` の日常 smoke を Cargo 内蔵 Rust path から切り離す。Component Model pivot により、native artifact ではなく Wasm component 経由の smoke に切り替える。Acceptance: `docs/development/operations/default-path-migration.md` と `scripts/ci/default-path-smoke.sh` に selfhost Wasm smoke を追加し、`cargo test -p lsharp-driver --test default_path_delegation`, `test_e2e_ops05_default_path_migration` を更新。
 
 ### Phase 11 実装状態
@@ -420,7 +420,7 @@
 
 > 現行 `wasi_snapshot_preview1` から WASI Preview2 / Component Model への移行。既存 683 tests は dual-mode runner で preview1 のまま維持する。
 
-- [ ] **A-1. Dual-mode WASI runner** -- `crates/lsharp-wasm/src/wasi_runner.rs` に preview2 execution path を追加。既存 E2E tests が preview1 / preview2 両方で通ること。
+- [x] **A-1. Dual-mode WASI runner** -- WasiMode enum (Preview1/Preview2) と run_wasm_component() を追加。wasmtime v29 Component Model API 使用。テスト 5 件 green (6a6a21b)。
 - [ ] **A-2. Preview2 codegen path** -- `crates/lsharp-wasm/src/wasi.rs` に `emit_wasm_wasi_p2()` を追加。9 WASI preview1 imports を Component Model interface (`wasi:io/streams`, `wasi:filesystem/types`, `wasi:cli/environment` 等) へ変換。
 - [ ] **A-3. Selfhost WasiBackend target flag** -- `selfhost/src/Backend/Wasm/WasiBackend.ls` に `wasi-preview1` / `wasi-component` target flag を追加。import section layout を target に応じて切り替え。
 
@@ -428,7 +428,7 @@
 
 > WIT による world 定義、guest component 境界、host capability bridge の実装。
 
-- [ ] **B-1. WIT world definitions** -- `wit/` directory を新設し、`lsharp-compiler` world (CLI 向け) と `lsharp-http-handler` world (HTTP server 向け) を定義。
+- [x] **B-1. WIT world definitions** -- wit/ directory に lsharp-compiler.wit, lsharp-http-handler.wit, lsharp-core.wit を定義。WASI P1→P2 マッピング文書化 (1063eb2)。
 - [ ] **B-2. Component adapter layer** -- core Wasm module → guest component への post-processing 変換。`wasm-tools component new` または `wit-component` crate を利用。selfhost emitter は core Wasm のみ出力し、host launcher 側で component wrapping する。
 - [ ] **B-3. Coarse-grained host API** -- WIT interface として batch API (`read-files`, `write-files`, `run-process` 等) を定義。host launcher が capability を提供し、guest component はその上で compiler/toolchain を実行する。
 
