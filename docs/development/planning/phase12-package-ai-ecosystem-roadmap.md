@@ -744,7 +744,7 @@ selfhost/
 
 - `selfhost/src/**` を local source root として優先する
 - dotted module 名は `/` に変換して解決する
-- 移行期間は flat fallback (`Foo.ls`) を残してもよいが、正本は nested path
+- flat fallback は持たず、正本は nested path のみとする
 - installed package は `lsharp install` が生成する `.lsharp/module-index/*.path` を経由して解決する
 
 ---
@@ -978,4 +978,4 @@ AI が MCP 経由で L# の型チェック・hover・補完と stdlib API を利
 
 - Phase 11 の bootstrap / native / GC 関連コード
 - 既存の E2E テスト群
-- selfhost/ コンパイラモジュール群 (Phase 12 では Rust 側で実装し、将来 selfhost へ移行)
+- selfhost/src/** コンパイラモジュール群 (Phase 12 では Rust 側で実装し、将来 selfhost へ移行)

@@ -232,7 +232,7 @@ lowered IR の snapshot format を以下のように仕様化する:
 - Rust 実装と L# 実装の両方で IR snapshot を生成する比較ジョブを CI に追加
 - native backend 完成まで比較ジョブを維持 (Rust 実装削除後は L# 単独に移行)
 - 差分が発生した場合は CI を red にし、L# 側を修正
-- 比較対象: examples/ + stdlib/ + selfhost/ の全 .ls ファイル
+- 比較対象: examples/ + stdlib/ + selfhost/src/ の全 .ls ファイル
 
 ---
 
@@ -390,7 +390,7 @@ examples/stdlib/selfhost の全主要ケースで Rust/L# の差分報告が空�
 **検証対象**:
 - `examples/` 配下の全 .ls ファイル
 - `stdlib/` 配下の全 .ls ファイル
-- `selfhost/` 配下の全 .ls ファイル
+- `selfhost/src/` 配下の全 .ls ファイル
 
 **比較項目**:
 - parse 結果 (AST)

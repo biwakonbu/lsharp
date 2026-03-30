@@ -294,6 +294,41 @@ fn test_e2e_selfhost_lexer_special_token_consistency() {
     assert_eq!(lines[4], "1", "at は Token.tok-at と一致すべき");
 }
 
+#[test]
+fn test_e2e_selfhost_lexer_tokenizes_large_input_without_stack_trap() {
+    let token_ls = std::fs::read_to_string(selfhost_source_path("Token.ls"))
+        .expect("canonical Token.ls が読み込めない");
+    let lexer_ls = std::fs::read_to_string(selfhost_source_path("Lexer.ls"))
+        .expect("canonical Lexer.ls が読み込めない");
+    let repeated_symbols = std::iter::repeat("x ").take(5000).collect::<String>();
+    let harness = format!(
+        r#"
+(defn main []
+  (let [tokens (tokenize-with-spans "{repeated_symbols}")]
+    (do
+      (print (token-count tokens))
+      (print (token-kind tokens 0))
+      (print (token-kind tokens 4999))
+      (print (token-kind tokens 5000))
+      0)))
+"#
+    );
+
+    let combined = format!("{}\n{}\n{}", token_ls, lexer_ls, harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 4,
+        "大入力 tokenization の出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "5001", "5000 symbol + EOF を返すべき");
+    assert_eq!(lines[1], "20", "先頭 token は symbol");
+    assert_eq!(lines[2], "20", "末尾直前 token も symbol");
+    assert_eq!(lines[3], "99", "最後は EOF");
+}
+
 // =================================================// selfhost Parser.ls 全構文テスト (Step 4)
 // =================================================
 #[test]

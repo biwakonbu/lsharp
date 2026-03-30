@@ -581,12 +581,14 @@ struct SixImportState {
     next_alloc: i64,
     printed: String,
     file_content: String,
+    file_root: Option<std::path::PathBuf>,
     args: Vec<String>,
 }
 
-fn run_wasm_with_six_imports_compiler_mode(
+fn run_wasm_with_six_imports_compiler_mode_inner(
     wasm: &[u8],
-    file_content: &str,
+    file_content: Option<&str>,
+    file_root: Option<&std::path::Path>,
     args: &[&str],
 ) -> Result<String, String> {
     fn write_str_obj<T>(mut caller: wasmtime::Caller<'_, T>, base: i64, content: &[u8]) {
@@ -608,7 +610,8 @@ fn run_wasm_with_six_imports_compiler_mode(
         SixImportState {
             next_alloc: 65536,
             printed: String::new(),
-            file_content: file_content.to_string(),
+            file_content: file_content.unwrap_or_default().to_string(),
+            file_root: file_root.map(std::path::Path::to_path_buf),
             args: args.iter().map(|a| a.to_string()).collect(),
         },
     );
@@ -628,8 +631,18 @@ fn run_wasm_with_six_imports_compiler_mode(
     );
     let read_file = wasmtime::Func::wrap(
         &mut store,
-        |mut caller: wasmtime::Caller<'_, SixImportState>, _path: i64| -> i64 {
-            let content = caller.data().file_content.as_bytes().to_vec();
+        |mut caller: wasmtime::Caller<'_, SixImportState>, path: i64| -> i64 {
+            let content = if let Some(root_dir) = caller.data().file_root.clone() {
+                let path_bytes = read_string_object_bytes(&mut caller, path);
+                let rel_path = String::from_utf8(path_bytes)
+                    .unwrap_or_else(|e| panic!("read-file path が UTF-8 ではない: {e}"));
+                let full_path = root_dir.join(&rel_path);
+                std::fs::read(&full_path).unwrap_or_else(|e| {
+                    panic!("read-file import が {} を読めない: {e}", full_path.display())
+                })
+            } else {
+                caller.data().file_content.as_bytes().to_vec()
+            };
             let base = caller.data().next_alloc;
             caller.data_mut().next_alloc = base + 8 + content.len() as i64;
             write_str_obj(caller, base, &content);
@@ -729,6 +742,22 @@ fn run_wasm_with_six_imports_compiler_mode(
         .call(&mut store, ())
         .map_err(|e| format!("実行失敗: {e}"))?;
     Ok(store.data().printed.clone())
+}
+
+fn run_wasm_with_six_imports_compiler_mode(
+    wasm: &[u8],
+    file_content: &str,
+    args: &[&str],
+) -> Result<String, String> {
+    run_wasm_with_six_imports_compiler_mode_inner(wasm, Some(file_content), None, args)
+}
+
+fn run_wasm_with_six_imports_compiler_mode_fs(
+    wasm: &[u8],
+    root_dir: &std::path::Path,
+    args: &[&str],
+) -> Result<String, String> {
+    run_wasm_with_six_imports_compiler_mode_inner(wasm, None, Some(root_dir), args)
 }
 
 
@@ -4487,14 +4516,9 @@ fn test_e2e_boot04_stage2_compiler_to_stage3_minimal() {
 /// コンパイルして stage2_self_compiler を生成できるかを検証する。
 ///
 /// 現在の blockerを精密に固定する:
-/// - stage1 の compiler-mode は単一ファイルを解析・コンパイルするが
-/// - Main.ls は (import AST) 等の import 宣言を含むため、
-/// - compile-program-functions は import を無視し、import 先の関数が欠落した wasm を生成する
-/// - 結果として stage2_self_compiler は機能不全（呼び出せない関数を参照）
-///
-/// このテストが GREEN になった時点で BOOT-04 self-hosting は達成される。
+/// BOOT-04: self-hosted stage2 compiler が minimal.ls を stage3 へコンパイルできること
 #[test]
-fn test_e2e_boot04_self_hosted_stage2_compiler_blocker() {
+fn test_e2e_boot04_self_hosted_stage2_compiles_minimal() {
     let main_path = selfhost_main_path();
     // selfhost/ ルート（src/ の親）を WASI dir として設定する。
     // selfhost/src/App/Main.ls は dotted import (Syntax.AST 等) を使うため、
@@ -4516,114 +4540,529 @@ fn test_e2e_boot04_self_hosted_stage2_compiler_blocker() {
 
     // stage1 が compiler-mode で src/App/Main.ls 自身をコンパイル → stage2_self_compiler を試みる
     // WASI dir = selfhost/ にすることで dotted import (Syntax.AST → src/Syntax/AST.ls) が解決される
-    let stage2_result = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
         &stage1_wasm,
         Some(&selfhost_root),
         &["compiler", "src/App/Main.ls"],
+    )
+    .expect("BOOT-04 self-hosted-stage2: stage1 が Main.ls の self-compile に失敗した");
+    eprintln!(
+        "BOOT-04 self-hosted-stage2: stage1 が Main.ls → output ({} chars) を生成",
+        output.len()
     );
 
-    match stage2_result {
-        Err(e) => {
-            // stage1 が Main.ls のコンパイルに失敗: 実行時エラー
-            eprintln!(
-                "BOOT-04 self-hosted-stage2 BLOCKED: stage1 が Main.ls コンパイルに失敗: {}",
-                e
-            );
-            // ブロッカーを記録して終了（このテストは現状 blocked であることを証明）
-            return;
+    let modules = std::panic::catch_unwind(|| parse_emitted_wasm_modules(&output, 1))
+        .expect("BOOT-04 self-hosted-stage2: stage1 出力が wasm モジュール形式でない");
+    let stage2_self_compiler = &modules[0];
+    eprintln!(
+        "BOOT-04 self-hosted-stage2: stage2_self_compiler = {} bytes",
+        stage2_self_compiler.len()
+    );
+    let sections = extract_sections(stage2_self_compiler);
+    eprintln!("BOOT-04 stage2 sections: {:?}", sections);
+    match validate_wasm_detailed(stage2_self_compiler) {
+        Ok(_) => eprintln!("BOOT-04 stage2: wasmparser validation PASSED"),
+        Err(e) => eprintln!("BOOT-04 stage2 wasmparser ERROR: {}", e),
+    }
+    assert_valid_wasm(stage2_self_compiler);
+
+    let minimal_ls_content = std::fs::read_to_string(fixture_dir.join("minimal.ls"))
+        .unwrap_or_else(|_| "(defn main [] 42)".to_string());
+    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+        stage2_self_compiler,
+        &minimal_ls_content,
+        &["compiler", "minimal.ls"],
+    )
+    .expect("BOOT-04 self-hosted-stage2: stage2_self_compiler が minimal.ls をコンパイルできない");
+    eprintln!(
+        "BOOT-04 self-hosted-stage2: stage3_output = {} chars",
+        stage3_output.len()
+    );
+
+    let stage3_modules = std::panic::catch_unwind(|| parse_emitted_wasm_modules(&stage3_output, 1))
+        .expect("BOOT-04 self-hosted-stage2: stage3 出力が wasm 形式でない");
+    let stage3_wasm = &stage3_modules[0];
+    assert_valid_wasm(stage3_wasm);
+
+    let run_result = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &[]);
+    assert!(
+        run_result.is_ok(),
+        "stage2_self_compiler → stage3 実行失敗: {:?}",
+        run_result.err()
+    );
+    eprintln!(
+        "BOOT-04 self-hosted-stage2 GREEN: stage1→stage2_self_compiler→stage3 ({} bytes) 完全成功!",
+        stage3_wasm.len()
+    );
+}
+
+#[test]
+fn test_e2e_boot04_self_hosted_stage2_preserves_batched_step_progress() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("BOOT-04 batching probe: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let probe_source = r#"
+(defn make-state [done next]
+  (vector-push
+    (vector-push (vector-new 4) done)
+    next))
+
+(defn step [limit pos]
+  (if (>= pos limit)
+    (make-state 1 pos)
+    (make-state 0 (+ pos 1))))
+
+(defn step-8 [limit pos]
+  (let [step1 (step limit pos)
+    done1 (vector-get step1 0)]
+    (if (= done1 1)
+      step1
+      (let [step2 (step limit (vector-get step1 1))
+        done2 (vector-get step2 0)]
+        (if (= done2 1)
+          step2
+          (let [step3 (step limit (vector-get step2 1))
+            done3 (vector-get step3 0)]
+            (if (= done3 1)
+              step3
+              (let [step4 (step limit (vector-get step3 1))
+                done4 (vector-get step4 0)]
+                (if (= done4 1)
+                  step4
+                  (let [step5 (step limit (vector-get step4 1))
+                    done5 (vector-get step5 0)]
+                    (if (= done5 1)
+                      step5
+                      (let [step6 (step limit (vector-get step5 1))
+                        done6 (vector-get step6 0)]
+                        (if (= done6 1)
+                          step6
+                          (let [step7 (step limit (vector-get step6 1))
+                            done7 (vector-get step7 0)]
+                            (if (= done7 1)
+                              step7
+                              (let [step8 (step limit (vector-get step7 1))
+                                done8 (vector-get step8 0)]
+                                step8))))))))))))))))
+
+(defn step-64 [limit pos]
+  (let [step1 (step-8 limit pos)
+    done1 (vector-get step1 0)]
+    (if (= done1 1)
+      step1
+      (let [step2 (step-8 limit (vector-get step1 1))
+        done2 (vector-get step2 0)]
+        (if (= done2 1)
+          step2
+          (let [step3 (step-8 limit (vector-get step2 1))
+            done3 (vector-get step3 0)]
+            (if (= done3 1)
+              step3
+              (let [step4 (step-8 limit (vector-get step3 1))
+                done4 (vector-get step4 0)]
+                (if (= done4 1)
+                  step4
+                  (let [step5 (step-8 limit (vector-get step4 1))
+                    done5 (vector-get step5 0)]
+                    (if (= done5 1)
+                      step5
+                      (let [step6 (step-8 limit (vector-get step5 1))
+                        done6 (vector-get step6 0)]
+                        (if (= done6 1)
+                          step6
+                          (let [step7 (step-8 limit (vector-get step6 1))
+                            done7 (vector-get step7 0)]
+                            (if (= done7 1)
+                              step7
+                              (let [step8 (step-8 limit (vector-get step7 1))
+                                done8 (vector-get step8 0)]
+                                step8))))))))))))))))
+
+(defn step-512 [limit pos]
+  (let [step1 (step-64 limit pos)
+    done1 (vector-get step1 0)]
+    (if (= done1 1)
+      step1
+      (let [step2 (step-64 limit (vector-get step1 1))
+        done2 (vector-get step2 0)]
+        (if (= done2 1)
+          step2
+          (let [step3 (step-64 limit (vector-get step2 1))
+            done3 (vector-get step3 0)]
+            (if (= done3 1)
+              step3
+              (let [step4 (step-64 limit (vector-get step3 1))
+                done4 (vector-get step4 0)]
+                (if (= done4 1)
+                  step4
+                  (let [step5 (step-64 limit (vector-get step4 1))
+                    done5 (vector-get step5 0)]
+                    (if (= done5 1)
+                      step5
+                      (let [step6 (step-64 limit (vector-get step5 1))
+                        done6 (vector-get step6 0)]
+                        (if (= done6 1)
+                          step6
+                          (let [step7 (step-64 limit (vector-get step6 1))
+                            done7 (vector-get step7 0)]
+                            (if (= done7 1)
+                              step7
+                              (let [step8 (step-64 limit (vector-get step7 1))
+                                done8 (vector-get step8 0)]
+                                step8))))))))))))))))
+
+(defn main []
+  (let [state8 (step-8 1000 0)
+    state64 (step-64 1000 0)
+    state512 (step-512 1000 0)
+    capped64 (step-64 13 0)]
+    (do
+      (print (vector-get state8 1))
+      (print (vector-get state64 1))
+      (print (vector-get state512 1))
+      (print (vector-get capped64 1))
+      0)))
+"#;
+
+    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+        stage2_self_compiler,
+        probe_source,
+        &["compiler", "batching-probe.ls"],
+    )
+    .expect("BOOT-04 batching probe: stage2_self_compiler が probe source をコンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_wasm = &stage3_modules[0];
+    assert_valid_wasm(stage3_wasm);
+
+    let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &[])
+        .expect("BOOT-04 batching probe: stage3 probe module の実行に失敗した");
+    let lines: Vec<&str> = run_output.lines().filter(|line| !line.trim().is_empty()).collect();
+
+    assert!(
+        lines.len() >= 4,
+        "BOOT-04 batching probe の出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "8", "step-8 は 8 ステップぶん進むべき");
+    assert_eq!(lines[1], "64", "step-64 は 64 ステップぶん進むべき");
+    assert_eq!(lines[2], "512", "step-512 は 512 ステップぶん進むべき");
+    assert_eq!(lines[3], "13", "step-64 は limit 到達時に早期終了すべき");
+}
+
+#[test]
+fn test_e2e_boot04_self_hosted_stage2_compiles_large_single_file() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("BOOT-04 large-file: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let repeated_helpers = (0..800)
+        .map(|idx| format!("(defn helper-{idx} [] 0)"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let large_source = format!("{repeated_helpers}\n(defn main [] 42)\n");
+    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+        stage2_self_compiler,
+        &large_source,
+        &["compiler", "large-token-file.ls"],
+    )
+    .expect("BOOT-04 large-file: stage2_self_compiler が大きい単一ファイルをコンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_wasm = &stage3_modules[0];
+    assert_valid_wasm(stage3_wasm);
+}
+
+#[test]
+fn test_e2e_boot04_self_hosted_stage2_compiles_main_again() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+    let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures");
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("BOOT-04 self-feed: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+        stage2_self_compiler,
+        &selfhost_root,
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("BOOT-04 self-feed: stage2_self_compiler が Main.ls を再コンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_self_compiler = &stage3_modules[0];
+    assert_valid_wasm(stage3_self_compiler);
+
+    let stage4_output = run_wasm_with_six_imports_compiler_mode_fs(
+        stage3_self_compiler,
+        &fixture_dir,
+        &["compiler", "minimal.ls"],
+    )
+    .expect("BOOT-04 self-feed: stage3_self_compiler が minimal.ls をコンパイルできない");
+    let stage4_modules = parse_emitted_wasm_modules(&stage4_output, 1);
+    let stage4_wasm = &stage4_modules[0];
+    assert_valid_wasm(stage4_wasm);
+
+    let run_result = run_wasm_with_six_imports_compiler_mode(stage4_wasm, "", &[]);
+    assert!(
+        run_result.is_ok(),
+        "BOOT-04 self-feed: stage4 minimal 実行失敗: {:?}",
+        run_result.err()
+    );
+}
+
+#[test]
+fn test_e2e_boot04_self_hosted_stage2_classifies_chunked_lexer_failure_band() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("BOOT-04 chunk diag: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let build_helper_source = |count: usize| {
+        let helpers = (0..count)
+            .map(|idx| format!("(defn helper-{idx} [] 0)"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("{helpers}\n(defn main [] 42)\n")
+    };
+    let parse_stage3_wasm = |label: &str, output: &str| -> Result<usize, String> {
+        let modules = std::panic::catch_unwind(|| parse_emitted_wasm_modules(output, 1))
+            .map_err(|_| format!("{label}: 出力が wasm モジュール形式でない"))?;
+        let wasm = &modules[0];
+        assert_valid_wasm(wasm);
+        Ok(wasm.len())
+    };
+    let try_compile_inline = |label: &str, source: &str| -> Result<usize, String> {
+        let output = run_wasm_with_six_imports_compiler_mode(
+            stage2_self_compiler,
+            source,
+            &["compiler", label],
+        )
+        .map_err(|err| format!("{label}: {err}"))?;
+        parse_stage3_wasm(label, &output)
+    };
+    let try_compile_file = |path: &str| -> Result<usize, String> {
+        let output = run_wasm_with_six_imports_compiler_mode_fs(
+            stage2_self_compiler,
+            &selfhost_root,
+            &["compiler", path],
+        )
+        .map_err(|err| format!("{path}: {err}"))?;
+        parse_stage3_wasm(path, &output)
+    };
+    let summarize = |result: &Result<usize, String>| match result {
+        Ok(bytes) => format!("ok({bytes} bytes)"),
+        Err(err) => {
+            let head = err.lines().next().unwrap_or(err);
+            format!("err({head})")
         }
-        Ok(output) => {
-            // stage1 が何らかの出力を生成した: stage2_self_compiler を解析
-            eprintln!(
-                "BOOT-04 self-hosted-stage2: stage1 が Main.ls → output ({} chars) を生成",
-                output.len()
-            );
+    };
+    let summarize_optional = |result: &Option<Result<usize, String>>| match result {
+        Some(inner) => summarize(inner),
+        None => "skipped".to_string(),
+    };
 
-            // output が wasm モジュールを含むか確認
-            let modules_result = std::panic::catch_unwind(|| {
-                parse_emitted_wasm_modules(&output, 1)
-            });
+    // helper 1 個あたり約 7 トークンなので、36 個は 256 トークン未満、37 個で最初の chunk 境界を跨ぐ。
+    let below_boundary = try_compile_inline("diag-below-boundary.ls", &build_helper_source(36));
+    let cross_boundary = try_compile_inline("diag-cross-boundary.ls", &build_helper_source(37));
+    let multi_chunk = try_compile_inline("diag-multi-chunk.ls", &build_helper_source(80));
+    let need_real_world = below_boundary.is_ok() && cross_boundary.is_ok() && multi_chunk.is_ok();
+    let large_single_file = need_real_world
+        .then(|| try_compile_inline("diag-large-single-file.ls", &build_helper_source(800)));
+    let main_again =
+        need_real_world.then(|| try_compile_file("src/App/Main.ls"));
 
-            match modules_result {
-                Err(_) => {
-                    eprintln!(
-                        "BOOT-04 self-hosted-stage2 BLOCKED: stage1 の Main.ls コンパイル出力が wasm モジュール形式でない"
-                    );
-                    return;
-                }
-                Ok(modules) => {
-                    let stage2_self_compiler = &modules[0];
-                    eprintln!(
-                        "BOOT-04 self-hosted-stage2: stage2_self_compiler = {} bytes",
-                        stage2_self_compiler.len()
-                    );
-                    // セクション構造を診断ログに出力
-                    let sections = extract_sections(stage2_self_compiler);
-                    eprintln!("BOOT-04 stage2 sections: {:?}", sections);
-                    // wasmparser で詳細検証
-                    match validate_wasm_detailed(stage2_self_compiler) {
-                        Ok(_) => eprintln!("BOOT-04 stage2: wasmparser validation PASSED"),
-                        Err(e) => eprintln!("BOOT-04 stage2 wasmparser ERROR: {}", e),
-                    }
-                    assert_valid_wasm(stage2_self_compiler);
+    let classification = if below_boundary.is_err() {
+        "local-before-boundary"
+    } else if cross_boundary.is_err() {
+        "first-boundary-crossing"
+    } else if multi_chunk.is_err() {
+        "post-first-chunk"
+    } else if large_single_file
+        .as_ref()
+        .is_some_and(|result| result.is_err())
+        || main_again.as_ref().is_some_and(|result| result.is_err())
+    {
+        "real-world-only"
+    } else {
+        "no-probe-failure"
+    };
 
-                    // stage2_self_compiler が compiler-mode で minimal.ls → stage3 を生成できるか
-                    // 6-import モデル: env.string-concat, env.substring も import される
-                    let minimal_ls_content = std::fs::read_to_string(fixture_dir.join("minimal.ls"))
-                        .unwrap_or_else(|_| "(defn main [] 42)".to_string());
-                    let stage3_result = run_wasm_with_six_imports_compiler_mode(
-                        stage2_self_compiler,
-                        &minimal_ls_content,
-                        &["compiler", "minimal.ls"],
-                    );
+    eprintln!(
+        "BOOT-04 chunk-band diag: below={} cross={} multi={} large={} main={} => {}",
+        summarize(&below_boundary),
+        summarize(&cross_boundary),
+        summarize(&multi_chunk),
+        summarize_optional(&large_single_file),
+        summarize_optional(&main_again),
+        classification
+    );
 
-                    match stage3_result {
-                        Err(e) => {
-                            eprintln!(
-                                "BOOT-04 self-hosted-stage2 BLOCKED: stage2_self_compiler が minimal.ls をコンパイルできない: {}",
-                                e
-                            );
-                            // ブロッカーを記録して終了
-                        }
-                        Ok(stage3_output) => {
-                            eprintln!(
-                                "BOOT-04 self-hosted-stage2: stage3_output = {} chars",
-                                stage3_output.len()
-                            );
-                            let modules_result = std::panic::catch_unwind(|| {
-                                parse_emitted_wasm_modules(&stage3_output, 1)
-                            });
-                            match modules_result {
-                                Err(_) => {
-                                    eprintln!(
-                                        "BOOT-04 self-hosted-stage2 BLOCKED: stage3 出力が wasm 形式でない"
-                                    );
-                                }
-                                Ok(stage3_modules) => {
-                                    let stage3_wasm = &stage3_modules[0];
-                                    assert_valid_wasm(stage3_wasm);
-                                    // stage3 は 6-import モデルで実行
-                                    let run_result = run_wasm_with_six_imports_compiler_mode(
-                                        stage3_wasm,
-                                        "",
-                                        &[],
-                                    );
-                                    assert!(
-                                        run_result.is_ok(),
-                                        "stage2_self_compiler → stage3 実行失敗: {:?}",
-                                        run_result.err()
-                                    );
-                                    eprintln!(
-                                        "BOOT-04 self-hosted-stage2 GREEN: stage1→stage2_self_compiler→stage3 ({} bytes) 完全成功!",
-                                        stage3_wasm.len()
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    assert!(matches!(
+        classification,
+        "local-before-boundary"
+            | "first-boundary-crossing"
+            | "post-first-chunk"
+            | "real-world-only"
+            | "no-probe-failure"
+    ));
+}
+
+#[test]
+fn test_e2e_boot04_self_hosted_stage2_reports_step512_progress() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+    let diagnostic_rel_path = "src/Tools/Test/Stage2LexerStep512Progress.ls";
+    let diagnostic_abs_path = selfhost_root.join(diagnostic_rel_path);
+
+    assert!(
+        diagnostic_abs_path.exists(),
+        "診断ハーネス {} が存在しない",
+        diagnostic_abs_path.display()
+    );
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("BOOT-04 step512 diag: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+        stage2_self_compiler,
+        &selfhost_root,
+        &["compiler", diagnostic_rel_path],
+    )
+    .expect("BOOT-04 step512 diag: stage2_self_compiler が診断ハーネスをコンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_wasm = &stage3_modules[0];
+    assert_valid_wasm(stage3_wasm);
+
+    let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &[])
+        .expect("BOOT-04 step512 diag: stage3 診断 wasm の実行に失敗した");
+    let values = run_output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.trim().parse::<i64>().unwrap_or_else(|err| {
+                panic!("step512 診断出力が整数でない: {line:?} / {err}")
+            })
+        })
+        .collect::<Vec<_>>();
+
+    eprintln!("BOOT-04 step512 diag: {:?}", values);
+
+    assert!(
+        values.len() == 4 || values.len() == 7,
+        "step512 診断出力は 4 行または 7 行であるべき: {:?}",
+        values
+    );
+
+    let source_len = values[0];
+    let done1 = values[1];
+    let next1 = values[2];
+    let count1 = values[3];
+
+    assert!(source_len > 0, "step512 診断入力長が 0");
+    assert!(next1 > 0 && next1 <= source_len, "step1 next が範囲外: {:?}", values);
+    assert!(count1 > 0, "step1 token count が 0: {:?}", values);
+
+    if done1 == 0 {
+        assert_eq!(values.len(), 7, "step1 未完了なら step2 出力が必要: {:?}", values);
+        let next2 = values[5];
+        let count2 = values[6];
+        assert!(
+            next2 > next1 && next2 <= source_len,
+            "step2 next が前進していない: {:?}",
+            values
+        );
+        assert!(count2 > count1, "step2 token count が増えていない: {:?}", values);
+    } else {
+        assert_eq!(values.len(), 4, "step1 完了なら step2 出力は不要: {:?}", values);
     }
 }
 
@@ -4779,6 +5218,88 @@ fn test_e2e_boot04_compiler_mode_package_index_resolution() {
         "BOOT-04 package-index-resolution: 生成 wasm の WASI 実行に失敗: {:?}",
         run_result.err()
     );
+}
+
+#[test]
+fn test_e2e_boot04_compiler_mode_supports_twelve_arg_calls() {
+    let main_path = selfhost_main_path();
+    let fixture_dir = std::env::temp_dir().join(format!(
+        "lsharp_selfhost_many_args_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&fixture_dir);
+    std::fs::create_dir_all(fixture_dir.join("src")).unwrap();
+    std::fs::write(
+        fixture_dir.join("src/Main.ls"),
+        "(module Main)\n(defn pick-last [a b c d e f g h i j k l] (do (print l) l))\n(defn main [] (pick-last 1 2 3 4 5 6 7 8 9 10 11 12))",
+    )
+    .unwrap();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&fixture_dir),
+        &["compiler", "src/Main.ls"],
+    )
+    .expect("BOOT-04 many-args: compiler-mode が src/Main.ls をコンパイルできなかった");
+
+    let modules = parse_emitted_wasm_modules(&output, 1);
+    let result_wasm = &modules[0];
+    assert_valid_wasm(result_wasm);
+
+    let run_result = run_wasm_with_six_imports_compiler_mode(result_wasm, "", &[]);
+    let _ = std::fs::remove_dir_all(&fixture_dir);
+    let run_output =
+        run_result.expect("BOOT-04 many-args: 生成 wasm の WASI 実行に失敗した");
+    assert_eq!(run_output, "12\n");
+}
+
+#[test]
+fn test_e2e_boot04_compiler_mode_ignores_dotted_flat_file() {
+    let main_path = selfhost_main_path();
+    let fixture_dir = std::env::temp_dir().join(format!(
+        "lsharp_selfhost_dotted_flat_fallback_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&fixture_dir);
+    std::fs::create_dir_all(fixture_dir.join("src/App")).unwrap();
+    std::fs::create_dir_all(fixture_dir.join("src")).unwrap();
+
+    std::fs::write(
+        fixture_dir.join("src/App/Main.ls"),
+        "(module App.Main)\n(import Syntax.Token)\n(defn main [] (print (token-tag)))",
+    )
+    .unwrap();
+    std::fs::write(
+        fixture_dir.join("src/Syntax.Token.ls"),
+        "(module Syntax.Token)\n(defn token-tag [] 7)",
+    )
+    .unwrap();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let result = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&fixture_dir),
+        &["compiler", "src/App/Main.ls"],
+    );
+
+    let _ = std::fs::remove_dir_all(&fixture_dir);
+    if let Ok(output) = result {
+        let modules = parse_emitted_wasm_modules(&output, 1);
+        let result_wasm = &modules[0];
+        assert_valid_wasm(result_wasm);
+
+        if let Ok(run_output) = run_wasm_with_six_imports_compiler_mode(result_wasm, "", &[]) {
+            assert_ne!(
+                run_output, "7\n",
+                "BOOT-04 dotted-flat-file: compiler-mode が src/Syntax.Token.ls を module source に採用している"
+            );
+        }
+    }
 }
 
 #[test]

@@ -189,7 +189,7 @@ fn test_e2e_match_guard_with_binding() {
 }
 
 // =====================================================// P8-5: ブートストラップ統合検証
-// selfhost/ の複数モジュールを結合した統合パイプラインの検証
+// selfhost/src/** の複数モジュールを結合した統合パイプラインの検証
 // =====================================================
 /// 統合テスト: selfhost/src/App/Main.ls を Rust コンパイラでコンパイル・実行し、
 /// AST 構築 → IR 変換 → Wasm バイナリ生成の統合パイプラインを検証する。
@@ -214,7 +214,7 @@ fn test_e2e_bootstrap_stage1_integration() {
     );
 }
 
-/// 統合テスト: selfhost/ の全モジュールを結合したソースが正しくコンパイルでき、
+/// 統合テスト: selfhost/src/** の全モジュールを結合したソースが正しくコンパイルでき、
 /// stage1.wasm 相当のバイナリ生成まで検証する。
 #[test]
 fn test_e2e_bootstrap_stage1_wasm_generation() {

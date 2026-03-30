@@ -4,7 +4,7 @@ use super::support::*;
 // TASK-007: Main.ls モジュール構造テスト
 // =====================================================
 
-/// Main.ls が module/import 宣言を持ち、compile-full-pipeline が存在し、
+/// Main.ls が slim entrypoint であり、pipeline smoke は App.PipelineSmoke に分離されていること、
 /// モジュール依存関係のドキュメントコメントを含むことを検証する。
 #[test]
 fn test_e2e_selfhost_main_module_structure() {
@@ -18,17 +18,8 @@ fn test_e2e_selfhost_main_module_structure() {
 
     // 2. 全ての import 宣言の存在
     let expected_imports = [
-        "Syntax.AST",
-        "Syntax.Lexer",
-        "Syntax.Parser",
-        "Syntax.MacroExpand",
-        "Types.TypeInfer",
-        "Backend.Wasm.Compiler",
-        "Backend.Wasm.WasmEmit",
-        "Backend.Native.NativeTarget",
-        "Backend.Native.NativeCodegen",
-        "Backend.Native.NativeEmit",
-        "Backend.Native.Linker",
+        "App.CompilerMode",
+        "App.PipelineSmoke",
     ];
     for imp in &expected_imports {
         let import_decl = format!("(import {})", imp);
@@ -39,24 +30,71 @@ fn test_e2e_selfhost_main_module_structure() {
         );
     }
 
-    // 3. compile-full-pipeline 関数の存在
+    // 3. pipeline smoke は App.PipelineSmoke に分離されていること
+    let pipeline_smoke_path = selfhost_package_root().join("src/App/PipelineSmoke.ls");
+    let pipeline_smoke_source = std::fs::read_to_string(&pipeline_smoke_path)
+        .unwrap_or_else(|_| panic!("{} が読み込めない", pipeline_smoke_path.display()));
     assert!(
-        source.contains("(defn compile-full-pipeline"),
-        "Main.ls に compile-full-pipeline 関数が必要"
+        pipeline_smoke_source.contains("(module App.PipelineSmoke)"),
+        "PipelineSmoke.ls に (module App.PipelineSmoke) 宣言が必要"
+    );
+    assert!(
+        pipeline_smoke_source.contains("(defn compile-full-pipeline")
+            && pipeline_smoke_source.contains("(defn compile-source")
+            && pipeline_smoke_source.contains("(defn run-main-smoke"),
+        "App.PipelineSmoke に smoke/pipeline 関数群が必要"
+    );
+    assert!(
+        !source.contains("(defn compile-full-pipeline")
+            && !source.contains("(defn compile-source")
+            && !source.contains("(defn compile-native-pipeline"),
+        "pipeline smoke 関数群は Main.ls ではなく App.PipelineSmoke に分離されているべき"
     );
 
-    // 4. selfhost canonical resolver が Main.ls に統合されていること
+    // 4. resolver は App.ModuleResolver に分離されていること
+    let resolver_path = selfhost_package_root().join("src/App/ModuleResolver.ls");
+    let resolver_source = std::fs::read_to_string(&resolver_path)
+        .unwrap_or_else(|_| panic!("{} が読み込めない", resolver_path.display()));
     assert!(
-        source.contains("(defn resolve-source-root")
-            && source.contains("(defn resolve-package-root")
-            && source.contains("(defn resolve-module-path"),
-        "Main.ls に canonical resolver 関数群が必要"
+        resolver_source.contains("(module App.ModuleResolver)"),
+        "ModuleResolver.ls に (module App.ModuleResolver) 宣言が必要"
+    );
+    assert!(
+        resolver_source.contains("(defn resolve-source-root")
+            && resolver_source.contains("(defn resolve-package-root")
+            && resolver_source.contains("(defn resolve-module-path"),
+        "App.ModuleResolver に canonical resolver 関数群が必要"
+    );
+    assert!(
+        !source.contains("(import App.ModuleResolver)"),
+        "Main.ls は App.ModuleResolver を直接 import せず、App.CompilerMode 経由で使うべき"
+    );
+    assert!(
+        !source.contains("(defn resolve-source-root")
+            && !source.contains("(defn resolve-package-root")
+            && !source.contains("(defn resolve-module-path"),
+        "resolver 関数群は Main.ls ではなく App.ModuleResolver に分離されているべき"
     );
 
-    // 5. compiler-mode 用 entrypoint が残っていること
+    // 5. compiler-mode は App.CompilerMode に分離されていること
+    let compiler_mode_path = selfhost_package_root().join("src/App/CompilerMode.ls");
+    let compiler_mode_source = std::fs::read_to_string(&compiler_mode_path)
+        .unwrap_or_else(|_| panic!("{} が読み込めない", compiler_mode_path.display()));
     assert!(
-        source.contains("(defn compile-file-mode"),
-        "Main.ls に compile-file-mode 関数が必要"
+        compiler_mode_source.contains("(module App.CompilerMode)"),
+        "CompilerMode.ls に (module App.CompilerMode) 宣言が必要"
+    );
+    assert!(
+        compiler_mode_source.contains("(defn compile-file-mode")
+            && compiler_mode_source.contains("(defn build-wasm-bytes-wasi")
+            && compiler_mode_source.contains("(defn print-wasm-module"),
+        "App.CompilerMode に compiler-mode 関数群が必要"
+    );
+    assert!(
+        !source.contains("(defn compile-file-mode")
+            && !source.contains("(defn build-wasm-bytes-wasi")
+            && !source.contains("(defn print-wasm-module"),
+        "compiler-mode 関数群は Main.ls ではなく App.CompilerMode に分離されているべき"
     );
 
     // 6. Main.ls 固有の関数が残っていること
@@ -80,12 +118,15 @@ fn test_e2e_selfhost_main_module_structure() {
 /// topological sort でコンパイル順を決定。依存先が依存元より前に来ることを検証する。
 ///
 /// 期待されるコンパイル順 (依存深度レベル):
-///   Level 0 (依存なし): Syntax.Token, IR.IR, Types.Type, Tools.Lsp.JsonRpc, Backend.Native.NativeTarget
+///   Level 0 (依存なし): Syntax.Token, IR.IR, Types.Type, Tools.Lsp.JsonRpc, Backend.Native.NativeTarget, App.ModuleResolver
 ///   Level 1: Syntax.AST, Types.TypeScheme, Syntax.Lexer, Backend.Wasm.WasmEmit,
 ///            Backend.Native.NativeCodegen, Backend.Native.NativeEmit, Backend.Native.Linker
-///   Level 2: Syntax.Parser, Syntax.MacroExpand, Types.TypeInfer, Backend.Wasm.Compiler,
+///   Level 2: Syntax.Parser, Syntax.MacroExpand, Types.TypeInferCore, Backend.Wasm.Compiler,
 ///            Tools.Text.Linter, Tools.Text.Formatter
-///   Level 3: App.Main
+///   Level 3: Types.TypeInferFunctions, Types.TypeInferBuiltins, App.CompilerMode
+///   Level 4: Types.TypeInfer
+///   Level 5: App.PipelineSmoke
+///   Level 6: App.Main
 #[test]
 fn test_e2e_selfhost_module_graph_topological_sort() {
     use std::collections::{HashMap, HashSet, VecDeque};
@@ -275,13 +316,14 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         levels.insert(module.clone(), level);
     }
 
-    // Level 0: Syntax.Token, IR.IR, Types.Type, Tools.Lsp.JsonRpc, Backend.Native.NativeTarget (依存なし)
+    // Level 0: Syntax.Token, IR.IR, Types.Type, Tools.Lsp.JsonRpc, Backend.Native.NativeTarget, App.ModuleResolver (依存なし)
     let level_0: HashSet<&str> = [
         "Syntax.Token",
         "IR.IR",
         "Types.Type",
         "Tools.Lsp.JsonRpc",
         "Backend.Native.NativeTarget",
+        "App.ModuleResolver",
     ]
         .iter()
         .copied()
@@ -322,13 +364,13 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         levels["Backend.Wasm.WasmEmit"]
     );
 
-    // Level 2: Syntax.Parser, Syntax.MacroExpand, Types.TypeInfer, Backend.Wasm.Compiler,
+    // Level 2: Syntax.Parser, Syntax.MacroExpand, Types.TypeInferCore, Backend.Wasm.Compiler,
     // Tools.Text.Linter, Tools.Text.Formatter
     // (Level 1 のモジュールに依存)
     let level_2: HashSet<&str> = [
         "Syntax.Parser",
         "Syntax.MacroExpand",
-        "Types.TypeInfer",
+        "Types.TypeInferCore",
         "Backend.Wasm.Compiler",
         "Tools.Text.Linter",
         "Tools.Text.Formatter",
@@ -344,12 +386,49 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         );
     }
 
-    // Level 3: App.Main (-> Syntax.Parser, Types.TypeInfer 等の Level 2)
-    let level_3: HashSet<&str> = ["App.Main"].iter().copied().collect();
+    // Level 3: Types.TypeInferFunctions, Types.TypeInferBuiltins, App.CompilerMode
+    let level_3: HashSet<&str> = [
+        "Types.TypeInferFunctions",
+        "Types.TypeInferBuiltins",
+        "App.CompilerMode",
+    ]
+        .iter()
+        .copied()
+        .collect();
     for module in &level_3 {
         assert_eq!(
             levels[*module], 3,
             "{} は Level 3 であるべき (実際: Level {})",
+            module, levels[*module]
+        );
+    }
+
+    // Level 4: Types.TypeInfer
+    let level_4: HashSet<&str> = ["Types.TypeInfer"].iter().copied().collect();
+    for module in &level_4 {
+        assert_eq!(
+            levels[*module], 4,
+            "{} は Level 4 であるべき (実際: Level {})",
+            module, levels[*module]
+        );
+    }
+
+    // Level 5: App.PipelineSmoke
+    let level_5: HashSet<&str> = ["App.PipelineSmoke"].iter().copied().collect();
+    for module in &level_5 {
+        assert_eq!(
+            levels[*module], 5,
+            "{} は Level 5 であるべき (実際: Level {})",
+            module, levels[*module]
+        );
+    }
+
+    // Level 6: App.Main (-> App.CompilerMode, App.PipelineSmoke)
+    let level_6: HashSet<&str> = ["App.Main"].iter().copied().collect();
+    for module in &level_6 {
+        assert_eq!(
+            levels[*module], 6,
+            "{} は Level 6 であるべき (実際: Level {})",
             module, levels[*module]
         );
     }
@@ -373,6 +452,8 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
 /// Main.ls の 5ステージ統合 (token/parse/expand/infer/compile) において、
 /// expand (MacroExpand) と infer (TypeInfer) が正しく統合されていることを
 /// モジュール宣言の存在 + パイプラインステージ数で確認する。
+/// あわせて TypeInfer.ls が TypeInferCore.ls / TypeInferFunctions.ls へ共通 helper を委譲し、
+/// builtins 初期化と test-only smoke main も別モジュールへ分離していることを固定する。
 #[test]
 fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
     // 1. MacroExpand.ls と TypeInfer.ls にモジュール宣言が存在することを検証
@@ -380,6 +461,17 @@ fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
         .expect("canonical MacroExpand.ls が読み込めない");
     let typeinfer_source = std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
         .expect("canonical TypeInfer.ls が読み込めない");
+    let typeinfer_core_source = std::fs::read_to_string(selfhost_source_path("TypeInferCore.ls"))
+        .expect("canonical TypeInferCore.ls が読み込めない");
+    let typeinfer_functions_source =
+        std::fs::read_to_string(selfhost_source_path("TypeInferFunctions.ls"))
+            .expect("canonical TypeInferFunctions.ls が読み込めない");
+    let typeinfer_builtins_source =
+        std::fs::read_to_string(selfhost_source_path("TypeInferBuiltins.ls"))
+            .expect("canonical TypeInferBuiltins.ls が読み込めない");
+    let typeinfer_smoke_source =
+        std::fs::read_to_string(selfhost_source_path("TypeInferSmoke.ls"))
+            .expect("canonical TypeInferSmoke.ls が読み込めない");
 
     // MacroExpand.ls: (module Syntax.MacroExpand) + (import Syntax.AST) + (import Syntax.Token)
     assert!(
@@ -391,7 +483,8 @@ fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
         "MacroExpand.ls に (import Syntax.AST) がない"
     );
 
-    // TypeInfer.ls: (module Types.TypeInfer) + (import Syntax.AST) + (import Types.Type) + (import Types.TypeScheme)
+    // TypeInfer.ls: (module Types.TypeInfer) + (import Syntax.AST) + (import Types.Type)
+    // + (import Types.TypeScheme) + (import Types.TypeInferCore)
     assert!(
         typeinfer_source.contains("(module Types.TypeInfer)"),
         "TypeInfer.ls に (module Types.TypeInfer) 宣言がない"
@@ -403,6 +496,74 @@ fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
     assert!(
         typeinfer_source.contains("(import Types.TypeScheme)"),
         "TypeInfer.ls に (import Types.TypeScheme) がない"
+    );
+    assert!(
+        typeinfer_source.contains("(import Types.TypeInferCore)"),
+        "TypeInfer.ls に (import Types.TypeInferCore) がない"
+    );
+    assert!(
+        typeinfer_source.contains("(import Types.TypeInferFunctions)"),
+        "TypeInfer.ls に (import Types.TypeInferFunctions) がない"
+    );
+    assert!(
+        typeinfer_source.contains("(import Types.TypeInferBuiltins)"),
+        "TypeInfer.ls に (import Types.TypeInferBuiltins) がない"
+    );
+    assert!(
+        typeinfer_core_source.contains("(module Types.TypeInferCore)"),
+        "TypeInferCore.ls に (module Types.TypeInferCore) 宣言がない"
+    );
+    assert!(
+        typeinfer_functions_source.contains("(module Types.TypeInferFunctions)"),
+        "TypeInferFunctions.ls に (module Types.TypeInferFunctions) 宣言がない"
+    );
+    assert!(
+        typeinfer_builtins_source.contains("(module Types.TypeInferBuiltins)"),
+        "TypeInferBuiltins.ls に (module Types.TypeInferBuiltins) 宣言がない"
+    );
+    assert!(
+        typeinfer_smoke_source.contains("(module Types.TypeInferSmoke)"),
+        "TypeInferSmoke.ls に (module Types.TypeInferSmoke) 宣言がない"
+    );
+    assert!(
+        typeinfer_core_source.contains("(defn make-result")
+            && typeinfer_core_source.contains("(defn error-code-undefined")
+            && typeinfer_core_source.contains("(defn hkt-apply"),
+        "TypeInferCore.ls に共通 helper 群が不足している"
+    );
+    assert!(
+        typeinfer_functions_source.contains("(defn typeinfer-fresh-param-types")
+            && typeinfer_functions_source.contains("(defn typeinfer-build-curried-fun"),
+        "TypeInferFunctions.ls に lambda/defn 共通 helper が不足している"
+    );
+    assert!(
+        typeinfer_builtins_source.contains("(defn typeinfer-init-builtin-env"),
+        "TypeInferBuiltins.ls に builtin env 初期化関数がない"
+    );
+    assert!(
+        typeinfer_smoke_source.contains("(defn main []"),
+        "TypeInferSmoke.ls に smoke main がない"
+    );
+    assert!(
+        !typeinfer_source.contains("(defn make-result")
+            && !typeinfer_source.contains("(defn error-code-undefined")
+            && !typeinfer_source.contains("(defn hkt-apply"),
+        "TypeInfer.ls には TypeInferCore へ移した helper を重複定義すべきではない"
+    );
+    assert!(
+        !typeinfer_source.contains("if (= param-count 7)")
+            && !typeinfer_source.contains("fun7 (mk-fun")
+            && !typeinfer_source.contains("env7 (type-env-insert env6"),
+        "TypeInfer.ls には lambda/defn の arity 展開を残すべきではない"
+    );
+    assert!(
+        !typeinfer_source.contains("add-ty (mk-fun int-ty")
+            && !typeinfer_source.contains("env8 (type-env-insert env7 112"),
+        "TypeInfer.ls には builtin env の実装詳細を残すべきではない"
+    );
+    assert!(
+        !typeinfer_source.contains("(defn main []"),
+        "TypeInfer.ls に test-only smoke main を残すべきではない"
     );
 
     // 2. Main.ls の compile-full-pipeline が 5ステージを統合していることを検証
@@ -430,12 +591,31 @@ fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
         macroexpand_defn_count
     );
 
-    // 4. TypeInfer.ls の関数数が 50 以上であること (本格的な実装)
+    // 4. TypeInfer は helper 分割後も、合算で十分な実装量を持つこと
     let typeinfer_defn_count = typeinfer_source.matches("(defn ").count();
+    let typeinfer_core_defn_count = typeinfer_core_source.matches("(defn ").count();
+    let typeinfer_functions_defn_count = typeinfer_functions_source.matches("(defn ").count();
     assert!(
-        typeinfer_defn_count >= 50,
-        "TypeInfer.ls の関数数が不足: {} (50以上必要)",
+        typeinfer_defn_count + typeinfer_core_defn_count + typeinfer_functions_defn_count >= 55,
+        "TypeInfer 系の関数数が不足: TypeInfer={} TypeInferCore={} TypeInferFunctions={} (合計55以上必要)",
+        typeinfer_defn_count,
+        typeinfer_core_defn_count,
+        typeinfer_functions_defn_count
+    );
+    assert!(
+        typeinfer_defn_count >= 30,
+        "TypeInfer.ls 本体の関数数が不足: {} (30以上必要)",
         typeinfer_defn_count
+    );
+    assert!(
+        typeinfer_core_defn_count >= 20,
+        "TypeInferCore.ls の関数数が不足: {} (20以上必要)",
+        typeinfer_core_defn_count
+    );
+    assert!(
+        typeinfer_functions_defn_count >= 4,
+        "TypeInferFunctions.ls の関数数が不足: {} (4以上必要)",
+        typeinfer_functions_defn_count
     );
 
     // 5. expand/infer ステージの出力検証
@@ -529,7 +709,14 @@ fn test_e2e_bootstrap_selfhost_full_deterministic() {
         (
             "TypeInfer.ls",
             selfhost_module("TypeInfer.ls"),
-            &["Syntax.AST", "Types.Type", "Types.TypeScheme"],
+            &[
+                "Syntax.AST",
+                "Types.Type",
+                "Types.TypeScheme",
+                "Types.TypeInferCore",
+                "Types.TypeInferFunctions",
+                "Types.TypeInferBuiltins",
+            ],
         ),
     ];
 

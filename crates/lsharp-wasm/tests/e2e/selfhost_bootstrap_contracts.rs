@@ -13,16 +13,14 @@ fn test_e2e_selfhost_main_import_only_pipeline() {
     let main_path = selfhost_main_path();
     let main_source = std::fs::read_to_string(&main_path)
         .unwrap_or_else(|_| panic!("{} が読み込めない", main_path.display()));
+    let pipeline_smoke_path = selfhost_source_path("PipelineSmoke.ls");
+    let pipeline_smoke_source = std::fs::read_to_string(&pipeline_smoke_path)
+        .unwrap_or_else(|_| panic!("{} が読み込めない", pipeline_smoke_path.display()));
 
     // 1. 必須 import 宣言の存在確認
     let required_imports = [
-        "Syntax.AST",
-        "Syntax.Lexer",
-        "Syntax.Parser",
-        "Syntax.MacroExpand",
-        "Types.TypeInfer",
-        "Backend.Wasm.Compiler",
-        "Backend.Wasm.WasmEmit",
+        "App.CompilerMode",
+        "App.PipelineSmoke",
     ];
     for module in &required_imports {
         assert!(
@@ -63,18 +61,18 @@ fn test_e2e_selfhost_main_import_only_pipeline() {
     );
 
     // 3. 各モジュール固定 API が import 経由で呼ばれていること
-    //    Lexer.tokenize または tokenize が Main.ls 内で参照されていること
+    //    slim entrypoint 化後は PipelineSmoke.ls が Lexer/Parser 等の API を束ねる
     let api_calls = [
         ("Lexer.tokenize", "tokenize"),
         ("Parser.parse-program", "parse-program"),
     ];
 
     for (qualified, unqualified) in &api_calls {
-        let has_qualified = main_source.contains(qualified);
-        let has_unqualified = main_source.contains(&format!("({}", unqualified));
+        let has_qualified = pipeline_smoke_source.contains(qualified);
+        let has_unqualified = pipeline_smoke_source.contains(&format!("({}", unqualified));
         assert!(
             has_qualified || has_unqualified,
-            "canonical Main に {} または {} の呼び出しが見つからない (import 経由の API 呼び出しが必要)",
+            "PipelineSmoke に {} または {} の呼び出しが見つからない (import 経由の API 呼び出しが必要)",
             qualified,
             unqualified
         );
@@ -95,7 +93,7 @@ fn test_e2e_selfhost_flat_compat_sources_removed() {
 
     assert!(
         top_level_ls_files.is_empty(),
-        "selfhost 直下の flat 互換コピーは削除済みであること: {:?}",
+        "selfhost 直下に legacy flat source が残ってはいけない: {:?}",
         top_level_ls_files
     );
 }
@@ -236,6 +234,14 @@ fn test_e2e_selfhost_type_responsibility_separation() {
         type_infer_ls.contains("(import Types.TypeScheme)"),
         "TypeInfer.ls が Types.TypeScheme を import していない"
     );
+    assert!(
+        type_infer_ls.contains("(import Types.TypeInferFunctions)"),
+        "TypeInfer.ls が Types.TypeInferFunctions を import していない"
+    );
+    assert!(
+        type_infer_ls.contains("(import Types.TypeInferBuiltins)"),
+        "TypeInfer.ls が Types.TypeInferBuiltins を import していない"
+    );
 
     // 重複定義の検出: TypeInfer.ls に unify/apply-subst/generalize が再定義されている場合 FAIL
     // (import しているなら再定義は不要)
@@ -259,6 +265,16 @@ fn test_e2e_selfhost_type_responsibility_separation() {
     assert!(
         !type_infer_has_instantiate_redef,
         "TypeInfer.ls に instantiate が再定義されている: TypeScheme.ls の import で解決すべき"
+    );
+    assert!(
+        !type_infer_ls.contains("if (= param-count 7)")
+            && !type_infer_ls.contains("fun7 (mk-fun")
+            && !type_infer_ls.contains("env7 (type-env-insert env6"),
+        "TypeInfer.ls に lambda/defn の arity 展開が残っている: TypeInferFunctions.ls に委譲すべき"
+    );
+    assert!(
+        !type_infer_ls.contains("add-ty (mk-fun int-ty"),
+        "TypeInfer.ls に builtin env 実装が残っている: TypeInferBuiltins.ls に委譲すべき"
     );
 }
 
@@ -514,19 +530,36 @@ fn test_e2e_selfhost_type_hm_core_golden() {
         .expect("canonical TypeScheme.ls が読み込めない");
     let type_infer_core_ls = std::fs::read_to_string(selfhost_source_path("TypeInferCore.ls"))
         .expect("canonical TypeInferCore.ls が読み込めない");
+    let type_infer_functions_ls =
+        std::fs::read_to_string(selfhost_source_path("TypeInferFunctions.ls"))
+            .expect("canonical TypeInferFunctions.ls が読み込めない");
+    let type_infer_builtins_ls =
+        std::fs::read_to_string(selfhost_source_path("TypeInferBuiltins.ls"))
+            .expect("canonical TypeInferBuiltins.ls が読み込めない");
     let type_infer_ls = std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
         .expect("canonical TypeInfer.ls が読み込めない");
+    let type_infer_smoke_ls =
+        std::fs::read_to_string(selfhost_source_path("TypeInferSmoke.ls"))
+            .expect("canonical TypeInferSmoke.ls が読み込めない");
 
     // モジュール連結 (依存順)
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}",
-        token_ls, ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        token_ls,
+        ast_ls,
+        type_ls,
+        type_scheme_ls,
+        type_infer_core_ls,
+        type_infer_functions_ls,
+        type_infer_builtins_ls,
+        type_infer_ls,
+        type_infer_smoke_ls
     );
 
-    // コンパイル + 実行: TypeInfer.ls の main() が golden fixture と同じ結果を出力するか
+    // コンパイル + 実行: TypeInferSmoke.ls の main() が golden fixture と同じ結果を出力するか
     let output = compile_and_run(&combined);
 
-    // TypeInfer.ls の main() の期待出力 (golden fixture と対応):
+    // TypeInferSmoke.ls の main() の期待出力 (golden fixture と対応):
     // テスト 1: result_failed=0, ty_tag=1, ty_name=100 (Int リテラル -> Int)
     // テスト 2: ty_tag=1, ty_name=200 (Bool リテラル -> Bool)
     // テスト 3: result_failed=0, ty_tag=1, ty_name=100 (if true 42 0 -> Int)
@@ -534,7 +567,7 @@ fn test_e2e_selfhost_type_hm_core_golden() {
     // テスト 5: result_failed=0, ty_name=200 (変数 -> Bool)
     // テスト 6: result_failed=1 (未定義変数 -> エラー)
     // テスト 7: result_failed=0, ty_name=200 (do -> Bool)
-    // 連結ソースでは **最後**の main (TypeInfer.ls) が実行される
+    // 連結ソースでは **最後**の main (TypeInferSmoke.ls) が実行される
     // (emit_wasm_wasi は複数 defn main があるとき rposition でエントリを選ぶ)
     let expected_lines = [
         "0", "1", "100", "1", "200", "0", "1", "100", "0", "1", "100", "0", "200", "1", "0", "200",

@@ -12,8 +12,19 @@ fn typeinfer_runtime_modules() -> (String, String, String, String, String) {
         .expect("canonical TypeScheme.ls が読み込めない");
     let type_infer_core_ls = std::fs::read_to_string(selfhost_source_path("TypeInferCore.ls"))
         .expect("canonical TypeInferCore.ls が読み込めない");
-    let type_infer_ls = std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
-        .expect("canonical TypeInfer.ls が読み込めない");
+    let type_infer_functions_ls =
+        std::fs::read_to_string(selfhost_source_path("TypeInferFunctions.ls"))
+            .expect("canonical TypeInferFunctions.ls が読み込めない");
+    let type_infer_builtins_ls =
+        std::fs::read_to_string(selfhost_source_path("TypeInferBuiltins.ls"))
+            .expect("canonical TypeInferBuiltins.ls が読み込めない");
+    let type_infer_ls = format!(
+        "{}\n{}\n{}",
+        type_infer_functions_ls,
+        type_infer_builtins_ls,
+        std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
+            .expect("canonical TypeInfer.ls が読み込めない")
+    );
     (ast_ls, type_ls, type_scheme_ls, type_infer_core_ls, type_infer_ls)
 }
 

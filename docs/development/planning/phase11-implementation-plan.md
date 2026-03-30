@@ -661,7 +661,7 @@
 - Goal: collector 前提の object header / trace map / root API を導入する。
 - Current state: precise tracing GC の前提モデルが未実装。
 - Rust source: `docs/language/runtime-spec.md`, `docs/development/planning/memory-management-roadmap.md`, `docs/development/planning/runtime-stability-spec.md`
-- L# target: runtime layer, builtins, `selfhost/*`
+- L# target: runtime layer, builtins, `selfhost/src/**`
 - Implementation direction: object header は `[tag size-or-words mark-state aux]` で固定し、`root_push`, `root_pop`, `root_set` を no-op 互換 API として先行導入する。trace map は string/adt/record/vector/hashmap/closure/ref-cell ごとに定義する。
 - Dependencies: なし。
 - Acceptance: all heap object kinds に trace 規約があり、GC 未導入でも root API を呼べる。

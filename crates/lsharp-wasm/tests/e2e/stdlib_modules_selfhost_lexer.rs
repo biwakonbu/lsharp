@@ -123,7 +123,7 @@ fn test_e2e_bootstrap_stage1_modules() {
     let mut skipped = 0;
     let mut failed = Vec::new();
 
-    // 各モジュールの定義: (ファイル名, 期待出力) — ソースは selfhost/ から読み、(import) はマルチファイル経路
+    // 各モジュールの定義: (ファイル名, 期待出力) — ソースは selfhost/src/** の canonical path から読み、(import) はマルチファイル経路
     let modules: Vec<(&str, &str)> = vec![
         // Token.ls: トークン種別定数の出力 (lparen=0, rparen=1, eof=99)
         ("Token.ls", "0\n1\n99"),

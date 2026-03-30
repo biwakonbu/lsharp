@@ -154,6 +154,9 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
     selfhost_project_root().join(match name {
         "Main.ls" => "selfhost/src/App/Main.ls",
         "Cli.ls" => "selfhost/src/App/Cli.ls",
+        "ModuleResolver.ls" => "selfhost/src/App/ModuleResolver.ls",
+        "CompilerMode.ls" => "selfhost/src/App/CompilerMode.ls",
+        "PipelineSmoke.ls" => "selfhost/src/App/PipelineSmoke.ls",
         "Token.ls" => "selfhost/src/Syntax/Token.ls",
         "AST.ls" => "selfhost/src/Syntax/AST.ls",
         "Lexer.ls" => "selfhost/src/Syntax/Lexer.ls",
@@ -164,6 +167,9 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "Type.ls" => "selfhost/src/Types/Type.ls",
         "TypeScheme.ls" => "selfhost/src/Types/TypeScheme.ls",
         "TypeInferCore.ls" => "selfhost/src/Types/TypeInferCore.ls",
+        "TypeInferFunctions.ls" => "selfhost/src/Types/TypeInferFunctions.ls",
+        "TypeInferBuiltins.ls" => "selfhost/src/Types/TypeInferBuiltins.ls",
+        "TypeInferSmoke.ls" => "selfhost/src/Types/TypeInferSmoke.ls",
         "TypeInfer.ls" => "selfhost/src/Types/TypeInfer.ls",
         "Constraints.ls" => "selfhost/src/Types/Constraints.ls",
         "Compiler.ls" => "selfhost/src/Backend/Wasm/Compiler.ls",
@@ -223,6 +229,12 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
         .expect("canonical TypeScheme.ls が読み込めない");
     let type_infer_core_ls = std::fs::read_to_string(selfhost_source_path("TypeInferCore.ls"))
         .expect("canonical TypeInferCore.ls が読み込めない");
+    let type_infer_functions_ls =
+        std::fs::read_to_string(selfhost_source_path("TypeInferFunctions.ls"))
+            .expect("canonical TypeInferFunctions.ls が読み込めない");
+    let type_infer_builtins_ls =
+        std::fs::read_to_string(selfhost_source_path("TypeInferBuiltins.ls"))
+            .expect("canonical TypeInferBuiltins.ls が読み込めない");
     let type_infer_ls = std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
         .expect("canonical TypeInfer.ls が読み込めない");
     let compiler_ls = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
@@ -239,7 +251,7 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
         .expect("canonical Cli.ls が読み込めない");
 
     format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
         token_ls,
         ast_ls,
         lexer_ls,
@@ -248,6 +260,8 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
         type_ls,
         type_scheme_ls,
         type_infer_core_ls,
+        type_infer_functions_ls,
+        type_infer_builtins_ls,
         type_infer_ls,
         compiler_ls,
         wasm_emit_ls,

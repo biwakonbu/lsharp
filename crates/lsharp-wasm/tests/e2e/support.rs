@@ -237,6 +237,9 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
     selfhost_project_root().join(match name {
         "Main.ls" => "selfhost/src/App/Main.ls",
         "Cli.ls" => "selfhost/src/App/Cli.ls",
+        "ModuleResolver.ls" => "selfhost/src/App/ModuleResolver.ls",
+        "CompilerMode.ls" => "selfhost/src/App/CompilerMode.ls",
+        "PipelineSmoke.ls" => "selfhost/src/App/PipelineSmoke.ls",
         "Token.ls" => "selfhost/src/Syntax/Token.ls",
         "AST.ls" => "selfhost/src/Syntax/AST.ls",
         "Span.ls" => "selfhost/src/Syntax/Span.ls",
@@ -255,6 +258,9 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "Type.ls" => "selfhost/src/Types/Type.ls",
         "TypeScheme.ls" => "selfhost/src/Types/TypeScheme.ls",
         "TypeInferCore.ls" => "selfhost/src/Types/TypeInferCore.ls",
+        "TypeInferFunctions.ls" => "selfhost/src/Types/TypeInferFunctions.ls",
+        "TypeInferBuiltins.ls" => "selfhost/src/Types/TypeInferBuiltins.ls",
+        "TypeInferSmoke.ls" => "selfhost/src/Types/TypeInferSmoke.ls",
         "TypeInfer.ls" => "selfhost/src/Types/TypeInfer.ls",
         "Constraints.ls" => "selfhost/src/Types/Constraints.ls",
         "MetadataCheck.ls" => "selfhost/src/Types/MetadataCheck.ls",
@@ -320,6 +326,9 @@ pub(crate) fn selfhost_module(name: &str) -> &'static str {
     match name {
         "Main.ls" => include_str!("../../../../selfhost/src/App/Main.ls"),
         "Cli.ls" => include_str!("../../../../selfhost/src/App/Cli.ls"),
+        "ModuleResolver.ls" => include_str!("../../../../selfhost/src/App/ModuleResolver.ls"),
+        "CompilerMode.ls" => include_str!("../../../../selfhost/src/App/CompilerMode.ls"),
+        "PipelineSmoke.ls" => include_str!("../../../../selfhost/src/App/PipelineSmoke.ls"),
         "Token.ls" => include_str!("../../../../selfhost/src/Syntax/Token.ls"),
         "AST.ls" => include_str!("../../../../selfhost/src/Syntax/AST.ls"),
         "Span.ls" => include_str!("../../../../selfhost/src/Syntax/Span.ls"),
@@ -329,6 +338,11 @@ pub(crate) fn selfhost_module(name: &str) -> &'static str {
         "Type.ls" => include_str!("../../../../selfhost/src/Types/Type.ls"),
         "TypeScheme.ls" => include_str!("../../../../selfhost/src/Types/TypeScheme.ls"),
         "TypeInferCore.ls" => include_str!("../../../../selfhost/src/Types/TypeInferCore.ls"),
+        "TypeInferFunctions.ls" => {
+            include_str!("../../../../selfhost/src/Types/TypeInferFunctions.ls")
+        },
+        "TypeInferBuiltins.ls" => include_str!("../../../../selfhost/src/Types/TypeInferBuiltins.ls"),
+        "TypeInferSmoke.ls" => include_str!("../../../../selfhost/src/Types/TypeInferSmoke.ls"),
         "TypeInfer.ls" => include_str!("../../../../selfhost/src/Types/TypeInfer.ls"),
         "Compiler.ls" => include_str!("../../../../selfhost/src/Backend/Wasm/Compiler.ls"),
         "WasmEmit.ls" => include_str!("../../../../selfhost/src/Backend/Wasm/WasmEmit.ls"),
@@ -461,6 +475,8 @@ pub(crate) fn selfhost_typeinfer_runtime_bundle() -> &'static str {
             "Type.ls",
             "TypeScheme.ls",
             "TypeInferCore.ls",
+            "TypeInferFunctions.ls",
+            "TypeInferBuiltins.ls",
             "TypeInfer.ls",
         ],
     )
@@ -479,6 +495,8 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> &'static str {
             "Type.ls",
             "TypeScheme.ls",
             "TypeInferCore.ls",
+            "TypeInferFunctions.ls",
+            "TypeInferBuiltins.ls",
             "TypeInfer.ls",
             "Compiler.ls",
             "WasmEmit.ls",
@@ -566,9 +584,39 @@ mod tests {
             "Cli.ls は App/Cli.ls を指すべき"
         );
         assert!(
+            selfhost_source_path("ModuleResolver.ls")
+                .ends_with("selfhost/src/App/ModuleResolver.ls"),
+            "ModuleResolver.ls は App/ModuleResolver.ls を指すべき"
+        );
+        assert!(
+            selfhost_source_path("CompilerMode.ls")
+                .ends_with("selfhost/src/App/CompilerMode.ls"),
+            "CompilerMode.ls は App/CompilerMode.ls を指すべき"
+        );
+        assert!(
+            selfhost_source_path("PipelineSmoke.ls")
+                .ends_with("selfhost/src/App/PipelineSmoke.ls"),
+            "PipelineSmoke.ls は App/PipelineSmoke.ls を指すべき"
+        );
+        assert!(
             selfhost_source_path("TypeInfer.ls")
                 .ends_with("selfhost/src/Types/TypeInfer.ls"),
             "TypeInfer.ls は Types/TypeInfer.ls を指すべき"
+        );
+        assert!(
+            selfhost_source_path("TypeInferFunctions.ls")
+                .ends_with("selfhost/src/Types/TypeInferFunctions.ls"),
+            "TypeInferFunctions.ls は Types/TypeInferFunctions.ls を指すべき"
+        );
+        assert!(
+            selfhost_source_path("TypeInferBuiltins.ls")
+                .ends_with("selfhost/src/Types/TypeInferBuiltins.ls"),
+            "TypeInferBuiltins.ls は Types/TypeInferBuiltins.ls を指すべき"
+        );
+        assert!(
+            selfhost_source_path("TypeInferSmoke.ls")
+                .ends_with("selfhost/src/Types/TypeInferSmoke.ls"),
+            "TypeInferSmoke.ls は Types/TypeInferSmoke.ls を指すべき"
         );
         assert!(
             selfhost_source_path("WasmEmit.ls")
@@ -581,6 +629,12 @@ mod tests {
     fn test_support_selfhost_module_reads_canonical_sources() {
         assert!(selfhost_module("Main.ls").contains("(module App.Main)"));
         assert!(selfhost_module("Cli.ls").contains("(module App.Cli)"));
+        assert!(selfhost_module("ModuleResolver.ls").contains("(module App.ModuleResolver)"));
+        assert!(selfhost_module("CompilerMode.ls").contains("(module App.CompilerMode)"));
+        assert!(selfhost_module("PipelineSmoke.ls").contains("(module App.PipelineSmoke)"));
+        assert!(selfhost_module("TypeInferFunctions.ls").contains("(module Types.TypeInferFunctions)"));
+        assert!(selfhost_module("TypeInferBuiltins.ls").contains("(module Types.TypeInferBuiltins)"));
+        assert!(selfhost_module("TypeInferSmoke.ls").contains("(module Types.TypeInferSmoke)"));
         assert!(selfhost_module("TypeInfer.ls").contains("(module Types.TypeInfer)"));
     }
 
@@ -596,6 +650,8 @@ mod tests {
     #[test]
     fn test_support_selfhost_typeinfer_runtime_bundle_cached() {
         let bundle = selfhost_typeinfer_runtime_bundle();
+        assert!(bundle.contains(selfhost_module("TypeInferFunctions.ls").trim()));
+        assert!(bundle.contains(selfhost_module("TypeInferBuiltins.ls").trim()));
         assert!(bundle.contains(selfhost_module("TypeInfer.ls").trim()));
         assert_eq!(
             bundle.as_ptr(),

@@ -78,22 +78,20 @@ L# の ADT は WasmGC の struct で表現されるが、セルフホストコ�
 
 ## セルフホストの構成
 
-セルフホストコンパイラは `selfhost/` ディレクトリに 10 ファイル、合計 1,455 行で構成される:
+セルフホストコンパイラの正本ソースは `selfhost/src/**` にある。2026-03-30 時点で `.ls` は 43 ファイル、合計 12,672 行で構成される。
+canonical entrypoint は `selfhost/src/App/Main.ls` で、公開 package ではなく内部 source root として運用する。
 
-| ファイル | 行数 | 役割 |
-|----------|------|------|
-| Token.ls | 60 | トークン定数定義 |
-| Lexer.ls | 189 | 字句解析 (文字走査) |
-| AST.ls | 56 | AST ノード種別定義 |
-| Parser.ls | 93 | 再帰降下パーサー |
-| Type.ls | 179 | 型 ADT (Con, Var, Fun) |
-| TypeScheme.ls | 192 | 多相型 (instantiate, generalize) |
-| IR.ls | 63 | 中間表現定義 |
-| Compiler.ls | 165 | AST → IR 変換 |
-| WasmEmit.ls | 170 | Wasm バイナリ生成 |
-| Main.ls | 288 | 統合パイプライン |
+| 名前空間 | ファイル数 | 概要 |
+|----------|------------|------|
+| `App` | 2 | entrypoint と CLI |
+| `Syntax` | 8 | 字句解析、構文解析、マクロ展開、Span/Token/AST |
+| `Types` | 6 | 型 ADT、型スキーム、制約、型推論 |
+| `IR` | 7 | IR 定義、lowering、module graph |
+| `Backend` | 10 | Wasm/native backend |
+| `Runtime` | 1 | GC |
+| `Tools` | 9 | formatter, linter, docs, LSP, test runner |
 
-これは Rust 版の約 8% のコード量だが、コンパイラの核心的なアルゴリズムを全て含んでいる。
+flat な `selfhost/*.ls` 互換コピーは撤去済みで、モジュール解決は `selfhost/src/**` と dotted namespace を前提にする。
 
 ## 各フェーズの L# 実装
 
