@@ -70,6 +70,56 @@ jobs:
       - name: default-path-smoke.sh
         run: bash scripts/ci/default-path-smoke.sh
 
+  # OPS-07b: release-style archive を workflow 内 artifact として作る
+  fresh-clone-artifact:
+    name: Fresh clone artifact
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: build release-style archive
+        shell: bash
+        env:
+          VERSION: ci-${{ github.sha }}
+        run: rm -rf dist && bash scripts/release.sh
+      - name: artifact 保存
+        uses: actions/upload-artifact@v4
+        with:
+          name: fresh-clone-archive-${{ github.sha }}
+          path: dist/*.tar.gz
+          retention-days: ${{ github.event_name == 'pull_request' && 5 || 30 }}
+          if-no-files-found: error
+
+  # OPS-07b: downloaded artifact を Rust toolchain 無しで binary-only smoke する
+  test-fresh-clone:
+    name: Test fresh clone (binary-only)
+    runs-on: ubuntu-latest
+    needs: [fresh-clone-artifact]
+    steps:
+      - uses: actions/checkout@v4
+      - name: dist/ を初期化
+        run: rm -rf dist && mkdir -p dist
+      - name: build 済み artifact のダウンロード
+        uses: actions/download-artifact@v4
+        with:
+          name: fresh-clone-archive-${{ github.sha }}
+          path: dist/
+      - name: test-fresh-clone.sh
+        shell: bash
+        run: |
+          shopt -s nullglob
+          archives=(dist/*.tar.gz dist/*.zip)
+          if [[ ${#archives[@]} -eq 0 ]]; then
+            echo "ERROR: no fresh-clone archives found under dist/" >&2
+            exit 1
+          fi
+
+          for archive in "${archives[@]}"; do
+            bash scripts/ci/test-fresh-clone.sh "$archive"
+          done
+
   # OPS-07a: Rust 依存のまま clean checkout 由来のビルド経路を smoke する
   fresh-clone-smoke:
     name: Fresh clone smoke
@@ -114,7 +164,7 @@ jobs:
   ci-gate:
     name: CI Gate
     runs-on: ubuntu-latest
-    needs: [test, lint, format, bootstrap, audit-docs, default-path-smoke, fresh-clone-smoke, gc-metrics-artifact]
+    needs: [test, lint, format, bootstrap, audit-docs, default-path-smoke, test-fresh-clone, fresh-clone-smoke, gc-metrics-artifact]
     if: always()
     steps:
       - name: 全ジョブの結果を検証
@@ -125,9 +175,10 @@ jobs:
                 "${{ needs.bootstrap.result }}" != "success" ||
                 "${{ needs.audit-docs.result }}" != "success" ||
                 "${{ needs.default-path-smoke.result }}" != "success" ||
+                "${{ needs.test-fresh-clone.result }}" != "success" ||
                 "${{ needs.fresh-clone-smoke.result }}" != "success" ||
                 "${{ needs.gc-metrics-artifact.result }}" != "success" ]]; then
-            echo "CI failed: test=${{ needs.test.result }}, lint=${{ needs.lint.result }}, format=${{ needs.format.result }}, bootstrap=${{ needs.bootstrap.result }}, audit-docs=${{ needs.audit-docs.result }}, default-path-smoke=${{ needs.default-path-smoke.result }}, fresh-clone-smoke=${{ needs.fresh-clone-smoke.result }}, gc-metrics-artifact=${{ needs.gc-metrics-artifact.result }}"
+            echo "CI failed: test=${{ needs.test.result }}, lint=${{ needs.lint.result }}, format=${{ needs.format.result }}, bootstrap=${{ needs.bootstrap.result }}, audit-docs=${{ needs.audit-docs.result }}, default-path-smoke=${{ needs.default-path-smoke.result }}, test-fresh-clone=${{ needs.test-fresh-clone.result }}, fresh-clone-smoke=${{ needs.fresh-clone-smoke.result }}, gc-metrics-artifact=${{ needs.gc-metrics-artifact.result }}"
             exit 1
           fi
           echo "All checks passed."
@@ -136,7 +187,7 @@ jobs:
   ci-gate-v2:
     name: CI Gate v2
     runs-on: ubuntu-latest
-    needs: [test, lint, format, bootstrap, audit-docs, default-path-smoke, fresh-clone-smoke, gc-metrics-artifact, shadow-oracle]
+    needs: [test, lint, format, bootstrap, audit-docs, default-path-smoke, test-fresh-clone, fresh-clone-smoke, gc-metrics-artifact, shadow-oracle]
     if: always()
     steps:
       - name: gate-v2 全ジョブの結果を検証
@@ -147,6 +198,7 @@ jobs:
           echo "bootstrap=${{ needs.bootstrap.result }}"
           echo "audit-docs=${{ needs.audit-docs.result }}"
           echo "default-path-smoke=${{ needs.default-path-smoke.result }}"
+          echo "test-fresh-clone=${{ needs.test-fresh-clone.result }}"
           echo "fresh-clone-smoke=${{ needs.fresh-clone-smoke.result }}"
           echo "gc-metrics-artifact=${{ needs.gc-metrics-artifact.result }}"
           echo "shadow-oracle=${{ needs.shadow-oracle.result }}"
@@ -156,6 +208,7 @@ jobs:
                 "${{ needs.bootstrap.result }}" != "success" ||
                 "${{ needs.audit-docs.result }}" != "success" ||
                 "${{ needs.default-path-smoke.result }}" != "success" ||
+                "${{ needs.test-fresh-clone.result }}" != "success" ||
                 "${{ needs.fresh-clone-smoke.result }}" != "success" ||
                 "${{ needs.gc-metrics-artifact.result }}" != "success" ]]; then
             echo "CI Gate v2 failed (required jobs)"

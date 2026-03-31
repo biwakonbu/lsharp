@@ -106,8 +106,8 @@ signtool verify /pa lsharp.exe
 | 項目 | 現状 |
 |---|---|
 | `scripts/release-playbook.sh` | release binary を作り、bootstrap / default-path / README smoke まで実行可能 |
-| tag push 起点の自動 release workflow | 未接続 |
-| checksum 自動生成 | playbook にはあるが workflow 連携は未完 |
+| tag push 起点の自動 release workflow | `verify` / `build` / `release-smoke` / `release` まで接続済み |
+| checksum 自動生成 | `scripts/release.sh` が archive 内 `checksums.txt` を生成し、`scripts/ci/release-smoke.sh` が workflow build job で検証 |
 | Windows 署名 | 未実装 |
 | package manager 配布 | 未実装 |
 | `linux-aarch64` tier2 | 設計のみ |

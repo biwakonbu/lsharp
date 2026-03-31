@@ -55,6 +55,13 @@ jobs:
           VERSION: ${{ github.ref_name }}
           TARGET: ${{ matrix.target }}
         run: bash scripts/release.sh
+      - name: リリースアーカイブ smoke
+        shell: bash
+        env:
+          VERSION: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+          ARCHIVE_EXT: ${{ matrix.archive_ext }}
+        run: bash scripts/ci/release-smoke.sh "dist/lsharp-${VERSION}-${TARGET}.${ARCHIVE_EXT}"
       - name: アーティファクトのアップロード
         uses: actions/upload-artifact@v4
         with:
@@ -63,11 +70,37 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
+  # build 済み archive を download し、Rust toolchain 無しで release smoke を再実行
+  release-smoke:
+    name: Release smoke (downloaded artifacts)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - name: ビルド済みアーティファクトのダウンロード
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+      - name: download 済み release archive の smoke
+        shell: bash
+        run: |
+          shopt -s nullglob
+          archives=(dist/*.tar.gz dist/*.zip)
+          if [[ ${#archives[@]} -eq 0 ]]; then
+            echo "ERROR: no release archives found under dist/" >&2
+            exit 1
+          fi
+
+          for archive in "${archives[@]}"; do
+            bash scripts/ci/release-smoke.sh "$archive"
+          done
+
   # 全 Tier1 ビルドを GitHub Release へ公開
   release:
     name: GitHub Release 作成
     runs-on: ubuntu-latest
-    needs: build
+    needs: release-smoke
     permissions:
       contents: write
     steps:

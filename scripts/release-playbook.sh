@@ -68,7 +68,9 @@ OUT_DIR="$PLAYBOOK_DIR/default-path-smoke" \
 LSHARP_BIN="$LSHARP_BIN" \
     bash scripts/ci/default-path-smoke.sh
 if [[ -f scripts/smoke_test_readme.sh ]]; then
-    bash scripts/smoke_test_readme.sh
+    SMOKE_DIR="$PLAYBOOK_DIR/readme-smoke" \
+    LSHARP_BIN="$LSHARP_BIN" \
+        bash scripts/smoke_test_readme.sh
     echo "PASS: Smoke test 成功"
 else
     echo "SKIP: smoke_test_readme.sh が見つからない"

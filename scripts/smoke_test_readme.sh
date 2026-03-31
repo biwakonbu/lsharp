@@ -4,9 +4,14 @@
 
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
 ERRORS=0
 PASS=0
-SMOKE_DIR="ci-artifacts/readme-smoke"
+DEFAULT_LSHARP_BIN="$ROOT/target/debug/lsharp"
+LSHARP_BIN="${LSHARP_BIN:-$DEFAULT_LSHARP_BIN}"
+SMOKE_DIR="${SMOKE_DIR:-ci-artifacts/readme-smoke}"
 SMOKE_SOURCE="$SMOKE_DIR/fib_smoke.ls"
 SMOKE_WASM="$SMOKE_DIR/fib_smoke.wasm"
 
@@ -17,24 +22,34 @@ cp examples/fib.ls "$SMOKE_SOURCE"
 echo "=== README / docs smoke test ==="
 echo ""
 
-# 1. 開発用 CLI をビルドできること
-echo "--- cargo build -p lsharp-driver ---"
-if cargo build -p lsharp-driver 2>&1 | tail -3; then
-    echo "PASS: cargo build -p lsharp-driver"
+# 1. 開発用 CLI または配布済み binary を利用できること
+if [[ -x "$LSHARP_BIN" ]]; then
+    echo "--- prebuilt lsharp binary: $LSHARP_BIN ---"
+    echo "PASS: using prebuilt lsharp binary ($LSHARP_BIN)"
     PASS=$((PASS + 1))
-else
-    echo "FAIL: cargo build -p lsharp-driver"
+elif [[ "$LSHARP_BIN" != "$DEFAULT_LSHARP_BIN" ]]; then
+    echo "--- prebuilt lsharp binary: $LSHARP_BIN ---"
+    echo "FAIL: lsharp binary not executable ($LSHARP_BIN)"
     ERRORS=$((ERRORS + 1))
+else
+    echo "--- cargo build -p lsharp-driver ---"
+    if cargo build -p lsharp-driver 2>&1 | tail -3; then
+        echo "PASS: cargo build -p lsharp-driver"
+        PASS=$((PASS + 1))
+    else
+        echo "FAIL: cargo build -p lsharp-driver"
+        ERRORS=$((ERRORS + 1))
+    fi
 fi
 
 # 2. README Quick Start の compile 導線が通ること
 echo ""
-echo "--- target/debug/lsharp compile $SMOKE_SOURCE ---"
-if target/debug/lsharp compile "$SMOKE_SOURCE" -o "$SMOKE_WASM" 2>&1 | tail -3; then
-    echo "PASS: target/debug/lsharp compile $SMOKE_SOURCE"
+echo "--- $LSHARP_BIN compile $SMOKE_SOURCE ---"
+if "$LSHARP_BIN" compile "$SMOKE_SOURCE" -o "$SMOKE_WASM" 2>&1 | tail -3; then
+    echo "PASS: $LSHARP_BIN compile $SMOKE_SOURCE"
     PASS=$((PASS + 1))
 else
-    echo "FAIL: target/debug/lsharp compile $SMOKE_SOURCE"
+    echo "FAIL: $LSHARP_BIN compile $SMOKE_SOURCE"
     ERRORS=$((ERRORS + 1))
 fi
 
@@ -51,34 +66,34 @@ fi
 
 # 4. README の metadata test 導線が通ること
 echo ""
-echo "--- target/debug/lsharp test examples/metadata.ls ---"
-if target/debug/lsharp test examples/metadata.ls 2>&1 | tail -6; then
-    echo "PASS: target/debug/lsharp test examples/metadata.ls"
+echo "--- $LSHARP_BIN test examples/metadata.ls ---"
+if "$LSHARP_BIN" test examples/metadata.ls 2>&1 | tail -6; then
+    echo "PASS: $LSHARP_BIN test examples/metadata.ls"
     PASS=$((PASS + 1))
 else
-    echo "FAIL: target/debug/lsharp test examples/metadata.ls"
+    echo "FAIL: $LSHARP_BIN test examples/metadata.ls"
     ERRORS=$((ERRORS + 1))
 fi
 
 # 5. LSP backend の入口が存在すること
 echo ""
-echo "--- target/debug/lsharp lsp --help ---"
-if target/debug/lsharp lsp --help 2>&1 | head -5; then
-    echo "PASS: target/debug/lsharp lsp --help"
+echo "--- $LSHARP_BIN lsp --help ---"
+if "$LSHARP_BIN" lsp --help 2>&1 | head -5; then
+    echo "PASS: $LSHARP_BIN lsp --help"
     PASS=$((PASS + 1))
 else
-    echo "FAIL: target/debug/lsharp lsp --help"
+    echo "FAIL: $LSHARP_BIN lsp --help"
     ERRORS=$((ERRORS + 1))
 fi
 
 # 6. MCP backend の入口が存在すること
 echo ""
-echo "--- target/debug/lsharp mcp-server --help ---"
-if target/debug/lsharp mcp-server --help 2>&1 | head -5; then
-    echo "PASS: target/debug/lsharp mcp-server --help"
+echo "--- $LSHARP_BIN mcp-server --help ---"
+if "$LSHARP_BIN" mcp-server --help 2>&1 | head -5; then
+    echo "PASS: $LSHARP_BIN mcp-server --help"
     PASS=$((PASS + 1))
 else
-    echo "FAIL: target/debug/lsharp mcp-server --help"
+    echo "FAIL: $LSHARP_BIN mcp-server --help"
     ERRORS=$((ERRORS + 1))
 fi
 

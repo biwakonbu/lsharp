@@ -10,6 +10,24 @@ fn run_stateful_lsp_harness(harness: &str) -> Vec<String> {
         .collect()
 }
 
+fn run_actual_stdio_lsp_harness(stdin: &str) -> String {
+    compile_and_run_with_args_and_stdin(selfhost_cli_runtime_bundle(), &["lsp", "--stdio"], stdin)
+}
+
+fn render_lsp_wire_frame(body: &str) -> String {
+    format!("Content-Length: {}\r\n\r\n{}", body.len(), body)
+}
+
+fn repeat_rendered_frames(frames: &[String], iterations: usize) -> String {
+    let mut rendered = String::new();
+    for _ in 0..iterations {
+        for frame in frames {
+            rendered.push_str(frame);
+        }
+    }
+    rendered
+}
+
 /// GC-05 honest slice: 現状は stdio 付き REPL ではなく、Cli.ls 内のセッション helper を
 /// 同一 Wasm プロセスで繰り返し呼び出して状態保持を検証する。
 #[test]
@@ -315,5 +333,86 @@ fn test_e2e_gc_lsp_stateful_repeated_sequence_metrics() {
         lines[2],
         change_src.len().to_string(),
         "repeated sequence 後も最新 source length は didChange 後の値であるべき"
+    );
+}
+
+/// GC-05 honest slice: actual `lsp --stdio` server を 1 session 内で繰り返し叩いても
+/// initialize 後の open -> hover -> change -> completion -> formatting が崩れないこと
+#[test]
+fn test_e2e_gc_lsp_actual_stdio_repeated_sequence_soak() {
+    let open_source = "(defn helper [] 1) (helper 1)";
+    let change_source = "(defn helper [] 1) (he)";
+    let iterations = 12usize;
+
+    let init_body = r#"{"jsonrpc":"2.0","id":80,"method":"initialize","params":0}"#;
+    let init_response = r#"{"jsonrpc":"2.0","id":80,"result":[1,1,1,1,1,1,1]}"#;
+    let open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        open_source
+    );
+    let hover_body =
+        r#"{"jsonrpc":"2.0","id":81,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":21}}"#;
+    let change_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
+        change_source
+    );
+    let completion_body =
+        r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
+    let formatting_body =
+        r#"{"jsonrpc":"2.0","id":83,"method":"textDocument/formatting","params":{"uri":42}}"#;
+
+    let open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        open_source.len()
+    );
+    let hover_response =
+        r#"{"jsonrpc":"2.0","id":81,"result":{"range":[1,21,1,27],"contents":"defn helper"}}"#;
+    let change_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        change_source.len()
+    );
+    let completion_response = r#"{"jsonrpc":"2.0","id":82,"result":[["helper",3,"helper"]]}"#;
+    let formatting_response =
+        "{\"jsonrpc\":\"2.0\",\"id\":83,\"result\":[[1,1,1,24,\"(defn helper [] 1)\n(he)\n\"]]}";
+
+    let stdin = format!(
+        "{}{}",
+        render_lsp_wire_frame(init_body),
+        repeat_rendered_frames(
+            &[
+                render_lsp_wire_frame(&open_body),
+                render_lsp_wire_frame(hover_body),
+                render_lsp_wire_frame(&change_body),
+                render_lsp_wire_frame(completion_body),
+                render_lsp_wire_frame(formatting_body),
+            ],
+            iterations
+        )
+    );
+    let expected = format!(
+        "{}{}",
+        render_lsp_wire_frame(init_response),
+        repeat_rendered_frames(
+            &[
+                render_lsp_wire_frame(&open_response),
+                render_lsp_wire_frame(hover_response),
+                render_lsp_wire_frame(&change_response),
+                render_lsp_wire_frame(completion_response),
+                render_lsp_wire_frame(formatting_response),
+            ],
+            iterations
+        )
+    );
+
+    let output = run_actual_stdio_lsp_harness(&stdin);
+
+    assert_eq!(
+        output.matches("Content-Length:").count(),
+        1 + (iterations * 5),
+        "actual stdio soak は initialize + 各反復 5 frame を返すべき"
+    );
+    assert_eq!(
+        output, expected,
+        "actual stdio soak は長寿命 session でも各 frame を決定的に返すべき"
     );
 }

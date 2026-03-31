@@ -5,7 +5,12 @@ Cargo.lock
 .claude/plans/
 .agbullet/
 
-# VSCode 拡張
+# IDE / エディタ
 editors/vscode/node_modules/
 editors/vscode/out/
 editors/vscode/*.vsix
+.copilot/
+
+# ビルド成果物 / 一時ファイル
+verify_test
+todos.db

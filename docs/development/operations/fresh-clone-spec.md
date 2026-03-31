@@ -79,37 +79,58 @@ Rust ツールチェーン（`rustc`, `cargo`）は不要。
 ### `test-fresh-clone`
 
 ```yaml
-test-fresh-clone:
-  name: Fresh clone (no Rust)
+fresh-clone-artifact:
+  name: Fresh clone artifact
   runs-on: ubuntu-latest
-  # main マージ毎に実行
-  if: github.event_name == 'push' && github.ref == 'refs/heads/main'
   steps:
     - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+    - run: bash scripts/release.sh
+    - uses: actions/upload-artifact@v4
+      with:
+        name: fresh-clone-archive-${{ github.sha }}
+        path: dist/*.tar.gz
+
+test-fresh-clone:
+  name: Test fresh clone (binary-only)
+  runs-on: ubuntu-latest
+  needs: fresh-clone-artifact
+  steps:
+    - uses: actions/checkout@v4
+    - uses: actions/download-artifact@v4
+      with:
+        name: fresh-clone-archive-${{ github.sha }}
+        path: dist/
     # Rust ツールチェーン setup なし
-    - name: Fetch stage0
-      run: ./scripts/fetch-stage0.sh
-    - name: Bootstrap
-      run: ./scripts/bootstrap.sh
-    - name: Package host launcher
-      run: ./scripts/release-bundle.sh
-    - name: Test
-      run: ./dist/lsharp test
+    - name: Binary-only smoke
+      run: bash scripts/ci/test-fresh-clone.sh dist/<archive>.tar.gz
 ```
 
-- Rust ツールチェーン無しコンテナ使用（`dtolnay/rust-toolchain` ステップなし）
-- 全ステップの成功を検証
+- `fresh-clone-artifact` が Linux 用 release-style archive を同一 workflow で作成し、`test-fresh-clone` はそれを download して検証する
+- `test-fresh-clone` 側は Rust ツールチェーン無し runner を維持する（`dtolnay/rust-toolchain` ステップなし）
+- `scripts/ci/test-fresh-clone.sh <archive>` が `scripts/ci/release-smoke.sh` / `scripts/ci/default-path-smoke.sh` / `scripts/smoke_test_readme.sh` を順に再利用し、downloaded artifact だけで `verify checksum -> packaged binary smoke -> default path smoke -> README Quick Start smoke` を通す
+- これは stage0 package 配布前の **closest viable binary-only gate** であり、true no-Rust end-state では GitHub Releases / stage0 fetch に置き換える
 
 ### `fresh-clone-smoke`（現行の暫定 gate）
 
-`test-fresh-clone` を mainline に入れる前段として、現在は Rust 依存のままでも **clean checkout 由来のビルド回帰** を継続検知する `fresh-clone-smoke` を運用する。
+`test-fresh-clone` と並走する暫定 gate として、現在も Rust 依存の **clean checkout 由来ビルド回帰** を継続検知する `fresh-clone-smoke` を運用する。
 
 - `scripts/ci/test-fresh-clone.sh` が `target/ci/fresh-clone-smoke/` に clean checkout 相当のコピーを作る
 - そのコピー上で `cargo build -p lsharp-driver -q` を実行し、ビルド済み `lsharp` バイナリを得る
 - `scripts/ci/default-path-smoke.sh` を再利用して `check` / `compile` の default-path smoke を再実行する
 - 追加で `selfhost/src/Syntax/Token.ls` と `stdlib/Core.ls` をコンパイルし、selfhost / stdlib の代表 slice が clean checkout でも壊れていないことを確認する
 
-このジョブは **Rust 非依存化の完了を主張しない**。あくまで `test-fresh-clone` の前段で、clean checkout 経路の regressions を CI gate に載せるための暫定措置である。
+このジョブは **Rust 非依存化の完了を主張しない**。あくまで `test-fresh-clone` と役割分担しながら、clean checkout 経路の regressions を CI gate に載せ続ける暫定措置である。
+
+### `release-smoke`（downloaded artifact の中間 gate）
+
+`test-fresh-clone` の前段として、release workflow では build 済み archive を `actions/download-artifact` で集約し、`scripts/ci/release-smoke.sh` で **download release artifact -> checksum verify -> packaged binary smoke** を再実行する。
+
+- Rust toolchain setup を追加せずに `scripts/ci/release-smoke.sh` を回す
+- `.tar.gz` / `.zip` archive を展開し、`checksums.txt` を検証する
+- packaged `lsharp` binary の `--version` / `check` / `fmt` / `compile` を smoke する
+
+これは true no-Rust `test-fresh-clone` の代替ではないが、release artifact download 後の binary-only 経路 regressions を早めに捕捉する中間 gate である。
 
 ## 前提条件
 
@@ -126,13 +147,15 @@ test-fresh-clone:
 
 - stage0 host launcher package の GitHub Releases 配布は未実装
 - ブートストラップの完全閉包（BOOT-04）は proxy 段階
-- `scripts/smoke_test_readme.sh` は host launcher + embedded component 前提への更新途中
-- `fresh-clone-smoke` は clean checkout の smoke までであり、Rust 非依存 `test-fresh-clone` の代替ではない
+- `test-fresh-clone` は workflow-local downloaded artifact を使う closest viable binary-only gate までは接続されたが、GitHub Releases / stage0 fetch を起点とする true no-Rust end-state ではない
+- `fresh-clone-smoke` は clean checkout の smoke を継続検知する暫定 gate として並走する
 
-これらが解決された後、本仕様に基づく `test-fresh-clone` ジョブを CI に追加し、`fresh-clone-smoke` は置き換える。
+これらが解決された後、現行の workflow-local artifact ベース `test-fresh-clone` を GitHub Releases / stage0 fetch ベースへ置き換え、`fresh-clone-smoke` は段階的に retire する。
 
 ## 証跡
 
 - `scripts/smoke_test_readme.sh`（host launcher + component 配布 smoke への更新対象）
-- `scripts/ci/test-fresh-clone.sh`（clean checkout 回帰の暫定 smoke）
+- `scripts/ci/test-fresh-clone.sh`（clean checkout smoke + downloaded artifact binary-only smoke）
+- `scripts/ci/release-smoke.sh`（release artifact 展開 + checksum + packaged binary smoke）
+- `.github/workflows/ci.yml` (`fresh-clone-artifact`, `test-fresh-clone`, `fresh-clone-smoke`)
 - `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs` (`test_e2e_ops07_fresh_clone_no_rust`)

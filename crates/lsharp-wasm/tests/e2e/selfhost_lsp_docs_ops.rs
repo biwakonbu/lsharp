@@ -2225,6 +2225,203 @@ fn test_e2e_ops06_release_playbook() {
     );
 }
 
+/// TEST-OPS-06b: release artifact 展開ベースの smoke script と workflow 接続が存在すること
+#[test]
+fn test_e2e_ops06_release_smoke_contract() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let smoke_script = project_root.join("scripts/ci/release-smoke.sh");
+    assert!(
+        smoke_script.is_file(),
+        "scripts/ci/release-smoke.sh が存在しない"
+    );
+
+    let workflow = project_root.join(".github/workflows/release.yml");
+    let workflow_content = std::fs::read_to_string(&workflow).expect("release.yml の読み込みに失敗");
+    assert!(
+        workflow_content.contains("bash scripts/ci/release-smoke.sh"),
+        "release.yml が scripts/ci/release-smoke.sh を呼んでいない"
+    );
+
+    let playbook_doc = project_root.join("docs/development/operations/release-playbook.md");
+    let playbook_content =
+        std::fs::read_to_string(&playbook_doc).expect("release-playbook.md の読み込みに失敗");
+    assert!(
+        playbook_content.contains("scripts/ci/release-smoke.sh"),
+        "release-playbook.md が release-smoke.sh を案内していない"
+    );
+}
+
+/// TEST-OPS-07b: release workflow に Rust toolchain 不要の downloaded-artifact smoke job があること
+#[test]
+fn test_e2e_ops07_release_download_smoke_job() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let workflow = project_root.join(".github/workflows/release.yml");
+    let workflow_content = std::fs::read_to_string(&workflow).expect("release.yml の読み込みに失敗");
+    let job_start = workflow_content
+        .find("release-smoke:")
+        .expect("release.yml に release-smoke job が存在しない");
+    let release_start = workflow_content[job_start + 1..]
+        .find("\n  release:")
+        .map(|offset| job_start + 1 + offset)
+        .unwrap_or(workflow_content.len());
+    let release_smoke_section = &workflow_content[job_start..release_start];
+
+    assert!(
+        release_smoke_section.contains("actions/download-artifact@v4"),
+        "release-smoke job は build artifact を download すること"
+    );
+    assert!(
+        release_smoke_section.contains("bash scripts/ci/release-smoke.sh"),
+        "release-smoke job は scripts/ci/release-smoke.sh を実行すること"
+    );
+    assert!(
+        !release_smoke_section.contains("dtolnay/rust-toolchain"),
+        "release-smoke job は Rust toolchain setup 無しで走ること"
+    );
+
+    let fresh_clone_doc = project_root.join("docs/development/operations/fresh-clone-spec.md");
+    let doc_content =
+        std::fs::read_to_string(&fresh_clone_doc).expect("fresh-clone-spec.md の読み込みに失敗");
+    assert!(
+        doc_content.contains("release-smoke")
+            && (doc_content.contains("download release artifact")
+                || doc_content.contains("downloaded artifact")),
+        "fresh-clone-spec.md は downloaded artifact ベースの release-smoke step を説明すること"
+    );
+}
+
+#[cfg(unix)]
+fn ops06_unique_temp_dir(label: &str) -> std::path::PathBuf {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time が epoch より前")
+        .as_nanos();
+    let dir = project_root.join("target/ci/e2e-fixtures").join(format!(
+        "lsharp-{label}-{}-{}",
+        std::process::id(),
+        nanos
+    ));
+    std::fs::create_dir_all(&dir).expect("temp dir の作成に失敗");
+    dir
+}
+
+/// TEST-OPS-06c: release-smoke.sh が展開済み archive と packaged binary だけで smoke を通せること
+#[cfg(unix)]
+#[test]
+fn test_e2e_ops06_release_smoke_script_runs_fixture_archive() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let smoke_script = project_root.join("scripts/ci/release-smoke.sh");
+    let checksum_script = project_root.join("scripts/checksum.sh");
+    let temp_root = ops06_unique_temp_dir("release-smoke");
+    let archive_root = temp_root.join("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu");
+    std::fs::create_dir_all(&archive_root).expect("fixture archive root の作成に失敗");
+
+    let fake_lsharp = archive_root.join("lsharp");
+    std::fs::write(
+        &fake_lsharp,
+        r#"#!/usr/bin/env bash
+set -euo pipefail
+cmd="${1:-}"
+case "$cmd" in
+  --version)
+    echo "lsharp 0.0.0-test"
+    ;;
+  check)
+    echo "type:Int"
+    ;;
+  fmt)
+    cat "${2:?missing source path}"
+    ;;
+  compile)
+    out=""
+    shift
+    while [[ $# -gt 0 ]]; do
+      if [[ "$1" == "-o" ]]; then
+        out="$2"
+        shift 2
+      else
+        shift
+      fi
+    done
+    printf '\0asm' > "${out:?missing output path}"
+    ;;
+  *)
+    echo "unsupported command: $cmd" >&2
+    exit 1
+    ;;
+esac
+"#,
+    )
+    .expect("fake lsharp の書き込みに失敗");
+    let mut perms = std::fs::metadata(&fake_lsharp)
+        .expect("fake lsharp metadata の取得に失敗")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&fake_lsharp, perms).expect("fake lsharp permission の設定に失敗");
+
+    std::fs::write(archive_root.join("README.md"), "# fixture\n").expect("README fixture 書き込み失敗");
+    std::fs::write(archive_root.join("LICENSE"), "fixture license\n").expect("LICENSE fixture 書き込み失敗");
+
+    let checksum_output = Command::new("bash")
+        .arg(&checksum_script)
+        .arg(&archive_root)
+        .output()
+        .expect("checksum.sh の実行に失敗");
+    assert!(
+        checksum_output.status.success(),
+        "checksum.sh が失敗した: status={:?}, stderr={}",
+        checksum_output.status.code(),
+        String::from_utf8_lossy(&checksum_output.stderr)
+    );
+    std::fs::write(
+        archive_root.join("checksums.txt"),
+        checksum_output.stdout,
+    )
+    .expect("checksums.txt の書き込みに失敗");
+
+    let archive_path = temp_root.join("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu.tar.gz");
+    let tar_output = Command::new("tar")
+        .arg("-czf")
+        .arg(&archive_path)
+        .arg("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu")
+        .current_dir(&temp_root)
+        .output()
+        .expect("tar の実行に失敗");
+    assert!(
+        tar_output.status.success(),
+        "fixture archive 作成が失敗した: status={:?}, stderr={}",
+        tar_output.status.code(),
+        String::from_utf8_lossy(&tar_output.stderr)
+    );
+
+    let smoke_work_dir = temp_root.join("smoke-work");
+    let output = Command::new("bash")
+        .arg(&smoke_script)
+        .arg(&archive_path)
+        .env("WORK_DIR", &smoke_work_dir)
+        .output()
+        .expect("release-smoke.sh の実行に失敗");
+
+    std::fs::remove_dir_all(&temp_root).ok();
+
+    assert!(
+        output.status.success(),
+        "release-smoke.sh が fixture archive で失敗した: status={:?}, stdout={}, stderr={}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("release-smoke: OK"),
+        "release-smoke.sh は成功メッセージを出すべき: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
 /// TEST-OPS-07: scripts/smoke_test_readme.sh の存在 + 実行可能 + fresh clone 仕様ドキュメント
 #[test]
 fn test_e2e_ops07_fresh_clone_no_rust() {
@@ -2247,11 +2444,267 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
             mode
         );
     }
+    let smoke_script_content =
+        std::fs::read_to_string(&smoke_script).expect("smoke_test_readme.sh の読み込みに失敗");
+    assert!(
+        smoke_script_content.contains("LSHARP_BIN"),
+        "smoke_test_readme.sh は prebuilt lsharp binary を受け取れること"
+    );
+    assert!(
+        smoke_script_content.contains("SMOKE_DIR"),
+        "smoke_test_readme.sh は出力ディレクトリを上書きできること"
+    );
+
+    let ci_path = project_root.join(".github/workflows/ci.yml");
+    let ci_content = std::fs::read_to_string(&ci_path).expect("ci.yml の読み込みに失敗");
+    let test_job_start = ci_content
+        .find("test-fresh-clone:")
+        .expect("ci.yml に test-fresh-clone job が存在しない");
+    let test_job_end = ci_content[test_job_start + 1..]
+        .find("\n  fresh-clone-smoke:")
+        .map(|offset| test_job_start + 1 + offset)
+        .unwrap_or(ci_content.len());
+    let test_fresh_clone_section = &ci_content[test_job_start..test_job_end];
+    assert!(
+        test_fresh_clone_section.contains("actions/download-artifact@v4"),
+        "test-fresh-clone job は release-style archive を download すること"
+    );
+    assert!(
+        test_fresh_clone_section.contains("bash scripts/ci/test-fresh-clone.sh"),
+        "test-fresh-clone job は scripts/ci/test-fresh-clone.sh を実行すること"
+    );
+    assert!(
+        !test_fresh_clone_section.contains("dtolnay/rust-toolchain"),
+        "test-fresh-clone job は Rust toolchain setup 無しで走ること"
+    );
+    assert!(
+        test_fresh_clone_section.contains("fresh-clone-archive"),
+        "test-fresh-clone job は workflow 内 artifact を利用すること"
+    );
+
+    let ci_gate_start = ci_content
+        .find("ci-gate:")
+        .expect("ci.yml に ci-gate job が存在しない");
+    let ci_gate_end = ci_content[ci_gate_start + 1..]
+        .find("\n  ci-gate-v2:")
+        .map(|offset| ci_gate_start + 1 + offset)
+        .unwrap_or(ci_content.len());
+    let ci_gate_section = &ci_content[ci_gate_start..ci_gate_end];
+    assert!(
+        ci_gate_section.contains("test-fresh-clone"),
+        "ci-gate は test-fresh-clone job を required に含めること"
+    );
+
+    let ci_gate_v2_start = ci_content
+        .find("ci-gate-v2:")
+        .expect("ci.yml に ci-gate-v2 job が存在しない");
+    let ci_gate_v2_end = ci_content[ci_gate_v2_start + 1..]
+        .find("\n  shadow-oracle:")
+        .map(|offset| ci_gate_v2_start + 1 + offset)
+        .unwrap_or(ci_content.len());
+    let ci_gate_v2_section = &ci_content[ci_gate_v2_start..ci_gate_v2_end];
+    assert!(
+        ci_gate_v2_section.contains("test-fresh-clone"),
+        "ci-gate-v2 は test-fresh-clone job を required に含めること"
+    );
+
+    let fresh_clone_ci_script = project_root.join("scripts/ci/test-fresh-clone.sh");
+    let fresh_clone_ci_script_content = std::fs::read_to_string(&fresh_clone_ci_script)
+        .expect("scripts/ci/test-fresh-clone.sh の読み込みに失敗");
+    assert!(
+        fresh_clone_ci_script_content.contains("scripts/ci/release-smoke.sh"),
+        "test-fresh-clone.sh は downloaded archive 検証に release-smoke.sh を再利用すること"
+    );
+    assert!(
+        fresh_clone_ci_script_content.contains("scripts/smoke_test_readme.sh"),
+        "test-fresh-clone.sh は README Quick Start smoke を再利用すること"
+    );
+
     // fresh clone 仕様ドキュメントが存在すること
     let fresh_clone_doc = project_root.join("docs/development/operations/fresh-clone-spec.md");
     assert!(
         fresh_clone_doc.is_file(),
         "docs/development/operations/fresh-clone-spec.md が存在しない"
+    );
+    let fresh_clone_doc_content =
+        std::fs::read_to_string(&fresh_clone_doc).expect("fresh-clone-spec.md の読み込みに失敗");
+    assert!(
+        fresh_clone_doc_content.contains("test-fresh-clone")
+            && fresh_clone_doc_content.contains("download")
+            && fresh_clone_doc_content.contains("smoke_test_readme.sh"),
+        "fresh-clone-spec.md は mainline binary-only test-fresh-clone job を説明すること"
+    );
+
+    let phase11_plan = project_root.join("docs/development/planning/phase11-implementation-plan.md");
+    let phase11_plan_content =
+        std::fs::read_to_string(&phase11_plan).expect("phase11-implementation-plan.md の読み込みに失敗");
+    assert!(
+        phase11_plan_content.contains("workflow-local")
+            || phase11_plan_content.contains("same-run")
+            || phase11_plan_content.contains("download release artifact"),
+        "phase11-implementation-plan.md の OPS-07 節は current binary-only gate を説明すること"
+    );
+}
+
+/// TEST-OPS-07c: test-fresh-clone.sh が no-Rust 環境相当でも downloaded archive だけで smoke を通せること
+#[cfg(unix)]
+#[test]
+fn test_e2e_ops07_test_fresh_clone_script_runs_binary_only_fixture_archive() {
+    use std::os::unix::fs::PermissionsExt;
+    use std::process::Command;
+
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let test_script = project_root.join("scripts/ci/test-fresh-clone.sh");
+    let checksum_script = project_root.join("scripts/checksum.sh");
+    let temp_root = ops06_unique_temp_dir("test-fresh-clone-binary-only");
+    let archive_root = temp_root.join("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu");
+    std::fs::create_dir_all(&archive_root).expect("fixture archive root の作成に失敗");
+
+    let fake_lsharp = archive_root.join("lsharp");
+    std::fs::write(
+        &fake_lsharp,
+        r#"#!/usr/bin/env bash
+set -euo pipefail
+
+resolve_delegate_bin() {
+  local delegate_path="${LSHARP_PATH:-}"
+  if [[ -z "$delegate_path" ]]; then
+    return 1
+  fi
+  if [[ -d "$delegate_path" && -x "$delegate_path/lsharp" ]]; then
+    printf '%s\n' "$delegate_path/lsharp"
+    return 0
+  fi
+  if [[ -f "$delegate_path" && -x "$delegate_path" ]]; then
+    printf '%s\n' "$delegate_path"
+    return 0
+  fi
+  return 1
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  --version)
+    if delegate_bin="$(resolve_delegate_bin)"; then
+      "$delegate_bin" "$@"
+      exit $?
+    fi
+    if [[ -n "${LSHARP_PATH:-}" && ! -e "${LSHARP_PATH:-}" ]]; then
+      echo "LSHARP_PATH invalid: ${LSHARP_PATH}" >&2
+      exit 1
+    fi
+    echo "lsharp 0.0.0-test"
+    ;;
+  parse)
+    if [[ "${LSHARP_DISABLE_EMBEDDED_COMPONENT:-0}" == "1" ]]; then
+      echo "LSHARP_PATH required when embedded component is disabled" >&2
+      exit 1
+    fi
+    echo "decls:1 diagnostics:0"
+    ;;
+  check)
+    echo "diagnostics:0 type:Int"
+    ;;
+  test)
+    echo "examples:1 invariants:1 failures:0"
+    ;;
+  fmt)
+    cat "${2:?missing source path}"
+    ;;
+  compile)
+    out=""
+    shift
+    while [[ $# -gt 0 ]]; do
+      if [[ "$1" == "-o" ]]; then
+        out="$2"
+        shift 2
+      else
+        shift
+      fi
+    done
+    printf '\0asm' > "${out:?missing output path}"
+    ;;
+  lsp)
+    echo "lsp help"
+    ;;
+  mcp-server)
+    echo "mcp help"
+    ;;
+  *)
+    echo "unsupported command: $cmd" >&2
+    exit 1
+    ;;
+esac
+"#,
+    )
+    .expect("fake lsharp の書き込みに失敗");
+    let mut perms = std::fs::metadata(&fake_lsharp)
+        .expect("fake lsharp metadata の取得に失敗")
+        .permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&fake_lsharp, perms).expect("fake lsharp permission の設定に失敗");
+
+    std::fs::write(archive_root.join("README.md"), "# fixture\n").expect("README fixture 書き込み失敗");
+    std::fs::write(archive_root.join("LICENSE"), "fixture license\n").expect("LICENSE fixture 書き込み失敗");
+
+    let checksum_output = Command::new("bash")
+        .arg(&checksum_script)
+        .arg(&archive_root)
+        .output()
+        .expect("checksum.sh の実行に失敗");
+    assert!(
+        checksum_output.status.success(),
+        "checksum.sh が失敗した: status={:?}, stderr={}",
+        checksum_output.status.code(),
+        String::from_utf8_lossy(&checksum_output.stderr)
+    );
+    std::fs::write(
+        archive_root.join("checksums.txt"),
+        checksum_output.stdout,
+    )
+    .expect("checksums.txt の書き込みに失敗");
+
+    let archive_path = temp_root.join("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu.tar.gz");
+    let tar_output = Command::new("tar")
+        .arg("-czf")
+        .arg(&archive_path)
+        .arg("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu")
+        .current_dir(&temp_root)
+        .output()
+        .expect("tar の実行に失敗");
+    assert!(
+        tar_output.status.success(),
+        "fixture archive 作成が失敗した: status={:?}, stderr={}",
+        tar_output.status.code(),
+        String::from_utf8_lossy(&tar_output.stderr)
+    );
+
+    let work_dir = temp_root.join("smoke-work");
+    let output = Command::new("bash")
+        .arg(&test_script)
+        .arg(&archive_path)
+        .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin")
+        .env("WORK_DIR", &work_dir)
+        .current_dir(&project_root)
+        .output()
+        .expect("test-fresh-clone.sh の実行に失敗");
+
+    std::fs::remove_dir_all(&temp_root).ok();
+
+    assert!(
+        output.status.success(),
+        "test-fresh-clone.sh が fixture archive で失敗した: status={:?}, stdout={}, stderr={}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("release-smoke: OK")
+            && stdout.contains("default-path-smoke: OK")
+            && stdout.contains("test-fresh-clone (binary-only): OK"),
+        "test-fresh-clone.sh は binary-only fixture smoke の成功メッセージを出すべき: {}",
+        stdout
     );
 }
 

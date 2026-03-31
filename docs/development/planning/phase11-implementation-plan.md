@@ -793,7 +793,7 @@
 ### OPS-06 Release playbook
 
 - Goal: host launcher + embedded guest component 配布の build/sign/checksum/changelog を自動化する。
-- Current state: `scripts/release-playbook.sh` は release binary を作り、`compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用して smoke まで回せる。**ただし** tag push 起点の release workflow、署名、checksum / changelog 自動生成と single-binary artifact 命名の固定は未接続。
+- Current state: `scripts/release-playbook.sh` は release binary を作り、`compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用して smoke まで回せる。`.github/workflows/release.yml` も `v*` tag push 起点の `verify` / `build` / `release-smoke` / `release` まで接続済みで、build job は `scripts/ci/release-smoke.sh` で生成済み archive の checksum 検証 + packaged binary smoke を実行し、`release-smoke` job では downloaded artifact を Rust toolchain 無しで再検証できる。**ただし** 署名、checksum / changelog の release-note 正本化、single-binary artifact 命名の完全固定は未接続。
 - Rust source: `docs/development/operations/release-playbook.md`, `docs/development/operations/release-distribution-signing.md`
 - L# target: release workflow, `scripts/generate-changelog.sh`, `scripts/ci/verify-signature.sh`
 - Implementation direction: stable/nightly の 2 チャネルを固定し、release は `version bump -> CI -> host-launcher artifact -> checksum -> signing -> smoke -> tag -> GitHub Release` の順に自動化する。
@@ -805,13 +805,13 @@
 ### OPS-07 Fresh clone without Rust
 
 - Goal: Rust 未導入の利用者環境から host launcher single binary release smoke を再現する。
-- Current state: `scripts/ci/test-fresh-clone.sh` + `fresh-clone-smoke` により clean checkout 相当コピーからの再ビルド / smoke は blocking 化された。**ただし** Rust 未導入環境で release artifact を展開し、embedded guest component 経由で `default-path-smoke` / Quick Start を通す true no-Rust job は未実装。
+- Current state: `scripts/ci/test-fresh-clone.sh` + `fresh-clone-smoke` により clean checkout 相当コピーからの再ビルド / smoke は blocking 化された。さらに mainline CI では `fresh-clone-artifact` → `test-fresh-clone` を追加し、同一 workflow 内で作った release-style archive を download して、Rust toolchain 無しで `release-smoke.sh` / `default-path-smoke.sh` / `smoke_test_readme.sh` を通す **closest viable binary-only gate** まで接続済み。**ただし** GitHub Releases 上の stage0 package を fresh clone 直後に取得する true no-Rust end-state は未実装。
 - Rust source: `docs/development/operations/fresh-clone-spec.md`
 - L# target: `scripts/ci/test-fresh-clone.sh`, `scripts/ci/release-smoke.sh`, `scripts/smoke_test_readme.sh`
-- Implementation direction: `test-fresh-clone` job を Component Model pivot 後の single-binary smoke に再定義し、Rust toolchain を含まない container/runner で `download release artifact -> verify checksum -> default-path-smoke -> README Quick Start smoke` を通す。
+- Implementation direction: 現行の `test-fresh-clone` は workflow-local artifact を使う binary-only gate とし、stage0 package 配布が整い次第 `download release artifact` を GitHub Releases / stage0 fetch に差し替えて true no-Rust end-state へ寄せる。
 - Dependencies: `OPS-06`, `PKG-01`
 - Acceptance: fresh clone / release smoke CI が main merge ごとに green になる。
-- Evidence: `test-fresh-clone` job, `release-smoke` job, `docs/development/operations/fresh-clone-spec.md`
+- Evidence: `fresh-clone-artifact` job, `test-fresh-clone` job, `release-smoke` job, `docs/development/operations/fresh-clone-spec.md`
 
 <a id="ops-08-final-removal-and-rollback"></a>
 ### OPS-08 Host launcher cutover and rollback

@@ -482,6 +482,170 @@ mod tests {
     }
 
     #[test]
+    fn test_run_wasm_wasi_capture_uses_long_provided_stdin() {
+        let wasm_bytes = compile_preview1("(defn main [] (do (print-string (read-stdin)) 0))");
+        let stdin = "lsp-wire-".repeat(700);
+
+        let result = run_wasm_wasi_with_dir_args_and_stdin_capture(&wasm_bytes, None, &[], &stdin)
+            .expect("capture helper should succeed");
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout, stdin);
+    }
+
+    #[test]
+    fn test_run_wasm_wasi_capture_reads_large_stdin_fully() {
+        let wasm_bytes = compile_preview1("(defn main [] (print (string-length (read-stdin))))");
+        let stdin = "abcdefghij".repeat(500);
+
+        let result = run_wasm_wasi_with_dir_args_and_stdin_capture(&wasm_bytes, None, &[], &stdin)
+            .expect("capture helper should read large stdin");
+
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout.trim(), stdin.len().to_string());
+    }
+
+    #[test]
+    fn test_run_wasm_wasi_capture_reads_soak_sized_stdin_fully() {
+        let wasm_bytes = compile_preview1("(defn main [] (print (string-length (read-stdin))))");
+        let stdin = "lsp-wire-".repeat(850);
+
+        let result = run_wasm_wasi_with_dir_args_and_stdin_capture(&wasm_bytes, None, &[], &stdin)
+            .expect("capture helper should read soak-sized stdin");
+
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout.trim(), stdin.len().to_string());
+    }
+
+    #[test]
+    fn test_run_wasm_wasi_capture_preserves_lsp_soak_wire_stdin() {
+        let wasm_bytes = compile_preview1("(defn main [] (do (print-string (read-stdin)) 0))");
+        let open_source = "(defn helper [] 1)\n(defn main [] (helper 1))";
+        let change_source = "(defn helper [] 1)\n(defn main []  (he))";
+        let iterations = 12usize;
+
+        let render_wire_frame = |body: &str| format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+        let repeat_rendered_frames = |frames: &[String], iterations: usize| {
+            let mut rendered = String::new();
+            for _ in 0..iterations {
+                for frame in frames {
+                    rendered.push_str(frame);
+                }
+            }
+            rendered
+        };
+
+        let init_body = r#"{"jsonrpc":"2.0","id":80,"method":"initialize","params":0}"#;
+        let open_body = format!(
+            r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+            open_source
+        );
+        let hover_body =
+            r#"{"jsonrpc":"2.0","id":81,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":21}}"#;
+        let change_body = format!(
+            r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
+            change_source
+        );
+        let completion_body =
+            r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
+        let formatting_body =
+            r#"{"jsonrpc":"2.0","id":83,"method":"textDocument/formatting","params":{"uri":42}}"#;
+
+        let stdin = format!(
+            "{}{}",
+            render_wire_frame(init_body),
+            repeat_rendered_frames(
+                &[
+                    render_wire_frame(&open_body),
+                    render_wire_frame(hover_body),
+                    render_wire_frame(&change_body),
+                    render_wire_frame(completion_body),
+                    render_wire_frame(formatting_body),
+                ],
+                iterations
+            )
+        );
+
+        let result = run_wasm_wasi_with_dir_args_and_stdin_capture(&wasm_bytes, None, &[], &stdin)
+            .expect("capture helper should preserve lsp soak wire stdin");
+
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout, stdin);
+    }
+
+    #[test]
+    fn test_run_wasm_wasi_capture_preserves_lsp_soak_wire_after_reading_args() {
+        let wasm_bytes = compile_preview1(
+            r#"
+            (defn main []
+              (do
+                (print-string (command-line-arg 0))
+                (print-string "\n---\n")
+                (print-string (command-line-arg 1))
+                (print-string "\n---\n")
+                (print-string (read-stdin))
+                0))
+            "#,
+        );
+        let open_source = "(defn helper [] 1)\n(defn main [] (helper 1))";
+        let change_source = "(defn helper [] 1)\n(defn main []  (he))";
+        let iterations = 12usize;
+
+        let render_wire_frame = |body: &str| format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+        let repeat_rendered_frames = |frames: &[String], iterations: usize| {
+            let mut rendered = String::new();
+            for _ in 0..iterations {
+                for frame in frames {
+                    rendered.push_str(frame);
+                }
+            }
+            rendered
+        };
+
+        let init_body = r#"{"jsonrpc":"2.0","id":80,"method":"initialize","params":0}"#;
+        let open_body = format!(
+            r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+            open_source
+        );
+        let hover_body =
+            r#"{"jsonrpc":"2.0","id":81,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":21}}"#;
+        let change_body = format!(
+            r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
+            change_source
+        );
+        let completion_body =
+            r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
+        let formatting_body =
+            r#"{"jsonrpc":"2.0","id":83,"method":"textDocument/formatting","params":{"uri":42}}"#;
+
+        let stdin = format!(
+            "{}{}",
+            render_wire_frame(init_body),
+            repeat_rendered_frames(
+                &[
+                    render_wire_frame(&open_body),
+                    render_wire_frame(hover_body),
+                    render_wire_frame(&change_body),
+                    render_wire_frame(completion_body),
+                    render_wire_frame(formatting_body),
+                ],
+                iterations
+            )
+        );
+        let expected = format!("lsp\n---\n--stdio\n---\n{}", stdin);
+
+        let result = run_wasm_wasi_with_dir_args_and_stdin_capture(
+            &wasm_bytes,
+            None,
+            &["lsp", "--stdio"],
+            &stdin,
+        )
+        .expect("capture helper should preserve stdin after reading args");
+
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout, expected);
+    }
+
+    #[test]
     fn test_wasi_mode_enum_exists() {
         // WasiMode enum の各バリアントが存在し、区別できること
         let p1 = WasiMode::Preview1;

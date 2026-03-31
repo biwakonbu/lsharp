@@ -1439,6 +1439,106 @@ fn test_e2e_selfhost_cli_lsp_stdio_frame_sequence() {
     );
 }
 
+/// TEST-CLI-02-M12d: raw stdio wire helper が長めの open/hover/change/completion/formatting 系列を最後まで捌けること
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_wire_repeated_sequence() {
+    let render_lsp_wire_frame = |body: &str| format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    let repeat_rendered_frames = |frames: &[String], iterations: usize| {
+        let mut rendered = String::new();
+        for _ in 0..iterations {
+            for frame in frames {
+                rendered.push_str(frame);
+            }
+        }
+        rendered
+    };
+
+    let open_source = "(defn helper [] 1)\n(defn main [] (helper 1))";
+    let change_source = "(defn helper [] 1)\n(defn main []  (he))";
+    let iterations = 12usize;
+
+    let init_body = r#"{"jsonrpc":"2.0","id":80,"method":"initialize","params":0}"#;
+    let open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        open_source
+    );
+    let hover_body =
+        r#"{"jsonrpc":"2.0","id":81,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":21}}"#;
+    let change_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
+        change_source
+    );
+    let completion_body =
+        r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
+    let formatting_body =
+        r#"{"jsonrpc":"2.0","id":83,"method":"textDocument/formatting","params":{"uri":42}}"#;
+
+    let init_response = r#"{"jsonrpc":"2.0","id":80,"result":[1,1,1,1,1,1,1]}"#;
+    let open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        open_source.len()
+    );
+    let hover_response =
+        r#"{"jsonrpc":"2.0","id":81,"result":{"range":[1,21,1,27],"contents":"defn helper"}}"#;
+    let change_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        change_source.len()
+    );
+    let completion_response = r#"{"jsonrpc":"2.0","id":82,"result":[["helper",3,"helper"]]}"#;
+    let formatting_response =
+        "{\"jsonrpc\":\"2.0\",\"id\":83,\"result\":[[1,1,1,24,\"(defn helper [] 1) (he)\\n\"]]}";
+
+    let stdin = format!(
+        "{}{}",
+        render_lsp_wire_frame(init_body),
+        repeat_rendered_frames(
+            &[
+                render_lsp_wire_frame(&open_body),
+                render_lsp_wire_frame(hover_body),
+                render_lsp_wire_frame(&change_body),
+                render_lsp_wire_frame(completion_body),
+                render_lsp_wire_frame(formatting_body),
+            ],
+            iterations
+        )
+    );
+    let expected = format!(
+        "{}{}",
+        render_lsp_wire_frame(init_response),
+        repeat_rendered_frames(
+            &[
+                render_lsp_wire_frame(&open_response),
+                render_lsp_wire_frame(hover_response),
+                render_lsp_wire_frame(&change_response),
+                render_lsp_wire_frame(completion_response),
+                render_lsp_wire_frame(formatting_response),
+            ],
+            iterations
+        )
+    );
+
+    let harness = format!(
+        r#"
+(defn main []
+  (let [wire {stdin:?}]
+    (print-string (run-lsp-stdio-wire wire))))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+
+    assert_eq!(
+        output.matches("Content-Length:").count(),
+        1 + (iterations * 5),
+        "raw stdio wire helper は initialize + 各反復 5 frame を返すべき"
+    );
+    assert_eq!(
+        output, expected,
+        "raw stdio wire helper は長い系列でも各 frame を決定的に返すべき"
+    );
+}
+
 /// TEST-CLI-02-N: selfhost/src/App/Cli.ls の run-test-source が TestRunner.generate-tests を呼べること
 #[test]
 fn test_e2e_selfhost_cli_test_source_core() {
@@ -3206,6 +3306,338 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_resolves_open_document() {
     assert_eq!(
         output, expected,
         "Cli main は open 済み別 document から source なし hover contents を解決すべき"
+    );
+}
+
+/// TEST-CLI-02-AN17: actual Cli main は `lsp --stdio` で didChange 後の source なし completion に最新 document state を使うこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_changed_document() {
+    let open_source = "(defn alpha [] 1) (al)";
+    let changed_source = "(defn helper [] 1) (he)";
+    let open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        open_source
+    );
+    let change_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
+        changed_source
+    );
+    let completion_body =
+        r#"{"jsonrpc":"2.0","id":74,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        change_body.len(),
+        change_body,
+        completion_body.len(),
+        completion_body
+    );
+    let open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        open_source.len()
+    );
+    let change_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        changed_source.len()
+    );
+    let completion_response = r#"{"jsonrpc":"2.0","id":74,"result":[["helper",3,"helper"]]}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_response.len(),
+        open_response,
+        change_response.len(),
+        change_response,
+        completion_response.len(),
+        completion_response
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は didChange 後の source なし completion で最新 document state を使うべき"
+    );
+}
+
+/// TEST-CLI-02-AN18: actual Cli main は `lsp --stdio` で same-URI repeated didOpen 後に最新 source を使うこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_repeated_didopen_keeps_latest_source() {
+    let first_source = "(defn alpha [] 1) (al)";
+    let latest_source = "(defn beta [] 1) (be)";
+    let first_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        first_source
+    );
+    let second_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        latest_source
+    );
+    let completion_body =
+        r#"{"jsonrpc":"2.0","id":75,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":21}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        first_open_body.len(),
+        first_open_body,
+        second_open_body.len(),
+        second_open_body,
+        completion_body.len(),
+        completion_body
+    );
+    let first_open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        first_source.len()
+    );
+    let second_open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        latest_source.len()
+    );
+    let completion_response = r#"{"jsonrpc":"2.0","id":75,"result":[["beta",3,"beta"]]}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        first_open_response.len(),
+        first_open_response,
+        second_open_response.len(),
+        second_open_response,
+        completion_response.len(),
+        completion_response
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は same-URI repeated didOpen 後に最新 source を保持するべき"
+    );
+}
+
+/// TEST-CLI-02-AN19: actual Cli main は `lsp --stdio` で didChange 後の source なし hover に最新 document state を使うこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_changed_document() {
+    let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
+    let changed_source = "(defn helper [x] x) (defn main [] (helper 1))";
+    let open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        open_source
+    );
+    let change_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
+        changed_source
+    );
+    let hover_body =
+        r#"{"jsonrpc":"2.0","id":76,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":38}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        change_body.len(),
+        change_body,
+        hover_body.len(),
+        hover_body
+    );
+    let open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        open_source.len()
+    );
+    let change_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        changed_source.len()
+    );
+    let hover_response =
+        r#"{"jsonrpc":"2.0","id":76,"result":{"range":[1,36,1,42],"contents":"defn helper"}}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_response.len(),
+        open_response,
+        change_response.len(),
+        change_response,
+        hover_response.len(),
+        hover_response
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は didChange 後の source なし hover で最新 document state を使うべき"
+    );
+}
+
+/// TEST-CLI-02-AN20: actual Cli main は `lsp --stdio` で same-URI repeated didOpen 後の source なし definition に最新 source を使うこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_latest_reopened_document() {
+    let first_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
+    let latest_source = "(defn helper [x] x) (defn main [] (helper 1))";
+    let first_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        first_source
+    );
+    let second_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        latest_source
+    );
+    let definition_body =
+        r#"{"jsonrpc":"2.0","id":77,"method":"textDocument/definition","params":{"uri":42,"line":1,"col":38}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        first_open_body.len(),
+        first_open_body,
+        second_open_body.len(),
+        second_open_body,
+        definition_body.len(),
+        definition_body
+    );
+    let first_open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        first_source.len()
+    );
+    let second_open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        latest_source.len()
+    );
+    let definition_response = r#"{"jsonrpc":"2.0","id":77,"result":[42,1,7]}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        first_open_response.len(),
+        first_open_response,
+        second_open_response.len(),
+        second_open_response,
+        definition_response.len(),
+        definition_response
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は same-URI repeated didOpen 後の source なし definition で最新 source を使うべき"
+    );
+}
+
+/// TEST-CLI-02-AN21: actual Cli main は `lsp --stdio` で didChange 後の source なし definition に最新 document state を使うこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_changed_document() {
+    let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
+    let changed_source = "(defn helper [x] x) (defn main [] (helper 1))";
+    let open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        open_source
+    );
+    let change_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
+        changed_source
+    );
+    let definition_body =
+        r#"{"jsonrpc":"2.0","id":78,"method":"textDocument/definition","params":{"uri":42,"line":1,"col":38}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        change_body.len(),
+        change_body,
+        definition_body.len(),
+        definition_body
+    );
+    let open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        open_source.len()
+    );
+    let change_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        changed_source.len()
+    );
+    let definition_response = r#"{"jsonrpc":"2.0","id":78,"result":[42,1,7]}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_response.len(),
+        open_response,
+        change_response.len(),
+        change_response,
+        definition_response.len(),
+        definition_response
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は didChange 後の source なし definition で最新 document state を使うべき"
+    );
+}
+
+/// TEST-CLI-02-AN22: actual Cli main は `lsp --stdio` で same-URI repeated didOpen 後の source なし hover に最新 source を使うこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_latest_reopened_document() {
+    let first_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
+    let latest_source = "(defn helper [x] x) (defn main [] (helper 1))";
+    let first_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        first_source
+    );
+    let second_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        latest_source
+    );
+    let hover_body =
+        r#"{"jsonrpc":"2.0","id":79,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":38}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        first_open_body.len(),
+        first_open_body,
+        second_open_body.len(),
+        second_open_body,
+        hover_body.len(),
+        hover_body
+    );
+    let first_open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        first_source.len()
+    );
+    let second_open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        latest_source.len()
+    );
+    let hover_response =
+        r#"{"jsonrpc":"2.0","id":79,"result":{"range":[1,36,1,42],"contents":"defn helper"}}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        first_open_response.len(),
+        first_open_response,
+        second_open_response.len(),
+        second_open_response,
+        hover_response.len(),
+        hover_response
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は same-URI repeated didOpen 後の source なし hover で最新 source を使うべき"
     );
 }
 

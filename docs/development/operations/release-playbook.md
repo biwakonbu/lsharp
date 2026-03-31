@@ -41,7 +41,8 @@ vim Cargo.toml   # version = "0.x.y"
 | 4 | `cargo fmt --check` | フォーマット検証 |
 | 5 | `LSHARP_BIN=target/release/lsharp bash scripts/ci/compile-phase11-inputs.sh` | release host launcher で selfhost / stdlib / examples の固定入力セットを検証 |
 | 6 | `LSHARP_BIN=target/release/lsharp bash scripts/ci/default-path-smoke.sh` + `scripts/smoke_test_readme.sh` | release host launcher + guest component の smoke + README smoke |
-| 7 | チェックサム生成 | `scripts/checksum.sh` |
+| 7 | `bash scripts/ci/release-smoke.sh dist/lsharp-<version>-<target>.<ext>` | 生成済み release archive を展開し、checksum 検証と packaged binary smoke を行う |
+| 8 | チェックサム生成 | `scripts/checksum.sh` |
 
 ### 3. アーティファクト生成
 
@@ -55,6 +56,8 @@ vim Cargo.toml   # version = "0.x.y"
 | チェックサム | SHA-256 チェックサムファイル |
 
 配布対象の tier1 / tier2 切り分けと命名規則は `release-distribution-signing.md` と `artifact-policy.md` を参照。
+
+release workflow では `scripts/release.sh` の直後に `scripts/ci/release-smoke.sh dist/lsharp-<version>-<target>.<ext>` を実行し、展開済み archive 上で `checksums.txt` 検証と packaged `lsharp` binary の `--version` / `check` / `fmt` / `compile` smoke を通す。
 
 ### 4. チェックサム生成
 
