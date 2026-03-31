@@ -146,12 +146,144 @@
 (defn lsp-stdio-sequence-loop [state frames idx count rendered last-content-length] (if (>= idx count) (vector-push (vector-push (vector-new 2) rendered) last-content-length) (let [result (lsp-stdio-dispatch-frame state (vector-get frames idx))] (lsp-stdio-sequence-loop state frames (+ idx 1) count (vector-push rendered (vector-get result 0)) (vector-get result 1)))))
 (defn run-lsp-stdio-sequence [frames] (let [state (server-state-new) result (lsp-stdio-sequence-loop state frames 0 (vector-length frames) (vector-new 8) 0) rendered (vector-get result 0) last-content-length (vector-get result 1) summary (vector-new 4)] (vector-push (vector-push (vector-push (vector-push summary rendered) (server-state-request-count state)) (server-state-source-length state)) last-content-length)))
 (defn lsp-stdio-find-header-end-loop [src idx len] (if (> (+ idx 3) len) len (if (= (string-char-at src idx) 13) (if (= (string-char-at src (+ idx 1)) 10) (if (= (string-char-at src (+ idx 2)) 13) (if (= (string-char-at src (+ idx 3)) 10) idx (lsp-stdio-find-header-end-loop src (+ idx 1) len)) (lsp-stdio-find-header-end-loop src (+ idx 1) len)) (lsp-stdio-find-header-end-loop src (+ idx 1) len)) (lsp-stdio-find-header-end-loop src (+ idx 1) len))))
-(defn lsp-stdio-find-pattern-loop [src pattern idx len] (if (>= idx len) (- 0 1) (if (lsp-match-at src idx pattern) idx (lsp-stdio-find-pattern-loop src pattern (+ idx 1) len))))
-(defn lsp-stdio-is-digit [c] (if (< c 48) false (if (> c 57) false true)))
-(defn lsp-stdio-parse-int-loop [src idx len acc started] (if (>= idx len) acc (let [c (string-char-at src idx)] (if (lsp-stdio-is-digit c) (lsp-stdio-parse-int-loop src (+ idx 1) len (+ (- c 48) (* acc 10)) 1) (if (= started 1) acc (lsp-stdio-parse-int-loop src (+ idx 1) len acc 0))))))
-(defn lsp-stdio-body-id [body] (let [id-pos (lsp-stdio-find-pattern-loop body "\"id\":" 0 (string-length body))] (if (< id-pos 0) 0 (lsp-stdio-parse-int-loop body (+ id-pos 5) (string-length body) 0 0))))
-(defn lsp-stdio-body-method [body] (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"initialize\"" 0 (string-length body)) 0) (lsp-method-initialize) (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"shutdown\"" 0 (string-length body)) 0) (lsp-method-shutdown) 999)))
-(defn lsp-stdio-body-message [body] (vector-push (vector-push (vector-push (vector-push (vector-new 4) 2) (lsp-stdio-body-id body)) (lsp-stdio-body-method body)) 0))
+(defn lsp-stdio-find-pattern-loop [src pattern idx len]
+  (if (>= idx len)
+    (- 0 1)
+    (if (lsp-match-at src idx pattern)
+      idx
+      (lsp-stdio-find-pattern-loop src pattern (+ idx 1) len))))
+
+(defn lsp-stdio-is-digit [c]
+  (if (< c 48) false (if (> c 57) false true)))
+
+(defn lsp-stdio-parse-int-loop [src idx len acc started]
+  (if (>= idx len)
+    acc
+    (let [c (string-char-at src idx)]
+      (if (lsp-stdio-is-digit c)
+        (lsp-stdio-parse-int-loop src (+ idx 1) len (+ (- c 48) (* acc 10)) 1)
+        (if (= started 1)
+          acc
+          (lsp-stdio-parse-int-loop src (+ idx 1) len acc 0))))))
+
+(defn lsp-stdio-find-string-end-loop [src idx len]
+  (if (>= idx len)
+    len
+    (if (= (string-char-at src idx) 34)
+      idx
+      (lsp-stdio-find-string-end-loop src (+ idx 1) len))))
+
+(defn lsp-stdio-body-has-field [body pattern]
+  (if (>= (lsp-stdio-find-pattern-loop body pattern 0 (string-length body)) 0) 1 0))
+
+(defn lsp-stdio-body-int-field [body pattern]
+  (let [len (string-length body)
+    pos (lsp-stdio-find-pattern-loop body pattern 0 len)]
+    (if (< pos 0)
+      0
+      (lsp-stdio-parse-int-loop body (+ pos (string-length pattern)) len 0 0))))
+
+(defn lsp-stdio-body-string-field [body pattern]
+  (let [len (string-length body)
+    pos (lsp-stdio-find-pattern-loop body pattern 0 len)]
+    (if (< pos 0)
+      ""
+      (let [start (+ pos (string-length pattern))
+        end (lsp-stdio-find-string-end-loop body (+ pos (string-length pattern)) len)]
+        (substring body start end)))))
+
+(defn lsp-stdio-body-id [body]
+  (let [len (string-length body)
+    id-pos (lsp-stdio-find-pattern-loop body "\"id\":" 0 len)]
+    (if (< id-pos 0)
+      0
+      (lsp-stdio-parse-int-loop body (+ id-pos 5) len 0 0))))
+
+(defn lsp-stdio-body-method [body]
+  (let [len (string-length body)]
+    (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"initialize\"" 0 len) 0)
+      (lsp-method-initialize)
+      (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"shutdown\"" 0 len) 0)
+        (lsp-method-shutdown)
+        (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"textDocument/definition\"" 0 len) 0)
+          (lsp-method-goto-def)
+          (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"textDocument/hover\"" 0 len) 0)
+            (lsp-method-hover)
+            (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"textDocument/references\"" 0 len) 0)
+              (lsp-method-references)
+              (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"textDocument/formatting\"" 0 len) 0)
+                (lsp-method-formatting)
+                (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"textDocument/rename\"" 0 len) 0)
+                  (lsp-method-rename)
+                  (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"textDocument/didOpen\"" 0 len) 0)
+                    (lsp-method-did-open)
+                    (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"textDocument/didChange\"" 0 len) 0)
+                      (lsp-method-did-change)
+                      (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"textDocument/completion\"" 0 len) 0)
+                        (lsp-method-completion)
+                        999))))))))))))
+
+(defn lsp-stdio-nav-params [body]
+  (let [params (vector-new 4)
+    with-position
+      (vector-push
+        (vector-push
+          (vector-push params (lsp-stdio-body-int-field body "\"uri\":"))
+          (lsp-stdio-body-int-field body "\"line\":"))
+        (lsp-stdio-body-int-field body "\"col\":"))]
+    (if (= (lsp-stdio-body-has-field body "\"source\":\"") 1)
+      (vector-push with-position (lsp-stdio-body-string-field body "\"source\":\""))
+      with-position)))
+
+(defn lsp-stdio-document-params [body]
+  (let [with-uri
+      (vector-push (vector-new 2) (lsp-stdio-body-int-field body "\"uri\":"))]
+    (if (= (lsp-stdio-body-has-field body "\"source\":\"") 1)
+      (vector-push with-uri (lsp-stdio-body-string-field body "\"source\":\""))
+      with-uri)))
+
+(defn lsp-stdio-rename-params [body]
+  (let [params (vector-new 5)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push params (lsp-stdio-body-int-field body "\"uri\":"))
+            (lsp-stdio-body-int-field body "\"line\":"))
+          (lsp-stdio-body-int-field body "\"col\":"))
+        (lsp-stdio-body-string-field body "\"source\":\""))
+      (lsp-stdio-body-string-field body "\"newName\":\""))))
+
+(defn lsp-stdio-body-params [body]
+  (let [method-id (lsp-stdio-body-method body)]
+    (if (= method-id (lsp-method-goto-def))
+      (lsp-stdio-nav-params body)
+      (if (= method-id (lsp-method-hover))
+        (lsp-stdio-nav-params body)
+        (if (= method-id (lsp-method-references))
+          (lsp-stdio-nav-params body)
+          (if (= method-id (lsp-method-completion))
+            (lsp-stdio-nav-params body)
+            (if (= method-id (lsp-method-rename))
+              (lsp-stdio-rename-params body)
+              (if (= method-id (lsp-method-formatting))
+                (lsp-stdio-document-params body)
+                (if (= method-id (lsp-method-did-open))
+                  (lsp-stdio-document-params body)
+                  (if (= method-id (lsp-method-did-change))
+                    (lsp-stdio-document-params body)
+                    0))))))))))
+
+(defn lsp-stdio-body-message [body]
+  (let [method-id (lsp-stdio-body-method body)
+    msg (vector-new 4)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push msg 2)
+          (lsp-stdio-body-id body))
+        method-id)
+      (lsp-stdio-body-params body))))
 (defn lsp-stdio-wire-loop [state wire idx len out] (if (>= idx len) out (let [header-end (lsp-stdio-find-header-end-loop wire idx len) header (substring wire idx header-end) content-length (lsp-parse-content-length header) body-start (+ header-end 4) body-end (+ body-start content-length) body (substring wire body-start body-end) rendered (lsp-transport-dispatch-request state (lsp-stdio-message-request (lsp-stdio-body-message body)))] (lsp-stdio-wire-loop state wire body-end len (string-concat out rendered)))))
 (defn run-lsp-stdio-wire [wire] (let [state (server-state-new)] (lsp-stdio-wire-loop state wire 0 (string-length wire) "")))
 (defn run-lsp-stdio-server [] (let [wire (read-stdin)] (do (print-string (run-lsp-stdio-wire wire)) (exit-success))))

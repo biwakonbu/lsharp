@@ -48,6 +48,11 @@ fn compile_preview1_source(source: &str) -> Vec<u8> {
     lsharp_wasm::wasi::emit_wasm_wasi(&module).expect("wasi emit failed")
 }
 
+fn compile_preview1_entry(entry_file: &Path) -> Vec<u8> {
+    let module = lsharp_ir::compile_multi_file(entry_file).expect("multi-file compile failed");
+    lsharp_wasm::wasi::emit_wasm_wasi(&module).expect("wasi emit failed")
+}
+
 fn build_driver_with_embedded_component(project_root: &Path, component_path: &Path, target_dir: &Path) -> PathBuf {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let output = Command::new(cargo)
@@ -139,66 +144,155 @@ exit 23
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
-/// check コマンドを LSHARP_PATH 未設定で実行すると LSHARP_PATH ヒントを含むエラーになるべき
+/// build.rs が既定で埋め込んだ guest component により、check は LSHARP_PATH なしでも動くべき
 #[test]
-fn test_check_without_lsharp_path_suggests_lsharp_path() {
+fn test_check_without_lsharp_path_uses_embedded_component_default_path() {
+    let temp_dir = unique_temp_dir("embedded_default_check");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(&source_path, "(defn main [] 42)\n");
+
     let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
         .arg("check")
-        .arg("dummy.ls")
+        .arg("input.ls")
         .env_remove("LSHARP_PATH")
+        .current_dir(&temp_dir)
         .output()
         .expect("driver execution failed");
 
     assert!(
-        !output.status.success(),
-        "LSHARP_PATH 未設定時の check は失敗するべき"
+        output.status.success(),
+        "embedded guest default path の check は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stderr.contains("LSHARP_PATH"),
-        "LSHARP_PATH 未設定時の check は LSHARP_PATH ヒントを含むエラーを出すべき: {stderr}"
+        stdout.contains("diagnostics:0"),
+        "embedded guest default path の check は selfhost 出力を返すべき: {stdout}"
     );
+
+    let _ = fs::remove_dir_all(&temp_dir);
 }
 
-/// parse コマンドを LSHARP_PATH 未設定で実行すると LSHARP_PATH ヒントを含むエラーになるべき
+/// build.rs が既定で埋め込んだ guest component により、parse は LSHARP_PATH なしでも動くべき
 #[test]
-fn test_parse_without_lsharp_path_suggests_lsharp_path() {
+fn test_parse_without_lsharp_path_uses_embedded_component_default_path() {
+    let temp_dir = unique_temp_dir("embedded_default_parse");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(&source_path, "(defn main [] 42)\n");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("parse")
+        .arg("input.ls")
+        .env_remove("LSHARP_PATH")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "embedded guest default path の parse は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("decls:1") && stdout.contains("diagnostics:0"),
+        "embedded guest default path の parse は selfhost 出力を返すべき: {stdout}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+/// embedded fmt は large stdout を含む入力でも source roundtrip を返すべき
+#[test]
+fn test_fmt_without_lsharp_path_uses_embedded_component_default_path_for_large_file() {
+    let temp_dir = unique_temp_dir("embedded_default_fmt");
+    let source_path = temp_dir.join("input.ls");
+    let source = format!(";; {}\n(defn main [] 42)\n", "x".repeat(5000));
+    write_source_file(&source_path, &source);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("fmt")
+        .arg("input.ls")
+        .env_remove("LSHARP_PATH")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "embedded guest default path の fmt は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout == source,
+        "embedded guest default path の fmt は source roundtrip を返すべき"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+/// build.rs が既定で埋め込んだ guest component により、test は LSHARP_PATH なしでも動くべき
+#[test]
+fn test_test_without_lsharp_path_uses_embedded_component_default_path() {
+    let temp_dir = unique_temp_dir("embedded_default_test");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(
+        &source_path,
+        r#"(defn abs
+  [x]
+  :example [(= (abs 5) 5)]
+  :invariant (>= result 0)
+  (if (< x 0) (- 0 x) x))
+"#,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("test")
+        .arg("input.ls")
+        .env_remove("LSHARP_PATH")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "embedded guest default path の test は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("examples:1")
+            && stdout.contains("invariants:1")
+            && stdout.contains("failures:0"),
+        "embedded guest default path の test は selfhost summary を返すべき: {stdout}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_parse_without_lsharp_path_respects_embedded_disable_flag() {
     let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
         .arg("parse")
         .arg("dummy.ls")
         .env_remove("LSHARP_PATH")
+        .env("LSHARP_DISABLE_EMBEDDED_COMPONENT", "1")
         .output()
         .expect("driver execution failed");
 
     assert!(
         !output.status.success(),
-        "LSHARP_PATH 未設定時の parse は失敗するべき"
+        "disable flag 付きの parse は built-in path に戻って失敗するべき"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("LSHARP_PATH"),
-        "LSHARP_PATH 未設定時の parse は LSHARP_PATH ヒントを含むエラーを出すべき: {stderr}"
-    );
-}
-
-/// fmt コマンドを LSHARP_PATH 未設定で実行すると LSHARP_PATH ヒントを含むエラーになるべき
-#[test]
-fn test_fmt_without_lsharp_path_suggests_lsharp_path() {
-    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
-        .arg("fmt")
-        .arg("dummy.ls")
-        .env_remove("LSHARP_PATH")
-        .output()
-        .expect("driver execution failed");
-
-    assert!(
-        !output.status.success(),
-        "LSHARP_PATH 未設定時の fmt は失敗するべき"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("LSHARP_PATH"),
-        "LSHARP_PATH 未設定時の fmt は LSHARP_PATH ヒントを含むエラーを出すべき: {stderr}"
+        "disable flag は shadow command hint を復帰させるべき: {stderr}"
     );
 }
 
@@ -269,22 +363,7 @@ fn test_driver_delegates_to_wasm_cli_artifact_via_lsharp_path() {
     let wasm_path = temp_dir.join("selfhost-cli.wasm");
 
     write_source_file(&source_path, "(defn main [] 42)\n");
-
-    let compile_output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
-        .arg("compile")
-        .arg(&cli_source)
-        .arg("-o")
-        .arg(&wasm_path)
-        .current_dir(&project_root)
-        .output()
-        .expect("selfhost cli compile failed");
-
-    assert!(
-        compile_output.status.success(),
-        "selfhost App/SmokeCli.ls のコンパイルに失敗: stdout={}, stderr={}",
-        String::from_utf8_lossy(&compile_output.stdout),
-        String::from_utf8_lossy(&compile_output.stderr)
-    );
+    fs::write(&wasm_path, compile_preview1_entry(&cli_source)).expect("selfhost cli wasm write failed");
     assert!(wasm_path.is_file(), "selfhost cli wasm が生成されていない");
 
     let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
@@ -433,6 +512,8 @@ fn test_driver_uses_embedded_component_when_compiled_with_component_path() {
     let temp_dir = unique_temp_dir("embedded_component_default");
     let component_path = temp_dir.join("embedded.component.wasm");
     let target_dir = temp_dir.join("target");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(&source_path, "(defn main [] 42)\n");
     write_component_file(
         &component_path,
         r#"
@@ -453,7 +534,8 @@ fn test_driver_uses_embedded_component_when_compiled_with_component_path() {
         build_driver_with_embedded_component(&project_root, &component_path, &target_dir);
 
     let output = Command::new(&embedded_driver)
-        .arg("--version")
+        .arg("parse")
+        .arg("input.ls")
         .env_remove("LSHARP_PATH")
         .current_dir(&temp_dir)
         .output()
@@ -467,7 +549,7 @@ fn test_driver_uses_embedded_component_when_compiled_with_component_path() {
     );
     assert!(
         output.stdout.is_empty(),
-        "embedded component default path should run guest component instead of built-in --version: {}",
+        "embedded component default path should run guest component instead of built-in parse hint: {}",
         String::from_utf8_lossy(&output.stdout)
     );
     assert!(
@@ -485,6 +567,8 @@ fn test_driver_can_disable_embedded_component_with_runtime_env() {
     let temp_dir = unique_temp_dir("embedded_component_disable");
     let component_path = temp_dir.join("embedded.component.wasm");
     let target_dir = temp_dir.join("target");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(&source_path, "(defn main [] 42)\n");
     write_component_file(
         &component_path,
         r#"
@@ -505,7 +589,8 @@ fn test_driver_can_disable_embedded_component_with_runtime_env() {
         build_driver_with_embedded_component(&project_root, &component_path, &target_dir);
 
     let output = Command::new(&embedded_driver)
-        .arg("--version")
+        .arg("parse")
+        .arg("input.ls")
         .env_remove("LSHARP_PATH")
         .env("LSHARP_DISABLE_EMBEDDED_COMPONENT", "1")
         .current_dir(&temp_dir)
@@ -513,15 +598,15 @@ fn test_driver_can_disable_embedded_component_with_runtime_env() {
         .expect("embedded driver execution with disable flag failed");
 
     assert!(
-        output.status.success(),
-        "disable flag should keep built-in driver path available: stdout={}, stderr={}",
+        !output.status.success(),
+        "disable flag should keep built-in driver path available and skip guest delegation: stdout={}, stderr={}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stdout.contains("lsharp "),
-        "disable flag should bypass embedded component and expose built-in --version output: {stdout}"
+        stderr.contains("LSHARP_PATH"),
+        "disable flag should bypass embedded component and restore shadow command hint: {stderr}"
     );
 
     let _ = fs::remove_dir_all(&temp_dir);

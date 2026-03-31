@@ -5,6 +5,7 @@ members = [
     "crates/lsharp-types",
     "crates/lsharp-ir",
     "crates/lsharp-wasm",
+    "crates/lsharp-tooling",
     "crates/lsharp-driver",
     "crates/lsharp-docs",
     "crates/lsharp-lsp",

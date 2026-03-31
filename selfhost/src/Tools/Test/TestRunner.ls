@@ -48,24 +48,24 @@
     (vector-push (vector-new 2) examples)
     invariants))
 
-(defn hash-string [s]
+(defn test-hash-string [s]
   (name-hash s 0 (string-length s)))
 
-(defn hash-result [] (hash-string "result"))
-(defn hash-plus [] (hash-string "+"))
-(defn hash-minus [] (hash-string "-"))
-(defn hash-mul [] (hash-string "*"))
-(defn hash-div [] (hash-string "/"))
-(defn hash-mod [] (hash-string "%"))
-(defn hash-eq [] (hash-string "="))
-(defn hash-ne [] (hash-string "!="))
-(defn hash-lt [] (hash-string "<"))
-(defn hash-gt [] (hash-string ">"))
-(defn hash-le [] (hash-string "<="))
-(defn hash-ge [] (hash-string ">="))
-(defn hash-and [] (hash-string "and"))
-(defn hash-or [] (hash-string "or"))
-(defn hash-not [] (hash-string "not"))
+(defn hash-result [] (test-hash-string "result"))
+(defn hash-plus [] (test-hash-string "+"))
+(defn hash-minus [] (test-hash-string "-"))
+(defn hash-mul [] (test-hash-string "*"))
+(defn hash-div [] (test-hash-string "/"))
+(defn hash-mod [] (test-hash-string "%"))
+(defn hash-eq [] (test-hash-string "="))
+(defn hash-ne [] (test-hash-string "!="))
+(defn hash-lt [] (test-hash-string "<"))
+(defn hash-gt [] (test-hash-string ">"))
+(defn hash-le [] (test-hash-string "<="))
+(defn hash-ge [] (test-hash-string ">="))
+(defn hash-and [] (test-hash-string "and"))
+(defn hash-or [] (test-hash-string "or"))
+(defn hash-not [] (test-hash-string "not"))
 
 (defn value-int [n]
   (make-lit-int n))
@@ -589,8 +589,8 @@
 (defn generate-tests-from-source [src]
   (generate-tests src))
 
-;; エントリポイント (テスト用)
-(defn main []
+;; デモ用エントリポイント (テスト用)
+(defn demo-main []
   (let [src "(defn abs [x] :example [(= (abs 5) 5)] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"
     suite (generate-tests src)]
     (do

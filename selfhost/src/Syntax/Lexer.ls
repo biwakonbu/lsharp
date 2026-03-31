@@ -496,8 +496,8 @@
     (let [digit (- (string-char-at src pos) 48)]
       (parse-int-from-string src (+ pos 1) end (+ (* acc 10) digit)))))
 
-;; エントリポイント (テスト用)
-(defn main []
+;; デモ用エントリポイント (テスト用)
+(defn demo-main []
   (let [legacy-spans (tokenize-with-spans "(defn main [] 42)")
     len (/ (vector-length legacy-spans) 3)]
     (do

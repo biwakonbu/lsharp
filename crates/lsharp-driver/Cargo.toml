@@ -8,9 +8,7 @@ name = "lsharp"
 path = "src/main.rs"
 
 [dependencies]
-lsharp-syntax = { path = "../lsharp-syntax" }
-lsharp-types = { path = "../lsharp-types" }
-lsharp-ir = { path = "../lsharp-ir" }
+lsharp-tooling = { path = "../lsharp-tooling" }
 lsharp-wasm = { path = "../lsharp-wasm" }
 lsharp-docs = { path = "../lsharp-docs" }
 lsharp-lsp = { path = "../lsharp-lsp" }
@@ -26,4 +24,11 @@ rustyline = "15"
 dirs = "6"
 
 [dev-dependencies]
+lsharp-syntax = { path = "../lsharp-syntax" }
+lsharp-types = { path = "../lsharp-types" }
+lsharp-ir = { path = "../lsharp-ir" }
 wat = "1"
+
+[build-dependencies]
+lsharp-ir = { path = "../lsharp-ir" }
+lsharp-wasm = { path = "../lsharp-wasm" }

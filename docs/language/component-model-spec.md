@@ -62,7 +62,7 @@ lsharp (host launcher)
   + embedded stdlib
 ```
 
-host launcher は `include_bytes!` 等で guest component を埋め込み、起動時に `Component::new` で instantiate する。現行 Rust driver には build-time 環境変数 `LSHARP_EMBED_COMPONENT_PATH` から `.component.wasm` を埋め込む interim hook があり、default path cutover の前段として narrow test / custom build で使える。移行中の safety valve として runtime `LSHARP_DISABLE_EMBEDDED_COMPONENT=1` も用意し、embedded guest を明示的に無効化して built-in path へ戻せる。core `.wasm` を直接配布の正本として扱わず、配布境界では常に guest component を正とする。
+host launcher は `include_bytes!` 等で guest component を埋め込み、起動時に `Component::new` で instantiate する。現行 Rust driver は既定で `selfhost/src/App/EmbeddedCli.ls` を build-time に `.component.wasm` 化して埋め込み、`parse` / `check` / `fmt` の default path として起動する。build-time 環境変数 `LSHARP_EMBED_COMPONENT_PATH` を与えれば custom guest で override でき、runtime `LSHARP_DISABLE_EMBEDDED_COMPONENT=1` を与えれば embedded guest を明示的に無効化して shadow-command / built-in path へ戻せる。core `.wasm` を直接配布の正本として扱わず、配布境界では常に guest component を正とする。
 
 ### 配布成果物
 
@@ -80,27 +80,29 @@ host launcher は `include_bytes!` 等で guest component を埋め込み、起�
 
 ```wit
 world lsharp-compiler {
-  import wasi:io/streams@0.2.0;
-  import wasi:filesystem/types@0.2.0;
-  import wasi:cli/environment@0.2.0;
-  import wasi:cli/exit@0.2.0;
+  import wasi:io/streams@0.2.3;
+  import wasi:filesystem/types@0.2.3;
+  import wasi:cli/environment@0.2.3;
+  import wasi:cli/exit@0.2.3;
 
-  export run: func() -> result<_, string>;
+  export wasi:cli/run@0.2.3;
 }
 ```
 
-`lsharp-compiler` world は、host launcher が CLI capability を guest component へ束ねて渡すための最小 world とする。CLI 実行の入口は host launcher 側にあり、guest は world 経由で必要な capability のみを利用する。
+`lsharp-compiler` world は、host launcher が CLI capability を guest component へ束ねて渡すための最小 world とする。CLI 実行の入口は host launcher 側にあり、guest は world 経由で必要な capability のみを利用する。現行実装は wasmtime-wasi 29 系の WIT set に合わせて `@0.2.3` を使用し、core module 側では canonical ABI export `wasi:cli/run@0.2.3#run` を生成する。
 
 ### lsharp-http-handler (HTTP server 向け)
 
 ```wit
 world lsharp-http-handler {
-  import wasi:http/types@0.2.0;
-  export wasi:http/incoming-handler@0.2.0;
+  import wasi:http/types@0.2.3;
+  export wasi:http/incoming-handler@0.2.3;
 }
 ```
 
 guest は `(defn handle [request] response)` で HTTP handler を記述し、host が accept loop / TLS / connection management を担当する。
+
+現状の Rust 側は `crates/lsharp-wasm/build.rs` で `lsharp-http-handler` world を single-package staging directory へ複製し、stable Preview2 imports を `wasmtime_wasi::bindings::sync::*` へ remap した generated bindings と `host_bridge::link_http_handler_world()` を用意済み。host linker では stable WASI 部分を `WasiView`/`WasiImpl` で再利用しつつ、custom `wasi:http` traits だけを state 側で実装できる。加えて `wit-component` の `dummy-module` feature を使い、staged world から生成した dummy guest component を synthetic host bridge に instantiate できる smoke test まで固定した。canonical ABI 調査で得た export/import 名に合わせて、`emit_wasm_wasi_p2()` は `main` のない `handle` 1 引数モジュールを自動で HTTP handler component 化し、core export `cm32p2|wasi:http/incoming-handler@0.2|handle` / `handle_post` と `cm32p2_memory` / `cm32p2_realloc` / `cm32p2_initialize` を生成する。現行の response semantics は最小実装で、request は opaque handle として guest `handle` に渡し、guest 実行後に default `200` / empty body response を `response-outparam.set` で返す。`host_bridge::tests::test_http_handler_world_calls_lsharp_handle_and_sets_response_outparam` と `compile::tests::test_compile_file_handle_only_emits_http_handler_component_export` により、実 source からの compile/instantiate path まで固定済みである。
 
 ### World 定義ルール
 

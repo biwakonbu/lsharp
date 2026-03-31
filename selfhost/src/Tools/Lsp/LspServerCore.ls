@@ -202,7 +202,9 @@
   (if (= params 0) 0 (vector-length params)))
 
 (defn lsp-has-source-param [params]
-  (if (> (lsp-param-count params) 3) 1 0))
+  (if (> (lsp-param-count params) 3)
+    (if (> (string-length (vector-get params 3)) 0) 1 0)
+    0))
 
 (defn lsp-has-document-param [params]
   (if (> (lsp-param-count params) 1) 1 0))

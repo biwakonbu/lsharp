@@ -14,23 +14,37 @@ package lsharp:compiler@0.1.0;
 world lsharp-compiler {
   // --- CLI ---
   // proc_exit → exit, args_get/args_sizes_get → environment
-  import wasi:cli/environment@0.2.0;
-  import wasi:cli/exit@0.2.0;
-  import wasi:cli/stdin@0.2.0;
-  import wasi:cli/stdout@0.2.0;
-  import wasi:cli/stderr@0.2.0;
+  import wasi:cli/environment@0.2.3;
+  import wasi:cli/exit@0.2.3;
+  import wasi:cli/stdin@0.2.3;
+  import wasi:cli/stdout@0.2.3;
+  import wasi:cli/stderr@0.2.3;
 
   // --- Filesystem ---
   // path_open, fd_close, fd_seek, fd_filestat_get → filesystem
-  import wasi:filesystem/types@0.2.0;
-  import wasi:filesystem/preopens@0.2.0;
+  import wasi:filesystem/types@0.2.3;
+  import wasi:filesystem/preopens@0.2.3;
 
   // --- I/O ---
   // fd_write, fd_read → streams
-  import wasi:io/streams@0.2.0;
-  import wasi:io/poll@0.2.0;
+  import wasi:io/streams@0.2.3;
+  import wasi:io/error@0.2.3;
+  import wasi:io/poll@0.2.3;
 
   // --- Entry point ---
   // _start 相当: command component としてエクスポート
-  export wasi:cli/run@0.2.0;
+  export wasi:cli/run@0.2.3;
+}
+
+world preview1-adapter {
+  import wasi:cli/environment@0.2.3;
+  import wasi:cli/exit@0.2.3;
+  import wasi:cli/stdin@0.2.3;
+  import wasi:cli/stdout@0.2.3;
+  import wasi:cli/stderr@0.2.3;
+  import wasi:filesystem/types@0.2.3;
+  import wasi:filesystem/preopens@0.2.3;
+  import wasi:io/streams@0.2.3;
+  import wasi:io/error@0.2.3;
+  import wasi:io/poll@0.2.3;
 }

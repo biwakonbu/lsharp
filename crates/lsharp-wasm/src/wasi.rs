@@ -4,7 +4,7 @@
 //! print 関数を WASI の fd_write で実装し、_start エントリポイントを生成。
 
 use lsharp_ir::{GcTypeKind, Instruction, Module};
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 use wasm_encoder::{
     ArrayType, CodeSection, CompositeInnerType, CompositeType, DataSection, ElementSection,
     Elements, EntityType, ExportKind, ExportSection, FieldType, FunctionSection, GlobalSection,
@@ -28,6 +28,13 @@ const WASI_IMPORT_COUNT: u32 = 9;
 
 /// WASI モードで Wasm バイナリを生成
 pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
+    emit_wasm_wasi_with_options(module, false)
+}
+
+fn emit_wasm_wasi_with_options(
+    module: &Module,
+    export_component_run: bool,
+) -> Result<Vec<u8>, CodegenError> {
     let mut wasm_module = wasm_encoder::Module::new();
 
     // 関数インデックス:
@@ -55,6 +62,7 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     // 21: __fnv1a_hash
     // 22..22+N-1: ユーザー関数
     // 22+N: _start
+    // 23+N: wasi:cli/run@0.2.3#run
     let fd_write_idx: u32 = 0;
     let proc_exit_wasm_idx: u32 = 1;
     let args_get_idx: u32 = 2;
@@ -79,6 +87,7 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let fnv1a_hash_idx: u32 = WASI_IMPORT_COUNT + 12;
     let user_func_base: u32 = WASI_IMPORT_COUNT + 13;
     let start_func_idx: u32 = user_func_base + module.functions.len() as u32;
+    let component_run_func_idx: u32 = start_func_idx + 1;
 
     let _gc_type_count = module.gc_types.len() as u32;
 
@@ -260,6 +269,14 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let start_type_idx = types.len();
     types.ty().function(vec![], vec![]);
 
+    let component_run_type_idx = if export_component_run {
+        let type_idx = types.len();
+        types.ty().function(vec![], vec![ValType::I32]);
+        Some(type_idx)
+    } else {
+        None
+    };
+
     // CallIndirect 用の型を登録
     // IR の CallIndirect(param_count) に対して (i64 * param_count) -> i64 の型を生成
     let mut call_indirect_type_map: HashMap<u32, u32> = HashMap::new();
@@ -348,6 +365,9 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
         functions.function(type_idx);
     }
     functions.function(start_type_idx);
+    if let Some(type_idx) = component_run_type_idx {
+        functions.function(type_idx);
+    }
     wasm_module.section(&functions);
 
     // === Table Section (クロージャ用) ===
@@ -397,6 +417,13 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     let mut exports = ExportSection::new();
     exports.export("memory", ExportKind::Memory, 0);
     exports.export("_start", ExportKind::Func, start_func_idx);
+    if export_component_run {
+        exports.export(
+            "wasi:cli/run@0.2.3#run",
+            ExportKind::Func,
+            component_run_func_idx,
+        );
+    }
     wasm_module.section(&exports);
 
     // === Element Section (クロージャ用テーブル初期化) ===
@@ -482,6 +509,14 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
         codes.function(&f);
     }
 
+    if export_component_run {
+        let mut f = wasm_encoder::Function::new(vec![]);
+        f.instruction(&wasm_encoder::Instruction::Call(start_func_idx));
+        f.instruction(&wasm_encoder::Instruction::I32Const(0));
+        f.instruction(&wasm_encoder::Instruction::End);
+        codes.function(&f);
+    }
+
     wasm_module.section(&codes);
 
     // === Data Section ===
@@ -505,12 +540,513 @@ pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
     Ok(wasm_module.finish())
 }
 
-/// Preview2/component 化向けの core Wasm を生成する。
-///
-/// 現段階では selfhost emitter の責務を core Wasm 生成に留め、
-/// 実際の component wrapping は `component_adapter` 側で後段処理する。
+/// Preview2/component 化向けの Wasm Component を生成する。
 pub fn emit_wasm_wasi_p2(module: &Module) -> Result<Vec<u8>, CodegenError> {
-    emit_wasm_wasi(module)
+    if is_http_handler_module(module) {
+        return emit_wasm_http_handler_p2(module);
+    }
+
+    let core_wasm = emit_wasm_wasi_with_options(module, true)?;
+    let wit_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-compiler.wit");
+    let adapter = crate::preview1_component_adapter::build_preview1_component_adapter(&wit_dir)
+        .map_err(|err| CodegenError::Error {
+            msg: format!("Preview1 adapter の構築に失敗しました: {err}"),
+        })?;
+    crate::component_adapter::componentize_core_module(
+        &core_wasm,
+        &wit_dir,
+        "lsharp-compiler",
+        &[crate::component_adapter::NamedAdapter {
+            name: "wasi_snapshot_preview1",
+            bytes: &adapter,
+        }],
+    )
+    .map_err(|err| CodegenError::Error {
+        msg: format!("Preview2 component 化に失敗しました: {err}"),
+    })
+}
+
+fn is_http_handler_module(module: &Module) -> bool {
+    !module.functions.iter().any(|func| func.name == "main")
+        && module
+            .functions
+            .iter()
+            .any(|func| func.name == "handle" && func.params.len() == 1)
+}
+
+/// HTTP handler world 向けの Wasm Component を生成する。
+pub fn emit_wasm_http_handler_p2(module: &Module) -> Result<Vec<u8>, CodegenError> {
+    let core_wasm = emit_wasm_http_handler_core(module)?;
+    let wit_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("wit")
+        .join("lsharp-http-handler.wit");
+    crate::component_adapter::componentize_core_module(
+        &core_wasm,
+        &wit_file,
+        "lsharp-http-handler",
+        &[],
+    )
+    .map_err(|err| CodegenError::Error {
+        msg: format!("HTTP handler component 化に失敗しました: {err}"),
+    })
+}
+
+fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError> {
+    use wasm_encoder::Instruction as W;
+
+    const HTTP_IMPORT_COUNT: u32 = 3;
+    const HTTP_EXPORT_HANDLE: &str = "cm32p2|wasi:http/incoming-handler@0.2|handle";
+    const HTTP_EXPORT_HANDLE_POST: &str = "cm32p2|wasi:http/incoming-handler@0.2|handle_post";
+    const HTTP_MEMORY_EXPORT: &str = "cm32p2_memory";
+    const HTTP_REALLOC_EXPORT: &str = "cm32p2_realloc";
+    const HTTP_INITIALIZE_EXPORT: &str = "cm32p2_initialize";
+
+    let handle_idx = module
+        .functions
+        .iter()
+        .rposition(|func| func.name == "handle" && func.params.len() == 1)
+        .ok_or_else(|| CodegenError::Error {
+            msg: "HTTP handler component には `(defn handle [request] response)` が必要です".to_string(),
+        })? as u32;
+
+    let fields_ctor_idx: u32 = 0;
+    let outgoing_response_ctor_idx: u32 = 1;
+    let response_outparam_set_idx: u32 = 2;
+    let print_helper_idx: u32 = HTTP_IMPORT_COUNT;
+    let alloc_func_idx: u32 = HTTP_IMPORT_COUNT + 1;
+    let string_concat_idx: u32 = HTTP_IMPORT_COUNT + 2;
+    let string_eq_idx: u32 = HTTP_IMPORT_COUNT + 3;
+    let print_string_idx: u32 = HTTP_IMPORT_COUNT + 4;
+    let proc_exit_idx: u32 = HTTP_IMPORT_COUNT + 5;
+    let int_to_string_idx: u32 = HTTP_IMPORT_COUNT + 6;
+    let read_file_idx: u32 = HTTP_IMPORT_COUNT + 7;
+    let write_file_idx: u32 = HTTP_IMPORT_COUNT + 8;
+    let file_exists_idx: u32 = HTTP_IMPORT_COUNT + 9;
+    let command_line_args_idx: u32 = HTTP_IMPORT_COUNT + 10;
+    let command_line_arg_idx: u32 = HTTP_IMPORT_COUNT + 11;
+    let read_stdin_idx: u32 = HTTP_IMPORT_COUNT + 12;
+    let fnv1a_hash_idx: u32 = HTTP_IMPORT_COUNT + 13;
+    let user_func_base: u32 = HTTP_IMPORT_COUNT + IR_IMPORT_COUNT;
+    let handle_wrapper_idx: u32 = user_func_base + module.functions.len() as u32;
+    let handle_post_idx: u32 = handle_wrapper_idx + 1;
+    let realloc_idx: u32 = handle_post_idx + 1;
+    let initialize_idx: u32 = realloc_idx + 1;
+
+    let mut wasm_module = wasm_encoder::Module::new();
+    let mut types = TypeSection::new();
+
+    for gc_type in &module.gc_types {
+        match &gc_type.kind {
+            GcTypeKind::Struct(fields) => {
+                let wasm_fields: Vec<FieldType> = fields
+                    .iter()
+                    .map(|field| FieldType {
+                        element_type: StorageType::Val(crate::emit::ir_to_wasm_valtype(field.ty)),
+                        mutable: field.mutable,
+                    })
+                    .collect();
+                types.ty().subtype(&SubType {
+                    is_final: true,
+                    supertype_idx: None,
+                    composite_type: CompositeType {
+                        inner: CompositeInnerType::Struct(StructType {
+                            fields: wasm_fields.into_boxed_slice(),
+                        }),
+                        shared: false,
+                        descriptor: None,
+                        describes: None,
+                    },
+                });
+            }
+            GcTypeKind::Array(elem_ty) => {
+                types.ty().subtype(&SubType {
+                    is_final: true,
+                    supertype_idx: None,
+                    composite_type: CompositeType {
+                        inner: CompositeInnerType::Array(ArrayType(FieldType {
+                            element_type: StorageType::Val(crate::emit::ir_to_wasm_valtype(
+                                *elem_ty,
+                            )),
+                            mutable: true,
+                        })),
+                        shared: false,
+                        descriptor: None,
+                        describes: None,
+                    },
+                });
+            }
+        }
+    }
+
+    let fields_ctor_type_idx = types.len();
+    types.ty().function(vec![], vec![ValType::I32]);
+
+    let outgoing_response_ctor_type_idx = types.len();
+    types.ty().function(vec![ValType::I32], vec![ValType::I32]);
+
+    let response_outparam_set_type_idx = types.len();
+    types.ty().function(
+        vec![
+            ValType::I32,
+            ValType::I32,
+            ValType::I32,
+            ValType::I32,
+            ValType::I64,
+            ValType::I32,
+            ValType::I32,
+            ValType::I32,
+            ValType::I32,
+        ],
+        vec![],
+    );
+
+    let print_type_idx = types.len();
+    types.ty().function(vec![ValType::I64], vec![]);
+
+    let alloc_type_idx = types.len();
+    types.ty().function(vec![ValType::I64], vec![ValType::I64]);
+
+    let string_concat_type_idx = types.len();
+    types
+        .ty()
+        .function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
+
+    let string_eq_type_idx = types.len();
+    types
+        .ty()
+        .function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
+
+    let print_string_type_idx = types.len();
+    types.ty().function(vec![ValType::I64], vec![]);
+
+    let proc_exit_type_idx = types.len();
+    types.ty().function(vec![ValType::I32], vec![]);
+
+    let int_to_string_type_idx = types.len();
+    types.ty().function(vec![ValType::I64], vec![ValType::I64]);
+
+    let read_file_type_idx = types.len();
+    types.ty().function(vec![ValType::I64], vec![ValType::I64]);
+
+    let write_file_type_idx = types.len();
+    types
+        .ty()
+        .function(vec![ValType::I64, ValType::I64], vec![ValType::I64]);
+
+    let file_exists_type_idx = types.len();
+    types.ty().function(vec![ValType::I64], vec![ValType::I64]);
+
+    let command_line_args_type_idx = types.len();
+    types.ty().function(vec![], vec![ValType::I64]);
+
+    let command_line_arg_type_idx = types.len();
+    types.ty().function(vec![ValType::I64], vec![ValType::I64]);
+
+    let read_stdin_type_idx = types.len();
+    types.ty().function(vec![], vec![ValType::I64]);
+
+    let fnv1a_hash_type_idx = types.len();
+    types.ty().function(vec![ValType::I64], vec![ValType::I64]);
+
+    let mut user_type_indices = Vec::new();
+    for func in &module.functions {
+        let type_idx = types.len();
+        let params: Vec<ValType> = func
+            .params
+            .iter()
+            .map(|ty| crate::emit::ir_to_wasm_valtype(*ty))
+            .collect();
+        let results = vec![crate::emit::ir_to_wasm_valtype(func.result)];
+        types.ty().function(params, results);
+        user_type_indices.push(type_idx);
+    }
+
+    let handle_wrapper_type_idx = types.len();
+    types
+        .ty()
+        .function(vec![ValType::I32, ValType::I32], vec![]);
+
+    let handle_post_type_idx = types.len();
+    types.ty().function(vec![], vec![]);
+
+    let realloc_type_idx = types.len();
+    types.ty().function(
+        vec![ValType::I32, ValType::I32, ValType::I32, ValType::I32],
+        vec![ValType::I32],
+    );
+
+    let initialize_type_idx = types.len();
+    types.ty().function(vec![], vec![]);
+
+    let mut call_indirect_type_map: HashMap<u32, u32> = HashMap::new();
+    let mut needs_table = false;
+    for func in &module.functions {
+        for instr in &func.body {
+            if let Instruction::CallIndirect(param_count) = instr {
+                needs_table = true;
+                if !call_indirect_type_map.contains_key(param_count) {
+                    let type_idx = types.len();
+                    let params = vec![ValType::I64; *param_count as usize];
+                    types.ty().function(params, vec![ValType::I64]);
+                    call_indirect_type_map.insert(*param_count, type_idx);
+                }
+            }
+        }
+    }
+
+    wasm_module.section(&types);
+
+    let mut imports = ImportSection::new();
+    imports.import(
+        "cm32p2|wasi:http/types@0.2",
+        "[constructor]fields",
+        EntityType::Function(fields_ctor_type_idx),
+    );
+    imports.import(
+        "cm32p2|wasi:http/types@0.2",
+        "[constructor]outgoing-response",
+        EntityType::Function(outgoing_response_ctor_type_idx),
+    );
+    imports.import(
+        "cm32p2|wasi:http/types@0.2",
+        "[static]response-outparam.set",
+        EntityType::Function(response_outparam_set_type_idx),
+    );
+    wasm_module.section(&imports);
+
+    let mut functions = FunctionSection::new();
+    functions.function(print_type_idx);
+    functions.function(alloc_type_idx);
+    functions.function(string_concat_type_idx);
+    functions.function(string_eq_type_idx);
+    functions.function(print_string_type_idx);
+    functions.function(proc_exit_type_idx);
+    functions.function(int_to_string_type_idx);
+    functions.function(read_file_type_idx);
+    functions.function(write_file_type_idx);
+    functions.function(file_exists_type_idx);
+    functions.function(command_line_args_type_idx);
+    functions.function(command_line_arg_type_idx);
+    functions.function(read_stdin_type_idx);
+    functions.function(fnv1a_hash_type_idx);
+    for &type_idx in &user_type_indices {
+        functions.function(type_idx);
+    }
+    functions.function(handle_wrapper_type_idx);
+    functions.function(handle_post_type_idx);
+    functions.function(realloc_type_idx);
+    functions.function(initialize_type_idx);
+    wasm_module.section(&functions);
+
+    if needs_table {
+        let total_funcs = (initialize_idx + 1) as u64;
+        let mut tables = TableSection::new();
+        tables.table(TableType {
+            element_type: wasm_encoder::RefType::FUNCREF,
+            minimum: total_funcs,
+            maximum: Some(total_funcs),
+            table64: false,
+            shared: false,
+        });
+        wasm_module.section(&tables);
+    }
+
+    let mut memories = MemorySection::new();
+    memories.memory(MemoryType {
+        minimum: 1,
+        maximum: None,
+        memory64: false,
+        shared: false,
+        page_size_log2: None,
+    });
+    wasm_module.section(&memories);
+
+    let total_string_data_size: i32 = module
+        .string_data
+        .iter()
+        .map(|(_, bytes)| bytes.len() as i32)
+        .sum();
+    let heap_start = ((512 + total_string_data_size) + 7) & !7;
+    let mut globals = GlobalSection::new();
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: true,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(heap_start),
+    );
+    wasm_module.section(&globals);
+
+    let mut exports = ExportSection::new();
+    exports.export(HTTP_MEMORY_EXPORT, ExportKind::Memory, 0);
+    exports.export(HTTP_EXPORT_HANDLE, ExportKind::Func, handle_wrapper_idx);
+    exports.export(HTTP_EXPORT_HANDLE_POST, ExportKind::Func, handle_post_idx);
+    exports.export(HTTP_REALLOC_EXPORT, ExportKind::Func, realloc_idx);
+    exports.export(HTTP_INITIALIZE_EXPORT, ExportKind::Func, initialize_idx);
+    wasm_module.section(&exports);
+
+    if needs_table {
+        let total_funcs = initialize_idx + 1;
+        let mut elements = ElementSection::new();
+        let func_indices: Vec<u32> = (0..total_funcs).collect();
+        elements.active(
+            Some(0),
+            &wasm_encoder::ConstExpr::i32_const(0),
+            Elements::Functions(std::borrow::Cow::Owned(func_indices)),
+        );
+        wasm_module.section(&elements);
+    }
+
+    let mut codes = CodeSection::new();
+    emit_trap_i64_to_unit_func(&mut codes);
+    emit_alloc_func(&mut codes);
+    emit_string_concat_func(&mut codes, alloc_func_idx);
+    emit_string_eq_func(&mut codes);
+    emit_trap_i64_to_unit_func(&mut codes);
+    emit_trap_i32_to_unit_func(&mut codes);
+    emit_int_to_string_func(&mut codes, alloc_func_idx);
+    emit_trap_i64_to_i64_func(&mut codes);
+    emit_trap_i64_i64_to_i64_func(&mut codes);
+    emit_trap_i64_to_i64_func(&mut codes);
+    emit_trap_void_to_i64_func(&mut codes);
+    emit_trap_i64_to_i64_func(&mut codes);
+    emit_trap_void_to_i64_func(&mut codes);
+    emit_fnv1a_hash_func(&mut codes);
+
+    for func in &module.functions {
+        let mut f = wasm_encoder::Function::new(
+            func.locals
+                .iter()
+                .map(|ty| (1, crate::emit::ir_to_wasm_valtype(*ty)))
+                .collect::<Vec<_>>(),
+        );
+        emit_instructions_wasi(
+            &mut f,
+            &func.body,
+            print_helper_idx,
+            alloc_func_idx,
+            string_concat_idx,
+            string_eq_idx,
+            print_string_idx,
+            proc_exit_idx,
+            int_to_string_idx,
+            read_file_idx,
+            write_file_idx,
+            file_exists_idx,
+            command_line_args_idx,
+            command_line_arg_idx,
+            read_stdin_idx,
+            fnv1a_hash_idx,
+            user_func_base,
+            &call_indirect_type_map,
+        )?;
+        f.instruction(&W::End);
+        codes.function(&f);
+    }
+
+    {
+        let mut f = wasm_encoder::Function::new(vec![(2, ValType::I32)]);
+        f.instruction(&W::LocalGet(0));
+        f.instruction(&W::I64ExtendI32U);
+        f.instruction(&W::Call(user_func_base + handle_idx));
+        f.instruction(&W::Drop);
+        f.instruction(&W::Call(fields_ctor_idx));
+        f.instruction(&W::LocalSet(2));
+        f.instruction(&W::LocalGet(2));
+        f.instruction(&W::Call(outgoing_response_ctor_idx));
+        f.instruction(&W::LocalSet(3));
+        f.instruction(&W::LocalGet(1));
+        f.instruction(&W::I32Const(0));
+        f.instruction(&W::LocalGet(3));
+        f.instruction(&W::I32Const(0));
+        f.instruction(&W::I64Const(0));
+        f.instruction(&W::I32Const(0));
+        f.instruction(&W::I32Const(0));
+        f.instruction(&W::I32Const(0));
+        f.instruction(&W::I32Const(0));
+        f.instruction(&W::Call(response_outparam_set_idx));
+        f.instruction(&W::End);
+        codes.function(&f);
+    }
+
+    {
+        let mut f = wasm_encoder::Function::new(vec![]);
+        f.instruction(&W::End);
+        codes.function(&f);
+    }
+
+    {
+        let mut f = wasm_encoder::Function::new(vec![]);
+        f.instruction(&W::LocalGet(3));
+        f.instruction(&W::I64ExtendI32U);
+        f.instruction(&W::Call(alloc_func_idx));
+        f.instruction(&W::I32WrapI64);
+        f.instruction(&W::End);
+        codes.function(&f);
+    }
+
+    {
+        let mut f = wasm_encoder::Function::new(vec![]);
+        f.instruction(&W::End);
+        codes.function(&f);
+    }
+
+    wasm_module.section(&codes);
+
+    let mut data = DataSection::new();
+    data.active(
+        0,
+        &wasm_encoder::ConstExpr::i32_const(NEWLINE_ADDR),
+        b"\n".iter().copied(),
+    );
+    let mut str_offset = 512i32;
+    for (_label, bytes) in &module.string_data {
+        data.active(
+            0,
+            &wasm_encoder::ConstExpr::i32_const(str_offset),
+            bytes.iter().copied(),
+        );
+        str_offset += bytes.len() as i32;
+    }
+    wasm_module.section(&data);
+
+    Ok(wasm_module.finish())
+}
+
+fn emit_trap_i64_to_unit_func(codes: &mut CodeSection) {
+    emit_trap_func(codes, vec![]);
+}
+
+fn emit_trap_i32_to_unit_func(codes: &mut CodeSection) {
+    emit_trap_func(codes, vec![]);
+}
+
+fn emit_trap_i64_to_i64_func(codes: &mut CodeSection) {
+    emit_trap_func(codes, vec![]);
+}
+
+fn emit_trap_i64_i64_to_i64_func(codes: &mut CodeSection) {
+    emit_trap_func(codes, vec![]);
+}
+
+fn emit_trap_void_to_i64_func(codes: &mut CodeSection) {
+    emit_trap_func(codes, vec![]);
+}
+
+fn emit_trap_func(codes: &mut CodeSection, locals: Vec<(u32, ValType)>) {
+    use wasm_encoder::Instruction as W;
+
+    let mut f = wasm_encoder::Function::new(locals);
+    f.instruction(&W::Unreachable);
+    f.instruction(&W::End);
+    codes.function(&f);
 }
 
 /// __print_i64: i64 の値を10進文字列に変換して stdout に出力
@@ -2117,27 +2653,89 @@ mod tests {
 
     #[test]
     fn test_emit_wasm_wasi_p2_basic_program_compiles() {
-        let wasm = compile_wasi_p2("(defn main [] (print 42))");
-        assert!(wasm.len() > 8);
-        assert_eq!(&wasm[0..4], b"\0asm");
+        let component = compile_wasi_p2("(defn main [] (print 42))");
+        assert!(component.len() > 8);
+        assert_eq!(&component[0..4], b"\0asm");
+
+        let engine = wasmtime::Engine::default();
+        wasmtime::component::Component::new(&engine, &component)
+            .expect("P2 entrypoint は valid component を生成するべき");
     }
 
     #[test]
-    fn test_emit_wasm_wasi_p2_keeps_preview1_core_imports_for_adapter_layer() {
-        let wasm = compile_wasi_p2("(defn main [] (print 42))");
+    fn test_emit_wasm_wasi_p2_runs_print_via_component_runner() {
+        let component = compile_wasi_p2("(defn main [] (print 42))");
 
-        use wasmtime::Engine;
-        let engine = Engine::default();
-        let module = wasmtime::Module::new(&engine, &wasm).unwrap();
-        let imports: Vec<_> = module.imports().collect();
+        let output = crate::wasi_runner::run_wasm_component(&component)
+            .expect("P2 component は preview2 runner で実行できるべき");
+        assert_eq!(output, "42\n");
+    }
 
-        assert_eq!(imports.len(), 9, "P2 entrypoint should still emit the 9 core WASI imports");
-        assert!(
-            imports
-                .iter()
-                .all(|import| import.module() == "wasi_snapshot_preview1"),
-            "component adapter 前の core module は preview1 imports を維持する"
+    #[test]
+    fn test_emit_wasm_wasi_p2_supports_stdin_and_args() {
+        let component = compile_wasi_p2(
+            r#"
+            (defn main []
+              (do
+                (print-string (command-line-arg 0))
+                (print-string ":")
+                (print-string (read-stdin))
+                0))
+            "#,
         );
+
+        let output = crate::wasi_runner::run_wasm_component_with_args_and_stdin(
+            &component,
+            &["alpha"],
+            "stdin-smoke",
+        )
+        .expect("P2 component は argv/stdin bridge を使えるべき");
+        assert_eq!(output, "alpha:stdin-smoke");
+    }
+
+    #[test]
+    fn test_emit_wasm_wasi_p2_supports_large_stdout_write() {
+        let payload = "x".repeat(4097);
+        let component = compile_wasi_p2(&format!(
+            r#"
+            (defn main []
+              (do
+                (print-string "{payload}")
+                0))
+            "#
+        ));
+
+        let output = crate::wasi_runner::run_wasm_component(&component)
+            .expect("P2 component は 4KiB 超の stdout write を処理できるべき");
+        assert_eq!(output, payload);
+    }
+
+    #[test]
+    fn test_emit_wasm_wasi_p2_supports_file_roundtrip() {
+        let component = compile_wasi_p2(
+            r#"
+            (defn main []
+              (do
+                (write-file "roundtrip.txt" "hello component")
+                (print-string (read-file "roundtrip.txt"))
+                0))
+            "#,
+        );
+
+        let dir = std::env::temp_dir().join("lsharp_wasi_p2_file_roundtrip");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let output = crate::wasi_runner::run_wasm_component_with_dir_args_and_stdin(
+            &component,
+            Some(&dir),
+            &[],
+            "",
+        )
+        .expect("P2 component は preview2 filesystem bridge 経由で file roundtrip できるべき");
+        assert_eq!(output, "hello component");
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

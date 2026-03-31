@@ -9,6 +9,7 @@ mod claude_plugin;
 mod commands;
 mod config;
 mod doc_site;
+#[cfg(test)]
 mod error;
 mod lockfile;
 mod mcp_server;
@@ -260,10 +261,7 @@ fn main() -> miette::Result<()> {
             let doc_status = lsharp_docs::tracker::load_doc_status(status_path);
 
             // メタデータ検証
-            let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{e}"))?;
-            let metadata_diagnostics = lsharp_types::metadata_check::check_metadata(&program);
-            let diag_strings: Vec<String> =
-                metadata_diagnostics.iter().map(|d| d.to_string()).collect();
+            let diag_strings = lsharp_tooling::metadata_validation::check_metadata_strings(&source)?;
 
             // レビューチェックポイント生成
             let checkpoint = lsharp_docs::review::generate_review(
@@ -300,8 +298,7 @@ fn main() -> miette::Result<()> {
                 .map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
 
             // パースとメタデータ検証
-            let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{e}"))?;
-            let diagnostics = lsharp_types::metadata_check::check_metadata(&program);
+            let diagnostics = lsharp_tooling::metadata_validation::check_metadata_strings(&source)?;
 
             // ドキュメントステータス確認
             let status_path = std::path::Path::new(".lsharp-doc-status");
@@ -321,9 +318,8 @@ fn main() -> miette::Result<()> {
             }
 
             // メタデータ検証エラー（Error レベルのみ）
-            for diag in &diagnostics {
-                let diag_str = diag.to_string();
-                if diag_str.contains("[Error]") {
+            for diag_str in &diagnostics {
+                if has_metadata_errors(std::slice::from_ref(diag_str)) {
                     eprintln!("DOC002: {}", diag_str);
                     has_errors = true;
                 }
@@ -443,6 +439,9 @@ fn maybe_delegate_to_embedded_component() -> miette::Result<()> {
     if std::env::var_os("LSHARP_DISABLE_EMBEDDED_COMPONENT").is_some_and(|value| value != "0") {
         return Ok(());
     }
+    if !should_delegate_to_embedded_component() {
+        return Ok(());
+    }
 
     let current_dir =
         std::env::current_dir().map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
@@ -456,6 +455,17 @@ fn maybe_delegate_to_embedded_component() -> miette::Result<()> {
     .map_err(|e| miette::miette!("embedded component 実行に失敗しました: {e}"))?;
     print!("{}", output.stdout);
     std::process::exit(output.exit_code);
+}
+
+fn should_delegate_to_embedded_component() -> bool {
+    matches!(
+        std::env::args_os().nth(1).as_deref(),
+        Some(command)
+            if command == std::ffi::OsStr::new("parse")
+                || command == std::ffi::OsStr::new("check")
+                || command == std::ffi::OsStr::new("test")
+                || command == std::ffi::OsStr::new("fmt")
+    )
 }
 
 /// selfhost shadow command が LSHARP_PATH なしで呼ばれた場合、外部 compiler への案内を出す。
@@ -649,16 +659,9 @@ fn resolve_external_lsharp_path(configured_path: &std::path::Path) -> miette::Re
 
 /// P3-3: メタデータテスト実行 (:example, :invariant の自動検証)
 fn cmd_test(file: &PathBuf) -> miette::Result<()> {
-    let source =
-        std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
+    let run = lsharp_tooling::metadata_test::run_metadata_tests(file)?;
 
-    // パース
-    let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{e}"))?;
-
-    // テストケース生成
-    let tests = lsharp_types::metadata_check::generate_tests(&program);
-
-    if tests.is_empty() {
+    if !run.has_tests() {
         println!(
             "テストなし: {} にはテスト対象のメタデータがありません",
             file.display()
@@ -666,44 +669,14 @@ fn cmd_test(file: &PathBuf) -> miette::Result<()> {
         return Ok(());
     }
 
-    println!("テスト実行: {} ({} テスト)", file.display(), tests.len());
-
-    // テスト用プログラムを生成
-    let test_source = lsharp_wasm::test_runner::generate_test_program(&program, &tests);
-
-    // コンパイル
-    let test_program = lsharp_syntax::parse(&test_source)
-        .map_err(|e| miette::miette!("テストプログラムのパースに失敗: {e}"))?;
-
-    let mut infer = lsharp_types::infer::Infer::new();
-    let type_results = infer
-        .infer_program(&test_program)
-        .map_err(|e| miette::miette!("テストプログラムの型チェックに失敗: {e}"))?;
-
-    let mut lower = lsharp_ir::lower::Lower::new();
-    let module = lower
-        .lower_program(&test_program, &type_results)
-        .map_err(|e| miette::miette!("テストプログラムの IR 変換に失敗: {e}"))?;
-
-    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
-        .map_err(|e| miette::miette!("テストプログラムの Wasm 生成に失敗: {e}"))?;
-
-    // WASI 環境で実行
-    let output =
-        run_wasm_wasi(&wasm_bytes).map_err(|e| miette::miette!("テスト実行に失敗: {e}"))?;
-
-    // 結果を解析
-    let results = lsharp_wasm::test_runner::parse_test_output(&output, &tests, &program);
+    println!("テスト実行: {} ({} テスト)", file.display(), run.total());
 
     // 結果表示
     let mut passed = 0;
     let mut failed = 0;
 
-    for result in &results {
-        let kind_str = match result.kind {
-            lsharp_types::metadata_check::TestKind::Example => "example",
-            lsharp_types::metadata_check::TestKind::Invariant => "invariant",
-        };
+    for result in &run.results {
+        let kind_str = lsharp_tooling::metadata_test::test_kind_label(&result.kind);
 
         if result.passed {
             println!("  PASS: {} ({kind_str})", result.name);
@@ -718,7 +691,7 @@ fn cmd_test(file: &PathBuf) -> miette::Result<()> {
     println!();
     println!(
         "テスト結果: {} 個中 {} 成功, {} 失敗",
-        passed + failed,
+        run.total(),
         passed,
         failed
     );
@@ -730,13 +703,13 @@ fn cmd_test(file: &PathBuf) -> miette::Result<()> {
     Ok(())
 }
 
-/// Wasm バイナリを WASI 環境で実行し、stdout 出力を返す
-fn run_wasm_wasi(wasm_bytes: &[u8]) -> Result<String, String> {
-    lsharp_wasm::wasi_runner::run_wasm_wasi(wasm_bytes)
+fn has_metadata_errors(diagnostics: &[String]) -> bool {
+    diagnostics.iter().any(|diag| diag.contains("[error]"))
 }
 
 /// Knowledge JSON を構築
 #[allow(dead_code)]
+#[cfg(test)]
 fn build_knowledge(
     program: &lsharp_syntax::ast::Program,
     type_results: &[(String, lsharp_types::types::TypeScheme)],
@@ -902,17 +875,20 @@ fn build_knowledge(
     }
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Default)]
 struct ImportVisibilitySpec {
     only: Option<Vec<String>>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Default)]
 struct ResolvedImportModule {
     results: Vec<(String, lsharp_types::types::TypeScheme)>,
     hidden: std::collections::HashSet<String>,
 }
 
+#[cfg(test)]
 fn collect_import_visibility(
     program: &lsharp_syntax::ast::Program,
 ) -> std::collections::HashMap<String, ImportVisibilitySpec> {
@@ -943,6 +919,7 @@ fn collect_import_visibility(
     imports
 }
 
+#[cfg(test)]
 fn declared_module_name(
     program: &lsharp_syntax::ast::Program,
     fallback_file: &std::path::Path,
@@ -966,6 +943,7 @@ fn declared_module_name(
         .unwrap_or_else(|| "Main".to_string())
 }
 
+#[cfg(test)]
 fn resolve_import_module_recursive(
     module: &str,
     from_module: &str,
@@ -1038,6 +1016,7 @@ fn resolve_import_module_recursive(
 ///
 /// package root / src / .lsharp/packages / stdlib の探索順に従って import を解決し、
 /// 各 import ごとに `:only` / `private` / package exports を反映した型環境だけを注入する。
+#[cfg(test)]
 fn resolve_imports_recursive(
     program: &lsharp_syntax::ast::Program,
     entry_file: &std::path::Path,
@@ -1201,109 +1180,7 @@ fn cmd_doc(file: &PathBuf, output: Option<&Path>, json: bool) -> miette::Result<
         return cmd_doc_json(file, output);
     }
 
-    let source =
-        std::fs::read_to_string(file).map_err(|e| miette::miette!("{}: {}", file.display(), e))?;
-
-    let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("{e}"))?;
-
-    // 型チェックで型情報取得
-    let mut infer = lsharp_types::infer::Infer::new();
-    let type_results = infer
-        .infer_program(&program)
-        .map_err(|e| miette::miette!("{e}"))?;
-
-    let mut html = String::new();
-    html.push_str("<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\">\n");
-    html.push_str(&format!("<title>L# API - {}</title>\n", file.display()));
-    html.push_str(
-        "<style>body{font-family:sans-serif;max-width:800px;margin:0 auto;padding:20px}\n",
-    );
-    html.push_str("h1{color:#333}h2{color:#555;border-bottom:1px solid #ddd;padding-bottom:5px}\n");
-    html.push_str(".sig{background:#f5f5f5;padding:8px;border-radius:4px;font-family:monospace}\n");
-    html.push_str(".doc{color:#666;margin:8px 0}.params{margin-left:20px}\n");
-    html.push_str("</style></head><body>\n");
-    html.push_str(&format!(
-        "<h1>{}</h1>\n",
-        file.file_stem().unwrap_or_default().to_string_lossy()
-    ));
-
-    for decl in &program.decls {
-        match decl {
-            lsharp_syntax::ast::Decl::Defn {
-                name,
-                params,
-                return_ty,
-                metadata,
-                ..
-            } => {
-                html.push_str(&format!("<h2>{}</h2>\n", name));
-
-                // 型シグネチャ
-                let param_strs: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
-                let ret = return_ty
-                    .as_ref()
-                    .map_or("?".to_string(), |t| format!("{:?}", t));
-                // 型推論結果があれば使用
-                let type_str = type_results
-                    .iter()
-                    .find(|(n, _)| n == name)
-                    .map(|(_, t)| format!("{}", t))
-                    .unwrap_or_else(|| format!("({}) -> {}", param_strs.join(", "), ret));
-                html.push_str(&format!(
-                    "<div class=\"sig\">{}: {}</div>\n",
-                    name, type_str
-                ));
-
-                if let Some(meta) = metadata {
-                    if let Some(doc) = &meta.doc {
-                        html.push_str(&format!("<div class=\"doc\">{}</div>\n", doc));
-                    }
-                    if !meta.params.is_empty() {
-                        html.push_str("<div class=\"params\"><strong>パラメータ:</strong><ul>\n");
-                        for (pname, pdoc) in &meta.params {
-                            html.push_str(&format!("<li><code>{}</code> - {}</li>\n", pname, pdoc));
-                        }
-                        html.push_str("</ul></div>\n");
-                    }
-                    if let Some(ret_doc) = &meta.returns {
-                        html.push_str(&format!(
-                            "<div class=\"doc\"><strong>戻り値:</strong> {}</div>\n",
-                            ret_doc
-                        ));
-                    }
-                }
-            }
-            lsharp_syntax::ast::Decl::TypeDef {
-                name,
-                type_params,
-                variants,
-                metadata,
-                ..
-            } => {
-                html.push_str(&format!("<h2>type {}</h2>\n", name));
-                if !type_params.is_empty() {
-                    html.push_str(&format!(
-                        "<div class=\"sig\">type ({} {})</div>\n",
-                        name,
-                        type_params.join(" ")
-                    ));
-                }
-                html.push_str("<ul>\n");
-                for v in variants {
-                    html.push_str(&format!("<li><code>{}</code></li>\n", v.name));
-                }
-                html.push_str("</ul>\n");
-                if let Some(meta) = metadata
-                    && let Some(doc) = &meta.doc
-                {
-                    html.push_str(&format!("<div class=\"doc\">{}</div>\n", doc));
-                }
-            }
-            _ => {}
-        }
-    }
-
-    html.push_str("</body></html>\n");
+    let html = lsharp_tooling::doc_html::render_doc_html(file)?;
 
     if let Some(output_path) = output {
         std::fs::write(output_path, &html)
@@ -2208,43 +2085,15 @@ fn cmd_repl() -> miette::Result<()> {
 
                 rl.add_history_entry(line).unwrap_or_default();
 
-                // 式を main 関数でラップしてコンパイル・実行
-                let source = format!("(defn main [] {})", line);
-
-                match lsharp_syntax::parse(&source) {
-                    Ok(program) => {
-                        // 新しい Infer インスタンスを毎回作成 (状態リセット)
-                        let mut local_infer = lsharp_types::infer::Infer::new();
-                        match local_infer.infer_program(&program) {
-                            Ok(type_results) => {
-                                let mut lower = lsharp_ir::lower::Lower::new();
-                                match lower.lower_program(&program, &type_results) {
-                                    Ok(module) => {
-                                        match lsharp_wasm::wasi::emit_wasm_wasi(&module) {
-                                            Ok(wasm_bytes) => {
-                                                match lsharp_wasm::wasi_runner::run_wasm_wasi(
-                                                    &wasm_bytes,
-                                                ) {
-                                                    Ok(output) => {
-                                                        let output = output.trim();
-                                                        if !output.is_empty() {
-                                                            println!("{}", output);
-                                                        }
-                                                        expr_count += 1;
-                                                    }
-                                                    Err(e) => eprintln!("実行エラー: {}", e),
-                                                }
-                                            }
-                                            Err(e) => eprintln!("コード生成エラー: {}", e),
-                                        }
-                                    }
-                                    Err(e) => eprintln!("IR 変換エラー: {}", e),
-                                }
-                            }
-                            Err(e) => eprintln!("型エラー: {}", e),
+                match lsharp_tooling::repl::evaluate_expression(line) {
+                    Ok(output) => {
+                        let output = output.trim();
+                        if !output.is_empty() {
+                            println!("{}", output);
                         }
+                        expr_count += 1;
                     }
-                    Err(e) => eprintln!("パースエラー: {}", e),
+                    Err(err) => eprintln!("{err}"),
                 }
             }
             Err(ReadlineError::Interrupted) => {
@@ -2408,6 +2257,42 @@ mod tests {
         assert!(content.contains("\"name\": \"Geometry\""));
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_cmd_test_succeeds_for_metadata_fixture() {
+        let dir = std::env::temp_dir().join("lsharp_test_metadata_command");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("metadata.ls");
+        std::fs::write(
+            &file,
+            r#"(defn abs
+  [x]
+  :example [(= (abs 5) 5)]
+  :invariant (>= result 0)
+  (if (< x 0) (- 0 x) x))
+"#,
+        )
+        .unwrap();
+
+        let result = cmd_test(&file);
+        assert!(result.is_ok(), "metadata test command should succeed: {result:?}");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_has_metadata_errors_detects_lowercase_error_diagnostics() {
+        let diagnostics = vec![
+            "[warning] add: doc note".to_string(),
+            "[error] abs: unknown-fn in :invariant".to_string(),
+        ];
+
+        assert!(
+            has_metadata_errors(&diagnostics),
+            "metadata diagnostics は lowercase display でも error を検出するべき"
+        );
     }
 
     #[test]

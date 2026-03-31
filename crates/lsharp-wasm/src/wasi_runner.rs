@@ -312,41 +312,13 @@ fn run_wasm_component_capture(
         .instantiate(&mut store, &component)
         .map_err(|e| format!("Component インスタンス化に失敗: {e}"))?;
 
-    // wasi:cli/run@0.2.0 の run 関数を優先し、なければ plain `run` export を試す
-    let exit_code = if let Some(run_func) = instance.get_func(&mut store, "wasi:cli/run@0.2.0#run")
-    {
-        let mut results = [wasmtime::component::Val::Bool(false)];
-        let execution = run_func.call(&mut store, &[], &mut results);
-        match execution {
-            Ok(()) => match results[0] {
-                wasmtime::component::Val::Bool(false) => 0,
-                wasmtime::component::Val::Bool(true) => 1,
-                _ => return Err("Component run の戻り値型が想定外です".to_string()),
-            },
-            Err(e) => {
-                if let Some(exit) = extract_i32_exit(&e) {
-                    exit
-                } else {
-                    return Err(format!("Component 実行に失敗: {e}"));
-                }
-            }
-        }
-    } else if let Some(run_func) = instance.get_func(&mut store, "run") {
-        let execution = run_func.call(&mut store, &[], &mut []);
-        match execution {
-            Ok(()) => 0,
-            Err(e) => {
-                if let Some(exit) = extract_i32_exit(&e) {
-                    exit
-                } else {
-                    return Err(format!("Component 実行に失敗: {e}"));
-                }
-            }
-        }
+    let exit_code =
+        if let Some(run_export) = find_component_run_func(&component, &instance, &mut store) {
+            call_component_run(&mut store, run_export)?
     } else {
         // P1 の _start 不在時と同様にエラーを返す
         return Err(
-            "Component に run 関数が見つかりません (wasi:cli/run#run または run export が必要)"
+            "Component に run 関数が見つかりません (wasi:cli/run@0.2.x#run または run export が必要)"
                 .to_string(),
         );
     };
@@ -358,6 +330,92 @@ fn run_wasm_component_capture(
     let stdout = String::from_utf8(bytes.to_vec())
         .map_err(|e| format!("stdout の UTF-8 変換に失敗: {e}"))?;
     Ok(ExecutionOutput { stdout, exit_code })
+}
+
+struct ComponentRunExport {
+    func: wasmtime::component::Func,
+    returns_exit_bool: bool,
+}
+
+fn find_component_run_func(
+    component: &Component,
+    instance: &wasmtime::component::Instance,
+    store: &mut Store<ComponentState>,
+) -> Option<ComponentRunExport> {
+    for export_name in ["wasi:cli/run@0.2.3#run", "wasi:cli/run@0.2.0#run"] {
+        if let Some(run_func) = instance.get_func(&mut *store, export_name) {
+            return Some(ComponentRunExport {
+                func: run_func,
+                returns_exit_bool: true,
+            });
+        }
+    }
+
+    if let Some(run_func) = instance.get_func(&mut *store, "run") {
+        return Some(ComponentRunExport {
+            func: run_func,
+            returns_exit_bool: false,
+        });
+    }
+
+    for interface_name in ["wasi:cli/run@0.2.3", "wasi:cli/run@0.2.0"] {
+        if let Some((_, run_instance_index)) = component.export_index(None, interface_name) {
+            if let Some((_, run_func_index)) =
+                component.export_index(Some(&run_instance_index), "run")
+            {
+                if let Some(run_func) = instance.get_func(&mut *store, &run_func_index) {
+                    return Some(ComponentRunExport {
+                        func: run_func,
+                        returns_exit_bool: true,
+                    });
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn call_component_run(
+    store: &mut Store<ComponentState>,
+    run_export: ComponentRunExport,
+) -> Result<i32, String> {
+    if run_export.returns_exit_bool {
+        let mut results = [wasmtime::component::Val::Bool(false)];
+        let execution = run_export.func.call(&mut *store, &[], &mut results);
+        match execution {
+            Ok(()) => decode_component_run_result(&results[0]),
+            Err(e) => {
+                if let Some(exit) = extract_i32_exit(&e) {
+                    Ok(exit)
+                } else {
+                    Err(format!("Component 実行に失敗: {e}"))
+                }
+            }
+        }
+    } else {
+        let execution = run_export.func.call(&mut *store, &[], &mut []);
+        match execution {
+            Ok(()) => Ok(0),
+            Err(e) => {
+                if let Some(exit) = extract_i32_exit(&e) {
+                    Ok(exit)
+                } else {
+                    Err(format!("Component 実行に失敗: {e}"))
+                }
+            }
+        }
+    }
+}
+
+fn decode_component_run_result(result: &wasmtime::component::Val) -> Result<i32, String> {
+    match result {
+        wasmtime::component::Val::Bool(false) => Ok(0),
+        wasmtime::component::Val::Bool(true) => Ok(1),
+        wasmtime::component::Val::Result(Ok(None)) => Ok(0),
+        wasmtime::component::Val::Result(Err(None)) => Ok(1),
+        _ => Err("Component run の戻り値型が想定外です".to_string()),
+    }
 }
 
 #[cfg(test)]

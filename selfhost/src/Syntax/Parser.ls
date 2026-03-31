@@ -1292,8 +1292,8 @@
 (defn parse-toplevel [tokens pos src]
   (parse-expr tokens pos src (vector-new 0)))
 
-;; エントリポイント (テスト用)
-(defn main []
+;; デモ用エントリポイント (テスト用)
+(defn demo-main []
   (let [;; defn テスト
     tokens (vector-push (vector-push (vector-push (vector-push
             (vector-push (vector-push (vector-push (vector-push

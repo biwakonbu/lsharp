@@ -65,8 +65,8 @@
 ;; トークンは (kind, start, end) の3つ組で表現
 ;; リテラルトークンの値はソース文字列から start..end で取得可能
 
-;; エントリポイント (テスト用)
-(defn main []
+;; デモ用エントリポイント (テスト用)
+(defn demo-main []
   (do
     (print (tok-lparen))
     (print (tok-rparen))

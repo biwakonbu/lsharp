@@ -1,5 +1,6 @@
 (module Tools.Text.FormatterDecl)
 (import Syntax.AST)
+(import Tools.Text.FormatterExpr)
 
 ;; FormatterDecl.ls - 宣言フォーマット・プログラム整形
 ;;

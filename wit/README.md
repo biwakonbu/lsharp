@@ -9,6 +9,7 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
 | `lsharp-compiler.wit` | CLI コンパイラ component world (wasi:cli + wasi:filesystem) |
 | `lsharp-http-handler.wit` | HTTP handler component world (wasi:http/incoming-handler) |
 | `lsharp-core.wit` | 共有インターフェース (compiler, host-fs, host-process) |
+| `deps/http.wit` | `lsharp-http-handler.wit` が参照する vendored `wasi:http` package |
 
 ## WASI Preview1 → Preview2 マッピング
 
@@ -29,7 +30,7 @@ WASI Preview2 / Component Model への移行に向けた WIT (WebAssembly Interf
 ## バージョニング
 
 - パッケージバージョンは `0.1.0` (L# 本体に追従)
-- WASI interface は `@0.2.0` (WASI Preview2 stable)
+- WASI interface は実装上 `@0.2.3` (wasmtime-wasi 29 系の stable Preview2 WIT set) を使用
 
 ## 関連タスク
 
