@@ -2,10 +2,11 @@
 
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち
 >
-> **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10。
+> **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13。
 > **Phase 11**: ADR-152〜ADR-157 で仕様固定済みだが、実装完了ではない。完了判定は `docs/development/planning/completion-criteria.md`, `docs/development/validation/verification-spec.md`, `docs/development/planning/compatibility-matrix.md` を優先する。
 >
 > P8-9 (T4-4/T4-5) → ADR-148, P9-6b → ADR-149, P9-6c → ADR-150, P9-6d → ADR-151
+> P12 → ADR-166, P13 → ADR-167, STR-01~03 → ADR-168, DOC-02 → ADR-169, V2-01~07+P11-2e-2 → ADR-170
 
 ---
 
@@ -170,12 +171,6 @@
 - [~] `CP-05 Runtime stability` -- GC-05/06 の proxy soak、metrics API、CI gate 文書は追加済み。加えて REPL single-session long soak と repeated LSP stateful sequence までは固定し、same-URI `didOpen` の doc-count 増殖も止めた。さらに `gc-metrics-artifact` required job と artifact payload の `gate_status` / `s14_status` / `s15_status` / `s16_status` により blocking gate 自体は自己記述化された。**ただし** stateful LSP/REPL の実 stdio 長寿命 soak と、collector 有効 GC fixed-point を実測する blocking artifact / CI は未達で、runtime stability gate は reopen。Evidence: `crates/lsharp-wasm/tests/e2e.rs`, `docs/development/planning/gc-ci-gate-spec.md`, `scripts/ci/collect-gc-metrics.sh`
 - [~] `CP-06 CI cutover` -- `ci-gate` / `ci-gate-v2` に compile gate + audit-docs + default-path-smoke + fresh-clone-smoke は構成済みで、release playbook も release binary で共通 smoke を再利用する段階まで前進し、driver 側 `LSHARP_PATH` delegation で external compiler への差し替え hook も入った。さらに embedded guest default path は `parse` / `check` / `compile` / `build` / `test` / simple `review <file>` / simple `doc-ack <file>` / simple `doc-check <file>` / `fmt` まで拡張され、`test_test_without_lsharp_path_uses_embedded_component_default_path` / `test_review_without_lsharp_path_uses_embedded_component_default_path` / `test_doc_ack_without_lsharp_path_uses_embedded_component_default_path` / `test_doc_check_without_lsharp_path_uses_embedded_component_default_path` と `default-path-smoke.sh` で metadata summary (`examples:N` / `invariants:N` / `failures:N`)、review diagnostics summary (`unused-let` / `warning` / `L0001@1:1`)、doc ack/check payload (`ack:recorded` / `status:ok`) も固定済み。さらに `.github/workflows/release.yml` により `v*` tag push 自動 release も追加済み。**Component Model pivot により Rust workspace は host launcher として残存する方針に転換**。default path ownership も全 13 CLI コマンドについて embedded guest subset / intentional host-backed subset として整理済みで、残る gate は host launcher 構成の確立と CI の安定化。Evidence: `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `scripts/ci/default-path-smoke.sh`, `scripts/ci/test-fresh-clone.sh`, `scripts/release-playbook.sh`, `docs/development/operations/ci-gate-v2-job-graph.md`, `docs/development/operations/artifact-policy.md`, `docs/development/operations/adr-rust-removal.md`, `docs/development/operations/rollback-procedure.md`, `crates/lsharp-driver/tests/default_path_delegation.rs`, `test_e2e_ops05_default_path_migration`, `test_e2e_ops06_release_playbook`, `test_e2e_ops07_fresh_clone_no_rust`, `test_e2e_ops08_final_removal_rollback`
 
-### Phase 11 構造化残件
-
-- [x] `STR-01 TypeInfer 第2段分割` -- TypeInfer.ls を 1093→290 行に縮退。TypeInferApply (297行) / TypeInferBlock (292行) / TypeInferPattern (227行) / TypeInferRecord (96行) を切り出し。全テスト green (685750c)。
-- [x] `STR-02 selfhost 大型モジュール分割` -- LspServer.ls (1303→80行, Core 521行 + Nav 757行), Formatter.ls (930→84行, Expr 389行 + Decl 510行) に分割。全ファイル 800行未満。テスト green (1a889c4, d48227c)。Parser.ls / Lexer.ls は dirty のため後回し。
-- [x] `STR-03 standalone selfhost compiler smoke の復旧` -- `LSHARP_PATH` が preview1 `.wasm` selfhost artifact を受け付けるようになり、`selfhost/src/App/SmokeCli.ls` を stage1 Wasm smoke entrypoint として `parse` / `check` / `fmt` / `compile` / `build` の narrow daily smoke を non-circular に回せるようになった。`scripts/ci/default-path-smoke.sh` は built-in Rust compile に加えて `SmokeCli.ls -> selfhost-smoke.wasm` を生成し、relative path 上で `check` / `fmt` / `compile -o` smoke を検証する。最終的な `.component.wasm` cutover と full CLI parity は引き続き Phase 13 / CLI parity gate で追う。Evidence: `selfhost/src/App/SmokeCli.ls`, `crates/lsharp-driver/src/main.rs`, `scripts/ci/default-path-smoke.sh`, `docs/development/operations/default-path-migration.md`, `docs/development/planning/compatibility-matrix.md`, `cargo test -p lsharp-driver --test default_path_delegation`, `test_e2e_ops05_default_path_migration`
-
 ### Phase 11 実装状態
 
 - [x] [META-02 Completion marker sync](docs/development/planning/phase11-implementation-plan.md#meta-02-completion-marker-sync) -- `TODO.md`, `docs/development/planning/compatibility-matrix.md`, `docs/development/planning/completion-criteria.md` を実装実態へ同期。
@@ -189,71 +184,12 @@
 - [~] [LSP-02 10 method parity](docs/development/planning/phase11-implementation-plan.md#lsp-02-10-method-parity) / [~] [LSP-03 Diagnostic ordering](docs/development/planning/phase11-implementation-plan.md#lsp-03-diagnostic-ordering-and-json-snapshots) -- 10 メソッド名、sort/dedup helper、JSON-RPC helper 相当の関数に加え、diagnostics を固定順 JSON text へ落とす `render-diagnostic-json` / `render-diagnostics-json`、および `tests/snapshots/lsp/diagnostics/` の representative snapshot files と targeted E2E も追加済み。加えて same-span / same-severity tie でも rule/message 順の deterministic sort が効き、parse/type overlap では parse diagnostic を優先して 1 件へ集約できる。source param 付きの hover/definition/references/rename/completion は top-level `defn` 向け source-driven subset で、hover は `defn <name>` / `symbol <name>` text を返せる。repeated symbol source でも hover range は選択 occurrence に残り、definition は直近の top-level `defn` を優先できる (`test_e2e_selfhost_lsp_real_shapes_definition_prefers_nearest_defn`, `test_e2e_selfhost_lsp_real_shapes_hover_keeps_selected_occurrence_with_repeated_defns`)。`initialize` capability vector も references/rename/formatting まで宣言でき、bootstrap 側の `JsonRpc.ls` helper も同じ 7 slot capability result と shutdown response sentinel、さらに deterministic な JSON-RPC response text / error response text に加えて `Content-Length` framing (`render-json-rpc-frame`, `parse-content-length`, `render-initialize-frame`, `render-rpc-error-response-frame`) を返せるようになった。`selfhost_jsonrpc_transport` の 3 件、`test_e2e_selfhost_lsp_real_shapes_formatting_preserves_string_literal`、`cargo run --quiet -- check selfhost/src/Tools/Lsp/JsonRpc.ls`、`cargo run --quiet -- check selfhost/src/Tools/Lsp/LspServer.ls` が green。formatting は `parse-program` → `format-program-with-source` による canonical full-document edit まで動作し、`server-loop-step` / `server-loop-sequence` で shared-state dispatch も切り出され、same-URI repeated `didOpen` の doc-count 増殖も防がれる。initialized/shutdown flag も getter で観測できる。**ただし** nested/multi-file 解決、実 JSON/LSP parity と transport 経由の diagnostic gate は未達。
 - [~] [FMT-01 Formatter roundtrip](docs/development/planning/phase11-implementation-plan.md#fmt-01-formatter-roundtrip) -- `selfhost/src/Tools/Text/Formatter.ls` は canonical text core (`defn/int/bool/unit/var/apply/if/let/fn/do/match/recordlit/fieldaccess/recordupdate/computation/module/impl/computation-builder`) と roundtrip/idempotency テストを持ち、`module body` / `impl` / `computation-builder` も parser→formatter 経路で canonical text を維持できる。未対応ノードは fallback を返す。追加の slice として `format-program-with-source` / `format-expr-with-source` が入り、string/float literal を source span から復元できるようになった。`selfhost_formatter_source_roundtrip` の 2 件、`cargo run --quiet -- check selfhost/src/Tools/Text/Formatter.ls` が green。CLI `fmt` は source-aware canonical text を stdout へ返し、LSP formatting も `parse-program` / `format-program-with-source` 経由で canonical text を `TextEdit.newText` に積む。**ただし** full formatted text parity と AST 全体 coverage は未達。
 - [~] [DOC-01 Schemas and snapshots](docs/development/planning/phase11-implementation-plan.md#doc-01-schemas-and-snapshots) -- `docs/schemas/`、`generate-html` / `generate-knowledge` / `generate-review` / `generate-doc-output`、extractor + deterministic HTML テストは追加済み。DocTools/HtmlDoc は決定的 payload と実 HTML section/layout を返し、`generate-review` は unused-let / empty-do に対する deterministic diagnostics vector、CLI `review` は count/title/body/severity/code-location surface を返せる。加えて `generate-doc-ack` / `generate-doc-check` が status/title/body/trailer payload を返し、CLI `doc-ack` / `doc-check` も `Doc-Reviewed-By` / `Doc-Review-Status` を含む trailer line を出力できるようになった。**ただし** names/diagnostics の fidelity と full schema/html parity は未達。
-- [x] DOC-02 HTML template engine library -- L# 製 HTML テンプレートエンジンライブラリ。`selfhost/src/Tools/Doc/HtmlTemplate.ls` (エスケープ・DSL・レンダリング 143行)、`selfhost/src/Tools/Doc/HtmlLayout.ls` (共通レイアウト 57行) 新規作成。`selfhost/src/Tools/Doc/HtmlDoc.ls` を DSL ベースに移行 (106→107行)。`selfhost/src/Tools/Doc/DocTools.ls` の render 系関数を削除して責務分離 (324→279行)。E2E テスト **20 件** (HtmlTemplate 12 + HtmlLayout 5 + 統合 3)。既存 DocTools テスト 13 件回帰なし。AC-408〜415 (T4d-3/T4d-4) に貢献。
-
-  **DOC-02a テンプレートエンジンコア** (`selfhost/src/Tools/Doc/HtmlTemplate.ls` 新規作成):
-  - [x] `html-escape`: `<>&"'` の 5 文字を HTML エンティティに変換 (`&lt;` `&gt;` `&amp;` `&quot;` `&#39;`)
-  - [x] `attr-escape`: 属性値用エスケープ (html-escape に加え属性コンテキスト安全)
-  - [x] `elem`: `(elem "div" attrs children)` → element ノード `[1, tag-name, attrs-vec, children-vec]` 生成
-  - [x] `text`: `(text value)` → エスケープ済みテキストノード `[2, escaped-string]` 生成
-  - [x] `raw`: `(raw html-string)` → エスケープなし raw HTML ノード `[3, html-string]` 生成
-  - [x] `render-attr`: `[key, value]` → ` key="escaped-value"` 文字列
-  - [x] `render-attrs`: attrs vector をループして属性文字列を連結
-  - [x] `render-node`: テンプレートノード → HTML 文字列 (tag-id で分岐、children を再帰)
-  - [x] `render-children`: children vector を idx ループで render-node を連結
-  - [x] `void-element?`: `br/hr/img/input/meta/link` を判定し閉じタグを省略
-  - [x] `each`: `(each items render-fn)` → items の各要素に render-fn を適用しノードリストを展開
-  - [x] `when`: `(when cond node)` → cond が真の場合のみ node をレンダリング
-  - [x] `render-template`: ルートノードを受け取り完全な HTML 文字列を返すエントリポイント
-  - [x] `doctype`: `"<!doctype html>"` 定数関数
-
-  **DOC-02b レイアウトテンプレート** (`selfhost/src/Tools/Doc/HtmlLayout.ls` 新規作成):
-  - [x] `css-inline`: モジュールドキュメント用の最小 CSS 文字列 (外部ファイル依存なし)
-  - [x] `base-layout`: `[title, content-node]` → `<!doctype html><html><head>...<body>content</body></html>` の完全 HTML ドキュメントノード
-  - [x] `doc-page-layout`: モジュールドキュメント用レイアウト (`<main><h1>title</h1><section id="functions">...<section id="types">...`)
-  - [x] `index-page-layout`: モジュール一覧インデックスページ用レイアウト (`<main><h1>modules</h1><ul>...`)
-
-  **DOC-02c HtmlDoc.ls 移行** (既存 `selfhost/src/Tools/Doc/HtmlDoc.ls` を HtmlTemplate/HtmlLayout ベースに書き換え):
-  - [x] `render-function-signature` / `render-type-definition`: string-concat → `elem`+`text` DSL に置換
-  - [x] `render-function-items-loop` / `render-type-items-loop`: 手動再帰ループ → `each` に置換
-  - [x] `render-module-page`: string-concat ベタ組み → `doc-page-layout` + `each` で構築
-  - [x] `html-header` / `html-footer`: 削除し `base-layout` に統合
-  - [x] `render-html`: `base-layout` + `render-module-page` + `render-template` のパイプラインに変更
-  - [x] `render-index` / `render-index-items-loop`: `index-page-layout` + `each` に置換
-  - [x] 公開 API 互換: `render-html`, `render-module-page`, `render-index` のシグネチャは維持し既存テスト回帰なし
-
-  **DOC-02d DocTools.ls 責務分離** (既存 `selfhost/src/Tools/Doc/DocTools.ls` の HTML 生成を HtmlDoc へ委譲):
-  - [x] `render-function-entry` / `render-functions-section` / `render-types-section` / `render-doc-body` (L192-241) を HtmlDoc の対応関数呼び出しに委譲
-  - [x] DocTools.ls は AST 解析・エントリ抽出・スキーマ出力のみに専念
-  - [x] `generate-html` 内の `render-doc-body` 呼び出しが HtmlDoc 経由の DSL レンダリングを使用
-
-  **DOC-02e 統合検証 — DocTools が実 HTML を生成できることの証明**:
-  - [x] `cargo run -- check selfhost/src/Tools/Doc/HtmlTemplate.ls` が通過 (standalone compile)
-  - [x] `cargo run -- check selfhost/src/Tools/Doc/HtmlLayout.ls` が通過 (standalone compile)
-  - [x] `cargo run -- check selfhost/src/Tools/Doc/HtmlDoc.ls` が通過 (import HtmlTemplate + HtmlLayout)
-  - [x] `cargo run -- check selfhost/src/Tools/Doc/DocTools.ls` が通過 (import HtmlDoc)
-  - [x] `generate-html` が `<section id="functions"><ul><li>fn-...</li></ul></section>` 形式の実 HTML body を返す (placeholder ではない)
-  - [x] `render-html` が `<!doctype html><html><head>...<body><main>...</main></body></html>` 形式の完全 HTML を返す
-  - [x] `render-index` が全モジュール名を `<li>` で列挙した完全な HTML インデックスページを返す
-  - [x] HTML 出力に `<>&"'` が混入するソースを与えた場合にエスケープされる (XSS 安全)
-  - [x] 同一入力で 2 回実行して diff が空 (AC-408 deterministic)
-  - [x] 生成 HTML にタイムスタンプ・ホスト名・絶対パスが含まれない (AC-409)
-
-  **DOC-02f E2E テスト** (`crates/lsharp-wasm/tests/e2e/` に追加):
-  - [x] HtmlTemplate 系 12 件: escape (lt/gt/amp, quotes, passthrough), elem (basic, attrs, void, nested), each, when-true, when-false, raw, deterministic
-  - [x] HtmlLayout 系 5 件: base-doctype, base-charset, title-escaped, doc-page, index-page
-  - [x] 既存 DocTools 回帰: `test_e2e_selfhost_doctools_*` 13 件 + `test_e2e_selfhost_doctools_html_doc_*` が全 green 維持
-  - [x] 統合テスト: DocTools.generate-html → HtmlDoc.render-html パイプラインが実 HTML 文字列を返しその string-length > 0
+- [x] DOC-02 HTML template engine library → ADR-169
 - [~] [GC-05 LSP soak and REPL GC](docs/development/planning/phase11-implementation-plan.md#gc-05-lsp-soak-and-repl-gc) -- proxy soak テスト群に加えて REPL batch helper、200-step single-session REPL metrics、shared-state `server-loop-step` の targeted sequence / repeated sequence も追加済み。same-URI repeated `didOpen` は doc-count を増やさない。**ただし** stateful LSP/REPL 長寿命 GC gate は未達。
 - [~] [GC-06 Leak detection and metrics](docs/development/planning/phase11-implementation-plan.md#gc-06-leak-detection-and-metrics) -- metrics API / leak suspect テスト、`gc-metrics-artifact` required job、`gc-ci-gate-spec.md` における artifact rejection・S14 monotonic trend・S15 fixed-point blocker の明文化に加え、artifact payload schema に `heap_bytes_series` を追加し、S14 evaluator を Rust / Python の両方で機械化した。bump allocator 状態は引き続き `"n/a"` を返す。**ただし** payload は依然 bump allocator 前提の proxy metrics で、GC fixed-point を実測する collector 有効 blocking artifact / CI は未完成。
 - [x] [OPS-05 Default path migration](docs/development/planning/phase11-implementation-plan.md#ops-05-default-path-migration) -- CI + `default-path-smoke.sh` + `default-path-migration.md`（公開 13 CLI サブコマンドの embedded guest subset / intentional host-backed subset / delegation マトリクス） + `test_e2e_ops05_default_path_migration` で `lsharp` バイナリ経路の hybrid cutover smoke を固定し、さらに `crates/lsharp-driver/tests/default_path_delegation.rs` で `LSHARP_PATH` executable / directory delegation と invalid path error を固定。`compatibility-matrix.md` も同じ command ownership を保持し、完全移行（Cargo 不在）ではなく host launcher + embedded guest 配布モデルを Phase 11 の正本とする。
 
 ### P11-2e 完了条件フォローアップ
-
-- [x] [P11-2e-2 Documentation completion](docs/development/planning/completion-criteria.md#p11-2e-2-ドキュメント完了条件) -- `TODO.md` の主要バックログとは別に、完了条件上で残っていた README / book / 配布運用 docs の同期は完了。`README.md` の multi-backend アーキテクチャ図、`book/` の selfhosting 章、CI/配布/署名/クロスビルド手順の `docs/` 配下への一本化を反映済み。
-  - [x] README アーキテクチャ図を Wasm 単独前提から multi-backend 前提へ更新し、native backend の分岐・関連モジュール・ビルド手順を反映する。 (`README.md` に backend split、関連 crate / selfhost module、`target/debug/lsharp` / `LSHARP_PATH` / `scripts/ci/compile-phase11-inputs.sh` を追記)
-  - [x] `book/` の selfhosting 章に native backend 設計、`stage0 -> stage1 -> stage2 -> stage3` bootstrap、fixed-point 検証、Wasm/backend の使い分けを追記する。 (`book/ch15-selfhosting.md` に multi-backend 設計、4 段 bootstrap、fixed-point 2 段検証、Wasm/Native の用途表を追記)
-  - [x] CI/配布/署名/クロスビルド手順を `docs/` 配下へ一本化し、job graph / release / signing / tier1/tier2 cross-build の記述重複を解消する。 (`docs/development/operations/release-distribution-signing.md` を正本にし、CI / release / v2 design 群から参照整理)
 
 - [~] [P11-2e-3 Phase 13 移行前ゲート](docs/development/planning/completion-criteria.md#p11-2e-3-phase13-gate) -- **Component Model pivot により Rust 物理撤去は撤回**。Rust workspace は host launcher として残存する。以下の gate は「Rust 撤去」から「host launcher + embedded guest component 構成の確立」に再定義する。
   - [x] rollback 手順の確定 -- `docs/development/operations/rollback-procedure.md` / `docs/development/operations/release-distribution-signing.md` / `docs/development/operations/release-playbook.md` / `scripts/rollback.sh` を host launcher + embedded guest component 基準へ同期し、GitHub Release notes の `Rollback anchor` を last-known-good release tag / host asset / guest component asset / checksum の正本として固定。
@@ -262,214 +198,19 @@
 
 > Gate 外タスク。Phase 11 完了判定には含めない。各項目の受入・Evidence は `phase11-implementation-plan.md` の V2-01〜V2-07 節を正とし、着手時に個別ブランチ／PR で切る。
 
-- [x] [V2-01 LSP incremental sync](docs/development/planning/v2-designs/v2-01-lsp-incremental-sync.md) — デザインドキュメント作成済み
-- [x] [V2-02 Formatter/linter custom rule API](docs/development/planning/v2-designs/v2-02-formatter-linter-custom-rule-api.md) — デザインドキュメント作成済み
-- [x] [V2-03 Package manager distribution](docs/development/planning/v2-designs/v2-03-package-manager-distribution.md) — デザインドキュメント作成済み
-- [x] [V2-04 Linux aarch64 tier2 distribution](docs/development/planning/v2-designs/v2-04-linux-aarch64-tier2.md) — デザインドキュメント作成済み
-- [x] [V2-05 Windows Authenticode signing](docs/development/planning/v2-designs/v2-05-windows-authenticode-signing.md) — デザインドキュメント作成済み
-- [x] [V2-06 Region optimization](docs/development/planning/v2-designs/v2-06-region-optimization.md) — デザインドキュメント作成済み
-- [x] [V2-07 WasmGC optional backend](docs/development/planning/v2-designs/v2-07-wasmgc-optional-backend.md) — デザインドキュメント作成済み
 - [~] V2-08 Native backend self-regeneration — 旧 NATIVE-05。Component Model pivot により Phase 11 gate から Deferred へ移動。コードは `selfhost/src/Backend/Native/` に保持。50+ E2E tests が既存 evidence。
 - [~] V2-09 Wasm/native differential zero — 旧 NATIVE-06。Component Model pivot により Phase 11 gate から Deferred へ移動。5 観測点 harness と const 0/1/42/100 の zero-diff sample が既存 evidence。
 - [ ] V2-10 Native-only RC distribution — 旧 P11-2e-3 の native RC。Component Model pivot により Deferred へ移動。
 
 ---
 
-## Phase 12: モジュール・パッケージ & AI フレンドリーエコシステム
+## 完了済みフェーズ参照
 
-> **目的**: L# は AI が学習していない言語であるため、パッケージやライブラリを AI がブラックボックスで完璧に利用できる仕組みを構築する。同時に、人間・AI 双方が言語を理解しコードを書ける最小限のドキュメント基盤を整備する。
->
-> **設計原則**:
-> - **`lsharp` バイナリ 1 つに全てを同梱**: コンパイラ・LSP・MCP Server・Claude Code プラグイン・stdlib
-> - **コンパイラバージョン = 言語バージョン** (semver)。edition 制度なし。stdlib も同一バージョン
-> - 静的ファイル (llms.txt) に頼らず、**MCP Server (`lsharp-mcp`)** が動的に情報を提供する
-> - **LSP (`lsharp-lsp`) を MCP のバックエンドにする** — 型チェック・hover・補完・診断は LSP に委譲し、MCP は薄いラッパー
-> - AI は MCP 経由で言語仕様・パッケージ API・エラー情報をバージョン指定で取得できる
-> - パッケージ配布は **GitHub リポジトリ + Git タグのみ** (レジストリサーバーなし)
-> - MCP 対応ツール (Claude Code, Cursor, Codex, Gemini CLI 等) ならどれでも利用可能
-> - 既存の lsharp-lsp / lsharp.toml / ModuleGraph / DocTools 基盤を拡張して構築する
->
-> **依存関係**: P12-A (AI 連携基盤) → P12-B (パッケージコア) → P12-C (配布エコシステム)
-> Phase 11 の bootstrap/parity 作業とは独立して着手可能
->
-> **ロードマップ詳細**: `docs/development/planning/phase12-package-ai-ecosystem-roadmap.md`
-
-### P12-0: CLI 統一 (`compile` 一本化)
-
-> Phase 12 の入口整理。`compile` を公開 CLI の単一エントリにし、format → check → codegen を一括実行する。
-> `check` / `fmt` / `parse` は公開 CLI から外し、Rust API / LSP / MCP の内部利用へ寄せる。
-
-- [x] **P12-0. `lsharp compile` パイプライン統合** (tests: `test_cli_help_excludes_removed_parse_check_fmt_subcommands`, `test_cli_try_parse_from_rejects_removed_parse_check_fmt_subcommands`, `commands::compile::tests::test_compile_file_runs_format_check_codegen_pipeline`, `commands::compile::tests::test_resolve_compile_target_uses_output_extension_when_flag_missing`, `commands::compile::tests::test_compile_file_native_target_returns_explicit_error`; scripts: `scripts/audit_docs.sh`, `scripts/smoke_test_readme.sh`)
-  - [x] `compile` サブコマンドで format → check → codegen を順に実行
-  - [x] 出力ファイル拡張子 (`.wasm` / なし) または `--target` フラグでバックエンド判定 (Wasm / Native, native は現状 explicit unsupported error)
-  - [x] format 差分があればソースファイルを書き換えてから check → codegen に進む
-  - [x] CLI サブコマンドとしての `check` / `format` / `parse` を廃止 (Rust API / LSP / MCP 内部では存続)
-  - 修正対象: `crates/lsharp-driver/src/main.rs`
-
-### P12-A: AI 連携基盤 (LSP-over-MCP + api.json)
-
-> 最優先サブフェーズ。既存の LSP をバックエンドに、L# エコシステム全体を 1 つの MCP Server で AI に公開する。
-
-- [x] **A-1. api.json スキーマと生成コマンド** (tests: `api_doc::tests::test_build_api_doc_includes_metadata_signature_and_return_docs`, `api_doc::tests::test_build_api_doc_for_package_collects_modules_from_src_in_sorted_order`, `tests::test_cmd_doc_json_writes_docs_api_json`)
-  - [x] 新規 `docs/schemas/api.schema.json` を追加 (knowledge schema とは分離)
-  - [x] `lsharp doc --json` コマンド実装 (AST メタデータ + 型推論結果 → api.json)
-  - [x] `:doc` / `:params` / `:returns` メタデータを api.json 出力に反映
-  - 修正対象: `docs/schemas/api.schema.json`, `crates/lsharp-driver/src/main.rs`, `crates/lsharp-driver/src/api_doc.rs`
-
-- [x] **A-1.5. LSP 拡張 (hover + completion)** (tests: `analysis::tests::test_hover_returns_type_and_doc_for_toplevel_function`, `completion::tests::test_complete_returns_matching_keyword_and_function_symbols`, `tests::test_server_capabilities`)
-  - [x] hover 実装完了: AST の `:doc` メタデータ + 型推論結果を返す
-  - [x] completion 新規実装: スコープ内シンボル一覧 + import 候補を返す
-  - [x] LSP の pub API を MCP から直接呼び出し可能な形に整理 (`parse_and_check`, `find_definition`, `find_references`, `format_source`, `hover`, `completion`)
-  - 修正対象: `crates/lsharp-lsp/src/lib.rs`, `crates/lsharp-lsp/src/util.rs`, 新規 `crates/lsharp-lsp/src/completion.rs`
-
-- [x] **A-2. lsharp-mcp Server 実装 (LSP-over-MCP)** (tests: `mcp_server::tests::test_call_hover_tool_returns_doc_and_type`, `mcp_server::tests::test_handle_jsonrpc_tools_list_request_returns_mcp_result`, `claude_plugin::tests::test_cmd_claude_plugin_installs_mcp_server_and_skill`, `claude_plugin::tests::test_cmd_claude_plugin_creates_settings_when_missing`)
-  - [x] `lsharp mcp-server` サブコマンド (stdio transport MCP Server)
-  - [x] **LSP バックエンドツール** (LSP の `LsharpBackend` をライブラリとして組み込み):
-    - [x] `lsharp_check` ツール: `util::parse_and_check()` → 診断結果を返す
-    - [x] `lsharp_hover` ツール: `hover()` → 型情報 + :doc メタデータを返す
-    - [x] `lsharp_completion` ツール: `completion()` → 補完候補一覧を返す
-    - [x] `lsharp_format` ツール: `format::format_source()` → フォーマット済みソースを返す
-    - [x] `lsharp_definition` ツール: `util::find_definition()` → 定義位置を返す
-    - [x] `lsharp_references` ツール: `references::find_references()` → 参照位置一覧を返す
-  - [x] **MCP 独自ツール** (LSP を経由しない):
-    - [x] `lsharp_project_context` ツール: lsharp.toml を読み、使用中パッケージ + バージョン一覧を返す
-    - [x] `lsharp_package_api` ツール: 指定パッケージのローカル api.json を返す
-    - [x] `lsharp_stdlib_api` ツール: stdlib の全/指定モジュール API を返す
-    - [x] `lsharp_compile_run` ツール: format + check + codegen + 実行結果を返す
-    - [x] `lsharp_errors` ツール: エラーコードの説明と対処法を返す
-    - [x] `lsharp_search` ツール: インストール済みパッケージのローカル検索
-  - [x] `lsharp claude-plugin` サブコマンド:
-    - [x] Claude Code の settings.json に MCP Server 設定を自動登録
-    - [x] Agent Skills (L# 言語概要) を Claude Code にインストール (構文・型システム・パターン・stdlib 一覧)
-  - 修正対象: `crates/lsharp-driver/src/main.rs`, `crates/lsharp-lsp/src/lib.rs`, 新規 `crates/lsharp-driver/src/mcp_server.rs`
-
-- [x] **A-3. stdlib 全モジュールのメタデータ整備** (tests: `api_doc::tests::test_build_api_doc_for_file_uses_file_stem_and_header_comment_for_module_metadata`, `api_doc::tests::test_build_api_doc_for_stdlib_public_functions_have_metadata`)
-  - [x] stdlib/ の 11 モジュール (Core, List, Map, Set, Vector, String, Char, IO, Json, Path, Debug) 全てに `:doc` / `:params` / `:returns` を付与
-  - [x] stdlib 用 api.json 生成・検証
-  - [x] MCP Server の `lsharp_stdlib_api` ツールから正しく返せることを検証
-  - 修正対象: `stdlib/*.ls` 全ファイル
-
-- [x] **A-4. 言語リファレンスとガイド** (tests: `doc_site::tests::test_language_guides_and_agent_skill_template_exist`)
-  - [x] Agent Skills テンプレート作成 (L# 概要 — 構文・型システム・パターン・stdlib 一覧・MCP ツール案内)
-  - [x] `docs/guides/quick-start.md`: hello world → fibonacci → ADT → record → module の 5 分チュートリアル
-  - [x] `docs/guides/language-reference.md`: 構文・型・モジュール完全リファレンス (人間向け Markdown 版)
-
-- [x] **A-5. ドキュメントサイト生成** (tests: `doc_site::tests::test_cmd_doc_site_generates_guides_and_api_site`, `e2e::selfhost_doctools_cli_diagnostics::{test_e2e_selfhost_htmldoc_render_guide_page,test_e2e_selfhost_htmldoc_render_doc_site_index}` + HtmlDoc render 8件)
-  - [x] `lsharp doc-site` コマンド: book/ + api.json + guides/ → 静的 HTML サイト生成
-  - [x] HtmlTemplate.ls / HtmlLayout.ls パイプラインの拡張 (ガイドページ・API リファレンスページ対応)
-  - [x] stdlib API リファレンスページ (モジュール毎に関数・型一覧)
-
-### P12-B: パッケージシステムコア
-
-> `lsharp.toml` 拡張・可視性制御・依存解決の実装。P12-A 完了後に着手推奨。
-> Rust/公開 package 側の `src/`・`.lsharp/packages/*/src`・stdlib 解決は完了済み。selfhost は公開 package ではなく **内部 source root** として扱い、同じ `src/` / dotted import 規約に加えて `.lsharp/module-index` 経由の installed package 解決を追従させる。
-
-- [x] **B-1. lsharp.toml スキーマ拡張** (tests: `config::tests::test_parse_project_metadata_exports_and_dev_dependencies`)
-  - [x] `[project]` に description, license, authors, repository, keywords, lsharp-version フィールド追加
-  - [x] `[project.exports]` セクション: 公開モジュール一覧 (省略時は全モジュール公開)
-  - [x] `[dev-dependencies]` セクション
-  - [x] 全フィールド optional (`#[serde(default)]`) で後方互換性維持
-  - 修正対象: `crates/lsharp-driver/src/config.rs`
-
-- [x] **B-2. パッケージディレクトリ規約と lsharp init** (tests: `tests::test_cmd_init_creates_standard_package_layout`, `tests::test_cmd_init_writes_main_entry_and_gitignore_defaults`, `module_graph::resolve_tests::test_build_from_entry_prefers_package_src_root`)
-  - [x] 標準レイアウト定義文書: `src/`, `examples/`, `tests/`, `docs/`, `lsharp.toml`
-  - [x] `lsharp init` コマンド: スキャフォールド生成 (lsharp.toml, src/Main.ls, .gitignore)
-  - [x] モジュール→ファイルマッピング: `src/` prefix ルール (lsharp.toml 存在時に ModuleGraph が src/ 配下を探索)
-  - 修正対象: `crates/lsharp-driver/src/main.rs`, 新規 `crates/lsharp-driver/src/init.rs`
-
-- [x] **B-3. 可視性制御の実装** (tests: `tests::test_check_import_only_blocks_non_selected_symbol`, `tests::test_check_private_import_blocks_symbol`, `tests::test_check_rejects_non_exported_package_module`, `multifile_compile_tests::test_compile_multi_file_import_only_blocks_non_selected_symbol`, `multifile_compile_tests::test_compile_multi_file_private_import_blocks_symbol`, `module_graph::resolve_tests::test_build_from_entry_rejects_non_exported_package_module`)
-  - [x] `(import Module :only [syms])` の type checker レベルでの enforcement (未列挙シンボルの参照をエラーにする)
-  - [x] `[project.exports]` に基づくモジュール境界制御 (外部パッケージからは exports に列挙されたモジュールのみ参照可)
-  - [x] `(private ...)` 宣言のモジュール跨ぎ enforcement (他モジュールからの private シンボル参照をエラーにする)
-  - 修正対象: `crates/lsharp-types/src/infer.rs`, `crates/lsharp-ir/src/module_graph.rs`
-
-- [x] **B-4. stdlib 自動リンク** (tests: `module_graph::resolve_tests::test_build_from_entry_prefers_package_src_root`, `module_graph::resolve_tests::test_build_from_entry_resolves_packages_from_project_root`, `module_graph::resolve_tests::test_resolve_module_file_with_search_paths_uses_packages_then_stdlib`)
-  - [x] コンパイラのモジュール解決順序を定義: 1. local src/ → 2. .lsharp/packages/ → 3. stdlib
-  - [x] `(import List)` が明示的な依存設定なしで stdlib から解決される
-  - [x] stdlib パスの環境変数 (`LSHARP_STDLIB_PATH`) による上書きサポート
-  - 修正対象: `crates/lsharp-ir/src/module_graph.rs`
-
-- [x] **B-5. 依存関係解決とインストール** (tests: `tests::test_cmd_install_path_dependency`, `tests::test_cmd_install_version_dependency_uses_highest_compatible_cached_package`, `tests::test_cmd_install_version_dependency_errors_when_no_cached_match_exists`, `resolver::tests::test_version_req_plain_string_means_compatible_range`, `resolver::tests::test_version_req_exact_match`, `resolver::tests::test_version_req_minimum_match`)
-  - [x] `lsharp install` コマンド: lsharp.toml の dependencies を読み、path/git 依存を `.lsharp/packages/<name>-<hash>/` に配置
-  - [x] `.lsharp/lock.toml` ロックファイル生成 (name, version, source)
-  - [x] ModuleGraph の検索パスに `.lsharp/packages/` を追加
-  - [x] semver 互換範囲の解決 ("1.0.0" → >=1.0.0, <2.0.0)
-  - [x] インストール時に `docs/api.json` を生成 (MCP Server が読む)
-  - 修正対象: `crates/lsharp-ir/src/module_graph.rs`, `crates/lsharp-driver/src/config.rs`, 新規 `crates/lsharp-driver/src/resolver.rs`
-
-- [x] **B-6. selfhost internal source root parity** (tests: `module_graph::resolve_tests::test_build_from_entry_prefers_nearest_src_ancestor_without_manifest`, `tests::test_cmd_install_path_dependency_writes_module_index_for_exported_modules`, `e2e::selfhost_bootstrap_four_layer::{test_e2e_boot04_compiler_mode_dotted_import_resolution_from_src_root,test_e2e_boot04_compiler_mode_package_index_resolution,test_e2e_boot04_compiler_mode_ignores_dotted_flat_file}`, `e2e::selfhost_bootstrap_contracts::{test_e2e_selfhost_main_import_only_pipeline,test_e2e_selfhost_flat_compat_sources_removed}`, `e2e::selfhost_typeinfer_pipeline_bootstrap::test_e2e_selfhost_pipeline_complete_stages`)
-  - [x] Rust `ModuleGraph` が `lsharp.toml` なしでも最も近い `src/` 祖先を source root として解決できる
-  - [x] selfhost の正本 tree を `selfhost/src/**` に追加し、`selfhost/src/App/Main.ls` を canonical entrypoint に切り替えた
-  - [x] selfhost compiler-mode が dotted import を `A/B.ls` に解決し、local `src/` と stdlib fallback を扱える
-  - [x] `lsharp install` が `.lsharp/module-index/*.path` を生成し、selfhost compiler-mode が installed package module を index 経由で解決できる
-  - [x] flat な旧互換コピーを撤去し、repo 内参照を `selfhost/src/**` 基準へ統一した
-
-### P12-C: パッケージ配布 & エコシステム (GitHub only)
-
-> GitHub リポジトリ + Git タグのみで配布。レジストリサーバーは立てない。P12-B 完了後に着手推奨。
-
-- [x] **C-1. GitHub ベースのパッケージ配布** (tests: `tests::test_cmd_install_git_dependency_already_exists`, `tests::test_cmd_add_writes_tagged_github_dependency_to_lsharp_toml`, `tests::test_cmd_add_rejects_duplicate_dependency_name`)
-  - [x] `lsharp install` で `git clone --depth 1 --branch <tag>` によるパッケージ取得
-  - [x] インストール後に `lsharp doc --json` を自動実行し api.json を生成 (MCP Server が読む)
-  - [x] `lsharp add <github-url> --tag <tag>` コマンド: lsharp.toml への依存追加
-  - 修正対象: `crates/lsharp-driver/src/resolver.rs`
-
-- [x] **C-2. パッケージ検証 (`lsharp check-package`)** (tests: `tests::test_cmd_check_package_generates_api_json_and_checksum`, `tests::test_cmd_check_package_previous_tag_compares_against_git_tag`)
-  - [x] lsharp.toml 検証 + api.json 自動生成
-  - [x] 前回 API との破壊的変更の自動検出 (`--previous-api <path>` と `--previous-tag <tag>`、tag 未指定時は最新 tag 自動検出)
-  - [x] checksum (SHA-256) 生成
-  - パッケージ作者が `git tag` する前にローカルで実行
-
-- [x] **C-3. パッケージ API diff & 互換性チェック** (tests: `tests::test_cmd_api_diff_reports_added_changed_removed`, `tests::test_cmd_api_diff_specs_supports_git_tags`)
-  - [x] `lsharp api-diff <old> <new>` コマンド: 2 つの api.json / Git tag の比較
-  - [x] 破壊的変更の検出と警告表示
-
-- [x] **C-4. パッケージ情報表示** (tests: `tests::test_cmd_info_reads_installed_package_api`, `mcp_server::tests::test_package_api_tool_reads_installed_api_json`)
-  - [x] `lsharp info <package>` コマンド: インストール済みパッケージの api.json ベースの関数・型一覧表示
-  - [x] MCP Server の `lsharp_package_api` ツールからインストール済みパッケージの API を返す
-
----
-
-## Phase 13: Wasmtime Embedding + Component Model
-
-> **目的**: L# の実行・配布基盤を Component Model に統一し、single binary (host launcher + embedded guest component) で配布する
->
-> **設計原則**:
-> - 共通成果物は Wasm component、OS 差は host launcher に閉じる
-> - host/guest 境界は粗粒度 (batch API)。細粒度な cross-boundary 呼び出しは禁止
-> - 2 target: `backend:web-wasm` (browser 向け) / `backend:wasi-component` (CLI/server 向け)
-> - HTTP handler model: guest は `request -> response` を返し、host が accept loop / TLS / keep-alive を管理
-> - compiler/runtime の重い処理は全て guest 側 (Wasm 内) に閉じ込める
->
-> **依存関係**: Phase 11 Step 2 (bootstrap fixed-point) → P13-A → P13-B → P13-C
-> P13-A は Phase 11 Step 4/5 と並行可能
->
-> **仕様書**: `docs/language/component-model-spec.md`
-
-### P13-A: WASI Preview2 Migration
-
-> 現行 `wasi_snapshot_preview1` から WASI Preview2 / Component Model への移行。既存 683 tests は dual-mode runner で preview1 のまま維持する。
-
-- [x] **A-1. Dual-mode WASI runner** -- WasiMode enum (Preview1/Preview2) と run_wasm_component() を追加。wasmtime v29 Component Model API 使用。Evidence: `crates/lsharp-wasm/src/wasi_runner.rs` (`WasiMode`, `run_wasm_component`, `test_run_wasm_component_*`)。
-- [x] **A-2. Preview2 codegen path** -- `crates/lsharp-wasm/src/wasi.rs` の `emit_wasm_wasi_p2()` を actual component 化パスへ接続し、preview1 core module に `wasi:cli/run@0.2.3#run` wrapper を追加した上で custom preview1→preview2 adapter (`crates/lsharp-wasm/src/preview1_component_adapter.{rs,wat}`) と `component_adapter` staging resolver を通して `.component.wasm` を生成するようにした。`wit/deps/` に wasmtime-wasi 29 系の WIT deps を vendoring し、`wit/lsharp-compiler.wit` / runner も `@0.2.3` 実体へ揃えた。 Tests: `test_emit_wasm_wasi_p2_basic_program_compiles`, `test_emit_wasm_wasi_p2_runs_print_via_component_runner`, `test_emit_wasm_wasi_p2_supports_stdin_and_args`, `test_emit_wasm_wasi_p2_supports_file_roundtrip`, `test_componentize_core_module_with_preview1_adapter`, `test_run_wasm_component_`
-- [x] **A-3. Selfhost WasiBackend target flag** -- `selfhost/src/Backend/Wasm/WasiBackend.ls` の target helper を `selfhost/src/Backend/Wasm/WasmEmit.ls` 本流へ接続し、`emit-wasm-with-target` が preview1 / component target ごとに異なる import section layout を size 計算へ反映するようにした。これにより selfhost CLI の compile/build mainline でも `--target wasi-preview1` と `--target wasi-component` の差分が end-to-end で observable になった。`crates/lsharp-wasm/tests/e2e/support.rs` の最小 CLI runtime bundle へ `WasiBackend.ls` も追加し、新しい依存が targeted E2E で実行されるようにした。 Tests: `test_e2e_selfhost_wasi_backend_target_flag_scaffold`, `test_e2e_selfhost_wasi_helpers`, `test_e2e_selfhost_cli_compile_target_parser_helper`, `test_e2e_selfhost_cli_compile_help_mentions_target_option`, `test_e2e_selfhost_cli_emit_wasm_with_target_changes_wasm_size`, `test_e2e_selfhost_cli_main_with_args_compile_target_changes_wasm_size`, `test_e2e_selfhost_cli_main_with_args_compile_target_and_output_path`, `test_e2e_selfhost_cli_main_with_args_build_output_path_and_target_alias`
-
-### P13-B: WIT Definitions + Guest Component Boundary
-
-> WIT による world 定義、guest component 境界、host capability bridge の実装。
-
-- [x] **B-1. WIT world definitions** -- wit/ directory に lsharp-compiler.wit, lsharp-http-handler.wit, lsharp-core.wit を定義。Evidence: `wit/lsharp-compiler.wit`, `wit/lsharp-http-handler.wit`, `wit/lsharp-core.wit`, `wit/README.md`, `docs/language/component-model-spec.md` の WASI Preview1→Preview2 マッピング。
-- [x] **B-2. Component adapter layer** -- `crates/lsharp-wasm/src/component_adapter.rs` に `embed_component_metadata_for_world()` / `componentize_core_module()` を追加し、`wit-component` で core Wasm module → guest component の post-processing 変換を実装。selfhost emitter は core Wasm のみを出力し、host launcher 側で component wrapping する。Tests: `component_adapter::tests::test_embed_component_metadata_for_world_reports_missing_world`, `component_adapter::tests::test_componentize_core_module_with_preview1_adapter`
-- [x] **B-3. Coarse-grained host API** -- `crates/lsharp-wasm/src/host_bridge.rs` に `HostCapabilities` / `HostCapabilitiesView` / `link_host_capabilities()` を追加し、`wit/lsharp-core.wit` の `host-fs` / `host-process` を Wasmtime component linker へ登録できるようにした。Tests: `host_bridge::tests::test_host_capabilities_forward_callbacks`, `host_bridge::tests::test_link_host_capabilities_registers_interfaces`
-
-### P13-C: Single Binary Distribution
-
-> Wasmtime embedding による host launcher + embedded guest component の single-binary 配布を実装する。
-
-- [x] **C-1. Embed component in host binary** -- `crates/lsharp-driver/build.rs` は既定で `selfhost/src/App/EmbeddedCli.ls` を selfhost guest component としてビルドし、`include_bytes!` 用に埋め込むようになった。`crates/lsharp-driver/src/main.rs` は `LSHARP_PATH` 未設定時に embedded guest を `parse` / `check` / `fmt` の default path として起動し、`LSHARP_DISABLE_EMBEDDED_COMPONENT=1` で safety valve も維持する。`scripts/ci/default-path-smoke.sh` も embedded default path / disable flag / external `.component.wasm` delegation smoke へ昇格した。加えて custom Preview1→Preview2 adapter の `fd_write` を 4KiB chunking へ修正し、大きい `fmt` 出力でも trap しないようにした。 Tests: `test_emit_wasm_wasi_p2_supports_large_stdout_write`, `test_parse_without_lsharp_path_uses_embedded_component_default_path`, `test_check_without_lsharp_path_uses_embedded_component_default_path`, `test_fmt_without_lsharp_path_uses_embedded_component_default_path_for_large_file`, `test_parse_without_lsharp_path_respects_embedded_disable_flag`, `test_driver_delegates_to_component_artifact_via_lsharp_path`, `test_driver_uses_embedded_component_when_compiled_with_component_path`, `test_driver_can_disable_embedded_component_with_runtime_env`, `test_driver_delegates_to_wasm_cli_artifact_via_lsharp_path`
-- [x] **C-2. Two-target compilation** -- driver CLI / compile pipeline の `--target wasi-component` (default), `--target web-wasm`, `--target wasm` alias を actual Preview2 component artifact へ接続し、`.component.wasm` default / plain `.wasm` 後方互換の両方を維持した。`compile_file()` は `emit_wasm_wasi_p2()` の real component bytes をそのまま書き出し、runner / validation まで通る。 Tests: `test_compile_file_defaults_to_wasi_component_output_extension`, `test_compile_file_wasi_component_output_validates_as_component`, `test_compile_file_web_wasm_target_uses_core_codegen_path`, `test_compile_file_plain_wasm_output_without_target_keeps_wasi_codegen`, `test_cli_compile_target_accepts_wasi_component_alias_and_web_wasm`, `test_compile_run_tool_uses_wasi_default_for_wasm_output`
-- [x] **C-3. Rust workspace restructuring** -- Rust workspace を host launcher + component tooling に再構成。`crates/lsharp-tooling` を追加し、driver の `compile` / `fmt` / `api_doc` / `metadata_test` / `metadata_validation` / HTML `doc` / REPL compile-eval を thin tooling crate へ抽出、`crates/lsharp-driver/src/commands/{compile,fmt}.rs` と `cmd_test` / `cmd_doc` / `cmd_repl` は wrapper / 表示層へ縮退した。あわせて metadata diagnostics の実表示が lowercase `"[error]"` であることに合わせ、doc-check の error 検出も修正した。`main.rs` に残っていた import resolution / knowledge builder は `#[cfg(test)]` 側へ隔離し、`crates/lsharp-driver/Cargo.toml` の runtime dependency から `lsharp-syntax` / `lsharp-types` / `lsharp-ir` を外した。 Tests: `cargo test -q -p lsharp-tooling -- --nocapture`, `cargo test -q -p lsharp-driver --bin lsharp tests::test_cli_compile_target_accepts_wasi_component_alias_and_web_wasm -- --exact --nocapture`, `cargo test -q -p lsharp-driver tests::test_cmd_doc_json_writes_docs_api_json -- --exact --nocapture`, `cargo test -q -p lsharp-driver tests::test_cmd_test_succeeds_for_metadata_fixture -- --exact --nocapture`, `cargo test -q -p lsharp-driver tests::test_has_metadata_errors_detects_lowercase_error_diagnostics -- --exact --nocapture`, `cargo test -q -p lsharp-driver doc_site::tests::test_cmd_doc_site_generates_guides_and_api_site -- --exact --nocapture`.
-- [x] **C-4. HTTP handler model** -- `emit_wasm_wasi_p2()` は `main` のない `handle` 1 引数モジュールを HTTP handler として自動判定し、`emit_wasm_http_handler_p2()` / 専用 core emitter 経由で `lsharp-http-handler` component を生成するようになった。guest export は canonical ABI `cm32p2|wasi:http/incoming-handler@0.2|handle` / `handle_post` と `cm32p2_memory` / `cm32p2_realloc` / `cm32p2_initialize` を公開し、HTTP response 側は `fields` / `outgoing-response` / `response-outparam.set` import だけで最小応答 path を構成する。`host_bridge::tests::test_http_handler_world_calls_lsharp_handle_and_sets_response_outparam` で実際の L# source `(defn handle [request] "ok")` を component 化して synthetic host bridge へ instantiate・call し、`response-outparam` が `Ok(response)` へ解決することを固定した。加えて `compile::tests::test_compile_file_handle_only_emits_http_handler_component_export` で user-facing compile path からも `wasi:http/incoming-handler@0.2.3` export が出ることを確認した。現状の response semantics は request を opaque handle として guest へ渡し、guest `handle` 実行後に default `200` / empty body response を返す最小実装で、body/header の高粒度制御は今後の拡張余地として残す。 Tests: `component_adapter::tests::test_embed_component_metadata_for_http_handler_world_resolves_vendored_http_deps`, `host_bridge::tests::test_link_http_handler_world_registers_interfaces_with_wasi_view_state`, `host_bridge::tests::test_http_handler_world_instantiates_dummy_component_against_synthetic_host`, `host_bridge::tests::test_http_handler_world_calls_lsharp_handle_and_sets_response_outparam`, `compile::tests::test_compile_file_handle_only_emits_http_handler_component_export`, `wasi::tests::test_emit_wasm_wasi_p2_basic_program_compiles`, `wasi::tests::test_emit_wasm_wasi_p2_runs_print_via_component_runner`, `wasi::tests::test_emit_wasm_wasi_p2_supports_stdin_and_args`.
+> Phase 12 (モジュール・パッケージ & AI フレンドリーエコシステム) → ADR-166
+> Phase 13 (Wasmtime Embedding + Component Model) → ADR-167
+> Phase 11 構造化残件 (STR-01~03) → ADR-168
+> DOC-02 HTML Template Engine Library → ADR-169
+> V2 Design Documents (V2-01~07) + Documentation completion → ADR-170
 
 ---
 
