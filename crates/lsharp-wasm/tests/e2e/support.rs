@@ -467,7 +467,11 @@ fn cached_selfhost_bundle(cell: &'static OnceLock<String>, modules: &[&str]) -> 
     cell.get_or_init(|| {
         modules
             .iter()
-            .map(|name| selfhost_module(name))
+            .map(|name| {
+                let path = selfhost_source_path(name);
+                std::fs::read_to_string(&path)
+                    .unwrap_or_else(|e| panic!("selfhost bundle 読み込み失敗 {}: {}", path.display(), e))
+            })
             .collect::<Vec<_>>()
             .join("\n")
     })

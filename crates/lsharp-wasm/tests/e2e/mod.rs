@@ -35,4 +35,5 @@ mod selfhost_typeinfer_quote_patterns;
 mod selfhost_typeinfer_records_computation;
 mod stdlib_modules_selfhost_lexer;
 mod strings_patterns_compiler_integration;
+mod string_escape_sequences;
 mod support;

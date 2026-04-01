@@ -76,6 +76,7 @@
   "s14_status": "n/a",
   "s15_status": "n/a",
   "s16_status": "n/a",
+  "heap_bytes_series": [],
   "peak_alloc_bytes": 0,
   "total_alloc_count": 0,
   "live_alloc_count": 0,
@@ -90,6 +91,7 @@
 `gate_status` は artifact が構造・proxy metrics の採取に成功した場合は `"accepted"` となる。
 `s14_status` / `s15_status` / `s16_status` は bump allocator では常に `"n/a"` であり、
 collector 有効になって初めて `"pass"` / `"fail"` / `"blocked"` に変わる。
+現在の bump artifact でも schema は固定し、`heap_bytes_series` には空配列を入れておく。
 
 ### artifact rejection criteria
 
@@ -100,7 +102,7 @@ collector 有効になって初めて `"pass"` / `"fail"` / `"blocked"` に変�
 | AR-01 | `test_e2e_alloc_metrics_ci_artifact_payload` が失敗する / `gate_status != "accepted"` / `sXX_status = "fail"` | `scripts/ci/collect-gc-metrics.sh` の `cargo test` と Python 検証 | required job fail |
 | AR-02 | `ci-artifacts/gc-metrics/{commit_sha}/summary.json` を読めない | 同 script の Python 検証がファイルを開く | required job fail |
 | AR-03 | JSON として parse できない | Python `json.loads(...)` | required job fail |
-| AR-04 | 必須 14 キーのいずれかが欠落、または `sXX_status` が 4 値外 | Python の key/value 検証 | required job fail |
+| AR-04 | 必須 15 キーのいずれかが欠落、`sXX_status` が 4 値外、または `s14_status` が evaluator と不一致 | Python の key/value 検証 | required job fail |
 
 ### artifact acceptance の意味
 
@@ -123,7 +125,7 @@ machine-readable に扱うため、S14-S16 の状態は次の 4 値で固定す�
 
 | Gate | bump artifact 単独の状態 | 理由 |
 |---|---|---|
-| S14 | `n/a` | heap bytes の時系列と collector 有効フラグがない |
+| S14 | `n/a` | bump payload では `heap_bytes_series = []` で、collector 有効証跡がない |
 | S15 | `n/a` | bootstrap fixed-point の比較対象が artifact にない |
 | S16 | `n/a` | GC 起因 crash / dangling pointer / workload 完走の collector 有効証跡がない |
 

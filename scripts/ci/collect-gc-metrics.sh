@@ -32,6 +32,33 @@ try:
 except json.JSONDecodeError as e:
     raise SystemExit(f"AR-03: artifact is not valid JSON: {e}")
 
+def evaluate_s14_status(payload):
+    if payload["allocator_mode"] == "bump":
+        return "n/a"
+
+    series = payload["heap_bytes_series"]
+    if not isinstance(series, list):
+        raise SystemExit("AR-04: heap_bytes_series must be a JSON array")
+    if len(series) < 2:
+        return "blocked"
+
+    tail_start = (len(series) * 9) // 10
+    head = series[:tail_start]
+    tail = series[tail_start:]
+    if not head:
+        return "blocked"
+
+    running_max = max(head)
+    for sample in tail:
+        if not isinstance(sample, (int, float)):
+            raise SystemExit("AR-04: heap_bytes_series entries must be numbers")
+        if sample > running_max:
+            running_max = sample
+            continue
+        return "pass"
+
+    return "fail"
+
 # AR-04: 必須キーが揃っているか (gate_status / s14_status / s15_status / s16_status を含む)
 required = [
     "allocator_mode",
@@ -40,6 +67,7 @@ required = [
     "s14_status",
     "s15_status",
     "s16_status",
+    "heap_bytes_series",
     "peak_alloc_bytes",
     "total_alloc_count",
     "live_alloc_count",
@@ -67,6 +95,12 @@ for gate in ("s14_status", "s15_status", "s16_status"):
     if state == "fail":
         raise SystemExit(f"AR-01: {gate} is 'fail' -- runtime stability gate violation")
     print(f"  {gate}: {state}")
+
+computed_s14_status = evaluate_s14_status(payload)
+if payload["s14_status"] != computed_s14_status:
+    raise SystemExit(
+        f"AR-04: s14_status is '{payload['s14_status']}' but computed '{computed_s14_status}'"
+    )
 
 print(f"gc-metrics-artifact:{path}")
 print(json.dumps(payload, sort_keys=True))

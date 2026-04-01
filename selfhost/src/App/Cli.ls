@@ -133,7 +133,7 @@
 (defn lsp-transport-params [request] (vector-get request 3))
 (defn lsp-transport-uri [request] (if (> (vector-length (lsp-transport-params request)) 0) (vector-get (lsp-transport-params request) 0) 0))
 (defn lsp-transport-method-not-found-code [] (- 0 32601))
-(defn lsp-transport-dispatch-request [state request] (let [request-id (lsp-transport-request-id request) method-id (lsp-transport-method-id request) params (lsp-transport-params request) uri (lsp-transport-uri request) result (json-rpc-dispatch method-id params state)] (if (= method-id (lsp-method-initialize)) (lsp-render-initialize-frame request-id) (if (= method-id (lsp-method-shutdown)) (lsp-render-shutdown-frame request-id) (if (= method-id (lsp-method-did-open)) (lsp-render-didopen-frame uri (server-state-source-length state)) (if (= method-id (lsp-method-did-change)) (lsp-render-didchange-frame uri (server-state-source-length state)) (if (= method-id (lsp-method-goto-def)) (lsp-render-location-frame request-id result) (if (= method-id (lsp-method-hover)) (lsp-render-hover-frame request-id result) (if (= method-id (lsp-method-references)) (lsp-render-locations-frame request-id result) (if (= method-id (lsp-method-completion)) (lsp-render-completion-frame request-id result) (if (= method-id (lsp-method-formatting)) (lsp-render-formatting-frame request-id result) (if (= method-id (lsp-method-rename)) (lsp-render-rename-frame request-id result) (lsp-render-error-frame request-id (lsp-transport-method-not-found-code) "Method not found")))))))))))))
+(defn lsp-transport-dispatch-request [state request] (let [request-id (lsp-transport-request-id request) method-id (lsp-transport-method-id request) params (lsp-transport-params request) uri (lsp-transport-uri request) result (json-rpc-dispatch method-id params state)] (if (= method-id (lsp-method-initialize)) (lsp-render-initialize-frame request-id) (if (= method-id (lsp-method-shutdown)) (lsp-render-shutdown-frame request-id) (if (= method-id (lsp-method-did-open)) (lsp-render-didopen-frame uri (server-state-source-length state)) (if (= method-id (lsp-method-did-change)) (lsp-render-didchange-frame uri (server-state-source-length state)) (if (= method-id (lsp-method-goto-def)) (lsp-render-location-frame request-id result) (if (= method-id (lsp-method-hover)) (lsp-render-hover-frame request-id result) (if (= method-id (lsp-method-references)) (lsp-render-locations-frame request-id result) (if (= method-id (lsp-method-completion)) (lsp-render-completion-frame request-id result) (if (= method-id (lsp-method-formatting)) (lsp-render-formatting-frame request-id result) (if (= method-id (lsp-method-rename)) (lsp-render-rename-frame request-id result) (if (= method-id (lsp-method-publish-diagnostics)) (lsp-render-publish-diagnostics-frame uri (vector-get params 1)) (lsp-render-error-frame request-id (lsp-transport-method-not-found-code) "Method not found"))))))))))))))
 (defn run-lsp-transport-request [request] (let [state (server-state-new)] (lsp-transport-dispatch-request state request)))
 (defn lsp-transport-sequence-loop [state requests idx count frames] (if (>= idx count) frames (lsp-transport-sequence-loop state requests (+ idx 1) count (vector-push frames (lsp-transport-dispatch-request state (vector-get requests idx))))))
 (defn run-lsp-transport-sequence [requests] (let [state (server-state-new) frames (lsp-transport-sequence-loop state requests 0 (vector-length requests) (vector-new 8)) summary (vector-new 4)] (vector-push (vector-push (vector-push (vector-push summary frames) (server-state-doc-count state)) (server-state-request-count state)) (server-state-source-length state))))
@@ -183,6 +183,13 @@
       0
       (lsp-stdio-parse-int-loop body (+ pos (string-length pattern)) len 0 0))))
 
+(defn lsp-stdio-body-int-field-from [body pattern start]
+  (let [len (string-length body)
+    pos (lsp-stdio-find-pattern-loop body pattern start len)]
+    (if (< pos 0)
+      0
+      (lsp-stdio-parse-int-loop body (+ pos (string-length pattern)) len 0 0))))
+
 (defn lsp-stdio-body-string-field [body pattern]
   (let [len (string-length body)
     pos (lsp-stdio-find-pattern-loop body pattern 0 len)]
@@ -217,11 +224,13 @@
                   (lsp-method-rename)
                   (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"textDocument/didOpen\"" 0 len) 0)
                     (lsp-method-did-open)
-                    (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"textDocument/didChange\"" 0 len) 0)
-                      (lsp-method-did-change)
-                      (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"textDocument/completion\"" 0 len) 0)
-                        (lsp-method-completion)
-                        999))))))))))))
+                      (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"textDocument/didChange\"" 0 len) 0)
+                        (lsp-method-did-change)
+                        (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"textDocument/completion\"" 0 len) 0)
+                          (lsp-method-completion)
+                          (if (>= (lsp-stdio-find-pattern-loop body "\"method\":\"textDocument/publishDiagnostics\"" 0 len) 0)
+                            (lsp-method-publish-diagnostics)
+                            999)))))))))))))
 
 (defn lsp-stdio-nav-params [body]
   (let [params (vector-new 4)
@@ -251,8 +260,43 @@
             (vector-push params (lsp-stdio-body-int-field body "\"uri\":"))
             (lsp-stdio-body-int-field body "\"line\":"))
           (lsp-stdio-body-int-field body "\"col\":"))
-        (lsp-stdio-body-string-field body "\"source\":\""))
-      (lsp-stdio-body-string-field body "\"newName\":\""))))
+         (lsp-stdio-body-string-field body "\"source\":\""))
+       (lsp-stdio-body-string-field body "\"newName\":\""))))
+
+(defn lsp-stdio-diagnostic [body start]
+  (let [severity (lsp-stdio-body-int-field-from body "\"severity\":" start)
+    rule-id (lsp-stdio-body-int-field-from body "\"rule\":" start)
+    line (lsp-stdio-body-int-field-from body "\"line\":" start)
+    col (lsp-stdio-body-int-field-from body "\"col\":" start)
+    message-hash (lsp-stdio-body-int-field-from body "\"messageHash\":" start)
+    source (lsp-stdio-body-int-field-from body "\"source\":" start)
+    diag (vector-new 6)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push
+              (vector-push diag severity)
+              rule-id)
+            line)
+          col)
+        message-hash)
+      source)))
+
+(defn lsp-stdio-diagnostics-loop [body idx len diagnostics]
+  (let [source-pos (lsp-stdio-find-pattern-loop body "\"source\":" idx len)]
+    (if (< source-pos 0)
+      diagnostics
+      (lsp-stdio-diagnostics-loop
+        body
+        (+ source-pos 1)
+        len
+        (vector-push diagnostics (lsp-stdio-diagnostic body source-pos))))))
+
+(defn lsp-stdio-publish-diagnostics-params [body]
+  (let [uri (lsp-stdio-body-int-field body "\"uri\":")
+    diagnostics (lsp-stdio-diagnostics-loop body 0 (string-length body) (vector-new 4))]
+    (vector-push (vector-push (vector-new 2) uri) diagnostics)))
 
 (defn lsp-stdio-body-params [body]
   (let [method-id (lsp-stdio-body-method body)]
@@ -272,7 +316,9 @@
                   (lsp-stdio-document-params body)
                   (if (= method-id (lsp-method-did-change))
                     (lsp-stdio-document-params body)
-                    0))))))))))
+                    (if (= method-id (lsp-method-publish-diagnostics))
+                      (lsp-stdio-publish-diagnostics-params body)
+                      0)))))))))))
 
 (defn lsp-stdio-body-message [body]
   (let [method-id (lsp-stdio-body-method body)
@@ -337,4 +383,21 @@
 (defn parse-cli-options [argc] (parse-cli-options-loop 2 argc (default-compile-target) ""))
 (defn cli-option-error-message [result] (let [status (cli-option-result-status result) detail (cli-option-result-detail result)] (if (= status (cli-option-status-invalid-target)) (string-concat "unsupported target: " detail) (if (= status (cli-option-status-missing-value)) (string-concat "missing value for option: " detail) (string-concat "unsupported option: " detail)))))
 (defn run-command-with-cli-options [cmd-name file-path result] (let [target (cli-option-result-target result) output-path (cli-option-result-output-path result)] (if (> (string-length output-path) 0) (if (string-eq cmd-name "compile") (run-compile-output file-path output-path target) (if (string-eq cmd-name "build") (run-build-output file-path output-path target) (run-command cmd-name file-path target))) (run-command cmd-name file-path target))))
-(defn main [] (let [argc (command-line-args)] (if (= argc 0) (show-help) (let [cmd-name (command-line-arg 0) file-path (if (> argc 1) (command-line-arg 1) "")] (if (and (string-eq cmd-name "lsp") (string-eq file-path "--stdio")) (run-lsp-stdio-server) (if (and (compile-or-build-command cmd-name) (> argc 2)) (let [options (parse-cli-options argc)] (if (= (cli-option-result-status options) (cli-option-status-ok)) (run-command-with-cli-options cmd-name file-path options) (do (cli-stderr (cli-option-error-message options)) (exit-code-compile-error)))) (run-command cmd-name file-path (default-compile-target))))))))
+(defn run-main-command [argc cmd-name file-path]
+  (if (and (string-eq cmd-name "lsp") (string-eq file-path "--stdio"))
+    (run-lsp-stdio-server)
+    (if (and (compile-or-build-command cmd-name) (> argc 2))
+      (let [options (parse-cli-options argc)]
+        (if (= (cli-option-result-status options) (cli-option-status-ok))
+          (run-command-with-cli-options cmd-name file-path options)
+          (do
+            (cli-stderr (cli-option-error-message options))
+            (exit-code-compile-error))))
+      (run-command cmd-name file-path (default-compile-target)))))
+(defn main []
+  (let [argc (command-line-args)]
+    (if (= argc 0)
+      (show-help)
+      (let [cmd-name (command-line-arg 0)
+        file-path (if (> argc 1) (command-line-arg 1) "")]
+        (run-main-command argc cmd-name file-path)))))

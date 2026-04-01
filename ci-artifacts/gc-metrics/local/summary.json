@@ -3,6 +3,7 @@
   "allocator_mode": "bump",
   "ci_level": "simple",
   "gate_status": "accepted",
+  "heap_bytes_series": [],
   "leak_growing_count": 50,
   "leak_suspect": 1,
   "leak_total": 50,

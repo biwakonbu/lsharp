@@ -2,7 +2,7 @@
 //!
 //! - 現行: 本バイナリが Rust 実装パイプライン（syntax → types → ir → wasm）を**内蔵**する。
 //! - 移行中: 環境変数 `LSHARP_PATH` で selfhost / 外部コンパイラ executable・その配置ディレクトリ・`.wasm` / `.component.wasm` guest artifact を指せる。
-//! - 検証: `scripts/ci/default-path-smoke.sh` が `target/debug/lsharp` のみで `compile` を通す。
+//! - 検証: `scripts/ci/default-path-smoke.sh` が `target/debug/lsharp` 単体で embedded default path の `compile` / `build` を含む smoke を通す。
 
 mod api_doc;
 mod claude_plugin;
@@ -458,14 +458,71 @@ fn maybe_delegate_to_embedded_component() -> miette::Result<()> {
 }
 
 fn should_delegate_to_embedded_component() -> bool {
-    matches!(
-        std::env::args_os().nth(1).as_deref(),
-        Some(command)
-            if command == std::ffi::OsStr::new("parse")
-                || command == std::ffi::OsStr::new("check")
-                || command == std::ffi::OsStr::new("test")
-                || command == std::ffi::OsStr::new("fmt")
-    )
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    should_delegate_to_embedded_component_args(&args)
+}
+
+fn should_delegate_to_embedded_component_args(args: &[std::ffi::OsString]) -> bool {
+    match args.first().and_then(|arg| arg.to_str()) {
+        Some("parse" | "check" | "test" | "fmt") => true,
+        Some("review" | "doc-ack" | "doc-check") => should_delegate_simple_file_command_args(args),
+        Some("compile" | "build") => should_delegate_compile_build_to_embedded_component_args(args),
+        _ => false,
+    }
+}
+
+fn should_delegate_simple_file_command_args(args: &[std::ffi::OsString]) -> bool {
+    if args.len() != 2 {
+        return false;
+    }
+
+    let Some(file_arg) = args.get(1).and_then(|arg| arg.to_str()) else {
+        return false;
+    };
+    !file_arg.starts_with('-')
+}
+
+fn should_delegate_compile_build_to_embedded_component_args(
+    args: &[std::ffi::OsString],
+) -> bool {
+    let Some(file_arg) = args.get(1).and_then(|arg| arg.to_str()) else {
+        return false;
+    };
+    if file_arg.starts_with('-') {
+        return false;
+    }
+
+    let mut index = 2;
+    while index < args.len() {
+        let Some(flag) = args[index].to_str() else {
+            return false;
+        };
+        match flag {
+            "-o" | "--output" => {
+                let Some(value) = args.get(index + 1).and_then(|arg| arg.to_str()) else {
+                    return false;
+                };
+                if matches!(value, "-o" | "--output" | "--target" | "--emit-ir" | "-h" | "--help")
+                {
+                    return false;
+                }
+                index += 2;
+            }
+            "--target" => {
+                let Some(value) = args.get(index + 1).and_then(|arg| arg.to_str()) else {
+                    return false;
+                };
+                if !matches!(value, "wasi-preview1" | "wasi-component" | "wasm") {
+                    return false;
+                }
+                index += 2;
+            }
+            "--emit-ir" => return false,
+            _ => return false,
+        }
+    }
+
+    true
 }
 
 /// selfhost shadow command が LSHARP_PATH なしで呼ばれた場合、外部 compiler への案内を出す。
@@ -2135,6 +2192,10 @@ mod tests {
             .collect()
     }
 
+    fn os_args(args: &[&str]) -> Vec<std::ffi::OsString> {
+        args.iter().map(std::ffi::OsString::from).collect()
+    }
+
     #[test]
     fn test_cli_help_excludes_removed_parse_check_fmt_subcommands() {
         let help = Cli::command().render_long_help().to_string();
@@ -2199,6 +2260,73 @@ mod tests {
             panic!("compile subcommand should parse");
         };
         assert_eq!(target, Some(CliCompileTarget::WebWasm));
+    }
+
+    #[test]
+    fn test_should_delegate_to_embedded_component_args_accepts_compile_build_component_subset() {
+        assert!(should_delegate_to_embedded_component_args(&os_args(&[
+            "compile",
+            "examples/fib.ls",
+            "-o",
+            "fib.component.wasm",
+        ])));
+        assert!(should_delegate_to_embedded_component_args(&os_args(&[
+            "build",
+            "examples/fib.ls",
+            "--target",
+            "wasi-preview1",
+            "--output",
+            "fib.wasm",
+        ])));
+        assert!(should_delegate_to_embedded_component_args(&os_args(&[
+            "review",
+            "examples/fib.ls",
+        ])));
+        assert!(should_delegate_to_embedded_component_args(&os_args(&[
+            "doc-ack",
+            "examples/fib.ls",
+        ])));
+        assert!(should_delegate_to_embedded_component_args(&os_args(&[
+            "doc-check",
+            "examples/fib.ls",
+        ])));
+    }
+
+    #[test]
+    fn test_should_delegate_to_embedded_component_args_rejects_rust_only_compile_build_flags() {
+        assert!(!should_delegate_to_embedded_component_args(&os_args(&[
+            "compile",
+            "--help",
+        ])));
+        assert!(!should_delegate_to_embedded_component_args(&os_args(&[
+            "compile",
+            "examples/fib.ls",
+            "--emit-ir",
+        ])));
+        assert!(!should_delegate_to_embedded_component_args(&os_args(&[
+            "compile",
+            "examples/fib.ls",
+            "--target",
+            "web-wasm",
+        ])));
+        assert!(!should_delegate_to_embedded_component_args(&os_args(&[
+            "build",
+            "examples/fib.ls",
+            "--output",
+            "--target",
+        ])));
+        assert!(!should_delegate_to_embedded_component_args(&os_args(&[
+            "review",
+            "--help",
+        ])));
+        assert!(!should_delegate_to_embedded_component_args(&os_args(&[
+            "doc-ack",
+            "--help",
+        ])));
+        assert!(!should_delegate_to_embedded_component_args(&os_args(&[
+            "doc-check",
+            "--help",
+        ])));
     }
 
     #[test]

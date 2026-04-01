@@ -1,0 +1,1 @@
+[{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":11,"sourceBytes":19}},{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":10,"sourceBytes":10}},{"jsonrpc":"2.0","id":72,"result":[11,1,7]}]

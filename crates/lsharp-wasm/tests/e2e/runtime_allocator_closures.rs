@@ -2,6 +2,31 @@ use super::support::*;
 
 // === Phase 0: Bump Allocator テスト ===
 
+fn evaluate_s14_status(allocator_mode: &str, heap_bytes_series: &[i64]) -> &'static str {
+    if allocator_mode == "bump" {
+        return "n/a";
+    }
+    if heap_bytes_series.len() < 2 {
+        return "blocked";
+    }
+
+    let tail_start = (heap_bytes_series.len() * 9) / 10;
+    let (head, tail) = heap_bytes_series.split_at(tail_start);
+    let Some(mut running_max) = head.iter().copied().max() else {
+        return "blocked";
+    };
+
+    for sample in tail {
+        if *sample > running_max {
+            running_max = *sample;
+            continue;
+        }
+        return "pass";
+    }
+
+    "fail"
+}
+
 #[test]
 fn test_e2e_alloc_basic() {
     // __alloc を呼び出してメモリアドレスを取得できることを検証
@@ -104,6 +129,32 @@ fn test_e2e_alloc_metrics_monotonic_check() {
     );
     let lines: Vec<&str> = result.trim().lines().collect();
     assert_eq!(lines[0], "1", "100 回の連続 alloc で heap は単調増加すべき");
+}
+
+#[test]
+fn test_e2e_alloc_metrics_s14_status_n_a_for_bump_allocator() {
+    assert_eq!(evaluate_s14_status("bump", &[]), "n/a");
+}
+
+#[test]
+fn test_e2e_alloc_metrics_s14_status_blocked_without_series() {
+    assert_eq!(evaluate_s14_status("collector", &[]), "blocked");
+}
+
+#[test]
+fn test_e2e_alloc_metrics_s14_status_pass_when_tail_stops_growing() {
+    assert_eq!(
+        evaluate_s14_status("collector", &[10, 20, 30, 40, 50, 60, 70, 80, 90, 90]),
+        "pass"
+    );
+}
+
+#[test]
+fn test_e2e_alloc_metrics_s14_status_fail_when_tail_keeps_growing() {
+    assert_eq!(
+        evaluate_s14_status("collector", &[10, 20, 30, 40, 50, 60, 70, 80, 90, 100]),
+        "fail"
+    );
 }
 
 /// GC-06: 5 メトリクス収集 — alloc 系の 5 指標を単一プログラム内で計測
@@ -296,10 +347,11 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
     let leak_total: i64 = leak_lines[1].parse().unwrap();
     let leak_suspect: i64 = leak_lines[2].parse().unwrap();
 
-    // allocator_mode = bump では S14-S16 は直接判定できないため "n/a" を記録する。
-    // これにより CI artifact が gc-ci-gate-spec.md の 4 値状態を自己記述する。
+    // bump allocator では S14 input を空の series として持ち、
+    // 状態値自体は evaluator が "n/a" を返す。
+    let heap_bytes_series: Vec<i64> = Vec::new();
     let gate_status = "accepted";
-    let s14_status = "n/a"; // bump allocator では heap_bytes_series が存在しない
+    let s14_status = evaluate_s14_status("bump", &heap_bytes_series);
     let s15_status = "n/a"; // collector 有効 bootstrap fixed-point artifact が未配線
     let s16_status = "n/a"; // collector 有効ワークロードが未接続
 
@@ -310,6 +362,7 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
         "s14_status": s14_status,
         "s15_status": s15_status,
         "s16_status": s16_status,
+        "heap_bytes_series": heap_bytes_series,
         "peak_alloc_bytes": peak_alloc_bytes,
         "total_alloc_count": total_alloc_count,
         "live_alloc_count": live_alloc_count,
@@ -326,6 +379,7 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
     assert_eq!(payload["s14_status"], "n/a");
     assert_eq!(payload["s15_status"], "n/a");
     assert_eq!(payload["s16_status"], "n/a");
+    assert_eq!(payload["heap_bytes_series"], serde_json::json!([]));
     assert_eq!(payload["total_alloc_count"], 5);
     assert_eq!(payload["live_alloc_count"], 5);
     assert_eq!(payload["max_single_alloc"], 128);

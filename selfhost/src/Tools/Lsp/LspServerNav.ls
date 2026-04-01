@@ -43,14 +43,16 @@
 
 (defn lsp-render-completion-item-json [item]
   (let [label (vector-get item 0)
+    label-json (json-escape-string label)
     kind-text (int-to-string (vector-get item 1))
     insert-text (vector-get item 2)
+    insert-json (json-escape-string insert-text)
     payload-0 "[\""
-    payload-1 (string-concat payload-0 label)
+    payload-1 (string-concat payload-0 label-json)
     payload-2 (string-concat payload-1 "\",")
     payload-3 (string-concat payload-2 kind-text)
     payload-4 (string-concat payload-3 ",\"")
-    payload-5 (string-concat payload-4 insert-text)]
+    payload-5 (string-concat payload-4 insert-json)]
     (string-concat payload-5 "\"]")))
 
 (defn lsp-render-completion-items-json-loop [items idx len out]
@@ -81,7 +83,7 @@
     payload-6 (string-concat payload-5 ",")
     payload-7 (string-concat payload-6 (int-to-string (vector-get edit 3)))
     payload-8 (string-concat payload-7 ",\"")
-    payload-9 (string-concat payload-8 (vector-get edit 4))]
+    payload-9 (string-concat payload-8 (json-escape-string (vector-get edit 4)))]
     (string-concat payload-9 "\"]")))
 
 (defn lsp-render-text-edits-json-loop [edits idx len out]

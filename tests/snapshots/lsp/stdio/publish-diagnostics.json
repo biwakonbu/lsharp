@@ -1,0 +1,1 @@
+[{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":1,"severity":1,"rule":203,"line":2,"col":4,"messageHash":7003}]}}]

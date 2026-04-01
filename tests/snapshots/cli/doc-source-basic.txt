@@ -1,0 +1,3 @@
+module-global
+functions:1,types:0,first-fn:main
+0

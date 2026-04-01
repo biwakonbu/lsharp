@@ -364,6 +364,7 @@
 (defn lsp-render-hover-frame [request-id hover]
   (let [range (vector-get hover 0)
     contents (vector-get hover 1)
+    contents-json (json-escape-string contents)
     payload-0 "{\"jsonrpc\":\"2.0\",\"id\":"
     payload-1 (string-concat payload-0 (int-to-string request-id))
     payload-2 (string-concat payload-1 ",\"result\":{\"range\":[")
@@ -375,7 +376,7 @@
     payload-8 (string-concat payload-7 ",")
     payload-9 (string-concat payload-8 (int-to-string (vector-get range 3)))
     payload-10 (string-concat payload-9 "],\"contents\":\"")
-    payload-11 (string-concat payload-10 contents)
+    payload-11 (string-concat payload-10 contents-json)
     payload (string-concat payload-11 "\"}}")]
     (render-json-rpc-frame payload)))
 
@@ -464,19 +465,20 @@
   (vector-push (vector-push (vector-push (vector-new 3) 2) id) result))
 
 (defn render-json-rpc-error-response [request-id error-code error-message]
-  (string-concat
-    "{\"jsonrpc\":\"2.0\",\"id\":"
+  (let [message-json (json-escape-string error-message)]
     (string-concat
-      (int-to-string request-id)
+      "{\"jsonrpc\":\"2.0\",\"id\":"
       (string-concat
-        ",\"error\":{"
+        (int-to-string request-id)
         (string-concat
-          "\"code\":"
+          ",\"error\":{"
           (string-concat
-            (int-to-string error-code)
+            "\"code\":"
             (string-concat
-              ",\"message\":\""
-              (string-concat error-message "\"}}"))))))))
+              (int-to-string error-code)
+              (string-concat
+                ",\"message\":\""
+                (string-concat message-json "\"}}")))))))))
 
 ;; parse-json-rpc-request: JSON-RPC リクエストから method + params を抽出
 ;; 入力: [jsonrpc-version, id, method-id, params]

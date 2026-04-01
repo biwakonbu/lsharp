@@ -64,6 +64,75 @@
       (render-int-vector-json-loop values 0 (vector-length values) "")
       "]")))
 
+(defn json-hex-digit [digit]
+  (if (= digit 0)
+    "0"
+    (if (= digit 1)
+      "1"
+      (if (= digit 2)
+        "2"
+        (if (= digit 3)
+          "3"
+          (if (= digit 4)
+            "4"
+            (if (= digit 5)
+              "5"
+              (if (= digit 6)
+                "6"
+                (if (= digit 7)
+                  "7"
+                  (if (= digit 8)
+                    "8"
+                    (if (= digit 9)
+                      "9"
+                      (if (= digit 10)
+                        "a"
+                        (if (= digit 11)
+                          "b"
+                          (if (= digit 12)
+                            "c"
+                            (if (= digit 13)
+                              "d"
+                              (if (= digit 14)
+                                "e"
+                                "f"))))))))))))))))
+
+(defn json-control-escape [ch]
+  (let [hi (/ ch 16)
+    lo (- ch (* hi 16))]
+    (string-concat
+      "\\u00"
+      (string-concat (json-hex-digit hi) (json-hex-digit lo)))))
+
+(defn json-escape-char [src idx ch]
+  (if (= ch 34)
+    "\\\""
+    (if (= ch 92)
+      "\\\\"
+      (if (= ch 10)
+        "\\n"
+        (if (= ch 13)
+          "\\r"
+          (if (= ch 9)
+            "\\t"
+            (if (= ch 8)
+              "\\b"
+              (if (= ch 12)
+                "\\f"
+                (if (< ch 32)
+                  (json-control-escape ch)
+                  (substring src idx (+ idx 1)))))))))))
+
+(defn json-escape-string-loop [src idx len out]
+  (if (>= idx len)
+    out
+    (let [ch (string-char-at src idx)
+      piece (json-escape-char src idx ch)]
+      (json-escape-string-loop src (+ idx 1) len (string-concat out piece)))))
+
+(defn json-escape-string [src]
+  (json-escape-string-loop src 0 (string-length src) ""))
+
 (defn render-rpc-int-response [id result]
   (string-concat
     "{\"jsonrpc\":\"2.0\",\"id\":"
@@ -83,19 +152,20 @@
         (string-concat (render-int-vector-json result) "}")))))
 
 (defn render-rpc-error-response [id error-code error-message]
-  (string-concat
-    "{\"jsonrpc\":\"2.0\",\"id\":"
+  (let [message-json (json-escape-string error-message)]
     (string-concat
-      (int-to-string id)
+      "{\"jsonrpc\":\"2.0\",\"id\":"
       (string-concat
-        ",\"error\":{"
+        (int-to-string id)
         (string-concat
-          "\"code\":"
+          ",\"error\":{"
           (string-concat
-            (int-to-string error-code)
+            "\"code\":"
             (string-concat
-              ",\"message\":\""
-              (string-concat error-message "\"}}"))))))))
+              (int-to-string error-code)
+              (string-concat
+                ",\"message\":\""
+                (string-concat message-json "\"}}")))))))))
 
 ;; JSON-RPC framing helpers
 ;; Content-Length は body 長から決定的に計算する

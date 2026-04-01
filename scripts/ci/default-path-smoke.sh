@@ -5,7 +5,19 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 LSHARP_BIN="${LSHARP_BIN:-$ROOT/target/debug/lsharp}"
-OUT_DIR="${OUT_DIR:-$ROOT/target/ci/default-path-smoke}"
+OUT_DIR_INPUT="${OUT_DIR:-target/ci/default-path-smoke}"
+
+if [[ "$OUT_DIR_INPUT" = /* ]]; then
+  if [[ "$OUT_DIR_INPUT" != "$ROOT"/* ]]; then
+    echo "ERROR: OUT_DIR must be under repository root for embedded compile/build smoke: $OUT_DIR_INPUT"
+    exit 1
+  fi
+  OUT_DIR_REL="${OUT_DIR_INPUT#"$ROOT"/}"
+  OUT_DIR="$OUT_DIR_INPUT"
+else
+  OUT_DIR_REL="$OUT_DIR_INPUT"
+  OUT_DIR="$ROOT/$OUT_DIR_INPUT"
+fi
 
 mkdir -p "$OUT_DIR"
 
@@ -19,12 +31,33 @@ if [[ ! -x "$LSHARP_BIN" ]]; then
   exit 1
 fi
 
-echo "=== default-path-smoke: compile (examples/fib.ls) ==="
+echo "=== default-path-smoke: embedded compile/build default path ==="
 OUT_COMPONENT="$OUT_DIR/examples_fib.component.wasm"
+OUT_BUILD="$OUT_DIR/examples_fib_build.component.wasm"
+REL_OUT_COMPONENT="$OUT_DIR_REL/examples_fib.component.wasm"
+REL_OUT_BUILD="$OUT_DIR_REL/examples_fib_build.component.wasm"
 rm -f "$OUT_COMPONENT"
-"$LSHARP_BIN" compile examples/fib.ls -o "$OUT_COMPONENT"
+rm -f "$OUT_BUILD"
+
+COMPILE_OUTPUT="$("$LSHARP_BIN" compile examples/fib.ls -o "$REL_OUT_COMPONENT")"
+if [[ "$COMPILE_OUTPUT" != *"wasm-size:"* ]]; then
+  echo "ERROR: embedded compile output mismatch"
+  echo "$COMPILE_OUTPUT"
+  exit 1
+fi
 if [[ ! -s "$OUT_COMPONENT" ]]; then
   echo "ERROR: component output empty: $OUT_COMPONENT"
+  exit 1
+fi
+
+BUILD_OUTPUT="$("$LSHARP_BIN" build examples/fib.ls --output "$REL_OUT_BUILD")"
+if [[ "$BUILD_OUTPUT" != *"wasm-size:"* ]]; then
+  echo "ERROR: embedded build output mismatch"
+  echo "$BUILD_OUTPUT"
+  exit 1
+fi
+if [[ ! -s "$OUT_BUILD" ]]; then
+  echo "ERROR: build output empty: $OUT_BUILD"
   exit 1
 fi
 
@@ -68,6 +101,31 @@ if [[ "$TEST_OUTPUT" != *"examples:1"* ]] || [[ "$TEST_OUTPUT" != *"invariants:1
   exit 1
 fi
 
+cat > "$EMBED_SMOKE_DIR/review_input.ls" <<'EOF'
+(defn main [] (let [x 42] 0))
+EOF
+
+REVIEW_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && "$LSHARP_BIN" review review_input.ls)"
+if [[ "$REVIEW_OUTPUT" != *"unused-let"* ]] || [[ "$REVIEW_OUTPUT" != *"diagnostics:1,first-body:let binding x is not used"* ]] || [[ "$REVIEW_OUTPUT" != *"warning"* ]] || [[ "$REVIEW_OUTPUT" != *"L0001@1:1"* ]]; then
+  echo "ERROR: embedded review output mismatch"
+  echo "$REVIEW_OUTPUT"
+  exit 1
+fi
+
+DOC_ACK_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && "$LSHARP_BIN" doc-ack review_input.ls)"
+if [[ "$DOC_ACK_OUTPUT" != *"ack:recorded"* ]] || [[ "$DOC_ACK_OUTPUT" != *"module-global"* ]] || [[ "$DOC_ACK_OUTPUT" != *"functions:1,types:0,first-fn:main"* ]] || [[ "$DOC_ACK_OUTPUT" != *"Doc-Reviewed-By: anonymous"* ]]; then
+  echo "ERROR: embedded doc-ack output mismatch"
+  echo "$DOC_ACK_OUTPUT"
+  exit 1
+fi
+
+DOC_CHECK_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && "$LSHARP_BIN" doc-check review_input.ls)"
+if [[ "$DOC_CHECK_OUTPUT" != *"status:ok"* ]] || [[ "$DOC_CHECK_OUTPUT" != *"module-global"* ]] || [[ "$DOC_CHECK_OUTPUT" != *"functions:1,types:0,first-fn:main"* ]] || [[ "$DOC_CHECK_OUTPUT" != *"Doc-Review-Status: Passed"* ]] || [[ "$DOC_CHECK_OUTPUT" != *"Doc-Reviewed-By: anonymous"* ]]; then
+  echo "ERROR: embedded doc-check output mismatch"
+  echo "$DOC_CHECK_OUTPUT"
+  exit 1
+fi
+
 FMT_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && "$LSHARP_BIN" fmt smoke_input.ls)"
 if [[ "$FMT_OUTPUT" != "$(cat "$EMBED_SMOKE_INPUT")" ]]; then
   echo "ERROR: embedded fmt output mismatch"
@@ -89,7 +147,7 @@ if [[ "$DISABLE_PARSE_OUTPUT" != *"LSHARP_PATH"* ]]; then
   exit 1
 fi
 
-"$LSHARP_BIN" compile selfhost/src/App/EmbeddedCli.ls -o "$EMBED_COMPONENT_ARTIFACT"
+LSHARP_DISABLE_EMBEDDED_COMPONENT=1 "$LSHARP_BIN" compile selfhost/src/App/EmbeddedCli.ls -o "$EMBED_COMPONENT_ARTIFACT"
 if [[ ! -s "$EMBED_COMPONENT_ARTIFACT" ]]; then
   echo "ERROR: selfhost embedded component artifact empty: $EMBED_COMPONENT_ARTIFACT"
   exit 1

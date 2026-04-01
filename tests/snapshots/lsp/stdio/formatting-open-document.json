@@ -1,0 +1,1 @@
+[{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":16}},{"jsonrpc":"2.0","id":69,"result":[[1,1,1,17,"(defn main [] 1)\n"]]}]
