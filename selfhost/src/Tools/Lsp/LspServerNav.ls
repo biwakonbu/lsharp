@@ -397,6 +397,58 @@
 (defn lsp-append-defn-completions [src prefix]
   (lsp-append-defn-completions-loop src 0 (string-length src) prefix (vector-new 8)))
 
+(defn lsp-completion-item-label [item]
+  (vector-get item 0))
+
+(defn lsp-completion-has-label-loop [items label idx len]
+  (if (>= idx len)
+    0
+    (if (string-eq (lsp-completion-item-label (vector-get items idx)) label)
+      1
+      (lsp-completion-has-label-loop items label (+ idx 1) len))))
+
+(defn lsp-completion-push-unique [items item]
+  (if (= (lsp-completion-has-label-loop items (lsp-completion-item-label item) 0 (vector-length items)) 1)
+    items
+    (vector-push items item)))
+
+(defn lsp-merge-completion-items-loop [items extra idx len]
+  (if (>= idx len)
+    items
+    (lsp-merge-completion-items-loop
+      (lsp-completion-push-unique items (vector-get extra idx))
+      extra
+      (+ idx 1)
+      len)))
+
+(defn lsp-merge-completion-items [items extra]
+  (lsp-merge-completion-items-loop items extra 0 (vector-length extra)))
+
+(defn lsp-append-open-doc-completions-loop [state current-uri prefix idx count items]
+  (if (>= idx count)
+    items
+    (let [target-uri (vector-get (server-state-uri-list state) idx)]
+      (if (= target-uri current-uri)
+        (lsp-append-open-doc-completions-loop state current-uri prefix (+ idx 1) count items)
+        (let [target-src (server-state-source-for-uri state target-uri)
+          target-items (lsp-append-defn-completions target-src prefix)]
+          (lsp-append-open-doc-completions-loop
+            state
+            current-uri
+            prefix
+            (+ idx 1)
+            count
+            (lsp-merge-completion-items items target-items)))))))
+
+(defn lsp-append-open-doc-completions [state current-uri prefix items]
+  (lsp-append-open-doc-completions-loop
+    state
+    current-uri
+    prefix
+    0
+    (vector-length (server-state-uri-list state))
+    items))
+
 (defn lsp-ensure-trailing-newline [src]
   (let [len (string-length src)]
     (if (= len 0)
@@ -588,6 +640,7 @@
       (if (> (string-length src) 0)
         (let [prefix (lsp-prefix-at src line col)
           items (lsp-append-defn-completions src prefix)
+          items (lsp-append-open-doc-completions state (lsp-nav-uri params) prefix items)
           items (lsp-append-keyword-completions prefix items)]
           items)
         (let [items (vector-new 7)

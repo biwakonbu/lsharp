@@ -1,4 +1,5 @@
 use super::support::*;
+use serde_json::Value;
 use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::hash::{Hash, Hasher};
 
@@ -25,7 +26,7 @@ fn validate_wasm_detailed(wasm: &[u8]) -> Result<(), String> {
 // =============================================================================
 
 /// Wasm バイナリからセクション ID とサイズの列を抽出するヘルパー
-fn extract_sections(wasm: &[u8]) -> Vec<(u8, usize)> {
+pub(crate) fn extract_sections(wasm: &[u8]) -> Vec<(u8, usize)> {
     let mut sections = Vec::new();
     let mut pos = 8; // magic(4) + version(4)
     while pos < wasm.len() {
@@ -52,7 +53,7 @@ fn extract_sections(wasm: &[u8]) -> Vec<(u8, usize)> {
 }
 
 /// 指定セクション ID のバイト列を抽出するヘルパー
-fn extract_section_bytes(wasm: &[u8], target_id: u8) -> Option<Vec<u8>> {
+pub(crate) fn extract_section_bytes(wasm: &[u8], target_id: u8) -> Option<Vec<u8>> {
     let mut pos = 8;
     while pos < wasm.len() {
         let section_id = wasm[pos];
@@ -77,6 +78,112 @@ fn extract_section_bytes(wasm: &[u8], target_id: u8) -> Option<Vec<u8>> {
         pos += size;
     }
     None
+}
+
+pub(crate) struct BootstrapDiffArtifactFixture<'a> {
+    pub(crate) artifact_id: &'a str,
+    pub(crate) test_name: &'a str,
+    pub(crate) left_key: &'a str,
+    pub(crate) right_key: &'a str,
+    pub(crate) left_label: &'a str,
+    pub(crate) right_label: &'a str,
+    pub(crate) left_wasm: Option<&'a [u8]>,
+    pub(crate) right_wasm: Option<&'a [u8]>,
+    pub(crate) diff_report: &'a str,
+    pub(crate) metadata: Value,
+    pub(crate) left_sections: Option<Value>,
+    pub(crate) right_sections: Option<Value>,
+    pub(crate) left_export: Option<&'a [u8]>,
+    pub(crate) right_export: Option<&'a [u8]>,
+    pub(crate) left_data: Option<&'a [u8]>,
+    pub(crate) right_data: Option<&'a [u8]>,
+}
+
+pub(crate) fn bootstrap_diff_artifact_id() -> String {
+    std::env::var("BOOTSTRAP_DIFF_ARTIFACT_ID")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            std::env::var("GITHUB_SHA")
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .unwrap_or_else(|| "local".to_string())
+}
+
+fn write_optional_bytes(path: &std::path::Path, bytes: Option<&[u8]>) {
+    if let Some(bytes) = bytes {
+        std::fs::write(path, bytes)
+            .unwrap_or_else(|e| panic!("bootstrap diff artifact 書き込み失敗 {}: {}", path.display(), e));
+    }
+}
+
+fn write_optional_json(path: &std::path::Path, json: Option<&Value>) {
+    if let Some(json) = json {
+        std::fs::write(
+            path,
+            serde_json::to_vec_pretty(json).expect("bootstrap diff JSON serialize に失敗"),
+        )
+        .unwrap_or_else(|e| panic!("bootstrap diff JSON 書き込み失敗 {}: {}", path.display(), e));
+    }
+}
+
+pub(crate) fn write_bootstrap_diff_artifact(
+    fixture: &BootstrapDiffArtifactFixture<'_>,
+) -> std::path::PathBuf {
+    let artifact_root = selfhost_project_root()
+        .join("ci-artifacts/bootstrap-diff")
+        .join(fixture.artifact_id);
+    std::fs::create_dir_all(&artifact_root)
+        .unwrap_or_else(|e| panic!("artifact ディレクトリ作成に失敗 {}: {}", artifact_root.display(), e));
+
+    std::fs::write(artifact_root.join("diff-report.txt"), fixture.diff_report)
+        .unwrap_or_else(|e| panic!("diff-report.txt 書き込み失敗: {e}"));
+    let mut metadata = fixture.metadata.clone();
+    if metadata.get("test_name").is_none() {
+        metadata["test_name"] = Value::String(fixture.test_name.to_string());
+    }
+
+    std::fs::write(
+        artifact_root.join("metadata.json"),
+        serde_json::to_vec_pretty(&metadata).expect("metadata.json serialize に失敗"),
+    )
+    .unwrap_or_else(|e| panic!("metadata.json 書き込み失敗: {e}"));
+
+    write_optional_bytes(
+        &artifact_root.join(format!("{}.wasm", fixture.left_label)),
+        fixture.left_wasm,
+    );
+    write_optional_bytes(
+        &artifact_root.join(format!("{}.wasm", fixture.right_label)),
+        fixture.right_wasm,
+    );
+    write_optional_json(
+        &artifact_root.join(format!("sections_{}.json", fixture.left_key)),
+        fixture.left_sections.as_ref(),
+    );
+    write_optional_json(
+        &artifact_root.join(format!("sections_{}.json", fixture.right_key)),
+        fixture.right_sections.as_ref(),
+    );
+    write_optional_bytes(
+        &artifact_root.join(format!("export_{}.bin", fixture.left_key)),
+        fixture.left_export,
+    );
+    write_optional_bytes(
+        &artifact_root.join(format!("export_{}.bin", fixture.right_key)),
+        fixture.right_export,
+    );
+    write_optional_bytes(
+        &artifact_root.join(format!("data_{}.bin", fixture.left_key)),
+        fixture.left_data,
+    );
+    write_optional_bytes(
+        &artifact_root.join(format!("data_{}.bin", fixture.right_key)),
+        fixture.right_data,
+    );
+
+    artifact_root
 }
 
 fn imported_function_count(wasm: &[u8]) -> u32 {
@@ -286,10 +393,18 @@ fn local_bound_violations(wasm: &[u8]) -> Vec<String> {
 }
 
 /// バイト列のハッシュフィンガープリントを計算するヘルパー
-fn hash_fingerprint(data: &[u8]) -> u64 {
+pub(crate) fn hash_fingerprint(data: &[u8]) -> u64 {
     let mut hasher = DefaultHasher::new();
     data.hash(&mut hasher);
     hasher.finish()
+}
+
+fn layer_status_name(matches: bool) -> &'static str {
+    if matches { "match" } else { "mismatch" }
+}
+
+fn format_layer_line(name: &str, detail: String) -> String {
+    format!("{name:<18}{detail}")
 }
 
 fn exported_memory<T>(caller: &mut wasmtime::Caller<'_, T>) -> wasmtime::Memory {
@@ -1134,6 +1249,7 @@ pub(crate) fn run_wasm_with_six_imports_compiler_mode_fs(
 #[test]
 fn test_e2e_bootstrap_four_layer_comparison() {
     let main_path = selfhost_main_path();
+    let artifact_id = bootstrap_diff_artifact_id();
 
     // stage0 (Rust) で selfhost/src/App/Main.ls を 2 回コンパイル
     let wasm_a = compile_file_only(&main_path);
@@ -1142,17 +1258,130 @@ fn test_e2e_bootstrap_four_layer_comparison() {
     // レイヤー 1: ハッシュフィンガープリント比較
     let hash_a = hash_fingerprint(&wasm_a);
     let hash_b = hash_fingerprint(&wasm_b);
-    assert_eq!(
-        hash_a, hash_b,
-        "レイヤー1: ハッシュフィンガープリント不一致 — {:#018x} vs {:#018x}",
-        hash_a, hash_b
-    );
+    let hash_match = hash_a == hash_b;
 
     // レイヤー 2: Export セクション (ID=7) のシンボル比較
     let export_a =
         extract_section_bytes(&wasm_a, 7).expect("wasm_a に Export セクションが見つからない");
     let export_b =
         extract_section_bytes(&wasm_b, 7).expect("wasm_b に Export セクションが見つからない");
+    let export_match = export_a == export_b;
+    assert!(!export_a.is_empty(), "Export セクションが空");
+
+    // レイヤー 3: Data セクション (ID=11) のバイト列比較
+    // Data セクションが存在しない場合は両方 None で一致とする
+    let data_a = extract_section_bytes(&wasm_a, 11);
+    let data_b = extract_section_bytes(&wasm_b, 11);
+    let data_match = data_a == data_b;
+
+    // レイヤー 4: 診断カウント比較
+    // コンパイル成功 = 診断 0。try_compile_file_only でエラーを検出可能。
+    let diag_a = try_compile_file_only(&main_path).is_ok();
+    let diag_b = try_compile_file_only(&main_path).is_ok();
+    let diag_match = diag_a == diag_b;
+    assert!(diag_a, "コンパイルが失敗した（診断あり）");
+
+    // 追加検証: raw bytes が完全一致
+    let bytes_match = wasm_a == wasm_b;
+
+    // 追加検証: セクション構造の安定性
+    let sections_a = extract_sections(&wasm_a);
+    let sections_b = extract_sections(&wasm_b);
+    let sections_match = sections_a == sections_b;
+
+    let timestamp = "1970-01-01T00:00:00Z";
+    let data_line = match (&data_a, &data_b) {
+        (None, None) => "ABSENT".to_string(),
+        (Some(left), Some(right)) if data_match => {
+            format!("MATCH ({} bytes vs {} bytes)", left.len(), right.len())
+        }
+        (Some(left), Some(right)) => {
+            format!("MISMATCH ({} bytes vs {} bytes)", left.len(), right.len())
+        }
+        (Some(left), None) => format!("MISMATCH ({} bytes vs absent)", left.len()),
+        (None, Some(right)) => format!("MISMATCH (absent vs {} bytes)", right.len()),
+    };
+    let diff_report = [
+        "Bootstrap Diff Report".to_string(),
+        "=====================".to_string(),
+        format!("commit: {artifact_id}"),
+        format!("timestamp: {timestamp}"),
+        "test: test_e2e_bootstrap_four_layer_comparison".to_string(),
+        String::new(),
+        format_layer_line(
+            "Layer 1 (hash):",
+            if hash_match {
+                format!("MATCH ({:#018x} vs {:#018x})", hash_a, hash_b)
+            } else {
+                format!("MISMATCH ({:#018x} vs {:#018x})", hash_a, hash_b)
+            },
+        ),
+        format_layer_line(
+            "Layer 2 (export):",
+            if export_match {
+                format!("MATCH ({} bytes vs {} bytes)", export_a.len(), export_b.len())
+            } else {
+                format!("MISMATCH ({} bytes vs {} bytes)", export_a.len(), export_b.len())
+            },
+        ),
+        format_layer_line("Layer 3 (data):", data_line),
+        format_layer_line(
+            "Layer 4 (diag):",
+            if diag_match {
+                format!("MATCH ({} vs {})", i32::from(!diag_a), i32::from(!diag_b))
+            } else {
+                format!("MISMATCH ({} vs {})", i32::from(!diag_a), i32::from(!diag_b))
+            },
+        ),
+        String::new(),
+        format!("stage1_a.wasm: {} bytes", wasm_a.len()),
+        format!("stage1_b.wasm: {} bytes", wasm_b.len()),
+        format!("raw-bytes-match: {bytes_match}"),
+        format!("sections-match: {sections_match}"),
+        String::new(),
+    ]
+    .join("\n");
+
+    let metadata = serde_json::json!({
+        "commit_sha": artifact_id,
+        "timestamp": timestamp,
+        "test_name": "test_e2e_bootstrap_four_layer_comparison",
+        "stage1_a_size": wasm_a.len(),
+        "stage1_b_size": wasm_b.len(),
+        "layers": {
+            "hash": layer_status_name(hash_match),
+            "export": layer_status_name(export_match),
+            "data": layer_status_name(data_match),
+            "diagnostics": layer_status_name(diag_match)
+        },
+        "raw_bytes": layer_status_name(bytes_match),
+        "sections": layer_status_name(sections_match)
+    });
+
+    write_bootstrap_diff_artifact(&BootstrapDiffArtifactFixture {
+        artifact_id: &artifact_id,
+        test_name: "test_e2e_bootstrap_four_layer_comparison",
+        left_key: "a",
+        right_key: "b",
+        left_label: "stage1_a",
+        right_label: "stage1_b",
+        left_wasm: Some(&wasm_a),
+        right_wasm: Some(&wasm_b),
+        diff_report: &diff_report,
+        metadata,
+        left_sections: Some(serde_json::json!(sections_a)),
+        right_sections: Some(serde_json::json!(sections_b)),
+        left_export: Some(&export_a),
+        right_export: Some(&export_b),
+        left_data: data_a.as_deref(),
+        right_data: data_b.as_deref(),
+    });
+
+    assert_eq!(
+        hash_a, hash_b,
+        "レイヤー1: ハッシュフィンガープリント不一致 — {:#018x} vs {:#018x}",
+        hash_a, hash_b
+    );
     assert_eq!(
         export_a,
         export_b,
@@ -1160,12 +1389,6 @@ fn test_e2e_bootstrap_four_layer_comparison() {
         export_a.len(),
         export_b.len()
     );
-    assert!(!export_a.is_empty(), "Export セクションが空");
-
-    // レイヤー 3: Data セクション (ID=11) のバイト列比較
-    // Data セクションが存在しない場合は両方 None で一致とする
-    let data_a = extract_section_bytes(&wasm_a, 11);
-    let data_b = extract_section_bytes(&wasm_b, 11);
     assert_eq!(
         data_a,
         data_b,
@@ -1173,19 +1396,11 @@ fn test_e2e_bootstrap_four_layer_comparison() {
         data_a.as_ref().map(|d| d.len()),
         data_b.as_ref().map(|d| d.len())
     );
-
-    // レイヤー 4: 診断カウント比較
-    // コンパイル成功 = 診断 0。try_compile_file_only でエラーを検出可能。
-    let diag_a = try_compile_file_only(&main_path).is_ok();
-    let diag_b = try_compile_file_only(&main_path).is_ok();
     assert_eq!(
         diag_a, diag_b,
         "レイヤー4: 診断結果不一致 — {} vs {}",
         diag_a, diag_b
     );
-    assert!(diag_a, "コンパイルが失敗した（診断あり）");
-
-    // 追加検証: raw bytes が完全一致
     assert_eq!(
         wasm_a,
         wasm_b,
@@ -1193,11 +1408,82 @@ fn test_e2e_bootstrap_four_layer_comparison() {
         wasm_a.len(),
         wasm_b.len()
     );
-
-    // 追加検証: セクション構造の安定性
-    let sections_a = extract_sections(&wasm_a);
-    let sections_b = extract_sections(&wasm_b);
     assert_eq!(sections_a, sections_b, "セクション構造不一致");
+}
+
+#[test]
+fn test_bootstrap_diff_artifact_writes_readable_local_report() {
+    let artifact_id = "test-local-artifact";
+    let artifact_root = selfhost_project_root()
+        .join("ci-artifacts/bootstrap-diff")
+        .join(artifact_id);
+    if artifact_root.exists() {
+        std::fs::remove_dir_all(&artifact_root)
+            .unwrap_or_else(|e| panic!("artifact 事前掃除に失敗 {}: {}", artifact_root.display(), e));
+    }
+
+    let fixture = BootstrapDiffArtifactFixture {
+        artifact_id,
+        test_name: "test_e2e_bootstrap_four_layer_comparison",
+        left_key: "a",
+        right_key: "b",
+        left_label: "stage1_a",
+        right_label: "stage1_b",
+        left_wasm: Some(b"\0asm\x01\0\0\0"),
+        right_wasm: Some(b"\0asm\x01\0\0\0\x01"),
+        diff_report: "Bootstrap Diff Report\nLayer 1 (hash): MISMATCH\n",
+        metadata: serde_json::json!({
+            "commit_sha": artifact_id,
+            "test_name": "test_e2e_bootstrap_four_layer_comparison",
+            "layers": {
+                "hash": "mismatch"
+            }
+        }),
+        left_sections: Some(serde_json::json!([[1, 2]])),
+        right_sections: Some(serde_json::json!([[1, 3]])),
+        left_export: Some(&[0x01, 0x02]),
+        right_export: Some(&[0x03, 0x04]),
+        left_data: None,
+        right_data: Some(&[0x09]),
+    };
+
+    let written_dir = write_bootstrap_diff_artifact(&fixture);
+    assert_eq!(written_dir, artifact_root);
+    assert!(written_dir.join("diff-report.txt").is_file());
+    assert!(written_dir.join("metadata.json").is_file());
+    assert!(written_dir.join("stage1_a.wasm").is_file());
+    assert!(written_dir.join("stage1_b.wasm").is_file());
+    assert!(written_dir.join("sections_a.json").is_file());
+    assert!(written_dir.join("sections_b.json").is_file());
+    assert!(written_dir.join("export_a.bin").is_file());
+    assert!(written_dir.join("export_b.bin").is_file());
+    assert!(!written_dir.join("data_a.bin").exists());
+    assert!(written_dir.join("data_b.bin").is_file());
+
+    let report = std::fs::read_to_string(written_dir.join("diff-report.txt"))
+        .expect("diff-report.txt の読み込みに失敗");
+    assert!(
+        report.contains("Bootstrap Diff Report"),
+        "diff-report.txt は人間可読ヘッダを持つこと"
+    );
+    assert!(
+        report.contains("Layer 1 (hash): MISMATCH"),
+        "diff-report.txt はレイヤー要約を含むこと"
+    );
+
+    let metadata: Value = serde_json::from_str(
+        &std::fs::read_to_string(written_dir.join("metadata.json"))
+            .expect("metadata.json の読み込みに失敗"),
+    )
+    .expect("metadata.json は JSON であること");
+    assert_eq!(metadata["commit_sha"], artifact_id);
+    assert_eq!(
+        metadata["test_name"],
+        "test_e2e_bootstrap_four_layer_comparison"
+    );
+
+    std::fs::remove_dir_all(&artifact_root)
+        .unwrap_or_else(|e| panic!("artifact 後掃除に失敗 {}: {}", artifact_root.display(), e));
 }
 
 /// BOOT-04: ステージチェーン検証テスト

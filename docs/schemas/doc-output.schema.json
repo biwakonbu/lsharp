@@ -2,18 +2,52 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "L# Documentation Output",
   "type": "object",
-  "required": ["module", "public_functions", "types", "html"],
+  "required": ["module", "functions", "types", "html"],
   "properties": {
     "module": { "type": "string" },
-    "public_functions": { "type": "integer" },
-    "types": { "type": "integer" },
+    "functions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "arity"],
+        "properties": {
+          "name": { "type": "string" },
+          "arity": { "type": "integer" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "types": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "kind"],
+        "properties": {
+          "name": { "type": "string" },
+          "kind": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
     "html": {
       "type": "object",
       "required": ["title", "sections"],
       "properties": {
         "title": { "type": "string" },
-        "sections": { "type": "integer" }
-      }
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "count"],
+            "properties": {
+              "id": { "type": "string", "enum": ["functions", "types"] },
+              "count": { "type": "integer" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

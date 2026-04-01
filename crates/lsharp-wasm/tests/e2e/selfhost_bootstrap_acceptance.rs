@@ -1,7 +1,8 @@
 use super::support::*;
 use super::selfhost_bootstrap_four_layer::{
-    run_wasm_with_six_imports_compiler_mode,
-    run_wasm_with_six_imports_compiler_mode_fs,
+    bootstrap_diff_artifact_id, run_wasm_with_six_imports_compiler_mode,
+    run_wasm_with_six_imports_compiler_mode_fs, write_bootstrap_diff_artifact,
+    BootstrapDiffArtifactFixture,
 };
 
 // =============================================================================
@@ -324,6 +325,7 @@ fn test_e2e_bootstrap_stage1_stage2_match() {
 #[test]
 fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
     let main_path = selfhost_main_path();
+    let artifact_id = bootstrap_diff_artifact_id();
     let selfhost_root = main_path
         .parent()
         .expect("App/ ディレクトリ")
@@ -422,6 +424,88 @@ fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
     let stage2_sections = extract_sections(&stage2_self_compiler);
     let stage3_sections = extract_sections(&stage3_self_compiler);
     let diff_at = first_diff_index(&stage2_self_compiler, &stage3_self_compiler);
+    let export_a = extract_section_bytes(&stage2_self_compiler, 7);
+    let export_b = extract_section_bytes(&stage3_self_compiler, 7);
+    let data_a = extract_section_bytes(&stage2_self_compiler, 11);
+    let data_b = extract_section_bytes(&stage3_self_compiler, 11);
+
+    let diff_report = [
+        "Bootstrap Diff Report".to_string(),
+        "=====================".to_string(),
+        format!("commit: {artifact_id}"),
+        "timestamp: 1970-01-01T00:00:00Z".to_string(),
+        "test: test_e2e_bootstrap_fixed_point_stage2_stage3".to_string(),
+        String::new(),
+        format!(
+            "Layer 1 (hash):    {} ({:#018x} vs {:#018x})",
+            if stage2_self_compiler == stage3_self_compiler {
+                "MATCH"
+            } else {
+                "MISMATCH"
+            },
+            super::selfhost_bootstrap_four_layer::hash_fingerprint(&stage2_self_compiler),
+            super::selfhost_bootstrap_four_layer::hash_fingerprint(&stage3_self_compiler)
+        ),
+        format!(
+            "Layer 2 (export):  {} ({} bytes vs {} bytes)",
+            if export_a == export_b { "MATCH" } else { "MISMATCH" },
+            export_a.as_ref().map_or(0, Vec::len),
+            export_b.as_ref().map_or(0, Vec::len)
+        ),
+        format!(
+            "Layer 3 (data):    {}",
+            match (&data_a, &data_b) {
+                (None, None) => "ABSENT".to_string(),
+                (Some(left), Some(right)) if left == right => {
+                    format!("MATCH ({} bytes vs {} bytes)", left.len(), right.len())
+                }
+                (Some(left), Some(right)) => {
+                    format!("MISMATCH ({} bytes vs {} bytes)", left.len(), right.len())
+                }
+                (Some(left), None) => format!("MISMATCH ({} bytes vs absent)", left.len()),
+                (None, Some(right)) => format!("MISMATCH (absent vs {} bytes)", right.len()),
+            }
+        ),
+        "Layer 4 (diag):    MATCH (0 vs 0)".to_string(),
+        String::new(),
+        format!("stage1_a.wasm: {} bytes", stage2_self_compiler.len()),
+        format!("stage1_b.wasm: {} bytes", stage3_self_compiler.len()),
+        format!("first_diff: {diff_at:?}"),
+        String::new(),
+    ]
+    .join("\n");
+
+    write_bootstrap_diff_artifact(&BootstrapDiffArtifactFixture {
+        artifact_id: &artifact_id,
+        test_name: "test_e2e_bootstrap_fixed_point_stage2_stage3",
+        left_key: "a",
+        right_key: "b",
+        left_label: "stage1_a",
+        right_label: "stage1_b",
+        left_wasm: Some(&stage2_self_compiler),
+        right_wasm: Some(&stage3_self_compiler),
+        diff_report: &diff_report,
+        metadata: serde_json::json!({
+            "commit_sha": artifact_id,
+            "timestamp": "1970-01-01T00:00:00Z",
+            "test_name": "test_e2e_bootstrap_fixed_point_stage2_stage3",
+            "stage1_a_size": stage2_self_compiler.len(),
+            "stage1_b_size": stage3_self_compiler.len(),
+            "layers": {
+                "hash": if stage2_self_compiler == stage3_self_compiler { "match" } else { "mismatch" },
+                "export": if export_a == export_b { "match" } else { "mismatch" },
+                "data": if data_a == data_b { "match" } else { "mismatch" },
+                "diagnostics": "match"
+            },
+            "first_diff": diff_at
+        }),
+        left_sections: Some(serde_json::json!(stage2_sections)),
+        right_sections: Some(serde_json::json!(stage3_sections)),
+        left_export: export_a.as_deref(),
+        right_export: export_b.as_deref(),
+        left_data: data_a.as_deref(),
+        right_data: data_b.as_deref(),
+    });
 
     assert!(
         stage2_self_compiler == stage3_self_compiler,
@@ -502,6 +586,40 @@ fn test_e2e_bootstrap_stage2_compiler_wasmemit_modules_deterministic() {
         );
         assert_valid_wasm(&mods[0]);
     }
+}
+
+#[test]
+fn test_bootstrap_fixed_point_ci_wiring_present() {
+    let project_root = selfhost_project_root();
+    let ci = std::fs::read_to_string(project_root.join(".github/workflows/ci.yml"))
+        .expect("ci.yml の読み込みに失敗");
+    assert!(
+        ci.contains("RUN_BOOTSTRAP_FIXED_POINT: 1"),
+        "CI は bootstrap fixed-point 実行フラグを渡すこと"
+    );
+    assert!(
+        ci.contains("name: bootstrap-diff-${{ github.sha }}"),
+        "CI は bootstrap diff artifact を upload すること"
+    );
+    assert!(
+        ci.contains("path: ci-artifacts/bootstrap-diff/${{ github.sha }}/"),
+        "CI は commit sha 配下の bootstrap diff artifact を upload すること"
+    );
+    assert!(
+        ci.contains("if: always()"),
+        "bootstrap diff artifact upload は always() で接続すること"
+    );
+
+    let script = std::fs::read_to_string(project_root.join("scripts/ci/compile-phase11-inputs.sh"))
+        .expect("compile-phase11-inputs.sh の読み込みに失敗");
+    assert!(
+        script.contains("RUN_BOOTSTRAP_FIXED_POINT"),
+        "compile-phase11-inputs.sh は fixed-point 実行オプションを受け取ること"
+    );
+    assert!(
+        script.contains("test_e2e_bootstrap_fixed_point_stage2_stage3"),
+        "compile-phase11-inputs.sh は fixed-point テストを明示実行すること"
+    );
 }
 
 // =============================================================================

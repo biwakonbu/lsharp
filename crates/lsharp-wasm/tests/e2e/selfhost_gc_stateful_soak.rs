@@ -416,3 +416,78 @@ fn test_e2e_gc_lsp_actual_stdio_repeated_sequence_soak() {
         "actual stdio soak は長寿命 session でも各 frame を決定的に返すべき"
     );
 }
+
+// ============================================================
+// CP-04: 複数回 didChange 後の hover state 整合性
+// ============================================================
+
+/// 20 回 didChange した後の hover が最新ソースを反映すること (harness)
+#[test]
+fn test_e2e_lsp_stability_many_changes_then_hover_harness() {
+    // 20 回 source を差し替えた後、最後のバージョンの defn 名が hover で返ること
+    let final_source = "(defn final-version [] 42)";
+    let final_col = final_source.find("final-version").expect("final-version") + 1;
+    // ループで open-document を 20 回呼び出し
+    let mut change_exprs = String::new();
+    for i in 0..20 {
+        change_exprs.push_str(&format!(
+            "        _ (server-state-open-document state 100 \"(defn version-{} [] {})\")\n",
+            i, i
+        ));
+    }
+    let harness = format!(
+        r#"
+(defn main []
+  (let [state (server-state-new)
+{change_exprs}        _ (server-state-open-document state 100 "{final_source}")
+        params (vector-push (vector-push (vector-push (vector-new 3) 100) 1) {final_col})
+        result (handle-hover params state)]
+    (do
+      (print-string (vector-get result 1))
+      0)))
+"#,
+    );
+
+    let lines = run_stateful_lsp_harness(&harness);
+    assert!(
+        lines.iter().any(|l| l.contains("final-version")),
+        "20 回 change 後の hover は final-version を反映すべき: {:?}",
+        lines
+    );
+}
+
+/// 複数ドキュメント open/reopen 後の cross-document resolution が正しいこと (harness)
+#[test]
+fn test_e2e_lsp_stability_multi_document_churn_harness() {
+    // 5 document を open → 3 つを別内容で reopen → cross-document hover が最新を反映
+    let helper_final = "(module Helpers.Final) (defn churn-result [] 99)";
+    let main_src = "(module App.Main) (import Helpers.Final) (defn main [] (churn-result))";
+    let main_col = main_src.find("(churn-result)").expect("churn-result") + 2;
+    let harness = format!(
+        r#"
+(defn main []
+  (let [state (server-state-new)
+        _ (server-state-open-document state 300 "(module Helpers.A) (defn a [] 1)")
+        _ (server-state-open-document state 301 "(module Helpers.B) (defn b [] 2)")
+        _ (server-state-open-document state 302 "(module Helpers.C) (defn c [] 3)")
+        _ (server-state-open-document state 303 "(module Helpers.D) (defn d [] 4)")
+        _ (server-state-open-document state 304 "{helper_final}")
+        _ (server-state-open-document state 300 "(module Helpers.A2) (defn a2 [] 10)")
+        _ (server-state-open-document state 301 "(module Helpers.B2) (defn b2 [] 20)")
+        _ (server-state-open-document state 302 "(module Helpers.C2) (defn c2 [] 30)")
+        _ (server-state-open-document state 200 "{main_src}")
+        params (vector-push (vector-push (vector-push (vector-new 3) 200) 1) {main_col})
+        result (handle-hover params state)]
+    (do
+      (print-string (vector-get result 1))
+      0)))
+"#,
+    );
+
+    let lines = run_stateful_lsp_harness(&harness);
+    assert!(
+        lines.iter().any(|l| l.contains("churn-result")),
+        "multi-document churn 後も cross-document hover は churn-result を解決すべき: {:?}",
+        lines
+    );
+}

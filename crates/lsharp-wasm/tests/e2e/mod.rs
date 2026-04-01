@@ -6,6 +6,7 @@ mod file_io_selfhost_compiler_ir;
 mod runtime_allocator_closures;
 mod selfhost_bootstrap_contracts;
 mod selfhost_bootstrap_four_layer;
+mod selfhost_cli_actual_main_args;
 mod selfhost_cli_core;
 mod selfhost_doctools_cli_diagnostics;
 mod selfhost_formatter_source_roundtrip;

@@ -24,7 +24,8 @@ echo ""
 # 1. TODO.md の [x] 項目にエビデンスがあるか確認 (P11-1d: エビデンス紐付け)
 # =============================================================================
 echo "--- [仕様差分] TODO.md: 完了表示のエビデンス確認 ---"
-EVIDENCE_PATTERN='(test_|ADR-|\.rs|\.ls|TASK-|docs/|TODO\.md|compatibility-matrix|RESEARCH|lsharp-lsp|JsonRpc|E2E [0-9]+件|ユニットテスト|棚卸し完了|[0-9]+ 区分|仕様固定|scripts/|smoke|gap-classification|gate|紐付け)'
+FILE_EVIDENCE_PATTERN='[A-Za-z0-9_./-]+\.(rs|ls|md|json|lua|yml|yaml|toml)'
+EVIDENCE_PATTERN="(test_|ADR-|${FILE_EVIDENCE_PATTERN}|TASK-|docs/|TODO\.md|compatibility-matrix|RESEARCH|lsharp-lsp|JsonRpc|E2E [0-9]+件|ユニットテスト|棚卸し完了|[0-9]+ 区分|仕様固定|scripts/|smoke|gap-classification|gate|紐付け)"
 NO_EVIDENCE=0
 while IFS= read -r line; do
     if echo "$line" | grep -q '^\- \[x\]' && ! echo "$line" | grep -qE "$EVIDENCE_PATTERN"; then

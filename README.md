@@ -1,12 +1,12 @@
 # L# (lsharp)
 
-L# は **Lisp の S 式構文**、**F# 系の型指向**、そして **L# 独自の型 / メタデータ設計** を組み合わせたプログラミング言語です。現在の公開ターゲットは WebAssembly/WASI で、同じ frontend / IR を基準に native backend と selfhost toolchain も並走で育てています。
+L# は **Lisp の S 式構文**、**F# 系の型指向**、そして **L# 独自の型 / メタデータ設計** を組み合わせたプログラミング言語です。現在の公開ターゲットは WebAssembly/WASI 系で、配布は **Rust 製 host launcher + 埋め込み selfhost guest component** を前提に整理しています。
 
 - 構文は Lisp 的に小さく保つ
 - 型は Hindley-Milner を土台に強く保つ
 - さらに trait、制約付き型、metadata、計算式などで「型に意味を持たせる」方向を探る
 
-> 現在の通常導線は Rust 製 `lsharp` バイナリによる `compile` / `test` / `lsp` / `mcp-server` です。native backend と selfhost default path は移行中で、`LSHARP_PATH` を使うと外部 compiler / 配布物への委譲を試せます。
+> 現在の通常導線は Rust 製 `lsharp` host launcher による `compile` / `test` / `lsp` / `mcp-server` です。`LSHARP_PATH` を使うと、埋め込み guest component の代わりに外部 compiler / 配布物への process-entry delegation を試せます。
 
 ## Core Language
 
@@ -61,7 +61,7 @@ target/debug/lsharp mcp-server
 
 公開 CLI は `compile` を中心に整理しており、`parse` / `check` / `fmt` は LSP / MCP の内部 API として扱います。AST・型情報・formatting の詳細確認は、CLI を直叩きする代わりに `lsharp lsp` / `lsharp mcp-server` を経由する想定です。
 
-移行中の外部 compiler / native 配布物への委譲を試す場合は、`LSHARP_PATH` を使います。
+既定では `lsharp` host launcher が build-time に埋め込んだ guest component を使います。外部 compiler / 配布物への委譲を試す場合は、`LSHARP_PATH` を使います。
 
 ```bash
 LSHARP_PATH=/path/to/lsharp target/debug/lsharp --version
@@ -106,29 +106,37 @@ L# source (.ls)
      - Types / Metadata / Constraints (crates/lsharp-types, selfhost/src/Types)
   -> Lowering / IR                    (crates/lsharp-ir, selfhost/src/IR)
   -> Codegen
-     - Wasm/WASI  (公開経路)          (crates/lsharp-wasm, selfhost/src/Backend/Wasm)
-     - Native/AOT (並走開発中)        (selfhost/src/Backend/Native)
-  -> Tooling
+     - `wasi-component` (default)     (crates/lsharp-wasm, selfhost/src/Backend/Wasm)
+     - `web-wasm`                     (Rust host fallback + browser-oriented core wasm)
+     - bootstrap core wasm            (`stageN.wasm` fixed-point 検証用)
+  -> Host launcher / distribution
+     - Rust host launcher             (crates/lsharp-driver, Wasmtime + host capabilities)
+     - Embedded guest component       (selfhost/src/App/EmbeddedCli.ls)
+  -> Tooling surface
      - CLI / docs / package           (crates/lsharp-driver, selfhost/src/App, selfhost/src/Tools)
      - LSP                            (crates/lsharp-lsp, selfhost/src/Tools/Lsp)
 ```
 
-`selfhost/src/**` が selfhost 側の canonical source root です。公開 CLI の default path はまだ主に Rust 実装ですが、`LSHARP_PATH` による process-entry delegation と parity 検証を進めています。
+`selfhost/src/**` が selfhost 側の canonical source root です。日常の `lsharp` 実行では Rust host launcher が capability を提供し、`parse` / `check` / `compile` / `build` / `test` / `review` / `doc-ack` / `doc-check` / `fmt` の default path は埋め込み guest component が担当します。`install` / `repl` / `lsp` / `doc` と `compile` / `build` の Rust-only fallback (`--emit-ir`, `web-wasm`, `native`) は host launcher 側に残ります。
 
 ## Build / Use Paths
 
 | 用途 | 現在の推奨経路 | 補足 |
 |------|----------------|------|
-| 日常開発・公開 CLI | `cargo build -p lsharp-driver` → `target/debug/lsharp compile ... -o out.wasm` | 現在の通常導線 |
+| 日常開発・公開 CLI | `cargo build -p lsharp-driver` → `target/debug/lsharp compile ... -o out.component.wasm` | `--target wasi-component` が既定。single-binary 配布では host launcher がこの guest component を内蔵する |
+| browser 向け core wasm | `target/debug/lsharp compile --target web-wasm ... -o out.wasm` | `web-wasm` は browser 向け core `.wasm`。現時点では host launcher の Rust fallback 経路が担う |
 | metadata test | `target/debug/lsharp test examples/metadata.ls` | `:example` / `:invariant` を自動検証 |
 | IDE / AI 連携 | `target/debug/lsharp lsp` / `target/debug/lsharp mcp-server` | LSP / MCP の入口 |
-| 外部 compiler / native 配布物の接続確認 | `LSHARP_PATH=/path/to/lsharp target/debug/lsharp --version` | default-path migration の検証導線 |
+| 外部 compiler / 配布物の接続確認 | `LSHARP_PATH=/path/to/lsharp target/debug/lsharp --version` | 埋め込み guest の代わりに external host launcher / Wasm artifact へ委譲できる |
 
 ## Current Status
 
 - **公開ターゲット**: Wasm/WASI
 - **安定寄りのコア**: HM 型推論、ADT、record、module、static trait dispatch、metadata-driven docs/tests
-- **並走開発 / 移行中**: native backend、selfhost cutover、AI / package ecosystem、高度な型機能の parity
+- **現在の配布モデル**: Rust host launcher + embedded guest component による single-binary distribution
+- **bootstrap の読み方**: `stage0 -> stage1 -> stage2 -> stage3` のうち、fixed-point の意味は `stage2.wasm == stage3.wasm`。最小 subset の `stage1 -> stage2` 実生成は確認済みだが、full input set の fixed-point は引き続き追跡中
+- **移行中**: selfhost cutover の残タスク、AI / package ecosystem、高度な型機能の parity
+- **deferred**: native backend の常用配布経路は Phase 13+ の探求項目として保持
 - **注意点**: 高カインド型、GADT、computation expressions は README で方向性として触れていますが、全面的に runtime-ready と断定しない段階です
 
 ## Learn More

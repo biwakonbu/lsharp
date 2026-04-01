@@ -15,7 +15,7 @@
   (render-node
     (elem "li" (vector-new 0)
       (vector-push (vector-new 1)
-        (raw-node (string-concat (vector-get func-doc 1)
+        (text (string-concat (vector-get func-doc 1)
             (string-concat "/" (int-to-string (vector-get func-doc 2)))))))))
 
 ;; 型エントリ [hash, name, kind] を "<li>{kind} {name}</li>" に変換する
@@ -23,7 +23,7 @@
   (render-node
     (elem "li" (vector-new 0)
       (vector-push (vector-new 1)
-        (raw-node (string-concat (vector-get type-doc 2)
+        (text (string-concat (vector-get type-doc 2)
             (string-concat " " (vector-get type-doc 1))))))))
 
 ;; === リスト項目ループ ===
@@ -76,11 +76,11 @@
     body
     (if (> (string-length functions-section) 0)
       (string-concat functions-section types-section)
-      (if (> (string-length types-section) 0)
-        types-section
-        (vector-get module-doc 2)))]
+        (if (> (string-length types-section) 0)
+          types-section
+          (vector-get module-doc 2)))]
     (string-concat "<main><h1>"
-      (string-concat title
+      (string-concat (html-escape title)
         (string-concat "</h1>"
           (string-concat body "</main>"))))))
 

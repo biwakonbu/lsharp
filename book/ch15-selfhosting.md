@@ -37,7 +37,7 @@ L# コンパイラの Rust 実装は約 18,000 行ある。これを一度に L#
 2. 各モジュールを Rust 版の出力と比較テスト
 3. 全モジュールを統合して stage1 を生成
 
-### Native backend を含む multi-backend 設計
+### multi-backend 設計と 2026-03-30 の方針転換
 
 Phase 11 のセルフホスト化では、selfhost compiler の frontend / lowering を 1 つに保ち、その後段だけを backend ごとに分岐させる。用語は `docs/language/backend-boundary.md` に合わせ、`FrontendResult -> LoweredModule -> CodegenArtifact` の 3 層で責務を固定する。
 
@@ -51,10 +51,10 @@ Source (.ls)
 ```
 
 - **Wasm backend** は `LoweredModule` から決定的な `.wasm` を生成し、bootstrap と fixed-point 検証の正本を担う
-- **Native backend** は同じ `LoweredModule` から `program.o` / `runtime.o` / `linker-response.txt` / `program.native` を生成し、配布とローカル実行を担う
+- **Native backend** は同じ `LoweredModule` から `program.o` / `runtime.o` / `linker-response.txt` / `program.native` を生成する将来探索用 backend として保持する
 - backend 固有の ABI、section、relocation、linker 連携は codegen に閉じ込め、frontend や lowering へ漏らさない
 
-この設計により、「selfhost compiler の意味」は共通 IR で 1 回だけ定義し、Wasm と Native の違いは最終成果物の作り方に限定できる。セルフホスト章では Wasm を bootstrap の基準線、Native を完成後の常用 backend として扱う。
+この設計により、「selfhost compiler の意味」は共通 IR で 1 回だけ定義し、Wasm と Native の違いは最終成果物の作り方に限定できる。もっとも、2026-03-30 の Component Model pivot 以後、Phase 11 の completion gate は Wasmtime embedding + Component Model を正式配布モデルとし、native self-regeneration / native-only 配布は deferred 扱いになった。したがって現時点では Wasm を bootstrap と配布の基準線とし、Native は Phase 13+ 以降の探求対象として読むのが正しい。
 
 ### 整数タグ方式の採用
 
@@ -92,6 +92,24 @@ canonical entrypoint は `selfhost/src/App/Main.ls` で、公開 package では�
 | `Tools` | 9 | formatter, linter, docs, LSP, test runner |
 
 flat な `selfhost/*.ls` 互換コピーは撤去済みで、モジュール解決は `selfhost/src/**` と dotted namespace を前提にする。
+
+## Host launcher と guest component の役割分担
+
+現在の公開 CLI は、L# compiler 全体を単独の Rust 製 CLI として説明するよりも、**host launcher + embedded guest component** の 2 層で捉えるほうが実装に近い。
+
+```text
+single-binary distribution
+  = Rust host launcher
+      + embedded guest component (.component.wasm)
+      + stdlib / host capabilities
+```
+
+- **host launcher** は `crates/lsharp-driver` が担い、Wasmtime 上で guest component を起動する
+- **embedded guest component** は build-time に `selfhost/src/App/EmbeddedCli.ls` から生成・同梱され、既定の `parse` / `check` / `compile` / `build` / `test` / `review` / `doc-ack` / `doc-check` / `fmt` を担当する
+- **host capability** はファイル I/O や process など、guest 側が単独では扱えない境界を提供する
+- **Rust host 側に残る surface** は `install` / `repl` / `lsp` / `doc` と、`compile` / `build` の Rust-only fallback (`--emit-ir`, `web-wasm`, `native`) である
+
+このため、セルフホスト化は「Rust を完全に取り除く」ことではなく、**semantic の中心を guest component 側へ寄せつつ、host launcher を capability provider と配布器として残す** 運用に変わっている。`LSHARP_PATH` はこの構成を壊さずに、外部 host launcher executable / 配置ディレクトリ / `.wasm` / `.component.wasm` へ process-entry delegation するための hook である。
 
 ## 各フェーズの L# 実装
 
@@ -240,17 +258,17 @@ Main.ls は 288 行と最大のファイルで、Token/AST/IR/Compiler/WasmEmit 
 
 ## Wasm backend と Native backend の使い分け
 
-セルフホスト化では、両 backend は競合するのではなく役割分担する。
+セルフホスト化では、backend と配布経路を分けて読む必要がある。2026-03-30 時点の正式な配布モデルは host launcher + embedded guest component であり、`compile` の target もこれに合わせて整理されている。
 
 | 用途 | 主に使う backend | 理由 |
 |------|------------------|------|
 | stage0 -> stage1 -> stage2 -> stage3 bootstrap | Wasm | 出力が決定的で、`stage2.wasm == stage3.wasm` を byte 単位で比較しやすい |
 | fixed-point 検証と CI の正本比較 | Wasm | section / symbol / data の差分を機械的に回収しやすい |
-| 日常開発での高速なローカル実行 | Native | `program.native` を直接起動でき、WASI runner への依存を減らせる |
-| エンドユーザー向け配布 | Native | プラットフォーム別バイナリを配布でき、CLI/LSP/REPL を単独実行しやすい |
-| backend 間の観測差分チェック | Wasm + Native | 同じ `LoweredModule` から生成した結果を比較し、exit code / stdout / stderr / 生成物 / diagnostics の一致を確認する |
+| CLI / server / single-binary 配布 | `wasi-component` | host launcher が `.component.wasm` を埋め込み、guest component を既定起動できる |
+| ブラウザ向け配布 | `web-wasm` | WASI import を持たない core `.wasm` を出力する |
+| Native backend の調査 | Native | Phase 13+ 以降の探索用。現時点の正式配布経路ではない |
 
-実装順序としては、まず Wasm backend で bootstrap 閉路を安定化し、その後 Native backend に同じ `LoweredModule` を食べさせて self-regeneration と配布経路を閉じる。つまり Wasm は「検証の物差し」、Native は「常用・配布の出口」である。
+`lsharp compile --target wasi-component` がデフォルトで、`--target wasm` はその alias として扱う。`--target web-wasm` は browser 向け core `.wasm` を指し、現時点では host launcher の Rust fallback 経路が担う。したがって Wasm は「bootstrap と配布の基準線」、`web-wasm` は別 delivery target、Native は deferred backend と読むのが current architecture に合う。
 
 ## 既知の制限
 
@@ -267,6 +285,14 @@ Main.ls は 288 行と最大のファイルで、Token/AST/IR/Compiler/WasmEmit 
 ### 高度な型機能
 
 HKT、GADT、トレイト制約はセルフホストコンパイラでは未使用。整数タグ方式で代替している。
+
+### host launcher / component 境界
+
+公開 CLI の全サブコマンドが guest component 側へ完全移行したわけではない。`install` / `repl` / `lsp` / `doc` は Rust host 側の built-in surface が残っており、`compile` / `build` でも `--emit-ir` / `web-wasm` / `native` は Rust fallback に戻る。また `review` / `doc-ack` / `doc-check` も simple `<command> <file>` 形が guest default path であり、`--help` などの clap surface は host launcher 側に残る。
+
+### bootstrap fixed-point の未完了範囲
+
+最小 subset では `stage1.wasm -> stage2.wasm` の実生成が確認済みだが、full input set に対する `stage1 -> stage2 -> stage3` の実体生成・比較・固定点成立は未提示である。したがって「セルフホストは完了した」と断定するより、「fixed-point の意味は定義済みで、full gate は継続追跡中」と表現するのが適切である。
 
 ## ブートストラップ検証
 
@@ -289,24 +315,22 @@ fn test_selfhost_main_pipeline() { ... }
 fn test_selfhost_main_ast_to_wasm() { ... }
 ```
 
-fixed-point 検証の設計は次の 2 段構えである。
+fixed-point 検証の設計は、現在は Wasm bootstrap を正本として読む。
 
 1. **Wasm bootstrap の正本検証**
-   - `stage0 -> stage1.wasm -> stage2.wasm -> stage3.wasm` を生成する
-   - 固定点条件は `stage2.wasm == stage3.wasm`
-   - 不一致時は raw wasm bytes, exported symbol list, data section bytes, compiler diagnostics の 4 層に分けて原因を切り分ける
-2. **Native backend の追従検証**
-   - `stage1-native -> stage2-native -> stage3-native` を生成し、stage2-native と stage3-native の観測値が一致することを確認する
-   - Wasm/native differential test では exit code、stdout、stderr、generated file bytes、diagnostics JSON の 5 観測点を比較する
+    - `stage0 -> stage1.wasm -> stage2.wasm -> stage3.wasm` を生成する
+    - 固定点条件は `stage2.wasm == stage3.wasm`
+    - 不一致時は raw wasm bytes, exported symbol list, data section bytes, compiler diagnostics の 4 層に分けて原因を切り分ける
 
-このため、セルフホスト化の「完了」は単に stage1 が動くことではなく、Wasm 側で fixed-point が閉じ、Native 側でも同じ compiler core を使って自己再生成と差分ゼロ検証が通ることを意味する。
+Component Model pivot 以前は Native backend の追従検証も completion gate に含めていたが、現在は deferred である。このため、セルフホスト化の主要ゲートは「stage1 が動くこと」ではなく、**Wasm 側で `stage2.wasm == stage3.wasm` の fixed-point が full input set で閉じること**にある。
 
 現時点の到達点:
 
 - Rust 版コンパイラが `selfhost/src/**/*.ls` をコンパイルして stage1.wasm を生成できる
 - stage1.wasm が簡単なプログラム (整数演算、条件分岐) をコンパイルできる
 - 最小 subset では `stage1.wasm -> stage2.wasm` の実生成まで確認されている
-- full input set に対する `stage2.wasm == stage3.wasm` の固定点成立と `stage1-native -> stage2-native -> stage3-native` の自己再生成は、引き続き Phase 11 の完了条件として追跡中である
+- full input set に対する `stage1.wasm -> stage2.wasm -> stage3.wasm` の実体生成・比較と `stage2.wasm == stage3.wasm` の固定点成立は、引き続き Phase 11 の完了条件として追跡中である
+- Native backend の自己再生成と native-only 配布経路は、Phase 13+ 以降の deferred 項目として保持される
 
 ## セルフホスティングから見える言語の課題
 

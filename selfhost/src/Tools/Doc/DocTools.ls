@@ -533,17 +533,28 @@
             (string-concat ":" (int-to-string column))))))
     "-"))
 
-;; doc-output のセクション数を計算
-(defn count-doc-sections [fn-count type-count]
-  (let [s1 (if (> fn-count 0) 1 0)
-    s2 (if (> type-count 0) 1 0)]
-    (+ s1 s2)))
+;; doc-output の HTML section metadata [id, count] を組み立てる
+(defn make-doc-section [section-id count]
+  (vector-push
+    (vector-push (vector-new 2) section-id)
+    count))
+
+(defn append-doc-section [sections section-id count]
+  (if (> count 0)
+    (vector-push sections (make-doc-section section-id count))
+    sections))
+
+(defn build-doc-sections [functions types]
+  (let [sections0 (vector-new 2)
+    sections1 (append-doc-section sections0 "functions" (vector-length functions))
+    sections2 (append-doc-section sections1 "types" (vector-length types))]
+    sections2))
 
 ;; generate-doc-output: [module-id, functions, types, html-title, html-sections]
 (defn generate-doc-output [ast module-id]
   (let [functions (sort-doc-entries (extract-function-entries ast))
     types (sort-doc-entries (extract-type-entries ast))
-    sections (count-doc-sections (vector-length functions) (vector-length types))
+    sections (build-doc-sections functions types)
     module-hash (find-module-hash ast)
     title (if (= module-hash 0) (title-from-module-id module-id) (title-from-hash module-hash))
     doc (vector-new 5)]
@@ -565,11 +576,85 @@
 (defn doc-check-status-text []
   "status:ok")
 
+(defn doc-trailer-comment-prefix []
+  "; ")
+
+(defn doc-reviewed-by-prefix []
+  "; Doc-Reviewed-By: ")
+
+(defn doc-review-status-prefix []
+  "; Doc-Review-Status: ")
+
 (defn doc-reviewed-by-line [reviewer]
-  (string-concat "Doc-Reviewed-By: " reviewer))
+  (string-concat (doc-reviewed-by-prefix) reviewer))
 
 (defn doc-review-status-line [status]
-  (string-concat "Doc-Review-Status: " status))
+  (string-concat (doc-review-status-prefix) status))
+
+(defn doc-trailer-has-prefix? [line prefix]
+  (let [prefix-len (string-length prefix)
+    line-len (string-length line)]
+    (if (< line-len prefix-len)
+      0
+      (if (string-eq (substring line 0 prefix-len) prefix)
+        1
+        0))))
+
+(defn doc-trailer-value [line prefix]
+  (let [prefix-len (string-length prefix)
+    line-len (string-length line)]
+    (if (= (doc-trailer-has-prefix? line prefix) 1)
+      (substring line prefix-len line-len)
+      "")))
+
+(defn doc-trim-trailing-line-endings-loop [src end]
+  (if (< end 1)
+    0
+    (let [ch (string-char-at src (- end 1))]
+      (if (or (= ch 10) (= ch 13))
+        (doc-trim-trailing-line-endings-loop src (- end 1))
+        end))))
+
+(defn doc-find-line-start-loop [src idx]
+  (if (< idx 1)
+    0
+    (if (= (string-char-at src (- idx 1)) 10)
+      idx
+      (doc-find-line-start-loop src (- idx 1)))))
+
+(defn doc-last-line-from-end [src end]
+  (if (< end 1)
+    ""
+    (let [start (doc-find-line-start-loop src end)]
+      (substring src start end))))
+
+(defn doc-last-nonempty-line [src]
+  (let [end (doc-trim-trailing-line-endings-loop src (string-length src))]
+    (doc-last-line-from-end src end)))
+
+(defn doc-second-last-nonempty-line [src]
+  (let [end-2 (doc-trim-trailing-line-endings-loop src (string-length src))]
+    (if (< end-2 1)
+      ""
+      (let [start-2 (doc-find-line-start-loop src end-2)
+        end-1 (doc-trim-trailing-line-endings-loop src start-2)]
+        (doc-last-line-from-end src end-1)))))
+
+(defn doc-reviewed-by-line-valid? [line]
+  (if (> (string-length (doc-trailer-value line (doc-reviewed-by-prefix))) 0) 1 0))
+
+(defn doc-review-status-line-valid? [line]
+  (let [status (doc-trailer-value line (doc-review-status-prefix))]
+    (if (string-eq status "Passed")
+      1
+      (if (string-eq status "Failed") 1 0))))
+
+(defn doc-check-trailer-valid? [src]
+  (let [reviewer-line (doc-last-nonempty-line src)
+    status-line (doc-second-last-nonempty-line src)]
+    (if (= (doc-review-status-line-valid? status-line) 1)
+      (doc-reviewed-by-line-valid? reviewer-line)
+      0)))
 
 (defn generate-doc-ack [ast reviewer]
   (let [doc (generate ast 0)

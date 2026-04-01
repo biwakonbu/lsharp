@@ -72,6 +72,28 @@ version bump
 - 署名は checksum 生成後、release smoke 前に実行する。
 - verify 手順は配布ジョブに含め、未検証 artifact を公開しない。
 
+### macOS notarization
+
+- 対象: `macos-arm64`, `macos-x86_64` の host launcher archive
+- 前提:
+  1. `Developer ID Application` 証明書が release 用 secret / secure storage にある
+  2. notarization 用の Apple ID credential / app-specific password もしくは API key が使える
+- 手順:
+  1. archive 展開前の host launcher binary に `codesign --options runtime --timestamp` を適用
+  2. notarization 提出用の zip / pkg / dmg を生成
+  3. `xcrun notarytool submit --wait` で Apple notarization へ提出
+  4. pkg / dmg を使う場合は `xcrun stapler staple` で ticket を添付
+  5. `spctl --assess -vv` または `codesign --verify --deep --strict` で verify
+- verify 例:
+
+```bash
+codesign --verify --deep --strict lsharp
+spctl --assess -vv lsharp
+```
+
+- embedded guest component (`.component.wasm`) は実行ファイルではないため、notarization 対象ではなく checksum / release asset 管理の対象として扱う。
+- 現状は運用手順の正本化までで、release workflow への自動接続は未実装。
+
 ### Windows Authenticode
 
 - 対象: `windows-x86_64` の `.exe`
@@ -108,6 +130,7 @@ signtool verify /pa lsharp.exe
 | `scripts/release-playbook.sh` | release binary を作り、bootstrap / default-path / README smoke まで実行可能 |
 | tag push 起点の自動 release workflow | `verify` / `build` / `release-smoke` / `release` まで接続済み |
 | checksum 自動生成 | `scripts/release.sh` が archive 内 `checksums.txt` を生成し、`scripts/ci/release-smoke.sh` が workflow build job で検証 |
+| macOS notarization | 手順は docs 化済み、workflow 接続は未実装 |
 | Windows 署名 | 未実装 |
 | package manager 配布 | 未実装 |
 | `linux-aarch64` tier2 | 設計のみ |

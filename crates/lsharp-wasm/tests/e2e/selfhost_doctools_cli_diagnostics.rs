@@ -21,6 +21,10 @@ fn test_e2e_review_schema_json_contract() {
         "review schema: diagnostics は severity 必須"
     );
     assert!(
+        req.contains(&"title"),
+        "review schema: diagnostics は title 必須"
+    );
+    assert!(
         req.contains(&"message"),
         "review schema: diagnostics は message 必須"
     );
@@ -28,11 +32,84 @@ fn test_e2e_review_schema_json_contract() {
         req.contains(&"line"),
         "review schema: diagnostics は line 必須"
     );
+    assert!(
+        req.contains(&"column"),
+        "review schema: diagnostics は column 必須"
+    );
+    assert!(
+        req.contains(&"code"),
+        "review schema: diagnostics は code 必須"
+    );
 
     let top_required = v["required"].as_array().expect("トップレベル required");
     let top: Vec<&str> = top_required.iter().filter_map(|x| x.as_str()).collect();
     assert!(top.contains(&"source"));
     assert!(top.contains(&"diagnostics"));
+}
+
+/// CP-04: `docs/schemas/doc-output.schema.json` が entry list と HTML section metadata を定義していること
+#[test]
+fn test_e2e_doc_output_schema_json_contract() {
+    let schema_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/schemas/doc-output.schema.json");
+    let raw =
+        std::fs::read_to_string(&schema_path).expect("docs/schemas/doc-output.schema.json を読めない");
+    let v: serde_json::Value = serde_json::from_str(&raw).expect("doc-output.schema.json の JSON 解析");
+
+    let top_required = v["required"].as_array().expect("トップレベル required");
+    let top: Vec<&str> = top_required.iter().filter_map(|x| x.as_str()).collect();
+    assert!(top.contains(&"module"));
+    assert!(top.contains(&"functions"));
+    assert!(top.contains(&"types"));
+    assert!(top.contains(&"html"));
+
+    let function_items = v["properties"]["functions"]["items"]
+        .as_object()
+        .expect("functions.items が object であること");
+    let function_required = function_items["required"]
+        .as_array()
+        .expect("functions.items.required が配列であること");
+    let function_req: Vec<&str> = function_required.iter().filter_map(|x| x.as_str()).collect();
+    assert!(
+        function_req.contains(&"name"),
+        "doc-output schema: functions entry は name 必須"
+    );
+    assert!(
+        function_req.contains(&"arity"),
+        "doc-output schema: functions entry は arity 必須"
+    );
+
+    let type_items = v["properties"]["types"]["items"]
+        .as_object()
+        .expect("types.items が object であること");
+    let type_required = type_items["required"]
+        .as_array()
+        .expect("types.items.required が配列であること");
+    let type_req: Vec<&str> = type_required.iter().filter_map(|x| x.as_str()).collect();
+    assert!(
+        type_req.contains(&"name"),
+        "doc-output schema: type entry は name 必須"
+    );
+    assert!(
+        type_req.contains(&"kind"),
+        "doc-output schema: type entry は kind 必須"
+    );
+
+    let section_items = v["properties"]["html"]["properties"]["sections"]["items"]
+        .as_object()
+        .expect("html.sections.items が object であること");
+    let section_required = section_items["required"]
+        .as_array()
+        .expect("html.sections.items.required が配列であること");
+    let section_req: Vec<&str> = section_required.iter().filter_map(|x| x.as_str()).collect();
+    assert!(
+        section_req.contains(&"id"),
+        "doc-output schema: html.sections entry は id 必須"
+    );
+    assert!(
+        section_req.contains(&"count"),
+        "doc-output schema: html.sections entry は count 必須"
+    );
 }
 
 fn selfhost_doctools_runtime_bundle() -> String {
@@ -383,7 +460,7 @@ fn test_e2e_selfhost_doctools_doc_ack_trailer_payload() {
             "module-Demo",
             "functions:1,types:0,first-fn:main",
             "1",
-            "Doc-Reviewed-By: alice",
+            "; Doc-Reviewed-By: alice",
         ]
     );
 }
@@ -424,10 +501,64 @@ fn test_e2e_selfhost_doctools_doc_check_trailer_payload() {
             "module-Demo",
             "functions:1,types:0,first-fn:main",
             "2",
-            "Doc-Review-Status: Passed",
-            "Doc-Reviewed-By: alice",
+            "; Doc-Review-Status: Passed",
+            "; Doc-Reviewed-By: alice",
         ]
     );
+}
+
+/// DOC-02: doc-check trailer validation は末尾 comment trailer を受理すること
+#[test]
+fn test_e2e_selfhost_doctools_doc_check_trailer_validation_accepts_comment_form() {
+    let harness = r#"
+(defn main []
+  (let [source "(defn main [] 42)\n; Doc-Review-Status: Passed\n; Doc-Reviewed-By: alice\n"]
+    (do
+      (print (doc-check-trailer-valid? source))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["1"]);
+}
+
+/// DOC-02: doc-check trailer validation は status trailer 欠落を拒否すること
+#[test]
+fn test_e2e_selfhost_doctools_doc_check_trailer_validation_rejects_missing_status() {
+    let harness = r#"
+(defn main []
+  (let [source "(defn main [] 42)\n; Doc-Reviewed-By: alice\n"]
+    (do
+      (print (doc-check-trailer-valid? source))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["0"]);
+}
+
+/// DOC-02: doc-check trailer validation は reviewer 値欠落を拒否すること
+#[test]
+fn test_e2e_selfhost_doctools_doc_check_trailer_validation_rejects_empty_reviewer() {
+    let harness = r#"
+(defn main []
+  (let [source "(defn main [] 42)\n; Doc-Review-Status: Passed\n; Doc-Reviewed-By: \n"]
+    (do
+      (print (doc-check-trailer-valid? source))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines, vec!["0"]);
 }
 
 /// DOC-01: generate-doc-output の出力が function/type entries と title を含むこと
@@ -436,14 +567,21 @@ fn test_e2e_selfhost_doctools_schema_doc_output() {
     let harness = r#"
 (defn main []
   (let [program (parse-program "(defn main [] 42) (type Doc Int)")
-        doc-out (generate-doc-output program 300)]
+        doc-out (generate-doc-output program 300)
+        sections (vector-get doc-out 4)
+        section0 (vector-get sections 0)
+        section1 (vector-get sections 1)]
     (do
       (print (vector-length doc-out))
       (print (vector-get doc-out 0))
       (print (vector-length (vector-get doc-out 1)))
       (print (vector-length (vector-get doc-out 2)))
       (print (if (string-eq (vector-get doc-out 3) "module-300") 1 0))
-      (print (vector-get doc-out 4))
+      (print (vector-length sections))
+      (print (if (string-eq (vector-get section0 0) "functions") 1 0))
+      (print (vector-get section0 1))
+      (print (if (string-eq (vector-get section1 0) "types") 1 0))
+      (print (vector-get section1 1))
       0)))
 "#;
 
@@ -451,7 +589,7 @@ fn test_e2e_selfhost_doctools_schema_doc_output() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines, vec!["5", "300", "1", "1", "1", "2"]);
+    assert_eq!(lines, vec!["5", "300", "1", "1", "1", "2", "1", "1", "1", "1"]);
 }
 
 /// DOC-01: generate-doc-output も module decl がある場合は module 名 title を使うこと
@@ -460,10 +598,14 @@ fn test_e2e_selfhost_doctools_schema_doc_output_module_title_name() {
     let harness = r#"
 (defn main []
   (let [program (parse-program "(module Demo (defn main [] 42))")
-        doc-out (generate-doc-output program 300)]
+        doc-out (generate-doc-output program 300)
+        sections (vector-get doc-out 4)
+        section0 (vector-get sections 0)]
     (do
       (print (if (string-eq (vector-get doc-out 3) "module-Demo") 1 0))
-      (print (vector-get doc-out 4))
+      (print (vector-length sections))
+      (print (if (string-eq (vector-get section0 0) "functions") 1 0))
+      (print (vector-get section0 1))
       0)))
 "#;
 
@@ -471,7 +613,7 @@ fn test_e2e_selfhost_doctools_schema_doc_output_module_title_name() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines, vec!["1", "1"]);
+    assert_eq!(lines, vec!["1", "1", "1", "1"]);
 }
 
 /// DOC-01: ドキュメント文字列がタイムスタンプ・ホスト名・絶対パスを含まないこと
@@ -532,7 +674,13 @@ fn test_e2e_selfhost_doctools_deterministic() {
         kb-fn1 (vector-get (vector-get kb1 1) 0)
         kb-fn2 (vector-get (vector-get kb2 1) 0)
         kb-type1 (vector-get (vector-get kb1 2) 0)
-        kb-type2 (vector-get (vector-get kb2 2) 0)]
+        kb-type2 (vector-get (vector-get kb2 2) 0)
+        doc-sections1 (vector-get doc1 4)
+        doc-sections2 (vector-get doc2 4)
+        doc-section11 (vector-get doc-sections1 0)
+        doc-section12 (vector-get doc-sections1 1)
+        doc-section21 (vector-get doc-sections2 0)
+        doc-section22 (vector-get doc-sections2 1)]
     (do
       (print (if (string-eq (vector-get html1 1) (vector-get html2 1)) 1 0))
       (print (if (string-eq (vector-get html1 2) (vector-get html2 2)) 1 0))
@@ -541,7 +689,11 @@ fn test_e2e_selfhost_doctools_deterministic() {
       (print (if (string-eq (vector-get kb-fn1 1) (vector-get kb-fn2 1)) 1 0))
       (print (if (string-eq (vector-get kb-type1 1) (vector-get kb-type2 1)) 1 0))
       (print (if (string-eq (vector-get doc1 3) (vector-get doc2 3)) 1 0))
-      (print (if (= (vector-get doc1 4) (vector-get doc2 4)) 1 0))
+      (print (if (= (vector-length doc-sections1) (vector-length doc-sections2)) 1 0))
+      (print (if (string-eq (vector-get doc-section11 0) (vector-get doc-section21 0)) 1 0))
+      (print (if (= (vector-get doc-section11 1) (vector-get doc-section21 1)) 1 0))
+      (print (if (string-eq (vector-get doc-section12 0) (vector-get doc-section22 0)) 1 0))
+      (print (if (= (vector-get doc-section12 1) (vector-get doc-section22 1)) 1 0))
       (print (if (= (vector-get rev1 0) (vector-get rev2 0)) 1 0))
       (print (if (= (vector-length (vector-get rev1 1)) (vector-length (vector-get rev2 1))) 1 0))
       0)))
@@ -553,7 +705,7 @@ fn test_e2e_selfhost_doctools_deterministic() {
 
     assert_eq!(
         lines,
-        vec!["1", "1", "1", "1", "1", "1", "1", "1", "1", "1"]
+        vec!["1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1"]
     );
 }
 
@@ -817,6 +969,22 @@ fn test_e2e_selfhost_htmldoc_render_function_signature() {
     assert_eq!(output.trim(), "1");
 }
 
+/// HtmlDoc.render-function-signature は関数名を HTML エスケープする
+#[test]
+fn test_e2e_selfhost_htmldoc_render_function_signature_escapes_html() {
+    let harness = r#"
+(defn main []
+  (let [func-doc (vector-push (vector-push (vector-push (vector-new 3) 42) "<danger>") 3)
+        result (render-function-signature func-doc)]
+    (do
+      (print (if (string-eq result "<li>&lt;danger&gt;/3</li>") 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(output.trim(), "1");
+}
+
 /// HtmlDoc.render-type-definition が "<li>{kind} {name}</li>" 形式を返す
 #[test]
 fn test_e2e_selfhost_htmldoc_render_type_definition() {
@@ -826,6 +994,22 @@ fn test_e2e_selfhost_htmldoc_render_type_definition() {
         result (render-type-definition type-doc)]
     (do
       (print (if (string-eq result "<li>recorddef Pair</li>") 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    assert_eq!(output.trim(), "1");
+}
+
+/// HtmlDoc.render-type-definition は型名を HTML エスケープする
+#[test]
+fn test_e2e_selfhost_htmldoc_render_type_definition_escapes_html() {
+    let harness = r#"
+(defn main []
+  (let [type-doc (vector-push (vector-push (vector-push (vector-new 3) 99) "\"Quoted\"") "recorddef")
+        result (render-type-definition type-doc)]
+    (do
+      (print (if (string-eq result "<li>recorddef &quot;Quoted&quot;</li>") 1 0))
       0)))
 "#;
     let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
@@ -1002,6 +1186,48 @@ fn test_e2e_selfhost_htmldoc_render_module_page_empty() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines, vec!["1", "1", "1"]);
+}
+
+/// HtmlDoc.render-module-page は title を HTML エスケープする
+#[test]
+fn test_e2e_selfhost_htmldoc_render_module_page_escapes_title() {
+    let harness = r#"
+(defn string-contains-loop [haystack needle i hlen nlen]
+  (if (> (+ i nlen) hlen)
+    0
+    (if (string-eq (substring haystack i (+ i nlen)) needle)
+      1
+      (string-contains-loop haystack needle (+ i 1) hlen nlen))))
+
+(defn string-contains [haystack needle]
+  (let [hlen (string-length haystack)
+        nlen (string-length needle)]
+    (if (= nlen 0)
+      1
+      (if (> nlen hlen)
+        0
+        (string-contains-loop haystack needle 0 hlen nlen)))))
+
+(defn main []
+  (let [doc (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push (vector-new 5) 1)
+                    "<module>")
+                  "functions:0,types:0")
+                (vector-new 0))
+              (vector-new 0))
+        page (render-module-page doc)]
+    (do
+      (print (if (= (string-contains page "<h1>&lt;module&gt;</h1>") 1) 1 0))
+      (print (if (= (string-contains page "<h1><module></h1>") 0) 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines, vec!["1", "1"]);
 }
 
 /// HtmlDoc.render-guide-page が guide 本文を含む完全な HTML を返す

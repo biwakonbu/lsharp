@@ -96,8 +96,12 @@
 ") (print-string (vector-get payload 1)) (print-string "
 ") (print-string (vector-get payload 2)) (print-string "
 ") (print-doc-trailers-loop trailers 0 (vector-length trailers)))))
-(defn run-doc-ack [file-path opts] (if (file-exists? file-path) (let [src (read-file file-path) program (parse-program src) ack (generate-doc-ack program "anonymous")] (do (print-doc-payload ack) (exit-success))) (exit-compile-error)))
-(defn run-doc-check [file-path opts] (if (file-exists? file-path) (let [src (read-file file-path) program (parse-program src) check (generate-doc-check program "anonymous")] (do (print-doc-payload check) (exit-success))) (exit-compile-error)))
+(defn print-doc-trailer-only [payload] (let [trailers (vector-get payload 3)] (print-doc-trailers-loop trailers 0 (vector-length trailers))))
+(defn doc-option-trailer-only [] 1)
+(defn doc-option-strict-check [] 1)
+(defn run-doc-ack [file-path opts] (if (file-exists? file-path) (let [src (read-file file-path) program (parse-program src) ack (generate-doc-ack program "anonymous")] (do (if (= opts (doc-option-trailer-only)) (print-doc-trailer-only ack) (print-doc-payload ack)) (exit-success))) (exit-compile-error)))
+(defn invalid-doc-trailer-message [] "invalid doc trailer: expected trailing comment lines")
+(defn run-doc-check [file-path opts] (if (file-exists? file-path) (let [src (read-file file-path)] (if (and (= opts (doc-option-strict-check)) (= (doc-check-trailer-valid? src) 0)) (do (cli-stderr (invalid-doc-trailer-message)) (exit-compile-error)) (let [program (parse-program src) check (generate-doc-check program "anonymous")] (do (print-doc-payload check) (exit-success))))) (exit-compile-error)))
 (defn install-plan-title [package] (string-concat "package:" package))
 (defn install-plan-body [package] "status:planned")
 (defn run-install [package opts] (if (> (string-length package) 0) (do (print-string (install-plan-title package)) (print-string "
@@ -383,6 +387,10 @@
 (defn parse-cli-options [argc] (parse-cli-options-loop 2 argc (default-compile-target) ""))
 (defn cli-option-error-message [result] (let [status (cli-option-result-status result) detail (cli-option-result-detail result)] (if (= status (cli-option-status-invalid-target)) (string-concat "unsupported target: " detail) (if (= status (cli-option-status-missing-value)) (string-concat "missing value for option: " detail) (string-concat "unsupported option: " detail)))))
 (defn run-command-with-cli-options [cmd-name file-path result] (let [target (cli-option-result-target result) output-path (cli-option-result-output-path result)] (if (> (string-length output-path) 0) (if (string-eq cmd-name "compile") (run-compile-output file-path output-path target) (if (string-eq cmd-name "build") (run-build-output file-path output-path target) (run-command cmd-name file-path target))) (run-command cmd-name file-path target))))
+(defn doc-cli-option-none [] 0)
+(defn doc-cli-option-invalid [] (- 0 1))
+(defn parse-doc-cli-option [cmd-name arg] (if (string-eq cmd-name "doc-ack") (if (string-eq arg "--trailer") (doc-option-trailer-only) (doc-cli-option-invalid)) (if (string-eq cmd-name "doc-check") (if (string-eq arg "--strict") (doc-option-strict-check) (doc-cli-option-invalid)) (doc-cli-option-none))))
+(defn run-command-with-doc-option [cmd-name file-path doc-option] (let [cmd-id (arg-parse cmd-name)] (if (= cmd-id (cmd-doc-ack)) (run-doc-ack file-path doc-option) (if (= cmd-id (cmd-doc-check)) (run-doc-check file-path doc-option) (run-command cmd-name file-path doc-option)))))
 (defn run-main-command [argc cmd-name file-path]
   (if (and (string-eq cmd-name "lsp") (string-eq file-path "--stdio"))
     (run-lsp-stdio-server)
@@ -393,11 +401,17 @@
           (do
             (cli-stderr (cli-option-error-message options))
             (exit-code-compile-error))))
-      (run-command cmd-name file-path (default-compile-target)))))
+      (if (> argc 2)
+        (let [doc-option (parse-doc-cli-option cmd-name (command-line-arg 2))]
+          (if (= doc-option (doc-cli-option-invalid))
+            (run-command cmd-name file-path (default-compile-target))
+            (run-command-with-doc-option cmd-name file-path doc-option)))
+        (run-command cmd-name file-path (default-compile-target))))))
+(defn exit-main [code] (do (proc-exit code) 0))
 (defn main []
   (let [argc (command-line-args)]
     (if (= argc 0)
-      (show-help)
+      (exit-main (show-help))
       (let [cmd-name (command-line-arg 0)
         file-path (if (> argc 1) (command-line-arg 1) "")]
-        (run-main-command argc cmd-name file-path)))))
+        (exit-main (run-main-command argc cmd-name file-path))))))

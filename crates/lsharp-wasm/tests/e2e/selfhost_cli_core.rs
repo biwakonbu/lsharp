@@ -2063,10 +2063,39 @@ fn test_e2e_selfhost_cli_doc_ack_file_handler() {
             "ack:recorded",
             "module-global",
             "functions:1,types:0,first-fn:main",
-            "Doc-Reviewed-By: anonymous",
+            "; Doc-Reviewed-By: anonymous",
             "0",
         ],
         "run-doc-ack は ack status と title/body と trailer と success=0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-T2: selfhost/src/App/Cli.ls の run-doc-ack が trailer-only mode を返せること
+#[test]
+fn test_e2e_selfhost_cli_doc_ack_file_handler_trailer_only() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_doc_ack_trailer_only_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)").unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-doc-ack "input.ls" 1))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["; Doc-Reviewed-By: anonymous", "0"],
+        "run-doc-ack trailer-only mode は comment trailer のみを返すべき"
     );
 }
 
@@ -2098,11 +2127,80 @@ fn test_e2e_selfhost_cli_doc_check_file_handler() {
             "status:ok",
             "module-global",
             "functions:1,types:0,first-fn:main",
-            "Doc-Review-Status: Passed",
-            "Doc-Reviewed-By: anonymous",
+            "; Doc-Review-Status: Passed",
+            "; Doc-Reviewed-By: anonymous",
             "0",
         ],
         "run-doc-check は status と title/body と trailer と success=0 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-U2: selfhost/src/App/Cli.ls の run-doc-check strict mode が valid trailer を受理すること
+#[test]
+fn test_e2e_selfhost_cli_doc_check_file_handler_strict_success() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_doc_check_strict_success_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("input.ls"),
+        "(defn main [] 42)\n; Doc-Review-Status: Passed\n; Doc-Reviewed-By: anonymous\n",
+    )
+    .unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-doc-check "input.ls" 1))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "status:ok",
+            "module-global",
+            "functions:1,types:0,first-fn:main",
+            "; Doc-Review-Status: Passed",
+            "; Doc-Reviewed-By: anonymous",
+            "0",
+        ],
+        "run-doc-check strict mode は valid trailer comment を受理するべき"
+    );
+}
+
+/// TEST-CLI-02-U3: selfhost/src/App/Cli.ls の run-doc-check strict mode が invalid trailer を拒否すること
+#[test]
+fn test_e2e_selfhost_cli_doc_check_file_handler_strict_missing_trailer_fails() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_cli_doc_check_strict_fail_{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("input.ls"), "(defn main [] 42)\n").unwrap();
+
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-doc-check "input.ls" 1))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["error: invalid doc trailer: expected trailing comment lines", "1"],
+        "run-doc-check strict mode は trailer 欠落時に compile error を返すべき"
     );
 }
 

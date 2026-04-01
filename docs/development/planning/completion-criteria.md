@@ -75,27 +75,30 @@ Phase 11-2 (Wasm bootstrap + toolchain parity) の完了を判定するための
 
 ## P11-2e-2: ドキュメント完了条件
 
-### 条件 1: README アーキテクチャ図の更新 [pending]
+### 条件 1: README アーキテクチャ図の更新 [done]
 - README.md のアーキテクチャ図が Wasm 単一 backend 前提から host launcher + guest component / dual target 前提へ更新されていること
 - 更新内容:
   - コンパイラパイプライン図に `wasi-component` / `web-wasm` の分岐と host launcher の境界を追加
   - クレート構成表に host launcher / component tooling 関連クレート・モジュールを追加
   - ビルド手順に single-binary 配布と component build の流れを追加
+  - **達成**: `README.md` の `Architecture` / `Build / Use Paths` / `Current Status` を host launcher + embedded guest component / `wasi-component` + `web-wasm` 前提へ更新済み
 
-### 条件 2: book の selfhosting 章の更新 [pending]
+### 条件 2: book の selfhosting 章の更新 [done]
 - `book/` の selfhosting 章が以下を反映していること:
   - guest component / host launcher 構成の設計と実装方針
   - bootstrap 手順 (stage0 -> stage1 -> stage2 -> stage3)
   - fixed-point 検証の方法と意味
   - `wasi-component` / `web-wasm` target の関係と使い分け
+  - **達成**: `book/ch15-selfhosting.md` に host launcher / guest component の役割分担、bootstrap fixed-point の意味、`wasi-component` / `web-wasm` の使い分けを反映済み
 
-### 条件 3: CI/配布/署名/クロスビルド手順の一本化 [pending]
+### 条件 3: CI/配布/署名/クロスビルド手順の一本化 [done]
 - 以下の手順が docs/ 配下に一本化されていること:
   - CI パイプライン構成と各 job の役割
   - リリースビルドの配布手順 (host launcher + embedded guest component / web-wasm)
   - コード署名の手順 (macOS notarization, Windows signing)
   - クロスビルドの手順 (tier1/tier2 プラットフォーム向け)
 - 手順間で矛盾や重複がないこと
+- **達成**: CI の正本は `docs/development/operations/ci-gate-v2-job-graph.md` / `CI.md`、配布・署名・cross-build の正本は `docs/development/operations/release-distribution-signing.md`、手元実行手順は `docs/development/operations/release-playbook.md` に集約済み。branch protection は `docs/development/operations/branch-protection-checklist.md` を参照する
 
 ---
 
@@ -110,10 +113,13 @@ Phase 13 (Component Model) に進む前に、以下のゲートを全て通過�
 ### ゲート 1: Wasm bootstrap fixed-point [pending]
 - `stageN.wasm` が selfhost compiler として `stageN+1.wasm` を生成でき、fixed-point が CI で安定すること
 - full input set (selfhost/stdlib/examples) に対する `stage1 -> stage2 -> stage3` の実体生成・比較
+- **現況**: `scripts/ci/compile-phase11-inputs.sh` は selfhost/stdlib/examples の fixed input set compile gate を通し、CI bootstrap job で `RUN_BOOTSTRAP_FIXED_POINT: 1` と `bootstrap-diff-${{ github.sha }}` upload を接続済み。`test_e2e_bootstrap_fixed_point_stage2_stage3` も CI 経路から green。2026-04-02 に full input set self-feed を stage2 self compiler + `run_wasm_with_six_imports_compiler_mode_fs` で追加検証したところ、`App/Cli.ls` compiler-mode 経路で `six-import alloc: memory.grow に失敗` (`current_bytes=2215706624`, `needed_end=4431296674`) に到達した
+- **未了**: full input set そのものを stage2 self compiler で再生成・比較する fixed-point 証跡はまだ不足であり、現状は compiler-mode/import path の linear-memory ceiling blocker 付き
 
 ### ゲート 2: GC 有効 runtime stability [pending]
 - 長寿命 stateful LSP/REPL workload で GC 有効時にメモリが単調増加しないこと
 - `docs/development/planning/runtime-stability-spec.md` の S14/S15/S16 を満たすこと
+- **現況**: proxy soak / `gc-metrics` artifact / `s14_status` / `s15_status` / `s16_status` 集約は実装済みだが、collector 有効 workload の blocking artifact は未達
 
 ### ゲート 3: rollback 手順の確定 [done]
 - rollback 対象を「embedded compiler component の巻き戻し」として再定義する

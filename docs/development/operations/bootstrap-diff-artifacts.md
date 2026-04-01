@@ -3,8 +3,9 @@
 ## 概要
 
 ブートストラップ検証テスト (`test_e2e_bootstrap_four_layer_comparison`,
-`test_e2e_bootstrap_stage_chain_verification`) が失敗した場合に
-保存すべきアーティファクトと保存先の仕様。
+`test_e2e_bootstrap_fixed_point_stage2_stage3`) が出力する
+アーティファクトと保存先の仕様。比較結果は成功時も更新され、
+失敗時のローカル/CI 調査でそのまま参照できる。
 
 ## アーティファクト保存先
 
@@ -13,8 +14,8 @@ ci-artifacts/bootstrap-diff/{commit_sha}/
 ├── stage1_a.wasm          # 1 回目コンパイルの stage1 Wasm
 ├── stage1_b.wasm          # 2 回目コンパイルの stage1 Wasm
 ├── diff-report.txt        # 不一致レイヤーの要約
-├── sections_a.json        # stage1_a のセクション構造
-├── sections_b.json        # stage1_b のセクション構造
+├── sections_a.json        # 比較左辺のセクション構造
+├── sections_b.json        # 比較右辺のセクション構造
 ├── export_a.bin           # stage1_a の Export セクション raw bytes
 ├── export_b.bin           # stage1_b の Export セクション raw bytes
 └── metadata.json          # コミット SHA, タイムスタンプ, テスト名
@@ -73,13 +74,16 @@ stage1_b.wasm: {size} bytes
 
 ```yaml
 - name: Bootstrap diff アーティファクト保存
-  if: failure()
+  if: always()
   uses: actions/upload-artifact@v4
   with:
     name: bootstrap-diff-${{ github.sha }}
     path: ci-artifacts/bootstrap-diff/${{ github.sha }}/
     retention-days: 30
 ```
+
+`always()` を使うのは、fixed-point テスト自体が成功した場合でも
+直近の比較結果を後続調査や PR レビューで参照できるようにするため。
 
 ### ローカルでの調査
 
