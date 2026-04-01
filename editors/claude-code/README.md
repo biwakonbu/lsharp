@@ -2,6 +2,10 @@
 
 Claude Code 向けの L# LSP 統合プラグイン。
 
+## 対応プラットフォーム
+
+macOS / Linux のみ。Windows は動作保証の対象外。
+
 ## 前提条件
 
 `lsharp` バイナリが PATH に存在すること。

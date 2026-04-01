@@ -15,6 +15,16 @@ L# LSP サーバー (`lsharp lsp`) を各エディタ / AI コーディングツ
 | Neovim | lspconfig レシピ | [neovim/](neovim/) | 実装済み |
 | JetBrains IDE | LSP4IJ 設定ガイド | [jetbrains/](jetbrains/) | 設定ガイド |
 
+## 対応プラットフォーム
+
+| プラットフォーム | 状態 |
+|-----------------|------|
+| macOS (aarch64 / x86_64) | 対応 |
+| Linux (x86_64) | 対応 |
+| Windows | 非対応 |
+
+> Windows は現在動作保証の対象外。`lsharp` バイナリのビルドおよび LSP サーバーの動作は macOS / Linux のみで検証している。
+
 ## 前提条件
 
 全エディタ共通で `lsharp` バイナリが PATH に必要:

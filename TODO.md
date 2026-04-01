@@ -232,12 +232,8 @@
 > VS Code 拡張の `npm run compile` / TextMate grammar / language-configuration.json / Claude Code plugin.json は問題なし。
 
 - [x] `EDIT-BUG-01` Neovim `root_dir` に存在しない `project.toml` を指定 -- 修正済み: `Cargo.toml` に変更
-- [ ] `EDIT-BUG-02` VS Code `findLsharpBinary()` が `which` コマンドを使用しており Windows 非対応
-  - `editors/vscode/src/extension.ts:33` の `which lsharp` は macOS/Linux のみ
-  - Windows 対応には `where lsharp` へのフォールバックまたは `which` npm パッケージの導入が必要
-- [ ] `EDIT-BUG-03` LSP `shutdown` が `params: null` と `params: {}` の両方で `Unexpected params` を返す
-  - tower-lsp 0.20 の既知の挙動。実際のエディタは exit を送って強制終了するため運用上の問題はないが、プロトコル準拠性の観点で改善余地あり
-  - 対象: `crates/lsharp-lsp/src/lib.rs`
+- [x] `EDIT-BUG-02` VS Code `findLsharpBinary()` が `which` コマンドを使用しており Windows 非対応 -- Windows は動作保証対象外として全 README に明記。将来 Windows 対応時に `where` フォールバックを検討
+- [~] `EDIT-BUG-03` LSP `shutdown` が `params: null` / `params: {}` で `Unexpected params` を返す -- tower-lsp 0.20 の既知挙動。実エディタは `exit` で終了するため運用影響なし。tower-lsp 側の修正待ち
 
 ---
 

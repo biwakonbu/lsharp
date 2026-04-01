@@ -2,6 +2,10 @@
 
 IntelliJ IDEA / CLion / WebStorm 等の JetBrains IDE 向け L# LSP 統合。
 
+## 対応プラットフォーム
+
+macOS / Linux のみ。Windows は動作保証の対象外。
+
 ## 前提条件
 
 - JetBrains IDE 2024.1+

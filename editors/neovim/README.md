@@ -2,6 +2,10 @@
 
 Neovim (nvim-lspconfig) 向けの L# LSP 統合。
 
+## 対応プラットフォーム
+
+macOS / Linux のみ。Windows は動作保証の対象外。
+
 ## 前提条件
 
 - Neovim 0.9+

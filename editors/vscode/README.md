@@ -54,11 +54,18 @@ cd editors/vscode
 npm run install-ext
 ```
 
+## 対応プラットフォーム
+
+- macOS (aarch64 / x86_64)
+- Linux (x86_64)
+
+> Windows は現在動作保証の対象外。PATH 検索に `which` コマンドを使用しており、Windows では動作しない。
+
 ## 前提条件
 
 - `lsharp` バイナリが PATH に含まれていること
 - Node.js & npm
-- VSCode (または Cursor)
+- VS Code (または Cursor / Windsurf)
 
 ## 設定
 
