@@ -16,7 +16,7 @@ if not configs.lsharp then
     default_config = {
       cmd = { 'lsharp', 'lsp' },
       filetypes = { 'lsharp' },
-      root_dir = lspconfig.util.root_pattern('.git', 'project.toml'),
+      root_dir = lspconfig.util.root_pattern('Cargo.toml', '.git'),
       settings = {},
     },
   }
