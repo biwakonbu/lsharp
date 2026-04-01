@@ -26,9 +26,55 @@
 ;;   textDocument/formatting, textDocument/completion
 ;;
 ;; バンドルモードでは LspServerCore.ls + LspServerNav.ls が
-;; 全関数を提供し、本ファイルは main のみ定義する。
+;; 全関数を提供し、本ファイルは dispatch / main を定義する。
 ;; diagnostic sort/order は LspServerNav.ls に実装。
-;; json-rpc-dispatch による JSON-RPC dispatch は LspServerCore.ls に実装。
+
+;; === JSON-RPC ディスパッチ (STR-02 分割後もエントリに集約) ===
+(defn json-rpc-dispatch [method-id params state]
+  (if (= method-id (lsp-method-initialize)) (handle-initialize params state)
+    (if (= method-id (lsp-method-shutdown)) (handle-shutdown params state)
+      (if (= method-id (lsp-method-did-open)) (handle-didOpen params state)
+        (if (= method-id (lsp-method-did-change)) (handle-didChange params state)
+          (if (= method-id (lsp-method-hover)) (handle-hover params state)
+            (if (= method-id (lsp-method-goto-def)) (handle-goto-definition params state)
+              (if (= method-id (lsp-method-references)) (handle-references params state)
+                (if (= method-id (lsp-method-rename)) (handle-rename params state)
+                  (if (= method-id (lsp-method-publish-diagnostics)) (handle-publish-diagnostics params state)
+                    (if (= method-id (lsp-method-formatting)) (handle-formatting params state)
+                      (if (= method-id (lsp-method-completion)) (handle-completion params state)
+                        0))))))))))))
+
+(defn server-loop-step [state request]
+  (let [method-id (vector-get request 0)
+    params (vector-get request 1)]
+    (json-rpc-dispatch method-id params state)))
+
+(defn server-loop-sequence-loop [state requests idx count results]
+  (if (>= idx count)
+    results
+    (server-loop-sequence-loop
+      state
+      requests
+      (+ idx 1)
+      count
+      (vector-push results (server-loop-step state (vector-get requests idx))))))
+
+(defn server-loop-sequence [requests]
+  (let [state (server-state-new)
+    results (server-loop-sequence-loop state requests 0 (vector-length requests) (vector-new 8))
+    summary (vector-new 4)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push summary results)
+          (server-state-doc-count state))
+        (server-state-request-count state))
+      (server-state-source-length state))))
+
+;; 各呼び出しで新規 state (旧単一ファイル実装と同じ)。共有は server-loop-step を直接使う。
+(defn server-loop [request]
+  (let [state (server-state-new)]
+    (server-loop-step state request)))
 
 ;; 検証用 main
 (defn main []

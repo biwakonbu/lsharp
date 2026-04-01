@@ -1319,6 +1319,49 @@ fn test_e2e_selfhost_lsp_real_shapes_definition_resolves_open_document() {
     );
 }
 
+/// CP-04 / TEST-LSP-19h: `tests/fixtures/hier-selfhost` と同形の dotted import を
+/// in-memory 2 ドキュメントで cross-document definition が辿れること（nested import parity の縮約）
+#[test]
+fn test_e2e_selfhost_lsp_hier_fixture_shape_cross_document_definition() {
+    // 改行を harness 内の L# リテラルへ直埋めするとパースが壊れるため 1 行に圧縮する
+    let helper_src = "(module Syntax.SimpleHelper) (defn helper-value [] 42)";
+    let main_src = "(module App.Main) (import Syntax.SimpleHelper) (defn main [] (helper-value))";
+    let h_col = main_src.find("helper-value").expect("helper-value") as i64 + 1;
+    let harness = format!(
+        r#"
+(defn main []
+  (let [state (server-state-new)
+        _ (server-state-open-document state 201 "{helper_src}")
+        _ (server-state-open-document state 200 "{main_src}")
+        params (vector-push (vector-push (vector-push (vector-new 3) 200) 1) {h_col})
+        defn-loc (handle-goto-definition params state)]
+    (do
+      (print (vector-get defn-loc 0))
+      (print (vector-get defn-loc 1))
+      (print (vector-get defn-loc 2))
+      0)))
+"#
+    );
+
+    let lines = run_lsp_harness(
+        "lsp_hier_fixture_shape_cross_document_definition",
+        &harness,
+    );
+
+    assert_eq!(
+        lines[0], "201",
+        "definition は SimpleHelper 側 document uri を返すべき"
+    );
+    assert_eq!(
+        lines[1], "1",
+        "definition は helper モジュールの 1 行目 defn を指すべき"
+    );
+    assert_eq!(
+        lines[2], "36",
+        "definition は helper-value 名の先頭列を指すべき (1 行 minify)"
+    );
+}
+
 /// TEST-LSP-19g: open 済み別 document の defn へ cross-document hover contents を返せること
 #[test]
 fn test_e2e_selfhost_lsp_real_shapes_hover_resolves_open_document() {

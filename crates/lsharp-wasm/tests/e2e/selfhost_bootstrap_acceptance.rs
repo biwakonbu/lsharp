@@ -437,6 +437,73 @@ fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
     );
 }
 
+/// CP-01: stage1→stage2 で得た自己コンパイラを返す（fixed point Phase A と同一経路）
+fn build_stage2_self_compiler_from_main() -> (Vec<u8>, std::path::PathBuf) {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("CP-01: stage1 が Main.ls から stage2 を生成できない");
+
+    let modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    assert_eq!(modules.len(), 1, "CP-01: stage2 wasm は 1 モジュールであるべき");
+    assert_valid_wasm(&modules[0]);
+
+    (modules[0].clone(), selfhost_root)
+}
+
+/// CP-01 / BOOT-04: `print` / `read-file` 集約箇所である Compiler.ls / WasmEmit.ls を
+/// stage2 自己コンパイラが **同一バイト列** で再出力できること（決定性の固定点エビデンス）
+#[test]
+fn test_e2e_bootstrap_stage2_compiler_wasmemit_modules_deterministic() {
+    let (stage2, root) = build_stage2_self_compiler_from_main();
+
+    for rel in [
+        "src/Backend/Wasm/Compiler.ls",
+        "src/Backend/Wasm/WasmEmit.ls",
+    ] {
+        let out_a = run_wasm_with_six_imports_compiler_mode_fs(
+            &stage2,
+            &root,
+            &["compiler", rel],
+        )
+        .unwrap_or_else(|e| panic!("CP-01: stage2 が {rel} を 1 回目コンパイルできない: {e}"));
+        let out_b = run_wasm_with_six_imports_compiler_mode_fs(
+            &stage2,
+            &root,
+            &["compiler", rel],
+        )
+        .unwrap_or_else(|e| panic!("CP-01: stage2 が {rel} を 2 回目コンパイルできない: {e}"));
+
+        assert_eq!(
+            out_a, out_b,
+            "CP-01: stage2 の {rel} 出力が非決定的"
+        );
+
+        let mods = parse_emitted_wasm_modules(&out_a, 1);
+        assert_eq!(
+            mods.len(),
+            1,
+            "CP-01: {rel} のコンパイル出力は 1 wasm モジュールであるべき"
+        );
+        assert_valid_wasm(&mods[0]);
+    }
+}
+
 // =============================================================================
 // Test 3: test_e2e_bootstrap_stage1_section_stability
 // =============================================================================

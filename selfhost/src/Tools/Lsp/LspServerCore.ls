@@ -117,24 +117,8 @@
 (defn lsp-method-rename [] 25)
 (defn lsp-method-publish-diagnostics [] 30)
 
-;; === JSON-RPC ディスパッチ ===
-
-;; メソッド名に基づいてハンドラを呼び出す json-rpc-dispatch
-(defn json-rpc-dispatch [method-id params state]
-  (if (= method-id (lsp-method-initialize)) (handle-initialize params state)
-    (if (= method-id (lsp-method-shutdown)) (handle-shutdown params state)
-      (if (= method-id (lsp-method-did-open)) (handle-didOpen params state)
-        (if (= method-id (lsp-method-did-change)) (handle-didChange params state)
-          (if (= method-id (lsp-method-hover)) (handle-hover params state)
-            (if (= method-id (lsp-method-goto-def)) (handle-goto-definition params state)
-              (if (= method-id (lsp-method-references)) (handle-references params state)
-                (if (= method-id (lsp-method-rename)) (handle-rename params state)
-                  (if (= method-id (lsp-method-publish-diagnostics)) (handle-publish-diagnostics params state)
-                    (if (= method-id (lsp-method-formatting)) (handle-formatting params state)
-                      (if (= method-id (lsp-method-completion)) (handle-completion params state)
-                        0))))))))))))
-
 ;; === LSP メソッドハンドラ (ドキュメント系) ===
+;; JSON-RPC dispatch / server-loop は LspServer.ls に集約 (本ファイルは状態・ドキュメント系ハンドラ)
 
 ;; initialize: サーバー機能の宣言
 ;; TextDocumentSyncKind.Full を返す (AC-200)
@@ -488,38 +472,3 @@
     params (vector-get msg 3)]
     (vector-push (vector-push (vector-new 2) method-id) params)))
 
-;; === メインループ ===
-
-;; LSP サーバーのメインループ
-;; 現段階では 1 メッセージ request vector [method-id, params] を dispatch する PoC。
-;; stateful/session 系は server-loop-step で shared state を再利用できる。
-(defn server-loop-step [state request]
-  (let [method-id (vector-get request 0)
-    params (vector-get request 1)]
-    (json-rpc-dispatch method-id params state)))
-
-(defn server-loop-sequence-loop [state requests idx count results]
-  (if (>= idx count)
-    results
-    (server-loop-sequence-loop
-      state
-      requests
-      (+ idx 1)
-      count
-      (vector-push results (server-loop-step state (vector-get requests idx))))))
-
-(defn server-loop-sequence [requests]
-  (let [state (server-state-new)
-    results (server-loop-sequence-loop state requests 0 (vector-length requests) (vector-new 8))
-    summary (vector-new 4)]
-    (vector-push
-      (vector-push
-        (vector-push
-          (vector-push summary results)
-          (server-state-doc-count state))
-        (server-state-request-count state))
-      (server-state-source-length state))))
-
-(defn server-loop [request]
-  (let [state (server-state-new)]
-    (server-loop-step state request)))

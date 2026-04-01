@@ -1,5 +1,40 @@
 use super::support::*;
 
+/// CP-04: `docs/schemas/review.schema.json` が diagnostics の必須フィールドを定義していること
+#[test]
+fn test_e2e_review_schema_json_contract() {
+    let schema_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/schemas/review.schema.json");
+    let raw =
+        std::fs::read_to_string(&schema_path).expect("docs/schemas/review.schema.json を読めない");
+    let v: serde_json::Value = serde_json::from_str(&raw).expect("review.schema.json の JSON 解析");
+
+    let diag_items = v["properties"]["diagnostics"]["items"]
+        .as_object()
+        .expect("diagnostics.items が object であること");
+    let required = diag_items["required"]
+        .as_array()
+        .expect("diagnostics.items.required が配列であること");
+    let req: Vec<&str> = required.iter().filter_map(|x| x.as_str()).collect();
+    assert!(
+        req.contains(&"severity"),
+        "review schema: diagnostics は severity 必須"
+    );
+    assert!(
+        req.contains(&"message"),
+        "review schema: diagnostics は message 必須"
+    );
+    assert!(
+        req.contains(&"line"),
+        "review schema: diagnostics は line 必須"
+    );
+
+    let top_required = v["required"].as_array().expect("トップレベル required");
+    let top: Vec<&str> = top_required.iter().filter_map(|x| x.as_str()).collect();
+    assert!(top.contains(&"source"));
+    assert!(top.contains(&"diagnostics"));
+}
+
 fn selfhost_doctools_runtime_bundle() -> String {
     [
         selfhost_module("Token.ls"),

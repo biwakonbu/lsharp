@@ -394,9 +394,12 @@ fn selfhost_fixture_dir(prefix: &str) -> std::path::PathBuf {
         .join(format!("{prefix}-{id}"))
 }
 
+/// ModuleGraph::discover が `nearest_src_root` で解決できるよう、`src/<canonical-relative>` に書き出す
 fn write_selfhost_fixture_modules(dir: &std::path::Path, modules: &[&str]) -> Result<(), String> {
+    let src_root = dir.join("src");
     for name in modules {
-        let path = dir.join(name);
+        let rel = selfhost_fixture_module_relative_path(name);
+        let path = src_root.join(rel);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
         }
@@ -450,14 +453,16 @@ fn try_compile_and_run_lsp_runtime(source: &str) -> Option<Result<String, String
         Some(try_compile_and_run_selfhost_fixture_module(
             "lsp-runtime",
             SELFHOST_LSP_RUNTIME_MODULES,
-            "LspServer.ls",
+            "src/Tools/Lsp/LspServer.ls",
         ))
     } else {
-        let entry_source = format!("(module Main)\n(import LspServer)\n{harness}");
+        let entry_source = format!(
+            "(module App.Main)\n(import Tools.Lsp.LspServerCore)\n(import Tools.Lsp.LspServerNav)\n(import Tools.Lsp.LspServer)\n{harness}"
+        );
         Some(try_compile_and_run_selfhost_fixture_entry(
             "lsp-harness",
             SELFHOST_LSP_RUNTIME_MODULES,
-            "Main.ls",
+            "src/App/Main.ls",
             &entry_source,
         ))
     }

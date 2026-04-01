@@ -567,6 +567,105 @@ struct ModuleTypeSurface {
     hidden: HashSet<String>,
 }
 
+/// FormatterExpr / FormatterDecl / Formatter はバンドル前提の相互再帰参照を含む。
+/// モジュール単位の型検査では `format-expr` 等が未束縛になるため、3 ファイルをまとめて 1 回推論する。
+const FORMATTER_TRIO_EXPR: &str = "Tools.Text.FormatterExpr";
+const FORMATTER_TRIO_DECL: &str = "Tools.Text.FormatterDecl";
+const FORMATTER_TRIO_MAIN: &str = "Tools.Text.Formatter";
+
+fn push_defn_origins_infer_order(
+    decls: &[lsharp_syntax::ast::Decl],
+    file_module: &str,
+    module_prefix: Option<&str>,
+    out: &mut Vec<String>,
+) {
+    use lsharp_syntax::ast::Decl;
+    for decl in decls {
+        let actual_decl = match decl {
+            Decl::Private { inner, .. } => inner.as_ref(),
+            other => other,
+        };
+        match actual_decl {
+            Decl::Defn { .. } => out.push(file_module.to_string()),
+            Decl::ModuleDecl { name, body, .. } if !body.is_empty() => {
+                let prefix = if let Some(outer) = module_prefix {
+                    format!("{outer}.{name}")
+                } else {
+                    name.clone()
+                };
+                push_defn_origins_infer_order(body, file_module, Some(prefix.as_str()), out);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn try_infer_formatter_trio_batch(
+    sorted_files: &[(String, std::path::PathBuf)],
+) -> Option<HashMap<String, ModuleTypeSurface>> {
+    use lsharp_syntax::ast::{Decl, Program};
+
+    let path_map: HashMap<String, std::path::PathBuf> =
+        sorted_files.iter().cloned().collect();
+    let p_expr = path_map.get(FORMATTER_TRIO_EXPR)?;
+    let p_decl = path_map.get(FORMATTER_TRIO_DECL)?;
+    let p_fmt = path_map.get(FORMATTER_TRIO_MAIN)?;
+
+    let mut merged_decls: Vec<Decl> = Vec::new();
+    let mut defn_origins: Vec<String> = Vec::new();
+    let mut seen_import: HashSet<String> = HashSet::new();
+
+    for (mod_name, path) in [
+        (FORMATTER_TRIO_EXPR, p_expr),
+        (FORMATTER_TRIO_DECL, p_decl),
+        (FORMATTER_TRIO_MAIN, p_fmt),
+    ] {
+        let source = std::fs::read_to_string(path).ok()?;
+        let program = lsharp_syntax::parse(&source).ok()?;
+        for decl in program.decls {
+            match &decl {
+                Decl::ImportDecl { module, .. } => {
+                    if seen_import.insert(module.clone()) {
+                        merged_decls.push(decl);
+                    }
+                }
+                Decl::ModuleDecl { .. } => {}
+                _ => {
+                    push_defn_origins_infer_order(std::slice::from_ref(&decl), mod_name, None, &mut defn_origins);
+                    merged_decls.push(decl);
+                }
+            }
+        }
+    }
+
+    let merged = Program {
+        decls: merged_decls,
+    };
+    let mut infer = lsharp_types::infer::Infer::new();
+    let type_results = infer.infer_program(&merged).ok()?;
+    if type_results.len() != defn_origins.len() {
+        return None;
+    }
+
+    let mut by_mod: HashMap<String, Vec<(String, lsharp_types::types::TypeScheme)>> =
+        HashMap::new();
+    for ((name, scheme), origin) in type_results.into_iter().zip(defn_origins.into_iter()) {
+        by_mod.entry(origin).or_default().push((name, scheme));
+    }
+
+    let mut out_map: HashMap<String, ModuleTypeSurface> = HashMap::new();
+    for (k, v) in by_mod {
+        out_map.insert(
+            k,
+            ModuleTypeSurface {
+                results: v,
+                hidden: HashSet::new(),
+            },
+        );
+    }
+    Some(out_map)
+}
+
 fn collect_import_visibility(
     program: &lsharp_syntax::ast::Program,
 ) -> HashMap<String, ImportVisibilitySpec> {
@@ -631,6 +730,8 @@ pub fn compile_multi_file(entry_file: &std::path::Path) -> Result<Module, String
     let mut all_type_results: Vec<(String, lsharp_types::types::TypeScheme)> = Vec::new();
     let mut per_module_type_results: HashMap<String, ModuleTypeSurface> = HashMap::new();
 
+    let formatter_trio_batch = try_infer_formatter_trio_batch(&sorted_files);
+
     for (mod_name, mod_path) in &sorted_files {
         let source = std::fs::read_to_string(mod_path)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
@@ -639,23 +740,34 @@ pub fn compile_multi_file(entry_file: &std::path::Path) -> Result<Module, String
             lsharp_syntax::parse(&source).map_err(|e| format!("{}: {e}", mod_path.display()))?;
         let direct_imports = collect_import_visibility(&program);
 
-        // 型チェック（直接 import されたモジュールの公開シンボルだけを注入）
-        let mut infer = lsharp_types::infer::Infer::new();
-        for dep_name in graph.dependency_closure(mod_name) {
-            if let Some(import_spec) = direct_imports.get(&dep_name)
-                && let Some(dep_surface) = per_module_type_results.get(&dep_name)
-            {
-                infer.inject_external_types_for_import(
-                    &dep_name,
-                    import_spec.only.as_deref(),
-                    &dep_surface.hidden,
-                    &dep_surface.results,
-                );
+        let (type_results, surface_hidden): (
+            Vec<(String, lsharp_types::types::TypeScheme)>,
+            HashSet<String>,
+        ) = if let Some(ref batch) = formatter_trio_batch
+            && let Some(surface) = batch.get(mod_name)
+        {
+            (surface.results.clone(), surface.hidden.clone())
+        } else {
+            // 型チェック（直接 import されたモジュールの公開シンボルだけを注入）
+            let mut infer = lsharp_types::infer::Infer::new();
+            for dep_name in graph.dependency_closure(mod_name) {
+                if let Some(import_spec) = direct_imports.get(&dep_name)
+                    && let Some(dep_surface) = per_module_type_results.get(&dep_name)
+                {
+                    infer.inject_external_types_for_import(
+                        &dep_name,
+                        import_spec.only.as_deref(),
+                        &dep_surface.hidden,
+                        &dep_surface.results,
+                    );
+                }
             }
-        }
-        let type_results = infer
-            .infer_program(&program)
-            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+            let type_results = infer
+                .infer_program(&program)
+                .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+            let hidden: HashSet<String> = infer.module_env.privates.iter().cloned().collect();
+            (type_results, hidden)
+        };
 
         // 型結果を蓄積
         all_type_results.extend(type_results.clone());
@@ -663,7 +775,7 @@ pub fn compile_multi_file(entry_file: &std::path::Path) -> Result<Module, String
             mod_name.clone(),
             ModuleTypeSurface {
                 results: type_results,
-                hidden: infer.module_env.privates.iter().cloned().collect(),
+                hidden: surface_hidden,
             },
         );
 

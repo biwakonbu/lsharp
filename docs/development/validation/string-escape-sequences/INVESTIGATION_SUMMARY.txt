@@ -1,0 +1,109 @@
+=============================================================================
+L# STRING ESCAPE SEQUENCES: TEST CREATION AND VERIFICATION COMPLETE
+=============================================================================
+
+ANSWER TO YOUR QUESTION:
+────────────────────────────────────────────────────────────────────────────
+In L# source code:
+  • "\\n" produces a NEWLINE CHARACTER (1 byte: 0x0A)
+  • "\\\\" produces a SINGLE BACKSLASH (1 byte: 0x5C)
+
+This is STANDARD programming language behavior - NOT a bug.
+
+DEFINITIVE PROOF:
+────────────────────────────────────────────────────────────────────────────
+Source file: crates/lsharp-syntax/src/lexer.rs (lines 158-213)
+
+The lexer code shows:
+  b'\\' => {
+      let escaped = self.bytes[self.pos];
+      match escaped {
+          b'n' => value.push('\n'),    // ← Produces 0x0A (newline)
+          b't' => value.push('\t'),    // ← Produces 0x09 (tab)
+          b'r' => value.push('\r'),    // ← Produces 0x0D (CR)
+          b'\\' => value.push('\\'),   // ← Produces 0x5C (backslash)
+          b'"' => value.push('"'),     // ← Produces 0x22 (quote)
+          _ => { ... }
+      }
+  }
+
+TESTS CREATED:
+────────────────────────────────────────────────────────────────────────────
+File: crates/lsharp-wasm/tests/e2e/string_escape_sequences.rs
+
+Tests created:
+  1. test_escape_sequence_newline()      - Mixed escape sequences
+  2. test_double_backslash()             - \\ produces \
+  3. test_escaped_n_sequence()           - Basic newline
+  4. test_verify_hex_dump()              - Detailed byte-by-byte output
+
+Run with:
+  cargo test --package lsharp-wasm --test e2e string_escape_sequences -- --nocapture
+
+PROCESSING PIPELINE:
+────────────────────────────────────────────────────────────────────────────
+  Source: "\\n"
+    ↓
+  [LEXER] Recognizes escape sequence → produces 0x0A
+    ↓
+  [PARSER] Creates AST with processed string
+    ↓
+  [IR LOWERING] Converts to Vec<u8> with as_bytes()
+    ↓
+  [WASM CODEGEN] Places raw bytes in data section (NO re-escaping)
+    ↓
+  [RUNTIME] Outputs raw bytes to stdout
+    ↓
+  Result: Actual newline character in output
+
+NO JSON ESCAPING IN THE PIPELINE!
+────────────────────────────────────────────────────────────────────────────
+
+DOCUMENTATION CREATED:
+────────────────────────────────────────────────────────────────────────────
+1. ESCAPE_SEQUENCE_VERIFICATION.md     - Source code proof & pipeline
+2. STRING_ESCAPE_EXAMPLES.md           - Concrete examples with hex dumps
+3. TEST_CREATION_SUMMARY.md            - This investigation summary
+
+All documentation includes:
+  • Complete source code citations
+  • Processing flow diagrams
+  • Example outputs
+  • How to run tests
+  • Quick reference tables
+
+FILES MODIFIED:
+────────────────────────────────────────────────────────────────────────────
+Modified:
+  crates/lsharp-wasm/tests/e2e/mod.rs
+    Added: mod string_escape_sequences;
+
+Created:
+  crates/lsharp-wasm/tests/e2e/string_escape_sequences.rs
+  ESCAPE_SEQUENCE_VERIFICATION.md
+  STRING_ESCAPE_EXAMPLES.md
+  TEST_CREATION_SUMMARY.md
+
+KEY FINDINGS:
+────────────────────────────────────────────────────────────────────────────
+✓ Escape sequences are processed correctly by the lexer
+✓ No double-encoding or JSON escaping happens
+✓ Raw bytes flow unchanged from source to output
+✓ This is standard behavior, not a bug
+✓ Any JSON export work should NOT re-escape these bytes
+
+TESTING EXAMPLE:
+────────────────────────────────────────────────────────────────────────────
+L# Source:
+  (print-string "\\n")
+
+Expected Output Bytes:
+  0x0A (decimal 10) - actual newline character
+
+What You See:
+  (cursor moves to next line)
+
+NOT:
+  \n (backslash followed by n)
+
+=============================================================================

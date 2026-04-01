@@ -2,6 +2,11 @@ use super::support::*;
 use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::hash::{Hash, Hasher};
 
+const TEST_I64_IF_WASM: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../tests/fixtures/selfhost-debug/test_i64_if.wasm"
+));
+
 /// wasmparser で wasm バイナリを検証し、詳細なエラーを返すヘルパー
 fn validate_wasm_detailed(wasm: &[u8]) -> Result<(), String> {
     use wasmparser::{Parser, Validator, WasmFeatures};
@@ -7377,11 +7382,10 @@ fn test_e2e_boot04_compiler_mode_ignores_dotted_flat_file() {
 #[test]
 fn test_i64_if_condition_validity() {
     // i64 を if 条件に使う wasm を wasmparser と wasmtime で検証
-    let wasm = include_bytes!("../../../../test_i64_if.wasm");
-    let vresult = validate_wasm_detailed(wasm);
+    let vresult = validate_wasm_detailed(TEST_I64_IF_WASM);
     eprintln!("wasmparser result: {:?}", vresult);
     let engine = wasmtime::Engine::default();
-    let mresult = wasmtime::Module::new(&engine, wasm);
+    let mresult = wasmtime::Module::new(&engine, TEST_I64_IF_WASM);
     eprintln!("wasmtime result: {}", if mresult.is_ok() { "OK" } else { "FAIL" });
 }
 
@@ -7413,7 +7417,10 @@ fn test_parse_compiler_ls() {
 #[test]
 fn test_parse_caws_standalone() {
     // compile-apply-with-source を単独でパースする
-    let source = std::fs::read_to_string("../../test_caws.ls").expect("read file");
+    let source = std::fs::read_to_string(
+        selfhost_project_root().join("tests/fixtures/selfhost-debug/test_caws.ls"),
+    )
+    .expect("read file");
     match lsharp_syntax::parse(&source) {
         Ok(prog) => eprintln!("パース成功: {} decls", prog.decls.len()),
         Err(e) => eprintln!("パースエラー: {:?}", e),

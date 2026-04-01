@@ -1,4 +1,8 @@
 (module Tools.Lsp.LspServerNav)
+(import Syntax.Parser)
+(import Tools.Text.FormatterDecl)
+(import Tools.Lsp.JsonRpc)
+(import Tools.Lsp.LspServerCore)
 
 ;; LspServerNav.ls - LSP ナビゲーション・補完・シンボル解析
 ;;

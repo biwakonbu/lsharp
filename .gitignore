@@ -1,8 +1,11 @@
 /target/
 *.wasm
+!/tests/fixtures/selfhost-debug/test_i64_if.wasm
 Cargo.lock
 *.pdf
 .claude/plans/
+.claude/settings.local.json
+.claude/worktrees/
 .agbullet/
 
 # IDE / エディタ
@@ -10,7 +13,22 @@ editors/vscode/node_modules/
 editors/vscode/out/
 editors/vscode/*.vsix
 .copilot/
+.cursor/
 
 # ビルド成果物 / 一時ファイル
 verify_test
 todos.db
+ci-artifacts/gc-metrics/local/
+
+# ローカル調査・検証 artifacts
+/00_START_HERE.md
+/DELIVERABLES_CHECKLIST.md
+/ESCAPE_BYTES_VISUAL_GUIDE.md
+/ESCAPE_SEQUENCE_VERIFICATION.md
+/FINAL_SUMMARY.txt
+/INDEX_ESCAPE_SEQUENCES.md
+/INVESTIGATION_SUMMARY.txt
+/README_ESCAPE_SEQUENCES.md
+/STRING_ESCAPE_EXAMPLES.md
+/TEST_CREATION_SUMMARY.md
+/test_escape_sequences.ls
