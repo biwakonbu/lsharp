@@ -233,7 +233,7 @@
 
 - [x] `EDIT-BUG-01` Neovim `root_dir` に存在しない `project.toml` を指定 -- 修正済み: `Cargo.toml` に変更
 - [x] `EDIT-BUG-02` VS Code `findLsharpBinary()` が `which` コマンドを使用しており Windows 非対応 -- Windows は動作保証対象外として全 README に明記。将来 Windows 対応時に `where` フォールバックを検討
-- [~] `EDIT-BUG-03` LSP `shutdown` が `params: null` / `params: {}` で `Unexpected params` を返す -- tower-lsp 0.20 の既知挙動。実エディタは `exit` で終了するため運用影響なし。tower-lsp 側の修正待ち
+- [x] `EDIT-BUG-03` LSP `shutdown` が `params: null` / `params: {}` で `Unexpected params` を返す -- 修正済み: `ParamsNormalizer` ミドルウェアで空 params を除去。ユニットテスト 7 件追加
 
 ---
 
