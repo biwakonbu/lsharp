@@ -210,6 +210,20 @@
 
 ---
 
+## Phase 14: エディタ統合プラグイン
+
+> L# LSP サーバー (`lsharp lsp`, stdio, tower-lsp) の各エディタ / AI ツール向けプラグイン・設定。
+> 既存: `editors/vscode/` (VS Code / Cursor / Windsurf 共通)
+
+- [x] `EDIT-01` VS Code 拡張の整備 (Cursor / Copilot / Codex 対応含む) -- README に Cursor/Windsurf/Copilot/Codex 互換明記、CHANGELOG 追加。CI job は未追加
+- [x] `EDIT-02` Claude Code プラグイン -- `editors/claude-code/.claude-plugin/plugin.json` に LSP 接続設定
+- [x] `EDIT-03` Neovim lspconfig レシピ -- `editors/neovim/lsharp.lua` に nvim-lspconfig 設定 + filetype + commentstring
+- [x] `EDIT-04` JetBrains LSP4IJ 設定 -- `editors/jetbrains/README.md` に手動設定手順
+- [x] `EDIT-05` 統合ドキュメント -- `editors/README.md` にエディタ別対応マトリクス
+- [x] `EDIT-06` CI 統合 -- `.github/workflows/ci.yml` に `editor-extension-build` job 追加、ci-gate / ci-gate-v2 に組込み
+
+---
+
 ## 完了済みフェーズ参照
 
 > Phase 12 (モジュール・パッケージ & AI フレンドリーエコシステム) → ADR-166

@@ -1,15 +1,27 @@
-# L# Language Support for VSCode
+# L# Language Support for VS Code
 
-S 式構文 + Hindley-Milner 型推論の言語 L# の VSCode 拡張。
+S 式構文 + Hindley-Milner 型推論の言語 L# の VS Code / Cursor / Windsurf 拡張。
 
 ## 機能
 
 - シンタックスハイライト (TextMate grammar)
 - リアルタイム診断 (構文エラー・型エラー)
+- Hover (型情報、`:doc` メタデータ)
+- 補完 (関数、キーワード、モジュール)
 - 定義ジャンプ (Cmd+Click / F12)
 - 全参照検索 (Shift+F12)
 - シンボルリネーム (F2)
 - ドキュメントフォーマット (Shift+Alt+F)
+
+## Cursor / Windsurf での利用
+
+この拡張は VS Code fork である Cursor と Windsurf でもそのまま動作する。
+GitHub Copilot や Codex CLI もエディタ内の LSP を利用するため、追加設定なしで L# の補完・診断が有効になる。
+
+Cursor の場合:
+```bash
+cursor --install-extension lsharp-vscode-0.1.0.vsix
+```
 
 ## インストール
 

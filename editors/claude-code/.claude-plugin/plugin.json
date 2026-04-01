@@ -1,0 +1,20 @@
+{
+  "name": "lsharp-lsp",
+  "description": "L# Language Server Protocol integration - S-expression syntax with Hindley-Milner type inference",
+  "version": "0.1.0",
+  "author": {
+    "name": "lsharp"
+  },
+  "repository": "https://github.com/biwakonbu/lsharp",
+  "lspServers": {
+    "lsharp": {
+      "command": "lsharp",
+      "args": ["lsp"],
+      "extensionToLanguage": {
+        ".ls": "lsharp"
+      },
+      "startupTimeout": 10000,
+      "restartOnCrash": true
+    }
+  }
+}
