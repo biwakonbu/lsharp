@@ -745,13 +745,13 @@
 ### OPS-02 Artifact policy
 
 - Goal: bootstrap/native/differential/release の artifact 保存規則を固定する。
-- Current state: `ci-gate-v2-results` (30 日) と `shadow-oracle-results` (14 日) は workflow に入ったが、bootstrap/native/release artifact 名と retention はまだ統一されていない。
+- Current state: active workflow は `bootstrap-diff-${github.sha}` / `fresh-clone-archive-${github.sha}` / `gc-metrics-${github.sha}` / `ci-gate-v2-results` / `shadow-oracle-results` を CI artifact 名として使い、release workflow も workflow-local artifact 名 `lsharp-${github.ref_name}-${matrix.target}` と GitHub Release asset `lsharp-{version}-{target}.{ext}` の区別まで docs / test と同期済み。placeholder 名 (`bootstrap-stages-*`, `native-binaries-*`, `benchmark-*`) は未実装 workflow のため active contract から外した。
 - Rust source: `docs/development/operations/artifact-policy.md`
-- L# target: `.github/workflows/ci.yml`
-- Implementation direction: artifact は `bootstrap-stages`, `bootstrap-diff`, `native-binaries`, `differential-report`, `release-artifacts`, `benchmark-results` に固定し、PR/main/tag ごとの retention day を spec どおりに設定する。
+- L# target: `.github/workflows/ci.yml`, `.github/workflows/release.yml`
+- Implementation direction: active workflow が emit する artifact 名だけを正本化し、workflow-local artifact 名と GitHub Release asset 名を混同しない。新しい artifact 名は workflow と回帰テストが入った時点で追加する。
 - Dependencies: `OPS-01`
-- Acceptance: CI が artifact 名と retention rule を一貫して使う。
-- Evidence: `.github/workflows/ci.yml`, Actions artifact 一覧
+- Acceptance: active CI / release workflow が artifact 名と retention rule を一貫して使い、`test_e2e_ops02_artifact_policy` で drift を検知できる。
+- Evidence: `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `docs/development/operations/artifact-policy.md`, `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs`
 
 <a id="ops-03-shadoworacle-lifecycle"></a>
 ### OPS-03 Shadow/oracle lifecycle

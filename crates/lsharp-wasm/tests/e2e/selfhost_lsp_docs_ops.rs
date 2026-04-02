@@ -2097,17 +2097,69 @@ fn test_e2e_ops02_artifact_policy() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let ci_path = project_root.join(".github/workflows/ci.yml");
     assert!(ci_path.exists(), "ci.yml が存在しない");
-    let content = std::fs::read_to_string(&ci_path).expect("ci.yml の読み込みに失敗");
+    let ci_content = std::fs::read_to_string(&ci_path).expect("ci.yml の読み込みに失敗");
     // artifact retention に関する設定が存在すること
     assert!(
-        content.contains("retention-days"),
+        ci_content.contains("retention-days"),
         "ci.yml に artifact retention-days 設定が存在しない"
+    );
+    for artifact_name in [
+        "name: bootstrap-diff-${{ github.sha }}",
+        "name: fresh-clone-archive-${{ github.sha }}",
+        "name: gc-metrics-${{ github.sha }}",
+        "name: ci-gate-v2-results",
+        "name: shadow-oracle-results",
+    ] {
+        assert!(
+            ci_content.contains(artifact_name),
+            "ci.yml は active artifact 名 `{}` を保持すること",
+            artifact_name
+        );
+    }
+
+    let release_workflow = project_root.join(".github/workflows/release.yml");
+    assert!(
+        release_workflow.is_file(),
+        "release.yml が存在しない"
+    );
+    let release_content =
+        std::fs::read_to_string(&release_workflow).expect("release.yml の読み込みに失敗");
+    assert!(
+        release_content.contains("name: lsharp-${{ github.ref_name }}-${{ matrix.target }}"),
+        "release.yml は workflow-local release artifact 名を保持すること"
+    );
+    assert!(
+        release_content
+            .contains("path: dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }}"),
+        "release.yml は配布 asset ファイル名も固定すること"
     );
     // アーティファクトポリシードキュメントが存在すること
     let policy_doc = project_root.join("docs/development/operations/artifact-policy.md");
     assert!(
         policy_doc.is_file(),
         "docs/development/operations/artifact-policy.md が存在しない"
+    );
+    let policy_content =
+        std::fs::read_to_string(&policy_doc).expect("artifact-policy.md の読み込みに失敗");
+    for documented_pattern in [
+        "ci-gate-v2-results",
+        "bootstrap-diff-{commit_sha}",
+        "fresh-clone-archive-{commit_sha}",
+        "gc-metrics-{commit_sha}",
+        "shadow-oracle-results",
+        "lsharp-{version}-{target}",
+        "lsharp-{version}-{target}.{ext}",
+    ] {
+        assert!(
+            policy_content.contains(documented_pattern),
+            "artifact-policy.md は actual artifact pattern `{}` を記述すること",
+            documented_pattern
+        );
+    }
+    assert!(
+        policy_content.contains("workflow-local")
+            && policy_content.contains("GitHub Release asset"),
+        "artifact-policy.md は workflow-local artifact 名と GitHub Release asset 名を区別すること"
     );
 }
 

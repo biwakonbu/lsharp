@@ -1,60 +1,89 @@
 # アーティファクトポリシー
 
-CI / CD パイプラインで生成されるアーティファクトの命名規則と保持期間を定義する。
+CI / CD パイプラインで生成される **workflow-local artifact** と、タグ付き配布で公開する
+**GitHub Release asset** の命名規則 / 保持期間を定義する。
+この文書は **現在 workflow が実際に emit している名前だけ** を正本として扱う。
+将来用の placeholder 名は、対応する workflow とテストが入るまで active contract にしない。
 
 ## 命名規則
 
-| アーティファクト | 命名パターン | 説明 |
-|---|---|---|
-| CI Gate v2 結果 | `ci-gate-v2-results` | gate-v2 の全ジョブ結果サマリー |
-| GC metrics | `gc-metrics-{commit_sha}` | runtime stability 用の GC/alloc metrics JSON |
-| Bootstrap stages | `bootstrap-stages-{sha}` | selfhost ブートストラップの中間成果物 |
-| Bootstrap diff | `bootstrap-diff-{sha}` | stage 間の差分レポート |
-| Native binaries | `native-binaries-{os}-{arch}` | ネイティブビルド成果物 |
-| Differential report | `differential-report-{sha}` | shadow-oracle 差分テストレポート |
-| Release artifacts | `release-{version}-{os}-{arch}` | リリース配布物 |
-| Benchmark results | `benchmark-{date}` | パフォーマンスベンチマーク結果 |
+### workflow-local artifact（`actions/upload-artifact`）
+
+| アーティファクト | 命名パターン | ソース | 説明 |
+|---|---|---|---|
+| CI Gate v2 結果 | `ci-gate-v2-results` | `.github/workflows/ci.yml` | gate-v2 の全ジョブ結果サマリー |
+| Bootstrap diff | `bootstrap-diff-{commit_sha}` | `.github/workflows/ci.yml` `bootstrap` | fixed-point / stage-chain 比較レポート |
+| Fresh clone archive | `fresh-clone-archive-{commit_sha}` | `.github/workflows/ci.yml` `fresh-clone-artifact` | binary-only gate 用の release-style archive |
+| GC metrics | `gc-metrics-{commit_sha}` | `.github/workflows/ci.yml` `gc-metrics-artifact` | runtime stability 用の GC/alloc metrics JSON |
+| Shadow oracle 結果 | `shadow-oracle-results` | `.github/workflows/ci.yml` `shadow-oracle` | differential test の補助成果物 |
+| Release build artifact | `lsharp-{version}-{target}` | `.github/workflows/release.yml` `build` | release workflow 内で download される論理名 |
+
+### GitHub Release asset
+
+| アセット | 命名パターン | ソース | 説明 |
+|---|---|---|---|
+| Release archive | `lsharp-{version}-{target}.{ext}` | `.github/workflows/release.yml` `release` | tag に添付されるユーザー向け配布ファイル |
 
 ### 命名規則の詳細
 
 - `{commit_sha}`: GitHub Actions の `github.sha` が指すフルコミット SHA
-- `{sha}`: Git コミット SHA。短縮形を使う場合は各 workflow 側で明示する
-- `{os}`: `linux` / `macos` / `windows`
-- `{arch}`: `x86_64` / `aarch64`
-- `{version}`: セマンティックバージョン（例: `0.2.0`）
-- `{date}`: ISO 8601 日付（例: `2026-01-15`）
+- `{version}`: Git tag / release version（例: `v0.2.0`）
+- `{target}`: Rust target triple（例: `x86_64-unknown-linux-gnu`）
+- `{ext}`: archive 拡張子（`tar.gz` / `zip`）
+
+`lsharp-{version}-{target}` は **workflow-local artifact name** であり、`actions/download-artifact`
+が参照する論理名である。実際にユーザーが取得する **GitHub Release asset** は
+`lsharp-{version}-{target}.{ext}` であり、拡張子付きのファイル名を正本とする。
+
+将来 `bootstrap-stages-*` / `native-binaries-*` / `benchmark-*` のような新しい artifact 名を
+追加する場合も、この文書へ先に placeholder を書くのではなく、workflow とテストを追加した時点で
+active contract として追記する。
 
 ## 保持期間
 
-| Git ref | 保持期間 | 根拠 |
-|---|---|---|
-| PR | 5 日 | マージ後は不要。レビュー期間をカバー |
-| main ブランチ | 30 日 | 回帰調査に十分な期間 |
-| リリースタグ | 永続 | ユーザー配布物として永続保持 |
+| アーティファクト | PR | `main` | tag / release | 根拠 |
+|---|---:|---:|---:|---|
+| `bootstrap-diff-{commit_sha}` | 5 日 | 30 日 | - | fixed-point 調査用 |
+| `fresh-clone-archive-{commit_sha}` | 5 日 | 30 日 | - | binary-only gate の再検証用 |
+| `gc-metrics-{commit_sha}` | 5 日 | 30 日 | - | runtime stability 調査用 |
+| `ci-gate-v2-results` | 30 日 | 30 日 | - | 集約結果の調査用 |
+| `shadow-oracle-results` | 14 日 | 14 日 | - | non-blocking differential 補助証跡 |
+| `lsharp-{version}-{target}` | - | - | 30 日 | release workflow 中の workflow-local artifact |
+| `lsharp-{version}-{target}.{ext}` | - | - | 永続 | GitHub Release asset として公開 |
 
 ### CI での設定
 
 ```yaml
-# ci.yml での retention-days 設定例
+# ci.yml: PR は 5 日、main は 30 日
 - uses: actions/upload-artifact@v4
   with:
-    name: ci-gate-v2-results
-    retention-days: 30        # main ブランチ
-    if-no-files-found: ignore
+    name: bootstrap-diff-${{ github.sha }}
+    retention-days: ${{ github.event_name == 'pull_request' && 5 || 30 }}
+```
+
+```yaml
+# release.yml: workflow-local artifact は 30 日保持し、別途 GitHub Release へ添付する
+- uses: actions/upload-artifact@v4
+  with:
+    name: lsharp-${{ github.ref_name }}-${{ matrix.target }}
+    retention-days: 30
 ```
 
 PR の場合は GitHub Actions のデフォルト保持期間（90 日）を上書きし、5 日に短縮する。
+GitHub Release asset の「永続」は `retention-days` ではなく、GitHub Release 上の配布物として
+残す運用を指す。
 
 ## チェックサム
 
-リリースアーティファクトには SHA-256 チェックサムを付与する。
+GitHub Release asset には `checksums.txt` を付与する。
 
 ```bash
-# scripts/checksum.sh でチェックサム生成
-sha256sum release-*.tar.gz > SHA256SUMS
+# scripts/checksum.sh で checksums.txt を生成
+bash scripts/checksum.sh dist/lsharp-v0.2.0-x86_64-unknown-linux-gnu \
+  > dist/lsharp-v0.2.0-x86_64-unknown-linux-gnu/checksums.txt
 ```
 
-チェックサムファイルは対応するリリースアーティファクトと同じ保持期間とする。
+`checksums.txt` は対応する GitHub Release asset と同じ公開単位で扱う。
 
 ## ストレージ管理
 
@@ -62,6 +91,7 @@ sha256sum release-*.tar.gz > SHA256SUMS
 - 不要な中間成果物は `if-no-files-found: ignore` で欠落を許容する
 - 大容量アーティファクト（Wasm バイナリ等）は圧縮して保存する
 - `gc-metrics-{commit_sha}` は `ci-artifacts/gc-metrics/{commit_sha}/summary.json` を正本とし、PR では 5 日、main では 30 日保持する
+- release workflow の `lsharp-{version}-{target}` は **workflow-local artifact** であり、ユーザー向け名称は GitHub Release asset `lsharp-{version}-{target}.{ext}` として別に扱う
 
 ## GC metrics artifact の受理 / 却下
 
@@ -93,6 +123,7 @@ sha256sum release-*.tar.gz > SHA256SUMS
 ## 証跡
 
 - `.github/workflows/ci.yml` (`retention-days` 設定)
+- `.github/workflows/release.yml`
 - `scripts/ci/collect-gc-metrics.sh`
 - `docs/development/planning/gc-ci-gate-spec.md`
 - `scripts/checksum.sh`
