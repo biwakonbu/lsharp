@@ -5,26 +5,30 @@ CI パイプラインのジョブ依存関係と保護ルールの正本。relea
 ## ジョブ依存関係
 
 ```
-test ──────────────┐
-lint ──────────────┤
-format ────────────┤
-bootstrap ─────────┤──→ ci-gate ──→ ci-gate-v2
-audit-docs ────────┤
-default-path-smoke ─┤
-fresh-clone-smoke ──┤
-gc-metrics-artifact ─┘
-shadow-oracle ─────────→ ci-gate-v2 (non-blocking)
+test ─────────────────┐
+lint ─────────────────┤
+format ───────────────┤
+bootstrap ────────────┤
+audit-docs ───────────┤
+default-path-smoke ───┤
+test-fresh-clone ─────┤
+fresh-clone-smoke ────┤──→ ci-gate ──→ ci-gate-v2
+gc-metrics-artifact ──┤
+editor-extension-build ┤
+shadow-oracle ─────────┘────────────→ ci-gate-v2 (non-blocking)
 ```
 
 ### 依存の詳細
 
 - `bootstrap` は `test` 完了後に開始する（`needs: [test]`）
 - `default-path-smoke` は `test` 完了後に開始する（`needs: [test]`）
+- `test-fresh-clone` は `fresh-clone-artifact` 完了後に開始し、download 済み release-style archive を Rust toolchain 無しで binary-only smoke する
 - `fresh-clone-smoke` は `test` 完了後に開始する（`needs: [test]`）
 - `gc-metrics-artifact` は `test` 完了後に開始し、targeted GC metrics JSON を回収する（`needs: [test]`）
+- `editor-extension-build` は VS Code 拡張 compile と Claude Code plugin JSON を検証する
 - `shadow-oracle` は `test` 完了後に開始する（`needs: [test]`、`continue-on-error: true`）
-- `ci-gate` は上記 8 ジョブの全成功を要求する
-- `ci-gate-v2` は `ci-gate` の 8 ジョブ + `shadow-oracle` を集約する
+- `ci-gate` は上記 10 ジョブの全成功を要求する
+- `ci-gate-v2` は `ci-gate` の required 10 ジョブ + `shadow-oracle` を集約する
 
 ## 必須ジョブ (ci-gate)
 
@@ -36,14 +40,16 @@ shadow-oracle ─────────→ ci-gate-v2 (non-blocking)
 | 4 | **bootstrap** | `bash scripts/ci/compile-phase11-inputs.sh` | selfhost 入力セットのコンパイル |
 | 5 | **audit-docs** | `bash scripts/audit_docs.sh` | ドキュメント整合性チェック |
 | 6 | **default-path-smoke** | `bash scripts/ci/default-path-smoke.sh` | `lsharp` バイナリ経路検証 |
-| 7 | **fresh-clone-smoke** | `bash scripts/ci/test-fresh-clone.sh` | clean checkout 相当での再ビルド / smoke |
-| 8 | **gc-metrics-artifact** | `bash scripts/ci/collect-gc-metrics.sh` | runtime stability 用の GC metrics JSON を生成 |
+| 7 | **test-fresh-clone** | `bash scripts/ci/test-fresh-clone.sh <archive>` | workflow-local release-style archive を Rust toolchain 無しで binary-only smoke |
+| 8 | **fresh-clone-smoke** | `bash scripts/ci/test-fresh-clone.sh` | clean checkout 相当での再ビルド / smoke |
+| 9 | **gc-metrics-artifact** | `bash scripts/ci/collect-gc-metrics.sh` | runtime stability 用の GC metrics JSON を生成 |
+| 10 | **editor-extension-build** | `npm install && npm run compile` + `python3 -c ...plugin.json` | VS Code / Claude Code 拡張の配布面を検証 |
 
 ### ci-gate の判定ロジック
 
 ```yaml
 if: always()
-# 8 ジョブすべてが success でなければ exit 1
+# 10 ジョブすべてが success でなければ exit 1
 ```
 
 ## オプショナルジョブ (ci-gate-v2)
@@ -54,8 +60,7 @@ if: always()
 
 ### ci-gate-v2 の判定ロジック
 
-1. 必須 7 ジョブのいずれかが失敗 → **exit 1**
-1. 必須 8 ジョブのいずれかが失敗 → **exit 1**
+1. 必須 10 ジョブのいずれかが失敗 → **exit 1**
 2. `shadow-oracle` が失敗 → **WARNING ログのみ**（非ブロッキング）
 3. 全ジョブ成功 → **pass**
 
@@ -63,14 +68,14 @@ if: always()
 
 | ブランチ | 必須ジョブ | 説明 |
 |----------|-----------|------|
-| `main` | `ci-gate-v2` | shadow-oracle を含む全検証 |
-| PRs | `ci-gate` | 必須 8 ジョブの成功 |
+| `main` | `ci-gate-v2` | required 10 ジョブ + non-blocking `shadow-oracle` の集約 |
+| PRs | `ci-gate` | 必須 10 ジョブの成功 |
 
 GitHub の branch protection UI では required check として Actions 表示名 `CI Gate v2` を選択し、workflow source / docs 正本では job id `ci-gate-v2` を使う。
 
 ## アーティファクト
 
-`ci-gate-v2` はジョブ結果サマリーを `ci-gate-v2-results` として保存する（`retention-days: 30`）。`gc-metrics-artifact` は `gc-metrics-{sha}` として `ci-artifacts/gc-metrics/{commit_sha}/summary.json` を保存する。
+`ci-gate-v2` はジョブ結果サマリーを `ci-gate-v2-results` として保存する（`retention-days: 30`）。`gc-metrics-artifact` は `gc-metrics-{sha}` として `ci-artifacts/gc-metrics/{commit_sha}/summary.json` を保存する。`test-fresh-clone` は upstream の `fresh-clone-artifact` が `fresh-clone-archive-${sha}` を publish し、それを download して binary-only smoke を行う。
 
 ## 同時実行制御
 

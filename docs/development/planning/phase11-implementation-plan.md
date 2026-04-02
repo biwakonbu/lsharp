@@ -733,13 +733,13 @@
 ### OPS-01 CI gate-v2 job graph
 
 - Goal: CI の主経路を L# ベース job graph へ切り替える。
-- Current state: `ci-gate` / `ci-gate-v2` に `default-path-smoke` と `fresh-clone-smoke` を required job として組み込み、compile/docs/default-path/clean-checkout の blocking graph までは導入済み。**ただし** branch protection 側の required check 移行証跡と native/release job graph への再編は未完。
+- Current state: `ci-gate` / `ci-gate-v2` に `default-path-smoke` / `test-fresh-clone` / `fresh-clone-smoke` / `gc-metrics-artifact` / `editor-extension-build` を required job として組み込み、compile/docs/default-path/binary-only fresh-clone/clean-checkout/editor distribution の blocking graph まで導入済み。GitHub branch protection でも Actions 表示名 `CI Gate v2` を required check として `main` に適用済み。**ただし** native/release job graph の再編と release signing は未完。
 - Rust source: `docs/development/operations/ci-gate-v2-job-graph.md`, `.github/workflows/ci.yml`
 - L# target: `.github/workflows/ci.yml`
 - Implementation direction: job graph は `bootstrap-wasm -> bootstrap-native -> golden-parity -> release-smoke -> packaging`, `docs` 独立、`ci-gate-v2` 集約に固定する。required checks もこの名前に合わせる。
 - Dependencies: `BOOT-04`, `NATIVE-06`, `PKG-01`
 - Acceptance: branch protection の required check が `ci-gate-v2` に移行できる。
-- Evidence: `.github/workflows/ci.yml`, GitHub branch protection
+- Evidence: `.github/workflows/ci.yml`, GitHub branch protection, `docs/development/operations/CI.md`, `docs/development/operations/ci-gate-v2-job-graph.md`
 
 <a id="ops-02-artifact-policy"></a>
 ### OPS-02 Artifact policy

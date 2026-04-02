@@ -2089,6 +2089,26 @@ fn test_e2e_ops01_ci_gate_v2() {
         job_graph_doc.is_file(),
         "docs/development/operations/ci-gate-v2-job-graph.md が存在しない"
     );
+    let job_graph_content =
+        std::fs::read_to_string(&job_graph_doc).expect("ci-gate-v2-job-graph.md の読み込みに失敗");
+    for required_job in [
+        "test-fresh-clone",
+        "fresh-clone-smoke",
+        "editor-extension-build",
+        "gc-metrics-artifact",
+        "ci-gate-v2-results",
+    ] {
+        assert!(
+            job_graph_content.contains(required_job),
+            "ci-gate-v2-job-graph.md は current CI job/artifact `{}` を正本として記載すること",
+            required_job
+        );
+    }
+    assert!(
+        job_graph_content.contains("`main` | `ci-gate-v2`")
+            && job_graph_content.contains("Actions 表示名 `CI Gate v2`"),
+        "ci-gate-v2-job-graph.md は current branch protection 契約を説明すること"
+    );
 }
 
 /// TEST-OPS-02: ci.yml に artifact retention 設定 + ポリシードキュメント
@@ -2914,6 +2934,16 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
             || phase11_plan_content.contains("same-run")
             || phase11_plan_content.contains("download release artifact"),
         "phase11-implementation-plan.md の OPS-07 節は current binary-only gate を説明すること"
+    );
+
+    let completion_criteria =
+        project_root.join("docs/development/planning/completion-criteria.md");
+    let completion_criteria_content =
+        std::fs::read_to_string(&completion_criteria).expect("completion-criteria.md の読み込みに失敗");
+    assert!(
+        completion_criteria_content.contains("test-fresh-clone")
+            && completion_criteria_content.contains("closest viable binary-only gate"),
+        "completion-criteria.md は current mainline binary-only fresh-clone gate を説明すること"
     );
 }
 

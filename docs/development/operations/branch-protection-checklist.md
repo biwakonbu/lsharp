@@ -1,6 +1,6 @@
 # Branch protection / required checks（人手作業チェックリスト）
 
-Phase 11 の `CP-06`（CI / release cutover）で、GitHub 上の **Branch protection** と **required status checks** を更新するときの確認用です。リポジトリ設定は API だけでは完結しないため、PR マージ前にここを踏んでください。
+Phase 11 の `CP-06`（CI / release cutover）で、GitHub 上の **Branch protection** と **required status checks** を更新するときの確認用です。リポジトリ設定は API/UI の両方があり得るため、PR マージ前にここを踏んでください。
 
 ## Required checks に載せる前
 
@@ -16,6 +16,8 @@ Phase 11 の `CP-06`（CI / release cutover）で、GitHub 上の **Branch prote
 - [ ] **Status checks that are required** に Actions 表示名 `CI Gate v2` が含まれる（workflow job id は `ci-gate-v2`）
 - [ ] required check の表示名 / job id の対応が `docs/development/operations/CI.md` と一致している
 - [ ] **Require branches to be up to date** を方針に合わせて有効/無効のいずれかで統一
+
+> 2026-04-02 現況: `main` には API で branch protection を適用済み。`CI Gate v2` required check / strict update / linear history / conversation resolution / no force pushes / no deletions を有効化した。運用変更時はこの状態を再確認する。
 
 ## 署名・タグ
 
