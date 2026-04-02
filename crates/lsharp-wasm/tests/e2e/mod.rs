@@ -1,9 +1,9 @@
 mod bootstrap_selfhost_lsp_integration;
-mod selfhost_bootstrap_acceptance;
 mod builtins_hof_collections;
 mod core_language_semantics;
 mod file_io_selfhost_compiler_ir;
 mod runtime_allocator_closures;
+mod selfhost_bootstrap_acceptance;
 mod selfhost_bootstrap_contracts;
 mod selfhost_bootstrap_four_layer;
 mod selfhost_cli_actual_main_args;
@@ -35,6 +35,6 @@ mod selfhost_typeinfer_pipeline_bootstrap;
 mod selfhost_typeinfer_quote_patterns;
 mod selfhost_typeinfer_records_computation;
 mod stdlib_modules_selfhost_lexer;
-mod strings_patterns_compiler_integration;
 mod string_escape_sequences;
+mod strings_patterns_compiler_integration;
 mod support;

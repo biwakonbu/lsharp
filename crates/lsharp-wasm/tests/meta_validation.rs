@@ -216,9 +216,10 @@ fn test_meta_05_branch_protection_required_check_contract() {
         "CI.md は required check の Actions 表示名 (`CI Gate v2`) を説明すること"
     );
 
-    let checklist_path = project_root.join("docs/development/operations/branch-protection-checklist.md");
-    let checklist_content =
-        std::fs::read_to_string(&checklist_path).expect("branch-protection-checklist.md の読み込みに失敗");
+    let checklist_path =
+        project_root.join("docs/development/operations/branch-protection-checklist.md");
+    let checklist_content = std::fs::read_to_string(&checklist_path)
+        .expect("branch-protection-checklist.md の読み込みに失敗");
     assert!(
         checklist_content.contains("ci-gate-v2"),
         "branch-protection-checklist.md は required check の job id (`ci-gate-v2`) を含むこと"
@@ -229,8 +230,8 @@ fn test_meta_05_branch_protection_required_check_contract() {
     );
 
     let audit_script_path = project_root.join("scripts/audit_docs.sh");
-    let audit_script_content =
-        std::fs::read_to_string(&audit_script_path).expect("scripts/audit_docs.sh の読み込みに失敗");
+    let audit_script_content = std::fs::read_to_string(&audit_script_path)
+        .expect("scripts/audit_docs.sh の読み込みに失敗");
     assert!(
         audit_script_content.contains("branch-protection-checklist.md"),
         "scripts/audit_docs.sh は branch-protection-checklist.md の整合性を確認すること"
@@ -302,15 +303,20 @@ fn test_meta_06_deferred_v2_native_docs_are_synced() {
         );
     }
 
-    let v2_08_doc = project_root.join("docs/development/planning/v2-designs/v2-08-native-backend-self-regeneration.md");
-    let v2_09_doc = project_root.join("docs/development/planning/v2-designs/v2-09-wasm-native-differential-zero.md");
-    let v2_10_doc = project_root.join("docs/development/planning/v2-designs/v2-10-native-only-rc-distribution.md");
+    let v2_08_doc = project_root
+        .join("docs/development/planning/v2-designs/v2-08-native-backend-self-regeneration.md");
+    let v2_09_doc = project_root
+        .join("docs/development/planning/v2-designs/v2-09-wasm-native-differential-zero.md");
+    let v2_10_doc = project_root
+        .join("docs/development/planning/v2-designs/v2-10-native-only-rc-distribution.md");
     for doc in [&v2_08_doc, &v2_09_doc, &v2_10_doc] {
         assert!(doc.is_file(), "{} が存在しない", doc.display());
         let content = std::fs::read_to_string(doc)
             .unwrap_or_else(|e| panic!("{} の読み込みに失敗: {}", doc.display(), e));
         assert!(
-            content.contains("Deferred") || content.contains("Phase 11 後") || content.contains("Component Model pivot"),
+            content.contains("Deferred")
+                || content.contains("Phase 11 後")
+                || content.contains("Component Model pivot"),
             "{} は Deferred / post-Phase11 方針を説明すること",
             doc.display()
         );

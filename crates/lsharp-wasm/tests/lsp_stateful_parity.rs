@@ -1,10 +1,10 @@
 #[path = "e2e/support.rs"]
 mod support;
 
-use support::*;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
+use support::*;
 
 fn parity_test_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -99,7 +99,9 @@ fn run_lsp_harness(harness: &str) -> Vec<String> {
 
 fn write_filesystem_lsp_runtime_modules(dir: &Path) {
     for name in FILESYSTEM_LSP_RUNTIME_MODULES {
-        let path = dir.join("src").join(selfhost_fixture_module_relative_path(name));
+        let path = dir
+            .join("src")
+            .join(selfhost_fixture_module_relative_path(name));
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).unwrap_or_else(|e| {
                 panic!(
@@ -181,7 +183,8 @@ fn parity_test_guard() -> std::sync::MutexGuard<'static, ()> {
 fn test_e2e_lsp_stateful_completion_resolves_hier_fixture_shape_open_document() {
     let helper_source = "(module Syntax.SimpleHelper) (defn helper-value [] 42)";
     let main_source = "(module App.Main) (import Syntax.SimpleHelper) (defn main [] (helper-val))";
-    let completion_col = main_source.find("helper-val").expect("helper-val") + "helper-val".len() + 1;
+    let completion_col =
+        main_source.find("helper-val").expect("helper-val") + "helper-val".len() + 1;
     let harness = format!(
         r#"
 (defn main []
@@ -201,7 +204,10 @@ fn test_e2e_lsp_stateful_completion_resolves_hier_fixture_shape_open_document() 
 
     let lines = run_lsp_harness(&harness);
 
-    assert_eq!(lines[0], "1", "stateful completion は cross-document 候補を 1 件返すべき");
+    assert_eq!(
+        lines[0], "1",
+        "stateful completion は cross-document 候補を 1 件返すべき"
+    );
     assert_eq!(
         lines[1], "helper-value",
         "stateful completion は helper document の defn 名を候補に出すべき"
@@ -503,11 +509,7 @@ fn test_e2e_lsp_stateful_rename_returns_workspace_edit() {
 
     let lines = run_lsp_harness(&harness);
     let count: usize = lines[0].parse().expect("rename changes count");
-    assert!(
-        count >= 1,
-        "rename は workspace edit を返すべき: {}",
-        count
-    );
+    assert!(count >= 1, "rename は workspace edit を返すべき: {}", count);
 }
 
 /// CP-04: actual `lsp --stdio` でも rename が workspace edit を返すこと
@@ -611,7 +613,8 @@ fn test_e2e_lsp_actual_stdio_completion_resolves_hier_fixture_shape_open_documen
     let _guard = parity_test_guard();
     let helper_source = "(module Syntax.SimpleHelper) (defn helper-value [] 42)";
     let main_source = "(module App.Main) (import Syntax.SimpleHelper) (defn main [] (helper-val))";
-    let completion_col = main_source.find("helper-val").expect("helper-val") + "helper-val".len() + 1;
+    let completion_col =
+        main_source.find("helper-val").expect("helper-val") + "helper-val".len() + 1;
     let open_helper_body = format!(
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":201,"source":"{}"}}}}"#,
         helper_source
@@ -900,7 +903,8 @@ fn test_e2e_lsp_actual_stdio_goto_definition_resolves_filesystem_import_from_doc
 /// CP-04: actual `lsp --stdio` でも nested import を document path から
 /// filesystem で辿って goto_definition を解決できること
 #[test]
-fn test_e2e_lsp_actual_stdio_goto_definition_resolves_nested_filesystem_import_from_document_path() {
+fn test_e2e_lsp_actual_stdio_goto_definition_resolves_nested_filesystem_import_from_document_path()
+{
     let dir = filesystem_lsp_fixture_dir("stdio_definition_nested_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
     let mid_source = "(module Support.Mid) (import Support.Base) (defn mid-val [] (base-val))";
@@ -1042,7 +1046,8 @@ fn test_e2e_lsp_actual_stdio_references_find_filesystem_import_occurrences_from_
 /// CP-04: actual `lsp --stdio` でも nested import を document path から
 /// filesystem で辿って references を解決できること
 #[test]
-fn test_e2e_lsp_actual_stdio_references_find_nested_filesystem_import_occurrences_from_document_path() {
+fn test_e2e_lsp_actual_stdio_references_find_nested_filesystem_import_occurrences_from_document_path()
+ {
     let dir = filesystem_lsp_fixture_dir("stdio_references_nested_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
     let mid_source = "(module Support.Mid) (import Support.Base) (defn mid-val [] (base-val))";
@@ -1113,7 +1118,8 @@ fn test_e2e_lsp_stateful_rename_returns_filesystem_import_workspace_edit_from_do
 /// CP-04: stateful harness 上で nested import も document path を起点に
 /// filesystem から辿って rename workspace edit を返せること
 #[test]
-fn test_e2e_lsp_stateful_rename_returns_nested_filesystem_import_workspace_edit_from_document_path() {
+fn test_e2e_lsp_stateful_rename_returns_nested_filesystem_import_workspace_edit_from_document_path()
+{
     let dir = filesystem_lsp_fixture_dir("rename_nested_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
     let mid_source = "(module Support.Mid) (import Support.Base) (defn mid-val [] (base-val))";
@@ -1184,7 +1190,8 @@ fn test_e2e_lsp_actual_stdio_rename_returns_filesystem_import_workspace_edit_fro
 /// CP-04: actual `lsp --stdio` でも nested import を document path から
 /// filesystem で辿って rename workspace edit を返せること
 #[test]
-fn test_e2e_lsp_actual_stdio_rename_returns_nested_filesystem_import_workspace_edit_from_document_path() {
+fn test_e2e_lsp_actual_stdio_rename_returns_nested_filesystem_import_workspace_edit_from_document_path()
+ {
     let dir = filesystem_lsp_fixture_dir("stdio_rename_nested_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
     let mid_source = "(module Support.Mid) (import Support.Base) (defn mid-val [] (base-val))";
@@ -1385,8 +1392,14 @@ fn test_e2e_lsp_stateful_completion_uses_changed_document() {
     );
 
     let lines = run_lsp_harness(&harness);
-    assert_eq!(lines[0], "1", "didChange 後の completion 候補は 1 件であるべき");
-    assert_eq!(lines[1], "helper", "didChange 後の completion は最新 source の helper を返すべき");
+    assert_eq!(
+        lines[0], "1",
+        "didChange 後の completion 候補は 1 件であるべき"
+    );
+    assert_eq!(
+        lines[1], "helper",
+        "didChange 後の completion は最新 source の helper を返すべき"
+    );
 }
 
 /// CP-04: stateful harness 上で didChange 後の hover が最新 source を使うこと
@@ -1410,7 +1423,10 @@ fn test_e2e_lsp_stateful_hover_uses_changed_document() {
     );
 
     let lines = run_lsp_harness(&harness);
-    assert_eq!(lines[0], "defn helper", "didChange 後の hover は最新 source の helper を返すべき");
+    assert_eq!(
+        lines[0], "defn helper",
+        "didChange 後の hover は最新 source の helper を返すべき"
+    );
 }
 
 /// CP-04: stateful harness 上で didChange 後の definition が最新 source を使うこと
@@ -1436,9 +1452,18 @@ fn test_e2e_lsp_stateful_definition_uses_changed_document() {
     );
 
     let lines = run_lsp_harness(&harness);
-    assert_eq!(lines[0], "42", "didChange 後の definition は同一 URI を返すべき");
-    assert_eq!(lines[1], "1", "didChange 後の definition line は defn 行を指すべき");
-    assert_eq!(lines[2], "7", "didChange 後の definition col は helper 定義を指すべき");
+    assert_eq!(
+        lines[0], "42",
+        "didChange 後の definition は同一 URI を返すべき"
+    );
+    assert_eq!(
+        lines[1], "1",
+        "didChange 後の definition line は defn 行を指すべき"
+    );
+    assert_eq!(
+        lines[2], "7",
+        "didChange 後の definition col は helper 定義を指すべき"
+    );
 }
 
 /// CP-04: stateful harness 上で didChange 後の references が最新 source を使うこと
@@ -1465,10 +1490,22 @@ fn test_e2e_lsp_stateful_references_uses_changed_document() {
     );
 
     let lines = run_lsp_harness(&harness);
-    assert_eq!(lines[0], "3", "didChange 後の references は helper の 3 箇所を返すべき");
-    assert_eq!(lines[1], "42", "didChange 後の references は同一 URI を返すべき");
-    assert_eq!(lines[2], "40", "didChange 後の references 2 件目は helper call 位置を指すべき");
-    assert_eq!(lines[3], "51", "didChange 後の references 3 件目は helper call 位置を指すべき");
+    assert_eq!(
+        lines[0], "3",
+        "didChange 後の references は helper の 3 箇所を返すべき"
+    );
+    assert_eq!(
+        lines[1], "42",
+        "didChange 後の references は同一 URI を返すべき"
+    );
+    assert_eq!(
+        lines[2], "40",
+        "didChange 後の references 2 件目は helper call 位置を指すべき"
+    );
+    assert_eq!(
+        lines[3], "51",
+        "didChange 後の references 3 件目は helper call 位置を指すべき"
+    );
 }
 
 /// CP-04: stateful harness 上で didChange 後の rename が最新 source を使うこと
@@ -1494,9 +1531,18 @@ fn test_e2e_lsp_stateful_rename_uses_changed_document() {
     );
 
     let lines = run_lsp_harness(&harness);
-    assert_eq!(lines[0], "1", "didChange 後の rename は 1 URI 分の workspace edit を返すべき");
-    assert_eq!(lines[1], "42", "didChange 後の rename は同一 URI の edit を返すべき");
-    assert_eq!(lines[2], "3", "didChange 後の rename は helper の 3 箇所を書き換えるべき");
+    assert_eq!(
+        lines[0], "1",
+        "didChange 後の rename は 1 URI 分の workspace edit を返すべき"
+    );
+    assert_eq!(
+        lines[1], "42",
+        "didChange 後の rename は同一 URI の edit を返すべき"
+    );
+    assert_eq!(
+        lines[2], "3",
+        "didChange 後の rename は helper の 3 箇所を書き換えるべき"
+    );
 }
 
 /// CP-04: stateful harness 上で same-URI repeated didOpen 後に最新 source を保持すること
@@ -1523,6 +1569,12 @@ fn test_e2e_lsp_stateful_repeated_didopen_keeps_latest_source() {
     );
 
     let lines = run_lsp_harness(&harness);
-    assert_eq!(lines[0], "1", "repeated didOpen 後の completion 候補は 1 件であるべき");
-    assert_eq!(lines[1], "beta", "repeated didOpen 後の completion は最新 source の beta を返すべき");
+    assert_eq!(
+        lines[0], "1",
+        "repeated didOpen 後の completion 候補は 1 件であるべき"
+    );
+    assert_eq!(
+        lines[1], "beta",
+        "repeated didOpen 後の completion は最新 source の beta を返すべき"
+    );
 }

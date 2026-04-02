@@ -1,6 +1,5 @@
 use std::{
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
 
@@ -58,7 +57,10 @@ fn generate_http_handler_bindings() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn stage_wit_workspace(source: &Path, staged_root: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn stage_wit_workspace(
+    source: &Path,
+    staged_root: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
     let file_name = source.file_name().ok_or_else(|| {
         format!(
             "HTTP handler WIT source file 名の取得に失敗しました: {}",
@@ -69,7 +71,12 @@ fn stage_wit_workspace(source: &Path, staged_root: &Path) -> Result<(), Box<dyn 
 
     let deps_dir = source
         .parent()
-        .ok_or_else(|| format!("HTTP handler WIT parent の取得に失敗しました: {}", source.display()))?
+        .ok_or_else(|| {
+            format!(
+                "HTTP handler WIT parent の取得に失敗しました: {}",
+                source.display()
+            )
+        })?
         .join("deps");
     if deps_dir.is_dir() {
         copy_dir_all(&deps_dir, &staged_root.join("deps"))?;

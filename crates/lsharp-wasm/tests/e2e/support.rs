@@ -356,8 +356,10 @@ pub(crate) fn selfhost_module(name: &str) -> &'static str {
         "TypeInferCore.ls" => include_str!("../../../../selfhost/src/Types/TypeInferCore.ls"),
         "TypeInferFunctions.ls" => {
             include_str!("../../../../selfhost/src/Types/TypeInferFunctions.ls")
-        },
-        "TypeInferBuiltins.ls" => include_str!("../../../../selfhost/src/Types/TypeInferBuiltins.ls"),
+        }
+        "TypeInferBuiltins.ls" => {
+            include_str!("../../../../selfhost/src/Types/TypeInferBuiltins.ls")
+        }
         "TypeInferApply.ls" => include_str!("../../../../selfhost/src/Types/TypeInferApply.ls"),
         "TypeInferBlock.ls" => include_str!("../../../../selfhost/src/Types/TypeInferBlock.ls"),
         "TypeInferPattern.ls" => include_str!("../../../../selfhost/src/Types/TypeInferPattern.ls"),
@@ -381,8 +383,12 @@ pub(crate) fn selfhost_module(name: &str) -> &'static str {
         "LspServerCore.ls" => include_str!("../../../../selfhost/src/Tools/Lsp/LspServerCore.ls"),
         "LspServerNav.ls" => include_str!("../../../../selfhost/src/Tools/Lsp/LspServerNav.ls"),
         "LspServer.ls" => include_str!("../../../../selfhost/src/Tools/Lsp/LspServer.ls"),
-        "NativeTarget.ls" => include_str!("../../../../selfhost/src/Backend/Native/NativeTarget.ls"),
-        "NativeCodegen.ls" => include_str!("../../../../selfhost/src/Backend/Native/NativeCodegen.ls"),
+        "NativeTarget.ls" => {
+            include_str!("../../../../selfhost/src/Backend/Native/NativeTarget.ls")
+        }
+        "NativeCodegen.ls" => {
+            include_str!("../../../../selfhost/src/Backend/Native/NativeCodegen.ls")
+        }
         "NativeEmit.ls" => include_str!("../../../../selfhost/src/Backend/Native/NativeEmit.ls"),
         "Linker.ls" => include_str!("../../../../selfhost/src/Backend/Native/Linker.ls"),
         "MacroExpand.ls" => include_str!("../../../../selfhost/src/Syntax/MacroExpand.ls"),
@@ -477,8 +483,9 @@ fn cached_selfhost_bundle(cell: &'static OnceLock<String>, modules: &[&str]) -> 
             .iter()
             .map(|name| {
                 let path = selfhost_source_path(name);
-                std::fs::read_to_string(&path)
-                    .unwrap_or_else(|e| panic!("selfhost bundle 読み込み失敗 {}: {}", path.display(), e))
+                std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                    panic!("selfhost bundle 読み込み失敗 {}: {}", path.display(), e)
+                })
             })
             .collect::<Vec<_>>()
             .join("\n")
@@ -498,7 +505,13 @@ pub(crate) fn selfhost_lexer_runtime_bundle() -> &'static str {
 pub(crate) fn selfhost_parser_runtime_bundle() -> &'static str {
     cached_selfhost_bundle(
         &SELFHOST_PARSER_RUNTIME_BUNDLE,
-        &["Token.ls", "AST.ls", "Lexer.ls", "LexerCompat.ls", "Parser.ls"],
+        &[
+            "Token.ls",
+            "AST.ls",
+            "Lexer.ls",
+            "LexerCompat.ls",
+            "Parser.ls",
+        ],
     )
 }
 
@@ -625,13 +638,11 @@ mod tests {
     #[test]
     fn test_support_selfhost_source_path_prefers_canonical_tree() {
         assert!(
-            selfhost_source_path("Main.ls")
-                .ends_with("selfhost/src/App/Main.ls"),
+            selfhost_source_path("Main.ls").ends_with("selfhost/src/App/Main.ls"),
             "Main.ls は canonical entrypoint を指すべき"
         );
         assert!(
-            selfhost_source_path("Cli.ls")
-                .ends_with("selfhost/src/App/Cli.ls"),
+            selfhost_source_path("Cli.ls").ends_with("selfhost/src/App/Cli.ls"),
             "Cli.ls は App/Cli.ls を指すべき"
         );
         assert!(
@@ -640,18 +651,15 @@ mod tests {
             "ModuleResolver.ls は App/ModuleResolver.ls を指すべき"
         );
         assert!(
-            selfhost_source_path("CompilerMode.ls")
-                .ends_with("selfhost/src/App/CompilerMode.ls"),
+            selfhost_source_path("CompilerMode.ls").ends_with("selfhost/src/App/CompilerMode.ls"),
             "CompilerMode.ls は App/CompilerMode.ls を指すべき"
         );
         assert!(
-            selfhost_source_path("PipelineSmoke.ls")
-                .ends_with("selfhost/src/App/PipelineSmoke.ls"),
+            selfhost_source_path("PipelineSmoke.ls").ends_with("selfhost/src/App/PipelineSmoke.ls"),
             "PipelineSmoke.ls は App/PipelineSmoke.ls を指すべき"
         );
         assert!(
-            selfhost_source_path("TypeInfer.ls")
-                .ends_with("selfhost/src/Types/TypeInfer.ls"),
+            selfhost_source_path("TypeInfer.ls").ends_with("selfhost/src/Types/TypeInfer.ls"),
             "TypeInfer.ls は Types/TypeInfer.ls を指すべき"
         );
         assert!(
@@ -670,8 +678,7 @@ mod tests {
             "TypeInferSmoke.ls は Types/TypeInferSmoke.ls を指すべき"
         );
         assert!(
-            selfhost_source_path("WasmEmit.ls")
-                .ends_with("selfhost/src/Backend/Wasm/WasmEmit.ls"),
+            selfhost_source_path("WasmEmit.ls").ends_with("selfhost/src/Backend/Wasm/WasmEmit.ls"),
             "WasmEmit.ls は Backend/Wasm/WasmEmit.ls を指すべき"
         );
     }
@@ -683,8 +690,12 @@ mod tests {
         assert!(selfhost_module("ModuleResolver.ls").contains("(module App.ModuleResolver)"));
         assert!(selfhost_module("CompilerMode.ls").contains("(module App.CompilerMode)"));
         assert!(selfhost_module("PipelineSmoke.ls").contains("(module App.PipelineSmoke)"));
-        assert!(selfhost_module("TypeInferFunctions.ls").contains("(module Types.TypeInferFunctions)"));
-        assert!(selfhost_module("TypeInferBuiltins.ls").contains("(module Types.TypeInferBuiltins)"));
+        assert!(
+            selfhost_module("TypeInferFunctions.ls").contains("(module Types.TypeInferFunctions)")
+        );
+        assert!(
+            selfhost_module("TypeInferBuiltins.ls").contains("(module Types.TypeInferBuiltins)")
+        );
         assert!(selfhost_module("TypeInferSmoke.ls").contains("(module Types.TypeInferSmoke)"));
         assert!(selfhost_module("TypeInfer.ls").contains("(module Types.TypeInfer)"));
     }

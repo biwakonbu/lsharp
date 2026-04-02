@@ -18,10 +18,7 @@ fn test_e2e_selfhost_main_import_only_pipeline() {
         .unwrap_or_else(|_| panic!("{} が読み込めない", pipeline_smoke_path.display()));
 
     // 1. 必須 import 宣言の存在確認
-    let required_imports = [
-        "App.CompilerMode",
-        "App.PipelineSmoke",
-    ];
+    let required_imports = ["App.CompilerMode", "App.PipelineSmoke"];
     for module in &required_imports {
         assert!(
             main_source.contains(&format!("(import {})", module)),
@@ -536,23 +533,19 @@ fn test_e2e_selfhost_type_hm_core_golden() {
     let type_infer_builtins_ls =
         std::fs::read_to_string(selfhost_source_path("TypeInferBuiltins.ls"))
             .expect("canonical TypeInferBuiltins.ls が読み込めない");
-    let type_infer_apply_ls =
-        std::fs::read_to_string(selfhost_source_path("TypeInferApply.ls"))
-            .expect("canonical TypeInferApply.ls が読み込めない");
-    let type_infer_block_ls =
-        std::fs::read_to_string(selfhost_source_path("TypeInferBlock.ls"))
-            .expect("canonical TypeInferBlock.ls が読み込めない");
+    let type_infer_apply_ls = std::fs::read_to_string(selfhost_source_path("TypeInferApply.ls"))
+        .expect("canonical TypeInferApply.ls が読み込めない");
+    let type_infer_block_ls = std::fs::read_to_string(selfhost_source_path("TypeInferBlock.ls"))
+        .expect("canonical TypeInferBlock.ls が読み込めない");
     let type_infer_pattern_ls =
         std::fs::read_to_string(selfhost_source_path("TypeInferPattern.ls"))
             .expect("canonical TypeInferPattern.ls が読み込めない");
-    let type_infer_record_ls =
-        std::fs::read_to_string(selfhost_source_path("TypeInferRecord.ls"))
-            .expect("canonical TypeInferRecord.ls が読み込めない");
+    let type_infer_record_ls = std::fs::read_to_string(selfhost_source_path("TypeInferRecord.ls"))
+        .expect("canonical TypeInferRecord.ls が読み込めない");
     let type_infer_ls = std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
         .expect("canonical TypeInfer.ls が読み込めない");
-    let type_infer_smoke_ls =
-        std::fs::read_to_string(selfhost_source_path("TypeInferSmoke.ls"))
-            .expect("canonical TypeInferSmoke.ls が読み込めない");
+    let type_infer_smoke_ls = std::fs::read_to_string(selfhost_source_path("TypeInferSmoke.ls"))
+        .expect("canonical TypeInferSmoke.ls が読み込めない");
 
     // モジュール連結 (依存順: TypeInfer.ls を先に、サブモジュールが上書き)
     let combined = format!(

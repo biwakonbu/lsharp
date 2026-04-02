@@ -1355,10 +1355,7 @@ fn test_e2e_selfhost_lsp_hier_fixture_shape_cross_document_definition() {
 "#
     );
 
-    let lines = run_lsp_harness(
-        "lsp_hier_fixture_shape_cross_document_definition",
-        &harness,
-    );
+    let lines = run_lsp_harness("lsp_hier_fixture_shape_cross_document_definition", &harness);
 
     assert_eq!(
         lines[0], "201",
@@ -1690,8 +1687,8 @@ fn test_e2e_selfhost_formatter_roundtrip_v2() {
         fmt_path.exists(),
         "selfhost/src/Tools/Text/Formatter.ls が存在しない (T4-3)"
     );
-    let source =
-        std::fs::read_to_string(&fmt_path).expect("selfhost/src/Tools/Text/Formatter.ls の読み込みに失敗");
+    let source = std::fs::read_to_string(&fmt_path)
+        .expect("selfhost/src/Tools/Text/Formatter.ls の読み込みに失敗");
 
     // T4c-1 AC-300: parse-format-parse roundtrip
     // format-program と format-expr (または同等関数) が定義されていること
@@ -1712,9 +1709,12 @@ fn test_e2e_selfhost_formatter_roundtrip_v2() {
 #[test]
 fn test_e2e_selfhost_linter_rule_ids_v2() {
     let lint_path = selfhost_source_path("Linter.ls");
-    assert!(lint_path.exists(), "selfhost/src/Tools/Text/Linter.ls が存在しない (T4-3)");
-    let source =
-        std::fs::read_to_string(&lint_path).expect("selfhost/src/Tools/Text/Linter.ls の読み込みに失敗");
+    assert!(
+        lint_path.exists(),
+        "selfhost/src/Tools/Text/Linter.ls が存在しない (T4-3)"
+    );
+    let source = std::fs::read_to_string(&lint_path)
+        .expect("selfhost/src/Tools/Text/Linter.ls の読み込みに失敗");
 
     // T4c-2 AC-304: 各 lint rule に一意の rule id (L0001 形式) が付与されている
     // L + 4桁の数字パターンを手動検索
@@ -1805,10 +1805,10 @@ fn test_e2e_selfhost_doc_deterministic_html() {
         "selfhost/src/Tools/Doc/HtmlDoc.ls が存在しない (T4d-3: HTML doc 生成)"
     );
 
-    let doctools_source =
-        std::fs::read_to_string(&doctools_path).expect("selfhost/src/Tools/Doc/DocTools.ls の読み込みに失敗");
-    let htmldoc_source =
-        std::fs::read_to_string(&htmldoc_path).expect("selfhost/src/Tools/Doc/HtmlDoc.ls の読み込みに失敗");
+    let doctools_source = std::fs::read_to_string(&doctools_path)
+        .expect("selfhost/src/Tools/Doc/DocTools.ls の読み込みに失敗");
+    let htmldoc_source = std::fs::read_to_string(&htmldoc_path)
+        .expect("selfhost/src/Tools/Doc/HtmlDoc.ls の読み込みに失敗");
 
     // module 宣言の存在確認
     assert!(
@@ -2138,10 +2138,7 @@ fn test_e2e_ops02_artifact_policy() {
     }
 
     let release_workflow = project_root.join(".github/workflows/release.yml");
-    assert!(
-        release_workflow.is_file(),
-        "release.yml が存在しない"
-    );
+    assert!(release_workflow.is_file(), "release.yml が存在しない");
     let release_content =
         std::fs::read_to_string(&release_workflow).expect("release.yml の読み込みに失敗");
     assert!(
@@ -2149,12 +2146,14 @@ fn test_e2e_ops02_artifact_policy() {
         "release.yml は workflow-local release artifact 名を保持すること"
     );
     assert!(
-        release_content
-            .contains("dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }}"),
+        release_content.contains(
+            "dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }}"
+        ),
         "release.yml は配布 asset ファイル名も固定すること"
     );
     assert!(
-        release_content.contains("dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.component.wasm"),
+        release_content
+            .contains("dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.component.wasm"),
         "release.yml は guest component sidecar asset も扱うこと"
     );
     // アーティファクトポリシードキュメントが存在すること
@@ -2435,7 +2434,8 @@ fn test_e2e_ops06_release_smoke_contract() {
     );
 
     let workflow = project_root.join(".github/workflows/release.yml");
-    let workflow_content = std::fs::read_to_string(&workflow).expect("release.yml の読み込みに失敗");
+    let workflow_content =
+        std::fs::read_to_string(&workflow).expect("release.yml の読み込みに失敗");
     let release_script = project_root.join("scripts/release.sh");
     let release_script_content =
         std::fs::read_to_string(&release_script).expect("release.sh の読み込みに失敗");
@@ -2557,7 +2557,8 @@ fn test_e2e_pkg01_readme_quick_start_uses_release_artifact_only() {
 fn test_e2e_ops07_release_download_smoke_job() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let workflow = project_root.join(".github/workflows/release.yml");
-    let workflow_content = std::fs::read_to_string(&workflow).expect("release.yml の読み込みに失敗");
+    let workflow_content =
+        std::fs::read_to_string(&workflow).expect("release.yml の読み込みに失敗");
     let job_start = workflow_content
         .find("release-smoke:")
         .expect("release.yml に release-smoke job が存在しない");
@@ -2722,8 +2723,10 @@ fi
     std::fs::set_permissions(&fake_lsp, lsp_perms)
         .expect("fake lsharp-lsp permission の設定に失敗");
 
-    std::fs::write(archive_root.join("README.md"), "# fixture\n").expect("README fixture 書き込み失敗");
-    std::fs::write(archive_root.join("LICENSE"), "fixture license\n").expect("LICENSE fixture 書き込み失敗");
+    std::fs::write(archive_root.join("README.md"), "# fixture\n")
+        .expect("README fixture 書き込み失敗");
+    std::fs::write(archive_root.join("LICENSE"), "fixture license\n")
+        .expect("LICENSE fixture 書き込み失敗");
     std::fs::write(
         archive_root.join("lsharp.component.wasm"),
         b"\0asmfixture-component",
@@ -2741,11 +2744,8 @@ fi
         checksum_output.status.code(),
         String::from_utf8_lossy(&checksum_output.stderr)
     );
-    std::fs::write(
-        archive_root.join("checksums.txt"),
-        checksum_output.stdout,
-    )
-    .expect("checksums.txt の書き込みに失敗");
+    std::fs::write(archive_root.join("checksums.txt"), checksum_output.stdout)
+        .expect("checksums.txt の書き込みに失敗");
 
     let archive_path = temp_root.join("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu.tar.gz");
     std::fs::write(
@@ -2926,9 +2926,10 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
         "fresh-clone-spec.md は未存在の future-state script を現行手順ではなく未実装要素として明記すること"
     );
 
-    let phase11_plan = project_root.join("docs/development/planning/phase11-implementation-plan.md");
-    let phase11_plan_content =
-        std::fs::read_to_string(&phase11_plan).expect("phase11-implementation-plan.md の読み込みに失敗");
+    let phase11_plan =
+        project_root.join("docs/development/planning/phase11-implementation-plan.md");
+    let phase11_plan_content = std::fs::read_to_string(&phase11_plan)
+        .expect("phase11-implementation-plan.md の読み込みに失敗");
     assert!(
         phase11_plan_content.contains("workflow-local")
             || phase11_plan_content.contains("same-run")
@@ -2936,10 +2937,9 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
         "phase11-implementation-plan.md の OPS-07 節は current binary-only gate を説明すること"
     );
 
-    let completion_criteria =
-        project_root.join("docs/development/planning/completion-criteria.md");
-    let completion_criteria_content =
-        std::fs::read_to_string(&completion_criteria).expect("completion-criteria.md の読み込みに失敗");
+    let completion_criteria = project_root.join("docs/development/planning/completion-criteria.md");
+    let completion_criteria_content = std::fs::read_to_string(&completion_criteria)
+        .expect("completion-criteria.md の読み込みに失敗");
     assert!(
         completion_criteria_content.contains("test-fresh-clone")
             && completion_criteria_content.contains("closest viable binary-only gate"),
@@ -3144,8 +3144,10 @@ fi
     std::fs::set_permissions(&fake_lsp, lsp_perms)
         .expect("fake lsharp-lsp permission の設定に失敗");
 
-    std::fs::write(archive_root.join("README.md"), "# fixture\n").expect("README fixture 書き込み失敗");
-    std::fs::write(archive_root.join("LICENSE"), "fixture license\n").expect("LICENSE fixture 書き込み失敗");
+    std::fs::write(archive_root.join("README.md"), "# fixture\n")
+        .expect("README fixture 書き込み失敗");
+    std::fs::write(archive_root.join("LICENSE"), "fixture license\n")
+        .expect("LICENSE fixture 書き込み失敗");
     std::fs::write(
         archive_root.join("lsharp.component.wasm"),
         b"\0asmfixture-component",
@@ -3163,11 +3165,8 @@ fi
         checksum_output.status.code(),
         String::from_utf8_lossy(&checksum_output.stderr)
     );
-    std::fs::write(
-        archive_root.join("checksums.txt"),
-        checksum_output.stdout,
-    )
-    .expect("checksums.txt の書き込みに失敗");
+    std::fs::write(archive_root.join("checksums.txt"), checksum_output.stdout)
+        .expect("checksums.txt の書き込みに失敗");
 
     let archive_path = temp_root.join("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu.tar.gz");
     let tar_output = Command::new("tar")
@@ -3262,8 +3261,10 @@ fn test_e2e_ops08_final_removal_rollback() {
 fn test_e2e_ops08_rollback_lkg_contract() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let rollback_doc = project_root.join("docs/development/operations/rollback-procedure.md");
-    let release_doc = project_root.join("docs/development/operations/release-distribution-signing.md");
-    let phase11_plan = project_root.join("docs/development/planning/phase11-implementation-plan.md");
+    let release_doc =
+        project_root.join("docs/development/operations/release-distribution-signing.md");
+    let phase11_plan =
+        project_root.join("docs/development/planning/phase11-implementation-plan.md");
     let rollback_adr = project_root.join("docs/development/operations/adr-rust-removal.md");
     let rollback_script = project_root.join("scripts/rollback.sh");
 
@@ -3271,8 +3272,8 @@ fn test_e2e_ops08_rollback_lkg_contract() {
         std::fs::read_to_string(&rollback_doc).expect("rollback-procedure.md の読み込みに失敗");
     let release_doc_text = std::fs::read_to_string(&release_doc)
         .expect("release-distribution-signing.md の読み込みに失敗");
-    let phase11_plan_text =
-        std::fs::read_to_string(&phase11_plan).expect("phase11-implementation-plan.md の読み込みに失敗");
+    let phase11_plan_text = std::fs::read_to_string(&phase11_plan)
+        .expect("phase11-implementation-plan.md の読み込みに失敗");
     let rollback_adr_text =
         std::fs::read_to_string(&rollback_adr).expect("adr-rust-removal.md の読み込みに失敗");
     let rollback_script_text =

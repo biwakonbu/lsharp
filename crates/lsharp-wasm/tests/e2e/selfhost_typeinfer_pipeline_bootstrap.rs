@@ -851,7 +851,11 @@ fn test_e2e_selfhost_module_declarations() {
         ("Linter.ls", "Linter", &["AST"]),
         ("FormatterExpr.ls", "FormatterExpr", &["AST"]),
         ("FormatterDecl.ls", "FormatterDecl", &["AST"]),
-        ("Formatter.ls", "Formatter", &["AST", "FormatterExpr", "FormatterDecl"]),
+        (
+            "Formatter.ls",
+            "Formatter",
+            &["AST", "FormatterExpr", "FormatterDecl"],
+        ),
         ("JsonRpc.ls", "JsonRpc", &[]),
         ("NativeTarget.ls", "NativeTarget", &[]),
         ("NativeCodegen.ls", "NativeCodegen", &["NativeTarget", "IR"]),

@@ -31,7 +31,10 @@ pub fn resolve_compile_target(
 }
 
 fn infer_target_from_output_path(output_path: &Path) -> CompileTarget {
-    let output_name = output_path.file_name().and_then(|name| name.to_str()).unwrap_or("");
+    let output_name = output_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
     if output_name.ends_with(".component.wasm") {
         CompileTarget::WasiComponent
     } else {
@@ -133,8 +136,8 @@ pub fn compile_file(
                 .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
         }
         CompileTarget::WasiComponent => {
-            let wasm_bytes =
-                lsharp_wasm::wasi::emit_wasm_wasi_p2(&module).map_err(|e| miette::miette!("{e}"))?;
+            let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi_p2(&module)
+                .map_err(|e| miette::miette!("{e}"))?;
             std::fs::write(&output_path, &wasm_bytes)
                 .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
         }
@@ -202,8 +205,13 @@ mod tests {
         let output = dir.join("Main.wasm");
         std::fs::write(&file, "(defn main [] (print 42))\n").unwrap();
 
-        let artifacts = compile_file(&file, Some(&output), false, Some(CompileTarget::WasiPreview1))
-            .unwrap();
+        let artifacts = compile_file(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WasiPreview1),
+        )
+        .unwrap();
         let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
         let stdout = lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes)
             .expect("preview1 target は preview1 runner で実行できる core Wasm を出力するべき");
@@ -240,11 +248,17 @@ mod tests {
         let output = dir.join("Main.component.wasm");
         std::fs::write(&file, "(defn main [] (print 42))\n").unwrap();
 
-        let artifacts = compile_file(&file, Some(&output), false, Some(CompileTarget::WasiComponent))
-            .unwrap();
+        let artifacts = compile_file(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WasiComponent),
+        )
+        .unwrap();
         let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
-        let stdout = lsharp_wasm::wasi_runner::run_wasm_component(&wasm_bytes)
-            .expect("wasi-component target は preview2 runner で実行できる component を出力するべき");
+        let stdout = lsharp_wasm::wasi_runner::run_wasm_component(&wasm_bytes).expect(
+            "wasi-component target は preview2 runner で実行できる component を出力するべき",
+        );
         assert_eq!(stdout, "42\n");
 
         std::fs::remove_dir_all(&dir).unwrap();
@@ -339,8 +353,8 @@ mod tests {
         let output = dir.join("Main.wasm");
         std::fs::write(&file, "(defn main [] 42)\n").unwrap();
 
-        let artifacts = compile_file(&file, Some(&output), false, Some(CompileTarget::WebWasm))
-            .unwrap();
+        let artifacts =
+            compile_file(&file, Some(&output), false, Some(CompileTarget::WebWasm)).unwrap();
         assert_eq!(artifacts.output_path, output);
 
         let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
@@ -396,8 +410,13 @@ mod tests {
         let output = dir.join("Handler.component.wasm");
         std::fs::write(&file, r#"(defn handle [request] "ok")"#).unwrap();
 
-        let artifacts = compile_file(&file, Some(&output), false, Some(CompileTarget::WasiComponent))
-            .unwrap();
+        let artifacts = compile_file(
+            &file,
+            Some(&output),
+            false,
+            Some(CompileTarget::WasiComponent),
+        )
+        .unwrap();
         let component_bytes = std::fs::read(&artifacts.output_path).unwrap();
         let engine = wasmtime::Engine::default();
         let component = wasmtime::component::Component::new(&engine, &component_bytes)

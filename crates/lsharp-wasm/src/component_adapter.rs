@@ -110,7 +110,10 @@ fn stage_wit_workspace(source: &Path) -> Result<PathBuf> {
     let file_name = source
         .file_name()
         .ok_or_else(|| ComponentAdapterError::Error {
-            msg: format!("WIT source file 名の取得に失敗しました: {}", source.display()),
+            msg: format!(
+                "WIT source file 名の取得に失敗しました: {}",
+                source.display()
+            ),
         })?;
     fs::copy(source, staged_root.join(file_name)).map_err(|err| ComponentAdapterError::Error {
         msg: format!(
@@ -220,9 +223,11 @@ pub fn componentize_core_module(
     })?;
 
     let mut encoder = encoder;
-    encoder.encode().map_err(|err| ComponentAdapterError::Error {
-        msg: format!("component の生成に失敗しました (world `{world_name}`): {err:#}"),
-    })
+    encoder
+        .encode()
+        .map_err(|err| ComponentAdapterError::Error {
+            msg: format!("component の生成に失敗しました (world `{world_name}`): {err:#}"),
+        })
 }
 
 #[cfg(test)]
@@ -354,10 +359,16 @@ world preview1-adapter {
         let instance = linker
             .instantiate(&mut store, &component)
             .expect("component should instantiate");
-        let run = instance.get_func(&mut store, "run").expect("run export should exist");
+        let run = instance
+            .get_func(&mut store, "run")
+            .expect("run export should exist");
         run.call(&mut store, &[], &mut [])
             .expect("run export should execute");
-        assert_eq!(*store.data(), vec![7], "adapter should bridge proc_exit to host exit");
+        assert_eq!(
+            *store.data(),
+            vec![7],
+            "adapter should bridge proc_exit to host exit"
+        );
 
         let _ = fs::remove_dir_all(&wit_dir);
     }

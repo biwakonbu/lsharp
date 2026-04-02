@@ -605,8 +605,7 @@ fn try_infer_formatter_trio_batch(
 ) -> Option<HashMap<String, ModuleTypeSurface>> {
     use lsharp_syntax::ast::{Decl, Program};
 
-    let path_map: HashMap<String, std::path::PathBuf> =
-        sorted_files.iter().cloned().collect();
+    let path_map: HashMap<String, std::path::PathBuf> = sorted_files.iter().cloned().collect();
     let p_expr = path_map.get(FORMATTER_TRIO_EXPR)?;
     let p_decl = path_map.get(FORMATTER_TRIO_DECL)?;
     let p_fmt = path_map.get(FORMATTER_TRIO_MAIN)?;
@@ -631,7 +630,12 @@ fn try_infer_formatter_trio_batch(
                 }
                 Decl::ModuleDecl { .. } => {}
                 _ => {
-                    push_defn_origins_infer_order(std::slice::from_ref(&decl), mod_name, None, &mut defn_origins);
+                    push_defn_origins_infer_order(
+                        std::slice::from_ref(&decl),
+                        mod_name,
+                        None,
+                        &mut defn_origins,
+                    );
                     merged_decls.push(decl);
                 }
             }

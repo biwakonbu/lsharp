@@ -53,7 +53,11 @@ fn compile_preview1_entry(entry_file: &Path) -> Vec<u8> {
     lsharp_wasm::wasi::emit_wasm_wasi(&module).expect("wasi emit failed")
 }
 
-fn build_driver_with_embedded_component(project_root: &Path, component_path: &Path, target_dir: &Path) -> PathBuf {
+fn build_driver_with_embedded_component(
+    project_root: &Path,
+    component_path: &Path,
+    target_dir: &Path,
+) -> PathBuf {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let output = Command::new(cargo)
         .arg("build")
@@ -341,7 +345,8 @@ fn test_compile_without_lsharp_path_uses_embedded_component_default_path() {
 
 /// embedded guest default path の compile は current_dir 配下の absolute path 入力も受理するべき
 #[test]
-fn test_compile_with_absolute_input_path_without_lsharp_path_uses_embedded_component_default_path() {
+fn test_compile_with_absolute_input_path_without_lsharp_path_uses_embedded_component_default_path()
+{
     let temp_dir = unique_temp_dir("embedded_default_compile_absolute");
     let source_path = temp_dir.join("input.ls");
     let output_path = temp_dir.join("input.component.wasm");
@@ -600,8 +605,8 @@ fn test_review_json_without_lsharp_path_uses_embedded_component_default_path() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let actual: serde_json::Value =
-        serde_json::from_str(&stdout).expect("embedded review --json output は valid JSON であるべき");
+    let actual: serde_json::Value = serde_json::from_str(&stdout)
+        .expect("embedded review --json output は valid JSON であるべき");
     assert_eq!(
         actual,
         serde_json::json!({
@@ -1201,7 +1206,8 @@ fn test_driver_delegates_to_wasm_cli_artifact_via_lsharp_path() {
     let wasm_path = temp_dir.join("selfhost-cli.wasm");
 
     write_source_file(&source_path, "(defn main [] 42)\n");
-    fs::write(&wasm_path, compile_preview1_entry(&cli_source)).expect("selfhost cli wasm write failed");
+    fs::write(&wasm_path, compile_preview1_entry(&cli_source))
+        .expect("selfhost cli wasm write failed");
     assert!(wasm_path.is_file(), "selfhost cli wasm が生成されていない");
 
     let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))

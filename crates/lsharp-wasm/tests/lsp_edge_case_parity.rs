@@ -1,8 +1,8 @@
 #[path = "e2e/support.rs"]
 mod support;
 
-use support::*;
 use std::sync::{Mutex, OnceLock};
+use support::*;
 
 fn edge_test_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -56,8 +56,7 @@ fn test_e2e_lsp_edge_empty_document_hover_stdio() {
     let _guard = edge_test_lock().lock().expect("edge test lock");
     let open_body =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":100,"source":""}}"#;
-    let hover_body =
-        r#"{"jsonrpc":"2.0","id":90,"method":"textDocument/hover","params":{"uri":100,"line":1,"col":1}}"#;
+    let hover_body = r#"{"jsonrpc":"2.0","id":90,"method":"textDocument/hover","params":{"uri":100,"line":1,"col":1}}"#;
     let stdin = format!("{}{}", frame(open_body), frame(hover_body));
 
     let output = compile_and_run_with_args_and_stdin(
@@ -110,8 +109,7 @@ fn test_e2e_lsp_edge_out_of_bounds_hover_stdio() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":100,"source":"{}"}}}}"#,
         source
     );
-    let hover_body =
-        r#"{"jsonrpc":"2.0","id":91,"method":"textDocument/hover","params":{"uri":100,"line":999,"col":999}}"#;
+    let hover_body = r#"{"jsonrpc":"2.0","id":91,"method":"textDocument/hover","params":{"uri":100,"line":999,"col":999}}"#;
     let stdin = format!("{}{}", frame(&open_body), frame(hover_body));
 
     let output = compile_and_run_with_args_and_stdin(

@@ -1,13 +1,16 @@
 use super::support::*;
 
 fn run_parser_runtime(harness: &str) -> String {
-    compile_and_run(&format!("{}\n{}", selfhost_parser_runtime_bundle(), harness))
+    compile_and_run(&format!(
+        "{}\n{}",
+        selfhost_parser_runtime_bundle(),
+        harness
+    ))
 }
 
 /// TEST-SYNTAX-02l: parametric type / type-alias head を decl tag にパースできる
 #[test]
 fn test_e2e_selfhost_parser_parametric_type_heads() {
-
     let harness = r#"
 (defn main []
   (let [type-node (vector-get (parse-program "(type (Pair a b) (record (: fst a) (: snd b)))") 0)
@@ -46,7 +49,6 @@ fn test_e2e_selfhost_parser_parametric_type_heads() {
 /// TEST-SYNTAX-02m: annotation form を AST ノードにパースできる
 #[test]
 fn test_e2e_selfhost_parser_ann_form() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(: 42 Int)") 0)
@@ -74,7 +76,6 @@ fn test_e2e_selfhost_parser_ann_form() {
 /// TEST-SYNTAX-02n: float literal を lexer/parser で扱える
 #[test]
 fn test_e2e_selfhost_parser_float_literal() {
-
     let harness = r#"
 (defn main []
   (let [src "3.14"
@@ -103,7 +104,6 @@ fn test_e2e_selfhost_parser_float_literal() {
 /// TEST-SYNTAX-02o: computation expression を最小 payload でパースできる
 #[test]
 fn test_e2e_selfhost_parser_computation_expr() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(computation maybe-builder (let! x m) (do! side) value (return x))") 0)
@@ -154,7 +154,6 @@ fn test_e2e_selfhost_parser_computation_expr() {
 /// TEST-SYNTAX-02p: defn の annotated param / return type を最小 payload でスキップできる
 #[test]
 fn test_e2e_selfhost_parser_typed_defn_signature() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(defn add [(: x Int) (: y Int)] : Int (+ x y))") 0)
@@ -188,7 +187,6 @@ fn test_e2e_selfhost_parser_typed_defn_signature() {
 /// TEST-SYNTAX-02q: defn の :where clause を最小 payload のままスキップできる
 #[test]
 fn test_e2e_selfhost_parser_defn_where_clause() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(defn show-it [x] :where [(Show a)] (show x))") 0)
@@ -230,7 +228,6 @@ fn test_e2e_selfhost_parser_defn_where_clause() {
 /// TEST-SYNTAX-02q2: defn の複数 :where clause をスキップして body を保てる
 #[test]
 fn test_e2e_selfhost_parser_defn_multiple_where_clauses() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(defn show-eq [x y] :where [(Show a) (Eq a)] (do (show x) (== x y)))") 0)
@@ -266,7 +263,6 @@ fn test_e2e_selfhost_parser_defn_multiple_where_clauses() {
 /// TEST-SYNTAX-02r: defn の metadata directives を最小 payload のままスキップできる
 #[test]
 fn test_e2e_selfhost_parser_defn_metadata_directives() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(defn toggle [state] :invariant state :transitions [(Open -> Closed) (Closed -> Open)] (toggle-next state))") 0)
@@ -300,7 +296,6 @@ fn test_e2e_selfhost_parser_defn_metadata_directives() {
 /// TEST-SYNTAX-02s: defn の string metadata directives を最小 payload のままスキップできる
 #[test]
 fn test_e2e_selfhost_parser_defn_string_metadata() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(defn add [x y] :doc \"addition\" :returns \"sum\" (+ x y))") 0)
@@ -336,7 +331,6 @@ fn test_e2e_selfhost_parser_defn_string_metadata() {
 /// TEST-SYNTAX-02t: defn の params metadata を最小 payload のままスキップできる
 #[test]
 fn test_e2e_selfhost_parser_defn_params_metadata() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(defn add [x y] :doc \"addition\" :params [(x \"left\") (y \"right\")] :returns \"sum\" (+ x y))") 0)
@@ -402,9 +396,15 @@ fn test_e2e_selfhost_parser_defn_preserves_doc_example_metadata() {
         "metadata preserve parser 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "7", "defn node は trailing metadata 付き 7 要素であるべき");
+    assert_eq!(
+        lines[0], "7",
+        "defn node は trailing metadata 付き 7 要素であるべき"
+    );
     assert_eq!(lines[1], "1", "body は apply ノードのまま保持されるべき");
-    assert_eq!(lines[2], "4", "metadata entry は doc/example/params/returns の 4 件であるべき");
+    assert_eq!(
+        lines[2], "4",
+        "metadata entry は doc/example/params/returns の 4 件であるべき"
+    );
     assert_eq!(lines[3], "0", ":params なしでは空 vector を保持するべき");
     assert_eq!(lines[4], "0", ":returns なしでは空文字列を保持するべき");
     assert_eq!(lines[5], "addition", ":doc string が保持されるべき");
@@ -447,9 +447,15 @@ fn test_e2e_selfhost_parser_defn_preserves_params_returns_metadata() {
         "params/returns metadata parser 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "7", "defn node は trailing metadata 付き 7 要素であるべき");
+    assert_eq!(
+        lines[0], "7",
+        "defn node は trailing metadata 付き 7 要素であるべき"
+    );
     assert_eq!(lines[1], "1", "body は apply ノードのまま保持されるべき");
-    assert_eq!(lines[2], "4", "metadata entry は doc/example/params/returns の 4 件であるべき");
+    assert_eq!(
+        lines[2], "4",
+        "metadata entry は doc/example/params/returns の 4 件であるべき"
+    );
     assert_eq!(lines[3], "2", "params metadata は 2 件であるべき");
     assert_eq!(lines[4], "1", "1件目 param 名 hash は x であるべき");
     assert_eq!(lines[5], "left", "1件目 param doc が保持されるべき");

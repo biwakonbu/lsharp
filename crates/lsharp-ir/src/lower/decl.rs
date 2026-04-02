@@ -377,12 +377,7 @@ impl Lower {
 
         // 自己末尾呼び出し最適化 (Self TCO) を適用
         let body_instructions = if let Some(&self_idx) = self.func_indices.get(name) {
-            apply_self_tco(
-                ctx.instructions,
-                self_idx,
-                ctx.param_count,
-                result_type,
-            )
+            apply_self_tco(ctx.instructions, self_idx, ctx.param_count, result_type)
         } else {
             ctx.instructions
         };
@@ -457,9 +452,8 @@ fn apply_self_tco(
     }
 
     // 変換: Loop(result_type) でラップし、各 Call(self) を LocalSets + Br に置換
-    let mut result = Vec::with_capacity(
-        instructions.len() + 2 + tail_calls.len() * (param_count as usize + 1),
-    );
+    let mut result =
+        Vec::with_capacity(instructions.len() + 2 + tail_calls.len() * (param_count as usize + 1));
     result.push(Instruction::Loop(result_type));
 
     for (i, instr) in instructions.into_iter().enumerate() {
@@ -484,10 +478,7 @@ fn apply_self_tco(
 ///
 /// `Call(self_idx)` の後続命令が全て `End` のみの場合を末尾呼び出しとみなす。
 /// 戻り値: position → depth (呼び出し時点の if/else ネスト深度) のマップ
-fn find_simple_self_tail_calls(
-    instructions: &[Instruction],
-    self_idx: u32,
-) -> HashMap<usize, u32> {
+fn find_simple_self_tail_calls(instructions: &[Instruction], self_idx: u32) -> HashMap<usize, u32> {
     let mut result = HashMap::new();
     let mut depth = 0i32;
 

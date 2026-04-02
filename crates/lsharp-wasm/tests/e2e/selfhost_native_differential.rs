@@ -30,7 +30,12 @@ fn read_selfhost_native_source(name: &str) -> String {
 #[test]
 fn test_e2e_native_self_regeneration_functional_equivalence() {
     // --- 前提: ネイティブバックエンドモジュールの存在確認 ---
-    let native_modules = ["NativeTarget.ls", "NativeCodegen.ls", "NativeEmit.ls", "Linker.ls"];
+    let native_modules = [
+        "NativeTarget.ls",
+        "NativeCodegen.ls",
+        "NativeEmit.ls",
+        "Linker.ls",
+    ];
     for module in native_modules {
         let path = selfhost_source_path(module);
         assert!(
@@ -62,9 +67,8 @@ fn test_e2e_native_self_regeneration_functional_equivalence() {
     // --- ネイティブ codegen パスで同一ソースをコンパイル ---
     // NativeCodegen.ls を selfhost bundle としてコンパイル・実行し、
     // ネイティブコード生成が決定的であることを確認
-    let native_codegen_source =
-        std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
-            .expect("NativeCodegen.ls 読み込み失敗");
+    let native_codegen_source = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
+        .expect("NativeCodegen.ls 読み込み失敗");
 
     // NativeCodegen.ls が Wasm コンパイルパイプラインを通ること (構造的等価性の前提)
     let native_codegen_parse = lsharp_syntax::parse(&native_codegen_source);
@@ -264,9 +268,8 @@ fn test_e2e_wasm_native_differential_five_observation_points() {
     assert_eq!(wasm_error_count, 0, "Wasm パスのコンパイルでエラーが発生");
 
     // ネイティブパスのソースがパースエラーなしであること
-    let native_target_source =
-        std::fs::read_to_string(selfhost_source_path("NativeTarget.ls"))
-            .expect("NativeTarget.ls 読み込み失敗");
+    let native_target_source = std::fs::read_to_string(selfhost_source_path("NativeTarget.ls"))
+        .expect("NativeTarget.ls 読み込み失敗");
     let native_emit_source = std::fs::read_to_string(selfhost_source_path("NativeEmit.ls"))
         .expect("NativeEmit.ls 読み込み失敗");
 
@@ -403,8 +406,7 @@ fn test_e2e_wasm_native_differential_structural_parity() {
 
     // --- ネイティブモジュールの構造整合 ---
     // NativeCodegen → NativeTarget → NativeEmit の import chain が閉じていること
-    let codegen_src =
-        std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls")).unwrap();
+    let codegen_src = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls")).unwrap();
     let emit_src = std::fs::read_to_string(selfhost_source_path("NativeEmit.ls")).unwrap();
 
     // NativeCodegen が canonical NativeTarget を import していること
@@ -432,8 +434,7 @@ fn test_e2e_wasm_native_differential_structural_parity() {
     );
 
     // ネイティブ側の対応: 3ターゲットを NativeTarget.ls がサポートしていること
-    let target_src =
-        std::fs::read_to_string(selfhost_source_path("NativeTarget.ls")).unwrap();
+    let target_src = std::fs::read_to_string(selfhost_source_path("NativeTarget.ls")).unwrap();
     assert!(
         target_src.contains("x86_64-apple-darwin") || target_src.contains("target-x86-64-darwin"),
         "NativeTarget.ls に x86_64-apple-darwin サポートがない"
@@ -558,7 +559,12 @@ fn run_native_codegen_harness(entry_source: &str) -> String {
     std::fs::create_dir_all(&dir).expect("native fixture dir 作成失敗");
 
     let result = (|| {
-        for name in ["IR.ls", "NativeTarget.ls", "NativeCodegen.ls", "NativeEmit.ls"] {
+        for name in [
+            "IR.ls",
+            "NativeTarget.ls",
+            "NativeCodegen.ls",
+            "NativeEmit.ls",
+        ] {
             let source = selfhost_module(name);
             let flat_path = dir.join(name);
             std::fs::write(&flat_path, source).unwrap_or_else(|_| panic!("{name} 書き込み失敗"));
@@ -595,8 +601,7 @@ fn run_native_linker_harness(entry_source: &str) -> String {
 
             let canonical_path = dir.join(selfhost_fixture_module_relative_path(name));
             if let Some(parent) = canonical_path.parent() {
-                std::fs::create_dir_all(parent)
-                    .expect("native linker fixture parent dir 作成失敗");
+                std::fs::create_dir_all(parent).expect("native linker fixture parent dir 作成失敗");
             }
             if canonical_path != flat_path {
                 std::fs::write(&canonical_path, selfhost_module(name))
@@ -838,7 +843,11 @@ fn test_wasm_native_execution_parity_double() {
     for module in modules {
         let src = read_selfhost_native_source(module);
         let parse = lsharp_syntax::parse(&src);
-        assert!(parse.is_ok(), "{} パース失敗", selfhost_native_label(module));
+        assert!(
+            parse.is_ok(),
+            "{} パース失敗",
+            selfhost_native_label(module)
+        );
     }
 
     eprintln!("✓ Native pipeline modules all parse successfully");
@@ -860,17 +869,13 @@ fn test_native_codegen_real_execution() {
     // このモジュールは generate-native() 関数を持つ
     // main() は i64.const 42 の IR をネイティブコードに変換してサイズを print する
 
-    let native_codegen_src = std::fs::read_to_string(
-        selfhost_source_path("NativeCodegen.ls"),
-    )
-    .expect("NativeCodegen.ls 読み込み失敗");
+    let native_codegen_src = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
+        .expect("NativeCodegen.ls 読み込み失敗");
 
     // NativeCodegen は NativeTarget を import しているため、
     // 単独で実行するには両方を結合する必要がある
-    let native_target_src = std::fs::read_to_string(
-        selfhost_source_path("NativeTarget.ls"),
-    )
-    .expect("NativeTarget.ls 読み込み失敗");
+    let native_target_src = std::fs::read_to_string(selfhost_source_path("NativeTarget.ls"))
+        .expect("NativeTarget.ls 読み込み失敗");
 
     // 2つのモジュールを結合してコンパイル
     let combined = format!("{}\n{}", native_target_src, native_codegen_src);
@@ -939,14 +944,14 @@ fn test_native_codegen_emits_full_const_instruction_bytes() {
         lines[0], "8",
         "AArch64 MOVZ W0,#42 + RET で 8 bytes であるべき"
     );
-    assert_eq!(lines[1], "64",  "先頭は MOVZ W0,#42 byte 0 (0x40)");
-    assert_eq!(lines[2], "5",   "2 byte 目は MOVZ byte 1 (0x05)");
+    assert_eq!(lines[1], "64", "先頭は MOVZ W0,#42 byte 0 (0x40)");
+    assert_eq!(lines[2], "5", "2 byte 目は MOVZ byte 1 (0x05)");
     assert_eq!(lines[3], "128", "3 byte 目は MOVZ byte 2 (0x80)");
-    assert_eq!(lines[4], "82",  "4 byte 目は MOVZ byte 3 (0x52)");
+    assert_eq!(lines[4], "82", "4 byte 目は MOVZ byte 3 (0x52)");
     assert_eq!(lines[5], "192", "5 byte 目は RET byte 0 (0xC0)");
-    assert_eq!(lines[6], "3",   "6 byte 目は RET byte 1 (0x03)");
-    assert_eq!(lines[7], "95",  "7 byte 目は RET byte 2 (0x5F)");
-    assert_eq!(lines[8], "95",  "末尾 2 byte 手前は RET byte 2 (0x5F)");
+    assert_eq!(lines[6], "3", "6 byte 目は RET byte 1 (0x03)");
+    assert_eq!(lines[7], "95", "7 byte 目は RET byte 2 (0x5F)");
+    assert_eq!(lines[8], "95", "末尾 2 byte 手前は RET byte 2 (0x5F)");
     assert_eq!(lines[9], "214", "末尾は RET byte 3 (0xD6)");
 }
 
@@ -987,11 +992,11 @@ fn test_native_codegen_processes_multiple_ir_instructions() {
         lines[0], "12",
         "AArch64 MOVZ + NOP + RET で 12 bytes であるべき"
     );
-    assert_eq!(lines[1], "31",  "2 命令目 NOP の先頭は 0x1F");
-    assert_eq!(lines[2], "32",  "2 命令目 NOP の byte 1 は 0x20");
-    assert_eq!(lines[3], "3",   "2 命令目 NOP の byte 2 は 0x03");
+    assert_eq!(lines[1], "31", "2 命令目 NOP の先頭は 0x1F");
+    assert_eq!(lines[2], "32", "2 命令目 NOP の byte 1 は 0x20");
+    assert_eq!(lines[3], "3", "2 命令目 NOP の byte 2 は 0x03");
     assert_eq!(lines[4], "192", "末尾 RET の先頭は 0xC0");
-    assert_eq!(lines[5], "3",   "末尾 RET の 2 byte 目は 0x03");
+    assert_eq!(lines[5], "3", "末尾 RET の 2 byte 目は 0x03");
 }
 
 /// NATIVE-REAL-09: emit-object が生成した native bytes 全体を object file へ保持すること
@@ -1155,7 +1160,10 @@ fn test_native_emit_object_headers_cover_all_three_targets() {
         "target 1 payload 末尾 2 byte 手前は pop rbp"
     );
     assert_eq!(lines[4], "195", "target 1 payload 末尾は ret");
-    assert_eq!(lines[5], "24", "target 2 Mach-O object は 24 bytes (AArch64)");
+    assert_eq!(
+        lines[5], "24",
+        "target 2 Mach-O object は 24 bytes (AArch64)"
+    );
     assert_eq!(lines[6], "207", "target 2 先頭 byte も Mach-O magic 0xCF");
     assert_eq!(lines[7], "12", "target 2 cpu byte は arm64=0x0C");
     assert_eq!(

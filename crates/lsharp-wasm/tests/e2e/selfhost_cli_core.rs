@@ -35,7 +35,12 @@ fn parse_lsp_stdio_frames(output: &str) -> Vec<Value> {
             .unwrap_or_else(|e| panic!("LSP frame header は UTF-8 であるべき: {}", e));
         let content_length = header
             .strip_prefix("Content-Length: ")
-            .unwrap_or_else(|| panic!("LSP frame header は Content-Length で始まるべき: {:?}", header))
+            .unwrap_or_else(|| {
+                panic!(
+                    "LSP frame header は Content-Length で始まるべき: {:?}",
+                    header
+                )
+            })
             .parse::<usize>()
             .unwrap_or_else(|e| panic!("Content-Length parse 失敗 {:?}: {}", header, e));
         let body_start = header_end + 4;
@@ -87,8 +92,13 @@ fn doctools_json_snapshot(name: &str) -> Value {
         .join(name);
     let snapshot = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("doctools snapshot 読み込み失敗 {}: {}", path.display(), e));
-    serde_json::from_str(&snapshot)
-        .unwrap_or_else(|e| panic!("doctools snapshot JSON parse 失敗 {}: {}", path.display(), e))
+    serde_json::from_str(&snapshot).unwrap_or_else(|e| {
+        panic!(
+            "doctools snapshot JSON parse 失敗 {}: {}",
+            path.display(),
+            e
+        )
+    })
 }
 
 fn cli_test_fixture_dir(prefix: &str) -> PathBuf {
@@ -106,8 +116,9 @@ fn write_cli_fixture_files(dir: &std::path::Path, files: &[(&str, &str)]) {
     for (relative, source) in files {
         let path = dir.join(relative);
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .unwrap_or_else(|e| panic!("fixture parent の作成に失敗 {}: {}", parent.display(), e));
+            std::fs::create_dir_all(parent).unwrap_or_else(|e| {
+                panic!("fixture parent の作成に失敗 {}: {}", parent.display(), e)
+            });
         }
         std::fs::write(&path, source)
             .unwrap_or_else(|e| panic!("fixture file の書き込みに失敗 {}: {}", path.display(), e));
@@ -230,7 +241,8 @@ fn run_cli_multifile_helper_size(dir: &std::path::Path, file_path: &str, target:
 fn test_e2e_selfhost_cli_repl_lsp_fmt() {
     let cli_path = selfhost_source_path("Cli.ls");
     assert!(cli_path.exists(), "selfhost/src/App/Cli.ls が存在しない");
-    let source = std::fs::read_to_string(&cli_path).expect("selfhost/src/App/Cli.ls の読み込みに失敗");
+    let source =
+        std::fs::read_to_string(&cli_path).expect("selfhost/src/App/Cli.ls の読み込みに失敗");
 
     // ユーティリティコマンドの定義を確認 (T4-4 AC-013)
     let commands = ["repl", "lsp", "fmt", "doc"];
@@ -342,11 +354,7 @@ fn test_e2e_selfhost_cli_compile_help_mentions_target_option() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(
-        lines.len() >= 2,
-        "subcommand help 出力が不足: {:?}",
-        lines
-    );
+    assert!(lines.len() >= 2, "subcommand help 出力が不足: {:?}", lines);
     assert!(
         lines[0].contains("--target"),
         "compile help は --target option を案内するべき: {:?}",
@@ -900,7 +908,12 @@ fn test_e2e_selfhost_cli_emit_wasm_with_target_changes_wasm_size() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines.len(), 2, "target 別 wasm size が 2 行必要: {:?}", lines);
+    assert_eq!(
+        lines.len(),
+        2,
+        "target 別 wasm size が 2 行必要: {:?}",
+        lines
+    );
     let preview1_size: i64 = lines[0]
         .parse()
         .expect("preview1 wasm size は整数であるべき");
@@ -983,9 +996,13 @@ fn test_e2e_selfhost_cli_compile_file_handler_multifile_nested_imports() {
     );
     let file_size = parse_wasm_size_line(lines[0], "run-compile multi-file nested fixture");
     let helper_size = parse_i64_line(lines[2], "compile-file-wasm-size nested fixture");
-    let source_only_size = parse_wasm_size_line(lines[3], "run-compile-source nested fixture baseline");
+    let source_only_size =
+        parse_wasm_size_line(lines[3], "run-compile-source nested fixture baseline");
     assert_eq!(lines[1], "0", "run-compile は success=0 を返すべき");
-    assert_eq!(lines[4], "0", "run-compile-source baseline は success=0 を返すべき");
+    assert_eq!(
+        lines[4], "0",
+        "run-compile-source baseline は success=0 を返すべき"
+    );
     assert!(
         file_size == helper_size,
         "run-compile は import-aware helper と同じ wasm-size を返すべき: cli={file_size}, helper={helper_size}"
@@ -1061,9 +1078,13 @@ fn test_e2e_selfhost_cli_build_file_handler_multifile_nested_imports() {
     );
     let file_size = parse_wasm_size_line(lines[0], "run-build multi-file nested fixture");
     let helper_size = parse_i64_line(lines[2], "compile-file-wasm-size nested fixture");
-    let source_only_size = parse_wasm_size_line(lines[3], "run-compile-source nested fixture baseline");
+    let source_only_size =
+        parse_wasm_size_line(lines[3], "run-compile-source nested fixture baseline");
     assert_eq!(lines[1], "0", "run-build は success=0 を返すべき");
-    assert_eq!(lines[4], "0", "run-compile-source baseline は success=0 を返すべき");
+    assert_eq!(
+        lines[4], "0",
+        "run-compile-source baseline は success=0 を返すべき"
+    );
     assert!(
         file_size == helper_size,
         "run-build は import-aware helper と同じ wasm-size を返すべき: cli={file_size}, helper={helper_size}"
@@ -1842,8 +1863,7 @@ fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_diagnostics_r
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":1}}"#;
     let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":1,"severity":1,"rule":1001,"line":1,"col":1,"messageHash":0}]}}"#;
     let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
-    let change_diagnostics =
-        r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
+    let change_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
     let open_frame = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_payload.len(),
@@ -1911,16 +1931,14 @@ fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_diagnostics_r
 /// TEST-CLI-02-M12f: stdio body parser は spec 寄り didOpen/didChange params でも diagnostics refresh を返すこと
 #[test]
 fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_diagnostics_refresh()
-{
+ {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":")"}}}"#;
     let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":42,"version":2},"contentChanges":[{"text":"(defn main [] 0)"}]}}"#;
     let open_payload =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":1}}"#;
     let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":1,"severity":1,"rule":1001,"line":1,"col":1,"messageHash":0}]}}"#;
-    let change_payload =
-        r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
-    let change_diagnostics =
-        r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
+    let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
+    let change_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
     let open_frame = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_payload.len(),
@@ -1987,8 +2005,7 @@ fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_type_diagnost
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":26}}"#;
     let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":2,"severity":1,"rule":2,"line":1,"col":1,"messageHash":2}]}}"#;
     let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
-    let change_diagnostics =
-        r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
+    let change_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
     let open_frame = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_payload.len(),
@@ -2060,8 +2077,7 @@ fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_lint_diagnost
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":29}}"#;
     let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":3,"severity":2,"rule":100,"line":1,"col":1,"messageHash":100}]}}"#;
     let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
-    let change_diagnostics =
-        r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
+    let change_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
     let open_frame = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_payload.len(),
@@ -2129,16 +2145,14 @@ fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_lint_diagnost
 /// TEST-CLI-02-M12f4: stdio body parser は spec 寄り didOpen/didChange params でも type diagnostics refresh を返すこと
 #[test]
 fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_type_diagnostics_refresh()
-{
+ {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":"(defn main [] (if 42 1 0))"}}}"#;
     let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":42,"version":2},"contentChanges":[{"text":"(defn main [] 0)"}]}}"#;
     let open_payload =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":26}}"#;
     let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":2,"severity":1,"rule":2,"line":1,"col":1,"messageHash":2}]}}"#;
-    let change_payload =
-        r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
-    let change_diagnostics =
-        r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
+    let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
+    let change_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
     let open_frame = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_payload.len(),
@@ -2201,16 +2215,14 @@ fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_
 /// TEST-CLI-02-M12f5: stdio body parser は spec 寄り didOpen/didChange params でも lint diagnostics refresh を返すこと
 #[test]
 fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_lint_diagnostics_refresh()
-{
+ {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":"(defn main [] (let [x 42] 0))"}}}"#;
     let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":42,"version":2},"contentChanges":[{"text":"(defn main [] 0)"}]}}"#;
     let open_payload =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":29}}"#;
     let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":3,"severity":2,"rule":100,"line":1,"col":1,"messageHash":100}]}}"#;
-    let change_payload =
-        r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
-    let change_diagnostics =
-        r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
+    let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
+    let change_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
     let open_frame = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_payload.len(),
@@ -2333,7 +2345,8 @@ fn test_e2e_selfhost_cli_lsp_stdio_body_rename_spec_position_character_params() 
 /// TEST-CLI-02-M12d: raw stdio wire helper が長めの open/hover/change/completion/formatting 系列を最後まで捌けること
 #[test]
 fn test_e2e_selfhost_cli_lsp_stdio_wire_repeated_sequence() {
-    let render_lsp_wire_frame = |body: &str| format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    let render_lsp_wire_frame =
+        |body: &str| format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
     let repeat_rendered_frames = |frames: &[String], iterations: usize| {
         let mut rendered = String::new();
         for _ in 0..iterations {
@@ -2353,14 +2366,12 @@ fn test_e2e_selfhost_cli_lsp_stdio_wire_repeated_sequence() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         open_source
     );
-    let hover_body =
-        r#"{"jsonrpc":"2.0","id":81,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":21}}"#;
+    let hover_body = r#"{"jsonrpc":"2.0","id":81,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":21}}"#;
     let change_body = format!(
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
         change_source
     );
-    let completion_body =
-        r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
+    let completion_body = r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
     let formatting_body =
         r#"{"jsonrpc":"2.0","id":83,"method":"textDocument/formatting","params":{"uri":42}}"#;
 
@@ -2782,7 +2793,10 @@ fn test_e2e_selfhost_cli_review_source_json_snapshot() {
         doctools_json_snapshot("review-schema-object.json"),
         "run-review-source json output は representative review schema snapshot と一致するべき"
     );
-    assert_eq!(lines[1], "0", "run-review-source json mode は success=0 を返すべき");
+    assert_eq!(
+        lines[1], "0",
+        "run-review-source json mode は success=0 を返すべき"
+    );
 }
 
 /// TEST-CLI-02-R: selfhost/src/App/Cli.ls の run-doc-source が DocTools.generate を呼べること
@@ -2847,7 +2861,10 @@ fn test_e2e_selfhost_cli_doc_source_json_snapshot() {
         doctools_json_snapshot("doc-output-schema-object.json"),
         "run-doc-source json output は representative doc-output schema snapshot と一致するべき"
     );
-    assert_eq!(lines[1], "0", "run-doc-source json mode は success=0 を返すべき");
+    assert_eq!(
+        lines[1], "0",
+        "run-doc-source json mode は success=0 を返すべき"
+    );
 }
 
 /// TEST-CLI-02-S: selfhost/src/App/Cli.ls の run-doc が file-path から source を読めること
@@ -3040,7 +3057,10 @@ fn test_e2e_selfhost_cli_doc_check_file_handler_strict_missing_trailer_fails() {
 
     assert_eq!(
         lines,
-        vec!["error: invalid doc trailer: expected trailing comment lines", "1"],
+        vec![
+            "error: invalid doc trailer: expected trailing comment lines",
+            "1"
+        ],
         "run-doc-check strict mode は trailer 欠落時に compile error を返すべき"
     );
 }
@@ -3435,7 +3455,8 @@ fn test_e2e_selfhost_cli_main_with_args_compile_file_multifile_nested_imports() 
         .lines()
         .next()
         .expect("Cli main compile multi-file output が必要");
-    let output_size = parse_wasm_size_line(output_line, "Cli main compile multi-file nested fixture");
+    let output_size =
+        parse_wasm_size_line(output_line, "Cli main compile multi-file nested fixture");
     assert!(
         output_size == expected_size,
         "Cli main compile は import-aware helper と同じ wasm-size を返すべき: cli={output_size}, helper={expected_size}"
@@ -3583,7 +3604,14 @@ fn test_e2e_selfhost_cli_main_with_args_compile_target_and_output_path() {
     let output = compile_and_run_with_dir_and_args(
         selfhost_cli_runtime_bundle(),
         &dir,
-        &["compile", "input.ls", "--target", "wasi-component", "-o", "targeted.txt"],
+        &[
+            "compile",
+            "input.ls",
+            "--target",
+            "wasi-component",
+            "-o",
+            "targeted.txt",
+        ],
     );
     let written = std::fs::read_to_string(dir.join("targeted.txt")).unwrap();
     let _ = std::fs::remove_dir_all(&dir);
@@ -3674,7 +3702,14 @@ fn test_e2e_selfhost_cli_main_with_args_build_output_path_and_target_alias() {
     let output = compile_and_run_with_dir_and_args(
         selfhost_cli_runtime_bundle(),
         &dir,
-        &["build", "input.ls", "--output", "build-target.txt", "--target", "wasm"],
+        &[
+            "build",
+            "input.ls",
+            "--output",
+            "build-target.txt",
+            "--target",
+            "wasm",
+        ],
     );
     let written = std::fs::read_to_string(dir.join("build-target.txt")).unwrap();
     let _ = std::fs::remove_dir_all(&dir);
@@ -3942,8 +3977,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references() {
         request_body.len(),
         request_body
     );
-    let response_body =
-        r#"{"jsonrpc":"2.0","id":63,"result":[[10,1,7],[10,1,36],[10,1,47]]}"#;
+    let response_body = r#"{"jsonrpc":"2.0","id":63,"result":[[10,1,7],[10,1,36],[10,1,47]]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}",
         response_body.len(),
@@ -4000,8 +4034,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename() {
         request_body.len(),
         request_body
     );
-    let response_body =
-        r#"{"jsonrpc":"2.0","id":65,"result":[[10,[[1,7,1,13,"cube"],[1,36,1,42,"cube"],[1,47,1,53,"cube"]]]]}"#;
+    let response_body = r#"{"jsonrpc":"2.0","id":65,"result":[[10,[[1,7,1,13,"cube"],[1,36,1,42,"cube"],[1,47,1,53,"cube"]]]]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}",
         response_body.len(),
@@ -4023,8 +4056,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename() {
 /// TEST-CLI-02-AN8: actual Cli main は `lsp --stdio` で didOpen -> didChange sequence を順に処理できること
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence() {
-    let open_body =
-        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn main [] 0)"}}"#;
+    let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn main [] 0)"}}"#;
     let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"source":"(defn main [] (+ 0 1))"}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
@@ -4035,8 +4067,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence() {
     );
     let open_response =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":16}}"#;
-    let change_response =
-        r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":22}}"#;
+    let change_response = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":22}}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -4061,8 +4092,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence() {
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_open_document() {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn helper [x] x) (defn main [] (helper 1))"}}"#;
-    let hover_body =
-        r#"{"jsonrpc":"2.0","id":66,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":38}}"#;
+    let hover_body = r#"{"jsonrpc":"2.0","id":66,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":38}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -4138,8 +4168,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_open_document() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         source
     );
-    let definition_body =
-        r#"{"jsonrpc":"2.0","id":67,"method":"textDocument/definition","params":{"uri":42,"line":1,"col":38}}"#;
+    let definition_body = r#"{"jsonrpc":"2.0","id":67,"method":"textDocument/definition","params":{"uri":42,"line":1,"col":38}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -4221,8 +4250,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_open_document() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         source
     );
-    let references_body =
-        r#"{"jsonrpc":"2.0","id":68,"method":"textDocument/references","params":{"uri":42,"line":1,"col":38}}"#;
+    let references_body = r#"{"jsonrpc":"2.0","id":68,"method":"textDocument/references","params":{"uri":42,"line":1,"col":38}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -4355,8 +4383,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_open_document() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         source
     );
-    let rename_body =
-        r#"{"jsonrpc":"2.0","id":70,"method":"textDocument/rename","params":{"uri":42,"line":1,"col":38,"newName":"cube"}}"#;
+    let rename_body = r#"{"jsonrpc":"2.0","id":70,"method":"textDocument/rename","params":{"uri":42,"line":1,"col":38,"newName":"cube"}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -4369,8 +4396,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_open_document() {
         source.len()
     );
     let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":1,"severity":1,"rule":1001,"line":1,"col":56,"messageHash":0}]}}"#;
-    let rename_response =
-        r#"{"jsonrpc":"2.0","id":70,"result":[[42,[[1,7,1,13,"cube"],[1,36,1,42,"cube"],[1,47,1,53,"cube"]]]]}"#;
+    let rename_response = r#"{"jsonrpc":"2.0","id":70,"result":[[42,[[1,7,1,13,"cube"],[1,36,1,42,"cube"],[1,47,1,53,"cube"]]]]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -4414,8 +4440,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_open_document_spec_para
         source.len()
     );
     let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":1,"severity":1,"rule":1001,"line":1,"col":56,"messageHash":0}]}}"#;
-    let rename_response =
-        r#"{"jsonrpc":"2.0","id":70,"result":[[42,[[1,7,1,13,"cube"],[1,36,1,42,"cube"],[1,47,1,53,"cube"]]]]}"#;
+    let rename_response = r#"{"jsonrpc":"2.0","id":70,"result":[[42,[[1,7,1,13,"cube"],[1,36,1,42,"cube"],[1,47,1,53,"cube"]]]]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -4446,8 +4471,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_open_document() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         source
     );
-    let completion_body =
-        r#"{"jsonrpc":"2.0","id":71,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
+    let completion_body = r#"{"jsonrpc":"2.0","id":71,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -4524,8 +4548,8 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_open_document_spec_
 /// TEST-CLI-02-AN14c: actual Cli main は spec 寄り didOpen `textDocument.text` の
 /// escaped quote を含む source でも formatting へ正しく渡せること
 #[test]
-fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_spec_document_text_with_escaped_quote(
-) {
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_spec_document_text_with_escaped_quote()
+{
     let source = r#"(defn main [] "a\"b")"#;
     let open_body = serde_json::json!({
         "jsonrpc": "2.0",
@@ -4549,11 +4573,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_spec_document_text_
         }
     })
     .to_string();
-    let stdin = format!(
-        "{}{}",
-        lsp_frame(&open_body),
-        lsp_frame(&formatting_body)
-    );
+    let stdin = format!("{}{}", lsp_frame(&open_body), lsp_frame(&formatting_body));
 
     let output = compile_and_run_with_args_and_stdin(
         selfhost_cli_runtime_bundle(),
@@ -4588,8 +4608,8 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_spec_document_text_
 /// TEST-CLI-02-AN14d: actual Cli main は spec 寄り didOpen `textDocument.text` の
 /// unicode escaped quote (`\u0022`) でも formatting へ正しく渡せること
 #[test]
-fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_spec_document_text_with_unicode_escaped_quote(
-) {
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_spec_document_text_with_unicode_escaped_quote()
+ {
     let source = r#"(defn main [] "ab")"#;
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":"(defn main [] \u0022ab\u0022)"}}}"#;
     let formatting_body = serde_json::json!({
@@ -4601,11 +4621,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_spec_document_text_
         }
     })
     .to_string();
-    let stdin = format!(
-        "{}{}",
-        lsp_frame(open_body),
-        lsp_frame(&formatting_body)
-    );
+    let stdin = format!("{}{}", lsp_frame(open_body), lsp_frame(&formatting_body));
 
     let output = compile_and_run_with_args_and_stdin(
         selfhost_cli_runtime_bundle(),
@@ -4640,8 +4656,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_spec_document_text_
 /// TEST-CLI-02-AN14e: actual Cli main は didOpen 後の formatting で defn metadata を保持すること
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_preserves_defn_metadata() {
-    let source =
-        r#"(defn add [x y] :doc "Add two ints" :params [(x "left") (y "right")] :returns "sum" :example [(add 1 2)] (+ x y))"#;
+    let source = r#"(defn add [x y] :doc "Add two ints" :params [(x "left") (y "right")] :returns "sum" :example [(add 1 2)] (+ x y))"#;
     let open_body = serde_json::json!({
         "jsonrpc": "2.0",
         "method": "textDocument/didOpen",
@@ -4664,11 +4679,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_preserves_defn_metadata(
         }
     })
     .to_string();
-    let stdin = format!(
-        "{}{}",
-        lsp_frame(&open_body),
-        lsp_frame(&formatting_body)
-    );
+    let stdin = format!("{}{}", lsp_frame(&open_body), lsp_frame(&formatting_body));
 
     let output = compile_and_run_with_args_and_stdin(
         selfhost_cli_runtime_bundle(),
@@ -4713,8 +4724,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_resolves_open_document()
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":10,"source":"{}"}}}}"#,
         main_source
     );
-    let definition_body =
-        r#"{"jsonrpc":"2.0","id":72,"method":"textDocument/definition","params":{"uri":10,"line":1,"col":2}}"#;
+    let definition_body = r#"{"jsonrpc":"2.0","id":72,"method":"textDocument/definition","params":{"uri":10,"line":1,"col":2}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_helper_body.len(),
@@ -4768,8 +4778,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_resolves_open_document() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":10,"source":"{}"}}}}"#,
         main_source
     );
-    let hover_body =
-        r#"{"jsonrpc":"2.0","id":73,"method":"textDocument/hover","params":{"uri":10,"line":1,"col":2}}"#;
+    let hover_body = r#"{"jsonrpc":"2.0","id":73,"method":"textDocument/hover","params":{"uri":10,"line":1,"col":2}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_helper_body.len(),
@@ -4824,8 +4833,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_changed_document() 
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
         changed_source
     );
-    let completion_body =
-        r#"{"jsonrpc":"2.0","id":74,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
+    let completion_body = r#"{"jsonrpc":"2.0","id":74,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -4869,8 +4877,8 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_changed_document() 
 /// TEST-CLI-02-AN17b: actual Cli main は spec 寄り `contentChanges[0].text` の
 /// escaped newline でも didChange 後の最新 source を使うこと
 #[test]
-fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_spec_changed_document_with_escaped_newline(
-) {
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_spec_changed_document_with_escaped_newline()
+ {
     let open_source = "(defn alpha [] 1) (al)";
     let changed_source = "(defn helper [] 1)\n(he)";
     let open_body = serde_json::json!({
@@ -4964,8 +4972,8 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_spec_changed_docume
 /// TEST-CLI-02-AN17c: actual Cli main は spec 寄り `contentChanges[0].text` の
 /// unicode escaped newline (`\u000a`) でも didChange 後の最新 source を使うこと
 #[test]
-fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_spec_changed_document_with_unicode_escaped_newline(
-) {
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_spec_changed_document_with_unicode_escaped_newline()
+ {
     let open_source = "(defn alpha [] 1) (al)";
     let changed_source = "(defn helper [] 1)\n(he)";
     let open_body = serde_json::json!({
@@ -5054,8 +5062,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_repeated_didopen_keeps_latest_sourc
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         latest_source
     );
-    let completion_body =
-        r#"{"jsonrpc":"2.0","id":75,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":21}}"#;
+    let completion_body = r#"{"jsonrpc":"2.0","id":75,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":21}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_body.len(),
@@ -5109,8 +5116,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_changed_document() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
         changed_source
     );
-    let hover_body =
-        r#"{"jsonrpc":"2.0","id":76,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":38}}"#;
+    let hover_body = r#"{"jsonrpc":"2.0","id":76,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":38}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -5165,8 +5171,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_latest_reopened_doc
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         latest_source
     );
-    let definition_body =
-        r#"{"jsonrpc":"2.0","id":77,"method":"textDocument/definition","params":{"uri":42,"line":1,"col":38}}"#;
+    let definition_body = r#"{"jsonrpc":"2.0","id":77,"method":"textDocument/definition","params":{"uri":42,"line":1,"col":38}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_body.len(),
@@ -5220,8 +5225,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_changed_document() 
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
         changed_source
     );
-    let definition_body =
-        r#"{"jsonrpc":"2.0","id":78,"method":"textDocument/definition","params":{"uri":42,"line":1,"col":38}}"#;
+    let definition_body = r#"{"jsonrpc":"2.0","id":78,"method":"textDocument/definition","params":{"uri":42,"line":1,"col":38}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -5275,8 +5279,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_changed_document() 
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
         changed_source
     );
-    let references_body =
-        r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/references","params":{"uri":42,"line":1,"col":40}}"#;
+    let references_body = r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/references","params":{"uri":42,"line":1,"col":40}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -5331,8 +5334,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_changed_document() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
         changed_source
     );
-    let rename_body =
-        r#"{"jsonrpc":"2.0","id":84,"method":"textDocument/rename","params":{"uri":42,"line":1,"col":40,"newName":"cube"}}"#;
+    let rename_body = r#"{"jsonrpc":"2.0","id":84,"method":"textDocument/rename","params":{"uri":42,"line":1,"col":40,"newName":"cube"}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -5350,8 +5352,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_changed_document() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         changed_source.len()
     );
-    let rename_response =
-        r#"{"jsonrpc":"2.0","id":84,"result":[[42,[[1,7,1,13,"cube"],[1,40,1,46,"cube"],[1,51,1,57,"cube"]]]]}"#;
+    let rename_response = r#"{"jsonrpc":"2.0","id":84,"result":[[42,[[1,7,1,13,"cube"],[1,40,1,46,"cube"],[1,51,1,57,"cube"]]]]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
@@ -5387,8 +5388,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_latest_reopened_document
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         latest_source
     );
-    let hover_body =
-        r#"{"jsonrpc":"2.0","id":79,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":38}}"#;
+    let hover_body = r#"{"jsonrpc":"2.0","id":79,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":38}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_body.len(),
@@ -5443,8 +5443,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_latest_reopened_doc
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         latest_source
     );
-    let references_body =
-        r#"{"jsonrpc":"2.0","id":83,"method":"textDocument/references","params":{"uri":42,"line":1,"col":40}}"#;
+    let references_body = r#"{"jsonrpc":"2.0","id":83,"method":"textDocument/references","params":{"uri":42,"line":1,"col":40}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_body.len(),
@@ -5499,8 +5498,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_latest_reopened_documen
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         latest_source
     );
-    let rename_body =
-        r#"{"jsonrpc":"2.0","id":85,"method":"textDocument/rename","params":{"uri":42,"line":1,"col":40,"newName":"cube"}}"#;
+    let rename_body = r#"{"jsonrpc":"2.0","id":85,"method":"textDocument/rename","params":{"uri":42,"line":1,"col":40,"newName":"cube"}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_body.len(),
@@ -5518,8 +5516,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_latest_reopened_documen
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         latest_source.len()
     );
-    let rename_response =
-        r#"{"jsonrpc":"2.0","id":85,"result":[[42,[[1,7,1,13,"cube"],[1,40,1,46,"cube"],[1,51,1,57,"cube"]]]]}"#;
+    let rename_response = r#"{"jsonrpc":"2.0","id":85,"result":[[42,[[1,7,1,13,"cube"],[1,40,1,46,"cube"],[1,51,1,57,"cube"]]]]}"#;
     let expected = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_response.len(),
@@ -5578,8 +5575,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_open_document_schema_sna
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":10,"source":"{}"}}}}"#,
         main_source
     );
-    let definition_body =
-        r#"{"jsonrpc":"2.0","id":72,"method":"textDocument/definition","params":{"uri":10,"line":1,"col":2}}"#;
+    let definition_body = r#"{"jsonrpc":"2.0","id":72,"method":"textDocument/definition","params":{"uri":10,"line":1,"col":2}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_helper_body.len(),
@@ -5779,8 +5775,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_unknown_method_schema_snapshot() {
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_request_after_shutdown_schema_snapshot() {
     let shutdown_body = r#"{"jsonrpc":"2.0","id":51,"method":"shutdown","params":0}"#;
-    let hover_body =
-        r#"{"jsonrpc":"2.0","id":52,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":1}}"#;
+    let hover_body = r#"{"jsonrpc":"2.0","id":52,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":1}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         shutdown_body.len(),
@@ -5805,8 +5800,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_request_after_shutdown_schema_snaps
 /// TEST-CLI-02-AN32: actual Cli main は `lsp --stdio` didOpen→didChange sequence を schema snapshot に一致させること
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_schema_snapshot() {
-    let open_body =
-        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn main [] 0)"}}"#;
+    let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn main [] 0)"}}"#;
     let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"source":"(defn main [] (+ 0 1))"}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
@@ -5865,8 +5859,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_changed_document_schema_snaps
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
         changed_source
     );
-    let hover_body =
-        r#"{"jsonrpc":"2.0","id":76,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":38}}"#;
+    let hover_body = r#"{"jsonrpc":"2.0","id":76,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":38}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -5903,8 +5896,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_changed_document_schema_
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
         changed_source
     );
-    let completion_body =
-        r#"{"jsonrpc":"2.0","id":74,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
+    let completion_body = r#"{"jsonrpc":"2.0","id":74,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -5941,8 +5933,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_changed_document_schema_
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
         changed_source
     );
-    let references_body =
-        r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/references","params":{"uri":42,"line":1,"col":40}}"#;
+    let references_body = r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/references","params":{"uri":42,"line":1,"col":40}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -5979,8 +5970,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_changed_document_schema_
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
         changed_source
     );
-    let definition_body =
-        r#"{"jsonrpc":"2.0","id":78,"method":"textDocument/definition","params":{"uri":42,"line":1,"col":38}}"#;
+    let definition_body = r#"{"jsonrpc":"2.0","id":78,"method":"textDocument/definition","params":{"uri":42,"line":1,"col":38}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -6017,8 +6007,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_changed_document_schema_snap
         r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
         changed_source
     );
-    let rename_body =
-        r#"{"jsonrpc":"2.0","id":84,"method":"textDocument/rename","params":{"uri":42,"line":1,"col":40,"newName":"cube"}}"#;
+    let rename_body = r#"{"jsonrpc":"2.0","id":84,"method":"textDocument/rename","params":{"uri":42,"line":1,"col":40,"newName":"cube"}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -6055,8 +6044,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_latest_reopened_schema_s
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         latest_source
     );
-    let definition_body =
-        r#"{"jsonrpc":"2.0","id":77,"method":"textDocument/definition","params":{"uri":42,"line":1,"col":38}}"#;
+    let definition_body = r#"{"jsonrpc":"2.0","id":77,"method":"textDocument/definition","params":{"uri":42,"line":1,"col":38}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_body.len(),
@@ -6093,8 +6081,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_latest_reopened_schema_snapsh
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         latest_source
     );
-    let hover_body =
-        r#"{"jsonrpc":"2.0","id":79,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":38}}"#;
+    let hover_body = r#"{"jsonrpc":"2.0","id":79,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":38}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_body.len(),
@@ -6131,8 +6118,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_latest_reopened_schema_s
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         latest_source
     );
-    let references_body =
-        r#"{"jsonrpc":"2.0","id":83,"method":"textDocument/references","params":{"uri":42,"line":1,"col":40}}"#;
+    let references_body = r#"{"jsonrpc":"2.0","id":83,"method":"textDocument/references","params":{"uri":42,"line":1,"col":40}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_body.len(),
@@ -6169,8 +6155,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_latest_reopened_schema_s
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         latest_source
     );
-    let completion_body =
-        r#"{"jsonrpc":"2.0","id":75,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":21}}"#;
+    let completion_body = r#"{"jsonrpc":"2.0","id":75,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":21}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_body.len(),
@@ -6207,8 +6192,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_latest_reopened_schema_snaps
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
         latest_source
     );
-    let rename_body =
-        r#"{"jsonrpc":"2.0","id":85,"method":"textDocument/rename","params":{"uri":42,"line":1,"col":40,"newName":"cube"}}"#;
+    let rename_body = r#"{"jsonrpc":"2.0","id":85,"method":"textDocument/rename","params":{"uri":42,"line":1,"col":40,"newName":"cube"}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         first_open_body.len(),
@@ -6235,9 +6219,9 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_latest_reopened_schema_snaps
 /// TEST-CLI-02-AN36: actual Cli main は `lsp --stdio` で didChange 時に diagnostics refresh frame を返すこと
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_diagnostics_refresh_snapshot() {
-    let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":")"}}"#;
-    let change_body =
-        r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"source":"(defn main [] 0)"}}"#;
+    let open_body =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":")"}}"#;
+    let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"source":"(defn main [] 0)"}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -6262,7 +6246,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_diagnostics_refre
 /// TEST-CLI-02-AN37: actual Cli main は spec 寄り didOpen/didChange params でも diagnostics refresh snapshot に一致すること
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_spec_params_diagnostics_refresh_snapshot()
-{
+ {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":")"}}}"#;
     let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":42,"version":2},"contentChanges":[{"text":"(defn main [] 0)"}]}}"#;
     let stdin = format!(
@@ -6289,10 +6273,8 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_spec_params_diagn
 /// TEST-CLI-02-AN37a: actual Cli main は `lsp --stdio` で type diagnostics refresh frame を返すこと
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_type_diagnostics_refresh_snapshot() {
-    let open_body =
-        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn main [] (if 42 1 0))"}}"#;
-    let change_body =
-        r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"source":"(defn main [] 0)"}}"#;
+    let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn main [] (if 42 1 0))"}}"#;
+    let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"source":"(defn main [] 0)"}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -6317,10 +6299,8 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_type_diagnostics_
 /// TEST-CLI-02-AN37b: actual Cli main は `lsp --stdio` で lint diagnostics refresh frame を返すこと
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_lint_diagnostics_refresh_snapshot() {
-    let open_body =
-        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn main [] (let [x 42] 0))"}}"#;
-    let change_body =
-        r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"source":"(defn main [] 0)"}}"#;
+    let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn main [] (let [x 42] 0))"}}"#;
+    let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"source":"(defn main [] 0)"}}"#;
     let stdin = format!(
         "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_body.len(),
@@ -6345,7 +6325,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_lint_diagnostics_
 /// TEST-CLI-02-AN37c: actual Cli main は spec 寄り didOpen/didChange params でも type diagnostics refresh snapshot に一致すること
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_spec_params_type_diagnostics_refresh_snapshot()
-{
+ {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":"(defn main [] (if 42 1 0))"}}}"#;
     let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":42,"version":2},"contentChanges":[{"text":"(defn main [] 0)"}]}}"#;
     let stdin = format!(
@@ -6372,7 +6352,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_spec_params_type_
 /// TEST-CLI-02-AN37d: actual Cli main は spec 寄り didOpen/didChange params でも lint diagnostics refresh snapshot に一致すること
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_spec_params_lint_diagnostics_refresh_snapshot()
-{
+ {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":"(defn main [] (let [x 42] 0))"}}}"#;
     let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":42,"version":2},"contentChanges":[{"text":"(defn main [] 0)"}]}}"#;
     let stdin = format!(
@@ -6731,8 +6711,8 @@ fn test_e2e_selfhost_lsp_skeleton_v2() {
         lsp_path.exists(),
         "selfhost/src/Tools/Lsp/LspServer.ls が存在しない (T4-2: L# 製 LSP の正式化)"
     );
-    let source =
-        std::fs::read_to_string(&lsp_path).expect("selfhost/src/Tools/Lsp/LspServer.ls の読み込みに失敗");
+    let source = std::fs::read_to_string(&lsp_path)
+        .expect("selfhost/src/Tools/Lsp/LspServer.ls の読み込みに失敗");
 
     // JSON-RPC dispatch 構造を確認
     assert!(
@@ -6757,9 +6737,12 @@ fn test_e2e_selfhost_lsp_skeleton_v2() {
 #[test]
 fn test_e2e_selfhost_lsp_10_methods() {
     let lsp_path = selfhost_source_path("LspServer.ls");
-    assert!(lsp_path.exists(), "selfhost/src/Tools/Lsp/LspServer.ls が存在しない");
-    let source =
-        std::fs::read_to_string(&lsp_path).expect("selfhost/src/Tools/Lsp/LspServer.ls の読み込みに失敗");
+    assert!(
+        lsp_path.exists(),
+        "selfhost/src/Tools/Lsp/LspServer.ls が存在しない"
+    );
+    let source = std::fs::read_to_string(&lsp_path)
+        .expect("selfhost/src/Tools/Lsp/LspServer.ls の読み込みに失敗");
 
     // T4-2 AC-005: 10 メソッドが LSP 3.17 仕様に準拠
     let methods = [

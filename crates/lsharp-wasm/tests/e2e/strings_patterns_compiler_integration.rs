@@ -198,9 +198,8 @@ fn test_e2e_bootstrap_stage1_integration() {
     let output = compile_and_run_file(&selfhost_main_path());
     let lines: Vec<&str> = output.trim().lines().collect();
     let expected_prefix = [
-        "1", "42", "1", "1", "42", "8", "0", "97", "115", "109", "7", "1", "15", "10", "8",
-        "20", "1", "42", "1", "1", "42", "1", "6", "3", "1", "7", "2", "1", "1", "100", "1",
-        "5",
+        "1", "42", "1", "1", "42", "8", "0", "97", "115", "109", "7", "1", "15", "10", "8", "20",
+        "1", "42", "1", "1", "42", "1", "6", "3", "1", "7", "2", "1", "1", "100", "1", "5",
     ];
     assert!(
         lines.starts_with(&expected_prefix),

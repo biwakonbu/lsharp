@@ -265,7 +265,8 @@ fn main() -> miette::Result<()> {
             let doc_status = lsharp_docs::tracker::load_doc_status(status_path);
 
             // メタデータ検証
-            let diag_strings = lsharp_tooling::metadata_validation::check_metadata_strings(&source)?;
+            let diag_strings =
+                lsharp_tooling::metadata_validation::check_metadata_strings(&source)?;
 
             // レビューチェックポイント生成
             let checkpoint = lsharp_docs::review::generate_review(
@@ -449,17 +450,16 @@ fn maybe_delegate_to_embedded_component() -> miette::Result<()> {
 
     let current_dir =
         std::env::current_dir().map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
-    let args = normalize_guest_args_for_current_dir(
-        &current_dir,
-        std::env::args().skip(1).collect(),
-    );
+    let args =
+        normalize_guest_args_for_current_dir(&current_dir, std::env::args().skip(1).collect());
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let output = lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
-        EMBEDDED_COMPONENT_BYTES,
-        Some(&current_dir),
-        &arg_refs,
-    )
-    .map_err(|e| miette::miette!("embedded component 実行に失敗しました: {e}"))?;
+    let output =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
+            EMBEDDED_COMPONENT_BYTES,
+            Some(&current_dir),
+            &arg_refs,
+        )
+        .map_err(|e| miette::miette!("embedded component 実行に失敗しました: {e}"))?;
     print!("{}", output.stdout);
     std::process::exit(output.exit_code);
 }
@@ -530,10 +530,8 @@ fn maybe_bridge_compile_build_artifact() -> miette::Result<()> {
 
     let current_dir =
         std::env::current_dir().map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
-    let args = normalize_guest_args_for_current_dir(
-        &current_dir,
-        std::env::args().skip(1).collect(),
-    );
+    let args =
+        normalize_guest_args_for_current_dir(&current_dir, std::env::args().skip(1).collect());
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let guest_output =
         lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
@@ -718,9 +716,7 @@ fn should_delegate_review_command_args(args: &[std::ffi::OsString]) -> bool {
     }
 }
 
-fn should_delegate_compile_build_to_embedded_component_args(
-    args: &[std::ffi::OsString],
-) -> bool {
+fn should_delegate_compile_build_to_embedded_component_args(args: &[std::ffi::OsString]) -> bool {
     let Some(file_arg) = args.get(1).and_then(|arg| arg.to_str()) else {
         return false;
     };
@@ -738,8 +734,10 @@ fn should_delegate_compile_build_to_embedded_component_args(
                 let Some(value) = args.get(index + 1).and_then(|arg| arg.to_str()) else {
                     return false;
                 };
-                if matches!(value, "-o" | "--output" | "--target" | "--emit-ir" | "-h" | "--help")
-                {
+                if matches!(
+                    value,
+                    "-o" | "--output" | "--target" | "--emit-ir" | "-h" | "--help"
+                ) {
                     return false;
                 }
                 index += 2;
@@ -841,24 +839,25 @@ fn maybe_delegate_to_external_compiler() -> miette::Result<()> {
                     delegate_path.display()
                 )
             })?;
-            let current_dir =
-                std::env::current_dir().map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
+            let current_dir = std::env::current_dir()
+                .map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
             let args = normalize_guest_args_for_current_dir(
                 &current_dir,
                 std::env::args().skip(1).collect(),
             );
             let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args_inherit_stdin_capture(
-                &wasm_bytes,
-                Some(&current_dir),
-                &arg_refs,
-            )
-            .map_err(|e| {
-                miette::miette!(
-                    "LSHARP_PATH 先の Wasm artifact 実行に失敗しました ({}): {e}",
-                    delegate_path.display()
+            let output =
+                lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args_inherit_stdin_capture(
+                    &wasm_bytes,
+                    Some(&current_dir),
+                    &arg_refs,
                 )
-            })?;
+                .map_err(|e| {
+                    miette::miette!(
+                        "LSHARP_PATH 先の Wasm artifact 実行に失敗しました ({}): {e}",
+                        delegate_path.display()
+                    )
+                })?;
             print!("{}", output.stdout);
             std::process::exit(output.exit_code);
         }
@@ -869,8 +868,8 @@ fn maybe_delegate_to_external_compiler() -> miette::Result<()> {
                     delegate_path.display()
                 )
             })?;
-            let current_dir =
-                std::env::current_dir().map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
+            let current_dir = std::env::current_dir()
+                .map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
             let args = normalize_guest_args_for_current_dir(
                 &current_dir,
                 std::env::args().skip(1).collect(),
@@ -899,7 +898,9 @@ enum ExternalLsharpPath {
     Component(PathBuf),
 }
 
-fn resolve_external_lsharp_path(configured_path: &std::path::Path) -> miette::Result<ExternalLsharpPath> {
+fn resolve_external_lsharp_path(
+    configured_path: &std::path::Path,
+) -> miette::Result<ExternalLsharpPath> {
     let candidate = if configured_path.is_dir() {
         configured_path.join("lsharp")
     } else {
@@ -2252,10 +2253,7 @@ fn collect_package_source_files(dir: &Path, out: &mut Vec<PathBuf>) -> miette::R
 fn module_name_for_source_file(source_root: &Path, file: &Path) -> Option<String> {
     let relative = file.strip_prefix(source_root).ok()?;
     let stem = relative.with_extension("");
-    let parts: Option<Vec<&str>> = stem
-        .iter()
-        .map(|part| part.to_str())
-        .collect();
+    let parts: Option<Vec<&str>> = stem.iter().map(|part| part.to_str()).collect();
     let parts = parts?;
     if parts.is_empty() {
         None
@@ -2493,14 +2491,8 @@ mod tests {
         };
         assert_eq!(target, Some(CliCompileTarget::WasiPreview1));
 
-        let cli = Cli::try_parse_from([
-            "lsharp",
-            "compile",
-            "examples/fib.ls",
-            "--target",
-            "wasm",
-        ])
-        .expect("wasm alias should parse");
+        let cli = Cli::try_parse_from(["lsharp", "compile", "examples/fib.ls", "--target", "wasm"])
+            .expect("wasm alias should parse");
         let Command::Compile { target, .. } = cli.command else {
             panic!("compile subcommand should parse");
         };
@@ -2574,8 +2566,7 @@ mod tests {
     #[test]
     fn test_should_delegate_to_embedded_component_args_rejects_rust_only_compile_build_flags() {
         assert!(!should_delegate_to_embedded_component_args(&os_args(&[
-            "compile",
-            "--help",
+            "compile", "--help",
         ])));
         assert!(!should_delegate_to_embedded_component_args(&os_args(&[
             "compile",
@@ -2595,8 +2586,7 @@ mod tests {
             "--target",
         ])));
         assert!(!should_delegate_to_embedded_component_args(&os_args(&[
-            "review",
-            "--help",
+            "review", "--help",
         ])));
         assert!(!should_delegate_to_embedded_component_args(&os_args(&[
             "review",
@@ -2611,8 +2601,7 @@ mod tests {
             "--format",
         ])));
         assert!(!should_delegate_to_embedded_component_args(&os_args(&[
-            "doc-ack",
-            "--help",
+            "doc-ack", "--help",
         ])));
         assert!(!should_delegate_to_embedded_component_args(&os_args(&[
             "doc-check",
@@ -2707,7 +2696,10 @@ mod tests {
         .unwrap();
 
         let result = cmd_test(&file);
-        assert!(result.is_ok(), "metadata test command should succeed: {result:?}");
+        assert!(
+            result.is_ok(),
+            "metadata test command should succeed: {result:?}"
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -3165,7 +3157,10 @@ source = "git:https://github.com/user/mylib.git?tag=v0.2.0"
         let installed_relative = installed_dir.strip_prefix(&base_dir).unwrap();
         assert_eq!(
             geometry_target.trim(),
-            installed_relative.join("src/Geometry.ls").display().to_string()
+            installed_relative
+                .join("src/Geometry.ls")
+                .display()
+                .to_string()
         );
         assert_eq!(
             vec2_target.trim(),

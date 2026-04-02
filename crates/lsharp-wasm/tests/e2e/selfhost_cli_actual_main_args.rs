@@ -33,12 +33,20 @@ fn doctools_json_snapshot(name: &str) -> Value {
         .join(name);
     let snapshot = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("doctools snapshot 読み込み失敗 {}: {}", path.display(), e));
-    serde_json::from_str(&snapshot)
-        .unwrap_or_else(|e| panic!("doctools snapshot JSON parse 失敗 {}: {}", path.display(), e))
+    serde_json::from_str(&snapshot).unwrap_or_else(|e| {
+        panic!(
+            "doctools snapshot JSON parse 失敗 {}: {}",
+            path.display(),
+            e
+        )
+    })
 }
 
 fn run_cli_main_with_args(args: &[&str]) -> Vec<String> {
-    output_lines(compile_and_run_with_args(selfhost_cli_runtime_bundle(), args))
+    output_lines(compile_and_run_with_args(
+        selfhost_cli_runtime_bundle(),
+        args,
+    ))
 }
 
 fn run_cli_main_with_input_file(prefix: &str, source: &str, args: &[&str]) -> Vec<String> {
@@ -134,7 +142,8 @@ fn test_e2e_selfhost_cli_main_with_args_review_json_file() {
         &["review", "input.ls", "--json"],
     );
 
-    let actual: Value = serde_json::from_str(&lines[0]).expect("review --json output は valid JSON");
+    let actual: Value =
+        serde_json::from_str(&lines[0]).expect("review --json output は valid JSON");
     assert_eq!(
         actual,
         doctools_json_snapshot("review-schema-object.json"),
@@ -272,11 +281,8 @@ fn test_e2e_selfhost_cli_main_with_args_doc_ack_file() {
 /// TEST-CLI-02-AU: actual Cli main は argv 経由で doc-check file command を処理できること
 #[test]
 fn test_e2e_selfhost_cli_main_with_args_doc_check_file() {
-    let lines = run_cli_main_with_input_file(
-        "doc_check",
-        "(defn main [] 42)",
-        &["doc-check", "input.ls"],
-    );
+    let lines =
+        run_cli_main_with_input_file("doc_check", "(defn main [] 42)", &["doc-check", "input.ls"]);
 
     assert_output_lines(
         &lines,

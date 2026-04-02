@@ -13,7 +13,9 @@ pub fn render_doc_html(file: &Path) -> miette::Result<String> {
     let mut html = String::new();
     html.push_str("<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\">\n");
     html.push_str(&format!("<title>L# API - {}</title>\n", file.display()));
-    html.push_str("<style>body{font-family:sans-serif;max-width:800px;margin:0 auto;padding:20px}\n");
+    html.push_str(
+        "<style>body{font-family:sans-serif;max-width:800px;margin:0 auto;padding:20px}\n",
+    );
     html.push_str("h1{color:#333}h2{color:#555;border-bottom:1px solid #ddd;padding-bottom:5px}\n");
     html.push_str(".sig{background:#f5f5f5;padding:8px;border-radius:4px;font-family:monospace}\n");
     html.push_str(".doc{color:#666;margin:8px 0}.params{margin-left:20px}\n");
@@ -34,7 +36,8 @@ pub fn render_doc_html(file: &Path) -> miette::Result<String> {
             } => {
                 html.push_str(&format!("<h2>{}</h2>\n", name));
 
-                let param_strs: Vec<String> = params.iter().map(|param| param.name.clone()).collect();
+                let param_strs: Vec<String> =
+                    params.iter().map(|param| param.name.clone()).collect();
                 let ret = return_ty
                     .as_ref()
                     .map_or("?".to_string(), |ty| format!("{ty:?}"));
@@ -43,7 +46,10 @@ pub fn render_doc_html(file: &Path) -> miette::Result<String> {
                     .find(|(candidate, _)| candidate == name)
                     .map(|(_, scheme)| format!("{}", scheme))
                     .unwrap_or_else(|| format!("({}) -> {}", param_strs.join(", "), ret));
-                html.push_str(&format!("<div class=\"sig\">{}: {}</div>\n", name, type_str));
+                html.push_str(&format!(
+                    "<div class=\"sig\">{}: {}</div>\n",
+                    name, type_str
+                ));
 
                 if let Some(meta) = metadata {
                     if let Some(doc) = &meta.doc {

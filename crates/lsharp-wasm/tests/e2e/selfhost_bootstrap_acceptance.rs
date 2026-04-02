@@ -1,9 +1,9 @@
-use super::support::*;
 use super::selfhost_bootstrap_four_layer::{
-    bootstrap_diff_artifact_id, run_wasm_with_six_imports_compiler_mode,
-    run_wasm_with_six_imports_compiler_mode_fs, write_bootstrap_diff_artifact,
-    BootstrapDiffArtifactFixture,
+    BootstrapDiffArtifactFixture, bootstrap_diff_artifact_id,
+    run_wasm_with_six_imports_compiler_mode, run_wasm_with_six_imports_compiler_mode_fs,
+    write_bootstrap_diff_artifact,
 };
+use super::support::*;
 
 // =============================================================================
 // BOOT-04 受入テスト: True stage1-stage2-stage3 bootstrap の実体比較テスト
@@ -136,8 +136,7 @@ fn parse_emitted_wasm_modules(output: &str, expected_modules: usize) -> Vec<Vec<
 /// 外部 import なしの Wasm モジュールを instantiate して i64 export を呼び出す
 fn run_exported_i64_no_imports(wasm: &[u8], export_name: &str) -> i64 {
     let engine = wasmtime::Engine::default();
-    let module = wasmtime::Module::new(&engine, wasm)
-        .expect("stage2 Wasm の Module 構築に失敗");
+    let module = wasmtime::Module::new(&engine, wasm).expect("stage2 Wasm の Module 構築に失敗");
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = wasmtime::Instance::new(&mut store, &module, &[])
         .expect("stage2 Wasm のインスタンス化に失敗 (import が存在する可能性あり)");
@@ -263,10 +262,7 @@ fn test_e2e_bootstrap_stage1_stage2_match() {
     let cases: &[(&str, i64)] = &[
         ("(defn main [] 42)", 42),
         ("(defn main [] (+ 20 22))", 42),
-        (
-            "(defn double [x] (* x 2)) (defn main [] (double 21))",
-            42,
-        ),
+        ("(defn double [x] (* x 2)) (defn main [] (double 21))", 42),
         (
             "(defn fib [n] (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))) (defn main [] (fib 8))",
             21,
@@ -291,10 +287,7 @@ fn test_e2e_bootstrap_stage1_stage2_match() {
         let out_b = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
             .unwrap_or_else(|e| panic!("stage1 run_b 失敗 (src={src:?}): {e}"));
 
-        assert_eq!(
-            out_a, out_b,
-            "stage1 → stage2 出力が非決定的 (src={src:?})"
-        );
+        assert_eq!(out_a, out_b, "stage1 → stage2 出力が非決定的 (src={src:?})");
 
         let modules = parse_emitted_wasm_modules(&out_a, 1);
         assert_eq!(modules.len(), 1, "stage2 モジュール数が不正 (src={src:?})");
@@ -334,8 +327,8 @@ fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
         .parent()
         .expect("selfhost/ ルートディレクトリ")
         .to_path_buf();
-    let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures");
+    let fixture_dir =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
 
     let stage1_wasm = compile_file_only(&main_path);
     assert_valid_wasm(&stage1_wasm);
@@ -448,7 +441,11 @@ fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
         ),
         format!(
             "Layer 2 (export):  {} ({} bytes vs {} bytes)",
-            if export_a == export_b { "MATCH" } else { "MISMATCH" },
+            if export_a == export_b {
+                "MATCH"
+            } else {
+                "MISMATCH"
+            },
             export_a.as_ref().map_or(0, Vec::len),
             export_b.as_ref().map_or(0, Vec::len)
         ),
@@ -544,7 +541,11 @@ fn build_stage1_and_stage2_self_compilers_from_main() -> (Vec<u8>, Vec<u8>, std:
     .expect("CP-01: stage1 が Main.ls から stage2 を生成できない");
 
     let modules = parse_emitted_wasm_modules(&stage2_output, 1);
-    assert_eq!(modules.len(), 1, "CP-01: stage2 wasm は 1 モジュールであるべき");
+    assert_eq!(
+        modules.len(),
+        1,
+        "CP-01: stage2 wasm は 1 モジュールであるべき"
+    );
     assert_valid_wasm(&modules[0]);
 
     (stage1_wasm, modules[0].clone(), selfhost_root)
@@ -566,23 +567,12 @@ fn test_e2e_bootstrap_stage2_compiler_wasmemit_modules_deterministic() {
         "src/Backend/Wasm/Compiler.ls",
         "src/Backend/Wasm/WasmEmit.ls",
     ] {
-        let out_a = run_wasm_with_six_imports_compiler_mode_fs(
-            &stage2,
-            &root,
-            &["compiler", rel],
-        )
-        .unwrap_or_else(|e| panic!("CP-01: stage2 が {rel} を 1 回目コンパイルできない: {e}"));
-        let out_b = run_wasm_with_six_imports_compiler_mode_fs(
-            &stage2,
-            &root,
-            &["compiler", rel],
-        )
-        .unwrap_or_else(|e| panic!("CP-01: stage2 が {rel} を 2 回目コンパイルできない: {e}"));
+        let out_a = run_wasm_with_six_imports_compiler_mode_fs(&stage2, &root, &["compiler", rel])
+            .unwrap_or_else(|e| panic!("CP-01: stage2 が {rel} を 1 回目コンパイルできない: {e}"));
+        let out_b = run_wasm_with_six_imports_compiler_mode_fs(&stage2, &root, &["compiler", rel])
+            .unwrap_or_else(|e| panic!("CP-01: stage2 が {rel} を 2 回目コンパイルできない: {e}"));
 
-        assert_eq!(
-            out_a, out_b,
-            "CP-01: stage2 の {rel} 出力が非決定的"
-        );
+        assert_eq!(out_a, out_b, "CP-01: stage2 の {rel} 出力が非決定的");
 
         let mods = parse_emitted_wasm_modules(&out_a, 1);
         assert_eq!(
@@ -639,8 +629,9 @@ fn test_bootstrap_fixed_point_ci_wiring_present() {
 #[test]
 fn test_e2e_bootstrap_cli_fixed_input_compile_gate() {
     let cli_path = selfhost_source_path("Cli.ls");
-    let wasm = try_compile_file_only(&cli_path)
-        .unwrap_or_else(|e| panic!("CP-01: fixed input set compile gate の Cli.ls が失敗してはならない: {e}"));
+    let wasm = try_compile_file_only(&cli_path).unwrap_or_else(|e| {
+        panic!("CP-01: fixed input set compile gate の Cli.ls が失敗してはならない: {e}")
+    });
     assert_valid_wasm(&wasm);
 }
 
@@ -799,8 +790,8 @@ fn extract_single_compiled_module(
     stage_label: &str,
     target: &FixedInputSetTarget,
 ) -> Result<Vec<u8>, String> {
-    let parsed = std::panic::catch_unwind(|| parse_emitted_wasm_modules(output, 1))
-        .map_err(|_| {
+    let parsed =
+        std::panic::catch_unwind(|| parse_emitted_wasm_modules(output, 1)).map_err(|_| {
             format!(
                 "{stage_label} output is not recoverable as a single wasm module for {}",
                 target.path
@@ -829,8 +820,13 @@ fn write_fixed_input_set_self_feed_artifact(
     let artifact_root = selfhost_project_root()
         .join("ci-artifacts/bootstrap-diff")
         .join(artifact_id);
-    std::fs::create_dir_all(&artifact_root)
-        .unwrap_or_else(|e| panic!("CP-01 artifact ディレクトリ作成に失敗 {}: {}", artifact_root.display(), e));
+    std::fs::create_dir_all(&artifact_root).unwrap_or_else(|e| {
+        panic!(
+            "CP-01 artifact ディレクトリ作成に失敗 {}: {}",
+            artifact_root.display(),
+            e
+        )
+    });
 
     std::fs::write(
         artifact_root.join("fixed-input-set-self-feed-report.txt"),
@@ -854,8 +850,13 @@ fn write_fixed_input_set_stage_chain_artifact(
     let artifact_root = selfhost_project_root()
         .join("ci-artifacts/bootstrap-diff")
         .join(artifact_id);
-    std::fs::create_dir_all(&artifact_root)
-        .unwrap_or_else(|e| panic!("BOOT-04 artifact ディレクトリ作成に失敗 {}: {}", artifact_root.display(), e));
+    std::fs::create_dir_all(&artifact_root).unwrap_or_else(|e| {
+        panic!(
+            "BOOT-04 artifact ディレクトリ作成に失敗 {}: {}",
+            artifact_root.display(),
+            e
+        )
+    });
 
     std::fs::write(
         artifact_root.join("fixed-input-set-stage-chain-report.txt"),
@@ -1017,8 +1018,7 @@ fn test_e2e_bootstrap_stage2_self_feed_fixed_input_set() {
         "compiled_targets": compiled,
         "failed_targets": failures,
     });
-    let artifact_dir =
-        write_fixed_input_set_self_feed_artifact(&artifact_id, &report, &metadata);
+    let artifact_dir = write_fixed_input_set_self_feed_artifact(&artifact_id, &report, &metadata);
 
     let written_metadata: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(artifact_dir.join("fixed-input-set-self-feed.json"))
@@ -1261,7 +1261,8 @@ fn test_e2e_bootstrap_stage1_section_stability() {
 
     // 各セクションのバイト列が一致することを確認 (全セクションのバイト一致)
     assert_eq!(
-        stage2_a, stage2_b,
+        stage2_a,
+        stage2_b,
         "BOOT-04 section stability: stage2 bytes が全体として一致しない\n\
          run1: {} bytes, run2: {} bytes",
         stage2_a.len(),
@@ -1368,7 +1369,9 @@ fn test_e2e_bootstrap_stage1_symbol_stability() {
         let export_bytes = export_a.expect("export section が存在しない");
         let start_sym = b"_start";
         assert!(
-            export_bytes.windows(start_sym.len()).any(|w| w == start_sym),
+            export_bytes
+                .windows(start_sym.len())
+                .any(|w| w == start_sym),
             "BOOT-04 symbol stability: '_start' シンボルが export section に存在しない\n\
              src={src:?}\n\
              export section bytes ({} bytes): {:?}",
@@ -1473,8 +1476,8 @@ fn test_e2e_wasi_start_signature() {
         assert_valid_wasm(stage2);
 
         // type section が () -> () 型を含むこと (WASI _start 用ラッパー型)
-        let type_bytes = extract_section_bytes(stage2, 1)
-            .expect("stage2 type section が存在しない");
+        let type_bytes =
+            extract_section_bytes(stage2, 1).expect("stage2 type section が存在しない");
         assert!(
             type_section_has_void_void(&type_bytes),
             "BOOT-04 wasi_start: type section に () -> () 型が存在しない\n\

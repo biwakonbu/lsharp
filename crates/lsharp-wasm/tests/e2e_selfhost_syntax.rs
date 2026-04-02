@@ -19,8 +19,8 @@ fn test_e2e_selfhost_parser_recovery_diagnostics() {
         parser_ls_path.exists(),
         "selfhost/src/Syntax/Parser.ls が存在しない"
     );
-    let parser_content =
-        std::fs::read_to_string(&parser_ls_path).expect("selfhost/src/Syntax/Parser.ls の読み込みに失敗");
+    let parser_content = std::fs::read_to_string(&parser_ls_path)
+        .expect("selfhost/src/Syntax/Parser.ls の読み込みに失敗");
 
     // recovery 関連の関数が定義されていることを検証
     assert!(
@@ -1409,8 +1409,8 @@ fn test_e2e_selfhost_hygiene_gensym() {
         "selfhost/src/Syntax/Hygiene.ls が存在しない -- 衛生的マクロモジュール未作成"
     );
 
-    let hygiene_content =
-        std::fs::read_to_string(&hygiene_ls_path).expect("selfhost/src/Syntax/Hygiene.ls の読み込みに失敗");
+    let hygiene_content = std::fs::read_to_string(&hygiene_ls_path)
+        .expect("selfhost/src/Syntax/Hygiene.ls の読み込みに失敗");
 
     // 必須関数が定義されていることを検証
     assert!(
@@ -1446,8 +1446,8 @@ fn test_e2e_selfhost_derive_expansion() {
         "selfhost/src/Syntax/Derive.ls が存在しない -- derive マクロモジュール未作成"
     );
 
-    let derive_content =
-        std::fs::read_to_string(&derive_ls_path).expect("selfhost/src/Syntax/Derive.ls の読み込みに失敗");
+    let derive_content = std::fs::read_to_string(&derive_ls_path)
+        .expect("selfhost/src/Syntax/Derive.ls の読み込みに失敗");
 
     // 必須関数が定義されていることを検証
     assert!(
@@ -1582,8 +1582,8 @@ fn test_e2e_selfhost_match_inference() {
         type_infer_pattern_path.exists(),
         "selfhost/src/Types/TypeInferPattern.ls が存在しない"
     );
-    let type_infer_pattern_content =
-        std::fs::read_to_string(&type_infer_pattern_path).expect("selfhost/src/Types/TypeInferPattern.ls の読み込みに失敗");
+    let type_infer_pattern_content = std::fs::read_to_string(&type_infer_pattern_path)
+        .expect("selfhost/src/Types/TypeInferPattern.ls の読み込みに失敗");
 
     // infer-pattern 関数が定義されていることを検証
     assert!(

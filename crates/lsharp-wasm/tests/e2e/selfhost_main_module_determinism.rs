@@ -17,10 +17,7 @@ fn test_e2e_selfhost_main_module_structure() {
     );
 
     // 2. 全ての import 宣言の存在
-    let expected_imports = [
-        "App.CompilerMode",
-        "App.PipelineSmoke",
-    ];
+    let expected_imports = ["App.CompilerMode", "App.PipelineSmoke"];
     for imp in &expected_imports {
         let import_decl = format!("(import {})", imp);
         assert!(
@@ -136,8 +133,8 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
     let mut source_paths = Vec::new();
 
     while let Some(dir) = pending_dirs.pop() {
-        for entry in std::fs::read_dir(&dir)
-            .unwrap_or_else(|e| panic!("{:?} の読み込みに失敗: {}", dir, e))
+        for entry in
+            std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("{:?} の読み込みに失敗: {}", dir, e))
         {
             let entry = entry.unwrap();
             let path = entry.path();
@@ -325,9 +322,9 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         "Backend.Native.NativeTarget",
         "App.ModuleResolver",
     ]
-        .iter()
-        .copied()
-        .collect();
+    .iter()
+    .copied()
+    .collect();
     for module in &level_0 {
         assert_eq!(
             levels[*module], 0,
@@ -394,9 +391,9 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         "App.CompilerMode",
         "Tools.Text.Formatter",
     ]
-        .iter()
-        .copied()
-        .collect();
+    .iter()
+    .copied()
+    .collect();
     for module in &level_3 {
         assert_eq!(
             levels[*module], 3,
@@ -471,15 +468,12 @@ fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
     let typeinfer_builtins_source =
         std::fs::read_to_string(selfhost_source_path("TypeInferBuiltins.ls"))
             .expect("canonical TypeInferBuiltins.ls が読み込めない");
-    let typeinfer_smoke_source =
-        std::fs::read_to_string(selfhost_source_path("TypeInferSmoke.ls"))
-            .expect("canonical TypeInferSmoke.ls が読み込めない");
-    let typeinfer_apply_source =
-        std::fs::read_to_string(selfhost_source_path("TypeInferApply.ls"))
-            .expect("canonical TypeInferApply.ls が読み込めない");
-    let typeinfer_block_source =
-        std::fs::read_to_string(selfhost_source_path("TypeInferBlock.ls"))
-            .expect("canonical TypeInferBlock.ls が読み込めない");
+    let typeinfer_smoke_source = std::fs::read_to_string(selfhost_source_path("TypeInferSmoke.ls"))
+        .expect("canonical TypeInferSmoke.ls が読み込めない");
+    let typeinfer_apply_source = std::fs::read_to_string(selfhost_source_path("TypeInferApply.ls"))
+        .expect("canonical TypeInferApply.ls が読み込めない");
+    let typeinfer_block_source = std::fs::read_to_string(selfhost_source_path("TypeInferBlock.ls"))
+        .expect("canonical TypeInferBlock.ls が読み込めない");
     let typeinfer_pattern_source =
         std::fs::read_to_string(selfhost_source_path("TypeInferPattern.ls"))
             .expect("canonical TypeInferPattern.ls が読み込めない");

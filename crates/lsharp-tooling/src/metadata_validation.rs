@@ -17,7 +17,10 @@ mod tests {
             r#"(defn abs [x] :example [(= (abs 5) 5)] :invariant (>= result 0) (if (< x 0) (- 0 x) x))"#,
         )
         .expect("valid metadata should parse");
-        assert!(diagnostics.is_empty(), "valid metadata should not produce diagnostics");
+        assert!(
+            diagnostics.is_empty(),
+            "valid metadata should not produce diagnostics"
+        );
     }
 
     #[test]

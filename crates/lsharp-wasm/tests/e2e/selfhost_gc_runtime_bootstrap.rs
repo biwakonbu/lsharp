@@ -109,7 +109,10 @@ fn test_e2e_selfhost_gc_longevity_benchmark() {
 
     // GC モジュール自体が型チェックを通ること
     let gc_program = lsharp_syntax::parse(&gc_source);
-    assert!(gc_program.is_ok(), "selfhost/src/Runtime/GC.ls のパースに失敗");
+    assert!(
+        gc_program.is_ok(),
+        "selfhost/src/Runtime/GC.ls のパースに失敗"
+    );
     let gc_program = gc_program.unwrap();
 
     let mut infer = Infer::new();
@@ -242,7 +245,10 @@ fn test_e2e_selfhost_gc_leak_detection() {
 
     // GC モジュール自体が型チェックを通ること
     let gc_program = lsharp_syntax::parse(&gc_source);
-    assert!(gc_program.is_ok(), "selfhost/src/Runtime/GC.ls のパースに失敗");
+    assert!(
+        gc_program.is_ok(),
+        "selfhost/src/Runtime/GC.ls のパースに失敗"
+    );
     let gc_program = gc_program.unwrap();
 
     let mut infer = Infer::new();
@@ -363,8 +369,7 @@ fn test_e2e_selfhost_native_object_emitter() {
 /// Red Phase: Linker.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_linker_response() {
-    let source =
-        read_selfhost_test_source("Linker.ls", "リンカーモジュールを作成してください");
+    let source = read_selfhost_test_source("Linker.ls", "リンカーモジュールを作成してください");
 
     // モジュール宣言
     assert!(
@@ -573,8 +578,8 @@ fn test_e2e_selfhost_wasm_native_differential() {
     );
 
     // ネイティブバックエンド用のコンパイル関数が NativeCodegen.ls に存在すること
-    let codegen_source =
-        std::fs::read_to_string(&codegen_path).expect("selfhost/src/Backend/Native/NativeCodegen.ls の読み込みに失敗");
+    let codegen_source = std::fs::read_to_string(&codegen_path)
+        .expect("selfhost/src/Backend/Native/NativeCodegen.ls の読み込みに失敗");
 
     assert!(
         codegen_source.contains("(defn compile-and-run-native")

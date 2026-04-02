@@ -70,7 +70,12 @@ fn test_e2e_selfhost_module_graph() {
 /// TEST-IR-02: selfhost/src/IR/Lower.ls, LowerExpr.ls, LowerDecl.ls, LowerPattern.ls の存在
 #[test]
 fn test_e2e_selfhost_lower_split() {
-    let files = ["Lower.ls", "LowerExpr.ls", "LowerDecl.ls", "LowerPattern.ls"];
+    let files = [
+        "Lower.ls",
+        "LowerExpr.ls",
+        "LowerDecl.ls",
+        "LowerPattern.ls",
+    ];
 
     for file in files {
         let path = selfhost_source_path(file);
@@ -517,11 +522,7 @@ fn test_e2e_selfhost_all_files_compile() {
 fn test_e2e_selfhost_true_bootstrap_fixed_point() {
     // canonical entrypoint が存在することを前提とする
     let main_path = selfhost_main_path();
-    assert!(
-        main_path.exists(),
-        "{} が存在しない",
-        main_path.display()
-    );
+    assert!(main_path.exists(), "{} が存在しない", main_path.display());
 
     // stage0: Rust コンパイラで canonical Main をマルチファイル経路でコンパイル -> stage1 wasm
     let stage1_wasm = compile_file_only(&main_path);

@@ -373,8 +373,8 @@ fn test_e2e_selfhost_parser_recovery_diagnostics() {
         parser_ls_path.exists(),
         "selfhost/src/Syntax/Parser.ls が存在しない"
     );
-    let parser_content =
-        std::fs::read_to_string(&parser_ls_path).expect("selfhost/src/Syntax/Parser.ls の読み込みに失敗");
+    let parser_content = std::fs::read_to_string(&parser_ls_path)
+        .expect("selfhost/src/Syntax/Parser.ls の読み込みに失敗");
 
     // recovery 関連の関数が定義されていることを検証
     assert!(
@@ -579,10 +579,16 @@ fn test_e2e_selfhost_parser_bare_module_with_multiple_imports() {
     assert_eq!(lines[2], "1", "module 名 hash が一致すべき");
     assert_eq!(lines[3], "1", "node1 は import decl であるべき");
     assert_eq!(lines[4], "1", "1 個目 import 名 hash が一致すべき");
-    assert_eq!(lines[5], "1", "1 個目 import の start/end から再計算した hash が一致すべき");
+    assert_eq!(
+        lines[5], "1",
+        "1 個目 import の start/end から再計算した hash が一致すべき"
+    );
     assert_eq!(lines[6], "1", "node2 は import decl であるべき");
     assert_eq!(lines[7], "1", "2 個目 import 名 hash が一致すべき");
-    assert_eq!(lines[8], "1", "2 個目 import の start/end から再計算した hash が一致すべき");
+    assert_eq!(
+        lines[8], "1",
+        "2 個目 import の start/end から再計算した hash が一致すべき"
+    );
     assert_eq!(lines[9], "1", "node3 は defn であるべき");
     assert_eq!(lines[10], "1", "defn 名 hash が一致すべき");
 }
@@ -618,10 +624,17 @@ fn test_e2e_selfhost_compiler_sees_defn_after_multiple_imports() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert!(lines.len() >= 3, "compiler multiple-import 出力が不足: {:?}", lines);
+    assert!(
+        lines.len() >= 3,
+        "compiler multiple-import 出力が不足: {:?}",
+        lines
+    );
     assert_eq!(lines[0], "4", "program は top-level 4 node を返すべき");
     assert_eq!(lines[1], "6", "main は func index 6 に登録されるべき");
-    assert_eq!(lines[2], "1", "compiler は defn main を 1 関数として拾うべき");
+    assert_eq!(
+        lines[2], "1",
+        "compiler は defn main を 1 関数として拾うべき"
+    );
 }
 
 /// TEST-SYNTAX-02c5: fabricated src-decl pairs では multiple import 相当でも functions を落とさない
@@ -670,7 +683,8 @@ fn test_e2e_selfhost_compiler_mode_pair_pipeline_keeps_functions() {
         module_resolver_ls,
         wasm_emit_ls,
         compiler_mode_ls,
-    ) + "\n" + harness;
+    ) + "\n"
+        + harness;
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
@@ -680,7 +694,10 @@ fn test_e2e_selfhost_compiler_mode_pair_pipeline_keeps_functions() {
         lines
     );
     assert_eq!(lines[0], "3", "fabricated pair 数は 3 であるべき");
-    assert_eq!(lines[1], "8", "main は 3 個目の関数 index 8 に登録されるべき");
+    assert_eq!(
+        lines[1], "8",
+        "main は 3 個目の関数 index 8 に登録されるべき"
+    );
     assert_eq!(lines[2], "3", "functions は 3 個保持されるべき");
 }
 

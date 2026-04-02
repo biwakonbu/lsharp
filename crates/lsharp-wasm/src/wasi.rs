@@ -612,7 +612,8 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
         .iter()
         .rposition(|func| func.name == "handle" && func.params.len() == 1)
         .ok_or_else(|| CodegenError::Error {
-            msg: "HTTP handler component には `(defn handle [request] response)` が必要です".to_string(),
+            msg: "HTTP handler component には `(defn handle [request] response)` が必要です"
+                .to_string(),
         })? as u32;
 
     let fields_ctor_idx: u32 = 0;
