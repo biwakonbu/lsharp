@@ -88,8 +88,9 @@ git push origin v<version>
 |------|------|
 | `verify` | `cargo test` + `cargo clippy` + `cargo fmt --check` |
 | `build` | Tier1 の 4 プラットフォームで `cargo build --release` + `scripts/release.sh` で host launcher archive / component package を作成 |
-| `release` | `softprops/action-gh-release` で GitHub Release を作成し、全アーティファクトを添付 |
+| `release` | `softprops/action-gh-release` で GitHub Release を作成し、全 archive と `dist/checksums.txt` を添付 |
 
+- `release` job は build 済み archive を download した後、`bash scripts/checksum.sh dist > dist/checksums.txt` で release-level checksum asset を生成してから公開する
 - バージョン文字列にハイフンが含まれる場合 (例: `v0.2.0-rc1`) はプレリリースとして公開
 - `release_notes` は GitHub の自動生成を使用
 
@@ -117,7 +118,7 @@ Rollback anchor
 2. タグ `v<version>` を選択
 3. リリースノートを記載（変更点、破壊的変更、移行手順）
 4. アーティファクトをアップロード
-5. チェックサムファイルを添付
+5. `dist/checksums.txt` を checksum asset として添付
 6. `Rollback anchor` セクションに tag / asset 名 / checksum 名を記録
 
 stable / nightly の扱い、署名順序、package manager 更新順は `release-distribution-signing.md` を参照。

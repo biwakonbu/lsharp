@@ -75,15 +75,14 @@ GitHub Release asset の「永続」は `retention-days` ではなく、GitHub R
 
 ## チェックサム
 
-GitHub Release asset には `checksums.txt` を付与する。
+GitHub Release asset には top-level `dist/checksums.txt` を付与する。
 
 ```bash
-# scripts/checksum.sh で checksums.txt を生成
-bash scripts/checksum.sh dist/lsharp-v0.2.0-x86_64-unknown-linux-gnu \
-  > dist/lsharp-v0.2.0-x86_64-unknown-linux-gnu/checksums.txt
+# scripts/checksum.sh で release-level checksum asset を生成
+bash scripts/checksum.sh dist > dist/checksums.txt
 ```
 
-`checksums.txt` は対応する GitHub Release asset と同じ公開単位で扱う。
+`dist/checksums.txt` は同じ release で公開する archive 群に対応する release-level checksum asset として扱う。
 
 ## ストレージ管理
 

@@ -110,6 +110,9 @@ jobs:
         with:
           path: dist/
           merge-multiple: true
+      - name: release-level checksum asset を生成
+        shell: bash
+        run: bash scripts/checksum.sh dist > dist/checksums.txt
       - name: GitHub Release の作成とアーティファクトの添付
         uses: softprops/action-gh-release@v2
         with:

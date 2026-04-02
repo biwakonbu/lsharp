@@ -62,7 +62,7 @@ version bump
 
 - artifact 名・保持期間の正本は [`artifact-policy.md`](./artifact-policy.md)。
 - 配布物のファイル名は `lsharp-{version}-{target}.{ext}` を基本形とし、target ごとの圧縮形式は release workflow で固定する。
-- checksum は配布物と同時に生成し、release asset と同じ公開単位で扱う。
+- checksum は配布物と同時に生成し、release asset と同じ公開単位で扱う。現行 workflow では `release` job が top-level `dist/checksums.txt` を release-level checksum asset として生成・添付する。
 
 ## 署名ポリシー
 
@@ -129,7 +129,7 @@ signtool verify /pa lsharp.exe
 |---|---|
 | `scripts/release-playbook.sh` | release binary を作り、bootstrap / default-path / README smoke まで実行可能 |
 | tag push 起点の自動 release workflow | `verify` / `build` / `release-smoke` / `release` まで接続済み |
-| checksum 自動生成 | `scripts/release.sh` が archive 内 `checksums.txt` を生成し、`scripts/ci/release-smoke.sh` が workflow build job で検証 |
+| checksum 自動生成 | `scripts/release.sh` が archive 内 `checksums.txt` を生成し、`release` job が `bash scripts/checksum.sh dist > dist/checksums.txt` で attached checksum asset を追加、`scripts/ci/release-smoke.sh` が workflow build job で検証 |
 | macOS notarization | 手順は docs 化済み、workflow 接続は未実装 |
 | Windows 署名 | 未実装 |
 | package manager 配布 | 未実装 |

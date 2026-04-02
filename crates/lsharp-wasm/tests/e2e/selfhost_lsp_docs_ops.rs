@@ -2415,6 +2415,10 @@ fn test_e2e_ops06_release_smoke_contract() {
         workflow_content.contains("bash scripts/ci/release-smoke.sh"),
         "release.yml が scripts/ci/release-smoke.sh を呼んでいない"
     );
+    assert!(
+        workflow_content.contains("dist/checksums.txt"),
+        "release.yml は attached release-level checksum asset `dist/checksums.txt` も扱うこと"
+    );
 
     let playbook_doc = project_root.join("docs/development/operations/release-playbook.md");
     let playbook_content =
@@ -2451,6 +2455,20 @@ fn test_e2e_ops06_release_smoke_contract() {
             && playbook_content.contains("release-smoke.sh")
             && playbook_content.contains("smoke_test_readme.sh"),
         "release-playbook.md は doc command の release/readme smoke を案内すること"
+    );
+    assert!(
+        playbook_content.contains("dist/checksums.txt"),
+        "release-playbook.md は attached release-level checksum asset `dist/checksums.txt` も案内すること"
+    );
+
+    let release_distribution_doc =
+        project_root.join("docs/development/operations/release-distribution-signing.md");
+    let release_distribution_content = std::fs::read_to_string(&release_distribution_doc)
+        .expect("release-distribution-signing.md の読み込みに失敗");
+    assert!(
+        release_distribution_content.contains("checksums.txt")
+            && release_distribution_content.contains("release asset"),
+        "release-distribution-signing.md は release-level checksum asset 契約を明記すること"
     );
 }
 
