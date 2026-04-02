@@ -88,8 +88,10 @@ git push origin v<version>
 |------|------|
 | `verify` | `cargo test` + `cargo clippy` + `cargo fmt --check` |
 | `build` | Tier1 の 4 プラットフォームで `cargo build --release` + `scripts/release.sh` で host launcher archive / component package を作成 |
+| `release-smoke` | Ubuntu 上で Linux x86_64 archive (`lsharp-{version}-x86_64-unknown-linux-gnu.tar.gz`) を download し、`scripts/ci/release-smoke.sh` を Rust toolchain 無しで再実行 |
 | `release` | `softprops/action-gh-release` で GitHub Release を作成し、全 archive と `dist/checksums.txt` を添付 |
 
+- `release-smoke` job は Ubuntu 上で実行可能な downloaded artifact に絞るため、Linux x86_64 archive を 1 本だけ再検証する
 - `release` job は build 済み archive を download した後、`bash scripts/checksum.sh dist > dist/checksums.txt` で release-level checksum asset を生成してから公開する
 - バージョン文字列にハイフンが含まれる場合 (例: `v0.2.0-rc1`) はプレリリースとして公開
 - `release_notes` は GitHub の自動生成を使用

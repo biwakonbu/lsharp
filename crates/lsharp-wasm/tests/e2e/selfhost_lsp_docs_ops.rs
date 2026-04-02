@@ -2535,6 +2535,16 @@ fn test_e2e_ops07_release_download_smoke_job() {
         !release_smoke_section.contains("dtolnay/rust-toolchain"),
         "release-smoke job は Rust toolchain setup 無しで走ること"
     );
+    assert!(
+        release_smoke_section.contains("x86_64-unknown-linux-gnu")
+            || release_smoke_section.contains("linux-x86_64")
+            || release_smoke_section.contains("linux archive"),
+        "release-smoke job は Ubuntu 上で実行可能な Linux release archive だけを smoke すること"
+    );
+    assert!(
+        !release_smoke_section.contains("for archive in \"${archives[@]}\"; do"),
+        "release-smoke job は Ubuntu で macOS/Windows archive まで一括実行しないこと"
+    );
 
     let fresh_clone_doc = project_root.join("docs/development/operations/fresh-clone-spec.md");
     let doc_content =

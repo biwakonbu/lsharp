@@ -162,11 +162,12 @@ test-fresh-clone:
 
 ### `release-smoke`（downloaded artifact の中間 gate）
 
-`test-fresh-clone` の前段として、release workflow では build 済み archive を `actions/download-artifact` で集約し、`scripts/ci/release-smoke.sh` で **download release artifact -> checksum verify -> packaged binary smoke** を再実行する。
+`test-fresh-clone` の前段として、release workflow では Ubuntu 上で実行可能な Linux x86_64 archive (`lsharp-{version}-x86_64-unknown-linux-gnu.tar.gz`) を `actions/download-artifact` で取得し、`scripts/ci/release-smoke.sh` で **download release artifact -> checksum verify -> packaged binary smoke** を再実行する。
 
 - Rust toolchain setup を追加せずに `scripts/ci/release-smoke.sh` を回す
 - `.tar.gz` / `.zip` archive を展開し、`checksums.txt` を検証する
 - packaged `lsharp` binary の `--version` / `check` / `fmt` / `compile` を smoke する
+- current workflow では Ubuntu runner 上の実行可能性を優先し、downloaded artifact smoke の対象は Linux x86_64 archive に限定する
 
 これは true no-Rust `test-fresh-clone` の代替ではないが、release artifact download 後の binary-only 経路 regressions を早めに捕捉する中間 gate である。
 

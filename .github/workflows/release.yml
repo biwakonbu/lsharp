@@ -77,24 +77,21 @@ jobs:
     needs: build
     steps:
       - uses: actions/checkout@v4
-      - name: ビルド済みアーティファクトのダウンロード
+      - name: Linux release artifact のダウンロード
         uses: actions/download-artifact@v4
         with:
+          name: lsharp-${{ github.ref_name }}-x86_64-unknown-linux-gnu
           path: dist/
-          merge-multiple: true
-      - name: download 済み release archive の smoke
+      - name: download 済み Linux release archive の smoke
         shell: bash
         run: |
-          shopt -s nullglob
-          archives=(dist/*.tar.gz dist/*.zip)
-          if [[ ${#archives[@]} -eq 0 ]]; then
-            echo "ERROR: no release archives found under dist/" >&2
+          archive="dist/lsharp-${{ github.ref_name }}-x86_64-unknown-linux-gnu.tar.gz"
+          if [[ ! -f "$archive" ]]; then
+            echo "ERROR: Linux release archive not found: $archive" >&2
             exit 1
           fi
 
-          for archive in "${archives[@]}"; do
-            bash scripts/ci/release-smoke.sh "$archive"
-          done
+          bash scripts/ci/release-smoke.sh "$archive"
 
   # 全 Tier1 ビルドを GitHub Release へ公開
   release:
