@@ -244,3 +244,75 @@ fn test_meta_05_branch_protection_required_check_contract() {
         "scripts/audit_docs.sh は required check の Actions 表示名 (`CI Gate v2`) を検証すること"
     );
 }
+
+/// TEST-META-06: Deferred / v2 native 項目の正本同期
+///
+/// 以下を検証:
+/// 1. `TODO.md` の残タスク一覧と Deferred / v2 節が V2-08 / V2-09 を `[~]` で同期している
+/// 2. `TODO.md` の Deferred / v2 注記が V2-01〜V2-10 と `v2-designs/` を参照している
+/// 3. `phase11-implementation-plan.md` に V2-08 / V2-09 / V2-10 節が存在する
+/// 4. V2-08 / V2-09 / V2-10 の設計 docs が存在し、Deferred 方針を説明している
+#[test]
+fn test_meta_06_deferred_v2_native_docs_are_synced() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("プロジェクトルートが見つからない");
+
+    let todo_path = project_root.join("TODO.md");
+    let todo_content = std::fs::read_to_string(&todo_path).expect("TODO.md の読み込みに失敗");
+    assert!(
+        todo_content.contains("- [~] `V2-08` Native backend self-regeneration（Deferred）"),
+        "TODO.md の残タスク一覧で V2-08 は [~] として同期されること"
+    );
+    assert!(
+        todo_content.contains("- [~] `V2-09` Wasm/native differential zero（Deferred）"),
+        "TODO.md の残タスク一覧で V2-09 は [~] として同期されること"
+    );
+    assert!(
+        todo_content.contains("V2-01〜V2-10")
+            && todo_content.contains("docs/development/planning/v2-designs/"),
+        "TODO.md の Deferred / v2 注記は plan 節と v2-designs 配下の両方を参照すること"
+    );
+    assert!(
+        todo_content.contains("- [~] V2-08 Native backend self-regeneration"),
+        "TODO.md の Deferred / v2 節で V2-08 の詳細が存在すること"
+    );
+    assert!(
+        todo_content.contains("- [~] V2-09 Wasm/native differential zero"),
+        "TODO.md の Deferred / v2 節で V2-09 の詳細が存在すること"
+    );
+    assert!(
+        todo_content.contains("- [ ] `V2-10` Native-only RC distribution（Deferred）")
+            && todo_content.contains("- [ ] V2-10 Native-only RC distribution"),
+        "TODO.md では V2-10 は未着手の Deferred 項目として [ ] を維持すること"
+    );
+
+    let plan_path = project_root.join("docs/development/planning/phase11-implementation-plan.md");
+    let plan_content = std::fs::read_to_string(&plan_path)
+        .expect("phase11-implementation-plan.md の読み込みに失敗");
+    for anchor in [
+        "v2-08-native-backend-self-regeneration",
+        "v2-09-wasm-native-differential-zero",
+        "v2-10-native-only-rc-distribution",
+    ] {
+        assert!(
+            plan_content.contains(anchor),
+            "phase11-implementation-plan.md に V2 節 anchor `{anchor}` が必要"
+        );
+    }
+
+    let v2_08_doc = project_root.join("docs/development/planning/v2-designs/v2-08-native-backend-self-regeneration.md");
+    let v2_09_doc = project_root.join("docs/development/planning/v2-designs/v2-09-wasm-native-differential-zero.md");
+    let v2_10_doc = project_root.join("docs/development/planning/v2-designs/v2-10-native-only-rc-distribution.md");
+    for doc in [&v2_08_doc, &v2_09_doc, &v2_10_doc] {
+        assert!(doc.is_file(), "{} が存在しない", doc.display());
+        let content = std::fs::read_to_string(doc)
+            .unwrap_or_else(|e| panic!("{} の読み込みに失敗: {}", doc.display(), e));
+        assert!(
+            content.contains("Deferred") || content.contains("Phase 11 後") || content.contains("Component Model pivot"),
+            "{} は Deferred / post-Phase11 方針を説明すること",
+            doc.display()
+        );
+    }
+}

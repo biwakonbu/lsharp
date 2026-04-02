@@ -533,7 +533,7 @@ fn test_e2e_selfhost_main_native_pipeline_summary() {
         linux_target_format, 2,
         "Linux summary は ELF object format を使う"
     );
-    assert_eq!(linux_linker, 3, "Linux summary は GNU ld を選ぶ");
+    assert_eq!(linux_linker, 2, "Linux summary は ld.lld を選ぶ");
     assert_eq!(
         linux_ir_len, 1,
         "Linux summary も compile-source 由来の IR 長を報告する"

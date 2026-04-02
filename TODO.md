@@ -48,8 +48,8 @@
   - host launcher 構成の CI / release 安定化を終える
   - signing と main merge ごとの true no-Rust `fresh-clone` job を整備する
 
-- [ ] `V2-08` Native backend self-regeneration（Deferred）
-- [ ] `V2-09` Wasm/native differential zero（Deferred）
+- [~] `V2-08` Native backend self-regeneration（Deferred）
+- [~] `V2-09` Wasm/native differential zero（Deferred）
 - [ ] `V2-10` Native-only RC distribution（Deferred）
 
 ---
@@ -210,11 +210,11 @@
 
 ### Deferred / v2
 
-> Gate 外タスク。Phase 11 完了判定には含めない。各項目の受入・Evidence は `phase11-implementation-plan.md` の V2-01〜V2-07 節を正とし、着手時に個別ブランチ／PR で切る。
+> Gate 外タスク。Phase 11 完了判定には含めない。各項目の受入・Evidence は `phase11-implementation-plan.md` の V2-01〜V2-10 節と `docs/development/planning/v2-designs/` 配下を正とし、着手時に個別ブランチ／PR で切る。
 
-- [~] V2-08 Native backend self-regeneration — 旧 NATIVE-05。Component Model pivot により Phase 11 gate から Deferred へ移動。コードは `selfhost/src/Backend/Native/` に保持。50+ E2E tests が既存 evidence。
-- [~] V2-09 Wasm/native differential zero — 旧 NATIVE-06。Component Model pivot により Phase 11 gate から Deferred へ移動。5 観測点 harness と const 0/1/42/100 の zero-diff sample が既存 evidence。
-- [ ] V2-10 Native-only RC distribution — 旧 P11-2e-3 の native RC。Component Model pivot により Deferred へ移動。
+- [~] V2-08 Native backend self-regeneration — 旧 NATIVE-05。Component Model pivot により Phase 11 gate から Deferred へ移動。コードは `selfhost/src/Backend/Native/` に保持。`v2-08-native-backend-self-regeneration.md` と `phase11-implementation-plan.md#v2-08-native-backend-self-regeneration` を正本とし、50+ E2E tests は partial evidence として維持する。
+- [~] V2-09 Wasm/native differential zero — 旧 NATIVE-06。Component Model pivot により Phase 11 gate から Deferred へ移動。`v2-09-wasm-native-differential-zero.md` と `phase11-implementation-plan.md#v2-09-wasm-native-differential-zero` を正本とし、5 観測点 harness と const 0/1/42/100 の zero-diff sample を partial evidence として維持する。
+- [ ] V2-10 Native-only RC distribution — 旧 P11-2e-3 の native RC。Component Model pivot により Deferred へ移動。`v2-10-native-only-rc-distribution.md` と `phase11-implementation-plan.md#v2-10-native-only-rc-distribution` を正本とし、公式配布は引き続き host launcher + embedded guest component を維持する。
 
 ---
 

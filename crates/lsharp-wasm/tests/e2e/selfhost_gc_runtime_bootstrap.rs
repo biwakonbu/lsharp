@@ -3,6 +3,7 @@ use super::support::*;
 fn selfhost_test_label(name: &str) -> &'static str {
     match name {
         "GC.ls" => "selfhost/src/Runtime/GC.ls",
+        "PipelineSmoke.ls" => "selfhost/src/App/PipelineSmoke.ls",
         "NativeTarget.ls" => "selfhost/src/Backend/Native/NativeTarget.ls",
         "NativeCodegen.ls" => "selfhost/src/Backend/Native/NativeCodegen.ls",
         "NativeEmit.ls" => "selfhost/src/Backend/Native/NativeEmit.ls",
@@ -493,17 +494,23 @@ fn test_e2e_selfhost_native_self_regeneration() {
         );
     }
 
-    // canonical Main にネイティブバックエンド関連の import が存在すること
+    // native backend は Phase 11 gate から Deferred/v2 へ移動済みだが、
+    // canonical selfhost path から到達できる smoke path は保持されること
     let main_path = selfhost_main_path();
     let main_source = std::fs::read_to_string(&main_path)
         .unwrap_or_else(|_| panic!("{} の読み込みに失敗", main_path.display()));
+    let pipeline_smoke_source = read_selfhost_test_source(
+        "PipelineSmoke.ls",
+        "Deferred native backend の smoke path を保持するには App/PipelineSmoke.ls が必要",
+    );
 
     assert!(
-        main_source.contains("NativeTarget")
-            || main_source.contains("NativeCodegen")
-            || main_source.contains("native"),
-        "canonical Main にネイティブバックエンド関連の参照がない -- \
-         自己再生成にはネイティブコンパイルパスが Main に統合されている必要がある"
+        main_source.contains("run-main-smoke")
+            && pipeline_smoke_source.contains("(import Backend.Native.NativeTarget)")
+            && pipeline_smoke_source.contains("(import Backend.Native.NativeCodegen)")
+            && pipeline_smoke_source.contains("(import Backend.Native.NativeEmit)")
+            && pipeline_smoke_source.contains("(import Backend.Native.Linker)"),
+        "Deferred native backend の smoke path が canonical Main -> App.PipelineSmoke から到達できること"
     );
 
     // NativeCodegen.ls がコンパイルパイプライン関数を持つこと

@@ -558,19 +558,20 @@ fn run_native_codegen_harness(entry_source: &str) -> String {
     std::fs::create_dir_all(&dir).expect("native fixture dir 作成失敗");
 
     let result = (|| {
-        std::fs::write(dir.join("IR.ls"), selfhost_module("IR.ls")).expect("IR.ls 書き込み失敗");
-        std::fs::write(
-            dir.join("NativeTarget.ls"),
-            selfhost_module("NativeTarget.ls"),
-        )
-        .expect("NativeTarget.ls 書き込み失敗");
-        std::fs::write(
-            dir.join("NativeCodegen.ls"),
-            selfhost_module("NativeCodegen.ls"),
-        )
-        .expect("NativeCodegen.ls 書き込み失敗");
-        std::fs::write(dir.join("NativeEmit.ls"), selfhost_module("NativeEmit.ls"))
-            .expect("NativeEmit.ls 書き込み失敗");
+        for name in ["IR.ls", "NativeTarget.ls", "NativeCodegen.ls", "NativeEmit.ls"] {
+            let source = selfhost_module(name);
+            let flat_path = dir.join(name);
+            std::fs::write(&flat_path, source).unwrap_or_else(|_| panic!("{name} 書き込み失敗"));
+
+            let canonical_path = dir.join(selfhost_fixture_module_relative_path(name));
+            if let Some(parent) = canonical_path.parent() {
+                std::fs::create_dir_all(parent).expect("native fixture parent dir 作成失敗");
+            }
+            if canonical_path != flat_path {
+                std::fs::write(&canonical_path, selfhost_module(name))
+                    .unwrap_or_else(|_| panic!("{name} 書き込み失敗"));
+            }
+        }
         std::fs::write(dir.join("Main.ls"), entry_source).expect("Main.ls 書き込み失敗");
         compile_and_run_file(&dir.join("Main.ls"))
     })();
@@ -587,13 +588,21 @@ fn run_native_linker_harness(entry_source: &str) -> String {
     std::fs::create_dir_all(&dir).expect("native linker fixture dir 作成失敗");
 
     let result = (|| {
-        std::fs::write(
-            dir.join("NativeTarget.ls"),
-            selfhost_module("NativeTarget.ls"),
-        )
-        .expect("NativeTarget.ls 書き込み失敗");
-        std::fs::write(dir.join("Linker.ls"), selfhost_module("Linker.ls"))
-            .expect("Linker.ls 書き込み失敗");
+        for name in ["NativeTarget.ls", "Linker.ls"] {
+            let source = selfhost_module(name);
+            let flat_path = dir.join(name);
+            std::fs::write(&flat_path, source).unwrap_or_else(|_| panic!("{name} 書き込み失敗"));
+
+            let canonical_path = dir.join(selfhost_fixture_module_relative_path(name));
+            if let Some(parent) = canonical_path.parent() {
+                std::fs::create_dir_all(parent)
+                    .expect("native linker fixture parent dir 作成失敗");
+            }
+            if canonical_path != flat_path {
+                std::fs::write(&canonical_path, selfhost_module(name))
+                    .unwrap_or_else(|_| panic!("{name} 書き込み失敗"));
+            }
+        }
         std::fs::write(dir.join("Main.ls"), entry_source).expect("Main.ls 書き込み失敗");
         compile_and_run_file(&dir.join("Main.ls"))
     })();
@@ -1270,7 +1279,7 @@ fn test_native_linker_response_consistency_across_three_targets() {
     assert_eq!(lines[9], "99", "target 2 response は output=99 を含む");
     assert_eq!(lines[10], "11", "target 2 response は object 1 を含む");
     assert_eq!(lines[11], "22", "target 2 response は object 2 を含む");
-    assert_eq!(lines[12], "3", "target 3 linker は GNU ld");
+    assert_eq!(lines[12], "2", "target 3 linker は ld.lld");
     assert_eq!(lines[13], "8", "target 3 response len は 8 bytes");
     assert_eq!(lines[14], "1", "target 3 response 先頭は -o sentinel");
     assert_eq!(lines[15], "99", "target 3 response は output=99 を含む");

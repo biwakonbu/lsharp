@@ -5,7 +5,7 @@
 > Wasmtime embedding + Component Model を正式配布モデルに据える方針転換により、native backend は Phase 11 の completion gate から外れ Deferred/v2 (V2-08, V2-09) へ移動した。
 > 主配布モデルは Component Model embedding であり、native backend は将来の探求用に保持する。
 > コードは `selfhost/src/Backend/Native/` に残存し、既存 50+ E2E tests も維持される。
-> 詳細は `TODO.md` の Deferred/v2 セクションおよび `backend-boundary.md` を参照。
+> 詳細は `TODO.md` の Deferred/v2 セクション、`docs/development/planning/phase11-implementation-plan.md#v2-08-native-backend-self-regeneration`、`docs/development/planning/v2-designs/v2-08-native-backend-self-regeneration.md`、`docs/development/planning/v2-designs/v2-09-wasm-native-differential-zero.md` および `backend-boundary.md` を参照。
 
 ## 目的
 
@@ -206,3 +206,5 @@ native backend は、runtime を別 object として扱う前提を持つ。
 
 - [`backend-boundary.md`](./backend-boundary.md)
 - [`runtime-spec.md`](./runtime-spec.md)
+- [`../development/planning/v2-designs/v2-08-native-backend-self-regeneration.md`](../development/planning/v2-designs/v2-08-native-backend-self-regeneration.md)
+- [`../development/planning/v2-designs/v2-09-wasm-native-differential-zero.md`](../development/planning/v2-designs/v2-09-wasm-native-differential-zero.md)
