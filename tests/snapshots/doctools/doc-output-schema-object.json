@@ -1,0 +1,50 @@
+{
+  "functions": [
+    {
+      "arity": 2,
+      "doc": "Add two ints",
+      "example": "(add 1 2)",
+      "name": "add",
+      "params": [
+        {
+          "doc": "left",
+          "name": "x",
+          "type": "Int"
+        },
+        {
+          "doc": "right",
+          "name": "y",
+          "type": "Int"
+        }
+      ],
+      "returns": {
+        "doc": "sum",
+        "type": "Int"
+      }
+    }
+  ],
+  "html": {
+    "sections": [
+      {
+        "count": 1,
+        "id": "functions"
+      },
+      {
+        "count": 2,
+        "id": "types"
+      }
+    ],
+    "title": "module-Demo"
+  },
+  "module": "module-Demo",
+  "types": [
+    {
+      "kind": "type",
+      "name": "Doc"
+    },
+    {
+      "kind": "typealias",
+      "name": "Alias"
+    }
+  ]
+}

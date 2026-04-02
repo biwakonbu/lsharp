@@ -1,0 +1,57 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "sourceBytes": 59,
+      "uri": 200
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/publishDiagnostics",
+    "params": {
+      "diagnostics": [
+        {
+          "col": 1,
+          "line": 1,
+          "messageHash": 1,
+          "rule": 1,
+          "severity": 1,
+          "source": 2
+        }
+      ],
+      "uri": 200
+    }
+  },
+  {
+    "id": 195,
+    "jsonrpc": "2.0",
+    "result": [
+      [
+        200,
+        [
+          [
+            1,
+            51,
+            1,
+            58,
+            "mid-next"
+          ]
+        ]
+      ],
+      [
+        8091858770804166904,
+        [
+          [
+            1,
+            50,
+            1,
+            57,
+            "mid-next"
+          ]
+        ]
+      ]
+    ]
+  }
+]

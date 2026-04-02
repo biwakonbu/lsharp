@@ -1,0 +1,23 @@
+{
+  "diagnostics": [
+    {
+      "body": "let binding unused is not used",
+      "code": "L0001",
+      "column": 1,
+      "line": 1,
+      "ruleId": 100,
+      "severity": "warning",
+      "title": "unused-let"
+    },
+    {
+      "body": "do block has no expressions",
+      "code": "L0002",
+      "column": 1,
+      "line": 1,
+      "ruleId": 104,
+      "severity": "warning",
+      "title": "empty-do"
+    }
+  ],
+  "sourceId": 200
+}

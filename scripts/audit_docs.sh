@@ -97,7 +97,8 @@ fi
 echo ""
 echo "--- [P12-0] 公開 CLI ドキュメントの compile 統一確認 ---"
 for SPEC in \
-    "README.md|target/debug/lsharp compile|README compile 導線" \
+    "README.md|lsharp compile|README compile 導線" \
+    "README.md|checksums.txt|README checksum 導線" \
     "README.md|LSP / MCP|README の内部 API 説明" \
     "AGENTS.md|cargo run -- compile|AGENTS compile 導線" \
     "AGENTS.md|LSP / MCP|AGENTS の内部 API 説明" \

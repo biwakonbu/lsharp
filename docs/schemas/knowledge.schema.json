@@ -9,14 +9,16 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "arity"],
+        "required": ["name", "arity", "params", "returns"],
         "properties": {
           "name": { "type": "string" },
           "arity": { "type": "integer" },
           "doc": { "type": "string" },
+          "example": { "type": "string" },
           "params": { "type": "array", "items": { "type": "string" } },
           "returns": { "type": "string" }
-        }
+        },
+        "additionalProperties": false
       }
     },
     "types": {
@@ -27,7 +29,8 @@
         "properties": {
           "name": { "type": "string" },
           "kind": { "type": "string", "enum": ["type", "recorddef", "typealias", "typeconstrained"] }
-        }
+        },
+        "additionalProperties": false
       }
     }
   },

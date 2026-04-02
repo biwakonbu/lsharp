@@ -10,13 +10,111 @@
 
 ;; === 関数エントリ → HTML 文字列 ===
 
+;; 関数エントリ [hash, name, arity, params, returns, doc, example] から signature text を組み立てる
+(defn function-signature-text [func-doc]
+  (string-concat (vector-get func-doc 1)
+    (string-concat "/" (int-to-string (vector-get func-doc 2)))))
+
+;; 関数エントリから表示名を取り出す
+(defn function-name-text [func-doc]
+  (vector-get func-doc 1))
+
 ;; 関数エントリ [hash, name, arity] を "<li>{name}/{arity}</li>" に変換する
 (defn render-function-signature [func-doc]
   (render-node
     (elem "li" (vector-new 0)
       (vector-push (vector-new 1)
-        (text (string-concat (vector-get func-doc 1)
-            (string-concat "/" (int-to-string (vector-get func-doc 2)))))))))
+        (text (function-signature-text func-doc))))))
+
+(defn function-param-entries [func-doc]
+  (if (> (vector-length func-doc) 3)
+    (vector-get func-doc 3)
+    (vector-new 0)))
+
+(defn function-return-entry [func-doc]
+  (if (> (vector-length func-doc) 4)
+    (vector-get func-doc 4)
+    (vector-push (vector-push (vector-new 2) "") "")))
+
+(defn function-return-type-text [func-doc]
+  (vector-get (function-return-entry func-doc) 0))
+
+(defn function-return-doc-text [func-doc]
+  (vector-get (function-return-entry func-doc) 1))
+
+(defn function-doc-text [func-doc]
+  (if (> (vector-length func-doc) 5)
+    (vector-get func-doc 5)
+    ""))
+
+(defn function-example-text [func-doc]
+  (if (> (vector-length func-doc) 6)
+    (vector-get func-doc 6)
+    ""))
+
+(defn render-function-doc-html [func-doc]
+  (let [doc-text (function-doc-text func-doc)]
+    (if (> (string-length doc-text) 0)
+      (string-concat "<p>" (string-concat (html-escape doc-text) "</p>"))
+      "")))
+
+(defn render-function-example-html [func-doc]
+  (let [example-text (function-example-text func-doc)]
+    (if (> (string-length example-text) 0)
+      (string-concat "<pre><code>"
+        (string-concat (html-escape example-text) "</code></pre>"))
+      "")))
+
+(defn render-param-item-html [param]
+  (string-concat "<li><code>"
+    (string-concat (html-escape (vector-get param 0))
+      (string-concat "</code>: "
+        (string-concat (html-escape (vector-get param 2))
+          (string-concat " ("
+            (string-concat (html-escape (vector-get param 1)) ")</li>")))))))
+
+(defn render-param-items-loop [params idx count]
+  (if (>= idx count)
+    ""
+    (string-concat
+      (render-param-item-html (vector-get params idx))
+      (render-param-items-loop params (+ idx 1) count))))
+
+(defn render-function-params-html [func-doc]
+  (let [params (function-param-entries func-doc)]
+    (if (= (vector-length params) 0)
+      ""
+      (string-concat "<h4>Parameters</h4><ul>"
+        (string-concat
+          (render-param-items-loop params 0 (vector-length params))
+          "</ul>")))))
+
+(defn render-function-returns-html [func-doc]
+  (let [returns-type (function-return-type-text func-doc)
+    returns-doc (function-return-doc-text func-doc)]
+    (if (> (string-length returns-type) 0)
+      (string-concat "<p><strong>Returns:</strong> "
+        (string-concat (html-escape returns-doc)
+          (string-concat " ("
+            (string-concat (html-escape returns-type) ")</p>"))))
+      "")))
+
+(defn render-function-entry-html [func-doc]
+  (let [title-html (html-escape (function-name-text func-doc))
+    signature-html (html-escape (function-signature-text func-doc))
+    doc-html (render-function-doc-html func-doc)
+    params-html (render-function-params-html func-doc)
+    returns-html (render-function-returns-html func-doc)
+    example-html (render-function-example-html func-doc)]
+    (string-concat "<section><h3>"
+      (string-concat title-html
+        (string-concat "</h3><pre><code>"
+          (string-concat signature-html
+            (string-concat "</code></pre>"
+              (string-concat doc-html
+                (string-concat params-html
+                  (string-concat returns-html
+                    (string-concat example-html "</section>")))))))))))
 
 ;; 型エントリ [hash, name, kind] を "<li>{kind} {name}</li>" に変換する
 (defn render-type-definition [type-doc]
@@ -32,7 +130,7 @@
   (if (>= idx count)
     ""
     (string-concat
-      (render-function-signature (vector-get functions idx))
+      (render-function-entry-html (vector-get functions idx))
       (render-function-items-loop functions (+ idx 1) count))))
 
 (defn render-type-items-loop [types idx count]
@@ -49,10 +147,10 @@
   (if (= (vector-length functions) 0)
     ""
     (string-concat
-      "<section id=\"functions\"><ul>"
+      "<section id=\"functions\">"
       (string-concat
         (render-function-items-loop functions 0 (vector-length functions))
-        "</ul></section>"))))
+        "</section>"))))
 
 ;; 型セクション HTML を生成する
 (defn render-types-section-html [types]

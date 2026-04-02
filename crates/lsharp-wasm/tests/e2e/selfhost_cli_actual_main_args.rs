@@ -1,4 +1,5 @@
 use super::support::*;
+use serde_json::Value;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -24,6 +25,16 @@ fn output_lines(output: String) -> Vec<String> {
 fn assert_output_lines(lines: &[String], expected: &[&str], message: &str) {
     let actual: Vec<&str> = lines.iter().map(String::as_str).collect();
     assert_eq!(actual, expected, "{}", message);
+}
+
+fn doctools_json_snapshot(name: &str) -> Value {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/snapshots/doctools")
+        .join(name);
+    let snapshot = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("doctools snapshot 読み込み失敗 {}: {}", path.display(), e));
+    serde_json::from_str(&snapshot)
+        .unwrap_or_else(|e| panic!("doctools snapshot JSON parse 失敗 {}: {}", path.display(), e))
 }
 
 fn run_cli_main_with_args(args: &[&str]) -> Vec<String> {
@@ -114,6 +125,63 @@ fn test_e2e_selfhost_cli_main_with_args_review_file() {
     );
 }
 
+/// TEST-CLI-02-AR2: actual Cli main は argv 経由で review --json を処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_review_json_file() {
+    let lines = run_cli_main_with_input_file(
+        "review_json",
+        "(defn first [] (let [unused 42] 0)) (defn second [] (do))",
+        &["review", "input.ls", "--json"],
+    );
+
+    let actual: Value = serde_json::from_str(&lines[0]).expect("review --json output は valid JSON");
+    assert_eq!(
+        actual,
+        doctools_json_snapshot("review-schema-object.json"),
+        "Cli main review --json argv は review schema snapshot と一致するべき",
+    );
+}
+
+/// TEST-CLI-02-AR2b: actual Cli main は argv 経由で review --format json を処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_review_format_json_file() {
+    let lines = run_cli_main_with_input_file(
+        "review_format_json",
+        "(defn first [] (let [unused 42] 0)) (defn second [] (do))",
+        &["review", "input.ls", "--format", "json"],
+    );
+
+    let actual: Value =
+        serde_json::from_str(&lines[0]).expect("review --format json output は valid JSON");
+    assert_eq!(
+        actual,
+        doctools_json_snapshot("review-schema-object.json"),
+        "Cli main review --format json argv は review schema snapshot と一致するべき",
+    );
+}
+
+/// TEST-CLI-02-AR3: actual Cli main は invalid な review --format value を拒否すること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_review_invalid_format_fails() {
+    let output = run_cli_main_with_input_file_capture(
+        "review_invalid_format",
+        "(defn first [] (let [unused 42] 0))",
+        &["review", "input.ls", "--format", "yaml"],
+    );
+
+    assert_eq!(
+        output.exit_code, 1,
+        "Cli main review --format yaml argv は exit code 1 を返すべき",
+    );
+
+    let lines = output_lines(output.stdout);
+    assert_output_lines(
+        &lines,
+        &["error: unsupported option: yaml"],
+        "Cli main review --format yaml argv は unsupported option error を返すべき",
+    );
+}
+
 /// TEST-CLI-02-AS: actual Cli main は argv 経由で doc file command を処理できること
 #[test]
 fn test_e2e_selfhost_cli_main_with_args_doc_file() {
@@ -123,6 +191,63 @@ fn test_e2e_selfhost_cli_main_with_args_doc_file() {
         &lines,
         &["module-global", "functions:1,types:0,first-fn:main"],
         "Cli main doc argv は deterministic title/body を返すべき",
+    );
+}
+
+/// TEST-CLI-02-AS2: actual Cli main は argv 経由で doc --json を処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_doc_json_file() {
+    let lines = run_cli_main_with_input_file(
+        "doc_json",
+        "(module Demo)\n(defn add [x y] :params [(x \"left\") (y \"right\")] :returns \"sum\" :doc \"Add two ints\" :example [(add 1 2)] (+ x y))\n(type Doc Int)\n(type-alias Alias Int)",
+        &["doc", "input.ls", "--json"],
+    );
+
+    let actual: Value = serde_json::from_str(&lines[0]).expect("doc --json output は valid JSON");
+    assert_eq!(
+        actual,
+        doctools_json_snapshot("doc-output-schema-object.json"),
+        "Cli main doc --json argv は doc-output schema snapshot と一致するべき",
+    );
+}
+
+/// TEST-CLI-02-AS2b: actual Cli main は argv 経由で doc --format json を処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_doc_format_json_file() {
+    let lines = run_cli_main_with_input_file(
+        "doc_format_json",
+        "(module Demo)\n(defn add [x y] :params [(x \"left\") (y \"right\")] :returns \"sum\" :doc \"Add two ints\" :example [(add 1 2)] (+ x y))\n(type Doc Int)\n(type-alias Alias Int)",
+        &["doc", "input.ls", "--format", "json"],
+    );
+
+    let actual: Value =
+        serde_json::from_str(&lines[0]).expect("doc --format json output は valid JSON");
+    assert_eq!(
+        actual,
+        doctools_json_snapshot("doc-output-schema-object.json"),
+        "Cli main doc --format json argv は doc-output schema snapshot と一致するべき",
+    );
+}
+
+/// TEST-CLI-02-AS3: actual Cli main は invalid な doc --format value を拒否すること
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_doc_invalid_format_fails() {
+    let output = run_cli_main_with_input_file_capture(
+        "doc_invalid_format",
+        "(defn main [] 42)",
+        &["doc", "input.ls", "--format", "yaml"],
+    );
+
+    assert_eq!(
+        output.exit_code, 1,
+        "Cli main doc --format yaml argv は exit code 1 を返すべき",
+    );
+
+    let lines = output_lines(output.stdout);
+    assert_output_lines(
+        &lines,
+        &["error: unsupported option: yaml"],
+        "Cli main doc --format yaml argv は unsupported option error を返すべき",
     );
 }
 

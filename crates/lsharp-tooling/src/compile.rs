@@ -5,6 +5,7 @@ use lsharp_ir::Module;
 /// compile バックエンドターゲット
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompileTarget {
+    WasiPreview1,
     WasiComponent,
     WebWasm,
     Native,
@@ -35,7 +36,7 @@ fn infer_target_from_output_path(output_path: &Path) -> CompileTarget {
         CompileTarget::WasiComponent
     } else {
         match output_path.extension().and_then(|ext| ext.to_str()) {
-            Some("wasm") => CompileTarget::WasiComponent,
+            Some("wasm") => CompileTarget::WasiPreview1,
             _ => CompileTarget::Native,
         }
     }
@@ -43,6 +44,7 @@ fn infer_target_from_output_path(output_path: &Path) -> CompileTarget {
 
 fn default_output_path(file: &Path, target: CompileTarget) -> PathBuf {
     match target {
+        CompileTarget::WasiPreview1 => file.with_extension("wasm"),
         CompileTarget::WasiComponent => file.with_extension("component.wasm"),
         CompileTarget::WebWasm => file.with_extension("wasm"),
         CompileTarget::Native => {
@@ -124,6 +126,12 @@ pub fn compile_file(
     }
 
     match target {
+        CompileTarget::WasiPreview1 => {
+            let wasm_bytes =
+                lsharp_wasm::wasi::emit_wasm_wasi(&module).map_err(|e| miette::miette!("{e}"))?;
+            std::fs::write(&output_path, &wasm_bytes)
+                .map_err(|e| miette::miette!("{}: {}", output_path.display(), e))?;
+        }
         CompileTarget::WasiComponent => {
             let wasm_bytes =
                 lsharp_wasm::wasi::emit_wasm_wasi_p2(&module).map_err(|e| miette::miette!("{e}"))?;
@@ -167,7 +175,7 @@ mod tests {
 
         assert_eq!(component_target, CompileTarget::WasiComponent);
         assert_eq!(component_path, component_output);
-        assert_eq!(wasm_target, CompileTarget::WasiComponent);
+        assert_eq!(wasm_target, CompileTarget::WasiPreview1);
         assert_eq!(wasm_path, wasm_output);
         assert_eq!(native_target, CompileTarget::Native);
         assert_eq!(native_path, native_output);
@@ -181,6 +189,27 @@ mod tests {
 
         assert_eq!(target, CompileTarget::WebWasm);
         assert_eq!(resolved_path, output);
+    }
+
+    #[test]
+    fn test_compile_file_preview1_target_writes_runnable_core_wasm() {
+        let dir = std::env::temp_dir().join("lsharp_compile_pipeline_preview1");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+
+        let file = dir.join("Main.ls");
+        let output = dir.join("Main.wasm");
+        std::fs::write(&file, "(defn main [] (print 42))\n").unwrap();
+
+        let artifacts = compile_file(&file, Some(&output), false, Some(CompileTarget::WasiPreview1))
+            .unwrap();
+        let wasm_bytes = std::fs::read(&artifacts.output_path).unwrap();
+        let stdout = lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes)
+            .expect("preview1 target は preview1 runner で実行できる core Wasm を出力するべき");
+        assert_eq!(stdout, "42\n");
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

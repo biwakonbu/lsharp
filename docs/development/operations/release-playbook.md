@@ -51,13 +51,14 @@ vim Cargo.toml   # version = "0.x.y"
 | アーティファクト | 説明 |
 |---|---|
 | `lsharp` host launcher | `target/release/lsharp` |
+| `lsharp-lsp` language server | `target/release/lsharp-lsp` |
 | guest component package | `target/release-playbook/` 以下の component / bundle 出力（埋め込み用または検証用 sidecar） |
 | release playbook 検証成果物 | `target/release-playbook/` 以下の bootstrap / smoke 出力 |
 | チェックサム | SHA-256 チェックサムファイル |
 
 配布対象の tier1 / tier2 切り分けと命名規則は `release-distribution-signing.md` と `artifact-policy.md` を参照。
 
-release workflow では `scripts/release.sh` の直後に `scripts/ci/release-smoke.sh dist/lsharp-<version>-<target>.<ext>` を実行し、展開済み archive 上で `checksums.txt` 検証と packaged `lsharp` binary の `--version` / `check` / `fmt` / `compile` smoke を通す。
+release workflow では `scripts/release.sh` の直後に `scripts/ci/release-smoke.sh dist/lsharp-<version>-<target>.<ext>` を実行し、展開済み archive 上で `README.md` / `LICENSE` / `checksums.txt` / `lsharp-lsp` の存在確認、`checksums.txt` 検証、packaged `lsharp` binary の `--version` / `check` / `fmt` / `compile` / `test` / `doc` smoke を通す。README / fresh-clone 側でも `scripts/smoke_test_readme.sh` が inline Quick Start fixture を使って checksum / compile / test / doc の導線を再確認し、host-backed `doc` distribution ownership を二重化して確認する。
 
 ### 4. チェックサム生成
 

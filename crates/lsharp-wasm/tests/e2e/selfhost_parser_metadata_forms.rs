@@ -369,6 +369,95 @@ fn test_e2e_selfhost_parser_defn_params_metadata() {
     assert_eq!(lines[6], "2", "apply arg count は 2 であるべき");
 }
 
+/// TEST-SYNTAX-02u: defn の :doc / :example metadata を trailing metadata vector として保持できる
+#[test]
+fn test_e2e_selfhost_parser_defn_preserves_doc_example_metadata() {
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(defn add [x y] :doc \"addition\" :example [(add 1 2)] (+ x y))") 0)
+        body (vector-get node 5)
+        meta (vector-get node 6)
+        doc (vector-get meta 0)
+        example (vector-get meta 1)
+        params (vector-get meta 2)
+        returns (vector-get meta 3)]
+    (do
+      (print (vector-length node))
+      (print (if (= (vector-get body 0) (ast-apply)) 1 0))
+      (print (vector-length meta))
+      (print (vector-length params))
+      (print (string-length returns))
+      (print-string doc)
+      (print-string "\n")
+      (print-string example)
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_parser_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 7,
+        "metadata preserve parser 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "7", "defn node は trailing metadata 付き 7 要素であるべき");
+    assert_eq!(lines[1], "1", "body は apply ノードのまま保持されるべき");
+    assert_eq!(lines[2], "4", "metadata entry は doc/example/params/returns の 4 件であるべき");
+    assert_eq!(lines[3], "0", ":params なしでは空 vector を保持するべき");
+    assert_eq!(lines[4], "0", ":returns なしでは空文字列を保持するべき");
+    assert_eq!(lines[5], "addition", ":doc string が保持されるべき");
+    assert_eq!(lines[6], "(add 1 2)", ":example string が保持されるべき");
+}
+
+/// TEST-SYNTAX-02v: defn の :params / :returns metadata を trailing metadata vector として保持できる
+#[test]
+fn test_e2e_selfhost_parser_defn_preserves_params_returns_metadata() {
+    let harness = r#"
+(defn main []
+  (let [node (vector-get (parse-program "(defn add [x y] :params [(x \"left\") (y \"right\")] :returns \"sum\" (+ x y))") 0)
+        body (vector-get node 5)
+        meta (vector-get node 6)
+        params (vector-get meta 2)
+        returns (vector-get meta 3)
+        param0 (vector-get params 0)
+        param1 (vector-get params 1)]
+    (do
+      (print (vector-length node))
+      (print (if (= (vector-get body 0) (ast-apply)) 1 0))
+      (print (vector-length meta))
+      (print (vector-length params))
+      (print (if (= (vector-get param0 0) (name-hash "x" 0 1)) 1 0))
+      (print-string (vector-get param0 1))
+      (print-string "\n")
+      (print (if (= (vector-get param1 0) (name-hash "y" 0 1)) 1 0))
+      (print-string (vector-get param1 1))
+      (print-string "\n")
+      (print-string returns)
+      (print-string "\n")
+      0)))
+"#;
+
+    let output = run_parser_runtime(harness);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 9,
+        "params/returns metadata parser 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "7", "defn node は trailing metadata 付き 7 要素であるべき");
+    assert_eq!(lines[1], "1", "body は apply ノードのまま保持されるべき");
+    assert_eq!(lines[2], "4", "metadata entry は doc/example/params/returns の 4 件であるべき");
+    assert_eq!(lines[3], "2", "params metadata は 2 件であるべき");
+    assert_eq!(lines[4], "1", "1件目 param 名 hash は x であるべき");
+    assert_eq!(lines[5], "left", "1件目 param doc が保持されるべき");
+    assert_eq!(lines[6], "1", "2件目 param 名 hash は y であるべき");
+    assert_eq!(lines[7], "right", "2件目 param doc が保持されるべき");
+    assert_eq!(lines[8], "sum", ":returns string が保持されるべき");
+}
+
 /// TEST-SYNTAX-04: Hygiene.ls gensym/scope-id/expansion trace
 ///
 /// selfhost/src/Syntax/Hygiene.ls が存在し、gensym, scope-id, expansion-trace 関数を公開していることを検証。

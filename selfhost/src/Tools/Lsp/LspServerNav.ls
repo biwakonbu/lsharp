@@ -1,4 +1,5 @@
 (module Tools.Lsp.LspServerNav)
+(import App.ModuleResolver)
 (import Syntax.Parser)
 (import Tools.Text.FormatterDecl)
 (import Tools.Lsp.JsonRpc)
@@ -307,6 +308,138 @@
       (lsp-make-defn-resolution uri local-offset)
       (lsp-find-defn-in-open-docs-loop state uri name 0 (vector-length (server-state-uri-list state))))))
 
+(defn lsp-uri-for-path-loop [state path idx count]
+  (if (>= idx count)
+    (- 0 1)
+    (let [target-uri (vector-get (server-state-uri-list state) idx)
+      target-path (server-state-path-for-uri state target-uri)]
+      (if (and (> (string-length target-path) 0) (same-path target-path path))
+        target-uri
+        (lsp-uri-for-path-loop state path (+ idx 1) count)))))
+
+(defn lsp-uri-for-path [state path]
+  (lsp-uri-for-path-loop state path 0 (vector-length (server-state-uri-list state))))
+
+(defn lsp-source-for-path [state path]
+  (let [target-uri (lsp-uri-for-path state path)]
+    (if (>= target-uri 0)
+      (server-state-source-for-uri state target-uri)
+      (if (file-exists? path) (read-file path) ""))))
+
+(defn lsp-path-key [path]
+  (name-hash path 0 (string-length path)))
+
+(defn lsp-path-seen? [seen-ref path]
+  (if (= (string-length path) 0)
+    1
+    (if (= (map-get (ref-get seen-ref) (lsp-path-key path)) 0) 0 1)))
+
+(defn lsp-mark-path-seen [seen-ref path]
+  (if (> (string-length path) 0)
+    (do
+      (ref-set seen-ref (map-insert (ref-get seen-ref) (lsp-path-key path) 1))
+      0)
+    0))
+
+(defn lsp-import-module-name [decl src]
+  (let [start (vector-get decl 2)
+    end (vector-get decl 3)]
+    (if (> end start) (substring src start end) "")))
+
+(defn lsp-find-defn-in-imports-loop [state name src path decls idx count seen-ref]
+  (if (>= idx count)
+    (- 0 1)
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 26)
+        (let [module-name (lsp-import-module-name decl src)
+          source-root (resolve-source-root path)
+          package-root (resolve-package-root path)
+          imported-path (resolve-module-path module-name source-root package-root)
+          imported-offset (lsp-find-defn-in-imported-path state name imported-path seen-ref)]
+          (if (>= imported-offset 0)
+            imported-offset
+            (lsp-find-defn-in-imports-loop state name src path decls (+ idx 1) count seen-ref)))
+        (lsp-find-defn-in-imports-loop state name src path decls (+ idx 1) count seen-ref)))))
+
+(defn lsp-find-defn-in-imported-path [state name path seen-ref]
+  (if (= (lsp-path-seen? seen-ref path) 1)
+    (- 0 1)
+    (do
+      (lsp-mark-path-seen seen-ref path)
+      (let [imported-src (lsp-source-for-path state path)]
+        (if (= (string-length imported-src) 0)
+          (- 0 1)
+          (let [local-offset (lsp-find-defn-offset imported-src name)]
+            (if (>= local-offset 0)
+              local-offset
+              (let [decls (parse-program imported-src)]
+                (lsp-find-defn-in-imports-loop state name imported-src path decls 0 (vector-length decls) seen-ref)))))))))
+
+(defn lsp-find-defn-in-filesystem-imports [state uri name]
+  (let [path (server-state-path-for-uri state uri)
+    src (server-state-source-for-uri state uri)]
+    (if (and (> (string-length path) 0) (> (string-length src) 0))
+      (let [decls (parse-program src)
+        seen-ref (ref-new (map-new))]
+        (do
+          (lsp-mark-path-seen seen-ref path)
+          (lsp-find-defn-in-imports-loop state name src path decls 0 (vector-length decls) seen-ref)))
+      (- 0 1))))
+
+(defn lsp-virtual-uri-for-path [state path]
+  (let [open-uri (lsp-uri-for-path state path)]
+    (if (>= open-uri 0) open-uri (lsp-path-key path))))
+
+(defn lsp-find-defn-location-in-imports-loop [state name src path decls idx count seen-ref]
+  (if (>= idx count)
+    0
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 26)
+        (let [module-name (lsp-import-module-name decl src)
+          source-root (resolve-source-root path)
+          package-root (resolve-package-root path)
+          imported-path (resolve-module-path module-name source-root package-root)
+          location (lsp-find-defn-location-in-imported-path state name imported-path seen-ref)]
+          (if (= location 0)
+            (lsp-find-defn-location-in-imports-loop state name src path decls (+ idx 1) count seen-ref)
+            location))
+        (lsp-find-defn-location-in-imports-loop state name src path decls (+ idx 1) count seen-ref)))))
+
+(defn lsp-find-defn-location-in-imported-path [state name path seen-ref]
+  (if (= (lsp-path-seen? seen-ref path) 1)
+    0
+    (do
+      (lsp-mark-path-seen seen-ref path)
+      (let [imported-src (lsp-source-for-path state path)]
+        (if (= (string-length imported-src) 0)
+          0
+          (let [local-offset (lsp-find-defn-offset imported-src name)]
+            (if (>= local-offset 0)
+              (let [target-uri (lsp-virtual-uri-for-path state path)
+                pos (lsp-position-from-offset imported-src local-offset)]
+                (make-location target-uri (position-line pos) (position-col pos)))
+              (let [decls (parse-program imported-src)]
+                (lsp-find-defn-location-in-imports-loop
+                  state
+                  name
+                  imported-src
+                  path
+                  decls
+                  0
+                  (vector-length decls)
+                  seen-ref)))))))))
+
+(defn lsp-find-defn-location-in-filesystem-imports [state uri name]
+  (let [path (server-state-path-for-uri state uri)
+    src (server-state-source-for-uri state uri)]
+    (if (and (> (string-length path) 0) (> (string-length src) 0))
+      (let [decls (parse-program src)
+        seen-ref (ref-new (map-new))]
+        (do
+          (lsp-mark-path-seen seen-ref path)
+          (lsp-find-defn-location-in-imports-loop state name src path decls 0 (vector-length decls) seen-ref)))
+      0)))
+
 (defn lsp-hover-content-text [defn-offset name]
   (if (>= defn-offset 0)
     (string-concat "defn " name)
@@ -335,6 +468,92 @@
 
 (defn lsp-find-occurrences [src target uri]
   (lsp-find-occurrences-loop src target uri 0 (string-length src) (vector-new 4)))
+
+(defn lsp-merge-locations-loop [items extra idx len]
+  (if (>= idx len)
+    items
+    (lsp-merge-locations-loop
+      (vector-push items (vector-get extra idx))
+      extra
+      (+ idx 1)
+      len)))
+
+(defn lsp-merge-locations [items extra]
+  (lsp-merge-locations-loop items extra 0 (vector-length extra)))
+
+(defn lsp-find-filesystem-occurrences-in-imports-loop [state name src path decls idx count seen-ref results]
+  (if (>= idx count)
+    results
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 26)
+        (let [module-name (lsp-import-module-name decl src)
+          source-root (resolve-source-root path)
+          package-root (resolve-package-root path)
+          imported-path (resolve-module-path module-name source-root package-root)
+          next-results (lsp-find-filesystem-occurrences-in-imported-path state name imported-path seen-ref results)]
+          (lsp-find-filesystem-occurrences-in-imports-loop
+            state
+            name
+            src
+            path
+            decls
+            (+ idx 1)
+            count
+            seen-ref
+            next-results))
+        (lsp-find-filesystem-occurrences-in-imports-loop
+          state
+          name
+          src
+          path
+          decls
+          (+ idx 1)
+          count
+          seen-ref
+          results)))))
+
+(defn lsp-find-filesystem-occurrences-in-imported-path [state name path seen-ref results]
+  (if (= (lsp-path-seen? seen-ref path) 1)
+    results
+    (do
+      (lsp-mark-path-seen seen-ref path)
+      (let [imported-src (lsp-source-for-path state path)]
+        (if (= (string-length imported-src) 0)
+          results
+          (let [target-uri (lsp-virtual-uri-for-path state path)
+            local-results (lsp-find-occurrences imported-src name target-uri)
+            merged-results (lsp-merge-locations results local-results)
+            decls (parse-program imported-src)]
+            (lsp-find-filesystem-occurrences-in-imports-loop
+              state
+              name
+              imported-src
+              path
+              decls
+              0
+              (vector-length decls)
+              seen-ref
+              merged-results)))))))
+
+(defn lsp-find-filesystem-occurrences [state uri name results]
+  (let [path (server-state-path-for-uri state uri)
+    src (server-state-source-for-uri state uri)]
+    (if (and (> (string-length path) 0) (> (string-length src) 0))
+      (let [decls (parse-program src)
+        seen-ref (ref-new (map-new))]
+        (do
+          (lsp-mark-path-seen seen-ref path)
+          (lsp-find-filesystem-occurrences-in-imports-loop
+            state
+            name
+            src
+            path
+            decls
+            0
+            (vector-length decls)
+            seen-ref
+            results)))
+      results)))
 
 ;; === 補完・プレフィックスマッチ ===
 
@@ -449,6 +668,79 @@
     (vector-length (server-state-uri-list state))
     items))
 
+(defn lsp-append-filesystem-import-completions-loop [state src path decls prefix idx count seen-ref items]
+  (if (>= idx count)
+    items
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 26)
+        (let [module-name (lsp-import-module-name decl src)
+          source-root (resolve-source-root path)
+          package-root (resolve-package-root path)
+          imported-path (resolve-module-path module-name source-root package-root)
+          next-items (lsp-append-filesystem-path-completions state imported-path prefix seen-ref items)]
+          (lsp-append-filesystem-import-completions-loop
+            state
+            src
+            path
+            decls
+            prefix
+            (+ idx 1)
+            count
+            seen-ref
+            next-items))
+        (lsp-append-filesystem-import-completions-loop
+          state
+          src
+          path
+          decls
+          prefix
+          (+ idx 1)
+          count
+          seen-ref
+          items)))))
+
+(defn lsp-append-filesystem-path-completions [state path prefix seen-ref items]
+  (if (= (lsp-path-seen? seen-ref path) 1)
+    items
+    (do
+      (lsp-mark-path-seen seen-ref path)
+      (let [imported-src (lsp-source-for-path state path)]
+        (if (= (string-length imported-src) 0)
+          items
+          (let [target-items (lsp-append-defn-completions imported-src prefix)
+            merged-items (lsp-merge-completion-items items target-items)
+            decls (parse-program imported-src)]
+            (lsp-append-filesystem-import-completions-loop
+              state
+              imported-src
+              path
+              decls
+              prefix
+              0
+              (vector-length decls)
+              seen-ref
+              merged-items)))))))
+
+(defn lsp-append-filesystem-import-completions [state uri prefix items]
+  (let [path (server-state-path-for-uri state uri)
+    src (server-state-source-for-uri state uri)]
+    (if (and (> (string-length path) 0) (> (string-length src) 0))
+      (let [decls (parse-program src)
+        seen-ref (ref-new (map-new))]
+        (do
+          (lsp-mark-path-seen seen-ref path)
+          (lsp-append-filesystem-import-completions-loop
+            state
+            src
+            path
+            decls
+            prefix
+            0
+            (vector-length decls)
+            seen-ref
+            items)))
+      items)))
+
 (defn lsp-ensure-trailing-newline [src]
   (let [len (string-length src)]
     (if (= len 0)
@@ -488,17 +780,18 @@
       symbol (lsp-symbol-at src line col)
       start (symbol-info-start symbol)
       end (symbol-info-end symbol)]
-      (if (> (string-length src) 0)
-        (if (>= start 0)
-          (let [name (substring src start end)
-            range (lsp-range-from-offsets src start end)
-            resolution (lsp-resolve-defn-in-open-docs state uri src name start)
-            defn-offset (lsp-defn-resolution-offset resolution)
-            contents (lsp-hover-content-text defn-offset name)]
-            (vector-push
-              (vector-push (vector-new 2) range)
-              contents))
-          (handle-hover-mock params))
+        (if (> (string-length src) 0)
+          (if (>= start 0)
+            (let [name (substring src start end)
+              range (lsp-range-from-offsets src start end)
+              resolution (lsp-resolve-defn-in-open-docs state uri src name start)
+              open-defn-offset (lsp-defn-resolution-offset resolution)
+              defn-offset (if (>= open-defn-offset 0) open-defn-offset (lsp-find-defn-in-filesystem-imports state uri name))
+              contents (lsp-hover-content-text defn-offset name)]
+              (vector-push
+                (vector-push (vector-new 2) range)
+                contents))
+            (handle-hover-mock params))
         (handle-hover-mock params)))))
 
 ;; textDocument/goto-definition: 定義ジャンプ
@@ -537,7 +830,10 @@
                   (server-state-source-for-uri state target-uri))
                 pos (lsp-position-from-offset target-src defn-offset)]
                 (make-location target-uri (position-line pos) (position-col pos)))
-              (handle-goto-definition-mock params)))
+              (let [location (lsp-find-defn-location-in-filesystem-imports state uri name)]
+                (if (= location 0)
+                  (handle-goto-definition-mock params)
+                  location))))
           (handle-goto-definition-mock params))
         (handle-goto-definition-mock params)))))
 
@@ -567,7 +863,9 @@
       end (symbol-info-end symbol)]
       (if (> (string-length src) 0)
         (if (>= start 0)
-          (lsp-find-occurrences src (substring src start end) uri)
+          (let [name (substring src start end)
+            results (lsp-find-occurrences src name uri)]
+            (lsp-find-filesystem-occurrences state uri name results))
           (handle-references-mock params))
         (handle-references-mock params)))))
 
@@ -589,6 +887,48 @@
 (defn lsp-build-rename-edits [locs old-name-len new-name]
   (lsp-append-rename-edits-loop locs 0 (vector-length locs) old-name-len new-name (vector-new 4)))
 
+(defn lsp-locations-for-uri-loop [locs target-uri idx len matches]
+  (if (>= idx len)
+    matches
+    (let [loc (vector-get locs idx)]
+      (if (= (vector-get loc 0) target-uri)
+        (lsp-locations-for-uri-loop locs target-uri (+ idx 1) len (vector-push matches loc))
+        (lsp-locations-for-uri-loop locs target-uri (+ idx 1) len matches)))))
+
+(defn lsp-locations-for-uri [locs target-uri]
+  (lsp-locations-for-uri-loop locs target-uri 0 (vector-length locs) (vector-new 4)))
+
+(defn lsp-change-has-uri-loop [changes target-uri idx len]
+  (if (>= idx len)
+    0
+    (if (= (vector-get (vector-get changes idx) 0) target-uri)
+      1
+      (lsp-change-has-uri-loop changes target-uri (+ idx 1) len))))
+
+(defn lsp-change-has-uri [changes target-uri]
+  (lsp-change-has-uri-loop changes target-uri 0 (vector-length changes)))
+
+(defn lsp-build-rename-changes-loop [locs old-name-len new-name idx len changes]
+  (if (>= idx len)
+    changes
+    (let [loc (vector-get locs idx)
+      target-uri (vector-get loc 0)]
+      (if (= (lsp-change-has-uri changes target-uri) 1)
+        (lsp-build-rename-changes-loop locs old-name-len new-name (+ idx 1) len changes)
+        (let [uri-locs (lsp-locations-for-uri locs target-uri)
+          edits (lsp-build-rename-edits uri-locs old-name-len new-name)
+          change (make-workspace-change target-uri edits)]
+          (lsp-build-rename-changes-loop
+            locs
+            old-name-len
+            new-name
+            (+ idx 1)
+            len
+            (vector-push changes change)))))))
+
+(defn lsp-build-rename-changes [locs old-name-len new-name]
+  (lsp-build-rename-changes-loop locs old-name-len new-name 0 (vector-length locs) (vector-new 4)))
+
 (defn handle-rename [params state]
   (do
     (server-state-note-request state)
@@ -605,8 +945,9 @@
           (if (> (string-length new-name) 0)
             (let [name (substring src start end)
               locs (lsp-find-occurrences src name uri)
-              edits (lsp-build-rename-edits locs (string-length name) new-name)]
-              (vector-push (vector-new 1) (make-workspace-change uri edits)))
+              locs (lsp-find-filesystem-occurrences state uri name locs)
+              changes (lsp-build-rename-changes locs (string-length name) new-name)]
+              changes)
             (handle-rename-mock params))
           (handle-rename-mock params))
         (handle-rename-mock params))))) ;; changes
@@ -641,6 +982,7 @@
         (let [prefix (lsp-prefix-at src line col)
           items (lsp-append-defn-completions src prefix)
           items (lsp-append-open-doc-completions state (lsp-nav-uri params) prefix items)
+          items (lsp-append-filesystem-import-completions state (lsp-nav-uri params) prefix items)
           items (lsp-append-keyword-completions prefix items)]
           items)
         (let [items (vector-new 7)

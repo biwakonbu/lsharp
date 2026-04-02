@@ -33,6 +33,8 @@ struct Cli {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 enum CliCompileTarget {
+    #[value(name = "wasi-preview1")]
+    WasiPreview1,
     #[value(name = "wasi-component", alias("wasm"))]
     WasiComponent,
     #[value(name = "web-wasm")]
@@ -43,6 +45,7 @@ enum CliCompileTarget {
 impl From<CliCompileTarget> for commands::compile::CompileTarget {
     fn from(value: CliCompileTarget) -> Self {
         match value {
+            CliCompileTarget::WasiPreview1 => Self::WasiPreview1,
             CliCompileTarget::WasiComponent => Self::WasiComponent,
             CliCompileTarget::WebWasm => Self::WebWasm,
             CliCompileTarget::Native => Self::Native,
@@ -205,6 +208,7 @@ enum Command {
 
 fn main() -> miette::Result<()> {
     maybe_delegate_to_external_compiler()?;
+    maybe_bridge_compile_build_artifact()?;
     maybe_delegate_to_embedded_component()?;
     maybe_hint_shadow_command_requires_lsharp_path()?;
 
@@ -445,7 +449,10 @@ fn maybe_delegate_to_embedded_component() -> miette::Result<()> {
 
     let current_dir =
         std::env::current_dir().map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let args = normalize_guest_args_for_current_dir(
+        &current_dir,
+        std::env::args().skip(1).collect(),
+    );
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let output = lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
         EMBEDDED_COMPONENT_BYTES,
@@ -457,6 +464,203 @@ fn maybe_delegate_to_embedded_component() -> miette::Result<()> {
     std::process::exit(output.exit_code);
 }
 
+fn infer_bridge_compile_target(
+    requested_target: Option<commands::compile::CompileTarget>,
+    output_path: &Path,
+) -> commands::compile::CompileTarget {
+    if let Some(target) = requested_target {
+        return target;
+    }
+
+    let output_name = output_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+    if output_name.ends_with(".component.wasm") {
+        commands::compile::CompileTarget::WasiComponent
+    } else if output_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext == "wasm")
+    {
+        commands::compile::CompileTarget::WasiPreview1
+    } else {
+        commands::compile::CompileTarget::Native
+    }
+}
+
+fn maybe_bridge_compile_build_artifact() -> miette::Result<()> {
+    if option_env!("LSHARP_EMBEDDED_COMPONENT_PRESENT") != Some("1") {
+        return Ok(());
+    }
+    if std::env::var_os("LSHARP_PATH").is_some() {
+        return Ok(());
+    }
+    if std::env::var_os("LSHARP_DISABLE_EMBEDDED_COMPONENT").is_some_and(|value| value != "0") {
+        return Ok(());
+    }
+    if !should_delegate_to_embedded_component() {
+        return Ok(());
+    }
+
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(_) => return Ok(()),
+    };
+
+    let (file, output, target, emit_ir) = match cli.command {
+        Command::Compile {
+            file,
+            output,
+            target,
+            emit_ir,
+        }
+        | Command::Build {
+            file,
+            output,
+            target,
+            emit_ir,
+        } => (file, output, target, emit_ir),
+        _ => return Ok(()),
+    };
+
+    if emit_ir {
+        return Ok(());
+    }
+
+    let current_dir =
+        std::env::current_dir().map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
+    let args = normalize_guest_args_for_current_dir(
+        &current_dir,
+        std::env::args().skip(1).collect(),
+    );
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let guest_output =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
+            EMBEDDED_COMPONENT_BYTES,
+            Some(&current_dir),
+            &arg_refs,
+        )
+        .map_err(|e| miette::miette!("embedded component 実行に失敗しました: {e}"))?;
+
+    if guest_output.exit_code != 0 {
+        print!("{}", guest_output.stdout);
+        std::process::exit(guest_output.exit_code);
+    }
+
+    let host_file = if file.is_absolute() {
+        file.clone()
+    } else {
+        current_dir.join(&file)
+    };
+    let requested_target = target.map(Into::into);
+    let resolved_output = if let Some(output_path) = output {
+        if output_path.is_absolute() {
+            output_path
+        } else {
+            current_dir.join(output_path)
+        }
+    } else {
+        match requested_target.unwrap_or(commands::compile::CompileTarget::WasiComponent) {
+            commands::compile::CompileTarget::WasiPreview1
+            | commands::compile::CompileTarget::WebWasm => host_file.with_extension("wasm"),
+            commands::compile::CompileTarget::WasiComponent => {
+                host_file.with_extension("component.wasm")
+            }
+            commands::compile::CompileTarget::Native => {
+                let stem = host_file
+                    .file_stem()
+                    .map(|stem| stem.to_os_string())
+                    .or_else(|| host_file.file_name().map(|name| name.to_os_string()))
+                    .unwrap_or_else(|| "a.out".into());
+                host_file.with_file_name(stem)
+            }
+        }
+    };
+    let host_target = infer_bridge_compile_target(requested_target, &resolved_output);
+
+    commands::compile::compile_file(&host_file, Some(&resolved_output), false, Some(host_target))?;
+    print!("{}", guest_output.stdout);
+    std::process::exit(guest_output.exit_code);
+}
+
+fn canonicalize_for_guest_prefix_match(path: &Path) -> Option<PathBuf> {
+    if let Ok(canonical) = std::fs::canonicalize(path) {
+        return Some(canonical);
+    }
+
+    let parent = path.parent()?;
+    let file_name = path.file_name()?;
+    let canonical_parent = std::fs::canonicalize(parent).ok()?;
+    Some(canonical_parent.join(file_name))
+}
+
+fn relativize_guest_path_arg(current_dir: &Path, value: &str) -> String {
+    let path = Path::new(value);
+    if !path.is_absolute() {
+        return value.to_string();
+    }
+
+    if let Ok(relative) = path.strip_prefix(current_dir) {
+        return if relative.as_os_str().is_empty() {
+            ".".to_string()
+        } else {
+            relative.to_string_lossy().into_owned()
+        };
+    }
+
+    let canonical_current_dir =
+        std::fs::canonicalize(current_dir).unwrap_or_else(|_| current_dir.to_path_buf());
+    let Some(canonical_path) = canonicalize_for_guest_prefix_match(path) else {
+        return value.to_string();
+    };
+
+    match canonical_path.strip_prefix(&canonical_current_dir) {
+        Ok(relative) if !relative.as_os_str().is_empty() => relative.to_string_lossy().into_owned(),
+        Ok(_) => ".".to_string(),
+        Err(_) => value.to_string(),
+    }
+}
+
+fn normalize_guest_args_for_current_dir(current_dir: &Path, args: Vec<String>) -> Vec<String> {
+    let mut normalized = args;
+    let Some(command) = normalized.first().map(String::as_str) else {
+        return normalized;
+    };
+
+    let normalize_file_arg = |args: &mut Vec<String>, index: usize| {
+        if let Some(value) = args.get(index).cloned() {
+            if !value.starts_with('-') {
+                args[index] = relativize_guest_path_arg(current_dir, &value);
+            }
+        }
+    };
+
+    match command {
+        "parse" | "check" | "test" | "fmt" | "review" | "doc" | "doc-ack" | "doc-check" => {
+            normalize_file_arg(&mut normalized, 1);
+        }
+        "compile" | "build" => {
+            normalize_file_arg(&mut normalized, 1);
+
+            let mut index = 2;
+            while index + 1 < normalized.len() {
+                match normalized[index].as_str() {
+                    "-o" | "--output" => {
+                        normalized[index + 1] =
+                            relativize_guest_path_arg(current_dir, &normalized[index + 1]);
+                        index += 2;
+                    }
+                    _ => index += 1,
+                }
+            }
+        }
+        _ => {}
+    }
+
+    normalized
+}
+
 fn should_delegate_to_embedded_component() -> bool {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     should_delegate_to_embedded_component_args(&args)
@@ -465,21 +669,53 @@ fn should_delegate_to_embedded_component() -> bool {
 fn should_delegate_to_embedded_component_args(args: &[std::ffi::OsString]) -> bool {
     match args.first().and_then(|arg| arg.to_str()) {
         Some("parse" | "check" | "test" | "fmt") => true,
-        Some("review" | "doc-ack" | "doc-check") => should_delegate_simple_file_command_args(args),
+        Some("review") => should_delegate_review_command_args(args),
+        Some("doc-ack" | "doc-check") => should_delegate_doc_command_args(args),
         Some("compile" | "build") => should_delegate_compile_build_to_embedded_component_args(args),
         _ => false,
     }
 }
 
-fn should_delegate_simple_file_command_args(args: &[std::ffi::OsString]) -> bool {
-    if args.len() != 2 {
+fn should_delegate_doc_command_args(args: &[std::ffi::OsString]) -> bool {
+    let Some(command) = args.first().and_then(|arg| arg.to_str()) else {
         return false;
-    }
+    };
 
     let Some(file_arg) = args.get(1).and_then(|arg| arg.to_str()) else {
         return false;
     };
-    !file_arg.starts_with('-')
+    if file_arg.starts_with('-') {
+        return false;
+    }
+
+    match (command, args.len()) {
+        ("doc-ack", 2) | ("doc-check", 2) => true,
+        ("doc-ack", 3) => matches!(args.get(2).and_then(|arg| arg.to_str()), Some("--trailer")),
+        ("doc-check", 3) => matches!(args.get(2).and_then(|arg| arg.to_str()), Some("--strict")),
+        _ => false,
+    }
+}
+
+fn should_delegate_review_command_args(args: &[std::ffi::OsString]) -> bool {
+    let Some(file_arg) = args.get(1).and_then(|arg| arg.to_str()) else {
+        return false;
+    };
+    if file_arg.starts_with('-') {
+        return false;
+    }
+
+    match args.len() {
+        2 => true,
+        3 => matches!(args.get(2).and_then(|arg| arg.to_str()), Some("--json")),
+        4 => matches!(
+            (
+                args.get(2).and_then(|arg| arg.to_str()),
+                args.get(3).and_then(|arg| arg.to_str())
+            ),
+            (Some("--format"), Some("json"))
+        ),
+        _ => false,
+    }
 }
 
 fn should_delegate_compile_build_to_embedded_component_args(
@@ -528,20 +764,25 @@ fn should_delegate_compile_build_to_embedded_component_args(
 /// selfhost shadow command が LSHARP_PATH なしで呼ばれた場合、外部 compiler への案内を出す。
 /// clap のパース前に argv を直接確認し、ユーザーが LSHARP_PATH を設定するよう誘導する。
 fn maybe_hint_shadow_command_requires_lsharp_path() -> miette::Result<()> {
-    let first_arg = std::env::args_os().nth(1);
-    if let Some(command) = first_arg.as_deref() {
-        if command == std::ffi::OsStr::new("parse")
-            || command == std::ffi::OsStr::new("check")
-            || command == std::ffi::OsStr::new("fmt")
-        {
-            let command = command.to_string_lossy();
-            return Err(miette::miette!(
-                "サブコマンド '{command}' は現在 selfhost compiler への delegation が必要です。\n\
-                 LSHARP_PATH 環境変数で外部 lsharp/compiler を指定してください:\n\
-                 \n\
-                 LSHARP_PATH=/path/to/selfhost/lsharp lsharp {command} ..."
-            ));
-        }
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    let Some(command) = args.first().and_then(|arg| arg.to_str()) else {
+        return Ok(());
+    };
+
+    let requires_selfhost = match command {
+        "parse" | "check" | "fmt" => true,
+        "review" => should_delegate_review_command_args(&args),
+        "doc-ack" | "doc-check" => should_delegate_doc_command_args(&args),
+        _ => false,
+    };
+
+    if requires_selfhost {
+        return Err(miette::miette!(
+            "サブコマンド '{command}' は現在 selfhost compiler への delegation が必要です。\n\
+             LSHARP_PATH 環境変数で外部 lsharp/compiler を指定してください:\n\
+             \n\
+             LSHARP_PATH=/path/to/selfhost/lsharp lsharp {command} ..."
+        ));
     }
     Ok(())
 }
@@ -602,9 +843,10 @@ fn maybe_delegate_to_external_compiler() -> miette::Result<()> {
             })?;
             let current_dir =
                 std::env::current_dir().map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
-            let args: Vec<String> = std::env::args()
-                .skip(1)
-                .collect();
+            let args = normalize_guest_args_for_current_dir(
+                &current_dir,
+                std::env::args().skip(1).collect(),
+            );
             let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
             let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args_inherit_stdin_capture(
                 &wasm_bytes,
@@ -629,7 +871,10 @@ fn maybe_delegate_to_external_compiler() -> miette::Result<()> {
             })?;
             let current_dir =
                 std::env::current_dir().map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
-            let args: Vec<String> = std::env::args().skip(1).collect();
+            let args = normalize_guest_args_for_current_dir(
+                &current_dir,
+                std::env::args().skip(1).collect(),
+            );
             let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
             let output = lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
                 &component_bytes,
@@ -2240,6 +2485,19 @@ mod tests {
             "compile",
             "examples/fib.ls",
             "--target",
+            "wasi-preview1",
+        ])
+        .expect("wasi-preview1 target should parse");
+        let Command::Compile { target, .. } = cli.command else {
+            panic!("compile subcommand should parse");
+        };
+        assert_eq!(target, Some(CliCompileTarget::WasiPreview1));
+
+        let cli = Cli::try_parse_from([
+            "lsharp",
+            "compile",
+            "examples/fib.ls",
+            "--target",
             "wasm",
         ])
         .expect("wasm alias should parse");
@@ -2283,12 +2541,33 @@ mod tests {
             "examples/fib.ls",
         ])));
         assert!(should_delegate_to_embedded_component_args(&os_args(&[
+            "review",
+            "examples/fib.ls",
+            "--json",
+        ])));
+        assert!(should_delegate_to_embedded_component_args(&os_args(&[
+            "review",
+            "examples/fib.ls",
+            "--format",
+            "json",
+        ])));
+        assert!(should_delegate_to_embedded_component_args(&os_args(&[
             "doc-ack",
+            "examples/fib.ls",
+        ])));
+        assert!(should_delegate_to_embedded_component_args(&os_args(&[
+            "doc-ack",
+            "examples/fib.ls",
+            "--trailer",
+        ])));
+        assert!(should_delegate_to_embedded_component_args(&os_args(&[
+            "doc-check",
             "examples/fib.ls",
         ])));
         assert!(should_delegate_to_embedded_component_args(&os_args(&[
             "doc-check",
             "examples/fib.ls",
+            "--strict",
         ])));
     }
 
@@ -2320,12 +2599,35 @@ mod tests {
             "--help",
         ])));
         assert!(!should_delegate_to_embedded_component_args(&os_args(&[
+            "review",
+            "examples/fib.ls",
+            "--format",
+            "yaml",
+        ])));
+        assert!(!should_delegate_to_embedded_component_args(&os_args(&[
+            "review",
+            "examples/fib.ls",
+            "--json",
+            "--format",
+        ])));
+        assert!(!should_delegate_to_embedded_component_args(&os_args(&[
             "doc-ack",
             "--help",
         ])));
         assert!(!should_delegate_to_embedded_component_args(&os_args(&[
             "doc-check",
             "--help",
+        ])));
+        assert!(!should_delegate_to_embedded_component_args(&os_args(&[
+            "doc-ack",
+            "examples/fib.ls",
+            "--json",
+        ])));
+        assert!(!should_delegate_to_embedded_component_args(&os_args(&[
+            "doc-check",
+            "examples/fib.ls",
+            "--format",
+            "json",
         ])));
     }
 

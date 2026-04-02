@@ -1,7 +1,10 @@
 (module App.Cli)
+(import App.ModuleResolver)
+(import App.CompilerMode)
 (import Syntax.AST)
 (import Backend.Wasm.Compiler)
 (import Tools.Doc.DocTools)
+(import Tools.Doc.DocJson)
 (import Tools.Text.Formatter)
 (import Syntax.Lexer)
 (import Tools.Lsp.LspServer)
@@ -64,9 +67,12 @@
 ") (exit-success))))
 (defn run-fmt-source [src opts] (let [program (parse-program src) formatted (format-program-with-source program src)] (do (print-string formatted) (exit-success))))
 (defn wasm-size-text [size] (string-concat "wasm-size:" (int-to-string size)))
+(defn compile-file-functions-data [file-path] (let [src (read-file file-path) program (parse-program src) source-root (resolve-source-root file-path) package-root (resolve-package-root file-path) seen-ref (ref-new (map-new)) imported-pairs (load-imports-from-decls program src 0 (vector-length program) seen-ref (vector-new 8) source-root package-root) all-pairs (vector-push imported-pairs (make-src-decl-pair src program)) n (vector-length all-pairs) reg-result (register-all-pairs all-pairs 0 n (ftable-new) 6) ftable (vector-get reg-result 0) data-ref (ref-new (vector-new 8)) functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))] (vector-push (vector-push (vector-new 2) functions) (ref-get data-ref))))
+(defn target-wasm-size-adjustment [target] (if (= target (compile-target-preview1)) (- (vector-length (emit-import-section-for-target (compile-target-preview1))) (vector-length (emit-import-section-for-target (compile-target-component)))) 0))
+(defn compile-file-wasm-size [file-path target] (let [pair (compile-file-functions-data file-path) functions (vector-get pair 0) data (vector-get pair 1) wasm-bytes (build-wasm-bytes-wasi functions data)] (+ (vector-length wasm-bytes) (target-wasm-size-adjustment target))))
 (defn run-compile-source [src opts] (let [program (parse-program src) ir (lower program) wasm-size (emit-wasm-with-target ir opts)] (do (print-string (wasm-size-text wasm-size)) (print-string "
 ") (exit-success))))
-(defn run-compile-output [file-path output-path opts] (if (file-exists? file-path) (let [src (read-file file-path) program (parse-program src) ir (lower program) wasm-size (emit-wasm-with-target ir opts) summary (wasm-size-text wasm-size)] (do (write-file output-path summary) (print-string summary) (print-string "
+(defn run-compile-output [file-path output-path opts] (if (file-exists? file-path) (let [wasm-size (compile-file-wasm-size file-path opts) summary (wasm-size-text wasm-size)] (do (write-file output-path summary) (print-string summary) (print-string "
 ") (exit-success))) (exit-compile-error)))
 (defn run-build-output [file-path output-path opts] (run-compile-output file-path output-path opts))
 (defn test-examples-text [count] (string-concat "examples:" (int-to-string count)))
@@ -76,17 +82,24 @@
 ") (print-string (test-invariants-text invariant-count)) (print-string "
 ") (print-string (test-failures-text failed)) (print-string "
 ") (if (> failed 0) (exit-runtime-error) (exit-success)))))
-(defn run-review-source [src opts] (let [program (parse-program src) review (generate-review program opts) diagnostics (vector-get review 1) review-title (review-summary-title diagnostics) review-body (review-summary-body diagnostics) review-severity (review-summary-severity diagnostics) review-code-location (review-summary-code-location diagnostics)] (do (print (vector-length diagnostics)) (print-string review-title) (print-string "
+(defn review-option-json [] 1)
+(defn review-json-source-id [] 200)
+(defn run-review-source [src opts] (let [program (parse-program src)] (if (= opts (review-option-json)) (let [review-json (generate-review-schema-json program (review-json-source-id))] (do (print-string review-json) (print-string "
+") (exit-success))) (let [review (generate-review program opts) diagnostics (vector-get review 1) review-title (review-summary-title diagnostics) review-body (review-summary-body diagnostics) review-severity (review-summary-severity diagnostics) review-code-location (review-summary-code-location diagnostics)] (do (print (vector-length diagnostics)) (print-string review-title) (print-string "
 ") (print-string review-body) (print-string "
 ") (print-string review-severity) (print-string "
 ") (print-string review-code-location) (print-string "
-") (exit-success))))
-(defn run-doc-source [src opts] (let [program (parse-program src) doc (generate program opts) title (vector-get doc 0) body (vector-get doc 1)] (do (print-string title) (print-string "
+") (exit-success))))))
+(defn doc-option-json [] 1)
+(defn doc-json-module-id [] 42)
+(defn run-doc-source [src opts] (let [program (parse-program src)] (if (= opts (doc-option-json)) (let [doc-json (generate-doc-output-schema-json program (doc-json-module-id))] (do (print-string doc-json) (print-string "
+") (exit-success))) (let [doc (generate program opts) title (vector-get doc 0) body (vector-get doc 1)] (do (print-string title) (print-string "
 ") (print-string body) (print-string "
-") (exit-success))))
+") (exit-success))))))
 (defn run-parse [file-path opts] (if (file-exists? file-path) (run-parse-source (read-file file-path) opts) (exit-compile-error)))
 (defn run-check [file-path opts] (if (file-exists? file-path) (run-check-source (read-file file-path) opts) (exit-compile-error)))
-(defn run-compile [file-path opts] (if (file-exists? file-path) (run-compile-source (read-file file-path) opts) (exit-compile-error)))
+(defn run-compile [file-path opts] (if (file-exists? file-path) (let [wasm-size (compile-file-wasm-size file-path opts)] (do (print-string (wasm-size-text wasm-size)) (print-string "
+") (exit-success))) (exit-compile-error)))
 (defn run-build [file-path opts] (if (file-exists? file-path) (run-compile file-path opts) (exit-compile-error)))
 (defn run-test [file-path opts] (if (file-exists? file-path) (run-test-source (read-file file-path) opts) (exit-compile-error)))
 (defn run-review [file-path opts] (if (file-exists? file-path) (run-review-source (read-file file-path) opts) (exit-compile-error)))
@@ -136,8 +149,160 @@
 (defn lsp-transport-method-id [request] (vector-get request 2))
 (defn lsp-transport-params [request] (vector-get request 3))
 (defn lsp-transport-uri [request] (if (> (vector-length (lsp-transport-params request)) 0) (vector-get (lsp-transport-params request) 0) 0))
+(defn lsp-transport-invalid-request-code [] (- 0 32600))
 (defn lsp-transport-method-not-found-code [] (- 0 32601))
-(defn lsp-transport-dispatch-request [state request] (let [request-id (lsp-transport-request-id request) method-id (lsp-transport-method-id request) params (lsp-transport-params request) uri (lsp-transport-uri request) result (json-rpc-dispatch method-id params state)] (if (= method-id (lsp-method-initialize)) (lsp-render-initialize-frame request-id) (if (= method-id (lsp-method-shutdown)) (lsp-render-shutdown-frame request-id) (if (= method-id (lsp-method-did-open)) (lsp-render-didopen-frame uri (server-state-source-length state)) (if (= method-id (lsp-method-did-change)) (lsp-render-didchange-frame uri (server-state-source-length state)) (if (= method-id (lsp-method-goto-def)) (lsp-render-location-frame request-id result) (if (= method-id (lsp-method-hover)) (lsp-render-hover-frame request-id result) (if (= method-id (lsp-method-references)) (lsp-render-locations-frame request-id result) (if (= method-id (lsp-method-completion)) (lsp-render-completion-frame request-id result) (if (= method-id (lsp-method-formatting)) (lsp-render-formatting-frame request-id result) (if (= method-id (lsp-method-rename)) (lsp-render-rename-frame request-id result) (if (= method-id (lsp-method-publish-diagnostics)) (lsp-render-publish-diagnostics-frame uri (vector-get params 1)) (lsp-render-error-frame request-id (lsp-transport-method-not-found-code) "Method not found"))))))))))))))
+(defn lsp-transport-request-after-shutdown? [state method-id]
+  (if (= (server-state-shutdown state) 1)
+    (if (= method-id (lsp-method-shutdown)) 0 1)
+    0))
+(defn lsp-transport-document-method? [method-id] (if (= method-id (lsp-method-did-open)) 1 (if (= method-id (lsp-method-did-change)) 1 0)))
+(defn lsp-diagnostic-source-parse [] 1)
+(defn lsp-diagnostic-source-type [] 2)
+(defn lsp-diagnostic-source-lint [] 3)
+(defn lsp-parser-severity-to-lsp [severity] (+ severity 1))
+(defn lsp-parse-diagnostic-to-lsp [diag src]
+  (let [position (lsp-position-from-offset src (vector-get diag 2))
+    result (vector-new 6)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push
+              (vector-push result (lsp-parser-severity-to-lsp (vector-get diag 0)))
+              (vector-get diag 1))
+            (position-line position))
+          (position-col position))
+        (vector-get diag 3))
+      (lsp-diagnostic-source-parse))))
+(defn lsp-source-parse-diagnostics-loop [raw src idx count diagnostics]
+  (if (>= idx count)
+    diagnostics
+    (lsp-source-parse-diagnostics-loop
+      raw
+      src
+      (+ idx 1)
+      count
+      (vector-push diagnostics (lsp-parse-diagnostic-to-lsp (vector-get raw idx) src)))))
+(defn lsp-source-parse-diagnostics [src]
+  (if (> (string-length src) 0)
+    (let [raw (parse-diagnostics src)
+      diagnostics (lsp-source-parse-diagnostics-loop raw src 0 (vector-length raw) (vector-new 4))]
+      (dedup-diagnostics (sort-diagnostics diagnostics)))
+    (vector-new 0)))
+(defn lsp-type-severity-to-lsp [] 1)
+(defn lsp-type-diagnostic-to-lsp [code]
+  (let [result (vector-new 6)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push
+              (vector-push result (lsp-type-severity-to-lsp))
+              code)
+            1)
+          1)
+        code)
+      (lsp-diagnostic-source-type))))
+(defn lsp-source-type-diagnostics [src]
+  (if (> (string-length src) 0)
+    (let [program (parse-program src)
+      code (check-diagnostics-first-code program)]
+      (if (= code 0)
+        (vector-new 0)
+        (vector-push (vector-new 1) (lsp-type-diagnostic-to-lsp code))))
+    (vector-new 0)))
+(defn lsp-review-severity-to-lsp [severity]
+  (if (string-eq severity "warning")
+    2
+    (if (string-eq severity "info")
+      3
+      (if (string-eq severity "hint") 4 1))))
+(defn lsp-review-diagnostic-to-lsp [diag]
+  (let [result (vector-new 6)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push
+              (vector-push result (lsp-review-severity-to-lsp (vector-get diag 3)))
+              (vector-get diag 0))
+            (vector-get diag 4))
+          (vector-get diag 5))
+        (vector-get diag 0))
+      (lsp-diagnostic-source-lint))))
+(defn lsp-source-lint-diagnostics-loop [raw idx count diagnostics]
+  (if (>= idx count)
+    diagnostics
+    (lsp-source-lint-diagnostics-loop raw (+ idx 1) count (vector-push diagnostics (lsp-review-diagnostic-to-lsp (vector-get raw idx))))))
+(defn lsp-source-lint-diagnostics [src]
+  (if (> (string-length src) 0)
+    (let [program (parse-program src)
+      review (generate-review program 0)
+      raw (vector-get review 1)
+      diagnostics (lsp-source-lint-diagnostics-loop raw 0 (vector-length raw) (vector-new 4))]
+      (dedup-diagnostics (sort-diagnostics diagnostics)))
+    (vector-new 0)))
+(defn lsp-diagnostics-append-loop [extra idx count diagnostics]
+  (if (>= idx count)
+    diagnostics
+    (lsp-diagnostics-append-loop extra (+ idx 1) count (vector-push diagnostics (vector-get extra idx)))))
+(defn lsp-diagnostics-append [diagnostics extra] (lsp-diagnostics-append-loop extra 0 (vector-length extra) diagnostics))
+(defn lsp-source-all-diagnostics [src]
+  (if (> (string-length src) 0)
+    (let [parse-diagnostics (lsp-source-parse-diagnostics src)]
+      (if (> (vector-length parse-diagnostics) 0)
+        parse-diagnostics
+        (let [type-diagnostics (lsp-source-type-diagnostics src)
+          lint-diagnostics (lsp-source-lint-diagnostics src)
+          diagnostics (lsp-diagnostics-append (lsp-diagnostics-append (vector-new 8) type-diagnostics) lint-diagnostics)]
+          (dedup-diagnostics (sort-diagnostics diagnostics)))))
+    (vector-new 0)))
+(defn lsp-transport-maybe-append-diagnostics-frame [state method-id uri previous-src rendered]
+  (if (= (lsp-transport-document-method? method-id) 1)
+    (let [current-src (server-state-source-for-uri state uri)
+      previous-diagnostics (lsp-source-all-diagnostics previous-src)
+      current-diagnostics (lsp-source-all-diagnostics current-src)]
+      (if (> (+ (vector-length previous-diagnostics) (vector-length current-diagnostics)) 0)
+        (string-concat rendered (lsp-render-publish-diagnostics-frame uri current-diagnostics))
+        rendered))
+    rendered))
+(defn lsp-transport-dispatch-request [state request]
+  (let [request-id (lsp-transport-request-id request)
+    method-id (lsp-transport-method-id request)
+    params (lsp-transport-params request)
+    uri (lsp-transport-uri request)
+    reject-after-shutdown (lsp-transport-request-after-shutdown? state method-id)
+    previous-src (if (= (lsp-transport-document-method? method-id) 1) (server-state-source-for-uri state uri) "")
+    result (if (= reject-after-shutdown 1) 0 (json-rpc-dispatch method-id params state))
+    rendered
+      (if (= reject-after-shutdown 1)
+        (lsp-render-error-frame request-id (lsp-transport-invalid-request-code) "Invalid Request")
+        (if (= method-id (lsp-method-initialize))
+        (lsp-render-initialize-frame request-id)
+        (if (= method-id (lsp-method-shutdown))
+          (lsp-render-shutdown-frame request-id)
+          (if (= method-id (lsp-method-did-open))
+            (lsp-render-didopen-frame uri (server-state-source-length state))
+            (if (= method-id (lsp-method-did-change))
+              (lsp-render-didchange-frame uri (server-state-source-length state))
+              (if (= method-id (lsp-method-goto-def))
+                (lsp-render-location-frame request-id result)
+                (if (= method-id (lsp-method-hover))
+                  (lsp-render-hover-frame request-id result)
+                  (if (= method-id (lsp-method-references))
+                    (lsp-render-locations-frame request-id result)
+                    (if (= method-id (lsp-method-completion))
+                      (lsp-render-completion-frame request-id result)
+                      (if (= method-id (lsp-method-formatting))
+                        (lsp-render-formatting-frame request-id result)
+                         (if (= method-id (lsp-method-rename))
+                           (lsp-render-rename-frame request-id result)
+                           (if (= method-id (lsp-method-publish-diagnostics))
+                             (lsp-render-publish-diagnostics-frame uri (vector-get params 1))
+                             (lsp-render-error-frame request-id (lsp-transport-method-not-found-code) "Method not found")))))))))))))]
+    (if (= reject-after-shutdown 1)
+      rendered
+      (lsp-transport-maybe-append-diagnostics-frame state method-id uri previous-src rendered))))
 (defn run-lsp-transport-request [request] (let [state (server-state-new)] (lsp-transport-dispatch-request state request)))
 (defn lsp-transport-sequence-loop [state requests idx count frames] (if (>= idx count) frames (lsp-transport-sequence-loop state requests (+ idx 1) count (vector-push frames (lsp-transport-dispatch-request state (vector-get requests idx))))))
 (defn run-lsp-transport-sequence [requests] (let [state (server-state-new) frames (lsp-transport-sequence-loop state requests 0 (vector-length requests) (vector-new 8)) summary (vector-new 4)] (vector-push (vector-push (vector-push (vector-push summary frames) (server-state-doc-count state)) (server-state-request-count state)) (server-state-source-length state))))
@@ -170,12 +335,126 @@
           acc
           (lsp-stdio-parse-int-loop src (+ idx 1) len acc 0))))))
 
-(defn lsp-stdio-find-string-end-loop [src idx len]
+(defn lsp-stdio-find-string-end-escaped-loop [src idx len escaped]
   (if (>= idx len)
     len
-    (if (= (string-char-at src idx) 34)
-      idx
-      (lsp-stdio-find-string-end-loop src (+ idx 1) len))))
+    (let [ch (string-char-at src idx)]
+      (if (= escaped 1)
+        (lsp-stdio-find-string-end-escaped-loop src (+ idx 1) len 0)
+        (if (= ch 92)
+          (lsp-stdio-find-string-end-escaped-loop src (+ idx 1) len 1)
+          (if (= ch 34)
+            idx
+            (lsp-stdio-find-string-end-escaped-loop src (+ idx 1) len 0)))))))
+
+(defn lsp-stdio-find-string-end-loop [src idx len]
+  (lsp-stdio-find-string-end-escaped-loop src idx len 0))
+
+(defn lsp-stdio-hex-digit-value [digit]
+  (if (>= digit 48)
+    (if (<= digit 57)
+      (- digit 48)
+      (if (>= digit 65)
+        (if (<= digit 70)
+          (+ 10 (- digit 65))
+          (if (>= digit 97)
+            (if (<= digit 102)
+              (+ 10 (- digit 97))
+              (- 0 1))
+            (- 0 1)))
+        (if (>= digit 97)
+          (if (<= digit 102)
+            (+ 10 (- digit 97))
+            (- 0 1))
+          (- 0 1))))
+    (- 0 1)))
+
+(defn lsp-stdio-json-printable-ascii []
+  " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~")
+
+(defn lsp-stdio-json-unicode-code [src idx len]
+  (if (>= (+ idx 5) len)
+    (- 0 1)
+    (let [d1 (lsp-stdio-hex-digit-value (string-char-at src (+ idx 2)))
+      d2 (lsp-stdio-hex-digit-value (string-char-at src (+ idx 3)))
+      d3 (lsp-stdio-hex-digit-value (string-char-at src (+ idx 4)))
+      d4 (lsp-stdio-hex-digit-value (string-char-at src (+ idx 5)))]
+      (if (>= d1 0)
+        (if (>= d2 0)
+          (if (>= d3 0)
+            (if (>= d4 0)
+              (+ d4 (* 16 (+ d3 (* 16 (+ d2 (* 16 d1))))))
+              (- 0 1))
+            (- 0 1))
+          (- 0 1))
+        (- 0 1)))))
+
+(defn lsp-stdio-json-unicode-piece [src idx len]
+  (if (>= (+ idx 5) len)
+    (substring src idx (+ idx 2))
+    (let [code (lsp-stdio-json-unicode-code src idx len)]
+      (if (< code 0)
+        (substring src idx (+ idx 6))
+        (if (= code 10)
+          "\n"
+          (if (= code 13)
+            "\r"
+            (if (= code 9)
+              "\t"
+              (if (>= code 32)
+                (if (<= code 126)
+                  (let [ascii (lsp-stdio-json-printable-ascii)
+                    ascii-idx (- code 32)]
+                    (substring ascii ascii-idx (+ ascii-idx 1)))
+                  (substring src idx (+ idx 6)))
+                (substring src idx (+ idx 6))))))))))
+
+(defn lsp-stdio-json-unescape-consumed [src idx len]
+  (if (>= (+ idx 1) len)
+    1
+    (let [escaped (string-char-at src (+ idx 1))]
+      (if (= escaped 117)
+        (if (>= (+ idx 5) len) 2 6)
+        2))))
+
+(defn lsp-stdio-json-unescape-piece [src idx len]
+  (if (>= (+ idx 1) len)
+    "\\"
+    (let [escaped (string-char-at src (+ idx 1))]
+      (if (= escaped 34)
+        "\""
+        (if (= escaped 92)
+          "\\"
+          (if (= escaped 47)
+            "/"
+            (if (= escaped 110)
+              "\n"
+              (if (= escaped 114)
+                "\r"
+                (if (= escaped 116)
+                  "\t"
+                  (if (= escaped 117)
+                    (lsp-stdio-json-unicode-piece src idx len)
+                    (substring src (+ idx 1) (+ idx 2))))))))))))
+
+(defn lsp-stdio-json-unescape-loop [src idx end out]
+  (if (>= idx end)
+    out
+    (let [ch (string-char-at src idx)]
+      (if (= ch 92)
+        (lsp-stdio-json-unescape-loop
+          src
+          (+ idx (lsp-stdio-json-unescape-consumed src idx end))
+          end
+          (string-concat out (lsp-stdio-json-unescape-piece src idx end)))
+        (lsp-stdio-json-unescape-loop
+          src
+          (+ idx 1)
+          end
+          (string-concat out (substring src idx (+ idx 1))))))))
+
+(defn lsp-stdio-json-unescape [src start end]
+  (lsp-stdio-json-unescape-loop src start end ""))
 
 (defn lsp-stdio-body-has-field [body pattern]
   (if (>= (lsp-stdio-find-pattern-loop body pattern 0 (string-length body)) 0) 1 0))
@@ -186,6 +465,11 @@
     (if (< pos 0)
       0
       (lsp-stdio-parse-int-loop body (+ pos (string-length pattern)) len 0 0))))
+
+(defn lsp-stdio-body-int-field-or [body primary-pattern fallback-pattern]
+  (if (= (lsp-stdio-body-has-field body primary-pattern) 1)
+    (lsp-stdio-body-int-field body primary-pattern)
+    (lsp-stdio-body-int-field body fallback-pattern)))
 
 (defn lsp-stdio-body-int-field-from [body pattern start]
   (let [len (string-length body)
@@ -201,7 +485,7 @@
       ""
       (let [start (+ pos (string-length pattern))
         end (lsp-stdio-find-string-end-loop body (+ pos (string-length pattern)) len)]
-        (substring body start end)))))
+        (lsp-stdio-json-unescape body start end)))))
 
 (defn lsp-stdio-body-id [body]
   (let [len (string-length body)
@@ -243,7 +527,7 @@
         (vector-push
           (vector-push params (lsp-stdio-body-int-field body "\"uri\":"))
           (lsp-stdio-body-int-field body "\"line\":"))
-        (lsp-stdio-body-int-field body "\"col\":"))]
+        (lsp-stdio-body-int-field-or body "\"col\":" "\"character\":"))]
     (if (= (lsp-stdio-body-has-field body "\"source\":\"") 1)
       (vector-push with-position (lsp-stdio-body-string-field body "\"source\":\""))
       with-position)))
@@ -251,9 +535,15 @@
 (defn lsp-stdio-document-params [body]
   (let [with-uri
       (vector-push (vector-new 2) (lsp-stdio-body-int-field body "\"uri\":"))]
-    (if (= (lsp-stdio-body-has-field body "\"source\":\"") 1)
-      (vector-push with-uri (lsp-stdio-body-string-field body "\"source\":\""))
-      with-uri)))
+    (let [with-source
+        (if (= (lsp-stdio-body-has-field body "\"source\":\"") 1)
+          (vector-push with-uri (lsp-stdio-body-string-field body "\"source\":\""))
+          (if (= (lsp-stdio-body-has-field body "\"text\":\"") 1)
+            (vector-push with-uri (lsp-stdio-body-string-field body "\"text\":\""))
+            with-uri))]
+      (if (= (lsp-stdio-body-has-field body "\"path\":\"") 1)
+        (vector-push with-source (lsp-stdio-body-string-field body "\"path\":\""))
+        with-source))))
 
 (defn lsp-stdio-rename-params [body]
   (let [params (vector-new 5)]
@@ -263,7 +553,7 @@
           (vector-push
             (vector-push params (lsp-stdio-body-int-field body "\"uri\":"))
             (lsp-stdio-body-int-field body "\"line\":"))
-          (lsp-stdio-body-int-field body "\"col\":"))
+          (lsp-stdio-body-int-field-or body "\"col\":" "\"character\":"))
          (lsp-stdio-body-string-field body "\"source\":\""))
        (lsp-stdio-body-string-field body "\"newName\":\""))))
 
@@ -374,6 +664,8 @@
 (defn compile-or-build-command [cmd-name] (or (string-eq cmd-name "compile") (string-eq cmd-name "build")))
 (defn output-option-flag [arg] (or (string-eq arg "-o") (string-eq arg "--output")))
 (defn target-option-flag [arg] (string-eq arg "--target"))
+(defn json-option-flag [arg] (string-eq arg "--json"))
+(defn format-option-flag [arg] (string-eq arg "--format"))
 (defn cli-option-status-ok [] 0)
 (defn cli-option-status-invalid-target [] 1)
 (defn cli-option-status-missing-value [] 2)
@@ -389,7 +681,41 @@
 (defn run-command-with-cli-options [cmd-name file-path result] (let [target (cli-option-result-target result) output-path (cli-option-result-output-path result)] (if (> (string-length output-path) 0) (if (string-eq cmd-name "compile") (run-compile-output file-path output-path target) (if (string-eq cmd-name "build") (run-build-output file-path output-path target) (run-command cmd-name file-path target))) (run-command cmd-name file-path target))))
 (defn doc-cli-option-none [] 0)
 (defn doc-cli-option-invalid [] (- 0 1))
-(defn parse-doc-cli-option [cmd-name arg] (if (string-eq cmd-name "doc-ack") (if (string-eq arg "--trailer") (doc-option-trailer-only) (doc-cli-option-invalid)) (if (string-eq cmd-name "doc-check") (if (string-eq arg "--strict") (doc-option-strict-check) (doc-cli-option-invalid)) (doc-cli-option-none))))
+(defn doc-cli-option-error-message [argc]
+  (if (> argc 3)
+    (string-concat "unsupported option: " (command-line-arg 3))
+    (if (> argc 2)
+      (string-concat "unsupported option: " (command-line-arg 2))
+      "unsupported option")))
+(defn parse-doc-cli-option [argc cmd-name]
+  (if (<= argc 2)
+    (doc-cli-option-none)
+    (let [arg2 (command-line-arg 2)]
+        (if (string-eq cmd-name "doc-ack")
+          (if (and (= argc 3) (string-eq arg2 "--trailer")) (doc-option-trailer-only) (doc-cli-option-invalid))
+          (if (string-eq cmd-name "doc-check")
+            (if (and (= argc 3) (string-eq arg2 "--strict")) (doc-option-strict-check) (doc-cli-option-invalid))
+            (if (string-eq cmd-name "review")
+              (if (and (= argc 3) (json-option-flag arg2))
+                (review-option-json)
+                (if (= argc 4)
+                  (if (format-option-flag arg2)
+                    (if (string-eq (command-line-arg 3) "json")
+                      (review-option-json)
+                      (doc-cli-option-invalid))
+                    (doc-cli-option-invalid))
+                  (doc-cli-option-invalid)))
+              (if (string-eq cmd-name "doc")
+                (if (and (= argc 3) (json-option-flag arg2))
+                  (doc-option-json)
+                  (if (= argc 4)
+                    (if (format-option-flag arg2)
+                      (if (string-eq (command-line-arg 3) "json")
+                        (doc-option-json)
+                        (doc-cli-option-invalid))
+                      (doc-cli-option-invalid))
+                    (doc-cli-option-invalid)))
+                (doc-cli-option-none))))))))
 (defn run-command-with-doc-option [cmd-name file-path doc-option] (let [cmd-id (arg-parse cmd-name)] (if (= cmd-id (cmd-doc-ack)) (run-doc-ack file-path doc-option) (if (= cmd-id (cmd-doc-check)) (run-doc-check file-path doc-option) (run-command cmd-name file-path doc-option)))))
 (defn run-main-command [argc cmd-name file-path]
   (if (and (string-eq cmd-name "lsp") (string-eq file-path "--stdio"))
@@ -402,9 +728,11 @@
             (cli-stderr (cli-option-error-message options))
             (exit-code-compile-error))))
       (if (> argc 2)
-        (let [doc-option (parse-doc-cli-option cmd-name (command-line-arg 2))]
+        (let [doc-option (parse-doc-cli-option argc cmd-name)]
           (if (= doc-option (doc-cli-option-invalid))
-            (run-command cmd-name file-path (default-compile-target))
+            (do
+              (cli-stderr (doc-cli-option-error-message argc))
+              (exit-code-compile-error))
             (run-command-with-doc-option cmd-name file-path doc-option)))
         (run-command cmd-name file-path (default-compile-target))))))
 (defn exit-main [code] (do (proc-exit code) 0))

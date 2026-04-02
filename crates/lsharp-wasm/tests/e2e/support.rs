@@ -27,6 +27,7 @@ const SELFHOST_LSP_RUNTIME_MODULES: &[&str] = &[
     "AST.ls",
     "Lexer.ls",
     "Parser.ls",
+    "ModuleResolver.ls",
     "FormatterExpr.ls",
     "FormatterDecl.ls",
     "Formatter.ls",
@@ -292,6 +293,7 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "LspServerNav.ls" => "selfhost/src/Tools/Lsp/LspServerNav.ls",
         "LspServer.ls" => "selfhost/src/Tools/Lsp/LspServer.ls",
         "DocTools.ls" => "selfhost/src/Tools/Doc/DocTools.ls",
+        "DocJson.ls" => "selfhost/src/Tools/Doc/DocJson.ls",
         "HtmlDoc.ls" => "selfhost/src/Tools/Doc/HtmlDoc.ls",
         "HtmlLayout.ls" => "selfhost/src/Tools/Doc/HtmlLayout.ls",
         "HtmlTemplate.ls" => "selfhost/src/Tools/Doc/HtmlTemplate.ls",
@@ -370,6 +372,7 @@ pub(crate) fn selfhost_module(name: &str) -> &'static str {
         "Formatter.ls" => include_str!("../../../../selfhost/src/Tools/Text/Formatter.ls"),
         "TestRunner.ls" => include_str!("../../../../selfhost/src/Tools/Test/TestRunner.ls"),
         "DocTools.ls" => include_str!("../../../../selfhost/src/Tools/Doc/DocTools.ls"),
+        "DocJson.ls" => include_str!("../../../../selfhost/src/Tools/Doc/DocJson.ls"),
         "HtmlDoc.ls" => include_str!("../../../../selfhost/src/Tools/Doc/HtmlDoc.ls"),
         "HtmlLayout.ls" => include_str!("../../../../selfhost/src/Tools/Doc/HtmlLayout.ls"),
         "HtmlTemplate.ls" => include_str!("../../../../selfhost/src/Tools/Doc/HtmlTemplate.ls"),
@@ -495,7 +498,7 @@ pub(crate) fn selfhost_lexer_runtime_bundle() -> &'static str {
 pub(crate) fn selfhost_parser_runtime_bundle() -> &'static str {
     cached_selfhost_bundle(
         &SELFHOST_PARSER_RUNTIME_BUNDLE,
-        &["Token.ls", "AST.ls", "Lexer.ls", "Parser.ls"],
+        &["Token.ls", "AST.ls", "Lexer.ls", "LexerCompat.ls", "Parser.ls"],
     )
 }
 
@@ -541,11 +544,14 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> &'static str {
             "Compiler.ls",
             "WasiBackend.ls",
             "WasmEmit.ls",
+            "ModuleResolver.ls",
+            "CompilerMode.ls",
             "FormatterExpr.ls",
             "FormatterDecl.ls",
             "Formatter.ls",
             "TestRunner.ls",
             "DocTools.ls",
+            "DocJson.ls",
             "JsonRpc.ls",
             "LspServerCore.ls",
             "LspServerNav.ls",

@@ -13,7 +13,7 @@
 
 ;; === サーバー状態 ===
 (defn server-state-new []
-  (let [v0 (vector-new 8)
+  (let [v0 (vector-new 10)
     v1 (vector-push v0 (ref-new 0)) ;; initialized フラグ
     v2 (vector-push v1 (ref-new 0)) ;; shutdown フラグ
     v3 (vector-push v2 (ref-new 0)) ;; open document 数
@@ -21,8 +21,10 @@
     v5 (vector-push v4 (ref-new "")) ;; current source
     v6 (vector-push v5 (ref-new 0)) ;; request count
     v7 (vector-push v6 (ref-new (map-new))) ;; uri -> source
-    v8 (vector-push v7 (ref-new (vector-new 8)))] ;; open uri list
-    v8))
+    v8 (vector-push v7 (ref-new (vector-new 8))) ;; open uri list
+    v9 (vector-push v8 (ref-new "")) ;; current path
+    v10 (vector-push v9 (ref-new (map-new)))] ;; uri -> path
+    v10))
 
 (defn server-state-doc-count [state]
   (ref-get (vector-get state 2)))
@@ -44,6 +46,12 @@
 
 (defn server-state-uri-list [state]
   (ref-get (vector-get state 7)))
+
+(defn server-state-path [state]
+  (ref-get (vector-get state 8)))
+
+(defn server-state-document-paths [state]
+  (ref-get (vector-get state 9)))
 
 (defn server-state-uri-known-loop [uris idx count uri]
   (if (>= idx count)
@@ -68,6 +76,14 @@
         "")
       stored)))
 
+(defn server-state-path-for-uri [state uri]
+  (let [stored (map-get (server-state-document-paths state) uri)]
+    (if (= stored 0)
+      (if (= (ref-get (vector-get state 3)) uri)
+        (server-state-path state)
+        "")
+      stored)))
+
 (defn server-state-source-length [state]
   (string-length (server-state-source state)))
 
@@ -80,28 +96,43 @@
 (defn server-state-note-request [state]
   (ref-set (vector-get state 5) (+ (server-state-request-count state) 1)))
 
+(defn server-state-set-document-with-path [state uri src path]
+  (let [effective-path (if (> (string-length path) 0) path (server-state-path-for-uri state uri))
+    next-paths (if (> (string-length effective-path) 0)
+      (map-insert (server-state-document-paths state) uri effective-path)
+      (server-state-document-paths state))]
+    (do
+      (ref-set (vector-get state 3) uri)
+      (ref-set (vector-get state 4) src)
+      (ref-set (vector-get state 6) (map-insert (server-state-documents state) uri src))
+      (ref-set (vector-get state 8) effective-path)
+      (ref-set (vector-get state 9) next-paths)
+      (server-state-remember-uri state uri)
+      0)))
+
 (defn server-state-set-document [state uri src]
-  (do
-    (ref-set (vector-get state 3) uri)
-    (ref-set (vector-get state 4) src)
-    (ref-set (vector-get state 6) (map-insert (server-state-documents state) uri src))
-    (server-state-remember-uri state uri)
-    0))
+  (server-state-set-document-with-path state uri src ""))
 
 (defn server-state-open-document [state uri src]
+  (server-state-open-document-with-path state uri src ""))
+
+(defn server-state-open-document-with-path [state uri src path]
   (let [current-count (server-state-doc-count state)
     known-src (server-state-source-for-uri state uri)
     next-count (if (> (string-length known-src) 0)
       current-count
       (+ current-count 1))]
     (do
-      (server-state-set-document state uri src)
+      (server-state-set-document-with-path state uri src path)
       (ref-set (vector-get state 2) next-count)
       (string-length src))))
 
 (defn server-state-change-document [state uri src]
+  (server-state-change-document-with-path state uri src ""))
+
+(defn server-state-change-document-with-path [state uri src path]
   (do
-    (server-state-set-document state uri src)
+    (server-state-set-document-with-path state uri src path)
     (string-length src)))
 
 ;; JsonRpc.ls と揃えた method hash
@@ -154,7 +185,7 @@
   (do
     (server-state-note-request state)
     (if (= (lsp-has-document-param params) 1)
-      (server-state-open-document state (lsp-nav-uri params) (lsp-document-src params))
+      (server-state-open-document-with-path state (lsp-nav-uri params) (lsp-document-src params) (lsp-document-path params))
       params)))
 
 ;; textDocument/didChange: ドキュメント変更通知
@@ -163,7 +194,7 @@
   (do
     (server-state-note-request state)
     (if (= (lsp-has-document-param params) 1)
-      (server-state-change-document state (lsp-nav-uri params) (lsp-document-src params))
+      (server-state-change-document-with-path state (lsp-nav-uri params) (lsp-document-src params) (lsp-document-path params))
       params)))
 
 ;; textDocument/publishDiagnostics: 診断通知 payload を決定的 JSON に整形
@@ -210,6 +241,9 @@
 
 (defn lsp-document-src [params]
   (if (= (lsp-has-document-param params) 1) (vector-get params 1) ""))
+
+(defn lsp-document-path [params]
+  (if (> (lsp-param-count params) 2) (vector-get params 2) ""))
 
 (defn lsp-session-src [params state]
   (if (= (lsp-has-source-param params) 1)
@@ -471,4 +505,3 @@
   (let [method-id (vector-get msg 2)
     params (vector-get msg 3)]
     (vector-push (vector-push (vector-new 2) method-id) params)))
-

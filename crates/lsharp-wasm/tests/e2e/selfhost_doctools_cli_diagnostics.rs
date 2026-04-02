@@ -1,5 +1,67 @@
 use super::support::*;
 
+/// CP-04: `docs/schemas/knowledge.schema.json` が richer function metadata を定義していること
+#[test]
+fn test_e2e_knowledge_schema_json_contract() {
+    let schema_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/schemas/knowledge.schema.json");
+    let raw = std::fs::read_to_string(&schema_path)
+        .expect("docs/schemas/knowledge.schema.json を読めない");
+    let v: serde_json::Value =
+        serde_json::from_str(&raw).expect("knowledge.schema.json の JSON 解析");
+
+    let top_required = v["required"].as_array().expect("トップレベル required");
+    let top: Vec<&str> = top_required.iter().filter_map(|x| x.as_str()).collect();
+    assert!(top.contains(&"module"));
+    assert!(top.contains(&"functions"));
+    assert!(top.contains(&"types"));
+
+    let function_items = v["properties"]["functions"]["items"]
+        .as_object()
+        .expect("functions.items が object であること");
+    let function_required = function_items["required"]
+        .as_array()
+        .expect("functions.items.required が配列であること");
+    let function_req: Vec<&str> = function_required.iter().filter_map(|x| x.as_str()).collect();
+    assert!(
+        function_req.contains(&"name"),
+        "knowledge schema: functions entry は name 必須"
+    );
+    assert!(
+        function_req.contains(&"arity"),
+        "knowledge schema: functions entry は arity 必須"
+    );
+    assert!(
+        function_req.contains(&"params"),
+        "knowledge schema: functions entry は params 必須"
+    );
+    assert!(
+        function_req.contains(&"returns"),
+        "knowledge schema: functions entry は returns 必須"
+    );
+
+    assert_eq!(
+        function_items["properties"]["params"]["items"]["type"].as_str(),
+        Some("string"),
+        "knowledge schema: params items は string であるべき"
+    );
+    assert_eq!(
+        function_items["properties"]["returns"]["type"].as_str(),
+        Some("string"),
+        "knowledge schema: returns は string であるべき"
+    );
+    assert_eq!(
+        function_items["properties"]["doc"]["type"].as_str(),
+        Some("string"),
+        "knowledge schema: doc は string であるべき"
+    );
+    assert_eq!(
+        function_items["properties"]["example"]["type"].as_str(),
+        Some("string"),
+        "knowledge schema: example は string であるべき"
+    );
+}
+
 /// CP-04: `docs/schemas/review.schema.json` が diagnostics の必須フィールドを定義していること
 #[test]
 fn test_e2e_review_schema_json_contract() {
@@ -78,6 +140,85 @@ fn test_e2e_doc_output_schema_json_contract() {
         function_req.contains(&"arity"),
         "doc-output schema: functions entry は arity 必須"
     );
+    assert!(
+        function_req.contains(&"params"),
+        "doc-output schema: functions entry は params 必須"
+    );
+    assert!(
+        function_req.contains(&"returns"),
+        "doc-output schema: functions entry は returns 必須"
+    );
+    let param_items = function_items["properties"]["params"]["items"]
+        .as_object()
+        .expect("doc-output schema: params.items が object であること");
+    let param_required = param_items["required"]
+        .as_array()
+        .expect("doc-output schema: params.items.required が配列であること");
+    let param_req: Vec<&str> = param_required.iter().filter_map(|x| x.as_str()).collect();
+    assert_eq!(
+        function_items["properties"]["params"]["type"].as_str(),
+        Some("array"),
+        "doc-output schema: functions entry は params:array を持つべき"
+    );
+    assert!(
+        param_req.contains(&"name"),
+        "doc-output schema: params item は name 必須"
+    );
+    assert!(
+        param_req.contains(&"type"),
+        "doc-output schema: params item は type 必須"
+    );
+    assert_eq!(
+        param_items["properties"]["name"]["type"].as_str(),
+        Some("string"),
+        "doc-output schema: params item は name:string を持つべき"
+    );
+    assert_eq!(
+        param_items["properties"]["type"]["type"].as_str(),
+        Some("string"),
+        "doc-output schema: params item は type:string を持つべき"
+    );
+    assert_eq!(
+        param_items["properties"]["doc"]["type"].as_str(),
+        Some("string"),
+        "doc-output schema: params item は optional doc:string を持つべき"
+    );
+    let returns_item = function_items["properties"]["returns"]
+        .as_object()
+        .expect("doc-output schema: returns が object であること");
+    let returns_required = returns_item["required"]
+        .as_array()
+        .expect("doc-output schema: returns.required が配列であること");
+    let returns_req: Vec<&str> = returns_required.iter().filter_map(|x| x.as_str()).collect();
+    assert!(
+        returns_req.contains(&"type"),
+        "doc-output schema: returns は type 必須"
+    );
+    assert_eq!(
+        returns_item["type"].as_str(),
+        Some("object"),
+        "doc-output schema: functions entry は returns:object を持つべき"
+    );
+    assert_eq!(
+        returns_item["properties"]["type"]["type"].as_str(),
+        Some("string"),
+        "doc-output schema: returns.type は string であるべき"
+    );
+    assert_eq!(
+        returns_item["properties"]["doc"]["type"].as_str(),
+        Some("string"),
+        "doc-output schema: returns.doc は optional string であるべき"
+    );
+    assert_eq!(
+        function_items["properties"]["doc"]["type"].as_str(),
+        Some("string"),
+        "doc-output schema: functions entry は optional doc:string を持つべき"
+    );
+    assert_eq!(
+        function_items["properties"]["example"]["type"].as_str(),
+        Some("string"),
+        "doc-output schema: functions entry は optional example:string を持つべき"
+    );
 
     let type_items = v["properties"]["types"]["items"]
         .as_object()
@@ -118,7 +259,19 @@ fn selfhost_doctools_runtime_bundle() -> String {
         selfhost_module("AST.ls"),
         selfhost_module("Lexer.ls"),
         selfhost_module("Parser.ls"),
+        selfhost_module("Type.ls"),
+        selfhost_module("TypeScheme.ls"),
+        selfhost_module("TypeInferCore.ls"),
+        selfhost_module("TypeInferFunctions.ls"),
+        selfhost_module("TypeInferBuiltins.ls"),
+        selfhost_module("TypeInfer.ls"),
+        selfhost_module("TypeInferApply.ls"),
+        selfhost_module("TypeInferBlock.ls"),
+        selfhost_module("TypeInferPattern.ls"),
+        selfhost_module("TypeInferRecord.ls"),
         selfhost_module("DocTools.ls"),
+        selfhost_module("JsonRpc.ls"),
+        selfhost_module("DocJson.ls"),
     ]
     .join("\n")
 }
@@ -254,11 +407,15 @@ fn test_e2e_selfhost_doctools_module_title_uses_name() {
 fn test_e2e_selfhost_doctools_schema_knowledge() {
     let harness = r#"
 (defn main []
-  (let [program (parse-program "(defn add [x y] (+ x y)) (type Doc Int) (type-alias Alias Int)")
+  (let [program (parse-program "(defn add [x y] :doc \"Add two ints\" :example [(add 1 2)] (+ x y)) (type Doc Int) (type-alias Alias Int)")
         kb (generate-knowledge program 100)
         functions (vector-get kb 1)
         types (vector-get kb 2)
         fn0 (vector-get functions 0)
+        params (if (> (vector-length fn0) 3) (vector-get fn0 3) (vector-new 0))
+        returns (if (> (vector-length fn0) 4) (vector-get fn0 4) "missing")
+        doc (if (> (vector-length fn0) 5) (vector-get fn0 5) "missing")
+        example (if (> (vector-length fn0) 6) (vector-get fn0 6) "missing")
         type0 (vector-get types 0)
         type1 (vector-get types 1)]
     (do
@@ -268,6 +425,18 @@ fn test_e2e_selfhost_doctools_schema_knowledge() {
       (print-string (vector-get fn0 1))
       (print-string "\n")
       (print (vector-get fn0 2))
+      (print (vector-length fn0))
+      (print (vector-length params))
+      (print-string (if (> (vector-length params) 0) (vector-get params 0) ""))
+      (print-string "\n")
+      (print-string (if (> (vector-length params) 1) (vector-get params 1) ""))
+      (print-string "\n")
+      (print-string returns)
+      (print-string "\n")
+      (print-string doc)
+      (print-string "\n")
+      (print-string example)
+      (print-string "\n")
       (print (vector-length types))
       (print (if (string-eq (vector-get type0 1) "Doc") 1 0))
       (print (if (string-eq (vector-get type0 2) "type") 1 0))
@@ -282,7 +451,25 @@ fn test_e2e_selfhost_doctools_schema_knowledge() {
 
     assert_eq!(
         lines,
-        vec!["3", "100", "1", "add", "2", "2", "1", "1", "1", "1"]
+        vec![
+            "3",
+            "100",
+            "1",
+            "add",
+            "2",
+            "7",
+            "2",
+            "x:Int",
+            "y:Int",
+            "Int",
+            "Add two ints",
+            "(add 1 2)",
+            "2",
+            "1",
+            "1",
+            "1",
+            "1"
+        ]
     );
 }
 
@@ -614,6 +801,70 @@ fn test_e2e_selfhost_doctools_schema_doc_output_module_title_name() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(lines, vec!["1", "1", "1", "1"]);
+}
+
+/// DOC-01: generate-doc-output の function entry が doc/example metadata を含むこと
+#[test]
+fn test_e2e_selfhost_doctools_schema_doc_output_function_metadata() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn add [x y] :params [(x \"left\") (y \"right\")] :returns \"sum\" :doc \"Add two ints\" :example [(add 1 2)] (+ x y))")
+        doc-out (generate-doc-output program 300)
+        functions (vector-get doc-out 1)
+        fn0 (vector-get functions 0)
+        params (if (> (vector-length fn0) 3) (vector-get fn0 3) (vector-new 0))
+        param0 (if (> (vector-length params) 0) (vector-get params 0) (vector-new 0))
+        param1 (if (> (vector-length params) 1) (vector-get params 1) (vector-new 0))
+        returns (if (> (vector-length fn0) 4) (vector-get fn0 4) (vector-new 0))
+        doc (if (> (vector-length fn0) 5) (vector-get fn0 5) "missing")
+        example (if (> (vector-length fn0) 6) (vector-get fn0 6) "missing")]
+    (do
+      (print (vector-length fn0))
+      (print (vector-length params))
+      (print-string (if (> (vector-length param0) 0) (vector-get param0 0) ""))
+      (print-string "\n")
+      (print-string (if (> (vector-length param0) 1) (vector-get param0 1) ""))
+      (print-string "\n")
+      (print-string (if (> (vector-length param0) 2) (vector-get param0 2) ""))
+      (print-string "\n")
+      (print-string (if (> (vector-length param1) 0) (vector-get param1 0) ""))
+      (print-string "\n")
+      (print-string (if (> (vector-length param1) 1) (vector-get param1 1) ""))
+      (print-string "\n")
+      (print-string (if (> (vector-length param1) 2) (vector-get param1 2) ""))
+      (print-string "\n")
+      (print-string (if (> (vector-length returns) 0) (vector-get returns 0) ""))
+      (print-string "\n")
+      (print-string (if (> (vector-length returns) 1) (vector-get returns 1) ""))
+      (print-string "\n")
+      (print-string doc)
+      (print-string "\n")
+      (print-string example)
+      (print-string "\n")
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_doctools_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec![
+            "7",
+            "2",
+            "x",
+            "Int",
+            "left",
+            "y",
+            "Int",
+            "right",
+            "Int",
+            "sum",
+            "Add two ints",
+            "(add 1 2)"
+        ]
+    );
 }
 
 /// DOC-01: ドキュメント文字列がタイムスタンプ・ホスト名・絶対パスを含まないこと
@@ -1051,8 +1302,8 @@ fn test_e2e_selfhost_htmldoc_render_module_page_structure() {
       (print (if (= (string-contains page "<section id=\"functions\">") 1) 1 0))
       ;; 型セクションが存在する
       (print (if (= (string-contains page "<section id=\"types\">") 1) 1 0))
-      ;; 関数エントリが名前つきで <li> に含まれる
-      (print (if (= (string-contains page "<li>add/2</li>") 1) 1 0))
+      ;; 関数シグネチャが code block に含まれる
+      (print (if (= (string-contains page "<pre><code>add/2</code></pre>") 1) 1 0))
       ;; 型エントリが kind + name で <li> に含まれる
       (print (if (= (string-contains page "<li>type Pair</li>") 1) 1 0))
       0)))
@@ -1061,6 +1312,47 @@ fn test_e2e_selfhost_htmldoc_render_module_page_structure() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert_eq!(lines, vec!["1", "1", "1", "1", "1", "1"]);
+}
+
+/// HtmlDoc.render-module-page が function doc/example metadata を描画し HTML escape する
+#[test]
+fn test_e2e_selfhost_htmldoc_render_module_page_function_metadata() {
+    let harness = r#"
+(defn string-contains-loop [haystack needle i hlen nlen]
+  (if (> (+ i nlen) hlen)
+    0
+    (if (string-eq (substring haystack i (+ i nlen)) needle)
+      1
+      (string-contains-loop haystack needle (+ i 1) hlen nlen))))
+
+(defn string-contains [haystack needle]
+  (let [hlen (string-length haystack)
+        nlen (string-length needle)]
+    (if (= nlen 0)
+      1
+      (if (> nlen hlen)
+        0
+        (string-contains-loop haystack needle 0 hlen nlen)))))
+
+(defn main []
+  (let [program (parse-program "(defn add [x y] :params [(x \"left\") (y \"right\")] :returns \"sum\" :doc \"<danger>\" :example [(add 1 2)] (+ x y))")
+        doc (generate-html program 0)
+        page (render-module-page doc)]
+    (do
+      (print (if (= (string-contains page "<section id=\"functions\">") 1) 1 0))
+      (print (if (= (string-contains page "add/2") 1) 1 0))
+      (print (if (= (string-contains page "<li><code>x</code>: left (Int)</li>") 1) 1 0))
+      (print (if (= (string-contains page "<li><code>y</code>: right (Int)</li>") 1) 1 0))
+      (print (if (= (string-contains page "<p><strong>Returns:</strong> sum (Int)</p>") 1) 1 0))
+      (print (if (= (string-contains page "&lt;danger&gt;") 1) 1 0))
+      (print (if (= (string-contains page "<danger>") 0) 1 0))
+      (print (if (= (string-contains page "<pre><code>(add 1 2)</code></pre>") 1) 1 0))
+      0)))
+"#;
+    let combined = format!("{}\n{}", selfhost_cli_html_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines, vec!["1", "1", "1", "1", "1", "1", "1", "1"]);
 }
 
 /// HtmlDoc.render-html が完全な HTML ドキュメントを返し、title がエスケープされる

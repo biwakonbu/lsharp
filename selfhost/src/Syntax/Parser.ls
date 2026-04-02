@@ -327,6 +327,155 @@
       (skip-optional-metadata-v3 spans pos-ref src))
     0))
 
+;; defn 用メタデータパーサー: :doc / :example / :params / :returns を記録する
+;; 返却: [doc-string, example-text, params-vector, returns-string]
+(defn parse-defn-metadata-v3 [spans pos-ref src]
+  (let [meta
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push (vector-new 4) "")
+          "")
+        (vector-new 0))
+      "")]
+    (parse-defn-metadata-loop-v3 spans pos-ref src meta)))
+
+(defn parse-defn-metadata-loop-v3 [spans pos-ref src meta]
+  (if (== (colon-directive-v3 spans pos-ref src) 1)
+    (let [dir-idx (+ (ref-get pos-ref) 1)
+      dir-name (substring src (span-start spans dir-idx) (span-end spans dir-idx))]
+      (do
+        (p-advance pos-ref)
+        (p-advance pos-ref)
+        (if (string-eq dir-name "doc")
+          (parse-defn-meta-doc-v3 spans pos-ref src meta)
+          (if (string-eq dir-name "example")
+            (parse-defn-meta-example-v3 spans pos-ref src meta)
+            (if (string-eq dir-name "params")
+              (parse-defn-meta-params-v3 spans pos-ref src meta)
+              (if (string-eq dir-name "returns")
+                (parse-defn-meta-returns-v3 spans pos-ref src meta)
+                (do
+                  (skip-directive-payload-v3 spans pos-ref)
+                  (parse-defn-metadata-loop-v3 spans pos-ref src meta))))))))
+    meta))
+
+;; :doc "string" — 文字列リテラルの内容を抽出
+(defn parse-defn-meta-doc-v3 [spans pos-ref src meta]
+  (if (== (p-current spans pos-ref) 12)
+    (let [s (p-start spans pos-ref)
+      e (p-end spans pos-ref)
+      doc-text (substring src (+ s 1) (- e 1))
+      updated (vector-set-at meta 0 doc-text)]
+      (do
+        (p-advance pos-ref)
+        (parse-defn-metadata-loop-v3 spans pos-ref src updated)))
+    (do
+      (skip-directive-payload-v3 spans pos-ref)
+      (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
+
+;; :example [...] — ブラケット内の式テキストを抽出
+(defn parse-defn-meta-example-v3 [spans pos-ref src meta]
+  (if (== (p-current spans pos-ref) 2)
+    (do
+      (p-advance pos-ref)
+      (if (== (p-current spans pos-ref) 3)
+        (do (p-advance pos-ref) (parse-defn-metadata-loop-v3 spans pos-ref src meta))
+        (let [content-start (p-start spans pos-ref)]
+          (do
+            (parse-skip-bracket-v3 spans pos-ref 1)
+            (let [last-idx (- (ref-get pos-ref) 2)
+              content-end (span-end spans last-idx)
+              example-text (substring src content-start content-end)
+              updated (vector-set-at meta 1 example-text)]
+              (parse-defn-metadata-loop-v3 spans pos-ref src updated))))))
+    (do
+      (skip-directive-payload-v3 spans pos-ref)
+      (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
+
+;; :params [(x "left") ...] — [name-hash, doc-string] の vector を抽出
+(defn make-defn-param-metadata-entry [name-hash doc-text]
+  (vector-push
+    (vector-push (vector-new 2) name-hash)
+    doc-text))
+
+(defn parse-defn-meta-param-doc-v3 [spans pos-ref src]
+  (if (== (p-current spans pos-ref) 12)
+    (let [s (p-start spans pos-ref)
+      e (p-end spans pos-ref)
+      doc-text (substring src (+ s 1) (- e 1))]
+      (do
+        (p-advance pos-ref)
+        doc-text))
+    ""))
+
+(defn parse-defn-meta-params-entry-v3 [spans pos-ref src params]
+  (if (== (p-current spans pos-ref) 0)
+    (do
+      (p-advance pos-ref)
+      (if (== (p-current spans pos-ref) 20)
+        (let [s (p-start spans pos-ref)
+          e (p-end spans pos-ref)
+          param-hash (name-hash src s e)]
+          (do
+            (p-advance pos-ref)
+            (let [doc-text (parse-defn-meta-param-doc-v3 spans pos-ref src)]
+              (do
+                (p-expect spans pos-ref 1)
+                (vector-push params (make-defn-param-metadata-entry param-hash doc-text))))))
+        (do
+          (parse-skip-to-close-v3 spans pos-ref 1)
+          params)))
+    params))
+
+(defn parse-defn-meta-params-loop-v3 [spans pos-ref src params]
+  (if (== (p-current spans pos-ref) 3)
+    (do
+      (p-advance pos-ref)
+      params)
+    (if (== (p-current spans pos-ref) 0)
+      (let [updated (parse-defn-meta-params-entry-v3 spans pos-ref src params)]
+        (parse-defn-meta-params-loop-v3 spans pos-ref src updated))
+      (do
+        (parse-skip-bracket-v3 spans pos-ref 1)
+        params))))
+
+(defn parse-defn-meta-params-v3 [spans pos-ref src meta]
+  (if (== (p-current spans pos-ref) 2)
+    (do
+      (p-advance pos-ref)
+      (let [params (parse-defn-meta-params-loop-v3 spans pos-ref src (vector-new 0))
+        updated (vector-set-at meta 2 params)]
+        (parse-defn-metadata-loop-v3 spans pos-ref src updated)))
+    (do
+      (skip-directive-payload-v3 spans pos-ref)
+      (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
+
+;; :returns "sum" — 戻り値説明文字列を抽出
+(defn parse-defn-meta-returns-v3 [spans pos-ref src meta]
+  (if (== (p-current spans pos-ref) 12)
+    (let [s (p-start spans pos-ref)
+      e (p-end spans pos-ref)
+      returns-text (substring src (+ s 1) (- e 1))
+      updated (vector-set-at meta 3 returns-text)]
+      (do
+        (p-advance pos-ref)
+        (parse-defn-metadata-loop-v3 spans pos-ref src updated)))
+    (do
+      (skip-directive-payload-v3 spans pos-ref)
+      (parse-defn-metadata-loop-v3 spans pos-ref src meta))))
+
+(defn defn-metadata-present-v3 [meta]
+  (if (> (string-length (vector-get meta 0)) 0)
+    1
+    (if (> (string-length (vector-get meta 1)) 0)
+      1
+      (if (> (vector-length (vector-get meta 2)) 0)
+        1
+        (if (> (string-length (vector-get meta 3)) 0)
+          1
+          0)))))
+
 (defn skip-optional-type-sig-v3 [spans pos-ref src]
   (if (== (colon-directive-v3 spans pos-ref src) 1)
     0
@@ -1016,15 +1165,21 @@
             (do
               (skip-optional-type-sig-v3 spans pos-ref src)
               (skip-optional-where-v3 spans pos-ref src)
-              (skip-optional-metadata-v3 spans pos-ref src)
-              (if (== (p-current spans pos-ref) 1)
-                (do
-                  (p-advance pos-ref) ;; bodyless defn の ) を消費
-                  (vector-push defn-node (make-int-node 0)))
-                (let [body (parse-expr-v3 spans pos-ref src)]
+              (let [meta (parse-defn-metadata-v3 spans pos-ref src)]
+                (if (== (p-current spans pos-ref) 1)
                   (do
-                    (p-expect spans pos-ref 1) ;; ) を消費
-                    (vector-push defn-node body)))))))))))
+                    (p-advance pos-ref) ;; bodyless defn の ) を消費
+                    (let [node-with-body (vector-push defn-node (make-int-node 0))]
+                      (if (= (defn-metadata-present-v3 meta) 1)
+                        (vector-push node-with-body meta)
+                        node-with-body)))
+                  (let [body (parse-expr-v3 spans pos-ref src)]
+                    (do
+                      (p-expect spans pos-ref 1) ;; ) を消費
+                      (let [node-with-body (vector-push defn-node body)]
+                        (if (= (defn-metadata-present-v3 meta) 1)
+                          (vector-push node-with-body meta)
+                          node-with-body)))))))))))))
 
 ;; === defmacro 宣言 ===
 (defn parse-defmacro-v3 [spans pos-ref src]

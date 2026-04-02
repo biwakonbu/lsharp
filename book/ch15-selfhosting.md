@@ -105,7 +105,7 @@ single-binary distribution
 ```
 
 - **host launcher** は `crates/lsharp-driver` が担い、Wasmtime 上で guest component を起動する
-- **embedded guest component** は build-time に `selfhost/src/App/EmbeddedCli.ls` から生成・同梱され、既定の `parse` / `check` / `compile` / `build` / `test` / `review` / `doc-ack` / `doc-check` / `fmt` を担当する
+- **embedded guest component** は build-time に `selfhost/src/App/EmbeddedCli.ls` から生成・同梱され、既定の `parse` / `check` / `compile` / `build` / `test` / `review` / `doc-ack` / `doc-check` / `fmt` を担当する。`review` は text surface に加えて `--json` / `--format json` も guest 側で処理し、runtime `LSHARP_DISABLE_EMBEDDED_COMPONENT=1` では `review` / simple `doc-ack` / simple `doc-check` も host 別契約へ暗黙 fallback させず delegation hint に戻す
 - **host capability** はファイル I/O や process など、guest 側が単独では扱えない境界を提供する
 - **Rust host 側に残る surface** は `install` / `repl` / `lsp` / `doc` と、`compile` / `build` の Rust-only fallback (`--emit-ir`, `web-wasm`, `native`) である
 
@@ -288,7 +288,7 @@ HKT、GADT、トレイト制約はセルフホストコンパイラでは未使�
 
 ### host launcher / component 境界
 
-公開 CLI の全サブコマンドが guest component 側へ完全移行したわけではない。`install` / `repl` / `lsp` / `doc` は Rust host 側の built-in surface が残っており、`compile` / `build` でも `--emit-ir` / `web-wasm` / `native` は Rust fallback に戻る。また `review` / `doc-ack` / `doc-check` も simple `<command> <file>` 形が guest default path であり、`--help` などの clap surface は host launcher 側に残る。
+公開 CLI の全サブコマンドが guest component 側へ完全移行したわけではない。`install` / `repl` / `lsp` / `doc` は Rust host 側の built-in surface が残っており、`compile` / `build` でも `--emit-ir` / `web-wasm` / `native` は Rust fallback に戻る。また `review` は text surface に加えて `--json` / `--format json` まで guest default path へ寄った一方、`review --help` / `doc-ack --help` / `doc-check --help` などの clap surface や `doc-ack` / `doc-check` の richer argv shape は host launcher 側に残る。`LSHARP_DISABLE_EMBEDDED_COMPONENT=1` はこの guest-backed subset を止める safety valve だが、`review` / simple `doc-ack` / simple `doc-check` を host の別契約へ切り替えるための fallback ではなく、外部 selfhost への delegation hint を復帰させるためのスイッチとして扱う。
 
 ### bootstrap fixed-point の未完了範囲
 

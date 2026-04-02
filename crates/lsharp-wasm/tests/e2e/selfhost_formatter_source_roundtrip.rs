@@ -65,3 +65,25 @@ fn test_e2e_selfhost_formatter_format_program_with_source_float_literal() {
         "format-program-with-source は float literal を source から復元するべき"
     );
 }
+
+/// FMT-01: source-aware formatter が defn metadata を canonical 順で保持できること
+#[test]
+fn test_e2e_selfhost_formatter_format_program_with_source_defn_metadata() {
+    let output = run_formatter_source_harness(
+        r#"
+(module Main)
+(defn main []
+  (let [src "(defn add [x y] :doc \"Add two ints\" :params [(x \"left\") (y \"right\")] :returns \"sum\" :example [(add 1 2)] (+ x y))"
+        program (parse-program src)]
+    (do
+      (print-string (format-program-with-source program src))
+      0)))
+"#,
+    );
+
+    assert_eq!(
+        output,
+        "(defn add [x y] :params [(x \"left\") (y \"right\")] :returns \"sum\" :doc \"Add two ints\" :example [(add 1 2)] (+ x y))\n",
+        "format-program-with-source は defn metadata を canonical 順で保持するべき"
+    );
+}

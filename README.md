@@ -31,32 +31,55 @@ L# は「Lisp + F#」で終わらず、型の表現力そのものを広げる�
 ## Quick Start
 
 ```bash
-# 開発用 CLI をビルド
-cargo build -p lsharp-driver
+# 展開した release archive へ移動
+cd lsharp-<version>-<target>
 
-# 公開 CLI の基本動線: compile で format/check/codegen をまとめて通す
-target/debug/lsharp compile examples/fib.ls -o fib.wasm
+# checksum を検証 (macOS)
+shasum -a 256 -c checksums.txt
+# Linux では: sha256sum -c checksums.txt
 
-# wasmtime で実行
-wasmtime fib.wasm
-# => 55
+# packaged lsharp を優先して使う
+export PATH="$PWD:$PATH"
 ```
 
-metadata を使ったテストも実行できます。
+```bash
+cat > hello.ls <<'EOF'
+(defn main [] 42)
+EOF
+
+# 公開 CLI の基本動線: compile で format/check/codegen をまとめて通す
+lsharp compile hello.ls -o hello.wasm
+```
+
+metadata を使ったテストとドキュメント生成も、同じ packaged `lsharp` だけで実行できます。
 
 ```bash
+cat > metadata.ls <<'EOF'
+(defn abs
+  [x]
+  :doc "整数の絶対値を返す。"
+  :params [(x "対象の整数")]
+  :returns "x の絶対値"
+  :example [(= (abs 5) 5)]
+  :invariant (>= result 0)
+  (if (< x 0) (- 0 x) x))
+EOF
+
 # :example / :invariant を自動検証
-target/debug/lsharp test examples/metadata.ls
+lsharp test metadata.ls
+
+# HTML ドキュメントを生成
+lsharp doc metadata.ls -o metadata.html
 ```
 
 IDE / AI 連携は次の入口を使います。
 
 ```bash
 # IDE 向け
-target/debug/lsharp lsp
+lsharp lsp
 
 # AI 向け
-target/debug/lsharp mcp-server
+lsharp mcp-server
 ```
 
 公開 CLI は `compile` を中心に整理しており、`parse` / `check` / `fmt` は LSP / MCP の内部 API として扱います。AST・型情報・formatting の詳細確認は、CLI を直叩きする代わりに `lsharp lsp` / `lsharp mcp-server` を経由する想定です。
@@ -64,7 +87,7 @@ target/debug/lsharp mcp-server
 既定では `lsharp` host launcher が build-time に埋め込んだ guest component を使います。外部 compiler / 配布物への委譲を試す場合は、`LSHARP_PATH` を使います。
 
 ```bash
-LSHARP_PATH=/path/to/lsharp target/debug/lsharp --version
+LSHARP_PATH=/path/to/lsharp lsharp --version
 ```
 
 ## Language Snapshot
@@ -117,7 +140,7 @@ L# source (.ls)
      - LSP                            (crates/lsharp-lsp, selfhost/src/Tools/Lsp)
 ```
 
-`selfhost/src/**` が selfhost 側の canonical source root です。日常の `lsharp` 実行では Rust host launcher が capability を提供し、`parse` / `check` / `compile` / `build` / `test` / `review` / `doc-ack` / `doc-check` / `fmt` の default path は埋め込み guest component が担当します。`install` / `repl` / `lsp` / `doc` と `compile` / `build` の Rust-only fallback (`--emit-ir`, `web-wasm`, `native`) は host launcher 側に残ります。
+`selfhost/src/**` が selfhost 側の canonical source root です。日常の `lsharp` 実行では Rust host launcher が capability を提供し、`parse` / `check` / `compile` / `build` / `test` / `review` / `doc-ack` / `doc-check` / `fmt` の default path は埋め込み guest component が担当します。`review` は simple text surface に加えて `--json` / `--format json` も embedded guest で処理します。`install` / `repl` / `lsp` / `doc` と `compile` / `build` の Rust-only fallback (`--emit-ir`, `web-wasm`, `native`) は host launcher 側に残り、`LSHARP_DISABLE_EMBEDDED_COMPONENT=1` は guest-backed `review` / simple `doc-ack` / simple `doc-check` を host 別契約へ落とさず external selfhost hint へ戻す safety valve として使います。
 
 ## Build / Use Paths
 

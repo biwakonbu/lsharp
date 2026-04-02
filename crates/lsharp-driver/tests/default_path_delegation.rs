@@ -174,6 +174,36 @@ fn test_check_without_lsharp_path_uses_embedded_component_default_path() {
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
+/// embedded guest default path の check は current_dir 配下の absolute path 入力も受理するべき
+#[test]
+fn test_check_with_absolute_input_path_without_lsharp_path_uses_embedded_component_default_path() {
+    let temp_dir = unique_temp_dir("embedded_default_check_absolute");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(&source_path, "(defn main [] 42)\n");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("check")
+        .arg(&source_path)
+        .env_remove("LSHARP_PATH")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "embedded guest default path の absolute check は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("diagnostics:0"),
+        "embedded guest default path の absolute check は selfhost 出力を返すべき: {stdout}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
 /// build.rs が既定で埋め込んだ guest component により、parse は LSHARP_PATH なしでも動くべき
 #[test]
 fn test_parse_without_lsharp_path_uses_embedded_component_default_path() {
@@ -235,13 +265,43 @@ fn test_fmt_without_lsharp_path_uses_embedded_component_default_path_for_large_f
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
+/// embedded guest default path の fmt は current_dir 配下の absolute path 入力も受理するべき
+#[test]
+fn test_fmt_with_absolute_input_path_without_lsharp_path_uses_embedded_component_default_path() {
+    let temp_dir = unique_temp_dir("embedded_default_fmt_absolute");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(&source_path, "(defn main [] 42)\n");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("fmt")
+        .arg(&source_path)
+        .env_remove("LSHARP_PATH")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "embedded guest default path の absolute fmt は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        fs::read_to_string(&source_path).expect("source read failed"),
+        "embedded guest default path の absolute fmt は source roundtrip を返すべき"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
 /// build.rs が既定で埋め込んだ guest component により、compile は LSHARP_PATH なしでも動くべき
 #[test]
 fn test_compile_without_lsharp_path_uses_embedded_component_default_path() {
     let temp_dir = unique_temp_dir("embedded_default_compile");
     let source_path = temp_dir.join("input.ls");
     let output_path = temp_dir.join("input.component.wasm");
-    write_source_file(&source_path, "(defn main [] 42)\n");
+    write_source_file(&source_path, "(defn main [] (print 42))\n");
 
     let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
         .arg("compile")
@@ -264,11 +324,54 @@ fn test_compile_without_lsharp_path_uses_embedded_component_default_path() {
         stdout.contains("wasm-size:"),
         "embedded guest default path の compile は selfhost summary を返すべき: {stdout}"
     );
-    let written = fs::read_to_string(&output_path).expect("compile output read failed");
+    let written = fs::read(&output_path).expect("compile output read failed");
+    assert!(
+        written.starts_with(b"\0asm"),
+        "embedded guest default path の compile は Wasm/Component bytes を出力するべき"
+    );
+    let runtime_output = lsharp_wasm::wasi_runner::run_wasm_component(&written)
+        .expect("compile output should be runnable component");
     assert_eq!(
-        written.trim(),
-        stdout.trim(),
-        "embedded guest default path の compile は stdout summary を output file にも書くべき"
+        runtime_output, "42\n",
+        "embedded guest default path の compile output は wasmtime で実行できるべき"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+/// embedded guest default path の compile は current_dir 配下の absolute path 入力も受理するべき
+#[test]
+fn test_compile_with_absolute_input_path_without_lsharp_path_uses_embedded_component_default_path() {
+    let temp_dir = unique_temp_dir("embedded_default_compile_absolute");
+    let source_path = temp_dir.join("input.ls");
+    let output_path = temp_dir.join("input.component.wasm");
+    write_source_file(&source_path, "(defn main [] (print 42))\n");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("compile")
+        .arg(&source_path)
+        .arg("-o")
+        .arg(&output_path)
+        .env_remove("LSHARP_PATH")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "embedded guest default path の absolute compile は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("wasm-size:"),
+        "embedded guest default path の absolute compile は selfhost summary を返すべき: {stdout}"
+    );
+    let written = fs::read(&output_path).expect("compile output read failed");
+    assert!(
+        written.starts_with(b"\0asm"),
+        "embedded guest default path の absolute compile は Wasm/Component bytes を出力するべき"
     );
 
     let _ = fs::remove_dir_all(&temp_dir);
@@ -280,7 +383,7 @@ fn test_build_without_lsharp_path_uses_embedded_component_default_path() {
     let temp_dir = unique_temp_dir("embedded_default_build");
     let source_path = temp_dir.join("input.ls");
     let default_output_path = temp_dir.join("input.component.wasm");
-    write_source_file(&source_path, "(defn main [] 42)\n");
+    write_source_file(&source_path, "(defn main [] (print 42))\n");
 
     let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
         .arg("build")
@@ -301,11 +404,61 @@ fn test_build_without_lsharp_path_uses_embedded_component_default_path() {
         stdout.contains("wasm-size:"),
         "embedded guest default path の build は selfhost summary を返すべき: {stdout}"
     );
-    let written = fs::read_to_string(&default_output_path).expect("build output read failed");
+    let written = fs::read(&default_output_path).expect("build output read failed");
+    assert!(
+        written.starts_with(b"\0asm"),
+        "embedded guest default path の build は Wasm/Component bytes を出力するべき"
+    );
+    let runtime_output = lsharp_wasm::wasi_runner::run_wasm_component(&written)
+        .expect("build output should be runnable component");
     assert_eq!(
-        written.trim(),
-        stdout.trim(),
-        "embedded guest default path の build は default output file へ stdout summary を書くべき"
+        runtime_output, "42\n",
+        "embedded guest default path の build output は wasmtime で実行できるべき"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_compile_with_preview1_target_without_lsharp_path_writes_runnable_wasm_artifact() {
+    let temp_dir = unique_temp_dir("embedded_default_compile_preview1");
+    let source_path = temp_dir.join("input.ls");
+    let output_path = temp_dir.join("input.wasm");
+    write_source_file(&source_path, "(defn main [] (print 42))\n");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("compile")
+        .arg("input.ls")
+        .arg("--target")
+        .arg("wasi-preview1")
+        .arg("-o")
+        .arg("input.wasm")
+        .env_remove("LSHARP_PATH")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "preview1 compile は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("wasm-size:"),
+        "preview1 compile は selfhost summary を返すべき: {stdout}"
+    );
+    let written = fs::read(&output_path).expect("preview1 output read failed");
+    assert!(
+        written.starts_with(b"\0asm"),
+        "preview1 compile は Wasm bytes を出力するべき"
+    );
+    let runtime_output =
+        lsharp_wasm::wasi_runner::run_wasm_wasi(&written).expect("preview1 output should run");
+    assert_eq!(
+        runtime_output, "42\n",
+        "preview1 compile output は preview1 runtime で実行できるべき"
     );
 
     let _ = fs::remove_dir_all(&temp_dir);
@@ -351,6 +504,46 @@ fn test_test_without_lsharp_path_uses_embedded_component_default_path() {
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
+/// embedded guest default path の test は current_dir 配下の absolute path 入力も受理するべき
+#[test]
+fn test_test_with_absolute_input_path_without_lsharp_path_uses_embedded_component_default_path() {
+    let temp_dir = unique_temp_dir("embedded_default_test_absolute");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(
+        &source_path,
+        r#"(defn abs
+  [x]
+  :example [(= (abs 5) 5)]
+  :invariant (>= result 0)
+  (if (< x 0) (- 0 x) x))
+"#,
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("test")
+        .arg(&source_path)
+        .env_remove("LSHARP_PATH")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "embedded guest default path の absolute test は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("examples:1")
+            && stdout.contains("invariants:1")
+            && stdout.contains("failures:0"),
+        "embedded guest default path の absolute test は selfhost summary を返すべき: {stdout}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
 /// build.rs が既定で埋め込んだ guest component により、review は LSHARP_PATH なしでも動くべき
 #[test]
 fn test_review_without_lsharp_path_uses_embedded_component_default_path() {
@@ -379,6 +572,95 @@ fn test_review_without_lsharp_path_uses_embedded_component_default_path() {
             && stdout.contains("warning")
             && stdout.contains("L0001@1:1"),
         "embedded guest default path の review は selfhost summary を返すべき: {stdout}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+/// build.rs が既定で埋め込んだ guest component により、review --json は LSHARP_PATH なしでも動くべき
+#[test]
+fn test_review_json_without_lsharp_path_uses_embedded_component_default_path() {
+    let temp_dir = unique_temp_dir("embedded_default_review_json");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(&source_path, "(defn main [] (let [unused 42] 0))\n");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("review")
+        .arg("input.ls")
+        .arg("--json")
+        .env_remove("LSHARP_PATH")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "embedded guest default path の review --json は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let actual: serde_json::Value =
+        serde_json::from_str(&stdout).expect("embedded review --json output は valid JSON であるべき");
+    assert_eq!(
+        actual,
+        serde_json::json!({
+            "source": "source-200",
+            "diagnostics": [{
+                "title": "unused-let",
+                "severity": "warning",
+                "message": "let binding unused is not used",
+                "line": 1,
+                "column": 1,
+                "code": "L0001"
+            }]
+        }),
+        "embedded guest default path の review --json は schema-object review JSON を返すべき"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+/// build.rs が既定で埋め込んだ guest component により、review --format json は LSHARP_PATH なしでも動くべき
+#[test]
+fn test_review_format_json_without_lsharp_path_uses_embedded_component_default_path() {
+    let temp_dir = unique_temp_dir("embedded_default_review_format_json");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(&source_path, "(defn main [] (let [unused 42] 0))\n");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("review")
+        .arg("input.ls")
+        .arg("--format")
+        .arg("json")
+        .env_remove("LSHARP_PATH")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "embedded guest default path の review --format json は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let actual: serde_json::Value = serde_json::from_str(&stdout)
+        .expect("embedded review --format json output は valid JSON であるべき");
+    assert_eq!(
+        actual,
+        serde_json::json!({
+            "source": "source-200",
+            "diagnostics": [{
+                "title": "unused-let",
+                "severity": "warning",
+                "message": "let binding unused is not used",
+                "line": 1,
+                "column": 1,
+                "code": "L0001"
+            }]
+        }),
+        "embedded guest default path の review --format json は schema-object review JSON を返すべき"
     );
 
     let _ = fs::remove_dir_all(&temp_dir);
@@ -417,6 +699,38 @@ fn test_doc_ack_without_lsharp_path_uses_embedded_component_default_path() {
     let _ = fs::remove_dir_all(&temp_dir);
 }
 
+/// build.rs が既定で埋め込んだ guest component により、doc-ack --trailer も LSHARP_PATH なしで動くべき
+#[test]
+fn test_embedded_default_path_doc_ack_trailer_only() {
+    let temp_dir = unique_temp_dir("embedded_default_doc_ack_trailer");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(&source_path, "(defn main [] 42)\n");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("doc-ack")
+        .arg("input.ls")
+        .arg("--trailer")
+        .env_remove("LSHARP_PATH")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "embedded guest default path の doc-ack --trailer は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(
+        stdout.trim(),
+        "; Doc-Reviewed-By: anonymous",
+        "embedded guest default path の doc-ack --trailer は trailer のみを返すべき: {stdout}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
 /// build.rs が既定で埋め込んだ guest component により、doc-check は LSHARP_PATH なしでも動くべき
 #[test]
 fn test_doc_check_without_lsharp_path_uses_embedded_component_default_path() {
@@ -446,6 +760,75 @@ fn test_doc_check_without_lsharp_path_uses_embedded_component_default_path() {
             && stdout.contains("Doc-Review-Status: Passed")
             && stdout.contains("Doc-Reviewed-By: anonymous"),
         "embedded guest default path の doc-check は selfhost summary を返すべき: {stdout}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+/// build.rs が既定で埋め込んだ guest component により、doc-check --strict は valid trailer を受理するべき
+#[test]
+fn test_embedded_default_path_doc_check_strict_valid_trailer() {
+    let temp_dir = unique_temp_dir("embedded_default_doc_check_strict");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(
+        &source_path,
+        "(defn main [] 42)\n; Doc-Review-Status: Passed\n; Doc-Reviewed-By: anonymous\n",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("doc-check")
+        .arg("input.ls")
+        .arg("--strict")
+        .env_remove("LSHARP_PATH")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "embedded guest default path の doc-check --strict は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("status:ok")
+            && stdout.contains("module-global")
+            && stdout.contains("functions:1,types:0,first-fn:main")
+            && stdout.contains("Doc-Review-Status: Passed")
+            && stdout.contains("Doc-Reviewed-By: anonymous"),
+        "embedded guest default path の doc-check --strict は trailer を保持した summary を返すべき: {stdout}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+/// build.rs が既定で埋め込んだ guest component により、doc-check --strict は invalid trailer を拒否するべき
+#[test]
+fn test_embedded_default_path_doc_check_strict_missing_trailer_fails() {
+    let temp_dir = unique_temp_dir("embedded_default_doc_check_strict_fail");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(&source_path, "(defn main [] 42)\n");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("doc-check")
+        .arg("input.ls")
+        .arg("--strict")
+        .env_remove("LSHARP_PATH")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        !output.status.success(),
+        "embedded guest default path の doc-check --strict は invalid trailer で失敗するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("error: invalid doc trailer: expected trailing comment lines"),
+        "embedded guest default path の doc-check --strict は invalid trailer message を返すべき: {stdout}"
     );
 
     let _ = fs::remove_dir_all(&temp_dir);
@@ -524,6 +907,230 @@ fn test_parse_without_lsharp_path_respects_embedded_disable_flag() {
     assert!(
         stderr.contains("LSHARP_PATH"),
         "disable flag は shadow command hint を復帰させるべき: {stderr}"
+    );
+}
+
+#[test]
+fn test_review_without_lsharp_path_respects_embedded_disable_flag() {
+    let temp_dir = unique_temp_dir("embedded_disable_review");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(&source_path, "(defn main [] (let [unused 42] 0))\n");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("review")
+        .arg("input.ls")
+        .env_remove("LSHARP_PATH")
+        .env("LSHARP_DISABLE_EMBEDDED_COMPONENT", "1")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        !output.status.success(),
+        "disable flag 付きの review は host YAML fallback ではなく hint に戻るべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("LSHARP_PATH"),
+        "disable flag は review でも delegation hint を復帰させるべき: {stderr}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_review_help_without_lsharp_path_keeps_builtin_clap_surface_when_embedded_disabled() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("review")
+        .arg("--help")
+        .env_remove("LSHARP_PATH")
+        .env("LSHARP_DISABLE_EMBEDDED_COMPONENT", "1")
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "review --help は embedded disable 下でも built-in clap surface で成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("review") && stdout.contains("Usage:"),
+        "review --help は hint ではなく clap help text を返すべき: {stdout}"
+    );
+}
+
+#[test]
+fn test_doc_ack_without_lsharp_path_respects_embedded_disable_flag() {
+    let temp_dir = unique_temp_dir("embedded_disable_doc_ack");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(&source_path, "(defn main [] 42)\n");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("doc-ack")
+        .arg("input.ls")
+        .env_remove("LSHARP_PATH")
+        .env("LSHARP_DISABLE_EMBEDDED_COMPONENT", "1")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        !output.status.success(),
+        "disable flag 付きの doc-ack は host tracker fallback ではなく hint に戻るべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("LSHARP_PATH"),
+        "disable flag は doc-ack でも delegation hint を復帰させるべき: {stderr}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_doc_ack_trailer_without_lsharp_path_respects_embedded_disable_flag() {
+    let temp_dir = unique_temp_dir("embedded_disable_doc_ack_trailer");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(&source_path, "(defn main [] 42)\n");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("doc-ack")
+        .arg("input.ls")
+        .arg("--trailer")
+        .env_remove("LSHARP_PATH")
+        .env("LSHARP_DISABLE_EMBEDDED_COMPONENT", "1")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        !output.status.success(),
+        "disable flag 付きの doc-ack --trailer は host tracker fallback ではなく hint に戻るべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("LSHARP_PATH"),
+        "disable flag は doc-ack --trailer でも delegation hint を復帰させるべき: {stderr}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_doc_check_without_lsharp_path_respects_embedded_disable_flag() {
+    let temp_dir = unique_temp_dir("embedded_disable_doc_check");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(&source_path, "(defn main [] 42)\n");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("doc-check")
+        .arg("input.ls")
+        .env_remove("LSHARP_PATH")
+        .env("LSHARP_DISABLE_EMBEDDED_COMPONENT", "1")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        !output.status.success(),
+        "disable flag 付きの doc-check は host validator fallback ではなく hint に戻るべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("LSHARP_PATH"),
+        "disable flag は doc-check でも delegation hint を復帰させるべき: {stderr}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_doc_check_strict_without_lsharp_path_respects_embedded_disable_flag() {
+    let temp_dir = unique_temp_dir("embedded_disable_doc_check_strict");
+    let source_path = temp_dir.join("input.ls");
+    write_source_file(
+        &source_path,
+        "(defn main [] 42)\n; Doc-Review-Status: Passed\n; Doc-Reviewed-By: anonymous\n",
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("doc-check")
+        .arg("input.ls")
+        .arg("--strict")
+        .env_remove("LSHARP_PATH")
+        .env("LSHARP_DISABLE_EMBEDDED_COMPONENT", "1")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        !output.status.success(),
+        "disable flag 付きの doc-check --strict は host validator fallback ではなく hint に戻るべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("LSHARP_PATH"),
+        "disable flag は doc-check --strict でも delegation hint を復帰させるべき: {stderr}"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_doc_ack_help_without_lsharp_path_keeps_builtin_clap_surface_when_embedded_disabled() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("doc-ack")
+        .arg("--help")
+        .env_remove("LSHARP_PATH")
+        .env("LSHARP_DISABLE_EMBEDDED_COMPONENT", "1")
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "doc-ack --help は embedded disable 下でも built-in clap surface で成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("doc-ack") && stdout.contains("Usage:"),
+        "doc-ack --help は hint ではなく clap help text を返すべき: {stdout}"
+    );
+}
+
+#[test]
+fn test_doc_check_help_without_lsharp_path_keeps_builtin_clap_surface_when_embedded_disabled() {
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("doc-check")
+        .arg("--help")
+        .env_remove("LSHARP_PATH")
+        .env("LSHARP_DISABLE_EMBEDDED_COMPONENT", "1")
+        .output()
+        .expect("driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "doc-check --help は embedded disable 下でも built-in clap surface で成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("doc-check") && stdout.contains("Usage:"),
+        "doc-check --help は hint ではなく clap help text を返すべき: {stdout}"
     );
 }
 

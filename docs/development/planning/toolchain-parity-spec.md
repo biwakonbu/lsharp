@@ -81,7 +81,7 @@ macOS/Linux/Windows 向けの host launcher + embedded guest component 配布形
 
 **受入基準:**
 
-- AC-021: Rust/wasmtime/clang 未インストール環境で配布アーカイブを展開し、`lsharp build` → `lsharp test` → `lsharp run` が成功する
+- AC-021: Rust/wasmtime/clang 未インストール環境で配布アーカイブを展開し、`lsharp compile` → `lsharp test` → `lsharp doc` が成功する
 - AC-022: VSCode 拡張が同梱 host launcher バイナリだけで全機能を提供する
 - AC-023: README の Quick Start が single binary 配布物のみで完走する
 

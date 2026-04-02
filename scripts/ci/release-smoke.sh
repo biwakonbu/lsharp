@@ -92,19 +92,29 @@ if [[ ! -e "$LSHARP_BIN" && -e "$ARCHIVE_ROOT/lsharp.exe" ]]; then
   LSHARP_BIN="$ARCHIVE_ROOT/lsharp.exe"
 fi
 
+LSHARP_LSP_BIN="$ARCHIVE_ROOT/lsharp-lsp"
+if [[ ! -e "$LSHARP_LSP_BIN" && -e "$ARCHIVE_ROOT/lsharp-lsp.exe" ]]; then
+  LSHARP_LSP_BIN="$ARCHIVE_ROOT/lsharp-lsp.exe"
+fi
+
 if [[ ! -e "$LSHARP_BIN" ]]; then
   echo "ERROR: packaged lsharp binary not found under $ARCHIVE_ROOT" >&2
   exit 1
 fi
 
-for required in README.md checksums.txt; do
+for required in README.md LICENSE checksums.txt; do
   if [[ ! -f "$ARCHIVE_ROOT/$required" ]]; then
     echo "ERROR: required release payload missing: $required" >&2
     exit 1
   fi
 done
 
-for optional in LICENSE CHANGELOG.md lsharp-lsp lsharp-lsp.exe; do
+if [[ ! -e "$LSHARP_LSP_BIN" ]]; then
+  echo "ERROR: packaged lsharp-lsp binary not found under $ARCHIVE_ROOT" >&2
+  exit 1
+fi
+
+for optional in CHANGELOG.md; do
   if [[ -e "$ARCHIVE_ROOT/$optional" ]]; then
     echo "INFO: optional payload present: $optional"
   fi
@@ -128,19 +138,50 @@ while read -r expected relpath _; do
 done < "$ARCHIVE_ROOT/checksums.txt"
 
 SMOKE_SOURCE="$SMOKE_DIR/quickstart.ls"
+SMOKE_METADATA_SOURCE="$SMOKE_DIR/quickstart-metadata.ls"
 SMOKE_WASM="$SMOKE_DIR/quickstart.wasm"
+SMOKE_DOC_HTML="$SMOKE_DIR/quickstart.html"
+SMOKE_DOC_JSON="$SMOKE_DIR/api.json"
 cat > "$SMOKE_SOURCE" <<'EOF'
 (defn main [] 42)
+EOF
+cat > "$SMOKE_METADATA_SOURCE" <<'EOF'
+(defn abs
+  [x]
+  :doc "整数の絶対値を返す。"
+  :params [(x "対象の整数")]
+  :returns "x の絶対値"
+  :example [(= (abs 5) 5)]
+  :invariant (>= result 0)
+  (if (< x 0) (- 0 x) x))
 EOF
 
 echo "=== release-smoke: packaged binary ==="
 "$LSHARP_BIN" --version >/dev/null
+"$LSHARP_LSP_BIN" --version >/dev/null
 "$LSHARP_BIN" check "$SMOKE_SOURCE" >/dev/null
 "$LSHARP_BIN" fmt "$SMOKE_SOURCE" >/dev/null
 "$LSHARP_BIN" compile "$SMOKE_SOURCE" -o "$SMOKE_WASM" >/dev/null
+"$LSHARP_BIN" test "$SMOKE_METADATA_SOURCE" >/dev/null
+"$LSHARP_BIN" doc "$SMOKE_METADATA_SOURCE" -o "$SMOKE_DOC_HTML" >/dev/null
+"$LSHARP_BIN" doc "$SMOKE_METADATA_SOURCE" --json -o "$SMOKE_DOC_JSON" >/dev/null
 
 if [[ ! -s "$SMOKE_WASM" ]]; then
   echo "ERROR: compile output is empty: $SMOKE_WASM" >&2
+  exit 1
+fi
+if ! xxd -p -l 4 "$SMOKE_WASM" | grep -qi '^0061736d$'; then
+  echo "ERROR: compile output is not a Wasm binary: $SMOKE_WASM" >&2
+  exit 1
+fi
+
+if [[ ! -s "$SMOKE_DOC_HTML" ]]; then
+  echo "ERROR: doc HTML output is empty: $SMOKE_DOC_HTML" >&2
+  exit 1
+fi
+
+if [[ ! -s "$SMOKE_DOC_JSON" ]]; then
+  echo "ERROR: doc JSON output is empty: $SMOKE_DOC_JSON" >&2
   exit 1
 fi
 

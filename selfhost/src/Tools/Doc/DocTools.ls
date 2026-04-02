@@ -1,6 +1,9 @@
 (module Tools.Doc.DocTools)
 (import Syntax.AST)
 (import Syntax.Parser)
+(import Types.TypeScheme)
+(import Types.TypeInferCore)
+(import Types.TypeInfer)
 
 ;; DocTools.ls - L# 製ドキュメントツール
 ;;
@@ -108,13 +111,49 @@
       next-result (extract-type-definitions-decl inner-decl result)]
       (extract-type-definitions-module-body decl next-result (+ idx 1) count))))
 
+;; defn ノード末尾の metadata vector [doc-string, example-string, params, returns] を参照する
+(defn extract-defn-metadata [decl]
+  (let [param-count (vector-get decl 2)
+    meta-idx (+ 4 param-count)]
+    (if (< meta-idx (vector-length decl))
+      (vector-get decl meta-idx)
+      0)))
+
 ;; :doc メタデータからドキュメント文字列を抽出
 (defn extract-doc-metadata [decl]
-  0)
+  (let [meta (extract-defn-metadata decl)]
+    (if (= meta 0)
+      ""
+      (if (> (vector-length meta) 0)
+        (vector-get meta 0)
+        ""))))
 
-;; :example メタデータからコード例を抽出
+;; :example メタデータからコード例テキストを抽出
 (defn extract-example-metadata [decl]
-  (vector-new 0))
+  (let [meta (extract-defn-metadata decl)]
+    (if (= meta 0)
+      ""
+      (if (> (vector-length meta) 1)
+        (vector-get meta 1)
+        ""))))
+
+;; :params メタデータから [name-hash, doc-string] vector を抽出
+(defn extract-param-doc-metadata [decl]
+  (let [meta (extract-defn-metadata decl)]
+    (if (= meta 0)
+      (vector-new 0)
+      (if (> (vector-length meta) 2)
+        (vector-get meta 2)
+        (vector-new 0)))))
+
+;; :returns メタデータから戻り値説明を抽出
+(defn extract-return-doc-metadata [decl]
+  (let [meta (extract-defn-metadata decl)]
+    (if (= meta 0)
+      ""
+      (if (> (vector-length meta) 3)
+        (vector-get meta 3)
+        ""))))
 
 ;; === payload 組み立て ===
 
@@ -171,12 +210,18 @@
 
 (defn make-function-entry [decl]
   (let [name-hash (vector-get decl 1)
-    entry (vector-new 3)]
+    doc-text (extract-doc-metadata decl)
+    example-text (extract-example-metadata decl)
+    entry (vector-new 5)]
     (vector-push
       (vector-push
-        (vector-push entry name-hash)
-        (symbol-from-hash name-hash))
-      (vector-get decl 2))))
+        (vector-push
+          (vector-push
+            (vector-push entry name-hash)
+            (symbol-from-hash name-hash))
+          (vector-get decl 2))
+        doc-text)
+      example-text)))
 
 (defn extract-function-entries [ast]
   (let [functions (extract-public-functions ast)]
@@ -303,7 +348,7 @@
 ;; generate-html: AST から HTML ドキュメント構造を生成
 ;; 出力: [tag, title, body, functions, types]
 (defn generate-html [ast opts]
-  (let [functions (sort-doc-entries (extract-function-entries ast))
+  (let [functions (sort-doc-entries (extract-doc-function-entries ast))
     types (sort-doc-entries (extract-type-entries ast))
     title (title-from-ast ast)
     body (make-doc-body-summary functions types)
@@ -320,9 +365,276 @@
 
 ;; === スキーマ準拠出力 ===
 
+;; knowledge 用の型名レンダリング
+(defn knowledge-con-type-text [name-hash]
+  (if (= name-hash 100)
+    "Int"
+    (if (= name-hash 200)
+      "Bool"
+      (if (= name-hash 300)
+        "String"
+        (if (= name-hash 400)
+          "Float"
+          (if (= name-hash 500)
+            "Unit"
+            (symbol-from-hash name-hash)))))))
+
+(defn knowledge-unknown-type-text []
+  "Unknown")
+
+(defn knowledge-render-type-text [ty]
+  (if (= ty 0)
+    (knowledge-unknown-type-text)
+    (let [tag (ty-tag ty)]
+      (if (= tag (ty-con))
+        (knowledge-con-type-text (ty-name ty))
+        (if (= tag (ty-var))
+          (string-concat "t" (int-to-string (ty-name ty)))
+          (if (= tag (ty-fun))
+            "Fn"
+            (if (= tag 4)
+              (string-concat "record-" (symbol-from-hash (ty-name ty)))
+              (knowledge-unknown-type-text))))))))
+
+(defn knowledge-param-string [name-hash ty]
+  (string-concat
+    (symbol-from-hash name-hash)
+    (string-concat ":" (knowledge-render-type-text ty))))
+
+(defn knowledge-build-param-entries-loop [decl fun-ty idx count params]
+  (if (>= idx count)
+    params
+    (let [name-hash (vector-get decl (+ 3 idx))
+      param-ty (if (= (ty-tag fun-ty) (ty-fun)) (ty-fp fun-ty) 0)
+      rest-ty (if (= (ty-tag fun-ty) (ty-fun)) (ty-fr fun-ty) 0)
+      next-params (vector-push params (knowledge-param-string name-hash param-ty))]
+      (knowledge-build-param-entries-loop decl rest-ty (+ idx 1) count next-params))))
+
+(defn knowledge-build-param-entries [decl fun-ty]
+  (let [count (vector-get decl 2)]
+    (knowledge-build-param-entries-loop decl fun-ty 0 count (vector-new count))))
+
+(defn find-param-doc-text-loop [param-metadata name-hash idx count]
+  (if (>= idx count)
+    ""
+    (let [entry (vector-get param-metadata idx)]
+      (if (= (vector-get entry 0) name-hash)
+        (vector-get entry 1)
+        (find-param-doc-text-loop param-metadata name-hash (+ idx 1) count)))))
+
+(defn find-param-doc-text [param-metadata name-hash]
+  (find-param-doc-text-loop param-metadata name-hash 0 (vector-length param-metadata)))
+
+(defn make-doc-function-param-entry [name-hash ty param-metadata]
+  (let [entry (vector-new 3)]
+    (vector-push
+      (vector-push
+        (vector-push entry (symbol-from-hash name-hash))
+        (knowledge-render-type-text ty))
+      (find-param-doc-text param-metadata name-hash))))
+
+(defn doc-build-param-entries-loop [decl fun-ty param-metadata idx count params]
+  (if (>= idx count)
+    params
+    (let [name-hash (vector-get decl (+ 3 idx))
+      param-ty (if (= (ty-tag fun-ty) (ty-fun)) (ty-fp fun-ty) 0)
+      rest-ty (if (= (ty-tag fun-ty) (ty-fun)) (ty-fr fun-ty) 0)
+      next-params
+      (vector-push params (make-doc-function-param-entry name-hash param-ty param-metadata))]
+      (doc-build-param-entries-loop decl rest-ty param-metadata (+ idx 1) count next-params))))
+
+(defn doc-build-param-entries [decl fun-ty]
+  (let [count (vector-get decl 2)
+    param-metadata (extract-param-doc-metadata decl)]
+    (doc-build-param-entries-loop decl fun-ty param-metadata 0 count (vector-new count))))
+
+(defn knowledge-drop-arity-loop [ty remaining]
+  (if (<= remaining 0)
+    ty
+    (if (= ty 0)
+      0
+      (if (= (ty-tag ty) (ty-fun))
+        (knowledge-drop-arity-loop (ty-fr ty) (- remaining 1))
+        0))))
+
+(defn knowledge-return-type-text [decl fun-ty]
+  (knowledge-render-type-text
+    (knowledge-drop-arity-loop fun-ty (vector-get decl 2))))
+
+(defn make-doc-function-return-entry [decl fun-ty]
+  (let [entry (vector-new 2)]
+    (vector-push
+      (vector-push entry (knowledge-return-type-text decl fun-ty))
+      (extract-return-doc-metadata decl))))
+
+(defn make-knowledge-function-entry [decl fun-ty]
+  (let [name-hash (vector-get decl 1)
+    params (knowledge-build-param-entries decl fun-ty)
+    returns (knowledge-return-type-text decl fun-ty)
+    doc-text (extract-doc-metadata decl)
+    example-text (extract-example-metadata decl)
+    entry (vector-new 7)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push entry name-hash)
+                (symbol-from-hash name-hash))
+              (vector-get decl 2))
+            params)
+          returns)
+        doc-text)
+      example-text)))
+
+(defn make-doc-function-entry [decl fun-ty]
+  (let [name-hash (vector-get decl 1)
+    params (doc-build-param-entries decl fun-ty)
+    returns (make-doc-function-return-entry decl fun-ty)
+    doc-text (extract-doc-metadata decl)
+    example-text (extract-example-metadata decl)
+    entry (vector-new 7)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push entry name-hash)
+                (symbol-from-hash name-hash))
+              (vector-get decl 2))
+            params)
+          returns)
+        doc-text)
+      example-text)))
+
+(defn make-knowledge-state [entries env]
+  (vector-push
+    (vector-push (vector-new 2) entries)
+    env))
+
+(defn knowledge-state-entries [state]
+  (vector-get state 0))
+
+(defn knowledge-state-env [state]
+  (vector-get state 1))
+
+(defn knowledge-result-type [out]
+  (if (= (result-failed out) 1)
+    0
+    (result-type out)))
+
+(defn knowledge-next-env [out env]
+  (if (> (vector-length out) 3)
+    (vector-get out 3)
+    env))
+
+(defn collect-knowledge-function-range [decls base idx count entries env counter emit-entry]
+  (if (>= idx count)
+    (make-knowledge-state entries env)
+    (let [decl (vector-get decls (+ base idx))
+      state (collect-knowledge-function-decl decl entries env counter emit-entry)]
+      (collect-knowledge-function-range
+        decls
+        base
+        (+ idx 1)
+        count
+        (knowledge-state-entries state)
+        (knowledge-state-env state)
+        counter
+        emit-entry))))
+
+(defn collect-knowledge-function-module-body [decl entries env counter emit-entry]
+  (collect-knowledge-function-range
+    decl
+    3
+    0
+    (vector-get decl 2)
+    entries
+    env
+    counter
+    emit-entry))
+
+(defn collect-knowledge-function-defn [decl entries env counter emit-entry]
+  (let [out (infer-defn decl env counter)
+    next-env (knowledge-next-env out env)
+    next-entries
+    (if (= emit-entry 1)
+      (vector-push entries (make-knowledge-function-entry decl (knowledge-result-type out)))
+      entries)]
+    (make-knowledge-state next-entries next-env)))
+
+(defn collect-knowledge-function-decl [decl entries env counter emit-entry]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (collect-knowledge-function-defn decl entries env counter emit-entry)
+      (if (= tag (ast-module-decl))
+        (collect-knowledge-function-module-body decl entries env counter emit-entry)
+        (if (= tag (ast-private))
+          (collect-knowledge-function-decl (vector-get decl 1) entries env counter 0)
+          (make-knowledge-state entries env))))))
+
+(defn collect-doc-function-range [decls base idx count entries env counter emit-entry]
+  (if (>= idx count)
+    (make-knowledge-state entries env)
+    (let [decl (vector-get decls (+ base idx))
+      state (collect-doc-function-decl decl entries env counter emit-entry)]
+      (collect-doc-function-range
+        decls
+        base
+        (+ idx 1)
+        count
+        (knowledge-state-entries state)
+        (knowledge-state-env state)
+        counter
+        emit-entry))))
+
+(defn collect-doc-function-module-body [decl entries env counter emit-entry]
+  (collect-doc-function-range
+    decl
+    3
+    0
+    (vector-get decl 2)
+    entries
+    env
+    counter
+    emit-entry))
+
+(defn collect-doc-function-defn [decl entries env counter emit-entry]
+  (let [out (infer-defn decl env counter)
+    next-env (knowledge-next-env out env)
+    next-entries
+    (if (= emit-entry 1)
+      (vector-push entries (make-doc-function-entry decl (knowledge-result-type out)))
+      entries)]
+    (make-knowledge-state next-entries next-env)))
+
+(defn collect-doc-function-decl [decl entries env counter emit-entry]
+  (let [tag (vector-get decl 0)]
+    (if (= tag (ast-defn))
+      (collect-doc-function-defn decl entries env counter emit-entry)
+      (if (= tag (ast-module-decl))
+        (collect-doc-function-module-body decl entries env counter emit-entry)
+        (if (= tag (ast-private))
+          (collect-doc-function-decl (vector-get decl 1) entries env counter 0)
+          (make-knowledge-state entries env))))))
+
+(defn extract-knowledge-function-entries [ast]
+  (let [counter (make-var-counter)
+    env (init-builtin-env counter)
+    state (collect-knowledge-function-range ast 0 0 (vector-length ast) (vector-new 0) env counter 1)]
+    (knowledge-state-entries state)))
+
+(defn extract-doc-function-entries [ast]
+  (let [counter (make-var-counter)
+    env (init-builtin-env counter)
+    state (collect-doc-function-range ast 0 0 (vector-length ast) (vector-new 0) env counter 1)]
+    (knowledge-state-entries state)))
+
 ;; generate-knowledge: [module-id, functions, types]
 (defn generate-knowledge [ast module-id]
-  (let [functions (sort-doc-entries (extract-function-entries ast))
+  (let [functions (sort-doc-entries (extract-knowledge-function-entries ast))
     types (sort-doc-entries (extract-type-entries ast))
     doc (vector-new 3)]
     (vector-push
@@ -552,7 +864,7 @@
 
 ;; generate-doc-output: [module-id, functions, types, html-title, html-sections]
 (defn generate-doc-output [ast module-id]
-  (let [functions (sort-doc-entries (extract-function-entries ast))
+  (let [functions (sort-doc-entries (extract-doc-function-entries ast))
     types (sort-doc-entries (extract-type-entries ast))
     sections (build-doc-sections functions types)
     module-hash (find-module-hash ast)

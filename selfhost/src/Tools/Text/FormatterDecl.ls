@@ -195,12 +195,79 @@
 
 ;; === 宣言フォーマット (ソース文字列付き) ===
 
+(defn format-raw-string-literal [text]
+  (str3 "\"" text "\""))
+
+(defn format-defn-param-metadata-entry [entry]
+  (let [name-text (symbol-from-hash (vector-get entry 0))
+    doc-text (format-raw-string-literal (vector-get entry 1))]
+    (str5 "(" name-text " " doc-text ")")))
+
+(defn format-defn-param-metadata-list [params idx count]
+  (if (>= idx count)
+    ""
+    (let [entry-text (format-defn-param-metadata-entry (vector-get params idx))]
+      (if (= (+ idx 1) count)
+        entry-text
+        (str3 entry-text " " (format-defn-param-metadata-list params (+ idx 1) count))))))
+
+(defn append-metadata-piece [acc piece]
+  (if (> (string-length piece) 0)
+    (if (> (string-length acc) 0)
+      (str3 acc " " piece)
+      piece)
+    acc))
+
+(defn extract-defn-metadata [decl]
+  (let [meta-idx (+ 4 (vector-get decl 2))]
+    (if (< meta-idx (vector-length decl))
+      (vector-get decl meta-idx)
+      0)))
+
+(defn format-defn-metadata-params [meta]
+  (let [params (vector-get meta 2)
+    count (vector-length params)]
+    (if (= count 0)
+      ""
+      (string-concat ":params [" (string-concat (format-defn-param-metadata-list params 0 count) "]")))))
+
+(defn format-defn-metadata-returns [meta]
+  (let [returns-text (vector-get meta 3)]
+    (if (> (string-length returns-text) 0)
+      (string-concat ":returns " (format-raw-string-literal returns-text))
+      "")))
+
+(defn format-defn-metadata-doc [meta]
+  (let [doc-text (vector-get meta 0)]
+    (if (> (string-length doc-text) 0)
+      (string-concat ":doc " (format-raw-string-literal doc-text))
+      "")))
+
+(defn format-defn-metadata-example [meta]
+  (let [example-text (vector-get meta 1)]
+    (if (> (string-length example-text) 0)
+      (string-concat ":example [" (string-concat example-text "]"))
+      "")))
+
+(defn format-defn-metadata [decl]
+  (let [meta (extract-defn-metadata decl)]
+    (if (= meta 0)
+      ""
+      (let [pieces-1 (append-metadata-piece "" (format-defn-metadata-params meta))
+        pieces-2 (append-metadata-piece pieces-1 (format-defn-metadata-returns meta))
+        pieces-3 (append-metadata-piece pieces-2 (format-defn-metadata-doc meta))
+        pieces-4 (append-metadata-piece pieces-3 (format-defn-metadata-example meta))]
+        (if (> (string-length pieces-4) 0)
+          (string-concat " " pieces-4)
+          "")))))
+
 (defn format-defn-with-source [decl indent-level source]
   (let [name-text (symbol-from-hash (vector-get decl 1))
     param-count (vector-get decl 2)
     params-text (format-hash-list decl 3 param-count)
+    metadata-text (format-defn-metadata decl)
     body-text (format-expr-with-source (vector-get decl (+ 3 param-count)) indent-level source)]
-    (str7 "(defn " name-text " [" params-text "] " body-text ")")))
+    (str3 (str7 "(defn " name-text " [" params-text "]" metadata-text " ") body-text ")")))
 
 (defn format-type-decl [decl]
   (str3 "(type " (symbol-from-hash (vector-get decl 1)) ")"))
@@ -290,8 +357,9 @@
   (let [name-text (symbol-from-hash (vector-get decl 1))
     param-count (vector-get decl 2)
     params-text (format-hash-list decl 3 param-count)
+    metadata-text (format-defn-metadata decl)
     body-text (format-expr (vector-get decl (+ 3 param-count)) indent-level)]
-    (str7 "(defn " name-text " [" params-text "] " body-text ")")))
+    (str3 (str7 "(defn " name-text " [" params-text "]" metadata-text " ") body-text ")")))
 
 (defn format-trait-decl [decl indent-level]
   (let [name-text (symbol-from-hash (vector-get decl 1))

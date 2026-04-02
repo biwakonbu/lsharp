@@ -1,0 +1,131 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "sourceBytes": 59,
+      "uri": 200
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/publishDiagnostics",
+    "params": {
+      "diagnostics": [
+        {
+          "col": 1,
+          "line": 1,
+          "messageHash": 1,
+          "rule": 1,
+          "severity": 1,
+          "source": 2
+        }
+      ],
+      "uri": 200
+    }
+  },
+  {
+    "id": 196,
+    "jsonrpc": "2.0",
+    "result": {
+      "contents": "defn mid-val",
+      "range": [
+        1,
+        51,
+        1,
+        58
+      ]
+    }
+  },
+  {
+    "id": 197,
+    "jsonrpc": "2.0",
+    "result": [
+      8091858770804166904,
+      1,
+      50
+    ]
+  },
+  {
+    "id": 198,
+    "jsonrpc": "2.0",
+    "result": [
+      [
+        200,
+        1,
+        51
+      ],
+      [
+        8091858770804166904,
+        1,
+        50
+      ]
+    ]
+  },
+  {
+    "id": 199,
+    "jsonrpc": "2.0",
+    "result": [
+      [
+        200,
+        [
+          [
+            1,
+            51,
+            1,
+            58,
+            "mid-next"
+          ]
+        ]
+      ],
+      [
+        8091858770804166904,
+        [
+          [
+            1,
+            50,
+            1,
+            57,
+            "mid-next"
+          ]
+        ]
+      ]
+    ]
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didChange",
+    "params": {
+      "sourceBytes": 58,
+      "uri": 200
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/publishDiagnostics",
+    "params": {
+      "diagnostics": [
+        {
+          "col": 1,
+          "line": 1,
+          "messageHash": 1,
+          "rule": 1,
+          "severity": 1,
+          "source": 2
+        }
+      ],
+      "uri": 200
+    }
+  },
+  {
+    "id": 200,
+    "jsonrpc": "2.0",
+    "result": [
+      [
+        "mid-val",
+        3,
+        "mid-val"
+      ]
+    ]
+  }
+]

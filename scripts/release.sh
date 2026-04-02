@@ -34,26 +34,47 @@ echo "Target:  ${TARGET}"
 # ビルドディレクトリの作成
 mkdir -p "${DIST_DIR}/${ARCHIVE_NAME}"
 
+copy_required_file() {
+  local source_path="$1"
+  if [[ ! -f "$source_path" ]]; then
+    echo "ERROR: required release payload source not found: $source_path" >&2
+    exit 1
+  fi
+  cp -f "$source_path" "${DIST_DIR}/${ARCHIVE_NAME}/"
+}
+
+copy_required_binary() {
+  local base_name="$1"
+  local unix_path="target/release/${base_name}"
+  local windows_path="target/release/${base_name}.exe"
+  if [[ -f "$unix_path" ]]; then
+    cp -f "$unix_path" "${DIST_DIR}/${ARCHIVE_NAME}/"
+    return 0
+  fi
+  if [[ -f "$windows_path" ]]; then
+    cp -f "$windows_path" "${DIST_DIR}/${ARCHIVE_NAME}/"
+    return 0
+  fi
+  echo "ERROR: required release binary not found: ${base_name}" >&2
+  exit 1
+}
+
 # バイナリのビルド
 echo "Building binaries..."
-cargo build --release 2>/dev/null || echo "Build skipped (development mode)"
+cargo build --release
 
 # 同梱物のコピー (AC-504)
 echo "Assembling release artifacts..."
-cp -f README.md "${DIST_DIR}/${ARCHIVE_NAME}/" 2>/dev/null || echo "README.md not found"
-cp -f LICENSE "${DIST_DIR}/${ARCHIVE_NAME}/" 2>/dev/null || echo "LICENSE not found"
+copy_required_file "README.md"
+copy_required_file "LICENSE"
 
 # バイナリのコピー
-if [ -f "target/release/lsharp" ]; then
-  cp -f "target/release/lsharp" "${DIST_DIR}/${ARCHIVE_NAME}/"
-fi
-if [ -f "target/release/lsharp-lsp" ]; then
-  cp -f "target/release/lsharp-lsp" "${DIST_DIR}/${ARCHIVE_NAME}/"
-fi
+copy_required_binary "lsharp"
+copy_required_binary "lsharp-lsp"
 
 # checksums.txt の生成 (AC-505: SHA-256)
 echo "Generating checksums..."
-./scripts/checksum.sh "${DIST_DIR}/${ARCHIVE_NAME}" > "${DIST_DIR}/${ARCHIVE_NAME}/checksums.txt" 2>/dev/null || true
+./scripts/checksum.sh "${DIST_DIR}/${ARCHIVE_NAME}" > "${DIST_DIR}/${ARCHIVE_NAME}/checksums.txt"
 
 # アーカイブ作成
 echo "Creating archive..."

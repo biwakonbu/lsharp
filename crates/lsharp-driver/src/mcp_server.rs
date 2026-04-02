@@ -407,13 +407,18 @@ fn compile_run_tool(arguments: &Value) -> Result<Value, String> {
         return Err("source または file が必要です".to_string());
     }
 
-    let artifacts = commands::compile::compile_file(&input_path, Some(&output_path), false, None)
-        .map_err(|e| e.to_string())?;
+    let artifacts = commands::compile::compile_file(
+        &input_path,
+        Some(&output_path),
+        false,
+        Some(commands::compile::CompileTarget::WasiPreview1),
+    )
+    .map_err(|e| e.to_string())?;
     let formatted = std::fs::read_to_string(&input_path)
         .map_err(|e| format!("{}: {e}", input_path.display()))?;
     let wasm_bytes = std::fs::read(&artifacts.output_path)
         .map_err(|e| format!("{}: {e}", artifacts.output_path.display()))?;
-    let stdout = lsharp_wasm::wasi_runner::run_wasm_component(&wasm_bytes)
+    let stdout = lsharp_wasm::wasi_runner::run_wasm_wasi(&wasm_bytes)
         .map_err(|e| format!("実行失敗: {e}"))?;
 
     Ok(json!({

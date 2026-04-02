@@ -6,7 +6,19 @@ fn selfhost_doctools_runtime_bundle() -> String {
         selfhost_module("AST.ls"),
         selfhost_module("Lexer.ls"),
         selfhost_module("Parser.ls"),
+        selfhost_module("Type.ls"),
+        selfhost_module("TypeScheme.ls"),
+        selfhost_module("TypeInferCore.ls"),
+        selfhost_module("TypeInferFunctions.ls"),
+        selfhost_module("TypeInferBuiltins.ls"),
+        selfhost_module("TypeInfer.ls"),
+        selfhost_module("TypeInferApply.ls"),
+        selfhost_module("TypeInferBlock.ls"),
+        selfhost_module("TypeInferPattern.ls"),
+        selfhost_module("TypeInferRecord.ls"),
         selfhost_module("DocTools.ls"),
+        selfhost_module("JsonRpc.ls"),
+        selfhost_module("DocJson.ls"),
     ]
     .join("\n")
 }
@@ -1643,6 +1655,30 @@ fn test_e2e_selfhost_lsp_real_shapes_formatting_preserves_string_literal() {
     );
 }
 
+/// TEST-LSP-21c: formatting が defn metadata を canonical 順で保持すること
+#[test]
+fn test_e2e_selfhost_lsp_real_shapes_formatting_preserves_defn_metadata() {
+    let harness = r#"
+(defn main []
+  (let [state (server-state-new)
+        src "(defn add [x y] :doc \"Add two ints\" :params [(x \"left\") (y \"right\")] :returns \"sum\" :example [(add 1 2)] (+ x y))"
+        params (vector-push (vector-push (vector-new 2) 77) src)
+        edits (handle-formatting params state)
+        edit (vector-get edits 0)]
+    (do
+      (print-string (vector-get edit 4))
+      0)))
+"#;
+
+    let lines = run_lsp_harness("lsp_real_shapes_formatting_defn_metadata", harness);
+
+    assert_eq!(
+        lines[0],
+        "(defn add [x y] :params [(x \"left\") (y \"right\")] :returns \"sum\" :doc \"Add two ints\" :example [(add 1 2)] (+ x y))",
+        "LSP formatting は defn metadata を canonical 順で保持するべき"
+    );
+}
+
 /// TEST-FMT-01: selfhost/src/Tools/Text/Formatter.ls に format-program / format-expr 関数が存在すること
 ///
 /// T4c-1 AC-300: parse-format-parse roundtrip のための format-program / format-expr
@@ -1922,6 +1958,18 @@ fn test_e2e_selfhost_pkg_archives() {
         "scripts/ に checksum 生成スクリプトがない (AC-505). 存在するファイル: {:?}",
         entries
     );
+
+    let license = project_root.join("LICENSE");
+    assert!(
+        license.is_file(),
+        "release artifact 同梱物の正本 LICENSE が repo root に存在しない (AC-504)"
+    );
+
+    let lsp_main = project_root.join("crates/lsharp-lsp/src/main.rs");
+    assert!(
+        lsp_main.is_file(),
+        "release artifact 同梱物の `lsharp-lsp` binary entry が存在しない (AC-504/AC-603)"
+    );
 }
 
 /// GC-05 進捗: 同一ミニプログラムを短いループで compile+run（長寿命 soak の縮小版・CI 負荷を抑える）
@@ -2180,6 +2228,12 @@ fn test_e2e_ops05_default_path_migration() {
         "default-path-smoke.sh は selfhost Wasm smoke artifact を生成すること"
     );
     assert!(
+        smoke_content.contains("0061736d")
+            || smoke_content.contains("not a Wasm binary")
+            || smoke_content.contains("Wasm binary"),
+        "default-path-smoke.sh は compile/build artifact が実 Wasm binary かも検証すること"
+    );
+    assert!(
         smoke_content.contains("fmt smoke_input.ls"),
         "default-path-smoke.sh は selfhost Wasm 経由の fmt smoke を持つこと"
     );
@@ -2228,6 +2282,31 @@ fn test_e2e_ops05_default_path_migration() {
     assert!(
         matrix_content.contains("`LSHARP_PATH=<*.wasm>` smoke 対象"),
         "compatibility-matrix.md は preview1 .wasm smoke path を明記すること"
+    );
+}
+
+/// TEST-OPS-05b: host-backed `doc` の distribution ownership が docs に同期されること
+#[test]
+fn test_e2e_ops05_doc_host_backed_distribution_ownership_docs() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let doc = project_root.join("docs/development/operations/default-path-migration.md");
+    let doc_content =
+        std::fs::read_to_string(&doc).expect("default-path-migration.md の読み込みに失敗");
+    assert!(
+        doc_content.contains("intentional host-backed")
+            && doc_content.contains("release-smoke.sh")
+            && doc_content.contains("smoke_test_readme.sh"),
+        "default-path-migration.md は host-backed `doc` の配布 smoke ownership を明記すること"
+    );
+
+    let matrix = project_root.join("docs/development/planning/compatibility-matrix.md");
+    let matrix_content =
+        std::fs::read_to_string(&matrix).expect("compatibility-matrix.md の読み込みに失敗");
+    assert!(
+        matrix_content.contains("scripts/ci/release-smoke.sh")
+            && matrix_content.contains("scripts/smoke_test_readme.sh")
+            && matrix_content.contains("intentional host-backed"),
+        "compatibility-matrix.md は host-backed `doc` の release/readme smoke evidence を明記すること"
     );
 }
 
@@ -2291,6 +2370,71 @@ fn test_e2e_ops06_release_smoke_contract() {
     assert!(
         playbook_content.contains("scripts/ci/release-smoke.sh"),
         "release-playbook.md が release-smoke.sh を案内していない"
+    );
+    let smoke_content =
+        std::fs::read_to_string(&smoke_script).expect("release-smoke.sh の読み込みに失敗");
+    assert!(
+        smoke_content.contains("for required in README.md LICENSE checksums.txt; do"),
+        "release-smoke.sh は README.md / LICENSE / checksums.txt を required payload として扱うこと"
+    );
+    assert!(
+        smoke_content.contains("packaged lsharp-lsp binary not found")
+            || smoke_content.contains("LSHARP_LSP_BIN"),
+        "release-smoke.sh は packaged `lsharp-lsp` binary の存在も検証すること"
+    );
+    assert!(
+        smoke_content.contains(" doc ")
+            || smoke_content.contains("\"$LSHARP_BIN\" doc ")
+            || smoke_content.contains("doc --json"),
+        "release-smoke.sh は packaged binary の doc command も smoke すること"
+    );
+    assert!(
+        smoke_content.contains("not a Wasm binary")
+            || smoke_content.contains("Wasm binary")
+            || smoke_content.contains("0061736d"),
+        "release-smoke.sh は packaged compile artifact が実 Wasm binary かも検証すること"
+    );
+    assert!(
+        playbook_content.contains("doc")
+            && playbook_content.contains("release-smoke.sh")
+            && playbook_content.contains("smoke_test_readme.sh"),
+        "release-playbook.md は doc command の release/readme smoke を案内すること"
+    );
+}
+
+/// TEST-PKG-01b: README Quick Start が release artifact-only 契約に揃っていること
+#[test]
+fn test_e2e_pkg01_readme_quick_start_uses_release_artifact_only() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let readme = project_root.join("README.md");
+    let content = std::fs::read_to_string(&readme).expect("README.md の読み込みに失敗");
+    let quick_start = content
+        .split("## Quick Start")
+        .nth(1)
+        .and_then(|rest| rest.split("\n## ").next())
+        .expect("README.md の Quick Start section が見つからない");
+
+    assert!(
+        quick_start.contains("checksums.txt"),
+        "README Quick Start は checksums.txt の検証手順を含むこと (AC-506)"
+    );
+    assert!(
+        quick_start.contains("lsharp compile")
+            && quick_start.contains("lsharp test")
+            && quick_start.contains("lsharp doc"),
+        "README Quick Start は packaged `lsharp` だけで compile/test/doc を案内すること"
+    );
+    assert!(
+        !quick_start.contains("cargo build -p lsharp-driver"),
+        "README Quick Start は Rust build 手順を含まないこと (AC-606/AC-607)"
+    );
+    assert!(
+        !quick_start.contains("target/debug/lsharp"),
+        "README Quick Start は dev binary path ではなく packaged `lsharp` を案内すること"
+    );
+    assert!(
+        !quick_start.contains("wasmtime"),
+        "README Quick Start は外部 Wasm runtime を前提にしないこと (AC-606/AC-607)"
     );
 }
 
@@ -2376,6 +2520,9 @@ case "$cmd" in
   check)
     echo "type:Int"
     ;;
+  test)
+    echo "examples:1 invariants:1 failures:0"
+    ;;
   fmt)
     cat "${2:?missing source path}"
     ;;
@@ -2392,6 +2539,31 @@ case "$cmd" in
     done
     printf '\0asm' > "${out:?missing output path}"
     ;;
+  doc)
+    json=0
+    out=""
+    shift
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --json)
+          json=1
+          shift
+          ;;
+        -o|--output)
+          out="$2"
+          shift 2
+          ;;
+        *)
+          shift
+          ;;
+      esac
+    done
+    if [[ "$json" == "1" ]]; then
+      printf '{"package":"fixture"}\n' > "${out:?missing output path}"
+    else
+      printf '<html><body>fixture doc</body></html>\n' > "${out:?missing output path}"
+    fi
+    ;;
   *)
     echo "unsupported command: $cmd" >&2
     exit 1
@@ -2405,6 +2577,26 @@ esac
         .permissions();
     perms.set_mode(0o755);
     std::fs::set_permissions(&fake_lsharp, perms).expect("fake lsharp permission の設定に失敗");
+
+    let fake_lsp = archive_root.join("lsharp-lsp");
+    std::fs::write(
+        &fake_lsp,
+        r#"#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "--version" ]]; then
+  echo "lsharp-lsp 0.0.0-test"
+else
+  echo "lsharp-lsp help"
+fi
+"#,
+    )
+    .expect("fake lsharp-lsp の書き込みに失敗");
+    let mut lsp_perms = std::fs::metadata(&fake_lsp)
+        .expect("fake lsharp-lsp metadata の取得に失敗")
+        .permissions();
+    lsp_perms.set_mode(0o755);
+    std::fs::set_permissions(&fake_lsp, lsp_perms)
+        .expect("fake lsharp-lsp permission の設定に失敗");
 
     std::fs::write(archive_root.join("README.md"), "# fixture\n").expect("README fixture 書き込み失敗");
     std::fs::write(archive_root.join("LICENSE"), "fixture license\n").expect("LICENSE fixture 書き込み失敗");
@@ -2496,6 +2688,17 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
     assert!(
         smoke_script_content.contains("SMOKE_DIR"),
         "smoke_test_readme.sh は出力ディレクトリを上書きできること"
+    );
+    assert!(
+        smoke_script_content.contains("cat > \"$SMOKE_SOURCE\"")
+            && smoke_script_content.contains("cat > \"$SMOKE_METADATA_SOURCE\""),
+        "smoke_test_readme.sh は repo examples ではなく inline Quick Start fixture を生成すること"
+    );
+    assert!(
+        smoke_script_content.contains(" doc ")
+            || smoke_script_content.contains("doc examples/")
+            || smoke_script_content.contains("doc \"$SMOKE_SOURCE\""),
+        "smoke_test_readme.sh は doc command の README smoke を持つこと"
     );
 
     let ci_path = project_root.join(".github/workflows/ci.yml");
@@ -2658,7 +2861,7 @@ case "$cmd" in
     out=""
     shift
     while [[ $# -gt 0 ]]; do
-      if [[ "$1" == "-o" ]]; then
+      if [[ "$1" == "-o" || "$1" == "--output" ]]; then
         out="$2"
         shift 2
       else
@@ -2666,6 +2869,85 @@ case "$cmd" in
       fi
     done
     printf '\0asm' > "${out:?missing output path}"
+    echo "wasm-size:4"
+    ;;
+  build)
+    out=""
+    shift
+    while [[ $# -gt 0 ]]; do
+      if [[ "$1" == "-o" || "$1" == "--output" ]]; then
+        out="$2"
+        shift 2
+      else
+        shift
+      fi
+    done
+    printf '\0asm' > "${out:?missing output path}"
+    echo "wasm-size:4"
+    ;;
+  review)
+    if [[ "${LSHARP_DISABLE_EMBEDDED_COMPONENT:-0}" == "1" ]]; then
+      echo "LSHARP_PATH required when embedded component is disabled" >&2
+      exit 1
+    fi
+    shift
+    if [[ "${1:-}" == "--json" ]] || [[ "${1:-}" == "--format" && "${2:-}" == "json" ]] || [[ "${2:-}" == "--json" ]] || [[ "${2:-}" == "--format" && "${3:-}" == "json" ]]; then
+      printf '{"source":"source-200","title":"unused-let","code":"L0001"}\n'
+    else
+      printf 'diagnostics:1,first-body:let binding x is not used\nunused-let\nwarning\nL0001@1:1\n'
+    fi
+    ;;
+  doc-ack)
+    if [[ "${LSHARP_DISABLE_EMBEDDED_COMPONENT:-0}" == "1" ]]; then
+      echo "LSHARP_PATH required when embedded component is disabled" >&2
+      exit 1
+    fi
+    if [[ "${2:-}" == "--trailer" ]] || [[ "${3:-}" == "--trailer" ]]; then
+      printf '; Doc-Reviewed-By: anonymous\n'
+    else
+      printf 'ack:recorded\nmodule-global\nfunctions:1,types:0,first-fn:main\nDoc-Reviewed-By: anonymous\n'
+    fi
+    ;;
+  doc-check)
+    if [[ "${LSHARP_DISABLE_EMBEDDED_COMPONENT:-0}" == "1" ]]; then
+      echo "LSHARP_PATH required when embedded component is disabled" >&2
+      exit 1
+    fi
+    if [[ "${2:-}" == "--strict" ]] || [[ "${3:-}" == "--strict" ]]; then
+      if grep -q '; Doc-Review-Status: Passed' "${2:-${1:-}}" 2>/dev/null && grep -q '; Doc-Reviewed-By: anonymous' "${2:-${1:-}}" 2>/dev/null; then
+        printf 'status:ok\nmodule-global\nfunctions:1,types:0,first-fn:main\nDoc-Review-Status: Passed\nDoc-Reviewed-By: anonymous\n'
+      else
+        echo 'error: invalid doc trailer: expected trailing comment lines' >&2
+        exit 1
+      fi
+    else
+      printf 'status:ok\nmodule-global\nfunctions:1,types:0,first-fn:main\nDoc-Review-Status: Passed\nDoc-Reviewed-By: anonymous\n'
+    fi
+    ;;
+  doc)
+    json=0
+    out=""
+    shift
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --json)
+          json=1
+          shift
+          ;;
+        -o|--output)
+          out="$2"
+          shift 2
+          ;;
+        *)
+          shift
+          ;;
+      esac
+    done
+    if [[ "$json" == "1" ]]; then
+      printf '{"package":"fixture"}\n' > "${out:?missing output path}"
+    else
+      printf '<html><body>fixture doc</body></html>\n' > "${out:?missing output path}"
+    fi
     ;;
   lsp)
     echo "lsp help"
@@ -2686,6 +2968,26 @@ esac
         .permissions();
     perms.set_mode(0o755);
     std::fs::set_permissions(&fake_lsharp, perms).expect("fake lsharp permission の設定に失敗");
+
+    let fake_lsp = archive_root.join("lsharp-lsp");
+    std::fs::write(
+        &fake_lsp,
+        r#"#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "--version" ]]; then
+  echo "lsharp-lsp 0.0.0-test"
+else
+  echo "lsharp-lsp help"
+fi
+"#,
+    )
+    .expect("fake lsharp-lsp の書き込みに失敗");
+    let mut lsp_perms = std::fs::metadata(&fake_lsp)
+        .expect("fake lsharp-lsp metadata の取得に失敗")
+        .permissions();
+    lsp_perms.set_mode(0o755);
+    std::fs::set_permissions(&fake_lsp, lsp_perms)
+        .expect("fake lsharp-lsp permission の設定に失敗");
 
     std::fs::write(archive_root.join("README.md"), "# fixture\n").expect("README fixture 書き込み失敗");
     std::fs::write(archive_root.join("LICENSE"), "fixture license\n").expect("LICENSE fixture 書き込み失敗");

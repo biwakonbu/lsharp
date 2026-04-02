@@ -1,0 +1,38 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/didOpen",
+    "params": {
+      "sourceBytes": 58,
+      "uri": 200
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "method": "textDocument/publishDiagnostics",
+    "params": {
+      "diagnostics": [
+        {
+          "col": 1,
+          "line": 1,
+          "messageHash": 1,
+          "rule": 1,
+          "severity": 1,
+          "source": 2
+        }
+      ],
+      "uri": 200
+    }
+  },
+  {
+    "id": 192,
+    "jsonrpc": "2.0",
+    "result": [
+      [
+        "mid-val",
+        3,
+        "mid-val"
+      ]
+    ]
+  }
+]

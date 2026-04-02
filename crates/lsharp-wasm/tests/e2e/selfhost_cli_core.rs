@@ -1,6 +1,9 @@
 use super::support::*;
 use serde_json::Value;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static CLI_TEST_FIXTURE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 fn lsp_stdio_snapshot(name: &str) -> Vec<Value> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -76,6 +79,147 @@ fn cli_text_snapshot(name: &str) -> String {
 fn assert_cli_text_snapshot(output: &str, snapshot_name: &str, message: &str) {
     let expected = cli_text_snapshot(snapshot_name);
     assert_eq!(output, expected, "{}", message);
+}
+
+fn doctools_json_snapshot(name: &str) -> Value {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/snapshots/doctools")
+        .join(name);
+    let snapshot = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("doctools snapshot 読み込み失敗 {}: {}", path.display(), e));
+    serde_json::from_str(&snapshot)
+        .unwrap_or_else(|e| panic!("doctools snapshot JSON parse 失敗 {}: {}", path.display(), e))
+}
+
+fn cli_test_fixture_dir(prefix: &str) -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "lsharp_test_cli_core_{}_{}_{}",
+        prefix,
+        std::process::id(),
+        CLI_TEST_FIXTURE_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ))
+}
+
+fn write_cli_fixture_files(dir: &std::path::Path, files: &[(&str, &str)]) {
+    let _ = std::fs::remove_dir_all(dir);
+    std::fs::create_dir_all(dir).expect("fixture directory の作成に失敗");
+    for (relative, source) in files {
+        let path = dir.join(relative);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .unwrap_or_else(|e| panic!("fixture parent の作成に失敗 {}: {}", parent.display(), e));
+        }
+        std::fs::write(&path, source)
+            .unwrap_or_else(|e| panic!("fixture file の書き込みに失敗 {}: {}", path.display(), e));
+    }
+}
+
+fn cli_multifile_nested_fixture_files() -> [(&'static str, &'static str); 3] {
+    [
+        (
+            "Support/Base.ls",
+            "(module Support.Base)\n(defn base-val [] 10)",
+        ),
+        (
+            "Support/Mid.ls",
+            "(module Support.Mid)\n(import Support.Base)\n(defn mid-val [] (* (base-val) 2))",
+        ),
+        (
+            "main.ls",
+            "(module Main)\n(import Support.Mid)\n(defn main [] (mid-val))",
+        ),
+    ]
+}
+
+fn cli_lsp_nested_fixture_files() -> [(&'static str, &'static str); 3] {
+    [
+        (
+            "src/Support/Base.ls",
+            "(module Support.Base) (defn base-val [] 10)",
+        ),
+        (
+            "src/Support/Mid.ls",
+            "(module Support.Mid) (import Support.Base) (defn mid-val [] (base-val))",
+        ),
+        (
+            "src/Main.ls",
+            "(module Main) (import Support.Mid) (defn main [] (mid-val))",
+        ),
+    ]
+}
+
+fn make_lsp_did_open_with_path(uri: u32, path: &str, source: &str) -> String {
+    format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":{},"path":"{}","source":"{}"}}}}"#,
+        uri, path, source
+    )
+}
+
+fn lsp_frame(body: &str) -> String {
+    format!("Content-Length: {}\r\n\r\n{}", body.len(), body)
+}
+
+fn run_lsp_stdio_with_dir(stdin: &str, dir: &std::path::Path) -> String {
+    let wasm = compile_only(selfhost_cli_runtime_bundle());
+    lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_args_and_stdin(
+        &wasm,
+        Some(dir),
+        &["lsp", "--stdio"],
+        stdin,
+    )
+    .expect("filesystem-backed lsp stdio 実行に失敗")
+}
+
+fn run_lsp_filesystem_snapshot_request(
+    prefix: &str,
+    open_uri: u32,
+    open_path: &str,
+    open_source: &str,
+    request_body: &str,
+) -> String {
+    let dir = cli_test_fixture_dir(prefix);
+    write_cli_fixture_files(&dir, &cli_lsp_nested_fixture_files());
+    let open_body = make_lsp_did_open_with_path(open_uri, open_path, open_source);
+    let stdin = format!("{}{}", lsp_frame(&open_body), lsp_frame(request_body));
+    let output = run_lsp_stdio_with_dir(&stdin, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    output
+}
+
+fn parse_wasm_size_line(line: &str, context: &str) -> i64 {
+    assert!(
+        line.starts_with("wasm-size:"),
+        "{}: wasm-size:<n> 形式であるべき: {:?}",
+        context,
+        line
+    );
+    line["wasm-size:".len()..]
+        .parse()
+        .unwrap_or_else(|e| panic!("{}: wasm size parse 失敗 {:?}: {}", context, line, e))
+}
+
+fn parse_i64_line(line: &str, context: &str) -> i64 {
+    line.parse()
+        .unwrap_or_else(|e| panic!("{}: integer parse 失敗 {:?}: {}", context, line, e))
+}
+
+fn run_cli_multifile_helper_size(dir: &std::path::Path, file_path: &str, target: i64) -> i64 {
+    let harness = format!(
+        r#"
+(defn main []
+  (print (compile-file-wasm-size "{file_path}" {target})))
+"#
+    );
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, dir);
+    parse_i64_line(
+        output
+            .trim()
+            .lines()
+            .next()
+            .expect("compile-file-wasm-size output が必要"),
+        "compile-file-wasm-size helper output",
+    )
 }
 
 /// TEST-CLI-02-C: selfhost/src/App/Cli.ls に repl/lsp/fmt/doc コマンド定義
@@ -643,6 +787,33 @@ fn test_e2e_selfhost_cli_fmt_source_string_literal_snapshot() {
     );
 }
 
+/// TEST-CLI-02-J4: run-fmt-source が defn metadata を canonical 順で保持すること
+#[test]
+fn test_e2e_selfhost_cli_fmt_source_defn_metadata() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-fmt-source "(defn add [x y] :doc \"Add two ints\" :params [(x \"left\") (y \"right\")] :returns \"sum\" :example [(add 1 2)] (+ x y))" 0))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines.len(),
+        2,
+        "run-fmt-source metadata は fmt 出力と success code を返すべき"
+    );
+    assert_eq!(
+        lines[0],
+        "(defn add [x y] :params [(x \"left\") (y \"right\")] :returns \"sum\" :doc \"Add two ints\" :example [(add 1 2)] (+ x y))",
+        "run-fmt-source は defn metadata を canonical 順で返すべき"
+    );
+    assert_eq!(lines[1], "0", "run-fmt-source は success=0 を返すべき");
+}
+
 /// TEST-CLI-02-K: selfhost/src/App/Cli.ls の run-fmt が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_fmt_file_handler() {
@@ -784,6 +955,47 @@ fn test_e2e_selfhost_cli_compile_file_handler() {
     );
 }
 
+/// TEST-CLI-02-M1B: selfhost/src/App/Cli.ls の run-compile は nested import fixture を import-aware helper 経由で解決すること
+#[test]
+fn test_e2e_selfhost_cli_compile_file_handler_multifile_nested_imports() {
+    let dir = cli_test_fixture_dir("compile_multifile_nested");
+    write_cli_fixture_files(&dir, &cli_multifile_nested_fixture_files());
+
+    let harness = r#"
+(defn main []
+  (let [src (read-file "main.ls")]
+    (do
+      (print (run-compile "main.ls" 0))
+      (print (compile-file-wasm-size "main.ls" 0))
+      (print (run-compile-source src 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 5,
+        "run-compile multi-file nested fixture 出力が不足: {:?}",
+        lines
+    );
+    let file_size = parse_wasm_size_line(lines[0], "run-compile multi-file nested fixture");
+    let helper_size = parse_i64_line(lines[2], "compile-file-wasm-size nested fixture");
+    let source_only_size = parse_wasm_size_line(lines[3], "run-compile-source nested fixture baseline");
+    assert_eq!(lines[1], "0", "run-compile は success=0 を返すべき");
+    assert_eq!(lines[4], "0", "run-compile-source baseline は success=0 を返すべき");
+    assert!(
+        file_size == helper_size,
+        "run-compile は import-aware helper と同じ wasm-size を返すべき: cli={file_size}, helper={helper_size}"
+    );
+    assert!(
+        helper_size > source_only_size,
+        "compile-file-wasm-size helper は source-only baseline より大きい wasm-size を返すべき: helper={helper_size}, source-only={source_only_size}"
+    );
+}
+
 /// TEST-CLI-02-M2: selfhost/src/App/Cli.ls の run-build が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_build_file_handler() {
@@ -819,6 +1031,47 @@ fn test_e2e_selfhost_cli_build_file_handler() {
         wasm_size
     );
     assert_eq!(lines[1], "0", "run-build の終了コードは success であるべき");
+}
+
+/// TEST-CLI-02-M2B: selfhost/src/App/Cli.ls の run-build は nested import fixture を import-aware helper 経由で解決すること
+#[test]
+fn test_e2e_selfhost_cli_build_file_handler_multifile_nested_imports() {
+    let dir = cli_test_fixture_dir("build_multifile_nested");
+    write_cli_fixture_files(&dir, &cli_multifile_nested_fixture_files());
+
+    let harness = r#"
+(defn main []
+  (let [src (read-file "main.ls")]
+    (do
+      (print (run-build "main.ls" 0))
+      (print (compile-file-wasm-size "main.ls" 0))
+      (print (run-compile-source src 0))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 5,
+        "run-build multi-file nested fixture 出力が不足: {:?}",
+        lines
+    );
+    let file_size = parse_wasm_size_line(lines[0], "run-build multi-file nested fixture");
+    let helper_size = parse_i64_line(lines[2], "compile-file-wasm-size nested fixture");
+    let source_only_size = parse_wasm_size_line(lines[3], "run-compile-source nested fixture baseline");
+    assert_eq!(lines[1], "0", "run-build は success=0 を返すべき");
+    assert_eq!(lines[4], "0", "run-compile-source baseline は success=0 を返すべき");
+    assert!(
+        file_size == helper_size,
+        "run-build は import-aware helper と同じ wasm-size を返すべき: cli={file_size}, helper={helper_size}"
+    );
+    assert!(
+        helper_size > source_only_size,
+        "compile-file-wasm-size helper は source-only baseline より大きい wasm-size を返すべき: helper={helper_size}, source-only={source_only_size}"
+    );
 }
 
 /// TEST-CLI-02-M3: selfhost/src/App/Cli.ls の run-install が install plan text を返せること
@@ -966,6 +1219,51 @@ fn test_e2e_selfhost_cli_lsp_transport_unknown_method_error() {
     assert_eq!(
         output, expected,
         "run-lsp-transport-request は未知メソッドに Method not found frame を返すべき"
+    );
+}
+
+/// TEST-CLI-02-M8b: selfhost/src/App/Cli.ls の LSP transport helper は shutdown 後 request を error frame にすること
+#[test]
+fn test_e2e_selfhost_cli_lsp_transport_request_after_shutdown_error() {
+    let body = r#"{"jsonrpc":"2.0","id":10,"error":{"code":-32600,"message":"Invalid Request"}}"#;
+    let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+    let harness = r#"
+(defn make-request [id method-id params]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) 2)
+        id)
+      method-id)
+    params))
+
+(defn main []
+  (let [shutdown-request
+          (make-request 9 (lsp-method-shutdown) 0)
+        hover-request
+          (make-request
+            10
+            (lsp-method-hover)
+            (vector-push
+              (vector-push
+                (vector-push (vector-new 3) 42)
+                1)
+              1))
+        requests
+          (vector-push
+            (vector-push (vector-new 2) shutdown-request)
+            hover-request)
+        summary (run-lsp-transport-sequence requests)
+        frames (vector-get summary 0)]
+    (print-string (vector-get frames 1))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+
+    assert_eq!(
+        output, expected,
+        "run-lsp-transport-request は shutdown 後 request を Invalid Request frame で拒否するべき"
     );
 }
 
@@ -1537,6 +1835,501 @@ fn test_e2e_selfhost_cli_lsp_stdio_frame_sequence() {
     );
 }
 
+/// TEST-CLI-02-M12e: didOpen/didChange は parse diagnostics refresh を publishDiagnostics frame で返すこと
+#[test]
+fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_diagnostics_refresh() {
+    let open_payload =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":1}}"#;
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":1,"severity":1,"rule":1001,"line":1,"col":1,"messageHash":0}]}}"#;
+    let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
+    let change_diagnostics =
+        r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
+    let open_frame = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_payload.len(),
+        open_payload,
+        open_diagnostics.len(),
+        open_diagnostics
+    );
+    let change_frame = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        change_payload.len(),
+        change_payload,
+        change_diagnostics.len(),
+        change_diagnostics
+    );
+    let harness = r#"
+(defn make-request [id method-id params]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) 2)
+        id)
+      method-id)
+    params))
+
+(defn main []
+  (let [state (server-state-new)
+        open-params (vector-push (vector-push (vector-new 2) 42) ")")
+        change-params (vector-push (vector-push (vector-new 2) 42) "(defn main [] 0)")
+        open-frame (lsp-transport-dispatch-request state (make-request 0 (lsp-method-did-open) open-params))
+        change-frame (lsp-transport-dispatch-request state (make-request 0 (lsp-method-did-change) change-params))]
+    (do
+      (print-string open-frame)
+      (print-string "\n---\n")
+      (print-string change-frame)
+      (print-string "\n---\n")
+      (print (server-state-request-count state))
+      (print (server-state-source-length state)))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let parts: Vec<&str> = output.split("\n---\n").collect();
+
+    assert_eq!(
+        parts.len(),
+        3,
+        "transport diagnostics refresh output format が不正: {:?}",
+        output
+    );
+    assert_eq!(
+        parts[0], open_frame,
+        "didOpen は parse diagnostics frame を後続させるべき"
+    );
+    assert_eq!(
+        parts[1], change_frame,
+        "didChange は diagnostics clear frame を後続させるべき"
+    );
+    assert_eq!(
+        parts[2].trim().lines().collect::<Vec<_>>(),
+        vec!["2", "16"],
+        "transport diagnostics refresh summary は request-count=2 / latest-source-bytes=16 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-M12f: stdio body parser は spec 寄り didOpen/didChange params でも diagnostics refresh を返すこと
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_diagnostics_refresh()
+{
+    let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":")"}}}"#;
+    let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":42,"version":2},"contentChanges":[{"text":"(defn main [] 0)"}]}}"#;
+    let open_payload =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":1}}"#;
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":1,"severity":1,"rule":1001,"line":1,"col":1,"messageHash":0}]}}"#;
+    let change_payload =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
+    let change_diagnostics =
+        r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
+    let open_frame = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_payload.len(),
+        open_payload,
+        open_diagnostics.len(),
+        open_diagnostics
+    );
+    let change_frame = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        change_payload.len(),
+        change_payload,
+        change_diagnostics.len(),
+        change_diagnostics
+    );
+    let open_body_lsharp = open_body.replace('\\', "\\\\").replace('"', "\\\"");
+    let change_body_lsharp = change_body.replace('\\', "\\\\").replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [state (server-state-new)
+        open-body "{open_body_lsharp}"
+        change-body "{change_body_lsharp}"
+        open-frame (lsp-transport-dispatch-request state (lsp-stdio-message-request (lsp-stdio-body-message open-body)))
+        change-frame (lsp-transport-dispatch-request state (lsp-stdio-message-request (lsp-stdio-body-message change-body)))]
+    (do
+      (print-string open-frame)
+      (print-string "\n---\n")
+      (print-string change-frame)
+      (print-string "\n---\n")
+      (print (server-state-request-count state))
+      (print (server-state-source-length state)))))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let parts: Vec<&str> = output.split("\n---\n").collect();
+
+    assert_eq!(
+        parts.len(),
+        3,
+        "spec document params diagnostics refresh output format が不正: {:?}",
+        output
+    );
+    assert_eq!(
+        parts[0], open_frame,
+        "spec didOpen params でも parse diagnostics frame を後続させるべき"
+    );
+    assert_eq!(
+        parts[1], change_frame,
+        "spec didChange params でも diagnostics clear frame を後続させるべき"
+    );
+    assert_eq!(
+        parts[2].trim().lines().collect::<Vec<_>>(),
+        vec!["2", "16"],
+        "spec document params summary は request-count=2 / latest-source-bytes=16 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-M12f2: didOpen/didChange は type diagnostics refresh を publishDiagnostics frame で返すこと
+#[test]
+fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_type_diagnostics_refresh() {
+    let open_payload =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":26}}"#;
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":2,"severity":1,"rule":2,"line":1,"col":1,"messageHash":2}]}}"#;
+    let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
+    let change_diagnostics =
+        r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
+    let open_frame = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_payload.len(),
+        open_payload,
+        open_diagnostics.len(),
+        open_diagnostics
+    );
+    let change_frame = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        change_payload.len(),
+        change_payload,
+        change_diagnostics.len(),
+        change_diagnostics
+    );
+    let harness = r#"
+(defn make-request [id method-id params]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) 2)
+        id)
+      method-id)
+    params))
+
+(defn main []
+  (let [state (server-state-new)
+        open-params (vector-push (vector-push (vector-new 2) 42) "(defn main [] (if 42 1 0))")
+        change-params (vector-push (vector-push (vector-new 2) 42) "(defn main [] 0)")
+        open-frame (lsp-transport-dispatch-request state (make-request 0 (lsp-method-did-open) open-params))
+        change-frame (lsp-transport-dispatch-request state (make-request 0 (lsp-method-did-change) change-params))]
+    (do
+      (print-string open-frame)
+      (print-string "\n---\n")
+      (print-string change-frame)
+      (print-string "\n---\n")
+      (print (server-state-request-count state))
+      (print (server-state-source-length state)))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let parts: Vec<&str> = output.split("\n---\n").collect();
+
+    assert_eq!(
+        parts.len(),
+        3,
+        "transport type diagnostics refresh output format が不正: {:?}",
+        output
+    );
+    assert_eq!(
+        parts[0], open_frame,
+        "didOpen は type diagnostics frame を後続させるべき"
+    );
+    assert_eq!(
+        parts[1], change_frame,
+        "didChange は type diagnostics clear frame を後続させるべき"
+    );
+    assert_eq!(
+        parts[2].trim().lines().collect::<Vec<_>>(),
+        vec!["2", "16"],
+        "transport type diagnostics refresh summary は request-count=2 / latest-source-bytes=16 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-M12f3: didOpen/didChange は lint diagnostics refresh を publishDiagnostics frame で返すこと
+#[test]
+fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_lint_diagnostics_refresh() {
+    let open_payload =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":29}}"#;
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":3,"severity":2,"rule":100,"line":1,"col":1,"messageHash":100}]}}"#;
+    let change_payload = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
+    let change_diagnostics =
+        r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
+    let open_frame = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_payload.len(),
+        open_payload,
+        open_diagnostics.len(),
+        open_diagnostics
+    );
+    let change_frame = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        change_payload.len(),
+        change_payload,
+        change_diagnostics.len(),
+        change_diagnostics
+    );
+    let harness = r#"
+(defn make-request [id method-id params]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 4) 2)
+        id)
+      method-id)
+    params))
+
+(defn main []
+  (let [state (server-state-new)
+        open-params (vector-push (vector-push (vector-new 2) 42) "(defn main [] (let [x 42] 0))")
+        change-params (vector-push (vector-push (vector-new 2) 42) "(defn main [] 0)")
+        open-frame (lsp-transport-dispatch-request state (make-request 0 (lsp-method-did-open) open-params))
+        change-frame (lsp-transport-dispatch-request state (make-request 0 (lsp-method-did-change) change-params))]
+    (do
+      (print-string open-frame)
+      (print-string "\n---\n")
+      (print-string change-frame)
+      (print-string "\n---\n")
+      (print (server-state-request-count state))
+      (print (server-state-source-length state)))))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let parts: Vec<&str> = output.split("\n---\n").collect();
+
+    assert_eq!(
+        parts.len(),
+        3,
+        "transport lint diagnostics refresh output format が不正: {:?}",
+        output
+    );
+    assert_eq!(
+        parts[0], open_frame,
+        "didOpen は lint diagnostics frame を後続させるべき"
+    );
+    assert_eq!(
+        parts[1], change_frame,
+        "didChange は lint diagnostics clear frame を後続させるべき"
+    );
+    assert_eq!(
+        parts[2].trim().lines().collect::<Vec<_>>(),
+        vec!["2", "16"],
+        "transport lint diagnostics refresh summary は request-count=2 / latest-source-bytes=16 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-M12f4: stdio body parser は spec 寄り didOpen/didChange params でも type diagnostics refresh を返すこと
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_type_diagnostics_refresh()
+{
+    let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":"(defn main [] (if 42 1 0))"}}}"#;
+    let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":42,"version":2},"contentChanges":[{"text":"(defn main [] 0)"}]}}"#;
+    let open_payload =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":26}}"#;
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":2,"severity":1,"rule":2,"line":1,"col":1,"messageHash":2}]}}"#;
+    let change_payload =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
+    let change_diagnostics =
+        r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
+    let open_frame = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_payload.len(),
+        open_payload,
+        open_diagnostics.len(),
+        open_diagnostics
+    );
+    let change_frame = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        change_payload.len(),
+        change_payload,
+        change_diagnostics.len(),
+        change_diagnostics
+    );
+    let open_body_lsharp = open_body.replace('\\', "\\\\").replace('"', "\\\"");
+    let change_body_lsharp = change_body.replace('\\', "\\\\").replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [state (server-state-new)
+        open-body "{open_body_lsharp}"
+        change-body "{change_body_lsharp}"
+        open-frame (lsp-transport-dispatch-request state (lsp-stdio-message-request (lsp-stdio-body-message open-body)))
+        change-frame (lsp-transport-dispatch-request state (lsp-stdio-message-request (lsp-stdio-body-message change-body)))]
+    (do
+      (print-string open-frame)
+      (print-string "\n---\n")
+      (print-string change-frame)
+      (print-string "\n---\n")
+      (print (server-state-request-count state))
+      (print (server-state-source-length state)))))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let parts: Vec<&str> = output.split("\n---\n").collect();
+
+    assert_eq!(
+        parts.len(),
+        3,
+        "spec document params type diagnostics refresh output format が不正: {:?}",
+        output
+    );
+    assert_eq!(
+        parts[0], open_frame,
+        "spec didOpen params でも type diagnostics frame を後続させるべき"
+    );
+    assert_eq!(
+        parts[1], change_frame,
+        "spec didChange params でも type diagnostics clear frame を後続させるべき"
+    );
+    assert_eq!(
+        parts[2].trim().lines().collect::<Vec<_>>(),
+        vec!["2", "16"],
+        "spec document params type summary は request-count=2 / latest-source-bytes=16 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-M12f5: stdio body parser は spec 寄り didOpen/didChange params でも lint diagnostics refresh を返すこと
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_lint_diagnostics_refresh()
+{
+    let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":"(defn main [] (let [x 42] 0))"}}}"#;
+    let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":42,"version":2},"contentChanges":[{"text":"(defn main [] 0)"}]}}"#;
+    let open_payload =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":29}}"#;
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":3,"severity":2,"rule":100,"line":1,"col":1,"messageHash":100}]}}"#;
+    let change_payload =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"sourceBytes":16}}"#;
+    let change_diagnostics =
+        r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[]}}"#;
+    let open_frame = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_payload.len(),
+        open_payload,
+        open_diagnostics.len(),
+        open_diagnostics
+    );
+    let change_frame = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        change_payload.len(),
+        change_payload,
+        change_diagnostics.len(),
+        change_diagnostics
+    );
+    let open_body_lsharp = open_body.replace('\\', "\\\\").replace('"', "\\\"");
+    let change_body_lsharp = change_body.replace('\\', "\\\\").replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [state (server-state-new)
+        open-body "{open_body_lsharp}"
+        change-body "{change_body_lsharp}"
+        open-frame (lsp-transport-dispatch-request state (lsp-stdio-message-request (lsp-stdio-body-message open-body)))
+        change-frame (lsp-transport-dispatch-request state (lsp-stdio-message-request (lsp-stdio-body-message change-body)))]
+    (do
+      (print-string open-frame)
+      (print-string "\n---\n")
+      (print-string change-frame)
+      (print-string "\n---\n")
+      (print (server-state-request-count state))
+      (print (server-state-source-length state)))))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let parts: Vec<&str> = output.split("\n---\n").collect();
+
+    assert_eq!(
+        parts.len(),
+        3,
+        "spec document params lint diagnostics refresh output format が不正: {:?}",
+        output
+    );
+    assert_eq!(
+        parts[0], open_frame,
+        "spec didOpen params でも lint diagnostics frame を後続させるべき"
+    );
+    assert_eq!(
+        parts[1], change_frame,
+        "spec didChange params でも lint diagnostics clear frame を後続させるべき"
+    );
+    assert_eq!(
+        parts[2].trim().lines().collect::<Vec<_>>(),
+        vec!["2", "16"],
+        "spec document params lint summary は request-count=2 / latest-source-bytes=16 を返すべき"
+    );
+}
+
+/// TEST-CLI-02-M12g: stdio body parser は spec 寄り hover params の position.character を col として読むこと
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_body_hover_spec_position_character_params() {
+    let hover_body = r#"{"jsonrpc":"2.0","id":66,"method":"textDocument/hover","params":{"textDocument":{"uri":42},"position":{"line":1,"character":38}}}"#;
+    let hover_body_lsharp = hover_body.replace('\\', "\\\\").replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [msg (lsp-stdio-body-message "{hover_body_lsharp}")
+        params (vector-get msg 3)]
+    (do
+      (print (vector-get params 0))
+      (print (vector-get params 1))
+      (print (vector-get params 2)))))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["42", "1", "38"],
+        "spec hover params は [uri,line,col]=[42,1,38] として読まれるべき: {:?}",
+        lines
+    );
+}
+
+/// TEST-CLI-02-M12h: stdio body parser は spec 寄り rename params の position.character と newName を読むこと
+#[test]
+fn test_e2e_selfhost_cli_lsp_stdio_body_rename_spec_position_character_params() {
+    let rename_body = r#"{"jsonrpc":"2.0","id":70,"method":"textDocument/rename","params":{"textDocument":{"uri":42},"position":{"line":1,"character":38},"newName":"cube"}}"#;
+    let rename_body_lsharp = rename_body.replace('\\', "\\\\").replace('"', "\\\"");
+    let harness = format!(
+        r#"
+(defn main []
+  (let [msg (lsp-stdio-body-message "{rename_body_lsharp}")
+        params (vector-get msg 3)]
+    (do
+      (print (vector-get params 0))
+      (print (vector-get params 1))
+      (print (vector-get params 2))
+      (print-string (vector-get params 4))
+      (print-string "\n"))))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["42", "1", "38", "cube"],
+        "spec rename params は [uri,line,col,newName]=[42,1,38,cube] として読まれるべき: {:?}",
+        lines
+    );
+}
+
 /// TEST-CLI-02-M12d: raw stdio wire helper が長めの open/hover/change/completion/formatting 系列を最後まで捌けること
 #[test]
 fn test_e2e_selfhost_cli_lsp_stdio_wire_repeated_sequence() {
@@ -1968,6 +2761,30 @@ fn test_e2e_selfhost_cli_review_source_empty_do() {
     );
 }
 
+/// TEST-CLI-02-Q3: selfhost/src/App/Cli.ls の run-review-source が schema-object JSON を返せること
+#[test]
+fn test_e2e_selfhost_cli_review_source_json_snapshot() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-review-source "(defn first [] (let [unused 42] 0)) (defn second [] (do))" 1))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    let actual: Value =
+        serde_json::from_str(lines[0]).expect("run-review-source json line は valid JSON");
+
+    assert_eq!(
+        actual,
+        doctools_json_snapshot("review-schema-object.json"),
+        "run-review-source json output は representative review schema snapshot と一致するべき"
+    );
+    assert_eq!(lines[1], "0", "run-review-source json mode は success=0 を返すべき");
+}
+
 /// TEST-CLI-02-R: selfhost/src/App/Cli.ls の run-doc-source が DocTools.generate を呼べること
 #[test]
 fn test_e2e_selfhost_cli_doc_source_core() {
@@ -2007,6 +2824,30 @@ fn test_e2e_selfhost_cli_doc_source_snapshot() {
         "doc-source-basic.txt",
         "run-doc-source output は representative text snapshot と一致するべき",
     );
+}
+
+/// TEST-CLI-02-R3: selfhost/src/App/Cli.ls の run-doc-source が schema-object JSON を返せること
+#[test]
+fn test_e2e_selfhost_cli_doc_source_json_snapshot() {
+    let harness = r#"
+(defn main []
+  (do
+    (print (run-doc-source "(module Demo (defn add [x y] :params [(x \"left\") (y \"right\")] :returns \"sum\" :doc \"Add two ints\" :example [(add 1 2)] (+ x y)) (type Doc Int) (type-alias Alias Int))" 1))
+    0))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    let actual: Value =
+        serde_json::from_str(lines[0]).expect("run-doc-source json line は valid JSON");
+
+    assert_eq!(
+        actual,
+        doctools_json_snapshot("doc-output-schema-object.json"),
+        "run-doc-source json output は representative doc-output schema snapshot と一致するべき"
+    );
+    assert_eq!(lines[1], "0", "run-doc-source json mode は success=0 を返すべき");
 }
 
 /// TEST-CLI-02-S: selfhost/src/App/Cli.ls の run-doc が file-path から source を読めること
@@ -2575,6 +3416,32 @@ fn test_e2e_selfhost_cli_main_with_args_compile_file() {
     );
 }
 
+/// TEST-CLI-02-AF2B: actual Cli main は nested import fixture の compile を import-aware helper と同じ summary で返すこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_compile_file_multifile_nested_imports() {
+    let dir = cli_test_fixture_dir("main_compile_multifile_nested");
+    write_cli_fixture_files(&dir, &cli_multifile_nested_fixture_files());
+    let expected_size = run_cli_multifile_helper_size(&dir, "main.ls", 0);
+
+    let output = compile_and_run_with_dir_and_args(
+        selfhost_cli_runtime_bundle(),
+        &dir,
+        &["compile", "main.ls"],
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let output_line = output
+        .trim()
+        .lines()
+        .next()
+        .expect("Cli main compile multi-file output が必要");
+    let output_size = parse_wasm_size_line(output_line, "Cli main compile multi-file nested fixture");
+    assert!(
+        output_size == expected_size,
+        "Cli main compile は import-aware helper と同じ wasm-size を返すべき: cli={output_size}, helper={expected_size}"
+    );
+}
+
 /// TEST-CLI-02-AF3: actual Cli main は argv 経由で build file command を処理できること
 #[test]
 fn test_e2e_selfhost_cli_main_with_args_build_file() {
@@ -2602,6 +3469,32 @@ fn test_e2e_selfhost_cli_main_with_args_build_file() {
         lines[0].starts_with("wasm-size:"),
         "Cli main build argv は wasm-size:<n> を返すべき: {:?}",
         lines
+    );
+}
+
+/// TEST-CLI-02-AF3B: actual Cli main は nested import fixture の build を import-aware helper と同じ summary で返すこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_args_build_file_multifile_nested_imports() {
+    let dir = cli_test_fixture_dir("main_build_multifile_nested");
+    write_cli_fixture_files(&dir, &cli_multifile_nested_fixture_files());
+    let expected_size = run_cli_multifile_helper_size(&dir, "main.ls", 0);
+
+    let output = compile_and_run_with_dir_and_args(
+        selfhost_cli_runtime_bundle(),
+        &dir,
+        &["build", "main.ls"],
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let output_line = output
+        .trim()
+        .lines()
+        .next()
+        .expect("Cli main build multi-file output が必要");
+    let output_size = parse_wasm_size_line(output_line, "Cli main build multi-file nested fixture");
+    assert!(
+        output_size == expected_size,
+        "Cli main build は import-aware helper と同じ wasm-size を返すべき: cli={output_size}, helper={expected_size}"
     );
 }
 
@@ -3201,6 +4094,42 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_open_document() {
     );
 }
 
+/// TEST-CLI-02-AN9b: actual Cli main は spec 寄り hover params でも open document state から処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_open_document_spec_params() {
+    let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn helper [x] x) (defn main [] (helper 1))"}}"#;
+    let hover_body = r#"{"jsonrpc":"2.0","id":66,"method":"textDocument/hover","params":{"textDocument":{"uri":42},"position":{"line":1,"character":38}}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        hover_body.len(),
+        hover_body
+    );
+    let open_response =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":45}}"#;
+    let hover_response =
+        r#"{"jsonrpc":"2.0","id":66,"result":{"range":[1,36,1,42],"contents":"defn helper"}}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_response.len(),
+        open_response,
+        hover_response.len(),
+        hover_response
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は spec 寄り hover params でも open document state を使うべき"
+    );
+}
+
 /// TEST-CLI-02-AN10: actual Cli main は `lsp --stdio` で didOpen 後に source なし definition request も open document state から処理できること
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_open_document() {
@@ -3243,6 +4172,47 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_open_document() {
     );
 }
 
+/// TEST-CLI-02-AN10b: actual Cli main は spec 寄り definition params でも open document state から処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_open_document_spec_params() {
+    let source = "(defn helper [x] x) (defn main [] (helper 1))";
+    let open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        source
+    );
+    let definition_body = r#"{"jsonrpc":"2.0","id":67,"method":"textDocument/definition","params":{"textDocument":{"uri":42},"position":{"line":1,"character":38}}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        definition_body.len(),
+        definition_body
+    );
+    let open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        source.len()
+    );
+    let definition_response = r#"{"jsonrpc":"2.0","id":67,"result":[42,1,7]}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_response.len(),
+        open_response,
+        definition_response.len(),
+        definition_response
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は spec 寄り definition params でも open document state を使うべき"
+    );
+}
+
 /// TEST-CLI-02-AN11: actual Cli main は `lsp --stdio` で didOpen 後に source なし references request も open document state から処理できること
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_open_document() {
@@ -3264,12 +4234,15 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_open_document() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         source.len()
     );
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":1,"severity":1,"rule":1001,"line":1,"col":56,"messageHash":0}]}}"#;
     let references_response =
         r#"{"jsonrpc":"2.0","id":68,"result":[[42,1,7],[42,1,36],[42,1,47]]}"#;
     let expected = format!(
-        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
         open_response,
+        open_diagnostics.len(),
+        open_diagnostics,
         references_response.len(),
         references_response
     );
@@ -3283,6 +4256,51 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_open_document() {
     assert_eq!(
         output, expected,
         "Cli main は didOpen 後の source なし references で open document state を使うべき"
+    );
+}
+
+/// TEST-CLI-02-AN11b: actual Cli main は spec 寄り references params でも open document state から処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_open_document_spec_params() {
+    let source = "(defn square [x] x) (defn main [] (square 1) (square 2))";
+    let open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        source
+    );
+    let references_body = r#"{"jsonrpc":"2.0","id":68,"method":"textDocument/references","params":{"textDocument":{"uri":42},"position":{"line":1,"character":38}}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        references_body.len(),
+        references_body
+    );
+    let open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        source.len()
+    );
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":1,"severity":1,"rule":1001,"line":1,"col":56,"messageHash":0}]}}"#;
+    let references_response =
+        r#"{"jsonrpc":"2.0","id":68,"result":[[42,1,7],[42,1,36],[42,1,47]]}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_response.len(),
+        open_response,
+        open_diagnostics.len(),
+        open_diagnostics,
+        references_response.len(),
+        references_response
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は spec 寄り references params でも open document state を使うべき"
     );
 }
 
@@ -3350,12 +4368,15 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_open_document() {
         r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
         source.len()
     );
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":1,"severity":1,"rule":1001,"line":1,"col":56,"messageHash":0}]}}"#;
     let rename_response =
         r#"{"jsonrpc":"2.0","id":70,"result":[[42,[[1,7,1,13,"cube"],[1,36,1,42,"cube"],[1,47,1,53,"cube"]]]]}"#;
     let expected = format!(
-        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
         open_response.len(),
         open_response,
+        open_diagnostics.len(),
+        open_diagnostics,
         rename_response.len(),
         rename_response
     );
@@ -3369,6 +4390,51 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_open_document() {
     assert_eq!(
         output, expected,
         "Cli main は didOpen 後の source なし rename で open document state を使うべき"
+    );
+}
+
+/// TEST-CLI-02-AN13b: actual Cli main は spec 寄り rename params でも open document state から処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_open_document_spec_params() {
+    let source = "(defn square [x] x) (defn main [] (square 1) (square 2))";
+    let open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        source
+    );
+    let rename_body = r#"{"jsonrpc":"2.0","id":70,"method":"textDocument/rename","params":{"textDocument":{"uri":42},"position":{"line":1,"character":38},"newName":"cube"}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        rename_body.len(),
+        rename_body
+    );
+    let open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        source.len()
+    );
+    let open_diagnostics = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":1,"severity":1,"rule":1001,"line":1,"col":56,"messageHash":0}]}}"#;
+    let rename_response =
+        r#"{"jsonrpc":"2.0","id":70,"result":[[42,[[1,7,1,13,"cube"],[1,36,1,42,"cube"],[1,47,1,53,"cube"]]]]}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_response.len(),
+        open_response,
+        open_diagnostics.len(),
+        open_diagnostics,
+        rename_response.len(),
+        rename_response
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は spec 寄り rename params でも open document state を使うべき"
     );
 }
 
@@ -3411,6 +4477,226 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_open_document() {
     assert_eq!(
         output, expected,
         "Cli main は didOpen 後の source なし completion で open document state を使うべき"
+    );
+}
+
+/// TEST-CLI-02-AN14b: actual Cli main は spec 寄り completion params でも open document state から処理できること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_open_document_spec_params() {
+    let source = "(defn helper [] 1) (he)";
+    let open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        source
+    );
+    let completion_body = r#"{"jsonrpc":"2.0","id":71,"method":"textDocument/completion","params":{"textDocument":{"uri":42},"position":{"line":1,"character":23}}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        completion_body.len(),
+        completion_body
+    );
+    let open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        source.len()
+    );
+    let completion_response = r#"{"jsonrpc":"2.0","id":71,"result":[["helper",3,"helper"]]}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_response.len(),
+        open_response,
+        completion_response.len(),
+        completion_response
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は spec 寄り completion params でも open document state を使うべき"
+    );
+}
+
+/// TEST-CLI-02-AN14c: actual Cli main は spec 寄り didOpen `textDocument.text` の
+/// escaped quote を含む source でも formatting へ正しく渡せること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_spec_document_text_with_escaped_quote(
+) {
+    let source = r#"(defn main [] "a\"b")"#;
+    let open_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": 42,
+                "languageId": "lsharp",
+                "version": 1,
+                "text": source
+            }
+        }
+    })
+    .to_string();
+    let formatting_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 169,
+        "method": "textDocument/formatting",
+        "params": {
+            "uri": 42
+        }
+    })
+    .to_string();
+    let stdin = format!(
+        "{}{}",
+        lsp_frame(&open_body),
+        lsp_frame(&formatting_body)
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    let formatted = format!("{source}\n");
+    let frames = parse_lsp_stdio_frames(&output);
+    let expected = vec![
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "uri": 42,
+                "sourceBytes": source.len()
+            }
+        }),
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 169,
+            "result": [[1, 1, 1, source.len() + 1, formatted]]
+        }),
+    ];
+
+    assert_eq!(
+        frames, expected,
+        "Cli main は escaped quote を含む spec document text でも formatting へ同じ source を渡すべき"
+    );
+}
+
+/// TEST-CLI-02-AN14d: actual Cli main は spec 寄り didOpen `textDocument.text` の
+/// unicode escaped quote (`\u0022`) でも formatting へ正しく渡せること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_spec_document_text_with_unicode_escaped_quote(
+) {
+    let source = r#"(defn main [] "ab")"#;
+    let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":"(defn main [] \u0022ab\u0022)"}}}"#;
+    let formatting_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 171,
+        "method": "textDocument/formatting",
+        "params": {
+            "uri": 42
+        }
+    })
+    .to_string();
+    let stdin = format!(
+        "{}{}",
+        lsp_frame(open_body),
+        lsp_frame(&formatting_body)
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    let formatted = format!("{source}\n");
+    let frames = parse_lsp_stdio_frames(&output);
+    let expected = vec![
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "uri": 42,
+                "sourceBytes": source.len()
+            }
+        }),
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 171,
+            "result": [[1, 1, 1, source.len() + 1, formatted]]
+        }),
+    ];
+
+    assert_eq!(
+        frames, expected,
+        "Cli main は unicode escaped quote を含む spec document text でも formatting へ同じ source を渡すべき"
+    );
+}
+
+/// TEST-CLI-02-AN14e: actual Cli main は didOpen 後の formatting で defn metadata を保持すること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_preserves_defn_metadata() {
+    let source =
+        r#"(defn add [x y] :doc "Add two ints" :params [(x "left") (y "right")] :returns "sum" :example [(add 1 2)] (+ x y))"#;
+    let open_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": 42,
+                "languageId": "lsharp",
+                "version": 1,
+                "text": source
+            }
+        }
+    })
+    .to_string();
+    let formatting_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 173,
+        "method": "textDocument/formatting",
+        "params": {
+            "uri": 42
+        }
+    })
+    .to_string();
+    let stdin = format!(
+        "{}{}",
+        lsp_frame(&open_body),
+        lsp_frame(&formatting_body)
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    let formatted = "(defn add [x y] :params [(x \"left\") (y \"right\")] :returns \"sum\" :doc \"Add two ints\" :example [(add 1 2)] (+ x y))\n";
+    let frames = parse_lsp_stdio_frames(&output);
+    let expected = vec![
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "uri": 42,
+                "sourceBytes": source.len()
+            }
+        }),
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 173,
+            "result": [[1, 1, 1, source.len() + 1, formatted]]
+        }),
+    ];
+
+    assert_eq!(
+        frames, expected,
+        "Cli main は LSP formatting でも defn metadata を canonical 順で保持するべき"
     );
 }
 
@@ -3577,6 +4863,181 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_changed_document() 
     assert_eq!(
         output, expected,
         "Cli main は didChange 後の source なし completion で最新 document state を使うべき"
+    );
+}
+
+/// TEST-CLI-02-AN17b: actual Cli main は spec 寄り `contentChanges[0].text` の
+/// escaped newline でも didChange 後の最新 source を使うこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_spec_changed_document_with_escaped_newline(
+) {
+    let open_source = "(defn alpha [] 1) (al)";
+    let changed_source = "(defn helper [] 1)\n(he)";
+    let open_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": 42,
+                "languageId": "lsharp",
+                "version": 1,
+                "text": open_source
+            }
+        }
+    })
+    .to_string();
+    let change_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didChange",
+        "params": {
+            "textDocument": {
+                "uri": 42,
+                "version": 2
+            },
+            "contentChanges": [
+                {
+                    "text": changed_source
+                }
+            ]
+        }
+    })
+    .to_string();
+    let completion_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 170,
+        "method": "textDocument/completion",
+        "params": {
+            "textDocument": {
+                "uri": 42
+            },
+            "position": {
+                "line": 2,
+                "character": 4
+            }
+        }
+    })
+    .to_string();
+    let stdin = format!(
+        "{}{}{}",
+        lsp_frame(&open_body),
+        lsp_frame(&change_body),
+        lsp_frame(&completion_body)
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    let frames = parse_lsp_stdio_frames(&output);
+    let expected = vec![
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "uri": 42,
+                "sourceBytes": open_source.len()
+            }
+        }),
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didChange",
+            "params": {
+                "uri": 42,
+                "sourceBytes": changed_source.len()
+            }
+        }),
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 170,
+            "result": [["helper", 3, "helper"]]
+        }),
+    ];
+
+    assert_eq!(
+        frames, expected,
+        "Cli main は escaped newline を含む spec didChange text でも最新 completion source を使うべき"
+    );
+}
+
+/// TEST-CLI-02-AN17c: actual Cli main は spec 寄り `contentChanges[0].text` の
+/// unicode escaped newline (`\u000a`) でも didChange 後の最新 source を使うこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_spec_changed_document_with_unicode_escaped_newline(
+) {
+    let open_source = "(defn alpha [] 1) (al)";
+    let changed_source = "(defn helper [] 1)\n(he)";
+    let open_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": 42,
+                "languageId": "lsharp",
+                "version": 1,
+                "text": open_source
+            }
+        }
+    })
+    .to_string();
+    let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":42,"version":2},"contentChanges":[{"text":"(defn helper [] 1)\u000a(he)"}]}}"#;
+    let completion_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 172,
+        "method": "textDocument/completion",
+        "params": {
+            "textDocument": {
+                "uri": 42
+            },
+            "position": {
+                "line": 2,
+                "character": 4
+            }
+        }
+    })
+    .to_string();
+    let stdin = format!(
+        "{}{}{}",
+        lsp_frame(&open_body),
+        lsp_frame(change_body),
+        lsp_frame(&completion_body)
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    let frames = parse_lsp_stdio_frames(&output);
+    let expected = vec![
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {
+                "uri": 42,
+                "sourceBytes": open_source.len()
+            }
+        }),
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "textDocument/didChange",
+            "params": {
+                "uri": 42,
+                "sourceBytes": changed_source.len()
+            }
+        }),
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 172,
+            "result": [["helper", 3, "helper"]]
+        }),
+    ];
+
+    assert_eq!(
+        frames, expected,
+        "Cli main は unicode escaped newline を含む spec didChange text でも最新 completion source を使うべき"
     );
 }
 
@@ -3801,6 +5262,118 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_changed_document() 
     );
 }
 
+/// TEST-CLI-02-AN21b: actual Cli main は `lsp --stdio` で didChange 後の source なし references に最新 document state を使うこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_changed_document() {
+    let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
+    let changed_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
+    let open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        open_source
+    );
+    let change_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
+        changed_source
+    );
+    let references_body =
+        r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/references","params":{"uri":42,"line":1,"col":40}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        change_body.len(),
+        change_body,
+        references_body.len(),
+        references_body
+    );
+    let open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        open_source.len()
+    );
+    let change_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        changed_source.len()
+    );
+    let references_response =
+        r#"{"jsonrpc":"2.0","id":82,"result":[[42,1,7],[42,1,40],[42,1,51]]}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_response.len(),
+        open_response,
+        change_response.len(),
+        change_response,
+        references_response.len(),
+        references_response
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は didChange 後の source なし references で最新 document state を使うべき"
+    );
+}
+
+/// TEST-CLI-02-AN21c: actual Cli main は `lsp --stdio` で didChange 後の source なし rename に最新 document state を使うこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_changed_document() {
+    let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
+    let changed_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
+    let open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        open_source
+    );
+    let change_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
+        changed_source
+    );
+    let rename_body =
+        r#"{"jsonrpc":"2.0","id":84,"method":"textDocument/rename","params":{"uri":42,"line":1,"col":40,"newName":"cube"}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        change_body.len(),
+        change_body,
+        rename_body.len(),
+        rename_body
+    );
+    let open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        open_source.len()
+    );
+    let change_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        changed_source.len()
+    );
+    let rename_response =
+        r#"{"jsonrpc":"2.0","id":84,"result":[[42,[[1,7,1,13,"cube"],[1,40,1,46,"cube"],[1,51,1,57,"cube"]]]]}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_response.len(),
+        open_response,
+        change_response.len(),
+        change_response,
+        rename_response.len(),
+        rename_response
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は didChange 後の source なし rename で最新 document state を使うべき"
+    );
+}
+
 /// TEST-CLI-02-AN22: actual Cli main は `lsp --stdio` で same-URI repeated didOpen 後の source なし hover に最新 source を使うこと
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_latest_reopened_document() {
@@ -3854,6 +5427,118 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_latest_reopened_document
     assert_eq!(
         output, expected,
         "Cli main は same-URI repeated didOpen 後の source なし hover で最新 source を使うべき"
+    );
+}
+
+/// TEST-CLI-02-AN22b: actual Cli main は `lsp --stdio` で same-URI repeated didOpen 後の source なし references に最新 source を使うこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_latest_reopened_document() {
+    let first_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
+    let latest_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
+    let first_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        first_source
+    );
+    let second_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        latest_source
+    );
+    let references_body =
+        r#"{"jsonrpc":"2.0","id":83,"method":"textDocument/references","params":{"uri":42,"line":1,"col":40}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        first_open_body.len(),
+        first_open_body,
+        second_open_body.len(),
+        second_open_body,
+        references_body.len(),
+        references_body
+    );
+    let first_open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        first_source.len()
+    );
+    let second_open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        latest_source.len()
+    );
+    let references_response =
+        r#"{"jsonrpc":"2.0","id":83,"result":[[42,1,7],[42,1,40],[42,1,51]]}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        first_open_response.len(),
+        first_open_response,
+        second_open_response.len(),
+        second_open_response,
+        references_response.len(),
+        references_response
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は same-URI repeated didOpen 後の source なし references で最新 source を使うべき"
+    );
+}
+
+/// TEST-CLI-02-AN22c: actual Cli main は `lsp --stdio` で same-URI repeated didOpen 後の source なし rename に最新 source を使うこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_latest_reopened_document() {
+    let first_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
+    let latest_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
+    let first_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        first_source
+    );
+    let second_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        latest_source
+    );
+    let rename_body =
+        r#"{"jsonrpc":"2.0","id":85,"method":"textDocument/rename","params":{"uri":42,"line":1,"col":40,"newName":"cube"}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        first_open_body.len(),
+        first_open_body,
+        second_open_body.len(),
+        second_open_body,
+        rename_body.len(),
+        rename_body
+    );
+    let first_open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        first_source.len()
+    );
+    let second_open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        latest_source.len()
+    );
+    let rename_response =
+        r#"{"jsonrpc":"2.0","id":85,"result":[[42,[[1,7,1,13,"cube"],[1,40,1,46,"cube"],[1,51,1,57,"cube"]]]]}"#;
+    let expected = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        first_open_response.len(),
+        first_open_response,
+        second_open_response.len(),
+        second_open_response,
+        rename_response.len(),
+        rename_response
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output, expected,
+        "Cli main は same-URI repeated didOpen 後の source なし rename で最新 source を使うべき"
     );
 }
 
@@ -4090,6 +5775,33 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_unknown_method_schema_snapshot() {
     );
 }
 
+/// TEST-CLI-02-AN31b: actual Cli main は `lsp --stdio` shutdown 後 request error を schema snapshot に一致させること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_request_after_shutdown_schema_snapshot() {
+    let shutdown_body = r#"{"jsonrpc":"2.0","id":51,"method":"shutdown","params":0}"#;
+    let hover_body =
+        r#"{"jsonrpc":"2.0","id":52,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":1}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        shutdown_body.len(),
+        shutdown_body,
+        hover_body.len(),
+        hover_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "shutdown-request-after-error.json",
+        "Cli main は lsp --stdio shutdown 後 request error schema を snapshot と一致させるべき",
+    );
+}
+
 /// TEST-CLI-02-AN32: actual Cli main は `lsp --stdio` didOpen→didChange sequence を schema snapshot に一致させること
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_schema_snapshot() {
@@ -4178,6 +5890,158 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_changed_document_schema_snaps
     );
 }
 
+/// TEST-CLI-02-AN34c: actual Cli main は `lsp --stdio` の didChange 後 completion fallback を schema snapshot に一致させること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_changed_document_schema_snapshot() {
+    let open_source = "(defn alpha [] 1) (al)";
+    let changed_source = "(defn helper [] 1) (he)";
+    let open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        open_source
+    );
+    let change_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
+        changed_source
+    );
+    let completion_body =
+        r#"{"jsonrpc":"2.0","id":74,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        change_body.len(),
+        change_body,
+        completion_body.len(),
+        completion_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "completion-changed-document.json",
+        "Cli main は lsp --stdio didChange 後 completion fallback schema を snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN34b: actual Cli main は `lsp --stdio` の didChange 後 references fallback を schema snapshot に一致させること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_changed_document_schema_snapshot() {
+    let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
+    let changed_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
+    let open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        open_source
+    );
+    let change_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
+        changed_source
+    );
+    let references_body =
+        r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/references","params":{"uri":42,"line":1,"col":40}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        change_body.len(),
+        change_body,
+        references_body.len(),
+        references_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "references-changed-document.json",
+        "Cli main は lsp --stdio didChange 後 references fallback schema を snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN34d: actual Cli main は `lsp --stdio` の didChange 後 definition fallback を schema snapshot に一致させること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_changed_document_schema_snapshot() {
+    let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
+    let changed_source = "(defn helper [x] x) (defn main [] (helper 1))";
+    let open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        open_source
+    );
+    let change_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
+        changed_source
+    );
+    let definition_body =
+        r#"{"jsonrpc":"2.0","id":78,"method":"textDocument/definition","params":{"uri":42,"line":1,"col":38}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        change_body.len(),
+        change_body,
+        definition_body.len(),
+        definition_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "definition-changed-document.json",
+        "Cli main は lsp --stdio didChange 後 definition fallback schema を snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN34e: actual Cli main は `lsp --stdio` の didChange 後 rename fallback を schema snapshot に一致させること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_changed_document_schema_snapshot() {
+    let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
+    let changed_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
+    let open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        open_source
+    );
+    let change_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
+        changed_source
+    );
+    let rename_body =
+        r#"{"jsonrpc":"2.0","id":84,"method":"textDocument/rename","params":{"uri":42,"line":1,"col":40,"newName":"cube"}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        change_body.len(),
+        change_body,
+        rename_body.len(),
+        rename_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "rename-changed-document.json",
+        "Cli main は lsp --stdio didChange 後 rename fallback schema を snapshot と一致させるべき",
+    );
+}
+
 /// TEST-CLI-02-AN35: actual Cli main は `lsp --stdio` の repeated didOpen 後 definition fallback を schema snapshot に一致させること
 #[test]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_latest_reopened_schema_snapshot() {
@@ -4213,6 +6077,634 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_latest_reopened_schema_s
         &output,
         "definition-latest-reopened.json",
         "Cli main は lsp --stdio repeated didOpen 後 definition fallback schema を snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN35c: actual Cli main は `lsp --stdio` の repeated didOpen 後 hover fallback を schema snapshot に一致させること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_latest_reopened_schema_snapshot() {
+    let first_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
+    let latest_source = "(defn helper [x] x) (defn main [] (helper 1))";
+    let first_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        first_source
+    );
+    let second_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        latest_source
+    );
+    let hover_body =
+        r#"{"jsonrpc":"2.0","id":79,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":38}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        first_open_body.len(),
+        first_open_body,
+        second_open_body.len(),
+        second_open_body,
+        hover_body.len(),
+        hover_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "hover-latest-reopened.json",
+        "Cli main は lsp --stdio repeated didOpen 後 hover fallback schema を snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN35b: actual Cli main は `lsp --stdio` の repeated didOpen 後 references fallback を schema snapshot に一致させること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_latest_reopened_schema_snapshot() {
+    let first_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
+    let latest_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
+    let first_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        first_source
+    );
+    let second_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        latest_source
+    );
+    let references_body =
+        r#"{"jsonrpc":"2.0","id":83,"method":"textDocument/references","params":{"uri":42,"line":1,"col":40}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        first_open_body.len(),
+        first_open_body,
+        second_open_body.len(),
+        second_open_body,
+        references_body.len(),
+        references_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "references-latest-reopened.json",
+        "Cli main は lsp --stdio repeated didOpen 後 references fallback schema を snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN35d: actual Cli main は `lsp --stdio` の repeated didOpen 後 completion fallback を schema snapshot に一致させること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_latest_reopened_schema_snapshot() {
+    let first_source = "(defn alpha [] 1) (al)";
+    let latest_source = "(defn beta [] 1) (be)";
+    let first_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        first_source
+    );
+    let second_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        latest_source
+    );
+    let completion_body =
+        r#"{"jsonrpc":"2.0","id":75,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":21}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        first_open_body.len(),
+        first_open_body,
+        second_open_body.len(),
+        second_open_body,
+        completion_body.len(),
+        completion_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "completion-latest-reopened.json",
+        "Cli main は lsp --stdio repeated didOpen 後 completion fallback schema を snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN35e: actual Cli main は `lsp --stdio` の repeated didOpen 後 rename fallback を schema snapshot に一致させること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_latest_reopened_schema_snapshot() {
+    let first_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
+    let latest_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
+    let first_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        first_source
+    );
+    let second_open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        latest_source
+    );
+    let rename_body =
+        r#"{"jsonrpc":"2.0","id":85,"method":"textDocument/rename","params":{"uri":42,"line":1,"col":40,"newName":"cube"}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        first_open_body.len(),
+        first_open_body,
+        second_open_body.len(),
+        second_open_body,
+        rename_body.len(),
+        rename_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "rename-latest-reopened.json",
+        "Cli main は lsp --stdio repeated didOpen 後 rename fallback schema を snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN36: actual Cli main は `lsp --stdio` で didChange 時に diagnostics refresh frame を返すこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_diagnostics_refresh_snapshot() {
+    let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":")"}}"#;
+    let change_body =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"source":"(defn main [] 0)"}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        change_body.len(),
+        change_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "document-sequence-diagnostics-refresh.json",
+        "Cli main は lsp --stdio didChange diagnostics refresh schema を snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN37: actual Cli main は spec 寄り didOpen/didChange params でも diagnostics refresh snapshot に一致すること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_spec_params_diagnostics_refresh_snapshot()
+{
+    let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":")"}}}"#;
+    let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":42,"version":2},"contentChanges":[{"text":"(defn main [] 0)"}]}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        change_body.len(),
+        change_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "document-sequence-diagnostics-refresh.json",
+        "Cli main は spec 寄り lsp --stdio didChange diagnostics refresh でも snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN37a: actual Cli main は `lsp --stdio` で type diagnostics refresh frame を返すこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_type_diagnostics_refresh_snapshot() {
+    let open_body =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn main [] (if 42 1 0))"}}"#;
+    let change_body =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"source":"(defn main [] 0)"}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        change_body.len(),
+        change_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "document-sequence-type-diagnostics-refresh.json",
+        "Cli main は lsp --stdio didChange type diagnostics refresh schema を snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN37b: actual Cli main は `lsp --stdio` で lint diagnostics refresh frame を返すこと
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_lint_diagnostics_refresh_snapshot() {
+    let open_body =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn main [] (let [x 42] 0))"}}"#;
+    let change_body =
+        r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"source":"(defn main [] 0)"}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        change_body.len(),
+        change_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "document-sequence-lint-diagnostics-refresh.json",
+        "Cli main は lsp --stdio didChange lint diagnostics refresh schema を snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN37c: actual Cli main は spec 寄り didOpen/didChange params でも type diagnostics refresh snapshot に一致すること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_spec_params_type_diagnostics_refresh_snapshot()
+{
+    let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":"(defn main [] (if 42 1 0))"}}}"#;
+    let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":42,"version":2},"contentChanges":[{"text":"(defn main [] 0)"}]}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        change_body.len(),
+        change_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "document-sequence-type-diagnostics-refresh.json",
+        "Cli main は spec 寄り lsp --stdio type diagnostics refresh でも snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN37d: actual Cli main は spec 寄り didOpen/didChange params でも lint diagnostics refresh snapshot に一致すること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_spec_params_lint_diagnostics_refresh_snapshot()
+{
+    let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":"(defn main [] (let [x 42] 0))"}}}"#;
+    let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":42,"version":2},"contentChanges":[{"text":"(defn main [] 0)"}]}}"#;
+    let stdin = format!(
+        "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
+        open_body.len(),
+        open_body,
+        change_body.len(),
+        change_body
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "document-sequence-lint-diagnostics-refresh.json",
+        "Cli main は spec 寄り lsp --stdio lint diagnostics refresh でも snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN38: actual Cli main は document path 付き hover の filesystem import response を snapshot に一致させること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_filesystem_import_schema_snapshot() {
+    let main_source = "(module Main) (import Support.Mid) (defn main [] (mid-val))";
+    let hover_col = main_source.find("(mid-val)").expect("mid-val call") + 2;
+    let hover_body = format!(
+        r#"{{"jsonrpc":"2.0","id":191,"method":"textDocument/hover","params":{{"uri":200,"line":1,"col":{hover_col}}}}}"#
+    );
+
+    let output = run_lsp_filesystem_snapshot_request(
+        "hover_filesystem_snapshot",
+        200,
+        "src/Main.ls",
+        main_source,
+        &hover_body,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "hover-filesystem-import.json",
+        "Cli main は document path 付き hover の filesystem import response を snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN39: actual Cli main は document path 付き completion の filesystem import response を snapshot に一致させること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_filesystem_import_schema_snapshot() {
+    let main_source = "(module Main) (import Support.Mid) (defn main [] (mid-va))";
+    let completion_col = main_source.find("mid-va").expect("mid-va call") + "mid-va".len() + 1;
+    let completion_body = format!(
+        r#"{{"jsonrpc":"2.0","id":192,"method":"textDocument/completion","params":{{"uri":200,"line":1,"col":{completion_col}}}}}"#
+    );
+
+    let output = run_lsp_filesystem_snapshot_request(
+        "completion_filesystem_snapshot",
+        200,
+        "src/Main.ls",
+        main_source,
+        &completion_body,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "completion-filesystem-import.json",
+        "Cli main は document path 付き completion の filesystem import response を snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN40: actual Cli main は document path 付き definition の filesystem import response を snapshot に一致させること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_filesystem_import_schema_snapshot() {
+    let main_source = "(module Main) (import Support.Mid) (defn main [] (mid-val))";
+    let definition_col = main_source.find("(mid-val)").expect("mid-val call") + 2;
+    let definition_body = format!(
+        r#"{{"jsonrpc":"2.0","id":193,"method":"textDocument/definition","params":{{"uri":200,"line":1,"col":{definition_col}}}}}"#
+    );
+
+    let output = run_lsp_filesystem_snapshot_request(
+        "definition_filesystem_snapshot",
+        200,
+        "src/Main.ls",
+        main_source,
+        &definition_body,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "definition-filesystem-import.json",
+        "Cli main は document path 付き definition の filesystem import response を snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN41: actual Cli main は document path 付き references の filesystem import response を snapshot に一致させること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_filesystem_import_schema_snapshot() {
+    let main_source = "(module Main) (import Support.Mid) (defn main [] (mid-val))";
+    let references_col = main_source.find("(mid-val)").expect("mid-val call") + 2;
+    let references_body = format!(
+        r#"{{"jsonrpc":"2.0","id":194,"method":"textDocument/references","params":{{"uri":200,"line":1,"col":{references_col}}}}}"#
+    );
+
+    let output = run_lsp_filesystem_snapshot_request(
+        "references_filesystem_snapshot",
+        200,
+        "src/Main.ls",
+        main_source,
+        &references_body,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "references-filesystem-import.json",
+        "Cli main は document path 付き references の filesystem import response を snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN42: actual Cli main は document path 付き rename の filesystem import response を snapshot に一致させること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_filesystem_import_schema_snapshot() {
+    let main_source = "(module Main) (import Support.Mid) (defn main [] (mid-val))";
+    let rename_col = main_source.find("(mid-val)").expect("mid-val call") + 2;
+    let rename_body = format!(
+        r#"{{"jsonrpc":"2.0","id":195,"method":"textDocument/rename","params":{{"uri":200,"line":1,"col":{rename_col},"newName":"mid-next"}}}}"#
+    );
+
+    let output = run_lsp_filesystem_snapshot_request(
+        "rename_filesystem_snapshot",
+        200,
+        "src/Main.ls",
+        main_source,
+        &rename_body,
+    );
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "rename-filesystem-import.json",
+        "Cli main は document path 付き rename の filesystem import response を snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN43: actual Cli main は filesystem-backed path state を
+/// 複数 request と didChange を跨いで保持し、代表 sequence snapshot に一致すること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_filesystem_document_sequence_schema_snapshot() {
+    let dir = cli_test_fixture_dir("filesystem_document_sequence_snapshot");
+    write_cli_fixture_files(&dir, &cli_lsp_nested_fixture_files());
+
+    let open_source = "(module Main) (import Support.Mid) (defn main [] (mid-val))";
+    let changed_source = "(module Main) (import Support.Mid) (defn main [] (mid-va))";
+    let symbol_col = open_source.find("(mid-val)").expect("mid-val call") + 2;
+    let completion_col = changed_source.find("mid-va").expect("mid-va call") + "mid-va".len() + 1;
+
+    let open_body = make_lsp_did_open_with_path(200, "src/Main.ls", open_source);
+    let hover_body = format!(
+        r#"{{"jsonrpc":"2.0","id":196,"method":"textDocument/hover","params":{{"uri":200,"line":1,"col":{symbol_col}}}}}"#
+    );
+    let definition_body = format!(
+        r#"{{"jsonrpc":"2.0","id":197,"method":"textDocument/definition","params":{{"uri":200,"line":1,"col":{symbol_col}}}}}"#
+    );
+    let references_body = format!(
+        r#"{{"jsonrpc":"2.0","id":198,"method":"textDocument/references","params":{{"uri":200,"line":1,"col":{symbol_col}}}}}"#
+    );
+    let rename_body = format!(
+        r#"{{"jsonrpc":"2.0","id":199,"method":"textDocument/rename","params":{{"uri":200,"line":1,"col":{symbol_col},"newName":"mid-next"}}}}"#
+    );
+    let change_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":200,"source":"{}"}}}}"#,
+        changed_source
+    );
+    let completion_body = format!(
+        r#"{{"jsonrpc":"2.0","id":200,"method":"textDocument/completion","params":{{"uri":200,"line":1,"col":{completion_col}}}}}"#
+    );
+    let stdin = format!(
+        "{}{}{}{}{}{}{}",
+        lsp_frame(&open_body),
+        lsp_frame(&hover_body),
+        lsp_frame(&definition_body),
+        lsp_frame(&references_body),
+        lsp_frame(&rename_body),
+        lsp_frame(&change_body),
+        lsp_frame(&completion_body)
+    );
+
+    let output = run_lsp_stdio_with_dir(&stdin, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "filesystem-document-sequence.json",
+        "Cli main は filesystem-backed long-lived document sequence を snapshot と一致させるべき",
+    );
+}
+
+/// TEST-CLI-02-AN43b: actual Cli main は filesystem-backed path state を
+/// spec 寄り request shape + didChange を跨いでも保持し、同じ representative snapshot に収束すること
+#[test]
+fn test_e2e_selfhost_cli_main_with_lsp_stdio_filesystem_document_sequence_spec_style_snapshot() {
+    let dir = cli_test_fixture_dir("filesystem_document_sequence_spec_style_snapshot");
+    write_cli_fixture_files(&dir, &cli_lsp_nested_fixture_files());
+
+    let open_source = "(module Main) (import Support.Mid) (defn main [] (mid-val))";
+    let changed_source = "(module Main) (import Support.Mid) (defn main [] (mid-va))";
+    let symbol_col = open_source.find("(mid-val)").expect("mid-val call") + 2;
+    let completion_col = changed_source.find("mid-va").expect("mid-va call") + "mid-va".len();
+
+    let open_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": 200,
+                "languageId": "lsharp",
+                "version": 1,
+                "text": open_source
+            },
+            "path": "src/Main.ls"
+        }
+    })
+    .to_string();
+    let hover_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 196,
+        "method": "textDocument/hover",
+        "params": {
+            "textDocument": {
+                "uri": 200
+            },
+            "position": {
+                "line": 1,
+                "character": symbol_col
+            }
+        }
+    })
+    .to_string();
+    let definition_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 197,
+        "method": "textDocument/definition",
+        "params": {
+            "textDocument": {
+                "uri": 200
+            },
+            "position": {
+                "line": 1,
+                "character": symbol_col
+            }
+        }
+    })
+    .to_string();
+    let references_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 198,
+        "method": "textDocument/references",
+        "params": {
+            "textDocument": {
+                "uri": 200
+            },
+            "position": {
+                "line": 1,
+                "character": symbol_col
+            }
+        }
+    })
+    .to_string();
+    let rename_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 199,
+        "method": "textDocument/rename",
+        "params": {
+            "textDocument": {
+                "uri": 200
+            },
+            "position": {
+                "line": 1,
+                "character": symbol_col
+            },
+            "newName": "mid-next"
+        }
+    })
+    .to_string();
+    let change_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didChange",
+        "params": {
+            "textDocument": {
+                "uri": 200,
+                "version": 2
+            },
+            "contentChanges": [
+                {
+                    "text": changed_source
+                }
+            ]
+        }
+    })
+    .to_string();
+    let completion_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 200,
+        "method": "textDocument/completion",
+        "params": {
+            "textDocument": {
+                "uri": 200
+            },
+            "position": {
+                "line": 1,
+                "character": completion_col
+            }
+        }
+    })
+    .to_string();
+    let stdin = format!(
+        "{}{}{}{}{}{}{}",
+        lsp_frame(&open_body),
+        lsp_frame(&hover_body),
+        lsp_frame(&definition_body),
+        lsp_frame(&references_body),
+        lsp_frame(&rename_body),
+        lsp_frame(&change_body),
+        lsp_frame(&completion_body)
+    );
+
+    let output = run_lsp_stdio_with_dir(&stdin, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_lsp_stdio_snapshot(
+        &output,
+        "filesystem-document-sequence.json",
+        "Cli main は filesystem-backed long-lived document sequence を spec params でも同じ snapshot に収束させるべき",
     );
 }
 

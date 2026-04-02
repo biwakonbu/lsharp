@@ -1,0 +1,26 @@
+{
+  "functions": [
+    {
+      "arity": 2,
+      "doc": "Add two ints",
+      "example": "(add 1 2)",
+      "name": "add",
+      "params": [
+        "x:Int",
+        "y:Int"
+      ],
+      "returns": "Int"
+    }
+  ],
+  "module": "module-Demo",
+  "types": [
+    {
+      "kind": "type",
+      "name": "Doc"
+    },
+    {
+      "kind": "typealias",
+      "name": "Alias"
+    }
+  ]
+}

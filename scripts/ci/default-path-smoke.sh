@@ -49,6 +49,10 @@ if [[ ! -s "$OUT_COMPONENT" ]]; then
   echo "ERROR: component output empty: $OUT_COMPONENT"
   exit 1
 fi
+if ! xxd -p -l 4 "$OUT_COMPONENT" | grep -qi '^0061736d$'; then
+  echo "ERROR: component output is not a Wasm binary: $OUT_COMPONENT"
+  exit 1
+fi
 
 BUILD_OUTPUT="$("$LSHARP_BIN" build examples/fib.ls --output "$REL_OUT_BUILD")"
 if [[ "$BUILD_OUTPUT" != *"wasm-size:"* ]]; then
@@ -58,6 +62,10 @@ if [[ "$BUILD_OUTPUT" != *"wasm-size:"* ]]; then
 fi
 if [[ ! -s "$OUT_BUILD" ]]; then
   echo "ERROR: build output empty: $OUT_BUILD"
+  exit 1
+fi
+if ! xxd -p -l 4 "$OUT_BUILD" | grep -qi '^0061736d$'; then
+  echo "ERROR: build output is not a Wasm binary: $OUT_BUILD"
   exit 1
 fi
 
@@ -112,6 +120,20 @@ if [[ "$REVIEW_OUTPUT" != *"unused-let"* ]] || [[ "$REVIEW_OUTPUT" != *"diagnost
   exit 1
 fi
 
+REVIEW_JSON_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && "$LSHARP_BIN" review review_input.ls --json)"
+if [[ "$REVIEW_JSON_OUTPUT" != *'"source":"source-200"'* ]] || [[ "$REVIEW_JSON_OUTPUT" != *'"title":"unused-let"'* ]] || [[ "$REVIEW_JSON_OUTPUT" != *'"code":"L0001"'* ]]; then
+  echo "ERROR: embedded review --json output mismatch"
+  echo "$REVIEW_JSON_OUTPUT"
+  exit 1
+fi
+
+REVIEW_FORMAT_JSON_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && "$LSHARP_BIN" review review_input.ls --format json)"
+if [[ "$REVIEW_FORMAT_JSON_OUTPUT" != *'"source":"source-200"'* ]] || [[ "$REVIEW_FORMAT_JSON_OUTPUT" != *'"title":"unused-let"'* ]] || [[ "$REVIEW_FORMAT_JSON_OUTPUT" != *'"code":"L0001"'* ]]; then
+  echo "ERROR: embedded review --format json output mismatch"
+  echo "$REVIEW_FORMAT_JSON_OUTPUT"
+  exit 1
+fi
+
 DOC_ACK_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && "$LSHARP_BIN" doc-ack review_input.ls)"
 if [[ "$DOC_ACK_OUTPUT" != *"ack:recorded"* ]] || [[ "$DOC_ACK_OUTPUT" != *"module-global"* ]] || [[ "$DOC_ACK_OUTPUT" != *"functions:1,types:0,first-fn:main"* ]] || [[ "$DOC_ACK_OUTPUT" != *"Doc-Reviewed-By: anonymous"* ]]; then
   echo "ERROR: embedded doc-ack output mismatch"
@@ -119,10 +141,44 @@ if [[ "$DOC_ACK_OUTPUT" != *"ack:recorded"* ]] || [[ "$DOC_ACK_OUTPUT" != *"modu
   exit 1
 fi
 
+DOC_ACK_TRAILER_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && "$LSHARP_BIN" doc-ack review_input.ls --trailer)"
+if [[ "$DOC_ACK_TRAILER_OUTPUT" != "; Doc-Reviewed-By: anonymous" ]]; then
+  echo "ERROR: embedded doc-ack --trailer output mismatch"
+  echo "$DOC_ACK_TRAILER_OUTPUT"
+  exit 1
+fi
+
 DOC_CHECK_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && "$LSHARP_BIN" doc-check review_input.ls)"
 if [[ "$DOC_CHECK_OUTPUT" != *"status:ok"* ]] || [[ "$DOC_CHECK_OUTPUT" != *"module-global"* ]] || [[ "$DOC_CHECK_OUTPUT" != *"functions:1,types:0,first-fn:main"* ]] || [[ "$DOC_CHECK_OUTPUT" != *"Doc-Review-Status: Passed"* ]] || [[ "$DOC_CHECK_OUTPUT" != *"Doc-Reviewed-By: anonymous"* ]]; then
   echo "ERROR: embedded doc-check output mismatch"
   echo "$DOC_CHECK_OUTPUT"
+  exit 1
+fi
+
+cat > "$EMBED_SMOKE_DIR/review_input_strict.ls" <<'EOF'
+(defn main [] 42)
+; Doc-Review-Status: Passed
+; Doc-Reviewed-By: anonymous
+EOF
+
+DOC_CHECK_STRICT_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && "$LSHARP_BIN" doc-check review_input_strict.ls --strict)"
+if [[ "$DOC_CHECK_STRICT_OUTPUT" != *"status:ok"* ]] || [[ "$DOC_CHECK_STRICT_OUTPUT" != *"module-global"* ]] || [[ "$DOC_CHECK_STRICT_OUTPUT" != *"functions:1,types:0,first-fn:main"* ]] || [[ "$DOC_CHECK_STRICT_OUTPUT" != *"Doc-Review-Status: Passed"* ]] || [[ "$DOC_CHECK_STRICT_OUTPUT" != *"Doc-Reviewed-By: anonymous"* ]]; then
+  echo "ERROR: embedded doc-check --strict output mismatch"
+  echo "$DOC_CHECK_STRICT_OUTPUT"
+  exit 1
+fi
+
+set +e
+DOC_CHECK_STRICT_FAIL_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && "$LSHARP_BIN" doc-check review_input.ls --strict 2>&1)"
+DOC_CHECK_STRICT_FAIL_STATUS=$?
+set -e
+if [[ $DOC_CHECK_STRICT_FAIL_STATUS -eq 0 ]]; then
+  echo "ERROR: embedded doc-check --strict unexpectedly accepted missing trailer"
+  exit 1
+fi
+if [[ "$DOC_CHECK_STRICT_FAIL_OUTPUT" != *"error: invalid doc trailer: expected trailing comment lines"* ]]; then
+  echo "ERROR: embedded doc-check --strict missing-trailer error mismatch"
+  echo "$DOC_CHECK_STRICT_FAIL_OUTPUT"
   exit 1
 fi
 
@@ -136,6 +192,16 @@ fi
 set +e
 DISABLE_PARSE_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && LSHARP_DISABLE_EMBEDDED_COMPONENT=1 "$LSHARP_BIN" parse smoke_input.ls 2>&1)"
 DISABLE_PARSE_STATUS=$?
+DISABLE_REVIEW_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && LSHARP_DISABLE_EMBEDDED_COMPONENT=1 "$LSHARP_BIN" review review_input.ls 2>&1)"
+DISABLE_REVIEW_STATUS=$?
+DISABLE_DOC_ACK_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && LSHARP_DISABLE_EMBEDDED_COMPONENT=1 "$LSHARP_BIN" doc-ack review_input.ls 2>&1)"
+DISABLE_DOC_ACK_STATUS=$?
+DISABLE_DOC_ACK_TRAILER_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && LSHARP_DISABLE_EMBEDDED_COMPONENT=1 "$LSHARP_BIN" doc-ack review_input.ls --trailer 2>&1)"
+DISABLE_DOC_ACK_TRAILER_STATUS=$?
+DISABLE_DOC_CHECK_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && LSHARP_DISABLE_EMBEDDED_COMPONENT=1 "$LSHARP_BIN" doc-check review_input.ls 2>&1)"
+DISABLE_DOC_CHECK_STATUS=$?
+DISABLE_DOC_CHECK_STRICT_OUTPUT="$(cd "$EMBED_SMOKE_DIR" && LSHARP_DISABLE_EMBEDDED_COMPONENT=1 "$LSHARP_BIN" doc-check review_input_strict.ls --strict 2>&1)"
+DISABLE_DOC_CHECK_STRICT_STATUS=$?
 set -e
 if [[ $DISABLE_PARSE_STATUS -eq 0 ]]; then
   echo "ERROR: embedded disable flag unexpectedly allowed parse"
@@ -146,8 +212,53 @@ if [[ "$DISABLE_PARSE_OUTPUT" != *"LSHARP_PATH"* ]]; then
   echo "$DISABLE_PARSE_OUTPUT"
   exit 1
 fi
+if [[ $DISABLE_REVIEW_STATUS -eq 0 ]]; then
+  echo "ERROR: embedded disable flag unexpectedly allowed review"
+  exit 1
+fi
+if [[ "$DISABLE_REVIEW_OUTPUT" != *"LSHARP_PATH"* ]]; then
+  echo "ERROR: embedded disable flag did not restore review delegation hint"
+  echo "$DISABLE_REVIEW_OUTPUT"
+  exit 1
+fi
+if [[ $DISABLE_DOC_ACK_STATUS -eq 0 ]]; then
+  echo "ERROR: embedded disable flag unexpectedly allowed doc-ack"
+  exit 1
+fi
+if [[ "$DISABLE_DOC_ACK_OUTPUT" != *"LSHARP_PATH"* ]]; then
+  echo "ERROR: embedded disable flag did not restore doc-ack delegation hint"
+  echo "$DISABLE_DOC_ACK_OUTPUT"
+  exit 1
+fi
+if [[ $DISABLE_DOC_ACK_TRAILER_STATUS -eq 0 ]]; then
+  echo "ERROR: embedded disable flag unexpectedly allowed doc-ack --trailer"
+  exit 1
+fi
+if [[ "$DISABLE_DOC_ACK_TRAILER_OUTPUT" != *"LSHARP_PATH"* ]]; then
+  echo "ERROR: embedded disable flag did not restore doc-ack --trailer hint"
+  echo "$DISABLE_DOC_ACK_TRAILER_OUTPUT"
+  exit 1
+fi
+if [[ $DISABLE_DOC_CHECK_STATUS -eq 0 ]]; then
+  echo "ERROR: embedded disable flag unexpectedly allowed doc-check"
+  exit 1
+fi
+if [[ "$DISABLE_DOC_CHECK_OUTPUT" != *"LSHARP_PATH"* ]]; then
+  echo "ERROR: embedded disable flag did not restore doc-check delegation hint"
+  echo "$DISABLE_DOC_CHECK_OUTPUT"
+  exit 1
+fi
+if [[ $DISABLE_DOC_CHECK_STRICT_STATUS -eq 0 ]]; then
+  echo "ERROR: embedded disable flag unexpectedly allowed doc-check --strict"
+  exit 1
+fi
+if [[ "$DISABLE_DOC_CHECK_STRICT_OUTPUT" != *"LSHARP_PATH"* ]]; then
+  echo "ERROR: embedded disable flag did not restore doc-check --strict hint"
+  echo "$DISABLE_DOC_CHECK_STRICT_OUTPUT"
+  exit 1
+fi
 
-LSHARP_DISABLE_EMBEDDED_COMPONENT=1 "$LSHARP_BIN" compile selfhost/src/App/EmbeddedCli.ls -o "$EMBED_COMPONENT_ARTIFACT"
+LSHARP_DISABLE_EMBEDDED_COMPONENT=1 "$LSHARP_BIN" compile selfhost/src/App/SmokeCli.ls -o "$EMBED_COMPONENT_ARTIFACT"
 if [[ ! -s "$EMBED_COMPONENT_ARTIFACT" ]]; then
   echo "ERROR: selfhost embedded component artifact empty: $EMBED_COMPONENT_ARTIFACT"
   exit 1
