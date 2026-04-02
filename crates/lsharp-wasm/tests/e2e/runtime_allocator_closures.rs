@@ -574,6 +574,8 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
         "s14_status": s14_status,
         "s15_status": s15_status,
         "s16_status": s16_status,
+        "s15_proof": serde_json::Value::Null,
+        "s16_proof": serde_json::Value::Null,
         "heap_bytes_series": heap_bytes_series,
         "proxy_workloads": proxy_workloads,
         "peak_alloc_bytes": peak_alloc_bytes,
@@ -593,6 +595,11 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
     assert_eq!(payload["s15_status"], "n/a");
     assert_eq!(payload["s16_status"], "n/a");
     assert_eq!(payload["heap_bytes_series"], serde_json::json!([]));
+    let payload_object = payload
+        .as_object()
+        .expect("GC artifact payload は object であるべき");
+    assert_eq!(payload_object.get("s15_proof"), Some(&serde_json::Value::Null));
+    assert_eq!(payload_object.get("s16_proof"), Some(&serde_json::Value::Null));
     assert_eq!(
         payload["proxy_workloads"]["compile_run_light_loop"]["iterations"],
         48

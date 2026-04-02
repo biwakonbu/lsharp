@@ -2516,6 +2516,59 @@ fn test_e2e_ops06_release_smoke_contract() {
     );
 }
 
+/// TEST-OPS-06d: release workflow に macOS / Windows signing hook が存在すること
+#[test]
+fn test_e2e_ops06_release_signing_workflow_hook() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let workflow = project_root.join(".github/workflows/release.yml");
+    let workflow_content =
+        std::fs::read_to_string(&workflow).expect("release.yml の読み込みに失敗");
+
+    assert!(
+        workflow_content.contains("APPLE_CODESIGN_IDENTITY")
+            && workflow_content.contains("codesign --verify --deep --strict")
+            && workflow_content.contains("spctl --assess -vv"),
+        "release.yml は macOS signing / verify hook を持つこと"
+    );
+    assert!(
+        workflow_content.contains("APPLE_NOTARY_KEYCHAIN_PROFILE")
+            && workflow_content.contains("xcrun notarytool submit"),
+        "release.yml は macOS notarization hook も secret 経由で配線すること"
+    );
+    assert!(
+        workflow_content.contains("WINDOWS_SIGN_CERT_PFX_BASE64")
+            && workflow_content.contains("WINDOWS_SIGN_CERT_PASSWORD")
+            && workflow_content.contains("WINDOWS_TIMESTAMP_URL")
+            && workflow_content.contains("signtool verify /pa"),
+        "release.yml は Windows Authenticode signing / verify hook を持つこと"
+    );
+
+    let signing_doc = project_root.join("docs/development/operations/release-distribution-signing.md");
+    let signing_doc_content =
+        std::fs::read_to_string(&signing_doc).expect("release-distribution-signing.md の読み込みに失敗");
+    assert!(
+        signing_doc_content.contains("APPLE_CODESIGN_IDENTITY")
+            && signing_doc_content.contains("WINDOWS_SIGN_CERT_PFX_BASE64"),
+        "release-distribution-signing.md は workflow hook の secret 名を正本として案内すること"
+    );
+    assert!(
+        signing_doc_content.contains("credential 未設定時は skip")
+            || signing_doc_content.contains("secret 未設定時は skip")
+            || signing_doc_content.contains("未設定なら skip"),
+        "release-distribution-signing.md は secret 未設定時の current behavior も説明すること"
+    );
+
+    let windows_design =
+        project_root.join("docs/development/planning/v2-designs/v2-05-windows-authenticode-signing.md");
+    let windows_design_content =
+        std::fs::read_to_string(&windows_design).expect("v2-05-windows-authenticode-signing.md の読み込みに失敗");
+    assert!(
+        windows_design_content.contains("release.yml")
+            && windows_design_content.contains("WINDOWS_SIGN_CERT_PFX_BASE64"),
+        "Windows Authenticode design は release workflow hook へ接続した current state を反映すること"
+    );
+}
+
 /// TEST-PKG-01b: README Quick Start が release artifact-only 契約に揃っていること
 #[test]
 fn test_e2e_pkg01_readme_quick_start_uses_release_artifact_only() {

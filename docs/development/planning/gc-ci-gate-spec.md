@@ -66,7 +66,7 @@
 
 ### payload schema
 
-現行の `summary.json` は次の 16 キーを必須とする。
+現行の `summary.json` は次の 18 キーを必須とする。
 `gate_status` / `s14_status` / `s15_status` / `s16_status` は artifact が自己記述する gate 状態であり、
 仕様の 4 値 (`pass` / `fail` / `blocked` / `n/a`) を直接保持する。
 
@@ -78,6 +78,8 @@
   "s14_status": "n/a",
   "s15_status": "n/a",
   "s16_status": "n/a",
+  "s15_proof": null,
+  "s16_proof": null,
   "heap_bytes_series": [],
     "proxy_workloads": {
       "compile_run_light_loop": { "status": "pass", "iterations": 48, "last_stdout": "1" },
@@ -117,6 +119,7 @@
 `s14_status` / `s15_status` / `s16_status` は bump allocator では常に `"n/a"` であり、
 collector 有効になって初めて `"pass"` / `"fail"` / `"blocked"` に変わる。
 現在の bump artifact でも schema は固定し、`heap_bytes_series` には空配列を入れておく。
+`s15_proof` / `s16_proof` は S15 / S16 の machine-readable 証拠 slot であり、`blocked` / `n/a` では `null`、`pass` / `fail` では object を要求する。
 `proxy_workloads` には既存 GC-05 representative workload の結果を格納し、各 entry の `status = "pass"` を required とする。required entry は light compile+run / REPL 50 eval / stateful long-session REPL / stateful single-session REPL / actual `lsp --stdio` repeated sequence の 5 つで固定する。
 `LSHARP_GC_METRICS_INPUT` を指定した validate-only 実行では、既存 `summary.json` を再利用して Python validator だけを走らせられる。
 
@@ -129,7 +132,7 @@ collector 有効になって初めて `"pass"` / `"fail"` / `"blocked"` に変�
 | AR-01 | `test_e2e_alloc_metrics_ci_artifact_payload` が失敗する / `gate_status != "accepted"` / `sXX_status = "fail"` | `scripts/ci/collect-gc-metrics.sh` の `cargo test` と Python 検証 | required job fail |
 | AR-02 | `ci-artifacts/gc-metrics/{commit_sha}/summary.json` を読めない | 同 script の Python 検証がファイルを開く | required job fail |
 | AR-03 | JSON として parse できない | Python `json.loads(...)` | required job fail |
-| AR-04 | 必須 16 キーのいずれかが欠落、`proxy_workloads` / その required entry が欠落、`sXX_status` が 4 値外、または `s14_status` が evaluator と不一致 | Python の key/value 検証 | required job fail |
+| AR-04 | 必須 18 キーのいずれかが欠落、`proxy_workloads` / その required entry が欠落、`sXX_status` が 4 値外、`s14_status` が evaluator と不一致、または `s15_proof` / `s16_proof` が status と整合しない | Python の key/value 検証 | required job fail |
 
 ### artifact acceptance の意味
 
@@ -210,11 +213,25 @@ CI では次の比較単位を **すべて一致** と定義したときだけ `
 | data section bytes | 完全一致 |
 | diagnostics | 完全一致 |
 
+artifact ではこれを `s15_proof` object に落とし込み、最低限次のキーを要求する。
+
+```json
+{
+  "gc_mode": "mark-sweep",
+  "stage_pair": ["stage1", "stage2"],
+  "bytes_identical": true,
+  "exports_identical": true,
+  "data_sections_identical": true,
+  "diagnostics_identical": true
+}
+```
+
 ### blocking 条件
 
 - GC 有効 bootstrap の stage 比較 artifact が存在しない間は S15 は `blocked` のまま。
 - 比較 artifact が存在して上表のいずれかが不一致なら `fail`。
 - GC 無効 (`--gc=none`) と GC 有効の両方で fixed-point が一致したときのみ `pass`。
+- `s15_status = blocked` / `n/a` の間は `s15_proof = null` を維持し、未証明を machine-readable に固定する。
 
 現時点では `gc-metrics-artifact` job 自体はこの比較をまだ実行しないため、PR CI の blocking 条件には未接続である。
 
@@ -227,7 +244,22 @@ S16 は collector 有効ワークロードが GC 由来 crash なしで完走す
 2. P11-5b の全ワークロードを GC 有効で完走
 3. root 漏れに起因する dangling pointer 検出が 0 件
 
+artifact ではこれを `s16_proof` object に落とし込み、最低限次のキーを要求する。
+
+```json
+{
+  "gc_mode": "mark-sweep",
+  "completed_workloads": ["lsp-soak", "repl-soak", "bootstrap-loop"],
+  "all_workloads_completed": true,
+  "sigsegv_count": 0,
+  "trap_count": 0,
+  "unreachable_count": 0,
+  "dangling_pointer_count": 0
+}
+```
+
 いずれか 1 つでも違反した場合は `fail`、collector 有効ジョブ自体が未配線なら `blocked`。
+`s16_status = blocked` / `n/a` の間は `s16_proof = null` を維持する。
 
 ## いつ CI が block するか
 

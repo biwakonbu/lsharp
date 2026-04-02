@@ -55,6 +55,85 @@ jobs:
           VERSION: ${{ github.ref_name }}
           TARGET: ${{ matrix.target }}
         run: bash scripts/release.sh
+      - name: macOS signing / notarization hook
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          VERSION: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+          ARCHIVE_EXT: ${{ matrix.archive_ext }}
+          APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+          APPLE_NOTARY_KEYCHAIN_PROFILE: ${{ secrets.APPLE_NOTARY_KEYCHAIN_PROFILE }}
+        run: |
+          archive_name="lsharp-${VERSION}-${TARGET}"
+          archive_dir="dist/${archive_name}"
+          archive_path="dist/${archive_name}.${ARCHIVE_EXT}"
+          notarization_input="dist/${archive_name}-notary.zip"
+
+          if [[ -z "${APPLE_CODESIGN_IDENTITY}" || -z "${APPLE_NOTARY_KEYCHAIN_PROFILE}" ]]; then
+            echo "release signing: Apple credential 未設定時は skip"
+            exit 0
+          fi
+
+          for binary_path in "${archive_dir}/lsharp" "${archive_dir}/lsharp-lsp"; do
+            codesign --force --sign "${APPLE_CODESIGN_IDENTITY}" --options runtime --timestamp "${binary_path}"
+            codesign --verify --deep --strict "${binary_path}"
+            spctl --assess -vv "${binary_path}"
+          done
+
+          ditto -c -k --sequesterRsrc --keepParent "${archive_dir}" "${notarization_input}"
+          xcrun notarytool submit "${notarization_input}" --keychain-profile "${APPLE_NOTARY_KEYCHAIN_PROFILE}" --wait
+
+          bash scripts/checksum.sh "${archive_dir}" > "${archive_dir}/checksums.txt"
+          rm -f "${archive_path}" "${notarization_input}"
+          (
+            cd dist
+            tar czf "${archive_name}.${ARCHIVE_EXT}" "${archive_name}/"
+          )
+      - name: Windows Authenticode signing hook
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+          WINDOWS_SIGN_CERT_PFX_BASE64: ${{ secrets.WINDOWS_SIGN_CERT_PFX_BASE64 }}
+          WINDOWS_SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_CERT_PFX_BASE64) -or
+              [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_CERT_PASSWORD) -or
+              [string]::IsNullOrWhiteSpace($env:WINDOWS_TIMESTAMP_URL)) {
+            Write-Host "release signing: Windows credential 未設定時は skip"
+            exit 0
+          }
+
+          $archiveName = "lsharp-$env:VERSION-$env:TARGET"
+          $archiveDir = Join-Path "dist" $archiveName
+          $archivePath = Join-Path "dist" "$archiveName.zip"
+          $certPath = Join-Path $env:RUNNER_TEMP "lsharp-signing.pfx"
+          $signtoolPath = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          if (-not $signtoolPath) {
+            throw "signtool.exe not found"
+          }
+
+          Set-Alias signtool $signtoolPath
+          [System.IO.File]::WriteAllBytes($certPath, [System.Convert]::FromBase64String($env:WINDOWS_SIGN_CERT_PFX_BASE64))
+
+          foreach ($binaryName in @("lsharp.exe", "lsharp-lsp.exe")) {
+            $binaryPath = Join-Path $archiveDir $binaryName
+            signtool sign /f $certPath /p $env:WINDOWS_SIGN_CERT_PASSWORD /tr $env:WINDOWS_TIMESTAMP_URL /td sha256 /fd sha256 $binaryPath
+            signtool verify /pa $binaryPath
+          }
+
+          bash scripts/checksum.sh "$archiveDir" > "$archiveDir/checksums.txt"
+          if (Test-Path $archivePath) {
+            Remove-Item $archivePath -Force
+          }
+          Compress-Archive -Path $archiveDir -DestinationPath $archivePath -Force
+          Remove-Item $certPath -Force
       - name: リリースアーカイブ smoke
         shell: bash
         env:

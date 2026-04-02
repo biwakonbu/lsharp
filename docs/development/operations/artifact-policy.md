@@ -112,7 +112,7 @@ bash scripts/checksum.sh dist > dist/checksums.txt
 1. `test_e2e_alloc_metrics_ci_artifact_payload` が失敗
 2. `summary.json` が存在しない、または読めない
 3. JSON parse に失敗
-4. `allocator_mode`, `ci_level`, `gate_status`, `s14_status`, `s15_status`, `s16_status`, `heap_bytes_series`, `proxy_workloads`, `peak_alloc_bytes`, `total_alloc_count`, `live_alloc_count`, `max_single_alloc`, `alloc_span`, `leak_growing_count`, `leak_total`, `leak_suspect` のいずれかが欠落
+4. `allocator_mode`, `ci_level`, `gate_status`, `s14_status`, `s15_status`, `s16_status`, `s15_proof`, `s16_proof`, `heap_bytes_series`, `proxy_workloads`, `peak_alloc_bytes`, `total_alloc_count`, `live_alloc_count`, `max_single_alloc`, `alloc_span`, `leak_growing_count`, `leak_total`, `leak_suspect` のいずれかが欠落
 5. `proxy_workloads.compile_run_light_loop`, `proxy_workloads.repl_soak_50_eval`, `proxy_workloads.repl_stateful_long_session`, `proxy_workloads.repl_stateful_single_session`, `proxy_workloads.lsp_actual_stdio_repeated_sequence` のいずれかが欠落、または `status != "pass"`
 
 ### 受理の意味

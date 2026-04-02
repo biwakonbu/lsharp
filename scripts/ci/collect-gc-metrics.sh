@@ -62,6 +62,139 @@ def evaluate_s14_status(payload):
 
     return "fail"
 
+def validate_s15_proof(status, proof):
+    if status in {"blocked", "n/a"}:
+        if proof is not None:
+            raise SystemExit(
+                f"AR-04: s15_proof must be null when s15_status is '{status}'"
+            )
+        return
+
+    if not isinstance(proof, dict):
+        raise SystemExit(
+            f"AR-04: s15_proof must be a JSON object when s15_status is '{status}'"
+        )
+
+    required = [
+        "gc_mode",
+        "stage_pair",
+        "bytes_identical",
+        "exports_identical",
+        "data_sections_identical",
+        "diagnostics_identical",
+    ]
+    missing = [key for key in required if key not in proof]
+    if missing:
+        raise SystemExit(f"AR-04: missing s15_proof keys: {', '.join(missing)}")
+
+    if not isinstance(proof["gc_mode"], str) or not proof["gc_mode"]:
+        raise SystemExit("AR-04: s15_proof.gc_mode must be a non-empty string")
+
+    stage_pair = proof["stage_pair"]
+    if (
+        not isinstance(stage_pair, list)
+        or len(stage_pair) != 2
+        or not all(isinstance(item, str) and item for item in stage_pair)
+    ):
+        raise SystemExit(
+            "AR-04: s15_proof.stage_pair must be a 2-element string array"
+        )
+
+    comparison_keys = [
+        "bytes_identical",
+        "exports_identical",
+        "data_sections_identical",
+        "diagnostics_identical",
+    ]
+    comparison_values = []
+    for key in comparison_keys:
+        value = proof[key]
+        if not isinstance(value, bool):
+            raise SystemExit(f"AR-04: s15_proof.{key} must be a boolean")
+        comparison_values.append(value)
+
+    if status == "pass" and not all(comparison_values):
+        raise SystemExit(
+            "AR-04: s15_proof comparisons must all be true when s15_status is 'pass'"
+        )
+    if status == "fail" and all(comparison_values):
+        raise SystemExit(
+            "AR-04: s15_proof must show at least one mismatch when s15_status is 'fail'"
+        )
+
+def validate_s16_proof(status, proof):
+    if status in {"blocked", "n/a"}:
+        if proof is not None:
+            raise SystemExit(
+                f"AR-04: s16_proof must be null when s16_status is '{status}'"
+            )
+        return
+
+    if not isinstance(proof, dict):
+        raise SystemExit(
+            f"AR-04: s16_proof must be a JSON object when s16_status is '{status}'"
+        )
+
+    required = [
+        "gc_mode",
+        "completed_workloads",
+        "all_workloads_completed",
+        "sigsegv_count",
+        "trap_count",
+        "unreachable_count",
+        "dangling_pointer_count",
+    ]
+    missing = [key for key in required if key not in proof]
+    if missing:
+        raise SystemExit(f"AR-04: missing s16_proof keys: {', '.join(missing)}")
+
+    if not isinstance(proof["gc_mode"], str) or not proof["gc_mode"]:
+        raise SystemExit("AR-04: s16_proof.gc_mode must be a non-empty string")
+
+    completed_workloads = proof["completed_workloads"]
+    if (
+        not isinstance(completed_workloads, list)
+        or not all(isinstance(item, str) and item for item in completed_workloads)
+    ):
+        raise SystemExit(
+            "AR-04: s16_proof.completed_workloads must be a string array"
+        )
+
+    all_workloads_completed = proof["all_workloads_completed"]
+    if not isinstance(all_workloads_completed, bool):
+        raise SystemExit("AR-04: s16_proof.all_workloads_completed must be a boolean")
+
+    counter_keys = [
+        "sigsegv_count",
+        "trap_count",
+        "unreachable_count",
+        "dangling_pointer_count",
+    ]
+    counter_values = []
+    for key in counter_keys:
+        value = proof[key]
+        if not isinstance(value, int) or value < 0:
+            raise SystemExit(f"AR-04: s16_proof.{key} must be a non-negative integer")
+        counter_values.append(value)
+
+    if status == "pass":
+        if not all_workloads_completed:
+            raise SystemExit(
+                "AR-04: s16_proof.all_workloads_completed must be true when s16_status is 'pass'"
+            )
+        if any(counter_values):
+            raise SystemExit(
+                "AR-04: s16_proof crash counters must all be zero when s16_status is 'pass'"
+            )
+        if not completed_workloads:
+            raise SystemExit(
+                "AR-04: s16_proof.completed_workloads must be non-empty when s16_status is 'pass'"
+            )
+    if status == "fail" and all_workloads_completed and not any(counter_values):
+        raise SystemExit(
+            "AR-04: s16_proof must show an incomplete workload or non-zero crash counter when s16_status is 'fail'"
+        )
+
 # AR-04: 必須キーが揃っているか (gate_status / s14_status / s15_status / s16_status を含む)
 required = [
     "allocator_mode",
@@ -70,6 +203,8 @@ required = [
     "s14_status",
     "s15_status",
     "s16_status",
+    "s15_proof",
+    "s16_proof",
     "heap_bytes_series",
     "proxy_workloads",
     "peak_alloc_bytes",
@@ -133,6 +268,9 @@ if payload["s14_status"] != computed_s14_status:
     raise SystemExit(
         f"AR-04: s14_status is '{payload['s14_status']}' but computed '{computed_s14_status}'"
     )
+
+validate_s15_proof(payload["s15_status"], payload["s15_proof"])
+validate_s16_proof(payload["s16_status"], payload["s16_proof"])
 
 print(f"gc-metrics-artifact:{path}")
 print(json.dumps(payload, sort_keys=True))

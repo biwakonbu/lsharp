@@ -20,7 +20,8 @@ Windows バイナリに Authenticode コード署名を追加。release 順序�
 - SmartScreen 警告が表示されないことを確認
 
 ### CI 統合
-- Windows リリースジョブに署名ステップ追加
+- Windows リリースジョブに署名ステップ追加（`.github/workflows/release.yml` の secret-gated hook）
+- `WINDOWS_SIGN_CERT_PFX_BASE64` / `WINDOWS_SIGN_CERT_PASSWORD` / `WINDOWS_TIMESTAMP_URL` が揃ったときだけ `signtool sign` / `signtool verify /pa` を実行し、未設定時は skip
 - 署名検証を smoke test に含める
 
 ## 正本参照
@@ -30,4 +31,4 @@ Windows バイナリに Authenticode コード署名を追加。release 順序�
 - artifact 命名 / retention: [`../../operations/artifact-policy.md`](../../operations/artifact-policy.md)
 
 ## ステータス
-Phase 11 後に実装予定。
+Phase 11 で workflow hook までは接続済み。実署名完了は credential 投入待ち。
