@@ -91,6 +91,7 @@ if not isinstance(proxy_workloads, dict):
 required_proxy_workloads = [
     "compile_run_light_loop",
     "repl_soak_50_eval",
+    "repl_stateful_long_session",
     "repl_stateful_single_session",
     "lsp_actual_stdio_repeated_sequence",
 ]

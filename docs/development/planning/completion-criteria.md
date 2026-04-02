@@ -119,7 +119,7 @@ Phase 13 (Component Model) に進む前に、以下のゲートを全て通過�
 ### ゲート 2: GC 有効 runtime stability [pending]
 - 長寿命 stateful LSP/REPL workload で GC 有効時にメモリが単調増加しないこと
 - `docs/development/planning/runtime-stability-spec.md` の S14/S15/S16 を満たすこと
-- **現況**: proxy soak / `gc-metrics` artifact / `s14_status` / `s15_status` / `s16_status` 集約は実装済みで、artifact payload は `proxy_workloads` に light compile+run / REPL / actual `lsp --stdio` repeated sequence の representative result を持つ。**ただし** collector 有効 workload の blocking artifact は未達
+- **現況**: proxy soak / `gc-metrics` artifact / `s14_status` / `s15_status` / `s16_status` 集約は実装済みで、artifact payload は `proxy_workloads` に light compile+run / REPL / stateful long-session REPL / actual `lsp --stdio` repeated sequence の representative result を持つ。**ただし** collector 有効 workload の blocking artifact は未達
 
 ### ゲート 3: rollback 手順の確定 [done]
 - rollback 対象を「embedded compiler component の巻き戻し」として再定義する

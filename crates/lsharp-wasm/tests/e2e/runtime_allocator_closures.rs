@@ -79,10 +79,9 @@ fn collect_repl_soak_50_eval_proxy_workload() -> serde_json::Value {
     })
 }
 
-fn collect_repl_stateful_single_session_proxy_workload() -> serde_json::Value {
+fn collect_repl_stateful_session_proxy_workload(iterations: usize) -> serde_json::Value {
     let repl_src_a = "(defn main [] 42)";
     let repl_src_b = "(defn main [] (if true 1 2))";
-    let iterations = 50usize;
     let expected_bytes: usize = (1..=iterations)
         .map(|n| {
             if n % 2 == 0 {
@@ -136,6 +135,14 @@ fn collect_repl_stateful_single_session_proxy_workload() -> serde_json::Value {
         "total_input_bytes": expected_bytes,
         "last_type_tag": 100,
     })
+}
+
+fn collect_repl_stateful_single_session_proxy_workload() -> serde_json::Value {
+    collect_repl_stateful_session_proxy_workload(50)
+}
+
+fn collect_repl_stateful_long_session_proxy_workload() -> serde_json::Value {
+    collect_repl_stateful_session_proxy_workload(200)
 }
 
 fn collect_lsp_actual_stdio_repeated_sequence_proxy_workload() -> serde_json::Value {
@@ -547,6 +554,7 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
     let proxy_workloads = serde_json::json!({
         "compile_run_light_loop": collect_compile_run_light_loop_proxy_workload(),
         "repl_soak_50_eval": collect_repl_soak_50_eval_proxy_workload(),
+        "repl_stateful_long_session": collect_repl_stateful_long_session_proxy_workload(),
         "repl_stateful_single_session": collect_repl_stateful_single_session_proxy_workload(),
         "lsp_actual_stdio_repeated_sequence": collect_lsp_actual_stdio_repeated_sequence_proxy_workload(),
     });
@@ -603,6 +611,18 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
     );
     assert_eq!(
         payload["proxy_workloads"]["repl_stateful_single_session"]["last_type_tag"],
+        100
+    );
+    assert_eq!(
+        payload["proxy_workloads"]["repl_stateful_long_session"]["iterations"],
+        200
+    );
+    assert_eq!(
+        payload["proxy_workloads"]["repl_stateful_long_session"]["eval_count"],
+        200
+    );
+    assert_eq!(
+        payload["proxy_workloads"]["repl_stateful_long_session"]["last_type_tag"],
         100
     );
     assert_eq!(

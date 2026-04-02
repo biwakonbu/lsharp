@@ -79,12 +79,19 @@
   "s15_status": "n/a",
   "s16_status": "n/a",
   "heap_bytes_series": [],
-   "proxy_workloads": {
-     "compile_run_light_loop": { "status": "pass", "iterations": 48, "last_stdout": "1" },
-     "repl_soak_50_eval": { "status": "pass", "iterations": 50, "eval_count": 50 },
-     "repl_stateful_single_session": {
-       "status": "pass",
-       "iterations": 50,
+    "proxy_workloads": {
+      "compile_run_light_loop": { "status": "pass", "iterations": 48, "last_stdout": "1" },
+      "repl_soak_50_eval": { "status": "pass", "iterations": 50, "eval_count": 50 },
+      "repl_stateful_long_session": {
+        "status": "pass",
+        "iterations": 200,
+        "eval_count": 200,
+        "total_input_bytes": 4500,
+        "last_type_tag": 100
+      },
+      "repl_stateful_single_session": {
+        "status": "pass",
+        "iterations": 50,
        "eval_count": 50,
        "total_input_bytes": 1125,
        "last_type_tag": 100
@@ -110,7 +117,7 @@
 `s14_status` / `s15_status` / `s16_status` は bump allocator では常に `"n/a"` であり、
 collector 有効になって初めて `"pass"` / `"fail"` / `"blocked"` に変わる。
 現在の bump artifact でも schema は固定し、`heap_bytes_series` には空配列を入れておく。
-`proxy_workloads` には既存 GC-05 representative workload の結果を格納し、各 entry の `status = "pass"` を required とする。
+`proxy_workloads` には既存 GC-05 representative workload の結果を格納し、各 entry の `status = "pass"` を required とする。required entry は light compile+run / REPL 50 eval / stateful long-session REPL / stateful single-session REPL / actual `lsp --stdio` repeated sequence の 5 つで固定する。
 `LSHARP_GC_METRICS_INPUT` を指定した validate-only 実行では、既存 `summary.json` を再利用して Python validator だけを走らせられる。
 
 ### artifact rejection criteria
@@ -151,7 +158,7 @@ machine-readable に扱うため、S14-S16 の状態は次の 4 値で固定す�
 
 `CP-05` / `GC-06` の完了判定では、S14-S16 が `pass` になるまで **論理上は `blocked`** とみなす。  
 つまり、現在の PR CI は green でも runtime stability gate は未完了のままでよい。
-その一方で `proxy_workloads` により、light compile+run / REPL / actual `lsp --stdio` repeated sequence が artifact 上で機械可読に追跡できる。
+その一方で `proxy_workloads` により、light compile+run / REPL / stateful long-session REPL / actual `lsp --stdio` repeated sequence が artifact 上で機械可読に追跡できる。
 
 ## monotonic trend evaluation rules (S14)
 
