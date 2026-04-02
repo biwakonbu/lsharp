@@ -2850,6 +2850,17 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
             && fresh_clone_doc_content.contains("smoke_test_readme.sh"),
         "fresh-clone-spec.md は mainline binary-only test-fresh-clone job を説明すること"
     );
+    assert!(
+        fresh_clone_doc_content.contains("現行の closest viable binary-only gate")
+            && fresh_clone_doc_content.contains("将来の true no-Rust end-state"),
+        "fresh-clone-spec.md は current binary-only gate と future-state を見出しレベルで分離すること"
+    );
+    assert!(
+        fresh_clone_doc_content.contains("`./scripts/fetch-stage0.sh` は未実装")
+            && fresh_clone_doc_content.contains("`./scripts/bootstrap.sh` は未実装")
+            && fresh_clone_doc_content.contains("`./scripts/release-bundle.sh` は未実装"),
+        "fresh-clone-spec.md は未存在の future-state script を現行手順ではなく未実装要素として明記すること"
+    );
 
     let phase11_plan = project_root.join("docs/development/planning/phase11-implementation-plan.md");
     let phase11_plan_content =

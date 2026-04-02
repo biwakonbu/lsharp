@@ -805,7 +805,7 @@
 ### OPS-07 Fresh clone without Rust
 
 - Goal: Rust 未導入の利用者環境から host launcher single binary release smoke を再現する。
-- Current state: `scripts/ci/test-fresh-clone.sh` + `fresh-clone-smoke` により clean checkout 相当コピーからの再ビルド / smoke は blocking 化された。さらに mainline CI では `fresh-clone-artifact` → `test-fresh-clone` を追加し、同一 workflow 内で作った release-style archive を download して、Rust toolchain 無しで `release-smoke.sh` / `default-path-smoke.sh` / `smoke_test_readme.sh` を通す **closest viable binary-only gate** まで接続済み。**ただし** GitHub Releases 上の stage0 package を fresh clone 直後に取得する true no-Rust end-state は未実装。
+- Current state: `scripts/ci/test-fresh-clone.sh` + `fresh-clone-smoke` により clean checkout 相当コピーからの再ビルド / smoke は blocking 化された。さらに mainline CI では `fresh-clone-artifact` → `test-fresh-clone` を追加し、同一 workflow 内で作った release-style archive を download して、Rust toolchain 無しで `release-smoke.sh` / `default-path-smoke.sh` / `smoke_test_readme.sh` を通す **現行の closest viable binary-only gate** まで接続済み。`docs/development/operations/fresh-clone-spec.md` も current gate と target state を分離し、`fetch-stage0.sh` / `bootstrap.sh` / `release-bundle.sh` は future-state 側の未実装要素として明記した。**ただし** GitHub Releases 上の stage0 package を fresh clone 直後に取得する true no-Rust end-state は未実装。
 - Rust source: `docs/development/operations/fresh-clone-spec.md`
 - L# target: `scripts/ci/test-fresh-clone.sh`, `scripts/ci/release-smoke.sh`, `scripts/smoke_test_readme.sh`
 - Implementation direction: 現行の `test-fresh-clone` は workflow-local artifact を使う binary-only gate とし、stage0 package 配布が整い次第 `download release artifact` を GitHub Releases / stage0 fetch に差し替えて true no-Rust end-state へ寄せる。

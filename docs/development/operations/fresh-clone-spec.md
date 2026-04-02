@@ -1,12 +1,15 @@
 # Rust 非必須 Fresh Clone 仕様
 
-Rust ツールチェーンを必要としない、L# プロジェクトの fresh clone から **host launcher + guest Wasm component** の取得・検証・配布までの手順を定義する。
+Rust ツールチェーンを必要としない、L# プロジェクトの fresh clone から **host launcher + guest Wasm component** の取得・検証・配布へ至る導線を定義する。
 
 ## 目的
 
-Phase 11 / Phase 13 移行後、エンドユーザーは Rust をインストールせずに L# コンパイラを取得・ビルド・利用できるようにする。Rust workspace は削除せず、開発者向け host launcher / component tooling context として残存する。
+Phase 11 / Phase 13 移行後、エンドユーザーは Rust をインストールせずに L# コンパイラを取得・利用できるようにする。Rust workspace は削除せず、開発者向け host launcher / component tooling context として残存する。
 
-## 手順
+## 現行の closest viable binary-only gate
+
+現時点で mainline に接続済みなのは、**same-run の workflow-local artifact を download して検証する binary-only CI gate** である。
+ここでは `test-fresh-clone` / `release-smoke` / `smoke_test_readme.sh` が正本であり、GitHub Releases から stage0 package を取ってくる導線はまだ含まれない。
 
 ### 1. リポジトリ取得
 
@@ -15,21 +18,56 @@ git clone https://github.com/<org>/lsharp.git
 cd lsharp
 ```
 
-Rust ツールチェーン（`rustc`, `cargo`）は不要。
+`test-fresh-clone` job 自体は Rust ツールチェーンを setup せず、download 済み archive だけで smoke を行う。
 
-### 2. Stage0 パッケージ取得
+### 2. Mainline binary-only smoke
+
+`fresh-clone-artifact` が同一 workflow 内で Linux 用 release-style archive を生成し、`test-fresh-clone` がその artifact を `actions/download-artifact` で取得して検証する。
+
+- `scripts/ci/test-fresh-clone.sh <archive>` が entry point
+- `scripts/ci/release-smoke.sh` で `checksums.txt` 検証と packaged binary smoke を再利用する
+- `scripts/ci/default-path-smoke.sh` で `check` / `compile` の default-path smoke を再利用する
+- `scripts/smoke_test_readme.sh` で inline Quick Start fixture に対する README smoke を再利用する
+
+### 3. Release artifact の中間 gate
+
+release workflow では build 済み archive を `actions/download-artifact` で集約し、`scripts/ci/release-smoke.sh` で **download release artifact -> checksum verify -> packaged binary smoke** を再実行する。
+
+- Rust toolchain setup を追加せずに `.tar.gz` / `.zip` archive を展開する
+- `checksums.txt` を検証する
+- packaged `lsharp` binary の `--version` / `check` / `fmt` / `compile` / `test` / `doc` を smoke する
+
+### 4. 暫定 clean-checkout gate
+
+`fresh-clone-smoke` は current binary-only gate を補完する暫定 job であり、still Rust-dependent な clean checkout build regressions を継続検知する。
+
+- `scripts/ci/test-fresh-clone.sh` が `target/ci/fresh-clone-smoke/` に clean checkout 相当のコピーを作る
+- そのコピー上で `cargo build -p lsharp-driver -q` を実行し、ビルド済み `lsharp` binary を得る
+- `scripts/ci/default-path-smoke.sh` を再利用し、代表 selfhost / stdlib compile まで再確認する
+
+この gate は **Rust 非依存化の完了を主張しない**。あくまで `test-fresh-clone` と役割分担しながら、current mainline の regressions を捕捉するための暫定措置である。
+
+## 将来の true no-Rust end-state
+
+以下は stage0 package 配布と bootstrap 閉包が揃った後に目指す target state であり、**現行 mainline の手順ではない**。
+
+- `./scripts/fetch-stage0.sh` は未実装
+- `./scripts/bootstrap.sh` は未実装
+- `./scripts/release-bundle.sh` は未実装
+
+### 1. Stage0 パッケージ取得
 
 ```bash
 # プリビルト stage0 host launcher package を GitHub Releases から取得
 ./scripts/fetch-stage0.sh
 ```
 
-- OS / アーキテクチャを自動検出
-- `stage0/lsharp` として配置
-- stage0 package には起動可能な host launcher と、その launcher が実行する guest compiler component が含まれる
-- チェックサム検証を実施
+- OS / アーキテクチャを自動検出する
+- `stage0/lsharp` として配置する
+- stage0 package には起動可能な host launcher と、その launcher が実行する guest compiler component を含める
+- チェックサム検証を実施する
 
-### 3. ブートストラップ
+### 2. ブートストラップ
 
 ```bash
 # stage0 launcher → stage1 component → stage2 component の 3 段階ブートストラップ
@@ -42,7 +80,7 @@ Rust ツールチェーン（`rustc`, `cargo`）は不要。
 | stage1 → stage2 | selfhost/src/**/*.ls | stage2/lsharp.component.wasm | stage1 component を host launcher に載せて selfhost 正本 source root を再コンパイル |
 | stage2 検証 | — | — | stage1 と stage2 の component 出力が一致することを確認 |
 
-### 4. Host launcher パッケージ生成
+### 3. Host launcher パッケージ生成
 
 ```bash
 # host launcher に guest component を埋め込んだ配布パッケージを生成
@@ -52,7 +90,7 @@ Rust ツールチェーン（`rustc`, `cargo`）は不要。
 - 主要成果物は `dist/lsharp`（single-binary host launcher）
 - 必要に応じて検証・再埋め込み用の `dist/lsharp.component.wasm` を sidecar として同梱してよいが、主配布物は host launcher とする
 
-### 5. テスト実行
+### 4. テスト実行
 
 ```bash
 # テストスイート実行
@@ -63,7 +101,7 @@ Rust ツールチェーン（`rustc`, `cargo`）は不要。
 - smoke の主眼は、配布物に含まれる guest component が host launcher 経由で正常起動すること
 - Rust の `cargo test` は使用しない
 
-### 6. 配布パッケージ生成
+### 5. 配布パッケージ生成
 
 ```bash
 # 配布用アーカイブ生成
@@ -116,7 +154,7 @@ test-fresh-clone:
 `test-fresh-clone` と並走する暫定 gate として、現在も Rust 依存の **clean checkout 由来ビルド回帰** を継続検知する `fresh-clone-smoke` を運用する。
 
 - `scripts/ci/test-fresh-clone.sh` が `target/ci/fresh-clone-smoke/` に clean checkout 相当のコピーを作る
-- そのコピー上で `cargo build -p lsharp-driver -q` を実行し、ビルド済み `lsharp` バイナリを得る
+- そのコピー上で `cargo build -p lsharp-driver -q` を実行し、ビルド済み `lsharp` binary を得る
 - `scripts/ci/default-path-smoke.sh` を再利用して `check` / `compile` の default-path smoke を再実行する
 - 追加で `selfhost/src/Syntax/Token.ls` と `stdlib/Core.ls` をコンパイルし、selfhost / stdlib の代表 slice が clean checkout でも壊れていないことを確認する
 
