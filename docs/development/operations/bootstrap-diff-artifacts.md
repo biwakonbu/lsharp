@@ -3,7 +3,8 @@
 ## 概要
 
 ブートストラップ検証テスト (`test_e2e_bootstrap_four_layer_comparison`,
-`test_e2e_bootstrap_fixed_point_stage2_stage3`) が出力する
+`test_e2e_bootstrap_fixed_point_stage2_stage3`,
+`test_e2e_bootstrap_stage2_self_feed_fixed_input_set`) が出力する
 アーティファクトと保存先の仕様。比較結果は成功時も更新され、
 失敗時のローカル/CI 調査でそのまま参照できる。
 
@@ -18,7 +19,9 @@ ci-artifacts/bootstrap-diff/{commit_sha}/
 ├── sections_b.json        # 比較右辺のセクション構造
 ├── export_a.bin           # stage1_a の Export セクション raw bytes
 ├── export_b.bin           # stage1_b の Export セクション raw bytes
-└── metadata.json          # コミット SHA, タイムスタンプ, テスト名
+├── metadata.json          # コミット SHA, タイムスタンプ, テスト名
+├── fixed-input-set-self-feed-report.txt  # 54 target self-feed 要約 (optional)
+└── fixed-input-set-self-feed.json         # target 別 self-feed metadata (optional)
 ```
 
 ## 4 層比較 (Four-Layer Comparison)
@@ -68,6 +71,31 @@ stage1_b.wasm: {size} bytes
 }
 ```
 
+## fixed-input-set-self-feed-report.txt / .json
+
+`test_e2e_bootstrap_stage2_self_feed_fixed_input_set` は同じ artifact
+ディレクトリに、fixed input set 54 件（selfhost 40 / stdlib 11 /
+examples 3）の stage2 self-feed 結果を追加保存する。
+
+- `fixed-input-set-self-feed-report.txt`
+  - `target_count`, `compiled_count`, `failed_count`
+  - 各 target の `PASS [root] path -> wasm_bytes`
+  - 失敗時は `FAIL [root] path -> first_error_line`
+- `fixed-input-set-self-feed.json`
+  - `stage2_self_compiler_bytes`
+  - `compiled_targets[]` (`path`, `root`, `output_wasm_bytes`, `fingerprint`)
+  - `failed_targets[]` (`path`, `root`, `error`)
+
+```json
+{
+  "commit_sha": "abc123...",
+  "test_name": "test_e2e_bootstrap_stage2_self_feed_fixed_input_set",
+  "target_count": 54,
+  "compiled_count": 54,
+  "failed_count": 0
+}
+```
+
 ## CI での利用
 
 ### GitHub Actions でのアーティファクト保存
@@ -100,6 +128,8 @@ diff <(xxd ci-artifacts/bootstrap-diff/{sha}/export_a.bin) \
 ## 関連テスト
 
 - `test_e2e_bootstrap_four_layer_comparison` — 4 層比較
+- `test_e2e_bootstrap_fixed_point_stage2_stage3` — stage2/stage3 fixed-point
+- `test_e2e_bootstrap_stage2_self_feed_fixed_input_set` — fixed input set self-feed
 - `test_e2e_bootstrap_stage_chain_verification` — ステージチェーン検証
 - `test_e2e_bootstrap_stage0_oracle_chain_four_way_identity` — 4 連 oracle チェーン
 - `test_e2e_bootstrap_stage1_deterministic` — stage1 決定性

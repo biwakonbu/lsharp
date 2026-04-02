@@ -620,6 +620,328 @@ fn test_bootstrap_fixed_point_ci_wiring_present() {
         script.contains("test_e2e_bootstrap_fixed_point_stage2_stage3"),
         "compile-phase11-inputs.sh は fixed-point テストを明示実行すること"
     );
+    assert!(
+        script.contains("test_e2e_bootstrap_stage2_self_feed_fixed_input_set"),
+        "compile-phase11-inputs.sh は full fixed input set の stage2 self-feed テストを明示実行すること"
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_cli_fixed_input_compile_gate() {
+    let cli_path = selfhost_source_path("Cli.ls");
+    let wasm = try_compile_file_only(&cli_path)
+        .unwrap_or_else(|e| panic!("CP-01: fixed input set compile gate の Cli.ls が失敗してはならない: {e}"));
+    assert_valid_wasm(&wasm);
+}
+
+#[derive(Clone, Copy)]
+enum FixedInputSetRoot {
+    Selfhost,
+    Repo,
+}
+
+impl FixedInputSetRoot {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Selfhost => "selfhost",
+            Self::Repo => "repo",
+        }
+    }
+}
+
+struct FixedInputSetTarget {
+    path: String,
+    root: FixedInputSetRoot,
+}
+
+fn fixed_input_set_self_feed_targets() -> Vec<FixedInputSetTarget> {
+    let selfhost_root = selfhost_package_root();
+    let selfhost_modules = [
+        "AST",
+        "Cli",
+        "Closure",
+        "Codegen",
+        "Compiler",
+        "Constraints",
+        "Derive",
+        "DocTools",
+        "Emit",
+        "Formatter",
+        "GC",
+        "HtmlDoc",
+        "Hygiene",
+        "IR",
+        "JsonRpc",
+        "Lexer",
+        "Linker",
+        "Linter",
+        "Lower",
+        "LowerDecl",
+        "LowerExpr",
+        "LowerPattern",
+        "LspServer",
+        "MacroExpand",
+        "Main",
+        "MetadataCheck",
+        "ModuleGraph",
+        "NativeCodegen",
+        "NativeEmit",
+        "NativeTarget",
+        "Parser",
+        "Span",
+        "TestRunner",
+        "Token",
+        "Type",
+        "TypeInfer",
+        "TypeScheme",
+        "WasiBackend",
+        "WasiRunner",
+        "WasmEmit",
+    ];
+    let mut targets = selfhost_modules
+        .iter()
+        .map(|module| {
+            let file_name = format!("{module}.ls");
+            let rel_path = selfhost_source_path(&file_name)
+                .strip_prefix(&selfhost_root)
+                .unwrap_or_else(|_| panic!("CP-01: selfhost 相対パスへ変換できない: {file_name}"))
+                .to_string_lossy()
+                .replace('\\', "/");
+            FixedInputSetTarget {
+                path: rel_path,
+                root: FixedInputSetRoot::Selfhost,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    targets.extend(
+        [
+            "stdlib/Core.ls",
+            "stdlib/Char.ls",
+            "stdlib/Debug.ls",
+            "stdlib/IO.ls",
+            "stdlib/List.ls",
+            "stdlib/Map.ls",
+            "stdlib/Path.ls",
+            "stdlib/Set.ls",
+            "stdlib/String.ls",
+            "stdlib/Vector.ls",
+            "stdlib/Json.ls",
+            "examples/fib.ls",
+            "examples/module.ls",
+            "examples/trait.ls",
+        ]
+        .into_iter()
+        .map(|path| FixedInputSetTarget {
+            path: path.to_string(),
+            root: FixedInputSetRoot::Repo,
+        }),
+    );
+
+    targets
+}
+
+fn write_fixed_input_set_self_feed_artifact(
+    artifact_id: &str,
+    report: &str,
+    metadata: &serde_json::Value,
+) -> std::path::PathBuf {
+    let artifact_root = selfhost_project_root()
+        .join("ci-artifacts/bootstrap-diff")
+        .join(artifact_id);
+    std::fs::create_dir_all(&artifact_root)
+        .unwrap_or_else(|e| panic!("CP-01 artifact ディレクトリ作成に失敗 {}: {}", artifact_root.display(), e));
+
+    std::fs::write(
+        artifact_root.join("fixed-input-set-self-feed-report.txt"),
+        report,
+    )
+    .unwrap_or_else(|e| panic!("CP-01 report 書き込み失敗: {e}"));
+    std::fs::write(
+        artifact_root.join("fixed-input-set-self-feed.json"),
+        serde_json::to_vec_pretty(metadata).expect("CP-01 self-feed JSON serialize に失敗"),
+    )
+    .unwrap_or_else(|e| panic!("CP-01 metadata 書き込み失敗: {e}"));
+
+    artifact_root
+}
+
+#[test]
+fn test_e2e_bootstrap_stage2_self_feed_fixed_input_set() {
+    let (stage2, root) = build_stage2_self_compiler_from_main();
+    let artifact_id = bootstrap_diff_artifact_id();
+    let repo_root = selfhost_project_root();
+    let targets = fixed_input_set_self_feed_targets();
+
+    assert_eq!(
+        targets.len(),
+        54,
+        "CP-01: fixed input set は selfhost/stdlib/examples の合計 54 件であるべき"
+    );
+
+    let mut compiled = Vec::new();
+    let mut failures = Vec::new();
+    for target in &targets {
+        let root_dir = match target.root {
+            FixedInputSetRoot::Selfhost => &root,
+            FixedInputSetRoot::Repo => &repo_root,
+        };
+        let out_a = run_wasm_with_six_imports_compiler_mode_fs(
+            &stage2,
+            root_dir,
+            &["compiler", target.path.as_str()],
+        );
+        let out_b = run_wasm_with_six_imports_compiler_mode_fs(
+            &stage2,
+            root_dir,
+            &["compiler", target.path.as_str()],
+        );
+        match (out_a, out_b) {
+            (Ok(output_a), Ok(output_b)) => {
+                if output_a != output_b {
+                    failures.push(serde_json::json!({
+                        "path": target.path,
+                        "root": target.root.label(),
+                        "error": "stage2 self-feed 出力が非決定的",
+                    }));
+                    continue;
+                }
+
+                let parsed = std::panic::catch_unwind(|| parse_emitted_wasm_modules(&output_a, 1));
+                let Ok(modules_a) = parsed else {
+                    failures.push(serde_json::json!({
+                        "path": target.path,
+                        "root": target.root.label(),
+                        "error": "stage2 出力が単一 wasm モジュールとして復元できない",
+                    }));
+                    continue;
+                };
+                let parsed = std::panic::catch_unwind(|| parse_emitted_wasm_modules(&output_b, 1));
+                let Ok(modules_b) = parsed else {
+                    failures.push(serde_json::json!({
+                        "path": target.path,
+                        "root": target.root.label(),
+                        "error": "stage2 2回目出力が単一 wasm モジュールとして復元できない",
+                    }));
+                    continue;
+                };
+                let wasm_a = &modules_a[0];
+                let wasm_b = &modules_b[0];
+                if std::panic::catch_unwind(|| assert_valid_wasm(wasm_a)).is_err() {
+                    failures.push(serde_json::json!({
+                        "path": target.path,
+                        "root": target.root.label(),
+                        "error": "stage2 出力 wasm の検証に失敗",
+                    }));
+                    continue;
+                }
+                if std::panic::catch_unwind(|| assert_valid_wasm(wasm_b)).is_err() {
+                    failures.push(serde_json::json!({
+                        "path": target.path,
+                        "root": target.root.label(),
+                        "error": "stage2 2回目出力 wasm の検証に失敗",
+                    }));
+                    continue;
+                }
+                if wasm_a != wasm_b {
+                    failures.push(serde_json::json!({
+                        "path": target.path,
+                        "root": target.root.label(),
+                        "error": "stage2 self-feed wasm が byte-identical でない",
+                    }));
+                    continue;
+                }
+                compiled.push(serde_json::json!({
+                    "path": target.path,
+                    "root": target.root.label(),
+                    "output_wasm_bytes": wasm_a.len(),
+                    "fingerprint": super::selfhost_bootstrap_four_layer::hash_fingerprint(wasm_a),
+                }));
+            }
+            (Err(err), _) | (_, Err(err)) => failures.push(serde_json::json!({
+                "path": target.path,
+                "root": target.root.label(),
+                "error": err,
+            })),
+        }
+    }
+
+    let mut report_lines = vec![
+        "Bootstrap Fixed Input Set Self-Feed Report".to_string(),
+        "==========================================".to_string(),
+        format!("commit: {artifact_id}"),
+        "timestamp: 1970-01-01T00:00:00Z".to_string(),
+        "test: test_e2e_bootstrap_stage2_self_feed_fixed_input_set".to_string(),
+        format!("stage2_self_compiler_bytes: {}", stage2.len()),
+        format!("target_count: {}", targets.len()),
+        format!("compiled_count: {}", compiled.len()),
+        format!("failed_count: {}", failures.len()),
+        String::new(),
+    ];
+    report_lines.extend(compiled.iter().map(|entry| {
+        format!(
+            "PASS [{}] {} -> {} bytes",
+            entry["root"].as_str().unwrap_or("unknown"),
+            entry["path"].as_str().unwrap_or("<missing>"),
+            entry["output_wasm_bytes"].as_u64().unwrap_or(0)
+        )
+    }));
+    report_lines.extend(failures.iter().map(|entry| {
+        format!(
+            "FAIL [{}] {} -> {}",
+            entry["root"].as_str().unwrap_or("unknown"),
+            entry["path"].as_str().unwrap_or("<missing>"),
+            entry["error"]
+                .as_str()
+                .unwrap_or("unknown error")
+                .lines()
+                .next()
+                .unwrap_or("unknown error")
+        )
+    }));
+    let report = report_lines.join("\n");
+
+    let metadata = serde_json::json!({
+        "commit_sha": artifact_id,
+        "timestamp": "1970-01-01T00:00:00Z",
+        "test_name": "test_e2e_bootstrap_stage2_self_feed_fixed_input_set",
+        "stage2_self_compiler_bytes": stage2.len(),
+        "target_count": targets.len(),
+        "compiled_count": compiled.len(),
+        "failed_count": failures.len(),
+        "compiled_targets": compiled,
+        "failed_targets": failures,
+    });
+    let artifact_dir =
+        write_fixed_input_set_self_feed_artifact(&artifact_id, &report, &metadata);
+
+    let written_metadata: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(artifact_dir.join("fixed-input-set-self-feed.json"))
+            .expect("CP-01 self-feed artifact JSON の読み込みに失敗"),
+    )
+    .expect("CP-01 self-feed artifact JSON は JSON であること");
+    assert_eq!(
+        written_metadata["compiled_count"].as_u64(),
+        Some(compiled.len() as u64),
+        "CP-01 self-feed artifact は compiled_count を保持すること"
+    );
+    assert_eq!(
+        written_metadata["failed_count"].as_u64(),
+        Some(failures.len() as u64),
+        "CP-01 self-feed artifact は failed_count を保持すること"
+    );
+
+    assert!(
+        failures.is_empty(),
+        "CP-01: stage2 self-feed fixed input set に失敗がある: {}",
+        serde_json::to_string_pretty(&written_metadata["failed_targets"])
+            .expect("CP-01 failure JSON serialize に失敗")
+    );
+    assert_eq!(
+        compiled.len(),
+        targets.len(),
+        "CP-01: stage2 self compiler は fixed input set 全件を再生成できるべき"
+    );
 }
 
 // =============================================================================

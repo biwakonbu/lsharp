@@ -134,6 +134,9 @@ if [[ "$RUN_BOOTSTRAP_FIXED_POINT" == "1" ]]; then
   BOOTSTRAP_DIFF_ARTIFACT_ID="$BOOTSTRAP_DIFF_ARTIFACT_ID" \
     cargo test -p lsharp-wasm --test e2e \
     e2e::selfhost_bootstrap_acceptance::test_e2e_bootstrap_fixed_point_stage2_stage3 -- --exact --nocapture
+  BOOTSTRAP_DIFF_ARTIFACT_ID="$BOOTSTRAP_DIFF_ARTIFACT_ID" \
+    cargo test -p lsharp-wasm --test e2e \
+    e2e::selfhost_bootstrap_acceptance::test_e2e_bootstrap_stage2_self_feed_fixed_input_set -- --exact --nocapture
 fi
 
 echo ""

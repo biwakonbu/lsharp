@@ -113,8 +113,8 @@ Phase 13 (Component Model) に進む前に、以下のゲートを全て通過�
 ### ゲート 1: Wasm bootstrap fixed-point [pending]
 - `stageN.wasm` が selfhost compiler として `stageN+1.wasm` を生成でき、fixed-point が CI で安定すること
 - full input set (selfhost/stdlib/examples) に対する `stage1 -> stage2 -> stage3` の実体生成・比較
-- **現況**: `scripts/ci/compile-phase11-inputs.sh` は selfhost/stdlib/examples の fixed input set compile gate を通し、CI bootstrap job で `RUN_BOOTSTRAP_FIXED_POINT: 1` と `bootstrap-diff-${{ github.sha }}` upload を接続済み。`test_e2e_bootstrap_fixed_point_stage2_stage3` も CI 経路から green。2026-04-02 に full input set self-feed を stage2 self compiler + `run_wasm_with_six_imports_compiler_mode_fs` で追加検証したところ、`App/Cli.ls` compiler-mode 経路で `six-import alloc: memory.grow に失敗` (`current_bytes=2215706624`, `needed_end=4431296674`) に到達した
-- **未了**: full input set そのものを stage2 self compiler で再生成・比較する fixed-point 証跡はまだ不足であり、現状は compiler-mode/import path の linear-memory ceiling blocker 付き
+- **現況**: `scripts/ci/compile-phase11-inputs.sh` は selfhost/stdlib/examples の fixed input set compile gate を通し、`RUN_BOOTSTRAP_FIXED_POINT=1` では `test_e2e_bootstrap_fixed_point_stage2_stage3` と `test_e2e_bootstrap_stage2_self_feed_fixed_input_set` を exact 実行する。`test_e2e_bootstrap_cli_fixed_input_compile_gate` で `App/Cli.ls` direct compile gate も固定され、historical compiler-mode memory.grow blocker は再現しない。ローカル再実行では script 全体が exit 0 となり、新 self-feed gate は fixed input set 54 件（selfhost 40 / stdlib 11 / examples 3）を stage2 self compiler で 2 回ずつ self-feed して single-module recovery / valid wasm / byte-identical determinism を `ci-artifacts/bootstrap-diff/{sha}/fixed-input-set-self-feed-report.txt` / `fixed-input-set-self-feed.json` に保存する
+- **未了**: full input set の deterministic stage2 self-feed 証跡は揃ったが、true `stage1 -> stage2 -> stage3` の full-set 実体生成・比較として Gate 1 を閉じるにはまだ不足している
 
 ### ゲート 2: GC 有効 runtime stability [pending]
 - 長寿命 stateful LSP/REPL workload で GC 有効時にメモリが単調増加しないこと
