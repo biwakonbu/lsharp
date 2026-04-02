@@ -52,13 +52,13 @@ vim Cargo.toml   # version = "0.x.y"
 |---|---|
 | `lsharp` host launcher | `target/release/lsharp` |
 | `lsharp-lsp` language server | `target/release/lsharp-lsp` |
-| guest component package | `target/release-playbook/` 以下の component / bundle 出力（埋め込み用または検証用 sidecar） |
+| guest component sidecar | `dist/lsharp-<version>-<target>.component.wasm`（archive 内には `lsharp.component.wasm` として同梱） |
 | release playbook 検証成果物 | `target/release-playbook/` 以下の bootstrap / smoke 出力 |
 | チェックサム | SHA-256 チェックサムファイル |
 
 配布対象の tier1 / tier2 切り分けと命名規則は `release-distribution-signing.md` と `artifact-policy.md` を参照。
 
-release workflow では `scripts/release.sh` の直後に `scripts/ci/release-smoke.sh dist/lsharp-<version>-<target>.<ext>` を実行し、展開済み archive 上で `README.md` / `LICENSE` / `checksums.txt` / `lsharp-lsp` の存在確認、`checksums.txt` 検証、packaged `lsharp` binary の `--version` / `check` / `fmt` / `compile` / `test` / `doc` smoke を通す。README / fresh-clone 側でも `scripts/smoke_test_readme.sh` が inline Quick Start fixture を使って checksum / compile / test / doc の導線を再確認し、host-backed `doc` distribution ownership を二重化して確認する。
+release workflow では `scripts/release.sh` の直後に `scripts/ci/release-smoke.sh dist/lsharp-<version>-<target>.<ext>` を実行し、展開済み archive 上で `README.md` / `LICENSE` / `checksums.txt` / `lsharp-lsp` / `lsharp.component.wasm` の存在確認、`checksums.txt` 検証、packaged `lsharp` binary の `--version` / `check` / `fmt` / `compile` / `test` / `doc` smoke を通す。README / fresh-clone 側でも `scripts/smoke_test_readme.sh` が inline Quick Start fixture を使って checksum / compile / test / doc の導線を再確認し、host-backed `doc` distribution ownership を二重化して確認する。
 
 ### 4. チェックサム生成
 
@@ -87,11 +87,12 @@ git push origin v<version>
 | ジョブ | 内容 |
 |------|------|
 | `verify` | `cargo test` + `cargo clippy` + `cargo fmt --check` |
-| `build` | Tier1 の 4 プラットフォームで `cargo build --release` + `scripts/release.sh` で host launcher archive / component package を作成 |
+| `build` | Tier1 の 4 プラットフォームで `cargo build --release` + `scripts/release.sh` で host launcher archive / guest component sidecar を作成 |
 | `release-smoke` | Ubuntu 上で Linux x86_64 archive (`lsharp-{version}-x86_64-unknown-linux-gnu.tar.gz`) を download し、`scripts/ci/release-smoke.sh` を Rust toolchain 無しで再実行 |
-| `release` | `softprops/action-gh-release` で GitHub Release を作成し、全 archive と `dist/checksums.txt` を添付 |
+| `release` | `softprops/action-gh-release` で GitHub Release を作成し、全 archive / sidecar component / `dist/checksums.txt` を添付 |
 
 - `release-smoke` job は Ubuntu 上で実行可能な downloaded artifact に絞るため、Linux x86_64 archive を 1 本だけ再検証する
+- `build` job の workflow-local artifact には host launcher archive と companion sidecar `lsharp-{version}-{target}.component.wasm` を同梱する
 - `release` job は build 済み archive を download した後、`bash scripts/checksum.sh dist > dist/checksums.txt` で release-level checksum asset を生成してから公開する
 - バージョン文字列にハイフンが含まれる場合 (例: `v0.2.0-rc1`) はプレリリースとして公開
 - `release_notes` は GitHub の自動生成を使用
@@ -104,7 +105,7 @@ stable release を publish したら、同じ GitHub Release notes に以下の 
 Rollback anchor
 - last-known-good release tag: v<version>
 - host launcher assets: <attached asset names>
-- guest component assets: <attached asset names>
+- guest component assets: lsharp-<version>-<target>.component.wasm
 - checksum: <attached checksum file>
 ```
 
@@ -120,8 +121,9 @@ Rollback anchor
 2. タグ `v<version>` を選択
 3. リリースノートを記載（変更点、破壊的変更、移行手順）
 4. アーティファクトをアップロード
-5. `dist/checksums.txt` を checksum asset として添付
-6. `Rollback anchor` セクションに tag / asset 名 / checksum 名を記録
+5. `lsharp-<version>-<target>.component.wasm` を guest component asset として添付
+6. `dist/checksums.txt` を checksum asset として添付
+7. `Rollback anchor` セクションに tag / asset 名 / checksum 名を記録
 
 stable / nightly の扱い、署名順序、package manager 更新順は `release-distribution-signing.md` を参照。
 

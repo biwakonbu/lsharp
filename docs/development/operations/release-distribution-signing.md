@@ -33,7 +33,7 @@ version bump
 - rollback anchor の正本は **GitHub Release 上の stable tag + asset set** とし、package manager package は二次配布なので anchor にはしない。
 - anchor に最低限含める情報は以下の 3 点:
   1. `last-known-good release tag` (`vX.Y.Z`)
-  2. 同じ tag に紐づく host launcher archive / guest component package の asset 名
+  2. 同じ tag に紐づく host launcher archive / guest component sidecar (`lsharp-{version}-{target}.component.wasm`) の asset 名
   3. 同じ release に添付した checksum file 名
 - stable release は GitHub Release notes に `Rollback anchor` セクションを追記し、上記 3 点を明記してから完了扱いにする。
 - nightly は継続検証チャネルであり、LKG anchor は更新しない。
@@ -62,7 +62,7 @@ version bump
 
 - artifact 名・保持期間の正本は [`artifact-policy.md`](./artifact-policy.md)。
 - 配布物のファイル名は `lsharp-{version}-{target}.{ext}` を基本形とし、target ごとの圧縮形式は release workflow で固定する。
-- checksum は配布物と同時に生成し、release asset と同じ公開単位で扱う。現行 workflow では `release` job が top-level `dist/checksums.txt` を release-level checksum asset として生成・添付する。
+- checksum は配布物と同時に生成し、release asset と同じ公開単位で扱う。現行 workflow では `release` job が top-level `dist/checksums.txt` を release-level checksum asset として生成・添付し、build job は host launcher archive と companion sidecar `lsharp-{version}-{target}.component.wasm` を公開対象に含める。
 
 ## 署名ポリシー
 
@@ -91,7 +91,7 @@ codesign --verify --deep --strict lsharp
 spctl --assess -vv lsharp
 ```
 
-- embedded guest component (`.component.wasm`) は実行ファイルではないため、notarization 対象ではなく checksum / release asset 管理の対象として扱う。
+- embedded guest component (`.component.wasm`) は実行ファイルではないため、notarization 対象ではなく checksum / release asset 管理の対象として扱う。現行 stable release では companion sidecar `lsharp-{version}-{target}.component.wasm` として GitHub Release に添付する。
 - 現状は運用手順の正本化までで、release workflow への自動接続は未実装。
 
 ### Windows Authenticode
@@ -129,7 +129,7 @@ signtool verify /pa lsharp.exe
 |---|---|
 | `scripts/release-playbook.sh` | release binary を作り、bootstrap / default-path / README smoke まで実行可能 |
 | tag push 起点の自動 release workflow | `verify` / `build` / `release-smoke` / `release` まで接続済み |
-| checksum 自動生成 | `scripts/release.sh` が archive 内 `checksums.txt` を生成し、`release` job が `bash scripts/checksum.sh dist > dist/checksums.txt` で attached checksum asset を追加、`scripts/ci/release-smoke.sh` が workflow build job で検証 |
+| checksum / sidecar 自動生成 | `scripts/release.sh` が archive 内 `checksums.txt` と `lsharp.component.wasm` を生成し、同じ guest component を `dist/lsharp-{version}-{target}.component.wasm` として companion release asset にも出力、`release` job が `bash scripts/checksum.sh dist > dist/checksums.txt` で attached checksum asset を追加、`scripts/ci/release-smoke.sh` が packaged sidecar を workflow build job で検証 |
 | macOS notarization | 手順は docs 化済み、workflow 接続は未実装 |
 | Windows 署名 | 未実装 |
 | package manager 配布 | 未実装 |

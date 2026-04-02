@@ -66,7 +66,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lsharp-${{ github.ref_name }}-${{ matrix.target }}
-          path: dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }}
+          path: |
+            dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }}
+            dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.component.wasm
           retention-days: 30
           if-no-files-found: warn
 

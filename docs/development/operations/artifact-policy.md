@@ -23,6 +23,7 @@ CI / CD パイプラインで生成される **workflow-local artifact** と、�
 | アセット | 命名パターン | ソース | 説明 |
 |---|---|---|---|
 | Release archive | `lsharp-{version}-{target}.{ext}` | `.github/workflows/release.yml` `release` | tag に添付されるユーザー向け配布ファイル |
+| Guest component sidecar | `lsharp-{version}-{target}.component.wasm` | `.github/workflows/release.yml` `release` | host launcher archive と同じ tag に添付される検証/rollback 用 guest component |
 
 ### 命名規則の詳細
 
@@ -33,7 +34,7 @@ CI / CD パイプラインで生成される **workflow-local artifact** と、�
 
 `lsharp-{version}-{target}` は **workflow-local artifact name** であり、`actions/download-artifact`
 が参照する論理名である。実際にユーザーが取得する **GitHub Release asset** は
-`lsharp-{version}-{target}.{ext}` であり、拡張子付きのファイル名を正本とする。
+`lsharp-{version}-{target}.{ext}` と `lsharp-{version}-{target}.component.wasm` であり、拡張子付きのファイル名を正本とする。
 
 将来 `bootstrap-stages-*` / `native-binaries-*` / `benchmark-*` のような新しい artifact 名を
 追加する場合も、この文書へ先に placeholder を書くのではなく、workflow とテストを追加した時点で
@@ -50,6 +51,7 @@ active contract として追記する。
 | `shadow-oracle-results` | 14 日 | 14 日 | - | non-blocking differential 補助証跡 |
 | `lsharp-{version}-{target}` | - | - | 30 日 | release workflow 中の workflow-local artifact |
 | `lsharp-{version}-{target}.{ext}` | - | - | 永続 | GitHub Release asset として公開 |
+| `lsharp-{version}-{target}.component.wasm` | - | - | 永続 | GitHub Release asset として公開 |
 
 ### CI での設定
 
@@ -90,7 +92,7 @@ bash scripts/checksum.sh dist > dist/checksums.txt
 - 不要な中間成果物は `if-no-files-found: ignore` で欠落を許容する
 - 大容量アーティファクト（Wasm バイナリ等）は圧縮して保存する
 - `gc-metrics-{commit_sha}` は `ci-artifacts/gc-metrics/{commit_sha}/summary.json` を正本とし、PR では 5 日、main では 30 日保持する
-- release workflow の `lsharp-{version}-{target}` は **workflow-local artifact** であり、ユーザー向け名称は GitHub Release asset `lsharp-{version}-{target}.{ext}` として別に扱う
+- release workflow の `lsharp-{version}-{target}` は **workflow-local artifact** であり、ユーザー向け名称は GitHub Release asset `lsharp-{version}-{target}.{ext}` と `lsharp-{version}-{target}.component.wasm` として別に扱う
 
 ## GC metrics artifact の受理 / 却下
 

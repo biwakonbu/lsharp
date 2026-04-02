@@ -25,7 +25,7 @@
 | 2 | fresh clone テスト（OPS-07）がエンドユーザー視点で Rust 無しで pass | **PENDING** | 現行 OPS-07 は clean checkout smoke の暫定 gate |
 | 3 | host launcher 経由の component smoke が release gate に固定 | **PENDING** | release / README smoke の更新途中 |
 | 4 | ステークホルダーによる ADR レビュー完了 | **PENDING** | レビュー証跡なし (下記「レビュー記録」参照) |
-| 5 | rollback 手順が「embedded compiler component の巻き戻し」として確定 | **DONE** | GitHub Release notes の `Rollback anchor` を last-known-good release tag / host asset / guest component asset / checksum の正本として固定済み |
+| 5 | rollback 手順が「embedded compiler component の巻き戻し」として確定 | **DONE** | GitHub Release notes の `Rollback anchor` を last-known-good release tag / host asset / guest component sidecar asset (`lsharp-{version}-{target}.component.wasm`) / checksum の正本として固定済み |
 
 > ※ 上記は `completion-criteria.md` の P11-2e-3 ゲートと対応する。条件が満たされた時点で各行を更新し、evidence (CI run URL / tag URL / reviewer) を追記する。
 
@@ -84,7 +84,7 @@ cargo build   # host launcher が再ビルドできることを確認
    ```bash
    cargo build --release
    ```
-4. 正常な guest component を再埋め込み、または同じ anchor の component package を再採用
+4. 正常な guest component を再埋め込み、または同じ anchor の sidecar component asset (`lsharp-{version}-{target}.component.wasm`) を再採用
    ```bash
    bash scripts/rollback.sh --dry-run v<last-known-good>
    bash scripts/rollback.sh v<last-known-good> <guest-component-asset>
@@ -124,7 +124,7 @@ bash scripts/rollback.sh v<last-known-good> <guest-component-asset>  # 実行
    bash scripts/rollback.sh --dry-run v<last-known-good>
    bash scripts/rollback.sh v<last-known-good> <guest-component-asset>
    ```
-3. `.github/workflows/ci.yml` で前回正常な host launcher / component package を使う経路に戻す
+3. `.github/workflows/ci.yml` で前回正常な host launcher / sidecar component asset を使う経路に戻す
     - `cargo test` / `cargo clippy` / `cargo fmt` は継続利用する
     - release / smoke job が正常な component smoke に向くことを確認する
 4. `ci-gate` の必須ジョブを更新

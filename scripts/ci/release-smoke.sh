@@ -114,6 +114,17 @@ if [[ ! -e "$LSHARP_LSP_BIN" ]]; then
   exit 1
 fi
 
+COMPONENT_SIDECAR="$ARCHIVE_ROOT/lsharp.component.wasm"
+if [[ ! -f "$COMPONENT_SIDECAR" ]]; then
+  echo "ERROR: packaged guest component sidecar not found under $ARCHIVE_ROOT" >&2
+  exit 1
+fi
+
+if ! xxd -p -l 4 "$COMPONENT_SIDECAR" | grep -qi '^0061736d$'; then
+  echo "ERROR: packaged guest component sidecar is not a Wasm binary: $COMPONENT_SIDECAR" >&2
+  exit 1
+fi
+
 for optional in CHANGELOG.md; do
   if [[ -e "$ARCHIVE_ROOT/$optional" ]]; then
     echo "INFO: optional payload present: $optional"

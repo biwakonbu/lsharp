@@ -124,7 +124,7 @@ Phase 13 (Component Model) に進む前に、以下のゲートを全て通過�
 ### ゲート 3: rollback 手順の確定 [done]
 - rollback 対象を「embedded compiler component の巻き戻し」として再定義する
 - `docs/development/operations/rollback-procedure.md` を Component Model 構成に合わせて更新する
-- **現況**: rollback 文書・release playbook・配布運用 docs で、GitHub Release notes の `Rollback anchor` を last-known-good release tag / host launcher asset / guest component asset / checksum の正本として固定済み。
+- **現況**: rollback 文書・release playbook・配布運用 docs で、GitHub Release notes の `Rollback anchor` を last-known-good release tag / host launcher asset / guest component sidecar asset (`lsharp-{version}-{target}.component.wasm`) / checksum の正本として固定済み。
 
 ---
 

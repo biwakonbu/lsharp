@@ -43,20 +43,49 @@ copy_required_file() {
   cp -f "$source_path" "${DIST_DIR}/${ARCHIVE_NAME}/"
 }
 
-copy_required_binary() {
+resolve_required_binary_path() {
   local base_name="$1"
   local unix_path="target/release/${base_name}"
   local windows_path="target/release/${base_name}.exe"
   if [[ -f "$unix_path" ]]; then
-    cp -f "$unix_path" "${DIST_DIR}/${ARCHIVE_NAME}/"
+    printf '%s\n' "$unix_path"
     return 0
   fi
   if [[ -f "$windows_path" ]]; then
-    cp -f "$windows_path" "${DIST_DIR}/${ARCHIVE_NAME}/"
+    printf '%s\n' "$windows_path"
     return 0
   fi
   echo "ERROR: required release binary not found: ${base_name}" >&2
   exit 1
+}
+
+copy_required_binary() {
+  local base_name="$1"
+  local binary_path
+  binary_path="$(resolve_required_binary_path "$base_name")"
+  cp -f "$binary_path" "${DIST_DIR}/${ARCHIVE_NAME}/"
+}
+
+generate_guest_component_sidecar() {
+  local lsharp_bin
+  local entry_path="selfhost/src/App/EmbeddedCli.ls"
+  local release_sidecar_path="${DIST_DIR}/${ARCHIVE_NAME}.component.wasm"
+  local packaged_sidecar_path="${DIST_DIR}/${ARCHIVE_NAME}/lsharp.component.wasm"
+
+  if [[ ! -f "$entry_path" ]]; then
+    echo "ERROR: embedded guest component source not found: $entry_path" >&2
+    exit 1
+  fi
+
+  lsharp_bin="$(resolve_required_binary_path "lsharp")"
+  LSHARP_DISABLE_EMBEDDED_COMPONENT=1 "$lsharp_bin" compile "$entry_path" -o "$release_sidecar_path" >/dev/null
+
+  if [[ ! -s "$release_sidecar_path" ]]; then
+    echo "ERROR: guest component sidecar generation failed: $release_sidecar_path" >&2
+    exit 1
+  fi
+
+  cp -f "$release_sidecar_path" "$packaged_sidecar_path"
 }
 
 # バイナリのビルド
@@ -71,6 +100,10 @@ copy_required_file "LICENSE"
 # バイナリのコピー
 copy_required_binary "lsharp"
 copy_required_binary "lsharp-lsp"
+
+# guest component sidecar の生成
+echo "Generating guest component sidecar..."
+generate_guest_component_sidecar
 
 # checksums.txt の生成 (AC-505: SHA-256)
 echo "Generating checksums..."

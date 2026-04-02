@@ -2130,8 +2130,12 @@ fn test_e2e_ops02_artifact_policy() {
     );
     assert!(
         release_content
-            .contains("path: dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }}"),
+            .contains("dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }}"),
         "release.yml は配布 asset ファイル名も固定すること"
+    );
+    assert!(
+        release_content.contains("dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.component.wasm"),
+        "release.yml は guest component sidecar asset も扱うこと"
     );
     // アーティファクトポリシードキュメントが存在すること
     let policy_doc = project_root.join("docs/development/operations/artifact-policy.md");
@@ -2149,6 +2153,7 @@ fn test_e2e_ops02_artifact_policy() {
         "shadow-oracle-results",
         "lsharp-{version}-{target}",
         "lsharp-{version}-{target}.{ext}",
+        "lsharp-{version}-{target}.component.wasm",
     ] {
         assert!(
             policy_content.contains(documented_pattern),
@@ -2411,6 +2416,9 @@ fn test_e2e_ops06_release_smoke_contract() {
 
     let workflow = project_root.join(".github/workflows/release.yml");
     let workflow_content = std::fs::read_to_string(&workflow).expect("release.yml の読み込みに失敗");
+    let release_script = project_root.join("scripts/release.sh");
+    let release_script_content =
+        std::fs::read_to_string(&release_script).expect("release.sh の読み込みに失敗");
     assert!(
         workflow_content.contains("bash scripts/ci/release-smoke.sh"),
         "release.yml が scripts/ci/release-smoke.sh を呼んでいない"
@@ -2418,6 +2426,14 @@ fn test_e2e_ops06_release_smoke_contract() {
     assert!(
         workflow_content.contains("dist/checksums.txt"),
         "release.yml は attached release-level checksum asset `dist/checksums.txt` も扱うこと"
+    );
+    assert!(
+        workflow_content.contains(".component.wasm"),
+        "release.yml は attached guest component sidecar asset も扱うこと"
+    );
+    assert!(
+        release_script_content.contains(".component.wasm"),
+        "release.sh は guest component sidecar asset を生成すること"
     );
 
     let playbook_doc = project_root.join("docs/development/operations/release-playbook.md");
@@ -2432,6 +2448,10 @@ fn test_e2e_ops06_release_smoke_contract() {
     assert!(
         smoke_content.contains("for required in README.md LICENSE checksums.txt; do"),
         "release-smoke.sh は README.md / LICENSE / checksums.txt を required payload として扱うこと"
+    );
+    assert!(
+        smoke_content.contains(".component.wasm"),
+        "release-smoke.sh は packaged guest component sidecar も検証すること"
     );
     assert!(
         smoke_content.contains("packaged lsharp-lsp binary not found")
@@ -2460,7 +2480,6 @@ fn test_e2e_ops06_release_smoke_contract() {
         playbook_content.contains("dist/checksums.txt"),
         "release-playbook.md は attached release-level checksum asset `dist/checksums.txt` も案内すること"
     );
-
     let release_distribution_doc =
         project_root.join("docs/development/operations/release-distribution-signing.md");
     let release_distribution_content = std::fs::read_to_string(&release_distribution_doc)
@@ -2469,6 +2488,11 @@ fn test_e2e_ops06_release_smoke_contract() {
         release_distribution_content.contains("checksums.txt")
             && release_distribution_content.contains("release asset"),
         "release-distribution-signing.md は release-level checksum asset 契約を明記すること"
+    );
+    assert!(
+        playbook_content.contains(".component.wasm")
+            && release_distribution_content.contains(".component.wasm"),
+        "release/playbook/signing docs は guest component sidecar asset 契約も案内すること"
     );
 }
 
@@ -2680,6 +2704,11 @@ fi
 
     std::fs::write(archive_root.join("README.md"), "# fixture\n").expect("README fixture 書き込み失敗");
     std::fs::write(archive_root.join("LICENSE"), "fixture license\n").expect("LICENSE fixture 書き込み失敗");
+    std::fs::write(
+        archive_root.join("lsharp.component.wasm"),
+        b"\0asmfixture-component",
+    )
+    .expect("component sidecar fixture 書き込み失敗");
 
     let checksum_output = Command::new("bash")
         .arg(&checksum_script)
@@ -2699,6 +2728,11 @@ fi
     .expect("checksums.txt の書き込みに失敗");
 
     let archive_path = temp_root.join("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu.tar.gz");
+    std::fs::write(
+        temp_root.join("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu.component.wasm"),
+        b"\0asmfixture-component",
+    )
+    .expect("release sidecar asset fixture 書き込み失敗");
     let tar_output = Command::new("tar")
         .arg("-czf")
         .arg(&archive_path)
@@ -3082,6 +3116,11 @@ fi
 
     std::fs::write(archive_root.join("README.md"), "# fixture\n").expect("README fixture 書き込み失敗");
     std::fs::write(archive_root.join("LICENSE"), "fixture license\n").expect("LICENSE fixture 書き込み失敗");
+    std::fs::write(
+        archive_root.join("lsharp.component.wasm"),
+        b"\0asmfixture-component",
+    )
+    .expect("component sidecar fixture 書き込み失敗");
 
     let checksum_output = Command::new("bash")
         .arg(&checksum_script)

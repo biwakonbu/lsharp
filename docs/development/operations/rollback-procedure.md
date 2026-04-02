@@ -23,7 +23,7 @@ stable release の rollback 先は、GitHub Release notes に記録した `Rollb
 
 - `last-known-good release tag`: 前回正常な stable tag (`vX.Y.Z`)
 - `host launcher assets`: その tag に添付した host launcher archive 群
-- `guest component assets`: 同じ tag に添付した embedded guest component / sidecar package
+- `guest component assets`: 同じ tag に添付した companion sidecar `lsharp-{version}-{target}.component.wasm`
 - `checksum`: 同じ release の checksum file
 
 package manager package は二次配布のため、LKG 判定や rollback 復元元には使わない。必ず GitHub Release 上の tag + asset set を使う。
@@ -60,7 +60,7 @@ git status
 
 - `last-known-good release tag`
 - host launcher asset 名
-- guest component asset 名
+- guest component asset 名（例: `lsharp-v0.2.0-x86_64-unknown-linux-gnu.component.wasm`）
 - checksum file 名
 
 #### B-2. ロールバックブランチの作成
@@ -76,7 +76,7 @@ git checkout v<last-known-good> -- .
 cargo build --release
 ```
 
-- embedded guest component のみ壊れている場合は、同じ `Rollback anchor` に記録された guest component asset を復元する。
+- embedded guest component のみ壊れている場合は、同じ `Rollback anchor` に記録された guest component asset (`lsharp-{version}-{target}.component.wasm`) を復元する。
 - sidecar package を併売している場合も、同一 tag の asset set だけを使う。
 
 #### B-4. 検証

@@ -793,13 +793,13 @@
 ### OPS-06 Release playbook
 
 - Goal: host launcher + embedded guest component 配布の build/sign/checksum/changelog を自動化する。
-- Current state: `scripts/release-playbook.sh` は release binary を作り、`compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用して smoke まで回せる。`.github/workflows/release.yml` も `v*` tag push 起点の `verify` / `build` / `release-smoke` / `release` まで接続済みで、build job は `scripts/ci/release-smoke.sh` で生成済み archive の required payload (`README.md` / `LICENSE` / `checksums.txt` / `lsharp-lsp`) 検証、checksum 検証、packaged binary smoke を実行する。`release` job は build artifact download 後に `bash scripts/checksum.sh dist > dist/checksums.txt` を実行し、attached release-level checksum asset も GitHub Release に添付する。`release-smoke` job は Ubuntu 上で実行可能な Linux x86_64 archive を Rust toolchain 無しで再検証する current middle gate として運用する。さらに host-backed `doc` ownership として `release-smoke.sh` は packaged `lsharp` の `doc` / `doc --json` と `lsharp-lsp --version` を通し、`scripts/smoke_test_readme.sh` も inline Quick Start fixture に対する checksum / compile / test / doc smoke を README/fresh-clone gate に含めるようになった。**ただし** 署名は未接続。
+- Current state: `scripts/release-playbook.sh` は release binary を作り、`compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用して smoke まで回せる。`.github/workflows/release.yml` も `v*` tag push 起点の `verify` / `build` / `release-smoke` / `release` まで接続済みで、build job は host launcher archive に加えて companion sidecar `lsharp-{version}-{target}.component.wasm` も生成し、`scripts/ci/release-smoke.sh` で生成済み archive の required payload (`README.md` / `LICENSE` / `checksums.txt` / `lsharp-lsp` / `lsharp.component.wasm`) 検証、checksum 検証、packaged binary smoke を実行する。`release` job は build artifact download 後に `bash scripts/checksum.sh dist > dist/checksums.txt` を実行し、archive 群と sidecar component、attached release-level checksum asset を GitHub Release に添付する。`release-smoke` job は Ubuntu 上で実行可能な Linux x86_64 archive を Rust toolchain 無しで再検証する current middle gate として運用する。さらに host-backed `doc` ownership として `release-smoke.sh` は packaged `lsharp` の `doc` / `doc --json` と `lsharp-lsp --version` を通し、`scripts/smoke_test_readme.sh` も inline Quick Start fixture に対する checksum / compile / test / doc smoke を README/fresh-clone gate に含めるようになった。**ただし** 署名は未接続。
 - Rust source: `docs/development/operations/release-playbook.md`, `docs/development/operations/release-distribution-signing.md`
 - L# target: release workflow, `scripts/release-playbook.sh`, `scripts/release.sh`, `scripts/checksum.sh`, `scripts/ci/release-smoke.sh`
 - Implementation direction: stable/nightly の 2 チャネルを固定し、release は `version bump -> CI -> host-launcher artifact -> checksum -> signing -> smoke -> tag -> GitHub Release` の順に自動化する。
 - Dependencies: `PKG-01`, `OPS-01`
-- Acceptance: tag push だけで tier1 host launcher release artifact, `dist/checksums.txt`, notes が生成される。
-- Evidence: release workflow, GitHub Releases, `dist/checksums.txt`
+- Acceptance: tag push だけで tier1 host launcher release artifact, companion sidecar `lsharp-{version}-{target}.component.wasm`, `dist/checksums.txt`, notes が生成される。
+- Evidence: release workflow, GitHub Releases, `dist/checksums.txt`, `lsharp-{version}-{target}.component.wasm`
 
 <a id="ops-07-fresh-clone-without-rust"></a>
 ### OPS-07 Fresh clone without Rust
@@ -817,10 +817,10 @@
 ### OPS-08 Host launcher cutover and rollback
 
 - Goal: host launcher + guest component 構成の最終切替と rollback 手順を decision-complete にする。
-- Current state: rollback docs / release docs / playbook / script は host launcher + guest component 基準へ同期済み。GitHub Release notes の `Rollback anchor` を last-known-good release tag / host launcher asset / guest component asset / checksum の正本として運用する契約まで固定した。
+- Current state: rollback docs / release docs / playbook / script は host launcher + guest component 基準へ同期済み。GitHub Release notes の `Rollback anchor` を last-known-good release tag / host launcher asset / guest component sidecar asset (`lsharp-{version}-{target}.component.wasm`) / checksum の正本として運用する契約まで固定した。
 - Rust source: `docs/development/operations/adr-rust-removal.md`, `docs/development/planning/completion-criteria.md`
 - L# target: root tree, `docs/adr/`, release docs
-- Implementation direction: Rust workspace は host launcher として残存させ、rollback は GitHub Release 上の `Rollback anchor` から同一 tag の host launcher / guest component asset set を復元する運用に統一する。
+- Implementation direction: Rust workspace は host launcher として残存させ、rollback は GitHub Release 上の `Rollback anchor` から同一 tag の host launcher / guest component sidecar asset set を復元する運用に統一する。
 - Dependencies: `OPS-04`, `OPS-05`, `OPS-07`
 - Acceptance: Rust 物理撤去を前提にせず、host launcher / guest component の rollback 手順が release docs と ADR で追える。
 - Evidence: `docs/development/operations/adr-rust-removal.md`, `docs/development/operations/rollback-procedure.md`, `docs/development/operations/release-distribution-signing.md`, `docs/development/operations/release-playbook.md`, `scripts/rollback.sh`, `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs` (`test_e2e_ops08_final_removal_rollback`, `test_e2e_ops08_rollback_lkg_contract`)
