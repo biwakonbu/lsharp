@@ -374,10 +374,10 @@ fn stdlib_api_tool(arguments: &Value) -> Result<Value, String> {
         let doc =
             api_doc::build_api_doc_for_file(package, version, &path).map_err(|e| e.to_string())?;
         let mut doc_modules = doc.modules;
-        if let Some(module) = doc_modules.pop() {
-            if target_module.is_none_or(|target| target == module.name) {
-                modules.push(module);
-            }
+        if let Some(module) = doc_modules.pop()
+            && target_module.is_none_or(|target| target == module.name)
+        {
+            modules.push(module);
         }
     }
     modules.sort_by(|left, right| left.name.cmp(&right.name));

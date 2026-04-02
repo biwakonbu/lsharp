@@ -542,9 +542,7 @@ fn find_package_root(start: &Path) -> Option<PathBuf> {
         if current.join("lsharp.toml").exists() {
             return Some(current);
         }
-        let Some(parent) = current.parent() else {
-            return None;
-        };
+        let parent = current.parent()?;
         if parent == current {
             return None;
         }

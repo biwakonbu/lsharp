@@ -627,10 +627,10 @@ fn normalize_guest_args_for_current_dir(current_dir: &Path, args: Vec<String>) -
     };
 
     let normalize_file_arg = |args: &mut Vec<String>, index: usize| {
-        if let Some(value) = args.get(index).cloned() {
-            if !value.starts_with('-') {
-                args[index] = relativize_guest_path_arg(current_dir, &value);
-            }
+        if let Some(value) = args.get(index).cloned()
+            && !value.starts_with('-')
+        {
+            args[index] = relativize_guest_path_arg(current_dir, &value);
         }
     };
 
@@ -961,7 +961,7 @@ fn resolve_external_lsharp_path(
 }
 
 /// P3-3: メタデータテスト実行 (:example, :invariant の自動検証)
-fn cmd_test(file: &PathBuf) -> miette::Result<()> {
+fn cmd_test(file: &Path) -> miette::Result<()> {
     let run = lsharp_tooling::metadata_test::run_metadata_tests(file)?;
 
     if !run.has_tests() {
@@ -1478,7 +1478,7 @@ entry = "src/Main.ls"
 }
 
 /// P9-4 / P12-A1: ドキュメント生成
-fn cmd_doc(file: &PathBuf, output: Option<&Path>, json: bool) -> miette::Result<()> {
+fn cmd_doc(file: &Path, output: Option<&Path>, json: bool) -> miette::Result<()> {
     if json {
         return cmd_doc_json(file, output);
     }

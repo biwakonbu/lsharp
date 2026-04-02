@@ -365,17 +365,15 @@ fn find_component_run_func(
     }
 
     for interface_name in ["wasi:cli/run@0.2.3", "wasi:cli/run@0.2.0"] {
-        if let Some((_, run_instance_index)) = component.export_index(None, interface_name) {
-            if let Some((_, run_func_index)) =
+        if let Some((_, run_instance_index)) = component.export_index(None, interface_name)
+            && let Some((_, run_func_index)) =
                 component.export_index(Some(&run_instance_index), "run")
-            {
-                if let Some(run_func) = instance.get_func(&mut *store, &run_func_index) {
-                    return Some(ComponentRunExport {
-                        func: run_func,
-                        returns_exit_bool: true,
-                    });
-                }
-            }
+            && let Some(run_func) = instance.get_func(&mut *store, run_func_index)
+        {
+            return Some(ComponentRunExport {
+                func: run_func,
+                returns_exit_bool: true,
+            });
         }
     }
 

@@ -32,9 +32,11 @@ fn generate_http_handler_bindings() -> Result<(), Box<dyn std::error::Error>> {
     let (package_id, _) = resolve.push_dir(&staged_root)?;
     let world = resolve.select_world(package_id, Some("lsharp-http-handler"))?;
 
-    let mut opts = Opts::default();
-    opts.rustfmt = false;
-    opts.require_store_data_send = true;
+    let mut opts = Opts {
+        rustfmt: false,
+        require_store_data_send: true,
+        ..Opts::default()
+    };
     opts.with.insert(
         "wasi:cli@0.2.3".to_string(),
         "wasmtime_wasi::bindings::sync::cli".to_string(),
