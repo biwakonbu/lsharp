@@ -61,6 +61,7 @@
 - artifact path: `ci-artifacts/gc-metrics/{commit_sha}/summary.json`
 - artifact name: `gc-metrics-{commit_sha}`
 - required job: `.github/workflows/ci.yml` の `gc-metrics-artifact`
+- test-only validation path: `LSHARP_GC_METRICS_INPUT=/path/to/summary.json bash scripts/ci/collect-gc-metrics.sh`
 
 ### payload schema
 
@@ -92,6 +93,7 @@
 `s14_status` / `s15_status` / `s16_status` は bump allocator では常に `"n/a"` であり、
 collector 有効になって初めて `"pass"` / `"fail"` / `"blocked"` に変わる。
 現在の bump artifact でも schema は固定し、`heap_bytes_series` には空配列を入れておく。
+`LSHARP_GC_METRICS_INPUT` を指定した validate-only 実行では、既存 `summary.json` を再利用して Python validator だけを走らせられる。
 
 ### artifact rejection criteria
 

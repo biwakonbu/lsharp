@@ -4,14 +4,17 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ARTIFACT_SHA="${GITHUB_SHA:-local}"
 ARTIFACT_DIR="${ROOT_DIR}/ci-artifacts/gc-metrics/${ARTIFACT_SHA}"
-ARTIFACT_FILE="${ARTIFACT_DIR}/summary.json"
-
-mkdir -p "${ARTIFACT_DIR}"
+ARTIFACT_FILE="${LSHARP_GC_METRICS_INPUT:-${ARTIFACT_DIR}/summary.json}"
 
 cd "${ROOT_DIR}"
-export LSHARP_GC_METRICS_OUT="${ARTIFACT_FILE}"
 
-cargo test -p lsharp-wasm --test e2e test_e2e_alloc_metrics_ci_artifact_payload -- --nocapture
+if [[ -n "${LSHARP_GC_METRICS_INPUT:-}" ]]; then
+    echo "gc-metrics-artifact: validate-only fixture ${ARTIFACT_FILE}"
+else
+    mkdir -p "${ARTIFACT_DIR}"
+    export LSHARP_GC_METRICS_OUT="${ARTIFACT_FILE}"
+    cargo test -p lsharp-wasm --test e2e test_e2e_alloc_metrics_ci_artifact_payload -- --nocapture
+fi
 
 python3 - "${ARTIFACT_FILE}" <<'PY'
 import json

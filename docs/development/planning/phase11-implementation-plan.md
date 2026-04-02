@@ -719,13 +719,13 @@
 ### GC-06 Leak detection and metrics
 
 - Goal: leak suspect 検知と metrics 出力を CI gate にする。
-- Current state: metrics API / leak suspect test / CI gate spec 文書に加えて、`test_e2e_alloc_metrics_ci_artifact_payload` と `scripts/ci/collect-gc-metrics.sh` により `ci-artifacts/gc-metrics/{sha}/summary.json` を生成し、required CI job `gc-metrics-artifact` から `gc-metrics-{sha}` artifact を保存できる。さらに payload schema へ `heap_bytes_series` を追加し、S14 monotonic-trend evaluator を Rust test と Python validator の両方で機械化した。**ただし** payload は bump allocator 前提の proxy metrics で、S14-S16 を本当に閉じる collector 有効 fixed-point / monotonic-trend 判定は未完成。
+- Current state: metrics API / leak suspect test / CI gate spec 文書に加えて、`test_e2e_alloc_metrics_ci_artifact_payload` と `scripts/ci/collect-gc-metrics.sh` により `ci-artifacts/gc-metrics/{sha}/summary.json` を生成し、required CI job `gc-metrics-artifact` から `gc-metrics-{sha}` artifact を保存できる。さらに payload schema へ `heap_bytes_series` を追加し、S14 monotonic-trend evaluator を Rust test と Python validator の両方で機械化した。今回 `LSHARP_GC_METRICS_INPUT=/path/to/summary.json bash scripts/ci/collect-gc-metrics.sh` の validate-only fixture path も追加し、script validator 自体の E2E 回帰を `gc_metrics_contract.rs` で直接確認できるようにした。**ただし** payload は bump allocator 前提の proxy metrics で、S14-S16 を本当に閉じる collector 有効 fixed-point / monotonic-trend 判定は未完成。
 - Rust source: `docs/development/planning/runtime-stability-spec.md`
 - L# target: runtime metrics collector, CI jobs
 - Implementation direction: CI では `peak RSS` と `full GC count` だけを fail threshold に使い、手元実行では live object count と pause histogram まで出す。 leak suspect は tag ごと単調増加を検出して stderr 出力する。
 - Dependencies: `GC-03`, `GC-04`, `GC-05`
 - Acceptance: runtime metrics が CI artifact 化され、S14-S16 を機械判定できる。
-- Evidence: `scripts/ci/collect-gc-metrics.sh`, `.github/workflows/ci.yml`, `ci-artifacts/gc-metrics/`, `test_e2e_alloc_metrics_ci_artifact_payload`
+- Evidence: `scripts/ci/collect-gc-metrics.sh`, `.github/workflows/ci.yml`, `ci-artifacts/gc-metrics/`, `test_e2e_alloc_metrics_ci_artifact_payload`, `crates/lsharp-wasm/tests/gc_metrics_contract.rs`
 
 ## WS-OPS CI / release / removal
 
