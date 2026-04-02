@@ -2543,9 +2543,10 @@ fn test_e2e_ops06_release_signing_workflow_hook() {
         "release.yml は Windows Authenticode signing / verify hook を持つこと"
     );
 
-    let signing_doc = project_root.join("docs/development/operations/release-distribution-signing.md");
-    let signing_doc_content =
-        std::fs::read_to_string(&signing_doc).expect("release-distribution-signing.md の読み込みに失敗");
+    let signing_doc =
+        project_root.join("docs/development/operations/release-distribution-signing.md");
+    let signing_doc_content = std::fs::read_to_string(&signing_doc)
+        .expect("release-distribution-signing.md の読み込みに失敗");
     assert!(
         signing_doc_content.contains("APPLE_CODESIGN_IDENTITY")
             && signing_doc_content.contains("WINDOWS_SIGN_CERT_PFX_BASE64"),
@@ -2558,10 +2559,10 @@ fn test_e2e_ops06_release_signing_workflow_hook() {
         "release-distribution-signing.md は secret 未設定時の current behavior も説明すること"
     );
 
-    let windows_design =
-        project_root.join("docs/development/planning/v2-designs/v2-05-windows-authenticode-signing.md");
-    let windows_design_content =
-        std::fs::read_to_string(&windows_design).expect("v2-05-windows-authenticode-signing.md の読み込みに失敗");
+    let windows_design = project_root
+        .join("docs/development/planning/v2-designs/v2-05-windows-authenticode-signing.md");
+    let windows_design_content = std::fs::read_to_string(&windows_design)
+        .expect("v2-05-windows-authenticode-signing.md の読み込みに失敗");
     assert!(
         windows_design_content.contains("release.yml")
             && windows_design_content.contains("WINDOWS_SIGN_CERT_PFX_BASE64"),

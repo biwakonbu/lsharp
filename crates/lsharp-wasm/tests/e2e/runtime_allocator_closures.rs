@@ -598,8 +598,14 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
     let payload_object = payload
         .as_object()
         .expect("GC artifact payload は object であるべき");
-    assert_eq!(payload_object.get("s15_proof"), Some(&serde_json::Value::Null));
-    assert_eq!(payload_object.get("s16_proof"), Some(&serde_json::Value::Null));
+    assert_eq!(
+        payload_object.get("s15_proof"),
+        Some(&serde_json::Value::Null)
+    );
+    assert_eq!(
+        payload_object.get("s16_proof"),
+        Some(&serde_json::Value::Null)
+    );
     assert_eq!(
         payload["proxy_workloads"]["compile_run_light_loop"]["iterations"],
         48
