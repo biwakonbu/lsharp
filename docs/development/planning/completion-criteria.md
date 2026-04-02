@@ -17,7 +17,7 @@ Phase 11-2 (Wasm bootstrap + toolchain parity) の完了を判定するための
 - **OPS-07 暫定 gate**: `scripts/ci/test-fresh-clone.sh` + CI job `fresh-clone-smoke` で clean checkout 相当コピーからの `lsharp` 再ビルド、default-path smoke 再実行、`selfhost/src/Syntax/Token.ls` / `stdlib/Core.ls` の代表 compile までは blocking 化された。**ただし** Rust 不要 `test-fresh-clone` ではない。
 - **マルチファイル型検査 / Formatter**: `Tools.Text.FormatterExpr` / `FormatterDecl` / `Formatter` は bundler 前提の相互再帰のため、`lsharp_ir::compile_multi_file` が当該 3 モジュールをまとめて 1 回型推論する（個別モジュール順だと `format-expr` が未束縛になる）。LSP ランタイム fixture（`SELFHOST_LSP_RUNTIME_MODULES`）の `compile_multi_file` 経路で利用される。
 - **OPS-06 暫定 gate**: `scripts/release-playbook.sh` は release binary を用いて `compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用し、`.github/workflows/release.yml` は build job 内 smoke に加えて downloaded artifact を再検証する `release-smoke` job でも `scripts/ci/release-smoke.sh` を実行する。**ただし** 署名、checksum / note 生成の完全自動化、true no-Rust mainline gate は未完了。
-- **監査整理 / bootstrap**: 現時点で完了証跡として確認できるのは stage0 による selfhost 再コンパイル、stage1 実行、および `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_minimal_subset` による最小 subset `(defn main [] 42)` の `stage1.wasm -> stage2.wasm` 実生成までである。**ただし** full input set に対する `stage1.wasm -> stage2.wasm -> stage3.wasm` の実体生成・比較・固定点成立は BOOT-04 完了証跡として未提示。
+- **監査整理 / bootstrap**: stage0 による selfhost 再コンパイル、`test_e2e_bootstrap_fixed_point_stage2_stage3` による `Main.ls` の true fixed point、`test_e2e_bootstrap_stage2_self_feed_fixed_input_set` による fixed input set 54 件の stage2 self-feed 決定性、さらに `test_e2e_bootstrap_fixed_input_set_stage_chain_match` による同 54 件の `stage1.wasm -> stage2.wasm -> stage3.wasm` 実体生成・比較が提示済みであり、BOOT-04 完了証跡は full input set compare まで到達した。
 - **監査整理 / native**: native 系の既存テストは stage chain の構造確認や 5 観測点比較フレームワークの存在確認として読む。true native self-regeneration と allowlist なし differential zero の完了証跡ではない。
 - **監査整理 / runtime**: compile-and-run loop や短時間 REPL soak は runtime stability の補助証跡に留まる。S14/S15/S16 を閉じるには GC 有効の長寿命 stateful LSP/REPL と collector 有効 bootstrap fixed-point の証跡が別途必要。
 - **Component Model pivot (2026-03-30)**: native self-regeneration / Wasm-native 観測差分ゼロ / Rust workspace 物理撤去 / native-only RC は completion gate から外した。残る未完了 gate は true bootstrap と GC 有効 long-lived runtime のみ。
@@ -110,11 +110,11 @@ Phase 11-2 (Wasm bootstrap + toolchain parity) の完了を判定するための
 
 Phase 13 (Component Model) に進む前に、以下のゲートを全て通過する必要がある。
 
-### ゲート 1: Wasm bootstrap fixed-point [pending]
+### ゲート 1: Wasm bootstrap fixed-point [done]
 - `stageN.wasm` が selfhost compiler として `stageN+1.wasm` を生成でき、fixed-point が CI で安定すること
 - full input set (selfhost/stdlib/examples) に対する `stage1 -> stage2 -> stage3` の実体生成・比較
-- **現況**: `scripts/ci/compile-phase11-inputs.sh` は selfhost/stdlib/examples の fixed input set compile gate を通し、`RUN_BOOTSTRAP_FIXED_POINT=1` では `test_e2e_bootstrap_fixed_point_stage2_stage3` と `test_e2e_bootstrap_stage2_self_feed_fixed_input_set` を exact 実行する。`test_e2e_bootstrap_cli_fixed_input_compile_gate` で `App/Cli.ls` direct compile gate も固定され、historical compiler-mode memory.grow blocker は再現しない。ローカル再実行では script 全体が exit 0 となり、新 self-feed gate は fixed input set 54 件（selfhost 40 / stdlib 11 / examples 3）を stage2 self compiler で 2 回ずつ self-feed して single-module recovery / valid wasm / byte-identical determinism を `ci-artifacts/bootstrap-diff/{sha}/fixed-input-set-self-feed-report.txt` / `fixed-input-set-self-feed.json` に保存する
-- **未了**: full input set の deterministic stage2 self-feed 証跡は揃ったが、true `stage1 -> stage2 -> stage3` の full-set 実体生成・比較として Gate 1 を閉じるにはまだ不足している
+- **現況**: `scripts/ci/compile-phase11-inputs.sh` は selfhost/stdlib/examples の fixed input set compile gate を通し、`RUN_BOOTSTRAP_FIXED_POINT=1` では `test_e2e_bootstrap_fixed_point_stage2_stage3`・`test_e2e_bootstrap_stage2_self_feed_fixed_input_set`・`test_e2e_bootstrap_fixed_input_set_stage_chain_match` を exact 実行する。`test_e2e_bootstrap_cli_fixed_input_compile_gate` で `App/Cli.ls` direct compile gate も固定され、historical compiler-mode memory.grow blocker は再現しない。ローカル再実行では script 全体が exit 0 となり、self-feed gate は fixed input set 54 件（selfhost 40 / stdlib 11 / examples 3）の stage2 self-feed 決定性を、stage-chain gate は同じ 54 件の `stage1 -> stage2` 出力と `stage2 -> stage3` 出力の bit-identical compare を `ci-artifacts/bootstrap-diff/{sha}/fixed-input-set-self-feed-report.txt` / `fixed-input-set-self-feed.json` / `fixed-input-set-stage-chain-report.txt` / `fixed-input-set-stage-chain.json` に保存する
+- **達成**: full input set に対する `stage1 -> stage2 -> stage3` の実体生成・比較が CI 経路と artifact 付きで固定され、Gate 1 を close した
 
 ### ゲート 2: GC 有効 runtime stability [pending]
 - 長寿命 stateful LSP/REPL workload で GC 有効時にメモリが単調増加しないこと

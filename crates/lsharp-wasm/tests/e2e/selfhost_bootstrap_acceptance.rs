@@ -521,8 +521,8 @@ fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
     );
 }
 
-/// CP-01: stage1→stage2 で得た自己コンパイラを返す（fixed point Phase A と同一経路）
-fn build_stage2_self_compiler_from_main() -> (Vec<u8>, std::path::PathBuf) {
+/// CP-01 / BOOT-04: stage0(Rust) から stage1 self compiler と stage2 self compiler を得る。
+fn build_stage1_and_stage2_self_compilers_from_main() -> (Vec<u8>, Vec<u8>, std::path::PathBuf) {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
         .parent()
@@ -547,7 +547,13 @@ fn build_stage2_self_compiler_from_main() -> (Vec<u8>, std::path::PathBuf) {
     assert_eq!(modules.len(), 1, "CP-01: stage2 wasm は 1 モジュールであるべき");
     assert_valid_wasm(&modules[0]);
 
-    (modules[0].clone(), selfhost_root)
+    (stage1_wasm, modules[0].clone(), selfhost_root)
+}
+
+/// CP-01: stage1→stage2 で得た自己コンパイラを返す（fixed point Phase A と同一経路）
+fn build_stage2_self_compiler_from_main() -> (Vec<u8>, std::path::PathBuf) {
+    let (_, stage2, selfhost_root) = build_stage1_and_stage2_self_compilers_from_main();
+    (stage2, selfhost_root)
 }
 
 /// CP-01 / BOOT-04: `print` / `read-file` 集約箇所である Compiler.ls / WasmEmit.ls を
@@ -624,6 +630,10 @@ fn test_bootstrap_fixed_point_ci_wiring_present() {
         script.contains("test_e2e_bootstrap_stage2_self_feed_fixed_input_set"),
         "compile-phase11-inputs.sh は full fixed input set の stage2 self-feed テストを明示実行すること"
     );
+    assert!(
+        script.contains("test_e2e_bootstrap_fixed_input_set_stage_chain_match"),
+        "compile-phase11-inputs.sh は full fixed input set の stage1->stage2->stage3 compare テストを明示実行すること"
+    );
 }
 
 #[test]
@@ -652,6 +662,17 @@ impl FixedInputSetRoot {
 struct FixedInputSetTarget {
     path: String,
     root: FixedInputSetRoot,
+}
+
+fn fixed_input_set_target_root<'a>(
+    selfhost_root: &'a std::path::Path,
+    repo_root: &'a std::path::Path,
+    target: &FixedInputSetTarget,
+) -> &'a std::path::Path {
+    match target.root {
+        FixedInputSetRoot::Selfhost => selfhost_root,
+        FixedInputSetRoot::Repo => repo_root,
+    }
 }
 
 fn fixed_input_set_self_feed_targets() -> Vec<FixedInputSetTarget> {
@@ -741,6 +762,65 @@ fn fixed_input_set_self_feed_targets() -> Vec<FixedInputSetTarget> {
     targets
 }
 
+fn compile_fixed_input_target_with_stage1(
+    stage1_self_compiler: &[u8],
+    selfhost_root: &std::path::Path,
+    repo_root: &std::path::Path,
+    target: &FixedInputSetTarget,
+) -> Result<Vec<u8>, String> {
+    let root_dir = fixed_input_set_target_root(selfhost_root, repo_root, target);
+    let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        stage1_self_compiler,
+        Some(root_dir),
+        &["compiler", target.path.as_str()],
+    )
+    .map_err(|e| format!("stage1 compiler run failed: {e}"))?;
+    extract_single_compiled_module(&output, "stage1", target)
+}
+
+fn compile_fixed_input_target_with_stage2(
+    stage2_self_compiler: &[u8],
+    selfhost_root: &std::path::Path,
+    repo_root: &std::path::Path,
+    target: &FixedInputSetTarget,
+) -> Result<Vec<u8>, String> {
+    let root_dir = fixed_input_set_target_root(selfhost_root, repo_root, target);
+    let output = run_wasm_with_six_imports_compiler_mode_fs(
+        stage2_self_compiler,
+        root_dir,
+        &["compiler", target.path.as_str()],
+    )
+    .map_err(|e| format!("stage2 compiler run failed: {e}"))?;
+    extract_single_compiled_module(&output, "stage2", target)
+}
+
+fn extract_single_compiled_module(
+    output: &str,
+    stage_label: &str,
+    target: &FixedInputSetTarget,
+) -> Result<Vec<u8>, String> {
+    let parsed = std::panic::catch_unwind(|| parse_emitted_wasm_modules(output, 1))
+        .map_err(|_| {
+            format!(
+                "{stage_label} output is not recoverable as a single wasm module for {}",
+                target.path
+            )
+        })?;
+    let wasm = parsed.into_iter().next().ok_or_else(|| {
+        format!(
+            "{stage_label} output did not contain a wasm module for {}",
+            target.path
+        )
+    })?;
+    if std::panic::catch_unwind(|| assert_valid_wasm(&wasm)).is_err() {
+        return Err(format!(
+            "{stage_label} output wasm validation failed for {}",
+            target.path
+        ));
+    }
+    Ok(wasm)
+}
+
 fn write_fixed_input_set_self_feed_artifact(
     artifact_id: &str,
     report: &str,
@@ -762,6 +842,31 @@ fn write_fixed_input_set_self_feed_artifact(
         serde_json::to_vec_pretty(metadata).expect("CP-01 self-feed JSON serialize に失敗"),
     )
     .unwrap_or_else(|e| panic!("CP-01 metadata 書き込み失敗: {e}"));
+
+    artifact_root
+}
+
+fn write_fixed_input_set_stage_chain_artifact(
+    artifact_id: &str,
+    report: &str,
+    metadata: &serde_json::Value,
+) -> std::path::PathBuf {
+    let artifact_root = selfhost_project_root()
+        .join("ci-artifacts/bootstrap-diff")
+        .join(artifact_id);
+    std::fs::create_dir_all(&artifact_root)
+        .unwrap_or_else(|e| panic!("BOOT-04 artifact ディレクトリ作成に失敗 {}: {}", artifact_root.display(), e));
+
+    std::fs::write(
+        artifact_root.join("fixed-input-set-stage-chain-report.txt"),
+        report,
+    )
+    .unwrap_or_else(|e| panic!("BOOT-04 stage-chain report 書き込み失敗: {e}"));
+    std::fs::write(
+        artifact_root.join("fixed-input-set-stage-chain.json"),
+        serde_json::to_vec_pretty(metadata).expect("BOOT-04 stage-chain JSON serialize に失敗"),
+    )
+    .unwrap_or_else(|e| panic!("BOOT-04 stage-chain metadata 書き込み失敗: {e}"));
 
     artifact_root
 }
@@ -941,6 +1046,150 @@ fn test_e2e_bootstrap_stage2_self_feed_fixed_input_set() {
         compiled.len(),
         targets.len(),
         "CP-01: stage2 self compiler は fixed input set 全件を再生成できるべき"
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_fixed_input_set_stage_chain_match() {
+    let (stage1, stage2, selfhost_root) = build_stage1_and_stage2_self_compilers_from_main();
+    let repo_root = selfhost_project_root();
+    let artifact_id = bootstrap_diff_artifact_id();
+    let targets = fixed_input_set_self_feed_targets();
+
+    assert_eq!(
+        targets.len(),
+        54,
+        "BOOT-04: fixed input set は selfhost/stdlib/examples の合計 54 件であるべき"
+    );
+
+    let mut matched = Vec::new();
+    let mut failures = Vec::new();
+    for target in &targets {
+        match (
+            compile_fixed_input_target_with_stage1(&stage1, &selfhost_root, &repo_root, target),
+            compile_fixed_input_target_with_stage2(&stage2, &selfhost_root, &repo_root, target),
+        ) {
+            (Ok(stage2_target), Ok(stage3_target)) => {
+                let export_a = extract_section_bytes(&stage2_target, 7);
+                let export_b = extract_section_bytes(&stage3_target, 7);
+                let data_a = extract_section_bytes(&stage2_target, 11);
+                let data_b = extract_section_bytes(&stage3_target, 11);
+                let first_diff = first_diff_index(&stage2_target, &stage3_target);
+                if stage2_target != stage3_target {
+                    failures.push(serde_json::json!({
+                        "path": target.path,
+                        "root": target.root.label(),
+                        "error": "stage1->stage2 と stage2->stage3 の出力 wasm が一致しない",
+                        "stage2_output_wasm_bytes": stage2_target.len(),
+                        "stage3_output_wasm_bytes": stage3_target.len(),
+                        "stage2_fingerprint": super::selfhost_bootstrap_four_layer::hash_fingerprint(&stage2_target),
+                        "stage3_fingerprint": super::selfhost_bootstrap_four_layer::hash_fingerprint(&stage3_target),
+                        "export_match": export_a == export_b,
+                        "data_match": data_a == data_b,
+                        "first_diff": first_diff,
+                    }));
+                    continue;
+                }
+                matched.push(serde_json::json!({
+                    "path": target.path,
+                    "root": target.root.label(),
+                    "output_wasm_bytes": stage2_target.len(),
+                    "fingerprint": super::selfhost_bootstrap_four_layer::hash_fingerprint(&stage2_target),
+                }));
+            }
+            (Err(stage1_err), Ok(_)) => failures.push(serde_json::json!({
+                "path": target.path,
+                "root": target.root.label(),
+                "error": stage1_err,
+            })),
+            (Ok(_), Err(stage2_err)) => failures.push(serde_json::json!({
+                "path": target.path,
+                "root": target.root.label(),
+                "error": stage2_err,
+            })),
+            (Err(stage1_err), Err(stage2_err)) => failures.push(serde_json::json!({
+                "path": target.path,
+                "root": target.root.label(),
+                "error": format!("stage1 compiler: {stage1_err}; stage2 compiler: {stage2_err}"),
+            })),
+        }
+    }
+
+    let mut report_lines = vec![
+        "Bootstrap Fixed Input Set Stage Chain Report".to_string(),
+        "===========================================".to_string(),
+        format!("commit: {artifact_id}"),
+        "timestamp: 1970-01-01T00:00:00Z".to_string(),
+        "test: test_e2e_bootstrap_fixed_input_set_stage_chain_match".to_string(),
+        format!("stage1_self_compiler_bytes: {}", stage1.len()),
+        format!("stage2_self_compiler_bytes: {}", stage2.len()),
+        format!("target_count: {}", targets.len()),
+        format!("matched_count: {}", matched.len()),
+        format!("failed_count: {}", failures.len()),
+        String::new(),
+    ];
+    report_lines.extend(matched.iter().map(|entry| {
+        format!(
+            "MATCH [{}] {} -> {} bytes",
+            entry["root"].as_str().unwrap_or("unknown"),
+            entry["path"].as_str().unwrap_or("<missing>"),
+            entry["output_wasm_bytes"].as_u64().unwrap_or(0)
+        )
+    }));
+    report_lines.extend(failures.iter().map(|entry| {
+        format!(
+            "FAIL [{}] {} -> {}",
+            entry["root"].as_str().unwrap_or("unknown"),
+            entry["path"].as_str().unwrap_or("<missing>"),
+            entry["error"]
+                .as_str()
+                .unwrap_or("unknown error")
+                .lines()
+                .next()
+                .unwrap_or("unknown error")
+        )
+    }));
+    let report = report_lines.join("\n");
+
+    let metadata = serde_json::json!({
+        "commit_sha": artifact_id,
+        "timestamp": "1970-01-01T00:00:00Z",
+        "test_name": "test_e2e_bootstrap_fixed_input_set_stage_chain_match",
+        "stage1_self_compiler_bytes": stage1.len(),
+        "stage2_self_compiler_bytes": stage2.len(),
+        "target_count": targets.len(),
+        "matched_count": matched.len(),
+        "failed_count": failures.len(),
+        "matched_targets": matched,
+        "failed_targets": failures,
+    });
+    let artifact_dir = write_fixed_input_set_stage_chain_artifact(&artifact_id, &report, &metadata);
+
+    let written_metadata: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(artifact_dir.join("fixed-input-set-stage-chain.json"))
+            .expect("BOOT-04 stage-chain artifact JSON の読み込みに失敗"),
+    )
+    .expect("BOOT-04 stage-chain artifact JSON は JSON であること");
+    assert_eq!(
+        written_metadata["matched_count"].as_u64(),
+        Some(matched.len() as u64),
+        "BOOT-04 stage-chain artifact は matched_count を保持すること"
+    );
+    assert_eq!(
+        written_metadata["failed_count"].as_u64(),
+        Some(failures.len() as u64),
+        "BOOT-04 stage-chain artifact は failed_count を保持すること"
+    );
+    assert!(
+        failures.is_empty(),
+        "BOOT-04: full fixed input set stage chain compare に失敗がある: {}",
+        serde_json::to_string_pretty(&written_metadata["failed_targets"])
+            .expect("BOOT-04 failure JSON serialize に失敗")
+    );
+    assert_eq!(
+        matched.len(),
+        targets.len(),
+        "BOOT-04: full fixed input set の stage2/stage3 compare は全件一致するべき"
     );
 }
 
