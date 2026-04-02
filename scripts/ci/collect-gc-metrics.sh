@@ -71,6 +71,7 @@ required = [
     "s15_status",
     "s16_status",
     "heap_bytes_series",
+    "proxy_workloads",
     "peak_alloc_bytes",
     "total_alloc_count",
     "live_alloc_count",
@@ -83,6 +84,33 @@ required = [
 missing = [key for key in required if key not in payload]
 if missing:
     raise SystemExit(f"AR-04: missing GC metrics keys: {', '.join(missing)}")
+
+proxy_workloads = payload["proxy_workloads"]
+if not isinstance(proxy_workloads, dict):
+    raise SystemExit("AR-04: proxy_workloads must be a JSON object")
+required_proxy_workloads = [
+    "compile_run_light_loop",
+    "repl_soak_50_eval",
+    "repl_stateful_single_session",
+    "lsp_actual_stdio_repeated_sequence",
+]
+missing_proxy_workloads = [
+    key for key in required_proxy_workloads if key not in proxy_workloads
+]
+if missing_proxy_workloads:
+    raise SystemExit(
+        "AR-04: missing proxy_workloads entries: "
+        + ", ".join(missing_proxy_workloads)
+    )
+for name in required_proxy_workloads:
+    workload = proxy_workloads[name]
+    if not isinstance(workload, dict):
+        raise SystemExit(f"AR-04: proxy_workloads.{name} must be a JSON object")
+    if workload.get("status") != "pass":
+        raise SystemExit(
+            f"AR-01: proxy_workloads.{name}.status is '{workload.get('status')}' "
+            "(expected 'pass')"
+        )
 
 # gate_status が "accepted" 以外ならジョブを失敗させる
 gate_status = payload["gate_status"]

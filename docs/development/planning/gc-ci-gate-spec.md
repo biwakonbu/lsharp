@@ -7,7 +7,8 @@
 
 - 現在の required job は `.github/workflows/ci.yml` の `gc-metrics-artifact` である。
 - 現在の artifact 生成は `scripts/ci/collect-gc-metrics.sh` が担い、`test_e2e_alloc_metrics_ci_artifact_payload` の成功と JSON 形状検証までを blocking にしている。
-- ただし現状の payload は `allocator_mode = bump` 前提の proxy metrics であり、collector 有効 GC の S14-S16 を直接判定する情報はまだ含まない。
+- 現状の payload は `allocator_mode = bump` 前提の proxy metrics だが、既存 GC-05 representative workload（light compile+run / REPL 50 eval / stateful REPL session / actual `lsp --stdio` repeated sequence）の実行結果を `proxy_workloads` として自己記述する。
+- ただし collector 有効 GC の S14-S16 を直接判定する artifact ではない。
 - したがって本書では **現在の blocking 条件** と **S14-S16 を閉じるための machine-readable 判定規則** を分けて定義する。
 
 ## 収集メトリクス
@@ -65,7 +66,7 @@
 
 ### payload schema
 
-現行の `summary.json` は次の 14 キーを必須とする。
+現行の `summary.json` は次の 16 キーを必須とする。
 `gate_status` / `s14_status` / `s15_status` / `s16_status` は artifact が自己記述する gate 状態であり、
 仕様の 4 値 (`pass` / `fail` / `blocked` / `n/a`) を直接保持する。
 
@@ -78,9 +79,25 @@
   "s15_status": "n/a",
   "s16_status": "n/a",
   "heap_bytes_series": [],
-  "peak_alloc_bytes": 0,
-  "total_alloc_count": 0,
-  "live_alloc_count": 0,
+   "proxy_workloads": {
+     "compile_run_light_loop": { "status": "pass", "iterations": 48, "last_stdout": "1" },
+     "repl_soak_50_eval": { "status": "pass", "iterations": 50, "eval_count": 50 },
+     "repl_stateful_single_session": {
+       "status": "pass",
+       "iterations": 50,
+       "eval_count": 50,
+       "total_input_bytes": 1125,
+       "last_type_tag": 100
+     },
+     "lsp_actual_stdio_repeated_sequence": {
+       "status": "pass",
+       "iterations": 12,
+       "response_frames": 61
+     }
+   },
+   "peak_alloc_bytes": 0,
+   "total_alloc_count": 0,
+   "live_alloc_count": 0,
   "max_single_alloc": 0,
   "alloc_span": 0,
   "leak_growing_count": 0,
@@ -93,6 +110,7 @@
 `s14_status` / `s15_status` / `s16_status` は bump allocator では常に `"n/a"` であり、
 collector 有効になって初めて `"pass"` / `"fail"` / `"blocked"` に変わる。
 現在の bump artifact でも schema は固定し、`heap_bytes_series` には空配列を入れておく。
+`proxy_workloads` には既存 GC-05 representative workload の結果を格納し、各 entry の `status = "pass"` を required とする。
 `LSHARP_GC_METRICS_INPUT` を指定した validate-only 実行では、既存 `summary.json` を再利用して Python validator だけを走らせられる。
 
 ### artifact rejection criteria
@@ -104,11 +122,11 @@ collector 有効になって初めて `"pass"` / `"fail"` / `"blocked"` に変�
 | AR-01 | `test_e2e_alloc_metrics_ci_artifact_payload` が失敗する / `gate_status != "accepted"` / `sXX_status = "fail"` | `scripts/ci/collect-gc-metrics.sh` の `cargo test` と Python 検証 | required job fail |
 | AR-02 | `ci-artifacts/gc-metrics/{commit_sha}/summary.json` を読めない | 同 script の Python 検証がファイルを開く | required job fail |
 | AR-03 | JSON として parse できない | Python `json.loads(...)` | required job fail |
-| AR-04 | 必須 15 キーのいずれかが欠落、`sXX_status` が 4 値外、または `s14_status` が evaluator と不一致 | Python の key/value 検証 | required job fail |
+| AR-04 | 必須 16 キーのいずれかが欠落、`proxy_workloads` / その required entry が欠落、`sXX_status` が 4 値外、または `s14_status` が evaluator と不一致 | Python の key/value 検証 | required job fail |
 
 ### artifact acceptance の意味
 
-- 受理 (`accepted`) は **artifact の構造と proxy metrics の採取に成功した** ことだけを意味する。
+- 受理 (`accepted`) は **artifact の構造と proxy metrics / representative workload の採取に成功した** ことだけを意味する。
 - 受理は S14-S16 の達成を意味しない。
 - 現在の `gc-metrics-artifact` required check は **artifact rejection を blocking にする第 1 段** であり、collector 有効 gate の代替ではない。
 
@@ -133,6 +151,7 @@ machine-readable に扱うため、S14-S16 の状態は次の 4 値で固定す�
 
 `CP-05` / `GC-06` の完了判定では、S14-S16 が `pass` になるまで **論理上は `blocked`** とみなす。  
 つまり、現在の PR CI は green でも runtime stability gate は未完了のままでよい。
+その一方で `proxy_workloads` により、light compile+run / REPL / actual `lsp --stdio` repeated sequence が artifact 上で機械可読に追跡できる。
 
 ## monotonic trend evaluation rules (S14)
 

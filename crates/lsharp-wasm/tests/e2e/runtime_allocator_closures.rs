@@ -27,6 +27,204 @@ fn evaluate_s14_status(allocator_mode: &str, heap_bytes_series: &[i64]) -> &'sta
     "fail"
 }
 
+fn render_lsp_wire_frame(body: &str) -> String {
+    format!("Content-Length: {}\r\n\r\n{}", body.len(), body)
+}
+
+fn repeat_rendered_frames(frames: &[String], iterations: usize) -> String {
+    let mut rendered = String::new();
+    for _ in 0..iterations {
+        for frame in frames {
+            rendered.push_str(frame);
+        }
+    }
+    rendered
+}
+
+fn collect_compile_run_light_loop_proxy_workload() -> serde_json::Value {
+    let src = r#"(defn main [] (print 1))"#;
+    let iterations = 48usize;
+    let mut last_stdout = String::new();
+    for _ in 0..iterations {
+        let out = compile_and_run(src);
+        assert_eq!(out.trim(), "1", "GC light loop: 毎回同一出力");
+        last_stdout = out.trim().to_string();
+    }
+
+    serde_json::json!({
+        "status": "pass",
+        "iterations": iterations,
+        "last_stdout": last_stdout,
+    })
+}
+
+fn collect_repl_soak_50_eval_proxy_workload() -> serde_json::Value {
+    let src = r#"
+        (defn eval-loop [n total]
+          (if (<= n 0)
+            total
+            (let [addr (__alloc 32)]
+              (eval-loop (- n 1) (+ total 1)))))
+        (defn main []
+          (let [result (eval-loop 50 0)]
+            (do (print result) 0)))
+    "#;
+    let out = compile_and_run(src);
+    assert_eq!(out.trim(), "50", "50 eval REPL soak: 全 eval が完了すべき");
+
+    serde_json::json!({
+        "status": "pass",
+        "iterations": 50,
+        "eval_count": 50,
+    })
+}
+
+fn collect_repl_stateful_single_session_proxy_workload() -> serde_json::Value {
+    let repl_src_a = "(defn main [] 42)";
+    let repl_src_b = "(defn main [] (if true 1 2))";
+    let iterations = 50usize;
+    let expected_bytes: usize = (1..=iterations)
+        .map(|n| {
+            if n % 2 == 0 {
+                repl_src_a.len()
+            } else {
+                repl_src_b.len()
+            }
+        })
+        .sum();
+
+    let harness = format!(
+        r#"
+(defn repl-loop [session n]
+  (if (<= n 0)
+    0
+    (let [src (if (= (% n 2) 0) "{repl_src_a}" "{repl_src_b}")]
+      (do
+        (repl-session-eval session src)
+        (repl-loop session (- n 1))))))
+
+(defn main []
+  (let [session (repl-session-new)]
+    (do
+      (repl-loop session {iterations})
+      (print (repl-session-eval-count session))
+      (print (repl-session-total-input-bytes session))
+      (print (repl-session-last-type-name session))
+      0)))
+"#
+    );
+
+    let output = compile_and_run(&format!("{}\n{}", selfhost_cli_runtime_bundle(), harness));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines[0],
+        iterations.to_string(),
+        "単一 REPL session の eval 回数が保持されるべき"
+    );
+    assert_eq!(
+        lines[1],
+        expected_bytes.to_string(),
+        "単一 REPL session の累積入力バイト数が保持されるべき"
+    );
+    assert_eq!(lines[2], "100", "最後の推論型は Int=100 であるべき");
+
+    serde_json::json!({
+        "status": "pass",
+        "iterations": iterations,
+        "eval_count": iterations,
+        "total_input_bytes": expected_bytes,
+        "last_type_tag": 100,
+    })
+}
+
+fn collect_lsp_actual_stdio_repeated_sequence_proxy_workload() -> serde_json::Value {
+    let open_source = "(defn helper [] 1) (helper 1)";
+    let change_source = "(defn helper [] 1) (he)";
+    let iterations = 12usize;
+
+    let init_body = r#"{"jsonrpc":"2.0","id":80,"method":"initialize","params":0}"#;
+    let init_response = r#"{"jsonrpc":"2.0","id":80,"result":[1,1,1,1,1,1,1]}"#;
+    let open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        open_source
+    );
+    let hover_body = r#"{"jsonrpc":"2.0","id":81,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":21}}"#;
+    let change_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
+        change_source
+    );
+    let completion_body = r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
+    let formatting_body =
+        r#"{"jsonrpc":"2.0","id":83,"method":"textDocument/formatting","params":{"uri":42}}"#;
+
+    let open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        open_source.len()
+    );
+    let hover_response =
+        r#"{"jsonrpc":"2.0","id":81,"result":{"range":[1,21,1,27],"contents":"defn helper"}}"#;
+    let change_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        change_source.len()
+    );
+    let completion_response = r#"{"jsonrpc":"2.0","id":82,"result":[["helper",3,"helper"]]}"#;
+    let formatting_response =
+        "{\"jsonrpc\":\"2.0\",\"id\":83,\"result\":[[1,1,1,24,\"(defn helper [] 1)\\n(he)\\n\"]]}";
+
+    let stdin = format!(
+        "{}{}",
+        render_lsp_wire_frame(init_body),
+        repeat_rendered_frames(
+            &[
+                render_lsp_wire_frame(&open_body),
+                render_lsp_wire_frame(hover_body),
+                render_lsp_wire_frame(&change_body),
+                render_lsp_wire_frame(completion_body),
+                render_lsp_wire_frame(formatting_body),
+            ],
+            iterations
+        )
+    );
+    let expected = format!(
+        "{}{}",
+        render_lsp_wire_frame(init_response),
+        repeat_rendered_frames(
+            &[
+                render_lsp_wire_frame(&open_response),
+                render_lsp_wire_frame(hover_response),
+                render_lsp_wire_frame(&change_response),
+                render_lsp_wire_frame(completion_response),
+                render_lsp_wire_frame(formatting_response),
+            ],
+            iterations
+        )
+    );
+
+    let output = compile_and_run_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+    let response_frames = 1 + (iterations * 5);
+
+    assert_eq!(
+        output.matches("Content-Length:").count(),
+        response_frames,
+        "actual stdio soak は initialize + 各反復 5 frame を返すべき"
+    );
+    assert_eq!(
+        output, expected,
+        "actual stdio soak は長寿命 session でも各 frame を決定的に返すべき"
+    );
+
+    serde_json::json!({
+        "status": "pass",
+        "iterations": iterations,
+        "response_frames": response_frames,
+    })
+}
+
 #[test]
 fn test_e2e_alloc_basic() {
     // __alloc を呼び出してメモリアドレスを取得できることを検証
@@ -346,6 +544,12 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
     let leak_growing_count: i64 = leak_lines[0].parse().unwrap();
     let leak_total: i64 = leak_lines[1].parse().unwrap();
     let leak_suspect: i64 = leak_lines[2].parse().unwrap();
+    let proxy_workloads = serde_json::json!({
+        "compile_run_light_loop": collect_compile_run_light_loop_proxy_workload(),
+        "repl_soak_50_eval": collect_repl_soak_50_eval_proxy_workload(),
+        "repl_stateful_single_session": collect_repl_stateful_single_session_proxy_workload(),
+        "lsp_actual_stdio_repeated_sequence": collect_lsp_actual_stdio_repeated_sequence_proxy_workload(),
+    });
 
     // bump allocator では S14 input を空の series として持ち、
     // 状態値自体は evaluator が "n/a" を返す。
@@ -363,6 +567,7 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
         "s15_status": s15_status,
         "s16_status": s16_status,
         "heap_bytes_series": heap_bytes_series,
+        "proxy_workloads": proxy_workloads,
         "peak_alloc_bytes": peak_alloc_bytes,
         "total_alloc_count": total_alloc_count,
         "live_alloc_count": live_alloc_count,
@@ -380,6 +585,34 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
     assert_eq!(payload["s15_status"], "n/a");
     assert_eq!(payload["s16_status"], "n/a");
     assert_eq!(payload["heap_bytes_series"], serde_json::json!([]));
+    assert_eq!(
+        payload["proxy_workloads"]["compile_run_light_loop"]["iterations"],
+        48
+    );
+    assert_eq!(
+        payload["proxy_workloads"]["compile_run_light_loop"]["last_stdout"],
+        "1"
+    );
+    assert_eq!(
+        payload["proxy_workloads"]["repl_soak_50_eval"]["eval_count"],
+        50
+    );
+    assert_eq!(
+        payload["proxy_workloads"]["repl_stateful_single_session"]["eval_count"],
+        50
+    );
+    assert_eq!(
+        payload["proxy_workloads"]["repl_stateful_single_session"]["last_type_tag"],
+        100
+    );
+    assert_eq!(
+        payload["proxy_workloads"]["lsp_actual_stdio_repeated_sequence"]["iterations"],
+        12
+    );
+    assert_eq!(
+        payload["proxy_workloads"]["lsp_actual_stdio_repeated_sequence"]["response_frames"],
+        61
+    );
     assert_eq!(payload["total_alloc_count"], 5);
     assert_eq!(payload["live_alloc_count"], 5);
     assert_eq!(payload["max_single_alloc"], 128);

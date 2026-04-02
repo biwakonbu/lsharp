@@ -81,11 +81,12 @@ sha256sum release-*.tar.gz > SHA256SUMS
 1. `test_e2e_alloc_metrics_ci_artifact_payload` が失敗
 2. `summary.json` が存在しない、または読めない
 3. JSON parse に失敗
-4. `allocator_mode`, `ci_level`, `peak_alloc_bytes`, `total_alloc_count`, `live_alloc_count`, `max_single_alloc`, `alloc_span`, `leak_growing_count`, `leak_total`, `leak_suspect` のいずれかが欠落
+4. `allocator_mode`, `ci_level`, `gate_status`, `s14_status`, `s15_status`, `s16_status`, `heap_bytes_series`, `proxy_workloads`, `peak_alloc_bytes`, `total_alloc_count`, `live_alloc_count`, `max_single_alloc`, `alloc_span`, `leak_growing_count`, `leak_total`, `leak_suspect` のいずれかが欠落
+5. `proxy_workloads.compile_run_light_loop`, `proxy_workloads.repl_soak_50_eval`, `proxy_workloads.repl_stateful_single_session`, `proxy_workloads.lsp_actual_stdio_repeated_sequence` のいずれかが欠落、または `status != "pass"`
 
 ### 受理の意味
 
-- 受理は「GC-06 の第 1 段 artifact が構造的に有効」という意味であり、S14-S16 の full gate 達成を意味しない。
+- 受理は「GC-06 の第 1 段 artifact が構造的に有効で、既存 GC-05 representative workload の proxy 証跡も回収できた」という意味であり、S14-S16 の full gate 達成を意味しない。
 - bump allocator の proxy metrics は collector 有効 GC の単調増加判定 / fixed-point / crash-free を直接閉じない。
 - そのため `gc-metrics-artifact` が green でも、`docs/development/planning/runtime-stability-spec.md` S14-S16 は別途 `blocked` のまま残りうる。
 
