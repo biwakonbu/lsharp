@@ -32,7 +32,7 @@
   - `print` / `read-file` を含む compiler bundle 全体を stage2 → stage3 へ self-feed し、fixed point gate を再び閉じる
   - 2026-04-02 試行では `App/Cli.ls` compiler-mode 経路が `six-import alloc: memory.grow に失敗` (`current_bytes=2215706624`, `needed_end=4431296674`) に達したため、`Compiler.ls` / `WasmEmit.ls` の parity だけでなく compiler-mode memory profile 自体の改善が必要
 
-- [x] `CP-04` public toolchain parity を再閉鎖した
+- [x] `CP-04` public toolchain parity を再閉鎖した（docs/development/planning/compatibility-matrix.md, `test_e2e_gc_lsp_actual_stdio_repeated_sequence_soak`, `test_cmd_doc_site_generates_guides_and_api_site`）
   - imported module の filesystem-backed multi-file / nested LSP parity を harness + actual `lsp --stdio` representative snapshot まで固定
   - stateful `lsp --stdio` / transport / long-lived session parity を `lsp_stateful_parity.rs` broad suite と actual repeated-sequence soak まで固定
   - DocTools / HtmlDoc / DocJson / release Quick Start distribution flow を schema / HTML / archive smoke で固定

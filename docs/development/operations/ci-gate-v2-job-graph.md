@@ -66,6 +66,8 @@ if: always()
 | `main` | `ci-gate-v2` | shadow-oracle を含む全検証 |
 | PRs | `ci-gate` | 必須 8 ジョブの成功 |
 
+GitHub の branch protection UI では required check として Actions 表示名 `CI Gate v2` を選択し、workflow source / docs 正本では job id `ci-gate-v2` を使う。
+
 ## アーティファクト
 
 `ci-gate-v2` はジョブ結果サマリーを `ci-gate-v2-results` として保存する（`retention-days: 30`）。`gc-metrics-artifact` は `gc-metrics-{sha}` として `ci-artifacts/gc-metrics/{commit_sha}/summary.json` を保存する。

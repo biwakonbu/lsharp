@@ -17,7 +17,7 @@ GitHub リポジトリの Settings から以下を設定する:
 3. 以下を有効化:
    - **Require a pull request before merging**
    - **Require status checks to pass before merging**
-      - **Status checks that are required**: `ci-gate-v2` を検索して追加
+      - **Status checks that are required**: Actions 表示名 `CI Gate v2` を検索して追加（workflow job id は `ci-gate-v2`）
     - **Require branches to be up to date before merging** (推奨)
 
-required check 名と blocking ジョブ集合は `ci-gate-v2-job-graph.md` に合わせる。job 名を変更した場合、このページではなく正本側を先に更新する。
+required check の UI 表示名 (`CI Gate v2`) と workflow 上の job id (`ci-gate-v2`) の対応、および blocking ジョブ集合は `ci-gate-v2-job-graph.md` に合わせる。job 名を変更した場合、このページではなく正本側を先に更新する。

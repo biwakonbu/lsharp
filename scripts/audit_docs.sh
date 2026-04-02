@@ -92,6 +92,40 @@ else
 fi
 
 # =============================================================================
+# 1d. branch protection / required check 契約の整合性
+# =============================================================================
+echo ""
+echo "--- [運用差分] branch protection / required check 契約 ---"
+REQUIRED_CHECK_JOB_ID="ci-gate-v2"
+REQUIRED_CHECK_DISPLAY_NAME="CI Gate v2"
+CI_DOC_FILE="docs/development/operations/CI.md"
+BRANCH_PROTECTION_FILE="docs/development/operations/branch-protection-checklist.md"
+CI_GRAPH_FILE="docs/development/operations/ci-gate-v2-job-graph.md"
+
+if grep -qE "^  ${REQUIRED_CHECK_JOB_ID}:" .github/workflows/ci.yml; then
+    echo "  OK: ci.yml に required check の job id (${REQUIRED_CHECK_JOB_ID}) あり"
+else
+    echo "  ERROR: ci.yml に required check の job id (${REQUIRED_CHECK_JOB_ID}) が見つからない"
+    ERRORS=$((ERRORS + 1))
+fi
+
+if grep -q "name: ${REQUIRED_CHECK_DISPLAY_NAME}" .github/workflows/ci.yml; then
+    echo "  OK: ci.yml に required check の Actions 表示名 (${REQUIRED_CHECK_DISPLAY_NAME}) あり"
+else
+    echo "  ERROR: ci.yml に required check の Actions 表示名 (${REQUIRED_CHECK_DISPLAY_NAME}) が見つからない"
+    ERRORS=$((ERRORS + 1))
+fi
+
+for DOC in "$CI_DOC_FILE" "$BRANCH_PROTECTION_FILE" "$CI_GRAPH_FILE"; do
+    if grep -q "$REQUIRED_CHECK_JOB_ID" "$DOC" && grep -q "$REQUIRED_CHECK_DISPLAY_NAME" "$DOC"; then
+        echo "  OK: $DOC に required check の job id / 表示名の対応あり"
+    else
+        echo "  ERROR: $DOC に required check の job id (${REQUIRED_CHECK_JOB_ID}) と Actions 表示名 (${REQUIRED_CHECK_DISPLAY_NAME}) の両方が必要"
+        ERRORS=$((ERRORS + 1))
+    fi
+done
+
+# =============================================================================
 # 2. 公開 CLI ドキュメントが compile 中心か確認 (P12-0)
 # =============================================================================
 echo ""

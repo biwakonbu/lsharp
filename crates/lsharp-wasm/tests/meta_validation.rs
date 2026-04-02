@@ -179,3 +179,68 @@ fn test_meta_03_audit_docs_ci_gate() {
         );
     }
 }
+
+/// TEST-META-05: branch protection の required check 契約が docs / workflow / audit で同期している
+///
+/// 以下を検証:
+/// 1. `.github/workflows/ci.yml` に `ci-gate-v2` job と `CI Gate v2` 表示名が存在する
+/// 2. `docs/development/operations/CI.md` が job id と Actions 表示名の両方を案内している
+/// 3. `docs/development/operations/branch-protection-checklist.md` が required check 名を具体的に記載している
+/// 4. `scripts/audit_docs.sh` が branch protection 正本の整合性を機械検証している
+#[test]
+fn test_meta_05_branch_protection_required_check_contract() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("プロジェクトルートが見つからない");
+
+    let ci_yml_path = project_root.join(".github/workflows/ci.yml");
+    let ci_content = std::fs::read_to_string(&ci_yml_path).expect("ci.yml の読み込みに失敗");
+    assert!(
+        ci_content.contains("ci-gate-v2:"),
+        "ci.yml に ci-gate-v2 job id が存在しない"
+    );
+    assert!(
+        ci_content.contains("name: CI Gate v2"),
+        "ci.yml に CI Gate v2 表示名が存在しない"
+    );
+
+    let ci_doc_path = project_root.join("docs/development/operations/CI.md");
+    let ci_doc_content = std::fs::read_to_string(&ci_doc_path).expect("CI.md の読み込みに失敗");
+    assert!(
+        ci_doc_content.contains("ci-gate-v2"),
+        "CI.md は required check の job id (`ci-gate-v2`) を説明すること"
+    );
+    assert!(
+        ci_doc_content.contains("CI Gate v2"),
+        "CI.md は required check の Actions 表示名 (`CI Gate v2`) を説明すること"
+    );
+
+    let checklist_path = project_root.join("docs/development/operations/branch-protection-checklist.md");
+    let checklist_content =
+        std::fs::read_to_string(&checklist_path).expect("branch-protection-checklist.md の読み込みに失敗");
+    assert!(
+        checklist_content.contains("ci-gate-v2"),
+        "branch-protection-checklist.md は required check の job id (`ci-gate-v2`) を含むこと"
+    );
+    assert!(
+        checklist_content.contains("CI Gate v2"),
+        "branch-protection-checklist.md は required check の Actions 表示名 (`CI Gate v2`) を含むこと"
+    );
+
+    let audit_script_path = project_root.join("scripts/audit_docs.sh");
+    let audit_script_content =
+        std::fs::read_to_string(&audit_script_path).expect("scripts/audit_docs.sh の読み込みに失敗");
+    assert!(
+        audit_script_content.contains("branch-protection-checklist.md"),
+        "scripts/audit_docs.sh は branch-protection-checklist.md の整合性を確認すること"
+    );
+    assert!(
+        audit_script_content.contains("ci-gate-v2"),
+        "scripts/audit_docs.sh は required check の job id (`ci-gate-v2`) を検証すること"
+    );
+    assert!(
+        audit_script_content.contains("CI Gate v2"),
+        "scripts/audit_docs.sh は required check の Actions 表示名 (`CI Gate v2`) を検証すること"
+    );
+}
