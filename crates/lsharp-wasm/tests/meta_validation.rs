@@ -249,10 +249,11 @@ fn test_meta_05_branch_protection_required_check_contract() {
 /// TEST-META-06: Deferred / v2 native 項目の正本同期
 ///
 /// 以下を検証:
-/// 1. `TODO.md` の残タスク一覧と Deferred / v2 節が V2-08 / V2-09 を `[~]` で同期している
-/// 2. `TODO.md` の Deferred / v2 注記が V2-01〜V2-10 と `v2-designs/` を参照している
-/// 3. `phase11-implementation-plan.md` に V2-08 / V2-09 / V2-10 節が存在する
-/// 4. V2-08 / V2-09 / V2-10 の設計 docs が存在し、Deferred 方針を説明している
+/// 1. `TODO.md` の「現在の残タスク一覧（正本）」に Deferred / v2 項目を混ぜない
+/// 2. `TODO.md` の Deferred / v2 節が V2-08 / V2-09 / V2-10 を保持する
+/// 3. `TODO.md` の Deferred / v2 注記が V2-01〜V2-10 と `v2-designs/` を参照している
+/// 4. `phase11-implementation-plan.md` に V2-08 / V2-09 / V2-10 節が存在する
+/// 5. V2-08 / V2-09 / V2-10 の設計 docs が存在し、Deferred 方針を説明している
 #[test]
 fn test_meta_06_deferred_v2_native_docs_are_synced() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -262,13 +263,26 @@ fn test_meta_06_deferred_v2_native_docs_are_synced() {
 
     let todo_path = project_root.join("TODO.md");
     let todo_content = std::fs::read_to_string(&todo_path).expect("TODO.md の読み込みに失敗");
+    let current_remaining_section = todo_content
+        .split("## 現在の残タスク一覧（正本）")
+        .nth(1)
+        .and_then(|rest| rest.split("## Phase 11: Rust 完全撤去").next())
+        .expect("TODO.md の現在の残タスク一覧 section が見つからない");
+    let deferred_section = todo_content
+        .split("### Deferred / v2")
+        .nth(1)
+        .expect("TODO.md の Deferred / v2 section が見つからない");
     assert!(
-        todo_content.contains("- [~] `V2-08` Native backend self-regeneration（Deferred）"),
-        "TODO.md の残タスク一覧で V2-08 は [~] として同期されること"
+        !current_remaining_section.contains("- [~] `V2-08` Native backend self-regeneration（Deferred）"),
+        "TODO.md の残タスク一覧に Deferred の V2-08 を混ぜないこと"
     );
     assert!(
-        todo_content.contains("- [~] `V2-09` Wasm/native differential zero（Deferred）"),
-        "TODO.md の残タスク一覧で V2-09 は [~] として同期されること"
+        !current_remaining_section.contains("- [~] `V2-09` Wasm/native differential zero（Deferred）"),
+        "TODO.md の残タスク一覧に Deferred の V2-09 を混ぜないこと"
+    );
+    assert!(
+        !current_remaining_section.contains("- [ ] `V2-10` Native-only RC distribution（Deferred）"),
+        "TODO.md の残タスク一覧に Deferred の V2-10 を混ぜないこと"
     );
     assert!(
         todo_content.contains("V2-01〜V2-10")
@@ -276,16 +290,15 @@ fn test_meta_06_deferred_v2_native_docs_are_synced() {
         "TODO.md の Deferred / v2 注記は plan 節と v2-designs 配下の両方を参照すること"
     );
     assert!(
-        todo_content.contains("- [~] V2-08 Native backend self-regeneration"),
+        deferred_section.contains("- [~] V2-08 Native backend self-regeneration"),
         "TODO.md の Deferred / v2 節で V2-08 の詳細が存在すること"
     );
     assert!(
-        todo_content.contains("- [~] V2-09 Wasm/native differential zero"),
+        deferred_section.contains("- [~] V2-09 Wasm/native differential zero"),
         "TODO.md の Deferred / v2 節で V2-09 の詳細が存在すること"
     );
     assert!(
-        todo_content.contains("- [ ] `V2-10` Native-only RC distribution（Deferred）")
-            && todo_content.contains("- [ ] V2-10 Native-only RC distribution"),
+        deferred_section.contains("- [ ] V2-10 Native-only RC distribution"),
         "TODO.md では V2-10 は未着手の Deferred 項目として [ ] を維持すること"
     );
 

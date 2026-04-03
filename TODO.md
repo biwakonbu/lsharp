@@ -48,10 +48,6 @@
   - host launcher 構成の CI / release 安定化を終える
   - signing と GitHub Releases / stage0 fetch 直結の true no-Rust end-state を整備する
 
-- [~] `V2-08` Native backend self-regeneration（Deferred）
-- [~] `V2-09` Wasm/native differential zero（Deferred）
-- [ ] `V2-10` Native-only RC distribution（Deferred）
-
 ---
 
 ## Phase 11: Rust 完全撤去
