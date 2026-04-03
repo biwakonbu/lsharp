@@ -2210,6 +2210,12 @@ fn test_e2e_gc06_ci_artifact_contract() {
         script.is_file(),
         "scripts/ci/collect-gc-metrics.sh が存在しない"
     );
+    let script_content =
+        std::fs::read_to_string(&script).expect("collect-gc-metrics.sh の読み込みに失敗");
+    assert!(
+        script_content.contains("gc-metrics-proof-sidecar:"),
+        "collect-gc-metrics.sh は normalized collector-proof sidecar path を出力すること"
+    );
 
     let ci_path = project_root.join(".github/workflows/ci.yml");
     assert!(ci_path.is_file(), "ci.yml が存在しない");
@@ -2226,6 +2232,10 @@ fn test_e2e_gc06_ci_artifact_contract() {
         ci_content.contains("gc-metrics-"),
         "ci.yml は gc-metrics artifact 名を保持すること"
     );
+    assert!(
+        ci_content.contains("ci-artifacts/gc-metrics/${{ github.sha }}/"),
+        "ci.yml は gc-metrics artifact directory を upload し、summary/proof sidecar を保持すること"
+    );
 
     let policy = project_root.join("docs/development/operations/artifact-policy.md");
     assert!(policy.is_file(), "artifact-policy.md が存在しない");
@@ -2235,6 +2245,10 @@ fn test_e2e_gc06_ci_artifact_contract() {
         policy_content.contains("GC metrics"),
         "artifact-policy.md に GC metrics artifact 規則が存在しない"
     );
+    assert!(
+        policy_content.contains("collector-proof.json"),
+        "artifact-policy.md は GC metrics sidecar proof bundle を記述すること"
+    );
 
     let spec = project_root.join("docs/development/planning/gc-ci-gate-spec.md");
     assert!(spec.is_file(), "gc-ci-gate-spec.md が存在しない");
@@ -2242,6 +2256,10 @@ fn test_e2e_gc06_ci_artifact_contract() {
     assert!(
         spec_content.contains("collect-gc-metrics.sh"),
         "gc-ci-gate-spec.md は collect-gc-metrics.sh を参照すること"
+    );
+    assert!(
+        spec_content.contains("collector-proof.json"),
+        "gc-ci-gate-spec.md は collector-proof.json sidecar contract を記述すること"
     );
 }
 

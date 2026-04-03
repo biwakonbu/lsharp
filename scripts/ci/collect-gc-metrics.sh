@@ -5,6 +5,12 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ARTIFACT_SHA="${GITHUB_SHA:-local}"
 ARTIFACT_DIR="${ROOT_DIR}/ci-artifacts/gc-metrics/${ARTIFACT_SHA}"
 ARTIFACT_FILE="${LSHARP_GC_METRICS_INPUT:-${ARTIFACT_DIR}/summary.json}"
+DEFAULT_PROOF_BUNDLE_FILE="$(dirname "${ARTIFACT_FILE}")/collector-proof.json"
+PROOF_BUNDLE_FILE="${LSHARP_GC_PROOF_BUNDLE_INPUT:-}"
+
+if [[ -z "${PROOF_BUNDLE_FILE}" && -f "${DEFAULT_PROOF_BUNDLE_FILE}" ]]; then
+    PROOF_BUNDLE_FILE="${DEFAULT_PROOF_BUNDLE_FILE}"
+fi
 
 cd "${ROOT_DIR}"
 
@@ -16,12 +22,26 @@ else
     cargo test -p lsharp-wasm --test e2e test_e2e_alloc_metrics_ci_artifact_payload -- --nocapture
 fi
 
-python3 - "${ARTIFACT_FILE}" <<'PY'
+if [[ -n "${PROOF_BUNDLE_FILE}" ]]; then
+    echo "gc-metrics-proof-bundle:${PROOF_BUNDLE_FILE}"
+fi
+
+python3 - "${ARTIFACT_FILE}" "${PROOF_BUNDLE_FILE}" <<'PY'
 import json
 import pathlib
 import sys
 
 path = pathlib.Path(sys.argv[1])
+proof_bundle_path = pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else None
+proof_sidecar_path = path.parent / "collector-proof.json"
+COLLECTOR_GC_MODES = {"mark-sweep", "generational"}
+REQUIRED_S16_WORKLOADS = {
+    "compile_run_light_loop",
+    "repl_soak_50_eval",
+    "repl_stateful_long_session",
+    "repl_stateful_single_session",
+    "lsp_actual_stdio_repeated_sequence",
+}
 
 # AR-02: JSON ファイルを読み取れるか
 try:
@@ -34,6 +54,49 @@ try:
     payload = json.loads(text)
 except json.JSONDecodeError as e:
     raise SystemExit(f"AR-03: artifact is not valid JSON: {e}")
+
+def merge_collector_proof_bundle(payload, proof_bundle_path):
+    if proof_bundle_path is None:
+        return payload
+
+    try:
+        proof_text = proof_bundle_path.read_text()
+    except OSError as e:
+        raise SystemExit(
+            f"AR-02: cannot read proof bundle file {proof_bundle_path}: {e}"
+        )
+
+    try:
+        proof_bundle = json.loads(proof_text)
+    except json.JSONDecodeError as e:
+        raise SystemExit(f"AR-03: proof bundle is not valid JSON: {e}")
+
+    if not isinstance(proof_bundle, dict):
+        raise SystemExit("AR-04: proof bundle must be a JSON object")
+
+    allowed_keys = {"s15_status", "s15_proof", "s16_status", "s16_proof"}
+    unknown_keys = sorted(set(proof_bundle.keys()) - allowed_keys)
+    if unknown_keys:
+        raise SystemExit(
+            "AR-04: proof bundle contains unknown keys: "
+            + ", ".join(unknown_keys)
+        )
+
+    merged = dict(payload)
+    for key in ("s15_status", "s15_proof", "s16_status", "s16_proof"):
+        if key in proof_bundle:
+            merged[key] = proof_bundle[key]
+    return merged
+
+def collect_proof_sidecar(payload):
+    return {
+        "s15_status": payload["s15_status"],
+        "s15_proof": payload["s15_proof"],
+        "s16_status": payload["s16_status"],
+        "s16_proof": payload["s16_proof"],
+    }
+
+payload = merge_collector_proof_bundle(payload, proof_bundle_path)
 
 def evaluate_s14_status(payload):
     if payload["allocator_mode"] == "bump":
@@ -89,6 +152,10 @@ def validate_s15_proof(status, proof):
 
     if not isinstance(proof["gc_mode"], str) or not proof["gc_mode"]:
         raise SystemExit("AR-04: s15_proof.gc_mode must be a non-empty string")
+    if proof["gc_mode"] not in COLLECTOR_GC_MODES:
+        raise SystemExit(
+            "AR-04: s15_proof.gc_mode must be one of: mark-sweep, generational"
+        )
 
     stage_pair = proof["stage_pair"]
     if (
@@ -150,6 +217,10 @@ def validate_s16_proof(status, proof):
 
     if not isinstance(proof["gc_mode"], str) or not proof["gc_mode"]:
         raise SystemExit("AR-04: s16_proof.gc_mode must be a non-empty string")
+    if proof["gc_mode"] not in COLLECTOR_GC_MODES:
+        raise SystemExit(
+            "AR-04: s16_proof.gc_mode must be one of: mark-sweep, generational"
+        )
 
     completed_workloads = proof["completed_workloads"]
     if (
@@ -158,6 +229,17 @@ def validate_s16_proof(status, proof):
     ):
         raise SystemExit(
             "AR-04: s16_proof.completed_workloads must be a string array"
+        )
+    workload_set = set(completed_workloads)
+    if len(workload_set) != len(completed_workloads):
+        raise SystemExit(
+            "AR-04: s16_proof.completed_workloads must not contain duplicates"
+        )
+    unknown_workloads = workload_set - REQUIRED_S16_WORKLOADS
+    if unknown_workloads:
+        raise SystemExit(
+            "AR-04: s16_proof.completed_workloads contains unknown workloads: "
+            + ", ".join(sorted(unknown_workloads))
         )
 
     all_workloads_completed = proof["all_workloads_completed"]
@@ -181,6 +263,10 @@ def validate_s16_proof(status, proof):
         if not all_workloads_completed:
             raise SystemExit(
                 "AR-04: s16_proof.all_workloads_completed must be true when s16_status is 'pass'"
+            )
+        if workload_set != REQUIRED_S16_WORKLOADS:
+            raise SystemExit(
+                "AR-04: s16_proof.completed_workloads must equal the required workload set when s16_status is 'pass'"
             )
         if any(counter_values):
             raise SystemExit(
@@ -272,6 +358,14 @@ if payload["s14_status"] != computed_s14_status:
 validate_s15_proof(payload["s15_status"], payload["s15_proof"])
 validate_s16_proof(payload["s16_status"], payload["s16_proof"])
 
+if proof_bundle_path is not None:
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+proof_sidecar_path.write_text(
+    json.dumps(collect_proof_sidecar(payload), indent=2, sort_keys=True) + "\n"
+)
+
 print(f"gc-metrics-artifact:{path}")
+print(f"gc-metrics-proof-sidecar:{proof_sidecar_path}")
 print(json.dumps(payload, sort_keys=True))
 PY

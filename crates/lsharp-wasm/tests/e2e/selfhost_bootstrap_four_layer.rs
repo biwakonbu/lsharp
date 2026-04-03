@@ -21,20 +21,6 @@ fn validate_wasm_detailed(wasm: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-fn selfhost_stage1_wasm_emit_bundle() -> String {
-    [
-        selfhost_module("Token.ls"),
-        selfhost_module("AST.ls"),
-        selfhost_module("Lexer.ls"),
-        selfhost_module("Parser.ls"),
-        selfhost_module("IR.ls"),
-        selfhost_module("Compiler.ls"),
-        selfhost_module("WasiBackend.ls"),
-        selfhost_module("WasmEmit.ls"),
-    ]
-    .join("\n")
-}
-
 // =============================================================================
 // BOOT-04: True stage1-stage2-stage3 bootstrap 4 層検証テスト
 // =============================================================================
@@ -479,6 +465,23 @@ fn write_string_object_bytes<T>(
     memory
         .write(&mut caller, base as usize, &object)
         .unwrap_or_else(|e| panic!("{context}: string object を memory へ書き込めない: {e}"));
+}
+
+fn ensure_instance_memory_pages<T>(
+    store: &mut wasmtime::Store<T>,
+    instance: &wasmtime::Instance,
+    min_pages: u64,
+    context: &str,
+) {
+    let memory = instance
+        .get_memory(&mut *store, "memory")
+        .unwrap_or_else(|| panic!("{context}: memory export が見つからない"));
+    let current_pages = memory.size(&mut *store);
+    if current_pages < min_pages {
+        memory
+            .grow(&mut *store, min_pages - current_pages)
+            .unwrap_or_else(|e| panic!("{context}: memory.grow に失敗: {e}"));
+    }
 }
 
 /// stage1 が stdout に出力した length-prefixed Wasm バイト列を復元するヘルパー
@@ -1061,7 +1064,7 @@ fn run_exported_i64_with_alloc_print_read_arg_imports(
 
 /// 6-import (alloc/print/read-file/command-line-arg/string-concat/substring) モデルで wasm を実行する
 ///
-/// stage2 以降の wasm は env.string-concat, env.substring も import するため、
+/// stage2 以降の wasm は env.string-concat, env.substring, env.file-exists? も import するため、
 /// 4-import ハーネスの代わりにこちらを使用する。
 /// string-concat/substring のスタブ実装は型が正しければ十分（minimal.ls 処理では非使用）。
 struct SixImportState {
@@ -1165,7 +1168,7 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
     );
     let command_line_arg = wasmtime::Func::wrap(
         &mut store,
-        |caller: wasmtime::Caller<'_, SixImportState>, index: i64| -> i64 {
+        |mut caller: wasmtime::Caller<'_, SixImportState>, index: i64| -> i64 {
             let content = usize::try_from(index)
                 .ok()
                 .and_then(|i| caller.data().args.get(i))
@@ -1227,6 +1230,20 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
             alloc_cached_string_object(caller, slice, "six-import substring")
         },
     );
+    let file_exists = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, SixImportState>, path: i64| -> i64 {
+            let exists = if let Some(root_dir) = caller.data().file_root.clone() {
+                let rel_path = read_path_text_with_root(&mut caller, path, &root_dir);
+                root_dir.join(rel_path).exists()
+            } else {
+                let rel_path = String::from_utf8(read_string_object_bytes(&mut caller, path))
+                    .expect("file-exists? path が UTF-8 ではない");
+                std::path::Path::new(&rel_path).exists()
+            };
+            if exists { 1 } else { 0 }
+        },
+    );
     let instance = wasmtime::Instance::new(
         &mut store,
         &module,
@@ -1237,6 +1254,7 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
             command_line_arg.into(),
             string_concat.into(),
             substring.into(),
+            file_exists.into(),
         ],
     )
     .map_err(|e| format!("インスタンス化に失敗: {e}"))?;
@@ -1678,7 +1696,17 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_minimal_subset() {
       (bootstrap-print-module stage2-b)
       0)))
 "#;
-    let stage1_source = format!("{}\n{}", selfhost_stage1_wasm_emit_bundle(), harness);
+    let stage1_source = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasmEmit.ls"),
+        harness
+    );
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -1761,7 +1789,17 @@ fn test_e2e_bootstrap_stage1_emits_identical_stage2_wasm_for_same_tiny_source() 
       (bootstrap-print-module stage2-b)
       0)))
 "#;
-    let stage1_source = format!("{}\n{}", selfhost_stage1_wasm_emit_bundle(), harness);
+    let stage1_source = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasmEmit.ls"),
+        harness
+    );
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -1824,7 +1862,17 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_extended_do_block() {
       (bootstrap-print-module stage2)
       0)))
 "#;
-    let stage1_source = format!("{}\n{}", selfhost_stage1_wasm_emit_bundle(), harness);
+    let stage1_source = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasmEmit.ls"),
+        harness
+    );
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -3021,7 +3069,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_new_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-memory-index 1 0)
+        export-sec (emit-export-section-main-index 1)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3093,7 +3141,7 @@ fn test_e2e_bootstrap_stage1_emits_identical_alloc_stage2_wasm_for_same_source()
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-memory-index 1 0)
+        export-sec (emit-export-section-main-index 1)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3168,7 +3216,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_push_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-memory-index 1 0)
+        export-sec (emit-export-section-main-index 1)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3240,7 +3288,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_ref_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-memory-index 1 0)
+        export-sec (emit-export-section-main-index 1)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3312,7 +3360,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-memory-index 1 0)
+        export-sec (emit-export-section-main-index 1)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3384,7 +3432,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_contains_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-memory-index 1 0)
+        export-sec (emit-export-section-main-index 1)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3456,7 +3504,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_remove_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-memory-index 1 0)
+        export-sec (emit-export-section-main-index 1)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3531,7 +3579,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_key_map_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-memory-index 1 0)
+        export-sec (emit-export-section-main-index 1)
         code-sec (emit-code-section-functions functions)
         data-sec (emit-data-section data 1024)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
@@ -3862,7 +3910,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_print_program() {
         import-sec (emit-import-section-alloc-print)
         function-sec (emit-function-section-main-type-index 2)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-memory-index 2 0)
+        export-sec (emit-export-section-main-index 2)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3932,7 +3980,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_generalized_alloc_print_helpe
         import-sec (emit-import-section-helper-pair (helper-id-alloc) (helper-id-print))
         function-sec (emit-function-section-main-type-index 2)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-memory-index 2 0)
+        export-sec (emit-export-section-main-index 2)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -4004,7 +4052,7 @@ fn test_e2e_bootstrap_stage1_emits_identical_alloc_print_pair_stage2_wasm_for_sa
         import-sec (emit-import-section-helper-pair (helper-id-alloc) (helper-id-print))
         function-sec (emit-function-section-main-type-index 2)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-memory-index 2 0)
+        export-sec (emit-export-section-main-index 2)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -5933,8 +5981,6 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_main_shape_source() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    // inline read-file は import 先にも同じ本文を返してしまうため、
-    // Main.ls shape の回帰は実ファイル package を使って検証する。
     let temp_root = std::env::temp_dir().join(format!(
         "lsharp-boot04-main-shape-{}-{}",
         std::process::id(),
@@ -5966,9 +6012,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_main_shape_source() {
         &temp_root,
         &["compiler", "src/App/Main.ls"],
     )
-    .expect(
-        "BOOT-04 main-shape: stage2_self_compiler が Main.ls shape package をコンパイルできない",
-    );
+    .expect("BOOT-04 main-shape: stage2_self_compiler が Main.ls shape package をコンパイルできない");
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_wasm = &stage3_modules[0];
     assert_valid_wasm(stage3_wasm);
@@ -7683,12 +7727,10 @@ fn test_e2e_boot04_compiler_mode_package_index_resolution() {
     let stage1_wasm = compile_file_only(&main_path);
     assert_valid_wasm(&stage1_wasm);
 
-    // 公開 CLI / driver は current dir 配下の `src/...` entry を `./src/...` に正規化して
-    // guest compiler-mode へ渡すため、この internal regression も同じ契約を使う。
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
         &stage1_wasm,
         Some(&fixture_dir),
-        &["compiler", "./src/Main.ls"],
+        &["compiler", "src/Main.ls"],
     )
     .expect(
         "BOOT-04 package-index-resolution: compiler-mode が src/Main.ls をコンパイルできなかった",
@@ -8139,6 +8181,7 @@ fn test_debug_token_ls_compilation() {
                 let count = read_leb(data, &mut pos) as usize;
                 for fidx in 0..count {
                     let sz = read_leb(data, &mut pos) as usize;
+                    let start = pos;
                     let end = pos + sz;
                     let local_count = read_leb(data, &mut pos);
                     for _ in 0..local_count {
@@ -8147,12 +8190,15 @@ fn test_debug_token_ls_compilation() {
                         pos += 1;
                     }
                     // Check if it's a simple i64.const 99 return
+                    let mut is_99 = false;
+                    let saved = pos;
                     if pos < end - 2 {
                         if data[pos] == 0x42 {
                             // i64.const
                             pos += 1;
                             let val = read_leb(data, &mut pos);
                             if val == 99 && pos < end && data[pos] == 0x0b {
+                                is_99 = true;
                                 func_99_idx = Some(fidx);
                                 eprintln!(
                                     "Found tok-eof (=99) at user func idx {fidx} (wasm idx {})",

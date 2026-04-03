@@ -14,7 +14,7 @@ CI / CD パイプラインで生成される **workflow-local artifact** と、�
 | CI Gate v2 結果 | `ci-gate-v2-results` | `.github/workflows/ci.yml` | gate-v2 の全ジョブ結果サマリー |
 | Bootstrap diff | `bootstrap-diff-{commit_sha}` | `.github/workflows/ci.yml` `bootstrap` | fixed-point / stage-chain 比較レポート |
 | Fresh clone archive | `fresh-clone-archive-{commit_sha}` | `.github/workflows/ci.yml` `fresh-clone-artifact` | binary-only gate 用の release-style archive |
-| GC metrics | `gc-metrics-{commit_sha}` | `.github/workflows/ci.yml` `gc-metrics-artifact` | runtime stability 用の GC/alloc metrics JSON |
+| GC metrics | `gc-metrics-{commit_sha}` | `.github/workflows/ci.yml` `gc-metrics-artifact` | runtime stability 用の GC/alloc metrics directory (`summary.json` + `collector-proof.json`) |
 | Shadow oracle 結果 | `shadow-oracle-results` | `.github/workflows/ci.yml` `shadow-oracle` | differential test の補助成果物 |
 | Release build artifact | `lsharp-{version}-{target}` | `.github/workflows/release.yml` `build` | release workflow 内で download される論理名 |
 
@@ -91,7 +91,7 @@ bash scripts/checksum.sh dist > dist/checksums.txt
 - GitHub Actions のアーティファクトストレージ上限に注意する
 - 不要な中間成果物は `if-no-files-found: ignore` で欠落を許容する
 - 大容量アーティファクト（Wasm バイナリ等）は圧縮して保存する
-- `gc-metrics-{commit_sha}` は `ci-artifacts/gc-metrics/{commit_sha}/summary.json` を正本とし、PR では 5 日、main では 30 日保持する
+- `gc-metrics-{commit_sha}` は `ci-artifacts/gc-metrics/{commit_sha}/` directory を正本とし、`collect-gc-metrics.sh` が `summary.json` と sibling `collector-proof.json` を常に揃えた上で PR では 5 日、main では 30 日保持する
 - release workflow の `lsharp-{version}-{target}` は **workflow-local artifact** であり、ユーザー向け名称は GitHub Release asset `lsharp-{version}-{target}.{ext}` と `lsharp-{version}-{target}.component.wasm` として別に扱う
 
 ## GC metrics artifact の受理 / 却下
@@ -103,6 +103,7 @@ bash scripts/checksum.sh dist > dist/checksums.txt
 - workflow: `.github/workflows/ci.yml`
 - collector script: `scripts/ci/collect-gc-metrics.sh`
 - 正本パス: `ci-artifacts/gc-metrics/{commit_sha}/summary.json`
+- proof sidecar: `ci-artifacts/gc-metrics/{commit_sha}/collector-proof.json`
 - upload 名: `gc-metrics-{commit_sha}`
 
 ### 却下条件
@@ -118,6 +119,8 @@ bash scripts/checksum.sh dist > dist/checksums.txt
 ### 受理の意味
 
 - 受理は「GC-06 の第 1 段 artifact が構造的に有効で、既存 GC-05 representative workload の proxy 証跡も回収できた」という意味であり、S14-S16 の full gate 達成を意味しない。
+- `collect-gc-metrics.sh` は sibling `collector-proof.json` が存在する場合はそれを `summary.json` へ merge して同一 validator に通し、受理後は current `s15_*` / `s16_*` slot を持つ normalized sidecar として `collector-proof.json` を常に書き戻す。
+- proof bundle 未指定でも `collector-proof.json` は emit され、bump / blocked path では `summary.json` 側の `s15_*` / `s16_*` slot をそのまま mirror する。
 - bump allocator の proxy metrics は collector 有効 GC の単調増加判定 / fixed-point / crash-free を直接閉じない。
 - そのため `gc-metrics-artifact` が green でも、`docs/development/planning/runtime-stability-spec.md` S14-S16 は別途 `blocked` のまま残りうる。
 

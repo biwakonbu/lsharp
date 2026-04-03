@@ -60,9 +60,13 @@
 - script: `scripts/ci/collect-gc-metrics.sh`
 - targeted test: `test_e2e_alloc_metrics_ci_artifact_payload`
 - artifact path: `ci-artifacts/gc-metrics/{commit_sha}/summary.json`
+- proof sidecar path: `ci-artifacts/gc-metrics/{commit_sha}/collector-proof.json`
 - artifact name: `gc-metrics-{commit_sha}`
 - required job: `.github/workflows/ci.yml` の `gc-metrics-artifact`
 - test-only validation path: `LSHARP_GC_METRICS_INPUT=/path/to/summary.json bash scripts/ci/collect-gc-metrics.sh`
+- optional proof overlay path: `LSHARP_GC_PROOF_BUNDLE_INPUT=/path/to/collector-proof.json bash scripts/ci/collect-gc-metrics.sh`
+- default proof overlay path: sibling `collector-proof.json` が存在すれば env 指定なしでも自動 merge
+- normalized sidecar output: validator 通過後は sibling `collector-proof.json` を常に書き戻す
 
 ### payload schema
 
@@ -122,6 +126,23 @@ collector 有効になって初めて `"pass"` / `"fail"` / `"blocked"` に変�
 `s15_proof` / `s16_proof` は S15 / S16 の machine-readable 証拠 slot であり、`blocked` / `n/a` では `null`、`pass` / `fail` では object を要求する。
 `proxy_workloads` には既存 GC-05 representative workload の結果を格納し、各 entry の `status = "pass"` を required とする。required entry は light compile+run / REPL 50 eval / stateful long-session REPL / stateful single-session REPL / actual `lsp --stdio` repeated sequence の 5 つで固定する。
 `LSHARP_GC_METRICS_INPUT` を指定した validate-only 実行では、既存 `summary.json` を再利用して Python validator だけを走らせられる。
+`LSHARP_GC_PROOF_BUNDLE_INPUT` を指定した場合、または sibling `collector-proof.json` が存在する場合、
+script はその `s15_status` / `s15_proof` / `s16_status` / `s16_proof` を `summary.json`
+へ merge してから同じ validator を走らせる。受理した場合は merge 後 payload を
+`summary.json` へ正規化して書き戻し、さらに sibling `collector-proof.json` も
+現在の `s15_status` / `s15_proof` / `s16_status` / `s16_proof` を持つ normalized sidecar
+として常に出力する。proof bundle 未指定の bump / blocked path でも sidecar は生成される。
+
+proof bundle は次の 4 キーだけを許可する（部分指定可）。
+
+```json
+{
+  "s15_status": "pass",
+  "s15_proof": { "...": "..." },
+  "s16_status": "blocked",
+  "s16_proof": null
+}
+```
 
 ### artifact rejection criteria
 
@@ -130,9 +151,9 @@ collector 有効になって初めて `"pass"` / `"fail"` / `"blocked"` に変�
 | ID | 条件 | 現在の実装根拠 | CI への影響 |
 |---|---|---|---|
 | AR-01 | `test_e2e_alloc_metrics_ci_artifact_payload` が失敗する / `gate_status != "accepted"` / `sXX_status = "fail"` | `scripts/ci/collect-gc-metrics.sh` の `cargo test` と Python 検証 | required job fail |
-| AR-02 | `ci-artifacts/gc-metrics/{commit_sha}/summary.json` を読めない | 同 script の Python 検証がファイルを開く | required job fail |
-| AR-03 | JSON として parse できない | Python `json.loads(...)` | required job fail |
-| AR-04 | 必須 18 キーのいずれかが欠落、`proxy_workloads` / その required entry が欠落、`sXX_status` が 4 値外、`s14_status` が evaluator と不一致、または `s15_proof` / `s16_proof` が status と整合しない | Python の key/value 検証 | required job fail |
+| AR-02 | `ci-artifacts/gc-metrics/{commit_sha}/summary.json` または明示指定した proof bundle を読めない | 同 script の Python 検証がファイルを開く | required job fail |
+| AR-03 | artifact JSON または proof bundle JSON が parse できない | Python `json.loads(...)` | required job fail |
+| AR-04 | 必須 18 キーのいずれかが欠落、`proxy_workloads` / その required entry が欠落、`sXX_status` が 4 値外、`s14_status` が evaluator と不一致、proof bundle に未知キーがある、または `s15_proof` / `s16_proof` が status と整合しない | Python の key/value 検証 | required job fail |
 
 ### artifact acceptance の意味
 
@@ -226,6 +247,10 @@ artifact ではこれを `s15_proof` object に落とし込み、最低限次の
 }
 ```
 
+- `gc_mode` は collector 有効 proof を表すため、`mark-sweep` または `generational` のみ許可する。`none` は無効。
+- `stage_pair` は 2 要素の stage 名配列を維持し、比較結果 4 項目はすべて boolean で保持する。
+- proof bundle merge を使う場合も、`s15_status` / `s15_proof` はこの schema を崩してはならない。
+
 ### blocking 条件
 
 - GC 有効 bootstrap の stage 比較 artifact が存在しない間は S15 は `blocked` のまま。
@@ -249,7 +274,13 @@ artifact ではこれを `s16_proof` object に落とし込み、最低限次の
 ```json
 {
   "gc_mode": "mark-sweep",
-  "completed_workloads": ["lsp-soak", "repl-soak", "bootstrap-loop"],
+  "completed_workloads": [
+    "compile_run_light_loop",
+    "repl_soak_50_eval",
+    "repl_stateful_long_session",
+    "repl_stateful_single_session",
+    "lsp_actual_stdio_repeated_sequence"
+  ],
   "all_workloads_completed": true,
   "sigsegv_count": 0,
   "trap_count": 0,
@@ -257,6 +288,14 @@ artifact ではこれを `s16_proof` object に落とし込み、最低限次の
   "dangling_pointer_count": 0
 }
 ```
+
+- `gc_mode` は collector 有効 proof を表すため、`mark-sweep` または `generational` のみ許可する。`none` は無効。
+- `completed_workloads` は文字列配列とし、重複や未知の workload 名を許可しない。
+- `s16_status = pass` の場合、`completed_workloads` は required workload set
+  (`compile_run_light_loop` / `repl_soak_50_eval` / `repl_stateful_long_session` /
+  `repl_stateful_single_session` / `lsp_actual_stdio_repeated_sequence`)
+  と完全一致していなければならない。
+- proof bundle merge を使う場合も、`s16_status` / `s16_proof` はこの schema を崩してはならない。
 
 いずれか 1 つでも違反した場合は `fail`、collector 有効ジョブ自体が未配線なら `blocked`。
 `s16_status = blocked` / `n/a` の間は `s16_proof = null` を維持する。

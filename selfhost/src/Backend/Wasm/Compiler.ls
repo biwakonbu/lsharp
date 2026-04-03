@@ -47,6 +47,7 @@
 (defn op-map-remove [] 66)
 (defn op-command-line-arg [] 67)
 (defn op-runtime-hash-string [] 68)
+(defn op-file-exists [] 73)
 (defn builtin-add [] 43)
 (defn builtin-sub [] 45)
 (defn builtin-mul [] 42)
@@ -73,6 +74,7 @@
 (defn builtin-map-contains [] (- 0 3820778934353407281))
 (defn builtin-map-remove [] 2967773956947477)
 (defn builtin-command-line-arg [] 4333701572691766591)
+(defn builtin-file-exists [] 2680668565995926546)
 (defn builtin-basic-opcode [name-hash]
   (if (= name-hash (builtin-add))
     (op-i64-add)
@@ -144,7 +146,9 @@
     (op-read-file)
     (if (= name-hash (builtin-command-line-arg))
       (op-command-line-arg)
-      0)))
+      (if (= name-hash (builtin-file-exists))
+        (op-file-exists)
+        0))))
 
 (defn builtin-map-extra-opcode [name-hash]
   (if (= name-hash (builtin-map-contains))
@@ -372,7 +376,7 @@
 (defn compile-user-call-with-ftable [node env ftable instrs func-hash arg-count] (let [func-idx (ftable-lookup ftable func-hash) arg-instrs (compile-call-args-with-ftable node env ftable 0 arg-count instrs)] (emit-to arg-instrs 40 func-idx)))
 (defn source-builtin-map-op [bop] (or (= bop (op-map-insert)) (or (= bop (op-map-get)) (or (= bop (op-map-contains)) (= bop (op-map-remove))))))
 (defn map-insert-op [bop] (= bop (op-map-insert)))
-(defn unary-builtin-op [bop] (or (or (or (or (= bop (op-string-length)) (= bop (op-vector-length))) (= bop (op-ref-get))) (or (or (= bop (op-map-size)) (= bop (op-print))) (or (= bop (op-read-file)) (= bop (op-command-line-arg))))) (or (= bop (op-vector-new)) (= bop (op-ref-new)))))
+(defn unary-builtin-op [bop] (or (or (or (or (= bop (op-string-length)) (= bop (op-vector-length))) (= bop (op-ref-get))) (or (or (= bop (op-map-size)) (= bop (op-print))) (or (= bop (op-read-file)) (or (= bop (op-command-line-arg)) (= bop (op-file-exists)))))) (or (= bop (op-vector-new)) (= bop (op-ref-new)))))
 (defn alloc-builtin-op [bop] (or (= bop (op-vector-new)) (= bop (op-ref-new))))
 (defn env-slot-builtin-op [bop] (or (or (or (or (= bop (op-string-char-at)) (= bop (op-vector-get))) (= bop (op-vector-push))) (= bop (op-ref-set))) (or (= bop (op-map-get)) (or (= bop (op-map-contains)) (= bop (op-map-remove))))))
 (defn ternary-builtin-op [bop] (= bop 69))

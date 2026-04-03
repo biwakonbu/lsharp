@@ -75,7 +75,7 @@ GitHub の branch protection UI では required check として Actions 表示�
 
 ## アーティファクト
 
-`ci-gate-v2` はジョブ結果サマリーを `ci-gate-v2-results` として保存する（`retention-days: 30`）。`gc-metrics-artifact` は `gc-metrics-{sha}` として `ci-artifacts/gc-metrics/{commit_sha}/summary.json` を保存する。`test-fresh-clone` は upstream の `fresh-clone-artifact` が `fresh-clone-archive-${sha}` を publish し、それを download して binary-only smoke を行う。
+`ci-gate-v2` はジョブ結果サマリーを `ci-gate-v2-results` として保存する（`retention-days: 30`）。`gc-metrics-artifact` は `gc-metrics-{sha}` として `ci-artifacts/gc-metrics/{commit_sha}/` directory を保存し、`collect-gc-metrics.sh` が正規化した `summary.json` と `collector-proof.json` を同梱する。`test-fresh-clone` は upstream の `fresh-clone-artifact` が `fresh-clone-archive-${sha}` を publish し、それを download して binary-only smoke を行う。
 
 ## 同時実行制御
 

@@ -1251,6 +1251,55 @@ fn test_e2e_selfhost_compiler_command_line_arg_builtin_lowering() {
     );
 }
 
+/// selfhost Compiler.ls: file-exists? を builtin として lowering できること
+#[test]
+fn test_e2e_selfhost_compiler_file_exists_builtin_lowering() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (file-exists? 0))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        main-fn (vector-get functions 0)
+        main-ir (vector-get main-fn 2)
+        last-instr (vector-get main-ir 1)]
+    (do
+      (print (vector-get main-fn 0))
+      (print (vector-get main-fn 1))
+      (print (vector-length main-ir))
+      (print (vector-get last-instr 0))
+      (print (vector-get last-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(
+        lines.len() >= 5,
+        "file-exists? lowering 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "0", "main は 0 引数関数であること");
+    assert_eq!(lines[1], "0", "file-exists? lowering に補助 local は不要");
+    assert_eq!(
+        lines[2], "2",
+        "body は i64.const / file-exists? の 2 命令であること"
+    );
+    assert_eq!(
+        lines[3], "73",
+        "末尾命令は file-exists? builtin opcode であること"
+    );
+    assert_eq!(lines[4], "0", "file-exists? opcode operand は 0 であること");
+}
+
 /// selfhost WasmEmit.ls: command-line-arg opcode を call import へ落とせること
 #[test]
 fn test_e2e_selfhost_wasmemit_command_line_arg_instr() {
@@ -1275,13 +1324,14 @@ fn test_e2e_selfhost_wasmemit_command_line_arg_instr() {
       0)))
 "#;
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
         selfhost_module("Token.ls"),
         selfhost_module("AST.ls"),
         selfhost_module("Lexer.ls"),
         selfhost_module("Parser.ls"),
         selfhost_module("IR.ls"),
         selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
         selfhost_module("WasmEmit.ls"),
         harness
     );
@@ -1308,6 +1358,61 @@ fn test_e2e_selfhost_wasmemit_command_line_arg_instr() {
         lines[9], "3",
         "command-line-arg import index は 3 であること"
     );
+    assert_eq!(lines[10], "11", "body は end で終わること");
+}
+
+/// selfhost WasmEmit.ls: file-exists? opcode を call import へ落とせること
+#[test]
+fn test_e2e_selfhost_wasmemit_file_exists_instr() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (file-exists? 0))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        code-sec (emit-code-section-functions functions)]
+    (do
+      (print (vector-length code-sec))
+      (print (vector-get code-sec 0))
+      (print (vector-get code-sec 1))
+      (print (vector-get code-sec 2))
+      (print (vector-get code-sec 3))
+      (print (vector-get code-sec 4))
+      (print (vector-get code-sec 5))
+      (print (vector-get code-sec 6))
+      (print (vector-get code-sec 7))
+      (print (vector-get code-sec 8))
+      (print (vector-get code-sec 9))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(
+        lines.len() >= 11,
+        "file-exists? code section 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "10", "code section byte 長は 10 であること");
+    assert_eq!(lines[1], "10", "section id は code=10");
+    assert_eq!(lines[2], "8", "section size は 8");
+    assert_eq!(lines[3], "1", "function count は 1");
+    assert_eq!(lines[4], "6", "function body size は 6");
+    assert_eq!(lines[5], "0", "local decl count は 0");
+    assert_eq!(lines[6], "66", "先頭命令は i64.const");
+    assert_eq!(lines[7], "0", "const operand は 0");
+    assert_eq!(lines[8], "16", "file-exists? は call opcode へ lower されること");
+    assert_eq!(lines[9], "6", "file-exists? import index は 6 であること");
     assert_eq!(lines[10], "11", "body は end で終わること");
 }
 
