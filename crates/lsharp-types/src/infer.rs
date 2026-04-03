@@ -3319,7 +3319,6 @@ mod mutual_recursion_tests {
     }
 
     #[test]
-    #[test]
     fn test_mutual_recursion_three_functions() {
         // 3関数の循環再帰: 型推論がエラーにならないことを検証
         // 戻り値型は循環的なため具体的な型には解決されない（多相型変数のまま）

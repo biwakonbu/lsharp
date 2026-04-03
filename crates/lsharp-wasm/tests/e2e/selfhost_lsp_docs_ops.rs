@@ -2888,6 +2888,15 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
             || smoke_script_content.contains("doc \"$SMOKE_SOURCE\""),
         "smoke_test_readme.sh は doc command の README smoke を持つこと"
     );
+    let fetch_stage0_script = project_root.join("scripts/fetch-stage0.sh");
+    let bootstrap_script = project_root.join("scripts/bootstrap.sh");
+    let release_bundle_script = project_root.join("scripts/release-bundle.sh");
+    assert!(
+        fetch_stage0_script.is_file()
+            && bootstrap_script.is_file()
+            && release_bundle_script.is_file(),
+        "OPS-07 stage0 future-state script 群が揃っていること"
+    );
 
     let ci_path = project_root.join(".github/workflows/ci.yml");
     let ci_content = std::fs::read_to_string(&ci_path).expect("ci.yml の読み込みに失敗");
@@ -2974,10 +2983,16 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
         "fresh-clone-spec.md は current binary-only gate と future-state を見出しレベルで分離すること"
     );
     assert!(
-        fresh_clone_doc_content.contains("`./scripts/fetch-stage0.sh` は未実装")
-            && fresh_clone_doc_content.contains("`./scripts/bootstrap.sh` は未実装")
-            && fresh_clone_doc_content.contains("`./scripts/release-bundle.sh` は未実装"),
-        "fresh-clone-spec.md は未存在の future-state script を現行手順ではなく未実装要素として明記すること"
+        fresh_clone_doc_content.contains("./scripts/fetch-stage0.sh")
+            && fresh_clone_doc_content.contains("./scripts/bootstrap.sh")
+            && fresh_clone_doc_content.contains("./scripts/release-bundle.sh"),
+        "fresh-clone-spec.md は stage0 fetch/bootstrap/release-bundle 導線を文書化すること"
+    );
+    assert!(
+        !fresh_clone_doc_content.contains("`./scripts/fetch-stage0.sh` は未実装")
+            && !fresh_clone_doc_content.contains("`./scripts/bootstrap.sh` は未実装")
+            && !fresh_clone_doc_content.contains("`./scripts/release-bundle.sh` は未実装"),
+        "fresh-clone-spec.md は stale な未実装注記を残さないこと"
     );
 
     let phase11_plan =
@@ -2990,6 +3005,12 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
             || phase11_plan_content.contains("download release artifact"),
         "phase11-implementation-plan.md の OPS-07 節は current binary-only gate を説明すること"
     );
+    assert!(
+        phase11_plan_content.contains("fetch-stage0.sh")
+            && phase11_plan_content.contains("bootstrap.sh")
+            && phase11_plan_content.contains("release-bundle.sh"),
+        "phase11-implementation-plan.md の OPS-07 節は stage0 scaffold script 群も反映すること"
+    );
 
     let completion_criteria = project_root.join("docs/development/planning/completion-criteria.md");
     let completion_criteria_content = std::fs::read_to_string(&completion_criteria)
@@ -2998,6 +3019,12 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
         completion_criteria_content.contains("test-fresh-clone")
             && completion_criteria_content.contains("closest viable binary-only gate"),
         "completion-criteria.md は current mainline binary-only fresh-clone gate を説明すること"
+    );
+    assert!(
+        completion_criteria_content.contains("fetch-stage0.sh")
+            || completion_criteria_content.contains("bootstrap.sh")
+            || completion_criteria_content.contains("release-bundle.sh"),
+        "completion-criteria.md は manual stage0 scaffold の current state も説明すること"
     );
 }
 

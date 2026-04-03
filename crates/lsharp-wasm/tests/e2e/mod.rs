@@ -24,6 +24,7 @@ mod selfhost_native_differential;
 mod selfhost_native_stage_chain;
 mod selfhost_parser_forms;
 mod selfhost_parser_metadata_forms;
+mod selfhost_stage0_scripts;
 mod selfhost_type_parser_parity;
 mod selfhost_typeinfer_basic_errors;
 mod selfhost_typeinfer_computation_do;

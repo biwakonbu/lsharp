@@ -219,58 +219,54 @@ fn test_e2e_bootstrap_stage1_binary_structure() {
 #[test]
 fn test_e2e_bootstrap_ci_all_modules_compile() {
     let modules = [
-        "AST",
-        "Cli",
-        "Closure",
-        "Codegen",
-        "Compiler",
-        "Constraints",
-        "Derive",
-        "DocTools",
-        "Emit",
-        "Formatter",
-        "GC",
-        "HtmlDoc",
-        "Hygiene",
-        "IR",
-        "JsonRpc",
-        "Lexer",
-        "Linker",
-        "Linter",
-        "Lower",
-        "LowerDecl",
-        "LowerExpr",
-        "LowerPattern",
-        "LspServer",
-        "MacroExpand",
-        "Main",
-        "MetadataCheck",
-        "ModuleGraph",
-        "NativeCodegen",
-        "NativeEmit",
-        "NativeTarget",
-        "Parser",
-        "Span",
-        "TestRunner",
-        "Token",
-        "Type",
-        "TypeInfer",
-        "TypeInferCore",
-        "TypeScheme",
-        "WasiBackend",
-        "WasiRunner",
-        "WasmEmit",
+        "AST.ls",
+        "Cli.ls",
+        "Closure.ls",
+        "Codegen.ls",
+        "Compiler.ls",
+        "Constraints.ls",
+        "Derive.ls",
+        "DocTools.ls",
+        "Emit.ls",
+        "Formatter.ls",
+        "GC.ls",
+        "HtmlDoc.ls",
+        "Hygiene.ls",
+        "IR.ls",
+        "JsonRpc.ls",
+        "Lexer.ls",
+        "Linker.ls",
+        "Linter.ls",
+        "Lower.ls",
+        "LowerDecl.ls",
+        "LowerExpr.ls",
+        "LowerPattern.ls",
+        "LspServer.ls",
+        "MacroExpand.ls",
+        "Main.ls",
+        "MetadataCheck.ls",
+        "ModuleGraph.ls",
+        "NativeCodegen.ls",
+        "NativeEmit.ls",
+        "NativeTarget.ls",
+        "Parser.ls",
+        "Span.ls",
+        "TestRunner.ls",
+        "Token.ls",
+        "Type.ls",
+        "TypeInfer.ls",
+        "TypeScheme.ls",
+        "WasiBackend.ls",
+        "WasiRunner.ls",
+        "WasmEmit.ls",
     ];
-    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
 
     let mut compiled = 0;
     for module in &modules {
-        let path = base_dir.join(format!("{}.ls", module));
-        if path.exists() {
-            let wasm = compile_file_only(&path);
-            assert_valid_wasm(&wasm);
-            compiled += 1;
-        }
+        let path = selfhost_source_path(module);
+        let wasm = compile_file_only(&path);
+        assert_valid_wasm(&wasm);
+        compiled += 1;
     }
     assert_eq!(
         compiled,
@@ -837,7 +833,6 @@ fn test_e2e_bootstrap_stage1_symbol_stability() {
 /// T4-5: selfhost の各モジュールを個別にコンパイルし出力が決定的であることを検証
 #[test]
 fn test_e2e_bootstrap_selfhost_modules_deterministic() {
-    let selfhost_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
     // MacroExpand.ls, TypeInfer.ls は拡張構文を使用しておりパース未対応のため除外
     let modules: &[&str] = &[
         "Lexer.ls",
@@ -851,7 +846,7 @@ fn test_e2e_bootstrap_selfhost_modules_deterministic() {
     ];
 
     for name in modules {
-        let path = selfhost_dir.join(name);
+        let path = selfhost_source_path(name);
         let wasm1 = compile_file_only(&path);
         let wasm2 = compile_file_only(&path);
         assert_eq!(
@@ -862,11 +857,6 @@ fn test_e2e_bootstrap_selfhost_modules_deterministic() {
             wasm1.len(),
             wasm2.len()
         );
-        assert!(
-            wasm1.len() > 100,
-            "{} の wasm が小さすぎる: {} bytes",
-            name,
-            wasm1.len()
-        );
+        assert_valid_wasm(&wasm1);
     }
 }

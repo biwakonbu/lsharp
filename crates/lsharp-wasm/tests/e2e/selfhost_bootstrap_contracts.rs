@@ -678,40 +678,52 @@ fn test_e2e_selfhost_metadata_check() {
 
 #[test]
 fn test_e2e_selfhost_hkt_gadt_alias_record() {
-    // canonical TypeInfer.ls を読み込み
+    // canonical TypeInfer.ls / TypeInferCore.ls を読み込み
     let type_infer_path = selfhost_source_path("TypeInfer.ls");
+    let type_infer_core_path = selfhost_source_path("TypeInferCore.ls");
     assert!(
         type_infer_path.exists(),
         "canonical TypeInfer.ls が存在しない"
     );
+    assert!(
+        type_infer_core_path.exists(),
+        "canonical TypeInferCore.ls が存在しない"
+    );
     let source =
         std::fs::read_to_string(&type_infer_path).expect("canonical TypeInfer.ls の読み込みに失敗");
+    let core_source = std::fs::read_to_string(&type_infer_core_path)
+        .expect("canonical TypeInferCore.ls の読み込みに失敗");
 
-    // HKT (Higher-Kinded Types) 関連関数
+    // HKT / GADT / alias / record update helper は TypeInferCore.ls へ分割済み
     assert!(
-        source.contains("hkt-apply"),
-        "TypeInfer.ls に hkt-apply 関数がない。\
-         HKT の型適用を実装してください。"
+        core_source.contains("hkt-apply"),
+        "TypeInferCore.ls に hkt-apply 関数がない。\
+          HKT の型適用を実装してください。"
     );
 
-    // GADT (Generalized Algebraic Data Types) 関連関数
     assert!(
-        source.contains("gadt-check"),
-        "TypeInfer.ls に gadt-check 関数がない。\
-         GADT のコンストラクタ型チェックを実装してください。"
+        core_source.contains("gadt-check"),
+        "TypeInferCore.ls に gadt-check 関数がない。\
+          GADT のコンストラクタ型チェックを実装してください。"
     );
 
-    // Type alias 解決関数
     assert!(
-        source.contains("resolve-alias"),
-        "TypeInfer.ls に resolve-alias 関数がない。\
-         型エイリアスの解決を実装してください。"
+        core_source.contains("resolve-alias"),
+        "TypeInferCore.ls に resolve-alias 関数がない。\
+          型エイリアスの解決を実装してください。"
     );
 
-    // Record update 推論関数
     assert!(
-        source.contains("infer-record-update"),
-        "TypeInfer.ls に infer-record-update 関数がない。\
-         レコード更新の型推論を実装してください。"
+        core_source.contains("infer-record-update"),
+        "TypeInferCore.ls に infer-record-update 関数がない。\
+          レコード更新の型推論を実装してください。"
+    );
+
+    assert!(
+        !source.contains("(defn hkt-apply")
+            && !source.contains("(defn gadt-check")
+            && !source.contains("(defn resolve-alias")
+            && !source.contains("(defn infer-record-update"),
+        "TypeInfer.ls には TypeInferCore へ分割した helper を重複定義すべきではない"
     );
 }

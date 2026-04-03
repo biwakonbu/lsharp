@@ -17,6 +17,9 @@ editors/vscode/*.vsix
 
 # ビルド成果物 / 一時ファイル
 /dist/
+/stage0/
+/stage1/
+/stage2/
 verify_test
 todos.db
 ci-artifacts/gc-metrics/local/

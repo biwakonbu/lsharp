@@ -17,12 +17,38 @@ mod resolver;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use sha2::{Digest, Sha256};
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 const EMBEDDED_COMPONENT_BYTES: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/embedded-lsharp.component.wasm"));
+
+fn adjacent_component_sidecar_path_for_executable(executable: &Path) -> Option<PathBuf> {
+    let parent = executable.parent()?;
+    let stem = executable.file_stem()?.to_str()?;
+    Some(parent.join(format!("{stem}.component.wasm")))
+}
+
+fn resolve_default_component_bytes() -> miette::Result<Cow<'static, [u8]>> {
+    let current_exe =
+        std::env::current_exe().map_err(|e| miette::miette!("current exe の取得に失敗: {e}"))?;
+    let Some(sidecar_path) = adjacent_component_sidecar_path_for_executable(&current_exe) else {
+        return Ok(Cow::Borrowed(EMBEDDED_COMPONENT_BYTES));
+    };
+    if !sidecar_path.is_file() {
+        return Ok(Cow::Borrowed(EMBEDDED_COMPONENT_BYTES));
+    }
+
+    let bytes = std::fs::read(&sidecar_path).map_err(|e| {
+        miette::miette!(
+            "adjacent component sidecar の読み込みに失敗しました ({}): {e}",
+            sidecar_path.display()
+        )
+    })?;
+    Ok(Cow::Owned(bytes))
+}
 
 #[derive(Parser)]
 #[command(name = "lsharp", version, about = "L# コンパイラ")]
@@ -453,9 +479,10 @@ fn maybe_delegate_to_embedded_component() -> miette::Result<()> {
     let args =
         normalize_guest_args_for_current_dir(&current_dir, std::env::args().skip(1).collect());
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let component_bytes = resolve_default_component_bytes()?;
     let output =
         lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
-            EMBEDDED_COMPONENT_BYTES,
+            component_bytes.as_ref(),
             Some(&current_dir),
             &arg_refs,
         )
@@ -489,23 +516,12 @@ fn infer_bridge_compile_target(
     }
 }
 
-fn maybe_bridge_compile_build_artifact() -> miette::Result<()> {
-    if option_env!("LSHARP_EMBEDDED_COMPONENT_PRESENT") != Some("1") {
-        return Ok(());
-    }
-    if std::env::var_os("LSHARP_PATH").is_some() {
-        return Ok(());
-    }
-    if std::env::var_os("LSHARP_DISABLE_EMBEDDED_COMPONENT").is_some_and(|value| value != "0") {
-        return Ok(());
-    }
-    if !should_delegate_to_embedded_component() {
-        return Ok(());
-    }
-
+fn maybe_bridge_compile_build_artifact_with_component(
+    component_bytes: &[u8],
+) -> miette::Result<bool> {
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
-        Err(_) => return Ok(()),
+        Err(_) => return Ok(false),
     };
 
     let (file, output, target, emit_ir) = match cli.command {
@@ -521,11 +537,11 @@ fn maybe_bridge_compile_build_artifact() -> miette::Result<()> {
             target,
             emit_ir,
         } => (file, output, target, emit_ir),
-        _ => return Ok(()),
+        _ => return Ok(false),
     };
 
     if emit_ir {
-        return Ok(());
+        return Ok(false);
     }
 
     let current_dir =
@@ -535,7 +551,7 @@ fn maybe_bridge_compile_build_artifact() -> miette::Result<()> {
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let guest_output =
         lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
-            EMBEDDED_COMPONENT_BYTES,
+            component_bytes,
             Some(&current_dir),
             &arg_refs,
         )
@@ -582,6 +598,25 @@ fn maybe_bridge_compile_build_artifact() -> miette::Result<()> {
     std::process::exit(guest_output.exit_code);
 }
 
+fn maybe_bridge_compile_build_artifact() -> miette::Result<()> {
+    if option_env!("LSHARP_EMBEDDED_COMPONENT_PRESENT") != Some("1") {
+        return Ok(());
+    }
+    if std::env::var_os("LSHARP_PATH").is_some() {
+        return Ok(());
+    }
+    if std::env::var_os("LSHARP_DISABLE_EMBEDDED_COMPONENT").is_some_and(|value| value != "0") {
+        return Ok(());
+    }
+    if !should_delegate_to_embedded_component() {
+        return Ok(());
+    }
+
+    let component_bytes = resolve_default_component_bytes()?;
+    let _ = maybe_bridge_compile_build_artifact_with_component(component_bytes.as_ref())?;
+    Ok(())
+}
+
 fn canonicalize_for_guest_prefix_match(path: &Path) -> Option<PathBuf> {
     if let Ok(canonical) = std::fs::canonicalize(path) {
         return Some(canonical);
@@ -593,17 +628,27 @@ fn canonicalize_for_guest_prefix_match(path: &Path) -> Option<PathBuf> {
     Some(canonical_parent.join(file_name))
 }
 
+fn normalize_guest_relative_src_path(value: String) -> String {
+    let path = Path::new(&value);
+    match path.components().next() {
+        Some(std::path::Component::Normal(first)) if first == std::ffi::OsStr::new("src") => {
+            Path::new(".").join(path).to_string_lossy().into_owned()
+        }
+        _ => value,
+    }
+}
+
 fn relativize_guest_path_arg(current_dir: &Path, value: &str) -> String {
     let path = Path::new(value);
     if !path.is_absolute() {
-        return value.to_string();
+        return normalize_guest_relative_src_path(value.to_string());
     }
 
     if let Ok(relative) = path.strip_prefix(current_dir) {
         return if relative.as_os_str().is_empty() {
             ".".to_string()
         } else {
-            relative.to_string_lossy().into_owned()
+            normalize_guest_relative_src_path(relative.to_string_lossy().into_owned())
         };
     }
 
@@ -614,7 +659,9 @@ fn relativize_guest_path_arg(current_dir: &Path, value: &str) -> String {
     };
 
     match canonical_path.strip_prefix(&canonical_current_dir) {
-        Ok(relative) if !relative.as_os_str().is_empty() => relative.to_string_lossy().into_owned(),
+        Ok(relative) if !relative.as_os_str().is_empty() => {
+            normalize_guest_relative_src_path(relative.to_string_lossy().into_owned())
+        }
         Ok(_) => ".".to_string(),
         Err(_) => value.to_string(),
     }
@@ -868,6 +915,11 @@ fn maybe_delegate_to_external_compiler() -> miette::Result<()> {
                     delegate_path.display()
                 )
             })?;
+            if should_delegate_compile_build_to_embedded_component_args(
+                &std::env::args_os().skip(1).collect::<Vec<_>>(),
+            ) {
+                let _ = maybe_bridge_compile_build_artifact_with_component(&component_bytes)?;
+            }
             let current_dir = std::env::current_dir()
                 .map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
             let args = normalize_guest_args_for_current_dir(
@@ -2439,6 +2491,10 @@ mod tests {
         args.iter().map(std::ffi::OsString::from).collect()
     }
 
+    fn dot_prefixed(path: &str) -> String {
+        Path::new(".").join(path).to_string_lossy().into_owned()
+    }
+
     #[test]
     fn test_cli_help_excludes_removed_parse_check_fmt_subcommands() {
         let help = Cli::command().render_long_help().to_string();
@@ -2618,6 +2674,61 @@ mod tests {
             "--format",
             "json",
         ])));
+    }
+
+    #[test]
+    fn test_normalize_guest_args_prefixes_relative_src_entry_paths() {
+        let current_dir = std::env::temp_dir().join("lsharp_normalize_guest_args");
+        let src_entry = dot_prefixed("src/Main.ls");
+
+        let compile_args = normalize_guest_args_for_current_dir(
+            &current_dir,
+            vec!["compile".to_string(), "src/Main.ls".to_string()],
+        );
+        assert_eq!(compile_args, vec!["compile".to_string(), src_entry.clone()]);
+
+        let review_args = normalize_guest_args_for_current_dir(
+            &current_dir,
+            vec!["review".to_string(), "src/Main.ls".to_string()],
+        );
+        assert_eq!(review_args, vec!["review".to_string(), src_entry]);
+    }
+
+    #[test]
+    fn test_normalize_guest_args_relativizes_absolute_src_entry_paths_with_dot_prefix() {
+        let current_dir = std::env::temp_dir().join("lsharp_normalize_guest_args_abs");
+        let src_entry = current_dir.join("src/Main.ls");
+        let expected = dot_prefixed("src/Main.ls");
+
+        let compile_args = normalize_guest_args_for_current_dir(
+            &current_dir,
+            vec![
+                "compile".to_string(),
+                src_entry.to_string_lossy().into_owned(),
+                "--output".to_string(),
+                current_dir
+                    .join("src/Main.component.wasm")
+                    .to_string_lossy()
+                    .into_owned(),
+            ],
+        );
+
+        assert_eq!(compile_args[1], expected);
+        assert_eq!(compile_args[3], dot_prefixed("src/Main.component.wasm"));
+    }
+
+    #[test]
+    fn test_normalize_guest_args_keeps_non_src_relative_paths_unchanged() {
+        let current_dir = std::env::temp_dir().join("lsharp_normalize_guest_args_examples");
+        let compile_args = normalize_guest_args_for_current_dir(
+            &current_dir,
+            vec!["compile".to_string(), "examples/fib.ls".to_string()],
+        );
+
+        assert_eq!(
+            compile_args,
+            vec!["compile".to_string(), "examples/fib.ls".to_string()]
+        );
     }
 
     #[test]

@@ -53,6 +53,11 @@ fn compile_preview1_entry(entry_file: &Path) -> Vec<u8> {
     lsharp_wasm::wasi::emit_wasm_wasi(&module).expect("wasi emit failed")
 }
 
+fn compile_component_entry(entry_file: &Path) -> Vec<u8> {
+    let module = lsharp_ir::compile_multi_file(entry_file).expect("multi-file compile failed");
+    lsharp_wasm::wasi::emit_wasm_wasi_p2(&module).expect("component emit failed")
+}
+
 fn build_driver_with_embedded_component(
     project_root: &Path,
     component_path: &Path,
@@ -79,6 +84,15 @@ fn build_driver_with_embedded_component(
         String::from_utf8_lossy(&output.stderr)
     );
     target_dir.join("debug").join("lsharp")
+}
+
+fn copy_executable_binary(source: &Path, dest: &Path) {
+    fs::copy(source, dest).expect("binary copy failed");
+    let mut perms = fs::metadata(dest)
+        .expect("binary metadata failed")
+        .permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(dest, perms).expect("binary chmod failed");
 }
 
 #[test]
@@ -1344,6 +1358,152 @@ fn test_driver_delegates_to_component_artifact_via_lsharp_path() {
     assert!(
         output.stderr.is_empty(),
         "component delegation は不要な stderr を出さないべき: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_driver_component_lsharp_path_compile_writes_runnable_component_artifact() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let cli_source = project_root.join("selfhost/src/App/EmbeddedCli.ls");
+    let temp_dir = unique_temp_dir("default_path_component_compile");
+    let source_path = temp_dir.join("input.ls");
+    let component_path = temp_dir.join("delegate.component.wasm");
+    let output_path = temp_dir.join("input.component.wasm");
+    write_source_file(&source_path, "(defn main [] (print 42))\n");
+    fs::write(&component_path, compile_component_entry(&cli_source))
+        .expect("selfhost component write failed");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("compile")
+        .arg("input.ls")
+        .arg("-o")
+        .arg("input.component.wasm")
+        .env("LSHARP_PATH", &component_path)
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver compile via component path failed");
+
+    assert!(
+        output.status.success(),
+        "LSHARP_PATH=.component.wasm compile delegation は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("wasm-size:"),
+        "component delegation の compile は selfhost summary を返すべき: {stdout}"
+    );
+    let written = fs::read(&output_path).expect("component compile output read failed");
+    assert!(
+        written.starts_with(b"\0asm"),
+        "LSHARP_PATH=.component.wasm compile は runnable component bytes を書くべき"
+    );
+    let runtime_output = lsharp_wasm::wasi_runner::run_wasm_component(&written)
+        .expect("component compile output should run");
+    assert_eq!(
+        runtime_output, "42\n",
+        "LSHARP_PATH=.component.wasm compile output は wasmtime で実行できるべき"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_driver_component_lsharp_path_build_writes_runnable_component_artifact() {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let cli_source = project_root.join("selfhost/src/App/EmbeddedCli.ls");
+    let temp_dir = unique_temp_dir("default_path_component_build");
+    let source_path = temp_dir.join("input.ls");
+    let component_path = temp_dir.join("delegate.component.wasm");
+    let output_path = temp_dir.join("input.component.wasm");
+    write_source_file(&source_path, "(defn main [] (print 42))\n");
+    fs::write(&component_path, compile_component_entry(&cli_source))
+        .expect("selfhost component write failed");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_lsharp"))
+        .arg("build")
+        .arg("input.ls")
+        .env("LSHARP_PATH", &component_path)
+        .current_dir(&temp_dir)
+        .output()
+        .expect("driver build via component path failed");
+
+    assert!(
+        output.status.success(),
+        "LSHARP_PATH=.component.wasm build delegation は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("wasm-size:"),
+        "component delegation の build は selfhost summary を返すべき: {stdout}"
+    );
+    let written = fs::read(&output_path).expect("component build output read failed");
+    assert!(
+        written.starts_with(b"\0asm"),
+        "LSHARP_PATH=.component.wasm build は runnable component bytes を書くべき"
+    );
+    let runtime_output = lsharp_wasm::wasi_runner::run_wasm_component(&written)
+        .expect("component build output should run");
+    assert_eq!(
+        runtime_output, "42\n",
+        "LSHARP_PATH=.component.wasm build output は wasmtime で実行できるべき"
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_driver_prefers_adjacent_component_sidecar_over_embedded_component_default_path() {
+    let temp_dir = unique_temp_dir("adjacent_component_sidecar");
+    let source_path = temp_dir.join("input.ls");
+    let launcher_path = temp_dir.join("lsharp");
+    let sidecar_path = temp_dir.join("lsharp.component.wasm");
+    write_source_file(&source_path, "(defn main [] 42)\n");
+    copy_executable_binary(Path::new(env!("CARGO_BIN_EXE_lsharp")), &launcher_path);
+    write_component_file(
+        &sidecar_path,
+        r#"
+(component
+  (core module $main
+    (func (export "run"))
+  )
+  (core instance $main (instantiate $main))
+  (type (func))
+  (alias core export $main "run" (core func $run))
+  (func $run (type 0) (canon lift (core func $run)))
+  (export "run" (func $run))
+)
+"#,
+    );
+
+    let output = Command::new(&launcher_path)
+        .arg("parse")
+        .arg("input.ls")
+        .env_remove("LSHARP_PATH")
+        .current_dir(&temp_dir)
+        .output()
+        .expect("adjacent sidecar driver execution failed");
+
+    assert!(
+        output.status.success(),
+        "adjacent sidecar default path は成功するべき: stdout={}, stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "adjacent sidecar は埋め込み guest より優先されるべき: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "adjacent sidecar default path は不要な stderr を出さないべき: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 

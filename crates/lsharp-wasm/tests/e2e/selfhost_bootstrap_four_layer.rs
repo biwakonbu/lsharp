@@ -467,23 +467,6 @@ fn write_string_object_bytes<T>(
         .unwrap_or_else(|e| panic!("{context}: string object を memory へ書き込めない: {e}"));
 }
 
-fn ensure_instance_memory_pages<T>(
-    store: &mut wasmtime::Store<T>,
-    instance: &wasmtime::Instance,
-    min_pages: u64,
-    context: &str,
-) {
-    let memory = instance
-        .get_memory(&mut *store, "memory")
-        .unwrap_or_else(|| panic!("{context}: memory export が見つからない"));
-    let current_pages = memory.size(&mut *store);
-    if current_pages < min_pages {
-        memory
-            .grow(&mut *store, min_pages - current_pages)
-            .unwrap_or_else(|e| panic!("{context}: memory.grow に失敗: {e}"));
-    }
-}
-
 /// stage1 が stdout に出力した length-prefixed Wasm バイト列を復元するヘルパー
 fn parse_emitted_wasm_modules(output: &str, expected_modules: usize) -> Vec<Vec<u8>> {
     let values: Vec<usize> = output
@@ -1168,7 +1151,7 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
     );
     let command_line_arg = wasmtime::Func::wrap(
         &mut store,
-        |mut caller: wasmtime::Caller<'_, SixImportState>, index: i64| -> i64 {
+        |caller: wasmtime::Caller<'_, SixImportState>, index: i64| -> i64 {
             let content = usize::try_from(index)
                 .ok()
                 .and_then(|i| caller.data().args.get(i))
@@ -5966,14 +5949,41 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_main_shape_source() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let main_shape_source = "(module App.Main)\n(import App.CompilerMode)\n(import App.PipelineSmoke)\n(defn main [] (if (> (string-length (command-line-arg 1)) 0) (compile-file-mode) (run-main-smoke)))\n";
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    // inline read-file は import 先にも同じ本文を返してしまうため、
+    // Main.ls shape の回帰は実ファイル package を使って検証する。
+    let temp_root = std::env::temp_dir().join(format!(
+        "lsharp-boot04-main-shape-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("時刻が巻き戻った")
+            .as_nanos()
+    ));
+    let app_dir = temp_root.join("src/App");
+    std::fs::create_dir_all(&app_dir).expect("main-shape temp dir を作れない");
+    std::fs::write(
+        app_dir.join("Main.ls"),
+        "(module App.Main)\n(import App.CompilerMode)\n(import App.PipelineSmoke)\n(defn main [] (if (> (string-length (command-line-arg 1)) 0) (compile-file-mode) (run-main-smoke)))\n",
+    )
+    .expect("main-shape Main.ls を書けない");
+    std::fs::write(
+        app_dir.join("CompilerMode.ls"),
+        "(module App.CompilerMode)\n(defn compile-file-mode [] 1)\n",
+    )
+    .expect("main-shape CompilerMode.ls を書けない");
+    std::fs::write(
+        app_dir.join("PipelineSmoke.ls"),
+        "(module App.PipelineSmoke)\n(defn run-main-smoke [] 2)\n",
+    )
+    .expect("main-shape PipelineSmoke.ls を書けない");
+
+    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
         stage2_self_compiler,
-        main_shape_source,
+        &temp_root,
         &["compiler", "src/App/Main.ls"],
     )
     .expect(
-        "BOOT-04 main-shape: stage2_self_compiler が Main.ls shape source をコンパイルできない",
+        "BOOT-04 main-shape: stage2_self_compiler が Main.ls shape package をコンパイルできない",
     );
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_wasm = &stage3_modules[0];
@@ -5983,6 +5993,8 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_main_shape_source() {
     let engine = wasmtime::Engine::default();
     wasmtime::Module::new(&engine, stage3_wasm)
         .unwrap_or_else(|e| panic!("BOOT-04 main-shape: wasmtime load failed: {e}"));
+
+    std::fs::remove_dir_all(&temp_root).expect("main-shape temp dir を削除できない");
 }
 
 #[test]
@@ -7687,10 +7699,12 @@ fn test_e2e_boot04_compiler_mode_package_index_resolution() {
     let stage1_wasm = compile_file_only(&main_path);
     assert_valid_wasm(&stage1_wasm);
 
+    // 公開 CLI / driver は current dir 配下の `src/...` entry を `./src/...` に正規化して
+    // guest compiler-mode へ渡すため、この internal regression も同じ契約を使う。
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
         &stage1_wasm,
         Some(&fixture_dir),
-        &["compiler", "src/Main.ls"],
+        &["compiler", "./src/Main.ls"],
     )
     .expect(
         "BOOT-04 package-index-resolution: compiler-mode が src/Main.ls をコンパイルできなかった",
@@ -8141,7 +8155,6 @@ fn test_debug_token_ls_compilation() {
                 let count = read_leb(data, &mut pos) as usize;
                 for fidx in 0..count {
                     let sz = read_leb(data, &mut pos) as usize;
-                    let start = pos;
                     let end = pos + sz;
                     let local_count = read_leb(data, &mut pos);
                     for _ in 0..local_count {
@@ -8150,15 +8163,12 @@ fn test_debug_token_ls_compilation() {
                         pos += 1;
                     }
                     // Check if it's a simple i64.const 99 return
-                    let mut is_99 = false;
-                    let saved = pos;
                     if pos < end - 2 {
                         if data[pos] == 0x42 {
                             // i64.const
                             pos += 1;
                             let val = read_leb(data, &mut pos);
                             if val == 99 && pos < end && data[pos] == 0x0b {
-                                is_99 = true;
                                 func_99_idx = Some(fidx);
                                 eprintln!(
                                     "Found tok-eof (=99) at user func idx {fidx} (wasm idx {})",

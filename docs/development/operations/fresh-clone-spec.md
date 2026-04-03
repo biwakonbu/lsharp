@@ -47,13 +47,11 @@ release workflow では build 済み archive を `actions/download-artifact` で
 
 この gate は **Rust 非依存化の完了を主張しない**。あくまで `test-fresh-clone` と役割分担しながら、current mainline の regressions を捕捉するための暫定措置である。
 
-## 将来の true no-Rust end-state
+## 手元 stage0 scaffold
 
-以下は stage0 package 配布と bootstrap 閉包が揃った後に目指す target state であり、**現行 mainline の手順ではない**。
-
-- `./scripts/fetch-stage0.sh` は未実装
-- `./scripts/bootstrap.sh` は未実装
-- `./scripts/release-bundle.sh` は未実装
+以下の 3 script は **手元で current release asset / stage bundle を試すための scaffold** として利用できる。
+ただし mainline CI / required check は依然として workflow-local artifact ベースの `test-fresh-clone` が正本であり、
+GitHub Releases 直結の true no-Rust end-state を mainline で完了扱いにはしていない。
 
 ### 1. Stage0 パッケージ取得
 
@@ -66,6 +64,7 @@ release workflow では build 済み archive を `actions/download-artifact` で
 - `stage0/lsharp` として配置する
 - stage0 package には起動可能な host launcher と、その launcher が実行する guest compiler component を含める
 - チェックサム検証を実施する
+- `STAGE0_VERSION=<tag>` / `STAGE0_TARGET=<triple>` / `STAGE0_RELEASE_BASE_URL=<url>` で取得先を上書きできる
 
 ### 2. ブートストラップ
 
@@ -76,8 +75,8 @@ release workflow では build 済み archive を `actions/download-artifact` で
 
 | ステージ | 入力 | 出力 | 説明 |
 |----------|------|------|------|
-| stage0 → stage1 | selfhost/src/**/*.ls | stage1/lsharp.component.wasm | プリビルト host launcher 上の guest compiler component で selfhost 正本 source root をコンパイル |
-| stage1 → stage2 | selfhost/src/**/*.ls | stage2/lsharp.component.wasm | stage1 component を host launcher に載せて selfhost 正本 source root を再コンパイル |
+| stage0 → stage1 | `selfhost/src/App/EmbeddedCli.ls` | `stage1/lsharp.component.wasm` | release package と同じ embedded guest entry を、adjacent `lsharp.component.wasm` を優先する host launcher 経由で再コンパイル |
+| stage1 → stage2 | `selfhost/src/App/EmbeddedCli.ls` | `stage2/lsharp.component.wasm` | stage1 component を隣接 sidecar として載せた launcher で再コンパイル |
 | stage2 検証 | — | — | stage1 と stage2 の component 出力が一致することを確認 |
 
 ### 3. Host launcher パッケージ生成
@@ -111,6 +110,15 @@ release workflow では build 済み archive を `actions/download-artifact` で
 - `dist/lsharp-<version>-<os>-<arch>.tar.gz` を生成
 - アーカイブには single-binary host launcher を含める
 - SHA-256 チェックサムを付与
+
+## 将来の true no-Rust end-state
+
+mainline で未完了なのは、上記 scaffold の存在ではなく **GitHub Releases / stage0 fetch 直結の required gate** と
+その配布運用である。現時点では以下がなお未完了:
+
+- `test-fresh-clone` / `release-smoke` の required path は workflow-local artifact が正本
+- GitHub Releases 上の stage0 package を mainline required gate から直接 fetch する経路は未接続
+- signing credential なしでは tag release の実署名も完了しない
 
 ## CI ジョブ
 
