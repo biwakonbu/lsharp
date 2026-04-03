@@ -2,7 +2,7 @@
 
 > 凡例: `[x]` 完了 / `[ ]` 未着手 / `[~]` 部分実装 / `[BLOCKED: ...]` 依存待ち
 >
-> **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13。
+> **完了済みフェーズ**: Phase 0-7, P8, P9-1/2/3/4/6, P10, P12, P13, P14。
 > **Phase 11**: ADR-152〜ADR-157 で仕様固定済みだが、実装完了ではない。完了判定は `docs/development/planning/completion-criteria.md`, `docs/development/validation/verification-spec.md`, `docs/development/planning/compatibility-matrix.md` を優先する。
 >
 > P8-9 (T4-4/T4-5) → ADR-148, P9-6b → ADR-149, P9-6c → ADR-150, P9-6d → ADR-151
@@ -30,6 +30,7 @@
 > - **CP-06 / GitHub 設定**: `gh api repos/biwakonbu/lsharp/branches/main/protection` で `CI Gate v2` required check / strict update / PR review / conversation resolution / admin enforcement を再確認し、`gh api repos/biwakonbu/lsharp/actions/workflows` で `CI` / `Release` workflow がともに active であることを確認した。実署名 credential 投入と実 tag / GitHub Release publish は repo 外運用として TODO blocker から切り離す。
 > - **GC-06 contract**: `gc_metrics_contract.rs` に collector proof fixture を追加し、`scripts/ci/collect-gc-metrics.sh` は `s15_proof.gc_mode` / `s16_proof.gc_mode` を collector mode (`mark-sweep` / `generational`) に制限、さらに `s16_status = pass` では canonical workload set の complete declaration を必須化した。加えて `LSHARP_GC_PROOF_BUNDLE_INPUT=/path/to/collector-proof.json` で external `s15_status` / `s15_proof` / `s16_status` / `s16_proof` を `summary.json` へ merge して同一 validator に通せるようにし、future collector job が proof slot を artifact へ注入する repo-controlled 経路を追加した。`test_gc_metrics_script_rejects_fixture_payload_with_noncollector_s15_gc_mode` / `test_gc_metrics_script_rejects_fixture_payload_with_incomplete_s16_workload_set` / `test_gc_metrics_script_accepts_fixture_payload_with_valid_s15_s16_proofs` / `test_gc_metrics_script_merges_external_collector_proof_bundle_into_summary` / `test_gc_metrics_script_rejects_invalid_external_collector_proof_bundle` が green。
 > - **GC-06 sidecar wiring**: `scripts/ci/collect-gc-metrics.sh` は `summary.json` と同じ directory の sibling `collector-proof.json` を env 指定なしでも自動検出して merge できるようになり、さらに validator 通過後は current `s15_*` / `s16_*` slot を持つ normalized `collector-proof.json` を常に書き戻すようになった。`.github/workflows/ci.yml` の `gc-metrics-artifact` job も `ci-artifacts/gc-metrics/{sha}/summary.json` 単体ではなく directory 全体を upload して stable proof sidecar を保持する。`test_gc_metrics_script_autoloads_adjacent_collector_proof_bundle`, `test_gc_metrics_script_writes_default_collector_proof_sidecar`, `test_gc_metrics_script_normalizes_collector_proof_sidecar_after_merge`, `test_e2e_gc06_ci_artifact_contract` が green。
+> - **GC-06 blocked reasons**: `summary.json` は `s14_reason` / `s15_reason` / `s16_reason` を持つようになり、`blocked` / `n/a` の理由 (`collector_heap_series_missing` / `collector_fixed_point_artifact_missing` / `collector_workload_artifact_missing` / `allocator_mode_bump`) を machine-readable に保持する。`collector-proof.json` sidecar は引き続き proof overlay 対象の `s15_*` / `s16_*` slot を mirror し、`test_gc_metrics_script_rejects_fixture_payload_with_invalid_blocked_s14_reason`, `test_gc_metrics_script_rejects_fixture_payload_with_invalid_blocked_s15_reason`, `test_e2e_alloc_metrics_ci_artifact_payload` が reason contract を固定する。
 > - **Bootstrap / compiler-mode repair**: `selfhost/src/Backend/Wasm/Compiler.ls` は `file-exists?` builtin hash を opcode `73` として lowering し、`selfhost/src/Backend/Wasm/WasmEmit.ls` / `selfhost/src/App/CompilerMode.ls` は compiler-mode import model を 7-import (`alloc` / `print` / `read-file` / `command-line-arg` / `string-concat` / `substring` / `file-exists?`) に拡張、`register-all-pairs` の user function index 起点も `7` に同期した。これで `test_e2e_selfhost_compiler_file_exists_builtin_lowering` / `test_e2e_selfhost_wasmemit_file_exists_instr` / `test_e2e_boot04_self_hosted_stage2_compiles_main_again` / `test_e2e_bootstrap_fixed_point_stage2_stage3` / `test_e2e_bootstrap_fixed_input_set_stage_chain_match` が再 green になり、`ModuleResolver.ls` の package-root 経路で `file-exists?` を踏む stage2 self-compile も復旧した。
 
 - [x] `CP-01` true bootstrap fixed point を再閉鎖した（`scripts/ci/compile-phase11-inputs.sh`, `test_e2e_bootstrap_stage2_self_feed_fixed_input_set`, `test_e2e_bootstrap_fixed_input_set_stage_chain_match`, `docs/development/operations/bootstrap-diff-artifacts.md`）
@@ -46,6 +47,7 @@
 - [BLOCKED: collector 有効 GC fixed-point / long-lived workload artifact が未整備] `CP-05` runtime stability gate を閉じる
   - collector 有効の長寿命 REPL / LSP で GC fixed-point を実測する
   - `docs/development/planning/runtime-stability-spec.md` S14-S16 を blocking artifact / CI で証明する
+  - 現行 artifact では `s14_reason` / `s15_reason` / `s16_reason` に blocker 理由を記録できるが、collector 有効 payload 自体が未整備のため `collector_*` reason が残り、本丸の collector runtime / workload 実装が未完了
 
 - [x] `CP-06` CI / release cutover を再閉鎖した（`.github/workflows/ci.yml`, `.github/workflows/release.yml`, `docs/development/operations/CI.md`, `docs/development/operations/branch-protection-checklist.md`）
   - `gh api` で `main` の branch protection に Actions 表示名 `CI Gate v2` が required check として残っていること、および `CI` / `Release` workflow が active であることを再確認した
@@ -164,7 +166,7 @@
 #### Step 5. `CP-05` Runtime stability gate を閉じる
 
 - [~] [`GC-05 LSP soak and REPL GC`](docs/development/planning/phase11-implementation-plan.md#gc-05-lsp-soak-and-repl-gc) -- `test_e2e_gc_light_compile_run_loop`, `test_e2e_gc_compile_run_loop_1000`, `test_e2e_gc_repl_soak_50_eval`, `test_e2e_gc_repl_soak_500_eval` に加え、`test_e2e_gc_repl_stateful_single_session_metrics`, `test_e2e_gc_repl_session_batch_metrics`, `test_e2e_gc_repl_stateful_long_session_metrics`, `test_e2e_gc_lsp_stateful_session_sequence_metrics`, `test_e2e_gc_lsp_stateful_repeated_sequence_metrics` で単一 Wasm セッション上の REPL 継続評価メトリクス、REPL batch helper、長めの single-session REPL soak、`didOpen -> hover -> didChange -> completion -> formatting` の stateful sequence と repeated sequence までは固定済み。さらに `test_e2e_selfhost_lsp_runtime_server_loop_stateful_sequence` により shared-state `server-loop-step` dispatch も追加で固定し、同一 URI repeated `didOpen` は doc-count を増やさない。今回 `test_e2e_gc_lsp_actual_stdio_repeated_sequence_soak` により actual `lsp --stdio` の 12 反復 long-lived sequence も固定し、`emit_read_stdin_func` は 4KiB chunk を EOF まで連結する形に更新して soak-sized wire を最後まで読めるようにした。加えて `gc-metrics` artifact の `proxy_workloads` に light compile+run / REPL 50 eval / stateful single-session REPL / stateful long-session REPL / actual `lsp --stdio` repeated sequence の representative result を格納し、required job 側でも機械可読に回収できる。**ただし** collector 有効の長寿命 GC gate / fixed-point proof は未達。
-- [~] [`GC-06 Leak detection and metrics`](docs/development/planning/phase11-implementation-plan.md#gc-06-leak-detection-and-metrics) -- `test_e2e_alloc_metrics_peak_usage`, `test_e2e_alloc_metrics_monotonic_check`, `test_e2e_alloc_metrics_five_metric_collection`, `test_e2e_alloc_metrics_leak_suspect_detection` に加え、`test_e2e_alloc_metrics_ci_artifact_payload` と `scripts/ci/collect-gc-metrics.sh` で `ci-artifacts/gc-metrics/{sha}/summary.json` を生成し、required CI job `gc-metrics-artifact` から `gc-metrics-{sha}` artifact を保存できる。artifact payload には `gate_status` / `s14_status` / `s15_status` / `s16_status` に加えて `s15_proof` / `s16_proof` / `heap_bytes_series` / `proxy_workloads` も入り、light compile+run / REPL 50 eval / stateful single-session REPL / stateful long-session REPL / actual `lsp --stdio` repeated sequence の representative result と、将来の S15/S16 machine-readable proof slot を保持する。S14 monotonic-trend evaluator は Rust test / Python validator の両方で共有し、`proxy_workloads` の required entry と `s15_proof` / `s16_proof` の status 整合も validator で検証する。今回さらに collector proof fixture 契約として `s15_proof.gc_mode` / `s16_proof.gc_mode` を collector mode (`mark-sweep` / `generational`) に制限し、`s16_status = pass` では canonical workload set の complete declaration を required にした (`test_gc_metrics_script_rejects_fixture_payload_with_noncollector_s15_gc_mode`, `test_gc_metrics_script_rejects_fixture_payload_with_incomplete_s16_workload_set`, `test_gc_metrics_script_accepts_fixture_payload_with_valid_s15_s16_proofs`)。さらに `LSHARP_GC_METRICS_INPUT=/path/to/summary.json` による validate-only fixture path と、`LSHARP_GC_PROOF_BUNDLE_INPUT=/path/to/collector-proof.json` による external S15/S16 proof merge path を追加し、future collector job が `summary.json` に machine-readable proof を注入した上で同一 validator を再利用できるようにした (`test_gc_metrics_script_merges_external_collector_proof_bundle_into_summary`, `test_gc_metrics_script_rejects_invalid_external_collector_proof_bundle`)。今回さらに sibling `collector-proof.json` の自動検出、validator 通過後の normalized sidecar 常設出力、`gc-metrics-artifact` の directory upload を追加し、proof slot が bump / blocked path でも artifact root に安定して残るようにした (`test_gc_metrics_script_autoloads_adjacent_collector_proof_bundle`, `test_gc_metrics_script_writes_default_collector_proof_sidecar`, `test_gc_metrics_script_normalizes_collector_proof_sidecar_after_merge`, `test_e2e_gc06_ci_artifact_contract`)。**ただし** 現状の payload は bump allocator 前提の proxy metrics で、S14-S16 を機械判定する collector 有効 GC fixed-point proof は未完成。
+- [~] [`GC-06 Leak detection and metrics`](docs/development/planning/phase11-implementation-plan.md#gc-06-leak-detection-and-metrics) -- `test_e2e_alloc_metrics_peak_usage`, `test_e2e_alloc_metrics_monotonic_check`, `test_e2e_alloc_metrics_five_metric_collection`, `test_e2e_alloc_metrics_leak_suspect_detection` に加え、`test_e2e_alloc_metrics_ci_artifact_payload` と `scripts/ci/collect-gc-metrics.sh` で `ci-artifacts/gc-metrics/{sha}/summary.json` を生成し、required CI job `gc-metrics-artifact` から `gc-metrics-{sha}` artifact を保存できる。artifact payload には `gate_status` / `s14_status` / `s14_reason` / `s15_status` / `s15_reason` / `s16_status` / `s16_reason` に加えて `s15_proof` / `s16_proof` / `heap_bytes_series` / `proxy_workloads` も入り、light compile+run / REPL 50 eval / stateful single-session REPL / stateful long-session REPL / actual `lsp --stdio` repeated sequence の representative result と、将来の S15/S16 machine-readable proof slot を保持する。S14 monotonic-trend evaluator は Rust test / Python validator の両方で共有し、`s14_reason` / `s15_reason` / `s16_reason` と status の整合も validator で検証する。今回さらに collector proof fixture 契約として `s15_proof.gc_mode` / `s16_proof.gc_mode` を collector mode (`mark-sweep` / `generational`) に制限し、`s16_status = pass` では canonical workload set の complete declaration を required にした (`test_gc_metrics_script_rejects_fixture_payload_with_noncollector_s15_gc_mode`, `test_gc_metrics_script_rejects_fixture_payload_with_incomplete_s16_workload_set`, `test_gc_metrics_script_accepts_fixture_payload_with_valid_s15_s16_proofs`)。さらに `LSHARP_GC_METRICS_INPUT=/path/to/summary.json` による validate-only fixture path と、`LSHARP_GC_PROOF_BUNDLE_INPUT=/path/to/collector-proof.json` による external S15/S16 proof merge path を追加し、future collector job が `summary.json` に machine-readable proof を注入した上で同一 validator を再利用できるようにした (`test_gc_metrics_script_merges_external_collector_proof_bundle_into_summary`, `test_gc_metrics_script_rejects_invalid_external_collector_proof_bundle`)。今回さらに sibling `collector-proof.json` の自動検出、validator 通過後の normalized sidecar 常設出力、`gc-metrics-artifact` の directory upload を追加し、proof slot が bump / blocked path でも artifact root に安定して残るようにした (`test_gc_metrics_script_autoloads_adjacent_collector_proof_bundle`, `test_gc_metrics_script_writes_default_collector_proof_sidecar`, `test_gc_metrics_script_normalizes_collector_proof_sidecar_after_merge`, `test_e2e_gc06_ci_artifact_contract`)。**ただし** 現状の payload は bump allocator 前提の proxy metrics で、S14-S16 を機械判定する collector 有効 GC fixed-point proof は未完成。
 - [~] Step 5 exit gate -- compile+run / REPL loop、metrics API、CI artifact (`gc-metrics-artifact`) に加え、stateful LSP/REPL の単一セッション sequence soak と long-session REPL soak、actual `lsp --stdio` repeated sequence soak、さらにそれらの representative result を `proxy_workloads` として artifact 化するところまでは追加済み。**ただし** collector 有効 bootstrap fixed-point・blocking monotonic-trend 判定が不足しており、`docs/development/planning/runtime-stability-spec.md` S14-S16 を gate complete と呼べる段階ではない。
 
 #### Step 6. `CP-06` の運用文書と第1段 gate を整える
@@ -181,7 +183,7 @@
 - [x] `CP-02 Syntax/types parity` -- syntax/type 系テストは 100 件超まで拡大。selfhost parser では全宣言タグ・全式ノード・全パターンタグの parse coverage を達成し、TypeInfer は 7 引数 curried lambda/defn/apply、14 式 do、3-step computation、全 match pattern 種別（wildcard/var/lit/constructor/record）、error code parity（E0001-E0006）、TypeScheme の deterministic ordering まで固定。`infer_decl_functions` の generalize 改修で standalone check / open import polymorphism を維持。E2E harness は現時点で **683 tests / 2 ignored** 構成、docs audit は **error 0 / warning 0**。Evidence: `docs/development/planning/compatibility-matrix.md`, `tests/golden/syntax/ast_node_map.json`, `selfhost/src/Types/TypeInfer.ls`, `selfhost/src/Types/TypeScheme.ls`, `selfhost/src/Syntax/Parser.ls`, `crates/lsharp-types/src/infer.rs`
 - [x] `CP-03 IR/backend/native` -- **Deferred extraction complete (Component Model pivot)**。Lower/LowerPattern の stage0 compile、NATIVE-05 の structural parity、NATIVE-06 の proxy differential harness と空 allowlist に加え、`NativeCodegen.ls` は full-width const bytes と複数 IR 命令の逐次 codegen、`NativeEmit.ls` は Mach-O / ELF object file への full native payload 保持、`NativeTarget.ls` は 12-field descriptor と target policy accessor 群を持ち、`selfhost/src/App/Main.ls` は compile-source 由来 IR を x86_64-darwin / aarch64-darwin / x86_64-linux の 3 target summary へ通し、header/response bytes まで観測できるようになった。さらに stage1 が生成した host-target 向け AArch64 code を `clang -arch arm64` でリンク・実行する `test_e2e_native_host_binary_link_and_execute`、および const 0/1/42/100 の Wasm stdout と native exit code を突き合わせる zero-diff sample 群 (`test_e2e_zero_diff_const_*`, `test_e2e_zero_diff_sample_summary`) も追加済みで、canonical selfhost module path を使う stage-chain fixture も `test_e2e_native_target_descriptor_exposes_policy_fields` を含む native harness 群で固定した。Phase 11 mainline では native parity gate を reopen せず、残る true native self-regeneration / wide differential zero は `V2-08` / `V2-09` の deferred track へ移した。Evidence: `selfhost/src/Backend/Native/NativeCodegen.ls`, `selfhost/src/Backend/Native/NativeEmit.ls`, `selfhost/src/Backend/Native/NativeTarget.ls`, `selfhost/src/App/Main.ls`, `crates/lsharp-wasm/tests/e2e/selfhost_native_differential.rs`, `crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs`, `tests/differential-allowlist.yaml`
 - [x] `CP-04 Public toolchain` -- CLI/LSP/FMT/DOC の selfhost source、help/version・sort/dedup・schema/documentation に加え、`test` metadata 実行、top-level `defn` source-driven LSP subset、CLI check の error-code-aware summary text と REPL warmup session summary (`type:Int` / `evals:1` / `input-bytes:17`)、Formatter canonical text core、CLI fmt 実テキスト出力、CLI review count/title/body/severity/code-location surface、CLI doc title/body surface、CLI doc-ack/doc-check status text と comment-form trailer、`doc-ack --trailer` / `doc-check --strict` の file-handler / actual `main` slice と strict failure の non-zero process exit、LSP formatting `parse-program` → `format-program` integration、`initialize` capability summary の references/rename/formatting 露出、DocTools/HtmlDoc deterministic payload/HTML slice までは前進。2026-04-01: `compile_multi_file` の Formatter トリオバッチ、`LspServer` の dispatch/loop 復元、`LspServerNav` 接続、hier fixture の `test_e2e_selfhost_lsp_hier_fixture_shape_cross_document_definition`、open 済み別 document の top-level `defn` を completion candidate に merge する stateful parity (`test_e2e_lsp_stateful_completion_resolves_hier_fixture_shape_open_document`, `test_e2e_lsp_actual_stdio_completion_resolves_hier_fixture_shape_open_document`)、および HtmlDoc の function/type/module title escape regression (`test_e2e_selfhost_htmldoc_render_function_signature_escapes_html`, `test_e2e_selfhost_htmldoc_render_type_definition_escapes_html`, `test_e2e_selfhost_htmldoc_render_module_page_escapes_title`) も追加。2026-04-02: Doc trailer slice として `DocTools.ls` が `; Doc-Review-Status:` / `; Doc-Reviewed-By:` comment trailer と `doc-check-trailer-valid?` を持ち、`App/Cli.ls` も `doc-ack --trailer` / `doc-check --strict` を actual `main` と strict failure の exit parity まで処理できるようになった。続けて DOC-01 schema fidelity として `review.schema.json` が `title` / `severity` / `message` / `line` / `column` / `code` を必須化し、`knowledge.schema.json` が function entry の `params` / `returns` / `doc` / `example` を、`doc-output.schema.json` が function/type entry arrays と `html.sections` の `id/count` metadata` に加えて function `params[{name,type,doc}]` / `returns{type,doc}` / `doc` / `example` property を持てるようになった。selfhost `Parser.ls` は defn trailing metadata として `:doc` / `:example` / `:params` / `:returns` を保持し、typed `generate-knowledge` は function entry へ `params` (`name:type`) / `returns` / `doc` / `example` を返せる。typed `generate-doc-output` は parameter/return doc を含む object shape を返し、`HtmlDoc` も module page で function signature / params / returns / doc / example を host-truth 寄り HTML として escape/render できる。2026-04-03: `App/Cli.ls` が `App.ModuleResolver` / `App.CompilerMode` を介する import-aware compile/build file path を持ち、nested import fixture に対する `run-compile` / `run-build` / actual `main` の `compile/build <file>` / `-o` / `--output` / `--target` parity も固定した (`test_e2e_selfhost_cli_compile_file_handler_multifile_nested_imports`, `test_e2e_selfhost_cli_build_file_handler_multifile_nested_imports`, `test_e2e_selfhost_cli_main_with_args_compile_file_multifile_nested_imports`, `test_e2e_selfhost_cli_main_with_args_build_file_multifile_nested_imports`, `test_e2e_selfhost_cli_main_with_args_compile_target_and_output_path`, `test_e2e_selfhost_cli_main_with_args_compile_target_changes_wasm_size`, `test_e2e_selfhost_cli_main_with_args_build_output_path_and_target_alias`)。2026-04-04: representative filesystem-backed actual `lsp --stdio` snapshot、`DocJson.ls` による payload / HTML / schema-object snapshot、release/readme/fresh-clone smoke、actual `lsp --stdio` repeated-sequence soak、driver 側 doc-site generation focused gate まで green を再確認し、公開 toolchain parity gate を再閉鎖した。Evidence: `selfhost/src/App/Cli.ls`, `selfhost/src/Tools/Lsp/LspServer.ls`, `selfhost/src/Tools/Lsp/LspServerNav.ls`, `crates/lsharp-wasm/tests/lsp_stateful_parity.rs`, `crates/lsharp-ir/src/lib.rs` (`try_infer_formatter_trio_batch`), `selfhost/src/Tools/Text/Formatter.ls`, `selfhost/src/Tools/Doc/DocTools.ls`, `selfhost/src/Tools/Doc/HtmlDoc.ls`, `selfhost/src/Tools/Test/TestRunner.ls`, `selfhost/src/Syntax/Parser.ls`, `crates/lsharp-wasm/tests/doctools_parity.rs`, `crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs`, `crates/lsharp-wasm/tests/e2e/selfhost_cli_actual_main_args.rs`, `crates/lsharp-wasm/tests/e2e/selfhost_doctools_cli_diagnostics.rs`, `crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs`, `crates/lsharp-wasm/tests/e2e/selfhost_parser_metadata_forms.rs`, `crates/lsharp-wasm/tests/e2e/selfhost_gc_stateful_soak.rs`, `crates/lsharp-driver/src/doc_site.rs`
-- [~] `CP-05 Runtime stability` -- GC-05/06 の proxy soak、metrics API、CI gate 文書は追加済み。加えて REPL single-session / long-session soak と repeated LSP stateful sequence、actual `lsp --stdio` repeated sequence soak までは固定し、same-URI `didOpen` の doc-count 増殖も止めた。さらに `gc-metrics-artifact` required job と artifact payload の `gate_status` / `s14_status` / `s15_status` / `s16_status` により blocking gate 自体は自己記述化され、`proxy_workloads` には light compile+run / REPL / actual `lsp --stdio` repeated sequence の representative result、`s15_proof` / `s16_proof` には将来の collector 有効証拠 slot も入る。今回 `gc_metrics_contract.rs` と `collect-gc-metrics.sh` は collector proof fixture を追加し、`s15_proof.gc_mode` / `s16_proof.gc_mode` の collector mode 制約と `s16_status = pass` 時の canonical workload set complete declaration、さらに `LSHARP_GC_PROOF_BUNDLE_INPUT` による external proof merge path も機械検証できるようになった。加えて sibling `collector-proof.json` の自動検出と `gc-metrics-artifact` の directory upload により、future collector job が sidecar proof を同じ artifact root に置くだけで現行 validator / upload 契約へ接続できるようになった。**ただし** collector 有効 GC fixed-point を実測する blocking artifact / CI は未達で、runtime stability gate は reopen。Evidence: `crates/lsharp-wasm/tests/e2e.rs`, `crates/lsharp-wasm/tests/gc_metrics_contract.rs`, `docs/development/planning/gc-ci-gate-spec.md`, `scripts/ci/collect-gc-metrics.sh`
+- [~] `CP-05 Runtime stability` -- GC-05/06 の proxy soak、metrics API、CI gate 文書は追加済み。加えて REPL single-session / long-session soak と repeated LSP stateful sequence、actual `lsp --stdio` repeated sequence soak までは固定し、same-URI `didOpen` の doc-count 増殖も止めた。さらに `gc-metrics-artifact` required job と artifact payload の `gate_status` / `s14_status` / `s14_reason` / `s15_status` / `s15_reason` / `s16_status` / `s16_reason` により blocking gate 自体は自己記述化され、`proxy_workloads` には light compile+run / REPL / actual `lsp --stdio` repeated sequence の representative result、`s15_proof` / `s16_proof` には将来の collector 有効証拠 slot も入る。今回 `gc_metrics_contract.rs` と `collect-gc-metrics.sh` は collector proof fixture を追加し、`s15_proof.gc_mode` / `s16_proof.gc_mode` の collector mode 制約と `s16_status = pass` 時の canonical workload set complete declaration、さらに `LSHARP_GC_PROOF_BUNDLE_INPUT` による external proof merge path も機械検証できるようになった。加えて S14 blocked reason (`collector_heap_series_missing`) も machine-readable 化し、sibling `collector-proof.json` の自動検出と `gc-metrics-artifact` の directory upload により、future collector job が sidecar proof を同じ artifact root に置くだけで現行 validator / upload 契約へ接続できるようになった。**ただし** collector 有効 GC fixed-point を実測する blocking artifact / CI は未達で、runtime stability gate は reopen。Evidence: `crates/lsharp-wasm/tests/e2e.rs`, `crates/lsharp-wasm/tests/gc_metrics_contract.rs`, `docs/development/planning/gc-ci-gate-spec.md`, `scripts/ci/collect-gc-metrics.sh`
 - [x] `CP-06 CI cutover` -- `ci-gate` / `ci-gate-v2` に compile gate + audit-docs + default-path-smoke + `test-fresh-clone` + fresh-clone-smoke + gc-metrics-artifact + editor-extension-build は構成済みで、release playbook も release binary で共通 smoke を再利用する段階まで前進し、driver 側 `LSHARP_PATH` delegation で external compiler への差し替え hook も入った。さらに embedded guest default path は `parse` / `check` / `compile` / `build` / `test` / `review`（text + `--json` / `--format json`） / simple `doc-ack <file>` / simple `doc-check <file>` / `fmt` まで拡張され、`test_test_without_lsharp_path_uses_embedded_component_default_path` / `test_review_without_lsharp_path_uses_embedded_component_default_path` / `test_review_json_without_lsharp_path_uses_embedded_component_default_path` / `test_review_format_json_without_lsharp_path_uses_embedded_component_default_path` / `test_doc_ack_without_lsharp_path_uses_embedded_component_default_path` / `test_doc_check_without_lsharp_path_uses_embedded_component_default_path` に加えて `test_review_without_lsharp_path_respects_embedded_disable_flag` / `test_doc_ack_without_lsharp_path_respects_embedded_disable_flag` / `test_doc_check_without_lsharp_path_respects_embedded_disable_flag` と `default-path-smoke.sh` で metadata summary (`examples:N` / `invariants:N` / `failures:N`)、review diagnostics summary (`unused-let` / `warning` / `L0001@1:1`)、review schema-object JSON、doc ack/check payload (`ack:recorded` / `status:ok`)、runtime disable 時の delegation hint 復帰も固定済み。さらに `.github/workflows/release.yml` により `v*` tag push 自動 release も追加済み。2026-04-02: `docs/development/operations/branch-protection-checklist.md` / `CI.md` / `ci-gate-v2-job-graph.md` と current workflow graph を同期し、GitHub branch protection でも Actions 表示名 `CI Gate v2` を `main` の required check として適用した。2026-04-03: `gh api` で branch protection と `CI` / `Release` workflow の active state を再確認した。**Component Model pivot により Rust workspace は host launcher として残存する方針に転換**。default path ownership も全 13 CLI コマンドについて embedded guest subset / intentional host-backed subset として整理済みで、実署名・実 release publish・GitHub Releases / stage0 fetch 直結運用は repo 外オペレーションとして TODO blocker から切り離す。Evidence: `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `scripts/ci/default-path-smoke.sh`, `scripts/ci/test-fresh-clone.sh`, `scripts/release-playbook.sh`, `docs/development/operations/CI.md`, `docs/development/operations/ci-gate-v2-job-graph.md`, `docs/development/operations/artifact-policy.md`, `docs/development/operations/branch-protection-checklist.md`, `docs/development/operations/adr-rust-removal.md`, `docs/development/operations/rollback-procedure.md`, `crates/lsharp-driver/tests/default_path_delegation.rs`, `test_e2e_ops01_ci_gate_v2`, `test_e2e_ops05_default_path_migration`, `test_e2e_ops06_release_playbook`, `test_e2e_ops07_fresh_clone_no_rust`, `test_e2e_ops08_final_removal_rollback`
 
 ### Phase 11 実装状態
@@ -237,6 +239,175 @@
 - [x] `EDIT-BUG-01` Neovim `root_dir` に存在しない `project.toml` を指定 -- 修正済み: `Cargo.toml` に変更
 - [x] `EDIT-BUG-02` VS Code `findLsharpBinary()` が `which` コマンドを使用しており Windows 非対応 -- Windows は動作保証対象外として全 README に明記。将来 Windows 対応時に `where` フォールバックを検討。Evidence: `editors/vscode/README.md`, `editors/README.md`, `editors/claude-code/README.md`, `editors/neovim/README.md`, `editors/jetbrains/README.md`
 - [x] `EDIT-BUG-03` LSP `shutdown` が `params: null` / `params: {}` で `Unexpected params` を返す -- 修正済み: `ParamsNormalizer` ミドルウェアで空 params を除去。ユニットテスト 7 件追加
+
+---
+
+## Phase 15: 差分コンパイル (Incremental Compilation)
+
+> 目標: 変更されたモジュールとその依存先のみを再処理し、コンパイル時間と LSP レスポンスを大幅に短縮する
+> 前提: `compile_multi_file` は現在毎回全モジュールをフルリビルドしており、差分コンパイルは未実装
+> 既存基盤: `ModuleGraph`(DAG/topo sort/dependency_closure)、`ModuleTypeSurface`(モジュール単位型サーフェス蓄積)、`inject_external_types`(クロスモジュール型注入)、`link_modules`(IR 結合、未使用)
+
+### INC-A: 変更検出基盤
+
+- [ ] `INC-A1` `SourceFingerprint` 型の導入 (SHA-256 ベースのソースハッシュ)
+  - `crates/lsharp-ir/src/lib.rs` に型定義
+  - ファイル読み込み時に fingerprint を計算
+  - テスト: 同一文字列→同一ハッシュ、1 文字変更→異なるハッシュ、空ファイル
+
+- [ ] `INC-A2` `CompilationCache` 構造体の導入
+  - `crates/lsharp-ir/src/cache.rs` 新規作成
+  - `ModuleCacheEntry { fingerprint, ast, type_surface, ir, imports }` を保持
+  - `compile_multi_file_incremental(entry, &mut cache)` シグネチャ追加
+  - テスト: 空キャッシュの初回コンパイルがフルコンパイルと同一結果
+  - 依存: INC-A1
+
+### INC-B: モジュールグラフ拡張
+
+- [ ] `INC-B1` 逆依存 (reverse dependencies) 計算の追加
+  - `crates/lsharp-ir/src/module_graph.rs` に `reverse_dependency_closure()` 追加
+  - `build_from_entry()` 末尾で逆依存マップを自動構築
+  - テスト: 線形依存 A→B→C、ダイヤモンド依存、独立モジュール
+
+- [ ] `INC-B2` dirty set 計算
+  - `compute_dirty_set(changed: &[String]) -> Vec<String>` を追加
+  - 変更モジュール + 逆依存 closure を返す
+  - 依存: INC-B1
+
+- [ ] `INC-B3` グラフの差分更新
+  - `update_module_imports()` / `remove_module()` / `diff_imports()` 追加
+  - import 変更時の逆依存マップ再構築
+  - テスト: import 追加/削除後のトポロジカルソートの正当性
+  - 依存: INC-B1
+
+- [ ] `INC-B4` Formatter トリオのアトミック dirty 判定
+  - `FormatterExpr` / `FormatterDecl` / `Formatter` のいずれか変更時に 3 つとも dirty にする
+  - `crates/lsharp-ir/src/lib.rs` の `try_infer_formatter_trio_batch` との整合
+  - 依存: INC-B2
+
+### INC-C: パース結果キャッシュ
+
+- [ ] `INC-C1` モジュール単位 AST キャッシュ
+  - `compile_multi_file` ループ内で fingerprint 一致時にパースをスキップ
+  - `crates/lsharp-ir/src/lib.rs` L739-744 を変更
+  - テスト: 同一ソースでの再コンパイル時にパース関数が呼ばれないこと、1 モジュールのみ再パースされること
+  - 依存: INC-A2
+
+- [ ] `INC-C2` AST の `Arc<Program>` 化検討
+  - Clone コストの測定 (selfhost 54 モジュールで before/after)
+  - 必要なら `Arc<Program>` へ移行して参照カウント化
+  - 依存: INC-C1
+
+### INC-D: 型推論結果キャッシュ
+
+- [ ] `INC-D1` `ModuleTypeSurface` のキャッシュと再利用
+  - dirty set に含まれないモジュールの型推論をスキップ
+  - `crates/lsharp-ir/src/lib.rs` L750-784 を変更
+  - 自身と全依存モジュールの fingerprint が不変なら `ModuleTypeSurface` を再利用
+  - テスト: 依存先シグネチャ変更時の再型推論、実装のみ変更時の挙動
+  - 依存: INC-A2, INC-B2, INC-C1
+
+- [ ] `INC-D2` 型サーフェス等価性による波及抑制 (高度な最適化)
+  - `crates/lsharp-types/src/types.rs` に `TypeScheme` の `PartialEq` / `Hash` 導出
+  - ソース変更があっても型サーフェスが不変なら依存先の再型推論を抑制
+  - テスト: 実装のみ変更(型不変)で依存先が再型推論されないこと
+  - 依存: INC-D1
+  - 注意: `TypeVarId` のアルファ等価性は初期は構造的等価性で代替
+
+### INC-E: IR/コード生成の差分対応
+
+- [ ] `INC-E1` 全結合 lower からモジュール単位 lower + `link_modules` への移行 (**最大の設計変更**)
+  - `crates/lsharp-ir/src/lib.rs` L796-801 をモジュール単位 IR 生成に変更
+  - 既存の `link_modules()` (L403-492) を `compile_multi_file` から利用
+  - テスト: フルコンパイルとの Wasm バイト完全一致 (bootstrap 54 件)
+  - リスク: クロスモジュール関数参照の解決方法が変わる
+  - 依存: INC-D1
+
+- [ ] `INC-E2` モジュール単位 IR キャッシュ
+  - dirty set に含まれないモジュールの IR 生成をスキップ
+  - `CompilationCache` の `ir` フィールドを活用
+  - 依存: INC-E1
+
+- [ ] `INC-E3` `link_modules` リベースキャッシュ
+  - モジュール順序・関数数不変時にリベース計算をスキップ
+  - 関数数変更時のキャッシュ無効化
+  - 依存: INC-E1
+
+### INC-F: LSP 統合
+
+- [ ] `INC-F1` `LsharpBackend` への `CompilationCache` 統合
+  - `crates/lsharp-lsp/src/lib.rs` に `compilation_cache: RwLock<CompilationCache>` 追加
+  - `did_change` で dirty set ベースの差分コンパイル実行
+  - 依存: INC-A2, INC-C1, INC-D1
+
+- [ ] `INC-F2` LSP マルチファイル診断パイプライン
+  - `crates/lsharp-lsp/src/util.rs` の `parse_and_check` を import 解決を含むマルチファイル診断に拡張
+  - URI ↔ モジュール名のマッピング
+  - 依存: INC-F1
+
+- [ ] `INC-F3` ワークスペース診断更新最適化
+  - dirty set のモジュールのみ `publish_diagnostics` を呼び出す
+  - clean モジュールの診断はキャッシュから返す
+  - 依存: INC-F2, INC-B2
+
+- [ ] `INC-F4` LSP Incremental Sync (V2-01 実装)
+  - `TextDocumentSyncKind::FULL` → `INCREMENTAL` 移行
+  - rope データ構造導入 (`ropey` クレート)
+  - `did_change` で range ベース差分適用
+  - Full Sync フォールバック (差分適用失敗時)
+  - テスト: 既存 Full Sync テストがパス、差分適用の正確性、1000 行ファイルの部分編集 < 50ms
+  - INC-F1 と並行可能
+
+- [ ] `INC-F5` LSP スレッドセーフ設計
+  - `RwLock<CompilationCache>` の粒度設計
+  - `did_change` 中の hover/completion リクエストとのデッドロック回避
+  - 依存: INC-F1 と同時設計
+
+### INC-G: Selfhost コンパイラ対応
+
+- [ ] `INC-G1` selfhost CompilerMode への fingerprint ベース src-decl-pair キャッシュ
+  - `selfhost/src/App/CompilerMode.ls` の `load-imports-from-decls` 拡張
+  - fingerprint 一致時に前回の decls を再利用
+  - 注意: selfhost は Wasm 上で動作、キャッシュはメモリ上ベクター
+  - 依存: レイヤー 1-5 安定後
+
+- [ ] `INC-G2` selfhost ModuleResolver のキャッシュ統合
+  - `selfhost/src/App/ModuleResolver.ls` でモジュールパス解決結果をキャッシュ
+  - 依存: INC-G1
+
+### INC-H: 検証・ベンチマーク
+
+- [ ] `INC-H1` 差分コンパイル決定性テスト
+  - フルコンパイルと差分コンパイルの Wasm バイト完全一致を全 selfhost モジュール (54 件) で検証
+  - `scripts/ci/compile-phase11-inputs.sh` ベースのフル vs 差分比較
+  - `test_e2e_bootstrap_fixed_point_stage2_stage3` が引き続きグリーン
+
+- [ ] `INC-H2` パフォーマンスベンチマーク
+  - selfhost プロジェクトでの 1 モジュール変更時のコンパイル時間計測
+  - 目標: フルコンパイル比 50% 以上の短縮 (1 モジュール変更時)
+
+- [ ] `INC-H3` LSP レスポンスタイム計測
+  - `did_change` 後の diagnostics publish までの時間
+  - 目標: 1000 行ファイルの部分編集 < 50ms (V2-01 目標)
+
+### 実装優先順序
+
+> 1. **Phase A**: INC-A1, INC-A2, INC-B1（並行）— 基盤構築
+> 2. **Phase B**: INC-B2, INC-C1 — パース最適化
+> 3. **Phase C**: INC-B4, INC-D1 — 型推論最適化
+> 4. **Phase D**: INC-E1 — モジュール単位 lower への移行（最大の設計変更）
+> 5. **Phase E**: INC-E2, INC-E3, INC-B3 — IR キャッシュとグラフ差分更新
+> 6. **Phase F**: INC-F1, INC-F2, INC-F3, INC-F5 — LSP 統合
+> 7. **Phase G**: INC-F4 — Incremental Sync（独立して並行可能）
+> 8. **Phase H**: INC-G1, INC-G2 — Selfhost 対応
+> 9. **Phase I**: INC-D2 — 高度な最適化（効果測定後に判断）
+> 10. **全フェーズ**: INC-H1, INC-H2, INC-H3 — 各フェーズ完了時にベンチマーク
+
+### 技術的リスク
+
+> - **INC-E1 が最大のリスク**: 全結合 lower → モジュール単位 lower + `link_modules` への移行は、クロスモジュール関数参照の解決方法を根本的に変える。bootstrap fixed-point テスト (54 件) との互換性維持が必須
+> - **Formatter トリオの特殊処理**: `try_infer_formatter_trio_batch` が 3 モジュールを一括型推論する現行設計との整合
+> - **LSP のスレッドセーフ性**: `RwLock<CompilationCache>` のデッドロックリスク
 
 ---
 
