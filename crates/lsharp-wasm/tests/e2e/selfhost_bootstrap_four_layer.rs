@@ -21,6 +21,20 @@ fn validate_wasm_detailed(wasm: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
+fn selfhost_stage1_wasm_emit_bundle() -> String {
+    [
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+    ]
+    .join("\n")
+}
+
 // =============================================================================
 // BOOT-04: True stage1-stage2-stage3 bootstrap 4 層検証テスト
 // =============================================================================
@@ -1664,17 +1678,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_minimal_subset() {
       (bootstrap-print-module stage2-b)
       0)))
 "#;
-    let stage1_source = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
-        selfhost_module("Token.ls"),
-        selfhost_module("AST.ls"),
-        selfhost_module("Lexer.ls"),
-        selfhost_module("Parser.ls"),
-        selfhost_module("IR.ls"),
-        selfhost_module("Compiler.ls"),
-        selfhost_module("WasmEmit.ls"),
-        harness
-    );
+    let stage1_source = format!("{}\n{}", selfhost_stage1_wasm_emit_bundle(), harness);
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -1757,17 +1761,7 @@ fn test_e2e_bootstrap_stage1_emits_identical_stage2_wasm_for_same_tiny_source() 
       (bootstrap-print-module stage2-b)
       0)))
 "#;
-    let stage1_source = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
-        selfhost_module("Token.ls"),
-        selfhost_module("AST.ls"),
-        selfhost_module("Lexer.ls"),
-        selfhost_module("Parser.ls"),
-        selfhost_module("IR.ls"),
-        selfhost_module("Compiler.ls"),
-        selfhost_module("WasmEmit.ls"),
-        harness
-    );
+    let stage1_source = format!("{}\n{}", selfhost_stage1_wasm_emit_bundle(), harness);
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -1830,17 +1824,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_extended_do_block() {
       (bootstrap-print-module stage2)
       0)))
 "#;
-    let stage1_source = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
-        selfhost_module("Token.ls"),
-        selfhost_module("AST.ls"),
-        selfhost_module("Lexer.ls"),
-        selfhost_module("Parser.ls"),
-        selfhost_module("IR.ls"),
-        selfhost_module("Compiler.ls"),
-        selfhost_module("WasmEmit.ls"),
-        harness
-    );
+    let stage1_source = format!("{}\n{}", selfhost_stage1_wasm_emit_bundle(), harness);
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -3037,7 +3021,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_new_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3109,7 +3093,7 @@ fn test_e2e_bootstrap_stage1_emits_identical_alloc_stage2_wasm_for_same_source()
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3184,7 +3168,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_push_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3256,7 +3240,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_ref_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3328,7 +3312,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3400,7 +3384,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_contains_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3472,7 +3456,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_remove_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3547,7 +3531,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_key_map_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         data-sec (emit-data-section data 1024)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
@@ -3878,7 +3862,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_print_program() {
         import-sec (emit-import-section-alloc-print)
         function-sec (emit-function-section-main-type-index 2)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 2)
+        export-sec (emit-export-section-main-memory-index 2 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3948,7 +3932,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_generalized_alloc_print_helpe
         import-sec (emit-import-section-helper-pair (helper-id-alloc) (helper-id-print))
         function-sec (emit-function-section-main-type-index 2)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 2)
+        export-sec (emit-export-section-main-memory-index 2 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -4020,7 +4004,7 @@ fn test_e2e_bootstrap_stage1_emits_identical_alloc_print_pair_stage2_wasm_for_sa
         import-sec (emit-import-section-helper-pair (helper-id-alloc) (helper-id-print))
         function-sec (emit-function-section-main-type-index 2)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 2)
+        export-sec (emit-export-section-main-memory-index 2 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
