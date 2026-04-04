@@ -1064,6 +1064,67 @@ fn test_e2e_selfhost_cli_compile_functions_data_with_cache_reuses_clean_hit() {
     );
 }
 
+/// TEST-CLI-02-M1D: selfhost/src/App/Cli.ls は shared cache helper で module path invalidation を反映すること
+#[test]
+fn test_e2e_selfhost_cli_compile_functions_data_with_cache_invalidates_changed_module_path() {
+    let dir = cli_test_fixture_dir("compile_functions_data_cache_invalidation");
+    write_cli_fixture_files(
+        &dir,
+        &[
+            (
+                "src/Main.ls",
+                "(module Main)\n(import App.Lib)\n(defn main [] (helper))",
+            ),
+            ("vendor/App/Lib.ls", "(module App.Lib)\n(defn helper [] 7)"),
+            (".lsharp/module-index/App/Lib.path", "vendor/App/Lib.ls"),
+            (
+                "src/App/Placeholder.ls",
+                "(module App.Placeholder)\n(defn unused [] 0)",
+            ),
+        ],
+    );
+
+    let harness = r#"
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pair1 (compile-file-functions-data-with-cache "src/Main.ls" cache-ref parse-count-ref)
+        count1 (ref-get parse-count-ref)
+        _ (write-file "src/App/Lib.ls" "(module App.Lib) (defn helper [] 9)")
+        pair2 (compile-file-functions-data-with-cache "src/Main.ls" cache-ref parse-count-ref)
+        count2 (ref-get parse-count-ref)
+        functions1 (vector-get pair1 0)
+        functions2 (vector-get pair2 0)]
+    (do
+      (print count1)
+      (print count2)
+      (print (vector-length functions1))
+      (print (vector-length functions2))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 4,
+        "compile-file-functions-data-with-cache invalidation 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "2",
+        "初回 compile では main と vendor lib を parse するべき"
+    );
+    assert_eq!(
+        lines[1], "3",
+        "module path 更新後は local lib だけ再 parse するべき"
+    );
+    assert_eq!(lines[2], "2", "functions1 は 2 個保持するべき");
+    assert_eq!(lines[3], "2", "functions2 も 2 個保持するべき");
+}
+
 /// TEST-CLI-02-M1D: selfhost cached payload helper (func_idx=7) は compiler-mode inline path と同じ Wasm を組めること
 #[test]
 fn test_e2e_selfhost_cli_compile_file_payload_with_cache_matches_inline_main() {
