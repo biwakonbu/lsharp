@@ -1064,6 +1064,67 @@ fn test_e2e_selfhost_cli_compile_functions_data_with_cache_reuses_clean_hit() {
     );
 }
 
+/// TEST-CLI-02-M1D: selfhost cached payload helper (func_idx=7) は compiler-mode inline path と同じ Wasm を組めること
+#[test]
+fn test_e2e_selfhost_cli_compile_file_payload_with_cache_matches_inline_main() {
+    let dir = selfhost_package_root();
+
+    let harness = r#"
+(defn main []
+  (let [path "src/App/Main.ls"
+        src (read-file path)
+        program (parse-program src)
+        source-root (resolve-source-root path)
+        package-root (resolve-package-root path)
+        seen-ref (ref-new (map-new))
+        imported-pairs (load-imports-from-decls program src 0 (vector-length program) seen-ref (vector-new 8) source-root package-root)
+        all-pairs (vector-push imported-pairs (make-src-decl-pair src program))
+        n (vector-length all-pairs)
+        reg-result (register-all-pairs all-pairs 0 n (ftable-new) 7)
+        ftable (vector-get reg-result 0)
+        data-ref (ref-new (vector-new 8))
+        functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+        inline-data (ref-get data-ref)
+        inline-bytes (build-wasm-bytes-wasi functions inline-data)
+        cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache path 7 cache-ref parse-count-ref)
+        cached-functions (vector-get payload 0)
+        cached-data (vector-get payload 1)
+        cached-bytes (build-wasm-bytes-wasi cached-functions cached-data)]
+    (do
+      (print (vector-length functions))
+      (print (vector-length cached-functions))
+      (print (vector-length inline-data))
+      (print (vector-length cached-data))
+      (print (vector-length inline-bytes))
+      (print (vector-length cached-bytes))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 6,
+        "compile-file-functions-payload-with-cache main 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "functions length は inline/cached で一致するべき"
+    );
+    assert_eq!(
+        lines[2], lines[3],
+        "data section length は inline/cached で一致するべき"
+    );
+    assert_eq!(
+        lines[4], lines[5],
+        "build-wasm-bytes-wasi length は inline/cached で一致するべき"
+    );
+}
+
 /// TEST-CLI-02-M2: selfhost/src/App/Cli.ls の run-build が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_build_file_handler() {

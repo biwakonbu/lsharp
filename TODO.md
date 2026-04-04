@@ -376,11 +376,12 @@
 
 ### INC-G: Selfhost コンパイラ対応
 
-- [~] `INC-G1` selfhost CompilerMode への fingerprint ベース src-decl-pair キャッシュ
+- [x] `INC-G1` selfhost CompilerMode への fingerprint ベース src-decl-pair キャッシュ -- `test_e2e_boot04_self_hosted_stage2_cache_pairs_probe_reads_main_again_graph`, `test_e2e_boot04_self_hosted_stage2_compiles_main_again`, `test_e2e_boot04_self_hosted_stage2_reports_main_again_build_progress`, `test_e2e_selfhost_cli_compile_functions_data_with_cache_reuses_clean_hit`
   - `selfhost/src/App/CompilerMode.ls` に `compile-file-pairs-with-cache` / `load-src-decl-pair-with-cache` を追加し、path-keyed cache entry の fingerprint 一致時は cached `src` + `decls` を再利用する helper slice まで実装済み
   - `test_e2e_selfhost_compiler_mode_cached_pairs_skip_reparse_on_clean_hit`, `test_e2e_selfhost_compiler_mode_cached_pairs_reparse_only_stale_import_entry` で clean hit と stale import entry 1 件だけの再 parse を固定済み
   - `selfhost/src/App/Cli.ls` の `compile-file-functions-data-with-cache` までは接続済みで、`test_e2e_selfhost_cli_compile_functions_data_with_cache_reuses_clean_hit` と nested import compile/build focused tests で clean-hit を固定済み
-  - **ただし** `compile-file-mode` へ同じ cached payload path を直結すると `BOOT-04` stage2 self-compile が退行したため、compiler-mode 実行経路は旧 inline path に切り戻して bootstrap green を優先している。persistent compiler service への実配線は残る
+  - stage2 self-compile regression は cache probe / cache pairs probe で切り分け、最初の failing import が `App.CompilerMode`、root cause が large source 向け `source-fingerprint` 再帰にあることを特定した。`selfhost/src/App/CompilerMode.ls` の fingerprint は chunked 実装へ置き換え、`compile-file-mode` / `compile-file-mode-build-progress-debug` も `compile-file-functions-with-cache` 経由へ再接続済み
+  - 追加した `test_e2e_boot04_self_hosted_stage2_cache_probe_parses_bare_module_once`, `test_e2e_boot04_self_hosted_stage2_cache_probe_reads_main_again_entry`, `test_e2e_boot04_self_hosted_stage2_cache_pairs_probe_handles_bare_module`, `test_e2e_boot04_self_hosted_stage2_cache_pairs_probe_handles_one_import`, `test_e2e_boot04_self_hosted_stage2_cache_pairs_probe_reads_main_again_graph` により、stage2 self-compiler でも entry parse / 小さな import graph / full selfhost import traversal がすべて green に戻っている
   - 注意: selfhost は Wasm 上で動作、キャッシュはメモリ上ベクター
   - 依存: レイヤー 1-5 安定後
 
