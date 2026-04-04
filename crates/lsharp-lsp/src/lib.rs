@@ -93,6 +93,76 @@ impl LsharpBackend {
             .unwrap_or_default()
     }
 
+    fn open_document_sources(&self) -> HashMap<Url, String> {
+        self.source_cache
+            .read()
+            .ok()
+            .map(|cache| cache.clone())
+            .unwrap_or_default()
+    }
+
+    fn version_snapshot(&self) -> HashMap<Url, i32> {
+        self.version_cache
+            .read()
+            .ok()
+            .map(|versions| versions.clone())
+            .unwrap_or_default()
+    }
+
+    fn affected_open_file_uris(
+        changed_uri: &Url,
+        open_documents: &HashMap<Url, String>,
+    ) -> Vec<Url> {
+        use std::collections::{HashMap, HashSet, VecDeque};
+
+        let mut uri_by_module = HashMap::new();
+        let mut module_by_uri = HashMap::new();
+        let mut reverse_deps: HashMap<String, Vec<String>> = HashMap::new();
+
+        for (uri, source) in open_documents {
+            if uri.scheme() != "file" {
+                continue;
+            }
+            let Ok(path) = uri.to_file_path() else {
+                continue;
+            };
+            let module_name = util::module_name_from_source(source, &path);
+            let imports = util::imported_modules_from_source(source);
+
+            uri_by_module.insert(module_name.clone(), uri.clone());
+            module_by_uri.insert(uri.clone(), module_name.clone());
+            for import in imports {
+                reverse_deps
+                    .entry(import)
+                    .or_default()
+                    .push(module_name.clone());
+            }
+        }
+
+        let Some(changed_module) = module_by_uri.get(changed_uri).cloned() else {
+            return vec![changed_uri.clone()];
+        };
+
+        let mut ordered = vec![changed_uri.clone()];
+        let mut visited = HashSet::from([changed_module.clone()]);
+        let mut queue = VecDeque::from([changed_module]);
+        while let Some(module_name) = queue.pop_front() {
+            let mut dependents = reverse_deps.remove(&module_name).unwrap_or_default();
+            dependents.sort();
+            for dependent in dependents {
+                if !visited.insert(dependent.clone()) {
+                    continue;
+                }
+                queue.push_back(dependent.clone());
+                if let Some(uri) = uri_by_module.get(&dependent) {
+                    ordered.push(uri.clone());
+                }
+            }
+        }
+
+        ordered
+    }
+
     async fn publish_fast_diagnostics(&self, uri: Url, source: String, version: i32) {
         self.set_source(uri.clone(), source.clone(), version);
 
@@ -108,27 +178,51 @@ impl LsharpBackend {
         let client = self.client.clone();
         let version_cache = Arc::clone(&self.version_cache);
         let compilation_cache = Arc::clone(&self.compilation_cache);
-        let uri_for_analysis = uri.clone();
         let source_overrides = self.file_source_overrides();
+        let open_documents = self.open_document_sources();
+        let version_snapshot = self.version_snapshot();
+        let affected_uris = Self::affected_open_file_uris(&uri, &open_documents);
         tokio::spawn(async move {
             let full_diagnostics = tokio::task::spawn_blocking(move || {
                 let mut cache = compilation_cache
                     .write()
                     .expect("compilation cache lock should be available");
-                util::parse_and_check_uri_incremental(
-                    &uri_for_analysis,
-                    &source,
-                    &source_overrides,
-                    &mut cache,
-                )
+                affected_uris
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(index, affected_uri)| {
+                        let source = open_documents.get(&affected_uri)?.clone();
+                        let version = version_snapshot.get(&affected_uri).copied()?;
+                        if index > 0
+                            && affected_uri.scheme() == "file"
+                            && let Ok(path) = affected_uri.to_file_path()
+                        {
+                            let module_name = util::module_name_from_source(&source, &path);
+                            cache.remove_module(&module_name);
+                        }
+                        let diagnostics = util::parse_and_check_uri_incremental(
+                            &affected_uri,
+                            &source,
+                            &source_overrides,
+                            &mut cache,
+                        );
+                        Some((affected_uri, diagnostics, version))
+                    })
+                    .collect::<Vec<_>>()
             })
             .await
             .expect("full diagnostics task should complete");
 
-            if LsharpBackend::is_current_version(&version_cache, &uri, version) {
-                client
-                    .publish_diagnostics(uri, full_diagnostics, Some(version))
-                    .await;
+            for (affected_uri, diagnostics, affected_version) in full_diagnostics {
+                if LsharpBackend::is_current_version(
+                    &version_cache,
+                    &affected_uri,
+                    affected_version,
+                ) {
+                    client
+                        .publish_diagnostics(affected_uri, diagnostics, Some(affected_version))
+                        .await;
+                }
             }
         });
     }
@@ -780,6 +874,77 @@ mod tests {
         let _ = std::fs::remove_dir_all(&workspace);
     }
 
+    #[tokio::test]
+    async fn test_did_open_dependency_republishes_dependent_open_file_diagnostics() {
+        let workspace = unique_temp_dir("lsharp_lsp_dependent_republish");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let main_source = "(module Main)\n(import Helpers)\n(defn main [] (+ (helper) 1))\n";
+        let helpers_clean = "(module Helpers)\n(defn helper [] 1)\n";
+        let helpers_dirty = "(module Helpers)\n(defn helper [] true)\n";
+        std::fs::write(workspace.join("Main.ls"), main_source).unwrap();
+        std::fs::write(workspace.join("Helpers.ls"), helpers_clean).unwrap();
+
+        let main_uri = Url::from_file_path(workspace.join("Main.ls"))
+            .expect("temp main path should convert to file url");
+        let helpers_uri = Url::from_file_path(workspace.join("Helpers.ls"))
+            .expect("temp helpers path should convert to file url");
+        let (mut service, mut socket) = initialize_test_server().await;
+
+        send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": main_uri,
+                        "languageId": "lsharp",
+                        "version": 1,
+                        "text": main_source,
+                    }
+                }
+            }),
+        )
+        .await;
+        let _ = read_publish_diagnostics(&mut socket).await;
+        let main_full = read_publish_diagnostics_for_uri(&mut socket, main_uri.as_str()).await;
+        assert_eq!(
+            main_full["params"]["diagnostics"]
+                .as_array()
+                .map(std::vec::Vec::len),
+            Some(0),
+            "clean dependency の初期状態では Main diagnostics は空のままのはず"
+        );
+
+        send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": helpers_uri,
+                        "languageId": "lsharp",
+                        "version": 1,
+                        "text": helpers_dirty,
+                    }
+                }
+            }),
+        )
+        .await;
+        let _ = read_publish_diagnostics(&mut socket).await;
+        let republished_main =
+            read_publish_diagnostics_for_uri(&mut socket, main_uri.as_str()).await;
+        assert!(
+            republished_main["params"]["diagnostics"]
+                .as_array()
+                .is_some_and(|diagnostics| !diagnostics.is_empty()),
+            "dependency を開いた結果、dependent open file の Main diagnostics も再 publish されるべき"
+        );
+
+        let _ = std::fs::remove_dir_all(&workspace);
+    }
+
     fn benchmark_document_fixture() -> (String, u32, u32, u32) {
         let mut source = String::from("(module Main)\n");
         for idx in 0..1000 {
@@ -865,6 +1030,15 @@ mod tests {
         loop {
             let message = read_lsp_message(socket).await;
             if message["method"].as_str() == Some("textDocument/publishDiagnostics") {
+                return message;
+            }
+        }
+    }
+
+    async fn read_publish_diagnostics_for_uri(socket: &mut TestSocket, uri: &str) -> Value {
+        loop {
+            let message = read_publish_diagnostics(socket).await;
+            if message["params"]["uri"].as_str() == Some(uri) {
                 return message;
             }
         }

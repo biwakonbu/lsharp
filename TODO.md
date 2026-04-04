@@ -355,12 +355,13 @@
 - [~] `INC-F2` LSP マルチファイル診断パイプライン
   - file URI の後段 full diagnostics は `crates/lsharp-ir/src/module_graph.rs` の source override 対応つき graph builder と `analyze_multi_file_incremental_with_overrides` を通るようにし、**active buffer の unsaved entry source** だけでなく **open 済み file-backed dependency buffer** の overlay も取り込める (`test_analyze_multi_file_incremental_with_overrides_reports_unsaved_missing_import`, `test_did_open_eventually_publishes_multi_file_import_diagnostics_from_unsaved_source`, `test_did_open_uses_unsaved_open_dependency_overlay_for_multi_file_diagnostics`)
   - これにより `(import Missing)` のような single-file parse/type-check では見えなかった missing import を、LSP `didOpen` 後の full diagnostics で報告できる
-  - **残件** workspace-wide URI ↔ モジュール名マッピング、dirty dependent を含む複数 URI への per-module diagnostics publish、entry 以外の変更から dependent 再診断を起こす orchestration は未配線
+  - さらに open file-backed documents 同士では reverse-dep traversal で changed/opened file + dependent open files だけを再 publish する first orchestration も入った (`test_did_open_dependency_republishes_dependent_open_file_diagnostics`)
+  - **残件** workspace-wide URI ↔ モジュール名マッピングと open buffer 外まで含む dirty-set orchestration は未配線。package root / workspace root を跨ぐ dependent 再診断もまだ限定的
   - 依存: INC-F1
 
-- [ ] `INC-F3` ワークスペース診断更新最適化
-  - dirty set のモジュールのみ `publish_diagnostics` を呼び出す
-  - clean モジュールの診断はキャッシュから返す
+- [~] `INC-F3` ワークスペース診断更新最適化
+  - open file-backed documents に限れば reverse dependency traversal で changed/opened file + dependent open files のみ `publish_diagnostics` する first slice まで入った (`test_did_open_dependency_republishes_dependent_open_file_diagnostics`)
+  - **残件** full workspace dirty set、open していない URI を含む publish 設計、clean URI diagnostics の cache-return contract は未整備
   - 依存: INC-F2, INC-B2
 
 - [x] `INC-F4` LSP Incremental Sync (V2-01 実装) — Evidence: `crates/lsharp-lsp/src/text_sync.rs`, `test_apply_content_changes_replaces_single_range`, `test_apply_content_changes_large_document_partial_edit_stays_fast`, `cargo test -q -p lsharp-lsp -- --nocapture`, `cargo test -q -p lsharp-wasm --test lsp_stateful_parity -- --nocapture`

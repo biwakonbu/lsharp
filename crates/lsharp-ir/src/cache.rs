@@ -238,6 +238,14 @@ impl CompilationCache {
         self.entries.insert(module, entry);
     }
 
+    pub fn remove_module(&mut self, module: &str) -> bool {
+        let removed = self.entries.remove(module).is_some();
+        if removed {
+            self.linked_module = None;
+        }
+        removed
+    }
+
     pub(crate) fn linked_module(&self) -> Option<&LinkedModuleCache> {
         self.linked_module.as_ref()
     }

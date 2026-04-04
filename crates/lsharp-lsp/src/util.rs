@@ -367,6 +367,46 @@ fn parse_program(source: &str) -> std::result::Result<Program, Box<Diagnostic>> 
     lsharp_syntax::parse(source).map_err(|e| Box::new(diagnostic_error(format!("{e}"))))
 }
 
+pub(crate) fn module_name_from_source(source: &str, path: &std::path::Path) -> String {
+    if let Ok(program) = lsharp_syntax::parse(source) {
+        for decl in &program.decls {
+            if let Decl::ModuleDecl { name, .. } = decl {
+                return name.clone();
+            }
+        }
+    }
+
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Main");
+    stem.split('_')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(ch) => {
+                    let mut result = ch.to_uppercase().to_string();
+                    result.extend(chars);
+                    result
+                }
+            }
+        })
+        .collect()
+}
+
+pub(crate) fn imported_modules_from_source(source: &str) -> Vec<String> {
+    if let Ok(program) = lsharp_syntax::parse(source) {
+        return program
+            .decls
+            .iter()
+            .filter_map(|decl| match decl {
+                Decl::ImportDecl { module, .. } => Some(module.clone()),
+                _ => None,
+            })
+            .collect();
+    }
+
+    Vec::new()
+}
+
 /// ソースコードをパースし、syntax error があれば診断情報を返す
 pub(crate) fn parse_only(source: &str) -> Vec<Diagnostic> {
     match parse_program(source) {
