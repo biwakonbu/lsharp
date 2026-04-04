@@ -259,12 +259,12 @@
 
 ### INC-A: 変更検出基盤
 
-- [x] `INC-A1` `SourceFingerprint` 型の導入 (SHA-256 ベースのソースハッシュ)
+- [x] `INC-A1` `SourceFingerprint` 型の導入 (SHA-256 ベースのソースハッシュ) — Evidence: `crates/lsharp-ir/src/lib.rs`, `test_compile_multi_file_incremental_empty_cache_matches_full_compile`
   - `crates/lsharp-ir/src/lib.rs` に `SourceFingerprint([u8; 32])` を追加し、`from_source` / `from_file` / `as_bytes` / `Display` を実装した
   - `compile_multi_file_incremental` の各ファイル読み込み時に SHA-256 fingerprint を計算して cache entry へ保存する
   - テスト: `test_source_fingerprint_identical_content`, `test_source_fingerprint_one_char_change`, `test_source_fingerprint_empty_source`
 
-- [x] `INC-A2` `CompilationCache` 構造体の導入
+- [x] `INC-A2` `CompilationCache` 構造体の導入 — Evidence: `crates/lsharp-ir/src/cache.rs`, `test_compile_multi_file_incremental_empty_cache_matches_full_compile`
   - `crates/lsharp-ir/src/cache.rs` を新設し、`ModuleCacheEntry { fingerprint, ast, type_surface, ir, imports }` と `CompilationCache` を追加した
   - `compile_multi_file_incremental(entry, &mut cache)` を追加し、初回 compile で traversal したモジュールの fingerprint / AST / type surface / current linked IR clone / direct imports を cache に投入する
   - テスト: `test_compile_multi_file_incremental_empty_cache_matches_full_compile` で空 cache 初回 compile が既存 `compile_multi_file` と同一 IR dump を返し、cache entry に type surface / fingerprint / import 名が保持されることを固定した
@@ -273,23 +273,23 @@
 
 ### INC-B: モジュールグラフ拡張
 
-- [x] `INC-B1` 逆依存 (reverse dependencies) 計算の追加
+- [x] `INC-B1` 逆依存 (reverse dependencies) 計算の追加 — Evidence: `crates/lsharp-ir/src/module_graph.rs`, `test_reverse_dependency_closure_linear_chain`
   - `crates/lsharp-ir/src/module_graph.rs` に `reverse_dependency_closure()` を追加し、近い依存元からの stable BFS 順で reverse closure を返せるようにした
   - `ModuleGraph` は `reverse_deps` マップを保持し、`add_module()` と `build_from_entry()` 末尾の `rebuild_reverse_deps()` で自動同期する
   - テスト: `test_reverse_dependency_closure_linear_chain`, `test_reverse_dependency_closure_diamond`, `test_reverse_dependency_closure_independent_module`
 
-- [x] `INC-B2` dirty set 計算
+- [x] `INC-B2` dirty set 計算 — Evidence: `crates/lsharp-ir/src/module_graph.rs`, `test_compute_dirty_set_includes_reverse_dependents`
   - `compute_dirty_set(changed: &[String]) -> Vec<String>` を追加し、変更モジュール本体 + reverse dependency closure を重複なしの安定順で返せるようにした
   - テスト: `test_compute_dirty_set_includes_reverse_dependents`
   - 依存: INC-B1
 
-- [x] `INC-B3` グラフの差分更新
+- [x] `INC-B3` グラフの差分更新 — Evidence: `crates/lsharp-ir/src/module_graph.rs`, `test_update_module_imports_rebuilds_reverse_deps_and_topological_sort`
   - `update_module_imports()` / `remove_module()` / `diff_imports()` を `crates/lsharp-ir/src/module_graph.rs` に追加した
   - `update_module_imports()` / `remove_module()` は `rebuild_reverse_deps()` を通して import 変更時の reverse dependency map を再構築する
   - テスト: `test_diff_imports_reports_added_and_removed_modules`, `test_update_module_imports_rebuilds_reverse_deps_and_topological_sort`, `test_remove_module_updates_reverse_deps_and_dirty_set`
   - 依存: INC-B1
 
-- [x] `INC-B4` Formatter トリオのアトミック dirty 判定
+- [x] `INC-B4` Formatter トリオのアトミック dirty 判定 — Evidence: `crates/lsharp-ir/src/module_graph.rs`, `test_compute_dirty_set_expands_formatter_trio_atomically`
   - `ModuleGraph::compute_dirty_set()` は `Tools.Text.FormatterExpr` / `Tools.Text.FormatterDecl` / `Tools.Text.Formatter` のいずれかを変更集合で受けると、canonical trio order で 3 モジュール全体を dirty に展開する
   - formatter trio 名は `crates/lsharp-ir/src/module_graph.rs` の shared const に寄せ、`crates/lsharp-ir/src/lib.rs` の `try_infer_formatter_trio_batch` も同じ定数を参照するよう同期した
   - テスト: `test_compute_dirty_set_expands_formatter_trio_atomically`
@@ -297,26 +297,26 @@
 
 ### INC-C: パース結果キャッシュ
 
-- [x] `INC-C1` モジュール単位 AST キャッシュ
+- [x] `INC-C1` モジュール単位 AST キャッシュ — Evidence: `crates/lsharp-ir/src/lib.rs`, `test_compile_multi_file_incremental_skips_parse_on_cache_hit`
   - `compile_multi_file_incremental` は `cached_program_or_parse()` で fingerprint 一致時に cache entry の AST を再利用し、同一ソース再コンパイルでは parse をスキップする
   - incremental path は final linked module をその場で再構築して cache entry の IR にも反映するようにし、cache 更新のための余分な `compile_multi_file()` 再実行を除去した
   - テスト: `test_compile_multi_file_incremental_skips_parse_on_cache_hit`, `test_compile_multi_file_incremental_reparses_only_changed_module`
   - 依存: INC-A2
 
-- [x] `INC-C2` AST cache の `Arc<Program>` 化
+- [x] `INC-C2` AST cache の `Arc<Program>` 化 — Evidence: `crates/lsharp-ir/src/cache.rs`, `test_compile_multi_file_incremental_reuses_cached_ast_arc_on_cache_hit`
   - `CompilationCache` の AST ownership を `Program` clone から `Arc<Program>` 共有へ変更し、cache hit では AST 本体を複製せず再利用する形に整理
   - テスト: `test_compile_multi_file_incremental_reuses_cached_ast_arc_on_cache_hit`, `test_compile_multi_file_incremental_skips_parse_on_cache_hit`
   - 依存: INC-C1
 
 ### INC-D: 型推論結果キャッシュ
 
-- [x] `INC-D1` `ModuleTypeSurface` のキャッシュと再利用
+- [x] `INC-D1` `ModuleTypeSurface` のキャッシュと再利用 — Evidence: `crates/lsharp-ir/src/lib.rs`, `test_compile_multi_file_incremental_skips_type_inference_on_clean_cache_hit`
   - `compile_multi_file_incremental` は cache hit かつ direct dependency に surface change が無いモジュールで cached `ModuleTypeSurface` を再利用し、clean rebuild では型推論をスキップする
   - 単一モジュール path も fingerprint 不変時は cached surface を再利用する
   - テスト: `test_compile_multi_file_incremental_skips_type_inference_on_clean_cache_hit`, `test_compile_multi_file_incremental_reinfers_on_dependency_signature_change`
   - 依存: INC-A2, INC-B2, INC-C1
 
-- [x] `INC-D2` 型サーフェス等価性による波及抑制 (高度な最適化)
+- [x] `INC-D2` 型サーフェス等価性による波及抑制 (高度な最適化) — Evidence: `crates/lsharp-types/src/types.rs`, `test_compile_multi_file_incremental_skips_dependent_reinfer_when_surface_unchanged`
   - `crates/lsharp-types/src/types.rs` の `Kind` / `Type` / `TypeScheme` / `TraitConstraint` に `Hash` を導出し、`ModuleTypeSurface` 自体も equality 比較できるようにした
   - changed module を再型推論したあと cached `ModuleTypeSurface` と比較し、surface が不変なら dependents の再型推論を抑制する
   - テスト: `test_compile_multi_file_incremental_skips_dependent_reinfer_when_surface_unchanged`, `test_compile_multi_file_incremental_reinfers_on_dependency_signature_change`
@@ -392,7 +392,7 @@
 
 ### INC-H: 検証・ベンチマーク
 
-- [x] `INC-H1` 差分コンパイル決定性テスト
+- [x] `INC-H1` 差分コンパイル決定性テスト — Evidence: `crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs`, `test_e2e_incremental_compile_matches_full_compile_fixed_input_set`
   - `test_e2e_incremental_compile_matches_full_compile_fixed_input_set` で fixed input set 54 件に対して full / incremental cold / incremental warm の Wasm byte-identical を検証
   - `scripts/ci/compile-phase11-inputs.sh` に `RUN_INCREMENTAL_COMPARE` フラグを追加し、focused compare gate を明示実行可能にした
   - formatter trio の warm-cache hit が individual infer に落ちて壊れる回帰を `compile_multi_file_incremental` 側で修正し、`test_compile_multi_file_incremental_clean_formatter_trio_cache_hit_succeeds` で固定

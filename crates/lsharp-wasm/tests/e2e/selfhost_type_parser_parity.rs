@@ -717,7 +717,11 @@ fn test_e2e_selfhost_compiler_mode_cached_pairs_skip_reparse_on_clean_hit() {
         "(module App.Main)\n(import App.Lib)\n(defn main [] (helper))\n",
     )
     .unwrap();
-    std::fs::write(app_dir.join("Lib.ls"), "(module App.Lib)\n(defn helper [] 7)\n").unwrap();
+    std::fs::write(
+        app_dir.join("Lib.ls"),
+        "(module App.Lib)\n(defn helper [] 7)\n",
+    )
+    .unwrap();
 
     let token_ls = selfhost_module("Token.ls").to_string();
     let ast_ls = selfhost_module("AST.ls").to_string();
@@ -774,7 +778,10 @@ fn test_e2e_selfhost_compiler_mode_cached_pairs_skip_reparse_on_clean_hit() {
         "compiler-mode cached pairs clean-hit 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "2", "初回 compile では Main/Lib の 2 モジュールを parse するべき");
+    assert_eq!(
+        lines[0], "2",
+        "初回 compile では Main/Lib の 2 モジュールを parse するべき"
+    );
     assert_eq!(lines[1], "2", "clean hit では parse-count が増えないべき");
     assert_eq!(lines[2], "2", "all-pairs は Main/Lib の 2 ペアを返すべき");
     assert_eq!(lines[3], "2", "functions は 2 個保持されるべき");
@@ -794,7 +801,11 @@ fn test_e2e_selfhost_compiler_mode_cached_pairs_reparse_only_stale_import_entry(
         "(module App.Main)\n(import App.Lib)\n(defn main [] (helper))\n",
     )
     .unwrap();
-    std::fs::write(app_dir.join("Lib.ls"), "(module App.Lib)\n(defn helper [] 7)\n").unwrap();
+    std::fs::write(
+        app_dir.join("Lib.ls"),
+        "(module App.Lib)\n(defn helper [] 7)\n",
+    )
+    .unwrap();
 
     let token_ls = selfhost_module("Token.ls").to_string();
     let ast_ls = selfhost_module("AST.ls").to_string();
@@ -853,7 +864,10 @@ fn test_e2e_selfhost_compiler_mode_cached_pairs_reparse_only_stale_import_entry(
         "compiler-mode cached pairs stale-import 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "2", "初回 compile では Main/Lib の 2 モジュールを parse するべき");
+    assert_eq!(
+        lines[0], "2",
+        "初回 compile では Main/Lib の 2 モジュールを parse するべき"
+    );
     assert_eq!(
         lines[1], "3",
         "stale import cache entry を 1 個だけ差し替えた場合は追加 parse が 1 回だけ増えるべき"

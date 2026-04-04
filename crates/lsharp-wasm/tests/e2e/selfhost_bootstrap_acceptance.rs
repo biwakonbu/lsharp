@@ -903,7 +903,8 @@ fn write_fixed_input_set_incremental_compare_artifact(
     .unwrap_or_else(|e| panic!("INC-H1 report 書き込み失敗: {e}"));
     std::fs::write(
         artifact_root.join("fixed-input-set-incremental-compare.json"),
-        serde_json::to_vec_pretty(metadata).expect("INC-H1 incremental compare JSON serialize に失敗"),
+        serde_json::to_vec_pretty(metadata)
+            .expect("INC-H1 incremental compare JSON serialize に失敗"),
     )
     .unwrap_or_else(|e| panic!("INC-H1 metadata 書き込み失敗: {e}"));
 

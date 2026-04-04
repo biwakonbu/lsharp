@@ -32,7 +32,9 @@ fn run_selfhost_gc_fixture_entry(fixture_name: &str, entry_source: &str) -> Stri
             SELFHOST_GC_FIXTURE_COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
     let result = (|| -> Result<String, String> {
-        let gc_path = dir.join("src").join(selfhost_fixture_module_relative_path("GC.ls"));
+        let gc_path = dir
+            .join("src")
+            .join(selfhost_fixture_module_relative_path("GC.ls"));
         if let Some(parent) = gc_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
         }

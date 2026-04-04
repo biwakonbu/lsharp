@@ -1412,7 +1412,10 @@ fn test_e2e_selfhost_wasmemit_file_exists_instr() {
     assert_eq!(lines[5], "0", "local decl count は 0");
     assert_eq!(lines[6], "66", "先頭命令は i64.const");
     assert_eq!(lines[7], "0", "const operand は 0");
-    assert_eq!(lines[8], "16", "file-exists? は call opcode へ lower されること");
+    assert_eq!(
+        lines[8], "16",
+        "file-exists? は call opcode へ lower されること"
+    );
     assert_eq!(lines[9], "6", "file-exists? import index は 6 であること");
     assert_eq!(lines[10], "11", "body は end で終わること");
 }
@@ -1455,8 +1458,14 @@ fn test_e2e_selfhost_compiler_root_push_builtin_lowering() {
     );
     assert_eq!(lines[0], "0", "main は 0 引数関数であること");
     assert_eq!(lines[1], "0", "root_push lowering に補助 local は不要");
-    assert_eq!(lines[2], "2", "body は i64.const / root_push の 2 命令であること");
-    assert_eq!(lines[3], "74", "末尾命令は root_push builtin opcode であること");
+    assert_eq!(
+        lines[2], "2",
+        "body は i64.const / root_push の 2 命令であること"
+    );
+    assert_eq!(
+        lines[3], "74",
+        "末尾命令は root_push builtin opcode であること"
+    );
     assert_eq!(lines[4], "0", "root_push opcode operand は 0 であること");
 }
 
@@ -1499,7 +1508,10 @@ fn test_e2e_selfhost_compiler_root_pop_builtin_lowering() {
     assert_eq!(lines[0], "0", "main は 0 引数関数であること");
     assert_eq!(lines[1], "0", "root_pop lowering に補助 local は不要");
     assert_eq!(lines[2], "1", "body は root_pop の 1 命令であること");
-    assert_eq!(lines[3], "75", "唯一の命令は root_pop builtin opcode であること");
+    assert_eq!(
+        lines[3], "75",
+        "唯一の命令は root_pop builtin opcode であること"
+    );
     assert_eq!(lines[4], "0", "root_pop opcode operand は 0 であること");
 }
 
@@ -1541,8 +1553,14 @@ fn test_e2e_selfhost_compiler_root_set_builtin_lowering() {
     );
     assert_eq!(lines[0], "0", "main は 0 引数関数であること");
     assert_eq!(lines[1], "0", "root_set lowering に補助 local は不要");
-    assert_eq!(lines[2], "3", "body は const / const / root_set の 3 命令であること");
-    assert_eq!(lines[3], "76", "末尾命令は root_set builtin opcode であること");
+    assert_eq!(
+        lines[2], "3",
+        "body は const / const / root_set の 3 命令であること"
+    );
+    assert_eq!(
+        lines[3], "76",
+        "末尾命令は root_set builtin opcode であること"
+    );
     assert_eq!(lines[4], "0", "root_set opcode operand は 0 であること");
 }
 
@@ -1765,7 +1783,10 @@ fn test_e2e_selfhost_compiler_nested_string_literal_source_data_lowering() {
         "nested string literal lowering 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "21", "nested string literal object bytes 長が不正");
+    assert_eq!(
+        lines[0], "21",
+        "nested string literal object bytes 長が不正"
+    );
     assert_eq!(lines[1], "1", "1 個目 string object header tag byte が不正");
     assert_eq!(lines[2], "0", "1 個目 string object header byte[1] が不正");
     assert_eq!(lines[3], "0", "1 個目 string object header byte[2] が不正");
@@ -1840,9 +1861,18 @@ fn test_e2e_selfhost_compiler_extended_do_string_literal_source_data_lowering() 
     assert_eq!(lines[6], "0", "1 個目 string object length byte[1] が不正");
     assert_eq!(lines[7], "0", "1 個目 string object length byte[2] が不正");
     assert_eq!(lines[8], "0", "1 個目 string object length byte[3] が不正");
-    assert_eq!(lines[9], "97", "1 個目 string object payload byte[0] が不正");
-    assert_eq!(lines[10], "98", "1 個目 string object payload byte[1] が不正");
-    assert_eq!(lines[11], "1", "2 個目 string object header tag byte が不正");
+    assert_eq!(
+        lines[9], "97",
+        "1 個目 string object payload byte[0] が不正"
+    );
+    assert_eq!(
+        lines[10], "98",
+        "1 個目 string object payload byte[1] が不正"
+    );
+    assert_eq!(
+        lines[11], "1",
+        "2 個目 string object header tag byte が不正"
+    );
     assert_eq!(
         lines[12], "9",
         "5 式 do の IR は const/drop を含む 9 命令であること"
@@ -2029,7 +2059,10 @@ fn test_e2e_selfhost_compiler_lambda_string_literal_source_data_lowering() {
         "lambda string literal lowering 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "10", "lambda string literal object bytes 長が不正");
+    assert_eq!(
+        lines[0], "10",
+        "lambda string literal object bytes 長が不正"
+    );
     assert_eq!(lines[1], "1", "lambda string object header tag byte が不正");
     assert_eq!(lines[2], "0", "lambda string object header byte[1] が不正");
 }

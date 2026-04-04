@@ -9,8 +9,11 @@ use std::path::{Path, PathBuf};
 pub const FORMATTER_TRIO_EXPR: &str = "Tools.Text.FormatterExpr";
 pub const FORMATTER_TRIO_DECL: &str = "Tools.Text.FormatterDecl";
 pub const FORMATTER_TRIO_MAIN: &str = "Tools.Text.Formatter";
-const FORMATTER_TRIO_MODULES: [&str; 3] =
-    [FORMATTER_TRIO_EXPR, FORMATTER_TRIO_DECL, FORMATTER_TRIO_MAIN];
+const FORMATTER_TRIO_MODULES: [&str; 3] = [
+    FORMATTER_TRIO_EXPR,
+    FORMATTER_TRIO_DECL,
+    FORMATTER_TRIO_MAIN,
+];
 
 /// モジュール解決に使う探索パス
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -382,13 +385,13 @@ impl ModuleGraph {
         module: &str,
         new_imports: Vec<String>,
     ) -> Result<ImportDiff, ModuleGraphError> {
-        let node = self
-            .modules
-            .get_mut(module)
-            .ok_or_else(|| ModuleGraphError::ModuleNotFound {
-                name: module.to_string(),
-                from: "update_module_imports".to_string(),
-            })?;
+        let node =
+            self.modules
+                .get_mut(module)
+                .ok_or_else(|| ModuleGraphError::ModuleNotFound {
+                    name: module.to_string(),
+                    from: "update_module_imports".to_string(),
+                })?;
         let diff = Self::diff_imports(&node.imports, &new_imports);
         node.imports = new_imports;
         self.rebuild_reverse_deps();
@@ -940,8 +943,12 @@ mod tests {
     fn test_reverse_dependency_closure_independent_module() {
         let mut graph = ModuleGraph::new();
         graph.add_module("A".to_string(), vec![], None).unwrap();
-        graph.add_module("B".to_string(), vec!["A".to_string()], None).unwrap();
-        graph.add_module("Isolated".to_string(), vec![], None).unwrap();
+        graph
+            .add_module("B".to_string(), vec!["A".to_string()], None)
+            .unwrap();
+        graph
+            .add_module("Isolated".to_string(), vec![], None)
+            .unwrap();
 
         assert_eq!(
             graph.reverse_dependency_closure("Isolated"),

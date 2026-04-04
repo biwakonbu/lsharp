@@ -6051,7 +6051,9 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_main_shape_source() {
         &temp_root,
         &["compiler", "src/App/Main.ls"],
     )
-    .expect("BOOT-04 main-shape: stage2_self_compiler が Main.ls shape package をコンパイルできない");
+    .expect(
+        "BOOT-04 main-shape: stage2_self_compiler が Main.ls shape package をコンパイルできない",
+    );
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_wasm = &stage3_modules[0];
     assert_valid_wasm(stage3_wasm);

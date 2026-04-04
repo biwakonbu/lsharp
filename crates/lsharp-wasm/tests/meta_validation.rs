@@ -273,15 +273,18 @@ fn test_meta_06_deferred_v2_native_docs_are_synced() {
         .nth(1)
         .expect("TODO.md の Deferred / v2 section が見つからない");
     assert!(
-        !current_remaining_section.contains("- [~] `V2-08` Native backend self-regeneration（Deferred）"),
+        !current_remaining_section
+            .contains("- [~] `V2-08` Native backend self-regeneration（Deferred）"),
         "TODO.md の残タスク一覧に Deferred の V2-08 を混ぜないこと"
     );
     assert!(
-        !current_remaining_section.contains("- [~] `V2-09` Wasm/native differential zero（Deferred）"),
+        !current_remaining_section
+            .contains("- [~] `V2-09` Wasm/native differential zero（Deferred）"),
         "TODO.md の残タスク一覧に Deferred の V2-09 を混ぜないこと"
     );
     assert!(
-        !current_remaining_section.contains("- [ ] `V2-10` Native-only RC distribution（Deferred）"),
+        !current_remaining_section
+            .contains("- [ ] `V2-10` Native-only RC distribution（Deferred）"),
         "TODO.md の残タスク一覧に Deferred の V2-10 を混ぜないこと"
     );
     assert!(

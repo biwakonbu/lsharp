@@ -1040,13 +1040,11 @@ pub fn compile_multi_file_incremental(
             .get(mod_name)
             .is_some_and(|entry| entry.fingerprint() == fingerprint);
         if clean_hit {
-            return Ok(
-                cache
-                    .get(mod_name)
-                    .expect("clean hit should have cache entry")
-                    .ir()
-                    .clone(),
-            );
+            return Ok(cache
+                .get(mod_name)
+                .expect("clean hit should have cache entry")
+                .ir()
+                .clone());
         }
         let program = cached_program_or_parse(mod_name, &source, fingerprint, cache)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
@@ -1579,7 +1577,10 @@ mod fingerprint_tests {
         let also_empty = SourceFingerprint::from_source("");
         let whitespace = SourceFingerprint::from_source(" ");
 
-        assert_eq!(empty, also_empty, "空ソースは決定的に fingerprint できるべき");
+        assert_eq!(
+            empty, also_empty,
+            "空ソースは決定的に fingerprint できるべき"
+        );
         assert_ne!(
             empty, whitespace,
             "空ソースと空白 1 文字は別 fingerprint になるべき"
@@ -1639,7 +1640,8 @@ mod incremental_compile_tests {
 
     #[test]
     fn test_compile_multi_file_incremental_skips_parse_on_cache_hit() {
-        let dir = std::env::temp_dir().join("lsharp_compile_multi_file_incremental_parse_cache_hit");
+        let dir =
+            std::env::temp_dir().join("lsharp_compile_multi_file_incremental_parse_cache_hit");
         if dir.exists() {
             std::fs::remove_dir_all(&dir).unwrap();
         }
@@ -1656,8 +1658,13 @@ mod incremental_compile_tests {
         compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
 
         tracker.reset();
-        cached_program_or_parse("Lib", lib_source, SourceFingerprint::from_source(lib_source), &cache)
-            .unwrap();
+        cached_program_or_parse(
+            "Lib",
+            lib_source,
+            SourceFingerprint::from_source(lib_source),
+            &cache,
+        )
+        .unwrap();
         cached_program_or_parse(
             "Main",
             main_source,
@@ -1756,7 +1763,8 @@ mod incremental_compile_tests {
 
     #[test]
     fn test_compile_multi_file_incremental_skips_type_inference_on_clean_cache_hit() {
-        let dir = std::env::temp_dir().join("lsharp_compile_multi_file_incremental_infer_cache_hit");
+        let dir =
+            std::env::temp_dir().join("lsharp_compile_multi_file_incremental_infer_cache_hit");
         if dir.exists() {
             std::fs::remove_dir_all(&dir).unwrap();
         }
@@ -1873,7 +1881,10 @@ mod incremental_compile_tests {
         tracker.reset();
         let result = compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache);
 
-        assert!(result.is_err(), "依存先シグネチャ変更で不整合になれば compile は失敗するべき");
+        assert!(
+            result.is_err(),
+            "依存先シグネチャ変更で不整合になれば compile は失敗するべき"
+        );
         assert_eq!(
             tracker.count(),
             2,

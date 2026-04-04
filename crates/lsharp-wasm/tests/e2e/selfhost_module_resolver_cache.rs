@@ -13,7 +13,11 @@ fn test_e2e_selfhost_module_resolver_cache_hits_local_nested_path() {
     ));
     let app_dir = dir.join("src/App");
     std::fs::create_dir_all(&app_dir).unwrap();
-    std::fs::write(app_dir.join("Lib.ls"), "(module App.Lib)\n(defn helper [] 7)\n").unwrap();
+    std::fs::write(
+        app_dir.join("Lib.ls"),
+        "(module App.Lib)\n(defn helper [] 7)\n",
+    )
+    .unwrap();
 
     let harness = r#"
 (defn main []

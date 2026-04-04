@@ -842,7 +842,11 @@ fn test_e2e_selfhost_module_declarations() {
             "Syntax.Parser",
             &["Syntax.Token", "Syntax.AST", "Syntax.Lexer"],
         ),
-        ("MacroExpand.ls", "Syntax.MacroExpand", &["Syntax.AST", "Syntax.Token"]),
+        (
+            "MacroExpand.ls",
+            "Syntax.MacroExpand",
+            &["Syntax.AST", "Syntax.Token"],
+        ),
         (
             "TypeInfer.ls",
             "Types.TypeInfer",
@@ -855,14 +859,22 @@ fn test_e2e_selfhost_module_declarations() {
                 "Types.TypeInferBuiltins",
             ],
         ),
-        ("Compiler.ls", "Backend.Wasm.Compiler", &["Syntax.AST", "IR.IR"]),
+        (
+            "Compiler.ls",
+            "Backend.Wasm.Compiler",
+            &["Syntax.AST", "IR.IR"],
+        ),
         (
             "WasmEmit.ls",
             "Backend.Wasm.WasmEmit",
             &["IR.IR", "Backend.Wasm.WasiBackend"],
         ),
         ("Linter.ls", "Tools.Text.Linter", &["Syntax.AST"]),
-        ("FormatterExpr.ls", "Tools.Text.FormatterExpr", &["Syntax.AST"]),
+        (
+            "FormatterExpr.ls",
+            "Tools.Text.FormatterExpr",
+            &["Syntax.AST"],
+        ),
         (
             "FormatterDecl.ls",
             "Tools.Text.FormatterDecl",

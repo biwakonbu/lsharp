@@ -644,11 +644,7 @@ impl Lower {
                                     tagged_local,
                                     "_vpush_tagged_root_slot",
                                 )?;
-                                self.emit_root_push_local(
-                                    ctx,
-                                    val_local,
-                                    "_vpush_val_root_slot",
-                                )?;
+                                self.emit_root_push_local(ctx, val_local, "_vpush_val_root_slot")?;
                                 ctx.emit(Instruction::Call(alloc_idx));
                                 let new_addr_local = ctx.alloc_local("_vpush_newaddr".to_string());
                                 ctx.emit(Instruction::LocalSet(new_addr_local));
@@ -1665,11 +1661,13 @@ impl Lower {
         value_local: u32,
         slot_name: &str,
     ) -> Result<u32, LowerError> {
-        let root_push_idx = *self.func_indices.get("root_push").ok_or_else(|| {
-            LowerError::UndefinedFunction {
-                name: "root_push".to_string(),
-            }
-        })?;
+        let root_push_idx =
+            *self
+                .func_indices
+                .get("root_push")
+                .ok_or_else(|| LowerError::UndefinedFunction {
+                    name: "root_push".to_string(),
+                })?;
         let slot_local = ctx.alloc_local(slot_name.to_string());
         ctx.emit(Instruction::LocalGet(value_local));
         ctx.emit(Instruction::Call(root_push_idx));
@@ -1678,11 +1676,13 @@ impl Lower {
     }
 
     fn emit_root_pop_drop(&self, ctx: &mut FuncCtx) -> Result<(), LowerError> {
-        let root_pop_idx = *self.func_indices.get("root_pop").ok_or_else(|| {
-            LowerError::UndefinedFunction {
-                name: "root_pop".to_string(),
-            }
-        })?;
+        let root_pop_idx =
+            *self
+                .func_indices
+                .get("root_pop")
+                .ok_or_else(|| LowerError::UndefinedFunction {
+                    name: "root_pop".to_string(),
+                })?;
         ctx.emit(Instruction::Call(root_pop_idx));
         ctx.emit(Instruction::Drop);
         Ok(())

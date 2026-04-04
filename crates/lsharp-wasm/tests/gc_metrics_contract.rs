@@ -828,10 +828,10 @@ fn test_gc_metrics_script_merges_external_collector_proof_bundle_into_summary() 
 
     let (output, normalized_payload, normalized_sidecar) =
         run_gc_metrics_script_with_fixture_and_proof_bundle(
-        "gc-metrics-proof-bundle-merge",
-        payload,
-        proof_bundle,
-    );
+            "gc-metrics-proof-bundle-merge",
+            payload,
+            proof_bundle,
+        );
 
     assert!(
         output.status.success(),
@@ -851,7 +851,10 @@ fn test_gc_metrics_script_merges_external_collector_proof_bundle_into_summary() 
     assert_eq!(normalized_payload["s14_reason"], serde_json::Value::Null);
     assert_eq!(normalized_payload["s15_reason"], serde_json::Value::Null);
     assert_eq!(normalized_payload["s16_reason"], serde_json::Value::Null);
-    assert_eq!(normalized_payload["s15_proof"]["stage_pair"], serde_json::json!(["stage2", "stage3"]));
+    assert_eq!(
+        normalized_payload["s15_proof"]["stage_pair"],
+        serde_json::json!(["stage2", "stage3"])
+    );
     assert_eq!(
         normalized_payload["s16_proof"]["completed_workloads"],
         serde_json::json!([
@@ -934,10 +937,10 @@ fn test_gc_metrics_script_autoloads_adjacent_collector_proof_bundle() {
 
     let (output, normalized_payload, normalized_sidecar) =
         run_gc_metrics_script_with_fixture_and_adjacent_proof_bundle(
-        "gc-proof-bundle-auto",
-        payload,
-        proof_bundle,
-    );
+            "gc-proof-bundle-auto",
+            payload,
+            proof_bundle,
+        );
 
     assert!(
         output.status.success(),
@@ -958,7 +961,10 @@ fn test_gc_metrics_script_autoloads_adjacent_collector_proof_bundle() {
     assert_eq!(normalized_payload["s14_reason"], serde_json::Value::Null);
     assert_eq!(normalized_payload["s15_reason"], serde_json::Value::Null);
     assert_eq!(normalized_payload["s16_reason"], serde_json::Value::Null);
-    assert_eq!(normalized_payload["s15_proof"]["stage_pair"], serde_json::json!(["stage2", "stage3"]));
+    assert_eq!(
+        normalized_payload["s15_proof"]["stage_pair"],
+        serde_json::json!(["stage2", "stage3"])
+    );
     assert_eq!(normalized_payload["s16_proof"]["gc_mode"], "mark-sweep");
     assert_eq!(normalized_sidecar["s15_status"], "pass");
     assert_eq!(normalized_sidecar["s16_status"], "pass");
@@ -1050,10 +1056,28 @@ fn test_gc_metrics_script_normalizes_collector_proof_sidecar_after_merge() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(normalized_payload["s15_status"], normalized_sidecar["s15_status"]);
-    assert_eq!(normalized_payload["s15_reason"], normalized_sidecar["s15_reason"]);
-    assert_eq!(normalized_payload["s15_proof"], normalized_sidecar["s15_proof"]);
-    assert_eq!(normalized_payload["s16_status"], normalized_sidecar["s16_status"]);
-    assert_eq!(normalized_payload["s16_reason"], normalized_sidecar["s16_reason"]);
-    assert_eq!(normalized_payload["s16_proof"], normalized_sidecar["s16_proof"]);
+    assert_eq!(
+        normalized_payload["s15_status"],
+        normalized_sidecar["s15_status"]
+    );
+    assert_eq!(
+        normalized_payload["s15_reason"],
+        normalized_sidecar["s15_reason"]
+    );
+    assert_eq!(
+        normalized_payload["s15_proof"],
+        normalized_sidecar["s15_proof"]
+    );
+    assert_eq!(
+        normalized_payload["s16_status"],
+        normalized_sidecar["s16_status"]
+    );
+    assert_eq!(
+        normalized_payload["s16_reason"],
+        normalized_sidecar["s16_reason"]
+    );
+    assert_eq!(
+        normalized_payload["s16_proof"],
+        normalized_sidecar["s16_proof"]
+    );
 }

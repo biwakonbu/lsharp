@@ -1270,7 +1270,11 @@ fn emit_alloc_func(codes: &mut CodeSection) {
     codes.function(&f);
 }
 
-fn emit_root_push_func(codes: &mut CodeSection, root_stack_top_global_idx: u32, root_stack_base: i32) {
+fn emit_root_push_func(
+    codes: &mut CodeSection,
+    root_stack_top_global_idx: u32,
+    root_stack_base: i32,
+) {
     use wasm_encoder::{Instruction as W, MemArg};
 
     let mem64 = |offset: u64| MemArg {
@@ -1307,7 +1311,11 @@ fn emit_root_push_func(codes: &mut CodeSection, root_stack_top_global_idx: u32, 
     codes.function(&f);
 }
 
-fn emit_root_pop_func(codes: &mut CodeSection, root_stack_top_global_idx: u32, root_stack_base: i32) {
+fn emit_root_pop_func(
+    codes: &mut CodeSection,
+    root_stack_top_global_idx: u32,
+    root_stack_base: i32,
+) {
     use wasm_encoder::{Instruction as W, MemArg};
 
     let mem64 = |offset: u64| MemArg {
@@ -1343,7 +1351,11 @@ fn emit_root_pop_func(codes: &mut CodeSection, root_stack_top_global_idx: u32, r
     codes.function(&f);
 }
 
-fn emit_root_set_func(codes: &mut CodeSection, root_stack_top_global_idx: u32, root_stack_base: i32) {
+fn emit_root_set_func(
+    codes: &mut CodeSection,
+    root_stack_top_global_idx: u32,
+    root_stack_base: i32,
+) {
     use wasm_encoder::{Instruction as W, MemArg};
 
     let mem64 = |offset: u64| MemArg {

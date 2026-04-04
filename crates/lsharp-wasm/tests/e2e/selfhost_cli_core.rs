@@ -1051,11 +1051,17 @@ fn test_e2e_selfhost_cli_compile_functions_data_with_cache_reuses_clean_hit() {
         "compile-file-functions-data-with-cache 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "3", "初回 compile では main/mid/base の 3 モジュールを parse するべき");
+    assert_eq!(
+        lines[0], "3",
+        "初回 compile では main/mid/base の 3 モジュールを parse するべき"
+    );
     assert_eq!(lines[1], "3", "clean hit では parse-count が増えないべき");
     assert_eq!(lines[2], "3", "functions1 は 3 個保持するべき");
     assert_eq!(lines[3], "3", "functions2 は 3 個保持するべき");
-    assert_eq!(lines[4], lines[5], "data section 長は cache hit 前後で一致するべき");
+    assert_eq!(
+        lines[4], lines[5],
+        "data section 長は cache hit 前後で一致するべき"
+    );
 }
 
 /// TEST-CLI-02-M2: selfhost/src/App/Cli.ls の run-build が file-path から source を読めること
@@ -2471,10 +2477,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_wire_repeated_sequence() {
         .get(2)
         .cloned()
         .expect("1 回目 didOpen diagnostics frame が必要");
-    let first_hover_response = frames
-        .get(3)
-        .cloned()
-        .expect("1 回目 hover frame が必要");
+    let first_hover_response = frames.get(3).cloned().expect("1 回目 hover frame が必要");
     let first_change_diagnostics = frames
         .get(5)
         .cloned()
@@ -2493,7 +2496,10 @@ fn test_e2e_selfhost_cli_lsp_stdio_wire_repeated_sequence() {
         1 + (iterations * 7),
         "raw stdio wire helper は initialize + 各反復 7 frame を返すべき"
     );
-    assert_eq!(frames[0], init_response, "frame0 は initialize response であるべき");
+    assert_eq!(
+        frames[0], init_response,
+        "frame0 は initialize response であるべき"
+    );
 
     assert_eq!(
         first_open_diagnostics["method"],
@@ -2559,32 +2565,38 @@ fn test_e2e_selfhost_cli_lsp_stdio_wire_repeated_sequence() {
             iteration
         );
         assert_eq!(
-            frames[base + 1], first_open_diagnostics,
+            frames[base + 1],
+            first_open_diagnostics,
             "iteration {} の didOpen diagnostics は決定的であるべき",
             iteration
         );
         assert_eq!(
-            frames[base + 2], first_hover_response,
+            frames[base + 2],
+            first_hover_response,
             "iteration {} の hover response が不正",
             iteration
         );
         assert_eq!(
-            frames[base + 3], change_response,
+            frames[base + 3],
+            change_response,
             "iteration {} の didChange response が不正",
             iteration
         );
         assert_eq!(
-            frames[base + 4], first_change_diagnostics,
+            frames[base + 4],
+            first_change_diagnostics,
             "iteration {} の didChange diagnostics は決定的であるべき",
             iteration
         );
         assert_eq!(
-            frames[base + 5], first_completion_response,
+            frames[base + 5],
+            first_completion_response,
             "iteration {} の completion response が不正",
             iteration
         );
         assert_eq!(
-            frames[base + 6], first_formatting_response,
+            frames[base + 6],
+            first_formatting_response,
             "iteration {} の formatting response が不正",
             iteration
         );

@@ -277,7 +277,10 @@ fn test_e2e_selfhost_lexer_special_token_consistency() {
       0)))
 "#;
 
-    let combined = format!("{}\n{}\n{}\n{}", token_ls, lexer_ls, lexer_compat_ls, harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}",
+        token_ls, lexer_ls, lexer_compat_ls, harness
+    );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
@@ -318,7 +321,10 @@ fn test_e2e_selfhost_lexer_tokenizes_large_input_without_stack_trap() {
 "#
     );
 
-    let combined = format!("{}\n{}\n{}\n{}", token_ls, lexer_ls, lexer_compat_ls, harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}",
+        token_ls, lexer_ls, lexer_compat_ls, harness
+    );
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 

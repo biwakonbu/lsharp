@@ -141,7 +141,11 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     // root_pop: () -> (i64) - root stack の末尾値を返しながら pop する
     imports.import("env", "root_pop", EntityType::Function(read_stdin_type_idx));
     // root_set: (i64, i64) -> (i64) - 既存 root slot を更新する
-    imports.import("env", "root_set", EntityType::Function(string_concat_type_idx));
+    imports.import(
+        "env",
+        "root_set",
+        EntityType::Function(string_concat_type_idx),
+    );
     wasm_module.section(&imports);
 
     // === Function Section ===
@@ -357,14 +361,15 @@ mod tests {
 
         let root_push_ty = FuncType::new(&engine, [ValType::I64], [ValType::I64]);
         let root_push_stack = root_stack.clone();
-        let root_push_func = Func::new(&mut store, root_push_ty, move |_caller, params, results| {
-            let value = params[0].i64().unwrap_or(0);
-            let mut stack = root_push_stack.lock().unwrap();
-            let slot = stack.len() as i64;
-            stack.push(value);
-            results[0] = Val::I64(slot);
-            Ok(())
-        });
+        let root_push_func =
+            Func::new(&mut store, root_push_ty, move |_caller, params, results| {
+                let value = params[0].i64().unwrap_or(0);
+                let mut stack = root_push_stack.lock().unwrap();
+                let slot = stack.len() as i64;
+                stack.push(value);
+                results[0] = Val::I64(slot);
+                Ok(())
+            });
 
         let root_pop_ty = FuncType::new(&engine, [], [ValType::I64]);
         let root_pop_stack = root_stack.clone();
