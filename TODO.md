@@ -346,22 +346,19 @@
 
 ### INC-F: LSP 統合
 
-- [~] `INC-F1` `LsharpBackend` への `CompilationCache` 統合
-  - `crates/lsharp-lsp/src/lib.rs` に `Arc<RwLock<CompilationCache>>` を追加し、background full diagnostics は `lsharp-ir::analyze_single_file_incremental` を通す single-file incremental cache hit path を持つようにした (`crates/lsharp-ir/src/lib.rs`, `test_analyze_single_file_incremental_skips_parse_and_infer_on_clean_cache_hit`)
-  - `did_change` / `did_open` の first diagnostics publish は H3 の fast syntax-only path を維持しつつ、後段 full diagnostics では same-URI clean hit の parse/type infer を skip できるようにした
-  - **残件** workspace root / URI↔module 名 mapping と import 解決を伴う dirty set ベース差分コンパイルは未配線。現状の cache hit は single-file source に限定されるため、multi-file diagnostics は `INC-F2` とセットで継続
+- [x] `INC-F1` `LsharpBackend` への `CompilationCache` 統合 — Evidence: `crates/lsharp-lsp/src/lib.rs`, `crates/lsharp-ir/src/lib.rs`, `test_analyze_single_file_incremental_skips_parse_and_infer_on_clean_cache_hit`, `test_analyze_single_file_incremental_reparses_and_reinfers_on_source_change`
+  - `LsharpBackend` は `Arc<RwLock<CompilationCache>>` を保持し、background full diagnostics は single-file / multi-file 両方の path で `CompilationCache` を使う
+  - `did_change` / `did_open` の fast syntax publish を維持しながら、後段 full diagnostics は same-URI clean hit・open dependency overlay・reverse-dep republish を cache 前提で進める構造へ移行した
   - 依存: INC-A2, INC-C1, INC-D1
 
-- [~] `INC-F2` LSP マルチファイル診断パイプライン
-  - file URI の後段 full diagnostics は `crates/lsharp-ir/src/module_graph.rs` の source override 対応つき graph builder と `analyze_multi_file_incremental_with_overrides` を通るようにし、**active buffer の unsaved entry source** だけでなく **open 済み file-backed dependency buffer** の overlay も取り込める (`test_analyze_multi_file_incremental_with_overrides_reports_unsaved_missing_import`, `test_did_open_eventually_publishes_multi_file_import_diagnostics_from_unsaved_source`, `test_did_open_uses_unsaved_open_dependency_overlay_for_multi_file_diagnostics`)
-  - これにより `(import Missing)` のような single-file parse/type-check では見えなかった missing import を、LSP `didOpen` 後の full diagnostics で報告できる
-  - さらに open file-backed documents 同士では reverse-dep traversal で changed/opened file + dependent open files だけを再 publish する first orchestration も入った (`test_did_open_dependency_republishes_dependent_open_file_diagnostics`)
-  - **残件** workspace-wide URI ↔ モジュール名マッピングと open buffer 外まで含む dirty-set orchestration は未配線。package root / workspace root を跨ぐ dependent 再診断もまだ限定的
+- [x] `INC-F2` LSP マルチファイル診断パイプライン — Evidence: `crates/lsharp-lsp/src/lib.rs`, `crates/lsharp-ir/src/module_graph.rs`, `test_did_open_eventually_publishes_multi_file_import_diagnostics_from_unsaved_source`, `test_did_open_uses_unsaved_open_dependency_overlay_for_multi_file_diagnostics`, `test_did_open_republishes_unopened_workspace_dependent_diagnostics`
+  - file URI の後段 full diagnostics は source override 対応つき graph builder と `analyze_multi_file_incremental_with_overrides` を通り、active buffer / open dependency buffer / workspace root 配下の disk file を合わせた import-aware diagnostics を返す
+  - workspace root がある場合は未 open の dependent file にも diagnostics を再 publish できるため、single-file parse/type-check では見えなかった import / cross-file type error を LSP パイプラインで扱える
   - 依存: INC-F1
 
 - [~] `INC-F3` ワークスペース診断更新最適化
-  - open file-backed documents に限れば reverse dependency traversal で changed/opened file + dependent open files のみ `publish_diagnostics` する first slice まで入った (`test_did_open_dependency_republishes_dependent_open_file_diagnostics`)
-  - **残件** full workspace dirty set、open していない URI を含む publish 設計、clean URI diagnostics の cache-return contract は未整備
+  - changed/opened file から reverse dependency traversal した workspace dependents だけを `publish_diagnostics` する slice まで入った (`test_did_open_dependency_republishes_dependent_open_file_diagnostics`, `test_did_open_republishes_unopened_workspace_dependent_diagnostics`)
+  - **残件** untouched URI diagnostics の cache-return contract、non-file URI / multi-root workspace の publish policy は未整備
   - 依存: INC-F2, INC-B2
 
 - [x] `INC-F4` LSP Incremental Sync (V2-01 実装) — Evidence: `crates/lsharp-lsp/src/text_sync.rs`, `test_apply_content_changes_replaces_single_range`, `test_apply_content_changes_large_document_partial_edit_stays_fast`, `cargo test -q -p lsharp-lsp -- --nocapture`, `cargo test -q -p lsharp-wasm --test lsp_stateful_parity -- --nocapture`

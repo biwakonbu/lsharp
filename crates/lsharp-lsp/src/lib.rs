@@ -32,6 +32,8 @@ pub struct LsharpBackend {
     source_cache: Arc<RwLock<HashMap<Url, String>>>,
     /// document version cache (URI → 最終 version)
     version_cache: Arc<RwLock<HashMap<Url, i32>>>,
+    /// initialize で受け取った workspace root 群
+    workspace_roots: Arc<RwLock<Vec<std::path::PathBuf>>>,
     /// Rust LSP 向け single-file incremental compile cache
     compilation_cache: Arc<RwLock<CompilationCache>>,
 }
@@ -42,6 +44,7 @@ impl LsharpBackend {
             client,
             source_cache: Arc::new(RwLock::new(HashMap::new())),
             version_cache: Arc::new(RwLock::new(HashMap::new())),
+            workspace_roots: Arc::new(RwLock::new(Vec::new())),
             compilation_cache: Arc::new(RwLock::new(CompilationCache::new())),
         }
     }
@@ -74,6 +77,20 @@ impl LsharpBackend {
             .ok()
             .and_then(|versions| versions.get(uri).copied())
             == Some(version)
+    }
+
+    fn set_workspace_roots(&self, roots: Vec<std::path::PathBuf>) {
+        if let Ok(mut workspace_roots) = self.workspace_roots.write() {
+            *workspace_roots = roots;
+        }
+    }
+
+    fn workspace_roots_snapshot(&self) -> Vec<std::path::PathBuf> {
+        self.workspace_roots
+            .read()
+            .ok()
+            .map(|roots| roots.clone())
+            .unwrap_or_default()
     }
 
     fn file_source_overrides(&self) -> HashMap<std::path::PathBuf, String> {
@@ -109,17 +126,14 @@ impl LsharpBackend {
             .unwrap_or_default()
     }
 
-    fn affected_open_file_uris(
-        changed_uri: &Url,
-        open_documents: &HashMap<Url, String>,
-    ) -> Vec<Url> {
+    fn affected_file_uris(changed_uri: &Url, documents: &HashMap<Url, String>) -> Vec<Url> {
         use std::collections::{HashMap, HashSet, VecDeque};
 
         let mut uri_by_module = HashMap::new();
         let mut module_by_uri = HashMap::new();
         let mut reverse_deps: HashMap<String, Vec<String>> = HashMap::new();
 
-        for (uri, source) in open_documents {
+        for (uri, source) in documents {
             if uri.scheme() != "file" {
                 continue;
             }
@@ -163,6 +177,57 @@ impl LsharpBackend {
         ordered
     }
 
+    fn workspace_file_documents(
+        workspace_roots: &[std::path::PathBuf],
+        open_documents: &HashMap<Url, String>,
+    ) -> HashMap<Url, String> {
+        fn collect_lsharp_files(root: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+            let Ok(entries) = std::fs::read_dir(root) else {
+                return;
+            };
+            let mut paths: Vec<_> = entries
+                .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+                .collect();
+            paths.sort();
+            for path in paths {
+                if path.is_dir() {
+                    collect_lsharp_files(&path, files);
+                } else if path.extension().and_then(|ext| ext.to_str()) == Some("ls") {
+                    files.push(path);
+                }
+            }
+        }
+
+        let mut documents = HashMap::new();
+        for (uri, source) in open_documents {
+            if uri.scheme() == "file" {
+                documents.insert(uri.clone(), source.clone());
+            }
+        }
+
+        let mut files = Vec::new();
+        for root in workspace_roots {
+            collect_lsharp_files(root, &mut files);
+        }
+        files.sort();
+        files.dedup();
+
+        for path in files {
+            let Ok(uri) = Url::from_file_path(&path) else {
+                continue;
+            };
+            if documents.contains_key(&uri) {
+                continue;
+            }
+            let Ok(source) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            documents.insert(uri, source);
+        }
+
+        documents
+    }
+
     async fn publish_fast_diagnostics(&self, uri: Url, source: String, version: i32) {
         self.set_source(uri.clone(), source.clone(), version);
 
@@ -180,8 +245,10 @@ impl LsharpBackend {
         let compilation_cache = Arc::clone(&self.compilation_cache);
         let source_overrides = self.file_source_overrides();
         let open_documents = self.open_document_sources();
+        let workspace_roots = self.workspace_roots_snapshot();
         let version_snapshot = self.version_snapshot();
-        let affected_uris = Self::affected_open_file_uris(&uri, &open_documents);
+        let workspace_documents = Self::workspace_file_documents(&workspace_roots, &open_documents);
+        let affected_uris = Self::affected_file_uris(&uri, &workspace_documents);
         tokio::spawn(async move {
             let full_diagnostics = tokio::task::spawn_blocking(move || {
                 let mut cache = compilation_cache
@@ -191,8 +258,8 @@ impl LsharpBackend {
                     .into_iter()
                     .enumerate()
                     .filter_map(|(index, affected_uri)| {
-                        let source = open_documents.get(&affected_uri)?.clone();
-                        let version = version_snapshot.get(&affected_uri).copied()?;
+                        let source = workspace_documents.get(&affected_uri)?.clone();
+                        let version = version_snapshot.get(&affected_uri).copied();
                         if index > 0
                             && affected_uri.scheme() == "file"
                             && let Ok(path) = affected_uri.to_file_path()
@@ -214,13 +281,15 @@ impl LsharpBackend {
             .expect("full diagnostics task should complete");
 
             for (affected_uri, diagnostics, affected_version) in full_diagnostics {
-                if LsharpBackend::is_current_version(
-                    &version_cache,
-                    &affected_uri,
-                    affected_version,
-                ) {
+                if affected_version.is_none()
+                    || LsharpBackend::is_current_version(
+                        &version_cache,
+                        &affected_uri,
+                        affected_version.expect("checked above"),
+                    )
+                {
                     client
-                        .publish_diagnostics(affected_uri, diagnostics, Some(affected_version))
+                        .publish_diagnostics(affected_uri, diagnostics, affected_version)
                         .await;
                 }
             }
@@ -234,7 +303,21 @@ fn text_document_sync_kind() -> TextDocumentSyncKind {
 
 #[tower_lsp::async_trait]
 impl LanguageServer for LsharpBackend {
-    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        let mut workspace_roots = Vec::new();
+        if let Some(folders) = params.workspace_folders {
+            workspace_roots.extend(
+                folders
+                    .into_iter()
+                    .filter_map(|folder| folder.uri.to_file_path().ok()),
+            );
+        } else if let Some(root_uri) = params.root_uri
+            && let Ok(root_path) = root_uri.to_file_path()
+        {
+            workspace_roots.push(root_path);
+        }
+        self.set_workspace_roots(workspace_roots);
+
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
@@ -1006,7 +1089,9 @@ mod tests {
         let elapsed = start.elapsed();
 
         let response = hover_response.expect("hover request should return a response");
-        let payload = response.result().expect("hover response should be successful");
+        let payload = response
+            .result()
+            .expect("hover response should be successful");
         assert!(
             payload["contents"].is_object() || payload["contents"].is_string(),
             "hover result should contain contents: {payload:?}"
@@ -1085,13 +1170,67 @@ mod tests {
             .as_array()
             .expect("completion result should be an array response");
         assert!(
-            items.iter().any(|item| item["label"].as_str() == Some("helper")),
+            items
+                .iter()
+                .any(|item| item["label"].as_str() == Some("helper")),
             "completion は helper 候補を返すべき: {items:?}"
         );
         assert!(
             elapsed < std::time::Duration::from_millis(50),
             "background diagnostics 中でも completion は 50ms 未満で返るべき: {elapsed:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_did_open_republishes_unopened_workspace_dependent_diagnostics() {
+        let workspace = unique_temp_dir("lsharp_lsp_workspace_dependent_republish");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::write(
+            workspace.join("Main.ls"),
+            "(module Main)\n(import Helpers)\n(defn main [] (+ (helper) 1))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            workspace.join("Helpers.ls"),
+            "(module Helpers)\n(defn helper [] 1)\n",
+        )
+        .unwrap();
+
+        let workspace_uri = Url::from_directory_path(&workspace)
+            .expect("temp workspace path should convert to file url");
+        let main_uri = Url::from_file_path(workspace.join("Main.ls"))
+            .expect("temp main path should convert to file url");
+        let helpers_uri = Url::from_file_path(workspace.join("Helpers.ls"))
+            .expect("temp helpers path should convert to file url");
+        let (mut service, mut socket) = initialize_test_server_with_root(Some(workspace_uri)).await;
+
+        send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": helpers_uri,
+                        "languageId": "lsharp",
+                        "version": 1,
+                        "text": "(module Helpers)\n(defn helper [] true)\n",
+                    }
+                }
+            }),
+        )
+        .await;
+        let _ = read_publish_diagnostics(&mut socket).await;
+        let main_diagnostics =
+            read_publish_diagnostics_for_uri(&mut socket, main_uri.as_str()).await;
+        assert!(
+            main_diagnostics["params"]["diagnostics"]
+                .as_array()
+                .is_some_and(|diagnostics| !diagnostics.is_empty()),
+            "workspace root があれば、未 open の dependent Main にも diagnostics を再 publish するべき"
+        );
+
+        let _ = std::fs::remove_dir_all(&workspace);
     }
 
     fn benchmark_document_fixture() -> (String, u32, u32, u32) {
@@ -1127,6 +1266,10 @@ mod tests {
     }
 
     async fn initialize_test_server() -> (TestService, TestSocket) {
+        initialize_test_server_with_root(None).await
+    }
+
+    async fn initialize_test_server_with_root(root_uri: Option<Url>) -> (TestService, TestSocket) {
         let (mut service, socket) = spawn_test_server();
         let initialize_response = send_lsp_frame(
             &mut service,
@@ -1136,7 +1279,7 @@ mod tests {
                 "method": "initialize",
                 "params": {
                     "processId": null,
-                    "rootUri": null,
+                    "rootUri": root_uri,
                     "capabilities": {}
                 }
             }),
