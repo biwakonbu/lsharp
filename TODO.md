@@ -403,9 +403,10 @@
   - changed module は `App/CompilerMode.ls` にコメント 1 行を足すだけの variant で再現し、`RUN_INCREMENTAL_BENCHMARK=1 bash scripts/ci/compile-phase11-inputs.sh` から opt-in 実行できるようにした
   - このセッションの計測では `full_compile_app_main` median ≈ 3.1187s、`incremental_single_module_change_app_main` median ≈ 879.38ms、`incremental_warm_clean_rebuild_app_main` median ≈ 6.58ms で、single-module change はフルコンパイル比で約 71.8% 短縮
 
-- [ ] `INC-H3` LSP レスポンスタイム計測
-  - `did_change` 後の diagnostics publish までの時間
-  - 目標: 1000 行ファイルの部分編集 < 50ms (V2-01 目標)
+- [x] `INC-H3` LSP レスポンスタイム計測 — Evidence: `crates/lsharp-lsp/src/lib.rs`, `test_incremental_did_change_publishes_diagnostics_under_50ms`, `test_did_open_eventually_publishes_type_diagnostics`, `cargo test -q -p lsharp-lsp test_incremental_did_change_publishes_diagnostics_under_50ms -- --nocapture`
+  - `did_change` / `did_open` は syntax-only diagnostics を即時 publish し、full parse + type diagnostics は version guard 付き background task へ退避する 2 段構成にした
+  - `did_change` 後の first `publishDiagnostics` を actual LSP service/socket で計測し、1000 行ファイルの部分編集で 50ms 未満を固定した
+  - syntax が正しい source では後段の full diagnostics publish が type error も報告し、stale version の結果は再 publish しない
 
 ### 実装優先順序
 

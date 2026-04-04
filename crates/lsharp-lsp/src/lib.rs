@@ -7,7 +7,7 @@ mod text_sync;
 mod util;
 
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
@@ -28,14 +28,17 @@ pub use util::parse_and_check;
 pub struct LsharpBackend {
     client: Client,
     /// ソースコードキャッシュ (URI → ソース全文)
-    source_cache: RwLock<HashMap<Url, String>>,
+    source_cache: Arc<RwLock<HashMap<Url, String>>>,
+    /// document version cache (URI → 最終 version)
+    version_cache: Arc<RwLock<HashMap<Url, i32>>>,
 }
 
 impl LsharpBackend {
     pub fn new(client: Client) -> Self {
         Self {
             client,
-            source_cache: RwLock::new(HashMap::new()),
+            source_cache: Arc::new(RwLock::new(HashMap::new())),
+            version_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -48,10 +51,53 @@ impl LsharpBackend {
     }
 
     /// キャッシュにソースコードを保存する
-    fn set_source(&self, uri: Url, source: String) {
+    fn set_source(&self, uri: Url, source: String, version: i32) {
         if let Ok(mut cache) = self.source_cache.write() {
-            cache.insert(uri, source);
+            cache.insert(uri.clone(), source);
         }
+        if let Ok(mut versions) = self.version_cache.write() {
+            versions.insert(uri, version);
+        }
+    }
+
+    fn is_current_version(
+        version_cache: &Arc<RwLock<HashMap<Url, i32>>>,
+        uri: &Url,
+        version: i32,
+    ) -> bool {
+        version_cache
+            .read()
+            .ok()
+            .and_then(|versions| versions.get(uri).copied())
+            == Some(version)
+    }
+
+    async fn publish_fast_diagnostics(&self, uri: Url, source: String, version: i32) {
+        self.set_source(uri.clone(), source.clone(), version);
+
+        let diagnostics = util::parse_only(&source);
+        self.client
+            .publish_diagnostics(uri.clone(), diagnostics.clone(), Some(version))
+            .await;
+
+        if !diagnostics.is_empty() {
+            return;
+        }
+
+        let client = self.client.clone();
+        let version_cache = Arc::clone(&self.version_cache);
+        tokio::spawn(async move {
+            let full_diagnostics =
+                tokio::task::spawn_blocking(move || util::parse_and_check(&source))
+                    .await
+                    .expect("full diagnostics task should complete");
+
+            if LsharpBackend::is_current_version(&version_cache, &uri, version) {
+                client
+                    .publish_diagnostics(uri, full_diagnostics, Some(version))
+                    .await;
+            }
+        });
     }
 }
 
@@ -91,23 +137,18 @@ impl LanguageServer for LsharpBackend {
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
         let text = params.text_document.text;
-        let diagnostics = util::parse_and_check(&text);
-        self.set_source(uri.clone(), text);
-        self.client
-            .publish_diagnostics(uri, diagnostics, None)
-            .await;
+        let version = params.text_document.version;
+        self.publish_fast_diagnostics(uri, text, version).await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
+        let version = params.text_document.version;
         let current_source = self.get_source(&uri).unwrap_or_default();
         let updated_source =
             text_sync::apply_content_changes(&current_source, &params.content_changes)
                 .unwrap_or(current_source);
-        let diagnostics = util::parse_and_check(&updated_source);
-        self.set_source(uri.clone(), updated_source);
-        self.client
-            .publish_diagnostics(uri, diagnostics, None)
+        self.publish_fast_diagnostics(uri, updated_source, version)
             .await;
     }
 
@@ -379,6 +420,10 @@ pub async fn run_server() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::StreamExt;
+    use serde_json::{Value, json};
+    use tower_lsp::jsonrpc::{Request, Response};
+    use tower_service::Service;
 
     #[test]
     fn test_find_definition_toplevel_function() {
@@ -442,5 +487,206 @@ mod tests {
             TextDocumentSyncKind::INCREMENTAL,
             "INC-F4 では LSP sync kind を INCREMENTAL へ切り替えるべき"
         );
+    }
+
+    #[tokio::test]
+    async fn test_incremental_did_change_publishes_diagnostics_under_50ms() {
+        let (document_source, changed_line, replacement_start, replacement_end) =
+            benchmark_document_fixture();
+        let changed_uri = "file:///timing-test.ls";
+        let change_text = "999";
+
+        let (mut service, mut socket) = initialize_test_server().await;
+
+        send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": changed_uri,
+                        "languageId": "lsharp",
+                        "version": 1,
+                        "text": document_source,
+                    }
+                }
+            }),
+        )
+        .await;
+        let _ = read_publish_diagnostics(&mut socket).await;
+
+        let start = std::time::Instant::now();
+        send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didChange",
+                "params": {
+                    "textDocument": {
+                        "uri": changed_uri,
+                        "version": 2
+                    },
+                    "contentChanges": [{
+                        "range": {
+                            "start": { "line": changed_line, "character": replacement_start },
+                            "end": { "line": changed_line, "character": replacement_end }
+                        },
+                        "text": change_text
+                    }]
+                }
+            }),
+        )
+        .await;
+        let diagnostics = read_publish_diagnostics(&mut socket).await;
+        let elapsed = start.elapsed();
+
+        assert_eq!(
+            diagnostics["params"]["uri"].as_str(),
+            Some(changed_uri),
+            "didChange 後の diagnostics publish は同一 URI を返すべき"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_millis(50),
+            "1000 行 document の didChange -> publishDiagnostics は 50ms 未満であるべき: {:?}",
+            elapsed
+        );
+    }
+
+    #[tokio::test]
+    async fn test_did_open_eventually_publishes_type_diagnostics() {
+        let (mut service, mut socket) = initialize_test_server().await;
+        let changed_uri = "file:///type-error.ls";
+
+        send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": changed_uri,
+                        "languageId": "lsharp",
+                        "version": 1,
+                        "text": "(defn bad [] (+ 1 true))",
+                    }
+                }
+            }),
+        )
+        .await;
+
+        let fast = read_publish_diagnostics(&mut socket).await;
+        assert_eq!(
+            fast["params"]["uri"].as_str(),
+            Some(changed_uri),
+            "最初の diagnostics publish は対象 URI に向くべき"
+        );
+        assert_eq!(
+            fast["params"]["version"].as_i64(),
+            Some(1),
+            "最初の diagnostics publish は open version を保持するべき"
+        );
+        assert_eq!(
+            fast["params"]["diagnostics"]
+                .as_array()
+                .map(std::vec::Vec::len),
+            Some(0),
+            "syntax-only fast path は well-formed source で空 diagnostics を返すべき"
+        );
+
+        let full = read_publish_diagnostics(&mut socket).await;
+        assert_eq!(
+            full["params"]["version"].as_i64(),
+            Some(1),
+            "後段 full diagnostics も同じ version を保持するべき"
+        );
+        assert!(
+            full["params"]["diagnostics"]
+                .as_array()
+                .is_some_and(|diagnostics| !diagnostics.is_empty()),
+            "後段 full diagnostics は type error を報告するべき"
+        );
+    }
+
+    fn benchmark_document_fixture() -> (String, u32, u32, u32) {
+        let mut source = String::from("(module Main)\n");
+        for idx in 0..1000 {
+            source.push_str(&format!("(defn helper-{idx} [] {idx})\n"));
+        }
+        source.push_str("(defn main [] (helper-500))\n");
+
+        let changed_line = 501u32;
+        let target_line = format!("(defn helper-500 [] 500)");
+        let replacement_start = target_line.find("500)").expect("literal start") as u32;
+        let replacement_end = replacement_start + 3;
+
+        (source, changed_line, replacement_start, replacement_end)
+    }
+
+    type TestService = params_normalizer::ParamsNormalizer<tower_lsp::LspService<LsharpBackend>>;
+    type TestSocket = tower_lsp::ClientSocket;
+
+    fn spawn_test_server() -> (TestService, TestSocket) {
+        let (service, socket) = tower_lsp::LspService::new(LsharpBackend::new);
+        let service = params_normalizer::ParamsNormalizer::new(service);
+        (service, socket)
+    }
+
+    async fn initialize_test_server() -> (TestService, TestSocket) {
+        let (mut service, socket) = spawn_test_server();
+        let initialize_response = send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "processId": null,
+                    "rootUri": null,
+                    "capabilities": {}
+                }
+            }),
+        )
+        .await;
+        assert!(
+            initialize_response
+                .as_ref()
+                .is_some_and(|response| response.is_ok()),
+            "initialize request は成功 response を返すべき"
+        );
+
+        send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "initialized",
+                "params": {}
+            }),
+        )
+        .await;
+
+        (service, socket)
+    }
+
+    async fn send_lsp_frame(service: &mut TestService, body: &Value) -> Option<Response> {
+        let request: Request = serde_json::from_value(body.clone()).expect("request should parse");
+        service.call(request).await.expect("request should succeed")
+    }
+
+    async fn read_lsp_message(socket: &mut TestSocket) -> Value {
+        let message = tokio::time::timeout(std::time::Duration::from_secs(5), socket.next())
+            .await
+            .expect("timed out while reading lsp message")
+            .expect("client socket should stay open");
+        serde_json::to_value(message).expect("message should serialize")
+    }
+
+    async fn read_publish_diagnostics(socket: &mut TestSocket) -> Value {
+        loop {
+            let message = read_lsp_message(socket).await;
+            if message["method"].as_str() == Some("textDocument/publishDiagnostics") {
+                return message;
+            }
+        }
     }
 }

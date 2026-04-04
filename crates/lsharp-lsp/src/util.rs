@@ -353,33 +353,41 @@ pub fn find_definition(source: &str, position: Position) -> Option<Range> {
     None
 }
 
+fn diagnostic_error(message: String) -> Diagnostic {
+    Diagnostic {
+        range: Range::new(Position::new(0, 0), Position::new(0, 0)),
+        severity: Some(DiagnosticSeverity::ERROR),
+        message,
+        source: Some("lsharp".to_string()),
+        ..Default::default()
+    }
+}
+
+fn parse_program(source: &str) -> std::result::Result<Program, Box<Diagnostic>> {
+    lsharp_syntax::parse(source).map_err(|e| Box::new(diagnostic_error(format!("{e}"))))
+}
+
+/// ソースコードをパースし、syntax error があれば診断情報を返す
+pub(crate) fn parse_only(source: &str) -> Vec<Diagnostic> {
+    match parse_program(source) {
+        Ok(_) => Vec::new(),
+        Err(diagnostic) => vec![*diagnostic],
+    }
+}
+
 /// ソースコードをパース・型チェックし、診断情報を返す
 pub fn parse_and_check(source: &str) -> Vec<Diagnostic> {
-    let mut diagnostics = Vec::new();
-
-    let program = match lsharp_syntax::parse(source) {
-        Ok(p) => p,
-        Err(e) => {
-            diagnostics.push(Diagnostic {
-                range: Range::new(Position::new(0, 0), Position::new(0, 0)),
-                severity: Some(DiagnosticSeverity::ERROR),
-                message: format!("{e}"),
-                source: Some("lsharp".to_string()),
-                ..Default::default()
-            });
-            return diagnostics;
+    let program = match parse_program(source) {
+        Ok(program) => program,
+        Err(diagnostic) => {
+            return vec![*diagnostic];
         }
     };
+    let mut diagnostics = Vec::new();
 
     let mut infer = lsharp_types::infer::Infer::new();
     if let Err(e) = infer.infer_program(&program) {
-        diagnostics.push(Diagnostic {
-            range: Range::new(Position::new(0, 0), Position::new(0, 0)),
-            severity: Some(DiagnosticSeverity::ERROR),
-            message: format!("{e}"),
-            source: Some("lsharp".to_string()),
-            ..Default::default()
-        });
+        diagnostics.push(diagnostic_error(format!("{e}")));
     }
 
     diagnostics
