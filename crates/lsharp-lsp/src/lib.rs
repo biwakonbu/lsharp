@@ -1233,6 +1233,65 @@ mod tests {
         let _ = std::fs::remove_dir_all(&workspace);
     }
 
+    #[tokio::test]
+    async fn test_did_open_skips_unrelated_workspace_diagnostics_publish() {
+        let workspace = unique_temp_dir("lsharp_lsp_workspace_skip_unrelated");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::write(
+            workspace.join("Main.ls"),
+            "(module Main)\n(import Helpers)\n(defn main [] (+ (helper) 1))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            workspace.join("Helpers.ls"),
+            "(module Helpers)\n(defn helper [] true)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            workspace.join("Unrelated.ls"),
+            "(module Unrelated)\n(defn unrelated [] 42)\n",
+        )
+        .unwrap();
+
+        let workspace_uri = Url::from_directory_path(&workspace)
+            .expect("temp workspace path should convert to file url");
+        let unrelated_uri = Url::from_file_path(workspace.join("Unrelated.ls"))
+            .expect("temp unrelated path should convert to file url");
+        let helpers_uri = Url::from_file_path(workspace.join("Helpers.ls"))
+            .expect("temp helpers path should convert to file url");
+        let (mut service, mut socket) = initialize_test_server_with_root(Some(workspace_uri)).await;
+
+        send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": helpers_uri,
+                        "languageId": "lsharp",
+                        "version": 1,
+                        "text": "(module Helpers)\n(defn helper [] true)\n",
+                    }
+                }
+            }),
+        )
+        .await;
+
+        let _ = read_publish_diagnostics(&mut socket).await;
+        assert!(
+            tokio::time::timeout(
+                std::time::Duration::from_millis(200),
+                read_publish_diagnostics_for_uri(&mut socket, unrelated_uri.as_str())
+            )
+            .await
+            .is_err(),
+            "dirty-set 外の unrelated workspace file は diagnostics を再 publish しないべき"
+        );
+
+        let _ = std::fs::remove_dir_all(&workspace);
+    }
+
     fn benchmark_document_fixture() -> (String, u32, u32, u32) {
         let mut source = String::from("(module Main)\n");
         for idx in 0..1000 {
