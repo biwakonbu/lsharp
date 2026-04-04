@@ -17,12 +17,38 @@ mod resolver;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use sha2::{Digest, Sha256};
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 const EMBEDDED_COMPONENT_BYTES: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/embedded-lsharp.component.wasm"));
+
+fn adjacent_component_sidecar_path_for_executable(executable: &Path) -> Option<PathBuf> {
+    let parent = executable.parent()?;
+    let stem = executable.file_stem()?.to_str()?;
+    Some(parent.join(format!("{stem}.component.wasm")))
+}
+
+fn resolve_default_component_bytes() -> miette::Result<Cow<'static, [u8]>> {
+    let current_exe =
+        std::env::current_exe().map_err(|e| miette::miette!("current exe の取得に失敗: {e}"))?;
+    let Some(sidecar_path) = adjacent_component_sidecar_path_for_executable(&current_exe) else {
+        return Ok(Cow::Borrowed(EMBEDDED_COMPONENT_BYTES));
+    };
+    if !sidecar_path.is_file() {
+        return Ok(Cow::Borrowed(EMBEDDED_COMPONENT_BYTES));
+    }
+
+    let bytes = std::fs::read(&sidecar_path).map_err(|e| {
+        miette::miette!(
+            "adjacent component sidecar の読み込みに失敗しました ({}): {e}",
+            sidecar_path.display()
+        )
+    })?;
+    Ok(Cow::Owned(bytes))
+}
 
 #[derive(Parser)]
 #[command(name = "lsharp", version, about = "L# コンパイラ")]
@@ -265,7 +291,8 @@ fn main() -> miette::Result<()> {
             let doc_status = lsharp_docs::tracker::load_doc_status(status_path);
 
             // メタデータ検証
-            let diag_strings = lsharp_tooling::metadata_validation::check_metadata_strings(&source)?;
+            let diag_strings =
+                lsharp_tooling::metadata_validation::check_metadata_strings(&source)?;
 
             // レビューチェックポイント生成
             let checkpoint = lsharp_docs::review::generate_review(
@@ -449,17 +476,17 @@ fn maybe_delegate_to_embedded_component() -> miette::Result<()> {
 
     let current_dir =
         std::env::current_dir().map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
-    let args = normalize_guest_args_for_current_dir(
-        &current_dir,
-        std::env::args().skip(1).collect(),
-    );
+    let args =
+        normalize_guest_args_for_current_dir(&current_dir, std::env::args().skip(1).collect());
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let output = lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
-        EMBEDDED_COMPONENT_BYTES,
-        Some(&current_dir),
-        &arg_refs,
-    )
-    .map_err(|e| miette::miette!("embedded component 実行に失敗しました: {e}"))?;
+    let component_bytes = resolve_default_component_bytes()?;
+    let output =
+        lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
+            component_bytes.as_ref(),
+            Some(&current_dir),
+            &arg_refs,
+        )
+        .map_err(|e| miette::miette!("embedded component 実行に失敗しました: {e}"))?;
     print!("{}", output.stdout);
     std::process::exit(output.exit_code);
 }
@@ -489,23 +516,12 @@ fn infer_bridge_compile_target(
     }
 }
 
-fn maybe_bridge_compile_build_artifact() -> miette::Result<()> {
-    if option_env!("LSHARP_EMBEDDED_COMPONENT_PRESENT") != Some("1") {
-        return Ok(());
-    }
-    if std::env::var_os("LSHARP_PATH").is_some() {
-        return Ok(());
-    }
-    if std::env::var_os("LSHARP_DISABLE_EMBEDDED_COMPONENT").is_some_and(|value| value != "0") {
-        return Ok(());
-    }
-    if !should_delegate_to_embedded_component() {
-        return Ok(());
-    }
-
+fn maybe_bridge_compile_build_artifact_with_component(
+    component_bytes: &[u8],
+) -> miette::Result<bool> {
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
-        Err(_) => return Ok(()),
+        Err(_) => return Ok(false),
     };
 
     let (file, output, target, emit_ir) = match cli.command {
@@ -521,23 +537,21 @@ fn maybe_bridge_compile_build_artifact() -> miette::Result<()> {
             target,
             emit_ir,
         } => (file, output, target, emit_ir),
-        _ => return Ok(()),
+        _ => return Ok(false),
     };
 
     if emit_ir {
-        return Ok(());
+        return Ok(false);
     }
 
     let current_dir =
         std::env::current_dir().map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
-    let args = normalize_guest_args_for_current_dir(
-        &current_dir,
-        std::env::args().skip(1).collect(),
-    );
+    let args =
+        normalize_guest_args_for_current_dir(&current_dir, std::env::args().skip(1).collect());
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let guest_output =
         lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
-            EMBEDDED_COMPONENT_BYTES,
+            component_bytes,
             Some(&current_dir),
             &arg_refs,
         )
@@ -584,6 +598,25 @@ fn maybe_bridge_compile_build_artifact() -> miette::Result<()> {
     std::process::exit(guest_output.exit_code);
 }
 
+fn maybe_bridge_compile_build_artifact() -> miette::Result<()> {
+    if option_env!("LSHARP_EMBEDDED_COMPONENT_PRESENT") != Some("1") {
+        return Ok(());
+    }
+    if std::env::var_os("LSHARP_PATH").is_some() {
+        return Ok(());
+    }
+    if std::env::var_os("LSHARP_DISABLE_EMBEDDED_COMPONENT").is_some_and(|value| value != "0") {
+        return Ok(());
+    }
+    if !should_delegate_to_embedded_component() {
+        return Ok(());
+    }
+
+    let component_bytes = resolve_default_component_bytes()?;
+    let _ = maybe_bridge_compile_build_artifact_with_component(component_bytes.as_ref())?;
+    Ok(())
+}
+
 fn canonicalize_for_guest_prefix_match(path: &Path) -> Option<PathBuf> {
     if let Ok(canonical) = std::fs::canonicalize(path) {
         return Some(canonical);
@@ -595,17 +628,27 @@ fn canonicalize_for_guest_prefix_match(path: &Path) -> Option<PathBuf> {
     Some(canonical_parent.join(file_name))
 }
 
+fn normalize_guest_relative_src_path(value: String) -> String {
+    let path = Path::new(&value);
+    match path.components().next() {
+        Some(std::path::Component::Normal(first)) if first == std::ffi::OsStr::new("src") => {
+            Path::new(".").join(path).to_string_lossy().into_owned()
+        }
+        _ => value,
+    }
+}
+
 fn relativize_guest_path_arg(current_dir: &Path, value: &str) -> String {
     let path = Path::new(value);
     if !path.is_absolute() {
-        return value.to_string();
+        return normalize_guest_relative_src_path(value.to_string());
     }
 
     if let Ok(relative) = path.strip_prefix(current_dir) {
         return if relative.as_os_str().is_empty() {
             ".".to_string()
         } else {
-            relative.to_string_lossy().into_owned()
+            normalize_guest_relative_src_path(relative.to_string_lossy().into_owned())
         };
     }
 
@@ -616,7 +659,9 @@ fn relativize_guest_path_arg(current_dir: &Path, value: &str) -> String {
     };
 
     match canonical_path.strip_prefix(&canonical_current_dir) {
-        Ok(relative) if !relative.as_os_str().is_empty() => relative.to_string_lossy().into_owned(),
+        Ok(relative) if !relative.as_os_str().is_empty() => {
+            normalize_guest_relative_src_path(relative.to_string_lossy().into_owned())
+        }
         Ok(_) => ".".to_string(),
         Err(_) => value.to_string(),
     }
@@ -629,10 +674,10 @@ fn normalize_guest_args_for_current_dir(current_dir: &Path, args: Vec<String>) -
     };
 
     let normalize_file_arg = |args: &mut Vec<String>, index: usize| {
-        if let Some(value) = args.get(index).cloned() {
-            if !value.starts_with('-') {
-                args[index] = relativize_guest_path_arg(current_dir, &value);
-            }
+        if let Some(value) = args.get(index).cloned()
+            && !value.starts_with('-')
+        {
+            args[index] = relativize_guest_path_arg(current_dir, &value);
         }
     };
 
@@ -718,9 +763,7 @@ fn should_delegate_review_command_args(args: &[std::ffi::OsString]) -> bool {
     }
 }
 
-fn should_delegate_compile_build_to_embedded_component_args(
-    args: &[std::ffi::OsString],
-) -> bool {
+fn should_delegate_compile_build_to_embedded_component_args(args: &[std::ffi::OsString]) -> bool {
     let Some(file_arg) = args.get(1).and_then(|arg| arg.to_str()) else {
         return false;
     };
@@ -738,8 +781,10 @@ fn should_delegate_compile_build_to_embedded_component_args(
                 let Some(value) = args.get(index + 1).and_then(|arg| arg.to_str()) else {
                     return false;
                 };
-                if matches!(value, "-o" | "--output" | "--target" | "--emit-ir" | "-h" | "--help")
-                {
+                if matches!(
+                    value,
+                    "-o" | "--output" | "--target" | "--emit-ir" | "-h" | "--help"
+                ) {
                     return false;
                 }
                 index += 2;
@@ -841,24 +886,25 @@ fn maybe_delegate_to_external_compiler() -> miette::Result<()> {
                     delegate_path.display()
                 )
             })?;
-            let current_dir =
-                std::env::current_dir().map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
+            let current_dir = std::env::current_dir()
+                .map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
             let args = normalize_guest_args_for_current_dir(
                 &current_dir,
                 std::env::args().skip(1).collect(),
             );
             let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args_inherit_stdin_capture(
-                &wasm_bytes,
-                Some(&current_dir),
-                &arg_refs,
-            )
-            .map_err(|e| {
-                miette::miette!(
-                    "LSHARP_PATH 先の Wasm artifact 実行に失敗しました ({}): {e}",
-                    delegate_path.display()
+            let output =
+                lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args_inherit_stdin_capture(
+                    &wasm_bytes,
+                    Some(&current_dir),
+                    &arg_refs,
                 )
-            })?;
+                .map_err(|e| {
+                    miette::miette!(
+                        "LSHARP_PATH 先の Wasm artifact 実行に失敗しました ({}): {e}",
+                        delegate_path.display()
+                    )
+                })?;
             print!("{}", output.stdout);
             std::process::exit(output.exit_code);
         }
@@ -869,8 +915,13 @@ fn maybe_delegate_to_external_compiler() -> miette::Result<()> {
                     delegate_path.display()
                 )
             })?;
-            let current_dir =
-                std::env::current_dir().map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
+            if should_delegate_compile_build_to_embedded_component_args(
+                &std::env::args_os().skip(1).collect::<Vec<_>>(),
+            ) {
+                let _ = maybe_bridge_compile_build_artifact_with_component(&component_bytes)?;
+            }
+            let current_dir = std::env::current_dir()
+                .map_err(|e| miette::miette!("current dir の取得に失敗: {e}"))?;
             let args = normalize_guest_args_for_current_dir(
                 &current_dir,
                 std::env::args().skip(1).collect(),
@@ -899,7 +950,9 @@ enum ExternalLsharpPath {
     Component(PathBuf),
 }
 
-fn resolve_external_lsharp_path(configured_path: &std::path::Path) -> miette::Result<ExternalLsharpPath> {
+fn resolve_external_lsharp_path(
+    configured_path: &std::path::Path,
+) -> miette::Result<ExternalLsharpPath> {
     let candidate = if configured_path.is_dir() {
         configured_path.join("lsharp")
     } else {
@@ -960,7 +1013,7 @@ fn resolve_external_lsharp_path(configured_path: &std::path::Path) -> miette::Re
 }
 
 /// P3-3: メタデータテスト実行 (:example, :invariant の自動検証)
-fn cmd_test(file: &PathBuf) -> miette::Result<()> {
+fn cmd_test(file: &Path) -> miette::Result<()> {
     let run = lsharp_tooling::metadata_test::run_metadata_tests(file)?;
 
     if !run.has_tests() {
@@ -1477,7 +1530,7 @@ entry = "src/Main.ls"
 }
 
 /// P9-4 / P12-A1: ドキュメント生成
-fn cmd_doc(file: &PathBuf, output: Option<&Path>, json: bool) -> miette::Result<()> {
+fn cmd_doc(file: &Path, output: Option<&Path>, json: bool) -> miette::Result<()> {
     if json {
         return cmd_doc_json(file, output);
     }
@@ -2252,10 +2305,7 @@ fn collect_package_source_files(dir: &Path, out: &mut Vec<PathBuf>) -> miette::R
 fn module_name_for_source_file(source_root: &Path, file: &Path) -> Option<String> {
     let relative = file.strip_prefix(source_root).ok()?;
     let stem = relative.with_extension("");
-    let parts: Option<Vec<&str>> = stem
-        .iter()
-        .map(|part| part.to_str())
-        .collect();
+    let parts: Option<Vec<&str>> = stem.iter().map(|part| part.to_str()).collect();
     let parts = parts?;
     if parts.is_empty() {
         None
@@ -2441,6 +2491,10 @@ mod tests {
         args.iter().map(std::ffi::OsString::from).collect()
     }
 
+    fn dot_prefixed(path: &str) -> String {
+        Path::new(".").join(path).to_string_lossy().into_owned()
+    }
+
     #[test]
     fn test_cli_help_excludes_removed_parse_check_fmt_subcommands() {
         let help = Cli::command().render_long_help().to_string();
@@ -2493,14 +2547,8 @@ mod tests {
         };
         assert_eq!(target, Some(CliCompileTarget::WasiPreview1));
 
-        let cli = Cli::try_parse_from([
-            "lsharp",
-            "compile",
-            "examples/fib.ls",
-            "--target",
-            "wasm",
-        ])
-        .expect("wasm alias should parse");
+        let cli = Cli::try_parse_from(["lsharp", "compile", "examples/fib.ls", "--target", "wasm"])
+            .expect("wasm alias should parse");
         let Command::Compile { target, .. } = cli.command else {
             panic!("compile subcommand should parse");
         };
@@ -2574,8 +2622,7 @@ mod tests {
     #[test]
     fn test_should_delegate_to_embedded_component_args_rejects_rust_only_compile_build_flags() {
         assert!(!should_delegate_to_embedded_component_args(&os_args(&[
-            "compile",
-            "--help",
+            "compile", "--help",
         ])));
         assert!(!should_delegate_to_embedded_component_args(&os_args(&[
             "compile",
@@ -2595,8 +2642,7 @@ mod tests {
             "--target",
         ])));
         assert!(!should_delegate_to_embedded_component_args(&os_args(&[
-            "review",
-            "--help",
+            "review", "--help",
         ])));
         assert!(!should_delegate_to_embedded_component_args(&os_args(&[
             "review",
@@ -2611,8 +2657,7 @@ mod tests {
             "--format",
         ])));
         assert!(!should_delegate_to_embedded_component_args(&os_args(&[
-            "doc-ack",
-            "--help",
+            "doc-ack", "--help",
         ])));
         assert!(!should_delegate_to_embedded_component_args(&os_args(&[
             "doc-check",
@@ -2629,6 +2674,61 @@ mod tests {
             "--format",
             "json",
         ])));
+    }
+
+    #[test]
+    fn test_normalize_guest_args_prefixes_relative_src_entry_paths() {
+        let current_dir = std::env::temp_dir().join("lsharp_normalize_guest_args");
+        let src_entry = dot_prefixed("src/Main.ls");
+
+        let compile_args = normalize_guest_args_for_current_dir(
+            &current_dir,
+            vec!["compile".to_string(), "src/Main.ls".to_string()],
+        );
+        assert_eq!(compile_args, vec!["compile".to_string(), src_entry.clone()]);
+
+        let review_args = normalize_guest_args_for_current_dir(
+            &current_dir,
+            vec!["review".to_string(), "src/Main.ls".to_string()],
+        );
+        assert_eq!(review_args, vec!["review".to_string(), src_entry]);
+    }
+
+    #[test]
+    fn test_normalize_guest_args_relativizes_absolute_src_entry_paths_with_dot_prefix() {
+        let current_dir = std::env::temp_dir().join("lsharp_normalize_guest_args_abs");
+        let src_entry = current_dir.join("src/Main.ls");
+        let expected = dot_prefixed("src/Main.ls");
+
+        let compile_args = normalize_guest_args_for_current_dir(
+            &current_dir,
+            vec![
+                "compile".to_string(),
+                src_entry.to_string_lossy().into_owned(),
+                "--output".to_string(),
+                current_dir
+                    .join("src/Main.component.wasm")
+                    .to_string_lossy()
+                    .into_owned(),
+            ],
+        );
+
+        assert_eq!(compile_args[1], expected);
+        assert_eq!(compile_args[3], dot_prefixed("src/Main.component.wasm"));
+    }
+
+    #[test]
+    fn test_normalize_guest_args_keeps_non_src_relative_paths_unchanged() {
+        let current_dir = std::env::temp_dir().join("lsharp_normalize_guest_args_examples");
+        let compile_args = normalize_guest_args_for_current_dir(
+            &current_dir,
+            vec!["compile".to_string(), "examples/fib.ls".to_string()],
+        );
+
+        assert_eq!(
+            compile_args,
+            vec!["compile".to_string(), "examples/fib.ls".to_string()]
+        );
     }
 
     #[test]
@@ -2707,7 +2807,10 @@ mod tests {
         .unwrap();
 
         let result = cmd_test(&file);
-        assert!(result.is_ok(), "metadata test command should succeed: {result:?}");
+        assert!(
+            result.is_ok(),
+            "metadata test command should succeed: {result:?}"
+        );
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -3165,7 +3268,10 @@ source = "git:https://github.com/user/mylib.git?tag=v0.2.0"
         let installed_relative = installed_dir.strip_prefix(&base_dir).unwrap();
         assert_eq!(
             geometry_target.trim(),
-            installed_relative.join("src/Geometry.ls").display().to_string()
+            installed_relative
+                .join("src/Geometry.ls")
+                .display()
+                .to_string()
         );
         assert_eq!(
             vec2_target.trim(),

@@ -1,6 +1,6 @@
 use super::support::*;
 use serde_json::Value;
-use std::collections::{hash_map::DefaultHasher, HashMap};
+use std::collections::{HashMap, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 
 const TEST_I64_IF_WASM: &[u8] = include_bytes!(concat!(
@@ -80,6 +80,30 @@ pub(crate) fn extract_section_bytes(wasm: &[u8], target_id: u8) -> Option<Vec<u8
     None
 }
 
+fn selfhost_string_object_bytes(text: &str) -> Vec<u8> {
+    let byte_len = text.len();
+    let len = byte_len as u32;
+    let mut bytes = Vec::with_capacity(8 + byte_len);
+    bytes.extend_from_slice(&1u32.to_le_bytes());
+    bytes.extend_from_slice(&len.to_le_bytes());
+    bytes.extend_from_slice(text.as_bytes());
+    bytes
+}
+
+fn selfhost_string_object_sequence(texts: &[&str]) -> Vec<u8> {
+    texts
+        .iter()
+        .flat_map(|text| selfhost_string_object_bytes(text))
+        .collect()
+}
+
+fn selfhost_string_object_offset(base: i64, texts_before: &[&str]) -> i64 {
+    base + texts_before
+        .iter()
+        .map(|text| (8 + text.len()) as i64)
+        .sum::<i64>()
+}
+
 pub(crate) struct BootstrapDiffArtifactFixture<'a> {
     pub(crate) artifact_id: &'a str,
     pub(crate) test_name: &'a str,
@@ -113,8 +137,13 @@ pub(crate) fn bootstrap_diff_artifact_id() -> String {
 
 fn write_optional_bytes(path: &std::path::Path, bytes: Option<&[u8]>) {
     if let Some(bytes) = bytes {
-        std::fs::write(path, bytes)
-            .unwrap_or_else(|e| panic!("bootstrap diff artifact 書き込み失敗 {}: {}", path.display(), e));
+        std::fs::write(path, bytes).unwrap_or_else(|e| {
+            panic!(
+                "bootstrap diff artifact 書き込み失敗 {}: {}",
+                path.display(),
+                e
+            )
+        });
     }
 }
 
@@ -134,8 +163,13 @@ pub(crate) fn write_bootstrap_diff_artifact(
     let artifact_root = selfhost_project_root()
         .join("ci-artifacts/bootstrap-diff")
         .join(fixture.artifact_id);
-    std::fs::create_dir_all(&artifact_root)
-        .unwrap_or_else(|e| panic!("artifact ディレクトリ作成に失敗 {}: {}", artifact_root.display(), e));
+    std::fs::create_dir_all(&artifact_root).unwrap_or_else(|e| {
+        panic!(
+            "artifact ディレクトリ作成に失敗 {}: {}",
+            artifact_root.display(),
+            e
+        )
+    });
 
     std::fs::write(artifact_root.join("diff-report.txt"), fixture.diff_report)
         .unwrap_or_else(|e| panic!("diff-report.txt 書き込み失敗: {e}"));
@@ -323,26 +357,25 @@ fn local_bound_violations(wasm: &[u8]) -> Vec<String> {
             break;
         };
         if let Payload::CodeSectionEntry(body) = payload {
-            let body_prefix = body
-                .as_bytes()
-                .iter()
-                .take(24)
-                .copied()
-                .collect::<Vec<_>>();
+            let body_prefix = body.as_bytes().iter().take(24).copied().collect::<Vec<_>>();
             let declared_locals = body
                 .get_locals_reader()
                 .ok()
                 .map(|reader| {
                     let mut total = 0_u32;
                     for local in reader {
-                        let (count, _) = local
-                            .unwrap_or_else(|e| panic!("locals read failed at func {defined_index}: {e}"));
+                        let (count, _) = local.unwrap_or_else(|e| {
+                            panic!("locals read failed at func {defined_index}: {e}")
+                        });
                         total += count;
                     }
                     total
                 })
                 .unwrap_or(0);
-            let type_index = type_indices.get(defined_index as usize).copied().unwrap_or(0);
+            let type_index = type_indices
+                .get(defined_index as usize)
+                .copied()
+                .unwrap_or(0);
             let param_count = param_counts.get(type_index as usize).copied().unwrap_or(0);
             let total_locals = param_count + declared_locals;
             let absolute_index = imported + defined_index;
@@ -414,11 +447,7 @@ fn exported_memory<T>(caller: &mut wasmtime::Caller<'_, T>) -> wasmtime::Memory 
     }
 }
 
-fn ensure_memory_capacity<T>(
-    caller: &mut wasmtime::Caller<'_, T>,
-    end: i64,
-    context: &str,
-) {
+fn ensure_memory_capacity<T>(caller: &mut wasmtime::Caller<'_, T>, end: i64, context: &str) {
     let needed = usize::try_from(end).unwrap_or_else(|_| panic!("{context}: end address が不正"));
     let memory = exported_memory(caller);
     let current = memory.data_size(&mut *caller);
@@ -663,8 +692,12 @@ fn run_exported_i64_with_alloc_print_read_imports(
             let content = caller.data().file_content.as_bytes().to_vec();
             let base = caller.data().next_alloc;
             let end = base
-                .checked_add(i64::try_from(8 + content.len()).expect("read-file object size overflow"))
-                .unwrap_or_else(|| panic!("alloc/print/read import: read-file end address が overflow"));
+                .checked_add(
+                    i64::try_from(8 + content.len()).expect("read-file object size overflow"),
+                )
+                .unwrap_or_else(|| {
+                    panic!("alloc/print/read import: read-file end address が overflow")
+                });
             caller.data_mut().next_alloc = end;
             write_string_object_bytes(caller, base, &content, "alloc/print/read import");
             base
@@ -716,10 +749,17 @@ fn read_string_object_bytes<T>(caller: &mut wasmtime::Caller<'_, T>, addr: i64) 
     bytes
 }
 
-fn read_path_text<T>(caller: &mut wasmtime::Caller<'_, T>, addr: i64, expected_len: usize) -> String {
+fn read_path_text<T>(
+    caller: &mut wasmtime::Caller<'_, T>,
+    addr: i64,
+    expected_len: usize,
+) -> String {
     let memory = exported_memory(caller);
     let mut header = [0_u8; 8];
-    if memory.read(&mut *caller, addr as usize, &mut header).is_ok() {
+    if memory
+        .read(&mut *caller, addr as usize, &mut header)
+        .is_ok()
+    {
         let tag = i32::from_le_bytes(header[0..4].try_into().expect("tag header 長が不正"));
         let len = i32::from_le_bytes(header[4..8].try_into().expect("len header 長が不正"));
         if tag == 1 && usize::try_from(len).ok() == Some(expected_len) {
@@ -833,8 +873,12 @@ fn run_exported_i64_with_alloc_print_read_path_imports(
             let content = caller.data().file_content.as_bytes().to_vec();
             let base = caller.data().next_alloc;
             let end = base
-                .checked_add(i64::try_from(8 + content.len()).expect("read-file object size overflow"))
-                .unwrap_or_else(|| panic!("alloc/print/read/path import: read-file end address が overflow"));
+                .checked_add(
+                    i64::try_from(8 + content.len()).expect("read-file object size overflow"),
+                )
+                .unwrap_or_else(|| {
+                    panic!("alloc/print/read/path import: read-file end address が overflow")
+                });
             caller.data_mut().next_alloc = end;
             write_string_object_bytes(caller, base, &content, "alloc/print/read/path import");
             base
@@ -896,8 +940,12 @@ fn run_exported_i64_with_alloc_print_read_hash_imports(
             let content = caller.data().file_content.as_bytes().to_vec();
             let base = caller.data().next_alloc;
             let end = base
-                .checked_add(i64::try_from(8 + content.len()).expect("read-file object size overflow"))
-                .unwrap_or_else(|| panic!("alloc/print/read/hash import: read-file end address が overflow"));
+                .checked_add(
+                    i64::try_from(8 + content.len()).expect("read-file object size overflow"),
+                )
+                .unwrap_or_else(|| {
+                    panic!("alloc/print/read/hash import: read-file end address が overflow")
+                });
             caller.data_mut().next_alloc = end;
             write_string_object_bytes(caller, base, &content, "alloc/print/read/hash import");
             base
@@ -982,8 +1030,12 @@ fn run_exported_i64_with_alloc_print_read_arg_imports(
             let content = caller.data().file_content.as_bytes().to_vec();
             let base = caller.data().next_alloc;
             let end = base
-                .checked_add(i64::try_from(8 + content.len()).expect("read-file object size overflow"))
-                .unwrap_or_else(|| panic!("alloc/print/read/arg import: read-file end address が overflow"));
+                .checked_add(
+                    i64::try_from(8 + content.len()).expect("read-file object size overflow"),
+                )
+                .unwrap_or_else(|| {
+                    panic!("alloc/print/read/arg import: read-file end address が overflow")
+                });
             caller.data_mut().next_alloc = end;
             write_string_object_bytes(caller, base, &content, "alloc/print/read/arg import");
             base
@@ -999,8 +1051,13 @@ fn run_exported_i64_with_alloc_print_read_arg_imports(
                 .unwrap_or_default();
             let base = caller.data().next_alloc;
             let end = base
-                .checked_add(i64::try_from(8 + content.len()).expect("command-line-arg object size overflow"))
-                .unwrap_or_else(|| panic!("alloc/print/read/arg import: command-line-arg end address が overflow"));
+                .checked_add(
+                    i64::try_from(8 + content.len())
+                        .expect("command-line-arg object size overflow"),
+                )
+                .unwrap_or_else(|| {
+                    panic!("alloc/print/read/arg import: command-line-arg end address が overflow")
+                });
             caller.data_mut().next_alloc = end;
             write_string_object_bytes(caller, base, &content, "alloc/print/read/arg import");
             base
@@ -1031,7 +1088,7 @@ fn run_exported_i64_with_alloc_print_read_arg_imports(
 
 /// 6-import (alloc/print/read-file/command-line-arg/string-concat/substring) モデルで wasm を実行する
 ///
-/// stage2 以降の wasm は env.string-concat, env.substring も import するため、
+/// stage2 以降の wasm は env.string-concat, env.substring, env.file-exists? も import するため、
 /// 4-import ハーネスの代わりにこちらを使用する。
 /// string-concat/substring のスタブ実装は型が正しければ十分（minimal.ls 処理では非使用）。
 struct SixImportState {
@@ -1109,7 +1166,10 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
                 let rel_path = read_path_text_with_root(&mut caller, path, &root_dir);
                 let full_path = root_dir.join(&rel_path);
                 let bytes = std::fs::read(&full_path).unwrap_or_else(|e| {
-                    panic!("read-file import が {} を読めない: {e}", full_path.display())
+                    panic!(
+                        "read-file import が {} を読めない: {e}",
+                        full_path.display()
+                    )
                 });
                 eprintln!(
                     "six-import read-file: {} len={} prefix={:?}",
@@ -1194,6 +1254,20 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
             alloc_cached_string_object(caller, slice, "six-import substring")
         },
     );
+    let file_exists = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, SixImportState>, path: i64| -> i64 {
+            let exists = if let Some(root_dir) = caller.data().file_root.clone() {
+                let rel_path = read_path_text_with_root(&mut caller, path, &root_dir);
+                root_dir.join(rel_path).exists()
+            } else {
+                let rel_path = String::from_utf8(read_string_object_bytes(&mut caller, path))
+                    .expect("file-exists? path が UTF-8 ではない");
+                std::path::Path::new(&rel_path).exists()
+            };
+            if exists { 1 } else { 0 }
+        },
+    );
     let instance = wasmtime::Instance::new(
         &mut store,
         &module,
@@ -1204,6 +1278,7 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
             command_line_arg.into(),
             string_concat.into(),
             substring.into(),
+            file_exists.into(),
         ],
     )
     .map_err(|e| format!("インスタンス化に失敗: {e}"))?;
@@ -1212,10 +1287,7 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
         .map_err(|e| format!("_start export 取得失敗: {e}"))?;
     match start.call(&mut store, ()) {
         Ok(()) => Ok(store.data().printed.clone()),
-        Err(e) => Err(format!(
-            "実行失敗: {e}; printed={:?}",
-            store.data().printed
-        )),
+        Err(e) => Err(format!("実行失敗: {e}; printed={:?}", store.data().printed)),
     }
 }
 
@@ -1234,7 +1306,6 @@ pub(crate) fn run_wasm_with_six_imports_compiler_mode_fs(
 ) -> Result<String, String> {
     run_wasm_with_six_imports_compiler_mode_inner(wasm, None, Some(root_dir), args)
 }
-
 
 ///
 /// selfhost コンパイラを Rust stage0 で 2 回コンパイルし、
@@ -1319,9 +1390,17 @@ fn test_e2e_bootstrap_four_layer_comparison() {
         format_layer_line(
             "Layer 2 (export):",
             if export_match {
-                format!("MATCH ({} bytes vs {} bytes)", export_a.len(), export_b.len())
+                format!(
+                    "MATCH ({} bytes vs {} bytes)",
+                    export_a.len(),
+                    export_b.len()
+                )
             } else {
-                format!("MISMATCH ({} bytes vs {} bytes)", export_a.len(), export_b.len())
+                format!(
+                    "MISMATCH ({} bytes vs {} bytes)",
+                    export_a.len(),
+                    export_b.len()
+                )
             },
         ),
         format_layer_line("Layer 3 (data):", data_line),
@@ -1330,7 +1409,11 @@ fn test_e2e_bootstrap_four_layer_comparison() {
             if diag_match {
                 format!("MATCH ({} vs {})", i32::from(!diag_a), i32::from(!diag_b))
             } else {
-                format!("MISMATCH ({} vs {})", i32::from(!diag_a), i32::from(!diag_b))
+                format!(
+                    "MISMATCH ({} vs {})",
+                    i32::from(!diag_a),
+                    i32::from(!diag_b)
+                )
             },
         ),
         String::new(),
@@ -1418,8 +1501,9 @@ fn test_bootstrap_diff_artifact_writes_readable_local_report() {
         .join("ci-artifacts/bootstrap-diff")
         .join(artifact_id);
     if artifact_root.exists() {
-        std::fs::remove_dir_all(&artifact_root)
-            .unwrap_or_else(|e| panic!("artifact 事前掃除に失敗 {}: {}", artifact_root.display(), e));
+        std::fs::remove_dir_all(&artifact_root).unwrap_or_else(|e| {
+            panic!("artifact 事前掃除に失敗 {}: {}", artifact_root.display(), e)
+        });
     }
 
     let fixture = BootstrapDiffArtifactFixture {
@@ -1637,13 +1721,14 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_minimal_subset() {
       0)))
 "#;
     let stage1_source = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
         selfhost_module("Token.ls"),
         selfhost_module("AST.ls"),
         selfhost_module("Lexer.ls"),
         selfhost_module("Parser.ls"),
         selfhost_module("IR.ls"),
         selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
         selfhost_module("WasmEmit.ls"),
         harness
     );
@@ -1730,13 +1815,14 @@ fn test_e2e_bootstrap_stage1_emits_identical_stage2_wasm_for_same_tiny_source() 
       0)))
 "#;
     let stage1_source = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
         selfhost_module("Token.ls"),
         selfhost_module("AST.ls"),
         selfhost_module("Lexer.ls"),
         selfhost_module("Parser.ls"),
         selfhost_module("IR.ls"),
         selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
         selfhost_module("WasmEmit.ls"),
         harness
     );
@@ -1803,13 +1889,14 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_extended_do_block() {
       0)))
 "#;
     let stage1_source = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
         selfhost_module("Token.ls"),
         selfhost_module("AST.ls"),
         selfhost_module("Lexer.ls"),
         selfhost_module("Parser.ls"),
         selfhost_module("IR.ls"),
         selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
         selfhost_module("WasmEmit.ls"),
         harness
     );
@@ -2438,9 +2525,12 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_literal_data_section()
         "string literal を含む stage2 Wasm は data section を持つこと"
     );
     let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
+    let expected_data = selfhost_string_object_bytes("abc");
     assert!(
-        data_section.windows(3).any(|window| window == [97, 98, 99]),
-        "data section に string literal bytes が含まれていない"
+        data_section
+            .windows(expected_data.len())
+            .any(|window| window == expected_data),
+        "data section に string object header + bytes が含まれていない"
     );
     assert_eq!(
         run_exported_i64(&modules[0], "_start"),
@@ -2516,16 +2606,17 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_nested_string_literal_data_se
     assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
     assert_valid_wasm(&modules[0]);
     let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
+    let expected_data = selfhost_string_object_sequence(&["ab", "cde"]);
     assert!(
         data_section
-            .windows(5)
-            .any(|window| window == [97, 98, 99, 100, 101]),
-        "nested string literal bytes が data section に連結配置されていない"
+            .windows(expected_data.len())
+            .any(|window| window == expected_data),
+        "nested string literal objects が data section に連結配置されていない"
     );
     assert_eq!(
         run_exported_i64(&modules[0], "_start"),
-        1026,
-        "nested string literal の最終 offset が前段 bytes を考慮していない"
+        selfhost_string_object_offset(1024, &["ab"]),
+        "nested string literal の最終 offset が前段 object header + bytes を考慮していない"
     );
 }
 
@@ -2596,16 +2687,17 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_extended_do_string_literal_da
     assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
     assert_valid_wasm(&modules[0]);
     let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
+    let expected_data = selfhost_string_object_sequence(&["ab", "c", "de", "fgh", "ijk"]);
     assert!(
         data_section
-            .windows(11)
-            .any(|window| window == b"abcdefghijk"),
-        "extended do string literal bytes が data section に連結配置されていない"
+            .windows(expected_data.len())
+            .any(|window| window == expected_data),
+        "extended do string literal objects が data section に連結配置されていない"
     );
     assert_eq!(
         run_exported_i64(&modules[0], "_start"),
-        1032,
-        "extended do string literal の最終 offset が前段 bytes を考慮していない"
+        selfhost_string_object_offset(1024, &["ab", "c", "de", "fgh"]),
+        "extended do string literal の最終 offset が前段 object header + bytes を考慮していない"
     );
 }
 
@@ -2676,11 +2768,12 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_if_string_literal_data_sectio
     assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
     assert_valid_wasm(&modules[0]);
     let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
+    let expected_data = selfhost_string_object_sequence(&["hello", "world"]);
     assert!(
         data_section
-            .windows(10)
-            .any(|window| window == b"helloworld"),
-        "if string literal bytes が data section に連結配置されていない"
+            .windows(expected_data.len())
+            .any(|window| window == expected_data),
+        "if string literal objects が data section に連結配置されていない"
     );
     assert_eq!(
         run_exported_i64(&modules[0], "_start"),
@@ -2756,14 +2849,17 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_match_string_literal_data_sec
     assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
     assert_valid_wasm(&modules[0]);
     let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
+    let expected_data = selfhost_string_object_sequence(&["one", "two"]);
     assert!(
-        data_section.windows(6).any(|window| window == b"onetwo"),
-        "match string literal bytes が data section に連結配置されていない"
+        data_section
+            .windows(expected_data.len())
+            .any(|window| window == expected_data),
+        "match string literal objects が data section に連結配置されていない"
     );
     assert_eq!(
         run_exported_i64(&modules[0], "_start"),
-        1027,
-        "match string literal の selected branch offset が不正"
+        selfhost_string_object_offset(1024, &["one"]),
+        "match string literal の selected branch offset が前段 object header + bytes を考慮していない"
     );
 }
 
@@ -2834,9 +2930,12 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_lambda_string_literal_data_se
     assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
     assert_valid_wasm(&modules[0]);
     let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
+    let expected_data = selfhost_string_object_bytes("ok");
     assert!(
-        data_section.windows(2).any(|window| window == b"ok"),
-        "lambda string literal bytes が data section に配置されていない"
+        data_section
+            .windows(expected_data.len())
+            .any(|window| window == expected_data),
+        "lambda string literal object が data section に配置されていない"
     );
     assert_eq!(
         run_exported_i64(&modules[0], "_start"),
@@ -3009,7 +3108,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_new_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3081,7 +3180,7 @@ fn test_e2e_bootstrap_stage1_emits_identical_alloc_stage2_wasm_for_same_source()
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3156,7 +3255,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_push_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3228,7 +3327,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_ref_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3300,7 +3399,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3372,7 +3471,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_contains_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3444,7 +3543,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_remove_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3519,7 +3618,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_key_map_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         data-sec (emit-data-section data 1024)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
@@ -4919,7 +5018,11 @@ fn test_e2e_boot04_bootstrap_append_bytes_deep_recursion_trap_repro() {
         );
         let output = result.unwrap();
         let modules = parse_emitted_wasm_modules(&output, 1);
-        assert_eq!(modules.len(), 1, "N=5 では stage2 モジュールが 1 つ生成されるはず");
+        assert_eq!(
+            modules.len(),
+            1,
+            "N=5 では stage2 モジュールが 1 つ生成されるはず"
+        );
         assert_valid_wasm(&modules[0]);
     }
 
@@ -4943,7 +5046,11 @@ fn test_e2e_boot04_bootstrap_append_bytes_deep_recursion_trap_repro() {
         );
         let output = result.unwrap();
         let modules = parse_emitted_wasm_modules(&output, 1);
-        assert_eq!(modules.len(), 1, "N=2000 では stage2 モジュールが 1 つ生成されるはず");
+        assert_eq!(
+            modules.len(),
+            1,
+            "N=2000 では stage2 モジュールが 1 つ生成されるはず"
+        );
         assert_valid_wasm(&modules[0]);
     }
 }
@@ -5050,8 +5157,8 @@ fn test_e2e_boot04_read_file_compiler_mode() {
     assert_valid_wasm(&stage1_wasm);
 
     // テスト用 L# ソースファイルを用意
-    let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures");
+    let fixture_dir =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
     assert!(
         fixture_dir.join("minimal.ls").exists(),
         "fixture ファイル tests/fixtures/minimal.ls が存在しない"
@@ -5097,8 +5204,8 @@ fn test_e2e_boot04_read_file_compiler_mode() {
 #[test]
 fn test_e2e_boot04_stage2_compiler_to_stage3_minimal() {
     let main_path = selfhost_main_path();
-    let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures");
+    let fixture_dir =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
     assert!(
         fixture_dir.join("minimal.ls").exists(),
         "fixture ファイル tests/fixtures/minimal.ls が存在しない"
@@ -5177,8 +5284,8 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_minimal() {
         .parent()
         .expect("selfhost/ ルートディレクトリ")
         .to_path_buf();
-    let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures");
+    let fixture_dir =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
 
     // stage1 = Rust bootstrap が生成した完全コンパイラ wasm
     let stage1_wasm = compile_file_only(&main_path);
@@ -5353,7 +5460,10 @@ fn test_e2e_boot04_self_hosted_stage2_preserves_batched_step_progress() {
 
             let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &[])
                 .expect("BOOT-04 batching probe: stage3 probe module の実行に失敗した");
-            let lines: Vec<&str> = run_output.lines().filter(|line| !line.trim().is_empty()).collect();
+            let lines: Vec<&str> = run_output
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .collect();
 
             assert!(
                 lines.len() >= 4,
@@ -5514,8 +5624,11 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_bare_zero_fs_package() {
     ));
     let app_dir = temp_root.join("src/App");
     std::fs::create_dir_all(&app_dir).expect("bare-fs temp dir を作れない");
-    std::fs::write(app_dir.join("Main.ls"), "(module App.Main)\n(defn main [] 0)\n")
-        .expect("bare-fs Main.ls を書けない");
+    std::fs::write(
+        app_dir.join("Main.ls"),
+        "(module App.Main)\n(defn main [] 0)\n",
+    )
+    .expect("bare-fs Main.ls を書けない");
 
     let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
         stage2_self_compiler,
@@ -5572,8 +5685,11 @@ fn test_e2e_boot04_self_hosted_stage2_reports_bare_module_counts() {
     ));
     let app_dir = temp_root.join("src/App");
     std::fs::create_dir_all(&app_dir).expect("bare-debug temp dir を作れない");
-    std::fs::write(app_dir.join("Main.ls"), "(module App.Main)\n(defn main [] 0)\n")
-        .expect("bare-debug Main.ls を書けない");
+    std::fs::write(
+        app_dir.join("Main.ls"),
+        "(module App.Main)\n(defn main [] 0)\n",
+    )
+    .expect("bare-debug Main.ls を書けない");
 
     let debug_output = run_wasm_with_six_imports_compiler_mode_fs(
         stage2_self_compiler,
@@ -5598,7 +5714,9 @@ fn test_e2e_boot04_self_hosted_stage2_reports_bare_module_counts() {
         values
     );
     assert_eq!(
-        &[values[0], values[1], values[2], values[4], values[5], values[6]],
+        &[
+            values[0], values[1], values[2], values[4], values[5], values[6]
+        ],
         &[2, 25, 20, 1, 1, 1],
         "BOOT-04 bare-debug: module + defn source の集計が期待と異なる"
     );
@@ -5700,7 +5818,13 @@ fn test_e2e_boot04_self_hosted_stage2_reports_main_again_progress() {
     let progress_output = run_wasm_with_six_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
-        &["compiler", "src/App/Main.ls", "debug", "progress", "main-again"],
+        &[
+            "compiler",
+            "src/App/Main.ls",
+            "debug",
+            "progress",
+            "main-again",
+        ],
     );
     eprintln!("BOOT-04 main-progress output = {:?}", progress_output);
 }
@@ -5733,12 +5857,16 @@ fn test_e2e_boot04_self_hosted_stage2_reports_main_again_build_progress() {
     let progress_output = run_wasm_with_six_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
-        &["compiler", "src/App/Main.ls", "debug", "progress", "build", "main-again"],
+        &[
+            "compiler",
+            "src/App/Main.ls",
+            "debug",
+            "progress",
+            "build",
+            "main-again",
+        ],
     );
-    eprintln!(
-        "BOOT-04 main-build-progress output = {:?}",
-        progress_output
-    );
+    eprintln!("BOOT-04 main-build-progress output = {:?}", progress_output);
 }
 
 #[test]
@@ -5769,9 +5897,18 @@ fn test_e2e_boot04_self_hosted_stage2_reports_module_resolver_progress() {
     let progress_output = run_wasm_with_six_imports_compiler_mode_fs(
         stage2_self_compiler,
         &selfhost_root,
-        &["compiler", "src/App/ModuleResolver.ls", "debug", "progress", "module-resolver"],
+        &[
+            "compiler",
+            "src/App/ModuleResolver.ls",
+            "debug",
+            "progress",
+            "module-resolver",
+        ],
     );
-    eprintln!("BOOT-04 module-resolver-progress output = {:?}", progress_output);
+    eprintln!(
+        "BOOT-04 module-resolver-progress output = {:?}",
+        progress_output
+    );
 }
 
 #[test]
@@ -5803,7 +5940,13 @@ fn test_e2e_boot04_self_hosted_stage2_reports_string_length_if_progress() {
     let progress_output = run_wasm_with_six_imports_compiler_mode(
         stage2_self_compiler,
         source,
-        &["compiler", "src/App/ModuleResolver.ls", "debug", "progress", "inline"],
+        &[
+            "compiler",
+            "src/App/ModuleResolver.ls",
+            "debug",
+            "progress",
+            "inline",
+        ],
     );
     eprintln!(
         "BOOT-04 string-length-if-progress output = {:?}",
@@ -5836,14 +5979,15 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_module_import_file() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let module_import_source =
-        "(module App.Main)\n(import App.CompilerMode)\n(defn main [] 0)\n";
+    let module_import_source = "(module App.Main)\n(import App.CompilerMode)\n(defn main [] 0)\n";
     let stage3_output = run_wasm_with_six_imports_compiler_mode(
         stage2_self_compiler,
         module_import_source,
         &["compiler", "src/App/Main.ls"],
     )
-    .expect("BOOT-04 module-import: stage2_self_compiler が module+import source をコンパイルできない");
+    .expect(
+        "BOOT-04 module-import: stage2_self_compiler が module+import source をコンパイルできない",
+    );
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_wasm = &stage3_modules[0];
     assert_valid_wasm(stage3_wasm);
@@ -5876,13 +6020,38 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_main_shape_source() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let main_shape_source = "(module App.Main)\n(import App.CompilerMode)\n(import App.PipelineSmoke)\n(defn main [] (if (> (string-length (command-line-arg 1)) 0) (compile-file-mode) (run-main-smoke)))\n";
-    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+    let temp_root = std::env::temp_dir().join(format!(
+        "lsharp-boot04-main-shape-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("時刻が巻き戻った")
+            .as_nanos()
+    ));
+    let app_dir = temp_root.join("src/App");
+    std::fs::create_dir_all(&app_dir).expect("main-shape temp dir を作れない");
+    std::fs::write(
+        app_dir.join("Main.ls"),
+        "(module App.Main)\n(import App.CompilerMode)\n(import App.PipelineSmoke)\n(defn main [] (if (> (string-length (command-line-arg 1)) 0) (compile-file-mode) (run-main-smoke)))\n",
+    )
+    .expect("main-shape Main.ls を書けない");
+    std::fs::write(
+        app_dir.join("CompilerMode.ls"),
+        "(module App.CompilerMode)\n(defn compile-file-mode [] 1)\n",
+    )
+    .expect("main-shape CompilerMode.ls を書けない");
+    std::fs::write(
+        app_dir.join("PipelineSmoke.ls"),
+        "(module App.PipelineSmoke)\n(defn run-main-smoke [] 2)\n",
+    )
+    .expect("main-shape PipelineSmoke.ls を書けない");
+
+    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
         stage2_self_compiler,
-        main_shape_source,
+        &temp_root,
         &["compiler", "src/App/Main.ls"],
     )
-    .expect("BOOT-04 main-shape: stage2_self_compiler が Main.ls shape source をコンパイルできない");
+    .expect("BOOT-04 main-shape: stage2_self_compiler が Main.ls shape package をコンパイルできない");
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_wasm = &stage3_modules[0];
     assert_valid_wasm(stage3_wasm);
@@ -5891,6 +6060,8 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_main_shape_source() {
     let engine = wasmtime::Engine::default();
     wasmtime::Module::new(&engine, stage3_wasm)
         .unwrap_or_else(|e| panic!("BOOT-04 main-shape: wasmtime load failed: {e}"));
+
+    std::fs::remove_dir_all(&temp_root).expect("main-shape temp dir を削除できない");
 }
 
 #[test]
@@ -5966,7 +6137,9 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_string_length_repro_source() {
         source,
         &["compiler", "src/App/ModuleResolver.ls"],
     )
-    .expect("BOOT-04 string-length-repro: stage2_self_compiler が repro source をコンパイルできない");
+    .expect(
+        "BOOT-04 string-length-repro: stage2_self_compiler が repro source をコンパイルできない",
+    );
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_wasm = &stage3_modules[0];
     assert_valid_wasm(stage3_wasm);
@@ -5975,7 +6148,10 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_string_length_repro_source() {
     });
     let engine = wasmtime::Engine::default();
     wasmtime::Module::new(&engine, stage3_wasm).unwrap_or_else(|e| {
-        panic!("BOOT-04 string-length-repro: wasmtime load failed: {} / {:?}", e, e)
+        panic!(
+            "BOOT-04 string-length-repro: wasmtime load failed: {} / {:?}",
+            e, e
+        )
     });
 }
 
@@ -6010,7 +6186,9 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_string_length_if_repro_source() {
         source,
         &["compiler", "src/App/ModuleResolver.ls"],
     )
-    .expect("BOOT-04 string-length-if-repro: stage2_self_compiler が repro source をコンパイルできない");
+    .expect(
+        "BOOT-04 string-length-if-repro: stage2_self_compiler が repro source をコンパイルできない",
+    );
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_wasm = &stage3_modules[0];
     assert_valid_wasm(stage3_wasm);
@@ -6104,7 +6282,9 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_eq_string_length_repro_source() {
         source,
         &["compiler", "src/App/ModuleResolver.ls"],
     )
-    .expect("BOOT-04 eq-string-length-repro: stage2_self_compiler が repro source をコンパイルできない");
+    .expect(
+        "BOOT-04 eq-string-length-repro: stage2_self_compiler が repro source をコンパイルできない",
+    );
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_wasm = &stage3_modules[0];
     assert_valid_wasm(stage3_wasm);
@@ -6207,7 +6387,10 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_user_call_four_args_repro_source(
     });
     let engine = wasmtime::Engine::default();
     wasmtime::Module::new(&engine, stage3_wasm).unwrap_or_else(|e| {
-        panic!("BOOT-04 user-call-4-repro: wasmtime load failed: {} / {:?}", e, e)
+        panic!(
+            "BOOT-04 user-call-4-repro: wasmtime load failed: {} / {:?}",
+            e, e
+        )
     });
 }
 
@@ -6242,7 +6425,9 @@ fn test_e2e_boot04_self_hosted_stage2_runs_command_line_arg_repro_source() {
         source,
         &["compiler", "src/App/Main.ls"],
     )
-    .expect("BOOT-04 command-line-arg-repro: stage2_self_compiler が repro source をコンパイルできない");
+    .expect(
+        "BOOT-04 command-line-arg-repro: stage2_self_compiler が repro source をコンパイルできない",
+    );
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_wasm = &stage3_modules[0];
     assert_valid_wasm(stage3_wasm);
@@ -6250,10 +6435,8 @@ fn test_e2e_boot04_self_hosted_stage2_runs_command_line_arg_repro_source() {
         panic!("BOOT-04 command-line-arg-repro: stage3 wasm validation failed: {e}")
     });
 
-    let run_output =
-        run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["prog", "abc"]).unwrap_or_else(
-            |e| panic!("BOOT-04 command-line-arg-repro: 実行失敗: {e}"),
-        );
+    let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["prog", "abc"])
+        .unwrap_or_else(|e| panic!("BOOT-04 command-line-arg-repro: 実行失敗: {e}"));
     assert_eq!(run_output.trim(), "3");
 }
 
@@ -6292,9 +6475,8 @@ fn test_e2e_boot04_self_hosted_stage2_runs_print_repro_source() {
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_wasm = &stage3_modules[0];
     assert_valid_wasm(stage3_wasm);
-    validate_wasm_detailed(stage3_wasm).unwrap_or_else(|e| {
-        panic!("BOOT-04 print-repro: stage3 wasm validation failed: {e}")
-    });
+    validate_wasm_detailed(stage3_wasm)
+        .unwrap_or_else(|e| panic!("BOOT-04 print-repro: stage3 wasm validation failed: {e}"));
     let start_idx = exported_function_index(stage3_wasm, "_start")
         .expect("BOOT-04 print-repro: _start export が必要");
     eprintln!(
@@ -6305,10 +6487,8 @@ fn test_e2e_boot04_self_hosted_stage2_runs_print_repro_source() {
         function_operator_debug(stage3_wasm, start_idx - 1, 16)
     );
 
-    let run_output =
-        run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &[]).unwrap_or_else(|e| {
-            panic!("BOOT-04 print-repro: 実行失敗: {e}")
-        });
+    let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &[])
+        .unwrap_or_else(|e| panic!("BOOT-04 print-repro: 実行失敗: {e}"));
     assert_eq!(run_output.trim(), "7");
 }
 
@@ -6344,7 +6524,10 @@ fn test_e2e_boot04_self_hosted_stage2_reports_print_repro_ir() {
         &["compiler", "src/App/Main.ls", "", "", "", "", "ir"],
     )
     .expect("BOOT-04 print-ir: IR debug 実行に失敗");
-    let lines: Vec<&str> = ir_output.lines().filter(|line| !line.trim().is_empty()).collect();
+    let lines: Vec<&str> = ir_output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
     eprintln!("BOOT-04 print-ir lines: {:?}", lines);
     assert!(
         lines.first() == Some(&"71"),
@@ -6385,7 +6568,10 @@ fn test_e2e_boot04_self_hosted_stage2_reports_print_repro_tokens() {
         &["compiler", "src/App/Main.ls", "", "", "", "", "", "tokens"],
     )
     .expect("BOOT-04 print-token: token debug 実行に失敗");
-    let lines: Vec<&str> = token_output.lines().filter(|line| !line.trim().is_empty()).collect();
+    let lines: Vec<&str> = token_output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
     eprintln!("BOOT-04 print-token lines: {:?}", lines);
     assert!(
         lines.first() == Some(&"72"),
@@ -6419,8 +6605,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_two_imports_zero_source() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let source =
-        "(module App.Main)\n(import App.CompilerMode)\n(import App.PipelineSmoke)\n(defn main [] 0)\n";
+    let source = "(module App.Main)\n(import App.CompilerMode)\n(import App.PipelineSmoke)\n(defn main [] 0)\n";
     let stage3_output = run_wasm_with_six_imports_compiler_mode(
         stage2_self_compiler,
         source,
@@ -6631,8 +6816,8 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_main_again() {
         .parent()
         .expect("selfhost/ ルートディレクトリ")
         .to_path_buf();
-    let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures");
+    let fixture_dir =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
 
     let stage1_wasm = compile_file_only(&main_path);
     assert_valid_wasm(&stage1_wasm);
@@ -6656,8 +6841,11 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_main_again() {
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_self_compiler = &stage3_modules[0];
     assert_valid_wasm(stage3_self_compiler);
-    std::fs::write("/tmp/main_again_stage3_self_compiler.wasm", stage3_self_compiler)
-        .expect("stage3 self compiler dump に失敗");
+    std::fs::write(
+        "/tmp/main_again_stage3_self_compiler.wasm",
+        stage3_self_compiler,
+    )
+    .expect("stage3 self compiler dump に失敗");
     eprintln!(
         "BOOT-04 stage3 self compiler: bytes={}, sections={:?}",
         stage3_self_compiler.len(),
@@ -6789,13 +6977,10 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_high_function_index_step64_patter
     let mut body = String::from("step24");
     for idx in (1..=let_count).rev() {
         let helper = if idx % 2 == 0 { 129 } else { 128 };
-        body = format!(
-            "(let [step{idx} (helper-{helper} a b c d)] {body})"
-        );
+        body = format!("(let [step{idx} (helper-{helper} a b c d)] {body})");
     }
-    let source = format!(
-        "{helpers}\n(defn wrapper [a b c d] {body})\n(defn main [] (wrapper 1 2 3 4))\n"
-    );
+    let source =
+        format!("{helpers}\n(defn wrapper [a b c d] {body})\n(defn main [] (wrapper 1 2 3 4))\n");
 
     let stage3_output = run_wasm_with_six_imports_compiler_mode(
         stage2_self_compiler,
@@ -6910,7 +7095,9 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_high_index_parser_like_step64() {
         &source,
         &["compiler", "HighIndexParserLikeStep64.ls"],
     )
-    .expect("BOOT-04 parser-like-step64: stage2_self_compiler が synthetic source をコンパイルできない");
+    .expect(
+        "BOOT-04 parser-like-step64: stage2_self_compiler が synthetic source をコンパイルできない",
+    );
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_wasm = &stage3_modules[0];
     let violations = local_bound_violations(stage3_wasm);
@@ -6950,8 +7137,8 @@ fn test_e2e_boot04_self_hosted_stage2_reports_stage3_minimal_progress() {
         .parent()
         .expect("selfhost/ ルートディレクトリ")
         .to_path_buf();
-    let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures");
+    let fixture_dir =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
 
     let stage1_wasm = compile_file_only(&main_path);
     assert_valid_wasm(&stage1_wasm);
@@ -6987,9 +7174,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_stage3_minimal_progress() {
         .filter(|line| !line.trim().is_empty())
         .map(|line| {
             line.trim().parse::<i64>().unwrap_or_else(|err| {
-                panic!(
-                    "BOOT-04 stage3-minimal-progress: 数値でない debug 出力: {line:?} / {err}"
-                )
+                panic!("BOOT-04 stage3-minimal-progress: 数値でない debug 出力: {line:?} / {err}")
             })
         })
         .collect::<Vec<_>>();
@@ -7076,8 +7261,7 @@ fn test_e2e_boot04_self_hosted_stage2_classifies_chunked_lexer_failure_band() {
     let need_real_world = below_boundary.is_ok() && cross_boundary.is_ok() && multi_chunk.is_ok();
     let large_single_file = need_real_world
         .then(|| try_compile_inline("diag-large-single-file.ls", &build_helper_source(800)));
-    let main_again =
-        need_real_world.then(|| try_compile_file("src/App/Main.ls"));
+    let main_again = need_real_world.then(|| try_compile_file("src/App/Main.ls"));
 
     let classification = if below_boundary.is_err() {
         "local-before-boundary"
@@ -7266,67 +7450,85 @@ fn test_e2e_boot04_self_hosted_stage2_reports_step512_progress() {
                     );
                 }
                 Ok(()) => match run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &[]) {
-                Ok(run_output) => {
-                    let values = run_output
-                        .lines()
-                        .filter(|line| !line.trim().is_empty())
-                        .map(|line| {
-                            line.trim().parse::<i64>().unwrap_or_else(|err| {
-                                panic!("step512 診断出力が整数でない: {line:?} / {err}")
+                    Ok(run_output) => {
+                        let values = run_output
+                            .lines()
+                            .filter(|line| !line.trim().is_empty())
+                            .map(|line| {
+                                line.trim().parse::<i64>().unwrap_or_else(|err| {
+                                    panic!("step512 診断出力が整数でない: {line:?} / {err}")
+                                })
                             })
-                        })
-                        .collect::<Vec<_>>();
+                            .collect::<Vec<_>>();
 
-                    eprintln!("BOOT-04 step512 diag SUCCESS: {:?}", values);
+                        eprintln!("BOOT-04 step512 diag SUCCESS: {:?}", values);
 
-                    assert!(
-                        values.len() == 4 || values.len() == 7,
-                        "step512 診断出力は 4 行または 7 行であるべき: {:?}",
-                        values
-                    );
-
-                    let source_len = values[0];
-                    let done1 = values[1];
-                    let next1 = values[2];
-                    let count1 = values[3];
-
-                    assert!(source_len > 0, "step512 診断入力長が 0");
-                    assert!(next1 > 0 && next1 <= source_len, "step1 next が範囲外: {:?}", values);
-                    assert!(count1 > 0, "step1 token count が 0: {:?}", values);
-
-                    if done1 == 0 {
-                        assert_eq!(values.len(), 7, "step1 未完了なら step2 出力が必要: {:?}", values);
-                        let next2 = values[5];
-                        let count2 = values[6];
                         assert!(
-                            next2 > next1 && next2 <= source_len,
-                            "step2 next が前進していない: {:?}",
+                            values.len() == 4 || values.len() == 7,
+                            "step512 診断出力は 4 行または 7 行であるべき: {:?}",
                             values
                         );
-                        assert!(count2 > count1, "step2 token count が増えていない: {:?}", values);
-                    } else {
-                        assert_eq!(values.len(), 4, "step1 完了なら step2 出力は不要: {:?}", values);
+
+                        let source_len = values[0];
+                        let done1 = values[1];
+                        let next1 = values[2];
+                        let count1 = values[3];
+
+                        assert!(source_len > 0, "step512 診断入力長が 0");
+                        assert!(
+                            next1 > 0 && next1 <= source_len,
+                            "step1 next が範囲外: {:?}",
+                            values
+                        );
+                        assert!(count1 > 0, "step1 token count が 0: {:?}", values);
+
+                        if done1 == 0 {
+                            assert_eq!(
+                                values.len(),
+                                7,
+                                "step1 未完了なら step2 出力が必要: {:?}",
+                                values
+                            );
+                            let next2 = values[5];
+                            let count2 = values[6];
+                            assert!(
+                                next2 > next1 && next2 <= source_len,
+                                "step2 next が前進していない: {:?}",
+                                values
+                            );
+                            assert!(
+                                count2 > count1,
+                                "step2 token count が増えていない: {:?}",
+                                values
+                            );
+                        } else {
+                            assert_eq!(
+                                values.len(),
+                                4,
+                                "step1 完了なら step2 出力は不要: {:?}",
+                                values
+                            );
+                        }
                     }
-                }
-                Err(run_err) => {
-                    // ADVANCED: stage2 compile は通ったので、次の narrow blocker は stage3 wasm の
-                    // block stack-balance 崩れであることを診断として固定する。
-                    let violations = local_bound_violations(stage3_wasm);
-                    let _ = std::fs::write("/tmp/step512_progress_stage3.wasm", stage3_wasm);
-                    eprintln!(
-                        "BOOT-04 step512 diag ADVANCED: stage3 diagnostic wasm runtime/load failed: {}; full_error={}; sections={:?}; violations={:?}; fingerprint={}",
-                        run_err.lines().next().unwrap_or(""),
-                        run_err,
-                        extract_sections(stage3_wasm),
-                        violations,
-                        hash_fingerprint(stage3_wasm)
-                    );
-                    assert!(
-                        run_err.contains("values remaining on stack at end of block"),
-                        "step512 stage3 実行失敗モードが変わった可能性: {}",
-                        run_err
-                    );
-                }
+                    Err(run_err) => {
+                        // ADVANCED: stage2 compile は通ったので、次の narrow blocker は stage3 wasm の
+                        // block stack-balance 崩れであることを診断として固定する。
+                        let violations = local_bound_violations(stage3_wasm);
+                        let _ = std::fs::write("/tmp/step512_progress_stage3.wasm", stage3_wasm);
+                        eprintln!(
+                            "BOOT-04 step512 diag ADVANCED: stage3 diagnostic wasm runtime/load failed: {}; full_error={}; sections={:?}; violations={:?}; fingerprint={}",
+                            run_err.lines().next().unwrap_or(""),
+                            run_err,
+                            extract_sections(stage3_wasm),
+                            violations,
+                            hash_fingerprint(stage3_wasm)
+                        );
+                        assert!(
+                            run_err.contains("values remaining on stack at end of block"),
+                            "step512 stage3 実行失敗モードが変わった可能性: {}",
+                            run_err
+                        );
+                    }
                 },
             }
         }
@@ -7420,7 +7622,12 @@ fn test_e2e_boot04_compiler_mode_lexer_compat_import_resolution() {
         })
         .collect::<Vec<_>>();
 
-    assert_eq!(values.len(), 7, "lexer-compat probe 出力行数が不正: {:?}", values);
+    assert_eq!(
+        values.len(),
+        7,
+        "lexer-compat probe 出力行数が不正: {:?}",
+        values
+    );
     assert!(
         values[0] >= 3,
         "legacy tokenize は少なくとも 3 要素以上を返すべき: {:?}",
@@ -7444,8 +7651,8 @@ fn test_e2e_boot04_compiler_mode_lexer_compat_import_resolution() {
 #[test]
 fn test_e2e_boot04_compiler_mode_import_resolution() {
     let main_path = selfhost_main_path();
-    let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/fixtures");
+    let fixture_dir =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
 
     assert!(
         fixture_dir.join("SimpleMain.ls").exists(),
@@ -7475,11 +7682,7 @@ fn test_e2e_boot04_compiler_mode_import_resolution() {
 
     // 生成 wasm が正常実行できること (helper-value を呼び出す main が動く)
     // 6-import モデル: env.string-concat, env.substring も import される
-    let run_result = run_wasm_with_six_imports_compiler_mode(
-        result_wasm,
-        "",
-        &[],
-    );
+    let run_result = run_wasm_with_six_imports_compiler_mode(result_wasm, "", &[]);
     assert!(
         run_result.is_ok(),
         "BOOT-04 import-resolution: 生成 wasm の WASI 実行に失敗: {:?}",
@@ -7568,7 +7771,9 @@ fn test_e2e_boot04_compiler_mode_package_index_resolution() {
         Some(&fixture_dir),
         &["compiler", "src/Main.ls"],
     )
-    .expect("BOOT-04 package-index-resolution: compiler-mode が src/Main.ls をコンパイルできなかった");
+    .expect(
+        "BOOT-04 package-index-resolution: compiler-mode が src/Main.ls をコンパイルできなかった",
+    );
 
     let modules = parse_emitted_wasm_modules(&output, 1);
     let result_wasm = &modules[0];
@@ -7586,10 +7791,8 @@ fn test_e2e_boot04_compiler_mode_package_index_resolution() {
 #[test]
 fn test_e2e_boot04_compiler_mode_supports_twelve_arg_calls() {
     let main_path = selfhost_main_path();
-    let fixture_dir = std::env::temp_dir().join(format!(
-        "lsharp_selfhost_many_args_{}",
-        std::process::id()
-    ));
+    let fixture_dir =
+        std::env::temp_dir().join(format!("lsharp_selfhost_many_args_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&fixture_dir);
     std::fs::create_dir_all(fixture_dir.join("src")).unwrap();
     std::fs::write(
@@ -7614,8 +7817,7 @@ fn test_e2e_boot04_compiler_mode_supports_twelve_arg_calls() {
 
     let run_result = run_wasm_with_six_imports_compiler_mode(result_wasm, "", &[]);
     let _ = std::fs::remove_dir_all(&fixture_dir);
-    let run_output =
-        run_result.expect("BOOT-04 many-args: 生成 wasm の WASI 実行に失敗した");
+    let run_output = run_result.expect("BOOT-04 many-args: 生成 wasm の WASI 実行に失敗した");
     assert_eq!(run_output, "12\n");
 }
 
@@ -7672,7 +7874,10 @@ fn test_i64_if_condition_validity() {
     eprintln!("wasmparser result: {:?}", vresult);
     let engine = wasmtime::Engine::default();
     let mresult = wasmtime::Module::new(&engine, TEST_I64_IF_WASM);
-    eprintln!("wasmtime result: {}", if mresult.is_ok() { "OK" } else { "FAIL" });
+    eprintln!(
+        "wasmtime result: {}",
+        if mresult.is_ok() { "OK" } else { "FAIL" }
+    );
 }
 
 #[test]
@@ -7682,8 +7887,11 @@ fn test_debug_stage2_save() {
     let stage1_wasm = compile_file_only(&main_path);
     let selfhost_dir = selfhost_package_root();
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm, Some(&selfhost_dir), &["compiler", "src/App/Main.ls"],
-    ).expect("stage1 failed");
+        &stage1_wasm,
+        Some(&selfhost_dir),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("stage1 failed");
     let modules = parse_emitted_wasm_modules(&output, 1);
     let stage2 = &modules[0];
     std::fs::write("stage2_debug.wasm", stage2).expect("write failed");
@@ -7717,22 +7925,35 @@ fn test_parse_caws_standalone() {
 fn test_debug_stage2_output_minimal() {
     // stage2 が minimal.ls をコンパイルした出力を保存・検証する
     let main_path = selfhost_main_path();
-    let selfhost_root = main_path.parent().unwrap().parent().unwrap().parent().unwrap().to_path_buf();
+    let selfhost_root = main_path
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
     let stage1_wasm = compile_file_only(&main_path);
 
     // stage1 で src/App/Main.ls をコンパイル → stage2
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm, Some(&selfhost_root), &["compiler", "src/App/Main.ls"],
-    ).expect("stage1 failed");
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("stage1 failed");
     let modules = parse_emitted_wasm_modules(&output, 1);
     let stage2 = &modules[0];
     std::fs::write("stage2_debug2.wasm", stage2).expect("write failed");
     eprintln!("stage2 written ({} bytes)", stage2.len());
 
     // stage2 で minimal.ls をコンパイル
-    let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
+    let fixture_dir =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
     let stage3_result = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        stage2, Some(&fixture_dir), &["compiler", "minimal.ls"],
+        stage2,
+        Some(&fixture_dir),
+        &["compiler", "minimal.ls"],
     );
     match stage3_result {
         Err(e) => eprintln!("stage2->minimal failed: {}", e),
@@ -7749,11 +7970,21 @@ fn test_debug_stage2_output_minimal() {
 fn test_validate_stage2_wasm() {
     // stage2 を詳細バリデーション
     let main_path = selfhost_main_path();
-    let selfhost_root = main_path.parent().unwrap().parent().unwrap().parent().unwrap().to_path_buf();
+    let selfhost_root = main_path
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
     let stage1_wasm = compile_file_only(&main_path);
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm, Some(&selfhost_root), &["compiler", "src/App/Main.ls"],
-    ).expect("stage1 failed");
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("stage1 failed");
     let modules = parse_emitted_wasm_modules(&output, 1);
     let stage2 = &modules[0];
     match validate_wasm_detailed(stage2) {
@@ -7766,54 +7997,85 @@ fn test_validate_stage2_wasm() {
 fn test_debug_func_49_context() {
     // stage2 のwasm 49 番の関数が何をしているか確認
     let main_path = selfhost_main_path();
-    let selfhost_root = main_path.parent().unwrap().parent().unwrap().parent().unwrap().to_path_buf();
+    let selfhost_root = main_path
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
     let stage1_wasm = compile_file_only(&main_path);
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm, Some(&selfhost_root), &["compiler", "src/App/Main.ls"],
-    ).expect("stage1 failed");
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("stage1 failed");
     let modules = parse_emitted_wasm_modules(&output, 1);
     let stage2 = &modules[0];
-    
+
     // Count imports
     let mut pos = 8usize;
     let mut import_count = 0u32;
     let data = stage2.as_slice();
     while pos < data.len() {
-        let sid = data[pos]; pos += 1;
-        let mut size = 0u32; let mut shift = 0;
+        let sid = data[pos];
+        pos += 1;
+        let mut size = 0u32;
+        let mut shift = 0;
         loop {
-            let b = data[pos]; pos += 1;
+            let b = data[pos];
+            pos += 1;
             size |= ((b & 0x7f) as u32) << shift;
-            if b & 0x80 == 0 { break; } shift += 7;
+            if b & 0x80 == 0 {
+                break;
+            }
+            shift += 7;
         }
         if sid == 2 {
             // count imports
-            let mut v = 0u32; let mut sh = 0;
+            let mut v = 0u32;
+            let mut sh = 0;
             let mut i = pos;
             loop {
-                let b = data[i]; i += 1;
+                let b = data[i];
+                i += 1;
                 v |= ((b & 0x7f) as u32) << sh;
-                if b & 0x80 == 0 { break; } sh += 7;
+                if b & 0x80 == 0 {
+                    break;
+                }
+                sh += 7;
             }
             import_count = v;
         }
         if sid == 3 {
-            // count user funcs  
-            let mut v = 0u32; let mut sh = 0;
+            // count user funcs
+            let mut v = 0u32;
+            let mut sh = 0;
             let mut i = pos;
             loop {
-                let b = data[i]; i += 1;
+                let b = data[i];
+                i += 1;
                 v |= ((b & 0x7f) as u32) << sh;
-                if b & 0x80 == 0 { break; } sh += 7;
+                if b & 0x80 == 0 {
+                    break;
+                }
+                sh += 7;
             }
-            eprintln!("stage2: {} imports, {} user funcs, total={}", import_count, v, import_count + v);
+            eprintln!(
+                "stage2: {} imports, {} user funcs, total={}",
+                import_count,
+                v,
+                import_count + v
+            );
             break;
         }
         pos += size as usize;
     }
 }
 
-#[test] 
+#[test]
 fn test_debug_tok_eof_in_stage2() {
     // Token.ls main が tok-eof を正しく呼べるか確認
     // stage2の func 49 (Token::main) がちゃんと call 48 を使うか確認
@@ -7821,23 +8083,37 @@ fn test_debug_tok_eof_in_stage2() {
     let selfhost_dir = selfhost_package_root();
     let stage1_wasm = compile_file_only(&main_path);
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm, Some(&selfhost_dir), &["compiler", "src/App/Main.ls"],
-    ).expect("stage1 failed");
+        &stage1_wasm,
+        Some(&selfhost_dir),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("stage1 failed");
     let modules = parse_emitted_wasm_modules(&output, 1);
     let stage2 = &modules[0];
-    
+
     // Find func 49 bytecode
     let data = stage2.as_slice();
     fn read_leb(data: &[u8], pos: &mut usize) -> u64 {
-        let mut v = 0u64; let mut shift = 0;
-        loop { let b = data[*pos]; *pos += 1; v |= ((b & 0x7f) as u64) << shift; if b & 0x80 == 0 { break; } shift += 7; }
+        let mut v = 0u64;
+        let mut shift = 0;
+        loop {
+            let b = data[*pos];
+            *pos += 1;
+            v |= ((b & 0x7f) as u64) << shift;
+            if b & 0x80 == 0 {
+                break;
+            }
+            shift += 7;
+        }
         v
     }
     let mut pos = 8usize;
     while pos < data.len() {
-        let sid = data[pos]; pos += 1;
+        let sid = data[pos];
+        pos += 1;
         let size = read_leb(data, &mut pos) as usize;
-        if sid == 10 {  // code section
+        if sid == 10 {
+            // code section
             let _count = read_leb(data, &mut pos);
             // Skip to func 49 (index 49 in code section, which = func 49-6=43 user func)
             // actually each func in code section is 0-indexed: func 0 = user func 0, func 43 = user func 43
@@ -7851,15 +8127,29 @@ fn test_debug_tok_eof_in_stage2() {
             eprintln!("Code func 43 (Token::main) size={} bytes", func_size);
             let func_end = pos + func_size;
             let local_count = read_leb(data, &mut pos);
-            for _ in 0..local_count { let _n = read_leb(data, &mut pos); let _t = data[pos]; pos += 1; }
+            for _ in 0..local_count {
+                let _n = read_leb(data, &mut pos);
+                let _t = data[pos];
+                pos += 1;
+            }
             // Dump the instructions
             while pos < func_end {
-                let op = data[pos]; pos += 1;
+                let op = data[pos];
+                pos += 1;
                 match op {
-                    0x10 => { let idx = read_leb(data, &mut pos); eprintln!("  call {idx}"); }
-                    0x42 => { let v = read_leb(data, &mut pos); eprintln!("  i64.const {v}"); }
+                    0x10 => {
+                        let idx = read_leb(data, &mut pos);
+                        eprintln!("  call {idx}");
+                    }
+                    0x42 => {
+                        let v = read_leb(data, &mut pos);
+                        eprintln!("  i64.const {v}");
+                    }
                     0x1a => eprintln!("  drop"),
-                    0x0b => { eprintln!("  end"); break; }
+                    0x0b => {
+                        eprintln!("  end");
+                        break;
+                    }
                     _ => eprintln!("  op 0x{op:02x}"),
                 }
             }
@@ -7875,7 +8165,7 @@ fn test_debug_token_ls_compilation() {
     let token_path = selfhost_source_path("Token.ls");
     let token_src = std::fs::read_to_string(&token_path).unwrap();
     eprintln!("Token.ls: {} chars", token_src.len());
-    
+
     // tok-eof hash
     let tok_eof_hash: i64 = {
         let s = "tok-eof";
@@ -7886,32 +8176,45 @@ fn test_debug_token_ls_compilation() {
         acc
     };
     eprintln!("tok-eof hash = {tok_eof_hash}");
-    
+
     // Manually check: compile Token.ls with selfhost (via stage1)
     let main_path = selfhost_main_path();
     let selfhost_dir = selfhost_package_root();
     let stage1_wasm = compile_file_only(&main_path);
-    
+
     // compile Token.ls with stage1
     let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm, Some(&selfhost_dir), &["compiler", "src/Syntax/Token.ls"],
-    ).expect("stage1 failed to compile Token.ls");
+        &stage1_wasm,
+        Some(&selfhost_dir),
+        &["compiler", "src/Syntax/Token.ls"],
+    )
+    .expect("stage1 failed to compile Token.ls");
     eprintln!("Token.ls compiled, output {} chars", output.len());
     let modules = parse_emitted_wasm_modules(&output, 1);
     let token_wasm = &modules[0];
-    
+
     // Look for tok-eof function (returns 99)
     let found_99 = std::panic::catch_unwind(|| {
         let data = token_wasm.as_slice();
         fn read_leb(data: &[u8], pos: &mut usize) -> u64 {
-            let mut v = 0u64; let mut shift = 0;
-            loop { let b = data[*pos]; *pos += 1; v |= ((b & 0x7f) as u64) << shift; if b & 0x80 == 0 { break; } shift += 7; }
+            let mut v = 0u64;
+            let mut shift = 0;
+            loop {
+                let b = data[*pos];
+                *pos += 1;
+                v |= ((b & 0x7f) as u64) << shift;
+                if b & 0x80 == 0 {
+                    break;
+                }
+                shift += 7;
+            }
             v
         }
         let mut pos = 8usize;
         let mut func_99_idx = None;
         while pos < data.len() {
-            let sid = data[pos]; pos += 1;
+            let sid = data[pos];
+            pos += 1;
             let size = read_leb(data, &mut pos) as usize;
             if sid == 10 {
                 let count = read_leb(data, &mut pos) as usize;
@@ -7920,18 +8223,26 @@ fn test_debug_token_ls_compilation() {
                     let start = pos;
                     let end = pos + sz;
                     let local_count = read_leb(data, &mut pos);
-                    for _ in 0..local_count { let _n = read_leb(data, &mut pos); let _t = data[pos]; pos += 1; }
+                    for _ in 0..local_count {
+                        let _n = read_leb(data, &mut pos);
+                        let _t = data[pos];
+                        pos += 1;
+                    }
                     // Check if it's a simple i64.const 99 return
                     let mut is_99 = false;
                     let saved = pos;
                     if pos < end - 2 {
-                        if data[pos] == 0x42 { // i64.const
+                        if data[pos] == 0x42 {
+                            // i64.const
                             pos += 1;
                             let val = read_leb(data, &mut pos);
                             if val == 99 && pos < end && data[pos] == 0x0b {
                                 is_99 = true;
                                 func_99_idx = Some(fidx);
-                                eprintln!("Found tok-eof (=99) at user func idx {fidx} (wasm idx {})", fidx + 6);
+                                eprintln!(
+                                    "Found tok-eof (=99) at user func idx {fidx} (wasm idx {})",
+                                    fidx + 6
+                                );
                             }
                         }
                     }
@@ -7951,25 +8262,32 @@ fn test_debug_stage3_output_chars() {
     // stage2 が minimal.ls をコンパイルした出力の最初の 200 文字を確認する
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
-        .parent().unwrap().parent().unwrap().parent().unwrap().to_path_buf();
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
     let stage1_wasm = compile_file_only(&main_path);
 
     let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm, Some(&selfhost_root), &["compiler", "src/App/Main.ls"],
-    ).expect("stage1 failed");
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("stage1 failed");
 
     let modules = parse_emitted_wasm_modules(&stage2_output, 1);
     let stage2 = &modules[0];
 
-    let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
+    let fixture_dir =
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
     let minimal_ls = std::fs::read_to_string(fixture_dir.join("minimal.ls"))
         .unwrap_or_else(|_| "(defn main [] 42)".to_string());
 
-    let stage3_result = run_wasm_with_six_imports_compiler_mode(
-        stage2,
-        &minimal_ls,
-        &["compiler", "minimal.ls"],
-    );
+    let stage3_result =
+        run_wasm_with_six_imports_compiler_mode(stage2, &minimal_ls, &["compiler", "minimal.ls"]);
 
     match stage3_result {
         Err(e) => eprintln!("stage3 実行失敗: {}", e),
@@ -7981,17 +8299,21 @@ fn test_debug_stage3_output_chars() {
                 eprintln!("stage3 first line (count?): {}", first);
             }
             // 最初の30個の値を表示
-            let values: Vec<i64> = lines.iter()
+            let values: Vec<i64> = lines
+                .iter()
                 .take(30)
                 .filter_map(|l| l.trim().parse::<i64>().ok())
                 .collect();
             eprintln!("stage3 first 30 values: {:?}", values);
             // 全 i64 値を収集（範囲外を含む）
-            let all_values: Vec<i64> = lines.iter()
+            let all_values: Vec<i64> = lines
+                .iter()
                 .filter_map(|l| l.trim().parse::<i64>().ok())
                 .collect();
             // 有効バイト範囲外の値を探す
-            let out_of_range: Vec<(usize, i64)> = all_values.iter().enumerate()
+            let out_of_range: Vec<(usize, i64)> = all_values
+                .iter()
+                .enumerate()
                 .filter(|&(_, &v)| v < 0 || v > 255)
                 .take(5)
                 .map(|(i, &v)| (i, v))
@@ -8001,15 +8323,24 @@ fn test_debug_stage3_output_chars() {
             if !all_values.is_empty() {
                 let count = all_values[0] as usize;
                 if all_values.len() >= count + 1 {
-                    let bytes: Vec<u8> = all_values[1..=count].iter()
+                    let bytes: Vec<u8> = all_values[1..=count]
+                        .iter()
                         .map(|&v| (v & 0xFF) as u8)
                         .collect();
                     let _ = std::fs::write("stage3_from_debug.wasm", &bytes);
-                    eprintln!("stage3 bytes saved ({} bytes, {} may be truncated)", count, bytes.len());
+                    eprintln!(
+                        "stage3 bytes saved ({} bytes, {} may be truncated)",
+                        count,
+                        bytes.len()
+                    );
                 }
             }
             // 全値を print
-            eprintln!("stage3 all {} values: {:?}", all_values.len(), &all_values[..all_values.len().min(200)]);
+            eprintln!(
+                "stage3 all {} values: {:?}",
+                all_values.len(),
+                &all_values[..all_values.len().min(200)]
+            );
         }
     }
 }

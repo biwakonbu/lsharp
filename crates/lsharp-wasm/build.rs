@@ -1,6 +1,5 @@
 use std::{
-    env,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
 
@@ -33,9 +32,11 @@ fn generate_http_handler_bindings() -> Result<(), Box<dyn std::error::Error>> {
     let (package_id, _) = resolve.push_dir(&staged_root)?;
     let world = resolve.select_world(package_id, Some("lsharp-http-handler"))?;
 
-    let mut opts = Opts::default();
-    opts.rustfmt = false;
-    opts.require_store_data_send = true;
+    let mut opts = Opts {
+        rustfmt: false,
+        require_store_data_send: true,
+        ..Opts::default()
+    };
     opts.with.insert(
         "wasi:cli@0.2.3".to_string(),
         "wasmtime_wasi::bindings::sync::cli".to_string(),
@@ -58,7 +59,10 @@ fn generate_http_handler_bindings() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn stage_wit_workspace(source: &Path, staged_root: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn stage_wit_workspace(
+    source: &Path,
+    staged_root: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
     let file_name = source.file_name().ok_or_else(|| {
         format!(
             "HTTP handler WIT source file 名の取得に失敗しました: {}",
@@ -69,7 +73,12 @@ fn stage_wit_workspace(source: &Path, staged_root: &Path) -> Result<(), Box<dyn 
 
     let deps_dir = source
         .parent()
-        .ok_or_else(|| format!("HTTP handler WIT parent の取得に失敗しました: {}", source.display()))?
+        .ok_or_else(|| {
+            format!(
+                "HTTP handler WIT parent の取得に失敗しました: {}",
+                source.display()
+            )
+        })?
         .join("deps");
     if deps_dir.is_dir() {
         copy_dir_all(&deps_dir, &staged_root.join("deps"))?;

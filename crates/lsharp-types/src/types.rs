@@ -8,7 +8,7 @@ pub type TypeVarId = u32;
 ///
 /// HKT をサポートするための種システム。
 /// `*` は具体型の種、`* -> *` は型コンストラクタの種。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Kind {
     /// 具体型の種 (*)
     Star,
@@ -49,7 +49,7 @@ impl fmt::Display for Kind {
 }
 
 /// 型
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     /// 具体型 (Int, Float, String, Bool, Unit)
     Con(String),
@@ -182,7 +182,7 @@ impl fmt::Display for Type {
 }
 
 /// 型スキーム（多相型）: forall a b . Type
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypeScheme {
     /// 束縛された型変数
     pub vars: Vec<TypeVarId>,
@@ -385,7 +385,7 @@ pub struct RecordInfo {
 }
 
 /// トレイト制約
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TraitConstraint {
     pub trait_name: String,
     pub type_var: TypeVarId,

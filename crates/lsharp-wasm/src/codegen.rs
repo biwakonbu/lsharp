@@ -136,6 +136,12 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     );
     // __fnv1a_hash: (i64) -> (i64) - FNV-1a ハッシュ
     imports.import("env", "__fnv1a_hash", EntityType::Function(alloc_type_idx));
+    // root_push: (i64) -> (i64) - root stack へ push して slot を返す
+    imports.import("env", "root_push", EntityType::Function(alloc_type_idx));
+    // root_pop: () -> (i64) - root stack の末尾値を返しながら pop する
+    imports.import("env", "root_pop", EntityType::Function(read_stdin_type_idx));
+    // root_set: (i64, i64) -> (i64) - 既存 root slot を更新する
+    imports.import("env", "root_set", EntityType::Function(string_concat_type_idx));
     wasm_module.section(&imports);
 
     // === Function Section ===
@@ -161,7 +167,7 @@ pub fn emit_wasm(module: &Module) -> Result<Vec<u8>, CodegenError> {
     exports.export("memory", ExportKind::Memory, 0);
 
     // main 関数とその他の export
-    let import_count: u32 = 14; // print + __alloc + __string_concat + __string_eq + print-string + proc-exit + __int_to_string + read-file + write-file + file-exists? + command-line-args + command-line-arg + read-stdin + __fnv1a_hash
+    let import_count: u32 = 17; // print + __alloc + __string_concat + __string_eq + print-string + proc-exit + __int_to_string + read-file + write-file + file-exists? + command-line-args + command-line-arg + read-stdin + __fnv1a_hash + root_push + root_pop + root_set
     for (i, func) in module.functions.iter().enumerate() {
         if func.is_export {
             exports.export(&func.name, ExportKind::Func, import_count + i as u32);
@@ -347,6 +353,42 @@ mod tests {
             Ok(())
         });
 
+        let root_stack = std::sync::Arc::new(std::sync::Mutex::new(Vec::<i64>::new()));
+
+        let root_push_ty = FuncType::new(&engine, [ValType::I64], [ValType::I64]);
+        let root_push_stack = root_stack.clone();
+        let root_push_func = Func::new(&mut store, root_push_ty, move |_caller, params, results| {
+            let value = params[0].i64().unwrap_or(0);
+            let mut stack = root_push_stack.lock().unwrap();
+            let slot = stack.len() as i64;
+            stack.push(value);
+            results[0] = Val::I64(slot);
+            Ok(())
+        });
+
+        let root_pop_ty = FuncType::new(&engine, [], [ValType::I64]);
+        let root_pop_stack = root_stack.clone();
+        let root_pop_func = Func::new(&mut store, root_pop_ty, move |_caller, _params, results| {
+            let mut stack = root_pop_stack.lock().unwrap();
+            results[0] = Val::I64(stack.pop().unwrap_or(0));
+            Ok(())
+        });
+
+        let root_set_ty = FuncType::new(&engine, [ValType::I64, ValType::I64], [ValType::I64]);
+        let root_set_stack = root_stack.clone();
+        let root_set_func = Func::new(&mut store, root_set_ty, move |_caller, params, results| {
+            let slot = params[0].i64().unwrap_or(0);
+            let value = params[1].i64().unwrap_or(0);
+            let mut stack = root_set_stack.lock().unwrap();
+            if let Some(entry) = stack.get_mut(slot.max(0) as usize) {
+                *entry = value;
+                results[0] = Val::I64(slot.max(0));
+            } else {
+                results[0] = Val::I64(0);
+            }
+            Ok(())
+        });
+
         let instance = Instance::new(
             &mut store,
             &module,
@@ -365,6 +407,9 @@ mod tests {
                 command_line_arg_func.into(),
                 read_stdin_func.into(),
                 fnv1a_hash_func.into(),
+                root_push_func.into(),
+                root_pop_func.into(),
+                root_set_func.into(),
             ],
         )
         .unwrap();

@@ -210,12 +210,14 @@ fn test_e2e_selfhost_typeinfer_pattern_match() {
 (module Main)
 (defn main []
   (let [x 1]
-    (print (match x
-      [1 "one"]
-      [_ "other"]))))
+    (do
+      (print-string (match x
+        [1 "one"]
+        [_ "other"]))
+      0)))
 "#;
     let result = compile_and_run_expanded(source);
-    assert_eq!(result.trim(), "520");
+    assert_eq!(result.trim(), "one");
 }
 
 // === Pipeline Integration Tests (TEST-003) ===
@@ -658,17 +660,12 @@ fn test_e2e_selfhost_module_compile_individual() {
         "MacroExpand",
         "TypeInfer",
     ];
-    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
-
     let mut compiled = Vec::new();
     let mut skipped = Vec::new();
 
     for module in &all_modules {
-        let path = base_dir.join(format!("{}.ls", module));
-        if !path.exists() {
-            skipped.push(format!("{} (ファイル不在)", module));
-            continue;
-        }
+        let filename = format!("{}.ls", module);
+        let path = selfhost_source_path(&filename);
         match try_compile_file_only(&path) {
             Ok(wasm) => {
                 assert_valid_wasm(&wasm);
@@ -706,8 +703,6 @@ fn test_e2e_selfhost_all_modules_deterministic() {
         ("WasmEmit.ls", selfhost_module("WasmEmit.ls")),
         ("TypeScheme.ls", selfhost_module("TypeScheme.ls")),
         ("TypeInferCore.ls", selfhost_module("TypeInferCore.ls")),
-        ("FormatterExpr.ls", selfhost_module("FormatterExpr.ls")),
-        ("FormatterDecl.ls", selfhost_module("FormatterDecl.ls")),
         ("Formatter.ls", selfhost_module("Formatter.ls")),
         ("JsonRpc.ls", selfhost_module("JsonRpc.ls")),
         ("Linter.ls", selfhost_module("Linter.ls")),
@@ -756,8 +751,6 @@ fn test_e2e_bootstrap_stage1_compile_selfhost_sources() {
         "JsonRpc",
         "Linter",
     ];
-    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
-
     // 各セクション ID とサイズを抽出するヘルパー
     fn extract_sections(wasm: &[u8]) -> Vec<(u8, usize)> {
         let mut sections = Vec::new();
@@ -787,7 +780,8 @@ fn test_e2e_bootstrap_stage1_compile_selfhost_sources() {
 
     let mut compiled = 0;
     for module in &modules {
-        let path = base_dir.join(format!("{}.ls", module));
+        let filename = format!("{}.ls", module);
+        let path = selfhost_source_path(&filename);
 
         // 2 回コンパイルしてバイト列一致 + セクション安定性を検証 (import 付きはマルチファイル)
         let wasm1 = compile_file_only(&path);
@@ -825,66 +819,96 @@ fn test_e2e_bootstrap_stage1_compile_selfhost_sources() {
     );
 }
 
-/// selfhost 15ファイル全てに module 宣言が存在することを検証する。
-/// 各ファイルの先頭に (module ModuleName) と (import ...) があることを確認。
+/// selfhost core modules に module 宣言が存在することを検証する。
+/// 各ファイルの先頭に現行の `(module ModuleName)` と `(import ...)` があることを確認。
 /// MacroExpand.ls, TypeInfer.ls は Rust parser 未対応構文のためテキストベースで検証。
 #[test]
 fn test_e2e_selfhost_module_declarations() {
     let expected_modules: &[(&str, &str, &[&str])] = &[
         // (ファイル名, モジュール名, 期待される import 先)
-        ("Token.ls", "Token", &[]),
-        ("IR.ls", "IR", &[]),
-        ("Type.ls", "Type", &[]),
-        ("AST.ls", "AST", &["Token"]),
-        ("TypeScheme.ls", "TypeScheme", &["Type"]),
+        ("Token.ls", "Syntax.Token", &[]),
+        ("IR.ls", "IR.IR", &[]),
+        ("Type.ls", "Types.Type", &[]),
+        ("AST.ls", "Syntax.AST", &["Syntax.Token"]),
+        ("TypeScheme.ls", "Types.TypeScheme", &["Types.Type"]),
         (
             "TypeInferCore.ls",
-            "TypeInferCore",
-            &["AST", "Type", "TypeScheme"],
+            "Types.TypeInferCore",
+            &["Syntax.AST", "Types.Type", "Types.TypeScheme"],
         ),
-        ("Lexer.ls", "Lexer", &["Token"]),
-        ("Parser.ls", "Parser", &["Token", "AST"]),
-        ("MacroExpand.ls", "MacroExpand", &["AST", "Token"]),
-        ("TypeInfer.ls", "TypeInfer", &["AST", "Type", "TypeScheme"]),
-        ("Compiler.ls", "Compiler", &["AST", "IR"]),
-        ("WasmEmit.ls", "WasmEmit", &["IR"]),
-        ("Linter.ls", "Linter", &["AST"]),
-        ("FormatterExpr.ls", "FormatterExpr", &["AST"]),
-        ("FormatterDecl.ls", "FormatterDecl", &["AST"]),
-        ("Formatter.ls", "Formatter", &["AST", "FormatterExpr", "FormatterDecl"]),
-        ("JsonRpc.ls", "JsonRpc", &[]),
-        ("NativeTarget.ls", "NativeTarget", &[]),
-        ("NativeCodegen.ls", "NativeCodegen", &["NativeTarget", "IR"]),
-        ("NativeEmit.ls", "NativeEmit", &["NativeTarget"]),
-        ("Linker.ls", "Linker", &["NativeTarget"]),
+        ("Lexer.ls", "Syntax.Lexer", &["Syntax.Token"]),
+        (
+            "Parser.ls",
+            "Syntax.Parser",
+            &["Syntax.Token", "Syntax.AST", "Syntax.Lexer"],
+        ),
+        ("MacroExpand.ls", "Syntax.MacroExpand", &["Syntax.AST", "Syntax.Token"]),
+        (
+            "TypeInfer.ls",
+            "Types.TypeInfer",
+            &[
+                "Syntax.AST",
+                "Types.Type",
+                "Types.TypeScheme",
+                "Types.TypeInferCore",
+                "Types.TypeInferFunctions",
+                "Types.TypeInferBuiltins",
+            ],
+        ),
+        ("Compiler.ls", "Backend.Wasm.Compiler", &["Syntax.AST", "IR.IR"]),
+        (
+            "WasmEmit.ls",
+            "Backend.Wasm.WasmEmit",
+            &["IR.IR", "Backend.Wasm.WasiBackend"],
+        ),
+        ("Linter.ls", "Tools.Text.Linter", &["Syntax.AST"]),
+        ("FormatterExpr.ls", "Tools.Text.FormatterExpr", &["Syntax.AST"]),
+        (
+            "FormatterDecl.ls",
+            "Tools.Text.FormatterDecl",
+            &["Syntax.AST", "Tools.Text.FormatterExpr"],
+        ),
+        (
+            "Formatter.ls",
+            "Tools.Text.Formatter",
+            &[
+                "Syntax.AST",
+                "Tools.Text.FormatterExpr",
+                "Tools.Text.FormatterDecl",
+            ],
+        ),
+        ("JsonRpc.ls", "Tools.Lsp.JsonRpc", &[]),
+        ("NativeTarget.ls", "Backend.Native.NativeTarget", &[]),
+        (
+            "NativeCodegen.ls",
+            "Backend.Native.NativeCodegen",
+            &["Backend.Native.NativeTarget", "IR.IR"],
+        ),
+        (
+            "NativeEmit.ls",
+            "Backend.Native.NativeEmit",
+            &["Backend.Native.NativeTarget"],
+        ),
+        (
+            "Linker.ls",
+            "Backend.Native.Linker",
+            &["Backend.Native.NativeTarget"],
+        ),
         (
             "Main.ls",
-            "Main",
-            &[
-                "Lexer",
-                "Parser",
-                "MacroExpand",
-                "TypeInfer",
-                "Compiler",
-                "WasmEmit",
-                "NativeTarget",
-                "NativeCodegen",
-                "NativeEmit",
-                "Linker",
-            ],
+            "App.Main",
+            &["App.CompilerMode", "App.PipelineSmoke"],
         ),
     ];
 
     // MacroExpand, TypeInfer は Rust parser 未対応構文があるためパース検証をスキップ
     let parse_skip: &[&str] = &["MacroExpand.ls", "TypeInfer.ls"];
 
-    let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
-
     let mut text_verified = 0;
     let mut parse_verified = 0;
 
     for (filename, expected_module, expected_imports) in expected_modules {
-        let path = base_dir.join(filename);
+        let path = selfhost_source_path(filename);
         assert!(path.exists(), "{} が見つからない", filename);
 
         let source =
@@ -923,9 +947,9 @@ fn test_e2e_selfhost_module_declarations() {
         }
     }
 
-    assert_eq!(text_verified, 20, "全 20 モジュールでテキスト検証すべき");
+    assert_eq!(text_verified, 22, "全 22 モジュールでテキスト検証すべき");
     assert_eq!(
-        parse_verified, 18,
-        "パース可能な 18 モジュールで AST 検証すべき"
+        parse_verified, 20,
+        "パース可能な 20 モジュールで AST 検証すべき"
     );
 }

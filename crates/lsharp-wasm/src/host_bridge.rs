@@ -37,9 +37,9 @@ impl HostCapabilities {
         write_file: impl FnMut(&str, &[u8]) -> Result<(), String> + Send + Sync + 'static,
         read_files: impl FnMut(&[String]) -> Vec<Result<String, String>> + Send + Sync + 'static,
         run_process: impl FnMut(&str, &[String]) -> Result<ProcessResult, String>
-            + Send
-            + Sync
-            + 'static,
+        + Send
+        + Sync
+        + 'static,
     ) -> Self {
         Self {
             read_file: Box::new(read_file),
@@ -89,9 +89,7 @@ where
     T: HostCapabilitiesView,
 {
     bindings::lsharp::core::host_fs::add_to_linker(linker, |state| state.host_capabilities())?;
-    bindings::lsharp::core::host_process::add_to_linker(linker, |state| {
-        state.host_capabilities()
-    })?;
+    bindings::lsharp::core::host_process::add_to_linker(linker, |state| state.host_capabilities())?;
     Ok(())
 }
 
@@ -109,26 +107,20 @@ where
         + Send,
 {
     let http_options = http_handler_bindings::wasi::http::types::LinkOptions::from(options);
-    let wasi_get = annotate_wasi_getter::<T, U, _>(move |state| {
-        wasmtime_wasi::WasiImpl(get(state))
-    });
+    let wasi_get =
+        annotate_wasi_getter::<T, U, _>(move |state| wasmtime_wasi::WasiImpl(get(state)));
 
     http_handler_bindings::wasi::io::poll::add_to_linker_get_host(linker, wasi_get)?;
     http_handler_bindings::wasi::clocks::monotonic_clock::add_to_linker_get_host(linker, wasi_get)?;
     http_handler_bindings::wasi::io::error::add_to_linker_get_host(linker, wasi_get)?;
     http_handler_bindings::wasi::io::streams::add_to_linker_get_host(linker, wasi_get)?;
-    http_handler_bindings::wasi::http::types::add_to_linker_get_host(
-        linker,
-        &http_options,
-        get,
-    )?;
+    http_handler_bindings::wasi::http::types::add_to_linker_get_host(linker, &http_options, get)?;
     http_handler_bindings::wasi::http::outgoing_handler::add_to_linker_get_host(linker, get)?;
     http_handler_bindings::wasi::clocks::wall_clock::add_to_linker_get_host(linker, wasi_get)?;
     http_handler_bindings::wasi::random::random::add_to_linker_get_host(linker, wasi_get)?;
     http_handler_bindings::wasi::cli::stderr::add_to_linker_get_host(linker, wasi_get)?;
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -279,7 +271,8 @@ mod tests {
             entries: Vec<(http_types::FieldName, http_types::FieldValue)>,
         ) -> Result<Resource<http_types::Fields>, http_types::HeaderError> {
             if entries.iter().any(|(name, value)| {
-                !Self::is_valid_token(name) || !Self::is_valid_header_values(std::slice::from_ref(value))
+                !Self::is_valid_token(name)
+                    || !Self::is_valid_header_values(std::slice::from_ref(value))
             }) {
                 return Err(http_types::HeaderError::InvalidSyntax);
             }
@@ -294,7 +287,11 @@ mod tests {
             Vec::new()
         }
 
-        fn has(&mut self, _self_: Resource<http_types::Fields>, _name: http_types::FieldName) -> bool {
+        fn has(
+            &mut self,
+            _self_: Resource<http_types::Fields>,
+            _name: http_types::FieldName,
+        ) -> bool {
             false
         }
 
@@ -367,10 +364,7 @@ mod tests {
             Some(http_types::Scheme::Https)
         }
 
-        fn authority(
-            &mut self,
-            _self_: Resource<http_types::IncomingRequest>,
-        ) -> Option<String> {
+        fn authority(&mut self, _self_: Resource<http_types::IncomingRequest>) -> Option<String> {
             Some("example.test".to_string())
         }
 
@@ -394,7 +388,10 @@ mod tests {
     }
 
     impl http_types::HostOutgoingRequest for SyntheticHttpState {
-        fn new(&mut self, _headers: Resource<http_types::Headers>) -> Resource<http_types::OutgoingRequest> {
+        fn new(
+            &mut self,
+            _headers: Resource<http_types::Headers>,
+        ) -> Resource<http_types::OutgoingRequest> {
             self.fresh_outgoing_request()
         }
 
@@ -465,10 +462,7 @@ mod tests {
             Ok(())
         }
 
-        fn authority(
-            &mut self,
-            _self_: Resource<http_types::OutgoingRequest>,
-        ) -> Option<String> {
+        fn authority(&mut self, _self_: Resource<http_types::OutgoingRequest>) -> Option<String> {
             Some("example.test".to_string())
         }
 
@@ -580,7 +574,10 @@ mod tests {
     }
 
     impl http_types::HostIncomingResponse for SyntheticHttpState {
-        fn status(&mut self, _self_: Resource<http_types::IncomingResponse>) -> http_types::StatusCode {
+        fn status(
+            &mut self,
+            _self_: Resource<http_types::IncomingResponse>,
+        ) -> http_types::StatusCode {
             200
         }
 
@@ -645,7 +642,10 @@ mod tests {
     }
 
     impl http_types::HostOutgoingResponse for SyntheticHttpState {
-        fn new(&mut self, _headers: Resource<http_types::Headers>) -> Resource<http_types::OutgoingResponse> {
+        fn new(
+            &mut self,
+            _headers: Resource<http_types::Headers>,
+        ) -> Resource<http_types::OutgoingResponse> {
             self.outgoing_responses_created += 1;
             self.fresh_outgoing_response()
         }
@@ -789,7 +789,10 @@ mod tests {
                         .lock()
                         .unwrap()
                         .push(format!("read-files:{}", paths.join(",")));
-                    paths.iter().map(|path| Ok(format!("contents:{path}"))).collect()
+                    paths
+                        .iter()
+                        .map(|path| Ok(format!("contents:{path}")))
+                        .collect()
                 },
                 move |command, args| {
                     process_calls
@@ -873,11 +876,9 @@ mod tests {
     fn test_host_capabilities_forward_callbacks() {
         let (mut state, calls) = test_state();
 
-        let read_result = bindings::lsharp::core::host_fs::Host::read_file(
-            &mut state.caps,
-            "foo.ls".to_string(),
-        )
-        .expect("read-file bridge should not fail");
+        let read_result =
+            bindings::lsharp::core::host_fs::Host::read_file(&mut state.caps, "foo.ls".to_string())
+                .expect("read-file bridge should not fail");
         assert_eq!(read_result, "contents:foo.ls".to_string());
 
         bindings::lsharp::core::host_fs::Host::write_file(
@@ -920,7 +921,8 @@ mod tests {
     fn test_link_host_capabilities_registers_interfaces() {
         let engine = wasmtime::Engine::default();
         let mut linker: Linker<TestState> = Linker::new(&engine);
-        link_host_capabilities(&mut linker).expect("host capability linker registration should succeed");
+        link_host_capabilities(&mut linker)
+            .expect("host capability linker registration should succeed");
     }
 
     #[test]
@@ -1013,11 +1015,7 @@ mod tests {
 
         world
             .wasi_http_incoming_handler()
-            .call_handle(
-                &mut store,
-                Resource::new_own(1),
-                Resource::new_own(2),
-            )
+            .call_handle(&mut store, Resource::new_own(1), Resource::new_own(2))
             .expect("guest handle export should complete without trapping");
 
         assert_eq!(

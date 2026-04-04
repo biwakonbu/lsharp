@@ -191,15 +191,18 @@ Wasm の関数インデックスは以下の順序で割り当てられる:
 17             __file_exists     (IR ヘルパー)
 18             __command_line_args (IR ヘルパー)
 19             __fnv1a_hash      (IR ヘルパー)
-──── ここまでヘルパー関数 (user_func_base = 20) ────
-20             ユーザー関数 0
-21             ユーザー関数 1
+20             root_push         (IR ヘルパー)
+21             root_pop          (IR ヘルパー)
+22             root_set          (IR ヘルパー)
+──── ここまでヘルパー関数 (user_func_base = 23) ────
+23             ユーザー関数 0
+24             ユーザー関数 1
 ...
-20+N-1         ユーザー関数 N-1
-20+N           _start            (エントリポイント)
+23+N-1         ユーザー関数 N-1
+23+N           _start            (エントリポイント)
 ```
 
-IR 側では関数インデックスが `IR_IMPORT_COUNT (12)` からの相対値で管理されるため、`emit_instructions_wasi` でユーザー関数のインデックスを Wasm 側の `user_func_base + (ir_idx - IR_IMPORT_COUNT)` にリマップする。
+IR 側では関数インデックスが `IR_IMPORT_COUNT (17)` からの相対値で管理されるため、`emit_instructions_wasi` でユーザー関数のインデックスを Wasm 側の `user_func_base + (ir_idx - IR_IMPORT_COUNT)` にリマップする。
 
 ### セクション生成の順序
 

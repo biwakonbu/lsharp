@@ -2,9 +2,9 @@
 
 ;; GC.ls - L# セルフホスティング: ガベージコレクタ
 ;;
-;; Mark-Sweep GC + 世代別 GC の実装。
-;; ヒープ管理、オブジェクトヘッダ、トレースマップ、ルートセット管理、
-;; メトリクス関数、リーク検出機能を提供する。
+;; 実 workload の allocator はまだ Rust 側 bump allocator が担っているが、
+;; selfhost module 単体では mark-sweep + free-list の最小意味論を持たせる。
+;; fixture 経由で回収 / root 保持 / free-list 再利用を実行確認できる状態にする。
 
 ;; =============================================================================
 ;; オブジェクトヘッダとメタデータ (TASK-GC-01)
@@ -46,83 +46,233 @@
   (vector-push tmap offset))
 
 ;; =============================================================================
+;; 補助ベクタ操作
+;; =============================================================================
+
+(defn vector-set-at [vec idx new-val]
+  (vector-set-at-loop vec (vector-new (vector-length vec)) idx new-val 0 (vector-length vec)))
+
+(defn vector-set-at-loop [vec result idx new-val i len]
+  (if (>= i len)
+    result
+    (vector-set-at-loop
+      vec
+      (vector-push result
+        (if (= i idx)
+          new-val
+          (vector-get vec i)))
+      idx
+      new-val
+      (+ i 1)
+      len)))
+
+(defn vector-remove-at [vec idx]
+  (vector-remove-at-loop vec (vector-new (vector-length vec)) idx 0 (vector-length vec)))
+
+(defn vector-remove-at-loop [vec result idx i len]
+  (if (>= i len)
+    result
+    (vector-remove-at-loop
+      vec
+      (if (= i idx)
+        result
+        (vector-push result (vector-get vec i)))
+      idx
+      (+ i 1)
+      len)))
+
+;; =============================================================================
 ;; ルートセット管理 (TASK-GC-01)
 ;; =============================================================================
 
-;; GC ルートセット: スタック上のポインタを管理する
-;; root-set は [count, ptr0, ptr1, ...] の Vector
+;; GC ルートセット: 到達可能オブジェクトの先頭ポインタ一覧
 (defn make-root-set []
-  (vector-push (vector-new 64) 0))
+  (vector-new 0))
+
+(defn root-set-contains [root-set ptr]
+  (root-set-contains-loop root-set ptr 0 (vector-length root-set)))
+
+(defn root-set-contains-loop [root-set ptr i len]
+  (if (>= i len)
+    0
+    (if (= (vector-get root-set i) ptr)
+      1
+      (root-set-contains-loop root-set ptr (+ i 1) len))))
+
+(defn root-set-remove [root-set ptr]
+  (root-set-remove-loop root-set ptr (vector-new (vector-length root-set)) 0 (vector-length root-set) 0))
+
+(defn root-set-remove-loop [root-set ptr result i len removed]
+  (if (>= i len)
+    result
+    (let [value (vector-get root-set i)
+      drop-now (if (= removed 1)
+        0
+        (if (= value ptr) 1 0))]
+      (root-set-remove-loop
+        root-set
+        ptr
+        (if (= drop-now 1)
+          result
+          (vector-push result value))
+        (+ i 1)
+        len
+        (if (= drop-now 1) 1 removed)))))
 
 ;; add-root: GC ルートにポインタを登録
-(defn add-root [root-set ptr]
-  (let [count (vector-get root-set 0)
-    new-set (vector-push root-set ptr)]
-    new-set))
+(defn add-root [gc-state ptr]
+  (let [root-set-ref (vector-get gc-state 3)
+    root-set (ref-get root-set-ref)]
+    (do
+      (ref-set root-set-ref
+        (if (= (root-set-contains root-set ptr) 1)
+          root-set
+          (vector-push root-set ptr)))
+      ptr)))
 
 ;; remove-root: GC ルートからポインタを解除
-;; (簡易実装: 最後に追加されたルートを無効化)
-(defn remove-root [root-set ptr]
-  root-set)
+(defn remove-root [gc-state ptr]
+  (let [root-set-ref (vector-get gc-state 3)
+    root-set (ref-get root-set-ref)]
+    (do
+      (ref-set root-set-ref (root-set-remove root-set ptr))
+      ptr)))
 
 ;; =============================================================================
 ;; Free-list 管理 (TASK-GC-02)
 ;; =============================================================================
 
-;; FreeList: 空きメモリブロックのリンクリスト
-;; 各エントリは [address, size, next-index] の Vector
+;; FreeList: 空きメモリブロックの配列
+;; 各エントリは [address, size]
+(defn make-free-entry [addr size]
+  (vector-push
+    (vector-push (vector-new 2) addr)
+    size))
+
+(defn free-entry-addr [entry] (vector-get entry 0))
+(defn free-entry-size [entry] (vector-get entry 1))
+
 (defn make-free-list []
-  (vector-new 64))
+  (vector-new 0))
 
 ;; free-list にブロックを追加
 (defn free-list-add [flist addr size]
-  (let [entry (vector-push
-      (vector-push
-        (vector-push (vector-new 3) addr)
-        size)
-      0)]
-    (vector-push flist entry)))
+  (if (> size 0)
+    (vector-push flist (make-free-entry addr size))
+    flist))
+
+(defn free-list-find-index [flist size]
+  (free-list-find-index-loop flist size 0 (vector-length flist)))
+
+(defn free-list-find-index-loop [flist size i len]
+  (if (>= i len)
+    len
+    (let [entry (vector-get flist i)]
+      (if (>= (free-entry-size entry) size)
+        i
+        (free-list-find-index-loop flist size (+ i 1) len)))))
 
 ;; free-list から指定サイズ以上のブロックを検索して割り当て
 (defn free-list-alloc [flist size]
-  ;; 簡易実装: 先頭から first-fit で検索
-  (let [len (vector-length flist)]
-    (if (= len 0)
+  (let [idx (free-list-find-index flist size)
+    len (vector-length flist)]
+    (if (= idx len)
       0
-      (let [entry (vector-get flist 0)
-        block-size (vector-get entry 1)]
-        (if (>= block-size size)
-          (vector-get entry 0)
-          0)))))
+      (free-entry-addr (vector-get flist idx)))))
+
+(defn free-list-take [flist size]
+  (let [idx (free-list-find-index flist size)
+    len (vector-length flist)]
+    (if (= idx len)
+      (vector-push
+        (vector-push (vector-new 2) 0)
+        flist)
+      (let [entry (vector-get flist idx)
+        addr (free-entry-addr entry)
+        block-size (free-entry-size entry)
+        remaining (- block-size size)
+        base-list (vector-remove-at flist idx)
+        next-list (if (> remaining 0)
+          (free-list-add base-list (+ addr size) remaining)
+          base-list)]
+        (vector-push
+          (vector-push (vector-new 2) addr)
+          next-list)))))
 
 ;; =============================================================================
 ;; Mark-Sweep GC (TASK-GC-02)
 ;; =============================================================================
 
-;; GC 状態: [heap-start, heap-end, bump-ptr, root-set, free-list,
-;;           alloc-count, freed-count, collection-count]
-(defn make-gc-state [heap-start heap-size]
+;; 各 live object は [address, size, generation, trace-map-id]
+(defn make-object [addr size generation trace-map-id]
   (vector-push
     (vector-push
       (vector-push
-        (vector-push
-          (vector-push
-            (vector-push
-              (vector-push
-                (vector-push (vector-new 8) heap-start)
-                (+ heap-start heap-size))
-              heap-start)
-            (make-root-set))
-          (make-free-list))
-        0)
-      0)
-    0))
+        (vector-push (vector-new 4) addr)
+        size)
+      generation)
+    trace-map-id))
+
+(defn object-addr [obj] (vector-get obj 0))
+(defn object-size [obj] (vector-get obj 1))
+(defn object-generation [obj] (vector-get obj 2))
+(defn object-trace-map-id [obj] (vector-get obj 3))
+
+(defn object-find-index [objects addr]
+  (object-find-index-loop objects addr 0 (vector-length objects)))
+
+(defn object-find-index-loop [objects addr i len]
+  (if (>= i len)
+    len
+    (if (= (object-addr (vector-get objects i)) addr)
+      i
+      (object-find-index-loop objects addr (+ i 1) len))))
+
+(defn object-exists [objects addr]
+  (let [idx (object-find-index objects addr)
+    len (vector-length objects)]
+    (if (= idx len) 0 1)))
+
+;; GC 状態:
+;; [heap-start, heap-end, bump-ptr-ref, root-set-ref, free-list-ref,
+;;  alloc-count-ref, freed-count-ref, collection-count-ref, objects-ref]
+(defn make-gc-state [heap-start heap-size]
+  (let [v0 (vector-new 9)
+    v1 (vector-push v0 heap-start)
+    v2 (vector-push v1 (+ heap-start heap-size))
+    v3 (vector-push v2 (ref-new heap-start))
+    v4 (vector-push v3 (ref-new (make-root-set)))
+    v5 (vector-push v4 (ref-new (make-free-list)))
+    v6 (vector-push v5 (ref-new 0))
+    v7 (vector-push v6 (ref-new 0))
+    v8 (vector-push v7 (ref-new 0))
+    v9 (vector-push v8 (ref-new (vector-new 0)))]
+    v9))
 
 ;; ヒープから新しいオブジェクトを割り当てる
-(defn alloc [size]
-  ;; bump allocator: 現在の割り当てポインタを進める
-  ;; 戻り値: 割り当てたアドレス (Int)
-  size)
+(defn alloc [gc-state size]
+  (let [free-list-ref (vector-get gc-state 4)
+    objects-ref (vector-get gc-state 8)
+    alloc-count-ref (vector-get gc-state 5)
+    taken (free-list-take (ref-get free-list-ref) size)
+    reused-addr (vector-get taken 0)]
+    (if (> reused-addr 0)
+      (do
+        (ref-set free-list-ref (vector-get taken 1))
+        (ref-set objects-ref (vector-push (ref-get objects-ref) (make-object reused-addr size 0 0)))
+        (ref-set alloc-count-ref (+ (ref-get alloc-count-ref) 1))
+        reused-addr)
+      (let [bump-ptr-ref (vector-get gc-state 2)
+        heap-end (vector-get gc-state 1)
+        ptr (ref-get bump-ptr-ref)
+        next (+ ptr size)]
+        (if (> next heap-end)
+          0
+          (do
+            (ref-set bump-ptr-ref next)
+            (ref-set objects-ref (vector-push (ref-get objects-ref) (make-object ptr size 0 0)))
+            (ref-set alloc-count-ref (+ (ref-get alloc-count-ref) 1))
+            ptr))))))
 
 ;; set-mark: オブジェクトのマークビットを設定する
 (defn set-mark [header]
@@ -154,28 +304,39 @@
       (header-generation header))
     (header-trace-map-id header)))
 
-;; gc-mark: ルートセットから到達可能な全オブジェクトをマークする
-;; mark-phase の実装: ルート集合を起点に深さ優先探索
-(defn gc-mark [root-set heap]
-  (let [count (vector-get root-set 0)
-    marked (ref-new 0)]
-    (do
-      ;; ルートセットの各エントリをマークする
-      (if (> count 0)
-        (do (ref-set marked (+ (ref-get marked) count)) 0)
-        0)
-      (ref-get marked))))
+;; gc-mark: ルートセットから到達可能な全オブジェクト数を返す
+(defn gc-mark [root-set objects]
+  (gc-mark-loop root-set objects 0 (vector-length root-set) 0))
+
+(defn gc-mark-loop [root-set objects i len marked]
+  (if (>= i len)
+    marked
+    (gc-mark-loop
+      root-set
+      objects
+      (+ i 1)
+      len
+      (if (= (object-exists objects (vector-get root-set i)) 1)
+        (+ marked 1)
+        marked))))
 
 ;; sweep: ヒープ全体を走査し、未マークオブジェクトを回収
-(defn sweep [heap heap-size free-list]
-  (let [freed (ref-new 0)
-    offset (ref-new 0)]
-    (do
-      ;; ヒープを走査して未マークオブジェクトを free-list に追加
-      (if (< (ref-get offset) heap-size)
-        (do (ref-set freed (+ (ref-get freed) 1)) 0)
-        0)
-      (ref-get freed))))
+(defn sweep [root-set objects free-list]
+  (sweep-loop root-set objects free-list (vector-new (vector-length objects)) 0 (vector-length objects) 0))
+
+(defn sweep-loop [root-set objects free-list live i len freed]
+  (if (>= i len)
+    (vector-push
+      (vector-push
+        (vector-push (vector-new 3) live)
+        free-list)
+      freed)
+    (let [obj (vector-get objects i)
+      addr (object-addr obj)
+      size (object-size obj)]
+      (if (= (root-set-contains root-set addr) 1)
+        (sweep-loop root-set objects free-list (vector-push live obj) (+ i 1) len freed)
+        (sweep-loop root-set objects (free-list-add free-list addr size) live (+ i 1) len (+ freed 1))))))
 
 ;; =============================================================================
 ;; 世代別 GC (TASK-GC-03)
@@ -207,7 +368,6 @@
 (defn write-barrier [src-header dst-addr remembered-set]
   (let [src-gen (header-generation src-header)]
     (if (> src-gen 0)
-      ;; 旧世代 → 新世代の参照を remembered-set に記録
       (vector-push remembered-set dst-addr)
       remembered-set)))
 
@@ -228,13 +388,8 @@
 ;; minor-gc: nursery のみを対象とした GC
 ;; 生存オブジェクトは旧世代に昇格 (promotion)
 (defn minor-gc [nursery remembered-set old-gen]
-  (let [nursery-start (vector-get nursery 0)
-    nursery-end (vector-get nursery 1)
-    promoted-count (ref-new 0)]
-    (do
-      ;; remembered-set のルートからマーク
-      ;; 生存オブジェクトを promote
-      (ref-get promoted-count))))
+  (let [survivor-count (vector-length remembered-set)]
+    survivor-count))
 
 ;; =============================================================================
 ;; GC トリガーとメトリクス (TASK-GC-04)
@@ -243,24 +398,46 @@
 ;; gc-collect: GC を手動で実行する
 ;; mark-sweep の完全なサイクルを実行
 (defn gc-collect [gc-state]
-  (let [root-set (vector-get gc-state 3)
-    heap-start (vector-get gc-state 0)
-    heap-end (vector-get gc-state 1)
-    heap-size (- heap-end heap-start)
-    flist (vector-get gc-state 4)
-    marked (gc-mark root-set heap-start)
-    freed (sweep heap-start heap-size flist)]
-    freed))
+  (let [root-set-ref (vector-get gc-state 3)
+    free-list-ref (vector-get gc-state 4)
+    freed-count-ref (vector-get gc-state 6)
+    collection-count-ref (vector-get gc-state 7)
+    objects-ref (vector-get gc-state 8)
+    root-set (ref-get root-set-ref)
+    objects (ref-get objects-ref)
+    marked (gc-mark root-set objects)
+    result (sweep root-set objects (ref-get free-list-ref))
+    live-objects (vector-get result 0)
+    next-free-list (vector-get result 1)
+    freed (vector-get result 2)]
+    (do
+      marked
+      (ref-set objects-ref live-objects)
+      (ref-set free-list-ref next-free-list)
+      (ref-set freed-count-ref (+ (ref-get freed-count-ref) freed))
+      (ref-set collection-count-ref (+ (ref-get collection-count-ref) 1))
+      freed)))
 
 ;; collect: gc-collect のエイリアス
 (defn collect [gc-state]
   (gc-collect gc-state))
 
-;; heap-used: 現在のヒープ使用量を返す
+(defn object-bytes [objects]
+  (object-bytes-loop objects 0 (vector-length objects) 0))
+
+(defn object-bytes-loop [objects i len total]
+  (if (>= i len)
+    total
+    (object-bytes-loop
+      objects
+      (+ i 1)
+      len
+      (+ total (object-size (vector-get objects i))))))
+
+;; heap-used: 現在の live object 合計サイズを返す
 (defn heap-used [gc-state]
-  (let [heap-start (vector-get gc-state 0)
-    bump-ptr (vector-get gc-state 2)]
-    (- bump-ptr heap-start)))
+  (let [objects-ref (vector-get gc-state 8)]
+    (object-bytes (ref-get objects-ref))))
 
 ;; =============================================================================
 ;; 統計情報 API (TASK-GC-05)
@@ -273,14 +450,14 @@
     (vector-push
       (vector-push
         (vector-push (vector-new 4)
-          (vector-get gc-state 5))
-        (vector-get gc-state 6))
-      (vector-get gc-state 7))
+          (ref-get (vector-get gc-state 5)))
+        (ref-get (vector-get gc-state 6)))
+      (ref-get (vector-get gc-state 7)))
     (heap-used gc-state)))
 
 ;; total-collections: GC が実行された累計回数
 (defn total-collections [gc-state]
-  (vector-get gc-state 7))
+  (ref-get (vector-get gc-state 7)))
 
 ;; gc-reset: GC 状態をリセットする (REPL セッション間で使用)
 (defn gc-reset [gc-state]
@@ -294,16 +471,14 @@
 
 ;; alloc-count: 累計割り当て回数を返す
 (defn alloc-count [gc-state]
-  (vector-get gc-state 5))
+  (ref-get (vector-get gc-state 5)))
 
 ;; freed-count: 累計解放回数を返す
 (defn freed-count [gc-state]
-  (vector-get gc-state 6))
+  (ref-get (vector-get gc-state 6)))
 
 ;; detect-leak: メモリリークを検出する
 ;; 割り当て数と解放数の差分から未回収オブジェクトを推定
 ;; 戻り値: リーク疑いのオブジェクト数 (0 = リークなし)
 (defn detect-leak [gc-state]
-  (let [allocs (alloc-count gc-state)
-    freed (freed-count gc-state)]
-    (- allocs freed)))
+  (- (alloc-count gc-state) (freed-count gc-state)))

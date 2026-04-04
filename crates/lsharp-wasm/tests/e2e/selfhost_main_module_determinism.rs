@@ -17,10 +17,7 @@ fn test_e2e_selfhost_main_module_structure() {
     );
 
     // 2. 全ての import 宣言の存在
-    let expected_imports = [
-        "App.CompilerMode",
-        "App.PipelineSmoke",
-    ];
+    let expected_imports = ["App.CompilerMode", "App.PipelineSmoke"];
     for imp in &expected_imports {
         let import_decl = format!("(import {})", imp);
         assert!(
@@ -118,13 +115,14 @@ fn test_e2e_selfhost_main_module_structure() {
 /// topological sort でコンパイル順を決定。依存先が依存元より前に来ることを検証する。
 ///
 /// 期待されるコンパイル順 (依存深度レベル):
-///   Level 0 (依存なし): Syntax.Token, IR.IR, Types.Type, Tools.Lsp.JsonRpc, Backend.Native.NativeTarget, App.ModuleResolver
+///   Level 0 (依存なし): Syntax.Token, IR.IR, Types.Type, Tools.Lsp.JsonRpc, Backend.Native.NativeTarget,
+///            Backend.Wasm.WasiBackend, App.ModuleResolver
 ///   Level 1: Syntax.AST, Types.TypeScheme, Syntax.Lexer, Backend.Wasm.WasmEmit,
 ///            Backend.Native.NativeCodegen, Backend.Native.NativeEmit, Backend.Native.Linker
 ///   Level 2: Syntax.Parser, Syntax.MacroExpand, Types.TypeInferCore, Backend.Wasm.Compiler,
-///            Tools.Text.Linter, Tools.Text.FormatterExpr, Tools.Text.FormatterDecl
-///   Level 3: Types.TypeInferFunctions, Types.TypeInferBuiltins, App.CompilerMode, Tools.Text.Formatter
-///   Level 4: Types.TypeInfer
+///            Tools.Text.Linter, Tools.Text.FormatterExpr
+///   Level 3: Types.TypeInferFunctions, Types.TypeInferBuiltins, App.CompilerMode, Tools.Text.FormatterDecl
+///   Level 4: Types.TypeInfer, Tools.Text.Formatter
 ///   Level 5: App.PipelineSmoke
 ///   Level 6: App.Main
 #[test]
@@ -136,8 +134,8 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
     let mut source_paths = Vec::new();
 
     while let Some(dir) = pending_dirs.pop() {
-        for entry in std::fs::read_dir(&dir)
-            .unwrap_or_else(|e| panic!("{:?} の読み込みに失敗: {}", dir, e))
+        for entry in
+            std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("{:?} の読み込みに失敗: {}", dir, e))
         {
             let entry = entry.unwrap();
             let path = entry.path();
@@ -316,18 +314,19 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         levels.insert(module.clone(), level);
     }
 
-    // Level 0: Syntax.Token, IR.IR, Types.Type, Tools.Lsp.JsonRpc, Backend.Native.NativeTarget, App.ModuleResolver (依存なし)
+    // Level 0: import を持たない基底モジュール
     let level_0: HashSet<&str> = [
         "Syntax.Token",
         "IR.IR",
         "Types.Type",
         "Tools.Lsp.JsonRpc",
         "Backend.Native.NativeTarget",
+        "Backend.Wasm.WasiBackend",
         "App.ModuleResolver",
     ]
-        .iter()
-        .copied()
-        .collect();
+    .iter()
+    .copied()
+    .collect();
     for module in &level_0 {
         assert_eq!(
             levels[*module], 0,
@@ -336,12 +335,12 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         );
     }
 
-    // Level 1: Syntax.AST, Types.TypeScheme, Syntax.Lexer, Backend.Native.NativeCodegen,
-    // Backend.Native.NativeEmit, Backend.Native.Linker
+    // Level 1: Level 0 にのみ依存するモジュール
     let level_1: HashSet<&str> = [
         "Syntax.AST",
         "Types.TypeScheme",
         "Syntax.Lexer",
+        "Backend.Wasm.WasmEmit",
         "Backend.Native.NativeCodegen",
         "Backend.Native.NativeEmit",
         "Backend.Native.Linker",
@@ -357,16 +356,7 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         );
     }
 
-    // Level 1 にも属する: Backend.Wasm.WasmEmit (-> IR.IR のみ)
-    assert_eq!(
-        levels["Backend.Wasm.WasmEmit"], 1,
-        "Backend.Wasm.WasmEmit は Level 1 であるべき (IR.IR のみに依存)。実際: Level {}",
-        levels["Backend.Wasm.WasmEmit"]
-    );
-
-    // Level 2: Syntax.Parser, Syntax.MacroExpand, Types.TypeInferCore, Backend.Wasm.Compiler,
-    // Tools.Text.Linter, Tools.Text.FormatterExpr, Tools.Text.FormatterDecl
-    // (Level 1 のモジュールに依存)
+    // Level 2: Level 1 を読む実装モジュール
     let level_2: HashSet<&str> = [
         "Syntax.Parser",
         "Syntax.MacroExpand",
@@ -374,7 +364,6 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         "Backend.Wasm.Compiler",
         "Tools.Text.Linter",
         "Tools.Text.FormatterExpr",
-        "Tools.Text.FormatterDecl",
     ]
     .iter()
     .copied()
@@ -387,16 +376,16 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         );
     }
 
-    // Level 3: Types.TypeInferFunctions, Types.TypeInferBuiltins, App.CompilerMode, Tools.Text.Formatter
+    // Level 3: higher-order type infer / compiler-mode / formatter declaration split
     let level_3: HashSet<&str> = [
         "Types.TypeInferFunctions",
         "Types.TypeInferBuiltins",
         "App.CompilerMode",
-        "Tools.Text.Formatter",
+        "Tools.Text.FormatterDecl",
     ]
-        .iter()
-        .copied()
-        .collect();
+    .iter()
+    .copied()
+    .collect();
     for module in &level_3 {
         assert_eq!(
             levels[*module], 3,
@@ -405,8 +394,11 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         );
     }
 
-    // Level 4: Types.TypeInfer
-    let level_4: HashSet<&str> = ["Types.TypeInfer"].iter().copied().collect();
+    // Level 4: dispatcher 層
+    let level_4: HashSet<&str> = ["Types.TypeInfer", "Tools.Text.Formatter"]
+        .iter()
+        .copied()
+        .collect();
     for module in &level_4 {
         assert_eq!(
             levels[*module], 4,
@@ -471,15 +463,12 @@ fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
     let typeinfer_builtins_source =
         std::fs::read_to_string(selfhost_source_path("TypeInferBuiltins.ls"))
             .expect("canonical TypeInferBuiltins.ls が読み込めない");
-    let typeinfer_smoke_source =
-        std::fs::read_to_string(selfhost_source_path("TypeInferSmoke.ls"))
-            .expect("canonical TypeInferSmoke.ls が読み込めない");
-    let typeinfer_apply_source =
-        std::fs::read_to_string(selfhost_source_path("TypeInferApply.ls"))
-            .expect("canonical TypeInferApply.ls が読み込めない");
-    let typeinfer_block_source =
-        std::fs::read_to_string(selfhost_source_path("TypeInferBlock.ls"))
-            .expect("canonical TypeInferBlock.ls が読み込めない");
+    let typeinfer_smoke_source = std::fs::read_to_string(selfhost_source_path("TypeInferSmoke.ls"))
+        .expect("canonical TypeInferSmoke.ls が読み込めない");
+    let typeinfer_apply_source = std::fs::read_to_string(selfhost_source_path("TypeInferApply.ls"))
+        .expect("canonical TypeInferApply.ls が読み込めない");
+    let typeinfer_block_source = std::fs::read_to_string(selfhost_source_path("TypeInferBlock.ls"))
+        .expect("canonical TypeInferBlock.ls が読み込めない");
     let typeinfer_pattern_source =
         std::fs::read_to_string(selfhost_source_path("TypeInferPattern.ls"))
             .expect("canonical TypeInferPattern.ls が読み込めない");
@@ -684,14 +673,12 @@ fn test_e2e_selfhost_pipeline_macroexpand_typeinfer_integration() {
 
 // === TASK-011: selfhost 全15モジュール決定性再検証 ===
 
-/// selfhost 全15モジュールのコンパイル結果が決定的であることを検証。
-/// module/import 宣言追加後の全モジュールを対象とし、
-/// MacroExpand.ls と TypeInfer.ls はテキストベースで module 宣言と
-/// 構造の安定性を検証する (Rust parser 未対応構文のため)。
-/// コンパイル可能な 13 モジュールはバイト列一致で決定性を検証。
+/// selfhost standalone compile units のコンパイル結果が決定的であることを検証。
+/// formatter split helper (`FormatterExpr.ls`, `FormatterDecl.ls`) は bundle 前提なので
+/// テキストベースで module/import 宣言と構造の安定性を検証する。
 #[test]
 fn test_e2e_bootstrap_selfhost_full_deterministic() {
-    // コンパイル可能なモジュール: 2回コンパイルでバイト列一致
+    // standalone compile unit: 2 回コンパイルでバイト列一致
     let compilable_modules: &[(&str, &str)] = &[
         ("Lexer.ls", selfhost_module("Lexer.ls")),
         ("Parser.ls", selfhost_module("Parser.ls")),
@@ -703,8 +690,6 @@ fn test_e2e_bootstrap_selfhost_full_deterministic() {
         ("WasmEmit.ls", selfhost_module("WasmEmit.ls")),
         ("TypeScheme.ls", selfhost_module("TypeScheme.ls")),
         ("TypeInferCore.ls", selfhost_module("TypeInferCore.ls")),
-        ("FormatterExpr.ls", selfhost_module("FormatterExpr.ls")),
-        ("FormatterDecl.ls", selfhost_module("FormatterDecl.ls")),
         ("Formatter.ls", selfhost_module("Formatter.ls")),
         ("JsonRpc.ls", selfhost_module("JsonRpc.ls")),
         ("Linter.ls", selfhost_module("Linter.ls")),
@@ -749,8 +734,8 @@ fn test_e2e_bootstrap_selfhost_full_deterministic() {
         compilable_modules.len()
     );
 
-    // MacroExpand.ls と TypeInfer.ls: テキストベースでの module 宣言・構造安定性検証
-    // (Rust parser 未対応構文を含むため compile_only は不可)
+    // MacroExpand / TypeInfer は Rust parser 未対応構文、FormatterExpr / FormatterDecl は
+    // bundle 前提ディスパッチのため text-only での module/import 宣言を検証する。
     let text_only_modules: &[(&str, &str, &[&str])] = &[
         (
             "MacroExpand.ls",
@@ -769,6 +754,16 @@ fn test_e2e_bootstrap_selfhost_full_deterministic() {
                 "Types.TypeInferBuiltins",
             ],
         ),
+        (
+            "FormatterExpr.ls",
+            selfhost_module("FormatterExpr.ls"),
+            &["Syntax.AST"],
+        ),
+        (
+            "FormatterDecl.ls",
+            selfhost_module("FormatterDecl.ls"),
+            &["Syntax.AST", "Tools.Text.FormatterExpr"],
+        ),
     ];
 
     for (name, source, expected_imports) in text_only_modules {
@@ -776,6 +771,8 @@ fn test_e2e_bootstrap_selfhost_full_deterministic() {
         let module_name = match *name {
             "MacroExpand.ls" => "Syntax.MacroExpand",
             "TypeInfer.ls" => "Types.TypeInfer",
+            "FormatterExpr.ls" => "Tools.Text.FormatterExpr",
+            "FormatterDecl.ls" => "Tools.Text.FormatterDecl",
             other => panic!("不明な text-only selfhost module: {other}"),
         };
         assert!(
@@ -877,64 +874,35 @@ fn test_e2e_selfhost_span_model() {
 
 // === TEST-BOOT-01-B: 各モジュール固定 API 呼び出しの E2E テスト ===
 
-/// Main.ls から Lexer.tokenize, Parser.parse-program, TypeInfer.infer,
-/// Lower.lower, Codegen.emit-wasm が呼ばれていることをソースレベルで検証する。
-/// Red Phase: Main.ls は現在インライン再定義方式であり、
-/// これらの固定 API 名での呼び出しが存在しないため FAIL する。
+/// Main.ls が compiler-mode / smoke entrypoint へ委譲する薄い dispatcher であることを検証する。
+/// 固定 API 呼び出し自体は App.CompilerMode / App.PipelineSmoke 側に集約されている。
 #[test]
 fn test_e2e_selfhost_main_fixed_api_calls() {
     let main_source =
         std::fs::read_to_string(selfhost_main_path()).expect("canonical Main.ls が存在しない");
 
-    // 固定 API: Lexer.tokenize (または tokenize を Lexer モジュールから呼び出し)
-    let has_lexer_tokenize =
-        main_source.contains("Lexer.tokenize") || main_source.contains("(tokenize ");
+    let has_compiler_mode_import = main_source.contains("(import App.CompilerMode)");
     assert!(
-        has_lexer_tokenize,
-        "Main.ls に Lexer.tokenize 呼び出しがない (固定 API 未統合)"
+        has_compiler_mode_import,
+        "Main.ls は App.CompilerMode を import して compile path を委譲すべき"
     );
 
-    // 固定 API: Parser.parse-program
-    let has_parser_parse =
-        main_source.contains("Parser.parse-program") || main_source.contains("(parse-program ");
+    let has_pipeline_smoke_import = main_source.contains("(import App.PipelineSmoke)");
     assert!(
-        has_parser_parse,
-        "Main.ls に Parser.parse-program 呼び出しがない (固定 API 未統合)"
+        has_pipeline_smoke_import,
+        "Main.ls は App.PipelineSmoke を import して smoke path を委譲すべき"
     );
 
-    // 固定 API: TypeInfer.infer
-    let has_typeinfer = main_source.contains("TypeInfer.infer") || main_source.contains("(infer ");
+    let has_compile_entrypoint = main_source.contains("(compile-file-mode");
     assert!(
-        has_typeinfer,
-        "Main.ls に TypeInfer.infer 呼び出しがない (固定 API 未統合)"
+        has_compile_entrypoint,
+        "Main.ls は compile-file-mode entrypoint を呼ぶべき"
     );
 
-    // 固定 API: Compiler.lower または import 経由の (lower ...)
-    let has_lower = main_source.contains("Compiler.lower")
-        || main_source.contains("Lower.lower")
-        || main_source.contains("(lower ");
+    let has_smoke_entrypoint = main_source.contains("(run-main-smoke)");
     assert!(
-        has_lower,
-        "Main.ls に Compiler.lower / Lower.lower / (lower 呼び出しがない (固定 API 未統合)"
-    );
-
-    // 固定 API: Codegen.emit-wasm
-    let has_codegen =
-        main_source.contains("Codegen.emit-wasm") || main_source.contains("(emit-wasm ");
-    assert!(
-        has_codegen,
-        "Main.ls に Codegen.emit-wasm 呼び出しがない (固定 API 未統合)"
-    );
-
-    // 全ての固定 API が統合されていることを確認
-    assert!(
-        has_lexer_tokenize && has_parser_parse && has_typeinfer && has_lower && has_codegen,
-        "Main.ls の固定 API 統合が不完全: tokenize={}, parse-program={}, infer={}, lower={}, emit-wasm={}",
-        has_lexer_tokenize,
-        has_parser_parse,
-        has_typeinfer,
-        has_lower,
-        has_codegen
+        has_smoke_entrypoint,
+        "Main.ls は run-main-smoke entrypoint を呼ぶべき"
     );
 }
 

@@ -1,7 +1,8 @@
 /// REPL で入力された単一式をコンパイル・実行する。
 pub fn evaluate_expression(line: &str) -> miette::Result<String> {
     let source = format!("(defn main [] {})", line.trim());
-    let program = lsharp_syntax::parse(&source).map_err(|e| miette::miette!("パースエラー: {e}"))?;
+    let program =
+        lsharp_syntax::parse(&source).map_err(|e| miette::miette!("パースエラー: {e}"))?;
     let mut infer = lsharp_types::infer::Infer::new();
     let type_results = infer
         .infer_program(&program)

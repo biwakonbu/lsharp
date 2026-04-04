@@ -3,12 +3,50 @@
 //! MVP ではフラット化された命令列を使用。
 //! 将来的に SSA 形式の BasicBlock ベースに拡張する。
 
+pub mod cache;
 pub mod closure;
 pub mod lower;
 pub mod module_graph;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::sync::Arc;
+
+use module_graph::{FORMATTER_TRIO_DECL, FORMATTER_TRIO_EXPR, FORMATTER_TRIO_MAIN};
+use sha2::{Digest, Sha256};
+
+pub use cache::{CompilationCache, ModuleCacheEntry};
+
+/// SHA-256 ベースのソース fingerprint。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SourceFingerprint([u8; 32]);
+
+impl SourceFingerprint {
+    pub fn from_source(source: &str) -> Self {
+        let mut hasher = Sha256::new();
+        hasher.update(source.as_bytes());
+        let digest = hasher.finalize();
+        Self(digest.into())
+    }
+
+    pub fn from_file(path: &std::path::Path) -> std::io::Result<Self> {
+        let source = std::fs::read_to_string(path)?;
+        Ok(Self::from_source(&source))
+    }
+
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
+
+impl fmt::Display for SourceFingerprint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for byte in &self.0 {
+            write!(f, "{byte:02x}")?;
+        }
+        Ok(())
+    }
+}
 
 /// IR モジュール（コンパイル単位）
 #[derive(Debug, Clone)]
@@ -561,17 +599,11 @@ struct ImportVisibilitySpec {
     only: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Default)]
-struct ModuleTypeSurface {
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ModuleTypeSurface {
     results: Vec<(String, lsharp_types::types::TypeScheme)>,
     hidden: HashSet<String>,
 }
-
-/// FormatterExpr / FormatterDecl / Formatter はバンドル前提の相互再帰参照を含む。
-/// モジュール単位の型検査では `format-expr` 等が未束縛になるため、3 ファイルをまとめて 1 回推論する。
-const FORMATTER_TRIO_EXPR: &str = "Tools.Text.FormatterExpr";
-const FORMATTER_TRIO_DECL: &str = "Tools.Text.FormatterDecl";
-const FORMATTER_TRIO_MAIN: &str = "Tools.Text.Formatter";
 
 fn push_defn_origins_infer_order(
     decls: &[lsharp_syntax::ast::Decl],
@@ -605,8 +637,7 @@ fn try_infer_formatter_trio_batch(
 ) -> Option<HashMap<String, ModuleTypeSurface>> {
     use lsharp_syntax::ast::{Decl, Program};
 
-    let path_map: HashMap<String, std::path::PathBuf> =
-        sorted_files.iter().cloned().collect();
+    let path_map: HashMap<String, std::path::PathBuf> = sorted_files.iter().cloned().collect();
     let p_expr = path_map.get(FORMATTER_TRIO_EXPR)?;
     let p_decl = path_map.get(FORMATTER_TRIO_DECL)?;
     let p_fmt = path_map.get(FORMATTER_TRIO_MAIN)?;
@@ -631,7 +662,12 @@ fn try_infer_formatter_trio_batch(
                 }
                 Decl::ModuleDecl { .. } => {}
                 _ => {
-                    push_defn_origins_infer_order(std::slice::from_ref(&decl), mod_name, None, &mut defn_origins);
+                    push_defn_origins_infer_order(
+                        std::slice::from_ref(&decl),
+                        mod_name,
+                        None,
+                        &mut defn_origins,
+                    );
                     merged_decls.push(decl);
                 }
             }
@@ -694,6 +730,191 @@ fn collect_import_visibility(
         }
     }
     imports
+}
+
+fn collect_import_modules(program: &lsharp_syntax::ast::Program) -> Vec<String> {
+    let mut imports = Vec::new();
+    let mut seen = HashSet::new();
+    for decl in &program.decls {
+        if let lsharp_syntax::ast::Decl::ImportDecl { module, .. } = decl
+            && seen.insert(module.clone())
+        {
+            imports.push(module.clone());
+        }
+    }
+    imports
+}
+
+fn parse_program_for_incremental(
+    source: &str,
+) -> Result<lsharp_syntax::ast::Program, lsharp_syntax::ParseAllError> {
+    #[cfg(test)]
+    {
+        INCREMENTAL_PARSE_TRACKING_ENABLED.with(|enabled| {
+            if enabled.get() {
+                INCREMENTAL_PARSE_COUNT.with(|count| count.set(count.get() + 1));
+            }
+        });
+    }
+    lsharp_syntax::parse(source)
+}
+
+fn cached_program_or_parse(
+    mod_name: &str,
+    source: &str,
+    fingerprint: SourceFingerprint,
+    cache: &CompilationCache,
+) -> Result<Arc<lsharp_syntax::ast::Program>, lsharp_syntax::ParseAllError> {
+    if let Some(entry) = cache.get(mod_name)
+        && entry.fingerprint() == fingerprint
+    {
+        return Ok(entry.ast_arc());
+    }
+    parse_program_for_incremental(source).map(Arc::new)
+}
+
+fn note_incremental_type_infer() {
+    #[cfg(test)]
+    {
+        INCREMENTAL_TYPE_INFER_TRACKING_ENABLED.with(|enabled| {
+            if enabled.get() {
+                INCREMENTAL_TYPE_INFER_COUNT.with(|count| count.set(count.get() + 1));
+            }
+        });
+    }
+}
+
+fn note_incremental_lower() {
+    #[cfg(test)]
+    {
+        INCREMENTAL_LOWER_TRACKING_ENABLED.with(|enabled| {
+            if enabled.get() {
+                INCREMENTAL_LOWER_COUNT.with(|count| count.set(count.get() + 1));
+            }
+        });
+    }
+}
+
+fn build_module_cache_entry(
+    fingerprint: SourceFingerprint,
+    program: &Arc<lsharp_syntax::ast::Program>,
+    type_surface: ModuleTypeSurface,
+) -> ModuleCacheEntry {
+    ModuleCacheEntry::new(
+        fingerprint,
+        Arc::clone(program),
+        type_surface,
+        Module {
+            functions: Vec::new(),
+            gc_types: Vec::new(),
+            imports: Vec::new(),
+            globals: Vec::new(),
+            string_data: Vec::new(),
+        },
+        collect_import_modules(program.as_ref()),
+    )
+}
+
+#[cfg(test)]
+thread_local! {
+    static INCREMENTAL_PARSE_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static INCREMENTAL_PARSE_TRACKING_ENABLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+struct IncrementalParseTracker;
+
+#[cfg(test)]
+impl IncrementalParseTracker {
+    fn new() -> Self {
+        INCREMENTAL_PARSE_TRACKING_ENABLED.with(|enabled| enabled.set(true));
+        INCREMENTAL_PARSE_COUNT.with(|count| count.set(0));
+        Self
+    }
+
+    fn reset(&self) {
+        INCREMENTAL_PARSE_COUNT.with(|count| count.set(0));
+    }
+
+    fn count(&self) -> usize {
+        INCREMENTAL_PARSE_COUNT.with(|count| count.get())
+    }
+}
+
+#[cfg(test)]
+impl Drop for IncrementalParseTracker {
+    fn drop(&mut self) {
+        INCREMENTAL_PARSE_TRACKING_ENABLED.with(|enabled| enabled.set(false));
+        INCREMENTAL_PARSE_COUNT.with(|count| count.set(0));
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    static INCREMENTAL_TYPE_INFER_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static INCREMENTAL_TYPE_INFER_TRACKING_ENABLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+struct IncrementalTypeInferTracker;
+
+#[cfg(test)]
+impl IncrementalTypeInferTracker {
+    fn new() -> Self {
+        INCREMENTAL_TYPE_INFER_TRACKING_ENABLED.with(|enabled| enabled.set(true));
+        INCREMENTAL_TYPE_INFER_COUNT.with(|count| count.set(0));
+        Self
+    }
+
+    fn reset(&self) {
+        INCREMENTAL_TYPE_INFER_COUNT.with(|count| count.set(0));
+    }
+
+    fn count(&self) -> usize {
+        INCREMENTAL_TYPE_INFER_COUNT.with(|count| count.get())
+    }
+}
+
+#[cfg(test)]
+impl Drop for IncrementalTypeInferTracker {
+    fn drop(&mut self) {
+        INCREMENTAL_TYPE_INFER_TRACKING_ENABLED.with(|enabled| enabled.set(false));
+        INCREMENTAL_TYPE_INFER_COUNT.with(|count| count.set(0));
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    static INCREMENTAL_LOWER_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static INCREMENTAL_LOWER_TRACKING_ENABLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+struct IncrementalLowerTracker;
+
+#[cfg(test)]
+impl IncrementalLowerTracker {
+    fn new() -> Self {
+        INCREMENTAL_LOWER_TRACKING_ENABLED.with(|enabled| enabled.set(true));
+        INCREMENTAL_LOWER_COUNT.with(|count| count.set(0));
+        Self
+    }
+
+    fn reset(&self) {
+        INCREMENTAL_LOWER_COUNT.with(|count| count.set(0));
+    }
+
+    fn count(&self) -> usize {
+        INCREMENTAL_LOWER_COUNT.with(|count| count.get())
+    }
+}
+
+#[cfg(test)]
+impl Drop for IncrementalLowerTracker {
+    fn drop(&mut self) {
+        INCREMENTAL_LOWER_TRACKING_ENABLED.with(|enabled| enabled.set(false));
+        INCREMENTAL_LOWER_COUNT.with(|count| count.set(0));
+    }
 }
 
 pub fn compile_multi_file(entry_file: &std::path::Path) -> Result<Module, String> {
@@ -795,6 +1016,197 @@ pub fn compile_multi_file(entry_file: &std::path::Path) -> Result<Module, String
     lower_ctx
         .lower_program(&merged_program, &all_type_results)
         .map_err(|e| format!("IR 変換エラー: {e}"))
+}
+
+pub fn compile_multi_file_incremental(
+    entry_file: &std::path::Path,
+    cache: &mut CompilationCache,
+) -> Result<Module, String> {
+    use module_graph::ModuleGraph;
+
+    let (graph, sorted_files) = ModuleGraph::build_from_entry(entry_file)
+        .map_err(|e| format!("モジュールグラフ構築エラー: {e}"))?;
+
+    if sorted_files.is_empty() {
+        return Err("コンパイル対象のファイルがありません".to_string());
+    }
+
+    if sorted_files.len() == 1 {
+        let (mod_name, mod_path) = &sorted_files[0];
+        let source = std::fs::read_to_string(mod_path)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        let fingerprint = SourceFingerprint::from_source(&source);
+        let clean_hit = cache
+            .get(mod_name)
+            .is_some_and(|entry| entry.fingerprint() == fingerprint);
+        if clean_hit {
+            return Ok(
+                cache
+                    .get(mod_name)
+                    .expect("clean hit should have cache entry")
+                    .ir()
+                    .clone(),
+            );
+        }
+        let program = cached_program_or_parse(mod_name, &source, fingerprint, cache)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        let type_surface = if clean_hit {
+            cache
+                .get(mod_name)
+                .expect("clean hit should have cache entry")
+                .type_surface_clone()
+        } else {
+            let mut infer = lsharp_types::infer::Infer::new();
+            note_incremental_type_infer();
+            let type_results = infer
+                .infer_program(program.as_ref())
+                .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+            ModuleTypeSurface {
+                results: type_results,
+                hidden: infer.module_env.privates.iter().cloned().collect(),
+            }
+        };
+        let mut lower_ctx = lower::Lower::new();
+        note_incremental_lower();
+        let module = lower_ctx
+            .lower_program(program.as_ref(), &type_surface.results)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        let mut entry = build_module_cache_entry(fingerprint, &program, type_surface);
+        entry.set_ir(module.clone());
+        cache.insert_module(mod_name.clone(), entry);
+        return Ok(module);
+    }
+
+    let mut module_inputs = Vec::new();
+    let mut changed_modules = Vec::new();
+    for (mod_name, mod_path) in &sorted_files {
+        let source = std::fs::read_to_string(mod_path)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        let fingerprint = SourceFingerprint::from_source(&source);
+        let clean_hit = cache
+            .get(mod_name)
+            .is_some_and(|entry| entry.fingerprint() == fingerprint);
+        if !clean_hit {
+            changed_modules.push(mod_name.clone());
+        }
+        module_inputs.push((mod_name.clone(), mod_path.clone(), source, fingerprint));
+    }
+    let formatter_trio_dirty = changed_modules.iter().any(|module| {
+        matches!(
+            module.as_str(),
+            FORMATTER_TRIO_EXPR | FORMATTER_TRIO_DECL | FORMATTER_TRIO_MAIN
+        )
+    });
+    if changed_modules.is_empty() {
+        let first_clean_entry = module_inputs
+            .first()
+            .and_then(|(mod_name, _, _, _)| cache.get(mod_name).map(|entry| entry.ir().clone()))
+            .expect("all clean hits should have cache entries");
+        return Ok(first_clean_entry);
+    }
+    let mut formatter_trio_batch = if formatter_trio_dirty {
+        try_infer_formatter_trio_batch(&sorted_files)
+    } else {
+        None
+    };
+    let mut all_decls: Vec<lsharp_syntax::ast::Decl> = Vec::new();
+    let mut all_type_results: Vec<(String, lsharp_types::types::TypeScheme)> = Vec::new();
+    let mut per_module_type_results: HashMap<String, ModuleTypeSurface> = HashMap::new();
+    let mut cache_entries: Vec<(String, ModuleCacheEntry)> = Vec::new();
+    let mut surface_changed_modules: HashSet<String> = HashSet::new();
+
+    for (mod_name, mod_path, source, fingerprint) in module_inputs {
+        let clean_hit = cache
+            .get(&mod_name)
+            .is_some_and(|entry| entry.fingerprint() == fingerprint);
+        let program = cached_program_or_parse(&mod_name, &source, fingerprint, cache)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        let direct_imports = collect_import_visibility(program.as_ref());
+
+        let is_formatter_module = matches!(
+            mod_name.as_str(),
+            FORMATTER_TRIO_EXPR | FORMATTER_TRIO_DECL | FORMATTER_TRIO_MAIN
+        );
+        let direct_dep_surface_changed = direct_imports
+            .keys()
+            .any(|dep_name| surface_changed_modules.contains(dep_name));
+        let formatter_trio_needs_batch = is_formatter_module
+            && (formatter_trio_dirty || direct_dep_surface_changed || !clean_hit);
+        if formatter_trio_needs_batch && formatter_trio_batch.is_none() {
+            formatter_trio_batch = try_infer_formatter_trio_batch(&sorted_files);
+        }
+
+        let type_surface = if clean_hit
+            && !direct_dep_surface_changed
+            && (!is_formatter_module || !formatter_trio_dirty)
+        {
+            cache
+                .get(&mod_name)
+                .expect("clean hit should have cache entry")
+                .type_surface_clone()
+        } else if formatter_trio_needs_batch
+            && let Some(ref batch) = formatter_trio_batch
+            && let Some(surface) = batch.get(&mod_name)
+        {
+            surface.clone()
+        } else {
+            let mut infer = lsharp_types::infer::Infer::new();
+            for dep_name in graph.dependency_closure(&mod_name) {
+                if let Some(import_spec) = direct_imports.get(&dep_name)
+                    && let Some(dep_surface) = per_module_type_results.get(&dep_name)
+                {
+                    infer.inject_external_types_for_import(
+                        &dep_name,
+                        import_spec.only.as_deref(),
+                        &dep_surface.hidden,
+                        &dep_surface.results,
+                    );
+                }
+            }
+            note_incremental_type_infer();
+            let type_results = infer
+                .infer_program(program.as_ref())
+                .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+            ModuleTypeSurface {
+                results: type_results,
+                hidden: infer.module_env.privates.iter().cloned().collect(),
+            }
+        };
+        let surface_changed = cache
+            .get(&mod_name)
+            .map(|entry| entry.type_surface_clone() != type_surface)
+            .unwrap_or(true);
+        if surface_changed {
+            surface_changed_modules.insert(mod_name.clone());
+        }
+
+        all_type_results.extend(type_surface.results.clone());
+        for decl in &program.decls {
+            match decl {
+                lsharp_syntax::ast::Decl::ModuleDecl { .. }
+                | lsharp_syntax::ast::Decl::ImportDecl { .. } => {}
+                _ => all_decls.push(decl.clone()),
+            }
+        }
+
+        let entry = build_module_cache_entry(fingerprint, &program, type_surface.clone());
+        cache_entries.push((mod_name.clone(), entry));
+        per_module_type_results.insert(mod_name.clone(), type_surface);
+    }
+
+    let merged_program = lsharp_syntax::ast::Program { decls: all_decls };
+    let mut lower_ctx = lower::Lower::new();
+    note_incremental_lower();
+    let final_module = lower_ctx
+        .lower_program(&merged_program, &all_type_results)
+        .map_err(|e| format!("IR 変換エラー: {e}"))?;
+
+    for (mod_name, mut entry) in cache_entries {
+        entry.set_ir(final_module.clone());
+        cache.insert_module(mod_name, entry);
+    }
+
+    Ok(final_module)
 }
 
 #[cfg(test)]
@@ -1135,6 +1547,356 @@ mod multifile_compile_tests {
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod fingerprint_tests {
+    use super::*;
+
+    #[test]
+    fn test_source_fingerprint_identical_content() {
+        let left = SourceFingerprint::from_source("(defn answer [] 42)\n");
+        let right = SourceFingerprint::from_source("(defn answer [] 42)\n");
+
+        assert_eq!(left, right, "同一ソースは同一 fingerprint になるべき");
+    }
+
+    #[test]
+    fn test_source_fingerprint_one_char_change() {
+        let left = SourceFingerprint::from_source("(defn answer [] 42)\n");
+        let right = SourceFingerprint::from_source("(defn answer [] 43)\n");
+
+        assert_ne!(
+            left, right,
+            "1 文字でも変更されたソースは別 fingerprint になるべき"
+        );
+    }
+
+    #[test]
+    fn test_source_fingerprint_empty_source() {
+        let empty = SourceFingerprint::from_source("");
+        let also_empty = SourceFingerprint::from_source("");
+        let whitespace = SourceFingerprint::from_source(" ");
+
+        assert_eq!(empty, also_empty, "空ソースは決定的に fingerprint できるべき");
+        assert_ne!(
+            empty, whitespace,
+            "空ソースと空白 1 文字は別 fingerprint になるべき"
+        );
+    }
+}
+
+#[cfg(test)]
+mod incremental_compile_tests {
+    use super::*;
+
+    #[test]
+    fn test_compile_multi_file_incremental_empty_cache_matches_full_compile() {
+        let dir = std::env::temp_dir().join("lsharp_compile_multi_file_incremental_empty_cache");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let lib_source = "(module Lib)\n(defn helper [] 7)\n";
+        let main_source = "(module Main)\n(import Lib)\n(defn main [] (+ (helper) 1))\n";
+        std::fs::write(dir.join("Lib.ls"), lib_source).unwrap();
+        std::fs::write(dir.join("Main.ls"), main_source).unwrap();
+
+        let full = compile_multi_file(&dir.join("Main.ls")).unwrap();
+        let mut cache = CompilationCache::new();
+        let incremental = compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+        let main_entry = cache.get("Main").expect("Main module should be cached");
+
+        assert_eq!(
+            full.dump(),
+            incremental.dump(),
+            "空キャッシュ初回コンパイルは既存のフルコンパイルと同一結果になるべき"
+        );
+        assert_eq!(
+            cache.len(),
+            2,
+            "初回 incremental compile は通過したモジュールを cache に記録するべき"
+        );
+        assert!(
+            main_entry.type_result_len() > 0,
+            "cache entry は型サーフェスも保持するべき"
+        );
+        assert_eq!(
+            main_entry.fingerprint(),
+            SourceFingerprint::from_source(main_source),
+            "cache entry は読み込んだソースの fingerprint を保持するべき"
+        );
+        assert_eq!(
+            main_entry.imports(),
+            ["Lib"],
+            "cache entry は direct import module 名を保持するべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_incremental_skips_parse_on_cache_hit() {
+        let dir = std::env::temp_dir().join("lsharp_compile_multi_file_incremental_parse_cache_hit");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let lib_source = "(module Lib)\n(defn helper [] 7)\n";
+        let main_source = "(module Main)\n(import Lib)\n(defn main [] (+ (helper) 1))\n";
+        std::fs::write(dir.join("Lib.ls"), lib_source).unwrap();
+        std::fs::write(dir.join("Main.ls"), main_source).unwrap();
+
+        let mut cache = CompilationCache::new();
+        let tracker = IncrementalParseTracker::new();
+        tracker.reset();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+
+        tracker.reset();
+        cached_program_or_parse("Lib", lib_source, SourceFingerprint::from_source(lib_source), &cache)
+            .unwrap();
+        cached_program_or_parse(
+            "Main",
+            main_source,
+            SourceFingerprint::from_source(main_source),
+            &cache,
+        )
+        .unwrap();
+        assert_eq!(
+            tracker.count(),
+            0,
+            "事前確認として cache helper 単体では両モジュールとも hit するべき"
+        );
+
+        tracker.reset();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+
+        assert_eq!(
+            tracker.count(),
+            0,
+            "fingerprint が不変な再コンパイルでは AST cache hit により parse をスキップするべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_incremental_reparses_only_changed_module() {
+        let dir =
+            std::env::temp_dir().join("lsharp_compile_multi_file_incremental_parse_single_change");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(dir.join("Lib.ls"), "(module Lib)\n(defn helper [] 7)\n").unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Lib)\n(defn main [] (+ (helper) 1))\n",
+        )
+        .unwrap();
+
+        let mut cache = CompilationCache::new();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Lib)\n(defn main [] (+ (helper) 2))\n",
+        )
+        .unwrap();
+
+        let tracker = IncrementalParseTracker::new();
+        tracker.reset();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+
+        assert_eq!(
+            tracker.count(),
+            1,
+            "1 モジュールだけ fingerprint が変わった場合はその AST だけ再パースするべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_incremental_reuses_cached_ast_arc_on_cache_hit() {
+        let dir = std::env::temp_dir().join("lsharp_compile_multi_file_incremental_ast_arc_hit");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let main_source = "(module Main)\n(defn main [] 1)\n";
+        std::fs::write(dir.join("Main.ls"), main_source).unwrap();
+
+        let mut cache = CompilationCache::new();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+
+        let cached = cache
+            .get("Main")
+            .expect("Main module should be cached")
+            .ast_arc();
+        let reused = cached_program_or_parse(
+            "Main",
+            main_source,
+            SourceFingerprint::from_source(main_source),
+            &cache,
+        )
+        .unwrap();
+
+        assert!(
+            std::sync::Arc::ptr_eq(&cached, &reused),
+            "AST cache hit では同じ Arc<Program> を再利用するべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_incremental_skips_type_inference_on_clean_cache_hit() {
+        let dir = std::env::temp_dir().join("lsharp_compile_multi_file_incremental_infer_cache_hit");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(dir.join("Lib.ls"), "(module Lib)\n(defn helper [] 7)\n").unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Lib)\n(defn main [] (+ (helper) 1))\n",
+        )
+        .unwrap();
+
+        let mut cache = CompilationCache::new();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+
+        let tracker = IncrementalTypeInferTracker::new();
+        tracker.reset();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+
+        assert_eq!(
+            tracker.count(),
+            0,
+            "dirty set が空なら cached ModuleTypeSurface を再利用して型推論をスキップするべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_incremental_skips_ir_generation_on_clean_cache_hit() {
+        let dir = std::env::temp_dir().join("lsharp_compile_multi_file_incremental_ir_cache_hit");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(dir.join("Lib.ls"), "(module Lib)\n(defn helper [] 7)\n").unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Lib)\n(defn main [] (+ (helper) 1))\n",
+        )
+        .unwrap();
+
+        let mut cache = CompilationCache::new();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+
+        let tracker = IncrementalLowerTracker::new();
+        tracker.reset();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+
+        assert_eq!(
+            tracker.count(),
+            0,
+            "dirty set が空なら cached IR を再利用して lowering をスキップするべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_incremental_skips_dependent_reinfer_when_surface_unchanged() {
+        let dir =
+            std::env::temp_dir().join("lsharp_compile_multi_file_incremental_infer_impl_change");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(dir.join("Lib.ls"), "(module Lib)\n(defn helper [] 7)\n").unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Lib)\n(defn main [] (+ (helper) 1))\n",
+        )
+        .unwrap();
+
+        let mut cache = CompilationCache::new();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+        std::fs::write(dir.join("Lib.ls"), "(module Lib)\n(defn helper [] 8)\n").unwrap();
+
+        let tracker = IncrementalTypeInferTracker::new();
+        tracker.reset();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+
+        assert_eq!(
+            tracker.count(),
+            1,
+            "依存先の実装変更で型サーフェスが不変なら dependency のみ再型推論し、dependent は再利用するべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_incremental_reinfers_on_dependency_signature_change() {
+        let dir =
+            std::env::temp_dir().join("lsharp_compile_multi_file_incremental_infer_sig_change");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(dir.join("Lib.ls"), "(module Lib)\n(defn helper [] 7)\n").unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Lib)\n(defn main [] (+ (helper) 1))\n",
+        )
+        .unwrap();
+
+        let mut cache = CompilationCache::new();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+        std::fs::write(dir.join("Lib.ls"), "(module Lib)\n(defn helper [] true)\n").unwrap();
+
+        let tracker = IncrementalTypeInferTracker::new();
+        tracker.reset();
+        let result = compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache);
+
+        assert!(result.is_err(), "依存先シグネチャ変更で不整合になれば compile は失敗するべき");
+        assert_eq!(
+            tracker.count(),
+            2,
+            "依存先シグネチャ変更では dependency + dependent を再型推論するべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_incremental_clean_formatter_trio_cache_hit_succeeds() {
+        let cli_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../selfhost/src/App/Cli.ls");
+        let mut cache = CompilationCache::new();
+
+        compile_multi_file_incremental(&cli_path, &mut cache)
+            .expect("first incremental compile of selfhost Cli.ls should succeed");
+        let second = compile_multi_file_incremental(&cli_path, &mut cache);
+
+        assert!(
+            second.is_ok(),
+            "clean rebuild with formatter trio cache should not fail: {second:?}"
+        );
     }
 }
 

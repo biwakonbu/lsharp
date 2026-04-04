@@ -915,6 +915,27 @@ impl Infer {
             TypeScheme::mono(Type::Fun(vec![], Box::new(Type::string()))),
         );
 
+        // root_push: Int -> Int (GC 未導入段階では no-op 互換の root slot handle)
+        env.insert(
+            "root_push".to_string(),
+            TypeScheme::mono(Type::Fun(vec![Type::int()], Box::new(Type::int()))),
+        );
+
+        // root_pop: () -> Int (GC 未導入段階では no-op 互換)
+        env.insert(
+            "root_pop".to_string(),
+            TypeScheme::mono(Type::Fun(vec![], Box::new(Type::int()))),
+        );
+
+        // root_set: (Int, Int) -> Int (GC 未導入段階では no-op 互換)
+        env.insert(
+            "root_set".to_string(),
+            TypeScheme::mono(Type::Fun(
+                vec![Type::int(), Type::int()],
+                Box::new(Type::int()),
+            )),
+        );
+
         // not: Bool -> Bool
         env.insert(
             "not".to_string(),
@@ -3318,7 +3339,6 @@ mod mutual_recursion_tests {
         assert_eq!(odd_scheme.to_string(), "(Int) -> Bool");
     }
 
-    #[test]
     #[test]
     fn test_mutual_recursion_three_functions() {
         // 3関数の循環再帰: 型推論がエラーにならないことを検証

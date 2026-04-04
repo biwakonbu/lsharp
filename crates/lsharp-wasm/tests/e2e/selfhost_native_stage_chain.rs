@@ -276,9 +276,9 @@ fn test_e2e_stage1_native_two_run_determinism() {
 
     // native 関連行 (32以降) を個別確認: darwin native_len, linux native_len, aarch64 native_len
     let parse_line = |lines: &[&str], i: usize| -> i64 {
-        lines[i].parse::<i64>().unwrap_or_else(|_| {
-            panic!("行 {i} が数値でない: {:?}", lines[i])
-        })
+        lines[i]
+            .parse::<i64>()
+            .unwrap_or_else(|_| panic!("行 {i} が数値でない: {:?}", lines[i]))
     };
     let darwin_native_len_r1 = parse_line(&lines1, 32);
     let linux_native_len_r1 = parse_line(&lines1, 39);
@@ -324,7 +324,13 @@ fn run_native_pipeline_harness(entry_source: &str) -> String {
     std::fs::create_dir_all(&dir).expect("native stage-chain fixture dir 作成失敗");
 
     let result = (|| {
-        for name in ["IR.ls", "NativeTarget.ls", "NativeCodegen.ls", "NativeEmit.ls", "Linker.ls"] {
+        for name in [
+            "IR.ls",
+            "NativeTarget.ls",
+            "NativeCodegen.ls",
+            "NativeEmit.ls",
+            "Linker.ls",
+        ] {
             let path = dir.join(selfhost_fixture_module_relative_path(name));
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent).expect("native stage-chain parent dir 作成失敗");
@@ -465,8 +471,8 @@ fn test_e2e_native_host_binary_link_and_execute() {
     );
 
     // ホスト (aarch64-apple-darwin) でリンク・実行して exit code 42 を確認
-    let exit_code = link_and_run_native_host_binary(&code_bytes)
-        .expect("host binary リンク・実行に失敗");
+    let exit_code =
+        link_and_run_native_host_binary(&code_bytes).expect("host binary リンク・実行に失敗");
 
     assert_eq!(
         exit_code,
@@ -578,7 +584,11 @@ fn test_e2e_zero_diff_const_42() {
 #[test]
 fn test_e2e_zero_diff_const_100() {
     let wasm_output = compile_and_run("(defn main [] (do (print 100) 0))");
-    assert_eq!(wasm_output.trim(), "100", "Wasm: const 100 を print すること");
+    assert_eq!(
+        wasm_output.trim(),
+        "100",
+        "Wasm: const 100 を print すること"
+    );
 
     let exit_code = native_exit_code_for_const(100);
     assert_eq!(exit_code, 100, "Native: const 100 → exit code 100");
@@ -601,10 +611,7 @@ fn test_e2e_zero_diff_sample_summary() {
     let mut failed_cases: Vec<String> = Vec::new();
 
     for &(n, expected_str) in samples {
-        let wasm_output = compile_and_run(&format!(
-            "(defn main [] (do (print {n}) 0))",
-            n = n
-        ));
+        let wasm_output = compile_and_run(&format!("(defn main [] (do (print {n}) 0))", n = n));
         let wasm_ok = wasm_output.trim() == expected_str;
 
         let exit_code = native_exit_code_for_const(n);

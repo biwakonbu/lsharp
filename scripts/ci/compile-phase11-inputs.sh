@@ -6,6 +6,7 @@ ROOT_DIR=$(cd "$(dirname "$0")/../.." && pwd)
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/target/ci/phase11-compile}"
 LSHARP_BIN="${LSHARP_BIN:-$ROOT_DIR/target/debug/lsharp}"
 RUN_BOOTSTRAP_FIXED_POINT="${RUN_BOOTSTRAP_FIXED_POINT:-0}"
+RUN_INCREMENTAL_COMPARE="${RUN_INCREMENTAL_COMPARE:-0}"
 BOOTSTRAP_DIFF_ARTIFACT_ID="${BOOTSTRAP_DIFF_ARTIFACT_ID:-${GITHUB_SHA:-local}}"
 
 SELFHOST_MODULES=(
@@ -139,7 +140,15 @@ if [[ "$RUN_BOOTSTRAP_FIXED_POINT" == "1" ]]; then
     e2e::selfhost_bootstrap_acceptance::test_e2e_bootstrap_stage2_self_feed_fixed_input_set -- --exact --nocapture
   BOOTSTRAP_DIFF_ARTIFACT_ID="$BOOTSTRAP_DIFF_ARTIFACT_ID" \
     cargo test -p lsharp-wasm --test e2e \
-    e2e::selfhost_bootstrap_acceptance::test_e2e_bootstrap_fixed_input_set_stage_chain_match -- --exact --nocapture
+     e2e::selfhost_bootstrap_acceptance::test_e2e_bootstrap_fixed_input_set_stage_chain_match -- --exact --nocapture
+fi
+
+if [[ "$RUN_INCREMENTAL_COMPARE" == "1" ]]; then
+  echo ""
+  echo "=== Incremental compile compare ==="
+  BOOTSTRAP_DIFF_ARTIFACT_ID="$BOOTSTRAP_DIFF_ARTIFACT_ID" \
+    cargo test -p lsharp-wasm --test e2e \
+    e2e::selfhost_bootstrap_acceptance::test_e2e_incremental_compile_matches_full_compile_fixed_input_set -- --exact --nocapture
 fi
 
 echo ""

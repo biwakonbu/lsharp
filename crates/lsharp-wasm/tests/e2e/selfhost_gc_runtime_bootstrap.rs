@@ -1,4 +1,7 @@
 use super::support::*;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static SELFHOST_GC_FIXTURE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 fn selfhost_test_label(name: &str) -> &'static str {
     match name {
@@ -18,6 +21,35 @@ fn read_selfhost_test_source(name: &str, missing_hint: &str) -> String {
     let label = selfhost_test_label(name);
     assert!(path.exists(), "{label} が存在しない -- {missing_hint}");
     std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{label} の読み込みに失敗"))
+}
+
+fn run_selfhost_gc_fixture_entry(fixture_name: &str, entry_source: &str) -> String {
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/e2e-selfhost-fixtures")
+        .join(format!(
+            "{fixture_name}-{}-{}",
+            std::process::id(),
+            SELFHOST_GC_FIXTURE_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+    let result = (|| -> Result<String, String> {
+        let gc_path = dir.join("src").join(selfhost_fixture_module_relative_path("GC.ls"));
+        if let Some(parent) = gc_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        std::fs::write(&gc_path, selfhost_module("GC.ls"))
+            .map_err(|e| format!("{}: {e}", gc_path.display()))?;
+
+        let entry_path = dir.join("src/App/Main.ls");
+        if let Some(parent) = entry_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        std::fs::write(&entry_path, entry_source)
+            .map_err(|e| format!("{}: {e}", entry_path.display()))?;
+
+        try_compile_and_run_file(&entry_path)
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result.unwrap_or_else(|e| panic!("GC fixture 実行に失敗: {e}"))
 }
 
 /// TEST-GC-03: 世代別 GC (nursery, write-barrier, promotion)
@@ -109,7 +141,10 @@ fn test_e2e_selfhost_gc_longevity_benchmark() {
 
     // GC モジュール自体が型チェックを通ること
     let gc_program = lsharp_syntax::parse(&gc_source);
-    assert!(gc_program.is_ok(), "selfhost/src/Runtime/GC.ls のパースに失敗");
+    assert!(
+        gc_program.is_ok(),
+        "selfhost/src/Runtime/GC.ls のパースに失敗"
+    );
     let gc_program = gc_program.unwrap();
 
     let mut infer = Infer::new();
@@ -242,7 +277,10 @@ fn test_e2e_selfhost_gc_leak_detection() {
 
     // GC モジュール自体が型チェックを通ること
     let gc_program = lsharp_syntax::parse(&gc_source);
-    assert!(gc_program.is_ok(), "selfhost/src/Runtime/GC.ls のパースに失敗");
+    assert!(
+        gc_program.is_ok(),
+        "selfhost/src/Runtime/GC.ls のパースに失敗"
+    );
     let gc_program = gc_program.unwrap();
 
     let mut infer = Infer::new();
@@ -251,6 +289,80 @@ fn test_e2e_selfhost_gc_leak_detection() {
         types.is_ok(),
         "selfhost/src/Runtime/GC.ls の型チェックに失敗: {:?}",
         types.err()
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_gc_collect_reclaims_unrooted_allocations() {
+    let output = run_selfhost_gc_fixture_entry(
+        "gc-runtime-collect-unrooted",
+        r#"
+(module App.Main)
+(import Runtime.GC)
+
+(defn main []
+  (let [state (make-gc-state 1024 256)
+        _ (alloc state 24)
+        _ (alloc state 40)
+        before (heap-used state)
+        freed (collect state)
+        after (heap-used state)
+        stats (gc-stats state)]
+    (do
+      (print before)
+      (print freed)
+      (print after)
+      (print (vector-get stats 0))
+      (print (vector-get stats 1))
+      (print (vector-get stats 2))
+      0)))
+"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["64", "2", "0", "2", "2", "1"],
+        "unrooted object は collect 後に全回収され、統計も更新されるべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_gc_collect_preserves_rooted_allocations_and_reuses_freed_block() {
+    let output = run_selfhost_gc_fixture_entry(
+        "gc-runtime-rooted-reuse",
+        r#"
+(module App.Main)
+(import Runtime.GC)
+
+(defn main []
+  (let [state (make-gc-state 1024 256)
+        rooted (alloc state 24)
+        _ (add-root state rooted)
+        dead (alloc state 40)
+        freed1 (collect state)
+        after1 (heap-used state)
+        reused (alloc state 32)
+        _ (remove-root state rooted)
+        freed2 (collect state)
+        after2 (heap-used state)
+        leaks (detect-leak state)]
+    (do
+      (print rooted)
+      (print dead)
+      (print freed1)
+      (print after1)
+      (print reused)
+      (print freed2)
+      (print after2)
+      (print leaks)
+      0)))
+"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["1024", "1048", "1", "24", "1048", "2", "0", "0"],
+        "rooted object は保持され、free-list は回収済み block を再利用し、最終的に leak が解消されるべき"
     );
 }
 
@@ -363,8 +475,7 @@ fn test_e2e_selfhost_native_object_emitter() {
 /// Red Phase: Linker.ls が未作成のため FAIL する。
 #[test]
 fn test_e2e_selfhost_linker_response() {
-    let source =
-        read_selfhost_test_source("Linker.ls", "リンカーモジュールを作成してください");
+    let source = read_selfhost_test_source("Linker.ls", "リンカーモジュールを作成してください");
 
     // モジュール宣言
     assert!(
@@ -573,8 +684,8 @@ fn test_e2e_selfhost_wasm_native_differential() {
     );
 
     // ネイティブバックエンド用のコンパイル関数が NativeCodegen.ls に存在すること
-    let codegen_source =
-        std::fs::read_to_string(&codegen_path).expect("selfhost/src/Backend/Native/NativeCodegen.ls の読み込みに失敗");
+    let codegen_source = std::fs::read_to_string(&codegen_path)
+        .expect("selfhost/src/Backend/Native/NativeCodegen.ls の読み込みに失敗");
 
     assert!(
         codegen_source.contains("(defn compile-and-run-native")

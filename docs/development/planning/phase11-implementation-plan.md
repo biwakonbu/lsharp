@@ -659,10 +659,10 @@
 ### GC-01 M1 object model
 
 - Goal: collector 前提の object header / trace map / root API を導入する。
-- Current state: precise tracing GC の前提モデルが未実装。
+- Current state: Rust/WASI path の `root_push` / `root_pop` / `root_set` helper 自体は実装済みで、Rust lowering も `string-concat` / `substring` の allocating safe point に対する narrow な auto-root insertion を持つ。ただし共通 object header / trace map と、general call site / selfhost parity まで含む precise root set は未実装。
 - Rust source: `docs/language/runtime-spec.md`, `docs/development/planning/memory-management-roadmap.md`, `docs/development/planning/runtime-stability-spec.md`
 - L# target: runtime layer, builtins, `selfhost/src/**`
-- Implementation direction: object header は `[tag size-or-words mark-state aux]` で固定し、`root_push`, `root_pop`, `root_set` を no-op 互換 API として先行導入する。trace map は string/adt/record/vector/hashmap/closure/ref-cell ごとに定義する。
+- Implementation direction: object header は `[tag size-or-words mark-state aux]` で固定し、既存の `root_push`, `root_pop`, `root_set` helper と narrow auto-root insertion を general call site / selfhost parity まで拡張する。trace map は string/adt/record/vector/hashmap/closure/ref-cell ごとに定義する。
 - Dependencies: なし。
 - Acceptance: all heap object kinds に trace 規約があり、GC 未導入でも root API を呼べる。
 - Evidence: `test_unit_runtime_object_header_*`, `test_unit_runtime_root_api_*`
@@ -793,7 +793,7 @@
 ### OPS-06 Release playbook
 
 - Goal: host launcher + embedded guest component 配布の build/sign/checksum/changelog を自動化する。
-- Current state: `scripts/release-playbook.sh` は release binary を作り、`compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用して smoke まで回せる。`.github/workflows/release.yml` も `v*` tag push 起点の `verify` / `build` / `release-smoke` / `release` まで接続済みで、build job は host launcher archive に加えて companion sidecar `lsharp-{version}-{target}.component.wasm` も生成し、`scripts/ci/release-smoke.sh` で生成済み archive の required payload (`README.md` / `LICENSE` / `checksums.txt` / `lsharp-lsp` / `lsharp.component.wasm`) 検証、checksum 検証、packaged binary smoke を実行する。`release` job は build artifact download 後に `bash scripts/checksum.sh dist > dist/checksums.txt` を実行し、archive 群と sidecar component、attached release-level checksum asset を GitHub Release に添付する。`release-smoke` job は Ubuntu 上で実行可能な Linux x86_64 archive を Rust toolchain 無しで再検証する current middle gate として運用する。さらに host-backed `doc` ownership として `release-smoke.sh` は packaged `lsharp` の `doc` / `doc --json` と `lsharp-lsp --version` を通し、`scripts/smoke_test_readme.sh` も inline Quick Start fixture に対する checksum / compile / test / doc smoke を README/fresh-clone gate に含めるようになった。**ただし** 署名は未接続。
+- Current state: `scripts/release-playbook.sh` は release binary を作り、`compile-phase11-inputs.sh` / `default-path-smoke.sh` を再利用して smoke まで回せる。`.github/workflows/release.yml` も `v*` tag push 起点の `verify` / `build` / `release-smoke` / `release` まで接続済みで、build job は host launcher archive に加えて companion sidecar `lsharp-{version}-{target}.component.wasm` も生成し、`scripts/ci/release-smoke.sh` で生成済み archive の required payload (`README.md` / `LICENSE` / `checksums.txt` / `lsharp-lsp` / `lsharp.component.wasm`) 検証、checksum 検証、packaged binary smoke を実行する。`release` job は build artifact download 後に `bash scripts/checksum.sh dist > dist/checksums.txt` を実行し、archive 群と sidecar component、attached release-level checksum asset を GitHub Release に添付する。`release-smoke` job は Ubuntu 上で実行可能な Linux x86_64 archive を Rust toolchain 無しで再検証する current middle gate として運用する。さらに host-backed `doc` ownership として `release-smoke.sh` は packaged `lsharp` の `doc` / `doc --json` と `lsharp-lsp --version` を通し、`scripts/smoke_test_readme.sh` も inline Quick Start fixture に対する checksum / compile / test / doc smoke を README/fresh-clone gate に含めるようになった。macOS notarization / Windows Authenticode も secret-gated workflow hook までは接続し、credential 未設定時は skip する。**ただし** 実際の署名完了は credential 未投入のため blocked。
 - Rust source: `docs/development/operations/release-playbook.md`, `docs/development/operations/release-distribution-signing.md`
 - L# target: release workflow, `scripts/release-playbook.sh`, `scripts/release.sh`, `scripts/checksum.sh`, `scripts/ci/release-smoke.sh`
 - Implementation direction: stable/nightly の 2 チャネルを固定し、release は `version bump -> CI -> host-launcher artifact -> checksum -> signing -> smoke -> tag -> GitHub Release` の順に自動化する。
@@ -805,10 +805,10 @@
 ### OPS-07 Fresh clone without Rust
 
 - Goal: Rust 未導入の利用者環境から host launcher single binary release smoke を再現する。
-- Current state: `scripts/ci/test-fresh-clone.sh` + `fresh-clone-smoke` により clean checkout 相当コピーからの再ビルド / smoke は blocking 化された。さらに mainline CI では `fresh-clone-artifact` → `test-fresh-clone` を追加し、同一 workflow 内で作った release-style archive を download して、Rust toolchain 無しで `release-smoke.sh` / `default-path-smoke.sh` / `smoke_test_readme.sh` を通す **現行の closest viable binary-only gate** まで接続済み。`docs/development/operations/fresh-clone-spec.md` も current gate と target state を分離し、`fetch-stage0.sh` / `bootstrap.sh` / `release-bundle.sh` は future-state 側の未実装要素として明記した。**ただし** GitHub Releases 上の stage0 package を fresh clone 直後に取得する true no-Rust end-state は未実装。
+- Current state: `scripts/ci/test-fresh-clone.sh` + `fresh-clone-smoke` により clean checkout 相当コピーからの再ビルド / smoke は blocking 化された。さらに mainline CI では `fresh-clone-artifact` → `test-fresh-clone` を追加し、同一 workflow 内で作った release-style archive を download して、Rust toolchain 無しで `release-smoke.sh` / `default-path-smoke.sh` / `smoke_test_readme.sh` を通す **現行の closest viable binary-only gate** まで接続済み。加えて `scripts/fetch-stage0.sh` / `scripts/bootstrap.sh` / `scripts/release-bundle.sh` により、手元では release asset 取得 → stage1/stage2 component compare → release-style rebundle まで試せる scaffold を追加した。`bootstrap.sh` は current release contract に合わせて `selfhost/src/App/EmbeddedCli.ls` を stage1/stage2 `lsharp.component.wasm` へ再生成し、launcher は隣接 `lsharp.component.wasm` sidecar を優先する host runner をそのまま持ち回る。**ただし** GitHub Releases 上の stage0 package を fresh clone 直後に取得する true no-Rust end-state を required gate として mainline に接続したわけではない。
 - Rust source: `docs/development/operations/fresh-clone-spec.md`
 - L# target: `scripts/ci/test-fresh-clone.sh`, `scripts/ci/release-smoke.sh`, `scripts/smoke_test_readme.sh`
-- Implementation direction: 現行の `test-fresh-clone` は workflow-local artifact を使う binary-only gate とし、stage0 package 配布が整い次第 `download release artifact` を GitHub Releases / stage0 fetch に差し替えて true no-Rust end-state へ寄せる。
+- Implementation direction: 現行の `test-fresh-clone` は workflow-local artifact を使う binary-only gate とし、手元検証は `fetch-stage0.sh` / `bootstrap.sh` / `release-bundle.sh` で先行して詰める。GitHub Releases / stage0 fetch を required gate へ昇格するのは、release credential / branch protection / retention を含む repo 外運用が揃ってから行う。
 - Dependencies: `OPS-06`, `PKG-01`
 - Acceptance: fresh clone / release smoke CI が main merge ごとに green になる。
 - Evidence: `fresh-clone-artifact` job, `test-fresh-clone` job, `release-smoke` job, `docs/development/operations/fresh-clone-spec.md`

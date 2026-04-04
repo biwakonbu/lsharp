@@ -19,9 +19,14 @@ const NEWLINE_ADDR: i32 = 0;
 const IOV_ADDR: i32 = 16;
 const NWRITTEN_ADDR: i32 = 24;
 const BUF_END: i32 = 276;
+const ROOT_STACK_SLOT_CAPACITY: i32 = 4096;
+const ROOT_STACK_BYTES: i32 = ROOT_STACK_SLOT_CAPACITY * 8;
 
-/// IR 側の内部ヘルパー関数数 (print, __alloc, __string_concat, __string_eq, print-string, proc-exit, __int_to_string, read-file, write-file, file-exists?, command-line-args, command-line-arg, read-stdin, __fnv1a_hash)
-const IR_IMPORT_COUNT: u32 = 14;
+/// IR 側の内部ヘルパー関数数
+/// (print, __alloc, __string_concat, __string_eq, print-string, proc-exit, __int_to_string,
+///  read-file, write-file, file-exists?, command-line-args, command-line-arg, read-stdin,
+///  __fnv1a_hash, root_push, root_pop, root_set)
+const IR_IMPORT_COUNT: u32 = 17;
 
 /// WASI import 関数数
 const WASI_IMPORT_COUNT: u32 = 9;
@@ -60,9 +65,12 @@ fn emit_wasm_wasi_with_options(
     // 19: __command_line_arg
     // 20: __read_stdin
     // 21: __fnv1a_hash
-    // 22..22+N-1: ユーザー関数
-    // 22+N: _start
-    // 23+N: wasi:cli/run@0.2.3#run
+    // 22: root_push
+    // 23: root_pop
+    // 24: root_set
+    // 25..25+N-1: ユーザー関数
+    // 25+N: _start
+    // 26+N: wasi:cli/run@0.2.3#run
     let fd_write_idx: u32 = 0;
     let proc_exit_wasm_idx: u32 = 1;
     let args_get_idx: u32 = 2;
@@ -85,7 +93,10 @@ fn emit_wasm_wasi_with_options(
     let command_line_arg_idx: u32 = WASI_IMPORT_COUNT + 10;
     let read_stdin_idx: u32 = WASI_IMPORT_COUNT + 11;
     let fnv1a_hash_idx: u32 = WASI_IMPORT_COUNT + 12;
-    let user_func_base: u32 = WASI_IMPORT_COUNT + 13;
+    let root_push_idx: u32 = WASI_IMPORT_COUNT + 13;
+    let root_pop_idx: u32 = WASI_IMPORT_COUNT + 14;
+    let root_set_idx: u32 = WASI_IMPORT_COUNT + 15;
+    let user_func_base: u32 = WASI_IMPORT_COUNT + 16;
     let start_func_idx: u32 = user_func_base + module.functions.len() as u32;
     let component_run_func_idx: u32 = start_func_idx + 1;
 
@@ -361,6 +372,9 @@ fn emit_wasm_wasi_with_options(
     functions.function(command_line_arg_type_idx);
     functions.function(read_stdin_type_idx);
     functions.function(fnv1a_hash_type_idx);
+    functions.function(alloc_type_idx);
+    functions.function(read_stdin_type_idx);
+    functions.function(string_concat_type_idx);
     for &type_idx in &user_type_indices {
         functions.function(type_idx);
     }
@@ -401,7 +415,8 @@ fn emit_wasm_wasi_with_options(
         .iter()
         .map(|(_, bytes)| bytes.len() as i32)
         .sum();
-    let heap_start = ((512 + total_string_data_size) + 7) & !7;
+    let root_stack_base = ((512 + total_string_data_size) + 7) & !7;
+    let heap_start = ((root_stack_base + ROOT_STACK_BYTES) + 7) & !7;
     let mut globals = GlobalSection::new();
     globals.global(
         GlobalType {
@@ -410,6 +425,14 @@ fn emit_wasm_wasi_with_options(
             shared: false,
         },
         &wasm_encoder::ConstExpr::i32_const(heap_start),
+    );
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: true,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(0),
     );
     wasm_module.section(&globals);
 
@@ -462,6 +485,9 @@ fn emit_wasm_wasi_with_options(
     emit_command_line_arg_func(&mut codes, alloc_func_idx, args_get_idx, args_sizes_get_idx);
     emit_read_stdin_func(&mut codes, alloc_func_idx, string_concat_idx, fd_read_idx);
     emit_fnv1a_hash_func(&mut codes);
+    emit_root_push_func(&mut codes, 1, root_stack_base);
+    emit_root_pop_func(&mut codes, 1, root_stack_base);
+    emit_root_set_func(&mut codes, 1, root_stack_base);
 
     for func in &module.functions {
         let mut f = wasm_encoder::Function::new(
@@ -487,6 +513,9 @@ fn emit_wasm_wasi_with_options(
             command_line_arg_idx,
             read_stdin_idx,
             fnv1a_hash_idx,
+            root_push_idx,
+            root_pop_idx,
+            root_set_idx,
             user_func_base,
             &call_indirect_type_map,
         )?;
@@ -612,7 +641,8 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
         .iter()
         .rposition(|func| func.name == "handle" && func.params.len() == 1)
         .ok_or_else(|| CodegenError::Error {
-            msg: "HTTP handler component には `(defn handle [request] response)` が必要です".to_string(),
+            msg: "HTTP handler component には `(defn handle [request] response)` が必要です"
+                .to_string(),
         })? as u32;
 
     let fields_ctor_idx: u32 = 0;
@@ -632,6 +662,9 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
     let command_line_arg_idx: u32 = HTTP_IMPORT_COUNT + 11;
     let read_stdin_idx: u32 = HTTP_IMPORT_COUNT + 12;
     let fnv1a_hash_idx: u32 = HTTP_IMPORT_COUNT + 13;
+    let root_push_idx: u32 = HTTP_IMPORT_COUNT + 14;
+    let root_pop_idx: u32 = HTTP_IMPORT_COUNT + 15;
+    let root_set_idx: u32 = HTTP_IMPORT_COUNT + 16;
     let user_func_base: u32 = HTTP_IMPORT_COUNT + IR_IMPORT_COUNT;
     let handle_wrapper_idx: u32 = user_func_base + module.functions.len() as u32;
     let handle_post_idx: u32 = handle_wrapper_idx + 1;
@@ -835,6 +868,9 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
     functions.function(command_line_arg_type_idx);
     functions.function(read_stdin_type_idx);
     functions.function(fnv1a_hash_type_idx);
+    functions.function(alloc_type_idx);
+    functions.function(read_stdin_type_idx);
+    functions.function(string_concat_type_idx);
     for &type_idx in &user_type_indices {
         functions.function(type_idx);
     }
@@ -872,7 +908,8 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
         .iter()
         .map(|(_, bytes)| bytes.len() as i32)
         .sum();
-    let heap_start = ((512 + total_string_data_size) + 7) & !7;
+    let root_stack_base = ((512 + total_string_data_size) + 7) & !7;
+    let heap_start = ((root_stack_base + ROOT_STACK_BYTES) + 7) & !7;
     let mut globals = GlobalSection::new();
     globals.global(
         GlobalType {
@@ -881,6 +918,14 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
             shared: false,
         },
         &wasm_encoder::ConstExpr::i32_const(heap_start),
+    );
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: true,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(0),
     );
     wasm_module.section(&globals);
 
@@ -919,6 +964,9 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
     emit_trap_i64_to_i64_func(&mut codes);
     emit_trap_void_to_i64_func(&mut codes);
     emit_fnv1a_hash_func(&mut codes);
+    emit_root_push_func(&mut codes, 1, root_stack_base);
+    emit_root_pop_func(&mut codes, 1, root_stack_base);
+    emit_root_set_func(&mut codes, 1, root_stack_base);
 
     for func in &module.functions {
         let mut f = wasm_encoder::Function::new(
@@ -944,6 +992,9 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
             command_line_arg_idx,
             read_stdin_idx,
             fnv1a_hash_idx,
+            root_push_idx,
+            root_pop_idx,
+            root_set_idx,
             user_func_base,
             &call_indirect_type_map,
         )?;
@@ -1213,6 +1264,119 @@ fn emit_alloc_func(codes: &mut CodeSection) {
     f.instruction(&W::End);
     f.instruction(&W::LocalGet(3));
     f.instruction(&W::GlobalSet(0));
+    f.instruction(&W::LocalGet(2));
+    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::End);
+    codes.function(&f);
+}
+
+fn emit_root_push_func(codes: &mut CodeSection, root_stack_top_global_idx: u32, root_stack_base: i32) {
+    use wasm_encoder::{Instruction as W, MemArg};
+
+    let mem64 = |offset: u64| MemArg {
+        offset,
+        align: 3,
+        memory_index: 0,
+    };
+
+    let mut f = wasm_encoder::Function::new(vec![(1, ValType::I32), (1, ValType::I32)]);
+    f.instruction(&W::GlobalGet(root_stack_top_global_idx));
+    f.instruction(&W::LocalSet(1));
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32Const(ROOT_STACK_SLOT_CAPACITY));
+    f.instruction(&W::I32GeU);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Unreachable);
+    f.instruction(&W::End);
+    f.instruction(&W::I32Const(root_stack_base));
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32Const(3));
+    f.instruction(&W::I32Shl);
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(2));
+    f.instruction(&W::LocalGet(2));
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I64Store(mem64(0)));
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::GlobalSet(root_stack_top_global_idx));
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::End);
+    codes.function(&f);
+}
+
+fn emit_root_pop_func(codes: &mut CodeSection, root_stack_top_global_idx: u32, root_stack_base: i32) {
+    use wasm_encoder::{Instruction as W, MemArg};
+
+    let mem64 = |offset: u64| MemArg {
+        offset,
+        align: 3,
+        memory_index: 0,
+    };
+
+    let mut f = wasm_encoder::Function::new(vec![(1, ValType::I32), (1, ValType::I32)]);
+    f.instruction(&W::GlobalGet(root_stack_top_global_idx));
+    f.instruction(&W::LocalSet(0));
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I32Eqz);
+    f.instruction(&W::If(wasm_encoder::BlockType::Result(ValType::I64)));
+    f.instruction(&W::I64Const(0));
+    f.instruction(&W::Else);
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Sub);
+    f.instruction(&W::LocalSet(0));
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::GlobalSet(root_stack_top_global_idx));
+    f.instruction(&W::I32Const(root_stack_base));
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I32Const(3));
+    f.instruction(&W::I32Shl);
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(1));
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I64Load(mem64(0)));
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+    codes.function(&f);
+}
+
+fn emit_root_set_func(codes: &mut CodeSection, root_stack_top_global_idx: u32, root_stack_base: i32) {
+    use wasm_encoder::{Instruction as W, MemArg};
+
+    let mem64 = |offset: u64| MemArg {
+        offset,
+        align: 3,
+        memory_index: 0,
+    };
+
+    let mut f = wasm_encoder::Function::new(vec![
+        (1, ValType::I32),
+        (1, ValType::I32),
+        (1, ValType::I32),
+    ]);
+    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(2));
+    f.instruction(&W::GlobalGet(root_stack_top_global_idx));
+    f.instruction(&W::LocalSet(3));
+    f.instruction(&W::LocalGet(2));
+    f.instruction(&W::LocalGet(3));
+    f.instruction(&W::I32GeU);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Unreachable);
+    f.instruction(&W::End);
+    f.instruction(&W::I32Const(root_stack_base));
+    f.instruction(&W::LocalGet(2));
+    f.instruction(&W::I32Const(3));
+    f.instruction(&W::I32Shl);
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(4));
+    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::I64Store(mem64(0)));
     f.instruction(&W::LocalGet(2));
     f.instruction(&W::I64ExtendI32U);
     f.instruction(&W::End);
@@ -2462,6 +2626,9 @@ fn emit_instructions_wasi(
     command_line_arg_idx: u32,
     read_stdin_idx: u32,
     fnv1a_hash_idx: u32,
+    root_push_idx: u32,
+    root_pop_idx: u32,
+    root_set_idx: u32,
     user_func_base: u32,
     call_indirect_type_map: &HashMap<u32, u32>,
 ) -> Result<(), CodegenError> {
@@ -2496,6 +2663,9 @@ fn emit_instructions_wasi(
                         11 => command_line_arg_idx,
                         12 => read_stdin_idx,
                         13 => fnv1a_hash_idx,
+                        14 => root_push_idx,
+                        15 => root_pop_idx,
+                        16 => root_set_idx,
                         i => user_func_base + (i - IR_IMPORT_COUNT),
                     };
                     Instruction::FuncIdx(wasm_idx)
@@ -2548,6 +2718,15 @@ fn emit_instructions_wasi(
             }
             13 => {
                 f.instruction(&W::Call(fnv1a_hash_idx));
+            }
+            14 => {
+                f.instruction(&W::Call(root_push_idx));
+            }
+            15 => {
+                f.instruction(&W::Call(root_pop_idx));
+            }
+            16 => {
+                f.instruction(&W::Call(root_set_idx));
             }
             _ => {
                 f.instruction(&W::Call(user_func_base + (i - IR_IMPORT_COUNT)));

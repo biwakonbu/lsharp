@@ -214,12 +214,19 @@ pub fn run_wasm_component_with_args_and_stdin(
     args: &[&str],
     stdin_data: &str,
 ) -> Result<String, String> {
-    let output =
-        run_wasm_component_with_dir_args_and_stdin_capture(component_bytes, None, args, stdin_data)?;
+    let output = run_wasm_component_with_dir_args_and_stdin_capture(
+        component_bytes,
+        None,
+        args,
+        stdin_data,
+    )?;
     if output.exit_code == 0 {
         Ok(output.stdout)
     } else {
-        Err(format!("Component 実行に失敗: exit code {}", output.exit_code))
+        Err(format!(
+            "Component 実行に失敗: exit code {}",
+            output.exit_code
+        ))
     }
 }
 
@@ -230,16 +237,15 @@ pub fn run_wasm_component_with_dir_args_and_stdin(
     args: &[&str],
     stdin_data: &str,
 ) -> Result<String, String> {
-    let output = run_wasm_component_with_dir_args_and_stdin_capture(
-        component_bytes,
-        dir,
-        args,
-        stdin_data,
-    )?;
+    let output =
+        run_wasm_component_with_dir_args_and_stdin_capture(component_bytes, dir, args, stdin_data)?;
     if output.exit_code == 0 {
         Ok(output.stdout)
     } else {
-        Err(format!("Component 実行に失敗: exit code {}", output.exit_code))
+        Err(format!(
+            "Component 実行に失敗: exit code {}",
+            output.exit_code
+        ))
     }
 }
 
@@ -279,8 +285,7 @@ fn run_wasm_component_capture(
     builder.stdout(stdout.clone());
     match stdin_mode {
         StdinMode::Memory(stdin_data) => {
-            let stdin =
-                wasmtime_wasi::pipe::MemoryInputPipe::new(stdin_data.as_bytes().to_vec());
+            let stdin = wasmtime_wasi::pipe::MemoryInputPipe::new(stdin_data.as_bytes().to_vec());
             builder.stdin(stdin);
         }
         StdinMode::Inherit => {
@@ -312,9 +317,10 @@ fn run_wasm_component_capture(
         .instantiate(&mut store, &component)
         .map_err(|e| format!("Component インスタンス化に失敗: {e}"))?;
 
-    let exit_code =
-        if let Some(run_export) = find_component_run_func(&component, &instance, &mut store) {
-            call_component_run(&mut store, run_export)?
+    let exit_code = if let Some(run_export) =
+        find_component_run_func(&component, &instance, &mut store)
+    {
+        call_component_run(&mut store, run_export)?
     } else {
         // P1 の _start 不在時と同様にエラーを返す
         return Err(
@@ -359,17 +365,15 @@ fn find_component_run_func(
     }
 
     for interface_name in ["wasi:cli/run@0.2.3", "wasi:cli/run@0.2.0"] {
-        if let Some((_, run_instance_index)) = component.export_index(None, interface_name) {
-            if let Some((_, run_func_index)) =
+        if let Some((_, run_instance_index)) = component.export_index(None, interface_name)
+            && let Some((_, run_func_index)) =
                 component.export_index(Some(&run_instance_index), "run")
-            {
-                if let Some(run_func) = instance.get_func(&mut *store, &run_func_index) {
-                    return Some(ComponentRunExport {
-                        func: run_func,
-                        returns_exit_bool: true,
-                    });
-                }
-            }
+            && let Some(run_func) = instance.get_func(&mut *store, run_func_index)
+        {
+            return Some(ComponentRunExport {
+                func: run_func,
+                returns_exit_bool: true,
+            });
         }
     }
 
@@ -459,9 +463,8 @@ mod tests {
     fn test_run_wasm_wasi_capture_preserves_exit_code() {
         let wasm_bytes = compile_preview1("(defn main [] (do (proc-exit 17) 0))");
 
-        let result =
-            run_wasm_wasi_with_dir_args_and_stdin_capture(&wasm_bytes, None, &[], "")
-                .expect("capture helper should succeed");
+        let result = run_wasm_wasi_with_dir_args_and_stdin_capture(&wasm_bytes, None, &[], "")
+            .expect("capture helper should succeed");
         assert_eq!(result.exit_code, 17);
         assert_eq!(result.stdout, "");
     }
@@ -470,13 +473,9 @@ mod tests {
     fn test_run_wasm_wasi_capture_uses_provided_stdin() {
         let wasm_bytes = compile_preview1("(defn main [] (do (print-string (read-stdin)) 0))");
 
-        let result = run_wasm_wasi_with_dir_args_and_stdin_capture(
-            &wasm_bytes,
-            None,
-            &[],
-            "stdin-smoke",
-        )
-        .expect("capture helper should succeed");
+        let result =
+            run_wasm_wasi_with_dir_args_and_stdin_capture(&wasm_bytes, None, &[], "stdin-smoke")
+                .expect("capture helper should succeed");
         assert_eq!(result.exit_code, 0);
         assert_eq!(result.stdout, "stdin-smoke");
     }
@@ -523,7 +522,8 @@ mod tests {
         let change_source = "(defn helper [] 1)\n(defn main []  (he))";
         let iterations = 12usize;
 
-        let render_wire_frame = |body: &str| format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+        let render_wire_frame =
+            |body: &str| format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
         let repeat_rendered_frames = |frames: &[String], iterations: usize| {
             let mut rendered = String::new();
             for _ in 0..iterations {
@@ -539,14 +539,12 @@ mod tests {
             r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
             open_source
         );
-        let hover_body =
-            r#"{"jsonrpc":"2.0","id":81,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":21}}"#;
+        let hover_body = r#"{"jsonrpc":"2.0","id":81,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":21}}"#;
         let change_body = format!(
             r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
             change_source
         );
-        let completion_body =
-            r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
+        let completion_body = r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
         let formatting_body =
             r#"{"jsonrpc":"2.0","id":83,"method":"textDocument/formatting","params":{"uri":42}}"#;
 
@@ -590,7 +588,8 @@ mod tests {
         let change_source = "(defn helper [] 1)\n(defn main []  (he))";
         let iterations = 12usize;
 
-        let render_wire_frame = |body: &str| format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+        let render_wire_frame =
+            |body: &str| format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
         let repeat_rendered_frames = |frames: &[String], iterations: usize| {
             let mut rendered = String::new();
             for _ in 0..iterations {
@@ -606,14 +605,12 @@ mod tests {
             r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
             open_source
         );
-        let hover_body =
-            r#"{"jsonrpc":"2.0","id":81,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":21}}"#;
+        let hover_body = r#"{"jsonrpc":"2.0","id":81,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":21}}"#;
         let change_body = format!(
             r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
             change_source
         );
-        let completion_body =
-            r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
+        let completion_body = r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
         let formatting_body =
             r#"{"jsonrpc":"2.0","id":83,"method":"textDocument/formatting","params":{"uri":42}}"#;
 
@@ -677,11 +674,7 @@ mod tests {
         // 不正なバイナリで適切なエラーが返ること
         let result = run_wasm_component(&[0, 1, 2, 3]);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .contains("Component の読み込みに失敗")
-        );
+        assert!(result.unwrap_err().contains("Component の読み込みに失敗"));
     }
 
     #[test]

@@ -1,9 +1,9 @@
 #[path = "e2e/support.rs"]
 mod support;
 
-use support::*;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::PathBuf;
+use support::*;
 
 fn selfhost_doctools_bundle() -> String {
     [
@@ -37,8 +37,6 @@ fn selfhost_html_bundle() -> String {
     ]
     .join("\n")
 }
-
-
 
 fn run_doctools(harness: &str) -> Vec<String> {
     let output = compile_and_run(&format!("{}\n{}", selfhost_doctools_bundle(), harness));
@@ -328,7 +326,10 @@ fn test_e2e_doctools_generate_doc_output_structure() {
         lines[3]
     );
     assert_eq!(lines[4], "2", "sections が 2 件であるべき");
-    assert_eq!(lines[5], "functions", "先頭 section は functions であるべき");
+    assert_eq!(
+        lines[5], "functions",
+        "先頭 section は functions であるべき"
+    );
     assert_eq!(lines[6], "1", "functions section count は 1 であるべき");
     assert_eq!(lines[7], "types", "2 件目 section は types であるべき");
     assert_eq!(lines[8], "1", "types section count は 1 であるべき");
@@ -373,7 +374,10 @@ fn test_e2e_doctools_generate_doc_output_function_metadata() {
       0)))
 "#;
     let lines = run_doctools(harness);
-    assert_eq!(lines[0], "7", "doc-output function entry は 7 要素であるべき");
+    assert_eq!(
+        lines[0], "7",
+        "doc-output function entry は 7 要素であるべき"
+    );
     assert_eq!(lines[1], "2", "params が 2 件であるべき");
     assert_eq!(lines[2], "x", "先頭 param 名が x であるべき");
     assert_eq!(lines[3], "Int", "先頭 param 型が Int であるべき");
@@ -423,7 +427,10 @@ fn test_e2e_doctools_generate_knowledge_structure() {
     assert_eq!(lines[0], "99", "module-id が 99 であるべき");
     assert_eq!(lines[1], "2", "functions が 2 件であるべき");
     assert_eq!(lines[2], "0", "types が 0 件であるべき");
-    assert_eq!(lines[3], "7", "knowledge function entry は 7 要素であるべき");
+    assert_eq!(
+        lines[3], "7",
+        "knowledge function entry は 7 要素であるべき"
+    );
     assert_eq!(lines[4], "2", "params が 2 件であるべき");
     assert_eq!(lines[5], "x:Int", "先頭 param が x:Int であるべき");
     assert_eq!(lines[6], "y:Int", "2 件目 param が y:Int であるべき");
@@ -664,8 +671,14 @@ fn test_e2e_doctools_generate_knowledge_snapshot() {
         ]
     });
 
-    assert_eq!(lines[1], "1", "representative knowledge payload は関数 1 件であるべき");
-    assert_eq!(lines[11], "2", "representative knowledge payload は型 2 件であるべき");
+    assert_eq!(
+        lines[1], "1",
+        "representative knowledge payload は関数 1 件であるべき"
+    );
+    assert_eq!(
+        lines[11], "2",
+        "representative knowledge payload は型 2 件であるべき"
+    );
     assert_doctools_json_snapshot(
         &actual,
         "knowledge-payload.json",
@@ -735,7 +748,10 @@ fn test_e2e_doctools_generate_review_snapshot() {
         ]
     });
 
-    assert_eq!(lines[1], "2", "representative review payload は diagnostics 2 件であるべき");
+    assert_eq!(
+        lines[1], "2",
+        "representative review payload は diagnostics 2 件であるべき"
+    );
     assert_doctools_json_snapshot(
         &actual,
         "review-payload.json",
@@ -846,9 +862,18 @@ fn test_e2e_doctools_generate_doc_output_snapshot() {
         ]
     });
 
-    assert_eq!(lines[2], "1", "representative doc-output payload は関数 1 件であるべき");
-    assert_eq!(lines[17], "2", "representative doc-output payload は型 2 件であるべき");
-    assert_eq!(lines[24], "2", "representative doc-output payload は section 2 件であるべき");
+    assert_eq!(
+        lines[2], "1",
+        "representative doc-output payload は関数 1 件であるべき"
+    );
+    assert_eq!(
+        lines[17], "2",
+        "representative doc-output payload は型 2 件であるべき"
+    );
+    assert_eq!(
+        lines[24], "2",
+        "representative doc-output payload は section 2 件であるべき"
+    );
     assert_doctools_json_snapshot(
         &actual,
         "doc-output-payload.json",

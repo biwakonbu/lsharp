@@ -92,7 +92,7 @@ spctl --assess -vv lsharp
 ```
 
 - embedded guest component (`.component.wasm`) は実行ファイルではないため、notarization 対象ではなく checksum / release asset 管理の対象として扱う。現行 stable release では companion sidecar `lsharp-{version}-{target}.component.wasm` として GitHub Release に添付する。
-- 現状は運用手順の正本化までで、release workflow への自動接続は未実装。
+- release workflow は macOS runner 上で `APPLE_CODESIGN_IDENTITY` と `APPLE_NOTARY_KEYCHAIN_PROFILE` が両方ある場合にだけ signing / notarization hook を実行し、`codesign --verify --deep --strict` / `spctl --assess -vv` / `xcrun notarytool submit --wait` を通す。credential 未設定時は skip し、host launcher archive / sidecar / checksum 契約だけを維持する。
 
 ### Windows Authenticode
 
@@ -107,7 +107,7 @@ spctl --assess -vv lsharp
 signtool verify /pa lsharp.exe
 ```
 
-- 現状は設計段階であり、release-playbook の現行運用だけでは未接続。
+- release workflow は Windows runner 上で `WINDOWS_SIGN_CERT_PFX_BASE64` / `WINDOWS_SIGN_CERT_PASSWORD` / `WINDOWS_TIMESTAMP_URL` が揃っている場合にだけ Authenticode hook を実行し、`signtool sign` / `signtool verify /pa` を通す。credential 未設定時は skip し、unsigned archive をそのまま release asset として残す。
 
 ## package manager 配布
 
@@ -130,9 +130,20 @@ signtool verify /pa lsharp.exe
 | `scripts/release-playbook.sh` | release binary を作り、bootstrap / default-path / README smoke まで実行可能 |
 | tag push 起点の自動 release workflow | `verify` / `build` / `release-smoke` / `release` まで接続済み |
 | checksum / sidecar 自動生成 | `scripts/release.sh` が archive 内 `checksums.txt` と `lsharp.component.wasm` を生成し、同じ guest component を `dist/lsharp-{version}-{target}.component.wasm` として companion release asset にも出力、`release` job が `bash scripts/checksum.sh dist > dist/checksums.txt` で attached checksum asset を追加、`scripts/ci/release-smoke.sh` が packaged sidecar を workflow build job で検証 |
-| macOS notarization | 手順は docs 化済み、workflow 接続は未実装 |
-| Windows 署名 | 未実装 |
+| macOS notarization | secret-gated workflow hook まで接続済み。credential 未設定時は skip |
+| Windows 署名 | secret-gated workflow hook まで接続済み。credential 未設定時は skip |
 | package manager 配布 | 未実装 |
+
+## workflow secrets
+
+- `APPLE_CODESIGN_IDENTITY`: `codesign --sign` に渡す Developer ID identity
+- `APPLE_NOTARY_KEYCHAIN_PROFILE`: `xcrun notarytool submit --keychain-profile` に渡す profile 名
+- `WINDOWS_SIGN_CERT_PFX_BASE64`: Authenticode 用 `.pfx` を base64 化した secret
+- `WINDOWS_SIGN_CERT_PASSWORD`: `.pfx` の password
+- `WINDOWS_TIMESTAMP_URL`: `signtool sign /tr` に渡す timestamp server URL
+
+現行 workflow はこれらの secret が未設定なら signing step を fail させず skip する。
+したがって **workflow hook-up は repo 内で完了** しても、**実際の signing 完了判定** は credential が投入されるまで blocked のまま残る。
 | `linux-aarch64` tier2 | 設計のみ |
 
 ## 関連ドキュメント

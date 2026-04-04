@@ -296,10 +296,7 @@ mod params_normalizer {
 
         #[test]
         fn test_shutdown_request_params_empty_object_stripped() {
-            let req = Request::build("shutdown")
-                .params(json!({}))
-                .id(2)
-                .finish();
+            let req = Request::build("shutdown").params(json!({})).id(2).finish();
             let needs_strip = PARAMLESS_METHODS.contains(&req.method())
                 && req.params().is_some_and(is_empty_params);
             assert!(needs_strip);
@@ -335,7 +332,10 @@ mod params_normalizer {
         type Error = S::Error;
         type Future = S::Future;
 
-        fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<std::result::Result<(), Self::Error>> {
+        fn poll_ready(
+            &mut self,
+            cx: &mut Context<'_>,
+        ) -> Poll<std::result::Result<(), Self::Error>> {
             self.inner.poll_ready(cx)
         }
 

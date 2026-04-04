@@ -47,6 +47,10 @@
 (defn op-map-remove [] 66)
 (defn op-command-line-arg [] 67)
 (defn op-runtime-hash-string [] 68)
+(defn op-file-exists [] 73)
+(defn op-root-push [] 74)
+(defn op-root-pop [] 75)
+(defn op-root-set [] 76)
 (defn builtin-add [] 43)
 (defn builtin-sub [] 45)
 (defn builtin-mul [] 42)
@@ -73,6 +77,10 @@
 (defn builtin-map-contains [] (- 0 3820778934353407281))
 (defn builtin-map-remove [] 2967773956947477)
 (defn builtin-command-line-arg [] 4333701572691766591)
+(defn builtin-file-exists [] 2680668565995926546)
+(defn builtin-root-push [] 100385403511895)
+(defn builtin-root-pop [] 3238238822772)
+(defn builtin-root-set [] 3238238825349)
 (defn builtin-basic-opcode [name-hash]
   (if (= name-hash (builtin-add))
     (op-i64-add)
@@ -144,7 +152,9 @@
     (op-read-file)
     (if (= name-hash (builtin-command-line-arg))
       (op-command-line-arg)
-      0)))
+      (if (= name-hash (builtin-file-exists))
+        (op-file-exists)
+        0))))
 
 (defn builtin-map-extra-opcode [name-hash]
   (if (= name-hash (builtin-map-contains))
@@ -169,6 +179,15 @@
       72
       0)))
 
+(defn builtin-root-opcode [name-hash]
+  (if (= name-hash (builtin-root-push))
+    (op-root-push)
+    (if (= name-hash (builtin-root-pop))
+      (op-root-pop)
+      (if (= name-hash (builtin-root-set))
+        (op-root-set)
+        0))))
+
 (defn builtin-runtime-opcode [name-hash]
   (let [string-op (builtin-string-opcode name-hash)]
     (if (> string-op 0)
@@ -179,7 +198,10 @@
           (let [map-op (builtin-map-runtime-opcode name-hash)]
             (if (> map-op 0)
               map-op
-              (builtin-logic-opcode name-hash))))))))
+              (let [logic-op (builtin-logic-opcode name-hash)]
+                (if (> logic-op 0)
+                  logic-op
+                  (builtin-root-opcode name-hash))))))))))
 
 (defn builtin-opcode [name-hash]
   (let [basic (builtin-basic-opcode name-hash)]
@@ -372,16 +394,17 @@
 (defn compile-user-call-with-ftable [node env ftable instrs func-hash arg-count] (let [func-idx (ftable-lookup ftable func-hash) arg-instrs (compile-call-args-with-ftable node env ftable 0 arg-count instrs)] (emit-to arg-instrs 40 func-idx)))
 (defn source-builtin-map-op [bop] (or (= bop (op-map-insert)) (or (= bop (op-map-get)) (or (= bop (op-map-contains)) (= bop (op-map-remove))))))
 (defn map-insert-op [bop] (= bop (op-map-insert)))
-(defn unary-builtin-op [bop] (or (or (or (or (= bop (op-string-length)) (= bop (op-vector-length))) (= bop (op-ref-get))) (or (or (= bop (op-map-size)) (= bop (op-print))) (or (= bop (op-read-file)) (= bop (op-command-line-arg))))) (or (= bop (op-vector-new)) (= bop (op-ref-new)))))
+(defn unary-builtin-op [bop] (or (or (or (or (= bop (op-string-length)) (= bop (op-vector-length))) (= bop (op-ref-get))) (or (or (= bop (op-map-size)) (= bop (op-print))) (or (= bop (op-read-file)) (or (= bop (op-command-line-arg)) (or (= bop (op-file-exists)) (= bop (op-root-push))))))) (or (= bop (op-vector-new)) (= bop (op-ref-new)))))
 (defn alloc-builtin-op [bop] (or (= bop (op-vector-new)) (= bop (op-ref-new))))
 (defn env-slot-builtin-op [bop] (or (or (or (or (= bop (op-string-char-at)) (= bop (op-vector-get))) (= bop (op-vector-push))) (= bop (op-ref-set))) (or (= bop (op-map-get)) (or (= bop (op-map-contains)) (= bop (op-map-remove))))))
+(defn nullary-builtin-op [bop] (= bop (op-root-pop)))
 (defn ternary-builtin-op [bop] (= bop 69))
 (defn emit-unary-builtin-with-source [instrs bop env] (if (alloc-builtin-op bop) (emit-to instrs bop (+ 1 (map-size env))) (emit-to instrs bop 0)))
 (defn emit-unary-builtin-with-ftable [instrs bop env] (if (alloc-builtin-op bop) (emit-to instrs bop (+ 1 (map-size env))) (emit-to instrs bop 0)))
 (defn compile-binary-or-ternary-builtin-with-source [node source env ftable instrs1 data-ref bop] (let [instrs2 (compile-expr-with-source (vector-get node 4) source env ftable instrs1 data-ref)] (if (env-slot-builtin-op bop) (emit-to instrs2 bop (+ 1 (map-size env))) (if (ternary-builtin-op bop) (let [instrs3 (compile-expr-with-source (vector-get node 5) source env ftable instrs2 data-ref)] (emit-to instrs3 bop 0)) (emit-to instrs2 bop 0)))))
 (defn compile-binary-or-ternary-builtin-with-ftable [node env ftable instrs1 bop] (let [instrs2 (compile-expr-with-ftable (vector-get node 4) env ftable instrs1)] (if (env-slot-builtin-op bop) (emit-to instrs2 bop (+ 1 (map-size env))) (if (map-insert-op bop) (let [instrs3 (compile-expr-with-ftable (vector-get node 5) env ftable instrs2)] (emit-to instrs3 bop (+ 1 (map-size env)))) (if (ternary-builtin-op bop) (let [instrs3 (compile-expr-with-ftable (vector-get node 5) env ftable instrs2)] (emit-to instrs3 bop 0)) (emit-to instrs2 bop 0))))))
-(defn compile-builtin-apply-with-source [node source env ftable instrs data-ref bop] (if (= bop (op-map-new)) (emit-to instrs bop (+ 1 (map-size env))) (if (source-builtin-map-op bop) (compile-map-builtin-with-source node source env ftable instrs data-ref bop) (let [instrs1 (compile-expr-with-source (vector-get node 3) source env ftable instrs data-ref)] (if (unary-builtin-op bop) (emit-unary-builtin-with-source instrs1 bop env) (compile-binary-or-ternary-builtin-with-source node source env ftable instrs1 data-ref bop))))))
-(defn compile-builtin-apply-with-ftable [node env ftable instrs bop] (if (= bop (op-map-new)) (emit-to instrs bop (+ 1 (map-size env))) (let [instrs1 (compile-expr-with-ftable (vector-get node 3) env ftable instrs)] (if (unary-builtin-op bop) (emit-unary-builtin-with-ftable instrs1 bop env) (compile-binary-or-ternary-builtin-with-ftable node env ftable instrs1 bop)))))
+(defn compile-builtin-apply-with-source [node source env ftable instrs data-ref bop] (if (= bop (op-map-new)) (emit-to instrs bop (+ 1 (map-size env))) (if (nullary-builtin-op bop) (emit-to instrs bop 0) (if (source-builtin-map-op bop) (compile-map-builtin-with-source node source env ftable instrs data-ref bop) (let [instrs1 (compile-expr-with-source (vector-get node 3) source env ftable instrs data-ref)] (if (unary-builtin-op bop) (emit-unary-builtin-with-source instrs1 bop env) (compile-binary-or-ternary-builtin-with-source node source env ftable instrs1 data-ref bop)))))))
+(defn compile-builtin-apply-with-ftable [node env ftable instrs bop] (if (= bop (op-map-new)) (emit-to instrs bop (+ 1 (map-size env))) (if (nullary-builtin-op bop) (emit-to instrs bop 0) (let [instrs1 (compile-expr-with-ftable (vector-get node 3) env ftable instrs)] (if (unary-builtin-op bop) (emit-unary-builtin-with-ftable instrs1 bop env) (compile-binary-or-ternary-builtin-with-ftable node env ftable instrs1 bop))))))
 (defn compile-do-exprs-step [node env ftable idx expr-count instrs]
   (if (>= idx expr-count)
     (make-compile-step-state 1 idx instrs)

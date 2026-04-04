@@ -19,6 +19,12 @@ fn assert_ir(source: &str, snapshot_name: &str) {
     insta::assert_snapshot!(snapshot_name, module.dump());
 }
 
+fn count_call_instr(body: &[Instruction], idx: u32) -> usize {
+    body.iter()
+        .filter(|instr| matches!(instr, Instruction::Call(call_idx) if *call_idx == idx))
+        .count()
+}
+
 #[test]
 fn test_lower_integer_literal() {
     assert_ir("(defn main [] 42)", "lower_integer_literal");
@@ -84,6 +90,90 @@ fn test_lower_recursive_function() {
 #[test]
 fn test_lower_print_call() {
     assert_ir("(defn main [] (print 42))", "lower_print_call");
+}
+
+#[test]
+fn test_lower_string_concat_auto_roots_arguments() {
+    let module = lower(r#"(defn main [] (string-concat "a" "b"))"#);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+
+    let concat_pos = main_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::Call(2)))
+        .expect("string-concat は __string_concat を呼ぶべき");
+    let pushes_before_concat = main_fn.body[..concat_pos]
+        .iter()
+        .filter(|instr| matches!(instr, Instruction::Call(14)))
+        .count();
+    let pops_after_concat = main_fn.body[concat_pos + 1..]
+        .iter()
+        .filter(|instr| matches!(instr, Instruction::Call(15)))
+        .count();
+
+    assert!(
+        pushes_before_concat >= 2,
+        "string-concat 前に 2 つの root_push が必要: {:?}",
+        main_fn.body
+    );
+    assert!(
+        pops_after_concat >= 2,
+        "string-concat 後に 2 つの root_pop が必要: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_substring_auto_roots_source_string() {
+    let module = lower(r#"(defn main [] (substring "abcd" 1 3))"#);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+
+    assert_eq!(
+        count_call_instr(&main_fn.body, 14),
+        1,
+        "substring は source string を root_push で保護すべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        1,
+        "substring は alloc 後に root_pop で解放すべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_ref_new_auto_roots_wrapped_heap_value() {
+    let module = lower(r#"(defn main [] (ref-new "ab"))"#);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+
+    assert!(
+        count_call_instr(&main_fn.body, 14) >= 1,
+        "ref-new は __alloc 前に wrapped value を root_push で保護すべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        count_call_instr(&main_fn.body, 15) >= 1,
+        "ref-new は __alloc 後に root_pop で解放すべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_vector_push_auto_roots_realloc_inputs() {
+    let module = lower(r#"(defn main [] (vector-push (vector-new 0) "x"))"#);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+
+    assert!(
+        count_call_instr(&main_fn.body, 14) >= 2,
+        "vector-push の再割り当ては old vector / pushed value を root_push で保護すべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        count_call_instr(&main_fn.body, 15) >= 2,
+        "vector-push の再割り当ては alloc 後に root_pop で解放すべき: {:?}",
+        main_fn.body
+    );
 }
 
 #[test]

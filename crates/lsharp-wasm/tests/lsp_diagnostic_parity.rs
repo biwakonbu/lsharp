@@ -1,8 +1,8 @@
 #[path = "e2e/support.rs"]
 mod support;
 
-use support::*;
 use std::sync::{Mutex, OnceLock};
+use support::*;
 
 fn diag_test_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -62,7 +62,10 @@ fn test_e2e_lsp_diagnostic_sort_same_line_by_col() {
 "#;
     let lines = run_lsp_harness(harness);
     assert_eq!(lines[0], "2", "同一行ではソート後の先頭は col=2 であるべき");
-    assert_eq!(lines[1], "10", "同一行ではソート後の2番目は col=10 であるべき");
+    assert_eq!(
+        lines[1], "10",
+        "同一行ではソート後の2番目は col=10 であるべき"
+    );
 }
 
 /// sort-diagnostics: 3 件の診断を正しくソートできること
@@ -168,7 +171,11 @@ fn test_e2e_lsp_diagnostic_render_single() {
     let lines = run_lsp_harness(harness);
     let json = &lines[0];
     // JSON に severity, rule, line, col が含まれることを確認
-    assert!(json.contains("\"severity\":1"), "severity が含まれるべき: {}", json);
+    assert!(
+        json.contains("\"severity\":1"),
+        "severity が含まれるべき: {}",
+        json
+    );
     assert!(json.contains("\"line\":3"), "line が含まれるべき: {}", json);
     assert!(json.contains("\"col\":5"), "col が含まれるべき: {}", json);
 }

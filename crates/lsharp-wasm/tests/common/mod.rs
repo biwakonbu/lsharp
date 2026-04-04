@@ -242,18 +242,15 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
     let type_infer_builtins_ls =
         std::fs::read_to_string(selfhost_source_path("TypeInferBuiltins.ls"))
             .expect("canonical TypeInferBuiltins.ls が読み込めない");
-    let type_infer_apply_ls =
-        std::fs::read_to_string(selfhost_source_path("TypeInferApply.ls"))
-            .expect("canonical TypeInferApply.ls が読み込めない");
-    let type_infer_block_ls =
-        std::fs::read_to_string(selfhost_source_path("TypeInferBlock.ls"))
-            .expect("canonical TypeInferBlock.ls が読み込めない");
+    let type_infer_apply_ls = std::fs::read_to_string(selfhost_source_path("TypeInferApply.ls"))
+        .expect("canonical TypeInferApply.ls が読み込めない");
+    let type_infer_block_ls = std::fs::read_to_string(selfhost_source_path("TypeInferBlock.ls"))
+        .expect("canonical TypeInferBlock.ls が読み込めない");
     let type_infer_pattern_ls =
         std::fs::read_to_string(selfhost_source_path("TypeInferPattern.ls"))
             .expect("canonical TypeInferPattern.ls が読み込めない");
-    let type_infer_record_ls =
-        std::fs::read_to_string(selfhost_source_path("TypeInferRecord.ls"))
-            .expect("canonical TypeInferRecord.ls が読み込めない");
+    let type_infer_record_ls = std::fs::read_to_string(selfhost_source_path("TypeInferRecord.ls"))
+        .expect("canonical TypeInferRecord.ls が読み込めない");
     let type_infer_ls = std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
         .expect("canonical TypeInfer.ls が読み込めない");
     let compiler_ls = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))

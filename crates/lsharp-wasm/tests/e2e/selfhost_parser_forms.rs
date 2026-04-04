@@ -1,7 +1,11 @@
 use super::support::*;
 
 fn run_parser_runtime(harness: &str) -> String {
-    compile_and_run(&format!("{}\n{}", selfhost_parser_runtime_bundle(), harness))
+    compile_and_run(&format!(
+        "{}\n{}",
+        selfhost_parser_runtime_bundle(),
+        harness
+    ))
 }
 
 fn run_parser_macroexpand_runtime(harness: &str) -> String {
@@ -55,7 +59,6 @@ fn test_e2e_selfhost_parser_defmacro_collect() {
 /// TEST-SYNTAX-02h: private 宣言が canonical tag でパースされる
 #[test]
 fn test_e2e_selfhost_parser_private_decl() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(private (defn foo [] 1))") 0)
@@ -79,7 +82,6 @@ fn test_e2e_selfhost_parser_private_decl() {
 /// TEST-SYNTAX-02i: record update を AST ノードにパースできる
 #[test]
 fn test_e2e_selfhost_parser_record_update() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "{p | x 10 y 20}") 0)
@@ -120,7 +122,6 @@ fn test_e2e_selfhost_parser_record_update() {
 /// TEST-SYNTAX-02j: type-alias / type-constrained / computation-builder / impl を decl tag にパースできる
 #[test]
 fn test_e2e_selfhost_parser_extended_decl_forms() {
-
     let harness = r#"
 (defn main []
   (let [alias-node (vector-get (parse-program "(type-alias Str String)") 0)
@@ -172,7 +173,6 @@ fn test_e2e_selfhost_parser_extended_decl_forms() {
 /// TEST-SYNTAX-02j2: trait / impl の body decl を最小 payload で保持できる
 #[test]
 fn test_e2e_selfhost_parser_trait_impl_bodies() {
-
     let harness = r#"
 (defn main []
   (let [trait-node (vector-get (parse-program "(trait (Show a) (defn show [self] : String))") 0)
@@ -218,7 +218,6 @@ fn test_e2e_selfhost_parser_trait_impl_bodies() {
 /// TEST-SYNTAX-02j3: type-constrained の主要 constraint 形式をスキップできる
 #[test]
 fn test_e2e_selfhost_parser_type_constrained_constraint_forms() {
-
     let harness = r#"
 (defn main []
   (let [range-node (vector-get (parse-program "(type-constrained Percentage Int :constraints [(>= 0) (<= 100)])") 0)
@@ -262,7 +261,6 @@ fn test_e2e_selfhost_parser_type_constrained_constraint_forms() {
 /// TEST-SYNTAX-02j4: 空 S 式 `()` を unit literal としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_unit_literal() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "()") 0)]
@@ -283,7 +281,6 @@ fn test_e2e_selfhost_parser_unit_literal() {
 /// TEST-SYNTAX-02k: if 式を明示的に ast-if としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_if_expr() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(if true 1 0)") 0)
@@ -315,7 +312,6 @@ fn test_e2e_selfhost_parser_if_expr() {
 /// TEST-SYNTAX-02l1: match の `_` パターンを wildcard としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_match_wildcard_pattern() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(match 1 [_ 2] [rest 3])") 0)
@@ -357,7 +353,6 @@ fn test_e2e_selfhost_parser_match_wildcard_pattern() {
 /// TEST-SYNTAX-02l2: match の symbol pattern を pattern tag としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_match_var_pattern_tag() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(match 1 [rest 3])") 0)
@@ -382,7 +377,6 @@ fn test_e2e_selfhost_parser_match_var_pattern_tag() {
 /// TEST-SYNTAX-02l3: match の constructor pattern を canonical tag としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_match_constructor_pattern_tag() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(match value [(Some rest) rest])") 0)
@@ -422,7 +416,6 @@ fn test_e2e_selfhost_parser_match_constructor_pattern_tag() {
 /// TEST-SYNTAX-02l4: match の record pattern を canonical tag としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_match_record_pattern_tag() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(match value [{Point x rest} rest])") 0)
@@ -459,7 +452,6 @@ fn test_e2e_selfhost_parser_match_record_pattern_tag() {
 /// TEST-SYNTAX-02l5: match の int/bool literal pattern を canonical tag としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_match_literal_pattern_tag() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(match value [1 2] [true 3] [rest 4])") 0)
@@ -511,7 +503,6 @@ fn test_e2e_selfhost_parser_match_literal_pattern_tag() {
 /// TEST-SYNTAX-02l5b: match の unit literal pattern を canonical tag としてパースできる
 #[test]
 fn test_e2e_selfhost_parser_match_unit_literal_pattern_tag() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(match value [() 2] [rest 4])") 0)
@@ -546,7 +537,6 @@ fn test_e2e_selfhost_parser_match_unit_literal_pattern_tag() {
 /// TEST-SYNTAX-02l6: nested constructor/record child でも literal pattern を canonicalize できる
 #[test]
 fn test_e2e_selfhost_parser_match_nested_literal_pattern_tag() {
-
     let harness = r#"
 (defn main []
   (let [node (vector-get (parse-program "(match value [(Some 1) 2] [{Point x true} 3])") 0)

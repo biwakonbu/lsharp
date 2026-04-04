@@ -19,24 +19,24 @@ fn test_escape_sequence_newline() {
             0))
     "#,
     );
-    
+
     // Print the output in a detailed way to see exact bytes
     eprintln!("Output length: {} bytes", result.len());
     for (i, byte) in result.as_bytes().iter().enumerate() {
         eprintln!("  Byte {}: 0x{:02X} ({})", i, byte, *byte as char);
     }
-    
+
     // The output should be:
     // "Test 1: " + <content of "\\n"> + newline + "Test 2: " + <content of "\\\\"> + newline
-    
+
     // If "\\n" produces a literal backslash-n:
     // Test 1: \n
     // Test 2: \\
-    
+
     // If "\\n" produces a newline:
-    // Test 1: 
+    // Test 1:
     // Test 2: \\
-    
+
     println!("Raw output: {:?}", result);
     assert!(result.contains("Test 1:"));
     assert!(result.contains("Test 2:"));
@@ -55,7 +55,7 @@ fn test_double_backslash() {
             0))
     "#,
     );
-    
+
     eprintln!("\nDouble backslash test:");
     eprintln!("Output: {:?}", result);
     eprintln!("Bytes:");
@@ -71,7 +71,7 @@ fn test_double_backslash() {
             }
         );
     }
-    
+
     assert!(result.contains("before"));
     assert!(result.contains("after"));
 }
@@ -89,14 +89,14 @@ fn test_escaped_n_sequence() {
             0))
     "#,
     );
-    
+
     eprintln!("\nEscaped \\n test:");
     eprintln!("Output: {:?}", result);
     eprintln!("Bytes:");
     for (i, byte) in result.as_bytes().iter().enumerate() {
         eprintln!("  Byte {}: 0x{:02X}", i, byte);
     }
-    
+
     // If \n produces a newline, we should see 0x0A
     assert!(result.contains("line1"));
     assert!(result.contains("line2"));
@@ -115,22 +115,26 @@ fn test_verify_hex_dump() {
             0))
     "#,
     );
-    
+
     eprintln!("\nHex dump of 'A' + '\\\\n' + 'B':");
     let bytes = result.as_bytes();
-    println!("\nOutput bytes (hex): {}", 
-        bytes.iter()
+    println!(
+        "\nOutput bytes (hex): {}",
+        bytes
+            .iter()
             .map(|b| format!("{:02X}", b))
             .collect::<Vec<_>>()
             .join(" ")
     );
-    
-    println!("\nOutput bytes (decimal): {}", 
-        bytes.iter()
+
+    println!(
+        "\nOutput bytes (decimal): {}",
+        bytes
+            .iter()
             .map(|b| b.to_string())
             .collect::<Vec<_>>()
             .join(" ")
     );
-    
+
     println!("\nOutput as string: {:?}", result);
 }

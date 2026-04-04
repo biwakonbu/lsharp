@@ -6,6 +6,12 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+pub const FORMATTER_TRIO_EXPR: &str = "Tools.Text.FormatterExpr";
+pub const FORMATTER_TRIO_DECL: &str = "Tools.Text.FormatterDecl";
+pub const FORMATTER_TRIO_MAIN: &str = "Tools.Text.Formatter";
+const FORMATTER_TRIO_MODULES: [&str; 3] =
+    [FORMATTER_TRIO_EXPR, FORMATTER_TRIO_DECL, FORMATTER_TRIO_MAIN];
+
 /// モジュール解決に使う探索パス
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleSearchPaths {
@@ -49,6 +55,8 @@ pub struct ModuleGraph {
     modules: HashMap<String, ModuleNode>,
     /// モジュール名 -> ファイルパス
     file_map: HashMap<String, String>,
+    /// モジュール名 -> 直接それを参照しているモジュール群
+    reverse_deps: HashMap<String, Vec<String>>,
 }
 
 /// モジュールノード
@@ -60,6 +68,12 @@ pub struct ModuleNode {
     pub imports: Vec<String>,
     /// ソースファイルパス
     pub file_path: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportDiff {
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
 }
 
 /// モジュールグラフのエラー
@@ -102,6 +116,14 @@ impl ModuleGraph {
 
         if let Some(ref path) = file_path {
             self.file_map.insert(name.clone(), path.clone());
+        }
+        self.reverse_deps.entry(name.clone()).or_default();
+        for import in &imports {
+            let dependents = self.reverse_deps.entry(import.clone()).or_default();
+            if !dependents.contains(&name) {
+                dependents.push(name.clone());
+                dependents.sort();
+            }
         }
 
         self.modules.insert(
@@ -249,6 +271,54 @@ impl ModuleGraph {
         deps
     }
 
+    /// 指定モジュールを参照しているモジュール closure を近い依存元から安定順で返す
+    pub fn reverse_dependency_closure(&self, module: &str) -> Vec<String> {
+        let mut visited = HashSet::new();
+        let mut out = Vec::new();
+        let mut queue = std::collections::VecDeque::new();
+
+        let mut initial = self.reverse_deps.get(module).cloned().unwrap_or_default();
+        initial.sort();
+        for dependent in initial {
+            if visited.insert(dependent.clone()) {
+                queue.push_back(dependent.clone());
+                out.push(dependent);
+            }
+        }
+
+        while let Some(current) = queue.pop_front() {
+            let mut dependents = self.reverse_deps.get(&current).cloned().unwrap_or_default();
+            dependents.sort();
+            for dependent in dependents {
+                if visited.insert(dependent.clone()) {
+                    queue.push_back(dependent.clone());
+                    out.push(dependent);
+                }
+            }
+        }
+
+        out
+    }
+
+    /// 変更モジュールと、その逆依存 closure を dirty set として返す
+    pub fn compute_dirty_set(&self, changed: &[String]) -> Vec<String> {
+        let mut seen = HashSet::new();
+        let mut dirty = Vec::new();
+
+        for module in expand_changed_modules(changed) {
+            if seen.insert(module.clone()) {
+                dirty.push(module.clone());
+            }
+            for dependent in self.reverse_dependency_closure(&module) {
+                if seen.insert(dependent.clone()) {
+                    dirty.push(dependent);
+                }
+            }
+        }
+
+        dirty
+    }
+
     fn collect_dependencies(
         &self,
         module: &str,
@@ -265,6 +335,73 @@ impl ModuleGraph {
                 }
             }
         }
+    }
+
+    fn rebuild_reverse_deps(&mut self) {
+        let mut reverse_deps: HashMap<String, Vec<String>> = HashMap::new();
+        for name in self.modules.keys() {
+            reverse_deps.entry(name.clone()).or_default();
+        }
+        for (module, node) in &self.modules {
+            for import in &node.imports {
+                reverse_deps
+                    .entry(import.clone())
+                    .or_default()
+                    .push(module.clone());
+            }
+        }
+        for dependents in reverse_deps.values_mut() {
+            dependents.sort();
+            dependents.dedup();
+        }
+        self.reverse_deps = reverse_deps;
+    }
+
+    pub fn diff_imports(old: &[String], new: &[String]) -> ImportDiff {
+        let old_set: HashSet<&String> = old.iter().collect();
+        let new_set: HashSet<&String> = new.iter().collect();
+        let mut added: Vec<String> = new
+            .iter()
+            .filter(|module| !old_set.contains(module))
+            .cloned()
+            .collect();
+        let mut removed: Vec<String> = old
+            .iter()
+            .filter(|module| !new_set.contains(module))
+            .cloned()
+            .collect();
+        added.sort();
+        added.dedup();
+        removed.sort();
+        removed.dedup();
+        ImportDiff { added, removed }
+    }
+
+    pub fn update_module_imports(
+        &mut self,
+        module: &str,
+        new_imports: Vec<String>,
+    ) -> Result<ImportDiff, ModuleGraphError> {
+        let node = self
+            .modules
+            .get_mut(module)
+            .ok_or_else(|| ModuleGraphError::ModuleNotFound {
+                name: module.to_string(),
+                from: "update_module_imports".to_string(),
+            })?;
+        let diff = Self::diff_imports(&node.imports, &new_imports);
+        node.imports = new_imports;
+        self.rebuild_reverse_deps();
+        Ok(diff)
+    }
+
+    pub fn remove_module(&mut self, module: &str) -> bool {
+        let removed = self.modules.remove(module).is_some();
+        if removed {
+            self.file_map.remove(module);
+            self.rebuild_reverse_deps();
+        }
+        removed
     }
 
     /// 親モジュール名を取得 ("A.B.C" -> Some("A.B"))
@@ -466,6 +603,7 @@ impl ModuleGraph {
             .filter_map(|name| file_list.iter().find(|(n, _)| n == name).cloned())
             .collect();
 
+        graph.rebuild_reverse_deps();
         Ok((graph, sorted_list))
     }
 
@@ -542,9 +680,7 @@ fn find_package_root(start: &Path) -> Option<PathBuf> {
         if current.join("lsharp.toml").exists() {
             return Some(current);
         }
-        let Some(parent) = current.parent() else {
-            return None;
-        };
+        let parent = current.parent()?;
         if parent == current {
             return None;
         }
@@ -586,6 +722,30 @@ fn discover_package_sources(base: &Path) -> Vec<PathBuf> {
     }
     sources.sort();
     sources
+}
+
+fn is_formatter_trio_module(module: &str) -> bool {
+    FORMATTER_TRIO_MODULES.contains(&module)
+}
+
+fn expand_changed_modules(changed: &[String]) -> Vec<String> {
+    let mut expanded = Vec::new();
+    let mut seen = HashSet::new();
+
+    for module in changed {
+        if is_formatter_trio_module(module) {
+            for trio_module in FORMATTER_TRIO_MODULES {
+                let trio_module = trio_module.to_string();
+                if seen.insert(trio_module.clone()) {
+                    expanded.push(trio_module);
+                }
+            }
+        } else if seen.insert(module.clone()) {
+            expanded.push(module.clone());
+        }
+    }
+
+    expanded
 }
 
 fn external_package_root_for_path(path: &Path, package_sources: &[PathBuf]) -> Option<PathBuf> {
@@ -735,6 +895,163 @@ mod tests {
         assert!(pos_base < pos_right);
         assert!(pos_left < pos_top);
         assert!(pos_right < pos_top);
+    }
+
+    #[test]
+    fn test_reverse_dependency_closure_linear_chain() {
+        let mut graph = ModuleGraph::new();
+        graph.add_module("A".to_string(), vec![], None).unwrap();
+        graph
+            .add_module("B".to_string(), vec!["A".to_string()], None)
+            .unwrap();
+        graph
+            .add_module("C".to_string(), vec!["B".to_string()], None)
+            .unwrap();
+
+        assert_eq!(graph.reverse_dependency_closure("A"), vec!["B", "C"]);
+        assert_eq!(graph.reverse_dependency_closure("B"), vec!["C"]);
+    }
+
+    #[test]
+    fn test_reverse_dependency_closure_diamond() {
+        let mut graph = ModuleGraph::new();
+        graph.add_module("Base".to_string(), vec![], None).unwrap();
+        graph
+            .add_module("Left".to_string(), vec!["Base".to_string()], None)
+            .unwrap();
+        graph
+            .add_module("Right".to_string(), vec!["Base".to_string()], None)
+            .unwrap();
+        graph
+            .add_module(
+                "Top".to_string(),
+                vec!["Left".to_string(), "Right".to_string()],
+                None,
+            )
+            .unwrap();
+
+        assert_eq!(
+            graph.reverse_dependency_closure("Base"),
+            vec!["Left", "Right", "Top"]
+        );
+    }
+
+    #[test]
+    fn test_reverse_dependency_closure_independent_module() {
+        let mut graph = ModuleGraph::new();
+        graph.add_module("A".to_string(), vec![], None).unwrap();
+        graph.add_module("B".to_string(), vec!["A".to_string()], None).unwrap();
+        graph.add_module("Isolated".to_string(), vec![], None).unwrap();
+
+        assert_eq!(
+            graph.reverse_dependency_closure("Isolated"),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn test_compute_dirty_set_includes_reverse_dependents() {
+        let mut graph = ModuleGraph::new();
+        graph.add_module("Base".to_string(), vec![], None).unwrap();
+        graph
+            .add_module("Left".to_string(), vec!["Base".to_string()], None)
+            .unwrap();
+        graph
+            .add_module("Right".to_string(), vec!["Base".to_string()], None)
+            .unwrap();
+        graph
+            .add_module(
+                "Top".to_string(),
+                vec!["Left".to_string(), "Right".to_string()],
+                None,
+            )
+            .unwrap();
+
+        assert_eq!(
+            graph.compute_dirty_set(&["Base".to_string()]),
+            vec!["Base", "Left", "Right", "Top"]
+        );
+    }
+
+    #[test]
+    fn test_diff_imports_reports_added_and_removed_modules() {
+        let diff = ModuleGraph::diff_imports(
+            &["Base".to_string(), "Left".to_string()],
+            &["Left".to_string(), "Right".to_string()],
+        );
+
+        assert_eq!(diff.added, vec!["Right"]);
+        assert_eq!(diff.removed, vec!["Base"]);
+    }
+
+    #[test]
+    fn test_update_module_imports_rebuilds_reverse_deps_and_topological_sort() {
+        let mut graph = ModuleGraph::new();
+        graph.add_module("A".to_string(), vec![], None).unwrap();
+        graph.add_module("B".to_string(), vec![], None).unwrap();
+        graph
+            .add_module("C".to_string(), vec!["B".to_string()], None)
+            .unwrap();
+
+        graph
+            .update_module_imports("B", vec!["A".to_string()])
+            .unwrap();
+
+        let order = graph.topological_sort().unwrap();
+        let pos_a = order.iter().position(|n| n == "A").unwrap();
+        let pos_b = order.iter().position(|n| n == "B").unwrap();
+        let pos_c = order.iter().position(|n| n == "C").unwrap();
+        assert!(pos_a < pos_b);
+        assert!(pos_b < pos_c);
+        assert_eq!(graph.reverse_dependency_closure("A"), vec!["B", "C"]);
+    }
+
+    #[test]
+    fn test_remove_module_updates_reverse_deps_and_dirty_set() {
+        let mut graph = ModuleGraph::new();
+        graph.add_module("A".to_string(), vec![], None).unwrap();
+        graph
+            .add_module("B".to_string(), vec!["A".to_string()], None)
+            .unwrap();
+        graph
+            .add_module("C".to_string(), vec!["B".to_string()], None)
+            .unwrap();
+
+        assert!(graph.remove_module("C"));
+        assert_eq!(graph.topological_sort().unwrap(), vec!["A", "B"]);
+        assert_eq!(graph.reverse_dependency_closure("A"), vec!["B"]);
+        assert_eq!(graph.compute_dirty_set(&["A".to_string()]), vec!["A", "B"]);
+    }
+
+    #[test]
+    fn test_compute_dirty_set_expands_formatter_trio_atomically() {
+        let mut graph = ModuleGraph::new();
+        graph
+            .add_module(FORMATTER_TRIO_EXPR.to_string(), vec![], None)
+            .unwrap();
+        graph
+            .add_module(FORMATTER_TRIO_DECL.to_string(), vec![], None)
+            .unwrap();
+        graph
+            .add_module(FORMATTER_TRIO_MAIN.to_string(), vec![], None)
+            .unwrap();
+        graph
+            .add_module(
+                "Consumer".to_string(),
+                vec![FORMATTER_TRIO_MAIN.to_string()],
+                None,
+            )
+            .unwrap();
+
+        assert_eq!(
+            graph.compute_dirty_set(&[FORMATTER_TRIO_DECL.to_string()]),
+            vec![
+                FORMATTER_TRIO_EXPR,
+                FORMATTER_TRIO_DECL,
+                FORMATTER_TRIO_MAIN,
+                "Consumer",
+            ]
+        );
     }
 
     /// マルチファイル compile の Wasm 決定性: HashMap 走査順に依存しないこと

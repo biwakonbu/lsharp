@@ -22,7 +22,10 @@ fn test_e2e_knowledge_schema_json_contract() {
     let function_required = function_items["required"]
         .as_array()
         .expect("functions.items.required が配列であること");
-    let function_req: Vec<&str> = function_required.iter().filter_map(|x| x.as_str()).collect();
+    let function_req: Vec<&str> = function_required
+        .iter()
+        .filter_map(|x| x.as_str())
+        .collect();
     assert!(
         function_req.contains(&"name"),
         "knowledge schema: functions entry は name 必須"
@@ -114,9 +117,10 @@ fn test_e2e_review_schema_json_contract() {
 fn test_e2e_doc_output_schema_json_contract() {
     let schema_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../docs/schemas/doc-output.schema.json");
-    let raw =
-        std::fs::read_to_string(&schema_path).expect("docs/schemas/doc-output.schema.json を読めない");
-    let v: serde_json::Value = serde_json::from_str(&raw).expect("doc-output.schema.json の JSON 解析");
+    let raw = std::fs::read_to_string(&schema_path)
+        .expect("docs/schemas/doc-output.schema.json を読めない");
+    let v: serde_json::Value =
+        serde_json::from_str(&raw).expect("doc-output.schema.json の JSON 解析");
 
     let top_required = v["required"].as_array().expect("トップレベル required");
     let top: Vec<&str> = top_required.iter().filter_map(|x| x.as_str()).collect();
@@ -131,7 +135,10 @@ fn test_e2e_doc_output_schema_json_contract() {
     let function_required = function_items["required"]
         .as_array()
         .expect("functions.items.required が配列であること");
-    let function_req: Vec<&str> = function_required.iter().filter_map(|x| x.as_str()).collect();
+    let function_req: Vec<&str> = function_required
+        .iter()
+        .filter_map(|x| x.as_str())
+        .collect();
     assert!(
         function_req.contains(&"name"),
         "doc-output schema: functions entry は name 必須"
@@ -776,7 +783,10 @@ fn test_e2e_selfhost_doctools_schema_doc_output() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
 
-    assert_eq!(lines, vec!["5", "300", "1", "1", "1", "2", "1", "1", "1", "1"]);
+    assert_eq!(
+        lines,
+        vec!["5", "300", "1", "1", "1", "2", "1", "1", "1", "1"]
+    );
 }
 
 /// DOC-01: generate-doc-output も module decl がある場合は module 名 title を使うこと
@@ -956,7 +966,9 @@ fn test_e2e_selfhost_doctools_deterministic() {
 
     assert_eq!(
         lines,
-        vec!["1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1"]
+        vec![
+            "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "1"
+        ]
     );
 }
 

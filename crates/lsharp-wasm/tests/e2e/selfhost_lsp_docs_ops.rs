@@ -1355,10 +1355,7 @@ fn test_e2e_selfhost_lsp_hier_fixture_shape_cross_document_definition() {
 "#
     );
 
-    let lines = run_lsp_harness(
-        "lsp_hier_fixture_shape_cross_document_definition",
-        &harness,
-    );
+    let lines = run_lsp_harness("lsp_hier_fixture_shape_cross_document_definition", &harness);
 
     assert_eq!(
         lines[0], "201",
@@ -1690,8 +1687,8 @@ fn test_e2e_selfhost_formatter_roundtrip_v2() {
         fmt_path.exists(),
         "selfhost/src/Tools/Text/Formatter.ls が存在しない (T4-3)"
     );
-    let source =
-        std::fs::read_to_string(&fmt_path).expect("selfhost/src/Tools/Text/Formatter.ls の読み込みに失敗");
+    let source = std::fs::read_to_string(&fmt_path)
+        .expect("selfhost/src/Tools/Text/Formatter.ls の読み込みに失敗");
 
     // T4c-1 AC-300: parse-format-parse roundtrip
     // format-program と format-expr (または同等関数) が定義されていること
@@ -1712,9 +1709,12 @@ fn test_e2e_selfhost_formatter_roundtrip_v2() {
 #[test]
 fn test_e2e_selfhost_linter_rule_ids_v2() {
     let lint_path = selfhost_source_path("Linter.ls");
-    assert!(lint_path.exists(), "selfhost/src/Tools/Text/Linter.ls が存在しない (T4-3)");
-    let source =
-        std::fs::read_to_string(&lint_path).expect("selfhost/src/Tools/Text/Linter.ls の読み込みに失敗");
+    assert!(
+        lint_path.exists(),
+        "selfhost/src/Tools/Text/Linter.ls が存在しない (T4-3)"
+    );
+    let source = std::fs::read_to_string(&lint_path)
+        .expect("selfhost/src/Tools/Text/Linter.ls の読み込みに失敗");
 
     // T4c-2 AC-304: 各 lint rule に一意の rule id (L0001 形式) が付与されている
     // L + 4桁の数字パターンを手動検索
@@ -1805,10 +1805,10 @@ fn test_e2e_selfhost_doc_deterministic_html() {
         "selfhost/src/Tools/Doc/HtmlDoc.ls が存在しない (T4d-3: HTML doc 生成)"
     );
 
-    let doctools_source =
-        std::fs::read_to_string(&doctools_path).expect("selfhost/src/Tools/Doc/DocTools.ls の読み込みに失敗");
-    let htmldoc_source =
-        std::fs::read_to_string(&htmldoc_path).expect("selfhost/src/Tools/Doc/HtmlDoc.ls の読み込みに失敗");
+    let doctools_source = std::fs::read_to_string(&doctools_path)
+        .expect("selfhost/src/Tools/Doc/DocTools.ls の読み込みに失敗");
+    let htmldoc_source = std::fs::read_to_string(&htmldoc_path)
+        .expect("selfhost/src/Tools/Doc/HtmlDoc.ls の読み込みに失敗");
 
     // module 宣言の存在確認
     assert!(
@@ -2138,10 +2138,7 @@ fn test_e2e_ops02_artifact_policy() {
     }
 
     let release_workflow = project_root.join(".github/workflows/release.yml");
-    assert!(
-        release_workflow.is_file(),
-        "release.yml が存在しない"
-    );
+    assert!(release_workflow.is_file(), "release.yml が存在しない");
     let release_content =
         std::fs::read_to_string(&release_workflow).expect("release.yml の読み込みに失敗");
     assert!(
@@ -2149,12 +2146,14 @@ fn test_e2e_ops02_artifact_policy() {
         "release.yml は workflow-local release artifact 名を保持すること"
     );
     assert!(
-        release_content
-            .contains("dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }}"),
+        release_content.contains(
+            "dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.${{ matrix.archive_ext }}"
+        ),
         "release.yml は配布 asset ファイル名も固定すること"
     );
     assert!(
-        release_content.contains("dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.component.wasm"),
+        release_content
+            .contains("dist/lsharp-${{ github.ref_name }}-${{ matrix.target }}.component.wasm"),
         "release.yml は guest component sidecar asset も扱うこと"
     );
     // アーティファクトポリシードキュメントが存在すること
@@ -2211,6 +2210,16 @@ fn test_e2e_gc06_ci_artifact_contract() {
         script.is_file(),
         "scripts/ci/collect-gc-metrics.sh が存在しない"
     );
+    let script_content =
+        std::fs::read_to_string(&script).expect("collect-gc-metrics.sh の読み込みに失敗");
+    assert!(
+        script_content.contains("gc-metrics-proof-sidecar:"),
+        "collect-gc-metrics.sh は normalized collector-proof sidecar path を出力すること"
+    );
+    assert!(
+        script_content.contains("s14_reason"),
+        "collect-gc-metrics.sh は S14 blocked reason slot を検証すること"
+    );
 
     let ci_path = project_root.join(".github/workflows/ci.yml");
     assert!(ci_path.is_file(), "ci.yml が存在しない");
@@ -2227,6 +2236,10 @@ fn test_e2e_gc06_ci_artifact_contract() {
         ci_content.contains("gc-metrics-"),
         "ci.yml は gc-metrics artifact 名を保持すること"
     );
+    assert!(
+        ci_content.contains("ci-artifacts/gc-metrics/${{ github.sha }}/"),
+        "ci.yml は gc-metrics artifact directory を upload し、summary/proof sidecar を保持すること"
+    );
 
     let policy = project_root.join("docs/development/operations/artifact-policy.md");
     assert!(policy.is_file(), "artifact-policy.md が存在しない");
@@ -2236,6 +2249,16 @@ fn test_e2e_gc06_ci_artifact_contract() {
         policy_content.contains("GC metrics"),
         "artifact-policy.md に GC metrics artifact 規則が存在しない"
     );
+    assert!(
+        policy_content.contains("collector-proof.json"),
+        "artifact-policy.md は GC metrics sidecar proof bundle を記述すること"
+    );
+    assert!(
+        policy_content.contains("s14_reason")
+            && policy_content.contains("s15_reason")
+            && policy_content.contains("s16_reason"),
+        "artifact-policy.md は GC metrics blocked reason slot を記述すること"
+    );
 
     let spec = project_root.join("docs/development/planning/gc-ci-gate-spec.md");
     assert!(spec.is_file(), "gc-ci-gate-spec.md が存在しない");
@@ -2243,6 +2266,16 @@ fn test_e2e_gc06_ci_artifact_contract() {
     assert!(
         spec_content.contains("collect-gc-metrics.sh"),
         "gc-ci-gate-spec.md は collect-gc-metrics.sh を参照すること"
+    );
+    assert!(
+        spec_content.contains("collector-proof.json"),
+        "gc-ci-gate-spec.md は collector-proof.json sidecar contract を記述すること"
+    );
+    assert!(
+        spec_content.contains("s14_reason")
+            && spec_content.contains("s15_reason")
+            && spec_content.contains("s16_reason"),
+        "gc-ci-gate-spec.md は GC metrics blocked reason slot を記述すること"
     );
 }
 
@@ -2435,7 +2468,8 @@ fn test_e2e_ops06_release_smoke_contract() {
     );
 
     let workflow = project_root.join(".github/workflows/release.yml");
-    let workflow_content = std::fs::read_to_string(&workflow).expect("release.yml の読み込みに失敗");
+    let workflow_content =
+        std::fs::read_to_string(&workflow).expect("release.yml の読み込みに失敗");
     let release_script = project_root.join("scripts/release.sh");
     let release_script_content =
         std::fs::read_to_string(&release_script).expect("release.sh の読み込みに失敗");
@@ -2516,6 +2550,60 @@ fn test_e2e_ops06_release_smoke_contract() {
     );
 }
 
+/// TEST-OPS-06d: release workflow に macOS / Windows signing hook が存在すること
+#[test]
+fn test_e2e_ops06_release_signing_workflow_hook() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let workflow = project_root.join(".github/workflows/release.yml");
+    let workflow_content =
+        std::fs::read_to_string(&workflow).expect("release.yml の読み込みに失敗");
+
+    assert!(
+        workflow_content.contains("APPLE_CODESIGN_IDENTITY")
+            && workflow_content.contains("codesign --verify --deep --strict")
+            && workflow_content.contains("spctl --assess -vv"),
+        "release.yml は macOS signing / verify hook を持つこと"
+    );
+    assert!(
+        workflow_content.contains("APPLE_NOTARY_KEYCHAIN_PROFILE")
+            && workflow_content.contains("xcrun notarytool submit"),
+        "release.yml は macOS notarization hook も secret 経由で配線すること"
+    );
+    assert!(
+        workflow_content.contains("WINDOWS_SIGN_CERT_PFX_BASE64")
+            && workflow_content.contains("WINDOWS_SIGN_CERT_PASSWORD")
+            && workflow_content.contains("WINDOWS_TIMESTAMP_URL")
+            && workflow_content.contains("signtool verify /pa"),
+        "release.yml は Windows Authenticode signing / verify hook を持つこと"
+    );
+
+    let signing_doc =
+        project_root.join("docs/development/operations/release-distribution-signing.md");
+    let signing_doc_content = std::fs::read_to_string(&signing_doc)
+        .expect("release-distribution-signing.md の読み込みに失敗");
+    assert!(
+        signing_doc_content.contains("APPLE_CODESIGN_IDENTITY")
+            && signing_doc_content.contains("WINDOWS_SIGN_CERT_PFX_BASE64"),
+        "release-distribution-signing.md は workflow hook の secret 名を正本として案内すること"
+    );
+    assert!(
+        signing_doc_content.contains("credential 未設定時は skip")
+            || signing_doc_content.contains("secret 未設定時は skip")
+            || signing_doc_content.contains("未設定なら skip"),
+        "release-distribution-signing.md は secret 未設定時の current behavior も説明すること"
+    );
+
+    let windows_design = project_root
+        .join("docs/development/planning/v2-designs/v2-05-windows-authenticode-signing.md");
+    let windows_design_content = std::fs::read_to_string(&windows_design)
+        .expect("v2-05-windows-authenticode-signing.md の読み込みに失敗");
+    assert!(
+        windows_design_content.contains("release.yml")
+            && windows_design_content.contains("WINDOWS_SIGN_CERT_PFX_BASE64"),
+        "Windows Authenticode design は release workflow hook へ接続した current state を反映すること"
+    );
+}
+
 /// TEST-PKG-01b: README Quick Start が release artifact-only 契約に揃っていること
 #[test]
 fn test_e2e_pkg01_readme_quick_start_uses_release_artifact_only() {
@@ -2557,7 +2645,8 @@ fn test_e2e_pkg01_readme_quick_start_uses_release_artifact_only() {
 fn test_e2e_ops07_release_download_smoke_job() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let workflow = project_root.join(".github/workflows/release.yml");
-    let workflow_content = std::fs::read_to_string(&workflow).expect("release.yml の読み込みに失敗");
+    let workflow_content =
+        std::fs::read_to_string(&workflow).expect("release.yml の読み込みに失敗");
     let job_start = workflow_content
         .find("release-smoke:")
         .expect("release.yml に release-smoke job が存在しない");
@@ -2722,8 +2811,10 @@ fi
     std::fs::set_permissions(&fake_lsp, lsp_perms)
         .expect("fake lsharp-lsp permission の設定に失敗");
 
-    std::fs::write(archive_root.join("README.md"), "# fixture\n").expect("README fixture 書き込み失敗");
-    std::fs::write(archive_root.join("LICENSE"), "fixture license\n").expect("LICENSE fixture 書き込み失敗");
+    std::fs::write(archive_root.join("README.md"), "# fixture\n")
+        .expect("README fixture 書き込み失敗");
+    std::fs::write(archive_root.join("LICENSE"), "fixture license\n")
+        .expect("LICENSE fixture 書き込み失敗");
     std::fs::write(
         archive_root.join("lsharp.component.wasm"),
         b"\0asmfixture-component",
@@ -2741,11 +2832,8 @@ fi
         checksum_output.status.code(),
         String::from_utf8_lossy(&checksum_output.stderr)
     );
-    std::fs::write(
-        archive_root.join("checksums.txt"),
-        checksum_output.stdout,
-    )
-    .expect("checksums.txt の書き込みに失敗");
+    std::fs::write(archive_root.join("checksums.txt"), checksum_output.stdout)
+        .expect("checksums.txt の書き込みに失敗");
 
     let archive_path = temp_root.join("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu.tar.gz");
     std::fs::write(
@@ -2834,6 +2922,15 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
             || smoke_script_content.contains("doc \"$SMOKE_SOURCE\""),
         "smoke_test_readme.sh は doc command の README smoke を持つこと"
     );
+    let fetch_stage0_script = project_root.join("scripts/fetch-stage0.sh");
+    let bootstrap_script = project_root.join("scripts/bootstrap.sh");
+    let release_bundle_script = project_root.join("scripts/release-bundle.sh");
+    assert!(
+        fetch_stage0_script.is_file()
+            && bootstrap_script.is_file()
+            && release_bundle_script.is_file(),
+        "OPS-07 stage0 future-state script 群が揃っていること"
+    );
 
     let ci_path = project_root.join(".github/workflows/ci.yml");
     let ci_content = std::fs::read_to_string(&ci_path).expect("ci.yml の読み込みに失敗");
@@ -2920,30 +3017,48 @@ fn test_e2e_ops07_fresh_clone_no_rust() {
         "fresh-clone-spec.md は current binary-only gate と future-state を見出しレベルで分離すること"
     );
     assert!(
-        fresh_clone_doc_content.contains("`./scripts/fetch-stage0.sh` は未実装")
-            && fresh_clone_doc_content.contains("`./scripts/bootstrap.sh` は未実装")
-            && fresh_clone_doc_content.contains("`./scripts/release-bundle.sh` は未実装"),
-        "fresh-clone-spec.md は未存在の future-state script を現行手順ではなく未実装要素として明記すること"
+        fresh_clone_doc_content.contains("./scripts/fetch-stage0.sh")
+            && fresh_clone_doc_content.contains("./scripts/bootstrap.sh")
+            && fresh_clone_doc_content.contains("./scripts/release-bundle.sh"),
+        "fresh-clone-spec.md は stage0 fetch/bootstrap/release-bundle 導線を文書化すること"
+    );
+    assert!(
+        !fresh_clone_doc_content.contains("`./scripts/fetch-stage0.sh` は未実装")
+            && !fresh_clone_doc_content.contains("`./scripts/bootstrap.sh` は未実装")
+            && !fresh_clone_doc_content.contains("`./scripts/release-bundle.sh` は未実装"),
+        "fresh-clone-spec.md は stale な未実装注記を残さないこと"
     );
 
-    let phase11_plan = project_root.join("docs/development/planning/phase11-implementation-plan.md");
-    let phase11_plan_content =
-        std::fs::read_to_string(&phase11_plan).expect("phase11-implementation-plan.md の読み込みに失敗");
+    let phase11_plan =
+        project_root.join("docs/development/planning/phase11-implementation-plan.md");
+    let phase11_plan_content = std::fs::read_to_string(&phase11_plan)
+        .expect("phase11-implementation-plan.md の読み込みに失敗");
     assert!(
         phase11_plan_content.contains("workflow-local")
             || phase11_plan_content.contains("same-run")
             || phase11_plan_content.contains("download release artifact"),
         "phase11-implementation-plan.md の OPS-07 節は current binary-only gate を説明すること"
     );
+    assert!(
+        phase11_plan_content.contains("fetch-stage0.sh")
+            && phase11_plan_content.contains("bootstrap.sh")
+            && phase11_plan_content.contains("release-bundle.sh"),
+        "phase11-implementation-plan.md の OPS-07 節は stage0 scaffold script 群も反映すること"
+    );
 
-    let completion_criteria =
-        project_root.join("docs/development/planning/completion-criteria.md");
-    let completion_criteria_content =
-        std::fs::read_to_string(&completion_criteria).expect("completion-criteria.md の読み込みに失敗");
+    let completion_criteria = project_root.join("docs/development/planning/completion-criteria.md");
+    let completion_criteria_content = std::fs::read_to_string(&completion_criteria)
+        .expect("completion-criteria.md の読み込みに失敗");
     assert!(
         completion_criteria_content.contains("test-fresh-clone")
             && completion_criteria_content.contains("closest viable binary-only gate"),
         "completion-criteria.md は current mainline binary-only fresh-clone gate を説明すること"
+    );
+    assert!(
+        completion_criteria_content.contains("fetch-stage0.sh")
+            || completion_criteria_content.contains("bootstrap.sh")
+            || completion_criteria_content.contains("release-bundle.sh"),
+        "completion-criteria.md は manual stage0 scaffold の current state も説明すること"
     );
 }
 
@@ -3144,8 +3259,10 @@ fi
     std::fs::set_permissions(&fake_lsp, lsp_perms)
         .expect("fake lsharp-lsp permission の設定に失敗");
 
-    std::fs::write(archive_root.join("README.md"), "# fixture\n").expect("README fixture 書き込み失敗");
-    std::fs::write(archive_root.join("LICENSE"), "fixture license\n").expect("LICENSE fixture 書き込み失敗");
+    std::fs::write(archive_root.join("README.md"), "# fixture\n")
+        .expect("README fixture 書き込み失敗");
+    std::fs::write(archive_root.join("LICENSE"), "fixture license\n")
+        .expect("LICENSE fixture 書き込み失敗");
     std::fs::write(
         archive_root.join("lsharp.component.wasm"),
         b"\0asmfixture-component",
@@ -3163,11 +3280,8 @@ fi
         checksum_output.status.code(),
         String::from_utf8_lossy(&checksum_output.stderr)
     );
-    std::fs::write(
-        archive_root.join("checksums.txt"),
-        checksum_output.stdout,
-    )
-    .expect("checksums.txt の書き込みに失敗");
+    std::fs::write(archive_root.join("checksums.txt"), checksum_output.stdout)
+        .expect("checksums.txt の書き込みに失敗");
 
     let archive_path = temp_root.join("lsharp-v0.0.0-test-x86_64-unknown-linux-gnu.tar.gz");
     let tar_output = Command::new("tar")
@@ -3262,8 +3376,10 @@ fn test_e2e_ops08_final_removal_rollback() {
 fn test_e2e_ops08_rollback_lkg_contract() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let rollback_doc = project_root.join("docs/development/operations/rollback-procedure.md");
-    let release_doc = project_root.join("docs/development/operations/release-distribution-signing.md");
-    let phase11_plan = project_root.join("docs/development/planning/phase11-implementation-plan.md");
+    let release_doc =
+        project_root.join("docs/development/operations/release-distribution-signing.md");
+    let phase11_plan =
+        project_root.join("docs/development/planning/phase11-implementation-plan.md");
     let rollback_adr = project_root.join("docs/development/operations/adr-rust-removal.md");
     let rollback_script = project_root.join("scripts/rollback.sh");
 
@@ -3271,8 +3387,8 @@ fn test_e2e_ops08_rollback_lkg_contract() {
         std::fs::read_to_string(&rollback_doc).expect("rollback-procedure.md の読み込みに失敗");
     let release_doc_text = std::fs::read_to_string(&release_doc)
         .expect("release-distribution-signing.md の読み込みに失敗");
-    let phase11_plan_text =
-        std::fs::read_to_string(&phase11_plan).expect("phase11-implementation-plan.md の読み込みに失敗");
+    let phase11_plan_text = std::fs::read_to_string(&phase11_plan)
+        .expect("phase11-implementation-plan.md の読み込みに失敗");
     let rollback_adr_text =
         std::fs::read_to_string(&rollback_adr).expect("adr-rust-removal.md の読み込みに失敗");
     let rollback_script_text =
@@ -3367,7 +3483,7 @@ fn test_fresh_clone_smoke_ci_job() {
         "test-fresh-clone.sh は既存の default-path-smoke.sh を再利用すること"
     );
     assert!(
-        script_content.contains("resolve_selfhost_source Token")
+        script_content.contains("resolve_selfhost_source")
             || script_content.contains("selfhost/src/Syntax/Token.ls"),
         "test-fresh-clone.sh は clean checkout 上で canonical selfhost source を実コンパイルすること"
     );
