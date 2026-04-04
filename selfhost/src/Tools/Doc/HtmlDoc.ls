@@ -174,9 +174,9 @@
     body
     (if (> (string-length functions-section) 0)
       (string-concat functions-section types-section)
-        (if (> (string-length types-section) 0)
-          types-section
-          (vector-get module-doc 2)))]
+      (if (> (string-length types-section) 0)
+        types-section
+        (vector-get module-doc 2)))]
     (string-concat "<main><h1>"
       (string-concat (html-escape title)
         (string-concat "</h1>"

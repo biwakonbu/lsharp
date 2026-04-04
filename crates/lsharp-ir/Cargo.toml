@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 lsharp-syntax = { path = "../lsharp-syntax" }
 lsharp-types = { path = "../lsharp-types" }
+sha2 = "0.10"
 thiserror.workspace = true
 toml.workspace = true
 

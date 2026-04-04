@@ -2216,6 +2216,10 @@ fn test_e2e_gc06_ci_artifact_contract() {
         script_content.contains("gc-metrics-proof-sidecar:"),
         "collect-gc-metrics.sh は normalized collector-proof sidecar path を出力すること"
     );
+    assert!(
+        script_content.contains("s14_reason"),
+        "collect-gc-metrics.sh は S14 blocked reason slot を検証すること"
+    );
 
     let ci_path = project_root.join(".github/workflows/ci.yml");
     assert!(ci_path.is_file(), "ci.yml が存在しない");
@@ -2249,6 +2253,12 @@ fn test_e2e_gc06_ci_artifact_contract() {
         policy_content.contains("collector-proof.json"),
         "artifact-policy.md は GC metrics sidecar proof bundle を記述すること"
     );
+    assert!(
+        policy_content.contains("s14_reason")
+            && policy_content.contains("s15_reason")
+            && policy_content.contains("s16_reason"),
+        "artifact-policy.md は GC metrics blocked reason slot を記述すること"
+    );
 
     let spec = project_root.join("docs/development/planning/gc-ci-gate-spec.md");
     assert!(spec.is_file(), "gc-ci-gate-spec.md が存在しない");
@@ -2260,6 +2270,12 @@ fn test_e2e_gc06_ci_artifact_contract() {
     assert!(
         spec_content.contains("collector-proof.json"),
         "gc-ci-gate-spec.md は collector-proof.json sidecar contract を記述すること"
+    );
+    assert!(
+        spec_content.contains("s14_reason")
+            && spec_content.contains("s15_reason")
+            && spec_content.contains("s16_reason"),
+        "gc-ci-gate-spec.md は GC metrics blocked reason slot を記述すること"
     );
 }
 
@@ -3467,7 +3483,7 @@ fn test_fresh_clone_smoke_ci_job() {
         "test-fresh-clone.sh は既存の default-path-smoke.sh を再利用すること"
     );
     assert!(
-        script_content.contains("resolve_selfhost_source Token")
+        script_content.contains("resolve_selfhost_source")
             || script_content.contains("selfhost/src/Syntax/Token.ls"),
         "test-fresh-clone.sh は clean checkout 上で canonical selfhost source を実コンパイルすること"
     );

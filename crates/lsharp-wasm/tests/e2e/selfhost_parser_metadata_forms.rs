@@ -82,7 +82,7 @@ fn test_e2e_selfhost_parser_float_literal() {
         tokens (tokenize-with-spans src)
         node (vector-get (parse-program src) 0)]
     (do
-      (print (if (= (token-kind tokens 0) (tok-float)) 1 0))
+      (print (if (= (vector-get tokens 0) (tok-float)) 1 0))
       (print (if (= (vector-get node 0) (ast-lit-float)) 1 0))
       (print (vector-get node 1))
       (print (vector-get node 2))

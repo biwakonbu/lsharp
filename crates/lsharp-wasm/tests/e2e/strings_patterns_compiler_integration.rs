@@ -280,8 +280,7 @@ fn test_e2e_selfhost_compiler_file() {
 /// selfhost/src/Backend/Wasm/WasmEmit.ls の Wasm バイナリ生成のコンパイル+実行
 #[test]
 fn test_e2e_selfhost_wasmemit() {
-    let source = std::fs::read_to_string(selfhost_source_path("WasmEmit.ls")).unwrap();
-    let output = compile_and_run(&source);
+    let output = compile_and_run_file(&selfhost_source_path("WasmEmit.ls"));
     let lines: Vec<&str> = output.trim().lines().collect();
     assert!(
         lines.len() >= 6,
@@ -346,8 +345,10 @@ fn test_e2e_selfhost_main_integration() {
 /// T2-1: Lexer.ls 値つきトークン (kind, start, end) 3つ組のテスト
 #[test]
 fn test_e2e_selfhost_lexer_value_tokens() {
-    let source = std::fs::read_to_string(selfhost_source_path("Lexer.ls")).unwrap();
-    let output = compile_and_run(&source);
+    let output = compile_and_run(&format!(
+        "{}\n(defn main [] (demo-main))",
+        selfhost_lexer_runtime_bundle()
+    ));
     let lines: Vec<&str> = output.trim().lines().collect();
 
     // 後方互換テスト (既存の tokenize): 8行 (トークン数含む)
@@ -1416,7 +1417,256 @@ fn test_e2e_selfhost_wasmemit_file_exists_instr() {
     assert_eq!(lines[10], "11", "body は end で終わること");
 }
 
-/// selfhost Compiler.ls: source 付き string literal lowering が data bytes と定数オフセットを返すこと
+/// selfhost Compiler.ls: root_push を builtin として lowering できること
+#[test]
+fn test_e2e_selfhost_compiler_root_push_builtin_lowering() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (root_push 0))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        main-fn (vector-get functions 0)
+        main-ir (vector-get main-fn 2)
+        last-instr (vector-get main-ir 1)]
+    (do
+      (print (vector-get main-fn 0))
+      (print (vector-get main-fn 1))
+      (print (vector-length main-ir))
+      (print (vector-get last-instr 0))
+      (print (vector-get last-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(
+        lines.len() >= 5,
+        "root_push lowering 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "0", "main は 0 引数関数であること");
+    assert_eq!(lines[1], "0", "root_push lowering に補助 local は不要");
+    assert_eq!(lines[2], "2", "body は i64.const / root_push の 2 命令であること");
+    assert_eq!(lines[3], "74", "末尾命令は root_push builtin opcode であること");
+    assert_eq!(lines[4], "0", "root_push opcode operand は 0 であること");
+}
+
+/// selfhost Compiler.ls: root_pop を nullary builtin として lowering できること
+#[test]
+fn test_e2e_selfhost_compiler_root_pop_builtin_lowering() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (root_pop))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        main-fn (vector-get functions 0)
+        main-ir (vector-get main-fn 2)
+        only-instr (vector-get main-ir 0)]
+    (do
+      (print (vector-get main-fn 0))
+      (print (vector-get main-fn 1))
+      (print (vector-length main-ir))
+      (print (vector-get only-instr 0))
+      (print (vector-get only-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(
+        lines.len() >= 5,
+        "root_pop lowering 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "0", "main は 0 引数関数であること");
+    assert_eq!(lines[1], "0", "root_pop lowering に補助 local は不要");
+    assert_eq!(lines[2], "1", "body は root_pop の 1 命令であること");
+    assert_eq!(lines[3], "75", "唯一の命令は root_pop builtin opcode であること");
+    assert_eq!(lines[4], "0", "root_pop opcode operand は 0 であること");
+}
+
+/// selfhost Compiler.ls: root_set を builtin として lowering できること
+#[test]
+fn test_e2e_selfhost_compiler_root_set_builtin_lowering() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (root_set 0 1))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        main-fn (vector-get functions 0)
+        main-ir (vector-get main-fn 2)
+        last-instr (vector-get main-ir 2)]
+    (do
+      (print (vector-get main-fn 0))
+      (print (vector-get main-fn 1))
+      (print (vector-length main-ir))
+      (print (vector-get last-instr 0))
+      (print (vector-get last-instr 1))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(
+        lines.len() >= 5,
+        "root_set lowering 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "0", "main は 0 引数関数であること");
+    assert_eq!(lines[1], "0", "root_set lowering に補助 local は不要");
+    assert_eq!(lines[2], "3", "body は const / const / root_set の 3 命令であること");
+    assert_eq!(lines[3], "76", "末尾命令は root_set builtin opcode であること");
+    assert_eq!(lines[4], "0", "root_set opcode operand は 0 であること");
+}
+
+/// selfhost WasmEmit.ls: root_push opcode を no-op bytecode へ落とせること
+#[test]
+fn test_e2e_selfhost_wasmemit_root_push_instr() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (root_push 0))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        code-sec (emit-code-section-functions functions)]
+    (do
+      (print (vector-length code-sec))
+      (print (vector-get code-sec 0))
+      (print (vector-get code-sec 1))
+      (print (vector-get code-sec 2))
+      (print (vector-get code-sec 3))
+      (print (vector-get code-sec 4))
+      (print (vector-get code-sec 5))
+      (print (vector-get code-sec 6))
+      (print (vector-get code-sec 7))
+      (print (vector-get code-sec 8))
+      (print (vector-get code-sec 9))
+      (print (vector-get code-sec 10))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(
+        lines.len() >= 12,
+        "root_push code section 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "11", "code section byte 長は 11 であること");
+    assert_eq!(lines[1], "10", "section id は code=10");
+    assert_eq!(lines[2], "9", "section size は 9");
+    assert_eq!(lines[3], "1", "function count は 1");
+    assert_eq!(lines[4], "7", "function body size は 7 であること");
+    assert_eq!(lines[5], "0", "local decl count は 0");
+    assert_eq!(lines[6], "66", "先頭命令は i64.const");
+    assert_eq!(lines[7], "0", "const operand は 0");
+    assert_eq!(lines[8], "26", "root_push は引数を drop すること");
+    assert_eq!(lines[9], "66", "no-op result は i64.const 0 で積むこと");
+    assert_eq!(lines[10], "0", "root_push no-op result は 0");
+    assert_eq!(lines[11], "11", "body は end で終わること");
+}
+
+/// selfhost WasmEmit.ls: root_set opcode を no-op bytecode へ落とせること
+#[test]
+fn test_e2e_selfhost_wasmemit_root_set_instr() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (root_set 0 1))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        code-sec (emit-code-section-functions functions)]
+    (do
+      (print (vector-length code-sec))
+      (print (vector-get code-sec 0))
+      (print (vector-get code-sec 1))
+      (print (vector-get code-sec 2))
+      (print (vector-get code-sec 3))
+      (print (vector-get code-sec 4))
+      (print (vector-get code-sec 5))
+      (print (vector-get code-sec 6))
+      (print (vector-get code-sec 7))
+      (print (vector-get code-sec 8))
+      (print (vector-get code-sec 9))
+      (print (vector-get code-sec 10))
+      (print (vector-get code-sec 11))
+      (print (vector-get code-sec 12))
+      (print (vector-get code-sec 13))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(
+        lines.len() >= 15,
+        "root_set code section 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "14", "code section byte 長は 14 であること");
+    assert_eq!(lines[1], "10", "section id は code=10");
+    assert_eq!(lines[2], "12", "section size は 12");
+    assert_eq!(lines[3], "1", "function count は 1");
+    assert_eq!(lines[4], "10", "function body size は 10 であること");
+    assert_eq!(lines[5], "0", "local decl count は 0");
+    assert_eq!(lines[6], "66", "先頭命令は i64.const");
+    assert_eq!(lines[7], "0", "第1引数 const operand は 0");
+    assert_eq!(lines[8], "66", "第2命令も i64.const");
+    assert_eq!(lines[9], "1", "第2引数 const operand は 1");
+    assert_eq!(lines[10], "26", "root_set は value を drop すること");
+    assert_eq!(lines[11], "26", "root_set は slot も drop すること");
+    assert_eq!(lines[12], "66", "no-op result は i64.const 0 で積むこと");
+    assert_eq!(lines[13], "0", "root_set no-op result は 0");
+    assert_eq!(lines[14], "11", "body は end で終わること");
+}
+
+/// selfhost Compiler.ls: source 付き string literal lowering が inline string object と定数オフセットを返すこと
 #[test]
 fn test_e2e_selfhost_compiler_string_literal_source_data_lowering() {
     let harness = r#"
@@ -1455,10 +1705,10 @@ fn test_e2e_selfhost_compiler_string_literal_source_data_lowering() {
         "string literal lowering 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "3", "string literal bytes の長さが不正");
-    assert_eq!(lines[1], "97", "string literal の先頭 byte が不正");
-    assert_eq!(lines[2], "98", "string literal の 2 byte 目が不正");
-    assert_eq!(lines[3], "99", "string literal の 3 byte 目が不正");
+    assert_eq!(lines[0], "11", "string literal object bytes 長が不正");
+    assert_eq!(lines[1], "1", "string literal header tag byte が不正");
+    assert_eq!(lines[2], "0", "string literal header len low byte が不正");
+    assert_eq!(lines[3], "0", "string literal header len high byte が不正");
     assert_eq!(
         lines[4], "1",
         "string literal lowering の IR は i64.const 1 命令であること"
@@ -1469,7 +1719,7 @@ fn test_e2e_selfhost_compiler_string_literal_source_data_lowering() {
     );
 }
 
-/// selfhost Compiler.ls: nested string literal lowering が distinct offsets と連結 data bytes を返すこと
+/// selfhost Compiler.ls: nested string literal lowering が distinct offsets と連結 string object bytes を返すこと
 #[test]
 fn test_e2e_selfhost_compiler_nested_string_literal_source_data_lowering() {
     let harness = r#"
@@ -1515,23 +1765,23 @@ fn test_e2e_selfhost_compiler_nested_string_literal_source_data_lowering() {
         "nested string literal lowering 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "5", "nested string literal data bytes 長が不正");
-    assert_eq!(lines[1], "97", "1 個目 string literal の先頭 byte が不正");
-    assert_eq!(lines[2], "98", "1 個目 string literal の 2 byte 目が不正");
-    assert_eq!(lines[3], "99", "2 個目 string literal の先頭 byte が不正");
-    assert_eq!(lines[4], "100", "2 個目 string literal の 2 byte 目が不正");
-    assert_eq!(lines[5], "101", "2 個目 string literal の 3 byte 目が不正");
+    assert_eq!(lines[0], "21", "nested string literal object bytes 長が不正");
+    assert_eq!(lines[1], "1", "1 個目 string object header tag byte が不正");
+    assert_eq!(lines[2], "0", "1 個目 string object header byte[1] が不正");
+    assert_eq!(lines[3], "0", "1 個目 string object header byte[2] が不正");
+    assert_eq!(lines[4], "0", "1 個目 string object header byte[3] が不正");
+    assert_eq!(lines[5], "2", "1 個目 string object length byte が不正");
     assert_eq!(lines[6], "1", "先頭命令は i64.const であるべき");
     assert_eq!(lines[7], "1024", "先頭 string literal offset が不正");
     assert_eq!(lines[8], "44", "中間 string literal は drop されるべき");
     assert_eq!(lines[9], "1", "末尾命令は i64.const であるべき");
     assert_eq!(
-        lines[10], "1026",
-        "末尾 string literal offset が前段 bytes を考慮していない"
+        lines[10], "1034",
+        "末尾 string literal offset が前段 object bytes を考慮していない"
     );
 }
 
-/// selfhost Compiler.ls: source-aware do string literal lowering が 5 式以上でも全要素を連結できること
+/// selfhost Compiler.ls: source-aware do string literal lowering が 5 式以上でも全 string object を連結できること
 #[test]
 fn test_e2e_selfhost_compiler_extended_do_string_literal_source_data_lowering() {
     let harness = r#"
@@ -1579,20 +1829,20 @@ fn test_e2e_selfhost_compiler_extended_do_string_literal_source_data_lowering() 
         lines
     );
     assert_eq!(
-        lines[0], "11",
-        "extended do string literal data bytes 長が不正"
+        lines[0], "51",
+        "extended do string literal object bytes 長が不正"
     );
-    assert_eq!(lines[1], "97", "1 個目 string literal の先頭 byte が不正");
-    assert_eq!(lines[2], "98", "1 個目 string literal の 2 byte 目が不正");
-    assert_eq!(lines[3], "99", "2 個目 string literal の byte が不正");
-    assert_eq!(lines[4], "100", "3 個目 string literal の先頭 byte が不正");
-    assert_eq!(lines[5], "101", "3 個目 string literal の 2 byte 目が不正");
-    assert_eq!(lines[6], "102", "4 個目 string literal の先頭 byte が不正");
-    assert_eq!(lines[7], "103", "4 個目 string literal の 2 byte 目が不正");
-    assert_eq!(lines[8], "104", "4 個目 string literal の 3 byte 目が不正");
-    assert_eq!(lines[9], "105", "5 個目 string literal の先頭 byte が不正");
-    assert_eq!(lines[10], "106", "5 個目 string literal の 2 byte 目が不正");
-    assert_eq!(lines[11], "107", "5 個目 string literal の 3 byte 目が不正");
+    assert_eq!(lines[1], "1", "1 個目 string object header tag byte が不正");
+    assert_eq!(lines[2], "0", "1 個目 string object header byte[1] が不正");
+    assert_eq!(lines[3], "0", "1 個目 string object header byte[2] が不正");
+    assert_eq!(lines[4], "0", "1 個目 string object header byte[3] が不正");
+    assert_eq!(lines[5], "2", "1 個目 string object length byte が不正");
+    assert_eq!(lines[6], "0", "1 個目 string object length byte[1] が不正");
+    assert_eq!(lines[7], "0", "1 個目 string object length byte[2] が不正");
+    assert_eq!(lines[8], "0", "1 個目 string object length byte[3] が不正");
+    assert_eq!(lines[9], "97", "1 個目 string object payload byte[0] が不正");
+    assert_eq!(lines[10], "98", "1 個目 string object payload byte[1] が不正");
+    assert_eq!(lines[11], "1", "2 個目 string object header tag byte が不正");
     assert_eq!(
         lines[12], "9",
         "5 式 do の IR は const/drop を含む 9 命令であること"
@@ -1602,12 +1852,12 @@ fn test_e2e_selfhost_compiler_extended_do_string_literal_source_data_lowering() 
         "extended do の末尾命令は i64.const であること"
     );
     assert_eq!(
-        lines[14], "1032",
+        lines[14], "1064",
         "extended do の末尾 string literal offset が不正"
     );
 }
 
-/// selfhost Compiler.ls: source-aware if branch の string literal lowering が両 branch を data section に積むこと
+/// selfhost Compiler.ls: source-aware if branch の string literal lowering が両 branch の string object を data section に積むこと
 #[test]
 fn test_e2e_selfhost_compiler_if_string_literal_source_data_lowering() {
     let harness = r#"
@@ -1653,58 +1903,58 @@ fn test_e2e_selfhost_compiler_if_string_literal_source_data_lowering() {
         "if string literal lowering 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "10", "if string literal data bytes 長が不正");
+    assert_eq!(lines[0], "26", "if string literal object bytes 長が不正");
     assert_eq!(
-        lines[1], "104",
-        "then branch string literal の先頭 byte が不正"
+        lines[1], "1",
+        "then branch string object header tag byte が不正"
     );
     assert_eq!(
-        lines[2], "101",
-        "then branch string literal の 2 byte 目が不正"
+        lines[2], "0",
+        "then branch string object header byte[1] が不正"
     );
     assert_eq!(
-        lines[3], "108",
-        "then branch string literal の 3 byte 目が不正"
+        lines[3], "0",
+        "then branch string object header byte[2] が不正"
     );
     assert_eq!(
-        lines[4], "108",
-        "then branch string literal の 4 byte 目が不正"
+        lines[4], "0",
+        "then branch string object header byte[3] が不正"
     );
     assert_eq!(
-        lines[5], "111",
-        "then branch string literal の 5 byte 目が不正"
+        lines[5], "5",
+        "then branch string object length byte が不正"
     );
     assert_eq!(
-        lines[6], "119",
-        "else branch string literal の先頭 byte が不正"
+        lines[6], "0",
+        "then branch string object length byte[1] が不正"
     );
     assert_eq!(
-        lines[7], "111",
-        "else branch string literal の 2 byte 目が不正"
+        lines[7], "0",
+        "then branch string object length byte[2] が不正"
     );
     assert_eq!(
-        lines[8], "114",
-        "else branch string literal の 3 byte 目が不正"
+        lines[8], "0",
+        "then branch string object length byte[3] が不正"
     );
     assert_eq!(
-        lines[9], "108",
-        "else branch string literal の 4 byte 目が不正"
+        lines[9], "104",
+        "then branch string object payload byte[0] が不正"
     );
     assert_eq!(
-        lines[10], "100",
-        "else branch string literal の 5 byte 目が不正"
+        lines[10], "101",
+        "then branch string object payload byte[1] が不正"
     );
     assert_eq!(
         lines[11], "1024",
         "then branch string literal offset が不正"
     );
     assert_eq!(
-        lines[12], "1029",
+        lines[12], "1037",
         "else branch string literal offset が不正"
     );
 }
 
-/// selfhost Compiler.ls: source-aware match arm body の string literal lowering が data section に積まれること
+/// selfhost Compiler.ls: source-aware match arm body の string literal lowering が string object を data section に積むこと
 #[test]
 fn test_e2e_selfhost_compiler_match_string_literal_source_data_lowering() {
     let harness = r#"
@@ -1739,16 +1989,16 @@ fn test_e2e_selfhost_compiler_match_string_literal_source_data_lowering() {
         "match string literal lowering 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "6", "match string literal data bytes 長が不正");
-    assert_eq!(lines[1], "111", "1 個目 string literal の先頭 byte が不正");
-    assert_eq!(lines[2], "110", "1 個目 string literal の 2 byte 目が不正");
-    assert_eq!(lines[3], "101", "1 個目 string literal の 3 byte 目が不正");
-    assert_eq!(lines[4], "116", "2 個目 string literal の先頭 byte が不正");
-    assert_eq!(lines[5], "119", "2 個目 string literal の 2 byte 目が不正");
-    assert_eq!(lines[6], "111", "2 個目 string literal の 3 byte 目が不正");
+    assert_eq!(lines[0], "22", "match string literal object bytes 長が不正");
+    assert_eq!(lines[1], "1", "1 個目 string object header tag byte が不正");
+    assert_eq!(lines[2], "0", "1 個目 string object header byte[1] が不正");
+    assert_eq!(lines[3], "0", "1 個目 string object header byte[2] が不正");
+    assert_eq!(lines[4], "0", "1 個目 string object header byte[3] が不正");
+    assert_eq!(lines[5], "3", "1 個目 string object length byte が不正");
+    assert_eq!(lines[6], "0", "1 個目 string object length byte[1] が不正");
 }
 
-/// selfhost Compiler.ls: source-aware lambda body の string literal lowering が data section に積まれること
+/// selfhost Compiler.ls: source-aware lambda body の string literal lowering が string object を data section に積むこと
 #[test]
 fn test_e2e_selfhost_compiler_lambda_string_literal_source_data_lowering() {
     let harness = r#"
@@ -1779,9 +2029,9 @@ fn test_e2e_selfhost_compiler_lambda_string_literal_source_data_lowering() {
         "lambda string literal lowering 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "2", "lambda string literal data bytes 長が不正");
-    assert_eq!(lines[1], "111", "lambda string literal の先頭 byte が不正");
-    assert_eq!(lines[2], "107", "lambda string literal の 2 byte 目が不正");
+    assert_eq!(lines[0], "10", "lambda string literal object bytes 長が不正");
+    assert_eq!(lines[1], "1", "lambda string object header tag byte が不正");
+    assert_eq!(lines[2], "0", "lambda string object header byte[1] が不正");
 }
 
 /// selfhost Compiler.ls: source-aware map string-key lowering は key literal を data section へ落とさず hash const 化できること
@@ -1835,7 +2085,7 @@ fn test_e2e_selfhost_compiler_map_string_key_source_hash_lowering() {
     assert_eq!(lines[3], "2", "map-contains opcode が 2 回入ること");
 }
 
-/// selfhost Compiler.ls: non-literal string key map lowering は runtime hash opcode を使うこと
+/// selfhost Compiler.ls: non-literal string key map lowering は key 式を直接 map builtin へ渡すこと
 #[test]
 fn test_e2e_selfhost_compiler_map_non_literal_string_key_runtime_hash_lowering() {
     let harness = r#"
@@ -1880,13 +2130,13 @@ fn test_e2e_selfhost_compiler_map_non_literal_string_key_runtime_hash_lowering()
         lines
     );
     assert_eq!(
-        lines[0], "11",
-        "read-file path literal bytes は data section に積まれること"
+        lines[0], "19",
+        "read-file path literal string object は data section に積まれること"
     );
     assert_eq!(lines[1], "1", "read-file opcode が 1 回入ること");
     assert_eq!(
-        lines[2], "2",
-        "runtime hash opcode が map-insert/map-get の 2 回入ること"
+        lines[2], "0",
+        "non-literal string key lowering は専用 runtime hash opcode を挿入しないこと"
     );
     assert_eq!(lines[3], "1", "map-insert opcode が 1 回入ること");
     assert_eq!(lines[4], "1", "map-get opcode が 1 回入ること");

@@ -35,6 +35,20 @@ path = pathlib.Path(sys.argv[1])
 proof_bundle_path = pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else None
 proof_sidecar_path = path.parent / "collector-proof.json"
 COLLECTOR_GC_MODES = {"mark-sweep", "generational"}
+STATUS_REASON_RULES = {
+    "s14": {
+        "blocked": {"collector_heap_series_missing"},
+        "n/a": {"allocator_mode_bump"},
+    },
+    "s15": {
+        "blocked": {"collector_fixed_point_artifact_missing"},
+        "n/a": {"allocator_mode_bump"},
+    },
+    "s16": {
+        "blocked": {"collector_workload_artifact_missing"},
+        "n/a": {"allocator_mode_bump"},
+    },
+}
 REQUIRED_S16_WORKLOADS = {
     "compile_run_light_loop",
     "repl_soak_50_eval",
@@ -74,7 +88,14 @@ def merge_collector_proof_bundle(payload, proof_bundle_path):
     if not isinstance(proof_bundle, dict):
         raise SystemExit("AR-04: proof bundle must be a JSON object")
 
-    allowed_keys = {"s15_status", "s15_proof", "s16_status", "s16_proof"}
+    allowed_keys = {
+        "s15_status",
+        "s15_reason",
+        "s15_proof",
+        "s16_status",
+        "s16_reason",
+        "s16_proof",
+    }
     unknown_keys = sorted(set(proof_bundle.keys()) - allowed_keys)
     if unknown_keys:
         raise SystemExit(
@@ -83,7 +104,14 @@ def merge_collector_proof_bundle(payload, proof_bundle_path):
         )
 
     merged = dict(payload)
-    for key in ("s15_status", "s15_proof", "s16_status", "s16_proof"):
+    for key in (
+        "s15_status",
+        "s15_reason",
+        "s15_proof",
+        "s16_status",
+        "s16_reason",
+        "s16_proof",
+    ):
         if key in proof_bundle:
             merged[key] = proof_bundle[key]
     return merged
@@ -91,8 +119,10 @@ def merge_collector_proof_bundle(payload, proof_bundle_path):
 def collect_proof_sidecar(payload):
     return {
         "s15_status": payload["s15_status"],
+        "s15_reason": payload["s15_reason"],
         "s15_proof": payload["s15_proof"],
         "s16_status": payload["s16_status"],
+        "s16_reason": payload["s16_reason"],
         "s16_proof": payload["s16_proof"],
     }
 
@@ -281,14 +311,38 @@ def validate_s16_proof(status, proof):
             "AR-04: s16_proof must show an incomplete workload or non-zero crash counter when s16_status is 'fail'"
         )
 
+def validate_gate_reason(gate, status, reason):
+    status_key = f"{gate}_status"
+    reason_key = f"{gate}_reason"
+    allowed = STATUS_REASON_RULES[gate].get(status)
+    if allowed is None:
+        if reason is not None:
+            raise SystemExit(
+                f"AR-04: {reason_key} must be null when {status_key} is '{status}'"
+            )
+        return
+
+    if not isinstance(reason, str) or not reason:
+        raise SystemExit(
+            f"AR-04: {reason_key} must be a non-empty string when {status_key} is '{status}'"
+        )
+
+    if reason not in allowed:
+        raise SystemExit(
+            f"AR-04: {reason_key} must be one of: {', '.join(sorted(allowed))} when {status_key} is '{status}'"
+        )
+
 # AR-04: 必須キーが揃っているか (gate_status / s14_status / s15_status / s16_status を含む)
 required = [
     "allocator_mode",
     "ci_level",
     "gate_status",
     "s14_status",
+    "s14_reason",
     "s15_status",
     "s16_status",
+    "s15_reason",
+    "s16_reason",
     "s15_proof",
     "s16_proof",
     "heap_bytes_series",
@@ -357,6 +411,9 @@ if payload["s14_status"] != computed_s14_status:
 
 validate_s15_proof(payload["s15_status"], payload["s15_proof"])
 validate_s16_proof(payload["s16_status"], payload["s16_proof"])
+validate_gate_reason("s14", payload["s14_status"], payload["s14_reason"])
+validate_gate_reason("s15", payload["s15_status"], payload["s15_reason"])
+validate_gate_reason("s16", payload["s16_status"], payload["s16_reason"])
 
 if proof_bundle_path is not None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")

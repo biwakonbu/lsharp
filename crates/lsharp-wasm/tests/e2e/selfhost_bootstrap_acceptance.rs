@@ -624,6 +624,14 @@ fn test_bootstrap_fixed_point_ci_wiring_present() {
         script.contains("test_e2e_bootstrap_fixed_input_set_stage_chain_match"),
         "compile-phase11-inputs.sh は full fixed input set の stage1->stage2->stage3 compare テストを明示実行すること"
     );
+    assert!(
+        script.contains("RUN_INCREMENTAL_COMPARE"),
+        "compile-phase11-inputs.sh は incremental compare 実行フラグを受け取ること"
+    );
+    assert!(
+        script.contains("test_e2e_incremental_compile_matches_full_compile_fixed_input_set"),
+        "compile-phase11-inputs.sh は fixed input set の full vs incremental compare テストを呼び出せること"
+    );
 }
 
 #[test]
@@ -870,6 +878,70 @@ fn write_fixed_input_set_stage_chain_artifact(
     .unwrap_or_else(|e| panic!("BOOT-04 stage-chain metadata 書き込み失敗: {e}"));
 
     artifact_root
+}
+
+fn write_fixed_input_set_incremental_compare_artifact(
+    artifact_id: &str,
+    report: &str,
+    metadata: &serde_json::Value,
+) -> std::path::PathBuf {
+    let artifact_root = selfhost_project_root()
+        .join("ci-artifacts/bootstrap-diff")
+        .join(artifact_id);
+    std::fs::create_dir_all(&artifact_root).unwrap_or_else(|e| {
+        panic!(
+            "INC-H1 artifact ディレクトリ作成に失敗 {}: {}",
+            artifact_root.display(),
+            e
+        )
+    });
+
+    std::fs::write(
+        artifact_root.join("fixed-input-set-incremental-compare-report.txt"),
+        report,
+    )
+    .unwrap_or_else(|e| panic!("INC-H1 report 書き込み失敗: {e}"));
+    std::fs::write(
+        artifact_root.join("fixed-input-set-incremental-compare.json"),
+        serde_json::to_vec_pretty(metadata).expect("INC-H1 incremental compare JSON serialize に失敗"),
+    )
+    .unwrap_or_else(|e| panic!("INC-H1 metadata 書き込み失敗: {e}"));
+
+    artifact_root
+}
+
+fn compile_fixed_input_target_with_rust_full(
+    selfhost_root: &std::path::Path,
+    repo_root: &std::path::Path,
+    target: &FixedInputSetTarget,
+) -> Result<Vec<u8>, String> {
+    let root_dir = fixed_input_set_target_root(selfhost_root, repo_root, target);
+    let target_path = root_dir.join(&target.path);
+    let module = lsharp_ir::compile_multi_file(&target_path)
+        .map_err(|e| format!("full compile failed for {}: {e}", target.path))?;
+    lsharp_wasm::wasi::emit_wasm_wasi(&module)
+        .map_err(|e| format!("full emit failed for {}: {e:?}", target.path))
+}
+
+fn compile_fixed_input_target_with_rust_incremental(
+    selfhost_root: &std::path::Path,
+    repo_root: &std::path::Path,
+    target: &FixedInputSetTarget,
+) -> Result<(Vec<u8>, Vec<u8>), String> {
+    let root_dir = fixed_input_set_target_root(selfhost_root, repo_root, target);
+    let target_path = root_dir.join(&target.path);
+    let mut cache = lsharp_ir::CompilationCache::new();
+
+    let cold_module = lsharp_ir::compile_multi_file_incremental(&target_path, &mut cache)
+        .map_err(|e| format!("incremental cold compile failed for {}: {e}", target.path))?;
+    let warm_module = lsharp_ir::compile_multi_file_incremental(&target_path, &mut cache)
+        .map_err(|e| format!("incremental warm compile failed for {}: {e}", target.path))?;
+
+    let cold_wasm = lsharp_wasm::wasi::emit_wasm_wasi(&cold_module)
+        .map_err(|e| format!("incremental cold emit failed for {}: {e:?}", target.path))?;
+    let warm_wasm = lsharp_wasm::wasi::emit_wasm_wasi(&warm_module)
+        .map_err(|e| format!("incremental warm emit failed for {}: {e:?}", target.path))?;
+    Ok((cold_wasm, warm_wasm))
 }
 
 #[test]
@@ -1190,6 +1262,167 @@ fn test_e2e_bootstrap_fixed_input_set_stage_chain_match() {
         matched.len(),
         targets.len(),
         "BOOT-04: full fixed input set の stage2/stage3 compare は全件一致するべき"
+    );
+}
+
+#[test]
+fn test_e2e_incremental_compile_matches_full_compile_fixed_input_set() {
+    let artifact_id = bootstrap_diff_artifact_id();
+    let selfhost_root = selfhost_package_root();
+    let repo_root = selfhost_project_root();
+    let targets = fixed_input_set_self_feed_targets();
+
+    assert_eq!(
+        targets.len(),
+        54,
+        "INC-H1: fixed input set は selfhost/stdlib/examples の合計 54 件であるべき"
+    );
+
+    let mut matched = Vec::new();
+    let mut failures = Vec::new();
+    for target in &targets {
+        match (
+            compile_fixed_input_target_with_rust_full(&selfhost_root, &repo_root, target),
+            compile_fixed_input_target_with_rust_incremental(&selfhost_root, &repo_root, target),
+        ) {
+            (Ok(full_wasm), Ok((incremental_cold, incremental_warm))) => {
+                if std::panic::catch_unwind(|| assert_valid_wasm(&full_wasm)).is_err() {
+                    failures.push(serde_json::json!({
+                        "path": target.path,
+                        "root": target.root.label(),
+                        "error": "full compile output wasm の検証に失敗",
+                    }));
+                    continue;
+                }
+                if std::panic::catch_unwind(|| assert_valid_wasm(&incremental_cold)).is_err() {
+                    failures.push(serde_json::json!({
+                        "path": target.path,
+                        "root": target.root.label(),
+                        "error": "incremental cold output wasm の検証に失敗",
+                    }));
+                    continue;
+                }
+                if std::panic::catch_unwind(|| assert_valid_wasm(&incremental_warm)).is_err() {
+                    failures.push(serde_json::json!({
+                        "path": target.path,
+                        "root": target.root.label(),
+                        "error": "incremental warm output wasm の検証に失敗",
+                    }));
+                    continue;
+                }
+                if full_wasm != incremental_cold || full_wasm != incremental_warm {
+                    failures.push(serde_json::json!({
+                        "path": target.path,
+                        "root": target.root.label(),
+                        "error": "full / incremental cold / incremental warm の wasm が byte-identical でない",
+                        "full_wasm_bytes": full_wasm.len(),
+                        "incremental_cold_wasm_bytes": incremental_cold.len(),
+                        "incremental_warm_wasm_bytes": incremental_warm.len(),
+                        "full_fingerprint": super::selfhost_bootstrap_four_layer::hash_fingerprint(&full_wasm),
+                        "incremental_cold_fingerprint": super::selfhost_bootstrap_four_layer::hash_fingerprint(&incremental_cold),
+                        "incremental_warm_fingerprint": super::selfhost_bootstrap_four_layer::hash_fingerprint(&incremental_warm),
+                        "full_vs_incremental_cold_first_diff": first_diff_index(&full_wasm, &incremental_cold),
+                        "cold_vs_warm_first_diff": first_diff_index(&incremental_cold, &incremental_warm),
+                    }));
+                    continue;
+                }
+                matched.push(serde_json::json!({
+                    "path": target.path,
+                    "root": target.root.label(),
+                    "output_wasm_bytes": full_wasm.len(),
+                    "fingerprint": super::selfhost_bootstrap_four_layer::hash_fingerprint(&full_wasm),
+                }));
+            }
+            (Err(full_err), Ok(_)) => failures.push(serde_json::json!({
+                "path": target.path,
+                "root": target.root.label(),
+                "error": full_err,
+            })),
+            (Ok(_), Err(incremental_err)) => failures.push(serde_json::json!({
+                "path": target.path,
+                "root": target.root.label(),
+                "error": incremental_err,
+            })),
+            (Err(full_err), Err(incremental_err)) => failures.push(serde_json::json!({
+                "path": target.path,
+                "root": target.root.label(),
+                "error": format!("full compile: {full_err}; incremental compile: {incremental_err}"),
+            })),
+        }
+    }
+
+    let mut report_lines = vec![
+        "Incremental Fixed Input Set Compare Report".to_string(),
+        "=========================================".to_string(),
+        format!("commit: {artifact_id}"),
+        "timestamp: 1970-01-01T00:00:00Z".to_string(),
+        "test: test_e2e_incremental_compile_matches_full_compile_fixed_input_set".to_string(),
+        format!("target_count: {}", targets.len()),
+        format!("matched_count: {}", matched.len()),
+        format!("failed_count: {}", failures.len()),
+        String::new(),
+    ];
+    report_lines.extend(matched.iter().map(|entry| {
+        format!(
+            "MATCH [{}] {} -> {} bytes",
+            entry["root"].as_str().unwrap_or("unknown"),
+            entry["path"].as_str().unwrap_or("<missing>"),
+            entry["output_wasm_bytes"].as_u64().unwrap_or(0)
+        )
+    }));
+    report_lines.extend(failures.iter().map(|entry| {
+        format!(
+            "FAIL [{}] {} -> {}",
+            entry["root"].as_str().unwrap_or("unknown"),
+            entry["path"].as_str().unwrap_or("<missing>"),
+            entry["error"]
+                .as_str()
+                .unwrap_or("unknown error")
+                .lines()
+                .next()
+                .unwrap_or("unknown error")
+        )
+    }));
+    let report = report_lines.join("\n");
+
+    let metadata = serde_json::json!({
+        "commit_sha": artifact_id,
+        "timestamp": "1970-01-01T00:00:00Z",
+        "test_name": "test_e2e_incremental_compile_matches_full_compile_fixed_input_set",
+        "target_count": targets.len(),
+        "matched_count": matched.len(),
+        "failed_count": failures.len(),
+        "matched_targets": matched,
+        "failed_targets": failures,
+    });
+    let artifact_dir =
+        write_fixed_input_set_incremental_compare_artifact(&artifact_id, &report, &metadata);
+
+    let written_metadata: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(artifact_dir.join("fixed-input-set-incremental-compare.json"))
+            .expect("INC-H1 artifact JSON の読み込みに失敗"),
+    )
+    .expect("INC-H1 artifact JSON は JSON であること");
+    assert_eq!(
+        written_metadata["matched_count"].as_u64(),
+        Some(matched.len() as u64),
+        "INC-H1 artifact は matched_count を保持すること"
+    );
+    assert_eq!(
+        written_metadata["failed_count"].as_u64(),
+        Some(failures.len() as u64),
+        "INC-H1 artifact は failed_count を保持すること"
+    );
+    assert!(
+        failures.is_empty(),
+        "INC-H1: fixed input set の full vs incremental compare に失敗がある: {}",
+        serde_json::to_string_pretty(&written_metadata["failed_targets"])
+            .expect("INC-H1 failure JSON serialize に失敗")
+    );
+    assert_eq!(
+        matched.len(),
+        targets.len(),
+        "INC-H1: fixed input set の full / incremental compare は全件一致するべき"
     );
 }
 

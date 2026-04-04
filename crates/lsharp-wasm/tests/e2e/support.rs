@@ -343,6 +343,7 @@ pub(crate) fn selfhost_module(name: &str) -> &'static str {
         "Cli.ls" => include_str!("../../../../selfhost/src/App/Cli.ls"),
         "ModuleResolver.ls" => include_str!("../../../../selfhost/src/App/ModuleResolver.ls"),
         "CompilerMode.ls" => include_str!("../../../../selfhost/src/App/CompilerMode.ls"),
+        "GC.ls" => include_str!("../../../../selfhost/src/Runtime/GC.ls"),
         "PipelineSmoke.ls" => include_str!("../../../../selfhost/src/App/PipelineSmoke.ls"),
         "Token.ls" => include_str!("../../../../selfhost/src/Syntax/Token.ls"),
         "AST.ls" => include_str!("../../../../selfhost/src/Syntax/AST.ls"),

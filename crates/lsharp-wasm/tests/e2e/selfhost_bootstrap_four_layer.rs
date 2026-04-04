@@ -80,6 +80,30 @@ pub(crate) fn extract_section_bytes(wasm: &[u8], target_id: u8) -> Option<Vec<u8
     None
 }
 
+fn selfhost_string_object_bytes(text: &str) -> Vec<u8> {
+    let byte_len = text.len();
+    let len = byte_len as u32;
+    let mut bytes = Vec::with_capacity(8 + byte_len);
+    bytes.extend_from_slice(&1u32.to_le_bytes());
+    bytes.extend_from_slice(&len.to_le_bytes());
+    bytes.extend_from_slice(text.as_bytes());
+    bytes
+}
+
+fn selfhost_string_object_sequence(texts: &[&str]) -> Vec<u8> {
+    texts
+        .iter()
+        .flat_map(|text| selfhost_string_object_bytes(text))
+        .collect()
+}
+
+fn selfhost_string_object_offset(base: i64, texts_before: &[&str]) -> i64 {
+    base + texts_before
+        .iter()
+        .map(|text| (8 + text.len()) as i64)
+        .sum::<i64>()
+}
+
 pub(crate) struct BootstrapDiffArtifactFixture<'a> {
     pub(crate) artifact_id: &'a str,
     pub(crate) test_name: &'a str,
@@ -1697,13 +1721,14 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_minimal_subset() {
       0)))
 "#;
     let stage1_source = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
         selfhost_module("Token.ls"),
         selfhost_module("AST.ls"),
         selfhost_module("Lexer.ls"),
         selfhost_module("Parser.ls"),
         selfhost_module("IR.ls"),
         selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
         selfhost_module("WasmEmit.ls"),
         harness
     );
@@ -1790,13 +1815,14 @@ fn test_e2e_bootstrap_stage1_emits_identical_stage2_wasm_for_same_tiny_source() 
       0)))
 "#;
     let stage1_source = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
         selfhost_module("Token.ls"),
         selfhost_module("AST.ls"),
         selfhost_module("Lexer.ls"),
         selfhost_module("Parser.ls"),
         selfhost_module("IR.ls"),
         selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
         selfhost_module("WasmEmit.ls"),
         harness
     );
@@ -1863,13 +1889,14 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_extended_do_block() {
       0)))
 "#;
     let stage1_source = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
         selfhost_module("Token.ls"),
         selfhost_module("AST.ls"),
         selfhost_module("Lexer.ls"),
         selfhost_module("Parser.ls"),
         selfhost_module("IR.ls"),
         selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
         selfhost_module("WasmEmit.ls"),
         harness
     );
@@ -2498,9 +2525,12 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_literal_data_section()
         "string literal を含む stage2 Wasm は data section を持つこと"
     );
     let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
+    let expected_data = selfhost_string_object_bytes("abc");
     assert!(
-        data_section.windows(3).any(|window| window == [97, 98, 99]),
-        "data section に string literal bytes が含まれていない"
+        data_section
+            .windows(expected_data.len())
+            .any(|window| window == expected_data),
+        "data section に string object header + bytes が含まれていない"
     );
     assert_eq!(
         run_exported_i64(&modules[0], "_start"),
@@ -2576,16 +2606,17 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_nested_string_literal_data_se
     assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
     assert_valid_wasm(&modules[0]);
     let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
+    let expected_data = selfhost_string_object_sequence(&["ab", "cde"]);
     assert!(
         data_section
-            .windows(5)
-            .any(|window| window == [97, 98, 99, 100, 101]),
-        "nested string literal bytes が data section に連結配置されていない"
+            .windows(expected_data.len())
+            .any(|window| window == expected_data),
+        "nested string literal objects が data section に連結配置されていない"
     );
     assert_eq!(
         run_exported_i64(&modules[0], "_start"),
-        1026,
-        "nested string literal の最終 offset が前段 bytes を考慮していない"
+        selfhost_string_object_offset(1024, &["ab"]),
+        "nested string literal の最終 offset が前段 object header + bytes を考慮していない"
     );
 }
 
@@ -2656,16 +2687,17 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_extended_do_string_literal_da
     assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
     assert_valid_wasm(&modules[0]);
     let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
+    let expected_data = selfhost_string_object_sequence(&["ab", "c", "de", "fgh", "ijk"]);
     assert!(
         data_section
-            .windows(11)
-            .any(|window| window == b"abcdefghijk"),
-        "extended do string literal bytes が data section に連結配置されていない"
+            .windows(expected_data.len())
+            .any(|window| window == expected_data),
+        "extended do string literal objects が data section に連結配置されていない"
     );
     assert_eq!(
         run_exported_i64(&modules[0], "_start"),
-        1032,
-        "extended do string literal の最終 offset が前段 bytes を考慮していない"
+        selfhost_string_object_offset(1024, &["ab", "c", "de", "fgh"]),
+        "extended do string literal の最終 offset が前段 object header + bytes を考慮していない"
     );
 }
 
@@ -2736,11 +2768,12 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_if_string_literal_data_sectio
     assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
     assert_valid_wasm(&modules[0]);
     let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
+    let expected_data = selfhost_string_object_sequence(&["hello", "world"]);
     assert!(
         data_section
-            .windows(10)
-            .any(|window| window == b"helloworld"),
-        "if string literal bytes が data section に連結配置されていない"
+            .windows(expected_data.len())
+            .any(|window| window == expected_data),
+        "if string literal objects が data section に連結配置されていない"
     );
     assert_eq!(
         run_exported_i64(&modules[0], "_start"),
@@ -2816,14 +2849,17 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_match_string_literal_data_sec
     assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
     assert_valid_wasm(&modules[0]);
     let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
+    let expected_data = selfhost_string_object_sequence(&["one", "two"]);
     assert!(
-        data_section.windows(6).any(|window| window == b"onetwo"),
-        "match string literal bytes が data section に連結配置されていない"
+        data_section
+            .windows(expected_data.len())
+            .any(|window| window == expected_data),
+        "match string literal objects が data section に連結配置されていない"
     );
     assert_eq!(
         run_exported_i64(&modules[0], "_start"),
-        1027,
-        "match string literal の selected branch offset が不正"
+        selfhost_string_object_offset(1024, &["one"]),
+        "match string literal の selected branch offset が前段 object header + bytes を考慮していない"
     );
 }
 
@@ -2894,9 +2930,12 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_lambda_string_literal_data_se
     assert_eq!(modules.len(), 1, "stage2 モジュール数が不正");
     assert_valid_wasm(&modules[0]);
     let data_section = extract_section_bytes(&modules[0], 11).expect("data section が見つからない");
+    let expected_data = selfhost_string_object_bytes("ok");
     assert!(
-        data_section.windows(2).any(|window| window == b"ok"),
-        "lambda string literal bytes が data section に配置されていない"
+        data_section
+            .windows(expected_data.len())
+            .any(|window| window == expected_data),
+        "lambda string literal object が data section に配置されていない"
     );
     assert_eq!(
         run_exported_i64(&modules[0], "_start"),
@@ -3069,7 +3108,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_new_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3141,7 +3180,7 @@ fn test_e2e_bootstrap_stage1_emits_identical_alloc_stage2_wasm_for_same_source()
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3216,7 +3255,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_push_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3288,7 +3327,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_ref_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3360,7 +3399,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3432,7 +3471,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_contains_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3504,7 +3543,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_remove_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
         bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
@@ -3579,7 +3618,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_key_map_program() {
         import-sec (emit-import-section-alloc)
         function-sec (emit-function-section-main-type-index 1)
         memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-index 1)
+        export-sec (emit-export-section-main-memory-index 1 0)
         code-sec (emit-code-section-functions functions)
         data-sec (emit-data-section data 1024)
         bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))

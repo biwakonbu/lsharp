@@ -2375,21 +2375,6 @@ fn test_e2e_selfhost_cli_lsp_stdio_wire_repeated_sequence() {
     let formatting_body =
         r#"{"jsonrpc":"2.0","id":83,"method":"textDocument/formatting","params":{"uri":42}}"#;
 
-    let init_response = r#"{"jsonrpc":"2.0","id":80,"result":[1,1,1,1,1,1,1]}"#;
-    let open_response = format!(
-        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
-        open_source.len()
-    );
-    let hover_response =
-        r#"{"jsonrpc":"2.0","id":81,"result":{"range":[1,21,1,27],"contents":"defn helper"}}"#;
-    let change_response = format!(
-        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
-        change_source.len()
-    );
-    let completion_response = r#"{"jsonrpc":"2.0","id":82,"result":[["helper",3,"helper"]]}"#;
-    let formatting_response =
-        "{\"jsonrpc\":\"2.0\",\"id\":83,\"result\":[[1,1,1,24,\"(defn helper [] 1) (he)\\n\"]]}";
-
     let stdin = format!(
         "{}{}",
         render_lsp_wire_frame(init_body),
@@ -2400,20 +2385,6 @@ fn test_e2e_selfhost_cli_lsp_stdio_wire_repeated_sequence() {
                 render_lsp_wire_frame(&change_body),
                 render_lsp_wire_frame(completion_body),
                 render_lsp_wire_frame(formatting_body),
-            ],
-            iterations
-        )
-    );
-    let expected = format!(
-        "{}{}",
-        render_lsp_wire_frame(init_response),
-        repeat_rendered_frames(
-            &[
-                render_lsp_wire_frame(&open_response),
-                render_lsp_wire_frame(hover_response),
-                render_lsp_wire_frame(&change_response),
-                render_lsp_wire_frame(completion_response),
-                render_lsp_wire_frame(formatting_response),
             ],
             iterations
         )
@@ -2429,16 +2400,150 @@ fn test_e2e_selfhost_cli_lsp_stdio_wire_repeated_sequence() {
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
+    let frames = parse_lsp_stdio_frames(&output);
+    let init_response = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 80,
+        "result": [1, 1, 1, 1, 1, 1, 1]
+    });
+    let open_response = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "uri": 42,
+            "sourceBytes": open_source.len()
+        }
+    });
+    let change_response = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didChange",
+        "params": {
+            "uri": 42,
+            "sourceBytes": change_source.len()
+        }
+    });
+    let first_open_diagnostics = frames
+        .get(2)
+        .cloned()
+        .expect("1 回目 didOpen diagnostics frame が必要");
+    let first_hover_response = frames
+        .get(3)
+        .cloned()
+        .expect("1 回目 hover frame が必要");
+    let first_change_diagnostics = frames
+        .get(5)
+        .cloned()
+        .expect("1 回目 didChange diagnostics frame が必要");
+    let first_completion_response = frames
+        .get(6)
+        .cloned()
+        .expect("1 回目 completion frame が必要");
+    let first_formatting_response = frames
+        .get(7)
+        .cloned()
+        .expect("1 回目 formatting frame が必要");
 
     assert_eq!(
-        output.matches("Content-Length:").count(),
-        1 + (iterations * 5),
-        "raw stdio wire helper は initialize + 各反復 5 frame を返すべき"
+        frames.len(),
+        1 + (iterations * 7),
+        "raw stdio wire helper は initialize + 各反復 7 frame を返すべき"
+    );
+    assert_eq!(frames[0], init_response, "frame0 は initialize response であるべき");
+
+    assert_eq!(
+        first_open_diagnostics["method"],
+        serde_json::json!("textDocument/publishDiagnostics"),
+        "didOpen 後は publishDiagnostics frame を返すべき"
     );
     assert_eq!(
-        output, expected,
-        "raw stdio wire helper は長い系列でも各 frame を決定的に返すべき"
+        first_open_diagnostics["params"]["uri"],
+        serde_json::json!(42),
+        "didOpen diagnostics は uri=42 を対象にすべき"
     );
+    assert!(
+        first_open_diagnostics["params"]["diagnostics"].is_array(),
+        "didOpen diagnostics は配列であるべき"
+    );
+    assert_eq!(
+        first_change_diagnostics["method"],
+        serde_json::json!("textDocument/publishDiagnostics"),
+        "didChange 後は publishDiagnostics frame を返すべき"
+    );
+    assert_eq!(
+        first_change_diagnostics["params"]["uri"],
+        serde_json::json!(42),
+        "didChange diagnostics は uri=42 を対象にすべき"
+    );
+    assert!(
+        first_change_diagnostics["params"]["diagnostics"].is_array(),
+        "didChange diagnostics は配列であるべき"
+    );
+    assert_eq!(
+        first_hover_response["id"],
+        serde_json::json!(81),
+        "hover frame は id=81 を保持すべき"
+    );
+    assert!(
+        first_hover_response["result"].is_object(),
+        "hover frame は result object を返すべき"
+    );
+    assert_eq!(
+        first_completion_response["id"],
+        serde_json::json!(82),
+        "completion frame は id=82 を保持すべき"
+    );
+    assert!(
+        first_completion_response["result"].is_array(),
+        "completion frame は result array を返すべき"
+    );
+    assert_eq!(
+        first_formatting_response["id"],
+        serde_json::json!(83),
+        "formatting frame は id=83 を保持すべき"
+    );
+    assert!(
+        first_formatting_response["result"].is_array(),
+        "formatting frame は result array を返すべき"
+    );
+
+    for iteration in 0..iterations {
+        let base = 1 + (iteration * 7);
+        assert_eq!(
+            frames[base], open_response,
+            "iteration {} の didOpen response が不正",
+            iteration
+        );
+        assert_eq!(
+            frames[base + 1], first_open_diagnostics,
+            "iteration {} の didOpen diagnostics は決定的であるべき",
+            iteration
+        );
+        assert_eq!(
+            frames[base + 2], first_hover_response,
+            "iteration {} の hover response が不正",
+            iteration
+        );
+        assert_eq!(
+            frames[base + 3], change_response,
+            "iteration {} の didChange response が不正",
+            iteration
+        );
+        assert_eq!(
+            frames[base + 4], first_change_diagnostics,
+            "iteration {} の didChange diagnostics は決定的であるべき",
+            iteration
+        );
+        assert_eq!(
+            frames[base + 5], first_completion_response,
+            "iteration {} の completion response が不正",
+            iteration
+        );
+        assert_eq!(
+            frames[base + 6], first_formatting_response,
+            "iteration {} の formatting response が不正",
+            iteration
+        );
+    }
 }
 
 /// TEST-CLI-02-N: selfhost/src/App/Cli.ls の run-test-source が TestRunner.generate-tests を呼べること

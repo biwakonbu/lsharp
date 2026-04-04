@@ -362,6 +362,56 @@ fn test_e2e_alloc_metrics_s14_status_fail_when_tail_keeps_growing() {
     );
 }
 
+#[test]
+fn test_e2e_root_runtime_api_tracks_slots_and_values() {
+    let result = compile_and_run(
+        r#"
+        (defn main []
+          (let [slot0 (root_push 111)
+                slot1 (root_push 222)
+                set-result (root_set slot0 333)
+                pop1 (root_pop)
+                pop2 (root_pop)
+                pop3 (root_pop)]
+            (do
+              (print slot0)
+              (print slot1)
+              (print set-result)
+              (print pop1)
+              (print pop2)
+              (print pop3)
+              0)))
+    "#,
+    );
+    let lines: Vec<&str> = result.trim().lines().collect();
+    assert_eq!(lines, vec!["0", "1", "0", "222", "333", "0"]);
+}
+
+#[test]
+fn test_e2e_root_runtime_api_preserves_argument_evaluation() {
+    let result = compile_and_run(
+        r#"
+        (defn main []
+          (let [first (__alloc 16)
+                _ (root_push (__alloc 16))
+                _ (root_set 0 (__alloc 16))
+                fourth (__alloc 16)]
+            (do
+              (print first)
+              (print fourth)
+              (print (- fourth first))
+              0)))
+    "#,
+    );
+    let lines: Vec<&str> = result.trim().lines().collect();
+    assert_eq!(lines.len(), 3, "root API 評価順序の出力が不足: {:?}", lines);
+    let first: i64 = lines[0].parse().unwrap();
+    let fourth: i64 = lines[1].parse().unwrap();
+    let span: i64 = lines[2].parse().unwrap();
+    assert!(fourth > first, "後続 alloc は前方へ進むべき");
+    assert_eq!(span, 48, "root_push/root_set の引数 alloc も評価されるべき");
+}
+
 /// GC-06: 5 メトリクス収集 — alloc 系の 5 指標を単一プログラム内で計測
 /// 1. peak_alloc_bytes: 最大 heap 水位
 /// 2. total_alloc_count: 総 alloc 回数
@@ -564,16 +614,22 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
     let heap_bytes_series: Vec<i64> = Vec::new();
     let gate_status = "accepted";
     let s14_status = evaluate_s14_status("bump", &heap_bytes_series);
+    let s14_reason = "allocator_mode_bump";
     let s15_status = "n/a"; // collector 有効 bootstrap fixed-point artifact が未配線
     let s16_status = "n/a"; // collector 有効ワークロードが未接続
+    let s15_reason = "allocator_mode_bump";
+    let s16_reason = "allocator_mode_bump";
 
     let payload = serde_json::json!({
         "allocator_mode": "bump",
         "ci_level": "simple",
         "gate_status": gate_status,
         "s14_status": s14_status,
+        "s14_reason": s14_reason,
         "s15_status": s15_status,
         "s16_status": s16_status,
+        "s15_reason": s15_reason,
+        "s16_reason": s16_reason,
         "s15_proof": serde_json::Value::Null,
         "s16_proof": serde_json::Value::Null,
         "heap_bytes_series": heap_bytes_series,
@@ -592,8 +648,11 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
     assert_eq!(payload["ci_level"], "simple");
     assert_eq!(payload["gate_status"], "accepted");
     assert_eq!(payload["s14_status"], "n/a");
+    assert_eq!(payload["s14_reason"], "allocator_mode_bump");
     assert_eq!(payload["s15_status"], "n/a");
     assert_eq!(payload["s16_status"], "n/a");
+    assert_eq!(payload["s15_reason"], "allocator_mode_bump");
+    assert_eq!(payload["s16_reason"], "allocator_mode_bump");
     assert_eq!(payload["heap_bytes_series"], serde_json::json!([]));
     let payload_object = payload
         .as_object()

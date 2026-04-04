@@ -647,6 +647,7 @@ fn test_e2e_selfhost_compiler_mode_pair_pipeline_keeps_functions() {
     let ir_ls = selfhost_module("IR.ls").to_string();
     let compiler_ls = selfhost_module("Compiler.ls").to_string();
     let module_resolver_ls = selfhost_module("ModuleResolver.ls").to_string();
+    let wasi_backend_ls = selfhost_module("WasiBackend.ls").to_string();
     let wasm_emit_ls = selfhost_module("WasmEmit.ls").to_string();
     let compiler_mode_ls = selfhost_module("CompilerMode.ls").to_string();
 
@@ -673,7 +674,7 @@ fn test_e2e_selfhost_compiler_mode_pair_pipeline_keeps_functions() {
 "#;
 
     let combined = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
         token_ls,
         ast_ls,
         lexer_ls,
@@ -681,6 +682,7 @@ fn test_e2e_selfhost_compiler_mode_pair_pipeline_keeps_functions() {
         ir_ls,
         compiler_ls,
         module_resolver_ls,
+        wasi_backend_ls,
         wasm_emit_ls,
         compiler_mode_ls,
     ) + "\n"
@@ -699,6 +701,165 @@ fn test_e2e_selfhost_compiler_mode_pair_pipeline_keeps_functions() {
         "main は 3 個目の関数 index 8 に登録されるべき"
     );
     assert_eq!(lines[2], "3", "functions は 3 個保持されるべき");
+}
+
+/// TEST-SYNTAX-02c6: CompilerMode は clean hit で src-decl-pair cache を再利用する
+#[test]
+fn test_e2e_selfhost_compiler_mode_cached_pairs_skip_reparse_on_clean_hit() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_selfhost_compiler_mode_cached_pairs_clean_{}",
+        std::process::id()
+    ));
+    let app_dir = dir.join("src/App");
+    std::fs::create_dir_all(&app_dir).unwrap();
+    std::fs::write(
+        app_dir.join("Main.ls"),
+        "(module App.Main)\n(import App.Lib)\n(defn main [] (helper))\n",
+    )
+    .unwrap();
+    std::fs::write(app_dir.join("Lib.ls"), "(module App.Lib)\n(defn helper [] 7)\n").unwrap();
+
+    let token_ls = selfhost_module("Token.ls").to_string();
+    let ast_ls = selfhost_module("AST.ls").to_string();
+    let lexer_ls = selfhost_module("Lexer.ls").to_string();
+    let parser_ls = selfhost_module("Parser.ls").to_string();
+    let ir_ls = selfhost_module("IR.ls").to_string();
+    let compiler_ls = selfhost_module("Compiler.ls").to_string();
+    let module_resolver_ls = selfhost_module("ModuleResolver.ls").to_string();
+    let wasi_backend_ls = selfhost_module("WasiBackend.ls").to_string();
+    let wasm_emit_ls = selfhost_module("WasmEmit.ls").to_string();
+    let compiler_mode_ls = selfhost_module("CompilerMode.ls").to_string();
+
+    let harness = r#"
+(defn main []
+  (let [path "src/App/Main.ls"
+        cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pairs1 (compile-file-pairs-with-cache path cache-ref parse-count-ref)
+        count1 (ref-get parse-count-ref)
+        pairs2 (compile-file-pairs-with-cache path cache-ref parse-count-ref)
+        count2 (ref-get parse-count-ref)
+        n2 (vector-length pairs2)
+        reg (register-all-pairs pairs2 0 n2 (ftable-new) 7)
+        ftable (vector-get reg 0)
+        functions (compile-all-src-decl-pairs pairs2 0 n2 ftable (ref-new (vector-new 8)) (vector-new 8))]
+    (do
+      (print count1)
+      (print count2)
+      (print n2)
+      (print (vector-length functions))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        token_ls,
+        ast_ls,
+        lexer_ls,
+        parser_ls,
+        ir_ls,
+        compiler_ls,
+        module_resolver_ls,
+        wasi_backend_ls,
+        wasm_emit_ls,
+        compiler_mode_ls,
+    ) + "\n"
+        + harness;
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 4,
+        "compiler-mode cached pairs clean-hit 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "2", "初回 compile では Main/Lib の 2 モジュールを parse するべき");
+    assert_eq!(lines[1], "2", "clean hit では parse-count が増えないべき");
+    assert_eq!(lines[2], "2", "all-pairs は Main/Lib の 2 ペアを返すべき");
+    assert_eq!(lines[3], "2", "functions は 2 個保持されるべき");
+}
+
+/// TEST-SYNTAX-02c7: CompilerMode は stale import cache entry だけ再 parse する
+#[test]
+fn test_e2e_selfhost_compiler_mode_cached_pairs_reparse_only_stale_import_entry() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_test_selfhost_compiler_mode_cached_pairs_changed_{}",
+        std::process::id()
+    ));
+    let app_dir = dir.join("src/App");
+    std::fs::create_dir_all(&app_dir).unwrap();
+    std::fs::write(
+        app_dir.join("Main.ls"),
+        "(module App.Main)\n(import App.Lib)\n(defn main [] (helper))\n",
+    )
+    .unwrap();
+    std::fs::write(app_dir.join("Lib.ls"), "(module App.Lib)\n(defn helper [] 7)\n").unwrap();
+
+    let token_ls = selfhost_module("Token.ls").to_string();
+    let ast_ls = selfhost_module("AST.ls").to_string();
+    let lexer_ls = selfhost_module("Lexer.ls").to_string();
+    let parser_ls = selfhost_module("Parser.ls").to_string();
+    let ir_ls = selfhost_module("IR.ls").to_string();
+    let compiler_ls = selfhost_module("Compiler.ls").to_string();
+    let module_resolver_ls = selfhost_module("ModuleResolver.ls").to_string();
+    let wasi_backend_ls = selfhost_module("WasiBackend.ls").to_string();
+    let wasm_emit_ls = selfhost_module("WasmEmit.ls").to_string();
+    let compiler_mode_ls = selfhost_module("CompilerMode.ls").to_string();
+
+    let harness = r#"
+(defn main []
+  (let [path "src/App/Main.ls"
+        cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pairs1 (compile-file-pairs-with-cache path cache-ref parse-count-ref)
+        count1 (ref-get parse-count-ref)
+        stale-pair (make-src-decl-pair "(module App.Lib)\n(defn helper [] 7)\n" (parse-program "(module App.Lib)\n(defn helper [] 7)\n"))
+        _ (ref-set cache-ref (map-insert (ref-get cache-ref) (src-decl-cache-key "src/App/Lib.ls") (make-src-decl-cache-entry 0 stale-pair)))
+        pairs2 (compile-file-pairs-with-cache path cache-ref parse-count-ref)
+        count2 (ref-get parse-count-ref)
+        n2 (vector-length pairs2)
+        reg (register-all-pairs pairs2 0 n2 (ftable-new) 7)
+        ftable (vector-get reg 0)
+        functions (compile-all-src-decl-pairs pairs2 0 n2 ftable (ref-new (vector-new 8)) (vector-new 8))]
+    (do
+      (print count1)
+      (print count2)
+      (print n2)
+      (print (vector-length functions))
+      0)))
+"#;
+
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        token_ls,
+        ast_ls,
+        lexer_ls,
+        parser_ls,
+        ir_ls,
+        compiler_ls,
+        module_resolver_ls,
+        wasi_backend_ls,
+        wasm_emit_ls,
+        compiler_mode_ls,
+    ) + "\n"
+        + harness;
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 4,
+        "compiler-mode cached pairs stale-import 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "2", "初回 compile では Main/Lib の 2 モジュールを parse するべき");
+    assert_eq!(
+        lines[1], "3",
+        "stale import cache entry を 1 個だけ差し替えた場合は追加 parse が 1 回だけ増えるべき"
+    );
+    assert_eq!(lines[2], "2", "all-pairs は Main/Lib の 2 ペアを返すべき");
+    assert_eq!(lines[3], "2", "functions は 2 個保持されるべき");
 }
 
 /// TEST-SYNTAX-02d: quote/unquote 系トークンを AST ノードへパースできる

@@ -263,6 +263,7 @@ impl Lower {
                         ctx.emit(Instruction::LocalSet(start_local));
                         let str_local = ctx.alloc_local("_substr_str".to_string());
                         ctx.emit(Instruction::LocalSet(str_local));
+                        self.emit_root_push_local(ctx, str_local, "_substr_root_slot")?;
                         // new_len = end - start (i64)
                         let new_len_local = ctx.alloc_local("_substr_len".to_string());
                         ctx.emit(Instruction::LocalGet(end_local));
@@ -310,6 +311,7 @@ impl Lower {
                         ctx.emit(Instruction::LocalGet(new_len_local));
                         ctx.emit(Instruction::I32WrapI64);
                         ctx.emit(Instruction::MemoryCopy);
+                        self.emit_root_pop_drop(ctx)?;
                         // 新しい String オブジェクトのアドレスを返す
                         ctx.emit(Instruction::LocalGet(obj_local));
                     }
@@ -331,12 +333,25 @@ impl Lower {
                             self.lower_expr(ctx, &args[0])?;
                             self.lower_expr(ctx, &args[1])?;
                         }
+                        let rhs_local = ctx.alloc_local("_strcat_rhs".to_string());
+                        ctx.emit(Instruction::LocalSet(rhs_local));
+                        let lhs_local = ctx.alloc_local("_strcat_lhs".to_string());
+                        ctx.emit(Instruction::LocalSet(lhs_local));
+                        self.emit_root_push_local(ctx, lhs_local, "_strcat_lhs_root_slot")?;
+                        self.emit_root_push_local(ctx, rhs_local, "_strcat_rhs_root_slot")?;
                         let idx = *self.func_indices.get("__string_concat").ok_or_else(|| {
                             LowerError::UndefinedFunction {
                                 name: "__string_concat".to_string(),
                             }
                         })?;
+                        let result_local = ctx.alloc_local("_strcat_result".to_string());
+                        ctx.emit(Instruction::LocalGet(lhs_local));
+                        ctx.emit(Instruction::LocalGet(rhs_local));
                         ctx.emit(Instruction::Call(idx));
+                        ctx.emit(Instruction::LocalSet(result_local));
+                        self.emit_root_pop_drop(ctx)?;
+                        self.emit_root_pop_drop(ctx)?;
+                        ctx.emit(Instruction::LocalGet(result_local));
                     }
                     // string-eq: 2 つの文字列を比較
                     Expr::Var(_, name) if name == "string-eq" => {
@@ -374,6 +389,7 @@ impl Lower {
                         // 値を一時ローカルに保存
                         let val_local = ctx.alloc_local("_ref_val".to_string());
                         ctx.emit(Instruction::LocalSet(val_local));
+                        self.emit_root_push_local(ctx, val_local, "_ref_val_root_slot")?;
                         // __alloc(16) でヒープ確保
                         ctx.emit(Instruction::I64Const(16));
                         let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
@@ -400,6 +416,7 @@ impl Lower {
                         ctx.emit(Instruction::I32WrapI64);
                         ctx.emit(Instruction::LocalGet(val_local));
                         ctx.emit(Instruction::I64Store { offset: 8 });
+                        self.emit_root_pop_drop(ctx)?;
                         // タグ付きポインタを返す (addr は既に i64)
                         // 最上位ビットをセット: addr | (1 << 63)
                         ctx.emit(Instruction::LocalGet(addr_local));
@@ -622,6 +639,16 @@ impl Lower {
                                             name: "__alloc".to_string(),
                                         }
                                     })?;
+                                self.emit_root_push_local(
+                                    ctx,
+                                    tagged_local,
+                                    "_vpush_tagged_root_slot",
+                                )?;
+                                self.emit_root_push_local(
+                                    ctx,
+                                    val_local,
+                                    "_vpush_val_root_slot",
+                                )?;
                                 ctx.emit(Instruction::Call(alloc_idx));
                                 let new_addr_local = ctx.alloc_local("_vpush_newaddr".to_string());
                                 ctx.emit(Instruction::LocalSet(new_addr_local));
@@ -682,6 +709,8 @@ impl Lower {
                                 ctx.emit(Instruction::I32Add);
                                 ctx.emit(Instruction::LocalGet(val_local));
                                 ctx.emit(Instruction::I64Store { offset: 0 });
+                                self.emit_root_pop_drop(ctx)?;
+                                self.emit_root_pop_drop(ctx)?;
 
                                 // 新しいタグ付きポインタを返す
                                 ctx.emit(Instruction::LocalGet(new_addr_local));
@@ -1095,6 +1124,41 @@ impl Lower {
                             ctx.emit(Instruction::End); // block
                             ctx.emit(Instruction::LocalGet(tagged_local));
                         }
+                    }
+
+                    // root_push/root_pop/root_set: actual runtime root stack helper へ委譲
+                    Expr::Var(_, name) if name == "root_push" => {
+                        if let Some(arg) = args.first() {
+                            self.lower_expr(ctx, arg)?;
+                        }
+                        let idx = *self.func_indices.get("root_push").ok_or_else(|| {
+                            LowerError::UndefinedFunction {
+                                name: "root_push".to_string(),
+                            }
+                        })?;
+                        ctx.emit(Instruction::Call(idx));
+                    }
+                    Expr::Var(_, name) if name == "root_pop" => {
+                        let idx = *self.func_indices.get("root_pop").ok_or_else(|| {
+                            LowerError::UndefinedFunction {
+                                name: "root_pop".to_string(),
+                            }
+                        })?;
+                        ctx.emit(Instruction::Call(idx));
+                    }
+                    Expr::Var(_, name) if name == "root_set" => {
+                        if let Some(slot) = args.first() {
+                            self.lower_expr(ctx, slot)?;
+                        }
+                        if let Some(value) = args.get(1) {
+                            self.lower_expr(ctx, value)?;
+                        }
+                        let idx = *self.func_indices.get("root_set").ok_or_else(|| {
+                            LowerError::UndefinedFunction {
+                                name: "root_set".to_string(),
+                            }
+                        })?;
+                        ctx.emit(Instruction::Call(idx));
                     }
 
                     // TypeName.field アクセサ呼び出し
@@ -1592,6 +1656,35 @@ impl Lower {
             })?;
             ctx.emit(Instruction::Call(hash_idx));
         }
+        Ok(())
+    }
+
+    fn emit_root_push_local(
+        &self,
+        ctx: &mut FuncCtx,
+        value_local: u32,
+        slot_name: &str,
+    ) -> Result<u32, LowerError> {
+        let root_push_idx = *self.func_indices.get("root_push").ok_or_else(|| {
+            LowerError::UndefinedFunction {
+                name: "root_push".to_string(),
+            }
+        })?;
+        let slot_local = ctx.alloc_local(slot_name.to_string());
+        ctx.emit(Instruction::LocalGet(value_local));
+        ctx.emit(Instruction::Call(root_push_idx));
+        ctx.emit(Instruction::LocalSet(slot_local));
+        Ok(slot_local)
+    }
+
+    fn emit_root_pop_drop(&self, ctx: &mut FuncCtx) -> Result<(), LowerError> {
+        let root_pop_idx = *self.func_indices.get("root_pop").ok_or_else(|| {
+            LowerError::UndefinedFunction {
+                name: "root_pop".to_string(),
+            }
+        })?;
+        ctx.emit(Instruction::Call(root_pop_idx));
+        ctx.emit(Instruction::Drop);
         Ok(())
     }
 }

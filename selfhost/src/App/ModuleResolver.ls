@@ -7,7 +7,7 @@
 (defn is-path-sep [path idx] (let [ch (path-char path idx)] (if (= ch 47) true (if (= ch 92) true false))))
 (defn has-path-sep [path idx len] (if (>= idx len) false (if (is-path-sep path idx) true (has-path-sep path (+ idx 1) len))))
 (defn find-last-path-sep [path idx len last] (if (>= idx len) last (find-last-path-sep path (+ idx 1) len (if (is-path-sep path idx) idx last))))
-(defn path-parent [path] (let [len (string-length path)] (if (= len 0) "" (if (has-path-sep path 0 len) (let [last (find-last-path-sep path 0 len -1)] (if (< last 0) "" (if (= last 0) "/" (substring path 0 last)))) ""))))
+(defn path-parent [path] (let [len (string-length path)] (if (= len 0) "" (if (has-path-sep path 0 len) (let [last (find-last-path-sep path 0 len -1)] (if (< last 0) "" (if (= last 0) "/" (substring path 0 last)))) "."))))
 (defn path-basename [path] (let [len (string-length path)] (if (= len 0) "" (if (has-path-sep path 0 len) (let [last (find-last-path-sep path 0 len -1)] (if (< last 0) path (substring path (+ last 1) len))) path))))
 (defn path-join [base child] (if (= (string-length base) 0) child (let [len (string-length base)] (if (is-path-sep base (- len 1)) (string-concat base child) (string-concat (string-concat base "/") child)))))
 (defn find-src-ancestor [dir] (if (= (string-length dir) 0) "" (if (is-src-dir-name (path-basename dir)) dir (let [parent (path-parent dir)] (if (same-path parent dir) "" (find-src-ancestor parent))))))

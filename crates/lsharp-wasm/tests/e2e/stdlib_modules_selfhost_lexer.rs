@@ -154,8 +154,6 @@ fn test_e2e_bootstrap_stage1_modules() {
         ),
     ];
 
-    let selfhost_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../selfhost");
-
     // コンパイラの既知の制限により一部モジュールが未対応:
     // - Lexer.ls: 深いネストの if 式でパースエラー
     // - Parser.ls: 相互再帰関数 (parse-sexp) の前方参照が未対応
@@ -166,9 +164,29 @@ fn test_e2e_bootstrap_stage1_modules() {
 
     for (name, expected) in &modules {
         let is_known_limitation = known_limitations.contains(name);
-        let path = selfhost_dir.join(name);
+        let path = selfhost_source_path(name);
 
-        match try_compile_and_run_file(&path) {
+        let source_result = match *name {
+            "Token.ls" => try_compile_and_run(&format!(
+                "{}\n(defn main [] (demo-main))",
+                selfhost_module("Token.ls")
+            )),
+            "Lexer.ls" => try_compile_and_run(&format!(
+                "{}\n(defn main [] (demo-main))",
+                selfhost_lexer_runtime_bundle()
+            )),
+            "AST.ls" => try_compile_and_run(&format!(
+                "{}\n(defn main [] (demo-main))",
+                selfhost_module("AST.ls")
+            )),
+            "Parser.ls" => try_compile_and_run(&format!(
+                "{}\n(defn main [] (demo-main))",
+                selfhost_parser_runtime_bundle()
+            )),
+            _ => try_compile_and_run_file(&path),
+        };
+
+        match source_result {
             Ok(output) => {
                 if output.trim() == *expected {
                     passed += 1;

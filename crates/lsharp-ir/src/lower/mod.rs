@@ -170,7 +170,10 @@ impl Lower {
         self.func_indices.insert("command-line-arg".to_string(), 11);
         self.func_indices.insert("read-stdin".to_string(), 12);
         self.func_indices.insert("__fnv1a_hash".to_string(), 13);
-        self.import_count = 14;
+        self.func_indices.insert("root_push".to_string(), 14);
+        self.func_indices.insert("root_pop".to_string(), 15);
+        self.func_indices.insert("root_set".to_string(), 16);
+        self.import_count = 17;
 
         // ユーザー定義関数のインデックスを事前登録
         let mut func_idx = self.import_count;

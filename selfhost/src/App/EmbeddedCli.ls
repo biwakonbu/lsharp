@@ -174,8 +174,8 @@
                   (if (= cmd-id (cmd-doc-check))
                     (run-doc-check file-path opts)
                     (if (= cmd-id (cmd-fmt))
-                        (run-fmt file-path opts)
-                        (exit-compile-error))))))))))))
+                      (run-fmt file-path opts)
+                      (exit-compile-error))))))))))))
 (defn run-command-with-cli-options [cmd-name file-path result] (let [target (cli-option-result-target result) output-path (cli-option-result-output-path result)] (if (> (string-length output-path) 0) (if (string-eq cmd-name "compile") (run-compile-output file-path output-path target) (if (string-eq cmd-name "build") (run-build-output file-path output-path target) (run-command cmd-name file-path target))) (run-command cmd-name file-path target))))
 (defn compile-or-build-command [cmd-name] (or (string-eq cmd-name "compile") (string-eq cmd-name "build")))
 (defn run-main-command [argc cmd-name file-path]
