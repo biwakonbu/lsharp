@@ -187,10 +187,34 @@ impl ModuleCacheEntry {
     }
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct LinkedModuleCache {
+    module_order: Vec<String>,
+    final_module: Module,
+}
+
+impl LinkedModuleCache {
+    pub(crate) fn new(module_order: Vec<String>, final_module: Module) -> Self {
+        Self {
+            module_order,
+            final_module,
+        }
+    }
+
+    pub(crate) fn module_order(&self) -> &[String] {
+        &self.module_order
+    }
+
+    pub(crate) fn final_module(&self) -> &Module {
+        &self.final_module
+    }
+}
+
 /// モジュール名ごとのコンパイル中間成果物キャッシュ。
 #[derive(Debug, Clone, Default)]
 pub struct CompilationCache {
     entries: HashMap<String, ModuleCacheEntry>,
+    linked_module: Option<LinkedModuleCache>,
 }
 
 impl CompilationCache {
@@ -212,5 +236,13 @@ impl CompilationCache {
 
     pub(crate) fn insert_module(&mut self, module: String, entry: ModuleCacheEntry) {
         self.entries.insert(module, entry);
+    }
+
+    pub(crate) fn linked_module(&self) -> Option<&LinkedModuleCache> {
+        self.linked_module.as_ref()
+    }
+
+    pub(crate) fn set_linked_module(&mut self, module_order: Vec<String>, final_module: Module) {
+        self.linked_module = Some(LinkedModuleCache::new(module_order, final_module));
     }
 }

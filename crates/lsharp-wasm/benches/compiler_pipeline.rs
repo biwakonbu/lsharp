@@ -3,9 +3,13 @@
 //! パイプラインの各ステージ (parse → infer → lower → codegen) を個別に計測し、
 //! ボトルネックの特定と回帰検出に使用する。
 
-use criterion::{Criterion, criterion_group, criterion_main};
+use std::time::Duration;
+
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use lsharp_ir::lower::Lower;
+use lsharp_ir::{CompilationCache, compile_multi_file, compile_multi_file_incremental};
 use lsharp_types::infer::Infer;
+use lsharp_wasm::incremental_bench::SelfhostIncrementalBenchFixture;
 
 // ベンチマーク用フィクスチャ
 const FIB_SOURCE: &str = include_str!("../../../examples/fib.ls");
@@ -185,12 +189,93 @@ fn bench_full_pipeline(c: &mut Criterion) {
     group.finish();
 }
 
+struct IncrementalCompileBenchState {
+    fixture: SelfhostIncrementalBenchFixture,
+    cache: CompilationCache,
+}
+
+fn prepare_incremental_warm_state() -> IncrementalCompileBenchState {
+    let fixture = SelfhostIncrementalBenchFixture::create().expect("fixture should be created");
+    let mut cache = CompilationCache::new();
+    compile_multi_file_incremental(fixture.entry_path(), &mut cache)
+        .expect("warm-up incremental compile should succeed");
+    IncrementalCompileBenchState { fixture, cache }
+}
+
+fn prepare_incremental_single_change_state() -> IncrementalCompileBenchState {
+    let fixture = SelfhostIncrementalBenchFixture::create().expect("fixture should be created");
+    let mut cache = CompilationCache::new();
+    compile_multi_file_incremental(fixture.entry_path(), &mut cache)
+        .expect("warm-up incremental compile should succeed");
+    fixture
+        .apply_changed_module_variant()
+        .expect("single-module change should be staged");
+    IncrementalCompileBenchState { fixture, cache }
+}
+
+fn bench_incremental_compile_selfhost(c: &mut Criterion) {
+    let mut group = c.benchmark_group("incremental_compile_selfhost");
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(20));
+
+    group.bench_function("full_compile_app_main", |b| {
+        b.iter_batched(
+            || SelfhostIncrementalBenchFixture::create().expect("fixture should be created"),
+            |fixture| {
+                compile_multi_file(fixture.entry_path()).expect("full compile should succeed")
+            },
+            BatchSize::PerIteration,
+        );
+    });
+
+    group.bench_function("incremental_cold_app_main", |b| {
+        b.iter_batched(
+            || {
+                (
+                    SelfhostIncrementalBenchFixture::create().expect("fixture should be created"),
+                    CompilationCache::new(),
+                )
+            },
+            |(fixture, mut cache)| {
+                compile_multi_file_incremental(fixture.entry_path(), &mut cache)
+                    .expect("cold incremental compile should succeed")
+            },
+            BatchSize::PerIteration,
+        );
+    });
+
+    group.bench_function("incremental_warm_clean_rebuild_app_main", |b| {
+        b.iter_batched_ref(
+            prepare_incremental_warm_state,
+            |state| {
+                compile_multi_file_incremental(state.fixture.entry_path(), &mut state.cache)
+                    .expect("warm clean rebuild should succeed")
+            },
+            BatchSize::PerIteration,
+        );
+    });
+
+    group.bench_function("incremental_single_module_change_app_main", |b| {
+        b.iter_batched_ref(
+            prepare_incremental_single_change_state,
+            |state| {
+                compile_multi_file_incremental(state.fixture.entry_path(), &mut state.cache)
+                    .expect("single-module incremental compile should succeed")
+            },
+            BatchSize::PerIteration,
+        );
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_parse,
     bench_infer,
     bench_lower,
     bench_codegen,
-    bench_full_pipeline
+    bench_full_pipeline,
+    bench_incremental_compile_selfhost
 );
 criterion_main!(benches);

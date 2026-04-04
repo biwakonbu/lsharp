@@ -3,6 +3,7 @@ mod completion;
 mod format;
 mod references;
 mod rename;
+mod text_sync;
 mod util;
 
 use std::collections::HashMap;
@@ -54,13 +55,17 @@ impl LsharpBackend {
     }
 }
 
+fn text_document_sync_kind() -> TextDocumentSyncKind {
+    TextDocumentSyncKind::INCREMENTAL
+}
+
 #[tower_lsp::async_trait]
 impl LanguageServer for LsharpBackend {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                    TextDocumentSyncKind::FULL,
+                    text_document_sync_kind(),
                 )),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 completion_provider: Some(CompletionOptions::default()),
@@ -95,14 +100,15 @@ impl LanguageServer for LsharpBackend {
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
-        // TextDocumentSyncKind::FULL なので最後の変更が全文
-        if let Some(change) = params.content_changes.into_iter().last() {
-            let diagnostics = util::parse_and_check(&change.text);
-            self.set_source(uri.clone(), change.text);
-            self.client
-                .publish_diagnostics(uri, diagnostics, None)
-                .await;
-        }
+        let current_source = self.get_source(&uri).unwrap_or_default();
+        let updated_source =
+            text_sync::apply_content_changes(&current_source, &params.content_changes)
+                .unwrap_or(current_source);
+        let diagnostics = util::parse_and_check(&updated_source);
+        self.set_source(uri.clone(), updated_source);
+        self.client
+            .publish_diagnostics(uri, diagnostics, None)
+            .await;
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
@@ -407,7 +413,7 @@ mod tests {
     fn test_server_capabilities() {
         // ServerCapabilities に必要な provider が全て含まれる検証
         let capabilities = ServerCapabilities {
-            text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+            text_document_sync: Some(TextDocumentSyncCapability::Kind(text_document_sync_kind())),
             hover_provider: Some(HoverProviderCapability::Simple(true)),
             completion_provider: Some(CompletionOptions::default()),
             definition_provider: Some(OneOf::Left(true)),
@@ -427,5 +433,14 @@ mod tests {
         assert!(capabilities.references_provider.is_some());
         assert!(capabilities.rename_provider.is_some());
         assert!(capabilities.document_formatting_provider.is_some());
+    }
+
+    #[test]
+    fn test_text_document_sync_kind_is_incremental() {
+        assert_eq!(
+            text_document_sync_kind(),
+            TextDocumentSyncKind::INCREMENTAL,
+            "INC-F4 では LSP sync kind を INCREMENTAL へ切り替えるべき"
+        );
     }
 }

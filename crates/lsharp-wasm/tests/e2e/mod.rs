@@ -2,6 +2,7 @@ mod bootstrap_selfhost_lsp_integration;
 mod builtins_hof_collections;
 mod core_language_semantics;
 mod file_io_selfhost_compiler_ir;
+mod incremental_benchmark;
 mod runtime_allocator_closures;
 mod selfhost_bootstrap_acceptance;
 mod selfhost_bootstrap_contracts;

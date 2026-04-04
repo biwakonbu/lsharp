@@ -337,11 +337,12 @@
   - `INC-E1` により `compile_multi_file` / `compile_multi_file_incremental` は module-local lowering + link phase へ移行済み
   - clean rebuild (`changed_modules.is_empty()`) では `CompilationCache` の `ir` に保持した final linked IR を再利用し、parse / type infer に続いて lowering もスキップする fast path まで追加済み (`test_compile_multi_file_incremental_skips_ir_generation_on_clean_cache_hit`)
   - cache entry は per-module IR segment (`defns` / `accessors` / `trait_impls` / `constraints` / `ctors` / `defn_lifted` / `trait_impl_lifted`) を保持するように拡張し、tail module だけ dirty な再コンパイルでは clean prefix module の segment を再利用する safe slice に加えて、dirty middle module が precomputed count / string_data / lifted layout を保つ場合は clean suffix module も個別に再利用できるようにした (`test_compile_multi_file_incremental_reuses_prefix_module_ir_segments_before_first_dirty_module`, `test_compile_multi_file_incremental_reuses_clean_suffix_module_when_dirty_middle_layout_is_stable`)
-  - **ただし** dirty predecessor が function/gc count や defn/trait string_data / lifted layout を変える場合は、後続モジュールをまだ全面 relower している。shape-shifting dirty module をまたいだ一般 re-link / link-phase cache は `INC-E3` 側の残件
+  - **残件** dirty predecessor が function/gc/string/lifted segment 長を変える場合は、後続モジュールをまだ全面 relower している。shape-shifting dirty module をまたいだ suffix reuse の一般化は引き続き未完
 
-- [ ] `INC-E3` link phase キャッシュ
-  - モジュール順序・segment 数不変時に final link 計算をスキップ
-  - `string_data` / `gc_types` / lifted function segment が変化した場合のキャッシュ無効化
+- [x] `INC-E3` link phase キャッシュ（`crates/lsharp-ir/src/cache.rs`, `test_compile_multi_file_incremental_patches_cached_final_link_when_segment_lengths_match`）
+  - `CompilationCache` に module order 付き cached final linked module を保持し、モジュール順序と per-segment range 長が不変な再コンパイルでは cached final module の該当 range を patch して full relink をスキップするようにした
+  - segment 長が変わる変更では full relink にフォールバックする (`test_compile_multi_file_incremental_patches_cached_final_link_when_segment_lengths_match`, `test_compile_multi_file_incremental_invalidates_link_cache_when_segment_lengths_change`)
+  - `compile_multi_file_` 17 tests、`test_e2e_multi_file_` 5 tests、fixed input set 54 件 compare (`test_e2e_incremental_compile_matches_full_compile_fixed_input_set`) まで green
 
 ### INC-F: LSP 統合
 
@@ -361,13 +362,10 @@
   - clean モジュールの診断はキャッシュから返す
   - 依存: INC-F2, INC-B2
 
-- [ ] `INC-F4` LSP Incremental Sync (V2-01 実装)
-  - `TextDocumentSyncKind::FULL` → `INCREMENTAL` 移行
-  - rope データ構造導入 (`ropey` クレート)
-  - `did_change` で range ベース差分適用
-  - Full Sync フォールバック (差分適用失敗時)
-  - テスト: 既存 Full Sync テストがパス、差分適用の正確性、1000 行ファイルの部分編集 < 50ms
-  - INC-F1 と並行可能
+- [x] `INC-F4` LSP Incremental Sync (V2-01 実装) — Evidence: `crates/lsharp-lsp/src/text_sync.rs`, `test_apply_content_changes_replaces_single_range`, `test_apply_content_changes_large_document_partial_edit_stays_fast`, `cargo test -q -p lsharp-lsp -- --nocapture`, `cargo test -q -p lsharp-wasm --test lsp_stateful_parity -- --nocapture`
+  - `LsharpBackend` の `text_document_sync` を `TextDocumentSyncKind::INCREMENTAL` へ切り替え、`did_change` は `ropey` ベースの range patch helper (`text_sync::apply_content_changes`) で順次差分適用するようにした
+  - range 適用に失敗した場合は incoming `change.text` を full-text として扱う fallback を入れ、従来の full replacement workflow も維持した
+  - unit test で single range / 複数 incremental edit / invalid range fallback / 1000 行 partial edit < 50ms を固定し、`lsp_stateful_parity` 42 tests でも changed-document completion / hover / definition / references / rename を含む broad parity を再確認した
 
 - [ ] `INC-F5` LSP スレッドセーフ設計
   - `RwLock<CompilationCache>` の粒度設計
@@ -400,9 +398,10 @@
   - formatter trio の warm-cache hit が individual infer に落ちて壊れる回帰を `compile_multi_file_incremental` 側で修正し、`test_compile_multi_file_incremental_clean_formatter_trio_cache_hit_succeeds` で固定
   - `test_e2e_bootstrap_fixed_point_stage2_stage3` が引き続きグリーン
 
-- [ ] `INC-H2` パフォーマンスベンチマーク
-  - selfhost プロジェクトでの 1 モジュール変更時のコンパイル時間計測
-  - 目標: フルコンパイル比 50% 以上の短縮 (1 モジュール変更時)
+- [x] `INC-H2` パフォーマンスベンチマーク — Evidence: `crates/lsharp-wasm/benches/compiler_pipeline.rs`, `test_e2e_selfhost_incremental_bench_fixture_single_change_matches_full_compile`, `cargo bench -p lsharp-wasm --bench compiler_pipeline incremental_compile_selfhost`
+  - `incremental_compile_selfhost` criterion group を追加し、temp workspace へ stage した real selfhost `App/Main.ls` graph に対して full compile / cold incremental / warm clean rebuild / single-module change を計測できるようにした
+  - changed module は `App/CompilerMode.ls` にコメント 1 行を足すだけの variant で再現し、`RUN_INCREMENTAL_BENCHMARK=1 bash scripts/ci/compile-phase11-inputs.sh` から opt-in 実行できるようにした
+  - このセッションの計測では `full_compile_app_main` median ≈ 3.1187s、`incremental_single_module_change_app_main` median ≈ 879.38ms、`incremental_warm_clean_rebuild_app_main` median ≈ 6.58ms で、single-module change はフルコンパイル比で約 71.8% 短縮
 
 - [ ] `INC-H3` LSP レスポンスタイム計測
   - `did_change` 後の diagnostics publish までの時間

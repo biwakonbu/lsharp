@@ -808,6 +808,28 @@ fn note_incremental_module_segment_lower_by(_count: usize) {
     }
 }
 
+fn note_incremental_link_full() {
+    #[cfg(test)]
+    {
+        INCREMENTAL_LINK_FULL_TRACKING_ENABLED.with(|enabled| {
+            if enabled.get() {
+                INCREMENTAL_LINK_FULL_COUNT.with(|count| count.set(count.get() + 1));
+            }
+        });
+    }
+}
+
+fn note_incremental_link_cache_hit() {
+    #[cfg(test)]
+    {
+        INCREMENTAL_LINK_CACHE_HIT_TRACKING_ENABLED.with(|enabled| {
+            if enabled.get() {
+                INCREMENTAL_LINK_CACHE_HIT_COUNT.with(|count| count.set(count.get() + 1));
+            }
+        });
+    }
+}
+
 fn build_module_cache_entry(
     fingerprint: SourceFingerprint,
     program: &Arc<lsharp_syntax::ast::Program>,
@@ -965,11 +987,76 @@ impl Drop for IncrementalModuleSegmentLowerTracker {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    static INCREMENTAL_LINK_FULL_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static INCREMENTAL_LINK_FULL_TRACKING_ENABLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static INCREMENTAL_LINK_CACHE_HIT_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static INCREMENTAL_LINK_CACHE_HIT_TRACKING_ENABLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+struct IncrementalLinkTracker;
+
+#[cfg(test)]
+impl IncrementalLinkTracker {
+    fn new() -> Self {
+        INCREMENTAL_LINK_FULL_TRACKING_ENABLED.with(|enabled| enabled.set(true));
+        INCREMENTAL_LINK_CACHE_HIT_TRACKING_ENABLED.with(|enabled| enabled.set(true));
+        INCREMENTAL_LINK_FULL_COUNT.with(|count| count.set(0));
+        INCREMENTAL_LINK_CACHE_HIT_COUNT.with(|count| count.set(0));
+        Self
+    }
+
+    fn reset(&self) {
+        INCREMENTAL_LINK_FULL_COUNT.with(|count| count.set(0));
+        INCREMENTAL_LINK_CACHE_HIT_COUNT.with(|count| count.set(0));
+    }
+
+    fn full_count(&self) -> usize {
+        INCREMENTAL_LINK_FULL_COUNT.with(|count| count.get())
+    }
+
+    fn cache_hit_count(&self) -> usize {
+        INCREMENTAL_LINK_CACHE_HIT_COUNT.with(|count| count.get())
+    }
+}
+
+#[cfg(test)]
+impl Drop for IncrementalLinkTracker {
+    fn drop(&mut self) {
+        INCREMENTAL_LINK_FULL_TRACKING_ENABLED.with(|enabled| enabled.set(false));
+        INCREMENTAL_LINK_CACHE_HIT_TRACKING_ENABLED.with(|enabled| enabled.set(false));
+        INCREMENTAL_LINK_FULL_COUNT.with(|count| count.set(0));
+        INCREMENTAL_LINK_CACHE_HIT_COUNT.with(|count| count.set(0));
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
 enum MultiFileLoweringMode {
     Merged,
     Modular,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct SegmentRange {
+    start: usize,
+    len: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct ModuleLinkRanges {
+    defns_functions: SegmentRange,
+    accessors_functions: SegmentRange,
+    trait_impls_functions: SegmentRange,
+    constraints_functions: SegmentRange,
+    ctors_functions: SegmentRange,
+    defn_lifted_functions: SegmentRange,
+    trait_impl_lifted_functions: SegmentRange,
+    defns_gc_types: SegmentRange,
+    defns_string_data: SegmentRange,
+    trait_impls_string_data: SegmentRange,
 }
 
 fn module_has_content(module: &Module) -> bool {
@@ -1079,6 +1166,167 @@ fn link_module_ir_segments(segments: &[ModuleIrSegments]) -> Module {
     link_modules_preserving_indices(&modules)
 }
 
+fn next_segment_range(cursor: &mut usize, len: usize) -> SegmentRange {
+    let range = SegmentRange {
+        start: *cursor,
+        len,
+    };
+    *cursor += len;
+    range
+}
+
+fn compute_module_link_ranges(segments: &[ModuleIrSegments]) -> Vec<ModuleLinkRanges> {
+    let mut ranges = vec![ModuleLinkRanges::default(); segments.len()];
+
+    let mut function_cursor = 0;
+    for (idx, segment) in segments.iter().enumerate() {
+        ranges[idx].defns_functions =
+            next_segment_range(&mut function_cursor, segment.defns().functions.len());
+    }
+    for (idx, segment) in segments.iter().enumerate() {
+        ranges[idx].accessors_functions =
+            next_segment_range(&mut function_cursor, segment.accessors().functions.len());
+    }
+    for (idx, segment) in segments.iter().enumerate() {
+        ranges[idx].trait_impls_functions =
+            next_segment_range(&mut function_cursor, segment.trait_impls().functions.len());
+    }
+    for (idx, segment) in segments.iter().enumerate() {
+        ranges[idx].constraints_functions =
+            next_segment_range(&mut function_cursor, segment.constraints().functions.len());
+    }
+    for (idx, segment) in segments.iter().enumerate() {
+        ranges[idx].ctors_functions =
+            next_segment_range(&mut function_cursor, segment.ctors().functions.len());
+    }
+    for (idx, segment) in segments.iter().enumerate() {
+        ranges[idx].defn_lifted_functions =
+            next_segment_range(&mut function_cursor, segment.defn_lifted().functions.len());
+    }
+    for (idx, segment) in segments.iter().enumerate() {
+        ranges[idx].trait_impl_lifted_functions = next_segment_range(
+            &mut function_cursor,
+            segment.trait_impl_lifted().functions.len(),
+        );
+    }
+
+    let mut gc_type_cursor = 0;
+    for (idx, segment) in segments.iter().enumerate() {
+        ranges[idx].defns_gc_types =
+            next_segment_range(&mut gc_type_cursor, segment.defns().gc_types.len());
+    }
+
+    let mut string_cursor = 0;
+    for (idx, segment) in segments.iter().enumerate() {
+        ranges[idx].defns_string_data =
+            next_segment_range(&mut string_cursor, segment.defns().string_data.len());
+    }
+    for (idx, segment) in segments.iter().enumerate() {
+        ranges[idx].trait_impls_string_data =
+            next_segment_range(&mut string_cursor, segment.trait_impls().string_data.len());
+    }
+
+    ranges
+}
+
+fn segment_layout_matches(old: &ModuleIrSegments, new: &ModuleIrSegments) -> bool {
+    old.defns().functions.len() == new.defns().functions.len()
+        && old.accessors().functions.len() == new.accessors().functions.len()
+        && old.trait_impls().functions.len() == new.trait_impls().functions.len()
+        && old.constraints().functions.len() == new.constraints().functions.len()
+        && old.ctors().functions.len() == new.ctors().functions.len()
+        && old.defn_lifted().functions.len() == new.defn_lifted().functions.len()
+        && old.trait_impl_lifted().functions.len() == new.trait_impl_lifted().functions.len()
+        && old.defns().gc_types.len() == new.defns().gc_types.len()
+        && old.defns().string_data.len() == new.defns().string_data.len()
+        && old.trait_impls().string_data.len() == new.trait_impls().string_data.len()
+}
+
+fn can_patch_linked_module(
+    cache: &CompilationCache,
+    module_order: &[String],
+    old_segments: &[ModuleIrSegments],
+    new_segments: &[ModuleIrSegments],
+) -> bool {
+    cache
+        .linked_module()
+        .is_some_and(|linked| linked.module_order() == module_order)
+        && old_segments.len() == new_segments.len()
+        && old_segments
+            .iter()
+            .zip(new_segments.iter())
+            .all(|(old, new)| segment_layout_matches(old, new))
+}
+
+fn overwrite_range<T: Clone>(target: &mut [T], range: SegmentRange, replacement: &[T]) {
+    debug_assert_eq!(range.len, replacement.len());
+    target[range.start..range.start + range.len].clone_from_slice(replacement);
+}
+
+fn patch_linked_module(
+    base: &Module,
+    old_segments: &[ModuleIrSegments],
+    new_segments: &[ModuleIrSegments],
+) -> Module {
+    let ranges = compute_module_link_ranges(old_segments);
+    let mut patched = base.clone();
+
+    for (range, segment) in ranges.iter().zip(new_segments.iter()) {
+        overwrite_range(
+            &mut patched.functions,
+            range.defns_functions,
+            &segment.defns().functions,
+        );
+        overwrite_range(
+            &mut patched.functions,
+            range.accessors_functions,
+            &segment.accessors().functions,
+        );
+        overwrite_range(
+            &mut patched.functions,
+            range.trait_impls_functions,
+            &segment.trait_impls().functions,
+        );
+        overwrite_range(
+            &mut patched.functions,
+            range.constraints_functions,
+            &segment.constraints().functions,
+        );
+        overwrite_range(
+            &mut patched.functions,
+            range.ctors_functions,
+            &segment.ctors().functions,
+        );
+        overwrite_range(
+            &mut patched.functions,
+            range.defn_lifted_functions,
+            &segment.defn_lifted().functions,
+        );
+        overwrite_range(
+            &mut patched.functions,
+            range.trait_impl_lifted_functions,
+            &segment.trait_impl_lifted().functions,
+        );
+        overwrite_range(
+            &mut patched.gc_types,
+            range.defns_gc_types,
+            &segment.defns().gc_types,
+        );
+        overwrite_range(
+            &mut patched.string_data,
+            range.defns_string_data,
+            &segment.defns().string_data,
+        );
+        overwrite_range(
+            &mut patched.string_data,
+            range.trait_impls_string_data,
+            &segment.trait_impls().string_data,
+        );
+    }
+
+    patched
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct ModulePrecomputedShape {
     defn_count: usize,
@@ -1166,7 +1414,6 @@ fn module_trait_impl_state_shape(module: &ModuleIrSegments) -> ModuleTraitImplSt
 }
 
 struct ModularLoweringResult {
-    final_module: Module,
     segments: Vec<ModuleIrSegments>,
     fresh_defn_lower_count: usize,
 }
@@ -1351,9 +1598,7 @@ fn lower_multi_file_modular_with_segments(
         precomputed_prefix_stable &= precomputed_shape_matches[idx];
     }
 
-    let final_module = link_module_ir_segments(&segments);
     Ok(ModularLoweringResult {
-        final_module,
         segments,
         fresh_defn_lower_count,
     })
@@ -1365,14 +1610,14 @@ fn lower_multi_file_modular(
     all_type_results: &[(String, lsharp_types::types::TypeScheme)],
 ) -> Result<Module, lower::LowerError> {
     let reusable_segments = vec![None; module_programs.len()];
-    Ok(lower_multi_file_modular_with_segments(
+    let lowering = lower_multi_file_modular_with_segments(
         module_programs,
         all_decls,
         all_type_results,
         &reusable_segments,
         &vec![false; module_programs.len()],
-    )?
-    .final_module)
+    )?;
+    Ok(link_module_ir_segments(&lowering.segments))
 }
 
 fn compile_multi_file_with_mode(
@@ -1699,15 +1944,43 @@ pub fn compile_multi_file_incremental(
     )
     .map_err(|e| format!("IR 変換エラー: {e}"))?;
     note_incremental_module_segment_lower_by(lowering.fresh_defn_lower_count);
-    let final_module = lowering.final_module;
+    let new_segments = lowering.segments;
+    let module_order: Vec<String> = cache_entries
+        .iter()
+        .map(|(mod_name, _)| mod_name.clone())
+        .collect();
+    let old_segments: Option<Vec<ModuleIrSegments>> = if cache
+        .linked_module()
+        .is_some_and(|linked| linked.module_order() == module_order)
+    {
+        cache_entries
+            .iter()
+            .map(|(mod_name, _)| cache.get(mod_name).map(|entry| entry.ir_segments().clone()))
+            .collect()
+    } else {
+        None
+    };
+    let final_module =
+        if let (Some(old_segments), Some(linked)) = (old_segments, cache.linked_module()) {
+            if can_patch_linked_module(cache, &module_order, &old_segments, &new_segments) {
+                note_incremental_link_cache_hit();
+                patch_linked_module(linked.final_module(), &old_segments, &new_segments)
+            } else {
+                note_incremental_link_full();
+                link_module_ir_segments(&new_segments)
+            }
+        } else {
+            note_incremental_link_full();
+            link_module_ir_segments(&new_segments)
+        };
 
-    for ((mod_name, mut entry), segments) in
-        cache_entries.into_iter().zip(lowering.segments.into_iter())
+    for ((mod_name, mut entry), segments) in cache_entries.into_iter().zip(new_segments.into_iter())
     {
         entry.set_ir(final_module.clone());
         entry.set_ir_segments(segments);
         cache.insert_module(mod_name, entry);
     }
+    cache.set_linked_module(module_order, final_module.clone());
 
     Ok(final_module)
 }
@@ -2490,6 +2763,124 @@ mod incremental_compile_tests {
         assert_eq!(
             incremental.string_data, full.string_data,
             "clean suffix IR segment reuse 後も string_data は full compile と一致するべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_incremental_patches_cached_final_link_when_segment_lengths_match() {
+        let dir = std::env::temp_dir().join("lsharp_compile_multi_file_incremental_link_cache_hit");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("Base.ls"),
+            "(module Base)\n(defn base-val [] 10)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Mid.ls"),
+            "(module Mid)\n(import Base)\n(defn mid-val [] (+ (base-val) 20))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Mid)\n(defn main [] (+ (mid-val) 1))\n",
+        )
+        .unwrap();
+
+        let mut cache = CompilationCache::new();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+
+        std::fs::write(
+            dir.join("Mid.ls"),
+            "(module Mid)\n(import Base)\n(defn mid-val [] (+ (base-val) 21))\n",
+        )
+        .unwrap();
+
+        let tracker = IncrementalLinkTracker::new();
+        tracker.reset();
+        let incremental = compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+        let full = compile_multi_file(&dir.join("Main.ls")).unwrap();
+
+        assert_eq!(
+            tracker.cache_hit_count(),
+            1,
+            "module order と segment 長が不変なら cached final module を range patch して full relink を避けるべき"
+        );
+        assert_eq!(
+            tracker.full_count(),
+            0,
+            "range patch が成立する変更では full relink を再実行しないべき"
+        );
+        assert_eq!(
+            incremental.dump(),
+            full.dump(),
+            "link cache hit 後も final linked IR は full compile と一致するべき"
+        );
+        assert_eq!(
+            incremental.string_data, full.string_data,
+            "link cache hit 後も string_data は full compile と一致するべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_incremental_invalidates_link_cache_when_segment_lengths_change() {
+        let dir =
+            std::env::temp_dir().join("lsharp_compile_multi_file_incremental_link_cache_miss");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("Mid.ls"),
+            "(module Mid)\n(defn mid-val [] \"a\")\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Mid)\n(defn main [] (mid-val))\n",
+        )
+        .unwrap();
+
+        let mut cache = CompilationCache::new();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+
+        std::fs::write(
+            dir.join("Mid.ls"),
+            "(module Mid)\n(defn mid-val [] (string-concat \"a\" \"b\"))\n",
+        )
+        .unwrap();
+
+        let tracker = IncrementalLinkTracker::new();
+        tracker.reset();
+        let incremental = compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+        let full = compile_multi_file(&dir.join("Main.ls")).unwrap();
+
+        assert_eq!(
+            tracker.cache_hit_count(),
+            0,
+            "string_data segment 長が変わる変更では cached final module patch は使わないべき"
+        );
+        assert_eq!(
+            tracker.full_count(),
+            1,
+            "segment 長が変わる変更では full relink にフォールバックするべき"
+        );
+        assert_eq!(
+            incremental.dump(),
+            full.dump(),
+            "link cache miss 後も final linked IR は full compile と一致するべき"
+        );
+        assert_eq!(
+            incremental.string_data, full.string_data,
+            "link cache miss 後も string_data は full compile と一致するべき"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
