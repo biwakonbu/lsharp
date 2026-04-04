@@ -1413,6 +1413,10 @@ fn module_trait_impl_state_shape(module: &ModuleIrSegments) -> ModuleTraitImplSt
     }
 }
 
+fn defn_state_depends_on_prefix(shape: ModuleDefnStateShape) -> bool {
+    shape.string_bytes > 0 || shape.lifted_count > 0
+}
+
 struct ModularLoweringResult {
     segments: Vec<ModuleIrSegments>,
     fresh_defn_lower_count: usize,
@@ -1463,9 +1467,11 @@ fn lower_multi_file_modular_with_segments(
     let mut defn_prefix_stable = true;
 
     for (idx, program) in module_programs.iter().enumerate() {
+        let current_defn_needs_prefix_state =
+            cached_defn_shapes[idx].is_some_and(defn_state_depends_on_prefix);
         if segment_reuse_candidates.get(idx).copied().unwrap_or(false)
             && precomputed_prefix_stable
-            && defn_prefix_stable
+            && (!current_defn_needs_prefix_state || defn_prefix_stable)
             && let Some(cached) = reusable_segments
                 .get(idx)
                 .and_then(|segment| segment.clone())
@@ -3037,6 +3043,64 @@ mod incremental_compile_tests {
         assert_eq!(
             incremental.string_data, full.string_data,
             "clean suffix IR segment reuse 後も string_data は full compile と一致するべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_incremental_reuses_clean_suffix_when_dirty_middle_only_changes_string_state()
+     {
+        let dir =
+            std::env::temp_dir().join("lsharp_compile_multi_file_incremental_suffix_string_state");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("Base.ls"),
+            "(module Base)\n(defn base-val [] 10)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Mid.ls"),
+            "(module Mid)\n(import Base)\n(defn mid-val [] (+ (base-val) 20))\n(defn mid-label [] \"a\")\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Mid)\n(defn main [] (+ (mid-val) 1))\n",
+        )
+        .unwrap();
+
+        let mut cache = CompilationCache::new();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+
+        std::fs::write(
+            dir.join("Mid.ls"),
+            "(module Mid)\n(import Base)\n(defn mid-val [] (+ (base-val) 20))\n(defn mid-label [] \"alphabet\")\n",
+        )
+        .unwrap();
+
+        let tracker = IncrementalModuleSegmentLowerTracker::new();
+        tracker.reset();
+        let incremental = compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+        let full = compile_multi_file(&dir.join("Main.ls")).unwrap();
+
+        assert_eq!(
+            tracker.count(),
+            1,
+            "dirty middle module の defn string state だけ変わる場合は clean suffix module の defn を再 lower しないべき"
+        );
+        assert_eq!(
+            incremental.dump(),
+            full.dump(),
+            "suffix defn reuse 後も final linked IR は full compile と一致するべき"
+        );
+        assert_eq!(
+            incremental.string_data, full.string_data,
+            "suffix defn reuse 後も string_data は full compile と一致するべき"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
