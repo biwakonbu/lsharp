@@ -1079,9 +1079,96 @@ fn link_module_ir_segments(segments: &[ModuleIrSegments]) -> Module {
     link_modules_preserving_indices(&modules)
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct ModulePrecomputedShape {
+    defn_count: usize,
+    accessor_count: usize,
+    trait_impl_count: usize,
+    constraint_count: usize,
+    ctor_count: usize,
+    gc_type_count: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct ModuleDefnStateShape {
+    string_bytes: usize,
+    lifted_count: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct ModuleTraitImplStateShape {
+    string_bytes: usize,
+    lifted_count: usize,
+}
+
+fn module_precomputed_shape_from_program(
+    program: &lsharp_syntax::ast::Program,
+) -> ModulePrecomputedShape {
+    use lsharp_syntax::ast::Decl;
+
+    let mut shape = ModulePrecomputedShape::default();
+    for decl in &program.decls {
+        match decl {
+            Decl::Defn { .. } => shape.defn_count += 1,
+            Decl::RecordDef { fields, .. } => {
+                shape.accessor_count += fields.len();
+                shape.gc_type_count += 1;
+            }
+            Decl::ImplDef { methods, .. } => {
+                shape.trait_impl_count += methods.len();
+            }
+            Decl::TypeConstrained { .. } => {
+                shape.constraint_count += 2;
+            }
+            Decl::TypeDef { variants, .. } => {
+                shape.ctor_count += variants.len();
+            }
+            Decl::ModuleDecl { .. } | Decl::ImportDecl { .. } => {}
+            _ => {}
+        }
+    }
+    shape
+}
+
+fn module_precomputed_shape_from_segments(segments: &ModuleIrSegments) -> ModulePrecomputedShape {
+    ModulePrecomputedShape {
+        defn_count: segments.defns().functions.len(),
+        accessor_count: segments.accessors().functions.len(),
+        trait_impl_count: segments.trait_impls().functions.len(),
+        constraint_count: segments.constraints().functions.len(),
+        ctor_count: segments.ctors().functions.len(),
+        gc_type_count: segments.defns().gc_types.len(),
+    }
+}
+
+fn module_defn_state_shape(module: &ModuleIrSegments) -> ModuleDefnStateShape {
+    ModuleDefnStateShape {
+        string_bytes: module
+            .defns()
+            .string_data
+            .iter()
+            .map(|(_, bytes)| bytes.len())
+            .sum(),
+        lifted_count: module.defn_lifted().functions.len(),
+    }
+}
+
+fn module_trait_impl_state_shape(module: &ModuleIrSegments) -> ModuleTraitImplStateShape {
+    ModuleTraitImplStateShape {
+        string_bytes: module
+            .trait_impls()
+            .string_data
+            .iter()
+            .map(|(_, bytes)| bytes.len())
+            .sum(),
+        lifted_count: module.trait_impl_lifted().functions.len(),
+    }
+}
+
 struct ModularLoweringResult {
     final_module: Module,
     segments: Vec<ModuleIrSegments>,
+    fresh_defn_lower_count: usize,
 }
 
 fn lower_multi_file_modular_with_segments(
@@ -1089,6 +1176,7 @@ fn lower_multi_file_modular_with_segments(
     all_decls: &[lsharp_syntax::ast::Decl],
     all_type_results: &[(String, lsharp_types::types::TypeScheme)],
     reusable_segments: &[Option<ModuleIrSegments>],
+    segment_reuse_candidates: &[bool],
 ) -> Result<ModularLoweringResult, lower::LowerError> {
     let merged_program = lsharp_syntax::ast::Program {
         decls: all_decls.to_vec(),
@@ -1097,103 +1185,177 @@ fn lower_multi_file_modular_with_segments(
     lower_ctx.prepare_program_state(&merged_program, all_type_results);
 
     let mut segments = vec![ModuleIrSegments::empty(); module_programs.len()];
+    let cached_precomputed_shapes: Vec<Option<ModulePrecomputedShape>> = reusable_segments
+        .iter()
+        .map(|segments| {
+            segments
+                .as_ref()
+                .map(module_precomputed_shape_from_segments)
+        })
+        .collect();
+    let cached_defn_shapes: Vec<Option<ModuleDefnStateShape>> = reusable_segments
+        .iter()
+        .map(|segments| segments.as_ref().map(module_defn_state_shape))
+        .collect();
+    let cached_trait_shapes: Vec<Option<ModuleTraitImplStateShape>> = reusable_segments
+        .iter()
+        .map(|segments| segments.as_ref().map(module_trait_impl_state_shape))
+        .collect();
+    let precomputed_shape_matches: Vec<bool> = module_programs
+        .iter()
+        .zip(cached_precomputed_shapes.iter())
+        .map(|(program, cached)| {
+            cached
+                .map(|cached_shape| module_precomputed_shape_from_program(program) == cached_shape)
+                .unwrap_or(false)
+        })
+        .collect();
+    let mut defn_shape_matches = vec![false; module_programs.len()];
+    let mut fresh_defn_lower_count = 0usize;
+    let mut precomputed_prefix_stable = true;
+    let mut defn_prefix_stable = true;
 
     for (idx, program) in module_programs.iter().enumerate() {
-        if let Some(cached) = reusable_segments
-            .get(idx)
-            .and_then(|segment| segment.clone())
+        if segment_reuse_candidates.get(idx).copied().unwrap_or(false)
+            && precomputed_prefix_stable
+            && defn_prefix_stable
+            && let Some(cached) = reusable_segments
+                .get(idx)
+                .and_then(|segment| segment.clone())
         {
             prime_cached_string_data(&mut lower_ctx, &cached.defns().string_data);
             prime_cached_lifted(&mut lower_ctx, cached.defn_lifted());
             segments[idx].set_defns(cached.defns().clone());
             segments[idx].set_defn_lifted(cached.defn_lifted().clone());
-            continue;
+            defn_shape_matches[idx] = true;
+        } else {
+            fresh_defn_lower_count += 1;
+            let gc_types = lower_ctx.gc_types_for_program(program);
+            let string_start = lower_ctx.string_data.len();
+            let lifted_start = lower_ctx.lifted_functions.len();
+            let functions = lower_ctx.lower_defn_functions(program)?;
+            let string_data = lower_ctx.clone_string_data_from(string_start);
+            let lifted = lower_ctx.lifted_functions[lifted_start..].to_vec();
+            segments[idx].set_defns(build_segment_module(functions, gc_types, string_data));
+            segments[idx].set_defn_lifted(build_segment_module(lifted, Vec::new(), Vec::new()));
+            defn_shape_matches[idx] = cached_defn_shapes[idx].is_some_and(|cached_shape| {
+                module_defn_state_shape(&segments[idx]) == cached_shape
+            });
         }
 
-        let gc_types = lower_ctx.gc_types_for_program(program);
-        let string_start = lower_ctx.string_data.len();
-        let lifted_start = lower_ctx.lifted_functions.len();
-        let functions = lower_ctx.lower_defn_functions(program)?;
-        let string_data = lower_ctx.clone_string_data_from(string_start);
-        let lifted = lower_ctx.lifted_functions[lifted_start..].to_vec();
-        segments[idx].set_defns(build_segment_module(functions, gc_types, string_data));
-        segments[idx].set_defn_lifted(build_segment_module(lifted, Vec::new(), Vec::new()));
+        precomputed_prefix_stable &= precomputed_shape_matches[idx];
+        defn_prefix_stable &= defn_shape_matches[idx];
     }
 
+    let defn_global_stable = defn_shape_matches.iter().all(|stable| *stable);
+
+    precomputed_prefix_stable = true;
     for (idx, program) in module_programs.iter().enumerate() {
-        if let Some(cached) = reusable_segments
-            .get(idx)
-            .and_then(|segment| segment.clone())
+        if segment_reuse_candidates.get(idx).copied().unwrap_or(false)
+            && precomputed_prefix_stable
+            && let Some(cached) = reusable_segments
+                .get(idx)
+                .and_then(|segment| segment.clone())
         {
             segments[idx].set_accessors(cached.accessors().clone());
-            continue;
+        } else {
+            segments[idx].set_accessors(build_segment_module(
+                lower_ctx.lower_field_accessors(program),
+                Vec::new(),
+                Vec::new(),
+            ));
         }
 
-        segments[idx].set_accessors(build_segment_module(
-            lower_ctx.lower_field_accessors(program),
-            Vec::new(),
-            Vec::new(),
-        ));
+        precomputed_prefix_stable &= precomputed_shape_matches[idx];
     }
 
+    precomputed_prefix_stable = true;
+    let mut trait_prefix_stable = true;
     for (idx, program) in module_programs.iter().enumerate() {
-        if let Some(cached) = reusable_segments
-            .get(idx)
-            .and_then(|segment| segment.clone())
+        if segment_reuse_candidates.get(idx).copied().unwrap_or(false)
+            && defn_global_stable
+            && precomputed_prefix_stable
+            && trait_prefix_stable
+            && let Some(cached) = reusable_segments
+                .get(idx)
+                .and_then(|segment| segment.clone())
         {
             prime_cached_string_data(&mut lower_ctx, &cached.trait_impls().string_data);
             prime_cached_lifted(&mut lower_ctx, cached.trait_impl_lifted());
             segments[idx].set_trait_impls(cached.trait_impls().clone());
             segments[idx].set_trait_impl_lifted(cached.trait_impl_lifted().clone());
-            continue;
+        } else {
+            let string_start = lower_ctx.string_data.len();
+            let lifted_start = lower_ctx.lifted_functions.len();
+            let functions = lower_ctx.lower_trait_impl_functions(program)?;
+            let string_data = lower_ctx.clone_string_data_from(string_start);
+            let lifted = lower_ctx.lifted_functions[lifted_start..].to_vec();
+            segments[idx].set_trait_impls(build_segment_module(functions, Vec::new(), string_data));
+            segments[idx].set_trait_impl_lifted(build_segment_module(
+                lifted,
+                Vec::new(),
+                Vec::new(),
+            ));
         }
 
-        let string_start = lower_ctx.string_data.len();
-        let lifted_start = lower_ctx.lifted_functions.len();
-        let functions = lower_ctx.lower_trait_impl_functions(program)?;
-        let string_data = lower_ctx.clone_string_data_from(string_start);
-        let lifted = lower_ctx.lifted_functions[lifted_start..].to_vec();
-        segments[idx].set_trait_impls(build_segment_module(functions, Vec::new(), string_data));
-        segments[idx].set_trait_impl_lifted(build_segment_module(lifted, Vec::new(), Vec::new()));
+        precomputed_prefix_stable &= precomputed_shape_matches[idx];
+        trait_prefix_stable &= cached_trait_shapes[idx].is_some_and(|cached_shape| {
+            module_trait_impl_state_shape(&segments[idx]) == cached_shape
+        });
     }
 
+    precomputed_prefix_stable = true;
+    let mut constraint_prefix_stable = true;
     for (idx, program) in module_programs.iter().enumerate() {
-        if let Some(cached) = reusable_segments
-            .get(idx)
-            .and_then(|segment| segment.clone())
+        if segment_reuse_candidates.get(idx).copied().unwrap_or(false)
+            && precomputed_prefix_stable
+            && constraint_prefix_stable
+            && let Some(cached) = reusable_segments
+                .get(idx)
+                .and_then(|segment| segment.clone())
         {
             lower_ctx.late_func_idx += cached.constraints().functions.len() as u32;
             segments[idx].set_constraints(cached.constraints().clone());
-            continue;
+        } else {
+            segments[idx].set_constraints(build_segment_module(
+                lower_ctx.lower_constraint_functions(program),
+                Vec::new(),
+                Vec::new(),
+            ));
         }
 
-        segments[idx].set_constraints(build_segment_module(
-            lower_ctx.lower_constraint_functions(program),
-            Vec::new(),
-            Vec::new(),
-        ));
+        precomputed_prefix_stable &= precomputed_shape_matches[idx];
+        constraint_prefix_stable &= cached_precomputed_shapes[idx].is_some_and(|cached_shape| {
+            module_precomputed_shape_from_segments(&segments[idx]).constraint_count
+                == cached_shape.constraint_count
+        });
     }
 
+    precomputed_prefix_stable = true;
     for (idx, program) in module_programs.iter().enumerate() {
-        if let Some(cached) = reusable_segments
-            .get(idx)
-            .and_then(|segment| segment.clone())
+        if segment_reuse_candidates.get(idx).copied().unwrap_or(false)
+            && precomputed_prefix_stable
+            && let Some(cached) = reusable_segments
+                .get(idx)
+                .and_then(|segment| segment.clone())
         {
             segments[idx].set_ctors(cached.ctors().clone());
-            continue;
+        } else {
+            segments[idx].set_ctors(build_segment_module(
+                lower_ctx.lower_adt_constructors(program),
+                Vec::new(),
+                Vec::new(),
+            ));
         }
 
-        segments[idx].set_ctors(build_segment_module(
-            lower_ctx.lower_adt_constructors(program),
-            Vec::new(),
-            Vec::new(),
-        ));
+        precomputed_prefix_stable &= precomputed_shape_matches[idx];
     }
 
     let final_module = link_module_ir_segments(&segments);
     Ok(ModularLoweringResult {
         final_module,
         segments,
+        fresh_defn_lower_count,
     })
 }
 
@@ -1208,6 +1370,7 @@ fn lower_multi_file_modular(
         all_decls,
         all_type_results,
         &reusable_segments,
+        &vec![false; module_programs.len()],
     )?
     .final_module)
 }
@@ -1518,32 +1681,24 @@ pub fn compile_multi_file_incremental(
     }
 
     let mut reusable_segments = vec![None; module_programs.len()];
-    let mut reusable_prefix_len = 0usize;
     for (idx, (mod_name, _)) in cache_entries.iter().enumerate() {
-        if !segment_reuse_candidates[idx] {
-            break;
+        if let Some(cached_entry) = cache.get(mod_name)
+            && !cached_entry.ir_segments().is_empty()
+        {
+            reusable_segments[idx] = Some(cached_entry.ir_segments().clone());
         }
-        let Some(cached_entry) = cache.get(mod_name) else {
-            break;
-        };
-        if cached_entry.ir_segments().is_empty() {
-            break;
-        }
-        reusable_segments[idx] = Some(cached_entry.ir_segments().clone());
-        reusable_prefix_len += 1;
     }
 
-    note_incremental_module_segment_lower_by(
-        module_programs.len().saturating_sub(reusable_prefix_len),
-    );
     note_incremental_lower();
     let lowering = lower_multi_file_modular_with_segments(
         &module_programs,
         &all_decls,
         &all_type_results,
         &reusable_segments,
+        &segment_reuse_candidates,
     )
     .map_err(|e| format!("IR 変換エラー: {e}"))?;
+    note_incremental_module_segment_lower_by(lowering.fresh_defn_lower_count);
     let final_module = lowering.final_module;
 
     for ((mod_name, mut entry), segments) in
@@ -2278,6 +2433,63 @@ mod incremental_compile_tests {
         assert_eq!(
             incremental.string_data, full.string_data,
             "prefix IR segment reuse 後も string_data は full compile と一致するべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_incremental_reuses_clean_suffix_module_when_dirty_middle_layout_is_stable()
+     {
+        let dir = std::env::temp_dir().join("lsharp_compile_multi_file_incremental_suffix_ir_hit");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("Base.ls"),
+            "(module Base)\n(defn base-val [] 10)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Mid.ls"),
+            "(module Mid)\n(import Base)\n(defn mid-val [] (+ (base-val) 20))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Mid)\n(defn main [] (+ (mid-val) 1))\n",
+        )
+        .unwrap();
+
+        let mut cache = CompilationCache::new();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+
+        std::fs::write(
+            dir.join("Mid.ls"),
+            "(module Mid)\n(import Base)\n(defn mid-val [] (+ (base-val) 21))\n",
+        )
+        .unwrap();
+
+        let tracker = IncrementalModuleSegmentLowerTracker::new();
+        tracker.reset();
+        let incremental = compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+        let full = compile_multi_file(&dir.join("Main.ls")).unwrap();
+
+        assert_eq!(
+            tracker.count(),
+            1,
+            "dirty middle module が layout 不変なら clean suffix module の IR segment も再利用し、fresh defn lower は dirty module のみで済むべき"
+        );
+        assert_eq!(
+            incremental.dump(),
+            full.dump(),
+            "clean suffix IR segment reuse 後も final linked IR は full compile と一致するべき"
+        );
+        assert_eq!(
+            incremental.string_data, full.string_data,
+            "clean suffix IR segment reuse 後も string_data は full compile と一致するべき"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();

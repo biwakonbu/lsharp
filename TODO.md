@@ -336,8 +336,8 @@
 - [~] `INC-E2` モジュール単位 IR キャッシュ
   - `INC-E1` により `compile_multi_file` / `compile_multi_file_incremental` は module-local lowering + link phase へ移行済み
   - clean rebuild (`changed_modules.is_empty()`) では `CompilationCache` の `ir` に保持した final linked IR を再利用し、parse / type infer に続いて lowering もスキップする fast path まで追加済み (`test_compile_multi_file_incremental_skips_ir_generation_on_clean_cache_hit`)
-  - cache entry は per-module IR segment (`defns` / `accessors` / `trait_impls` / `constraints` / `ctors` / `defn_lifted` / `trait_impl_lifted`) を保持するように拡張し、tail module だけ dirty な再コンパイルでは clean prefix module の segment を再利用する safe slice まで回収した (`test_compile_multi_file_incremental_reuses_prefix_module_ir_segments_before_first_dirty_module`)
-  - **ただし** 再利用は first dirty module より前の contiguous prefix に限定しており、dirty set 外の中間/後続モジュールを個別に skip して re-link だけで済ませる slice は未着手
+  - cache entry は per-module IR segment (`defns` / `accessors` / `trait_impls` / `constraints` / `ctors` / `defn_lifted` / `trait_impl_lifted`) を保持するように拡張し、tail module だけ dirty な再コンパイルでは clean prefix module の segment を再利用する safe slice に加えて、dirty middle module が precomputed count / string_data / lifted layout を保つ場合は clean suffix module も個別に再利用できるようにした (`test_compile_multi_file_incremental_reuses_prefix_module_ir_segments_before_first_dirty_module`, `test_compile_multi_file_incremental_reuses_clean_suffix_module_when_dirty_middle_layout_is_stable`)
+  - **ただし** dirty predecessor が function/gc count や defn/trait string_data / lifted layout を変える場合は、後続モジュールをまだ全面 relower している。shape-shifting dirty module をまたいだ一般 re-link / link-phase cache は `INC-E3` 側の残件
 
 - [ ] `INC-E3` link phase キャッシュ
   - モジュール順序・segment 数不変時に final link 計算をスキップ
