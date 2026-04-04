@@ -9,6 +9,7 @@ mod util;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+use lsharp_ir::CompilationCache;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
@@ -31,6 +32,8 @@ pub struct LsharpBackend {
     source_cache: Arc<RwLock<HashMap<Url, String>>>,
     /// document version cache (URI → 最終 version)
     version_cache: Arc<RwLock<HashMap<Url, i32>>>,
+    /// Rust LSP 向け single-file incremental compile cache
+    compilation_cache: Arc<RwLock<CompilationCache>>,
 }
 
 impl LsharpBackend {
@@ -39,6 +42,7 @@ impl LsharpBackend {
             client,
             source_cache: Arc::new(RwLock::new(HashMap::new())),
             version_cache: Arc::new(RwLock::new(HashMap::new())),
+            compilation_cache: Arc::new(RwLock::new(CompilationCache::new())),
         }
     }
 
@@ -72,6 +76,23 @@ impl LsharpBackend {
             == Some(version)
     }
 
+    fn file_source_overrides(&self) -> HashMap<std::path::PathBuf, String> {
+        self.source_cache
+            .read()
+            .ok()
+            .map(|cache| {
+                cache
+                    .iter()
+                    .filter_map(|(uri, source)| {
+                        (uri.scheme() == "file")
+                            .then(|| uri.to_file_path().ok().map(|path| (path, source.clone())))
+                            .flatten()
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     async fn publish_fast_diagnostics(&self, uri: Url, source: String, version: i32) {
         self.set_source(uri.clone(), source.clone(), version);
 
@@ -86,11 +107,23 @@ impl LsharpBackend {
 
         let client = self.client.clone();
         let version_cache = Arc::clone(&self.version_cache);
+        let compilation_cache = Arc::clone(&self.compilation_cache);
+        let uri_for_analysis = uri.clone();
+        let source_overrides = self.file_source_overrides();
         tokio::spawn(async move {
-            let full_diagnostics =
-                tokio::task::spawn_blocking(move || util::parse_and_check(&source))
-                    .await
-                    .expect("full diagnostics task should complete");
+            let full_diagnostics = tokio::task::spawn_blocking(move || {
+                let mut cache = compilation_cache
+                    .write()
+                    .expect("compilation cache lock should be available");
+                util::parse_and_check_uri_incremental(
+                    &uri_for_analysis,
+                    &source,
+                    &source_overrides,
+                    &mut cache,
+                )
+            })
+            .await
+            .expect("full diagnostics task should complete");
 
             if LsharpBackend::is_current_version(&version_cache, &uri, version) {
                 client
@@ -608,6 +641,145 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn test_did_open_eventually_publishes_multi_file_import_diagnostics_from_unsaved_source()
+    {
+        let workspace = unique_temp_dir("lsharp_lsp_multifile_unsaved_import");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::write(
+            workspace.join("Main.ls"),
+            "(module Main)\n(import Helpers)\n(defn main [] 1)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            workspace.join("Helpers.ls"),
+            "(module Helpers)\n(defn helper [] 1)\n",
+        )
+        .unwrap();
+
+        let changed_uri = Url::from_file_path(workspace.join("Main.ls"))
+            .expect("temp workspace path should convert to file url");
+        let (mut service, mut socket) = initialize_test_server().await;
+
+        send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": changed_uri,
+                        "languageId": "lsharp",
+                        "version": 1,
+                        "text": "(module Main)\n(import Missing)\n(defn main [] 1)\n",
+                    }
+                }
+            }),
+        )
+        .await;
+
+        let fast = read_publish_diagnostics(&mut socket).await;
+        assert_eq!(
+            fast["params"]["diagnostics"]
+                .as_array()
+                .map(std::vec::Vec::len),
+            Some(0),
+            "syntax-only fast path は well-formed source で空 diagnostics を返すべき"
+        );
+
+        let full = read_publish_diagnostics(&mut socket).await;
+        let diagnostics = full["params"]["diagnostics"]
+            .as_array()
+            .expect("full diagnostics payload should be an array");
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic["message"]
+                    .as_str()
+                    .is_some_and(|message| message.contains("Missing"))
+            }),
+            "multi-file diagnostics は unsaved source の missing import を報告するべき: {diagnostics:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&workspace);
+    }
+
+    #[tokio::test]
+    async fn test_did_open_uses_unsaved_open_dependency_overlay_for_multi_file_diagnostics() {
+        let workspace = unique_temp_dir("lsharp_lsp_open_dependency_overlay");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::write(
+            workspace.join("Main.ls"),
+            "(module Main)\n(import Helpers)\n(defn main [] (+ (helper) 1))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            workspace.join("Helpers.ls"),
+            "(module Helpers)\n(defn helper [] 1)\n",
+        )
+        .unwrap();
+
+        let main_uri = Url::from_file_path(workspace.join("Main.ls"))
+            .expect("temp main path should convert to file url");
+        let helpers_uri = Url::from_file_path(workspace.join("Helpers.ls"))
+            .expect("temp helpers path should convert to file url");
+        let (mut service, mut socket) = initialize_test_server().await;
+
+        send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": helpers_uri,
+                        "languageId": "lsharp",
+                        "version": 1,
+                        "text": "(module Helpers)\n(defn helper [] true)\n",
+                    }
+                }
+            }),
+        )
+        .await;
+        let _ = read_publish_diagnostics(&mut socket).await;
+        let _ = read_publish_diagnostics(&mut socket).await;
+
+        send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": main_uri,
+                        "languageId": "lsharp",
+                        "version": 1,
+                        "text": "(module Main)\n(import Helpers)\n(defn main [] (+ (helper) 1))\n",
+                    }
+                }
+            }),
+        )
+        .await;
+
+        let fast = read_publish_diagnostics(&mut socket).await;
+        assert_eq!(
+            fast["params"]["diagnostics"]
+                .as_array()
+                .map(std::vec::Vec::len),
+            Some(0),
+            "syntax-only fast path は active file 単体で空 diagnostics を返すべき"
+        );
+
+        let full = read_publish_diagnostics(&mut socket).await;
+        assert!(
+            full["params"]["diagnostics"]
+                .as_array()
+                .is_some_and(|diagnostics| !diagnostics.is_empty()),
+            "active file の full diagnostics は open 済み dependency の unsaved overlay を使うべき"
+        );
+
+        let _ = std::fs::remove_dir_all(&workspace);
+    }
+
     fn benchmark_document_fixture() -> (String, u32, u32, u32) {
         let mut source = String::from("(module Main)\n");
         for idx in 0..1000 {
@@ -621,6 +793,14 @@ mod tests {
         let replacement_end = replacement_start + 3;
 
         (source, changed_line, replacement_start, replacement_end)
+    }
+
+    fn unique_temp_dir(prefix: &str) -> std::path::PathBuf {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("{prefix}_{unique}_{}", std::process::id()))
     }
 
     type TestService = params_normalizer::ParamsNormalizer<tower_lsp::LspService<LsharpBackend>>;

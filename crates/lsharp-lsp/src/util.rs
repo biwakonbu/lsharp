@@ -393,6 +393,39 @@ pub fn parse_and_check(source: &str) -> Vec<Diagnostic> {
     diagnostics
 }
 
+pub(crate) fn parse_and_check_incremental(
+    module_key: &str,
+    source: &str,
+    cache: &mut lsharp_ir::CompilationCache,
+) -> Vec<Diagnostic> {
+    match lsharp_ir::analyze_single_file_incremental(module_key, source, cache) {
+        Ok(()) => Vec::new(),
+        Err(message) => vec![diagnostic_error(message)],
+    }
+}
+
+pub(crate) fn parse_and_check_uri_incremental(
+    uri: &Url,
+    source: &str,
+    source_overrides: &std::collections::HashMap<std::path::PathBuf, String>,
+    cache: &mut lsharp_ir::CompilationCache,
+) -> Vec<Diagnostic> {
+    if uri.scheme() == "file"
+        && let Ok(path) = uri.to_file_path()
+    {
+        let mut overrides = source_overrides.clone();
+        overrides.insert(path.clone(), source.to_string());
+        return match lsharp_ir::analyze_multi_file_incremental_with_overrides(
+            &path, &overrides, cache,
+        ) {
+            Ok(()) => Vec::new(),
+            Err(message) => vec![diagnostic_error(message)],
+        };
+    }
+
+    parse_and_check_incremental(uri.as_ref(), source, cache)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

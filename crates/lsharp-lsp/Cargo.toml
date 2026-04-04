@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+lsharp-ir = { path = "../lsharp-ir" }
 lsharp-syntax = { path = "../lsharp-syntax" }
 lsharp-types = { path = "../lsharp-types" }
 tower-lsp = "0.20"

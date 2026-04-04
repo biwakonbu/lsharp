@@ -106,6 +106,29 @@ impl ModuleGraph {
         Self::default()
     }
 
+    fn source_override<'a>(
+        path: &Path,
+        source_overrides: Option<&'a HashMap<PathBuf, String>>,
+    ) -> Option<&'a str> {
+        source_overrides
+            .and_then(|overrides| overrides.get(path))
+            .map(String::as_str)
+    }
+
+    fn read_source(
+        path: &Path,
+        source_overrides: Option<&HashMap<PathBuf, String>>,
+    ) -> Result<String, ModuleGraphError> {
+        if let Some(source) = Self::source_override(path, source_overrides) {
+            return Ok(source.to_string());
+        }
+
+        std::fs::read_to_string(path).map_err(|e| ModuleGraphError::ModuleNotFound {
+            name: path.display().to_string(),
+            from: format!("ファイル読み込みエラー: {e}"),
+        })
+    }
+
     /// モジュールを追加
     pub fn add_module(
         &mut self,
@@ -555,6 +578,13 @@ impl ModuleGraph {
     pub fn build_from_entry(
         entry_file: &std::path::Path,
     ) -> Result<(Self, Vec<(String, std::path::PathBuf)>), ModuleGraphError> {
+        Self::build_from_entry_with_overrides(entry_file, &HashMap::new())
+    }
+
+    pub fn build_from_entry_with_overrides(
+        entry_file: &std::path::Path,
+        source_overrides: &HashMap<PathBuf, String>,
+    ) -> Result<(Self, Vec<(String, std::path::PathBuf)>), ModuleGraphError> {
         use std::collections::VecDeque;
 
         let search_paths = ModuleSearchPaths::discover(entry_file);
@@ -564,7 +594,7 @@ impl ModuleGraph {
         let mut queue: VecDeque<(String, std::path::PathBuf)> = VecDeque::new();
 
         // エントリファイルのモジュール名を取得
-        let entry_module = Self::extract_module_name(entry_file)?;
+        let entry_module = Self::extract_module_name(entry_file, Some(source_overrides))?;
         queue.push_back((entry_module.clone(), entry_file.to_path_buf()));
 
         while let Some((mod_name, mod_path)) = queue.pop_front() {
@@ -573,7 +603,7 @@ impl ModuleGraph {
             }
 
             // ソースファイルからインポートを抽出
-            let imports = Self::extract_imports(&mod_path)?;
+            let imports = Self::extract_imports(&mod_path, Some(source_overrides))?;
 
             graph.add_module(
                 mod_name.clone(),
@@ -613,12 +643,11 @@ impl ModuleGraph {
     /// ソースファイルからモジュール名を抽出
     ///
     /// `(module Name)` があればその名前を、なければファイル名から生成する。
-    fn extract_module_name(path: &std::path::Path) -> Result<String, ModuleGraphError> {
-        let source =
-            std::fs::read_to_string(path).map_err(|e| ModuleGraphError::ModuleNotFound {
-                name: path.display().to_string(),
-                from: format!("ファイル読み込みエラー: {e}"),
-            })?;
+    fn extract_module_name(
+        path: &std::path::Path,
+        source_overrides: Option<&HashMap<PathBuf, String>>,
+    ) -> Result<String, ModuleGraphError> {
+        let source = Self::read_source(path, source_overrides)?;
 
         // パースして module 宣言を探す
         if let Ok(program) = lsharp_syntax::parse(&source) {
@@ -636,12 +665,11 @@ impl ModuleGraph {
     }
 
     /// ソースファイルから import モジュール名を抽出
-    fn extract_imports(path: &std::path::Path) -> Result<Vec<String>, ModuleGraphError> {
-        let source =
-            std::fs::read_to_string(path).map_err(|e| ModuleGraphError::ModuleNotFound {
-                name: path.display().to_string(),
-                from: format!("ファイル読み込みエラー: {e}"),
-            })?;
+    fn extract_imports(
+        path: &std::path::Path,
+        source_overrides: Option<&HashMap<PathBuf, String>>,
+    ) -> Result<Vec<String>, ModuleGraphError> {
+        let source = Self::read_source(path, source_overrides)?;
 
         let mut imports = Vec::new();
         if let Ok(program) = lsharp_syntax::parse(&source) {

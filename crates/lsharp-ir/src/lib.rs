@@ -1738,6 +1738,179 @@ pub fn compile_multi_file(entry_file: &std::path::Path) -> Result<Module, String
     compile_multi_file_with_mode(entry_file, MultiFileLoweringMode::Modular)
 }
 
+fn read_source_with_overrides(
+    path: &std::path::Path,
+    source_overrides: &HashMap<std::path::PathBuf, String>,
+) -> Result<String, String> {
+    if let Some(source) = source_overrides.get(path) {
+        return Ok(source.clone());
+    }
+
+    std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+pub fn analyze_single_file_incremental(
+    module_name: &str,
+    source: &str,
+    cache: &mut CompilationCache,
+) -> Result<(), String> {
+    let fingerprint = SourceFingerprint::from_source(source);
+    let clean_hit = cache
+        .get(module_name)
+        .is_some_and(|entry| entry.fingerprint() == fingerprint);
+    if clean_hit {
+        return Ok(());
+    }
+
+    let program = cached_program_or_parse(module_name, source, fingerprint, cache)
+        .map_err(|e| format!("{e}"))?;
+    let mut infer = lsharp_types::infer::Infer::new();
+    note_incremental_type_infer();
+    let type_results = infer
+        .infer_program(program.as_ref())
+        .map_err(|e| format!("{e}"))?;
+    let type_surface = ModuleTypeSurface {
+        results: type_results,
+        hidden: infer.module_env.privates.iter().cloned().collect(),
+    };
+    let entry = build_module_cache_entry(fingerprint, &program, type_surface);
+    cache.insert_module(module_name.to_string(), entry);
+    Ok(())
+}
+
+pub fn analyze_multi_file_incremental_with_overrides(
+    entry_file: &std::path::Path,
+    source_overrides: &HashMap<std::path::PathBuf, String>,
+    cache: &mut CompilationCache,
+) -> Result<(), String> {
+    use module_graph::ModuleGraph;
+
+    let (graph, sorted_files) =
+        ModuleGraph::build_from_entry_with_overrides(entry_file, source_overrides)
+            .map_err(|e| format!("モジュールグラフ構築エラー: {e}"))?;
+
+    if sorted_files.is_empty() {
+        return Err("コンパイル対象のファイルがありません".to_string());
+    }
+
+    if sorted_files.len() == 1 {
+        let (mod_name, mod_path) = &sorted_files[0];
+        let source = read_source_with_overrides(mod_path, source_overrides)?;
+        return analyze_single_file_incremental(mod_name, &source, cache)
+            .map_err(|e| format!("{}: {e}", mod_path.display()));
+    }
+
+    let mut module_inputs = Vec::new();
+    let mut changed_modules = Vec::new();
+    for (mod_name, mod_path) in &sorted_files {
+        let source = read_source_with_overrides(mod_path, source_overrides)?;
+        let fingerprint = SourceFingerprint::from_source(&source);
+        let clean_hit = cache
+            .get(mod_name)
+            .is_some_and(|entry| entry.fingerprint() == fingerprint);
+        if !clean_hit {
+            changed_modules.push(mod_name.clone());
+        }
+        module_inputs.push((mod_name.clone(), mod_path.clone(), source, fingerprint));
+    }
+
+    if changed_modules.is_empty() {
+        return Ok(());
+    }
+
+    let formatter_trio_dirty = changed_modules.iter().any(|module| {
+        matches!(
+            module.as_str(),
+            FORMATTER_TRIO_EXPR | FORMATTER_TRIO_DECL | FORMATTER_TRIO_MAIN
+        )
+    });
+    let mut formatter_trio_batch = if formatter_trio_dirty {
+        try_infer_formatter_trio_batch(&sorted_files)
+    } else {
+        None
+    };
+
+    let mut per_module_type_results: HashMap<String, ModuleTypeSurface> = HashMap::new();
+    let mut cache_entries: Vec<(String, ModuleCacheEntry)> = Vec::new();
+    let mut surface_changed_modules: HashSet<String> = HashSet::new();
+
+    for (mod_name, mod_path, source, fingerprint) in module_inputs {
+        let clean_hit = cache
+            .get(&mod_name)
+            .is_some_and(|entry| entry.fingerprint() == fingerprint);
+        let program = cached_program_or_parse(&mod_name, &source, fingerprint, cache)
+            .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        let direct_imports = collect_import_visibility(program.as_ref());
+
+        let is_formatter_module = matches!(
+            mod_name.as_str(),
+            FORMATTER_TRIO_EXPR | FORMATTER_TRIO_DECL | FORMATTER_TRIO_MAIN
+        );
+        let direct_dep_surface_changed = direct_imports
+            .keys()
+            .any(|dep_name| surface_changed_modules.contains(dep_name));
+        let formatter_trio_needs_batch = is_formatter_module
+            && (formatter_trio_dirty || direct_dep_surface_changed || !clean_hit);
+        if formatter_trio_needs_batch && formatter_trio_batch.is_none() {
+            formatter_trio_batch = try_infer_formatter_trio_batch(&sorted_files);
+        }
+
+        let type_surface = if clean_hit
+            && !direct_dep_surface_changed
+            && (!is_formatter_module || !formatter_trio_dirty)
+        {
+            cache
+                .get(&mod_name)
+                .expect("clean hit should have cache entry")
+                .type_surface_clone()
+        } else if formatter_trio_needs_batch
+            && let Some(ref batch) = formatter_trio_batch
+            && let Some(surface) = batch.get(&mod_name)
+        {
+            surface.clone()
+        } else {
+            let mut infer = lsharp_types::infer::Infer::new();
+            for dep_name in graph.dependency_closure(&mod_name) {
+                if let Some(import_spec) = direct_imports.get(&dep_name)
+                    && let Some(dep_surface) = per_module_type_results.get(&dep_name)
+                {
+                    infer.inject_external_types_for_import(
+                        &dep_name,
+                        import_spec.only.as_deref(),
+                        &dep_surface.hidden,
+                        &dep_surface.results,
+                    );
+                }
+            }
+            note_incremental_type_infer();
+            let type_results = infer
+                .infer_program(program.as_ref())
+                .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+            ModuleTypeSurface {
+                results: type_results,
+                hidden: infer.module_env.privates.iter().cloned().collect(),
+            }
+        };
+        let surface_changed = cache
+            .get(&mod_name)
+            .map(|entry| entry.type_surface_clone() != type_surface)
+            .unwrap_or(true);
+        if surface_changed {
+            surface_changed_modules.insert(mod_name.clone());
+        }
+
+        let entry = build_module_cache_entry(fingerprint, &program, type_surface.clone());
+        cache_entries.push((mod_name.clone(), entry));
+        per_module_type_results.insert(mod_name, type_surface);
+    }
+
+    for (mod_name, entry) in cache_entries {
+        cache.insert_module(mod_name, entry);
+    }
+
+    Ok(())
+}
+
 pub fn compile_multi_file_incremental(
     entry_file: &std::path::Path,
     cache: &mut CompilationCache,
@@ -2644,6 +2817,107 @@ mod incremental_compile_tests {
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_analyze_single_file_incremental_skips_parse_and_infer_on_clean_cache_hit() {
+        let mut cache = CompilationCache::new();
+        let source = "(module Main)\n(defn main [] 1)\n";
+
+        analyze_single_file_incremental("lsp://Main", source, &mut cache).unwrap();
+
+        let parse_tracker = IncrementalParseTracker::new();
+        let infer_tracker = IncrementalTypeInferTracker::new();
+        parse_tracker.reset();
+        infer_tracker.reset();
+
+        analyze_single_file_incremental("lsp://Main", source, &mut cache).unwrap();
+
+        assert_eq!(
+            parse_tracker.count(),
+            0,
+            "single-file incremental analysis は clean hit で parse を再実行しないべき"
+        );
+        assert_eq!(
+            infer_tracker.count(),
+            0,
+            "single-file incremental analysis は clean hit で type infer を再実行しないべき"
+        );
+    }
+
+    #[test]
+    fn test_analyze_single_file_incremental_reparses_and_reinfers_on_source_change() {
+        let mut cache = CompilationCache::new();
+        analyze_single_file_incremental(
+            "lsp://Main",
+            "(module Main)\n(defn main [] 1)\n",
+            &mut cache,
+        )
+        .unwrap();
+
+        let parse_tracker = IncrementalParseTracker::new();
+        let infer_tracker = IncrementalTypeInferTracker::new();
+        parse_tracker.reset();
+        infer_tracker.reset();
+
+        analyze_single_file_incremental(
+            "lsp://Main",
+            "(module Main)\n(defn main [] 2)\n",
+            &mut cache,
+        )
+        .unwrap();
+
+        assert_eq!(
+            parse_tracker.count(),
+            1,
+            "single-file incremental analysis は fingerprint が変わった source を再パースするべき"
+        );
+        assert_eq!(
+            infer_tracker.count(),
+            1,
+            "single-file incremental analysis は fingerprint が変わった source を再推論するべき"
+        );
+    }
+
+    #[test]
+    fn test_analyze_multi_file_incremental_with_overrides_reports_unsaved_missing_import() {
+        use std::collections::HashMap;
+
+        let dir = std::env::temp_dir()
+            .join("lsharp_analyze_multi_file_incremental_overlay_missing_import");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("Helpers.ls"),
+            "(module Helpers)\n(defn helper [] 1)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Helpers)\n(defn main [] 1)\n",
+        )
+        .unwrap();
+
+        let mut overrides = HashMap::new();
+        overrides.insert(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Missing)\n(defn main [] 1)\n".to_string(),
+        );
+        let mut cache = CompilationCache::new();
+
+        let result = analyze_multi_file_incremental_with_overrides(
+            &dir.join("Main.ls"),
+            &overrides,
+            &mut cache,
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let error = result.expect_err("unsaved import override は missing module error を返すべき");
+        assert!(
+            error.contains("Missing"),
+            "error は unsaved source の import 先 Missing を含むべき: {error}"
+        );
     }
 
     #[test]

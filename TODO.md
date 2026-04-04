@@ -346,15 +346,16 @@
 
 ### INC-F: LSP 統合
 
-- [ ] `INC-F1` `LsharpBackend` への `CompilationCache` 統合
-  - `crates/lsharp-lsp/src/lib.rs` に `compilation_cache: RwLock<CompilationCache>` 追加
-  - `did_change` で dirty set ベースの差分コンパイル実行
-  - blocker: 現行 LSP は `parse_and_check` が diagnostics しか返さず、workspace root / URI↔module 名 mapping も未配線。single-file cache だけ先に足しても multi-file import 解決へ繋がらないため、実装は `INC-F2` 相当の土台整理と合わせて進める
+- [~] `INC-F1` `LsharpBackend` への `CompilationCache` 統合
+  - `crates/lsharp-lsp/src/lib.rs` に `Arc<RwLock<CompilationCache>>` を追加し、background full diagnostics は `lsharp-ir::analyze_single_file_incremental` を通す single-file incremental cache hit path を持つようにした (`crates/lsharp-ir/src/lib.rs`, `test_analyze_single_file_incremental_skips_parse_and_infer_on_clean_cache_hit`)
+  - `did_change` / `did_open` の first diagnostics publish は H3 の fast syntax-only path を維持しつつ、後段 full diagnostics では same-URI clean hit の parse/type infer を skip できるようにした
+  - **残件** workspace root / URI↔module 名 mapping と import 解決を伴う dirty set ベース差分コンパイルは未配線。現状の cache hit は single-file source に限定されるため、multi-file diagnostics は `INC-F2` とセットで継続
   - 依存: INC-A2, INC-C1, INC-D1
 
-- [ ] `INC-F2` LSP マルチファイル診断パイプライン
-  - `crates/lsharp-lsp/src/util.rs` の `parse_and_check` を import 解決を含むマルチファイル診断に拡張
-  - URI ↔ モジュール名のマッピング
+- [~] `INC-F2` LSP マルチファイル診断パイプライン
+  - file URI の後段 full diagnostics は `crates/lsharp-ir/src/module_graph.rs` の source override 対応つき graph builder と `analyze_multi_file_incremental_with_overrides` を通るようにし、**active buffer の unsaved entry source** だけでなく **open 済み file-backed dependency buffer** の overlay も取り込める (`test_analyze_multi_file_incremental_with_overrides_reports_unsaved_missing_import`, `test_did_open_eventually_publishes_multi_file_import_diagnostics_from_unsaved_source`, `test_did_open_uses_unsaved_open_dependency_overlay_for_multi_file_diagnostics`)
+  - これにより `(import Missing)` のような single-file parse/type-check では見えなかった missing import を、LSP `didOpen` 後の full diagnostics で報告できる
+  - **残件** workspace-wide URI ↔ モジュール名マッピング、dirty dependent を含む複数 URI への per-module diagnostics publish、entry 以外の変更から dependent 再診断を起こす orchestration は未配線
   - 依存: INC-F1
 
 - [ ] `INC-F3` ワークスペース診断更新最適化
