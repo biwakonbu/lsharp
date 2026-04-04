@@ -412,6 +412,61 @@ fn test_e2e_root_runtime_api_preserves_argument_evaluation() {
     assert_eq!(span, 48, "root_push/root_set の引数 alloc も評価されるべき");
 }
 
+#[test]
+fn test_e2e_runtime_telemetry_exports_heap_usage_and_alloc_count() {
+    let (stdout, telemetry) = compile_and_capture_runtime_telemetry(
+        r#"
+        (defn main []
+          (let [a1 (__alloc 24)
+                a2 (__alloc 40)]
+            (do
+              (print (- a2 a1))
+              0)))
+    "#,
+    );
+    assert_eq!(stdout.trim(), "24");
+    assert_eq!(telemetry.alloc_count, 2, "2 回の __alloc を観測すべき");
+    assert_eq!(
+        telemetry.root_stack_top, 0,
+        "root 操作をしていないので root stack は空のまま"
+    );
+    assert_eq!(
+        telemetry.heap_ptr - telemetry.heap_start,
+        64,
+        "24 + 40 bytes 分だけ heap pointer が進むべき"
+    );
+}
+
+#[test]
+fn test_e2e_runtime_telemetry_tracks_root_stack_depth() {
+    let (stdout, telemetry) = compile_and_capture_runtime_telemetry(
+        r#"
+        (defn main []
+          (let [slot0 (root_push (__alloc 16))
+                slot1 (root_push (__alloc 16))]
+            (do
+              (print slot0)
+              (print slot1)
+              0)))
+    "#,
+    );
+    let lines: Vec<&str> = stdout.trim().lines().collect();
+    assert_eq!(lines, vec!["0", "1"]);
+    assert_eq!(
+        telemetry.alloc_count, 2,
+        "alloc count は root 引数分も数えるべき"
+    );
+    assert_eq!(
+        telemetry.root_stack_top, 2,
+        "2 つ push した root slot が runtime telemetry に残るべき"
+    );
+    assert_eq!(
+        telemetry.heap_ptr - telemetry.heap_start,
+        32,
+        "16-byte alloc 2 回分だけ heap が進むべき"
+    );
+}
+
 /// GC-06: 5 メトリクス収集 — alloc 系の 5 指標を単一プログラム内で計測
 /// 1. peak_alloc_bytes: 最大 heap 水位
 /// 2. total_alloc_count: 総 alloc 回数

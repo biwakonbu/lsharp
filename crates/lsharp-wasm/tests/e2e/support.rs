@@ -39,6 +39,14 @@ const SELFHOST_LSP_RUNTIME_MODULES: &[&str] = &[
 ];
 static SELFHOST_FIXTURE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RuntimeTelemetry {
+    pub(crate) heap_ptr: i32,
+    pub(crate) heap_start: i32,
+    pub(crate) alloc_count: i32,
+    pub(crate) root_stack_top: i32,
+}
+
 /// ソースコードをパースする
 pub(crate) fn parse_for_pipeline(source: &str) -> lsharp_syntax::ast::Program {
     lsharp_syntax::parse(source).unwrap()
@@ -183,6 +191,71 @@ pub(crate) fn try_compile_and_run_file(path: &std::path::Path) -> Result<String,
 /// Wasm バイナリを WASI 環境で実行
 pub(crate) fn run_wasi(wasm_bytes: &[u8]) -> String {
     lsharp_wasm::wasi_runner::run_wasm_wasi(wasm_bytes).unwrap()
+}
+
+pub(crate) fn compile_and_capture_runtime_telemetry(source: &str) -> (String, RuntimeTelemetry) {
+    let program = parse_for_pipeline(source);
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lower = Lower::new();
+    let module = lower.lower_program(&program, &type_results).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
+
+    capture_runtime_telemetry(&wasm_bytes)
+}
+
+fn capture_runtime_telemetry(wasm_bytes: &[u8]) -> (String, RuntimeTelemetry) {
+    use wasmtime::{Linker, Module, Store};
+    use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
+
+    let engine = wasmtime::Engine::default();
+    let mut linker = Linker::<WasiP1Ctx>::new(&engine);
+    wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |ctx| ctx)
+        .expect("WASI linker 構築に失敗");
+
+    let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(4 * 1024 * 1024);
+    let stdin = wasmtime_wasi::pipe::MemoryInputPipe::new(Vec::new());
+    let mut builder = WasiCtxBuilder::new();
+    builder.stdout(stdout.clone());
+    builder.stdin(stdin);
+    builder.args(&["telemetry"]);
+    let mut store = Store::new(&engine, builder.build_p1());
+
+    let module = Module::new(&engine, wasm_bytes).expect("Wasm module 構築に失敗");
+    let instance = linker
+        .instantiate(&mut store, &module)
+        .expect("WASI instance 化に失敗");
+    instance
+        .get_typed_func::<(), ()>(&mut store, "_start")
+        .expect("_start export が必要")
+        .call(&mut store, ())
+        .expect("_start 実行に失敗");
+
+    let telemetry = RuntimeTelemetry {
+        heap_ptr: read_i32_global(&instance, &mut store, "__lsharp_heap_ptr"),
+        heap_start: read_i32_global(&instance, &mut store, "__lsharp_heap_start"),
+        alloc_count: read_i32_global(&instance, &mut store, "__lsharp_alloc_count"),
+        root_stack_top: read_i32_global(&instance, &mut store, "__lsharp_root_stack_top"),
+    };
+
+    drop(store);
+    let bytes = stdout.try_into_inner().expect("stdout 取得に失敗");
+    let stdout = String::from_utf8(bytes.to_vec()).expect("stdout UTF-8 変換に失敗");
+    (stdout, telemetry)
+}
+
+fn read_i32_global(
+    instance: &wasmtime::Instance,
+    store: &mut wasmtime::Store<wasmtime_wasi::preview1::WasiP1Ctx>,
+    name: &str,
+) -> i32 {
+    let global = instance
+        .get_global(&mut *store, name)
+        .unwrap_or_else(|| panic!("runtime telemetry export が見つからない: {name}"));
+    global
+        .get(&mut *store)
+        .i32()
+        .unwrap_or_else(|| panic!("runtime telemetry export が i32 ではない: {name}"))
 }
 
 /// 型チェックでエラーになることを検証

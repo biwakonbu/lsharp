@@ -21,6 +21,14 @@ const NWRITTEN_ADDR: i32 = 24;
 const BUF_END: i32 = 276;
 const ROOT_STACK_SLOT_CAPACITY: i32 = 4096;
 const ROOT_STACK_BYTES: i32 = ROOT_STACK_SLOT_CAPACITY * 8;
+const HEAP_PTR_GLOBAL_IDX: u32 = 0;
+const ROOT_STACK_TOP_GLOBAL_IDX: u32 = 1;
+const ALLOC_COUNT_GLOBAL_IDX: u32 = 2;
+const HEAP_START_GLOBAL_IDX: u32 = 3;
+const INTERNAL_HEAP_PTR_EXPORT: &str = "__lsharp_heap_ptr";
+const INTERNAL_HEAP_START_EXPORT: &str = "__lsharp_heap_start";
+const INTERNAL_ALLOC_COUNT_EXPORT: &str = "__lsharp_alloc_count";
+const INTERNAL_ROOT_STACK_TOP_EXPORT: &str = "__lsharp_root_stack_top";
 
 /// IR 側の内部ヘルパー関数数
 /// (print, __alloc, __string_concat, __string_eq, print-string, proc-exit, __int_to_string,
@@ -434,12 +442,48 @@ fn emit_wasm_wasi_with_options(
         },
         &wasm_encoder::ConstExpr::i32_const(0),
     );
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: true,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(0),
+    );
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: false,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(heap_start),
+    );
     wasm_module.section(&globals);
 
     // === Export Section ===
     let mut exports = ExportSection::new();
     exports.export("memory", ExportKind::Memory, 0);
     exports.export("_start", ExportKind::Func, start_func_idx);
+    exports.export(
+        INTERNAL_HEAP_PTR_EXPORT,
+        ExportKind::Global,
+        HEAP_PTR_GLOBAL_IDX,
+    );
+    exports.export(
+        INTERNAL_ROOT_STACK_TOP_EXPORT,
+        ExportKind::Global,
+        ROOT_STACK_TOP_GLOBAL_IDX,
+    );
+    exports.export(
+        INTERNAL_ALLOC_COUNT_EXPORT,
+        ExportKind::Global,
+        ALLOC_COUNT_GLOBAL_IDX,
+    );
+    exports.export(
+        INTERNAL_HEAP_START_EXPORT,
+        ExportKind::Global,
+        HEAP_START_GLOBAL_IDX,
+    );
     if export_component_run {
         exports.export(
             "wasi:cli/run@0.2.3#run",
@@ -466,7 +510,7 @@ fn emit_wasm_wasi_with_options(
     // === Code Section ===
     let mut codes = CodeSection::new();
     emit_print_i64_func(&mut codes);
-    emit_alloc_func(&mut codes);
+    emit_alloc_func(&mut codes, ALLOC_COUNT_GLOBAL_IDX);
     emit_string_concat_func(&mut codes, alloc_func_idx);
     emit_string_eq_func(&mut codes);
     emit_print_string_func(&mut codes);
@@ -485,9 +529,9 @@ fn emit_wasm_wasi_with_options(
     emit_command_line_arg_func(&mut codes, alloc_func_idx, args_get_idx, args_sizes_get_idx);
     emit_read_stdin_func(&mut codes, alloc_func_idx, string_concat_idx, fd_read_idx);
     emit_fnv1a_hash_func(&mut codes);
-    emit_root_push_func(&mut codes, 1, root_stack_base);
-    emit_root_pop_func(&mut codes, 1, root_stack_base);
-    emit_root_set_func(&mut codes, 1, root_stack_base);
+    emit_root_push_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, root_stack_base);
+    emit_root_pop_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, root_stack_base);
+    emit_root_set_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, root_stack_base);
 
     for func in &module.functions {
         let mut f = wasm_encoder::Function::new(
@@ -927,6 +971,22 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
         },
         &wasm_encoder::ConstExpr::i32_const(0),
     );
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: true,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(0),
+    );
+    globals.global(
+        GlobalType {
+            val_type: ValType::I32,
+            mutable: false,
+            shared: false,
+        },
+        &wasm_encoder::ConstExpr::i32_const(heap_start),
+    );
     wasm_module.section(&globals);
 
     let mut exports = ExportSection::new();
@@ -951,7 +1011,7 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
 
     let mut codes = CodeSection::new();
     emit_trap_i64_to_unit_func(&mut codes);
-    emit_alloc_func(&mut codes);
+    emit_alloc_func(&mut codes, ALLOC_COUNT_GLOBAL_IDX);
     emit_string_concat_func(&mut codes, alloc_func_idx);
     emit_string_eq_func(&mut codes);
     emit_trap_i64_to_unit_func(&mut codes);
@@ -964,9 +1024,9 @@ fn emit_wasm_http_handler_core(module: &Module) -> Result<Vec<u8>, CodegenError>
     emit_trap_i64_to_i64_func(&mut codes);
     emit_trap_void_to_i64_func(&mut codes);
     emit_fnv1a_hash_func(&mut codes);
-    emit_root_push_func(&mut codes, 1, root_stack_base);
-    emit_root_pop_func(&mut codes, 1, root_stack_base);
-    emit_root_set_func(&mut codes, 1, root_stack_base);
+    emit_root_push_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, root_stack_base);
+    emit_root_pop_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, root_stack_base);
+    emit_root_set_func(&mut codes, ROOT_STACK_TOP_GLOBAL_IDX, root_stack_base);
 
     for func in &module.functions {
         let mut f = wasm_encoder::Function::new(
@@ -1222,7 +1282,7 @@ fn emit_print_i64_func(codes: &mut CodeSection) {
 }
 
 /// __alloc: Bump Allocator (i64 サイズ) -> i64 アドレス
-fn emit_alloc_func(codes: &mut CodeSection) {
+fn emit_alloc_func(codes: &mut CodeSection, alloc_count_global_idx: u32) {
     use wasm_encoder::Instruction as W;
 
     let mut f = wasm_encoder::Function::new(vec![
@@ -1264,6 +1324,10 @@ fn emit_alloc_func(codes: &mut CodeSection) {
     f.instruction(&W::End);
     f.instruction(&W::LocalGet(3));
     f.instruction(&W::GlobalSet(0));
+    f.instruction(&W::GlobalGet(alloc_count_global_idx));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::GlobalSet(alloc_count_global_idx));
     f.instruction(&W::LocalGet(2));
     f.instruction(&W::I64ExtendI32U);
     f.instruction(&W::End);
