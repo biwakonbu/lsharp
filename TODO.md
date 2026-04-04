@@ -369,9 +369,9 @@
   - range 適用に失敗した場合は incoming `change.text` を full-text として扱う fallback を入れ、従来の full replacement workflow も維持した
   - unit test で single range / 複数 incremental edit / invalid range fallback / 1000 行 partial edit < 50ms を固定し、`lsp_stateful_parity` 42 tests でも changed-document completion / hover / definition / references / rename を含む broad parity を再確認した
 
-- [ ] `INC-F5` LSP スレッドセーフ設計
-  - `RwLock<CompilationCache>` の粒度設計
-  - `did_change` 中の hover/completion リクエストとのデッドロック回避
+- [x] `INC-F5` LSP スレッドセーフ設計 — Evidence: `crates/lsharp-lsp/src/lib.rs`, `test_hover_returns_while_background_full_diagnostics_runs`, `test_completion_returns_while_background_full_diagnostics_runs`, `cargo test -q -p lsharp-lsp -- --nocapture`, `cargo clippy -q -p lsharp-lsp -- -D warnings`
+  - `CompilationCache` write は background `spawn_blocking` 内に閉じ、hover/completion は `source_cache` snapshot だけを読む構造に寄せたため、async 境界を跨いで `RwLock` を保持しない
+  - actual LSP exchange test で background full diagnostics 実行中でも hover / completion request が 50ms 未満で返ることを固定し、`did_change` 系と read request の競合が user-visible stall にならないことを確認した
   - 依存: INC-F1 と同時設計
 
 ### INC-G: Selfhost コンパイラ対応

@@ -945,6 +945,155 @@ mod tests {
         let _ = std::fs::remove_dir_all(&workspace);
     }
 
+    #[tokio::test]
+    async fn test_hover_returns_while_background_full_diagnostics_runs() {
+        let (document_source, _, _, _) = benchmark_document_fixture();
+        let busy_uri = "file:///busy-hover-test.ls";
+        let hover_uri = "file:///hover-fast-test.ls";
+        let hover_source = "(defn add [x y] (+ x y))\n(defn main [] (add 1 2))\n";
+        let (mut service, mut socket) = initialize_test_server().await;
+
+        send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": hover_uri,
+                        "languageId": "lsharp",
+                        "version": 1,
+                        "text": hover_source,
+                    }
+                }
+            }),
+        )
+        .await;
+        let _ = read_publish_diagnostics(&mut socket).await;
+        let _ = read_publish_diagnostics(&mut socket).await;
+
+        send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": busy_uri,
+                        "languageId": "lsharp",
+                        "version": 1,
+                        "text": document_source,
+                    }
+                }
+            }),
+        )
+        .await;
+
+        let start = std::time::Instant::now();
+        let hover_response = send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "id": 200,
+                "method": "textDocument/hover",
+                "params": {
+                    "textDocument": { "uri": hover_uri },
+                    "position": { "line": 1, "character": 16 }
+                }
+            }),
+        )
+        .await;
+        let elapsed = start.elapsed();
+
+        let response = hover_response.expect("hover request should return a response");
+        let payload = response.result().expect("hover response should be successful");
+        assert!(
+            payload["contents"].is_object() || payload["contents"].is_string(),
+            "hover result should contain contents: {payload:?}"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_millis(50),
+            "background diagnostics 中でも hover は 50ms 未満で返るべき: {elapsed:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_completion_returns_while_background_full_diagnostics_runs() {
+        let (document_source, _, _, _) = benchmark_document_fixture();
+        let busy_uri = "file:///busy-completion-test.ls";
+        let completion_uri = "file:///completion-fast-test.ls";
+        let completion_source = "(defn helper [] 1)\n(defn main [] (hel))\n";
+        let (mut service, mut socket) = initialize_test_server().await;
+
+        send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": completion_uri,
+                        "languageId": "lsharp",
+                        "version": 1,
+                        "text": completion_source,
+                    }
+                }
+            }),
+        )
+        .await;
+        let _ = read_publish_diagnostics(&mut socket).await;
+        let _ = read_publish_diagnostics(&mut socket).await;
+
+        send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": busy_uri,
+                        "languageId": "lsharp",
+                        "version": 1,
+                        "text": document_source,
+                    }
+                }
+            }),
+        )
+        .await;
+
+        let start = std::time::Instant::now();
+        let completion_response = send_lsp_frame(
+            &mut service,
+            &json!({
+                "jsonrpc": "2.0",
+                "id": 201,
+                "method": "textDocument/completion",
+                "params": {
+                    "textDocument": { "uri": completion_uri },
+                    "position": { "line": 1, "character": 19 }
+                }
+            }),
+        )
+        .await;
+        let elapsed = start.elapsed();
+
+        let response = completion_response.expect("completion request should return a response");
+        let payload = response
+            .result()
+            .expect("completion response should be successful");
+        let items = payload
+            .as_array()
+            .expect("completion result should be an array response");
+        assert!(
+            items.iter().any(|item| item["label"].as_str() == Some("helper")),
+            "completion は helper 候補を返すべき: {items:?}"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_millis(50),
+            "background diagnostics 中でも completion は 50ms 未満で返るべき: {elapsed:?}"
+        );
+    }
+
     fn benchmark_document_fixture() -> (String, u32, u32, u32) {
         let mut source = String::from("(module Main)\n");
         for idx in 0..1000 {
