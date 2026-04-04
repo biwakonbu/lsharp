@@ -1013,6 +1013,51 @@ fn test_e2e_selfhost_cli_compile_file_handler_multifile_nested_imports() {
     );
 }
 
+/// TEST-CLI-02-M1C: selfhost/src/App/Cli.ls は shared cache helper 経由で clean hit 時の再 parse を避けること
+#[test]
+fn test_e2e_selfhost_cli_compile_functions_data_with_cache_reuses_clean_hit() {
+    let dir = cli_test_fixture_dir("compile_functions_data_cache");
+    write_cli_fixture_files(&dir, &cli_multifile_nested_fixture_files());
+
+    let harness = r#"
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pair1 (compile-file-functions-data-with-cache "main.ls" cache-ref parse-count-ref)
+        count1 (ref-get parse-count-ref)
+        pair2 (compile-file-functions-data-with-cache "main.ls" cache-ref parse-count-ref)
+        count2 (ref-get parse-count-ref)
+        functions1 (vector-get pair1 0)
+        data1 (vector-get pair1 1)
+        functions2 (vector-get pair2 0)
+        data2 (vector-get pair2 1)]
+    (do
+      (print count1)
+      (print count2)
+      (print (vector-length functions1))
+      (print (vector-length functions2))
+      (print (vector-length data1))
+      (print (vector-length data2))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 6,
+        "compile-file-functions-data-with-cache 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "3", "初回 compile では main/mid/base の 3 モジュールを parse するべき");
+    assert_eq!(lines[1], "3", "clean hit では parse-count が増えないべき");
+    assert_eq!(lines[2], "3", "functions1 は 3 個保持するべき");
+    assert_eq!(lines[3], "3", "functions2 は 3 個保持するべき");
+    assert_eq!(lines[4], lines[5], "data section 長は cache hit 前後で一致するべき");
+}
+
 /// TEST-CLI-02-M2: selfhost/src/App/Cli.ls の run-build が file-path から source を読めること
 #[test]
 fn test_e2e_selfhost_cli_build_file_handler() {

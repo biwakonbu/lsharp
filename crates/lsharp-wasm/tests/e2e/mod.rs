@@ -20,6 +20,7 @@ mod selfhost_lowering_ir_bootstrap;
 mod selfhost_lsp_docs_ops;
 mod selfhost_macro_compiler;
 mod selfhost_main_module_determinism;
+mod selfhost_module_resolver_cache;
 mod selfhost_native_differential;
 mod selfhost_native_stage_chain;
 mod selfhost_parser_forms;

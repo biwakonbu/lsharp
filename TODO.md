@@ -379,13 +379,16 @@
 - [~] `INC-G1` selfhost CompilerMode への fingerprint ベース src-decl-pair キャッシュ
   - `selfhost/src/App/CompilerMode.ls` に `compile-file-pairs-with-cache` / `load-src-decl-pair-with-cache` を追加し、path-keyed cache entry の fingerprint 一致時は cached `src` + `decls` を再利用する helper slice まで実装済み
   - `test_e2e_selfhost_compiler_mode_cached_pairs_skip_reparse_on_clean_hit`, `test_e2e_selfhost_compiler_mode_cached_pairs_reparse_only_stale_import_entry` で clean hit と stale import entry 1 件だけの再 parse を固定済み
-  - **ただし** `compile-file-mode` / `App.Cli` の long-lived caller へは未接続で、現状の cache は helper 呼び出し元が `ref` を保持したときだけ有効。persistent compiler service への実配線は残る
+  - `selfhost/src/App/Cli.ls` の `compile-file-functions-data-with-cache` までは接続済みで、`test_e2e_selfhost_cli_compile_functions_data_with_cache_reuses_clean_hit` と nested import compile/build focused tests で clean-hit を固定済み
+  - **ただし** `compile-file-mode` へ同じ cached payload path を直結すると `BOOT-04` stage2 self-compile が退行したため、compiler-mode 実行経路は旧 inline path に切り戻して bootstrap green を優先している。persistent compiler service への実配線は残る
   - 注意: selfhost は Wasm 上で動作、キャッシュはメモリ上ベクター
   - 依存: レイヤー 1-5 安定後
 
-- [ ] `INC-G2` selfhost ModuleResolver のキャッシュ統合
-  - `selfhost/src/App/ModuleResolver.ls` でモジュールパス解決結果をキャッシュ
-  - 依存: INC-G1
+- [~] `INC-G2` selfhost ModuleResolver のキャッシュ統合
+  - `selfhost/src/App/ModuleResolver.ls` に `resolve-module-path-with-cache` / `resolve-module-path-with-cache-counted` を追加し、module name + source/package root ごとの解決結果を in-memory cache へ保持する helper slice を実装済み
+  - `selfhost/src/App/CompilerMode.ls` の cached import path も同 helper を使うように更新し、`compile-file-pairs-with-cache` の `cache-ref` で module path resolution 結果も再利用できるようにした
+  - `test_e2e_selfhost_module_resolver_cache_hits_local_nested_path`, `test_e2e_selfhost_module_resolver_cache_hits_module_index_path` で local nested path / module-index path の clean hit を固定済み
+  - **ただし** file system mutation をまたぐ invalidation と long-lived caller への実配線は未完
 
 ### INC-H: 検証・ベンチマーク
 
