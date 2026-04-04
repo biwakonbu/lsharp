@@ -293,16 +293,16 @@ fn test_meta_06_deferred_v2_native_docs_are_synced() {
         "TODO.md の Deferred / v2 注記は plan 節と v2-designs 配下の両方を参照すること"
     );
     assert!(
-        deferred_section.contains("- [~] V2-08 Native backend self-regeneration"),
+        deferred_section.contains("- [DEFERRED] V2-08 Native backend self-regeneration"),
         "TODO.md の Deferred / v2 節で V2-08 の詳細が存在すること"
     );
     assert!(
-        deferred_section.contains("- [~] V2-09 Wasm/native differential zero"),
+        deferred_section.contains("- [DEFERRED] V2-09 Wasm/native differential zero"),
         "TODO.md の Deferred / v2 節で V2-09 の詳細が存在すること"
     );
     assert!(
-        deferred_section.contains("- [ ] V2-10 Native-only RC distribution"),
-        "TODO.md では V2-10 は未着手の Deferred 項目として [ ] を維持すること"
+        deferred_section.contains("- [DEFERRED] V2-10 Native-only RC distribution"),
+        "TODO.md では V2-10 は Deferred 項目として [DEFERRED] を維持すること"
     );
 
     let plan_path = project_root.join("docs/development/planning/phase11-implementation-plan.md");

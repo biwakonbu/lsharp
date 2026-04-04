@@ -868,6 +868,43 @@ fn test_e2e_string_concat_empty() {
     assert_eq!(result.trim(), "3");
 }
 
+#[test]
+fn test_e2e_string_concat_nested_summary_chain() {
+    // 入れ子の string-concat/int-to-string が外側の一時値を壊さないことを検証
+    let result = compile_and_run(
+        r#"
+        (defn main []
+          (do
+            (print-string
+              (string-concat "functions:"
+                (string-concat (int-to-string 1)
+                  (string-concat ",types:"
+                    (string-concat (int-to-string 0)
+                      (string-concat ",first-fn:" "main"))))))
+            0))
+    "#,
+    );
+    assert_eq!(result, "functions:1,types:0,first-fn:main");
+}
+
+#[test]
+fn test_e2e_string_concat_nested_code_location_chain() {
+    // 入れ子の code-location 文字列連結が prefix を落とさないことを検証
+    let result = compile_and_run(
+        r#"
+        (defn main []
+          (do
+            (print-string
+              (string-concat "L0001"
+                (string-concat "@"
+                  (string-concat (int-to-string 1)
+                    (string-concat ":" (int-to-string 1))))))
+            0))
+    "#,
+    );
+    assert_eq!(result, "L0001@1:1");
+}
+
 // === string-eq テスト ===
 
 #[test]

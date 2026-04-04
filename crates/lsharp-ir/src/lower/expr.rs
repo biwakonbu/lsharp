@@ -228,92 +228,99 @@ impl Lower {
                     // String オブジェクト: [tag:i32=1][len:i32][bytes:u8*]
                     Expr::Var(_, name) if name == "string-char-at" => {
                         if args.len() >= 2 {
-                            self.lower_expr(ctx, &args[0])?; // s (String オブジェクトアドレス)
+                            let str_local = self.lower_expr_to_rooted_local(
+                                ctx,
+                                &args[0],
+                                "_char_at_str",
+                                "_char_at_root_slot",
+                            )?;
                             self.lower_expr(ctx, &args[1])?; // i (index)
+                            // i を一時ローカルに保存 (i64 のまま)
+                            let idx_local = ctx.alloc_local("_char_at_idx".to_string());
+                            ctx.emit(Instruction::LocalSet(idx_local));
+                            // bytes_addr = s + 8 (tag=4bytes, len=4bytes をスキップ)
+                            ctx.emit(Instruction::LocalGet(str_local));
+                            ctx.emit(Instruction::I32WrapI64);
+                            ctx.emit(Instruction::I32Const(8));
+                            ctx.emit(Instruction::I32Add);
+                            // addr = bytes_addr + i
+                            ctx.emit(Instruction::LocalGet(idx_local));
+                            ctx.emit(Instruction::I32WrapI64);
+                            ctx.emit(Instruction::I32Add);
+                            // バイト値を読み出し
+                            ctx.emit(Instruction::I32Load8U { offset: 0 });
+                            // i32 -> i64 に拡張
+                            ctx.emit(Instruction::I64ExtendI32U);
+                            self.emit_root_pop_drop(ctx)?;
                         }
-                        // i を一時ローカルに保存 (i64 のまま)
-                        let idx_local = ctx.alloc_local("_char_at_idx".to_string());
-                        ctx.emit(Instruction::LocalSet(idx_local));
-                        // s はスタックトップ (i64) = ヒープオブジェクトのアドレス
-                        // bytes_addr = s + 8 (tag=4bytes, len=4bytes をスキップ)
-                        ctx.emit(Instruction::I32WrapI64);
-                        ctx.emit(Instruction::I32Const(8));
-                        ctx.emit(Instruction::I32Add);
-                        // addr = bytes_addr + i
-                        ctx.emit(Instruction::LocalGet(idx_local));
-                        ctx.emit(Instruction::I32WrapI64);
-                        ctx.emit(Instruction::I32Add);
-                        // バイト値を読み出し
-                        ctx.emit(Instruction::I32Load8U { offset: 0 });
-                        // i32 -> i64 に拡張
-                        ctx.emit(Instruction::I64ExtendI32U);
                     }
                     // substring: ヒープ上 String オブジェクトの [start, end) を部分文字列として返す
                     // 新しい String オブジェクト [tag=1, len, bytes] をヒープに確保
                     Expr::Var(_, name) if name == "substring" => {
                         if args.len() >= 3 {
-                            self.lower_expr(ctx, &args[0])?; // s (String オブジェクトアドレス): i64
+                            let str_local = self.lower_expr_to_rooted_local(
+                                ctx,
+                                &args[0],
+                                "_substr_str",
+                                "_substr_root_slot",
+                            )?;
                             self.lower_expr(ctx, &args[1])?; // start: i64
+                            let start_local = ctx.alloc_local("_substr_start".to_string());
+                            ctx.emit(Instruction::LocalSet(start_local));
                             self.lower_expr(ctx, &args[2])?; // end: i64
+                            let end_local = ctx.alloc_local("_substr_end".to_string());
+                            ctx.emit(Instruction::LocalSet(end_local));
+                            // new_len = end - start (i64)
+                            let new_len_local = ctx.alloc_local("_substr_len".to_string());
+                            ctx.emit(Instruction::LocalGet(end_local));
+                            ctx.emit(Instruction::LocalGet(start_local));
+                            ctx.emit(Instruction::I64Sub);
+                            ctx.emit(Instruction::LocalSet(new_len_local));
+                            // new_obj = __alloc(8 + new_len) -- tag(4) + len(4) + bytes
+                            let obj_local = ctx.alloc_local("_substr_obj".to_string());
+                            ctx.emit(Instruction::LocalGet(new_len_local));
+                            ctx.emit(Instruction::I64Const(8));
+                            ctx.emit(Instruction::I64Add);
+                            let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
+                                LowerError::UndefinedFunction {
+                                    name: "__alloc".to_string(),
+                                }
+                            })?;
+                            ctx.emit(Instruction::Call(alloc_idx));
+                            ctx.emit(Instruction::LocalSet(obj_local));
+                            // tag = 1 を書き込み (obj + 0)
+                            ctx.emit(Instruction::LocalGet(obj_local));
+                            ctx.emit(Instruction::I32WrapI64);
+                            ctx.emit(Instruction::I32Const(1));
+                            ctx.emit(Instruction::I32Store { offset: 0 });
+                            // len を書き込み (obj + 4)
+                            ctx.emit(Instruction::LocalGet(obj_local));
+                            ctx.emit(Instruction::I32WrapI64);
+                            ctx.emit(Instruction::LocalGet(new_len_local));
+                            ctx.emit(Instruction::I32WrapI64);
+                            ctx.emit(Instruction::I32Store { offset: 4 });
+                            // memory.copy(obj + 8, src + 8 + start, new_len)
+                            // dst: obj + 8
+                            ctx.emit(Instruction::LocalGet(obj_local));
+                            ctx.emit(Instruction::I32WrapI64);
+                            ctx.emit(Instruction::I32Const(8));
+                            ctx.emit(Instruction::I32Add);
+                            // src: s + 8 + start
+                            ctx.emit(Instruction::LocalGet(str_local));
+                            ctx.emit(Instruction::I32WrapI64);
+                            ctx.emit(Instruction::I32Const(8));
+                            ctx.emit(Instruction::I32Add);
+                            ctx.emit(Instruction::LocalGet(start_local));
+                            ctx.emit(Instruction::I32WrapI64);
+                            ctx.emit(Instruction::I32Add);
+                            // len: new_len (i32)
+                            ctx.emit(Instruction::LocalGet(new_len_local));
+                            ctx.emit(Instruction::I32WrapI64);
+                            ctx.emit(Instruction::MemoryCopy);
+                            self.emit_root_pop_drop(ctx)?;
+                            // 新しい String オブジェクトのアドレスを返す
+                            ctx.emit(Instruction::LocalGet(obj_local));
                         }
-                        // end, start, s を一時ローカルに保存
-                        let end_local = ctx.alloc_local("_substr_end".to_string());
-                        ctx.emit(Instruction::LocalSet(end_local));
-                        let start_local = ctx.alloc_local("_substr_start".to_string());
-                        ctx.emit(Instruction::LocalSet(start_local));
-                        let str_local = ctx.alloc_local("_substr_str".to_string());
-                        ctx.emit(Instruction::LocalSet(str_local));
-                        self.emit_root_push_local(ctx, str_local, "_substr_root_slot")?;
-                        // new_len = end - start (i64)
-                        let new_len_local = ctx.alloc_local("_substr_len".to_string());
-                        ctx.emit(Instruction::LocalGet(end_local));
-                        ctx.emit(Instruction::LocalGet(start_local));
-                        ctx.emit(Instruction::I64Sub);
-                        ctx.emit(Instruction::LocalSet(new_len_local));
-                        // new_obj = __alloc(8 + new_len) -- tag(4) + len(4) + bytes
-                        let obj_local = ctx.alloc_local("_substr_obj".to_string());
-                        ctx.emit(Instruction::LocalGet(new_len_local));
-                        ctx.emit(Instruction::I64Const(8));
-                        ctx.emit(Instruction::I64Add);
-                        let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
-                            LowerError::UndefinedFunction {
-                                name: "__alloc".to_string(),
-                            }
-                        })?;
-                        ctx.emit(Instruction::Call(alloc_idx));
-                        ctx.emit(Instruction::LocalSet(obj_local));
-                        // tag = 1 を書き込み (obj + 0)
-                        ctx.emit(Instruction::LocalGet(obj_local));
-                        ctx.emit(Instruction::I32WrapI64);
-                        ctx.emit(Instruction::I32Const(1));
-                        ctx.emit(Instruction::I32Store { offset: 0 });
-                        // len を書き込み (obj + 4)
-                        ctx.emit(Instruction::LocalGet(obj_local));
-                        ctx.emit(Instruction::I32WrapI64);
-                        ctx.emit(Instruction::LocalGet(new_len_local));
-                        ctx.emit(Instruction::I32WrapI64);
-                        ctx.emit(Instruction::I32Store { offset: 4 });
-                        // memory.copy(obj + 8, src + 8 + start, new_len)
-                        // dst: obj + 8
-                        ctx.emit(Instruction::LocalGet(obj_local));
-                        ctx.emit(Instruction::I32WrapI64);
-                        ctx.emit(Instruction::I32Const(8));
-                        ctx.emit(Instruction::I32Add);
-                        // src: s + 8 + start
-                        ctx.emit(Instruction::LocalGet(str_local));
-                        ctx.emit(Instruction::I32WrapI64);
-                        ctx.emit(Instruction::I32Const(8));
-                        ctx.emit(Instruction::I32Add);
-                        ctx.emit(Instruction::LocalGet(start_local));
-                        ctx.emit(Instruction::I32WrapI64);
-                        ctx.emit(Instruction::I32Add);
-                        // len: new_len (i32)
-                        ctx.emit(Instruction::LocalGet(new_len_local));
-                        ctx.emit(Instruction::I32WrapI64);
-                        ctx.emit(Instruction::MemoryCopy);
-                        self.emit_root_pop_drop(ctx)?;
-                        // 新しい String オブジェクトのアドレスを返す
-                        ctx.emit(Instruction::LocalGet(obj_local));
                     }
                     // string-length: ヒープ上 String オブジェクトの len フィールドを取得
                     // String オブジェクト: [tag:i32=1][len:i32][bytes:u8*]
@@ -330,28 +337,30 @@ impl Lower {
                     // string-concat: 2 つの文字列を結合
                     Expr::Var(_, name) if name == "string-concat" => {
                         if args.len() >= 2 {
-                            self.lower_expr(ctx, &args[0])?;
+                            let lhs_local = self.lower_expr_to_rooted_local(
+                                ctx,
+                                &args[0],
+                                "_strcat_lhs",
+                                "_strcat_lhs_root_slot",
+                            )?;
                             self.lower_expr(ctx, &args[1])?;
+                            let rhs_local = ctx.alloc_local("_strcat_rhs".to_string());
+                            ctx.emit(Instruction::LocalSet(rhs_local));
+                            self.emit_root_push_local(ctx, rhs_local, "_strcat_rhs_root_slot")?;
+                            let idx = *self.func_indices.get("__string_concat").ok_or_else(|| {
+                                LowerError::UndefinedFunction {
+                                    name: "__string_concat".to_string(),
+                                }
+                            })?;
+                            let result_local = ctx.alloc_local("_strcat_result".to_string());
+                            ctx.emit(Instruction::LocalGet(lhs_local));
+                            ctx.emit(Instruction::LocalGet(rhs_local));
+                            ctx.emit(Instruction::Call(idx));
+                            ctx.emit(Instruction::LocalSet(result_local));
+                            self.emit_root_pop_drop(ctx)?;
+                            self.emit_root_pop_drop(ctx)?;
+                            ctx.emit(Instruction::LocalGet(result_local));
                         }
-                        let rhs_local = ctx.alloc_local("_strcat_rhs".to_string());
-                        ctx.emit(Instruction::LocalSet(rhs_local));
-                        let lhs_local = ctx.alloc_local("_strcat_lhs".to_string());
-                        ctx.emit(Instruction::LocalSet(lhs_local));
-                        self.emit_root_push_local(ctx, lhs_local, "_strcat_lhs_root_slot")?;
-                        self.emit_root_push_local(ctx, rhs_local, "_strcat_rhs_root_slot")?;
-                        let idx = *self.func_indices.get("__string_concat").ok_or_else(|| {
-                            LowerError::UndefinedFunction {
-                                name: "__string_concat".to_string(),
-                            }
-                        })?;
-                        let result_local = ctx.alloc_local("_strcat_result".to_string());
-                        ctx.emit(Instruction::LocalGet(lhs_local));
-                        ctx.emit(Instruction::LocalGet(rhs_local));
-                        ctx.emit(Instruction::Call(idx));
-                        ctx.emit(Instruction::LocalSet(result_local));
-                        self.emit_root_pop_drop(ctx)?;
-                        self.emit_root_pop_drop(ctx)?;
-                        ctx.emit(Instruction::LocalGet(result_local));
                     }
                     // string-eq: 2 つの文字列を比較
                     Expr::Var(_, name) if name == "string-eq" => {
@@ -437,14 +446,20 @@ impl Lower {
                     // ref-set: Ref Cell に値を書き込む
                     Expr::Var(_, name) if name == "ref-set" => {
                         if args.len() >= 2 {
-                            // 第1引数 (Ref ポインタ) を評価
-                            self.lower_expr(ctx, &args[0])?;
+                            let tagged_local = self.lower_expr_to_rooted_local(
+                                ctx,
+                                &args[0],
+                                "_ref_set_tagged",
+                                "_ref_set_root_slot",
+                            )?;
                             // タグ解除してアドレスを取得
+                            ctx.emit(Instruction::LocalGet(tagged_local));
                             super::emit_untag_pointer(&mut ctx.instructions);
                             // 第2引数 (新しい値) を評価
                             self.lower_expr(ctx, &args[1])?;
                             // mem[addr+8] = new_value
                             ctx.emit(Instruction::I64Store { offset: 8 });
+                            self.emit_root_pop_drop(ctx)?;
                             // Unit を返す
                             ctx.emit(Instruction::I64Const(0));
                         }
@@ -523,9 +538,12 @@ impl Lower {
                     Expr::Var(_, name) if name == "vector-get" => {
                         if args.len() >= 2 {
                             // 第1引数: ベクタ (tagged pointer) → i64 のまま保持
-                            self.lower_expr(ctx, &args[0])?;
-                            let addr_local = ctx.alloc_local("_vget_addr".to_string());
-                            ctx.emit(Instruction::LocalSet(addr_local));
+                            let addr_local = self.lower_expr_to_rooted_local(
+                                ctx,
+                                &args[0],
+                                "_vget_addr",
+                                "_vget_root_slot",
+                            )?;
                             // 第2引数: インデックス (i64) → i32 に変換して計算
                             self.lower_expr(ctx, &args[1])?;
                             ctx.emit(Instruction::I32WrapI64);
@@ -540,6 +558,7 @@ impl Lower {
                             ctx.emit(Instruction::I32Add);
                             // i64 値を読み出す
                             ctx.emit(Instruction::I64Load { offset: 0 });
+                            self.emit_root_pop_drop(ctx)?;
                         }
                     }
 
@@ -548,9 +567,12 @@ impl Lower {
                     Expr::Var(_, name) if name == "vector-set" => {
                         if args.len() >= 3 {
                             // 第1引数: ベクタ (tagged pointer) → i64 のまま保持
-                            self.lower_expr(ctx, &args[0])?;
-                            let tagged_local = ctx.alloc_local("_vset_tagged".to_string());
-                            ctx.emit(Instruction::LocalSet(tagged_local));
+                            let tagged_local = self.lower_expr_to_rooted_local(
+                                ctx,
+                                &args[0],
+                                "_vset_tagged",
+                                "_vset_root_slot",
+                            )?;
                             // 第2引数: インデックス (i64) → i32 に変換
                             self.lower_expr(ctx, &args[1])?;
                             ctx.emit(Instruction::I32WrapI64);
@@ -567,6 +589,7 @@ impl Lower {
                             self.lower_expr(ctx, &args[2])?;
                             // mem[elem_addr] = value
                             ctx.emit(Instruction::I64Store { offset: 0 });
+                            self.emit_root_pop_drop(ctx)?;
                             // 同じタグ付きポインタを返す
                             ctx.emit(Instruction::LocalGet(tagged_local));
                         }
@@ -578,9 +601,12 @@ impl Lower {
                     Expr::Var(_, name) if name == "vector-push" => {
                         if args.len() >= 2 {
                             // 第1引数: ベクタ (tagged pointer) → i64
-                            self.lower_expr(ctx, &args[0])?;
-                            let tagged_local = ctx.alloc_local("_vpush_tagged".to_string());
-                            ctx.emit(Instruction::LocalSet(tagged_local));
+                            let tagged_local = self.lower_expr_to_rooted_local(
+                                ctx,
+                                &args[0],
+                                "_vpush_tagged",
+                                "_vpush_tagged_root_slot",
+                            )?;
                             // 第2引数: 追加する値 → i64
                             self.lower_expr(ctx, &args[1])?;
                             let val_local = ctx.alloc_local("_vpush_val".to_string());
@@ -639,11 +665,6 @@ impl Lower {
                                             name: "__alloc".to_string(),
                                         }
                                     })?;
-                                self.emit_root_push_local(
-                                    ctx,
-                                    tagged_local,
-                                    "_vpush_tagged_root_slot",
-                                )?;
                                 self.emit_root_push_local(ctx, val_local, "_vpush_val_root_slot")?;
                                 ctx.emit(Instruction::Call(alloc_idx));
                                 let new_addr_local = ctx.alloc_local("_vpush_newaddr".to_string());
@@ -745,6 +766,7 @@ impl Lower {
                             }
 
                             ctx.emit(Instruction::End);
+                            self.emit_root_pop_drop(ctx)?;
                         }
                     }
 
@@ -812,9 +834,12 @@ impl Lower {
                     // 線形探索: key=0 は空スロット、16バイト/エントリ
                     Expr::Var(_, name) if name == "map-insert" => {
                         if args.len() >= 3 {
-                            self.lower_expr(ctx, &args[0])?;
-                            let tagged_local = ctx.alloc_local("_mi_tagged".to_string());
-                            ctx.emit(Instruction::LocalSet(tagged_local));
+                            let tagged_local = self.lower_expr_to_rooted_local(
+                                ctx,
+                                &args[0],
+                                "_mi_tagged",
+                                "_mi_root_slot",
+                            )?;
                             let addr_local = ctx.alloc_local("_mi_addr".to_string());
                             ctx.emit(Instruction::LocalGet(tagged_local));
                             ctx.emit(Instruction::I32WrapI64);
@@ -902,6 +927,7 @@ impl Lower {
                             ctx.emit(Instruction::Br(0)); // loop continue
                             ctx.emit(Instruction::End); // end loop
                             ctx.emit(Instruction::End); // end block
+                            self.emit_root_pop_drop(ctx)?;
                             ctx.emit(Instruction::LocalGet(tagged_local));
                         }
                     }
@@ -909,8 +935,14 @@ impl Lower {
                     // map-get [m key] -> a (未存在時は 0)
                     Expr::Var(_, name) if name == "map-get" => {
                         if args.len() >= 2 {
-                            self.lower_expr(ctx, &args[0])?;
+                            let tagged_local = self.lower_expr_to_rooted_local(
+                                ctx,
+                                &args[0],
+                                "_mg_tagged",
+                                "_mg_root_slot",
+                            )?;
                             let addr_local = ctx.alloc_local("_mg_addr".to_string());
+                            ctx.emit(Instruction::LocalGet(tagged_local));
                             ctx.emit(Instruction::I32WrapI64);
                             ctx.emit(Instruction::I64ExtendI32U);
                             ctx.emit(Instruction::LocalSet(addr_local));
@@ -970,6 +1002,7 @@ impl Lower {
                             ctx.emit(Instruction::Br(0));
                             ctx.emit(Instruction::End); // loop
                             ctx.emit(Instruction::End); // block
+                            self.emit_root_pop_drop(ctx)?;
                             ctx.emit(Instruction::LocalGet(result_local));
                         }
                     }
@@ -977,8 +1010,14 @@ impl Lower {
                     // map-contains? [m key] -> Bool (1=存在, 0=不存在)
                     Expr::Var(_, name) if name == "map-contains?" => {
                         if args.len() >= 2 {
-                            self.lower_expr(ctx, &args[0])?;
+                            let tagged_local = self.lower_expr_to_rooted_local(
+                                ctx,
+                                &args[0],
+                                "_mc_tagged",
+                                "_mc_root_slot",
+                            )?;
                             let addr_local = ctx.alloc_local("_mc_addr".to_string());
+                            ctx.emit(Instruction::LocalGet(tagged_local));
                             ctx.emit(Instruction::I32WrapI64);
                             ctx.emit(Instruction::I64ExtendI32U);
                             ctx.emit(Instruction::LocalSet(addr_local));
@@ -1036,6 +1075,7 @@ impl Lower {
                             ctx.emit(Instruction::Br(0));
                             ctx.emit(Instruction::End); // loop
                             ctx.emit(Instruction::End); // block
+                            self.emit_root_pop_drop(ctx)?;
                             ctx.emit(Instruction::LocalGet(result_local));
                         }
                     }
@@ -1043,9 +1083,12 @@ impl Lower {
                     // map-remove [m key] -> Map
                     Expr::Var(_, name) if name == "map-remove" => {
                         if args.len() >= 2 {
-                            self.lower_expr(ctx, &args[0])?;
-                            let tagged_local = ctx.alloc_local("_mr_tagged".to_string());
-                            ctx.emit(Instruction::LocalSet(tagged_local));
+                            let tagged_local = self.lower_expr_to_rooted_local(
+                                ctx,
+                                &args[0],
+                                "_mr_tagged",
+                                "_mr_root_slot",
+                            )?;
                             let addr_local = ctx.alloc_local("_mr_addr".to_string());
                             ctx.emit(Instruction::LocalGet(tagged_local));
                             ctx.emit(Instruction::I32WrapI64);
@@ -1118,6 +1161,7 @@ impl Lower {
                             ctx.emit(Instruction::Br(0));
                             ctx.emit(Instruction::End); // loop
                             ctx.emit(Instruction::End); // block
+                            self.emit_root_pop_drop(ctx)?;
                             ctx.emit(Instruction::LocalGet(tagged_local));
                         }
                     }
@@ -1673,6 +1717,20 @@ impl Lower {
         ctx.emit(Instruction::Call(root_push_idx));
         ctx.emit(Instruction::LocalSet(slot_local));
         Ok(slot_local)
+    }
+
+    fn lower_expr_to_rooted_local(
+        &mut self,
+        ctx: &mut FuncCtx,
+        expr: &Expr,
+        value_name: &str,
+        slot_name: &str,
+    ) -> Result<u32, LowerError> {
+        self.lower_expr(ctx, expr)?;
+        let value_local = ctx.alloc_local(value_name.to_string());
+        ctx.emit(Instruction::LocalSet(value_local));
+        self.emit_root_push_local(ctx, value_local, slot_name)?;
+        Ok(value_local)
     }
 
     fn emit_root_pop_drop(&self, ctx: &mut FuncCtx) -> Result<(), LowerError> {

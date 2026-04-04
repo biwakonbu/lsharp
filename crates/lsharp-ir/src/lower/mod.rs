@@ -480,6 +480,13 @@ impl FuncCtx {
     }
 
     pub(crate) fn alloc_local(&mut self, name: String) -> u32 {
+        // compiler が使う `_` prefix の一時ローカルは、入れ子の式で同名再利用すると
+        // 外側の一時値を内側の lowering が上書きしてしまうため常に fresh にする。
+        if name.starts_with('_') {
+            let idx = self.next_local;
+            self.next_local += 1;
+            return idx;
+        }
         if let Some(&idx) = self.locals_map.get(&name) {
             return idx;
         }

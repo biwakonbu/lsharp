@@ -5413,15 +5413,16 @@ fn test_e2e_selfhost_typeinfer_if_expr() {
 #[test]
 fn test_e2e_selfhost_typeinfer_pattern_match() {
     // パターンマッチの最小型推論が動作することを検証
-    // 期待値: match 式の各腕の型が一致することをチェック
+    // 期待値: match 式の各腕の型が一致し、文字列結果を安定に利用できることをチェック
     let source = r#"
 (module Main)
 (defn main []
   (let [x 1]
-    (print (match x
+    (let [result (match x
       [1 "one"]
-      [_ "other"]))))
+      [_ "other"])]
+      (print (if (string-eq result "one") 1 0)))))
 "#;
     let result = compile_and_run_expanded(source);
-    assert_eq!(result.trim(), "520");
+    assert_eq!(result.trim(), "1");
 }

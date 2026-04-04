@@ -25,6 +25,13 @@ fn count_call_instr(body: &[Instruction], idx: u32) -> usize {
         .count()
 }
 
+fn call_positions(body: &[Instruction], idx: u32) -> Vec<usize> {
+    body.iter()
+        .enumerate()
+        .filter_map(|(i, instr)| matches!(instr, Instruction::Call(call_idx) if *call_idx == idx).then_some(i))
+        .collect()
+}
+
 #[test]
 fn test_lower_integer_literal() {
     assert_ir("(defn main [] 42)", "lower_integer_literal");
@@ -172,6 +179,102 @@ fn test_lower_vector_push_auto_roots_realloc_inputs() {
     assert!(
         count_call_instr(&main_fn.body, 15) >= 2,
         "vector-push の再割り当ては alloc 後に root_pop で解放すべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_string_concat_roots_lhs_before_lowering_rhs() {
+    let module = lower(r#"(defn main [] (string-concat "a" "b"))"#);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let alloc_positions = call_positions(&main_fn.body, 1);
+    let root_push_positions = call_positions(&main_fn.body, 14);
+
+    assert!(
+        alloc_positions.len() >= 2,
+        "2 つの文字列リテラル割り当てが必要: {:?}",
+        main_fn.body
+    );
+    assert!(
+        !root_push_positions.is_empty(),
+        "string-concat は root_push を使うべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions[0] > alloc_positions[0] && root_push_positions[0] < alloc_positions[1],
+        "lhs は rhs の割り当て前に root_push で保護すべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_substring_roots_source_before_lowering_index_exprs() {
+    let module = lower(r#"(defn main [] (substring "abcd" (string-length "xy") 2))"#);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let alloc_positions = call_positions(&main_fn.body, 1);
+    let root_push_positions = call_positions(&main_fn.body, 14);
+
+    assert!(
+        alloc_positions.len() >= 2,
+        "source 文字列と index 側文字列の割り当てが必要: {:?}",
+        main_fn.body
+    );
+    assert!(
+        !root_push_positions.is_empty(),
+        "substring は root_push を使うべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions[0] > alloc_positions[0] && root_push_positions[0] < alloc_positions[1],
+        "source string は start/end 式の割り当て前に root_push で保護すべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_vector_push_roots_vector_before_lowering_value_expr() {
+    let module = lower(r#"(defn main [] (vector-push (vector-new 0) "x"))"#);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let alloc_positions = call_positions(&main_fn.body, 1);
+    let root_push_positions = call_positions(&main_fn.body, 14);
+
+    assert!(
+        alloc_positions.len() >= 3,
+        "vector-new / pushed string / realloc の 3 回割り当てが必要: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions.len() >= 2,
+        "vector-push は vector と value を root_push で保護すべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions[0] > alloc_positions[0] && root_push_positions[0] < alloc_positions[1],
+        "receiver vector は value 式の割り当て前に root_push で保護すべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_map_insert_roots_map_before_lowering_key_expr() {
+    let module = lower(r#"(defn main [] (map-insert (map-new) (string-concat "a" "b") 1))"#);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let alloc_positions = call_positions(&main_fn.body, 1);
+    let root_push_positions = call_positions(&main_fn.body, 14);
+
+    assert!(
+        alloc_positions.len() >= 3,
+        "map-new と key 側の文字列割り当てが必要: {:?}",
+        main_fn.body
+    );
+    assert!(
+        !root_push_positions.is_empty(),
+        "map-insert は map receiver を root_push で保護すべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions[0] > alloc_positions[0] && root_push_positions[0] < alloc_positions[1],
+        "map receiver は key/value 式の割り当て前に root_push で保護すべき: {:?}",
         main_fn.body
     );
 }
@@ -647,7 +750,7 @@ fn test_record_pattern_uses_struct_get() {
         .filter(|i| matches!(i, Instruction::StructGet(_, _)))
         .collect();
     assert!(
-        struct_gets.len() >= 1,
+        !struct_gets.is_empty(),
         "レコードパターンは StructGet を使用すべき: {:?}",
         get_x.body
     );
