@@ -325,23 +325,21 @@
 
 ### INC-E: IR/コード生成の差分対応
 
-- [ ] `INC-E1` 全結合 lower からモジュール単位 lower + `link_modules` への移行 (**最大の設計変更**)
-  - `crates/lsharp-ir/src/lib.rs` L796-801 をモジュール単位 IR 生成に変更
-  - 既存の `link_modules()` (L403-492) を `compile_multi_file` から利用
-  - テスト: フルコンパイルとの Wasm バイト完全一致 (bootstrap 54 件)
-  - リスク: クロスモジュール関数参照の解決方法が変わる
-  - blocker: 現行 `Lower` は global function index / trait impl dispatch / GC type index / string data offset を merged program 前提で埋め込むため、module-local lowering には symbolic reference か post-link fixup が必要
+- [x] `INC-E1` 全結合 lower からモジュール単位 lower + link phase への移行 (**最大の設計変更**) -- `test_compile_multi_file_modular_lowering_matches_merged_reference_with_strings`, `test_compile_multi_file_incremental_empty_cache_matches_full_compile`, `test_e2e_incremental_compile_matches_full_compile_fixed_input_set`
+  - `crates/lsharp-ir/src/lower/mod.rs` を `prepare_program_state` + category emit helper (`lower_defn_functions` / `lower_field_accessors` / `lower_trait_impl_functions` / `lower_constraint_functions` / `lower_adt_constructors`) に分割し、merged program で 1 回だけ global function index / trait dispatch table / GC type / string offset state を確定してから per-module `Program` を lower できるようにした
+  - `crates/lsharp-ir/src/lib.rs` の `compile_multi_file` / `compile_multi_file_incremental` は stripped per-module program を保持し、defn → accessor → impl → constraint → ctor → lifted の pass 順で module segment を組み立て、precomputed index / string_data 順序を維持したまま final IR を link するように更新した
+  - merged reference との IR / string_data parity は `test_compile_multi_file_modular_lowering_matches_merged_reference_with_strings` で固定し、既存 `compile_multi_file_` 13 tests、`test_e2e_multi_file_` 5 tests、driver compile/build focused gates まで green
+  - bootstrap acceptance では fixed input set 54 件の full / incremental cold / warm compare (`test_e2e_incremental_compile_matches_full_compile_fixed_input_set`) が green で、module-local lowering へ切り替えた後も Wasm parity を維持している
   - 依存: INC-D1
 
 - [~] `INC-E2` モジュール単位 IR キャッシュ
+  - `INC-E1` により `compile_multi_file` / `compile_multi_file_incremental` は module-local lowering + link phase へ移行済み
   - clean rebuild (`changed_modules.is_empty()`) では `CompilationCache` の `ir` に保持した final linked IR を再利用し、parse / type infer に続いて lowering もスキップする fast path まで追加済み (`test_compile_multi_file_incremental_skips_ir_generation_on_clean_cache_hit`)
-  - **ただし** dirty set に含まれない個別モジュールごとの IR 生成スキップは未着手。現状の `ir` は module-local IR ではなく final linked IR clone なので、真の module-level reuse は `INC-E1` の lower/link 分離が前提
-  - 依存: INC-E1
+  - **ただし** dirty set に含まれない個別モジュールごとの IR 生成スキップは未着手。現状の `ir` は module segment ではなく final linked IR clone なので、真の module-level reuse には per-module IR segment を cache entry に保持して link phase だけを再実行する sliceが残っている
 
-- [ ] `INC-E3` `link_modules` リベースキャッシュ
-  - モジュール順序・関数数不変時にリベース計算をスキップ
-  - 関数数変更時のキャッシュ無効化
-  - 依存: INC-E1
+- [ ] `INC-E3` link phase キャッシュ
+  - モジュール順序・segment 数不変時に final link 計算をスキップ
+  - `string_data` / `gc_types` / lifted function segment が変化した場合のキャッシュ無効化
 
 ### INC-F: LSP 統合
 

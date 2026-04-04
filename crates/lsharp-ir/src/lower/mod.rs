@@ -61,6 +61,8 @@ pub struct Lower {
     pub(crate) lifted_func_indices: HashMap<String, u32>,
     /// Lambda Lifting: 次に割り当てる関数インデックス
     pub(crate) next_func_idx: u32,
+    /// lower_program 後半で追加登録する補助関数のインデックスカーソル
+    pub(crate) late_func_idx: u32,
 }
 
 /// Private 宣言を展開して内部の宣言を返す
@@ -91,6 +93,7 @@ impl Lower {
             lambda_counter: 0,
             lifted_func_indices: HashMap::new(),
             next_func_idx: 0,
+            late_func_idx: 0,
         }
     }
 
@@ -101,12 +104,34 @@ impl Lower {
         format!("__lambda_{id}")
     }
 
-    /// プログラム全体を IR に変換
-    pub fn lower_program(
+    fn reset_state(&mut self) {
+        self.func_indices.clear();
+        self.import_count = 0;
+        self.type_results.clear();
+        self.record_type_indices.clear();
+        self.record_fields.clear();
+        self.gc_types.clear();
+        self.trait_method_impls.clear();
+        self.trait_method_names.clear();
+        self.adt_variant_indices.clear();
+        self.adt_type_info.clear();
+        self.string_data.clear();
+        self.string_offset = 512;
+        self.computation_builders.clear();
+        self.lifted_functions.clear();
+        self.lambda_counter = 0;
+        self.lifted_func_indices.clear();
+        self.next_func_idx = 0;
+        self.late_func_idx = 0;
+    }
+
+    pub(crate) fn prepare_program_state(
         &mut self,
         program: &Program,
         type_results: &[(String, lsharp_types::types::TypeScheme)],
-    ) -> Result<Module, LowerError> {
+    ) {
+        self.reset_state();
+
         // 型推論結果を保存
         for (name, scheme) in type_results {
             self.type_results.insert(name.clone(), scheme.ty.clone());
@@ -265,8 +290,13 @@ impl Lower {
 
         // Lambda Lifting 用の次の関数インデックスを設定
         self.next_func_idx = func_idx;
+        self.late_func_idx = func_idx;
+    }
 
-        // 各関数を IR に変換
+    pub(crate) fn lower_defn_functions(
+        &mut self,
+        program: &Program,
+    ) -> Result<Vec<crate::Function>, LowerError> {
         let mut functions = Vec::new();
         for decl in &program.decls {
             if let Decl::Defn {
@@ -277,8 +307,11 @@ impl Lower {
                 functions.push(func);
             }
         }
+        Ok(functions)
+    }
 
-        // フィールドアクセサ関数を生成
+    pub(crate) fn lower_field_accessors(&self, program: &Program) -> Vec<crate::Function> {
+        let mut functions = Vec::new();
         for decl in &program.decls {
             if let Decl::RecordDef { name, fields, .. } = unwrap_private(decl) {
                 for (field_idx, (fname, ftype)) in fields.iter().enumerate() {
@@ -288,8 +321,14 @@ impl Lower {
                 }
             }
         }
+        functions
+    }
 
-        // トレイト実装メソッドを IR 関数として生成 (P5-6)
+    pub(crate) fn lower_trait_impl_functions(
+        &mut self,
+        program: &Program,
+    ) -> Result<Vec<crate::Function>, LowerError> {
+        let mut functions = Vec::new();
         for decl in &program.decls {
             if let Decl::ImplDef {
                 trait_name,
@@ -313,8 +352,11 @@ impl Lower {
                 }
             }
         }
+        Ok(functions)
+    }
 
-        // 制約付き型のランタイム検証関数を生成 (P2-6)
+    pub(crate) fn lower_constraint_functions(&mut self, program: &Program) -> Vec<crate::Function> {
+        let mut functions = Vec::new();
         for decl in &program.decls {
             if let Decl::TypeConstrained {
                 name, constraints, ..
@@ -325,8 +367,9 @@ impl Lower {
                 // 関数インデックスを登録
                 let check_name = format!("{name}.new");
                 if !self.func_indices.contains_key(&check_name) {
-                    self.func_indices.insert(check_name.clone(), func_idx);
-                    func_idx += 1;
+                    self.func_indices
+                        .insert(check_name.clone(), self.late_func_idx);
+                    self.late_func_idx += 1;
                 }
                 functions.push(check_func);
 
@@ -334,14 +377,18 @@ impl Lower {
                 let valid_func = self.generate_constraint_valid(name, constraints);
                 let valid_name = format!("{name}.valid?");
                 if !self.func_indices.contains_key(&valid_name) {
-                    self.func_indices.insert(valid_name.clone(), func_idx);
-                    func_idx += 1;
+                    self.func_indices
+                        .insert(valid_name.clone(), self.late_func_idx);
+                    self.late_func_idx += 1;
                 }
                 functions.push(valid_func);
             }
         }
+        functions
+    }
 
-        // ADT コンストラクタ関数を生成 (P1-9)
+    pub(crate) fn lower_adt_constructors(&self, program: &Program) -> Vec<crate::Function> {
+        let mut functions = Vec::new();
         for decl in &program.decls {
             if let Decl::TypeDef { variants, .. } = unwrap_private(decl) {
                 for variant in variants {
@@ -357,9 +404,42 @@ impl Lower {
                 }
             }
         }
+        functions
+    }
 
-        // func_idx の未使用警告を抑制
-        let _ = func_idx;
+    pub(crate) fn take_lifted_functions(&mut self) -> Vec<crate::Function> {
+        std::mem::take(&mut self.lifted_functions)
+    }
+
+    pub(crate) fn clone_string_data_from(&self, start: usize) -> Vec<(String, Vec<u8>)> {
+        self.string_data[start..].to_vec()
+    }
+
+    pub(crate) fn gc_types_for_program(&self, program: &Program) -> Vec<GcTypeDef> {
+        let mut gc_types = Vec::new();
+        for decl in &program.decls {
+            if let Decl::RecordDef { name, .. } = unwrap_private(decl)
+                && let Some(&gc_idx) = self.record_type_indices.get(name)
+            {
+                gc_types.push(self.gc_types[gc_idx as usize].clone());
+            }
+        }
+        gc_types
+    }
+
+    /// プログラム全体を IR に変換
+    pub fn lower_program(
+        &mut self,
+        program: &Program,
+        type_results: &[(String, lsharp_types::types::TypeScheme)],
+    ) -> Result<Module, LowerError> {
+        self.prepare_program_state(program, type_results);
+
+        let mut functions = self.lower_defn_functions(program)?;
+        functions.extend(self.lower_field_accessors(program));
+        functions.extend(self.lower_trait_impl_functions(program)?);
+        functions.extend(self.lower_constraint_functions(program));
+        functions.extend(self.lower_adt_constructors(program));
 
         // Lambda Lifting: リフトされた関数を追加
         let lifted = self.lifted_functions.clone();

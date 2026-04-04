@@ -917,7 +917,140 @@ impl Drop for IncrementalLowerTracker {
     }
 }
 
-pub fn compile_multi_file(entry_file: &std::path::Path) -> Result<Module, String> {
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+enum MultiFileLoweringMode {
+    Merged,
+    Modular,
+}
+
+fn push_module_segment(
+    modules: &mut Vec<Module>,
+    functions: Vec<Function>,
+    gc_types: Vec<GcTypeDef>,
+    string_data: Vec<(String, Vec<u8>)>,
+) {
+    if functions.is_empty() && gc_types.is_empty() && string_data.is_empty() {
+        return;
+    }
+
+    modules.push(Module {
+        functions,
+        gc_types,
+        imports: Vec::new(),
+        globals: Vec::new(),
+        string_data,
+    });
+}
+
+fn link_modules_preserving_indices(modules: &[Module]) -> Module {
+    let mut linked = Module {
+        functions: Vec::new(),
+        gc_types: Vec::new(),
+        imports: Vec::new(),
+        globals: Vec::new(),
+        string_data: Vec::new(),
+    };
+
+    for module in modules {
+        linked.functions.extend(module.functions.clone());
+        linked.gc_types.extend(module.gc_types.clone());
+        linked.imports.extend(module.imports.clone());
+        linked.globals.extend(module.globals.clone());
+        linked.string_data.extend(module.string_data.clone());
+    }
+
+    linked
+}
+
+fn lower_multi_file_merged(
+    all_decls: &[lsharp_syntax::ast::Decl],
+    all_type_results: &[(String, lsharp_types::types::TypeScheme)],
+) -> Result<Module, lower::LowerError> {
+    let merged_program = lsharp_syntax::ast::Program {
+        decls: all_decls.to_vec(),
+    };
+    let mut lower_ctx = lower::Lower::new();
+    lower_ctx.lower_program(&merged_program, all_type_results)
+}
+
+fn lower_multi_file_modular(
+    module_programs: &[lsharp_syntax::ast::Program],
+    all_decls: &[lsharp_syntax::ast::Decl],
+    all_type_results: &[(String, lsharp_types::types::TypeScheme)],
+) -> Result<Module, lower::LowerError> {
+    let merged_program = lsharp_syntax::ast::Program {
+        decls: all_decls.to_vec(),
+    };
+    let mut lower_ctx = lower::Lower::new();
+    lower_ctx.prepare_program_state(&merged_program, all_type_results);
+
+    let mut modules = Vec::new();
+
+    for program in module_programs {
+        let gc_types = lower_ctx.gc_types_for_program(program);
+        let string_start = lower_ctx.string_data.len();
+        let functions = lower_ctx.lower_defn_functions(program)?;
+        push_module_segment(
+            &mut modules,
+            functions,
+            gc_types,
+            lower_ctx.clone_string_data_from(string_start),
+        );
+    }
+
+    for program in module_programs {
+        push_module_segment(
+            &mut modules,
+            lower_ctx.lower_field_accessors(program),
+            Vec::new(),
+            Vec::new(),
+        );
+    }
+
+    for program in module_programs {
+        let string_start = lower_ctx.string_data.len();
+        let functions = lower_ctx.lower_trait_impl_functions(program)?;
+        push_module_segment(
+            &mut modules,
+            functions,
+            Vec::new(),
+            lower_ctx.clone_string_data_from(string_start),
+        );
+    }
+
+    for program in module_programs {
+        push_module_segment(
+            &mut modules,
+            lower_ctx.lower_constraint_functions(program),
+            Vec::new(),
+            Vec::new(),
+        );
+    }
+
+    for program in module_programs {
+        push_module_segment(
+            &mut modules,
+            lower_ctx.lower_adt_constructors(program),
+            Vec::new(),
+            Vec::new(),
+        );
+    }
+
+    push_module_segment(
+        &mut modules,
+        lower_ctx.take_lifted_functions(),
+        Vec::new(),
+        Vec::new(),
+    );
+
+    Ok(link_modules_preserving_indices(&modules))
+}
+
+fn compile_multi_file_with_mode(
+    entry_file: &std::path::Path,
+    lowering_mode: MultiFileLoweringMode,
+) -> Result<Module, String> {
     use module_graph::ModuleGraph;
 
     // 1. モジュールグラフの構築とファイル探索
@@ -950,6 +1083,7 @@ pub fn compile_multi_file(entry_file: &std::path::Path) -> Result<Module, String
     let mut all_decls: Vec<lsharp_syntax::ast::Decl> = Vec::new();
     let mut all_type_results: Vec<(String, lsharp_types::types::TypeScheme)> = Vec::new();
     let mut per_module_type_results: HashMap<String, ModuleTypeSurface> = HashMap::new();
+    let mut module_programs: Vec<lsharp_syntax::ast::Program> = Vec::new();
 
     let formatter_trio_batch = try_infer_formatter_trio_batch(&sorted_files);
 
@@ -1001,21 +1135,34 @@ pub fn compile_multi_file(entry_file: &std::path::Path) -> Result<Module, String
         );
 
         // 宣言を収集（module 宣言と import 宣言は除外）
+        let mut module_decls = Vec::new();
         for decl in program.decls {
             match &decl {
                 lsharp_syntax::ast::Decl::ModuleDecl { .. } => {}
                 lsharp_syntax::ast::Decl::ImportDecl { .. } => {}
-                _ => all_decls.push(decl),
+                _ => {
+                    all_decls.push(decl.clone());
+                    module_decls.push(decl);
+                }
             }
         }
+        module_programs.push(lsharp_syntax::ast::Program {
+            decls: module_decls,
+        });
     }
 
-    // 3. 結合した宣言で 1 つの Program を構成し、IR 変換
-    let merged_program = lsharp_syntax::ast::Program { decls: all_decls };
-    let mut lower_ctx = lower::Lower::new();
-    lower_ctx
-        .lower_program(&merged_program, &all_type_results)
-        .map_err(|e| format!("IR 変換エラー: {e}"))
+    let lowered = match lowering_mode {
+        MultiFileLoweringMode::Merged => lower_multi_file_merged(&all_decls, &all_type_results),
+        MultiFileLoweringMode::Modular => {
+            lower_multi_file_modular(&module_programs, &all_decls, &all_type_results)
+        }
+    };
+
+    lowered.map_err(|e| format!("IR 変換エラー: {e}"))
+}
+
+pub fn compile_multi_file(entry_file: &std::path::Path) -> Result<Module, String> {
+    compile_multi_file_with_mode(entry_file, MultiFileLoweringMode::Modular)
 }
 
 pub fn compile_multi_file_incremental(
@@ -1112,6 +1259,7 @@ pub fn compile_multi_file_incremental(
     let mut per_module_type_results: HashMap<String, ModuleTypeSurface> = HashMap::new();
     let mut cache_entries: Vec<(String, ModuleCacheEntry)> = Vec::new();
     let mut surface_changed_modules: HashSet<String> = HashSet::new();
+    let mut module_programs: Vec<lsharp_syntax::ast::Program> = Vec::new();
 
     for (mod_name, mod_path, source, fingerprint) in module_inputs {
         let clean_hit = cache
@@ -1179,24 +1327,28 @@ pub fn compile_multi_file_incremental(
         }
 
         all_type_results.extend(type_surface.results.clone());
+        let mut module_decls = Vec::new();
         for decl in &program.decls {
             match decl {
                 lsharp_syntax::ast::Decl::ModuleDecl { .. }
                 | lsharp_syntax::ast::Decl::ImportDecl { .. } => {}
-                _ => all_decls.push(decl.clone()),
+                _ => {
+                    all_decls.push(decl.clone());
+                    module_decls.push(decl.clone());
+                }
             }
         }
+        module_programs.push(lsharp_syntax::ast::Program {
+            decls: module_decls,
+        });
 
         let entry = build_module_cache_entry(fingerprint, &program, type_surface.clone());
         cache_entries.push((mod_name.clone(), entry));
         per_module_type_results.insert(mod_name.clone(), type_surface);
     }
 
-    let merged_program = lsharp_syntax::ast::Program { decls: all_decls };
-    let mut lower_ctx = lower::Lower::new();
     note_incremental_lower();
-    let final_module = lower_ctx
-        .lower_program(&merged_program, &all_type_results)
+    let final_module = lower_multi_file_modular(&module_programs, &all_decls, &all_type_results)
         .map_err(|e| format!("IR 変換エラー: {e}"))?;
 
     for (mod_name, mut entry) in cache_entries {
@@ -1542,6 +1694,50 @@ mod multifile_compile_tests {
         assert!(
             result.is_err(),
             "private なシンボルは compile でも参照できないべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_modular_lowering_matches_merged_reference_with_strings() {
+        let dir = std::env::temp_dir().join("lsharp_compile_multi_file_modular_matches_merged");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("Lib.ls"),
+            "(module Lib)\n(defn helper [] \"lib\")\n(defn helper2 [] \"++\")\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Suffix.ls"),
+            "(module Suffix)\n(defn bang [] \"!\")\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Lib)\n(import Suffix)\n(defn main [] (string-concat (string-concat (helper) (helper2)) (bang)))\n",
+        )
+        .unwrap();
+
+        let merged =
+            compile_multi_file_with_mode(&dir.join("Main.ls"), MultiFileLoweringMode::Merged)
+                .unwrap();
+        let modular =
+            compile_multi_file_with_mode(&dir.join("Main.ls"), MultiFileLoweringMode::Modular)
+                .unwrap();
+
+        assert_eq!(
+            merged.dump(),
+            modular.dump(),
+            "module-local lowering は merged lowering と同じ関数順序・命令列を維持するべき"
+        );
+        assert_eq!(
+            merged.string_data, modular.string_data,
+            "module-local lowering は merged lowering と同じ string_data 配列を維持するべき"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
