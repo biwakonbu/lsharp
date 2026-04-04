@@ -5,6 +5,117 @@ use lsharp_syntax::ast::Program;
 
 use crate::{Module, ModuleTypeSurface, SourceFingerprint};
 
+fn empty_module() -> Module {
+    Module {
+        functions: Vec::new(),
+        gc_types: Vec::new(),
+        imports: Vec::new(),
+        globals: Vec::new(),
+        string_data: Vec::new(),
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ModuleIrSegments {
+    defns: Module,
+    accessors: Module,
+    trait_impls: Module,
+    constraints: Module,
+    ctors: Module,
+    defn_lifted: Module,
+    trait_impl_lifted: Module,
+}
+
+impl ModuleIrSegments {
+    pub(crate) fn empty() -> Self {
+        Self {
+            defns: empty_module(),
+            accessors: empty_module(),
+            trait_impls: empty_module(),
+            constraints: empty_module(),
+            ctors: empty_module(),
+            defn_lifted: empty_module(),
+            trait_impl_lifted: empty_module(),
+        }
+    }
+
+    pub(crate) fn defns(&self) -> &Module {
+        &self.defns
+    }
+
+    pub(crate) fn accessors(&self) -> &Module {
+        &self.accessors
+    }
+
+    pub(crate) fn trait_impls(&self) -> &Module {
+        &self.trait_impls
+    }
+
+    pub(crate) fn constraints(&self) -> &Module {
+        &self.constraints
+    }
+
+    pub(crate) fn ctors(&self) -> &Module {
+        &self.ctors
+    }
+
+    pub(crate) fn defn_lifted(&self) -> &Module {
+        &self.defn_lifted
+    }
+
+    pub(crate) fn trait_impl_lifted(&self) -> &Module {
+        &self.trait_impl_lifted
+    }
+
+    pub(crate) fn set_defns(&mut self, module: Module) {
+        self.defns = module;
+    }
+
+    pub(crate) fn set_accessors(&mut self, module: Module) {
+        self.accessors = module;
+    }
+
+    pub(crate) fn set_trait_impls(&mut self, module: Module) {
+        self.trait_impls = module;
+    }
+
+    pub(crate) fn set_constraints(&mut self, module: Module) {
+        self.constraints = module;
+    }
+
+    pub(crate) fn set_ctors(&mut self, module: Module) {
+        self.ctors = module;
+    }
+
+    pub(crate) fn set_defn_lifted(&mut self, module: Module) {
+        self.defn_lifted = module;
+    }
+
+    pub(crate) fn set_trait_impl_lifted(&mut self, module: Module) {
+        self.trait_impl_lifted = module;
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        [
+            &self.defns,
+            &self.accessors,
+            &self.trait_impls,
+            &self.constraints,
+            &self.ctors,
+            &self.defn_lifted,
+            &self.trait_impl_lifted,
+        ]
+        .into_iter()
+        .all(|module| {
+            module.functions.is_empty()
+                && module.gc_types.is_empty()
+                && module.string_data.is_empty()
+                && module.imports.is_empty()
+                && module.globals.is_empty()
+        })
+    }
+}
+
 /// モジュール単位の incremental compile キャッシュ。
 #[derive(Debug, Clone)]
 pub struct ModuleCacheEntry {
@@ -12,6 +123,7 @@ pub struct ModuleCacheEntry {
     ast: Arc<Program>,
     type_surface: ModuleTypeSurface,
     ir: Module,
+    ir_segments: ModuleIrSegments,
     imports: Vec<String>,
 }
 
@@ -21,6 +133,7 @@ impl ModuleCacheEntry {
         ast: Arc<Program>,
         type_surface: ModuleTypeSurface,
         ir: Module,
+        ir_segments: ModuleIrSegments,
         imports: Vec<String>,
     ) -> Self {
         Self {
@@ -28,6 +141,7 @@ impl ModuleCacheEntry {
             ast,
             type_surface,
             ir,
+            ir_segments,
             imports,
         }
     }
@@ -52,6 +166,10 @@ impl ModuleCacheEntry {
         &self.ir
     }
 
+    pub(crate) fn ir_segments(&self) -> &ModuleIrSegments {
+        &self.ir_segments
+    }
+
     pub fn type_result_len(&self) -> usize {
         self.type_surface.results.len()
     }
@@ -62,6 +180,10 @@ impl ModuleCacheEntry {
 
     pub(crate) fn set_ir(&mut self, ir: Module) {
         self.ir = ir;
+    }
+
+    pub(crate) fn set_ir_segments(&mut self, ir_segments: ModuleIrSegments) {
+        self.ir_segments = ir_segments;
     }
 }
 

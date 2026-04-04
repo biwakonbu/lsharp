@@ -407,10 +407,6 @@ impl Lower {
         functions
     }
 
-    pub(crate) fn take_lifted_functions(&mut self) -> Vec<crate::Function> {
-        std::mem::take(&mut self.lifted_functions)
-    }
-
     pub(crate) fn clone_string_data_from(&self, start: usize) -> Vec<(String, Vec<u8>)> {
         self.string_data[start..].to_vec()
     }

@@ -335,7 +335,8 @@
 - [~] `INC-E2` モジュール単位 IR キャッシュ
   - `INC-E1` により `compile_multi_file` / `compile_multi_file_incremental` は module-local lowering + link phase へ移行済み
   - clean rebuild (`changed_modules.is_empty()`) では `CompilationCache` の `ir` に保持した final linked IR を再利用し、parse / type infer に続いて lowering もスキップする fast path まで追加済み (`test_compile_multi_file_incremental_skips_ir_generation_on_clean_cache_hit`)
-  - **ただし** dirty set に含まれない個別モジュールごとの IR 生成スキップは未着手。現状の `ir` は module segment ではなく final linked IR clone なので、真の module-level reuse には per-module IR segment を cache entry に保持して link phase だけを再実行する sliceが残っている
+  - cache entry は per-module IR segment (`defns` / `accessors` / `trait_impls` / `constraints` / `ctors` / `defn_lifted` / `trait_impl_lifted`) を保持するように拡張し、tail module だけ dirty な再コンパイルでは clean prefix module の segment を再利用する safe slice まで回収した (`test_compile_multi_file_incremental_reuses_prefix_module_ir_segments_before_first_dirty_module`)
+  - **ただし** 再利用は first dirty module より前の contiguous prefix に限定しており、dirty set 外の中間/後続モジュールを個別に skip して re-link だけで済ませる slice は未着手
 
 - [ ] `INC-E3` link phase キャッシュ
   - モジュール順序・segment 数不変時に final link 計算をスキップ

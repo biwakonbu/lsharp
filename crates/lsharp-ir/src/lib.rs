@@ -15,7 +15,7 @@ use std::sync::Arc;
 use module_graph::{FORMATTER_TRIO_DECL, FORMATTER_TRIO_EXPR, FORMATTER_TRIO_MAIN};
 use sha2::{Digest, Sha256};
 
-pub use cache::{CompilationCache, ModuleCacheEntry};
+pub use cache::{CompilationCache, ModuleCacheEntry, ModuleIrSegments};
 
 /// SHA-256 ベースのソース fingerprint。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -795,6 +795,19 @@ fn note_incremental_lower() {
     }
 }
 
+fn note_incremental_module_segment_lower_by(_count: usize) {
+    #[cfg(test)]
+    {
+        INCREMENTAL_MODULE_SEGMENT_LOWER_TRACKING_ENABLED.with(|enabled| {
+            if enabled.get() {
+                INCREMENTAL_MODULE_SEGMENT_LOWER_COUNT.with(|slot| {
+                    slot.set(slot.get() + _count);
+                });
+            }
+        });
+    }
+}
+
 fn build_module_cache_entry(
     fingerprint: SourceFingerprint,
     program: &Arc<lsharp_syntax::ast::Program>,
@@ -811,6 +824,7 @@ fn build_module_cache_entry(
             globals: Vec::new(),
             string_data: Vec::new(),
         },
+        ModuleIrSegments::empty(),
         collect_import_modules(program.as_ref()),
     )
 }
@@ -917,6 +931,40 @@ impl Drop for IncrementalLowerTracker {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    static INCREMENTAL_MODULE_SEGMENT_LOWER_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static INCREMENTAL_MODULE_SEGMENT_LOWER_TRACKING_ENABLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+struct IncrementalModuleSegmentLowerTracker;
+
+#[cfg(test)]
+impl IncrementalModuleSegmentLowerTracker {
+    fn new() -> Self {
+        INCREMENTAL_MODULE_SEGMENT_LOWER_TRACKING_ENABLED.with(|enabled| enabled.set(true));
+        INCREMENTAL_MODULE_SEGMENT_LOWER_COUNT.with(|count| count.set(0));
+        Self
+    }
+
+    fn reset(&self) {
+        INCREMENTAL_MODULE_SEGMENT_LOWER_COUNT.with(|count| count.set(0));
+    }
+
+    fn count(&self) -> usize {
+        INCREMENTAL_MODULE_SEGMENT_LOWER_COUNT.with(|count| count.get())
+    }
+}
+
+#[cfg(test)]
+impl Drop for IncrementalModuleSegmentLowerTracker {
+    fn drop(&mut self) {
+        INCREMENTAL_MODULE_SEGMENT_LOWER_TRACKING_ENABLED.with(|enabled| enabled.set(false));
+        INCREMENTAL_MODULE_SEGMENT_LOWER_COUNT.with(|count| count.set(0));
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
 enum MultiFileLoweringMode {
@@ -924,23 +972,26 @@ enum MultiFileLoweringMode {
     Modular,
 }
 
-fn push_module_segment(
-    modules: &mut Vec<Module>,
+fn module_has_content(module: &Module) -> bool {
+    !module.functions.is_empty()
+        || !module.gc_types.is_empty()
+        || !module.imports.is_empty()
+        || !module.globals.is_empty()
+        || !module.string_data.is_empty()
+}
+
+fn build_segment_module(
     functions: Vec<Function>,
     gc_types: Vec<GcTypeDef>,
     string_data: Vec<(String, Vec<u8>)>,
-) {
-    if functions.is_empty() && gc_types.is_empty() && string_data.is_empty() {
-        return;
-    }
-
-    modules.push(Module {
+) -> Module {
+    Module {
         functions,
         gc_types,
         imports: Vec::new(),
         globals: Vec::new(),
         string_data,
-    });
+    }
 }
 
 fn link_modules_preserving_indices(modules: &[Module]) -> Module {
@@ -974,77 +1025,191 @@ fn lower_multi_file_merged(
     lower_ctx.lower_program(&merged_program, all_type_results)
 }
 
-fn lower_multi_file_modular(
+fn prime_cached_string_data(lower_ctx: &mut lower::Lower, string_data: &[(String, Vec<u8>)]) {
+    for (label, bytes) in string_data {
+        lower_ctx.string_data.push((label.clone(), bytes.clone()));
+        lower_ctx.string_offset += bytes.len() as u32;
+    }
+}
+
+fn prime_cached_lifted(lower_ctx: &mut lower::Lower, module: &Module) {
+    lower_ctx.lambda_counter += module.functions.len() as u32;
+    lower_ctx.lifted_functions.extend(module.functions.clone());
+}
+
+fn link_module_ir_segments(segments: &[ModuleIrSegments]) -> Module {
+    let mut modules = Vec::new();
+
+    for segment in segments {
+        if module_has_content(segment.defns()) {
+            modules.push(segment.defns().clone());
+        }
+    }
+    for segment in segments {
+        if module_has_content(segment.accessors()) {
+            modules.push(segment.accessors().clone());
+        }
+    }
+    for segment in segments {
+        if module_has_content(segment.trait_impls()) {
+            modules.push(segment.trait_impls().clone());
+        }
+    }
+    for segment in segments {
+        if module_has_content(segment.constraints()) {
+            modules.push(segment.constraints().clone());
+        }
+    }
+    for segment in segments {
+        if module_has_content(segment.ctors()) {
+            modules.push(segment.ctors().clone());
+        }
+    }
+    for segment in segments {
+        if module_has_content(segment.defn_lifted()) {
+            modules.push(segment.defn_lifted().clone());
+        }
+    }
+    for segment in segments {
+        if module_has_content(segment.trait_impl_lifted()) {
+            modules.push(segment.trait_impl_lifted().clone());
+        }
+    }
+
+    link_modules_preserving_indices(&modules)
+}
+
+struct ModularLoweringResult {
+    final_module: Module,
+    segments: Vec<ModuleIrSegments>,
+}
+
+fn lower_multi_file_modular_with_segments(
     module_programs: &[lsharp_syntax::ast::Program],
     all_decls: &[lsharp_syntax::ast::Decl],
     all_type_results: &[(String, lsharp_types::types::TypeScheme)],
-) -> Result<Module, lower::LowerError> {
+    reusable_segments: &[Option<ModuleIrSegments>],
+) -> Result<ModularLoweringResult, lower::LowerError> {
     let merged_program = lsharp_syntax::ast::Program {
         decls: all_decls.to_vec(),
     };
     let mut lower_ctx = lower::Lower::new();
     lower_ctx.prepare_program_state(&merged_program, all_type_results);
 
-    let mut modules = Vec::new();
+    let mut segments = vec![ModuleIrSegments::empty(); module_programs.len()];
 
-    for program in module_programs {
+    for (idx, program) in module_programs.iter().enumerate() {
+        if let Some(cached) = reusable_segments
+            .get(idx)
+            .and_then(|segment| segment.clone())
+        {
+            prime_cached_string_data(&mut lower_ctx, &cached.defns().string_data);
+            prime_cached_lifted(&mut lower_ctx, cached.defn_lifted());
+            segments[idx].set_defns(cached.defns().clone());
+            segments[idx].set_defn_lifted(cached.defn_lifted().clone());
+            continue;
+        }
+
         let gc_types = lower_ctx.gc_types_for_program(program);
         let string_start = lower_ctx.string_data.len();
+        let lifted_start = lower_ctx.lifted_functions.len();
         let functions = lower_ctx.lower_defn_functions(program)?;
-        push_module_segment(
-            &mut modules,
-            functions,
-            gc_types,
-            lower_ctx.clone_string_data_from(string_start),
-        );
+        let string_data = lower_ctx.clone_string_data_from(string_start);
+        let lifted = lower_ctx.lifted_functions[lifted_start..].to_vec();
+        segments[idx].set_defns(build_segment_module(functions, gc_types, string_data));
+        segments[idx].set_defn_lifted(build_segment_module(lifted, Vec::new(), Vec::new()));
     }
 
-    for program in module_programs {
-        push_module_segment(
-            &mut modules,
+    for (idx, program) in module_programs.iter().enumerate() {
+        if let Some(cached) = reusable_segments
+            .get(idx)
+            .and_then(|segment| segment.clone())
+        {
+            segments[idx].set_accessors(cached.accessors().clone());
+            continue;
+        }
+
+        segments[idx].set_accessors(build_segment_module(
             lower_ctx.lower_field_accessors(program),
             Vec::new(),
             Vec::new(),
-        );
+        ));
     }
 
-    for program in module_programs {
+    for (idx, program) in module_programs.iter().enumerate() {
+        if let Some(cached) = reusable_segments
+            .get(idx)
+            .and_then(|segment| segment.clone())
+        {
+            prime_cached_string_data(&mut lower_ctx, &cached.trait_impls().string_data);
+            prime_cached_lifted(&mut lower_ctx, cached.trait_impl_lifted());
+            segments[idx].set_trait_impls(cached.trait_impls().clone());
+            segments[idx].set_trait_impl_lifted(cached.trait_impl_lifted().clone());
+            continue;
+        }
+
         let string_start = lower_ctx.string_data.len();
+        let lifted_start = lower_ctx.lifted_functions.len();
         let functions = lower_ctx.lower_trait_impl_functions(program)?;
-        push_module_segment(
-            &mut modules,
-            functions,
-            Vec::new(),
-            lower_ctx.clone_string_data_from(string_start),
-        );
+        let string_data = lower_ctx.clone_string_data_from(string_start);
+        let lifted = lower_ctx.lifted_functions[lifted_start..].to_vec();
+        segments[idx].set_trait_impls(build_segment_module(functions, Vec::new(), string_data));
+        segments[idx].set_trait_impl_lifted(build_segment_module(lifted, Vec::new(), Vec::new()));
     }
 
-    for program in module_programs {
-        push_module_segment(
-            &mut modules,
+    for (idx, program) in module_programs.iter().enumerate() {
+        if let Some(cached) = reusable_segments
+            .get(idx)
+            .and_then(|segment| segment.clone())
+        {
+            lower_ctx.late_func_idx += cached.constraints().functions.len() as u32;
+            segments[idx].set_constraints(cached.constraints().clone());
+            continue;
+        }
+
+        segments[idx].set_constraints(build_segment_module(
             lower_ctx.lower_constraint_functions(program),
             Vec::new(),
             Vec::new(),
-        );
+        ));
     }
 
-    for program in module_programs {
-        push_module_segment(
-            &mut modules,
+    for (idx, program) in module_programs.iter().enumerate() {
+        if let Some(cached) = reusable_segments
+            .get(idx)
+            .and_then(|segment| segment.clone())
+        {
+            segments[idx].set_ctors(cached.ctors().clone());
+            continue;
+        }
+
+        segments[idx].set_ctors(build_segment_module(
             lower_ctx.lower_adt_constructors(program),
             Vec::new(),
             Vec::new(),
-        );
+        ));
     }
 
-    push_module_segment(
-        &mut modules,
-        lower_ctx.take_lifted_functions(),
-        Vec::new(),
-        Vec::new(),
-    );
+    let final_module = link_module_ir_segments(&segments);
+    Ok(ModularLoweringResult {
+        final_module,
+        segments,
+    })
+}
 
-    Ok(link_modules_preserving_indices(&modules))
+fn lower_multi_file_modular(
+    module_programs: &[lsharp_syntax::ast::Program],
+    all_decls: &[lsharp_syntax::ast::Decl],
+    all_type_results: &[(String, lsharp_types::types::TypeScheme)],
+) -> Result<Module, lower::LowerError> {
+    let reusable_segments = vec![None; module_programs.len()];
+    Ok(lower_multi_file_modular_with_segments(
+        module_programs,
+        all_decls,
+        all_type_results,
+        &reusable_segments,
+    )?
+    .final_module)
 }
 
 fn compile_multi_file_with_mode(
@@ -1260,6 +1425,7 @@ pub fn compile_multi_file_incremental(
     let mut cache_entries: Vec<(String, ModuleCacheEntry)> = Vec::new();
     let mut surface_changed_modules: HashSet<String> = HashSet::new();
     let mut module_programs: Vec<lsharp_syntax::ast::Program> = Vec::new();
+    let mut segment_reuse_candidates: Vec<bool> = Vec::new();
 
     for (mod_name, mod_path, source, fingerprint) in module_inputs {
         let clean_hit = cache
@@ -1278,6 +1444,9 @@ pub fn compile_multi_file_incremental(
             .any(|dep_name| surface_changed_modules.contains(dep_name));
         let formatter_trio_needs_batch = is_formatter_module
             && (formatter_trio_dirty || direct_dep_surface_changed || !clean_hit);
+        let segment_reuse_candidate = clean_hit
+            && !direct_dep_surface_changed
+            && (!is_formatter_module || !formatter_trio_dirty);
         if formatter_trio_needs_batch && formatter_trio_batch.is_none() {
             formatter_trio_batch = try_infer_formatter_trio_batch(&sorted_files);
         }
@@ -1345,14 +1514,43 @@ pub fn compile_multi_file_incremental(
         let entry = build_module_cache_entry(fingerprint, &program, type_surface.clone());
         cache_entries.push((mod_name.clone(), entry));
         per_module_type_results.insert(mod_name.clone(), type_surface);
+        segment_reuse_candidates.push(segment_reuse_candidate);
     }
 
-    note_incremental_lower();
-    let final_module = lower_multi_file_modular(&module_programs, &all_decls, &all_type_results)
-        .map_err(|e| format!("IR 変換エラー: {e}"))?;
+    let mut reusable_segments = vec![None; module_programs.len()];
+    let mut reusable_prefix_len = 0usize;
+    for (idx, (mod_name, _)) in cache_entries.iter().enumerate() {
+        if !segment_reuse_candidates[idx] {
+            break;
+        }
+        let Some(cached_entry) = cache.get(mod_name) else {
+            break;
+        };
+        if cached_entry.ir_segments().is_empty() {
+            break;
+        }
+        reusable_segments[idx] = Some(cached_entry.ir_segments().clone());
+        reusable_prefix_len += 1;
+    }
 
-    for (mod_name, mut entry) in cache_entries {
+    note_incremental_module_segment_lower_by(
+        module_programs.len().saturating_sub(reusable_prefix_len),
+    );
+    note_incremental_lower();
+    let lowering = lower_multi_file_modular_with_segments(
+        &module_programs,
+        &all_decls,
+        &all_type_results,
+        &reusable_segments,
+    )
+    .map_err(|e| format!("IR 変換エラー: {e}"))?;
+    let final_module = lowering.final_module;
+
+    for ((mod_name, mut entry), segments) in
+        cache_entries.into_iter().zip(lowering.segments.into_iter())
+    {
         entry.set_ir(final_module.clone());
+        entry.set_ir_segments(segments);
         cache.insert_module(mod_name, entry);
     }
 
@@ -2015,6 +2213,71 @@ mod incremental_compile_tests {
             tracker.count(),
             0,
             "dirty set が空なら cached IR を再利用して lowering をスキップするべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_incremental_reuses_prefix_module_ir_segments_before_first_dirty_module()
+     {
+        let dir = std::env::temp_dir().join("lsharp_compile_multi_file_incremental_module_ir_hit");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("Base.ls"),
+            "(module Base)\n(defn base-val [] 10)\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Mid.ls"),
+            "(module Mid)\n(import Base)\n(defn mid-val [] (+ (base-val) 20))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Mid)\n(defn main [] (+ (mid-val) 1))\n",
+        )
+        .unwrap();
+
+        let mut cache = CompilationCache::new();
+        compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+        assert!(
+            !cache
+                .get("Base")
+                .expect("Base module should be cached")
+                .ir_segments()
+                .is_empty(),
+            "warm cache 後は prefix module の IR segment が保存されるべき"
+        );
+
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Mid)\n(defn main [] (+ (mid-val) 2))\n",
+        )
+        .unwrap();
+
+        let tracker = IncrementalModuleSegmentLowerTracker::new();
+        tracker.reset();
+        let incremental = compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+        let full = compile_multi_file(&dir.join("Main.ls")).unwrap();
+
+        assert_eq!(
+            tracker.count(),
+            1,
+            "tail module だけ dirty な場合は clean prefix module の IR segment を再利用し、fresh lower は dirty suffix のみで済むべき"
+        );
+        assert_eq!(
+            incremental.dump(),
+            full.dump(),
+            "prefix IR segment reuse 後も final linked IR は full compile と一致するべき"
+        );
+        assert_eq!(
+            incremental.string_data, full.string_data,
+            "prefix IR segment reuse 後も string_data は full compile と一致するべき"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();
