@@ -1641,6 +1641,71 @@ fn test_closure_call_indirect_ir() {
     );
 }
 
+#[test]
+fn test_lower_closure_call_roots_closure_receiver() {
+    let module = lower(
+        r#"
+        (defn make-inc [] (fn [x] (+ x 1)))
+        (defn apply [f x] (f x))
+        (defn main [] (print (apply (make-inc) 41)))
+        "#,
+    );
+    let apply_fn = module.functions.iter().find(|f| f.name == "apply").unwrap();
+    let root_push_positions = call_positions(&apply_fn.body, 14);
+    let call_indirect_pos = apply_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::CallIndirect(_)))
+        .unwrap();
+
+    assert_eq!(
+        root_push_positions.len(),
+        1,
+        "closure call は receiver だけ 1 回 root_push するべき: {:?}",
+        apply_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&apply_fn.body, 15),
+        1,
+        "closure call は receiver に対応する root_pop を 1 回使うべき: {:?}",
+        apply_fn.body
+    );
+    assert!(
+        root_push_positions[0] < call_indirect_pos,
+        "closure receiver は call_indirect 前に root_push で保護されるべき: {:?}",
+        apply_fn.body
+    );
+}
+
+#[test]
+fn test_lower_closure_call_roots_receiver_before_string_arg_eval() {
+    let module = lower(
+        r#"
+        (defn make-show [] (fn [s] (string-length s)))
+        (defn apply [f s] (f s))
+        (defn main [] (print (apply (make-show) "hello")))
+        "#,
+    );
+    let apply_fn = module.functions.iter().find(|f| f.name == "apply").unwrap();
+    let root_push_positions = call_positions(&apply_fn.body, 14);
+    let string_arg_get_pos = apply_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::LocalGet(idx) if *idx == 1))
+        .unwrap();
+
+    assert!(
+        !root_push_positions.is_empty(),
+        "closure call は receiver を root_push で保護すべき: {:?}",
+        apply_fn.body
+    );
+    assert!(
+        root_push_positions[0] < string_arg_get_pos,
+        "closure receiver は string 引数の評価より前に root_push で保護されるべき: {:?}",
+        apply_fn.body
+    );
+}
+
 // --- クロージャ変換テスト ---
 
 #[test]

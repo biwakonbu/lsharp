@@ -1272,9 +1272,24 @@ impl Lower {
                             // 統一呼び出し規約: (元引数..., closure_ptr) -> result
                             // call_indirect のスタック: [arg0, ..., argN, closure_ptr, table_idx]
 
+                            let mut rooted_arg_count = 0usize;
+                            self.emit_root_push_local(ctx, local_idx, "_closure_call_root_slot")?;
+                            rooted_arg_count += 1;
+
                             // 1. 元引数を評価してスタックに積む
-                            for arg in args {
-                                self.lower_expr(ctx, arg)?;
+                            for (arg_idx, arg) in args.iter().enumerate() {
+                                if self.should_root_user_call_argument(arg) {
+                                    let value_local = self.lower_expr_to_rooted_local(
+                                        ctx,
+                                        arg,
+                                        &format!("_closure_call_arg{arg_idx}_value"),
+                                        &format!("_closure_call_arg{arg_idx}_root_slot"),
+                                    )?;
+                                    ctx.emit(Instruction::LocalGet(value_local));
+                                    rooted_arg_count += 1;
+                                } else {
+                                    self.lower_expr(ctx, arg)?;
+                                }
                             }
                             // 2. クロージャポインタをスタックに積む（リフト関数の最後のパラメータ）
                             ctx.emit(Instruction::LocalGet(local_idx));
@@ -1286,6 +1301,9 @@ impl Lower {
                             // 4. call_indirect: 型は (i64 * (args.len() + 1)) -> i64
                             let call_type_id = args.len() as u32 + 1; // 元引数 + closure_ptr
                             ctx.emit(Instruction::CallIndirect(call_type_id));
+                            for _ in 0..rooted_arg_count {
+                                self.emit_root_pop_drop(ctx)?;
+                            }
                         } else {
                             return Err(LowerError::UndefinedFunction { name: name.clone() });
                         }
