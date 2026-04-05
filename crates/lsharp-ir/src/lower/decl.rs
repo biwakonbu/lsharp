@@ -13,6 +13,18 @@ use super::{
 };
 
 impl Lower {
+    fn infer_uniform_type_name(
+        &self,
+        mut type_names: impl Iterator<Item = Option<String>>,
+    ) -> Option<String> {
+        let first = type_names.next().flatten()?;
+        if type_names.all(|type_name| type_name.as_deref() == Some(first.as_str())) {
+            Some(first)
+        } else {
+            None
+        }
+    }
+
     fn infer_builtin_return_type_name(&self, func_name: &str) -> Option<String> {
         match func_name {
             "string-concat" | "substring" | "int-to-string" | "read-file" | "command-line-arg" => {
@@ -108,13 +120,15 @@ impl Lower {
             Expr::Ann(_, _, type_expr) => type_expr_to_name(type_expr),
             // レコードリテラルの場合、型名が明示的
             Expr::RecordLit(_, type_name, _) => Some(type_name.clone()),
-            Expr::If(_, _, then_expr, else_expr) => {
-                let then_type = self.infer_expr_type_name(then_expr);
-                let else_type = self.infer_expr_type_name(else_expr);
-                match (then_type, else_type) {
-                    (Some(then_type), Some(else_type)) if then_type == else_type => Some(then_type),
-                    _ => None,
-                }
+            Expr::If(_, _, then_expr, else_expr) => self.infer_uniform_type_name(
+                [
+                    self.infer_expr_type_name(then_expr),
+                    self.infer_expr_type_name(else_expr),
+                ]
+                .into_iter(),
+            ),
+            Expr::Match(_, _, arms) => {
+                self.infer_uniform_type_name(arms.iter().map(|arm| self.infer_expr_type_name(&arm.body)))
             }
             Expr::Do(_, exprs) => exprs.last().and_then(|expr| self.infer_expr_type_name(expr)),
             // 関数呼び出しの場合、戻り値型を推定
@@ -161,14 +175,17 @@ impl Lower {
             Expr::Ann(_, _, type_expr) => type_expr_to_name(type_expr),
             // レコードリテラルの場合、型名が明示的
             Expr::RecordLit(_, type_name, _) => Some(type_name.clone()),
-            Expr::If(_, _, then_expr, else_expr) => {
-                let then_type = self.infer_expr_type_name_with_ctx(ctx, then_expr);
-                let else_type = self.infer_expr_type_name_with_ctx(ctx, else_expr);
-                match (then_type, else_type) {
-                    (Some(then_type), Some(else_type)) if then_type == else_type => Some(then_type),
-                    _ => None,
-                }
-            }
+            Expr::If(_, _, then_expr, else_expr) => self.infer_uniform_type_name(
+                [
+                    self.infer_expr_type_name_with_ctx(ctx, then_expr),
+                    self.infer_expr_type_name_with_ctx(ctx, else_expr),
+                ]
+                .into_iter(),
+            ),
+            Expr::Match(_, _, arms) => self.infer_uniform_type_name(
+                arms.iter()
+                    .map(|arm| self.infer_expr_type_name_with_ctx(ctx, &arm.body)),
+            ),
             Expr::Do(_, exprs) => exprs
                 .last()
                 .and_then(|expr| self.infer_expr_type_name_with_ctx(ctx, expr)),
