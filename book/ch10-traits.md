@@ -67,7 +67,15 @@ pub struct ImplInfo {
 ```lisp
 (impl (Show Point)
   (defn show [(: self Point)] : String
-    (str "Point(" (Point.x self) ", " (Point.y self) ")")))
+    (string-concat
+      "Point("
+      (string-concat
+        (int-to-string (Point.x self))
+        (string-concat
+          ", "
+          (string-concat
+            (int-to-string (Point.y self))
+            ")")))))
 
 (impl (Eq Point)
   (defn eq [(: self Point) (: other Point)] : Bool

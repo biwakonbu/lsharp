@@ -633,17 +633,6 @@ impl Infer {
             },
         );
 
-        // str: forall a. a -> String
-        let b = self.var_gen.fresh_id();
-        env.insert(
-            "str".to_string(),
-            TypeScheme {
-                vars: vec![b],
-                constraints: Vec::new(),
-                ty: Type::Fun(vec![Type::Var(b)], Box::new(Type::string())),
-            },
-        );
-
         // __alloc: Int -> Int (メモリアロケーション: サイズ -> アドレス)
         env.insert(
             "__alloc".to_string(),
@@ -2623,6 +2612,15 @@ mod tests {
     }
 
     #[test]
+    fn test_str_is_not_treated_as_builtin() {
+        let result = infer("(defn bad [] (str 42))");
+        match result {
+            Err(TypeError::UndefinedVar { name, .. }) => assert_eq!(name, "str"),
+            other => panic!("expected UndefinedVar for str, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn test_adt_basic() {
         let results = infer(
             "(type (Option a) (Some a) None)
@@ -2795,7 +2793,7 @@ mod tests {
     fn test_impl_registration() {
         let results = infer(
             "(trait (Show a) (defn show [self] : String))
-             (impl (Show Int) (defn show [self] (str self)))
+             (impl (Show Int) (defn show [self] (int-to-string self)))
              (defn main [] (print 42))",
         );
         assert!(results.is_ok());
