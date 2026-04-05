@@ -344,6 +344,145 @@ fn test_lower_map_insert_does_not_root_int_value_across_loop_backedge() {
 }
 
 #[test]
+fn test_lower_map_insert_roots_heap_key_across_loop_backedge() {
+    let module = lower(r#"(defn main [] (map-insert (map-new) (vector-new 0) 1))"#);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let root_push_positions = call_positions(&main_fn.body, 14);
+    let loop_pos = main_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::Loop(_) | Instruction::LoopEmpty))
+        .unwrap();
+
+    assert_eq!(
+        root_push_positions.len(),
+        2,
+        "map-insert は loop backedge をまたぐ heap key も root_push するべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        2,
+        "map-insert は receiver/key に対応する root_pop を 2 回使うべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions[1] < loop_pos,
+        "map-insert の heap key は loop へ入る前に root_push で保護されるべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_map_get_roots_heap_key_across_loop_backedge() {
+    let module = lower(r#"(defn main [] (map-get (map-new) (vector-new 0)))"#);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let root_push_positions = call_positions(&main_fn.body, 14);
+    let loop_pos = main_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::Loop(_) | Instruction::LoopEmpty))
+        .unwrap();
+
+    assert_eq!(
+        root_push_positions.len(),
+        2,
+        "map-get は loop backedge をまたぐ heap key も root_push するべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        2,
+        "map-get は receiver/key に対応する root_pop を 2 回使うべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions[1] < loop_pos,
+        "map-get の heap key は loop へ入る前に root_push で保護されるべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_map_contains_roots_heap_key_across_loop_backedge() {
+    let module = lower(r#"(defn main [] (map-contains? (map-new) (vector-new 0)))"#);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let root_push_positions = call_positions(&main_fn.body, 14);
+    let loop_pos = main_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::Loop(_) | Instruction::LoopEmpty))
+        .unwrap();
+
+    assert_eq!(
+        root_push_positions.len(),
+        2,
+        "map-contains? は loop backedge をまたぐ heap key も root_push するべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        2,
+        "map-contains? は receiver/key に対応する root_pop を 2 回使うべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions[1] < loop_pos,
+        "map-contains? の heap key は loop へ入る前に root_push で保護されるべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_map_remove_roots_heap_key_across_loop_backedge() {
+    let module = lower(r#"(defn main [] (map-remove (map-new) (vector-new 0)))"#);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let root_push_positions = call_positions(&main_fn.body, 14);
+    let loop_pos = main_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::Loop(_) | Instruction::LoopEmpty))
+        .unwrap();
+
+    assert_eq!(
+        root_push_positions.len(),
+        2,
+        "map-remove は loop backedge をまたぐ heap key も root_push するべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        2,
+        "map-remove は receiver/key に対応する root_pop を 2 回使うべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions[1] < loop_pos,
+        "map-remove の heap key は loop へ入る前に root_push で保護されるべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_map_get_does_not_root_int_key_across_loop_backedge() {
+    let module = lower(r#"(defn main [] (map-get (map-new) 1))"#);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+
+    assert_eq!(
+        count_call_instr(&main_fn.body, 14),
+        1,
+        "map-get の Int key は receiver 以外を root_push しないべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        1,
+        "map-get の Int key は receiver 分だけ root_pop すべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
 fn test_lower_user_call_auto_roots_string_argument() {
     let module = lower(
         r#"

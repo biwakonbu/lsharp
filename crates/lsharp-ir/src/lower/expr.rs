@@ -849,11 +849,13 @@ impl Lower {
                             ctx.emit(Instruction::I32WrapI64);
                             ctx.emit(Instruction::I64ExtendI32U);
                             ctx.emit(Instruction::LocalSet(addr_local));
-                            self.lower_expr(ctx, &args[1])?;
-                            // 文字列キーの場合は FNV-1a ハッシュに変換
-                            self.emit_string_key_hash(ctx, &args[1])?;
-                            let key_local = ctx.alloc_local("_mi_key".to_string());
-                            ctx.emit(Instruction::LocalSet(key_local));
+                            let (key_local, key_is_rooted) = self.lower_map_key_to_local(
+                                ctx,
+                                &args[1],
+                                "_mi_key_value",
+                                "_mi_key_root_slot",
+                                "_mi_key",
+                            )?;
                             let value_is_rooted =
                                 self.should_root_user_call_argument(ctx, &args[2]);
                             let val_local = if value_is_rooted {
@@ -946,6 +948,9 @@ impl Lower {
                             if value_is_rooted {
                                 self.emit_root_pop_drop(ctx)?;
                             }
+                            if key_is_rooted {
+                                self.emit_root_pop_drop(ctx)?;
+                            }
                             self.emit_root_pop_drop(ctx)?;
                             ctx.emit(Instruction::LocalGet(tagged_local));
                         }
@@ -965,11 +970,13 @@ impl Lower {
                             ctx.emit(Instruction::I32WrapI64);
                             ctx.emit(Instruction::I64ExtendI32U);
                             ctx.emit(Instruction::LocalSet(addr_local));
-                            self.lower_expr(ctx, &args[1])?;
-                            // 文字列キーの場合は FNV-1a ハッシュに変換
-                            self.emit_string_key_hash(ctx, &args[1])?;
-                            let key_local = ctx.alloc_local("_mg_key".to_string());
-                            ctx.emit(Instruction::LocalSet(key_local));
+                            let (key_local, key_is_rooted) = self.lower_map_key_to_local(
+                                ctx,
+                                &args[1],
+                                "_mg_key_value",
+                                "_mg_key_root_slot",
+                                "_mg_key",
+                            )?;
                             let cap_local = ctx.alloc_local("_mg_cap".to_string());
                             ctx.emit(Instruction::LocalGet(addr_local));
                             ctx.emit(Instruction::I32WrapI64);
@@ -1021,6 +1028,9 @@ impl Lower {
                             ctx.emit(Instruction::Br(0));
                             ctx.emit(Instruction::End); // loop
                             ctx.emit(Instruction::End); // block
+                            if key_is_rooted {
+                                self.emit_root_pop_drop(ctx)?;
+                            }
                             self.emit_root_pop_drop(ctx)?;
                             ctx.emit(Instruction::LocalGet(result_local));
                         }
@@ -1040,11 +1050,13 @@ impl Lower {
                             ctx.emit(Instruction::I32WrapI64);
                             ctx.emit(Instruction::I64ExtendI32U);
                             ctx.emit(Instruction::LocalSet(addr_local));
-                            self.lower_expr(ctx, &args[1])?;
-                            // 文字列キーの場合は FNV-1a ハッシュに変換
-                            self.emit_string_key_hash(ctx, &args[1])?;
-                            let key_local = ctx.alloc_local("_mc_key".to_string());
-                            ctx.emit(Instruction::LocalSet(key_local));
+                            let (key_local, key_is_rooted) = self.lower_map_key_to_local(
+                                ctx,
+                                &args[1],
+                                "_mc_key_value",
+                                "_mc_key_root_slot",
+                                "_mc_key",
+                            )?;
                             let cap_local = ctx.alloc_local("_mc_cap".to_string());
                             ctx.emit(Instruction::LocalGet(addr_local));
                             ctx.emit(Instruction::I32WrapI64);
@@ -1094,6 +1106,9 @@ impl Lower {
                             ctx.emit(Instruction::Br(0));
                             ctx.emit(Instruction::End); // loop
                             ctx.emit(Instruction::End); // block
+                            if key_is_rooted {
+                                self.emit_root_pop_drop(ctx)?;
+                            }
                             self.emit_root_pop_drop(ctx)?;
                             ctx.emit(Instruction::LocalGet(result_local));
                         }
@@ -1113,11 +1128,13 @@ impl Lower {
                             ctx.emit(Instruction::I32WrapI64);
                             ctx.emit(Instruction::I64ExtendI32U);
                             ctx.emit(Instruction::LocalSet(addr_local));
-                            self.lower_expr(ctx, &args[1])?;
-                            // 文字列キーの場合は FNV-1a ハッシュに変換
-                            self.emit_string_key_hash(ctx, &args[1])?;
-                            let key_local = ctx.alloc_local("_mr_key".to_string());
-                            ctx.emit(Instruction::LocalSet(key_local));
+                            let (key_local, key_is_rooted) = self.lower_map_key_to_local(
+                                ctx,
+                                &args[1],
+                                "_mr_key_value",
+                                "_mr_key_root_slot",
+                                "_mr_key",
+                            )?;
                             let cap_local = ctx.alloc_local("_mr_cap".to_string());
                             ctx.emit(Instruction::LocalGet(addr_local));
                             ctx.emit(Instruction::I32WrapI64);
@@ -1180,6 +1197,9 @@ impl Lower {
                             ctx.emit(Instruction::Br(0));
                             ctx.emit(Instruction::End); // loop
                             ctx.emit(Instruction::End); // block
+                            if key_is_rooted {
+                                self.emit_root_pop_drop(ctx)?;
+                            }
                             self.emit_root_pop_drop(ctx)?;
                             ctx.emit(Instruction::LocalGet(tagged_local));
                         }
@@ -1767,6 +1787,32 @@ impl Lower {
             ctx.emit(Instruction::Call(hash_idx));
         }
         Ok(())
+    }
+
+    fn lower_map_key_to_local(
+        &mut self,
+        ctx: &mut FuncCtx,
+        key_expr: &Expr,
+        value_name: &str,
+        slot_name: &str,
+        key_local_name: &str,
+    ) -> Result<(u32, bool), LowerError> {
+        let key_is_rooted = self.should_root_user_call_argument(ctx, key_expr);
+        if key_is_rooted {
+            let key_value_local =
+                self.lower_expr_to_rooted_local(ctx, key_expr, value_name, slot_name)?;
+            ctx.emit(Instruction::LocalGet(key_value_local));
+            self.emit_string_key_hash(ctx, key_expr)?;
+            let key_local = ctx.alloc_local(key_local_name.to_string());
+            ctx.emit(Instruction::LocalSet(key_local));
+            Ok((key_local, true))
+        } else {
+            self.lower_expr(ctx, key_expr)?;
+            self.emit_string_key_hash(ctx, key_expr)?;
+            let key_local = ctx.alloc_local(key_local_name.to_string());
+            ctx.emit(Instruction::LocalSet(key_local));
+            Ok((key_local, false))
+        }
     }
 
     fn emit_root_push_local(
