@@ -186,6 +186,19 @@ fn test_lower_vector_push_auto_roots_realloc_inputs() {
 }
 
 #[test]
+fn test_lower_vector_push_balances_root_push_and_pop() {
+    let module = lower(r#"(defn main [] (vector-push (vector-new 0) "x"))"#);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+
+    assert_eq!(
+        count_call_instr(&main_fn.body, 14),
+        count_call_instr(&main_fn.body, 15),
+        "vector-push は receiver/value の root_push と root_pop を釣り合わせるべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
 fn test_lower_string_concat_roots_lhs_before_lowering_rhs() {
     let module = lower(r#"(defn main [] (string-concat "a" "b"))"#);
     let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
@@ -453,6 +466,96 @@ fn test_lower_self_recursive_user_call_preserves_self_tco() {
         0,
         "自己末尾再帰は direct Call のまま残らないべき: {:?}",
         append_loop.body
+    );
+}
+
+#[test]
+fn test_lower_self_recursive_heap_param_roots_loop_entry_and_updates_slot() {
+    let module = lower(
+        r#"
+        (defn append-loop [dst idx count]
+          (if (>= idx count)
+            dst
+            (append-loop (vector-push dst idx) (+ idx 1) count)))
+        (defn main [] 0)
+        "#,
+    );
+    let append_loop = module
+        .functions
+        .iter()
+        .find(|func| func.name == "append-loop")
+        .unwrap();
+    let loop_pos = append_loop
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::Loop(_) | Instruction::LoopEmpty))
+        .unwrap();
+    let root_push_positions = call_positions(&append_loop.body, 14);
+    let root_set_positions = call_positions(&append_loop.body, 16);
+    let backedge_pos = append_loop
+        .body
+        .iter()
+        .rposition(|instr| matches!(instr, Instruction::Br(_)))
+        .unwrap();
+    assert!(
+        !root_push_positions.is_empty(),
+        "heap param を持つ self-TCO loop は root_push を使うべき: {:?}",
+        append_loop.body
+    );
+    assert!(
+        root_push_positions[0] < loop_pos,
+        "heap param は loop entry 前に root_push で保護されるべき: {:?}",
+        append_loop.body
+    );
+    assert_eq!(
+        root_set_positions.len(),
+        1,
+        "heap param を更新する self-TCO loop は 1 回 root_set するべき: {:?}",
+        append_loop.body
+    );
+    assert!(
+        root_set_positions[0] < backedge_pos,
+        "更新後の heap param は loop backedge 前に root_set で差し替えるべき: {:?}",
+        append_loop.body
+    );
+}
+
+#[test]
+fn test_lower_self_recursive_int_params_do_not_emit_root_updates() {
+    let module = lower(
+        r#"
+        (defn countdown [n]
+          (if (<= n 0)
+            0
+            (countdown (- n 1))))
+        (defn main [] 0)
+        "#,
+    );
+    let countdown = module
+        .functions
+        .iter()
+        .find(|func| func.name == "countdown")
+        .unwrap();
+
+    assert!(
+        countdown
+            .body
+            .iter()
+            .any(|instr| matches!(instr, Instruction::Loop(_) | Instruction::LoopEmpty)),
+        "Int だけの自己末尾再帰も Loop に変換されるべき: {:?}",
+        countdown.body
+    );
+    assert_eq!(
+        count_call_instr(&countdown.body, 14),
+        0,
+        "Int param だけの self-TCO loop は root_push を使わないべき: {:?}",
+        countdown.body
+    );
+    assert_eq!(
+        count_call_instr(&countdown.body, 16),
+        0,
+        "Int param だけの self-TCO loop は root_set を使わないべき: {:?}",
+        countdown.body
     );
 }
 

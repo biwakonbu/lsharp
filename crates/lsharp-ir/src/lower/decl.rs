@@ -7,7 +7,10 @@ use lsharp_types::types::Type;
 
 use crate::{Function, Instruction, IrType};
 
-use super::{FuncCtx, Lower, LowerError, type_expr_to_name, type_to_ir, type_to_name};
+use super::{
+    FuncCtx, Lower, LowerError, is_heap_like_type_name, type_expr_to_name, type_to_ir,
+    type_to_name,
+};
 
 impl Lower {
     fn infer_builtin_return_type_name(&self, func_name: &str) -> Option<String> {
@@ -449,9 +452,59 @@ impl Lower {
         // 本体を変換
         self.lower_expr(&mut ctx, body)?;
 
+        let mut self_tco_root_slots = Vec::new();
+        for (param_idx, param) in params.iter().enumerate() {
+            let type_name = inferred_param_type_names
+                .get(param_idx)
+                .cloned()
+                .flatten()
+                .or_else(|| param.ty.as_ref().and_then(type_expr_to_name));
+            if type_name
+                .as_deref()
+                .map(is_heap_like_type_name)
+                .unwrap_or(false)
+            {
+                let slot_local = ctx.alloc_local(format!("_self_tco_param{param_idx}_root_slot"));
+                self_tco_root_slots.push((param_idx as u32, slot_local));
+            }
+        }
+
         // 自己末尾呼び出し最適化 (Self TCO) を適用
         let body_instructions = if let Some(&self_idx) = self.func_indices.get(name) {
-            apply_self_tco(ctx.instructions, self_idx, ctx.param_count, result_type)
+            let root_push_idx =
+                *self
+                    .func_indices
+                    .get("root_push")
+                    .ok_or_else(|| LowerError::UndefinedFunction {
+                        name: "root_push".to_string(),
+                    })?;
+            let root_pop_idx =
+                *self
+                    .func_indices
+                    .get("root_pop")
+                    .ok_or_else(|| LowerError::UndefinedFunction {
+                        name: "root_pop".to_string(),
+                    })?;
+            let root_set_idx =
+                *self
+                    .func_indices
+                    .get("root_set")
+                    .ok_or_else(|| LowerError::UndefinedFunction {
+                        name: "root_set".to_string(),
+                    })?;
+            let root_ops = SelfTcoRootOps {
+                rooted_params: &self_tco_root_slots,
+                root_push_idx,
+                root_pop_idx,
+                root_set_idx,
+            };
+            apply_self_tco(
+                ctx.instructions,
+                self_idx,
+                ctx.param_count,
+                result_type,
+                &root_ops,
+            )
         } else {
             ctx.instructions
         };
@@ -498,11 +551,19 @@ impl Lower {
 ///
 /// 検出条件: `Call(self_idx)` の後続命令が全て `End` のみである場合を末尾呼び出しとみなす。
 /// 既存の Loop/Block 命令が含まれる関数には適用しない。
+struct SelfTcoRootOps<'a> {
+    rooted_params: &'a [(u32, u32)],
+    root_push_idx: u32,
+    root_pop_idx: u32,
+    root_set_idx: u32,
+}
+
 fn apply_self_tco(
     instructions: Vec<Instruction>,
     self_idx: u32,
     param_count: u32,
     result_type: IrType,
+    root_ops: &SelfTcoRootOps<'_>,
 ) -> Vec<Instruction> {
     // 既存のループ/ブロック命令がある場合はスキップ (安全のため)
     let has_loop_or_block = instructions.iter().any(|i| {
@@ -526,8 +587,17 @@ fn apply_self_tco(
     }
 
     // 変換: Loop(result_type) でラップし、各 Call(self) を LocalSets + Br に置換
-    let mut result =
-        Vec::with_capacity(instructions.len() + 2 + tail_calls.len() * (param_count as usize + 1));
+    let mut result = Vec::with_capacity(
+        instructions.len()
+            + 2
+            + root_ops.rooted_params.len() * 5
+            + tail_calls.len() * (param_count as usize + 1 + root_ops.rooted_params.len() * 4),
+    );
+    for (param_idx, slot_local) in root_ops.rooted_params {
+        result.push(Instruction::LocalGet(*param_idx));
+        result.push(Instruction::Call(root_ops.root_push_idx));
+        result.push(Instruction::LocalSet(*slot_local));
+    }
     result.push(Instruction::Loop(result_type));
 
     for (i, instr) in instructions.into_iter().enumerate() {
@@ -537,6 +607,12 @@ fn apply_self_tco(
             for p in (0..param_count).rev() {
                 result.push(Instruction::LocalSet(p));
             }
+            for (param_idx, slot_local) in root_ops.rooted_params {
+                result.push(Instruction::LocalGet(*slot_local));
+                result.push(Instruction::LocalGet(*param_idx));
+                result.push(Instruction::Call(root_ops.root_set_idx));
+                result.push(Instruction::Drop);
+            }
             result.push(Instruction::Br(depth));
             // Call 命令自体は出力しない (replace)
         } else {
@@ -545,6 +621,10 @@ fn apply_self_tco(
     }
 
     result.push(Instruction::End); // Loop を閉じる
+    for _ in root_ops.rooted_params {
+        result.push(Instruction::Call(root_ops.root_pop_idx));
+        result.push(Instruction::Drop);
+    }
     result
 }
 

@@ -6,7 +6,7 @@ use lsharp_syntax::ast::*;
 
 use crate::{Function, Instruction, IrType, closure};
 
-use super::{FuncCtx, Lower, LowerError, is_builtin_binop};
+use super::{FuncCtx, Lower, LowerError, is_builtin_binop, is_heap_like_type_name};
 
 impl Lower {
     /// 式を IR 命令に変換（スタックマシン方式）
@@ -731,7 +731,6 @@ impl Lower {
                                 ctx.emit(Instruction::I32Add);
                                 ctx.emit(Instruction::LocalGet(val_local));
                                 ctx.emit(Instruction::I64Store { offset: 0 });
-                                self.emit_root_pop_drop(ctx)?;
                                 self.emit_root_pop_drop(ctx)?;
 
                                 // 新しいタグ付きポインタを返す
@@ -1819,7 +1818,7 @@ impl Lower {
 
     fn should_root_user_call_argument(&self, ctx: &FuncCtx, expr: &Expr) -> bool {
         self.infer_expr_type_name_with_ctx(ctx, expr)
-            .map(|type_name| !matches!(type_name.as_str(), "Int" | "Float" | "Bool" | "Unit"))
+            .map(|type_name| is_heap_like_type_name(&type_name))
             .unwrap_or(false)
     }
 }

@@ -561,6 +561,10 @@ pub(crate) fn type_expr_to_name(ty: &TypeExpr) -> Option<String> {
     }
 }
 
+pub(crate) fn is_heap_like_type_name(type_name: &str) -> bool {
+    !matches!(type_name, "Int" | "Float" | "Bool" | "Unit")
+}
+
 // === ヒープオブジェクトタグ定数 ===
 
 /// ヒープオブジェクトタグ: 文字列
