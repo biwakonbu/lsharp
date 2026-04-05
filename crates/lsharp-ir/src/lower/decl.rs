@@ -62,6 +62,10 @@ impl Lower {
             Expr::Ann(_, _, type_expr) => type_expr_to_name(type_expr),
             // レコードリテラルの場合、型名が明示的
             Expr::RecordLit(_, type_name, _) => Some(type_name.clone()),
+            Expr::RecordUpdate(_, base, _) => {
+                self.infer_expr_type_name_with_locals(local_type_names, base)
+            }
+            Expr::Lambda(_, _, _) => Some("Closure".to_string()),
             Expr::If(_, _, then_expr, else_expr) => self.infer_uniform_type_name(
                 [
                     self.infer_expr_type_name_with_locals(local_type_names, then_expr),
@@ -103,7 +107,12 @@ impl Lower {
 
     fn infer_builtin_return_type_name(&self, func_name: &str) -> Option<String> {
         match func_name {
-            "string-concat" | "substring" | "int-to-string" | "read-file" | "command-line-arg" => {
+            "string-concat"
+            | "substring"
+            | "int-to-string"
+            | "read-file"
+            | "command-line-arg"
+            | "read-stdin" => {
                 Some("String".to_string())
             }
             "vector-new" | "vector-push" | "vector-set" => Some("Vector".to_string()),

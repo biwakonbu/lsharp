@@ -505,6 +505,75 @@ fn test_lower_user_call_auto_roots_string_argument() {
 }
 
 #[test]
+fn test_lower_user_call_auto_roots_read_stdin_argument() {
+    let module = lower(
+        r#"
+        (defn consume-string [s] (string-length s))
+        (defn main [] (consume-string (read-stdin)))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+
+    assert!(
+        count_call_instr(&main_fn.body, 14) >= 1,
+        "read-stdin 由来の string 引数を使う user call は root_push を使うべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        count_call_instr(&main_fn.body, 15) >= 1,
+        "read-stdin 由来の string 引数を使う user call は root_pop を使うべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_user_call_auto_roots_lambda_argument() {
+    let module = lower(
+        r#"
+        (defn accept-fn [f] 0)
+        (defn main [] (accept-fn (fn [x] x)))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+
+    assert!(
+        count_call_instr(&main_fn.body, 14) >= 1,
+        "lambda literal 引数を使う user call は root_push を使うべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        count_call_instr(&main_fn.body, 15) >= 1,
+        "lambda literal 引数を使う user call は root_pop を使うべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_user_call_auto_roots_record_update_argument() {
+    let module = lower(
+        r#"
+        (type Point (record (: x Int) (: y Int)))
+        (defn consume-point [p] (Point.x p))
+        (defn main []
+          (let [p {Point x 1 y 2}]
+            (consume-point {p | x 10})))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+
+    assert!(
+        count_call_instr(&main_fn.body, 14) >= 1,
+        "record update 由来の record 引数を使う user call は root_push を使うべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        count_call_instr(&main_fn.body, 15) >= 1,
+        "record update 由来の record 引数を使う user call は root_pop を使うべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
 fn test_lower_user_call_auto_roots_vector_argument() {
     let module = lower(
         r#"
@@ -2301,6 +2370,119 @@ fn test_lower_closure_call_roots_let_expr_if_string_argument() {
     assert!(
         root_push_positions[1] < call_indirect_pos,
         "if 由来値を返す let 式の string 引数は call_indirect 前に root_push で保護されるべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_closure_call_roots_read_stdin_argument() {
+    let module = lower(
+        r#"
+        (defn make-show [] (fn [s] (string-length s)))
+        (defn main []
+          (let [f (make-show)]
+            (f (read-stdin))))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let root_push_positions = call_positions(&main_fn.body, 14);
+    let call_indirect_pos = main_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::CallIndirect(_)))
+        .unwrap();
+
+    assert_eq!(
+        root_push_positions.len(),
+        2,
+        "read-stdin 由来の string 引数を使う closure call は receiver と string 引数を root_push するべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        2,
+        "read-stdin 由来の string 引数を使う closure call は 2 回 root_pop するべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions[1] < call_indirect_pos,
+        "read-stdin 由来の string 引数は call_indirect 前に root_push で保護されるべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_closure_call_roots_lambda_argument() {
+    let module = lower(
+        r#"
+        (defn make-accept [] (fn [f] 0))
+        (defn main []
+          (let [g (make-accept)]
+            (g (fn [x] x))))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let root_push_positions = call_positions(&main_fn.body, 14);
+    let call_indirect_pos = main_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::CallIndirect(_)))
+        .unwrap();
+
+    assert_eq!(
+        root_push_positions.len(),
+        2,
+        "lambda literal 引数を使う closure call は receiver と lambda 引数を root_push するべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        2,
+        "lambda literal 引数を使う closure call は 2 回 root_pop するべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions[1] < call_indirect_pos,
+        "lambda literal 引数は call_indirect 前に root_push で保護されるべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_closure_call_roots_record_update_argument() {
+    let module = lower(
+        r#"
+        (type Point (record (: x Int) (: y Int)))
+        (defn make-show [] (fn [p] (Point.x p)))
+        (defn main []
+          (let [f (make-show)
+                p {Point x 1 y 2}]
+            (f {p | x 10})))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let root_push_positions = call_positions(&main_fn.body, 14);
+    let call_indirect_pos = main_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::CallIndirect(_)))
+        .unwrap();
+
+    assert_eq!(
+        root_push_positions.len(),
+        2,
+        "record update 由来の record 引数を使う closure call は receiver と record 引数を root_push するべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        2,
+        "record update 由来の record 引数を使う closure call は 2 回 root_pop するべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions[1] < call_indirect_pos,
+        "record update 由来の record 引数は call_indirect 前に root_push で保護されるべき: {:?}",
         main_fn.body
     );
 }
