@@ -855,9 +855,21 @@ impl Lower {
                             self.emit_string_key_hash(ctx, &args[1])?;
                             let key_local = ctx.alloc_local("_mi_key".to_string());
                             ctx.emit(Instruction::LocalSet(key_local));
-                            self.lower_expr(ctx, &args[2])?;
-                            let val_local = ctx.alloc_local("_mi_val".to_string());
-                            ctx.emit(Instruction::LocalSet(val_local));
+                            let value_is_rooted =
+                                self.should_root_user_call_argument(ctx, &args[2]);
+                            let val_local = if value_is_rooted {
+                                self.lower_expr_to_rooted_local(
+                                    ctx,
+                                    &args[2],
+                                    "_mi_val",
+                                    "_mi_val_root_slot",
+                                )?
+                            } else {
+                                self.lower_expr(ctx, &args[2])?;
+                                let val_local = ctx.alloc_local("_mi_val".to_string());
+                                ctx.emit(Instruction::LocalSet(val_local));
+                                val_local
+                            };
                             let cap_local = ctx.alloc_local("_mi_cap".to_string());
                             ctx.emit(Instruction::LocalGet(addr_local));
                             ctx.emit(Instruction::I32WrapI64);
@@ -932,6 +944,9 @@ impl Lower {
                             ctx.emit(Instruction::Br(0)); // loop continue
                             ctx.emit(Instruction::End); // end loop
                             ctx.emit(Instruction::End); // end block
+                            if value_is_rooted {
+                                self.emit_root_pop_drop(ctx)?;
+                            }
                             self.emit_root_pop_drop(ctx)?;
                             ctx.emit(Instruction::LocalGet(tagged_local));
                         }

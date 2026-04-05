@@ -282,6 +282,55 @@ fn test_lower_map_insert_roots_map_before_lowering_key_expr() {
 }
 
 #[test]
+fn test_lower_map_insert_roots_heap_value_across_loop_backedge() {
+    let module = lower(r#"(defn main [] (map-insert (map-new) 1 "value"))"#);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let root_push_positions = call_positions(&main_fn.body, 14);
+    let loop_pos = main_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::Loop(_) | Instruction::LoopEmpty))
+        .unwrap();
+
+    assert_eq!(
+        root_push_positions.len(),
+        2,
+        "map-insert は loop backedge をまたぐ heap value も root_push するべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        2,
+        "map-insert は receiver/value に対応する root_pop を 2 回使うべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions[1] < loop_pos,
+        "map-insert の heap value は loop へ入る前に root_push で保護されるべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_map_insert_does_not_root_int_value_across_loop_backedge() {
+    let module = lower(r#"(defn main [] (map-insert (map-new) 1 42))"#);
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+
+    assert_eq!(
+        count_call_instr(&main_fn.body, 14),
+        1,
+        "map-insert の Int value は receiver 以外を root_push しないべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        1,
+        "map-insert の Int value は receiver 分だけ root_pop すべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
 fn test_lower_user_call_auto_roots_string_argument() {
     let module = lower(
         r#"
