@@ -87,9 +87,10 @@ fn compile_module_from_formatted_source(file: &Path, source: &str) -> miette::Re
     let type_results = infer
         .infer_program(&program)
         .map_err(|e| miette::miette!("{e}"))?;
+    let expr_type_results = infer.expr_type_results_snapshot();
     let mut lower = lsharp_ir::lower::Lower::new();
     lower
-        .lower_program(&program, &type_results)
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
         .map_err(|e| miette::miette!("{e}"))
 }
 

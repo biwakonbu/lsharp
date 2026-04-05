@@ -232,8 +232,11 @@ mod tests {
         let program = lsharp_syntax::parse(source).unwrap();
         let mut infer = Infer::new();
         let type_results = infer.infer_program(&program).unwrap();
+        let expr_type_results = infer.expr_type_results_snapshot();
         let mut lower = Lower::new();
-        let module = lower.lower_program(&program, &type_results).unwrap();
+        let module = lower
+            .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+            .unwrap();
         emit_wasm(&module).unwrap()
     }
 

@@ -159,6 +159,21 @@ struct PendingConstraint {
     span: Span,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ExprTypeKey {
+    pub scope: String,
+    pub span: Span,
+}
+
+impl ExprTypeKey {
+    pub fn new(scope: impl Into<String>, span: Span) -> Self {
+        Self {
+            scope: scope.into(),
+            span,
+        }
+    }
+}
+
 pub struct Infer {
     var_gen: TypeVarGen,
     /// レコード型の登録情報
@@ -188,6 +203,12 @@ pub struct Infer {
     computation_builders: HashMap<String, (String, String)>,
     /// 外部モジュールから注入された型環境
     external_types: HashMap<String, TypeScheme>,
+    /// top-level scope ごとの式型結果
+    expr_type_results: HashMap<ExprTypeKey, Type>,
+    /// 同じ key に異なる型が衝突した曖昧な式キー
+    ambiguous_expr_type_keys: HashSet<ExprTypeKey>,
+    /// 現在推論中の式スコープ
+    current_expr_scope: Option<String>,
 }
 
 impl Infer {
@@ -207,7 +228,14 @@ impl Infer {
             gadt_return_types: HashMap::new(),
             computation_builders: HashMap::new(),
             external_types: HashMap::new(),
+            expr_type_results: HashMap::new(),
+            ambiguous_expr_type_keys: HashSet::new(),
+            current_expr_scope: None,
         }
+    }
+
+    pub fn expr_type_results_snapshot(&self) -> HashMap<ExprTypeKey, Type> {
+        self.expr_type_results.clone()
     }
 
     /// 外部モジュールの型環境を注入
@@ -271,6 +299,10 @@ impl Infer {
         &mut self,
         program: &Program,
     ) -> Result<Vec<(String, TypeScheme)>, TypeError> {
+        self.expr_type_results.clear();
+        self.ambiguous_expr_type_keys.clear();
+        self.current_expr_scope = None;
+
         let mut env = self.builtin_env();
 
         // 外部モジュールの型環境を注入
@@ -566,8 +598,15 @@ impl Infer {
         for (index, (qualified_name, params, return_ty, body, span, placeholder_ty)) in
             defn_infos.into_iter().enumerate()
         {
-            let (subst, ty) =
-                self.infer_defn(env, &qualified_name, params, return_ty, body, span)?;
+            let (subst, ty) = self.infer_defn(
+                env,
+                &qualified_name,
+                &qualified_name,
+                params,
+                return_ty,
+                body,
+                span,
+            )?;
             // 仮登録型変数と推論結果の関数型を unify（循環参照の型を結びつける）
             let resolved_placeholder = placeholder_ty.apply_subst(&subst);
             let resolved_ty = ty.apply_subst(&subst);
@@ -1450,13 +1489,20 @@ impl Infer {
             } = method_decl
             {
                 // impl メソッドの型推論
-                let (subst, ty) =
-                    self.infer_defn(env, name, params, return_ty.as_ref(), body, *span)?;
+                let specialized_name = format!("{trait_name}::{name}${type_name}");
+                let (subst, ty) = self.infer_defn(
+                    env,
+                    name,
+                    &specialized_name,
+                    params,
+                    return_ty.as_ref(),
+                    body,
+                    *span,
+                )?;
                 let final_ty = ty.apply_subst(&subst);
 
                 // 特化された型を環境に登録
                 // TraitName::method_name$TypeName のような内部名を使用
-                let specialized_name = format!("{trait_name}::{name}${type_name}");
                 let scheme = self.generalize(env, &final_ty);
                 env.insert(specialized_name, scheme);
 
@@ -1487,6 +1533,7 @@ impl Infer {
                     let result = self.infer_defn(
                         env,
                         trait_method_name,
+                        &format!("{trait_name}::{trait_method_name}${type_name}"),
                         &default_params,
                         default_ret_ty.as_ref(),
                         &default_body,
@@ -1718,11 +1765,33 @@ impl Infer {
         }
     }
 
+    fn record_expr_type(&mut self, expr: &Expr, subst: &Substitution, ty: &Type) {
+        let Some(scope) = self.current_expr_scope.clone() else {
+            return;
+        };
+        let key = ExprTypeKey::new(scope, expr.span());
+        if self.ambiguous_expr_type_keys.contains(&key) {
+            return;
+        }
+        let final_ty = ty.apply_subst(subst);
+        match self.expr_type_results.get(&key) {
+            Some(existing) if existing != &final_ty => {
+                self.expr_type_results.remove(&key);
+                self.ambiguous_expr_type_keys.insert(key);
+            }
+            Some(_) => {}
+            None => {
+                self.expr_type_results.insert(key, final_ty);
+            }
+        }
+    }
+
     /// 関数定義の型推論
     fn infer_defn(
         &mut self,
         env: &TypeEnv,
         name: &str,
+        expr_scope: &str,
         params: &[Param],
         return_ty: Option<&TypeExpr>,
         body: &Expr,
@@ -1747,7 +1816,10 @@ impl Infer {
         }
 
         // 本体を型推論
-        let (subst, body_type) = self.infer_expr(&local_env, body)?;
+        let previous_scope = self.current_expr_scope.replace(expr_scope.to_string());
+        let body_result = self.infer_expr(&local_env, body);
+        self.current_expr_scope = previous_scope;
+        let (subst, body_type) = body_result?;
 
         // 戻り値型注釈があれば統合
         let subst = if let Some(ret_ty_expr) = return_ty {
@@ -1778,7 +1850,7 @@ impl Infer {
         env: &TypeEnv,
         expr: &Expr,
     ) -> Result<(Substitution, Type), TypeError> {
-        match expr {
+        let result = match expr {
             Expr::Lit(_, lit) => Ok((Substitution::new(), self.lit_type(lit))),
 
             Expr::Var(span, name) => {
@@ -2111,7 +2183,13 @@ impl Infer {
                     span: *span,
                 })
             }
+        };
+
+        if let Ok((subst, ty)) = &result {
+            self.record_expr_type(expr, subst, ty);
         }
+
+        result
     }
 
     /// レコードリテラルの型推論

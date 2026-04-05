@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use lsharp_syntax::ast::*;
+use lsharp_types::infer::ExprTypeKey;
 use lsharp_types::types::Type;
 
 use crate::{GcField, GcTypeDef, GcTypeKind, IrType, Module};
@@ -31,6 +32,8 @@ pub struct Lower {
     pub(crate) import_count: u32,
     /// 型推論結果
     pub(crate) type_results: HashMap<String, Type>,
+    /// 式レベルの型推論結果
+    pub(crate) expr_type_results: HashMap<ExprTypeKey, Type>,
     /// レコード型名 -> GC 型インデックス
     pub(crate) record_type_indices: HashMap<String, u32>,
     /// レコード型名 -> フィールド名リスト（順序保持）
@@ -79,6 +82,7 @@ impl Lower {
             func_indices: HashMap::new(),
             import_count: 0,
             type_results: HashMap::new(),
+            expr_type_results: HashMap::new(),
             record_type_indices: HashMap::new(),
             record_fields: HashMap::new(),
             gc_types: Vec::new(),
@@ -108,6 +112,7 @@ impl Lower {
         self.func_indices.clear();
         self.import_count = 0;
         self.type_results.clear();
+        self.expr_type_results.clear();
         self.record_type_indices.clear();
         self.record_fields.clear();
         self.gc_types.clear();
@@ -429,7 +434,18 @@ impl Lower {
         program: &Program,
         type_results: &[(String, lsharp_types::types::TypeScheme)],
     ) -> Result<Module, LowerError> {
+        let expr_type_results = HashMap::new();
+        self.lower_program_with_expr_types(program, type_results, &expr_type_results)
+    }
+
+    pub fn lower_program_with_expr_types(
+        &mut self,
+        program: &Program,
+        type_results: &[(String, lsharp_types::types::TypeScheme)],
+        expr_type_results: &HashMap<ExprTypeKey, Type>,
+    ) -> Result<Module, LowerError> {
         self.prepare_program_state(program, type_results);
+        self.expr_type_results = expr_type_results.clone();
 
         let mut functions = self.lower_defn_functions(program)?;
         functions.extend(self.lower_field_accessors(program));
@@ -460,6 +476,7 @@ impl Default for Lower {
 /// 関数変換コンテキスト
 pub(crate) struct FuncCtx {
     pub(crate) function_name: String,
+    pub(crate) type_scope_key: String,
     pub(crate) instructions: Vec<crate::Instruction>,
     pub(crate) locals_map: HashMap<String, u32>,
     pub(crate) local_type_names: HashMap<String, String>,
@@ -468,9 +485,10 @@ pub(crate) struct FuncCtx {
 }
 
 impl FuncCtx {
-    pub(crate) fn new(name: String) -> Self {
+    pub(crate) fn with_type_scope(name: String, type_scope_key: String) -> Self {
         Self {
             function_name: name,
+            type_scope_key,
             instructions: Vec::new(),
             locals_map: HashMap::new(),
             local_type_names: HashMap::new(),

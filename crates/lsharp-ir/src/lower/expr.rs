@@ -1407,7 +1407,8 @@ impl Lower {
                 // リフト先関数を構築:
                 // 統一呼び出し規約: (元パラメータ..., closure_ptr) -> result
                 // リフト関数内部で closure_ptr からキャプチャ値を読み出す
-                let mut lifted_ctx = FuncCtx::new(lambda_name.clone());
+                let mut lifted_ctx =
+                    FuncCtx::with_type_scope(lambda_name.clone(), ctx.type_scope_key.clone());
                 // 元のパラメータを登録
                 for p in params {
                     let idx = lifted_ctx.next_local;

@@ -7,9 +7,10 @@ pub fn evaluate_expression(line: &str) -> miette::Result<String> {
     let type_results = infer
         .infer_program(&program)
         .map_err(|e| miette::miette!("型エラー: {e}"))?;
+    let expr_type_results = infer.expr_type_results_snapshot();
     let mut lower = lsharp_ir::lower::Lower::new();
     let module = lower
-        .lower_program(&program, &type_results)
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
         .map_err(|e| miette::miette!("IR 変換エラー: {e}"))?;
     let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)
         .map_err(|e| miette::miette!("コード生成エラー: {e}"))?;

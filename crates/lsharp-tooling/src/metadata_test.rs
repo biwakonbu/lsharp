@@ -54,10 +54,11 @@ pub fn run_metadata_tests(file: &Path) -> miette::Result<MetadataTestRun> {
     let type_results = infer
         .infer_program(&test_program)
         .map_err(|e| miette::miette!("テストプログラムの型チェックに失敗: {e}"))?;
+    let expr_type_results = infer.expr_type_results_snapshot();
 
     let mut lower = lsharp_ir::lower::Lower::new();
     let module = lower
-        .lower_program(&test_program, &type_results)
+        .lower_program_with_expr_types(&test_program, &type_results, &expr_type_results)
         .map_err(|e| miette::miette!("テストプログラムの IR 変換に失敗: {e}"))?;
 
     let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module)

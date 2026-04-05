@@ -1,5 +1,5 @@
 /// ソースコード上のバイトオフセット範囲
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Span {
     /// 開始バイトオフセット（含む）
     pub start: usize,

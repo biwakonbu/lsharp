@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
+use lsharp_types::infer::ExprTypeKey;
 use module_graph::{FORMATTER_TRIO_DECL, FORMATTER_TRIO_EXPR, FORMATTER_TRIO_MAIN};
 use sha2::{Digest, Sha256};
 
@@ -603,6 +604,13 @@ struct ImportVisibilitySpec {
 pub(crate) struct ModuleTypeSurface {
     results: Vec<(String, lsharp_types::types::TypeScheme)>,
     hidden: HashSet<String>,
+    expr_types: HashMap<ExprTypeKey, lsharp_types::types::Type>,
+}
+
+impl ModuleTypeSurface {
+    fn export_surface_eq(&self, other: &Self) -> bool {
+        self.results == other.results && self.hidden == other.hidden
+    }
 }
 
 fn push_defn_origins_infer_order(
@@ -696,6 +704,7 @@ fn try_infer_formatter_trio_batch(
             ModuleTypeSurface {
                 results: v,
                 hidden: HashSet::new(),
+                expr_types: HashMap::new(),
             },
         );
     }
@@ -1104,12 +1113,17 @@ fn link_modules_preserving_indices(modules: &[Module]) -> Module {
 fn lower_multi_file_merged(
     all_decls: &[lsharp_syntax::ast::Decl],
     all_type_results: &[(String, lsharp_types::types::TypeScheme)],
+    all_expr_type_results: &HashMap<ExprTypeKey, lsharp_types::types::Type>,
 ) -> Result<Module, lower::LowerError> {
     let merged_program = lsharp_syntax::ast::Program {
         decls: all_decls.to_vec(),
     };
     let mut lower_ctx = lower::Lower::new();
-    lower_ctx.lower_program(&merged_program, all_type_results)
+    lower_ctx.lower_program_with_expr_types(
+        &merged_program,
+        all_type_results,
+        all_expr_type_results,
+    )
 }
 
 fn prime_cached_string_data(lower_ctx: &mut lower::Lower, string_data: &[(String, Vec<u8>)]) {
@@ -1426,6 +1440,7 @@ fn lower_multi_file_modular_with_segments(
     module_programs: &[lsharp_syntax::ast::Program],
     all_decls: &[lsharp_syntax::ast::Decl],
     all_type_results: &[(String, lsharp_types::types::TypeScheme)],
+    all_expr_type_results: &HashMap<ExprTypeKey, lsharp_types::types::Type>,
     reusable_segments: &[Option<ModuleIrSegments>],
     segment_reuse_candidates: &[bool],
 ) -> Result<ModularLoweringResult, lower::LowerError> {
@@ -1434,6 +1449,7 @@ fn lower_multi_file_modular_with_segments(
     };
     let mut lower_ctx = lower::Lower::new();
     lower_ctx.prepare_program_state(&merged_program, all_type_results);
+    lower_ctx.expr_type_results = all_expr_type_results.clone();
 
     let mut segments = vec![ModuleIrSegments::empty(); module_programs.len()];
     let cached_precomputed_shapes: Vec<Option<ModulePrecomputedShape>> = reusable_segments
@@ -1614,12 +1630,14 @@ fn lower_multi_file_modular(
     module_programs: &[lsharp_syntax::ast::Program],
     all_decls: &[lsharp_syntax::ast::Decl],
     all_type_results: &[(String, lsharp_types::types::TypeScheme)],
+    all_expr_type_results: &HashMap<ExprTypeKey, lsharp_types::types::Type>,
 ) -> Result<Module, lower::LowerError> {
     let reusable_segments = vec![None; module_programs.len()];
     let lowering = lower_multi_file_modular_with_segments(
         module_programs,
         all_decls,
         all_type_results,
+        all_expr_type_results,
         &reusable_segments,
         &vec![false; module_programs.len()],
     )?;
@@ -1651,9 +1669,10 @@ fn compile_multi_file_with_mode(
         let type_results = infer
             .infer_program(&program)
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
+        let expr_type_results = infer.expr_type_results_snapshot();
         let mut lower_ctx = lower::Lower::new();
         return lower_ctx
-            .lower_program(&program, &type_results)
+            .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
             .map_err(|e| format!("{}: {e}", mod_path.display()));
     }
 
@@ -1661,6 +1680,7 @@ fn compile_multi_file_with_mode(
     //    全宣言を結合して、1つの Program として扱う
     let mut all_decls: Vec<lsharp_syntax::ast::Decl> = Vec::new();
     let mut all_type_results: Vec<(String, lsharp_types::types::TypeScheme)> = Vec::new();
+    let mut all_expr_type_results: HashMap<ExprTypeKey, lsharp_types::types::Type> = HashMap::new();
     let mut per_module_type_results: HashMap<String, ModuleTypeSurface> = HashMap::new();
     let mut module_programs: Vec<lsharp_syntax::ast::Program> = Vec::new();
 
@@ -1674,13 +1694,18 @@ fn compile_multi_file_with_mode(
             lsharp_syntax::parse(&source).map_err(|e| format!("{}: {e}", mod_path.display()))?;
         let direct_imports = collect_import_visibility(&program);
 
-        let (type_results, surface_hidden): (
+        let (type_results, surface_hidden, surface_expr_types): (
             Vec<(String, lsharp_types::types::TypeScheme)>,
             HashSet<String>,
+            HashMap<ExprTypeKey, lsharp_types::types::Type>,
         ) = if let Some(ref batch) = formatter_trio_batch
             && let Some(surface) = batch.get(mod_name)
         {
-            (surface.results.clone(), surface.hidden.clone())
+            (
+                surface.results.clone(),
+                surface.hidden.clone(),
+                surface.expr_types.clone(),
+            )
         } else {
             // 型チェック（直接 import されたモジュールの公開シンボルだけを注入）
             let mut infer = lsharp_types::infer::Infer::new();
@@ -1700,16 +1725,19 @@ fn compile_multi_file_with_mode(
                 .infer_program(&program)
                 .map_err(|e| format!("{}: {e}", mod_path.display()))?;
             let hidden: HashSet<String> = infer.module_env.privates.iter().cloned().collect();
-            (type_results, hidden)
+            let expr_types = infer.expr_type_results_snapshot();
+            (type_results, hidden, expr_types)
         };
 
         // 型結果を蓄積
         all_type_results.extend(type_results.clone());
+        all_expr_type_results.extend(surface_expr_types.clone());
         per_module_type_results.insert(
             mod_name.clone(),
             ModuleTypeSurface {
                 results: type_results,
                 hidden: surface_hidden,
+                expr_types: surface_expr_types,
             },
         );
 
@@ -1731,10 +1759,15 @@ fn compile_multi_file_with_mode(
     }
 
     let lowered = match lowering_mode {
-        MultiFileLoweringMode::Merged => lower_multi_file_merged(&all_decls, &all_type_results),
-        MultiFileLoweringMode::Modular => {
-            lower_multi_file_modular(&module_programs, &all_decls, &all_type_results)
+        MultiFileLoweringMode::Merged => {
+            lower_multi_file_merged(&all_decls, &all_type_results, &all_expr_type_results)
         }
+        MultiFileLoweringMode::Modular => lower_multi_file_modular(
+            &module_programs,
+            &all_decls,
+            &all_type_results,
+            &all_expr_type_results,
+        ),
     };
 
     lowered.map_err(|e| format!("IR 変換エラー: {e}"))
@@ -1778,6 +1811,7 @@ pub fn analyze_single_file_incremental(
     let type_surface = ModuleTypeSurface {
         results: type_results,
         hidden: infer.module_env.privates.iter().cloned().collect(),
+        expr_types: infer.expr_type_results_snapshot(),
     };
     let entry = build_module_cache_entry(fingerprint, &program, type_surface);
     cache.insert_module(module_name.to_string(), entry);
@@ -1895,11 +1929,12 @@ pub fn analyze_multi_file_incremental_with_overrides(
             ModuleTypeSurface {
                 results: type_results,
                 hidden: infer.module_env.privates.iter().cloned().collect(),
+                expr_types: infer.expr_type_results_snapshot(),
             }
         };
         let surface_changed = cache
             .get(&mod_name)
-            .map(|entry| entry.type_surface_clone() != type_surface)
+            .map(|entry| !entry.type_surface_clone().export_surface_eq(&type_surface))
             .unwrap_or(true);
         if surface_changed {
             surface_changed_modules.insert(mod_name.clone());
@@ -1961,12 +1996,17 @@ pub fn compile_multi_file_incremental(
             ModuleTypeSurface {
                 results: type_results,
                 hidden: infer.module_env.privates.iter().cloned().collect(),
+                expr_types: infer.expr_type_results_snapshot(),
             }
         };
         let mut lower_ctx = lower::Lower::new();
         note_incremental_lower();
         let module = lower_ctx
-            .lower_program(program.as_ref(), &type_surface.results)
+            .lower_program_with_expr_types(
+                program.as_ref(),
+                &type_surface.results,
+                &type_surface.expr_types,
+            )
             .map_err(|e| format!("{}: {e}", mod_path.display()))?;
         let mut entry = build_module_cache_entry(fingerprint, &program, type_surface);
         entry.set_ir(module.clone());
@@ -2008,6 +2048,7 @@ pub fn compile_multi_file_incremental(
     };
     let mut all_decls: Vec<lsharp_syntax::ast::Decl> = Vec::new();
     let mut all_type_results: Vec<(String, lsharp_types::types::TypeScheme)> = Vec::new();
+    let mut all_expr_type_results: HashMap<ExprTypeKey, lsharp_types::types::Type> = HashMap::new();
     let mut per_module_type_results: HashMap<String, ModuleTypeSurface> = HashMap::new();
     let mut cache_entries: Vec<(String, ModuleCacheEntry)> = Vec::new();
     let mut surface_changed_modules: HashSet<String> = HashSet::new();
@@ -2072,17 +2113,19 @@ pub fn compile_multi_file_incremental(
             ModuleTypeSurface {
                 results: type_results,
                 hidden: infer.module_env.privates.iter().cloned().collect(),
+                expr_types: infer.expr_type_results_snapshot(),
             }
         };
         let surface_changed = cache
             .get(&mod_name)
-            .map(|entry| entry.type_surface_clone() != type_surface)
+            .map(|entry| !entry.type_surface_clone().export_surface_eq(&type_surface))
             .unwrap_or(true);
         if surface_changed {
             surface_changed_modules.insert(mod_name.clone());
         }
 
         all_type_results.extend(type_surface.results.clone());
+        all_expr_type_results.extend(type_surface.expr_types.clone());
         let mut module_decls = Vec::new();
         for decl in &program.decls {
             match decl {
@@ -2118,6 +2161,7 @@ pub fn compile_multi_file_incremental(
         &module_programs,
         &all_decls,
         &all_type_results,
+        &all_expr_type_results,
         &reusable_segments,
         &segment_reuse_candidates,
     )
@@ -2414,6 +2458,24 @@ mod import_dedup_tests {
 mod multifile_compile_tests {
     use super::*;
 
+    fn main_function(module: &Module) -> &Function {
+        module
+            .functions
+            .iter()
+            .find(|function| function.name == "main")
+            .expect("main function should exist")
+    }
+
+    fn call_positions(body: &[Instruction], target: u32) -> Vec<usize> {
+        body.iter()
+            .enumerate()
+            .filter_map(|(idx, instr)| match instr {
+                Instruction::Call(actual) if *actual == target => Some(idx),
+                _ => None,
+            })
+            .collect()
+    }
+
     #[test]
     fn test_compile_multi_file_injects_only_dependency_closure() {
         let dir = std::env::temp_dir().join("lsharp_compile_multi_file_dependency_closure");
@@ -2547,6 +2609,54 @@ mod multifile_compile_tests {
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
+
+    #[test]
+    fn test_compile_multi_file_closure_call_roots_local_generic_result_argument() {
+        let dir =
+            std::env::temp_dir().join("lsharp_compile_multi_file_closure_generic_result_rooting");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("Lib.ls"),
+            "(module Lib)\n(defn make-show [] (fn [s] (string-length s)))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Lib)\n(defn main [] (let [id (fn [x] x) f (make-show)] (f (id \"hello\"))))\n",
+        )
+        .unwrap();
+
+        let merged =
+            compile_multi_file_with_mode(&dir.join("Main.ls"), MultiFileLoweringMode::Merged)
+                .unwrap();
+        let modular =
+            compile_multi_file_with_mode(&dir.join("Main.ls"), MultiFileLoweringMode::Modular)
+                .unwrap();
+
+        assert_eq!(
+            call_positions(&main_function(&merged).body, 14).len(),
+            4,
+            "multi-file merged lowering でも local generic closure result を使う closure call は outer arg 用まで root_push するべき: {:?}",
+            main_function(&merged).body
+        );
+        assert_eq!(
+            call_positions(&main_function(&modular).body, 14).len(),
+            4,
+            "multi-file modular lowering でも local generic closure result を使う closure call は outer arg 用まで root_push するべき: {:?}",
+            main_function(&modular).body
+        );
+        assert_eq!(
+            merged.dump(),
+            modular.dump(),
+            "expr-type table を通した modular lowering も merged lowering と同一 IR を維持するべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }
 
 #[cfg(test)]
@@ -2593,6 +2703,24 @@ mod fingerprint_tests {
 mod incremental_compile_tests {
     use super::*;
 
+    fn main_function(module: &Module) -> &Function {
+        module
+            .functions
+            .iter()
+            .find(|function| function.name == "main")
+            .expect("main function should exist")
+    }
+
+    fn call_positions(body: &[Instruction], target: u32) -> Vec<usize> {
+        body.iter()
+            .enumerate()
+            .filter_map(|(idx, instr)| match instr {
+                Instruction::Call(actual) if *actual == target => Some(idx),
+                _ => None,
+            })
+            .collect()
+    }
+
     #[test]
     fn test_compile_multi_file_incremental_empty_cache_matches_full_compile() {
         let dir = std::env::temp_dir().join("lsharp_compile_multi_file_incremental_empty_cache");
@@ -2634,6 +2762,51 @@ mod incremental_compile_tests {
             main_entry.imports(),
             ["Lib"],
             "cache entry は direct import module 名を保持するべき"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_compile_multi_file_incremental_roots_local_generic_closure_result_argument() {
+        let dir = std::env::temp_dir()
+            .join("lsharp_compile_multi_file_incremental_closure_generic_result_rooting");
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
+        std::fs::create_dir_all(&dir).unwrap();
+
+        std::fs::write(
+            dir.join("Lib.ls"),
+            "(module Lib)\n(defn make-show [] (fn [s] (string-length s)))\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Main.ls"),
+            "(module Main)\n(import Lib)\n(defn main [] (let [id (fn [x] x) f (make-show)] (f (id \"hello\"))))\n",
+        )
+        .unwrap();
+
+        let full = compile_multi_file(&dir.join("Main.ls")).unwrap();
+        let mut cache = CompilationCache::new();
+        let incremental = compile_multi_file_incremental(&dir.join("Main.ls"), &mut cache).unwrap();
+
+        assert_eq!(
+            call_positions(&main_function(&full).body, 14).len(),
+            4,
+            "full multi-file compile は local generic closure result を使う closure call で outer arg 用まで root_push するべき: {:?}",
+            main_function(&full).body
+        );
+        assert_eq!(
+            call_positions(&main_function(&incremental).body, 14).len(),
+            4,
+            "incremental multi-file compile も expr-type cache を通して outer arg 用まで root_push するべき: {:?}",
+            main_function(&incremental).body
+        );
+        assert_eq!(
+            full.dump(),
+            incremental.dump(),
+            "incremental multi-file compile も expr-type table を含めて full compile と同一 IR を維持するべき"
         );
 
         std::fs::remove_dir_all(&dir).unwrap();

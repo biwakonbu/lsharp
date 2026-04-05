@@ -18,8 +18,11 @@ pub(crate) fn compile_and_run(source: &str) -> String {
     let program = parse_for_pipeline(source);
     let mut infer = Infer::new();
     let type_results = infer.infer_program(&program).unwrap();
+    let expr_type_results = infer.expr_type_results_snapshot();
     let mut lower = Lower::new();
-    let module = lower.lower_program(&program, &type_results).unwrap();
+    let module = lower
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .unwrap();
     let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
 
     run_wasi(&wasm_bytes)
@@ -30,8 +33,11 @@ pub(crate) fn compile_and_run_expanded(source: &str) -> String {
     let program = parse_for_expanded_pipeline(source);
     let mut infer = Infer::new();
     let type_results = infer.infer_program(&program).unwrap();
+    let expr_type_results = infer.expr_type_results_snapshot();
     let mut lower = Lower::new();
-    let module = lower.lower_program(&program, &type_results).unwrap();
+    let module = lower
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .unwrap();
     let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
 
     run_wasi(&wasm_bytes)
@@ -42,8 +48,11 @@ pub(crate) fn compile_and_run_with_dir(source: &str, dir: &std::path::Path) -> S
     let program = parse_for_pipeline(source);
     let mut infer = Infer::new();
     let type_results = infer.infer_program(&program).unwrap();
+    let expr_type_results = infer.expr_type_results_snapshot();
     let mut lower = Lower::new();
-    let module = lower.lower_program(&program, &type_results).unwrap();
+    let module = lower
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .unwrap();
     let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
 
     lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir(&wasm_bytes, Some(dir)).unwrap()
@@ -54,8 +63,11 @@ pub(crate) fn compile_only(source: &str) -> Vec<u8> {
     let program = parse_for_pipeline(source);
     let mut infer = Infer::new();
     let type_results = infer.infer_program(&program).unwrap();
+    let expr_type_results = infer.expr_type_results_snapshot();
     let mut lower = Lower::new();
-    let module = lower.lower_program(&program, &type_results).unwrap();
+    let module = lower
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .unwrap();
     lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap()
 }
 
@@ -76,9 +88,10 @@ pub(crate) fn try_compile_file_only(file: &std::path::Path) -> Result<Vec<u8>, S
         let type_results = infer
             .infer_program(&program)
             .map_err(|e| format!("{}: {e:?}", file.display()))?;
+        let expr_type_results = infer.expr_type_results_snapshot();
         let mut lower = Lower::new();
         lower
-            .lower_program(&program, &type_results)
+            .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
             .map_err(|e| format!("{}: {e:?}", file.display()))?
     };
 

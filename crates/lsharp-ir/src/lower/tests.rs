@@ -9,8 +9,11 @@ fn lower(source: &str) -> Module {
     let program = lsharp_syntax::parse(source).unwrap();
     let mut infer = Infer::new();
     let type_results = infer.infer_program(&program).unwrap();
+    let expr_type_results = infer.expr_type_results_snapshot();
     let mut lowerer = Lower::new();
-    lowerer.lower_program(&program, &type_results).unwrap()
+    lowerer
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .unwrap()
 }
 
 /// IR のテキストダンプをスナップショットテストで検証
@@ -527,6 +530,57 @@ fn test_lower_user_call_auto_roots_read_stdin_argument() {
 }
 
 #[test]
+fn test_lower_user_call_auto_roots_generic_identity_result_argument() {
+    let module = lower(
+        r#"
+        (defn id [x] x)
+        (defn consume-string [s] (string-length s))
+        (defn main [] (consume-string (id "hello")))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+
+    assert_eq!(
+        count_call_instr(&main_fn.body, 14),
+        2,
+        "generic identity の戻り値を使う user call は inner call の literal 保護に加えて outer call 用にも root_push するべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        2,
+        "generic identity の戻り値を使う user call は inner/outer 分の root_pop を行うべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_user_call_auto_roots_local_generic_closure_result_argument() {
+    let module = lower(
+        r#"
+        (defn consume-string [s] (string-length s))
+        (defn main []
+          (let [id (fn [x] x)]
+            (consume-string (id "hello"))))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+
+    assert_eq!(
+        count_call_instr(&main_fn.body, 14),
+        3,
+        "local generic closure の戻り値を使う user call は inner closure call の receiver/literal 保護に加えて outer call 用にも root_push するべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        3,
+        "local generic closure の戻り値を使う user call は inner/outer 分の root_pop を行うべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
 fn test_lower_user_call_auto_roots_lambda_argument() {
     let module = lower(
         r#"
@@ -816,7 +870,7 @@ fn test_lower_undefined_variable_error() {
 fn test_emit_binop_unknown_operator_returns_error() {
     // 未知の二項演算子でエラーが返ることを確認 (R-M2)
     let mut lowerer = Lower::new();
-    let mut ctx = FuncCtx::new("test".to_string());
+    let mut ctx = FuncCtx::with_type_scope("test".to_string(), "test".to_string());
     let result = lowerer.emit_binop(&mut ctx, "unknown_op");
     assert!(
         result.is_err(),
@@ -838,7 +892,7 @@ fn test_emit_binop_known_operators_succeed() {
         "and", "or",
     ];
     for op in &known_ops {
-        let mut ctx = FuncCtx::new("test".to_string());
+        let mut ctx = FuncCtx::with_type_scope("test".to_string(), "test".to_string());
         let result = lowerer.emit_binop(&mut ctx, op);
         assert!(result.is_ok(), "演算子 '{op}' は成功すべき");
     }
@@ -2407,6 +2461,82 @@ fn test_lower_closure_call_roots_read_stdin_argument() {
     assert!(
         root_push_positions[1] < call_indirect_pos,
         "read-stdin 由来の string 引数は call_indirect 前に root_push で保護されるべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_closure_call_roots_generic_identity_result_argument() {
+    let module = lower(
+        r#"
+        (defn id [x] x)
+        (defn make-show [] (fn [s] (string-length s)))
+        (defn main []
+          (let [f (make-show)]
+            (f (id "hello"))))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let root_push_positions = call_positions(&main_fn.body, 14);
+    let call_indirect_pos = main_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::CallIndirect(_)))
+        .unwrap();
+
+    assert_eq!(
+        root_push_positions.len(),
+        3,
+        "generic identity の戻り値を使う closure call は receiver と inner call の literal に加えて outer string 引数も root_push するべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        3,
+        "generic identity の戻り値を使う closure call は 3 回 root_pop するべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions[1] < call_indirect_pos,
+        "generic identity の戻り値は call_indirect 前に root_push で保護されるべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_closure_call_roots_local_generic_closure_result_argument() {
+    let module = lower(
+        r#"
+        (defn make-show [] (fn [s] (string-length s)))
+        (defn main []
+          (let [id (fn [x] x)
+                f (make-show)]
+            (f (id "hello"))))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let root_push_positions = call_positions(&main_fn.body, 14);
+    let call_indirect_pos = main_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::CallIndirect(_)))
+        .unwrap();
+
+    assert_eq!(
+        root_push_positions.len(),
+        4,
+        "local generic closure の戻り値を使う closure call は outer receiver と inner closure call の receiver/literal に加えて outer string 引数も root_push するべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        4,
+        "local generic closure の戻り値を使う closure call は 4 回 root_pop するべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions[1] < call_indirect_pos,
+        "local generic closure の戻り値は call_indirect 前に root_push で保護されるべき: {:?}",
         main_fn.body
     );
 }
