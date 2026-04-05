@@ -710,7 +710,7 @@ impl Infer {
             TypeScheme::mono(Type::Fun(vec![Type::int()], Box::new(Type::unit()))),
         );
 
-        // ref-new: forall a. a -> Int (Ref Cell 作成: 値 -> ヒープアドレス)
+        // ref-new: forall a. a -> Ref a (Ref Cell 作成: 値 -> ヒープハンドル)
         {
             let a = self.var_gen.fresh_id();
             env.insert(
@@ -718,12 +718,12 @@ impl Infer {
                 TypeScheme {
                     vars: vec![a],
                     constraints: Vec::new(),
-                    ty: Type::Fun(vec![Type::Var(a)], Box::new(Type::int())),
+                    ty: Type::Fun(vec![Type::Var(a)], Box::new(Type::ref_of(Type::Var(a)))),
                 },
             );
         }
 
-        // ref-get: forall a. Int -> a (Ref Cell 読み出し: アドレス -> 値)
+        // ref-get: forall a. Ref a -> a (Ref Cell 読み出し: ヒープハンドル -> 値)
         {
             let a = self.var_gen.fresh_id();
             env.insert(
@@ -731,12 +731,12 @@ impl Infer {
                 TypeScheme {
                     vars: vec![a],
                     constraints: Vec::new(),
-                    ty: Type::Fun(vec![Type::int()], Box::new(Type::Var(a))),
+                    ty: Type::Fun(vec![Type::ref_of(Type::Var(a))], Box::new(Type::Var(a))),
                 },
             );
         }
 
-        // ref-set: forall a. (Int, a) -> Unit (Ref Cell 書き込み: アドレス, 値 -> Unit)
+        // ref-set: forall a. (Ref a, a) -> Unit (Ref Cell 書き込み: ヒープハンドル, 値 -> Unit)
         {
             let a = self.var_gen.fresh_id();
             env.insert(
@@ -744,7 +744,10 @@ impl Infer {
                 TypeScheme {
                     vars: vec![a],
                     constraints: Vec::new(),
-                    ty: Type::Fun(vec![Type::int(), Type::Var(a)], Box::new(Type::unit())),
+                    ty: Type::Fun(
+                        vec![Type::ref_of(Type::Var(a)), Type::Var(a)],
+                        Box::new(Type::unit()),
+                    ),
                 },
             );
         }
@@ -754,13 +757,13 @@ impl Infer {
         // vector-new: Int -> Vector (capacity を指定して空ベクタを作成)
         env.insert(
             "vector-new".to_string(),
-            TypeScheme::mono(Type::Fun(vec![Type::int()], Box::new(Type::int()))),
+            TypeScheme::mono(Type::Fun(vec![Type::int()], Box::new(Type::vector()))),
         );
 
         // vector-length: Vector -> Int (ベクタの現在の長さを返す)
         env.insert(
             "vector-length".to_string(),
-            TypeScheme::mono(Type::Fun(vec![Type::int()], Box::new(Type::int()))),
+            TypeScheme::mono(Type::Fun(vec![Type::vector()], Box::new(Type::int()))),
         );
 
         // vector-get: forall a. (Vector, Int) -> a (インデックス指定で要素を取得)
@@ -771,7 +774,7 @@ impl Infer {
                 TypeScheme {
                     vars: vec![a],
                     constraints: Vec::new(),
-                    ty: Type::Fun(vec![Type::int(), Type::int()], Box::new(Type::Var(a))),
+                    ty: Type::Fun(vec![Type::vector(), Type::int()], Box::new(Type::Var(a))),
                 },
             );
         }
@@ -785,8 +788,8 @@ impl Infer {
                     vars: vec![a],
                     constraints: Vec::new(),
                     ty: Type::Fun(
-                        vec![Type::int(), Type::int(), Type::Var(a)],
-                        Box::new(Type::int()),
+                        vec![Type::vector(), Type::int(), Type::Var(a)],
+                        Box::new(Type::vector()),
                     ),
                 },
             );
@@ -800,7 +803,7 @@ impl Infer {
                 TypeScheme {
                     vars: vec![a],
                     constraints: Vec::new(),
-                    ty: Type::Fun(vec![Type::int(), Type::Var(a)], Box::new(Type::int())),
+                    ty: Type::Fun(vec![Type::vector(), Type::Var(a)], Box::new(Type::vector())),
                 },
             );
         }
@@ -810,13 +813,13 @@ impl Infer {
         // map-new: () -> Map (デフォルト容量で空のハッシュマップを作成)
         env.insert(
             "map-new".to_string(),
-            TypeScheme::mono(Type::Fun(vec![], Box::new(Type::int()))),
+            TypeScheme::mono(Type::Fun(vec![], Box::new(Type::map()))),
         );
 
         // map-size: Map -> Int (エントリ数を返す)
         env.insert(
             "map-size".to_string(),
-            TypeScheme::mono(Type::Fun(vec![Type::int()], Box::new(Type::int()))),
+            TypeScheme::mono(Type::Fun(vec![Type::map()], Box::new(Type::int()))),
         );
 
         // map-insert: forall k a. (Map, k, a) -> Map (キーと値を挿入)
@@ -829,8 +832,8 @@ impl Infer {
                     vars: vec![k, a],
                     constraints: Vec::new(),
                     ty: Type::Fun(
-                        vec![Type::int(), Type::Var(k), Type::Var(a)],
-                        Box::new(Type::int()),
+                        vec![Type::map(), Type::Var(k), Type::Var(a)],
+                        Box::new(Type::map()),
                     ),
                 },
             );
@@ -845,7 +848,7 @@ impl Infer {
                 TypeScheme {
                     vars: vec![k, a],
                     constraints: Vec::new(),
-                    ty: Type::Fun(vec![Type::int(), Type::Var(k)], Box::new(Type::Var(a))),
+                    ty: Type::Fun(vec![Type::map(), Type::Var(k)], Box::new(Type::Var(a))),
                 },
             );
         }
@@ -858,7 +861,7 @@ impl Infer {
                 TypeScheme {
                     vars: vec![k],
                     constraints: Vec::new(),
-                    ty: Type::Fun(vec![Type::int(), Type::Var(k)], Box::new(Type::int())),
+                    ty: Type::Fun(vec![Type::map(), Type::Var(k)], Box::new(Type::int())),
                 },
             );
         }
@@ -871,7 +874,7 @@ impl Infer {
                 TypeScheme {
                     vars: vec![k],
                     constraints: Vec::new(),
-                    ty: Type::Fun(vec![Type::int(), Type::Var(k)], Box::new(Type::int())),
+                    ty: Type::Fun(vec![Type::map(), Type::Var(k)], Box::new(Type::map())),
                 },
             );
         }
@@ -2438,6 +2441,8 @@ impl Infer {
         match (t1, t2) {
             (Type::Con(a), Type::Con(b)) if a == b => Ok(Substitution::new()),
 
+            (left, right) if Self::int_heap_compatible(left, right) => Ok(Substitution::new()),
+
             (Type::Var(id), ty) | (ty, Type::Var(id)) => self.bind_var(*id, ty, span),
 
             (Type::Fun(params1, ret1), Type::Fun(params2, ret2)) => {
@@ -2504,6 +2509,11 @@ impl Infer {
                 error_code: TypeErrorCode::General,
             }),
         }
+    }
+
+    fn int_heap_compatible(left: &Type, right: &Type) -> bool {
+        (matches!(left, Type::Con(name) if name == "Int") && right.is_heap_handle())
+            || (matches!(right, Type::Con(name) if name == "Int") && left.is_heap_handle())
     }
 
     /// 型変数を型に束縛（occurs check 付き）
@@ -2628,6 +2638,54 @@ mod tests {
     fn test_do_expr() {
         let result = infer_one("(defn main [] (do (print 1) (print 2)))");
         assert_eq!(result, "() -> Unit");
+    }
+
+    #[test]
+    fn test_ref_new_builtin_returns_ref_type() {
+        let result = infer_one("(defn make-cell [] (ref-new 1))");
+        assert_eq!(result, "() -> (Ref Int)");
+    }
+
+    #[test]
+    fn test_ref_set_builtin_accepts_ref_type() {
+        let result = infer_one("(defn set-cell [cell] (ref-set cell 1))");
+        assert_eq!(result, "((Ref Int)) -> Unit");
+    }
+
+    #[test]
+    fn test_vector_builtins_use_vector_type() {
+        let make_vec = infer_one("(defn make-vec [] (vector-new 0))");
+        assert_eq!(make_vec, "() -> Vector");
+
+        let grow = infer_one("(defn grow [v] (vector-push v 1))");
+        assert_eq!(grow, "(Vector) -> Vector");
+    }
+
+    #[test]
+    fn test_map_builtins_use_map_type() {
+        let make_map = infer_one("(defn make-map [] (map-new))");
+        assert_eq!(make_map, "() -> Map");
+
+        let size = infer_one("(defn size [m] (map-size m))");
+        assert_eq!(size, "(Map) -> Int");
+    }
+
+    #[test]
+    fn test_zero_sentinel_remains_compatible_with_vector_type() {
+        let result = infer("(defn maybe-vec [] (if (= 0 0) (vector-new 0) 0))");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_zero_sentinel_remains_compatible_with_map_type() {
+        let result = infer("(defn maybe-map [] (if (= 0 0) (map-new) 0))");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_zero_sentinel_remains_compatible_with_ref_type() {
+        let result = infer("(defn maybe-ref [] (if (= 0 0) (ref-new 1) 0))");
+        assert!(result.is_ok());
     }
 
     #[test]

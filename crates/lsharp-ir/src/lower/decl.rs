@@ -10,6 +10,17 @@ use crate::{Function, Instruction, IrType};
 use super::{FuncCtx, Lower, LowerError, type_expr_to_name, type_to_ir, type_to_name};
 
 impl Lower {
+    fn infer_builtin_return_type_name(&self, func_name: &str) -> Option<String> {
+        match func_name {
+            "string-concat" | "substring" | "int-to-string" | "read-file"
+            | "command-line-arg" => Some("String".to_string()),
+            "vector-new" | "vector-push" | "vector-set" => Some("Vector".to_string()),
+            "map-new" | "map-insert" | "map-remove" => Some("Map".to_string()),
+            "ref-new" => Some("Ref".to_string()),
+            _ => None,
+        }
+    }
+
     /// レコード型のフィールドインデックスを解決
     pub(crate) fn resolve_field_index(&self, type_name: &str, field_name: &str) -> Option<u32> {
         if let Some(fields) = self.record_fields.get(type_name) {
@@ -91,6 +102,9 @@ impl Lower {
             // 関数呼び出しの場合、戻り値型を推定
             Expr::App(_, func, _) => {
                 if let Expr::Var(_, func_name) = func.as_ref() {
+                    if let Some(type_name) = self.infer_builtin_return_type_name(func_name) {
+                        return Some(type_name);
+                    }
                     if let Some(ty) = self.type_results.get(func_name) {
                         match ty {
                             Type::Fun(_, ret) => type_to_name(ret),

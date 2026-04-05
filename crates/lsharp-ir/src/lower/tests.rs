@@ -280,6 +280,132 @@ fn test_lower_map_insert_roots_map_before_lowering_key_expr() {
 }
 
 #[test]
+fn test_lower_user_call_auto_roots_string_argument() {
+    let module = lower(
+        r#"
+        (defn consume-string [s] (string-length s))
+        (defn main [] (consume-string "hello"))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+
+    assert!(
+        count_call_instr(&main_fn.body, 14) >= 1,
+        "string 引数の user call は root_push を使うべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        count_call_instr(&main_fn.body, 15) >= 1,
+        "string 引数の user call は root_pop を使うべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_user_call_auto_roots_vector_argument() {
+    let module = lower(
+        r#"
+        (defn vector-len [v] (vector-length v))
+        (defn main [] (vector-len (vector-new 2)))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+
+    assert!(
+        count_call_instr(&main_fn.body, 14) >= 1,
+        "vector 引数の user call は root_push を使うべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        count_call_instr(&main_fn.body, 15) >= 1,
+        "vector 引数の user call は root_pop を使うべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_user_call_does_not_root_int_argument() {
+    let module = lower(
+        r#"
+        (defn double [n] (+ n n))
+        (defn main [] (double 21))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+
+    assert_eq!(
+        count_call_instr(&main_fn.body, 14),
+        0,
+        "Int 引数だけの user call は root_push を使わないべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        0,
+        "Int 引数だけの user call は root_pop を使わないべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_user_call_selectively_roots_heap_arguments() {
+    let module = lower(
+        r#"
+        (defn consume-both [s n] (+ (string-length s) n))
+        (defn main [] (consume-both "hello" 21))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let root_push_positions = call_positions(&main_fn.body, 14);
+
+    assert_eq!(
+        root_push_positions.len(),
+        1,
+        "heap 引数だけを 1 回 root_push するべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        1,
+        "heap 引数だけを 1 回 root_pop するべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_self_recursive_user_call_preserves_self_tco() {
+    let module = lower(
+        r#"
+        (defn append-loop [dst idx count]
+          (if (>= idx count)
+            dst
+            (append-loop (vector-push dst idx) (+ idx 1) count)))
+        (defn main [] 0)
+        "#,
+    );
+    let append_loop = module
+        .functions
+        .iter()
+        .find(|func| func.name == "append-loop")
+        .unwrap();
+
+    assert!(
+        append_loop
+            .body
+            .iter()
+            .any(|instr| matches!(instr, Instruction::Loop(_) | Instruction::LoopEmpty)),
+        "自己末尾再帰は Loop に変換されるべき: {:?}",
+        append_loop.body
+    );
+    assert_eq!(
+        count_call_instr(&append_loop.body, 17),
+        0,
+        "自己末尾再帰は direct Call のまま残らないべき: {:?}",
+        append_loop.body
+    );
+}
+
+#[test]
 fn test_lower_wildcard_let() {
     assert_ir("(defn main [] (let [_ 99] 1))", "lower_wildcard_let");
 }
@@ -576,6 +702,86 @@ fn test_static_dispatch_unique_impl() {
         has_call,
         "use-show にトレイトメソッド呼び出し（Call）が含まれるべき: {:?}",
         use_show.body
+    );
+}
+
+#[test]
+fn test_lower_trait_method_auto_roots_string_argument() {
+    let module = lower(
+        r#"
+        (trait (Show a)
+          (defn show [x] 0))
+        (impl (Show String)
+          (defn show [x] (string-length x)))
+        (defn main [] (show "hello"))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+
+    assert!(
+        count_call_instr(&main_fn.body, 14) >= 1,
+        "string 引数の trait dispatch は root_push を使うべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        count_call_instr(&main_fn.body, 15) >= 1,
+        "string 引数の trait dispatch は root_pop を使うべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_trait_method_does_not_root_int_argument() {
+    let module = lower(
+        r#"
+        (trait (Show a)
+          (defn show [x] 0))
+        (impl (Show Int)
+          (defn show [x] (+ x 1)))
+        (defn main [] (show 42))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+
+    assert_eq!(
+        count_call_instr(&main_fn.body, 14),
+        0,
+        "Int 引数の trait dispatch は root_push を使わないべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        0,
+        "Int 引数の trait dispatch は root_pop を使わないべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_trait_method_selectively_roots_heap_arguments() {
+    let module = lower(
+        r#"
+        (trait (Measure a)
+          (defn measure [x n] 0))
+        (impl (Measure String)
+          (defn measure [x n] (+ (string-length x) n)))
+        (defn main [] (measure "hello" 21))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let root_push_positions = call_positions(&main_fn.body, 14);
+
+    assert_eq!(
+        root_push_positions.len(),
+        1,
+        "heap 引数だけを 1 回 root_push するべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        1,
+        "heap 引数だけを 1 回 root_pop するべき: {:?}",
+        main_fn.body
     );
 }
 

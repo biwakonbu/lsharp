@@ -459,6 +459,7 @@ impl Default for Lower {
 
 /// 関数変換コンテキスト
 pub(crate) struct FuncCtx {
+    pub(crate) function_name: String,
     pub(crate) instructions: Vec<crate::Instruction>,
     pub(crate) locals_map: HashMap<String, u32>,
     pub(crate) param_count: u32,
@@ -466,8 +467,9 @@ pub(crate) struct FuncCtx {
 }
 
 impl FuncCtx {
-    pub(crate) fn new(_name: String) -> Self {
+    pub(crate) fn new(name: String) -> Self {
         Self {
+            function_name: name,
             instructions: Vec::new(),
             locals_map: HashMap::new(),
             param_count: 0,

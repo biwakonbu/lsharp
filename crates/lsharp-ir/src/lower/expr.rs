@@ -1220,10 +1220,26 @@ impl Lower {
                     Expr::Var(_, name) => {
                         if let Some(&idx) = self.func_indices.get(name.as_str()) {
                             // 既知の関数: 引数を評価して直接呼び出し
-                            for arg in args {
-                                self.lower_expr(ctx, arg)?;
+                            let is_self_recursive_call = name == &ctx.function_name;
+                            let mut rooted_arg_count = 0usize;
+                            for (arg_idx, arg) in args.iter().enumerate() {
+                                if !is_self_recursive_call && self.should_root_user_call_argument(arg) {
+                                    let value_local = self.lower_expr_to_rooted_local(
+                                        ctx,
+                                        arg,
+                                        &format!("_call_arg{arg_idx}_value"),
+                                        &format!("_call_arg{arg_idx}_root_slot"),
+                                    )?;
+                                    ctx.emit(Instruction::LocalGet(value_local));
+                                    rooted_arg_count += 1;
+                                } else {
+                                    self.lower_expr(ctx, arg)?;
+                                }
                             }
                             ctx.emit(Instruction::Call(idx));
+                            for _ in 0..rooted_arg_count {
+                                self.emit_root_pop_drop(ctx)?;
+                            }
                         } else if let Some(&idx) = self.lifted_func_indices.get(name.as_str()) {
                             // Lambda Lifting で生成された関数の呼び出し
                             for arg in args {
@@ -1232,10 +1248,25 @@ impl Lower {
                             ctx.emit(Instruction::Call(idx));
                         } else if let Some(idx) = self.resolve_trait_dispatch(name, args) {
                             // P5-6: トレイトメソッドの静的ディスパッチ自動解決
-                            for arg in args {
-                                self.lower_expr(ctx, arg)?;
+                            let mut rooted_arg_count = 0usize;
+                            for (arg_idx, arg) in args.iter().enumerate() {
+                                if self.should_root_user_call_argument(arg) {
+                                    let value_local = self.lower_expr_to_rooted_local(
+                                        ctx,
+                                        arg,
+                                        &format!("_trait_arg{arg_idx}_value"),
+                                        &format!("_trait_arg{arg_idx}_root_slot"),
+                                    )?;
+                                    ctx.emit(Instruction::LocalGet(value_local));
+                                    rooted_arg_count += 1;
+                                } else {
+                                    self.lower_expr(ctx, arg)?;
+                                }
                             }
                             ctx.emit(Instruction::Call(idx));
+                            for _ in 0..rooted_arg_count {
+                                self.emit_root_pop_drop(ctx)?;
+                            }
                         } else if let Some(&local_idx) = ctx.locals_map.get(name) {
                             // ローカル変数に格納されたクロージャの間接呼び出し
                             // 統一呼び出し規約: (元引数..., closure_ptr) -> result
@@ -1744,5 +1775,11 @@ impl Lower {
         ctx.emit(Instruction::Call(root_pop_idx));
         ctx.emit(Instruction::Drop);
         Ok(())
+    }
+
+    fn should_root_user_call_argument(&self, expr: &Expr) -> bool {
+        self.infer_expr_type_name(expr)
+            .map(|type_name| !matches!(type_name.as_str(), "Int" | "Float" | "Bool" | "Unit"))
+            .unwrap_or(false)
     }
 }

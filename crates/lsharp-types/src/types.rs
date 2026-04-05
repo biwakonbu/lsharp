@@ -79,6 +79,19 @@ impl Type {
     pub fn unit() -> Self {
         Type::Con("Unit".to_string())
     }
+    pub fn vector() -> Self {
+        Type::Con("Vector".to_string())
+    }
+    pub fn map() -> Self {
+        Type::Con("Map".to_string())
+    }
+    pub fn ref_of(inner: Type) -> Self {
+        Type::App("Ref".to_string(), vec![inner])
+    }
+    pub fn is_heap_handle(&self) -> bool {
+        matches!(self, Type::Con(name) if matches!(name.as_str(), "Vector" | "Map"))
+            || matches!(self, Type::App(name, args) if name == "Ref" && args.len() == 1)
+    }
 
     /// この型に含まれる自由型変数を収集
     pub fn free_vars(&self) -> Vec<TypeVarId> {
