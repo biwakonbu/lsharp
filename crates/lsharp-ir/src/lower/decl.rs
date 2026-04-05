@@ -108,6 +108,15 @@ impl Lower {
             Expr::Ann(_, _, type_expr) => type_expr_to_name(type_expr),
             // レコードリテラルの場合、型名が明示的
             Expr::RecordLit(_, type_name, _) => Some(type_name.clone()),
+            Expr::If(_, _, then_expr, else_expr) => {
+                let then_type = self.infer_expr_type_name(then_expr);
+                let else_type = self.infer_expr_type_name(else_expr);
+                match (then_type, else_type) {
+                    (Some(then_type), Some(else_type)) if then_type == else_type => Some(then_type),
+                    _ => None,
+                }
+            }
+            Expr::Do(_, exprs) => exprs.last().and_then(|expr| self.infer_expr_type_name(expr)),
             // 関数呼び出しの場合、戻り値型を推定
             Expr::App(_, func, _) => {
                 if let Expr::Var(_, func_name) = func.as_ref() {
@@ -152,6 +161,17 @@ impl Lower {
             Expr::Ann(_, _, type_expr) => type_expr_to_name(type_expr),
             // レコードリテラルの場合、型名が明示的
             Expr::RecordLit(_, type_name, _) => Some(type_name.clone()),
+            Expr::If(_, _, then_expr, else_expr) => {
+                let then_type = self.infer_expr_type_name_with_ctx(ctx, then_expr);
+                let else_type = self.infer_expr_type_name_with_ctx(ctx, else_expr);
+                match (then_type, else_type) {
+                    (Some(then_type), Some(else_type)) if then_type == else_type => Some(then_type),
+                    _ => None,
+                }
+            }
+            Expr::Do(_, exprs) => exprs
+                .last()
+                .and_then(|expr| self.infer_expr_type_name_with_ctx(ctx, expr)),
             // 関数呼び出しの場合、戻り値型を推定
             Expr::App(_, func, _) => {
                 if let Expr::Var(_, func_name) = func.as_ref() {

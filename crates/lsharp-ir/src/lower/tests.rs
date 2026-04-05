@@ -2073,6 +2073,82 @@ fn test_lower_closure_call_roots_let_bound_string_argument() {
     );
 }
 
+#[test]
+fn test_lower_closure_call_roots_let_bound_if_string_argument() {
+    let module = lower(
+        r#"
+        (defn make-show [] (fn [s] (string-length s)))
+        (defn main []
+          (let [f (make-show)
+                use-first true
+                s (if use-first "hello" "world")]
+            (f s)))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let root_push_positions = call_positions(&main_fn.body, 14);
+    let call_indirect_pos = main_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::CallIndirect(_)))
+        .unwrap();
+
+    assert_eq!(
+        root_push_positions.len(),
+        2,
+        "if 由来の let 束縛 string 引数を使う closure call は receiver と string 引数を root_push するべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        2,
+        "if 由来の let 束縛 string 引数を使う closure call は 2 回 root_pop するべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions[1] < call_indirect_pos,
+        "if 由来の let 束縛 string 引数は call_indirect 前に root_push で保護されるべき: {:?}",
+        main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_closure_call_roots_do_string_argument() {
+    let module = lower(
+        r#"
+        (defn make-show [] (fn [s] (string-length s)))
+        (defn main []
+          (let [f (make-show)]
+            (f (do 0 "hello"))))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let root_push_positions = call_positions(&main_fn.body, 14);
+    let call_indirect_pos = main_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::CallIndirect(_)))
+        .unwrap();
+
+    assert_eq!(
+        root_push_positions.len(),
+        2,
+        "do 最終式の string 引数を使う closure call は receiver と string 引数を root_push するべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        2,
+        "do 最終式の string 引数を使う closure call は 2 回 root_pop するべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions[1] < call_indirect_pos,
+        "do 最終式の string 引数は call_indirect 前に root_push で保護されるべき: {:?}",
+        main_fn.body
+    );
+}
+
 // --- クロージャ変換テスト ---
 
 #[test]
