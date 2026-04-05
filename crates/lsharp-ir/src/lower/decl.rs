@@ -12,8 +12,9 @@ use super::{FuncCtx, Lower, LowerError, type_expr_to_name, type_to_ir, type_to_n
 impl Lower {
     fn infer_builtin_return_type_name(&self, func_name: &str) -> Option<String> {
         match func_name {
-            "string-concat" | "substring" | "int-to-string" | "read-file"
-            | "command-line-arg" => Some("String".to_string()),
+            "string-concat" | "substring" | "int-to-string" | "read-file" | "command-line-arg" => {
+                Some("String".to_string())
+            }
             "vector-new" | "vector-push" | "vector-set" => Some("Vector".to_string()),
             "map-new" | "map-insert" | "map-remove" => Some("Map".to_string()),
             "ref-new" => Some("Ref".to_string()),
@@ -37,13 +38,18 @@ impl Lower {
     ///
     /// 関数名がトレイトメソッドに該当する場合、第一引数の型情報から
     /// 具体的な実装（マングル名）を解決して関数インデックスを返す。
-    pub(crate) fn resolve_trait_dispatch(&self, method_name: &str, args: &[Expr]) -> Option<u32> {
+    pub(crate) fn resolve_trait_dispatch(
+        &self,
+        ctx: &FuncCtx,
+        method_name: &str,
+        args: &[Expr],
+    ) -> Option<u32> {
         // メソッド名がトレイトメソッドとして登録されているか確認
         let trait_names = self.trait_method_names.get(method_name)?;
 
         // 第一引数の型名を推定
         let first_arg_type = if let Some(arg) = args.first() {
-            self.infer_expr_type_name(arg)
+            self.infer_expr_type_name_with_ctx(ctx, arg)
         } else {
             None
         };
@@ -95,6 +101,50 @@ impl Lower {
                     None
                 }
             }
+            // 型注釈がある場合
+            Expr::Ann(_, _, type_expr) => type_expr_to_name(type_expr),
+            // レコードリテラルの場合、型名が明示的
+            Expr::RecordLit(_, type_name, _) => Some(type_name.clone()),
+            // 関数呼び出しの場合、戻り値型を推定
+            Expr::App(_, func, _) => {
+                if let Expr::Var(_, func_name) = func.as_ref() {
+                    if let Some(type_name) = self.infer_builtin_return_type_name(func_name) {
+                        return Some(type_name);
+                    }
+                    if let Some(ty) = self.type_results.get(func_name) {
+                        match ty {
+                            Type::Fun(_, ret) => type_to_name(ret),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    pub(crate) fn infer_expr_type_name_with_ctx(
+        &self,
+        ctx: &FuncCtx,
+        expr: &Expr,
+    ) -> Option<String> {
+        match expr {
+            // リテラルから型を推定
+            Expr::Lit(_, Literal::Int(_)) => Some("Int".to_string()),
+            Expr::Lit(_, Literal::Float(_)) => Some("Float".to_string()),
+            Expr::Lit(_, Literal::Bool(_)) => Some("Bool".to_string()),
+            Expr::Lit(_, Literal::String(_)) => Some("String".to_string()),
+            Expr::Lit(_, Literal::Unit) => Some("Unit".to_string()),
+            // 変数の場合、型推論結果から型名を取得
+            Expr::Var(_, name) => ctx
+                .local_type_names
+                .get(name)
+                .cloned()
+                .or_else(|| self.type_results.get(name).and_then(type_to_name)),
             // 型注釈がある場合
             Expr::Ann(_, _, type_expr) => type_expr_to_name(type_expr),
             // レコードリテラルの場合、型名が明示的
@@ -361,33 +411,43 @@ impl Lower {
         params: &[Param],
         body: &Expr,
     ) -> Result<Function, LowerError> {
+        // 関数型を推論結果から取得
+        let (param_types, result_type, inferred_param_type_names) =
+            if let Some(ty) = self.type_results.get(name) {
+                match ty {
+                    Type::Fun(params, ret) => {
+                        let p: Vec<IrType> = params.iter().map(type_to_ir).collect();
+                        let param_type_names = params.iter().map(type_to_name).collect();
+                        let r = type_to_ir(ret);
+                        (p, r, param_type_names)
+                    }
+                    _ => (Vec::new(), type_to_ir(ty), vec![None; params.len()]),
+                }
+            } else {
+                let p = vec![IrType::I64; params.len()];
+                (p, IrType::I64, vec![None; params.len()])
+            };
+
         let mut ctx = FuncCtx::new(name.to_string());
 
         // パラメータをローカル変数として登録
-        for param in params {
+        for (param_idx, param) in params.iter().enumerate() {
             let idx = ctx.next_local;
             ctx.locals_map.insert(param.name.clone(), idx);
+            if let Some(type_name) = inferred_param_type_names
+                .get(param_idx)
+                .cloned()
+                .flatten()
+                .or_else(|| param.ty.as_ref().and_then(type_expr_to_name))
+            {
+                ctx.local_type_names.insert(param.name.clone(), type_name);
+            }
             ctx.param_count += 1;
             ctx.next_local += 1;
         }
 
         // 本体を変換
         self.lower_expr(&mut ctx, body)?;
-
-        // 関数型を推論結果から取得
-        let (param_types, result_type) = if let Some(ty) = self.type_results.get(name) {
-            match ty {
-                Type::Fun(params, ret) => {
-                    let p: Vec<IrType> = params.iter().map(type_to_ir).collect();
-                    let r = type_to_ir(ret);
-                    (p, r)
-                }
-                _ => (Vec::new(), type_to_ir(ty)),
-            }
-        } else {
-            let p = vec![IrType::I64; params.len()];
-            (p, IrType::I64)
-        };
 
         // 自己末尾呼び出し最適化 (Self TCO) を適用
         let body_instructions = if let Some(&self_idx) = self.func_indices.get(name) {

@@ -28,7 +28,9 @@ fn count_call_instr(body: &[Instruction], idx: u32) -> usize {
 fn call_positions(body: &[Instruction], idx: u32) -> Vec<usize> {
     body.iter()
         .enumerate()
-        .filter_map(|(i, instr)| matches!(instr, Instruction::Call(call_idx) if *call_idx == idx).then_some(i))
+        .filter_map(|(i, instr)| {
+            matches!(instr, Instruction::Call(call_idx) if *call_idx == idx).then_some(i)
+        })
         .collect()
 }
 
@@ -1703,6 +1705,80 @@ fn test_lower_closure_call_roots_receiver_before_string_arg_eval() {
         root_push_positions[0] < string_arg_get_pos,
         "closure receiver は string 引数の評価より前に root_push で保護されるべき: {:?}",
         apply_fn.body
+    );
+}
+
+#[test]
+fn test_lower_closure_call_roots_annotated_string_param_argument() {
+    let module = lower(
+        r#"
+        (defn make-show [] (fn [s] (string-length s)))
+        (defn apply [f (: s String)] (f s))
+        (defn main [] (print (apply (make-show) "hello")))
+        "#,
+    );
+    let apply_fn = module.functions.iter().find(|f| f.name == "apply").unwrap();
+    let root_push_positions = call_positions(&apply_fn.body, 14);
+    let call_indirect_pos = apply_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::CallIndirect(_)))
+        .unwrap();
+
+    assert_eq!(
+        root_push_positions.len(),
+        2,
+        "closure call は receiver と注釈付き string 引数を root_push するべき: {:?}",
+        apply_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&apply_fn.body, 15),
+        2,
+        "closure call は receiver と注釈付き string 引数に対応する root_pop を使うべき: {:?}",
+        apply_fn.body
+    );
+    assert!(
+        root_push_positions[1] < call_indirect_pos,
+        "注釈付き string 引数は call_indirect 前に root_push で保護されるべき: {:?}",
+        apply_fn.body
+    );
+}
+
+#[test]
+fn test_lower_closure_call_roots_let_bound_string_argument() {
+    let module = lower(
+        r#"
+        (defn make-show [] (fn [s] (string-length s)))
+        (defn main []
+          (let [f (make-show)
+                s "hello"]
+            (f s)))
+        "#,
+    );
+    let main_fn = module.functions.iter().find(|f| f.name == "main").unwrap();
+    let root_push_positions = call_positions(&main_fn.body, 14);
+    let call_indirect_pos = main_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::CallIndirect(_)))
+        .unwrap();
+
+    assert_eq!(
+        root_push_positions.len(),
+        2,
+        "let 束縛 string 引数を使う closure call は receiver と string 引数を root_push するべき: {:?}",
+        main_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&main_fn.body, 15),
+        2,
+        "let 束縛 string 引数を使う closure call は 2 回 root_pop するべき: {:?}",
+        main_fn.body
+    );
+    assert!(
+        root_push_positions[1] < call_indirect_pos,
+        "let 束縛 string 引数は call_indirect 前に root_push で保護されるべき: {:?}",
+        main_fn.body
     );
 }
 

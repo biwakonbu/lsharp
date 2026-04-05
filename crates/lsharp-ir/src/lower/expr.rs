@@ -100,10 +100,14 @@ impl Lower {
 
             Expr::Let(_, bindings, body) => {
                 for (pat, val) in bindings {
+                    let inferred_type_name = self.infer_expr_type_name_with_ctx(ctx, val);
                     self.lower_expr(ctx, val)?;
                     match pat {
                         Pattern::Var(_, name) => {
                             let idx = ctx.alloc_local(name.clone());
+                            if let Some(type_name) = inferred_type_name {
+                                ctx.local_type_names.insert(name.clone(), type_name);
+                            }
                             ctx.emit(Instruction::LocalSet(idx));
                         }
                         Pattern::Wildcard(_) => {
@@ -347,11 +351,12 @@ impl Lower {
                             let rhs_local = ctx.alloc_local("_strcat_rhs".to_string());
                             ctx.emit(Instruction::LocalSet(rhs_local));
                             self.emit_root_push_local(ctx, rhs_local, "_strcat_rhs_root_slot")?;
-                            let idx = *self.func_indices.get("__string_concat").ok_or_else(|| {
-                                LowerError::UndefinedFunction {
-                                    name: "__string_concat".to_string(),
-                                }
-                            })?;
+                            let idx =
+                                *self.func_indices.get("__string_concat").ok_or_else(|| {
+                                    LowerError::UndefinedFunction {
+                                        name: "__string_concat".to_string(),
+                                    }
+                                })?;
                             let result_local = ctx.alloc_local("_strcat_result".to_string());
                             ctx.emit(Instruction::LocalGet(lhs_local));
                             ctx.emit(Instruction::LocalGet(rhs_local));
@@ -1223,7 +1228,9 @@ impl Lower {
                             let is_self_recursive_call = name == &ctx.function_name;
                             let mut rooted_arg_count = 0usize;
                             for (arg_idx, arg) in args.iter().enumerate() {
-                                if !is_self_recursive_call && self.should_root_user_call_argument(arg) {
+                                if !is_self_recursive_call
+                                    && self.should_root_user_call_argument(ctx, arg)
+                                {
                                     let value_local = self.lower_expr_to_rooted_local(
                                         ctx,
                                         arg,
@@ -1246,11 +1253,11 @@ impl Lower {
                                 self.lower_expr(ctx, arg)?;
                             }
                             ctx.emit(Instruction::Call(idx));
-                        } else if let Some(idx) = self.resolve_trait_dispatch(name, args) {
+                        } else if let Some(idx) = self.resolve_trait_dispatch(ctx, name, args) {
                             // P5-6: トレイトメソッドの静的ディスパッチ自動解決
                             let mut rooted_arg_count = 0usize;
                             for (arg_idx, arg) in args.iter().enumerate() {
-                                if self.should_root_user_call_argument(arg) {
+                                if self.should_root_user_call_argument(ctx, arg) {
                                     let value_local = self.lower_expr_to_rooted_local(
                                         ctx,
                                         arg,
@@ -1278,7 +1285,7 @@ impl Lower {
 
                             // 1. 元引数を評価してスタックに積む
                             for (arg_idx, arg) in args.iter().enumerate() {
-                                if self.should_root_user_call_argument(arg) {
+                                if self.should_root_user_call_argument(ctx, arg) {
                                     let value_local = self.lower_expr_to_rooted_local(
                                         ctx,
                                         arg,
@@ -1734,7 +1741,7 @@ impl Lower {
     /// 文字列キーの場合に FNV-1a ハッシュ呼び出しを挿入する
     fn emit_string_key_hash(&self, ctx: &mut FuncCtx, key_expr: &Expr) -> Result<(), LowerError> {
         let is_string_key = self
-            .infer_expr_type_name(key_expr)
+            .infer_expr_type_name_with_ctx(ctx, key_expr)
             .map(|t| t == "String")
             .unwrap_or(false);
         if is_string_key {
@@ -1795,8 +1802,8 @@ impl Lower {
         Ok(())
     }
 
-    fn should_root_user_call_argument(&self, expr: &Expr) -> bool {
-        self.infer_expr_type_name(expr)
+    fn should_root_user_call_argument(&self, ctx: &FuncCtx, expr: &Expr) -> bool {
+        self.infer_expr_type_name_with_ctx(ctx, expr)
             .map(|type_name| !matches!(type_name.as_str(), "Int" | "Float" | "Bool" | "Unit"))
             .unwrap_or(false)
     }

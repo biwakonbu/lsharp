@@ -462,6 +462,7 @@ pub(crate) struct FuncCtx {
     pub(crate) function_name: String,
     pub(crate) instructions: Vec<crate::Instruction>,
     pub(crate) locals_map: HashMap<String, u32>,
+    pub(crate) local_type_names: HashMap<String, String>,
     pub(crate) param_count: u32,
     pub(crate) next_local: u32,
 }
@@ -472,6 +473,7 @@ impl FuncCtx {
             function_name: name,
             instructions: Vec::new(),
             locals_map: HashMap::new(),
+            local_type_names: HashMap::new(),
             param_count: 0,
             next_local: 0,
         }
