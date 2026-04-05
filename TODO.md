@@ -340,7 +340,7 @@
   - bootstrap acceptance では fixed input set 54 件の full / incremental cold / warm compare (`test_e2e_incremental_compile_matches_full_compile_fixed_input_set`) が green で、module-local lowering へ切り替えた後も Wasm parity を維持している
   - 依存: INC-D1
 
-- [x] `INC-E2` モジュール単位 IR キャッシュ
+- [x] `INC-E2` モジュール単位 IR キャッシュ — Evidence: `crates/lsharp-ir/src/cache.rs`, `crates/lsharp-ir/src/lib.rs`, `test_compile_multi_file_incremental_skips_ir_generation_on_clean_cache_hit`, `test_compile_multi_file_incremental_reuses_prefix_module_ir_segments_before_first_dirty_module`, `test_compile_multi_file_incremental_reuses_clean_suffix_module_when_dirty_middle_layout_is_stable`, `test_compile_multi_file_incremental_reuses_clean_suffix_when_dirty_middle_only_changes_string_state`
   - `INC-E1` により `compile_multi_file` / `compile_multi_file_incremental` は module-local lowering + link phase へ移行済み
   - clean rebuild (`changed_modules.is_empty()`) では `CompilationCache` の `ir` に保持した final linked IR を再利用し、parse / type infer に続いて lowering もスキップする fast path まで追加済み (`test_compile_multi_file_incremental_skips_ir_generation_on_clean_cache_hit`)
   - cache entry は per-module IR segment (`defns` / `accessors` / `trait_impls` / `constraints` / `ctors` / `defn_lifted` / `trait_impl_lifted`) を保持するように拡張し、tail module だけ dirty な再コンパイルでは clean prefix module の segment を再利用する safe slice に加えて、dirty middle module が precomputed count / string_data / lifted layout を保つ場合は clean suffix module も個別に再利用できるようにした (`test_compile_multi_file_incremental_reuses_prefix_module_ir_segments_before_first_dirty_module`, `test_compile_multi_file_incremental_reuses_clean_suffix_module_when_dirty_middle_layout_is_stable`)
@@ -364,7 +364,7 @@
   - workspace root がある場合は未 open の dependent file にも diagnostics を再 publish できるため、single-file parse/type-check では見えなかった import / cross-file type error を LSP パイプラインで扱える
   - 依存: INC-F1
 
-- [x] `INC-F3` ワークスペース診断更新最適化
+- [x] `INC-F3` ワークスペース診断更新最適化 — Evidence: `crates/lsharp-lsp/src/lib.rs`, `test_did_open_dependency_republishes_dependent_open_file_diagnostics`, `test_did_open_republishes_unopened_workspace_dependent_diagnostics`, `test_did_open_skips_unrelated_workspace_diagnostics_publish`
   - changed/opened file から reverse dependency traversal した workspace dependents だけを `publish_diagnostics` する slice を actual LSP exchange まで広げ、open/unopened dependent republish を固定した (`test_did_open_dependency_republishes_dependent_open_file_diagnostics`, `test_did_open_republishes_unopened_workspace_dependent_diagnostics`)
   - unrelated workspace file は再 publish しない contract を `test_did_open_skips_unrelated_workspace_diagnostics_publish` で固定した。non-file URI は single-file incremental path へフォールバックし、workspace roots は initialize 時に受け取った file roots の union を使う現行 policy で閉じる
   - 依存: INC-F2, INC-B2

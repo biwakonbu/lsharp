@@ -8,8 +8,7 @@ use lsharp_types::types::Type;
 use crate::{Function, Instruction, IrType};
 
 use super::{
-    FuncCtx, Lower, LowerError, is_heap_like_type_name, type_expr_to_name, type_to_ir,
-    type_to_name,
+    FuncCtx, Lower, LowerError, is_heap_like_type_name, type_expr_to_name, type_to_ir, type_to_name,
 };
 
 impl Lower {
@@ -107,14 +106,8 @@ impl Lower {
 
     fn infer_builtin_return_type_name(&self, func_name: &str) -> Option<String> {
         match func_name {
-            "string-concat"
-            | "substring"
-            | "int-to-string"
-            | "read-file"
-            | "command-line-arg"
-            | "read-stdin" => {
-                Some("String".to_string())
-            }
+            "string-concat" | "substring" | "int-to-string" | "read-file" | "command-line-arg"
+            | "read-stdin" => Some("String".to_string()),
             "vector-new" | "vector-push" | "vector-set" => Some("Vector".to_string()),
             "map-new" | "map-insert" | "map-remove" => Some("Map".to_string()),
             "ref-new" => Some("Ref".to_string()),
@@ -495,27 +488,21 @@ impl Lower {
 
         // 自己末尾呼び出し最適化 (Self TCO) を適用
         let body_instructions = if let Some(&self_idx) = self.func_indices.get(name) {
-            let root_push_idx =
-                *self
-                    .func_indices
-                    .get("root_push")
-                    .ok_or_else(|| LowerError::UndefinedFunction {
-                        name: "root_push".to_string(),
-                    })?;
-            let root_pop_idx =
-                *self
-                    .func_indices
-                    .get("root_pop")
-                    .ok_or_else(|| LowerError::UndefinedFunction {
-                        name: "root_pop".to_string(),
-                    })?;
-            let root_set_idx =
-                *self
-                    .func_indices
-                    .get("root_set")
-                    .ok_or_else(|| LowerError::UndefinedFunction {
-                        name: "root_set".to_string(),
-                    })?;
+            let root_push_idx = *self.func_indices.get("root_push").ok_or_else(|| {
+                LowerError::UndefinedFunction {
+                    name: "root_push".to_string(),
+                }
+            })?;
+            let root_pop_idx = *self.func_indices.get("root_pop").ok_or_else(|| {
+                LowerError::UndefinedFunction {
+                    name: "root_pop".to_string(),
+                }
+            })?;
+            let root_set_idx = *self.func_indices.get("root_set").ok_or_else(|| {
+                LowerError::UndefinedFunction {
+                    name: "root_set".to_string(),
+                }
+            })?;
             let root_ops = SelfTcoRootOps {
                 rooted_params: &self_tco_root_slots,
                 root_push_idx,
