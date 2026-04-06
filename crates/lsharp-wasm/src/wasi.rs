@@ -22,12 +22,21 @@ const BUF_END: i32 = 276;
 const ROOT_STACK_SLOT_CAPACITY: i32 = 4096;
 const ROOT_STACK_BYTES: i32 = ROOT_STACK_SLOT_CAPACITY * 8;
 const GC_OBJECT_SLOT_CAPACITY: i32 = 4096;
-const GC_OBJECT_SLOT_BYTES: i32 = 8;
+const GC_OBJECT_SLOT_BYTES: i32 = 16;
 const GC_OBJECT_TABLE_BYTES: i32 = GC_OBJECT_SLOT_CAPACITY * GC_OBJECT_SLOT_BYTES;
 const GC_FREE_LIST_SLOT_CAPACITY: i32 = 4096;
 const GC_FREE_LIST_SLOT_BYTES: i32 = 8;
 const GC_FREE_LIST_BYTES: i32 = GC_FREE_LIST_SLOT_CAPACITY * GC_FREE_LIST_SLOT_BYTES;
 const TAGGED_POINTER_MASK: i64 = 1i64 << 63;
+const HEAP_TAG_RECORD: i32 = 2;
+const HEAP_TAG_ADT: i32 = 3;
+const HEAP_TAG_CLOSURE: i32 = 4;
+const HEAP_TAG_VECTOR: i32 = 5;
+const HEAP_TAG_HASHMAP: i32 = 6;
+const HEAP_TAG_REF: i32 = 7;
+const GC_MARK_UNMARKED: i32 = 0;
+const GC_MARK_PENDING: i32 = 1;
+const GC_MARK_SCANNED: i32 = 2;
 const HEAP_PTR_GLOBAL_IDX: u32 = 0;
 const ROOT_STACK_TOP_GLOBAL_IDX: u32 = 1;
 const ALLOC_COUNT_GLOBAL_IDX: u32 = 2;
@@ -70,6 +79,16 @@ struct GcRuntimeLayout {
     gc_object_table_base: i32,
     gc_free_list_base: i32,
     root_stack_base: i32,
+}
+
+#[derive(Copy, Clone)]
+struct GcMarkHelperLocals {
+    old_count_local: u32,
+    candidate_value_local: u32,
+    candidate_addr_local: u32,
+    search_idx_local: u32,
+    search_entry_ptr_local: u32,
+    temp_i64_local: u32,
 }
 
 /// IR 側の内部ヘルパー関数数
@@ -1601,7 +1620,7 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals, layout: G
     f.instruction(&W::If(wasm_encoder::BlockType::Empty));
     f.instruction(&W::I32Const(gc_object_table_base));
     f.instruction(&W::GlobalGet(object_count_global_idx));
-    f.instruction(&W::I32Const(3));
+    f.instruction(&W::I32Const(4));
     f.instruction(&W::I32Shl);
     f.instruction(&W::I32Add);
     f.instruction(&W::LocalSet(5));
@@ -1611,6 +1630,9 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals, layout: G
     f.instruction(&W::LocalGet(5));
     f.instruction(&W::LocalGet(1));
     f.instruction(&W::I32Store(mem32(4)));
+    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::I32Const(GC_MARK_UNMARKED));
+    f.instruction(&W::I32Store(mem32(8)));
     f.instruction(&W::GlobalGet(object_count_global_idx));
     f.instruction(&W::I32Const(1));
     f.instruction(&W::I32Add);
@@ -1627,6 +1649,131 @@ fn emit_alloc_func(codes: &mut CodeSection, globals: AllocatorGlobals, layout: G
     codes.function(&f);
 }
 
+fn emit_gc_mark_candidate(
+    f: &mut wasm_encoder::Function,
+    globals: CollectorGlobals,
+    layout: GcRuntimeLayout,
+    locals: GcMarkHelperLocals,
+) {
+    use wasm_encoder::{Instruction as W, MemArg};
+
+    let CollectorGlobals {
+        heap_ptr_global_idx,
+        heap_start_global_idx,
+        ..
+    } = globals;
+    let GcRuntimeLayout {
+        gc_object_table_base, ..
+    } = layout;
+    let GcMarkHelperLocals {
+        old_count_local,
+        candidate_value_local,
+        candidate_addr_local,
+        search_idx_local,
+        search_entry_ptr_local,
+        temp_i64_local,
+    } = locals;
+
+    let mem32 = |offset: u64| MemArg {
+        offset,
+        align: 2,
+        memory_index: 0,
+    };
+
+    // raw address または tagged handle からヒープ先頭アドレスを抽出する。
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(candidate_addr_local));
+
+    f.instruction(&W::LocalGet(candidate_value_local));
+    f.instruction(&W::GlobalGet(heap_start_global_idx));
+    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::I64GeS);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(candidate_value_local));
+    f.instruction(&W::GlobalGet(heap_ptr_global_idx));
+    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::I64LtS);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(candidate_value_local));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(candidate_addr_local));
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+
+    f.instruction(&W::LocalGet(candidate_addr_local));
+    f.instruction(&W::I32Eqz);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(candidate_value_local));
+    f.instruction(&W::I64Const(TAGGED_POINTER_MASK));
+    f.instruction(&W::I64GeU);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(candidate_value_local));
+    f.instruction(&W::I64Const(TAGGED_POINTER_MASK));
+    f.instruction(&W::I64Sub);
+    f.instruction(&W::LocalSet(temp_i64_local));
+    f.instruction(&W::LocalGet(temp_i64_local));
+    f.instruction(&W::GlobalGet(heap_start_global_idx));
+    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::I64GeS);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(temp_i64_local));
+    f.instruction(&W::GlobalGet(heap_ptr_global_idx));
+    f.instruction(&W::I64ExtendI32U);
+    f.instruction(&W::I64LtS);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(temp_i64_local));
+    f.instruction(&W::I32WrapI64);
+    f.instruction(&W::LocalSet(candidate_addr_local));
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+
+    // object table 上の matching entry を探し、未マークなら pending にする。
+    f.instruction(&W::LocalGet(candidate_addr_local));
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(search_idx_local));
+    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(search_idx_local));
+    f.instruction(&W::LocalGet(old_count_local));
+    f.instruction(&W::I32GeU);
+    f.instruction(&W::BrIf(1));
+
+    f.instruction(&W::I32Const(gc_object_table_base));
+    f.instruction(&W::LocalGet(search_idx_local));
+    f.instruction(&W::I32Const(4));
+    f.instruction(&W::I32Shl);
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(search_entry_ptr_local));
+
+    f.instruction(&W::LocalGet(search_entry_ptr_local));
+    f.instruction(&W::I32Load(mem32(0)));
+    f.instruction(&W::LocalGet(candidate_addr_local));
+    f.instruction(&W::I32Eq);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(search_entry_ptr_local));
+    f.instruction(&W::I32Load(mem32(8)));
+    f.instruction(&W::I32Eqz);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(search_entry_ptr_local));
+    f.instruction(&W::I32Const(GC_MARK_PENDING));
+    f.instruction(&W::I32Store(mem32(8)));
+    f.instruction(&W::End);
+    f.instruction(&W::Br(2));
+    f.instruction(&W::End);
+
+    f.instruction(&W::LocalGet(search_idx_local));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(search_idx_local));
+    f.instruction(&W::Br(0));
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+}
+
 fn emit_gc_collect_func(
     codes: &mut CodeSection,
     globals: CollectorGlobals,
@@ -1634,9 +1781,32 @@ fn emit_gc_collect_func(
 ) {
     use wasm_encoder::{Instruction as W, MemArg};
 
+    const OLD_COUNT_LOCAL: u32 = 0;
+    const READ_IDX_LOCAL: u32 = 1;
+    const WRITE_IDX_LOCAL: u32 = 2;
+    const ENTRY_PTR_LOCAL: u32 = 3;
+    const OBJ_ADDR_LOCAL: u32 = 4;
+    const OBJ_SIZE_LOCAL: u32 = 5;
+    const MARK_STATE_LOCAL: u32 = 6;
+    const ROOT_IDX_LOCAL: u32 = 7;
+    const SLOT_ADDR_LOCAL: u32 = 8;
+    const FREED_THIS_CYCLE_LOCAL: u32 = 9;
+    const MARK_PROGRESS_LOCAL: u32 = 10;
+    const CHILD_IDX_LOCAL: u32 = 11;
+    const CHILD_LIMIT_LOCAL: u32 = 12;
+    const CHILD_ENTRY_ADDR_LOCAL: u32 = 13;
+    const TAG_LOCAL: u32 = 14;
+    const TEMP_I32_LOCAL: u32 = 15;
+    const CANDIDATE_ADDR_LOCAL: u32 = 16;
+    const SEARCH_IDX_LOCAL: u32 = 17;
+    const SEARCH_ENTRY_PTR_LOCAL: u32 = 18;
+    const SLOT_VALUE_LOCAL: u32 = 19;
+    const TEMP_I64_LOCAL: u32 = 20;
+    const CHILD_VALUE_LOCAL: u32 = 21;
+
     let CollectorGlobals {
-        heap_ptr_global_idx,
-        heap_start_global_idx,
+        heap_ptr_global_idx: _,
+        heap_start_global_idx: _,
         root_stack_top_global_idx,
         object_count_global_idx,
         free_list_count_global_idx,
@@ -1660,149 +1830,397 @@ fn emit_gc_collect_func(
         memory_index: 0,
     };
 
-    let mut f = wasm_encoder::Function::new(vec![(10, ValType::I32), (2, ValType::I64)]);
+    let mut f = wasm_encoder::Function::new(vec![(19, ValType::I32), (3, ValType::I64)]);
 
-    // i32 locals:
-    // 0 old_count, 1 read_idx, 2 write_idx, 3 entry_ptr, 4 obj_addr,
-    // 5 obj_size, 6 rooted, 7 root_idx, 8 slot_addr, 9 freed_this_cycle
-    // i64 locals:
-    // 10 slot_value, 11 candidate
+    // mark bit をクリアしてから root stack を seed に fixed-point で trace する。
     f.instruction(&W::GlobalGet(object_count_global_idx));
-    f.instruction(&W::LocalSet(0));
-    f.instruction(&W::I32Const(0));
-    f.instruction(&W::LocalSet(1));
-    f.instruction(&W::I32Const(0));
-    f.instruction(&W::LocalSet(2));
-    f.instruction(&W::I32Const(0));
-    f.instruction(&W::LocalSet(9));
+    f.instruction(&W::LocalSet(OLD_COUNT_LOCAL));
 
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(READ_IDX_LOCAL));
     f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
     f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(1));
-    f.instruction(&W::LocalGet(0));
+    f.instruction(&W::LocalGet(READ_IDX_LOCAL));
+    f.instruction(&W::LocalGet(OLD_COUNT_LOCAL));
     f.instruction(&W::I32GeU);
     f.instruction(&W::BrIf(1));
-
     f.instruction(&W::I32Const(gc_object_table_base));
-    f.instruction(&W::LocalGet(1));
-    f.instruction(&W::I32Const(3));
+    f.instruction(&W::LocalGet(READ_IDX_LOCAL));
+    f.instruction(&W::I32Const(4));
     f.instruction(&W::I32Shl);
     f.instruction(&W::I32Add);
-    f.instruction(&W::LocalSet(3));
-    f.instruction(&W::LocalGet(3));
-    f.instruction(&W::I32Load(mem32(0)));
-    f.instruction(&W::LocalSet(4));
-    f.instruction(&W::LocalGet(3));
-    f.instruction(&W::I32Load(mem32(4)));
-    f.instruction(&W::LocalSet(5));
+    f.instruction(&W::LocalSet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::I32Const(GC_MARK_UNMARKED));
+    f.instruction(&W::I32Store(mem32(8)));
+    f.instruction(&W::LocalGet(READ_IDX_LOCAL));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(READ_IDX_LOCAL));
+    f.instruction(&W::Br(0));
+    f.instruction(&W::End);
+    f.instruction(&W::End);
 
     f.instruction(&W::I32Const(0));
-    f.instruction(&W::LocalSet(6));
-    f.instruction(&W::I32Const(0));
-    f.instruction(&W::LocalSet(7));
-
+    f.instruction(&W::LocalSet(ROOT_IDX_LOCAL));
     f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
     f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(7));
+    f.instruction(&W::LocalGet(ROOT_IDX_LOCAL));
     f.instruction(&W::GlobalGet(root_stack_top_global_idx));
     f.instruction(&W::I32GeU);
     f.instruction(&W::BrIf(1));
-
     f.instruction(&W::I32Const(root_stack_base));
-    f.instruction(&W::LocalGet(7));
+    f.instruction(&W::LocalGet(ROOT_IDX_LOCAL));
     f.instruction(&W::I32Const(3));
     f.instruction(&W::I32Shl);
     f.instruction(&W::I32Add);
-    f.instruction(&W::LocalSet(8));
-    f.instruction(&W::LocalGet(8));
+    f.instruction(&W::LocalSet(SLOT_ADDR_LOCAL));
+    f.instruction(&W::LocalGet(SLOT_ADDR_LOCAL));
     f.instruction(&W::I64Load(mem64(0)));
-    f.instruction(&W::LocalSet(10));
-
-    // raw i64 address root
-    f.instruction(&W::LocalGet(10));
-    f.instruction(&W::GlobalGet(heap_start_global_idx));
-    f.instruction(&W::I64ExtendI32U);
-    f.instruction(&W::I64GeS);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(10));
-    f.instruction(&W::GlobalGet(heap_ptr_global_idx));
-    f.instruction(&W::I64ExtendI32U);
-    f.instruction(&W::I64LtS);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(10));
-    f.instruction(&W::I32WrapI64);
-    f.instruction(&W::LocalGet(4));
-    f.instruction(&W::I32Eq);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::I32Const(1));
-    f.instruction(&W::LocalSet(6));
-    f.instruction(&W::GlobalGet(root_stack_top_global_idx));
-    f.instruction(&W::LocalSet(7));
-    f.instruction(&W::Br(0));
-    f.instruction(&W::End);
-    f.instruction(&W::End);
-    f.instruction(&W::End);
-
-    // tagged handle root
-    f.instruction(&W::LocalGet(10));
-    f.instruction(&W::I64Const(TAGGED_POINTER_MASK));
-    f.instruction(&W::I64GeU);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(10));
-    f.instruction(&W::I64Const(TAGGED_POINTER_MASK));
-    f.instruction(&W::I64Sub);
-    f.instruction(&W::LocalSet(11));
-    f.instruction(&W::LocalGet(11));
-    f.instruction(&W::GlobalGet(heap_start_global_idx));
-    f.instruction(&W::I64ExtendI32U);
-    f.instruction(&W::I64GeS);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(11));
-    f.instruction(&W::GlobalGet(heap_ptr_global_idx));
-    f.instruction(&W::I64ExtendI32U);
-    f.instruction(&W::I64LtS);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::LocalGet(11));
-    f.instruction(&W::I32WrapI64);
-    f.instruction(&W::LocalGet(4));
-    f.instruction(&W::I32Eq);
-    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
-    f.instruction(&W::I32Const(1));
-    f.instruction(&W::LocalSet(6));
-    f.instruction(&W::GlobalGet(root_stack_top_global_idx));
-    f.instruction(&W::LocalSet(7));
-    f.instruction(&W::Br(0));
-    f.instruction(&W::End);
-    f.instruction(&W::End);
-    f.instruction(&W::End);
-    f.instruction(&W::End);
-
-    f.instruction(&W::LocalGet(7));
+    f.instruction(&W::LocalSet(SLOT_VALUE_LOCAL));
+    emit_gc_mark_candidate(
+        &mut f,
+        globals,
+        layout,
+        GcMarkHelperLocals {
+            old_count_local: OLD_COUNT_LOCAL,
+            candidate_value_local: SLOT_VALUE_LOCAL,
+            candidate_addr_local: CANDIDATE_ADDR_LOCAL,
+            search_idx_local: SEARCH_IDX_LOCAL,
+            search_entry_ptr_local: SEARCH_ENTRY_PTR_LOCAL,
+            temp_i64_local: TEMP_I64_LOCAL,
+        },
+    );
+    f.instruction(&W::LocalGet(ROOT_IDX_LOCAL));
     f.instruction(&W::I32Const(1));
     f.instruction(&W::I32Add);
-    f.instruction(&W::LocalSet(7));
+    f.instruction(&W::LocalSet(ROOT_IDX_LOCAL));
     f.instruction(&W::Br(0));
     f.instruction(&W::End);
     f.instruction(&W::End);
 
-    f.instruction(&W::LocalGet(6));
+    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(MARK_PROGRESS_LOCAL));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(READ_IDX_LOCAL));
+
+    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(READ_IDX_LOCAL));
+    f.instruction(&W::LocalGet(OLD_COUNT_LOCAL));
+    f.instruction(&W::I32GeU);
+    f.instruction(&W::BrIf(1));
+
+    f.instruction(&W::I32Const(gc_object_table_base));
+    f.instruction(&W::LocalGet(READ_IDX_LOCAL));
+    f.instruction(&W::I32Const(4));
+    f.instruction(&W::I32Shl);
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::I32Load(mem32(8)));
+    f.instruction(&W::LocalSet(MARK_STATE_LOCAL));
+
+    f.instruction(&W::LocalGet(MARK_STATE_LOCAL));
+    f.instruction(&W::I32Const(GC_MARK_PENDING));
+    f.instruction(&W::I32Eq);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::LocalSet(MARK_PROGRESS_LOCAL));
+
+    f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::I32Load(mem32(0)));
+    f.instruction(&W::LocalSet(OBJ_ADDR_LOCAL));
+    f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::I32Load(mem32(4)));
+    f.instruction(&W::LocalSet(OBJ_SIZE_LOCAL));
+    f.instruction(&W::LocalGet(OBJ_ADDR_LOCAL));
+    f.instruction(&W::I32Load(mem32(0)));
+    f.instruction(&W::LocalSet(TAG_LOCAL));
+
+    f.instruction(&W::LocalGet(TAG_LOCAL));
+    f.instruction(&W::I32Const(HEAP_TAG_REF));
+    f.instruction(&W::I32Eq);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(OBJ_ADDR_LOCAL));
+    f.instruction(&W::I64Load(mem64(8)));
+    f.instruction(&W::LocalSet(CHILD_VALUE_LOCAL));
+    emit_gc_mark_candidate(
+        &mut f,
+        globals,
+        layout,
+        GcMarkHelperLocals {
+            old_count_local: OLD_COUNT_LOCAL,
+            candidate_value_local: CHILD_VALUE_LOCAL,
+            candidate_addr_local: CANDIDATE_ADDR_LOCAL,
+            search_idx_local: SEARCH_IDX_LOCAL,
+            search_entry_ptr_local: SEARCH_ENTRY_PTR_LOCAL,
+            temp_i64_local: TEMP_I64_LOCAL,
+        },
+    );
+    f.instruction(&W::End);
+
+    f.instruction(&W::LocalGet(TAG_LOCAL));
+    f.instruction(&W::I32Const(HEAP_TAG_VECTOR));
+    f.instruction(&W::I32Eq);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(OBJ_ADDR_LOCAL));
+    f.instruction(&W::I32Load(mem32(8)));
+    f.instruction(&W::LocalSet(CHILD_LIMIT_LOCAL));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(CHILD_IDX_LOCAL));
+    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(CHILD_IDX_LOCAL));
+    f.instruction(&W::LocalGet(CHILD_LIMIT_LOCAL));
+    f.instruction(&W::I32GeU);
+    f.instruction(&W::BrIf(1));
+    f.instruction(&W::LocalGet(OBJ_ADDR_LOCAL));
+    f.instruction(&W::LocalGet(CHILD_IDX_LOCAL));
+    f.instruction(&W::I32Const(3));
+    f.instruction(&W::I32Shl);
+    f.instruction(&W::I32Add);
+    f.instruction(&W::I32Const(16));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(CHILD_ENTRY_ADDR_LOCAL));
+    f.instruction(&W::LocalGet(CHILD_ENTRY_ADDR_LOCAL));
+    f.instruction(&W::I64Load(mem64(0)));
+    f.instruction(&W::LocalSet(CHILD_VALUE_LOCAL));
+    emit_gc_mark_candidate(
+        &mut f,
+        globals,
+        layout,
+        GcMarkHelperLocals {
+            old_count_local: OLD_COUNT_LOCAL,
+            candidate_value_local: CHILD_VALUE_LOCAL,
+            candidate_addr_local: CANDIDATE_ADDR_LOCAL,
+            search_idx_local: SEARCH_IDX_LOCAL,
+            search_entry_ptr_local: SEARCH_ENTRY_PTR_LOCAL,
+            temp_i64_local: TEMP_I64_LOCAL,
+        },
+    );
+    f.instruction(&W::LocalGet(CHILD_IDX_LOCAL));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(CHILD_IDX_LOCAL));
+    f.instruction(&W::Br(0));
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+
+    f.instruction(&W::LocalGet(TAG_LOCAL));
+    f.instruction(&W::I32Const(HEAP_TAG_HASHMAP));
+    f.instruction(&W::I32Eq);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(OBJ_ADDR_LOCAL));
+    f.instruction(&W::I32Load(mem32(4)));
+    f.instruction(&W::LocalSet(CHILD_LIMIT_LOCAL));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(CHILD_IDX_LOCAL));
+    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(CHILD_IDX_LOCAL));
+    f.instruction(&W::LocalGet(CHILD_LIMIT_LOCAL));
+    f.instruction(&W::I32GeU);
+    f.instruction(&W::BrIf(1));
+    f.instruction(&W::LocalGet(OBJ_ADDR_LOCAL));
+    f.instruction(&W::LocalGet(CHILD_IDX_LOCAL));
+    f.instruction(&W::I32Const(4));
+    f.instruction(&W::I32Shl);
+    f.instruction(&W::I32Add);
+    f.instruction(&W::I32Const(16));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(CHILD_ENTRY_ADDR_LOCAL));
+    f.instruction(&W::LocalGet(CHILD_ENTRY_ADDR_LOCAL));
+    f.instruction(&W::I64Load(mem64(0)));
+    f.instruction(&W::LocalSet(CHILD_VALUE_LOCAL));
+    f.instruction(&W::LocalGet(CHILD_VALUE_LOCAL));
+    f.instruction(&W::I64Const(0));
+    f.instruction(&W::I64Eq);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Else);
+    f.instruction(&W::LocalGet(CHILD_VALUE_LOCAL));
+    f.instruction(&W::I64Const(-1));
+    f.instruction(&W::I64Eq);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Else);
+    emit_gc_mark_candidate(
+        &mut f,
+        globals,
+        layout,
+        GcMarkHelperLocals {
+            old_count_local: OLD_COUNT_LOCAL,
+            candidate_value_local: CHILD_VALUE_LOCAL,
+            candidate_addr_local: CANDIDATE_ADDR_LOCAL,
+            search_idx_local: SEARCH_IDX_LOCAL,
+            search_entry_ptr_local: SEARCH_ENTRY_PTR_LOCAL,
+            temp_i64_local: TEMP_I64_LOCAL,
+        },
+    );
+    f.instruction(&W::LocalGet(CHILD_ENTRY_ADDR_LOCAL));
+    f.instruction(&W::I64Load(mem64(8)));
+    f.instruction(&W::LocalSet(CHILD_VALUE_LOCAL));
+    emit_gc_mark_candidate(
+        &mut f,
+        globals,
+        layout,
+        GcMarkHelperLocals {
+            old_count_local: OLD_COUNT_LOCAL,
+            candidate_value_local: CHILD_VALUE_LOCAL,
+            candidate_addr_local: CANDIDATE_ADDR_LOCAL,
+            search_idx_local: SEARCH_IDX_LOCAL,
+            search_entry_ptr_local: SEARCH_ENTRY_PTR_LOCAL,
+            temp_i64_local: TEMP_I64_LOCAL,
+        },
+    );
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+    f.instruction(&W::LocalGet(CHILD_IDX_LOCAL));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(CHILD_IDX_LOCAL));
+    f.instruction(&W::Br(0));
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+
+    f.instruction(&W::LocalGet(TAG_LOCAL));
+    f.instruction(&W::I32Const(HEAP_TAG_CLOSURE));
+    f.instruction(&W::I32Eq);
+    f.instruction(&W::LocalGet(TAG_LOCAL));
+    f.instruction(&W::I32Const(HEAP_TAG_RECORD));
+    f.instruction(&W::I32Eq);
+    f.instruction(&W::I32Or);
+    f.instruction(&W::LocalGet(TAG_LOCAL));
+    f.instruction(&W::I32Const(HEAP_TAG_ADT));
+    f.instruction(&W::I32Eq);
+    f.instruction(&W::I32Or);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(OBJ_SIZE_LOCAL));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32GtU);
+    f.instruction(&W::If(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(OBJ_SIZE_LOCAL));
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Sub);
+    f.instruction(&W::LocalSet(TEMP_I32_LOCAL));
+    f.instruction(&W::LocalGet(TEMP_I32_LOCAL));
+    f.instruction(&W::I32Const(3));
+    f.instruction(&W::I32ShrU);
+    f.instruction(&W::LocalSet(CHILD_LIMIT_LOCAL));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(CHILD_IDX_LOCAL));
+    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(CHILD_IDX_LOCAL));
+    f.instruction(&W::LocalGet(CHILD_LIMIT_LOCAL));
+    f.instruction(&W::I32GeU);
+    f.instruction(&W::BrIf(1));
+    f.instruction(&W::LocalGet(OBJ_ADDR_LOCAL));
+    f.instruction(&W::LocalGet(CHILD_IDX_LOCAL));
+    f.instruction(&W::I32Const(3));
+    f.instruction(&W::I32Shl);
+    f.instruction(&W::I32Add);
+    f.instruction(&W::I32Const(8));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(CHILD_ENTRY_ADDR_LOCAL));
+    f.instruction(&W::LocalGet(CHILD_ENTRY_ADDR_LOCAL));
+    f.instruction(&W::I64Load(mem64(0)));
+    f.instruction(&W::LocalSet(CHILD_VALUE_LOCAL));
+    emit_gc_mark_candidate(
+        &mut f,
+        globals,
+        layout,
+        GcMarkHelperLocals {
+            old_count_local: OLD_COUNT_LOCAL,
+            candidate_value_local: CHILD_VALUE_LOCAL,
+            candidate_addr_local: CANDIDATE_ADDR_LOCAL,
+            search_idx_local: SEARCH_IDX_LOCAL,
+            search_entry_ptr_local: SEARCH_ENTRY_PTR_LOCAL,
+            temp_i64_local: TEMP_I64_LOCAL,
+        },
+    );
+    f.instruction(&W::LocalGet(CHILD_IDX_LOCAL));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(CHILD_IDX_LOCAL));
+    f.instruction(&W::Br(0));
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+
+    f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::I32Const(GC_MARK_SCANNED));
+    f.instruction(&W::I32Store(mem32(8)));
+    f.instruction(&W::End);
+
+    f.instruction(&W::LocalGet(READ_IDX_LOCAL));
+    f.instruction(&W::I32Const(1));
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(READ_IDX_LOCAL));
+    f.instruction(&W::Br(0));
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+
+    f.instruction(&W::LocalGet(MARK_PROGRESS_LOCAL));
+    f.instruction(&W::BrIf(0));
+    f.instruction(&W::End);
+    f.instruction(&W::End);
+
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(READ_IDX_LOCAL));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(WRITE_IDX_LOCAL));
+    f.instruction(&W::I32Const(0));
+    f.instruction(&W::LocalSet(FREED_THIS_CYCLE_LOCAL));
+
+    f.instruction(&W::Block(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::Loop(wasm_encoder::BlockType::Empty));
+    f.instruction(&W::LocalGet(READ_IDX_LOCAL));
+    f.instruction(&W::LocalGet(OLD_COUNT_LOCAL));
+    f.instruction(&W::I32GeU);
+    f.instruction(&W::BrIf(1));
+
+    f.instruction(&W::I32Const(gc_object_table_base));
+    f.instruction(&W::LocalGet(READ_IDX_LOCAL));
+    f.instruction(&W::I32Const(4));
+    f.instruction(&W::I32Shl);
+    f.instruction(&W::I32Add);
+    f.instruction(&W::LocalSet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::I32Load(mem32(0)));
+    f.instruction(&W::LocalSet(OBJ_ADDR_LOCAL));
+    f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::I32Load(mem32(4)));
+    f.instruction(&W::LocalSet(OBJ_SIZE_LOCAL));
+    f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::I32Load(mem32(8)));
+    f.instruction(&W::LocalSet(MARK_STATE_LOCAL));
+
+    f.instruction(&W::LocalGet(MARK_STATE_LOCAL));
     f.instruction(&W::If(wasm_encoder::BlockType::Empty));
     f.instruction(&W::I32Const(gc_object_table_base));
-    f.instruction(&W::LocalGet(2));
-    f.instruction(&W::I32Const(3));
+    f.instruction(&W::LocalGet(WRITE_IDX_LOCAL));
+    f.instruction(&W::I32Const(4));
     f.instruction(&W::I32Shl);
     f.instruction(&W::I32Add);
-    f.instruction(&W::LocalSet(3));
-    f.instruction(&W::LocalGet(3));
-    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::LocalSet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::LocalGet(OBJ_ADDR_LOCAL));
     f.instruction(&W::I32Store(mem32(0)));
-    f.instruction(&W::LocalGet(3));
-    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::LocalGet(OBJ_SIZE_LOCAL));
     f.instruction(&W::I32Store(mem32(4)));
-    f.instruction(&W::LocalGet(2));
+    f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::I32Const(GC_MARK_UNMARKED));
+    f.instruction(&W::I32Store(mem32(8)));
+    f.instruction(&W::LocalGet(WRITE_IDX_LOCAL));
     f.instruction(&W::I32Const(1));
     f.instruction(&W::I32Add);
-    f.instruction(&W::LocalSet(2));
+    f.instruction(&W::LocalSet(WRITE_IDX_LOCAL));
     f.instruction(&W::Else);
     f.instruction(&W::GlobalGet(free_list_count_global_idx));
     f.instruction(&W::I32Const(GC_FREE_LIST_SLOT_CAPACITY));
@@ -1813,43 +2231,43 @@ fn emit_gc_collect_func(
     f.instruction(&W::I32Const(3));
     f.instruction(&W::I32Shl);
     f.instruction(&W::I32Add);
-    f.instruction(&W::LocalSet(3));
-    f.instruction(&W::LocalGet(3));
-    f.instruction(&W::LocalGet(4));
+    f.instruction(&W::LocalSet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::LocalGet(OBJ_ADDR_LOCAL));
     f.instruction(&W::I32Store(mem32(0)));
-    f.instruction(&W::LocalGet(3));
-    f.instruction(&W::LocalGet(5));
+    f.instruction(&W::LocalGet(ENTRY_PTR_LOCAL));
+    f.instruction(&W::LocalGet(OBJ_SIZE_LOCAL));
     f.instruction(&W::I32Store(mem32(4)));
     f.instruction(&W::GlobalGet(free_list_count_global_idx));
     f.instruction(&W::I32Const(1));
     f.instruction(&W::I32Add);
     f.instruction(&W::GlobalSet(free_list_count_global_idx));
-    f.instruction(&W::LocalGet(9));
+    f.instruction(&W::LocalGet(FREED_THIS_CYCLE_LOCAL));
     f.instruction(&W::I32Const(1));
     f.instruction(&W::I32Add);
-    f.instruction(&W::LocalSet(9));
+    f.instruction(&W::LocalSet(FREED_THIS_CYCLE_LOCAL));
     f.instruction(&W::End);
     f.instruction(&W::End);
 
-    f.instruction(&W::LocalGet(1));
+    f.instruction(&W::LocalGet(READ_IDX_LOCAL));
     f.instruction(&W::I32Const(1));
     f.instruction(&W::I32Add);
-    f.instruction(&W::LocalSet(1));
+    f.instruction(&W::LocalSet(READ_IDX_LOCAL));
     f.instruction(&W::Br(0));
     f.instruction(&W::End);
     f.instruction(&W::End);
 
-    f.instruction(&W::LocalGet(2));
+    f.instruction(&W::LocalGet(WRITE_IDX_LOCAL));
     f.instruction(&W::GlobalSet(object_count_global_idx));
     f.instruction(&W::GlobalGet(gc_collection_count_global_idx));
     f.instruction(&W::I32Const(1));
     f.instruction(&W::I32Add);
     f.instruction(&W::GlobalSet(gc_collection_count_global_idx));
     f.instruction(&W::GlobalGet(gc_freed_count_global_idx));
-    f.instruction(&W::LocalGet(9));
+    f.instruction(&W::LocalGet(FREED_THIS_CYCLE_LOCAL));
     f.instruction(&W::I32Add);
     f.instruction(&W::GlobalSet(gc_freed_count_global_idx));
-    f.instruction(&W::LocalGet(9));
+    f.instruction(&W::LocalGet(FREED_THIS_CYCLE_LOCAL));
     f.instruction(&W::I64ExtendI32U);
     f.instruction(&W::End);
     codes.function(&f);

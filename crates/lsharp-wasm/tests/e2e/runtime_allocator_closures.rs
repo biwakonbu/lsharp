@@ -563,6 +563,82 @@ fn test_e2e_runtime_collector_preserves_direct_rooted_string_across_trigger() {
 }
 
 #[test]
+fn test_e2e_runtime_collector_preserves_string_reachable_through_rooted_ref_cell() {
+    let (_stdout, series) = compile_and_capture_runtime_telemetry_series(
+        r#"
+        (defn main []
+          (let [cell (ref-new "keep")
+                _slot (root_push cell)]
+            0))
+    "#,
+        1,
+    );
+    let telemetry = *series
+        .last()
+        .expect("collector telemetry series は 1 件以上必要");
+
+    assert_eq!(
+        telemetry.root_stack_top, 1,
+        "rooted ref cell 自体は root stack に残るべき"
+    );
+    assert_eq!(
+        telemetry.gc_live_alloc_count, 2,
+        "ref cell が指す string も transitive root として live 扱いされるべき: {:?}",
+        telemetry
+    );
+}
+
+#[test]
+fn test_e2e_runtime_collector_preserves_string_reachable_through_rooted_map_value() {
+    let (_stdout, series) = compile_and_capture_runtime_telemetry_series(
+        r#"
+        (defn main []
+          (let [m (map-insert (map-new) 1 "value")
+                _slot (root_push m)]
+            0))
+    "#,
+        1,
+    );
+    let telemetry = *series
+        .last()
+        .expect("collector telemetry series は 1 件以上必要");
+
+    assert_eq!(
+        telemetry.root_stack_top, 1,
+        "rooted map 自体は root stack に残るべき"
+    );
+    assert_eq!(
+        telemetry.gc_live_alloc_count, 2,
+        "map entry の live value も transitive root として live 扱いされるべき: {:?}",
+        telemetry
+    );
+}
+
+#[test]
+fn test_e2e_runtime_collector_skips_tombstoned_map_value_when_tracing() {
+    let (_stdout, series) = compile_and_capture_runtime_telemetry_series(
+        r#"
+        (defn main []
+          (let [m0 (map-new)
+                m1 (map-insert m0 1 "gone")
+                m2 (map-remove m1 1)
+                _slot (root_push m2)]
+            0))
+    "#,
+        1,
+    );
+    let telemetry = *series
+        .last()
+        .expect("collector telemetry series は 1 件以上必要");
+
+    assert_eq!(
+        telemetry.gc_live_alloc_count, 1,
+        "tombstone 済み entry value は live object として残さないべき: {:?}",
+        telemetry
+    );
+}
+
+#[test]
 fn test_e2e_root_runtime_api_tracks_slots_and_values() {
     let result = compile_and_run(
         r#"
