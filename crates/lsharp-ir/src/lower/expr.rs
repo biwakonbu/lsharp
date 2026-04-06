@@ -39,10 +39,10 @@ impl Lower {
                     let obj_local = ctx.alloc_local("_str_obj".to_string());
                     ctx.emit(Instruction::LocalSet(obj_local));
 
-                    // tag = 1 を書き込み (obj + 0)
+                    // tag = String を書き込み (obj + 0)
                     ctx.emit(Instruction::LocalGet(obj_local));
                     ctx.emit(Instruction::I32WrapI64);
-                    ctx.emit(Instruction::I32Const(1));
+                    ctx.emit(Instruction::I32Const(super::HEAP_TAG_STRING));
                     ctx.emit(Instruction::I32Store { offset: 0 });
 
                     // len を書き込み (obj + 4)
@@ -65,8 +65,10 @@ impl Lower {
                         ctx.emit(Instruction::MemoryCopy);
                     }
 
-                    // ヒープオブジェクトのアドレスをスタックに積む
+                    // タグ付き String handle をスタックに積む
                     ctx.emit(Instruction::LocalGet(obj_local));
+                    ctx.emit(Instruction::I64Const(1i64 << 63));
+                    ctx.emit(Instruction::I64Add);
                 }
                 Literal::Unit => ctx.emit(Instruction::I64Const(0)),
             },
@@ -292,10 +294,10 @@ impl Lower {
                             })?;
                             ctx.emit(Instruction::Call(alloc_idx));
                             ctx.emit(Instruction::LocalSet(obj_local));
-                            // tag = 1 を書き込み (obj + 0)
+                            // tag = String を書き込み (obj + 0)
                             ctx.emit(Instruction::LocalGet(obj_local));
                             ctx.emit(Instruction::I32WrapI64);
-                            ctx.emit(Instruction::I32Const(1));
+                            ctx.emit(Instruction::I32Const(super::HEAP_TAG_STRING));
                             ctx.emit(Instruction::I32Store { offset: 0 });
                             // len を書き込み (obj + 4)
                             ctx.emit(Instruction::LocalGet(obj_local));
@@ -322,8 +324,10 @@ impl Lower {
                             ctx.emit(Instruction::I32WrapI64);
                             ctx.emit(Instruction::MemoryCopy);
                             self.emit_root_pop_drop(ctx)?;
-                            // 新しい String オブジェクトのアドレスを返す
+                            // タグ付き String handle を返す
                             ctx.emit(Instruction::LocalGet(obj_local));
+                            ctx.emit(Instruction::I64Const(1i64 << 63));
+                            ctx.emit(Instruction::I64Add);
                         }
                     }
                     // string-length: ヒープ上 String オブジェクトの len フィールドを取得

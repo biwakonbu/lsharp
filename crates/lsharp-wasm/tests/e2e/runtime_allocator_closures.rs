@@ -413,6 +413,109 @@ fn test_e2e_root_runtime_api_preserves_argument_evaluation() {
 }
 
 #[test]
+fn test_e2e_string_heap_handles_are_tagged_for_runtime_discrimination() {
+    let (_stdout, telemetry) = compile_and_capture_runtime_telemetry(
+        r#"
+        (defn main []
+          (let [_ (root_push "literal")
+                _ (root_push (int-to-string 42))
+                _ (root_push (string-concat "ab" "cd"))
+                ]
+            0))
+    "#,
+    );
+    assert_eq!(
+        telemetry.root_stack_top, 3,
+        "3 つ push した string handle が root stack に残るべき"
+    );
+    assert!(
+        telemetry.root_slots[..3].iter().all(|value| *value < 0),
+        "runtime string handles は high-bit tagged で root stack に格納されるべき: {:?}",
+        &telemetry.root_slots[..3]
+    );
+}
+
+#[test]
+fn test_e2e_command_line_arg_heap_handle_is_tagged() {
+    let (_stdout, telemetry) = compile_and_capture_runtime_telemetry_with_args(
+        r#"
+        (defn main []
+          (let [_ (root_push (command-line-arg 0))]
+            0))
+    "#,
+        &["cli-arg"],
+    );
+    assert_eq!(telemetry.root_stack_top, 1);
+    assert!(
+        telemetry.root_slots[0] < 0,
+        "command-line-arg は collector discriminator 向けに tagged string handle を返すべき: {}",
+        telemetry.root_slots[0]
+    );
+}
+
+#[test]
+fn test_e2e_read_file_heap_handle_is_tagged() {
+    let dir = std::env::temp_dir().join("lsharp_tagged_read_file");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("fixture.txt"), "hello").unwrap();
+
+    let (_stdout, telemetry) = compile_and_capture_runtime_telemetry_with_dir(
+        r#"
+        (defn main []
+          (let [_ (root_push (read-file "fixture.txt"))]
+            0))
+    "#,
+        &dir,
+    );
+
+    assert_eq!(telemetry.root_stack_top, 1);
+    assert!(
+        telemetry.root_slots[0] < 0,
+        "read-file は collector discriminator 向けに tagged string handle を返すべき: {}",
+        telemetry.root_slots[0]
+    );
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn test_e2e_read_stdin_heap_handle_is_tagged() {
+    let (_stdout, telemetry) = compile_and_capture_runtime_telemetry_with_args_and_stdin(
+        r#"
+        (defn main []
+          (let [_ (root_push (read-stdin))]
+            0))
+    "#,
+        &[],
+        "stdin payload",
+    );
+    assert_eq!(telemetry.root_stack_top, 1);
+    assert!(
+        telemetry.root_slots[0] < 0,
+        "read-stdin は collector discriminator 向けに tagged string handle を返すべき: {}",
+        telemetry.root_slots[0]
+    );
+}
+
+#[test]
+fn test_e2e_substring_heap_handle_is_tagged() {
+    let (_stdout, telemetry) = compile_and_capture_runtime_telemetry(
+        r#"
+        (defn main []
+          (let [_ (root_push (substring "abcdef" 1 4))]
+            0))
+    "#,
+    );
+    assert_eq!(telemetry.root_stack_top, 1);
+    assert!(
+        telemetry.root_slots[0] < 0,
+        "substring は collector discriminator 向けに tagged string handle を返すべき: {}",
+        telemetry.root_slots[0]
+    );
+}
+
+#[test]
 fn test_e2e_runtime_telemetry_exports_heap_usage_and_alloc_count() {
     let (stdout, telemetry) = compile_and_capture_runtime_telemetry(
         r#"

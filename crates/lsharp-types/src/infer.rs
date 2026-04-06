@@ -946,11 +946,18 @@ impl Infer {
             TypeScheme::mono(Type::Fun(vec![], Box::new(Type::string()))),
         );
 
-        // root_push: Int -> Int (GC 未導入段階では no-op 互換の root slot handle)
-        env.insert(
-            "root_push".to_string(),
-            TypeScheme::mono(Type::Fun(vec![Type::int()], Box::new(Type::int()))),
-        );
+        // root_push: forall a. a -> Int (任意値を root stack に積み、slot handle を返す)
+        {
+            let a = self.var_gen.fresh_id();
+            env.insert(
+                "root_push".to_string(),
+                TypeScheme {
+                    vars: vec![a],
+                    constraints: Vec::new(),
+                    ty: Type::Fun(vec![Type::Var(a)], Box::new(Type::int())),
+                },
+            );
+        }
 
         // root_pop: () -> Int (GC 未導入段階では no-op 互換)
         env.insert(
@@ -958,14 +965,18 @@ impl Infer {
             TypeScheme::mono(Type::Fun(vec![], Box::new(Type::int()))),
         );
 
-        // root_set: (Int, Int) -> Int (GC 未導入段階では no-op 互換)
-        env.insert(
-            "root_set".to_string(),
-            TypeScheme::mono(Type::Fun(
-                vec![Type::int(), Type::int()],
-                Box::new(Type::int()),
-            )),
-        );
+        // root_set: forall a. (Int, a) -> Int (既存 slot を別値へ差し替える)
+        {
+            let a = self.var_gen.fresh_id();
+            env.insert(
+                "root_set".to_string(),
+                TypeScheme {
+                    vars: vec![a],
+                    constraints: Vec::new(),
+                    ty: Type::Fun(vec![Type::int(), Type::Var(a)], Box::new(Type::int())),
+                },
+            );
+        }
 
         // not: Bool -> Bool
         env.insert(
@@ -2762,6 +2773,18 @@ mod tests {
     fn test_zero_sentinel_remains_compatible_with_ref_type() {
         let result = infer("(defn maybe-ref [] (if (= 0 0) (ref-new 1) 0))");
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_root_push_accepts_string_type() {
+        let result = infer_one("(defn keep [] (root_push \"hello\"))");
+        assert_eq!(result, "() -> Int");
+    }
+
+    #[test]
+    fn test_root_set_accepts_string_type() {
+        let result = infer_one("(defn refresh [slot] (root_set slot \"hello\"))");
+        assert_eq!(result, "(Int) -> Int");
     }
 
     #[test]

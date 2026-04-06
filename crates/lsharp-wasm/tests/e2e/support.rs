@@ -38,6 +38,7 @@ const SELFHOST_LSP_RUNTIME_MODULES: &[&str] = &[
     "LspServer.ls",
 ];
 static SELFHOST_FIXTURE_COUNTER: AtomicUsize = AtomicUsize::new(0);
+const ROOT_STACK_BYTES: i32 = 4096 * 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RuntimeTelemetry {
@@ -45,6 +46,7 @@ pub(crate) struct RuntimeTelemetry {
     pub(crate) heap_start: i32,
     pub(crate) alloc_count: i32,
     pub(crate) root_stack_top: i32,
+    pub(crate) root_slots: [i64; 8],
 }
 
 /// ソースコードをパースする
@@ -201,10 +203,58 @@ pub(crate) fn compile_and_capture_runtime_telemetry(source: &str) -> (String, Ru
     let module = lower.lower_program(&program, &type_results).unwrap();
     let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
 
-    capture_runtime_telemetry(&wasm_bytes)
+    capture_runtime_telemetry_with_context(&wasm_bytes, None, &["telemetry"], "")
 }
 
-fn capture_runtime_telemetry(wasm_bytes: &[u8]) -> (String, RuntimeTelemetry) {
+pub(crate) fn compile_and_capture_runtime_telemetry_with_dir(
+    source: &str,
+    dir: &std::path::Path,
+) -> (String, RuntimeTelemetry) {
+    let program = parse_for_pipeline(source);
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lower = Lower::new();
+    let module = lower.lower_program(&program, &type_results).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
+
+    capture_runtime_telemetry_with_context(&wasm_bytes, Some(dir), &["telemetry"], "")
+}
+
+pub(crate) fn compile_and_capture_runtime_telemetry_with_args(
+    source: &str,
+    args: &[&str],
+) -> (String, RuntimeTelemetry) {
+    let program = parse_for_pipeline(source);
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lower = Lower::new();
+    let module = lower.lower_program(&program, &type_results).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
+
+    capture_runtime_telemetry_with_context(&wasm_bytes, None, args, "")
+}
+
+pub(crate) fn compile_and_capture_runtime_telemetry_with_args_and_stdin(
+    source: &str,
+    args: &[&str],
+    stdin: &str,
+) -> (String, RuntimeTelemetry) {
+    let program = parse_for_pipeline(source);
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lower = Lower::new();
+    let module = lower.lower_program(&program, &type_results).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
+
+    capture_runtime_telemetry_with_context(&wasm_bytes, None, args, stdin)
+}
+
+fn capture_runtime_telemetry_with_context(
+    wasm_bytes: &[u8],
+    dir: Option<&std::path::Path>,
+    args: &[&str],
+    stdin_data: &str,
+) -> (String, RuntimeTelemetry) {
     use wasmtime::{Linker, Module, Store};
     use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
 
@@ -214,11 +264,21 @@ fn capture_runtime_telemetry(wasm_bytes: &[u8]) -> (String, RuntimeTelemetry) {
         .expect("WASI linker 構築に失敗");
 
     let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(4 * 1024 * 1024);
-    let stdin = wasmtime_wasi::pipe::MemoryInputPipe::new(Vec::new());
+    let stdin = wasmtime_wasi::pipe::MemoryInputPipe::new(stdin_data.as_bytes().to_vec());
     let mut builder = WasiCtxBuilder::new();
     builder.stdout(stdout.clone());
     builder.stdin(stdin);
-    builder.args(&["telemetry"]);
+    builder.args(args);
+    if let Some(dir_path) = dir {
+        builder
+            .preopened_dir(
+                dir_path,
+                ".",
+                wasmtime_wasi::DirPerms::all(),
+                wasmtime_wasi::FilePerms::all(),
+            )
+            .expect("preopened_dir に失敗");
+    }
     let mut store = Store::new(&engine, builder.build_p1());
 
     let module = Module::new(&engine, wasm_bytes).expect("Wasm module 構築に失敗");
@@ -231,11 +291,25 @@ fn capture_runtime_telemetry(wasm_bytes: &[u8]) -> (String, RuntimeTelemetry) {
         .call(&mut store, ())
         .expect("_start 実行に失敗");
 
+    let heap_ptr = read_i32_global(&instance, &mut store, "__lsharp_heap_ptr");
+    let heap_start = read_i32_global(&instance, &mut store, "__lsharp_heap_start");
+    let alloc_count = read_i32_global(&instance, &mut store, "__lsharp_alloc_count");
+    let root_stack_top = read_i32_global(&instance, &mut store, "__lsharp_root_stack_top");
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("memory export が必要");
+    let root_stack_base = heap_start - ROOT_STACK_BYTES;
+    let mut root_slots = [0i64; 8];
+    let captured_slots = usize::min(root_stack_top.max(0) as usize, root_slots.len());
+    for (slot, value) in root_slots.iter_mut().take(captured_slots).enumerate() {
+        *value = read_i64_memory(&memory, &store, (root_stack_base as usize) + (slot * 8));
+    }
     let telemetry = RuntimeTelemetry {
-        heap_ptr: read_i32_global(&instance, &mut store, "__lsharp_heap_ptr"),
-        heap_start: read_i32_global(&instance, &mut store, "__lsharp_heap_start"),
-        alloc_count: read_i32_global(&instance, &mut store, "__lsharp_alloc_count"),
-        root_stack_top: read_i32_global(&instance, &mut store, "__lsharp_root_stack_top"),
+        heap_ptr,
+        heap_start,
+        alloc_count,
+        root_stack_top,
+        root_slots,
     };
 
     drop(store);
@@ -256,6 +330,18 @@ fn read_i32_global(
         .get(&mut *store)
         .i32()
         .unwrap_or_else(|| panic!("runtime telemetry export が i32 ではない: {name}"))
+}
+
+fn read_i64_memory(
+    memory: &wasmtime::Memory,
+    store: &wasmtime::Store<wasmtime_wasi::preview1::WasiP1Ctx>,
+    offset: usize,
+) -> i64 {
+    let data = memory.data(store);
+    let bytes: [u8; 8] = data[offset..offset + 8]
+        .try_into()
+        .expect("runtime telemetry root slot 読み取り範囲外");
+    i64::from_le_bytes(bytes)
 }
 
 /// 型チェックでエラーになることを検証

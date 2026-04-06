@@ -21,6 +21,7 @@ const NWRITTEN_ADDR: i32 = 24;
 const BUF_END: i32 = 276;
 const ROOT_STACK_SLOT_CAPACITY: i32 = 4096;
 const ROOT_STACK_BYTES: i32 = ROOT_STACK_SLOT_CAPACITY * 8;
+const TAGGED_POINTER_MASK: i64 = 1i64 << 63;
 const HEAP_PTR_GLOBAL_IDX: u32 = 0;
 const ROOT_STACK_TOP_GLOBAL_IDX: u32 = 1;
 const ALLOC_COUNT_GLOBAL_IDX: u32 = 2;
@@ -38,6 +39,23 @@ const IR_IMPORT_COUNT: u32 = 17;
 
 /// WASI import 関数数
 const WASI_IMPORT_COUNT: u32 = 9;
+
+fn emit_tagged_pointer_from_i32_local(func: &mut wasm_encoder::Function, local_idx: u32) {
+    use wasm_encoder::Instruction as W;
+
+    func.instruction(&W::LocalGet(local_idx));
+    func.instruction(&W::I64ExtendI32U);
+    func.instruction(&W::I64Const(TAGGED_POINTER_MASK));
+    func.instruction(&W::I64Add);
+}
+
+fn emit_tagged_pointer_from_i64_local(func: &mut wasm_encoder::Function, local_idx: u32) {
+    use wasm_encoder::Instruction as W;
+
+    func.instruction(&W::LocalGet(local_idx));
+    func.instruction(&W::I64Const(TAGGED_POINTER_MASK));
+    func.instruction(&W::I64Add);
+}
 
 /// WASI モードで Wasm バイナリを生成
 pub fn emit_wasm_wasi(module: &Module) -> Result<Vec<u8>, CodegenError> {
@@ -1552,9 +1570,8 @@ fn emit_string_concat_func(codes: &mut CodeSection, alloc_func_idx: u32) {
         src_mem: 0,
         dst_mem: 0,
     });
-    // return new_obj as i64
-    f.instruction(&W::LocalGet(7));
-    f.instruction(&W::I64ExtendI32U);
+    // return tagged String handle
+    emit_tagged_pointer_from_i32_local(&mut f, 7);
     f.instruction(&W::End);
     codes.function(&f);
 }
@@ -1867,8 +1884,8 @@ fn emit_int_to_string_func(codes: &mut CodeSection, alloc_func_idx: u32) {
         dst_mem: 0,
     });
 
-    // String オブジェクトのアドレスを返す
-    f.instruction(&W::LocalGet(5));
+    // タグ付き String handle を返す
+    emit_tagged_pointer_from_i64_local(&mut f, 5);
 
     f.instruction(&W::End);
     codes.function(&f);
@@ -2027,9 +2044,8 @@ fn emit_read_file_func(
         align: 2,
         memory_index: 0,
     }));
-    // String オブジェクトのアドレスを返す
-    f.instruction(&W::LocalGet(5));
-    f.instruction(&W::I64ExtendI32U);
+    // タグ付き String handle を返す
+    emit_tagged_pointer_from_i32_local(&mut f, 5);
 
     f.instruction(&W::End);
     codes.function(&f);
@@ -2318,7 +2334,7 @@ fn emit_command_line_arg_func(
         align: 2,
         memory_index: 0,
     }));
-    f.instruction(&W::LocalGet(9));
+    emit_tagged_pointer_from_i64_local(&mut f, 9);
     f.instruction(&W::Return);
     f.instruction(&W::End);
 
@@ -2345,7 +2361,7 @@ fn emit_command_line_arg_func(
         align: 2,
         memory_index: 0,
     }));
-    f.instruction(&W::LocalGet(9));
+    emit_tagged_pointer_from_i64_local(&mut f, 9);
     f.instruction(&W::Return);
     f.instruction(&W::End);
 
@@ -2474,7 +2490,7 @@ fn emit_command_line_arg_func(
     f.instruction(&W::End);
     f.instruction(&W::End);
 
-    f.instruction(&W::LocalGet(9));
+    emit_tagged_pointer_from_i64_local(&mut f, 9);
     f.instruction(&W::End);
     codes.function(&f);
 }
@@ -2569,8 +2585,7 @@ fn emit_read_stdin_func(
     f.instruction(&W::End);
     f.instruction(&W::End);
 
-    f.instruction(&W::LocalGet(0));
-    f.instruction(&W::I64ExtendI32U);
+    emit_tagged_pointer_from_i32_local(&mut f, 0);
     f.instruction(&W::End);
     codes.function(&f);
 }
