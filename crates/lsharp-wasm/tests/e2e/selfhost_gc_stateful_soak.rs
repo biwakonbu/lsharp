@@ -172,6 +172,80 @@ fn test_e2e_gc_repl_stateful_long_session_metrics() {
     );
 }
 
+#[test]
+fn test_e2e_gc_repl_stateful_long_session_postsession_collector_telemetry() {
+    let repl_src_a = "(defn main [] 42)";
+    let repl_src_b = "(defn main [] (if true 1 2))";
+    let iterations = 200usize;
+    let expected_bytes: usize = (1..=iterations)
+        .map(|n| {
+            if n % 2 == 0 {
+                repl_src_a.len()
+            } else {
+                repl_src_b.len()
+            }
+        })
+        .sum();
+
+    let harness = format!(
+        r#"
+(defn repl-loop [session n]
+  (if (<= n 0)
+    0
+    (let [src (if (= (% n 2) 0) "{repl_src_a}" "{repl_src_b}")]
+      (do
+        (repl-session-eval session src)
+        (repl-loop session (- n 1))))))
+
+(defn main []
+  (let [session (repl-session-new)]
+    (do
+      (repl-loop session {iterations})
+      (print (repl-session-eval-count session))
+      (print (repl-session-total-input-bytes session))
+      (print (repl-session-last-type-name session))
+      0)))
+"#
+    );
+
+    let (output, telemetry) = compile_and_capture_runtime_telemetry_after_collect(&format!(
+        "{}\n{}",
+        selfhost_cli_runtime_bundle(),
+        harness
+    ));
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(
+        lines[0],
+        iterations.to_string(),
+        "collector 実測ありでも long REPL session の eval 回数が保持されるべき"
+    );
+    assert_eq!(
+        lines[1],
+        expected_bytes.to_string(),
+        "collector 実測ありでも long REPL session の累積入力バイト数が保持されるべき"
+    );
+    assert_eq!(
+        lines[2], "100",
+        "collector 実測ありでも long REPL session の最後の推論型は Int=100 であるべき"
+    );
+    assert!(
+        telemetry.gc_collection_count > 0,
+        "post-session collector は少なくとも 1 回走るべき: {:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.gc_freed_count > 0,
+        "post-session collector は long REPL session の一時 heap を回収するべき: {:?}",
+        telemetry
+    );
+    assert_eq!(
+        telemetry.root_stack_top, 0,
+        "session 終了後の collector 実測では root stack が空に戻るべき: {:?}",
+        telemetry
+    );
+}
+
 /// GC-05 honest slice: hover を含む最小系列は shared state を明示的に渡して
 /// open -> hover -> change -> completion -> formatting を 1 session で辿る。
 /// `server-loop-step` の shared-state dispatch 自体は専用 targeted test で担保する。
@@ -412,6 +486,102 @@ fn test_e2e_gc_lsp_actual_stdio_repeated_sequence_soak() {
     assert_eq!(
         output, expected,
         "actual stdio soak は長寿命 session でも各 frame を決定的に返すべき"
+    );
+}
+
+#[test]
+fn test_e2e_gc_lsp_actual_stdio_repeated_sequence_postsession_collector_telemetry() {
+    let open_source = "(defn helper [] 1) (helper 1)";
+    let change_source = "(defn helper [] 1) (he)";
+    let iterations = 12usize;
+
+    let init_body = r#"{"jsonrpc":"2.0","id":80,"method":"initialize","params":0}"#;
+    let init_response = r#"{"jsonrpc":"2.0","id":80,"result":[1,1,1,1,1,1,1]}"#;
+    let open_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"source":"{}"}}}}"#,
+        open_source
+    );
+    let hover_body = r#"{"jsonrpc":"2.0","id":81,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":21}}"#;
+    let change_body = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"source":"{}"}}}}"#,
+        change_source
+    );
+    let completion_body = r#"{"jsonrpc":"2.0","id":82,"method":"textDocument/completion","params":{"uri":42,"line":1,"col":23}}"#;
+    let formatting_body =
+        r#"{"jsonrpc":"2.0","id":83,"method":"textDocument/formatting","params":{"uri":42}}"#;
+
+    let open_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        open_source.len()
+    );
+    let hover_response =
+        r#"{"jsonrpc":"2.0","id":81,"result":{"range":[1,21,1,27],"contents":"defn helper"}}"#;
+    let change_response = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"uri":42,"sourceBytes":{}}}}}"#,
+        change_source.len()
+    );
+    let completion_response = r#"{"jsonrpc":"2.0","id":82,"result":[["helper",3,"helper"]]}"#;
+    let formatting_response =
+        "{\"jsonrpc\":\"2.0\",\"id\":83,\"result\":[[1,1,1,24,\"(defn helper [] 1)\\n(he)\\n\"]]}";
+
+    let stdin = format!(
+        "{}{}",
+        render_lsp_wire_frame(init_body),
+        repeat_rendered_frames(
+            &[
+                render_lsp_wire_frame(&open_body),
+                render_lsp_wire_frame(hover_body),
+                render_lsp_wire_frame(&change_body),
+                render_lsp_wire_frame(completion_body),
+                render_lsp_wire_frame(formatting_body),
+            ],
+            iterations
+        )
+    );
+    let expected = format!(
+        "{}{}",
+        render_lsp_wire_frame(init_response),
+        repeat_rendered_frames(
+            &[
+                render_lsp_wire_frame(&open_response),
+                render_lsp_wire_frame(hover_response),
+                render_lsp_wire_frame(&change_response),
+                render_lsp_wire_frame(completion_response),
+                render_lsp_wire_frame(formatting_response),
+            ],
+            iterations
+        )
+    );
+
+    let (output, telemetry) = compile_and_capture_runtime_telemetry_after_collect_with_args_and_stdin(
+        selfhost_cli_runtime_bundle(),
+        &["lsp", "--stdio"],
+        &stdin,
+    );
+
+    assert_eq!(
+        output.matches("Content-Length:").count(),
+        1 + (iterations * 5),
+        "collector 実測ありでも actual stdio soak は initialize + 各反復 5 frame を返すべき"
+    );
+    assert_eq!(
+        output, expected,
+        "collector 実測ありでも actual stdio soak は各 frame を決定的に返すべき"
+    );
+    assert!(
+        telemetry.gc_collection_count > 0,
+        "post-session collector は actual stdio soak 後にも少なくとも 1 回走るべき: {:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.gc_freed_count > 0,
+        "post-session collector は actual stdio soak の一時 heap を回収するべき: {:?}",
+        telemetry
+    );
+    assert_eq!(
+        telemetry.root_stack_top, 0,
+        "actual stdio soak 終了後の collector 実測では root stack が空に戻るべき: {:?}",
+        telemetry
     );
 }
 

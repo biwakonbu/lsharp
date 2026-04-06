@@ -207,7 +207,20 @@ pub(crate) fn compile_and_capture_runtime_telemetry(source: &str) -> (String, Ru
     let module = lower.lower_program(&program, &type_results).unwrap();
     let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
 
-    capture_runtime_telemetry_with_context(&wasm_bytes, None, &["telemetry"], "")
+    capture_runtime_telemetry_with_context(&wasm_bytes, None, &["telemetry"], "", false)
+}
+
+pub(crate) fn compile_and_capture_runtime_telemetry_after_collect(
+    source: &str,
+) -> (String, RuntimeTelemetry) {
+    let program = parse_for_pipeline(source);
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lower = Lower::new();
+    let module = lower.lower_program(&program, &type_results).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
+
+    capture_runtime_telemetry_with_context(&wasm_bytes, None, &["telemetry"], "", true)
 }
 
 pub(crate) fn compile_and_capture_runtime_telemetry_with_dir(
@@ -221,7 +234,7 @@ pub(crate) fn compile_and_capture_runtime_telemetry_with_dir(
     let module = lower.lower_program(&program, &type_results).unwrap();
     let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
 
-    capture_runtime_telemetry_with_context(&wasm_bytes, Some(dir), &["telemetry"], "")
+    capture_runtime_telemetry_with_context(&wasm_bytes, Some(dir), &["telemetry"], "", false)
 }
 
 pub(crate) fn compile_and_capture_runtime_telemetry_with_args(
@@ -235,7 +248,7 @@ pub(crate) fn compile_and_capture_runtime_telemetry_with_args(
     let module = lower.lower_program(&program, &type_results).unwrap();
     let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
 
-    capture_runtime_telemetry_with_context(&wasm_bytes, None, args, "")
+    capture_runtime_telemetry_with_context(&wasm_bytes, None, args, "", false)
 }
 
 pub(crate) fn compile_and_capture_runtime_telemetry_with_args_and_stdin(
@@ -250,7 +263,22 @@ pub(crate) fn compile_and_capture_runtime_telemetry_with_args_and_stdin(
     let module = lower.lower_program(&program, &type_results).unwrap();
     let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
 
-    capture_runtime_telemetry_with_context(&wasm_bytes, None, args, stdin)
+    capture_runtime_telemetry_with_context(&wasm_bytes, None, args, stdin, false)
+}
+
+pub(crate) fn compile_and_capture_runtime_telemetry_after_collect_with_args_and_stdin(
+    source: &str,
+    args: &[&str],
+    stdin: &str,
+) -> (String, RuntimeTelemetry) {
+    let program = parse_for_pipeline(source);
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lower = Lower::new();
+    let module = lower.lower_program(&program, &type_results).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
+
+    capture_runtime_telemetry_with_context(&wasm_bytes, None, args, stdin, true)
 }
 
 pub(crate) fn compile_and_capture_runtime_telemetry_series(
@@ -272,6 +300,7 @@ fn capture_runtime_telemetry_with_context(
     dir: Option<&std::path::Path>,
     args: &[&str],
     stdin_data: &str,
+    collect_after_run: bool,
 ) -> (String, RuntimeTelemetry) {
     use wasmtime::{Linker, Module, Store};
     use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
@@ -303,11 +332,21 @@ fn capture_runtime_telemetry_with_context(
     let instance = linker
         .instantiate(&mut store, &module)
         .expect("WASI instance 化に失敗");
-    instance
+    let start = instance
         .get_typed_func::<(), ()>(&mut store, "_start")
-        .expect("_start export が必要")
-        .call(&mut store, ())
-        .expect("_start 実行に失敗");
+        .expect("_start export が必要");
+    let exit_code = match start.call(&mut store, ()) {
+        Ok(()) => 0,
+        Err(err) => extract_i32_exit(&err).unwrap_or_else(|| panic!("_start 実行に失敗: {err}")),
+    };
+    assert_eq!(exit_code, 0, "_start は exit code 0 で終わるべき");
+    if collect_after_run {
+        instance
+            .get_typed_func::<(), i64>(&mut store, "__lsharp_gc_collect")
+            .expect("__lsharp_gc_collect export が必要")
+            .call(&mut store, ())
+            .expect("__lsharp_gc_collect 実行に失敗");
+    }
 
     let telemetry = read_runtime_telemetry(&instance, &mut store);
 
@@ -362,7 +401,13 @@ fn capture_runtime_telemetry_series_with_context(
         .expect("__lsharp_gc_collect export が必要");
     let mut series = Vec::with_capacity(iterations);
     for _ in 0..iterations {
-        start.call(&mut store, ()).expect("_start 実行に失敗");
+        let exit_code = match start.call(&mut store, ()) {
+            Ok(()) => 0,
+            Err(err) => {
+                extract_i32_exit(&err).unwrap_or_else(|| panic!("_start 実行に失敗: {err}"))
+            }
+        };
+        assert_eq!(exit_code, 0, "_start は exit code 0 で終わるべき");
         gc_collect
             .call(&mut store, ())
             .expect("__lsharp_gc_collect 実行に失敗");
@@ -421,6 +466,26 @@ fn read_i32_global(
         .get(&mut *store)
         .i32()
         .unwrap_or_else(|| panic!("runtime telemetry export が i32 ではない: {name}"))
+}
+
+fn extract_i32_exit(err: &wasmtime::Error) -> Option<i32> {
+    for cause in err.chain() {
+        if let Some(exit) = cause.downcast_ref::<wasmtime_wasi::I32Exit>() {
+            return Some(exit.0);
+        }
+    }
+    let rendered = format!("{err:#}");
+    let marker = "Exited with i32 exit status ";
+    if let Some(start) = rendered.find(marker) {
+        let digits = rendered[start + marker.len()..]
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '-')
+            .collect::<String>();
+        if let Ok(code) = digits.parse::<i32>() {
+            return Some(code);
+        }
+    }
+    None
 }
 
 fn read_i64_memory(
