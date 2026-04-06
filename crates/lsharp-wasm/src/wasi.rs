@@ -156,8 +156,9 @@ fn emit_wasm_wasi_with_options(
     // 24: root_set
     // 25: __gc_collect
     // 26..26+N-1: ユーザー関数
-    // 26+N: _start
-    // 27+N: wasi:cli/run@0.2.3#run
+    // 26+N: __proc_exit_with_collect
+    // 27+N: _start
+    // 28+N: wasi:cli/run@0.2.3#run
     let fd_write_idx: u32 = 0;
     let proc_exit_wasm_idx: u32 = 1;
     let args_get_idx: u32 = 2;
@@ -185,7 +186,8 @@ fn emit_wasm_wasi_with_options(
     let root_set_idx: u32 = WASI_IMPORT_COUNT + 15;
     let gc_collect_idx: u32 = WASI_IMPORT_COUNT + 16;
     let user_func_base: u32 = WASI_IMPORT_COUNT + 17;
-    let start_func_idx: u32 = user_func_base + module.functions.len() as u32;
+    let proc_exit_helper_idx: u32 = user_func_base + module.functions.len() as u32;
+    let start_func_idx: u32 = proc_exit_helper_idx + 1;
     let component_run_func_idx: u32 = start_func_idx + 1;
 
     let _gc_type_count = module.gc_types.len() as u32;
@@ -467,6 +469,7 @@ fn emit_wasm_wasi_with_options(
     for &type_idx in &user_type_indices {
         functions.function(type_idx);
     }
+    functions.function(proc_exit_type_idx);
     functions.function(start_type_idx);
     if let Some(type_idx) = component_run_type_idx {
         functions.function(type_idx);
@@ -685,7 +688,7 @@ fn emit_wasm_wasi_with_options(
             string_concat_idx,
             string_eq_idx,
             print_string_idx,
-            proc_exit_wasm_idx,
+            proc_exit_helper_idx,
             int_to_string_idx,
             read_file_idx,
             write_file_idx,
@@ -704,6 +707,21 @@ fn emit_wasm_wasi_with_options(
         codes.function(&f);
     }
 
+    // __proc_exit_with_collect
+    {
+        let mut f = wasm_encoder::Function::new(vec![]);
+        f.instruction(&wasm_encoder::Instruction::LocalGet(0));
+        f.instruction(&wasm_encoder::Instruction::I32Eqz);
+        f.instruction(&wasm_encoder::Instruction::If(wasm_encoder::BlockType::Empty));
+        f.instruction(&wasm_encoder::Instruction::Call(gc_collect_idx));
+        f.instruction(&wasm_encoder::Instruction::Drop);
+        f.instruction(&wasm_encoder::Instruction::End);
+        f.instruction(&wasm_encoder::Instruction::LocalGet(0));
+        f.instruction(&wasm_encoder::Instruction::Call(proc_exit_wasm_idx));
+        f.instruction(&wasm_encoder::Instruction::End);
+        codes.function(&f);
+    }
+
     // _start
     {
         let mut f = wasm_encoder::Function::new(vec![]);
@@ -713,6 +731,8 @@ fn emit_wasm_wasi_with_options(
             f.instruction(&wasm_encoder::Instruction::Call(
                 user_func_base + main_idx as u32,
             ));
+            f.instruction(&wasm_encoder::Instruction::Drop);
+            f.instruction(&wasm_encoder::Instruction::Call(gc_collect_idx));
             f.instruction(&wasm_encoder::Instruction::Drop);
         }
         f.instruction(&wasm_encoder::Instruction::End);
