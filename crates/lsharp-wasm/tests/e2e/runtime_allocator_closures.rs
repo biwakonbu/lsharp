@@ -363,6 +363,100 @@ fn test_e2e_alloc_metrics_s14_status_fail_when_tail_keeps_growing() {
 }
 
 #[test]
+fn test_e2e_runtime_collector_reuses_unrooted_allocations_across_repeated_start_series() {
+    let (_stdout, series) = compile_and_capture_runtime_telemetry_series(
+        r#"
+        (defn churn [n]
+          (if (<= n 0)
+            0
+            (let [s (string-concat "ab" "cd")]
+              (do
+                (string-length s)
+                (churn (- n 1))))))
+        (defn main []
+          (do
+            (churn 128)
+            0))
+    "#,
+        10,
+    );
+    let heap_bytes_series: Vec<i64> = series
+        .iter()
+        .map(|telemetry| (telemetry.heap_ptr - telemetry.heap_start) as i64)
+        .collect();
+    let last = *series
+        .last()
+        .expect("repeated-start telemetry は 1 件以上必要");
+
+    assert_eq!(
+        evaluate_s14_status("collector", &heap_bytes_series),
+        "pass",
+        "collector mode では repeated-start workload の tail が plateau するべき: {:?}",
+        heap_bytes_series
+    );
+    assert!(
+        last.gc_collection_count > 0,
+        "collector mode では少なくとも 1 回 GC が走るべき: {:?}",
+        series
+    );
+    assert!(
+        last.gc_freed_count > 0,
+        "collector mode では unrooted allocation を回収できるべき: {:?}",
+        series
+    );
+}
+
+#[test]
+fn test_e2e_runtime_collector_preserves_direct_rooted_string_across_trigger() {
+    let (_stdout, series) = compile_and_capture_runtime_telemetry_series(
+        r#"
+        (defn churn [n]
+          (if (<= n 0)
+            0
+            (let [s (string-concat "left" "right")]
+              (do
+                (string-length s)
+                (churn (- n 1))))))
+        (defn main []
+          (let [keep (string-concat "keep" "!")
+                _slot (root_push keep)]
+            (do
+              (churn 256)
+              0)))
+    "#,
+        1,
+    );
+    let telemetry = *series
+        .last()
+        .expect("forced-collection telemetry は 1 件以上必要");
+
+    assert_eq!(
+        telemetry.root_stack_top, 1,
+        "direct root は churn 後も stack 上に残るべき"
+    );
+    assert!(
+        telemetry.root_slots.first().copied().unwrap_or_default() < 0,
+        "rooted string handle は tagged pointer として残るべき: {:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.gc_collection_count > 0,
+        "host から明示 trigger した collector が走るべき: {:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.gc_freed_count > 0,
+        "collector は churn 中の unrooted allocation を回収するべき: {:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.gc_live_alloc_count >= 1,
+        "direct root があるため少なくとも 1 allocation は live のまま残るべき: {:?}",
+        telemetry
+    );
+}
+
+#[test]
 fn test_e2e_root_runtime_api_tracks_slots_and_values() {
     let result = compile_and_run(
         r#"
@@ -767,19 +861,39 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
         "lsp_actual_stdio_repeated_sequence": collect_lsp_actual_stdio_repeated_sequence_proxy_workload(),
     });
 
-    // bump allocator では S14 input を空の series として持ち、
-    // 状態値自体は evaluator が "n/a" を返す。
-    let heap_bytes_series: Vec<i64> = Vec::new();
+    let (_collector_stdout, collector_series) = compile_and_capture_runtime_telemetry_series(
+        r#"
+        (defn churn [n]
+          (if (<= n 0)
+            0
+            (let [s (string-concat "gc" "slice")]
+              (do
+                (string-length s)
+                (churn (- n 1))))))
+        (defn main []
+          (do
+            (churn 128)
+            0))
+    "#,
+        10,
+    );
+    let heap_bytes_series: Vec<i64> = collector_series
+        .iter()
+        .map(|telemetry| (telemetry.heap_ptr - telemetry.heap_start) as i64)
+        .collect();
+    let collector_telemetry = *collector_series
+        .last()
+        .expect("collector telemetry series は 1 件以上必要");
     let gate_status = "accepted";
-    let s14_status = evaluate_s14_status("bump", &heap_bytes_series);
-    let s14_reason = "allocator_mode_bump";
-    let s15_status = "n/a"; // collector 有効 bootstrap fixed-point artifact が未配線
-    let s16_status = "n/a"; // collector 有効ワークロードが未接続
-    let s15_reason = "allocator_mode_bump";
-    let s16_reason = "allocator_mode_bump";
+    let s14_status = evaluate_s14_status("collector", &heap_bytes_series);
+    let s14_reason = serde_json::Value::Null;
+    let s15_status = "blocked"; // collector 有効 bootstrap fixed-point artifact が未配線
+    let s16_status = "blocked"; // collector 有効ワークロードが未接続
+    let s15_reason = "collector_fixed_point_artifact_missing";
+    let s16_reason = "collector_workload_artifact_missing";
 
     let payload = serde_json::json!({
-        "allocator_mode": "bump",
+        "allocator_mode": "collector",
         "ci_level": "simple",
         "gate_status": gate_status,
         "s14_status": s14_status,
@@ -800,18 +914,38 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
         "leak_growing_count": leak_growing_count,
         "leak_total": leak_total,
         "leak_suspect": leak_suspect,
+        "gc_collection_count": collector_telemetry.gc_collection_count,
+        "gc_freed_count": collector_telemetry.gc_freed_count,
+        "gc_free_list_count": collector_telemetry.gc_free_list_count,
+        "gc_live_alloc_count": collector_telemetry.gc_live_alloc_count,
     });
 
-    assert_eq!(payload["allocator_mode"], "bump");
+    assert_eq!(payload["allocator_mode"], "collector");
     assert_eq!(payload["ci_level"], "simple");
     assert_eq!(payload["gate_status"], "accepted");
-    assert_eq!(payload["s14_status"], "n/a");
-    assert_eq!(payload["s14_reason"], "allocator_mode_bump");
-    assert_eq!(payload["s15_status"], "n/a");
-    assert_eq!(payload["s16_status"], "n/a");
-    assert_eq!(payload["s15_reason"], "allocator_mode_bump");
-    assert_eq!(payload["s16_reason"], "allocator_mode_bump");
-    assert_eq!(payload["heap_bytes_series"], serde_json::json!([]));
+    assert_eq!(payload["s14_status"], "pass");
+    assert_eq!(payload["s14_reason"], serde_json::Value::Null);
+    assert_eq!(payload["s15_status"], "blocked");
+    assert_eq!(payload["s16_status"], "blocked");
+    assert_eq!(
+        payload["s15_reason"],
+        "collector_fixed_point_artifact_missing"
+    );
+    assert_eq!(payload["s16_reason"], "collector_workload_artifact_missing");
+    assert!(
+        payload["heap_bytes_series"]
+            .as_array()
+            .is_some_and(|series| !series.is_empty()),
+        "collector mode では実 heap series を payload に載せるべき"
+    );
+    assert!(
+        payload["gc_collection_count"].as_i64().unwrap_or_default() > 0,
+        "collector mode payload は実 collection count を持つべき: {payload}"
+    );
+    assert!(
+        payload["gc_freed_count"].as_i64().unwrap_or_default() > 0,
+        "collector mode payload は実 freed count を持つべき: {payload}"
+    );
     let payload_object = payload
         .as_object()
         .expect("GC artifact payload は object であるべき");

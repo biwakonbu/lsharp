@@ -221,7 +221,6 @@ fn emit_instructions(
 }
 
 /// IR 型 -> Wasm 型
-
 #[cfg(test)]
 mod tests {
     use super::*;

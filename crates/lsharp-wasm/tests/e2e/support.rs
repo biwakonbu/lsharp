@@ -45,6 +45,10 @@ pub(crate) struct RuntimeTelemetry {
     pub(crate) heap_ptr: i32,
     pub(crate) heap_start: i32,
     pub(crate) alloc_count: i32,
+    pub(crate) gc_collection_count: i32,
+    pub(crate) gc_freed_count: i32,
+    pub(crate) gc_free_list_count: i32,
+    pub(crate) gc_live_alloc_count: i32,
     pub(crate) root_stack_top: i32,
     pub(crate) root_slots: [i64; 8],
 }
@@ -249,6 +253,20 @@ pub(crate) fn compile_and_capture_runtime_telemetry_with_args_and_stdin(
     capture_runtime_telemetry_with_context(&wasm_bytes, None, args, stdin)
 }
 
+pub(crate) fn compile_and_capture_runtime_telemetry_series(
+    source: &str,
+    iterations: usize,
+) -> (String, Vec<RuntimeTelemetry>) {
+    let program = parse_for_pipeline(source);
+    let mut infer = Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lower = Lower::new();
+    let module = lower.lower_program(&program, &type_results).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
+
+    capture_runtime_telemetry_series_with_context(&wasm_bytes, None, &["telemetry"], "", iterations)
+}
+
 fn capture_runtime_telemetry_with_context(
     wasm_bytes: &[u8],
     dir: Option<&std::path::Path>,
@@ -291,31 +309,104 @@ fn capture_runtime_telemetry_with_context(
         .call(&mut store, ())
         .expect("_start 実行に失敗");
 
-    let heap_ptr = read_i32_global(&instance, &mut store, "__lsharp_heap_ptr");
-    let heap_start = read_i32_global(&instance, &mut store, "__lsharp_heap_start");
-    let alloc_count = read_i32_global(&instance, &mut store, "__lsharp_alloc_count");
-    let root_stack_top = read_i32_global(&instance, &mut store, "__lsharp_root_stack_top");
-    let memory = instance
-        .get_memory(&mut store, "memory")
-        .expect("memory export が必要");
-    let root_stack_base = heap_start - ROOT_STACK_BYTES;
-    let mut root_slots = [0i64; 8];
-    let captured_slots = usize::min(root_stack_top.max(0) as usize, root_slots.len());
-    for (slot, value) in root_slots.iter_mut().take(captured_slots).enumerate() {
-        *value = read_i64_memory(&memory, &store, (root_stack_base as usize) + (slot * 8));
-    }
-    let telemetry = RuntimeTelemetry {
-        heap_ptr,
-        heap_start,
-        alloc_count,
-        root_stack_top,
-        root_slots,
-    };
+    let telemetry = read_runtime_telemetry(&instance, &mut store);
 
     drop(store);
     let bytes = stdout.try_into_inner().expect("stdout 取得に失敗");
     let stdout = String::from_utf8(bytes.to_vec()).expect("stdout UTF-8 変換に失敗");
     (stdout, telemetry)
+}
+
+fn capture_runtime_telemetry_series_with_context(
+    wasm_bytes: &[u8],
+    dir: Option<&std::path::Path>,
+    args: &[&str],
+    stdin_data: &str,
+    iterations: usize,
+) -> (String, Vec<RuntimeTelemetry>) {
+    use wasmtime::{Linker, Module, Store};
+    use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
+
+    let engine = wasmtime::Engine::default();
+    let mut linker = Linker::<WasiP1Ctx>::new(&engine);
+    wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |ctx| ctx)
+        .expect("WASI linker 構築に失敗");
+
+    let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(4 * 1024 * 1024);
+    let stdin = wasmtime_wasi::pipe::MemoryInputPipe::new(stdin_data.as_bytes().to_vec());
+    let mut builder = WasiCtxBuilder::new();
+    builder.stdout(stdout.clone());
+    builder.stdin(stdin);
+    builder.args(args);
+    if let Some(dir_path) = dir {
+        builder
+            .preopened_dir(
+                dir_path,
+                ".",
+                wasmtime_wasi::DirPerms::all(),
+                wasmtime_wasi::FilePerms::all(),
+            )
+            .expect("preopened_dir に失敗");
+    }
+    let mut store = Store::new(&engine, builder.build_p1());
+
+    let module = Module::new(&engine, wasm_bytes).expect("Wasm module 構築に失敗");
+    let instance = linker
+        .instantiate(&mut store, &module)
+        .expect("WASI instance 化に失敗");
+    let start = instance
+        .get_typed_func::<(), ()>(&mut store, "_start")
+        .expect("_start export が必要");
+    let gc_collect = instance
+        .get_typed_func::<(), i64>(&mut store, "__lsharp_gc_collect")
+        .expect("__lsharp_gc_collect export が必要");
+    let mut series = Vec::with_capacity(iterations);
+    for _ in 0..iterations {
+        start.call(&mut store, ()).expect("_start 実行に失敗");
+        gc_collect
+            .call(&mut store, ())
+            .expect("__lsharp_gc_collect 実行に失敗");
+        series.push(read_runtime_telemetry(&instance, &mut store));
+    }
+
+    drop(store);
+    let bytes = stdout.try_into_inner().expect("stdout 取得に失敗");
+    let stdout = String::from_utf8(bytes.to_vec()).expect("stdout UTF-8 変換に失敗");
+    (stdout, series)
+}
+
+fn read_runtime_telemetry(
+    instance: &wasmtime::Instance,
+    store: &mut wasmtime::Store<wasmtime_wasi::preview1::WasiP1Ctx>,
+) -> RuntimeTelemetry {
+    let heap_ptr = read_i32_global(instance, store, "__lsharp_heap_ptr");
+    let heap_start = read_i32_global(instance, store, "__lsharp_heap_start");
+    let alloc_count = read_i32_global(instance, store, "__lsharp_alloc_count");
+    let gc_collection_count = read_i32_global(instance, store, "__lsharp_gc_collection_count");
+    let gc_freed_count = read_i32_global(instance, store, "__lsharp_gc_freed_count");
+    let gc_free_list_count = read_i32_global(instance, store, "__lsharp_gc_free_list_count");
+    let gc_live_alloc_count = read_i32_global(instance, store, "__lsharp_gc_live_alloc_count");
+    let root_stack_top = read_i32_global(instance, store, "__lsharp_root_stack_top");
+    let memory = instance
+        .get_memory(&mut *store, "memory")
+        .expect("memory export が必要");
+    let root_stack_base = heap_start - ROOT_STACK_BYTES;
+    let mut root_slots = [0i64; 8];
+    let captured_slots = usize::min(root_stack_top.max(0) as usize, root_slots.len());
+    for (slot, value) in root_slots.iter_mut().take(captured_slots).enumerate() {
+        *value = read_i64_memory(&memory, store, (root_stack_base as usize) + (slot * 8));
+    }
+    RuntimeTelemetry {
+        heap_ptr,
+        heap_start,
+        alloc_count,
+        gc_collection_count,
+        gc_freed_count,
+        gc_free_list_count,
+        gc_live_alloc_count,
+        root_stack_top,
+        root_slots,
+    }
 }
 
 fn read_i32_global(

@@ -664,7 +664,7 @@ mod tests {
         // WasiMode が Copy + Clone を実装していること
         let mode = WasiMode::Preview2;
         let copied = mode;
-        let cloned = mode.clone();
+        let cloned = mode;
         assert_eq!(mode, copied);
         assert_eq!(mode, cloned);
     }
