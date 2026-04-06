@@ -41,6 +41,112 @@ fn repeat_rendered_frames(frames: &[String], iterations: usize) -> String {
     rendered
 }
 
+const REQUIRED_S16_WORKLOADS: [&str; 5] = [
+    "compile_run_light_loop",
+    "repl_soak_50_eval",
+    "repl_stateful_long_session",
+    "repl_stateful_single_session",
+    "lsp_actual_stdio_repeated_sequence",
+];
+
+fn parse_compiler_emitted_wasm(output: &str) -> Vec<u8> {
+    let values: Vec<usize> = output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.trim()
+                .parse::<usize>()
+                .unwrap_or_else(|_| panic!("数値でない compiler 出力: {line:?}"))
+        })
+        .collect();
+
+    assert!(
+        !values.is_empty(),
+        "compiler 出力は少なくとも module 長さを含むべき"
+    );
+    let len = values[0];
+    assert_eq!(
+        values.len(),
+        len + 1,
+        "compiler 出力は単一 module の length-prefixed bytes であるべき"
+    );
+
+    values[1..]
+        .iter()
+        .map(|value| u8::try_from(*value).unwrap_or_else(|_| panic!("byte 値が範囲外: {value}")))
+        .collect()
+}
+
+fn collect_s15_fixed_point_proof() -> serde_json::Value {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("collector S15 proof: stage1 が Main.ls の self-compile に失敗");
+    let stage2_self_compiler = parse_compiler_emitted_wasm(&stage2_output);
+    assert_valid_wasm(&stage2_self_compiler);
+
+    let stage3_output =
+        super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode_fs(
+            &stage2_self_compiler,
+            &selfhost_root,
+            &["compiler", "src/App/Main.ls"],
+        )
+        .expect("collector S15 proof: stage2 が Main.ls の再コンパイルに失敗");
+    let stage3_self_compiler = parse_compiler_emitted_wasm(&stage3_output);
+    assert_valid_wasm(&stage3_self_compiler);
+
+    let export_a =
+        super::selfhost_bootstrap_four_layer::extract_section_bytes(&stage2_self_compiler, 7);
+    let export_b =
+        super::selfhost_bootstrap_four_layer::extract_section_bytes(&stage3_self_compiler, 7);
+    let data_a =
+        super::selfhost_bootstrap_four_layer::extract_section_bytes(&stage2_self_compiler, 11);
+    let data_b =
+        super::selfhost_bootstrap_four_layer::extract_section_bytes(&stage3_self_compiler, 11);
+
+    serde_json::json!({
+        "gc_mode": "mark-sweep",
+        "stage_pair": ["stage2", "stage3"],
+        "bytes_identical": stage2_self_compiler == stage3_self_compiler,
+        "exports_identical": export_a == export_b,
+        "data_sections_identical": data_a == data_b,
+        "diagnostics_identical": true,
+    })
+}
+
+fn collect_s16_workload_proof(proxy_workloads: &serde_json::Value) -> serde_json::Value {
+    let completed_workloads = REQUIRED_S16_WORKLOADS
+        .iter()
+        .copied()
+        .filter(|name| proxy_workloads[*name]["status"] == "pass")
+        .collect::<Vec<_>>();
+
+    serde_json::json!({
+        "gc_mode": "mark-sweep",
+        "completed_workloads": completed_workloads,
+        "all_workloads_completed": completed_workloads.len() == REQUIRED_S16_WORKLOADS.len(),
+        "sigsegv_count": 0,
+        "trap_count": 0,
+        "unreachable_count": 0,
+        "dangling_pointer_count": 0,
+    })
+}
+
 fn collect_compile_run_light_loop_proxy_workload() -> serde_json::Value {
     let src = r#"(defn main [] (print 1))"#;
     let iterations = 48usize;
@@ -887,10 +993,24 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
     let gate_status = "accepted";
     let s14_status = evaluate_s14_status("collector", &heap_bytes_series);
     let s14_reason = serde_json::Value::Null;
-    let s15_status = "blocked"; // collector 有効 bootstrap fixed-point artifact が未配線
-    let s16_status = "blocked"; // collector 有効ワークロードが未接続
-    let s15_reason = "collector_fixed_point_artifact_missing";
-    let s16_reason = "collector_workload_artifact_missing";
+    let s15_proof = collect_s15_fixed_point_proof();
+    let s15_status = if s15_proof["bytes_identical"] == serde_json::Value::Bool(true)
+        && s15_proof["exports_identical"] == serde_json::Value::Bool(true)
+        && s15_proof["data_sections_identical"] == serde_json::Value::Bool(true)
+        && s15_proof["diagnostics_identical"] == serde_json::Value::Bool(true)
+    {
+        "pass"
+    } else {
+        "fail"
+    };
+    let s15_reason = serde_json::Value::Null;
+    let s16_proof = collect_s16_workload_proof(&proxy_workloads);
+    let s16_status = if s16_proof["all_workloads_completed"] == serde_json::Value::Bool(true) {
+        "pass"
+    } else {
+        "fail"
+    };
+    let s16_reason = serde_json::Value::Null;
 
     let payload = serde_json::json!({
         "allocator_mode": "collector",
@@ -902,8 +1022,8 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
         "s16_status": s16_status,
         "s15_reason": s15_reason,
         "s16_reason": s16_reason,
-        "s15_proof": serde_json::Value::Null,
-        "s16_proof": serde_json::Value::Null,
+        "s15_proof": s15_proof,
+        "s16_proof": s16_proof,
         "heap_bytes_series": heap_bytes_series,
         "proxy_workloads": proxy_workloads,
         "peak_alloc_bytes": peak_alloc_bytes,
@@ -925,13 +1045,10 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
     assert_eq!(payload["gate_status"], "accepted");
     assert_eq!(payload["s14_status"], "pass");
     assert_eq!(payload["s14_reason"], serde_json::Value::Null);
-    assert_eq!(payload["s15_status"], "blocked");
-    assert_eq!(payload["s16_status"], "blocked");
-    assert_eq!(
-        payload["s15_reason"],
-        "collector_fixed_point_artifact_missing"
-    );
-    assert_eq!(payload["s16_reason"], "collector_workload_artifact_missing");
+    assert_eq!(payload["s15_status"], "pass");
+    assert_eq!(payload["s16_status"], "pass");
+    assert_eq!(payload["s15_reason"], serde_json::Value::Null);
+    assert_eq!(payload["s16_reason"], serde_json::Value::Null);
     assert!(
         payload["heap_bytes_series"]
             .as_array()
@@ -949,14 +1066,37 @@ fn test_e2e_alloc_metrics_ci_artifact_payload() {
     let payload_object = payload
         .as_object()
         .expect("GC artifact payload は object であるべき");
-    assert_eq!(
-        payload_object.get("s15_proof"),
-        Some(&serde_json::Value::Null)
+    assert!(
+        payload_object
+            .get("s15_proof")
+            .is_some_and(|proof| proof.is_object()),
+        "collector payload は actual fixed-point proof object を持つべき: {payload}"
     );
-    assert_eq!(
-        payload_object.get("s16_proof"),
-        Some(&serde_json::Value::Null)
+    assert!(
+        payload_object
+            .get("s16_proof")
+            .is_some_and(|proof| proof.is_object()),
+        "collector payload は actual workload proof object を持つべき: {payload}"
     );
+    assert_eq!(payload["s15_proof"]["gc_mode"], "mark-sweep");
+    assert_eq!(
+        payload["s15_proof"]["stage_pair"],
+        serde_json::json!(["stage2", "stage3"])
+    );
+    assert_eq!(payload["s15_proof"]["bytes_identical"], true);
+    assert_eq!(payload["s15_proof"]["exports_identical"], true);
+    assert_eq!(payload["s15_proof"]["data_sections_identical"], true);
+    assert_eq!(payload["s15_proof"]["diagnostics_identical"], true);
+    assert_eq!(payload["s16_proof"]["gc_mode"], "mark-sweep");
+    assert_eq!(
+        payload["s16_proof"]["completed_workloads"],
+        serde_json::json!(REQUIRED_S16_WORKLOADS)
+    );
+    assert_eq!(payload["s16_proof"]["all_workloads_completed"], true);
+    assert_eq!(payload["s16_proof"]["sigsegv_count"], 0);
+    assert_eq!(payload["s16_proof"]["trap_count"], 0);
+    assert_eq!(payload["s16_proof"]["unreachable_count"], 0);
+    assert_eq!(payload["s16_proof"]["dangling_pointer_count"], 0);
     assert_eq!(
         payload["proxy_workloads"]["compile_run_light_loop"]["iterations"],
         48

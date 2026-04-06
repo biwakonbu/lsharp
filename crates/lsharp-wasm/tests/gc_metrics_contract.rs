@@ -1010,6 +1010,71 @@ fn test_gc_metrics_script_writes_default_collector_proof_sidecar() {
 
 #[cfg(unix)]
 #[test]
+fn test_gc_metrics_script_adjacent_proof_bundle_does_not_override_actual_payload_proofs() {
+    let mut payload = base_collector_payload();
+    payload["s15_status"] = serde_json::json!("pass");
+    payload["s15_reason"] = serde_json::Value::Null;
+    payload["s15_proof"] = serde_json::json!({
+        "gc_mode": "mark-sweep",
+        "stage_pair": ["stage2", "stage3"],
+        "bytes_identical": true,
+        "exports_identical": true,
+        "data_sections_identical": true,
+        "diagnostics_identical": true
+    });
+    payload["s16_status"] = serde_json::json!("pass");
+    payload["s16_reason"] = serde_json::Value::Null;
+    payload["s16_proof"] = serde_json::json!({
+        "gc_mode": "mark-sweep",
+        "completed_workloads": [
+            "compile_run_light_loop",
+            "repl_soak_50_eval",
+            "repl_stateful_long_session",
+            "repl_stateful_single_session",
+            "lsp_actual_stdio_repeated_sequence"
+        ],
+        "all_workloads_completed": true,
+        "sigsegv_count": 0,
+        "trap_count": 0,
+        "unreachable_count": 0,
+        "dangling_pointer_count": 0
+    });
+
+    let stale_proof_bundle = serde_json::json!({
+        "s15_status": "blocked",
+        "s15_reason": S15_BLOCKED_REASON,
+        "s15_proof": null,
+        "s16_status": "blocked",
+        "s16_reason": S16_BLOCKED_REASON,
+        "s16_proof": null
+    });
+
+    let (output, normalized_payload, normalized_sidecar) =
+        run_gc_metrics_script_with_fixture_and_adjacent_proof_bundle(
+            "gc-proof-bundle-preserve-actual",
+            payload,
+            stale_proof_bundle,
+        );
+
+    assert!(
+        output.status.success(),
+        "collect-gc-metrics.sh は actual payload proof を stale adjacent sidecar で上書きしないべき: status={:?}, stdout={}, stderr={}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(normalized_payload["s15_status"], "pass");
+    assert_eq!(normalized_payload["s16_status"], "pass");
+    assert_eq!(normalized_payload["s15_reason"], serde_json::Value::Null);
+    assert_eq!(normalized_payload["s16_reason"], serde_json::Value::Null);
+    assert_eq!(normalized_payload["s15_proof"]["gc_mode"], "mark-sweep");
+    assert_eq!(normalized_payload["s16_proof"]["gc_mode"], "mark-sweep");
+    assert_eq!(normalized_sidecar["s15_status"], "pass");
+    assert_eq!(normalized_sidecar["s16_status"], "pass");
+}
+
+#[cfg(unix)]
+#[test]
 fn test_gc_metrics_script_normalizes_collector_proof_sidecar_after_merge() {
     let payload = base_collector_payload();
     let proof_bundle = serde_json::json!({

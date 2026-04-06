@@ -7,9 +7,13 @@ ARTIFACT_DIR="${ROOT_DIR}/ci-artifacts/gc-metrics/${ARTIFACT_SHA}"
 ARTIFACT_FILE="${LSHARP_GC_METRICS_INPUT:-${ARTIFACT_DIR}/summary.json}"
 DEFAULT_PROOF_BUNDLE_FILE="$(dirname "${ARTIFACT_FILE}")/collector-proof.json"
 PROOF_BUNDLE_FILE="${LSHARP_GC_PROOF_BUNDLE_INPUT:-}"
+PROOF_BUNDLE_SOURCE="none"
 
-if [[ -z "${PROOF_BUNDLE_FILE}" && -f "${DEFAULT_PROOF_BUNDLE_FILE}" ]]; then
+if [[ -n "${PROOF_BUNDLE_FILE}" ]]; then
+    PROOF_BUNDLE_SOURCE="explicit"
+elif [[ -n "${LSHARP_GC_METRICS_INPUT:-}" && -f "${DEFAULT_PROOF_BUNDLE_FILE}" ]]; then
     PROOF_BUNDLE_FILE="${DEFAULT_PROOF_BUNDLE_FILE}"
+    PROOF_BUNDLE_SOURCE="adjacent"
 fi
 
 cd "${ROOT_DIR}"
@@ -26,13 +30,14 @@ if [[ -n "${PROOF_BUNDLE_FILE}" ]]; then
     echo "gc-metrics-proof-bundle:${PROOF_BUNDLE_FILE}"
 fi
 
-python3 - "${ARTIFACT_FILE}" "${PROOF_BUNDLE_FILE}" <<'PY'
+python3 - "${ARTIFACT_FILE}" "${PROOF_BUNDLE_FILE}" "${PROOF_BUNDLE_SOURCE}" <<'PY'
 import json
 import pathlib
 import sys
 
 path = pathlib.Path(sys.argv[1])
 proof_bundle_path = pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else None
+proof_bundle_source = sys.argv[3] if len(sys.argv) > 3 else "none"
 proof_sidecar_path = path.parent / "collector-proof.json"
 COLLECTOR_GC_MODES = {"mark-sweep", "generational"}
 STATUS_REASON_RULES = {
@@ -69,7 +74,7 @@ try:
 except json.JSONDecodeError as e:
     raise SystemExit(f"AR-03: artifact is not valid JSON: {e}")
 
-def merge_collector_proof_bundle(payload, proof_bundle_path):
+def merge_collector_proof_bundle(payload, proof_bundle_path, proof_bundle_source):
     if proof_bundle_path is None:
         return payload
 
@@ -104,16 +109,20 @@ def merge_collector_proof_bundle(payload, proof_bundle_path):
         )
 
     merged = dict(payload)
-    for key in (
-        "s15_status",
-        "s15_reason",
-        "s15_proof",
-        "s16_status",
-        "s16_reason",
-        "s16_proof",
-    ):
-        if key in proof_bundle:
-            merged[key] = proof_bundle[key]
+    for gate in ("s15", "s16"):
+        status_key = f"{gate}_status"
+        reason_key = f"{gate}_reason"
+        proof_key = f"{gate}_proof"
+        current_status = merged.get(status_key)
+        current_proof = merged.get(proof_key)
+        has_actual_payload_proof = (
+            current_status not in {None, "blocked", "n/a"} or current_proof is not None
+        )
+        if proof_bundle_source == "adjacent" and has_actual_payload_proof:
+            continue
+        for key in (status_key, reason_key, proof_key):
+            if key in proof_bundle:
+                merged[key] = proof_bundle[key]
     return merged
 
 def collect_proof_sidecar(payload):
@@ -126,7 +135,7 @@ def collect_proof_sidecar(payload):
         "s16_proof": payload["s16_proof"],
     }
 
-payload = merge_collector_proof_bundle(payload, proof_bundle_path)
+payload = merge_collector_proof_bundle(payload, proof_bundle_path, proof_bundle_source)
 
 def evaluate_s14_status(payload):
     if payload["allocator_mode"] == "bump":
