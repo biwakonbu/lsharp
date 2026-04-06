@@ -72,7 +72,7 @@
 ") (exit-success))))
 (defn run-fmt-source [src opts] (let [program (parse-program src) formatted (format-program-with-source program src)] (do (print-string formatted) (exit-success))))
 (defn wasm-size-text [size] (string-concat "wasm-size:" (int-to-string size)))
-(defn compile-file-functions-data-with-cache [file-path cache-ref parse-count-ref] (compile-file-functions-payload-with-cache file-path 6 cache-ref parse-count-ref))
+(defn compile-file-functions-data-with-cache [file-path cache-ref parse-count-ref] (compile-file-functions-payload-with-cache file-path 10 cache-ref parse-count-ref))
 (defn compile-file-functions-data [file-path] (let [cache-ref (ref-new (map-new)) parse-count-ref (ref-new 0)] (compile-file-functions-data-with-cache file-path cache-ref parse-count-ref)))
 (defn target-wasm-size-adjustment [target] (if (= target (compile-target-preview1)) (- (vector-length (emit-import-section-for-target (compile-target-preview1))) (vector-length (emit-import-section-for-target (compile-target-component)))) 0))
 (defn compile-file-wasm-size [file-path target] (let [pair (compile-file-functions-data file-path) functions (vector-get pair 0) data (vector-get pair 1) wasm-bytes (build-wasm-bytes-wasi functions data)] (+ (vector-length wasm-bytes) (target-wasm-size-adjustment target))))

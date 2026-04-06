@@ -1069,11 +1069,11 @@ fn run_exported_i64_with_alloc_print_read_arg_imports(
     (value, printed)
 }
 
-/// 6-import (alloc/print/read-file/command-line-arg/string-concat/substring) モデルで wasm を実行する
+/// legacy 名だが、現在は root runtime helper まで含む import モデルで wasm を実行する
 ///
 /// stage2 以降の wasm は env.string-concat, env.substring, env.file-exists? も import するため、
 /// 4-import ハーネスの代わりにこちらを使用する。
-/// string-concat/substring のスタブ実装は型が正しければ十分（minimal.ls 処理では非使用）。
+/// さらに selfhost parity のため env.root_push/env.root_pop/env.root_set も提供する。
 struct SixImportState {
     next_alloc: i64,
     printed: String,
@@ -1081,6 +1081,7 @@ struct SixImportState {
     file_root: Option<std::path::PathBuf>,
     args: Vec<String>,
     string_object_cache: HashMap<Vec<u8>, i64>,
+    root_stack: Vec<i64>,
 }
 
 fn alloc_cached_string_object(
@@ -1123,6 +1124,7 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
             file_root: file_root.map(std::path::Path::to_path_buf),
             args: args.iter().map(|a| a.to_string()).collect(),
             string_object_cache: HashMap::new(),
+            root_stack: Vec::new(),
         },
     );
     let alloc = wasmtime::Func::wrap(
@@ -1252,6 +1254,37 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
             if exists { 1 } else { 0 }
         },
     );
+    let root_push = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, SixImportState>, value: i64| -> i64 {
+            let slot =
+                i64::try_from(caller.data().root_stack.len()).expect("six-import root_push: slot overflow");
+            caller.data_mut().root_stack.push(value);
+            slot
+        },
+    );
+    let root_pop = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, SixImportState>| -> i64 {
+            caller.data_mut().root_stack.pop().unwrap_or(0)
+        },
+    );
+    let root_set = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, SixImportState>, slot: i64, value: i64| -> i64 {
+            let idx =
+                usize::try_from(slot).unwrap_or_else(|_| panic!("six-import root_set: slot must be non-negative"));
+            let len = caller.data().root_stack.len();
+            assert!(
+                idx < len,
+                "six-import root_set: slot {} out of bounds {}",
+                idx,
+                len
+            );
+            caller.data_mut().root_stack[idx] = value;
+            slot
+        },
+    );
     let instance = wasmtime::Instance::new(
         &mut store,
         &module,
@@ -1263,6 +1296,9 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
             string_concat.into(),
             substring.into(),
             file_exists.into(),
+            root_push.into(),
+            root_pop.into(),
+            root_set.into(),
         ],
     )
     .map_err(|e| format!("インスタンス化に失敗: {e}"))?;

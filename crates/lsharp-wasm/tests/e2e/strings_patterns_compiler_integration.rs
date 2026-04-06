@@ -1,5 +1,29 @@
 use super::support::*;
 
+fn parse_printed_wasm_bytes(output: &str) -> Vec<u8> {
+    let lines: Vec<&str> = output.trim().lines().collect();
+    let Some((count_text, byte_lines)) = lines.split_first() else {
+        panic!("selfhost emitted wasm bytes 出力が空");
+    };
+    let expected_count: usize = count_text
+        .parse()
+        .expect("selfhost emitted wasm bytes の先頭行は長さであること");
+    assert_eq!(
+        byte_lines.len(),
+        expected_count,
+        "selfhost emitted wasm bytes の長さと payload 行数が一致しない"
+    );
+    byte_lines
+        .iter()
+        .map(|line| {
+            let value: u16 = line
+                .parse()
+                .expect("selfhost emitted wasm byte 行は整数であること");
+            u8::try_from(value).expect("selfhost emitted wasm byte は 0..=255 に収まること")
+        })
+        .collect()
+}
+
 // === P1-2: 文字列リテラルのヒープ化テスト ===
 
 #[test]
@@ -1564,7 +1588,7 @@ fn test_e2e_selfhost_compiler_root_set_builtin_lowering() {
     assert_eq!(lines[4], "0", "root_set opcode operand は 0 であること");
 }
 
-/// selfhost WasmEmit.ls: root_push opcode を no-op bytecode へ落とせること
+/// selfhost WasmEmit.ls: root_push opcode を runtime import call へ落とせること
 #[test]
 fn test_e2e_selfhost_wasmemit_root_push_instr() {
     let harness = r#"
@@ -1603,25 +1627,73 @@ fn test_e2e_selfhost_wasmemit_root_push_instr() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert!(
-        lines.len() >= 12,
+        lines.len() >= 11,
         "root_push code section 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "11", "code section byte 長は 11 であること");
+    assert_eq!(lines[0], "10", "code section byte 長は 10 であること");
     assert_eq!(lines[1], "10", "section id は code=10");
-    assert_eq!(lines[2], "9", "section size は 9");
+    assert_eq!(lines[2], "8", "section size は 8");
     assert_eq!(lines[3], "1", "function count は 1");
-    assert_eq!(lines[4], "7", "function body size は 7 であること");
+    assert_eq!(lines[4], "6", "function body size は 6 であること");
     assert_eq!(lines[5], "0", "local decl count は 0");
     assert_eq!(lines[6], "66", "先頭命令は i64.const");
     assert_eq!(lines[7], "0", "const operand は 0");
-    assert_eq!(lines[8], "26", "root_push は引数を drop すること");
-    assert_eq!(lines[9], "66", "no-op result は i64.const 0 で積むこと");
-    assert_eq!(lines[10], "0", "root_push no-op result は 0");
-    assert_eq!(lines[11], "11", "body は end で終わること");
+    assert_eq!(lines[8], "16", "root_push は call opcode へ lower されること");
+    assert_eq!(lines[9], "7", "root_push import index は 7 であること");
+    assert_eq!(lines[10], "11", "body は end で終わること");
 }
 
-/// selfhost WasmEmit.ls: root_set opcode を no-op bytecode へ落とせること
+/// selfhost WasmEmit.ls: root_pop opcode を runtime import call へ落とせること
+#[test]
+fn test_e2e_selfhost_wasmemit_root_pop_instr() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (root_pop))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        code-sec (emit-code-section-functions functions)]
+    (do
+      (print (vector-length code-sec))
+      (print (vector-get code-sec 0))
+      (print (vector-get code-sec 1))
+      (print (vector-get code-sec 2))
+      (print (vector-get code-sec 3))
+      (print (vector-get code-sec 4))
+      (print (vector-get code-sec 5))
+      (print (vector-get code-sec 6))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(
+        lines.len() >= 8,
+        "root_pop code section 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "8", "code section byte 長は 8 であること");
+    assert_eq!(lines[1], "10", "section id は code=10");
+    assert_eq!(lines[2], "6", "section size は 6");
+    assert_eq!(lines[3], "1", "function count は 1");
+    assert_eq!(lines[4], "4", "function body size は 4 であること");
+    assert_eq!(lines[5], "0", "local decl count は 0");
+    assert_eq!(lines[6], "16", "root_pop は call opcode へ lower されること");
+    assert_eq!(lines[7], "8", "root_pop import index は 8 であること");
+}
+
+/// selfhost WasmEmit.ls: root_set opcode を runtime import call へ落とせること
 #[test]
 fn test_e2e_selfhost_wasmemit_root_set_instr() {
     let harness = r#"
@@ -1663,25 +1735,72 @@ fn test_e2e_selfhost_wasmemit_root_set_instr() {
     let output = compile_and_run(&combined);
     let lines: Vec<&str> = output.trim().lines().collect();
     assert!(
-        lines.len() >= 15,
+        lines.len() >= 13,
         "root_set code section 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "14", "code section byte 長は 14 であること");
+    assert_eq!(lines[0], "12", "code section byte 長は 12 であること");
     assert_eq!(lines[1], "10", "section id は code=10");
-    assert_eq!(lines[2], "12", "section size は 12");
+    assert_eq!(lines[2], "10", "section size は 10");
     assert_eq!(lines[3], "1", "function count は 1");
-    assert_eq!(lines[4], "10", "function body size は 10 であること");
+    assert_eq!(lines[4], "8", "function body size は 8 であること");
     assert_eq!(lines[5], "0", "local decl count は 0");
     assert_eq!(lines[6], "66", "先頭命令は i64.const");
     assert_eq!(lines[7], "0", "第1引数 const operand は 0");
     assert_eq!(lines[8], "66", "第2命令も i64.const");
     assert_eq!(lines[9], "1", "第2引数 const operand は 1");
-    assert_eq!(lines[10], "26", "root_set は value を drop すること");
-    assert_eq!(lines[11], "26", "root_set は slot も drop すること");
-    assert_eq!(lines[12], "66", "no-op result は i64.const 0 で積むこと");
-    assert_eq!(lines[13], "0", "root_set no-op result は 0");
-    assert_eq!(lines[14], "11", "body は end で終わること");
+    assert_eq!(lines[10], "16", "root_set は call opcode へ lower されること");
+    assert_eq!(lines[11], "9", "root_set import index は 9 であること");
+    assert_eq!(lines[12], "11", "body は end で終わること");
+}
+
+/// selfhost compiler-mode: root runtime API が actual import semantics で動作すること
+#[test]
+fn test_e2e_selfhost_compiler_mode_root_runtime_api_works() {
+    let harness = r#"
+(defn print-bytes-loop [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) count))))
+
+(defn main []
+  (let [source "(defn main [] (let [slot0 (root_push 111) slot1 (root_push 222) set-result (root_set slot0 333) pop1 (root_pop) pop2 (root_pop) pop3 (root_pop)] (do (print slot0) (print slot1) (print set-result) (print pop1) (print pop2) (print pop3) 0)))"
+        program (parse-program source)
+        pair (compile-program-functions-with-source source program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        wasm-bytes (build-wasm-bytes-wasi functions data)]
+    (do
+      (print (vector-length wasm-bytes))
+      (print-bytes-loop wasm-bytes 0 (vector-length wasm-bytes))
+      0)))
+"#;
+    let compiler_mode = format!("{}\n{}", selfhost_module("CompilerMode.ls"), harness);
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        selfhost_module("ModuleResolver.ls"),
+        compiler_mode
+    );
+    let emitted = compile_and_run(&combined);
+    let wasm_bytes = parse_printed_wasm_bytes(&emitted);
+    let output = super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode(
+        &wasm_bytes,
+        "",
+        &[],
+    )
+    .expect("selfhost compiler-mode root runtime API module should run");
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(lines, vec!["0", "1", "0", "222", "333", "0"]);
 }
 
 /// selfhost Compiler.ls: source 付き string literal lowering が inline string object と定数オフセットを返すこと
