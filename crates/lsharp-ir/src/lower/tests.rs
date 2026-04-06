@@ -699,6 +699,60 @@ fn test_lower_user_call_selectively_roots_heap_arguments() {
 }
 
 #[test]
+fn test_lower_user_call_conservatively_roots_opaque_call_result_argument() {
+    let module = lower(
+        r#"
+        (defn consume-string [s] (string-length s))
+        (defn forward [id x] (consume-string (id x)))
+        "#,
+    );
+    let forward_fn = module
+        .functions
+        .iter()
+        .find(|f| f.name == "forward")
+        .unwrap();
+    let root_push_positions = call_positions(&forward_fn.body, 14);
+    let call_indirect_pos = forward_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::CallIndirect(_)))
+        .unwrap();
+    let call_pos = forward_fn
+        .body
+        .iter()
+        .enumerate()
+        .find_map(|(idx, instr)| match instr {
+            Instruction::Call(func_idx)
+                if *func_idx != 14 && *func_idx != 15 && *func_idx != 16 =>
+            {
+                Some(idx)
+            }
+            _ => None,
+        })
+        .unwrap();
+
+    assert_eq!(
+        root_push_positions.len(),
+        3,
+        "opaque な inner call result を使う user call は receiver / arg / outer result を root_push するべき: {:?}",
+        forward_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&forward_fn.body, 15),
+        3,
+        "opaque な inner call result を使う user call は 3 回 root_pop するべき: {:?}",
+        forward_fn.body
+    );
+    assert!(
+        root_push_positions
+            .iter()
+            .any(|pos| *pos > call_indirect_pos && *pos < call_pos),
+        "opaque な inner call result は outer direct call 前に root_push で保護されるべき: {:?}",
+        forward_fn.body
+    );
+}
+
+#[test]
 fn test_lower_self_recursive_user_call_preserves_self_tco() {
     let module = lower(
         r#"
@@ -2076,14 +2130,14 @@ fn test_lower_closure_call_roots_closure_receiver() {
 
     assert_eq!(
         root_push_positions.len(),
-        1,
-        "closure call は receiver だけ 1 回 root_push するべき: {:?}",
+        2,
+        "generic closure call は receiver と opaque 引数を root_push するべき: {:?}",
         apply_fn.body
     );
     assert_eq!(
         count_call_instr(&apply_fn.body, 15),
-        1,
-        "closure call は receiver に対応する root_pop を 1 回使うべき: {:?}",
+        2,
+        "generic closure call は receiver と opaque 引数に対応する root_pop を使うべき: {:?}",
         apply_fn.body
     );
     assert!(
@@ -2500,6 +2554,41 @@ fn test_lower_closure_call_roots_generic_identity_result_argument() {
         root_push_positions[1] < call_indirect_pos,
         "generic identity の戻り値は call_indirect 前に root_push で保護されるべき: {:?}",
         main_fn.body
+    );
+}
+
+#[test]
+fn test_lower_closure_call_conservatively_roots_generic_param_argument() {
+    let module = lower(
+        r#"
+        (defn pass [f x]
+          (f x))
+        "#,
+    );
+    let pass_fn = module.functions.iter().find(|f| f.name == "pass").unwrap();
+    let root_push_positions = call_positions(&pass_fn.body, 14);
+    let call_indirect_pos = pass_fn
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::CallIndirect(_)))
+        .unwrap();
+
+    assert_eq!(
+        root_push_positions.len(),
+        2,
+        "generic closure param call は receiver と opaque 引数を root_push するべき: {:?}",
+        pass_fn.body
+    );
+    assert_eq!(
+        count_call_instr(&pass_fn.body, 15),
+        2,
+        "generic closure param call は 2 回 root_pop するべき: {:?}",
+        pass_fn.body
+    );
+    assert!(
+        root_push_positions[1] < call_indirect_pos,
+        "opaque 引数は call_indirect 前に root_push で保護されるべき: {:?}",
+        pass_fn.body
     );
 }
 

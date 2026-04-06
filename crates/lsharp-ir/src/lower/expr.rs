@@ -1870,6 +1870,16 @@ impl Lower {
     fn should_root_user_call_argument(&self, ctx: &FuncCtx, expr: &Expr) -> bool {
         self.infer_expr_type_name_with_ctx(ctx, expr)
             .map(|type_name| is_heap_like_type_name(&type_name))
-            .unwrap_or(false)
+            .unwrap_or_else(|| self.should_conservatively_root_unknown_argument(expr))
+    }
+
+    fn should_conservatively_root_unknown_argument(&self, expr: &Expr) -> bool {
+        !matches!(
+            expr,
+            Expr::Lit(
+                _,
+                Literal::Int(_) | Literal::Float(_) | Literal::Bool(_) | Literal::Unit
+            )
+        )
     }
 }
