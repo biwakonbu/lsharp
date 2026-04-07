@@ -318,18 +318,13 @@
 - 10-import の各 signature を含む type section を emit する defn が必要かしら
 - 既存の `emit-type-section-functions-with-imports` 系を確認してから追加 / 流用判断
 
-##### V2-11 (iii): minimal harness 43 件の書き換え
-- 対象: `crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer.rs` を中心に `bootstrap-build-stage2` 文字列を持つ ~190 occurrence
-- 変更内容:
-  - harness L# 文字列内で `(emit-import-section-runtime)` を section list の先頭に追加
-  - `(compile-program-functions decls)` → `(compile-program-functions-with-base decls 10)` に置換 (既に commit d4de855 で wrapper 追加済み)
-  - type section も runtime 用 variant に切り替え
-- 共通化: ~190 occurrence を全部手で書くと差分が爆発するから、`crates/lsharp-wasm/tests/e2e/selfhost_minimal_harness_helpers.rs` (新規) に inline helper string constant を 1 つ定義し、各テストはそれを `format!` で参照する形に refactor すべきなのよ
-- 段階実装:
-  1. helpers.rs に `RUNTIME_IMPORT_HARNESS_PRELUDE` 定数を追加
-  2. `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_recursive_factorial` (line 2222) を proof-of-concept として書き換え、GREEN 確認
-  3. 残り 42 件を機械的 (sed/Edit) で置換
-  4. cargo test 全体実行で残課題を洗い出し
+##### V2-11 (iii): minimal harness 43 件の書き換え — **DONE (commit d7f239d)**
+- `RUNTIME_STAGE2_HARNESS_PRELUDE` 定数を `selfhost_bootstrap_four_layer.rs` 冒頭に追加 (9 テスト共有)
+- 書き換え済み 9 件 (arithmetic 5 件 + string/vector builtin 4 件):
+  - single_param_call, let_local, recursive_fibonacci, recursive_factorial (wrong fn names 修正), multi_function_helper_recursion
+  - string_char_at, string_length, vector_length, vector_get
+- 各テストに import section (id=2) assertion 追加、runner を `run_exported_i64_with_runtime_imports` に統一
+- 全 9 件 GREEN 確認 (cargo test --test e2e)
 
 ##### V2-11 (iv): bootstrap fixed-point + 全 harness GREEN 確認
 - `scripts/ci/compile-phase11-inputs.sh` GREEN
