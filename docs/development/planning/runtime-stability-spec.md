@@ -238,6 +238,97 @@ docs/language/runtime-spec.md               -- Runtime API, 値表現, Root 管�
 docs/language/native-backend-spec.md        -- Native backend 仕様
 ```
 
+## Sentinel / handle discrimination 監査メモ (CP-05 G1/G2)
+
+L# runtime は heap value を 2 形式で持つ:
+
+1. **raw heap address**: `i64` extended から作った素の i32 ポインタ。`__alloc` 直後など。
+2. **tagged handle**: 上位 1 bit (`TAGGED_POINTER_MASK = 1<<63`) を立てた i64。
+
+`crates/lsharp-wasm/src/wasi.rs` の `emit_gc_mark_candidate` (1672-1795) は次の二段階で
+discrimination する:
+
+```
+if heap_start <= value < heap_ptr (signed)         -> raw pointer として mark
+elif value >= TAGGED_POINTER_MASK (unsigned)
+     && heap_start <= (value - mask) < heap_ptr    -> tagged handle として mark
+else                                                -> skip (scalar / sentinel)
+```
+
+`0` / `-1` / `i64::MIN` / 通常の負整数はすべて skip され、`test_e2e_runtime_collector_ignores_legacy_zero_root_slot_sentinel` で固定済み。
+
+### selfhost output parity (G2 監査結果)
+
+selfhost-emitted コードは tag を以下の opcode で立てる:
+
+- `vector-new` (opcode 54) — `selfhost/src/Backend/Wasm/WasmEmit.ls:710-721` (inline `i64.const i64::MIN + i64.add`)
+- `vector-push` realloc (opcode 55) — `:568` `emit-vector-push-instr`
+- `ref-new` (opcode 56) — `:570` `emit-ref-new-instr`
+- `map-new` (opcode 60) — `:577` `emit-map-new-instr`
+
+`string-concat` / `substring` / `read-file` / `command-line-arg` / `int-to-string` /
+`read-stdin` は import call → Rust runtime helper が return 直前に
+`emit_tagged_pointer_from_*` (`wasi.rs:103, 112`) を打って tag するため、selfhost 側で
+追加 tag を打つ必要はない。string literal は data section 起算の raw i32 で、
+collector の raw-range path で拾える。
+
+**結論**: selfhost output と Rust output で tagging 規約は parity が取れている。
+本節の修正は不要。
+
+### 既知の理論的 edge case (G1)
+
+ユーザーが `i64::MIN + N` (`heap_start <= N < heap_ptr`) という値を意図的に計算して
+持つと、subtract 後 heap range に入って collector に false-marked される。実用上
+発生する確率はゼロに近く、現状は **documented limitation** として扱う。
+
+将来 precise discrimination を必要とする場合の選択肢:
+- α: tag を `0xC000_0000_0000_0000` のような上位 2 bit パターンへ拡張、user int を i63 に制限
+- β: inline tag を撤廃し object table の handle 経由のみで trace、raw-range path を撤廃
+
+どちらも CP-05 G3 (compiler-side GC-safe point spill 完全列挙) より影響範囲が広いため、
+G3 の進行と切り離して別 slice として扱う。
+
+## CP-05 G3: GC-safe point spill 棚卸し
+
+operand stack は collector から不可視のため、heap value を operand stack 上に
+置いたまま allocation を跨ぐと、その値は trace 対象から漏れる。compiler 側で
+shadow stack (`root_push` / `root_pop`) に spill する義務があるベィ。現状の
+gap を以下 4 slice に分けて段階導入する:
+
+### G3-a: 非自己再帰関数の heap param entry 時 root_push
+
+- 対象: 全 user function の heap-typed parameter (String/Vector/Ref/Map/Closure/ADT/Record)
+- 現状: self-TCO が効く関数のみ `SelfTcoRootOps` で entry root を打つ (`crates/lsharp-ir/src/lower/decl.rs:560-611`)
+- 不足: 非自己再帰関数では param が unrooted のまま function body 内 alloc を通過
+- 修正: `lower_function` entry 時に heap param を全 root_push、return path で root_pop
+- 影響範囲最大、最優先
+
+### G3-b: let heap-local の binding scope rooting
+
+- 対象: `(let [x <heap-expr>] body)` の `x`
+- 現状: binding 後に body 内で alloc が走ると `x` の local が unrooted
+- 修正: heap 型 binding 時に root_push、scope 抜けで pop
+- `lsharp-ir/src/lower/expr.rs` の Let 経路を改修
+
+### G3-c: operand stack intermediate spill
+
+- 対象: 二項演算/関数呼び出し引数列で、先に計算した heap value を後続 alloc 越しに保持するケース
+- 現状: 一部 builtin 引数のみ `should_root_user_call_argument` で spill (line 1870)
+- 不足: ユーザ定義関数の複合引数列、record-set / vector-set の value、closure 内自由変数の捕捉
+- 修正: lowering 時に operand stack 上の heap intermediate を local + root_push に spill する general path
+
+### G3-d: pattern match arm body の heap field rooting
+
+- 対象: `(match scrutinee [(Cons h t) ...])` 等で取り出した heap field
+- 現状: arm body が alloc を行うと bound field local が unrooted
+- 修正: pattern bind 時に heap field を root_push、arm 抜けで pop
+
+### 進行順
+
+1. G3-a を TDD で実装 (RED test: 非自己再帰関数で heap param が GC で回収される回帰テスト)
+2. G3-b → G3-c → G3-d の順
+3. 各 slice 完了時に selfhost bootstrap fixed-point を再確認
+
 ## 更新規則
 
 - P11-5 のランタイム安定化仕様はこの文書に一本化する
