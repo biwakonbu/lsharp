@@ -281,7 +281,30 @@
 - 各 import の signature (type idx) は selfhost の type section (`emit-type-section-*`) と整合させる必要がある — 既存の `emit-type-section-functions-*` の type 順序を流用
 - **リスク**: 手で LEB128 を ~300 バイト書くと subtle なバイト bug が runtime まで顕在化しない。**必須前提作業**として `crates/lsharp-wasm/tests/scratch_runtime_imports.rs` 等を立てて wasm-encoder で reference bytes をダンプし、それを写経するのよ
 - 検証: `wasmparser` で parse → import 数 10 + 各 name/type を assert する unit test を WasmEmit.ls の `#[cfg(test)]` (Rust 側) に追加
-- **signature 逆算手順 (必須前作業, 2026-04-07 セッションで未完)**:
+- **signature table (2026-04-07 セッションで逆算済み)**:
+  - **slot 0 alloc**: `(i64) -> i64` (type A)
+  - **slot 1 print**: `(i64) -> ()` (type B) — `emit-print-instr` (line 563) は `call 1` 後に `i64.const 0` 補填
+  - **slot 2 read-file**: `(i64) -> i64` (type A) — `unary-builtin-op` (line 699)
+  - **slot 3 command-line-arg / runtime-hash-string**: `(i64) -> i64` (type A) — slot 共有、コンパイル時 variant
+  - **slot 4 string-concat**: `(i64, i64) -> i64` (type C) — binary builtin
+  - **slot 5 substring**: `(i64, i64, i64) -> i64` (type D) — `ternary-builtin-op` (line 703)
+  - **slot 6 file-exists?**: `(i64) -> i64` (type A) — `unary-builtin-op`
+  - **slot 7 root_push**: `(i64) -> i64` (type A) — `unary-builtin-op` (line 699)、戻り値は drop される (`emit-root-push-drop` line 709)
+  - **slot 8 root_pop**: `() -> i64` (type E) — `nullary-builtin-op` (line 702)、戻り値は drop される (`emit-root-pop-drop` line 710)
+  - **slot 9 root_set**: 未使用 (`Compiler.ls:53-55` で op が定義されているが現行 emit path で参照なし) — 10-import variant では skip 可
+- **type table (selfhost 内部の type section に必要)**:
+  - type A: `(i64) -> i64` — alloc/read-file/command-line-arg/file-exists/root_push が共有
+  - type B: `(i64) -> ()` — print
+  - type C: `(i64, i64) -> i64` — string-concat
+  - type D: `(i64, i64, i64) -> i64` — substring
+  - type E: `() -> i64` — root_pop (main() と同じ shape だが index が main type と衝突しないよう注意)
+- **次セッションの (ii-b) 着手手順**:
+  1. wasm-encoder で 9 imports + 5 types の reference wasm を作る Rust scratch test を `crates/lsharp-wasm/tests/scratch_runtime_imports.rs` に追加
+  2. ダンプした bytes を hex 表記で確認し、selfhost L# 内の `emit-import-section-runtime` / `emit-type-section-runtime` に写経 (各 `emit-byte` / `emit-leb128` の連鎖として)
+  3. selfhost 単体で `cargo run --bin lsharp -- compile selfhost/src/Backend/Wasm/WasmEmit.ls -o /tmp/check.wasm` で parse pass 確認
+  4. `scripts/ci/compile-phase11-inputs.sh` で fixed-point GREEN 確認
+
+- **signature 逆算手順 (履歴: 2026-04-07 セッションで上記の table へ収束)**:
   1. `grep -n "emit-leb128 (emit-byte bytes 16)" selfhost/src/Backend/Wasm/WasmEmit.ls` で全 `emit-*-instr` (call N を吐く defn) を一覧化
   2. 各 instr の **前後の stack effect** を確認: `call N` の後に `i64.const 0` 等の補填 push があれば `() return`、補填なしで返り値が直接消費されていれば `(i64) return`
      - 例: `emit-print-instr` (line 563) は `call 1` 後に `i64.const 0` 補填 → print: `(i64) -> ()`
