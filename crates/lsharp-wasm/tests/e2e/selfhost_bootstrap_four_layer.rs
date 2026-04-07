@@ -8,7 +8,6 @@ const TEST_I64_IF_WASM: &[u8] = include_bytes!(concat!(
     "/../../tests/fixtures/selfhost-debug/test_i64_if.wasm"
 ));
 
-
 /// V2-11 最小 harness 共通プレリュード（selfhost ランタイム import layout 版）。
 ///
 /// stage1 が stage2 Wasm を構築するための共通ヘルパー関数群。
@@ -620,7 +619,10 @@ fn run_exported_i64_with_runtime_imports(wasm: &[u8], export_name: &str) -> i64 
     }
     let mut store = wasmtime::Store::new(
         &engine,
-        State { next_alloc: 1024, root_stack: Vec::new() },
+        State {
+            next_alloc: 1024,
+            root_stack: Vec::new(),
+        },
     );
     let alloc = wasmtime::Func::wrap(
         &mut store,
@@ -631,10 +633,14 @@ fn run_exported_i64_with_runtime_imports(wasm: &[u8], export_name: &str) -> i64 
         },
     );
     let print = wasmtime::Func::wrap(&mut store, |_: wasmtime::Caller<'_, State>, _: i64| {});
-    let read_file =
-        wasmtime::Func::wrap(&mut store, |_: wasmtime::Caller<'_, State>, _: i64| -> i64 { 0 });
-    let command_line_arg =
-        wasmtime::Func::wrap(&mut store, |_: wasmtime::Caller<'_, State>, _: i64| -> i64 { 0 });
+    let read_file = wasmtime::Func::wrap(
+        &mut store,
+        |_: wasmtime::Caller<'_, State>, _: i64| -> i64 { 0 },
+    );
+    let command_line_arg = wasmtime::Func::wrap(
+        &mut store,
+        |_: wasmtime::Caller<'_, State>, _: i64| -> i64 { 0 },
+    );
     let string_concat = wasmtime::Func::wrap(
         &mut store,
         |_: wasmtime::Caller<'_, State>, _: i64, _: i64| -> i64 { 0 },
@@ -643,13 +649,15 @@ fn run_exported_i64_with_runtime_imports(wasm: &[u8], export_name: &str) -> i64 
         &mut store,
         |_: wasmtime::Caller<'_, State>, _: i64, _: i64, _: i64| -> i64 { 0 },
     );
-    let file_exists =
-        wasmtime::Func::wrap(&mut store, |_: wasmtime::Caller<'_, State>, _: i64| -> i64 { 0 });
+    let file_exists = wasmtime::Func::wrap(
+        &mut store,
+        |_: wasmtime::Caller<'_, State>, _: i64| -> i64 { 0 },
+    );
     let root_push = wasmtime::Func::wrap(
         &mut store,
         |mut caller: wasmtime::Caller<'_, State>, value: i64| -> i64 {
-            let slot = i64::try_from(caller.data().root_stack.len())
-                .expect("root_push: slot overflow");
+            let slot =
+                i64::try_from(caller.data().root_stack.len()).expect("root_push: slot overflow");
             caller.data_mut().root_stack.push(value);
             slot
         },
@@ -1399,8 +1407,8 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
     let root_push = wasmtime::Func::wrap(
         &mut store,
         |mut caller: wasmtime::Caller<'_, SixImportState>, value: i64| -> i64 {
-            let slot =
-                i64::try_from(caller.data().root_stack.len()).expect("six-import root_push: slot overflow");
+            let slot = i64::try_from(caller.data().root_stack.len())
+                .expect("six-import root_push: slot overflow");
             caller.data_mut().root_stack.push(value);
             slot
         },
@@ -1414,8 +1422,8 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
     let root_set = wasmtime::Func::wrap(
         &mut store,
         |mut caller: wasmtime::Caller<'_, SixImportState>, slot: i64, value: i64| -> i64 {
-            let idx =
-                usize::try_from(slot).unwrap_or_else(|_| panic!("six-import root_set: slot must be non-negative"));
+            let idx = usize::try_from(slot)
+                .unwrap_or_else(|_| panic!("six-import root_set: slot must be non-negative"));
             let len = caller.data().root_stack.len();
             assert!(
                 idx < len,
@@ -1902,7 +1910,7 @@ fn test_v2_11_emit_import_section_runtime_produces_10_imports() {
         0x1b, // section size (27 bytes = 1 count + 5+4+6+7+4 type bytes)
         0x05, // 5 types
         0x60, 0x01, 0x7e, 0x01, 0x7e, // (i64) -> i64
-        0x60, 0x01, 0x7e, 0x00,       // (i64) -> void
+        0x60, 0x01, 0x7e, 0x00, // (i64) -> void
         0x60, 0x02, 0x7e, 0x7e, 0x01, 0x7e, // (i64,i64) -> i64
         0x60, 0x03, 0x7e, 0x7e, 0x7e, 0x01, 0x7e, // (i64,i64,i64) -> i64
         0x60, 0x00, 0x01, 0x7e, // () -> i64
@@ -2269,7 +2277,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_single_param_call_program() {
         s.push_str("\")]\n    (do\n      (bootstrap-print-module stage2)\n      0)))");
         s
     };
-        let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -2300,7 +2308,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_let_local_program() {
         s.push_str("\")]\n    (do\n      (bootstrap-print-module stage2)\n      0)))");
         s
     };
-        let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -2329,7 +2337,8 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_let_local_program() {
 /// (defn fib [n] ...) + (defn main [] (fib 8)) → stage2 が 21 を返す
 #[test]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_recursive_fibonacci() {
-    let stage2_src = r#"(defn fib [n] (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))) (defn main [] (fib 8))"#;
+    let stage2_src =
+        r#"(defn fib [n] (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))) (defn main [] (fib 8))"#;
     let harness = {
         let mut s = RUNTIME_STAGE2_HARNESS_PRELUDE.to_string();
         s.push_str("\n(defn main []\n  (let [stage2 (bootstrap-build-stage2 \"");
@@ -2337,7 +2346,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_recursive_fibonacci() {
         s.push_str("\")]\n    (do\n      (bootstrap-print-module stage2)\n      0)))");
         s
     };
-        let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -2362,7 +2371,8 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_recursive_fibonacci() {
 /// (defn fact [n] ...) + (defn main [] (fact 5)) → stage2 が 120 を返す
 #[test]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_recursive_factorial() {
-    let stage2_src = r#"(defn fact [n] (if (<= n 1) 1 (* n (fact (- n 1))))) (defn main [] (fact 5))"#;
+    let stage2_src =
+        r#"(defn fact [n] (if (<= n 1) 1 (* n (fact (- n 1))))) (defn main [] (fact 5))"#;
     let harness = {
         let mut s = RUNTIME_STAGE2_HARNESS_PRELUDE.to_string();
         s.push_str("\n(defn main []\n  (let [stage2 (bootstrap-build-stage2 \"");
@@ -2370,7 +2380,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_recursive_factorial() {
         s.push_str("\")]\n    (do\n      (bootstrap-print-module stage2)\n      0)))");
         s
     };
-        let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -2403,7 +2413,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_multi_function_helper_recursi
         s.push_str("\")]\n    (do\n      (bootstrap-print-module stage2)\n      0)))");
         s
     };
-        let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -2434,7 +2444,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_char_at_helper_program
         s.push_str("\")]\n    (do\n      (bootstrap-print-module stage2)\n      0)))");
         s
     };
-        let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -2469,7 +2479,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_length_helper_program(
         s.push_str("\")]\n    (do\n      (bootstrap-print-module stage2)\n      0)))");
         s
     };
-        let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -2991,7 +3001,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_length_helper_program(
         s.push_str("\")]\n    (do\n      (bootstrap-print-module stage2)\n      0)))");
         s
     };
-        let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -3026,7 +3036,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_get_helper_program() {
         s.push_str("\")]\n    (do\n      (bootstrap-print-module stage2)\n      0)))");
         s
     };
-        let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -6402,6 +6412,70 @@ fn test_e2e_boot04_self_hosted_stage2_reports_string_length_if_progress() {
     eprintln!(
         "BOOT-04 string-length-if-progress output = {:?}",
         progress_output
+    );
+}
+
+#[test]
+fn test_v2_12_self_hosted_stage2_keeps_complex_defn_decl_tag() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("V2-12 complex-defn-tag: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let source = "(module App.Main)\n(defn helper [x] (if (= x 0) 0 (+ x 1)))\n";
+    let debug_output = run_wasm_with_six_imports_compiler_mode(
+        stage2_self_compiler,
+        source,
+        &["compiler", "src/App/Main.ls", "debug"],
+    )
+    .expect("V2-12 complex-defn-tag: stage2_self_compiler の debug 実行に失敗した");
+    let values: Vec<i64> = debug_output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.trim().parse::<i64>().unwrap_or_else(|_| {
+                panic!("V2-12 complex-defn-tag: 数値でない debug 出力: {line:?}")
+            })
+        })
+        .collect();
+
+    assert!(
+        values.len() >= 7,
+        "V2-12 complex-defn-tag: debug 出力が短すぎる: {:?}",
+        values
+    );
+    assert_eq!(
+        values[0], 2,
+        "V2-12 complex-defn-tag: decl count が期待と異なる: {:?}",
+        values
+    );
+    assert_eq!(
+        values[1], 25,
+        "V2-12 complex-defn-tag: first decl は module のはず: {:?}",
+        values
+    );
+    assert_eq!(
+        values[2], 20,
+        "V2-12 complex-defn-tag: complex body を持つ defn も decl tag 20 を維持するべき: {:?}",
+        values
     );
 }
 
