@@ -476,6 +476,31 @@
           1
           0)))))
 
+(defn finalize-defn-body-v3 [defn-node param-count body]
+  (let [body-idx (+ 3 param-count)
+    node-with-placeholder (vector-push defn-node (make-int-node 0))]
+    (vector-set-at node-with-placeholder body-idx body)))
+
+(defn maybe-append-defn-meta-v3 [node meta]
+  (if (= (defn-metadata-present-v3 meta) 1)
+    (vector-push node meta)
+    node))
+
+(defn parse-defn-bodyless-or-body-v3 [spans pos-ref src defn-node param-count]
+  (if (== (p-current spans pos-ref) 1)
+    (do
+      (p-advance pos-ref) ;; bodyless defn の ) を消費
+      (vector-push defn-node (make-int-node 0)))
+    (let [body (parse-expr-v3 spans pos-ref src)]
+      (do
+        (p-expect spans pos-ref 1) ;; ) を消費
+        (finalize-defn-body-v3 defn-node param-count body)))))
+
+(defn parse-defn-bodyless-or-body-with-meta-v3 [spans pos-ref src defn-node param-count meta]
+  (maybe-append-defn-meta-v3
+    (parse-defn-bodyless-or-body-v3 spans pos-ref src defn-node param-count)
+    meta))
+
 (defn skip-optional-type-sig-v3 [spans pos-ref src]
   (if (== (colon-directive-v3 spans pos-ref src) 1)
     0
@@ -1165,21 +1190,12 @@
             (do
               (skip-optional-type-sig-v3 spans pos-ref src)
               (skip-optional-where-v3 spans pos-ref src)
-              (let [meta (parse-defn-metadata-v3 spans pos-ref src)]
-                (if (== (p-current spans pos-ref) 1)
-                  (do
-                    (p-advance pos-ref) ;; bodyless defn の ) を消費
-                    (let [node-with-body (vector-push defn-node (make-int-node 0))]
-                      (if (= (defn-metadata-present-v3 meta) 1)
-                        (vector-push node-with-body meta)
-                        node-with-body)))
-                  (let [body (parse-expr-v3 spans pos-ref src)]
-                    (do
-                      (p-expect spans pos-ref 1) ;; ) を消費
-                      (let [node-with-body (vector-push defn-node body)]
-                        (if (= (defn-metadata-present-v3 meta) 1)
-                          (vector-push node-with-body meta)
-                          node-with-body)))))))))))))
+              (if (== (colon-directive-v3 spans pos-ref src) 1)
+                (let [meta (parse-defn-metadata-v3 spans pos-ref src)]
+                  (parse-defn-bodyless-or-body-with-meta-v3
+                    spans pos-ref src defn-node param-count meta))
+                (parse-defn-bodyless-or-body-v3
+                  spans pos-ref src defn-node param-count)))))))))
 
 ;; === defmacro 宣言 ===
 (defn parse-defmacro-v3 [spans pos-ref src]

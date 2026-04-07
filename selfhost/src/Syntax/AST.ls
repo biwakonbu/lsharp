@@ -47,6 +47,8 @@
 (defn make-lit-bool [b] (let [v (vector-new 2)] (vector-push (vector-push v 2) b)))
 (defn make-var [name-hash] (let [v (vector-new 2)] (vector-push (vector-push v 4) name-hash)))
 (defn make-lit-unit [] (vector-push (vector-new 1) (ast-lit-unit)))
+(defn make-if [cond-expr then-expr else-expr] (let [v (vector-new 4)] (vector-push (vector-push (vector-push (vector-push v (ast-if)) cond-expr) then-expr) else-expr)))
+(defn make-let [name-hash init-expr body-expr] (let [v (vector-new 4)] (vector-push (vector-push (vector-push (vector-push v (ast-let)) name-hash) init-expr) body-expr)))
 (defn make-ann [expr] (let [v (vector-new 2)] (vector-push (vector-push v (ast-ann)) expr)))
 (defn make-recordlit [type-name-hash] (let [v (vector-new 8)] (vector-push (vector-push (vector-push v (ast-recordlit)) type-name-hash) 0)))
 (defn make-fieldaccess [expr field-name-hash] (let [v (vector-new 3)] (vector-push (vector-push (vector-push v (ast-fieldaccess)) expr) field-name-hash)))
