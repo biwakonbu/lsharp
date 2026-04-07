@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 miette.workspace = true
 thiserror.workspace = true
+stacker = "0.1"
 
 [dev-dependencies]
 insta.workspace = true

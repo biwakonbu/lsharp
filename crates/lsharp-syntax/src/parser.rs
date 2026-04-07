@@ -789,10 +789,41 @@ impl Parser {
         })
     }
 
-    /// バリアント: Name または (Name Type1 Type2 ...)
+    /// バリアント:
+    ///   Name                              -- 引数なし
+    ///   (Name Type1 Type2 ...)            -- 通常 ADT
+    ///   (: (Name Type1 ...) ReturnType)   -- GADT (戻り型指定)
+    ///   (: Name ReturnType)               -- GADT (引数なし)
     fn parse_variant(&mut self) -> Result<Variant, ParseError> {
         if self.check(TokenKind::LParen) {
             let start_span = self.advance().span;
+
+            // GADT 構文: (: <variant-form> <return-type>)
+            if self.check(TokenKind::Colon) {
+                self.advance(); // :
+                // inner variant form (Name Type...) または bare Name
+                let (name, fields) = if self.check(TokenKind::LParen) {
+                    self.advance();
+                    let name = self.expect_symbol()?;
+                    let mut fields = Vec::new();
+                    while !self.check(TokenKind::RParen) {
+                        fields.push(self.parse_type_expr()?);
+                    }
+                    self.advance(); // )
+                    (name, fields)
+                } else {
+                    (self.expect_symbol()?, Vec::new())
+                };
+                let ret_ty = self.parse_type_expr()?;
+                let end_span = self.expect(TokenKind::RParen)?.span;
+                return Ok(Variant {
+                    span: start_span.merge(end_span),
+                    name,
+                    fields,
+                    return_type: Some(ret_ty),
+                });
+            }
+
             let name = self.expect_symbol()?;
             let mut fields = Vec::new();
             while !self.check(TokenKind::RParen) {
@@ -855,6 +886,11 @@ impl Parser {
 
     /// 式をパース
     pub fn parse_expr(&mut self) -> Result<Expr, ParseError> {
+        // 深いネスト式での stack overflow を防ぐため、必要時にヒープ上へスタックを拡張
+        stacker::maybe_grow(64 * 1024, 1024 * 1024, || self.parse_expr_inner())
+    }
+
+    fn parse_expr_inner(&mut self) -> Result<Expr, ParseError> {
         match self.peek_kind() {
             Some(TokenKind::LParen) => self.parse_list_expr(),
             Some(TokenKind::LBrace) => self.parse_brace_expr(),
@@ -1210,6 +1246,10 @@ impl Parser {
 
     /// パターンをパース
     fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
+        stacker::maybe_grow(64 * 1024, 1024 * 1024, || self.parse_pattern_inner())
+    }
+
+    fn parse_pattern_inner(&mut self) -> Result<Pattern, ParseError> {
         match self.peek_kind() {
             Some(TokenKind::Symbol(ref s)) if s == "_" => {
                 let tok = self.advance();
@@ -1301,6 +1341,10 @@ impl Parser {
 
     /// 型式をパース
     fn parse_type_expr(&mut self) -> Result<TypeExpr, ParseError> {
+        stacker::maybe_grow(64 * 1024, 1024 * 1024, || self.parse_type_expr_inner())
+    }
+
+    fn parse_type_expr_inner(&mut self) -> Result<TypeExpr, ParseError> {
         match self.peek_kind() {
             Some(TokenKind::Symbol(ref s)) if s.starts_with(|c: char| c.is_ascii_uppercase()) => {
                 let tok = self.advance();
@@ -1912,6 +1956,57 @@ mod tests {
         assert!(result.is_ok());
         let prog = result.unwrap();
         assert_eq!(prog.decls.len(), 2);
+    }
+
+    // 深いネスト回帰テスト: parse_expr / parse_pattern / parse_type_expr が
+    // 再帰で stack overflow しないことを検証する
+    fn build_deep_if(depth: usize) -> String {
+        let mut s = String::new();
+        for _ in 0..depth {
+            s.push_str("(if true ");
+        }
+        s.push('0');
+        for _ in 0..depth {
+            s.push_str(" 1)");
+        }
+        s
+    }
+
+    #[test]
+    fn test_deep_nested_if_50() {
+        let expr = parse_expr_str(&build_deep_if(50));
+        // 壊れていないことだけ確認
+        let _ = expr;
+    }
+
+    #[test]
+    fn test_deep_nested_if_500() {
+        let expr = parse_expr_str(&build_deep_if(500));
+        let _ = expr;
+    }
+
+    #[test]
+    fn test_gadt_variant_with_return_type() {
+        // GADT: (: (IntLit Int) (Expr Int)) でバリアントの戻り型を指定
+        let source = "(type (Expr a)
+  (: (IntLit Int) (Expr Int))
+  (: (BoolLit Bool) (Expr Bool)))";
+        let prog = parse(source);
+        assert_eq!(prog.decls.len(), 1);
+        if let Decl::TypeDef { variants, .. } = &prog.decls[0] {
+            assert_eq!(variants.len(), 2);
+            assert!(variants[0].return_type.is_some(), "IntLit should have return_type");
+            assert!(variants[1].return_type.is_some(), "BoolLit should have return_type");
+        } else {
+            panic!("expected TypeDef");
+        }
+    }
+
+    #[test]
+    fn test_deep_nested_if_2000() {
+        // 2000 段は従来の再帰版だと overflow する深さ
+        let expr = parse_expr_str(&build_deep_if(2000));
+        let _ = expr;
     }
 }
 
