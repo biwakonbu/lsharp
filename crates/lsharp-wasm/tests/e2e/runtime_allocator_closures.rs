@@ -639,6 +639,104 @@ fn test_e2e_runtime_collector_skips_tombstoned_map_value_when_tracing() {
 }
 
 #[test]
+fn test_e2e_runtime_collector_preserves_string_reachable_through_rooted_closure_capture() {
+    let (_stdout, series) = compile_and_capture_runtime_telemetry_series(
+        r#"
+        (defn churn [n]
+          (if (<= n 0)
+            0
+            (let [s (string-concat "left" "right")]
+              (do
+                (string-length s)
+                (churn (- n 1))))))
+        (defn make-keeper []
+          (let [s (string-concat "keep" "!")]
+            (fn [] (string-length s))))
+        (defn main []
+          (let [keeper (make-keeper)
+                _slot (root_push keeper)]
+            (do
+              (churn 256)
+              0)))
+    "#,
+        1,
+    );
+    let telemetry = *series
+        .last()
+        .expect("collector telemetry series は 1 件以上必要");
+
+    assert_eq!(
+        telemetry.root_stack_top, 1,
+        "rooted closure 自体は root stack に残るべき"
+    );
+    assert!(
+        telemetry.gc_collection_count > 0,
+        "closure capture test でも collector が走るべき: {:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.gc_freed_count > 0,
+        "closure capture test でも churn 中の garbage を回収するべき: {:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.gc_live_alloc_count >= 2,
+        "rooted closure が捕捉する string も transitive root として live 扱いされるべき: {:?}",
+        telemetry
+    );
+}
+
+#[test]
+fn test_e2e_runtime_collector_ignores_legacy_zero_root_slot_sentinel() {
+    let (_stdout, series) = compile_and_capture_runtime_telemetry_series(
+        r#"
+        (defn churn [n]
+          (if (<= n 0)
+            0
+            (let [s (string-concat "left" "right")]
+              (do
+                (string-length s)
+                (churn (- n 1))))))
+        (defn main []
+          (let [slot (root_push (string-concat "gone" "!"))
+                _ (root_set slot 0)]
+            (do
+              (churn 256)
+              0)))
+    "#,
+        1,
+    );
+    let telemetry = *series
+        .last()
+        .expect("collector telemetry series は 1 件以上必要");
+
+    assert_eq!(
+        telemetry.root_stack_top, 1,
+        "legacy sentinel を入れても slot 自体は stack 上に残るべき"
+    );
+    assert_eq!(
+        telemetry.root_slots[0], 0,
+        "slot 0 は legacy `0` sentinel へ更新されているべき: {:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.gc_collection_count > 0,
+        "legacy sentinel test でも collector が走るべき: {:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.gc_freed_count > 0,
+        "legacy sentinel test でも churn 中の garbage を回収するべき: {:?}",
+        telemetry
+    );
+    assert_eq!(
+        telemetry.gc_live_alloc_count, 0,
+        "legacy `0` sentinel slot は rooted object を保持し続けないべき: {:?}",
+        telemetry
+    );
+}
+
+#[test]
 fn test_e2e_root_runtime_api_tracks_slots_and_values() {
     let result = compile_and_run(
         r#"
@@ -1972,6 +2070,45 @@ fn test_e2e_int_to_string_negative() {
     "#,
     );
     assert_eq!(result, "-123");
+}
+
+#[test]
+fn test_e2e_runtime_collector_preserves_non_self_recursive_heap_param() {
+    // CP-05 G3-a RED: 非自己再帰関数の heap-typed parameter は entry で
+    // root_push されるべき。caller-side spill だけに頼らず、関数 body 内で
+    // alloc が走っても param が回収されないことを検証する。
+    let (stdout, series) = compile_and_capture_runtime_telemetry_series(
+        r#"
+        (defn churn [n]
+          (if (<= n 0)
+            0
+            (let [s (string-concat "left" "right")]
+              (do
+                (string-length s)
+                (churn (- n 1))))))
+        (defn use-after-churn [s]
+          (let [_ (churn 256)]
+            (string-length s)))
+        (defn main []
+          (let [len (use-after-churn (string-concat "keep" "!"))]
+            (do (print-string (int-to-string len)) 0)))
+    "#,
+        1,
+    );
+    let telemetry = *series
+        .last()
+        .expect("collector telemetry series は 1 件以上必要");
+    assert_eq!(
+        stdout.trim(),
+        "5",
+        "use-after-churn は 'keep!' (length 5) を返すべき: telemetry={:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.gc_collection_count > 0,
+        "churn 中に collector が走るべき: {:?}",
+        telemetry
+    );
 }
 
 #[test]
