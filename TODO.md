@@ -281,6 +281,15 @@
 - 各 import の signature (type idx) は selfhost の type section (`emit-type-section-*`) と整合させる必要がある — 既存の `emit-type-section-functions-*` の type 順序を流用
 - **リスク**: 手で LEB128 を ~300 バイト書くと subtle なバイト bug が runtime まで顕在化しない。**必須前提作業**として `crates/lsharp-wasm/tests/scratch_runtime_imports.rs` 等を立てて wasm-encoder で reference bytes をダンプし、それを写経するのよ
 - 検証: `wasmparser` で parse → import 数 10 + 各 name/type を assert する unit test を WasmEmit.ls の `#[cfg(test)]` (Rust 側) に追加
+- **signature 逆算手順 (必須前作業, 2026-04-07 セッションで未完)**:
+  1. `grep -n "emit-leb128 (emit-byte bytes 16)" selfhost/src/Backend/Wasm/WasmEmit.ls` で全 `emit-*-instr` (call N を吐く defn) を一覧化
+  2. 各 instr の **前後の stack effect** を確認: `call N` の後に `i64.const 0` 等の補填 push があれば `() return`、補填なしで返り値が直接消費されていれば `(i64) return`
+     - 例: `emit-print-instr` (line 563) は `call 1` 後に `i64.const 0` 補填 → print: `(i64) -> ()`
+     - 例: `emit-root-push-instr` (line 558) は `call 7` のみ補填なし → root_push: stack effect は呼び出し側の文脈次第なのよ、慎重に確認
+  3. 各 instr が呼ばれる **呼び出し側コード** を `Compiler.ls` で逆引き (`grep emit-root-push-instr selfhost/src/Backend/Wasm/Compiler.ls` 等) し、引数として何を push しているか確認
+  4. 既知の selfhost type 番号 (`emit-type-section-alloc-print-main` の decode 結果): type 0 = `(i64) -> i64` (alloc), type 1 = `(i64) -> ()` (print), type 2 = `() -> i64` (main)
+  5. 不足する type を追加して `emit-type-section-runtime` を構築 (V2-11 (ii-c))
+  6. signature 表が確定したら wasm-encoder reference test を書いて bytes をダンプ → 写経
 
 ##### V2-11 (ii-c): emit-type-section-functions-runtime の追加
 - 10-import の各 signature を含む type section を emit する defn が必要かしら
