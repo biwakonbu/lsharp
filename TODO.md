@@ -238,6 +238,114 @@
 - [DEFERRED] V2-11 Selfhost minimal harness root-runtime parity — `crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer.rs` 等の minimal harness 群 (43 件) が `compile-program-functions` の出力を独自に組み立てているが、`selfhost/src/Backend/Wasm/Compiler.ls:548` の `alloc-root-needed` (commit 04351e9 / 803e5c4 で導入) が `(- n 1)` 等の非リテラル引数で `op-root-push` (74) / `op-root-pop` (75) を吐き、`WasmEmit.ls:558` の `emit-root-push-instr` がそれを `call 7` / `call 8` (10-import モデル前提) に hardcode するのに対し、harness 側は import section を埋め込まず `register-defns ... 0` で user func を 0 起算にするため `call out of bounds` で 43 件失敗中。修正案: (A) harness を import section + index offset 17 で組み直す共通ヘルパ追加 (本筋)、(B) `compile-program-functions` を base offset 受け取り型に分割、(C) `alloc-root-needed` を緩めて算術結果を root しない (Rust 側との parity 後退リスクあり)。実装詳細案 (A+B 併用): (i) **DONE (commit d4de855)** `compile-program-functions-with-base [decls base-idx]` を追加 — Phase 11 fixed-point GREEN; (ii) **CRITICAL FINDING (2026-04-07)** `WasmEmit.ls:558` の `emit-root-push-instr` は `call 7` / `call 8` を hardcode しているが、`wasi.rs:184` では root_push が WASI_IMPORT_COUNT(9)+13 = **index 22** に置かれている。selfhost と Rust の import layout は完全に divergent。Phase 11 が通る理由は selfhost-compiled programs で `alloc-root-needed` が literal 引数しか持たず `op-root-push` を一度も emit しないため (dead code)。minimal harness は non-literal を渡すから初めて露呈する。よって真の修正は: (ii-a) `emit-root-push-instr` / `emit-root-pop-instr` を import count パラメータ化し全 call site に伝搬、(ii-b) selfhost normal path の全 emit point を更新、(ii-c) WasmEmit に 17-import section variant を追加、(ii-d) compile-expr / compile-defn-functions に root-runtime offset を threading; (iii) ~190 occurrence の `bootstrap-build-stage2` を共通 inline helper string に置き換え、各テストの harness 文字列で `(let [import-sec (emit-import-section-runtime) ...] ...)` を組み込み、`compile-program-functions-with-base ... 17` を呼ぶ; (iv) selfhost bootstrap fixed-point (`scripts/ci/compile-phase11-inputs.sh`) で全変更後の影響なしを再確認。**Scope estimate: multi-day refactor; (i) 完了済み、(ii)-(iv) は別セッションで段階実装する。**Evidence: `/tmp/lsharp-stage2-fact.wasm` (`call 7` / `call 8` 露呈)、`crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer.rs:2222` `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_recursive_factorial`、`wasi.rs:98` `IR_IMPORT_COUNT = 17`。
 - [DEFERRED] V2-12 S15 selfhost fixed-point regression — `crates/lsharp-wasm/tests/e2e/runtime_allocator_closures.rs:80` `collect_s15_fixed_point_proof` が stage1→stage2→stage3 を full selfhost 経路 (Main.ls + 6 import) で再コンパイルし bytes/exports/data sections/diagnostics の identity を要求するが、`test_e2e_alloc_metrics_ci_artifact_payload` が `s15_status == "pass"` assertion (line 1222) で失敗中。失敗フィールド (bytes/exports/data/diagnostics のどれか) は未特定 — `cargo test ... -- --nocapture` で 20 分の E2E を回す必要あり。V2-11 と blast radius を共有するため、(i) まず `--nocapture` で proof JSON を採取して失敗フィールドを特定、(ii) V2-11 の root-runtime parity 修正後に再評価、(iii) なお failing なら独立タスクとして bisect で原因コミットを特定する。Evidence: 2026-04-07 regression run (82 passed, 1 failed) at `/private/tmp/.../bvj1ypeba.output`。
 
+### V2-11 / V2-12 既知制限の作業ノート (2026-04-07 セッション末時点)
+
+このセクションは V2-11 / V2-12 を再開する次セッション向けの引き継ぎ情報なのよ。本文の `[DEFERRED]` 行と併せて参照すること。
+
+#### 確認済み事実
+
+1. **Selfhost と Rust の import layout は完全に divergent**
+   - Rust 側 (`crates/lsharp-wasm/src/wasi.rs:98`): `IR_IMPORT_COUNT = 17`、root_push は `WASI_IMPORT_COUNT(9) + 13 = 22` に配置
+   - Selfhost 側 (`selfhost/src/Backend/Wasm/WasmEmit.ls:558`): root_push は `call 7`、root_pop は `call 8`、root_set は `call 9` を hardcode
+   - それぞれの世界で内部閉じているため両方とも単独では機能する
+2. **Phase 11 fixed-point が通る理由**
+   - Selfhost-compiled programs では `alloc-root-needed` (`Compiler.ls:548`) が literal 引数しか受けないため `op-root-push` (74) / `op-root-pop` (75) を一度も emit しない
+   - WasmEmit.ls の `call 7/8/9` hardcode は dead code として埋もれている
+3. **Minimal harness 43 件で `call out of bounds` が露呈する理由**
+   - `crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer.rs` 等の harness は `(- n 1)` 等の non-literal を関数引数として渡す
+   - これにより `alloc-root-needed → 1` で `op-root-push` が emit され、`emit-root-push-instr` が `call 7` を吐く
+   - 一方 harness の生成バイト列は selfhost layout の 10-import section を埋め込まないため、`call 7` は user func 8 番目を指して out of bounds
+4. **Selfhost layout の 10-import 構成 (call 0..9)** — `WasmEmit.ls` の各 `emit-*-instr` から逆算
+   - 0: `__alloc` (`emit-import-section-alloc`)
+   - 1: `print` (`emit-print-instr → call 1`)
+   - 2: `read-file` (`emit-read-file-instr → call 2`)
+   - 3: `write-file` (`emit-write-file-instr → call 3`)
+   - 4: `string-concat` (`emit-string-concat-instr → call 4`)
+   - 5: `substring` (`emit-substring-instr → call 5`)
+   - 6: `file-exists?` (`emit-file-exists-instr → call 6`)
+   - 7: `root_push` (`emit-root-push-instr → call 7`)
+   - 8: `root_pop` (`emit-root-pop-instr → call 8`)
+   - 9: `root_set` (`emit-root-set-instr → call 9`)
+5. **既存 WasmEmit.ls の import section variant (264-271)** は最大 4 import まで (alloc-print-read-arg / alloc-print-read-hash) で、全 10 import を含む variant は未実装
+6. **`compile-program-functions-with-base [decls base-idx]`** は commit d4de855 で追加済み、Phase 11 fixed-point GREEN 確認済み
+7. **V2-12 (S15 fixed-point regression)** は failing field 未特定。`cargo test ... -- --nocapture` で 20 分の E2E が必要
+
+#### 残作業 (詳細)
+
+##### V2-11 (ii-a): emit-root-push/pop/set-instr の正本維持
+- 結論: 修正不要なのよ。selfhost layout は 10-import 前提で内部閉じているから、`call 7/8/9` の hardcode はそのまま温存する。**必要なのは harness 側に同じ 10-import section を埋め込むこと**
+
+##### V2-11 (ii-b): WasmEmit.ls に 10-import section variant 追加
+- 新規 defn: `emit-import-section-runtime []` を `WasmEmit.ls:264` 周辺に追加
+- 出力すべき bytes: 各 import が `<modlen=3>env<namelen><name>0<typeidx>` の繰り返しで、合計 10 import + import section header (`02 <body-size>`)
+- 各 import の signature (type idx) は selfhost の type section (`emit-type-section-*`) と整合させる必要がある — 既存の `emit-type-section-functions-*` の type 順序を流用
+- **リスク**: 手で LEB128 を ~300 バイト書くと subtle なバイト bug が runtime まで顕在化しない。**必須前提作業**として `crates/lsharp-wasm/tests/scratch_runtime_imports.rs` 等を立てて wasm-encoder で reference bytes をダンプし、それを写経するのよ
+- 検証: `wasmparser` で parse → import 数 10 + 各 name/type を assert する unit test を WasmEmit.ls の `#[cfg(test)]` (Rust 側) に追加
+
+##### V2-11 (ii-c): emit-type-section-functions-runtime の追加
+- 10-import の各 signature を含む type section を emit する defn が必要かしら
+- 既存の `emit-type-section-functions-with-imports` 系を確認してから追加 / 流用判断
+
+##### V2-11 (iii): minimal harness 43 件の書き換え
+- 対象: `crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer.rs` を中心に `bootstrap-build-stage2` 文字列を持つ ~190 occurrence
+- 変更内容:
+  - harness L# 文字列内で `(emit-import-section-runtime)` を section list の先頭に追加
+  - `(compile-program-functions decls)` → `(compile-program-functions-with-base decls 10)` に置換 (既に commit d4de855 で wrapper 追加済み)
+  - type section も runtime 用 variant に切り替え
+- 共通化: ~190 occurrence を全部手で書くと差分が爆発するから、`crates/lsharp-wasm/tests/e2e/selfhost_minimal_harness_helpers.rs` (新規) に inline helper string constant を 1 つ定義し、各テストはそれを `format!` で参照する形に refactor すべきなのよ
+- 段階実装:
+  1. helpers.rs に `RUNTIME_IMPORT_HARNESS_PRELUDE` 定数を追加
+  2. `test_e2e_bootstrap_stage1_emits_stage2_wasm_for_recursive_factorial` (line 2222) を proof-of-concept として書き換え、GREEN 確認
+  3. 残り 42 件を機械的 (sed/Edit) で置換
+  4. cargo test 全体実行で残課題を洗い出し
+
+##### V2-11 (iv): bootstrap fixed-point + 全 harness GREEN 確認
+- `scripts/ci/compile-phase11-inputs.sh` GREEN
+- `cargo test -p lsharp-wasm --test e2e selfhost_bootstrap_four_layer` GREEN (43 件)
+- `cargo test -p lsharp-wasm --test e2e runtime_allocator_closures` で V2-12 S15 が解消したかも併せて確認
+
+##### V2-12 (i): 失敗フィールド特定
+- `cargo test -p lsharp-wasm --test e2e test_e2e_alloc_metrics_ci_artifact_payload -- --nocapture 2>&1 | tee /tmp/v212-proof.log`
+- proof JSON 内の `bytes_identical` / `exports_identical` / `data_sections_identical` / `diagnostics_identical` のうち false になっているフィールドを特定
+- 想定 20 分
+
+##### V2-12 (ii): V2-11 修正後の再評価
+- V2-11 (iv) GREEN 後に同テストを再実行
+- 解消すれば V2-12 を `[x]` クローズ
+
+##### V2-12 (iii): 独立 bisect (V2-12 (ii) で残った場合のみ)
+- `git bisect start HEAD <known-good>` で原因コミットを特定
+- 候補: 04351e9 / 803e5c4 (root runtime imports 周り)、5877023 (multi-file lowering)、e94eb97 (string handle tagging)
+
+#### 代替案 (採用しない場合の備考)
+
+- **代替 (C)**: `alloc-root-needed` を緩めて算術結果を root しない選択肢
+  - メリット: 修正が 1 行で済む
+  - デメリット: Rust 側との parity が後退、GC が arithmetic 中の heap pointer を回収するリスク再燃。CP-05 G3 の guard tests (`runtime_allocator_closures.rs:G3-a〜d`) を破壊しかねないため**非推奨**
+- **代替 (D)**: harness 側で wasm-encoder を使って post-process し import section を差し替える
+  - メリット: selfhost を一切触らず Rust だけで完結
+  - デメリット: 全 `call N` index shift を code/export 全 section で再計算する必要があり、wasm の section 書き換えロジックを harness ごとに走らせるのは別の罠。実装量は (ii-b)+(iii) と同程度かそれ以上
+
+#### 関連 commit (時系列)
+
+- 04351e9 Wire selfhost root runtime imports — alloc-root-needed の導入起点
+- 803e5c4 Extend selfhost rooting parity (#4) — non-literal 引数まで root 拡大
+- 374e26f Conservatively root unknown call arguments — Rust 側の保守的 root
+- 6af5a26 Document selfhost minimal harness rooting drift as V2-11 — 当初 filing
+- b96b2b4 test(runtime): close CP-05 G3 with 4 GC-safe point regression guards — G3 棚卸し完了
+- 08a9b34 docs(todo): close CP-05 runtime stability gate
+- 501bf00 docs(todo): unblock GC-05 / Step 5 / CP-05 / P11-2e-3 after CP-05 closure
+- 96bd9bb docs(todo): sharpen V2-11 selfhost minimal harness fix plan
+- 3615be6 docs(todo): file V2-12 S15 selfhost fixed-point regression
+- d4de855 feat(selfhost/wasm): add compile-program-functions-with-base for V2-11 — V2-11 (i) DONE
+- 0b362da docs(todo): expand V2-11 with root_push hardcoding finding
+
+#### Evidence ファイル
+
+- `/tmp/lsharp-stage2-fact.wasm` — `call 7/8` 露呈の概念実証
+- `/private/tmp/claude-501/-Users-biwakonbu-github-lsharp/f8994b67-03c0-4cf1-b6da-5aed37db82dd/tasks/bvj1ypeba.output` — 2026-04-07 regression run の生ログ (82 passed, 1 failed)
+- `crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer.rs:2222` — proof-of-concept 対象のテスト
+
 ---
 
 ## Phase 14: エディタ統合プラグイン
