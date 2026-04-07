@@ -426,7 +426,7 @@ fn test_e2e_selfhost_all_files_compile() {
         for entry in std::fs::read_dir(&stdlib_dir).unwrap() {
             let entry = entry.unwrap();
             let path = entry.path();
-            if path.extension().map_or(false, |e| e == "ls") {
+            if path.extension().is_some_and(|e| e == "ls") {
                 all_files.push(path);
             }
         }
@@ -438,7 +438,7 @@ fn test_e2e_selfhost_all_files_compile() {
         for entry in std::fs::read_dir(&examples_dir).unwrap() {
             let entry = entry.unwrap();
             let path = entry.path();
-            if path.extension().map_or(false, |e| e == "ls") {
+            if path.extension().is_some_and(|e| e == "ls") {
                 all_files.push(path);
             }
         }

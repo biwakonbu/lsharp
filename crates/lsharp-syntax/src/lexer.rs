@@ -422,8 +422,8 @@ mod tests {
 
     #[test]
     fn test_float() {
-        let tokens = lex("3.14");
-        assert_eq!(tokens, vec![TokenKind::Float(3.14), TokenKind::Eof]);
+        let tokens = lex("3.25");
+        assert_eq!(tokens, vec![TokenKind::Float(3.25), TokenKind::Eof]);
     }
 
     #[test]

@@ -346,6 +346,108 @@ fn function_operator_debug(wasm: &[u8], func_index: u32, max_ops: usize) -> Vec<
     Vec::new()
 }
 
+fn function_body_bytes(wasm: &[u8], func_index: u32) -> Option<Vec<u8>> {
+    use wasmparser::{Parser, Payload};
+
+    let imported = imported_function_count(wasm);
+    let mut defined_index = 0u32;
+    for payload in Parser::new(0).parse_all(wasm) {
+        let Ok(payload) = payload else {
+            break;
+        };
+        if let Payload::CodeSectionEntry(body) = payload {
+            let absolute_index = imported + defined_index;
+            defined_index += 1;
+            if absolute_index == func_index {
+                return Some(body.as_bytes().to_vec());
+            }
+        }
+    }
+    None
+}
+
+fn local_bound_violation_indices(wasm: &[u8]) -> Vec<u32> {
+    use wasmparser::{Operator, Parser, Payload};
+
+    let imported = imported_function_count(wasm);
+    let param_counts = selfhost_type_param_counts(wasm);
+    let type_indices = selfhost_defined_function_type_indices(wasm);
+    let mut indices = Vec::new();
+    let mut defined_index = 0u32;
+
+    for payload in Parser::new(0).parse_all(wasm) {
+        let Ok(payload) = payload else {
+            break;
+        };
+        if let Payload::CodeSectionEntry(body) = payload {
+            let declared_locals = body
+                .get_locals_reader()
+                .ok()
+                .map(|reader| {
+                    let mut total = 0_u32;
+                    for local in reader.into_iter().flatten() {
+                        total += local.0;
+                    }
+                    total
+                })
+                .unwrap_or(0);
+            let type_index = type_indices
+                .get(defined_index as usize)
+                .copied()
+                .unwrap_or(0);
+            let param_count = param_counts.get(type_index as usize).copied().unwrap_or(0);
+            let total_locals = param_count + declared_locals;
+            let absolute_index = imported + defined_index;
+            let Ok(mut reader) = body.get_operators_reader() else {
+                indices.push(absolute_index);
+                defined_index += 1;
+                continue;
+            };
+            let mut violated = false;
+            while !reader.eof() {
+                let op = match reader.read() {
+                    Ok(op) => op,
+                    Err(_) => {
+                        violated = true;
+                        break;
+                    }
+                };
+                let local_index = match op {
+                    Operator::LocalGet { local_index }
+                    | Operator::LocalSet { local_index }
+                    | Operator::LocalTee { local_index } => Some(local_index),
+                    _ => None,
+                };
+                if let Some(local_index) = local_index
+                    && local_index >= total_locals {
+                        violated = true;
+                        break;
+                    }
+            }
+            if violated {
+                indices.push(absolute_index);
+            }
+            defined_index += 1;
+        }
+    }
+
+    indices
+}
+
+fn first_byte_diff(left: &[u8], right: &[u8]) -> Option<usize> {
+    let min_len = left.len().min(right.len());
+    for idx in 0..min_len {
+        if left[idx] != right[idx] {
+            return Some(idx);
+        }
+    }
+    if left.len() == right.len() {
+        None
+    } else {
+        Some(min_len)
+    }
+}
+
 fn read_leb_u32(bytes: &[u8], pos: &mut usize) -> u32 {
     let mut value = 0_u32;
     let mut shift = 0;
@@ -456,20 +558,18 @@ fn local_bound_violations(wasm: &[u8]) -> Vec<String> {
                     | Operator::LocalTee { local_index } => Some(local_index),
                     _ => None,
                 };
-                if let Some(local_index) = local_index {
-                    if max_local_op.is_none() || local_index >= max_local_ref {
+                if let Some(local_index) = local_index
+                    && (max_local_op.is_none() || local_index >= max_local_ref) {
                         max_local_ref = local_index;
                         max_local_op = Some(format!("{op:?}"));
                     }
-                }
             }
-            if let Some(max_local_op) = max_local_op {
-                if max_local_ref >= total_locals {
+            if let Some(max_local_op) = max_local_op
+                && max_local_ref >= total_locals {
                     violations.push(format!(
                         "func {absolute_index} (defined #{defined_index}, type {type_index}): params={param_count} locals={declared_locals} total={total_locals} max_ref={max_local_ref} via {max_local_op}; body_prefix={body_prefix:?}"
                     ));
                 }
-            }
             defined_index += 1;
         }
     }
@@ -917,15 +1017,13 @@ fn read_path_text_with_root<T>(
     if addr_usize + 8 <= data_size && memory.read(&mut *caller, addr_usize, &mut header).is_ok() {
         let tag = i32::from_le_bytes(header[0..4].try_into().expect("tag header 長が不正"));
         let len = i32::from_le_bytes(header[4..8].try_into().expect("len header 長が不正"));
-        if tag == 1 {
-            if let Ok(len) = usize::try_from(len) {
-                if addr_usize + 8 + len <= data_size {
+        if tag == 1
+            && let Ok(len) = usize::try_from(len)
+                && addr_usize + 8 + len <= data_size {
                     let text = String::from_utf8(read_string_object_bytes(caller, addr))
                         .expect("path string object bytes が UTF-8 ではない");
                     return text;
                 }
-            }
-        }
     }
 
     let max_len = (data_size - addr_usize).min(512);
@@ -1380,7 +1478,7 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
                 let total_len = i32::from_le_bytes(buf).max(0) as usize;
                 let s = (start as usize).min(total_len);
                 let e = (end as usize).min(total_len);
-                let slice_len = if e > s { e - s } else { 0 };
+                let slice_len = e.saturating_sub(s);
                 let mut data = vec![0u8; slice_len];
                 if slice_len > 0 {
                     let _ = m.read(&caller, ptr as usize + 8 + s, &mut data);
@@ -5029,6 +5127,40 @@ fn test_e2e_boot04_bootstrap_append_bytes_deep_recursion_trap_repro() {
     }
 }
 
+#[test]
+fn test_e2e_boot04_selfhost_compile_program_functions_handles_many_defns() {
+    let mut stage2_src = String::new();
+    for i in 0..2000 {
+        stage2_src.push_str(&format!("(defn fn{i:04} [] {i}) "));
+    }
+    stage2_src.push_str("(defn main [] 0)");
+
+    let harness = format!(
+        concat!(
+            "(defn main []\n",
+            "  (let [program (parse-program \"{s2}\")\n",
+            "        pair (compile-program-functions program)\n",
+            "        functions (vector-get pair 1)]\n",
+            "    (do (print (vector-length functions)) 0)))\n",
+        ),
+        s2 = stage2_src
+    );
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+    let result = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm);
+    assert!(
+        result.is_ok(),
+        "compile-program-functions が大量 defn でトラップした: {:?}",
+        result.err()
+    );
+    assert_eq!(
+        result.unwrap().trim(),
+        "2001",
+        "2000 個の defn + main の 2001 関数が登録されるべき"
+    );
+}
+
 /// BOOT-04 リグレッション: 再帰深度境界の観測記録
 ///
 /// bootstrap-append-bytes が何個の関数 (≈ code section バイト数) から失敗するかの境界を確認する。
@@ -5337,7 +5469,6 @@ fn test_e2e_boot04_self_hosted_stage2_preserves_batched_step_progress() {
 
     let stage1_wasm = compile_file_only(&main_path);
     assert_valid_wasm(&stage1_wasm);
-
     let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
         &stage1_wasm,
         Some(&selfhost_root),
@@ -6480,6 +6611,123 @@ fn test_v2_12_self_hosted_stage2_keeps_complex_defn_decl_tag() {
 }
 
 #[test]
+fn test_v2_12_self_hosted_stage2_emits_data_section_for_string_literals() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("V2-12 string-data: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let source = r#"
+(module App.Main)
+(defn main []
+  (if (= 1 1)
+    "hello"
+    "world"))
+"#;
+    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+        stage2_self_compiler,
+        source,
+        &["compiler", "inline-string-data.ls"],
+    )
+    .expect("V2-12 string-data: stage2_self_compiler が inline string source をコンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_wasm = &stage3_modules[0];
+    assert_valid_wasm(stage3_wasm);
+
+    let data_section = extract_section_bytes(stage3_wasm, 11)
+        .expect("V2-12 string-data: string literal を含む stage3 wasm は data section を持つべき");
+    let hello = b"hello";
+    let world = b"world";
+    assert!(
+        data_section.windows(hello.len()).any(|window| window == hello),
+        "V2-12 string-data: data section に hello bytes が見つからない: {:?}",
+        &data_section[..data_section.len().min(64)]
+    );
+    assert!(
+        data_section.windows(world.len()).any(|window| window == world),
+        "V2-12 string-data: data section に world bytes が見つからない: {:?}",
+        &data_section[..data_section.len().min(64)]
+    );
+}
+
+#[test]
+fn test_v2_12_self_hosted_stage2_keeps_if_and_string_expr_tags() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+    let source = "(module App.Main)\n(defn main [] (if (= 1 1) \"hello\" \"world\"))\n";
+    let expr_tag_args = [
+        "compiler",
+        "src/App/Main.ls",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "expr-tag",
+    ];
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("V2-12 expr-tag: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let printed = run_wasm_with_six_imports_compiler_mode(stage2_self_compiler, source, &expr_tag_args)
+        .expect("V2-12 expr-tag: stage2_self_compiler の expr-tag 実行に失敗した");
+    let values: Vec<i64> = printed
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.trim().parse::<i64>().unwrap_or_else(|_| {
+                panic!("V2-12 expr-tag: 数値でない診断出力: {line:?}")
+            })
+        })
+        .collect();
+
+    assert_eq!(
+        values,
+        vec![73, 0, 32, 12, 12, 6, 6, 20, 0, 6, 3, 3],
+        "V2-12 expr-tag: stage2 parser は defn/main-if/string tags を保つべき"
+    );
+}
+
+#[test]
 fn test_e2e_boot04_self_hosted_stage2_compiles_module_import_file() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -7401,6 +7649,338 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_main_again() {
         run_result.is_ok(),
         "BOOT-04 self-feed: stage4 minimal 実行失敗: {:?}",
         run_result.err()
+    );
+}
+
+#[test]
+fn test_v2_12_self_hosted_stage2_reports_main_again_stage3_local_bounds() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("V2-12 main-again-locals: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+        stage2_self_compiler,
+        &selfhost_root,
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("V2-12 main-again-locals: stage2_self_compiler が Main.ls を再コンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_self_compiler = &stage3_modules[0];
+    assert_valid_wasm(stage3_self_compiler);
+
+    let violations = local_bound_violations(stage3_self_compiler);
+    let first_violation_func = violations.first().and_then(|msg| {
+        msg.strip_prefix("func ")
+            .and_then(|rest| rest.split_whitespace().next())
+            .and_then(|func| func.parse::<u32>().ok())
+    });
+    let first_violation_ops = first_violation_func
+        .map(|func| function_operator_debug(stage3_self_compiler, func, 24))
+        .unwrap_or_default();
+    validate_wasm_detailed(stage3_self_compiler).unwrap_or_else(|e| {
+        panic!(
+            "V2-12 main-again-locals: stage3 self compiler validation failed: {e}; sections={:?}; violations={:?}; first_violation_func={:?}; first_violation_ops={:?}; fingerprint={}",
+            extract_sections(stage3_self_compiler),
+            violations,
+            first_violation_func,
+            first_violation_ops,
+            hash_fingerprint(stage3_self_compiler)
+        )
+    });
+    assert!(
+        violations.is_empty(),
+        "V2-12 main-again-locals: local bound violations: {:?}; first_violation_func={:?}; first_violation_ops={:?}",
+        violations,
+        first_violation_func,
+        first_violation_ops
+    );
+}
+
+#[test]
+fn test_v2_12_self_hosted_stage2_compiles_large_let_chain() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("V2-12 let-chain: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let bindings = (0..160)
+        .map(|idx| format!("v{idx} {idx}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let source = format!(
+        "(module App.Main)\n(defn main []\n  (let [{bindings}]\n    v159))\n"
+    );
+
+    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+        stage2_self_compiler,
+        &source,
+        &["compiler", "inline-large-let-chain.ls"],
+    )
+    .expect("V2-12 let-chain: stage2_self_compiler が large let-chain source をコンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_wasm = &stage3_modules[0];
+    assert_valid_wasm(stage3_wasm);
+}
+
+#[test]
+fn test_v2_12_self_hosted_stage2_compiles_vector_push_program() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("V2-12 vector-push: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let source = r#"
+(module App.Main)
+(defn main []
+  (print
+    (let [v (vector-new 1)
+          v2 (vector-push v 42)]
+      (vector-get v2 0))))
+"#;
+
+    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+        stage2_self_compiler,
+        source,
+        &["compiler", "inline-vector-push.ls"],
+    )
+    .expect("V2-12 vector-push: stage2_self_compiler が vector-push source をコンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_wasm = &stage3_modules[0];
+    assert_valid_wasm(stage3_wasm);
+    assert_eq!(run_wasi(stage3_wasm), "42\n");
+}
+
+#[test]
+fn test_v2_12_self_hosted_stage2_loads_wasm_emit_module() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("V2-12 WasmEmit: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+        stage2_self_compiler,
+        &selfhost_root,
+        &["compiler", "src/Backend/Wasm/WasmEmit.ls"],
+    )
+    .expect("V2-12 WasmEmit: stage2_self_compiler が WasmEmit.ls をコンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_wasm = &stage3_modules[0];
+    let violations = local_bound_violations(stage3_wasm);
+    let engine = wasmtime::Engine::default();
+    wasmtime::Module::new(&engine, stage3_wasm).unwrap_or_else(|e| {
+        panic!(
+            "V2-12 WasmEmit: wasmtime load failed: {e}; sections={:?}; violations={:?}; fingerprint={}",
+            extract_sections(stage3_wasm),
+            violations,
+            hash_fingerprint(stage3_wasm)
+        )
+    });
+    assert!(
+        violations.is_empty(),
+        "V2-12 WasmEmit: local bound violations: {:?}",
+        violations
+    );
+}
+
+#[test]
+fn test_v2_12_self_hosted_stage2_loads_compiler_mode_module() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("V2-12 CompilerMode: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+        stage2_self_compiler,
+        &selfhost_root,
+        &["compiler", "src/App/CompilerMode.ls"],
+    )
+    .expect("V2-12 CompilerMode: stage2_self_compiler が CompilerMode.ls をコンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_wasm = &stage3_modules[0];
+    let violations = local_bound_violations(stage3_wasm);
+    let engine = wasmtime::Engine::default();
+    wasmtime::Module::new(&engine, stage3_wasm).unwrap_or_else(|e| {
+        panic!(
+            "V2-12 CompilerMode: wasmtime load failed: {e}; sections={:?}; violations={:?}; fingerprint={}",
+            extract_sections(stage3_wasm),
+            violations,
+            hash_fingerprint(stage3_wasm)
+        )
+    });
+    assert!(
+        violations.is_empty(),
+        "V2-12 CompilerMode: local bound violations: {:?}",
+        violations
+    );
+}
+
+#[test]
+fn test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+    let compiler_mode_path = selfhost_root.join("src/App/CompilerMode.ls");
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage1_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/CompilerMode.ls"],
+    )
+    .expect("V2-12 CompilerMode diff: stage1_wasm が CompilerMode.ls をコンパイルできない");
+    let stage1_modules = parse_emitted_wasm_modules(&stage1_output, 1);
+    let stage1_compiler_mode = &stage1_modules[0];
+    let engine = wasmtime::Engine::default();
+    wasmtime::Module::new(&engine, stage1_compiler_mode)
+        .expect("V2-12 CompilerMode diff: stage1 output は load できること");
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("V2-12 CompilerMode diff: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+        stage2_self_compiler,
+        &selfhost_root,
+        &["compiler", "src/App/CompilerMode.ls"],
+    )
+    .expect("V2-12 CompilerMode diff: stage2_self_compiler が CompilerMode.ls をコンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_compiler_mode = &stage3_modules[0];
+
+    let bad_indices = local_bound_violation_indices(stage3_compiler_mode);
+    let first_bad = *bad_indices
+        .first()
+        .expect("V2-12 CompilerMode diff: stage3 output に violation があること");
+    let stage1_body = function_body_bytes(stage1_compiler_mode, first_bad)
+        .expect("V2-12 CompilerMode diff: stage1 body が見つかること");
+    let stage3_body = function_body_bytes(stage3_compiler_mode, first_bad)
+        .expect("V2-12 CompilerMode diff: stage3 body が見つかること");
+    let diff_at = first_byte_diff(stage1_body.as_slice(), stage3_body.as_slice())
+        .expect("V2-12 CompilerMode diff: body 差分があること");
+    let window_start = diff_at.saturating_sub(16);
+    let window_end_stage1 = (diff_at + 24).min(stage1_body.len());
+    let window_end_stage3 = (diff_at + 24).min(stage3_body.len());
+
+    panic!(
+        "V2-12 CompilerMode diff: path={}; first_bad={}; diff_at={}; stage1_size={}; stage3_size={}; stage1_prefix={:?}; stage3_prefix={:?}; stage1_window={:?}; stage3_window={:?}; stage1_ops={:?}; stage3_violations={:?}; stage1_fingerprint={}; stage3_fingerprint={}",
+        compiler_mode_path.display(),
+        first_bad,
+        diff_at,
+        stage1_body.len(),
+        stage3_body.len(),
+        stage1_body.iter().take(32).copied().collect::<Vec<_>>(),
+        stage3_body.iter().take(32).copied().collect::<Vec<_>>(),
+        stage1_body[window_start..window_end_stage1].to_vec(),
+        stage3_body[window_start..window_end_stage3].to_vec(),
+        function_operator_debug(stage1_compiler_mode, first_bad, 20),
+        local_bound_violations(stage3_compiler_mode),
+        hash_fingerprint(stage1_body.as_slice()),
+        hash_fingerprint(stage3_body.as_slice())
     );
 }
 
@@ -8835,7 +9415,7 @@ fn test_debug_stage3_output_chars() {
             let out_of_range: Vec<(usize, i64)> = all_values
                 .iter()
                 .enumerate()
-                .filter(|&(_, &v)| v < 0 || v > 255)
+                .filter(|&(_, &v)| !(0..=255).contains(&v))
                 .take(5)
                 .map(|(i, &v)| (i, v))
                 .collect();
@@ -8843,7 +9423,7 @@ fn test_debug_stage3_output_chars() {
             // stage3 bytes を保存
             if !all_values.is_empty() {
                 let count = all_values[0] as usize;
-                if all_values.len() >= count + 1 {
+                if all_values.len() > count {
                     let bytes: Vec<u8> = all_values[1..=count]
                         .iter()
                         .map(|&v| (v & 0xFF) as u8)

@@ -1,6 +1,44 @@
 (module Tools.Lsp.LspServerCore)
 (import Tools.Lsp.JsonRpc)
 
+(defn push-int-vector-local [dst value]
+  (do
+    (root_push dst)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        next-dst))))
+
+(defn push-object-vector-local [dst value]
+  (do
+    (root_push dst)
+    (root_push value)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        (root_pop)
+        next-dst))))
+
+(defn ref-map-get-safe [map-ref key]
+  (let [map-value (ref-get map-ref)]
+    (do
+      (root_push map-value)
+      (let [value (map-get map-value key)]
+        (do
+          (root_pop)
+          value)))))
+
+(defn ref-map-insert-object-safe [map-ref key value]
+  (let [map-value (ref-get map-ref)]
+    (do
+      (root_push map-value)
+      (root_push value)
+      (let [next-map (map-insert map-value key value)]
+        (do
+          (root_pop)
+          (root_pop)
+          next-map)))))
+
 ;; LspServerCore.ls - LSP サーバーのコア機能
 ;;
 ;; サーバー状態管理、メソッド定数、JSON-RPC ディスパッチ、
@@ -14,16 +52,16 @@
 ;; === サーバー状態 ===
 (defn server-state-new []
   (let [v0 (vector-new 10)
-    v1 (vector-push v0 (ref-new 0)) ;; initialized フラグ
-    v2 (vector-push v1 (ref-new 0)) ;; shutdown フラグ
-    v3 (vector-push v2 (ref-new 0)) ;; open document 数
-    v4 (vector-push v3 (ref-new 0)) ;; current uri
-    v5 (vector-push v4 (ref-new "")) ;; current source
-    v6 (vector-push v5 (ref-new 0)) ;; request count
-    v7 (vector-push v6 (ref-new (map-new))) ;; uri -> source
-    v8 (vector-push v7 (ref-new (vector-new 8))) ;; open uri list
-    v9 (vector-push v8 (ref-new "")) ;; current path
-    v10 (vector-push v9 (ref-new (map-new)))] ;; uri -> path
+    v1 (push-object-vector-local v0 (ref-new 0)) ;; initialized フラグ
+    v2 (push-object-vector-local v1 (ref-new 0)) ;; shutdown フラグ
+    v3 (push-object-vector-local v2 (ref-new 0)) ;; open document 数
+    v4 (push-object-vector-local v3 (ref-new 0)) ;; current uri
+    v5 (push-object-vector-local v4 (ref-new "")) ;; current source
+    v6 (push-object-vector-local v5 (ref-new 0)) ;; request count
+    v7 (push-object-vector-local v6 (ref-new (map-new))) ;; uri -> source
+    v8 (push-object-vector-local v7 (ref-new (vector-new 8))) ;; open uri list
+    v9 (push-object-vector-local v8 (ref-new "")) ;; current path
+    v10 (push-object-vector-local v9 (ref-new (map-new)))] ;; uri -> path
     v10))
 
 (defn server-state-doc-count [state]
@@ -47,11 +85,20 @@
 (defn server-state-uri-list [state]
   (ref-get (vector-get state 7)))
 
+(defn server-state-documents-ref [state]
+  (vector-get state 6))
+
+(defn server-state-uri-list-ref [state]
+  (vector-get state 7))
+
 (defn server-state-path [state]
   (ref-get (vector-get state 8)))
 
 (defn server-state-document-paths [state]
   (ref-get (vector-get state 9)))
+
+(defn server-state-document-paths-ref [state]
+  (vector-get state 9))
 
 (defn server-state-uri-known-loop [uris idx count uri]
   (if (>= idx count)
@@ -65,11 +112,11 @@
     (if (= (server-state-uri-known-loop uris 0 (vector-length uris) uri) 1)
       0
       (do
-        (ref-set (vector-get state 7) (vector-push uris uri))
+        (ref-set (server-state-uri-list-ref state) (push-int-vector-local uris uri))
         1))))
 
 (defn server-state-source-for-uri [state uri]
-  (let [stored (map-get (server-state-documents state) uri)]
+  (let [stored (ref-map-get-safe (server-state-documents-ref state) uri)]
     (if (= stored 0)
       (if (= (ref-get (vector-get state 3)) uri)
         (server-state-source state)
@@ -77,7 +124,7 @@
       stored)))
 
 (defn server-state-path-for-uri [state uri]
-  (let [stored (map-get (server-state-document-paths state) uri)]
+  (let [stored (ref-map-get-safe (server-state-document-paths-ref state) uri)]
     (if (= stored 0)
       (if (= (ref-get (vector-get state 3)) uri)
         (server-state-path state)
@@ -99,14 +146,14 @@
 (defn server-state-set-document-with-path [state uri src path]
   (let [effective-path (if (> (string-length path) 0) path (server-state-path-for-uri state uri))
     next-paths (if (> (string-length effective-path) 0)
-      (map-insert (server-state-document-paths state) uri effective-path)
+      (ref-map-insert-object-safe (server-state-document-paths-ref state) uri effective-path)
       (server-state-document-paths state))]
     (do
       (ref-set (vector-get state 3) uri)
       (ref-set (vector-get state 4) src)
-      (ref-set (vector-get state 6) (map-insert (server-state-documents state) uri src))
+      (ref-set (server-state-documents-ref state) (ref-map-insert-object-safe (server-state-documents-ref state) uri src))
       (ref-set (vector-get state 8) effective-path)
-      (ref-set (vector-get state 9) next-paths)
+      (ref-set (server-state-document-paths-ref state) next-paths)
       (server-state-remember-uri state uri)
       0)))
 
@@ -158,13 +205,13 @@
     (server-state-set-initialized state 1)
     (server-state-note-request state)
     (let [capabilities (vector-new 7)]
-      (vector-push
-        (vector-push
-          (vector-push
-            (vector-push
-              (vector-push
-                (vector-push
-                  (vector-push capabilities 1) ;; textDocumentSync: Full
+      (push-int-vector-local
+        (push-int-vector-local
+          (push-int-vector-local
+            (push-int-vector-local
+              (push-int-vector-local
+                (push-int-vector-local
+                  (push-int-vector-local capabilities 1) ;; textDocumentSync: Full
                   1) ;; hoverProvider
                 1) ;; completionProvider
               1) ;; definitionProvider
@@ -206,7 +253,7 @@
       (let [uri (vector-get params 0)
         diagnostics (vector-get params 1)
         diagnostics-json (render-diagnostics-json diagnostics)]
-        (vector-push (vector-push (vector-new 2) uri) diagnostics-json))
+        (push-object-vector-local (push-int-vector-local (vector-new 2) uri) diagnostics-json))
       params)))
 
 ;; === textDocument 系の簡易ソース解析 ===
@@ -296,7 +343,7 @@
 ;; === データ構造 ===
 
 (defn make-position [line col]
-  (vector-push (vector-push (vector-new 2) line) col))
+  (push-int-vector-local (push-int-vector-local (vector-new 2) line) col))
 
 (defn position-line [pos]
   (vector-get pos 0))
@@ -305,20 +352,20 @@
   (vector-get pos 1))
 
 (defn make-range [start-line start-col end-line end-col]
-  (vector-push
-    (vector-push
-      (vector-push
-        (vector-push (vector-new 4) start-line)
+  (push-int-vector-local
+    (push-int-vector-local
+      (push-int-vector-local
+        (push-int-vector-local (vector-new 4) start-line)
         start-col)
       end-line)
     end-col))
 
 (defn make-text-edit [start-line start-col end-line end-col new-text]
-  (vector-push
-    (vector-push
-      (vector-push
-        (vector-push
-          (vector-push (vector-new 5) start-line)
+  (push-object-vector-local
+    (push-int-vector-local
+      (push-int-vector-local
+        (push-int-vector-local
+          (push-int-vector-local (vector-new 5) start-line)
           start-col)
         end-line)
       end-col)
@@ -328,8 +375,8 @@
   (make-text-edit start-line start-col end-line end-col new-text))
 
 (defn make-workspace-change [uri edits]
-  (vector-push
-    (vector-push (vector-new 2) uri)
+  (push-object-vector-local
+    (push-int-vector-local (vector-new 2) uri)
     edits))
 
 ;; === JSON レンダリング (コア部) ===
@@ -415,8 +462,8 @@
   (lsp-string-hash-loop src start end 0))
 
 (defn make-symbol-info [start end]
-  (vector-push
-    (vector-push (vector-new 2) start)
+  (push-int-vector-local
+    (push-int-vector-local (vector-new 2) start)
     end))
 
 (defn empty-symbol-info []
@@ -480,7 +527,7 @@
 ;; encode-json-rpc-response: JSON-RPC 2.0 レスポンス構造を生成
 ;; [jsonrpc-version(=2), id, result]
 (defn encode-json-rpc-response [id result]
-  (vector-push (vector-push (vector-push (vector-new 3) 2) id) result))
+  (push-object-vector-local (push-int-vector-local (push-int-vector-local (vector-new 3) 2) id) result))
 
 (defn render-json-rpc-error-response [request-id error-code error-message]
   (let [message-json (json-escape-string error-message)]
@@ -504,4 +551,4 @@
 (defn parse-json-rpc-request [msg]
   (let [method-id (vector-get msg 2)
     params (vector-get msg 3)]
-    (vector-push (vector-push (vector-new 2) method-id) params)))
+    (push-object-vector-local (push-int-vector-local (vector-new 2) method-id) params)))

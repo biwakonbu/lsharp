@@ -11,13 +11,49 @@
 ;; TypeScheme = [type, bound-vars-vector]
 ;; bound-vars-vector: 束縛された型変数 ID のベクタ (空なら単相型)
 
+(defn push-int-vector-local [dst value]
+  (do
+    (root_push dst)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        next-dst))))
+
+(defn push-object-vector-local [dst value]
+  (do
+    (root_push dst)
+    (root_push value)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        (root_pop)
+        next-dst))))
+
+(defn map-get-safe [m key]
+  (do
+    (root_push m)
+    (let [value (map-get m key)]
+      (do
+        (root_pop)
+        value))))
+
+(defn map-insert-object-safe [m key value]
+  (do
+    (root_push m)
+    (root_push value)
+    (let [next-map (map-insert m key value)]
+      (do
+        (root_pop)
+        (root_pop)
+        next-map))))
+
 ;; 単相型スキーム: 束縛変数なし
 (defn mono [ty]
-  (vector-push (vector-push (vector-new 2) ty) (vector-new 0)))
+  (push-object-vector-local (push-object-vector-local (vector-new 2) ty) (vector-new 0)))
 
 ;; 多相型スキーム: 束縛変数あり
 (defn poly [ty bound-vars]
-  (vector-push (vector-push (vector-new 2) ty) bound-vars))
+  (push-object-vector-local (push-object-vector-local (vector-new 2) ty) bound-vars))
 
 ;; 型スキームの型を取得
 (defn scheme-type [scheme]
@@ -52,7 +88,7 @@
         (+ idx 1)
         len
         counter
-        (map-insert subst old-var new-ty)))))
+        (map-insert-object-safe subst old-var new-ty)))))
 
 ;; record 型の field type に置換を適用する
 (defn instantiate-apply-record-fields [subst ty idx len out]
@@ -89,16 +125,14 @@
   (let [tag (vector-get ty 0)]
     (if (= tag 2)
       ;; Var: 置換に存在すれば置き換え
-      (let [looked (map-get subst (vector-get ty 1))]
+      (let [looked (map-get-safe subst (vector-get ty 1))]
         (if (= looked 0)
           ty
           looked))
       (if (= tag 3)
         ;; Fun: パラメータと戻り値に適用
-        (vector-push
-          (vector-push
-            (vector-push (vector-new 3) 3)
-            (instantiate-apply subst (vector-get ty 1)))
+        (make-type-fun
+          (instantiate-apply subst (vector-get ty 1))
           (instantiate-apply subst (vector-get ty 2)))
         (if (= tag 4)
           ;; Record: field type ごとに置換を適用
@@ -125,7 +159,7 @@
 (defn free-vars-push-unique [vars target]
   (if (= (free-vars-contains vars 0 (vector-length vars) target) 1)
     vars
-    (vector-push vars target)))
+    (push-int-vector-local vars target)))
 
 ;; src を左から順に dst へマージし、自由変数順を安定化する
 (defn free-vars-append-unique [dst src idx len]
@@ -154,8 +188,8 @@
     bound
     (let [v (vector-get free idx)
       next-bound
-      (if (= (map-get env-vars v) 0)
-        (vector-push bound v)
+      (if (= (map-get-safe env-vars v) 0)
+        (push-int-vector-local bound v)
         bound)]
       (generalize-collect-bound free (+ idx 1) len env-vars next-bound))))
 
@@ -174,7 +208,7 @@
   (let [tag (vector-get ty 0)]
     (if (= tag 2)
       ;; Var: その ID を返す
-      (vector-push (vector-new 1) (vector-get ty 1))
+      (push-int-vector-local (vector-new 1) (vector-get ty 1))
       (if (= tag 3)
         ;; Fun: パラメータと戻り値の自由変数を結合
         (let [pv (free-vars (vector-get ty 1))

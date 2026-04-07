@@ -67,7 +67,7 @@ fn test_double_backslash() {
             if *byte >= 32 && *byte < 127 {
                 (*byte as char).to_string()
             } else {
-                format!("non-printable")
+                "non-printable".to_string()
             }
         );
     }

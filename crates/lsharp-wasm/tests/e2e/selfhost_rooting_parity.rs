@@ -127,9 +127,8 @@ fn test_e2e_selfhost_compiler_string_concat_auto_roots_arguments() {
 
 #[test]
 fn test_e2e_selfhost_compiler_string_concat_roots_lhs_before_lowering_rhs() {
-    let (_local_count, instrs) = compile_selfhost_ir_report(
-        r#"(defn main [] (string-concat (string-concat "a" "b") "c"))"#,
-    );
+    let (_local_count, instrs) =
+        compile_selfhost_ir_report(r#"(defn main [] (string-concat (string-concat "a" "b") "c"))"#);
     let concat_positions = instrs
         .iter()
         .enumerate()

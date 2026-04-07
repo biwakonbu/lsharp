@@ -6,6 +6,51 @@
 (import Tools.Lsp.LspServerCore)
 (import Tools.Lsp.LspServerNav)
 
+(defn push-int-vector-local [dst value]
+  (do
+    (root_push dst)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        next-dst))))
+
+(defn push-object-vector-local [dst value]
+  (do
+    (root_push dst)
+    (root_push value)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        (root_pop)
+        next-dst))))
+
+(defn make-lsp-server-summary [results doc-count request-count source-length]
+  (push-int-vector-local
+    (push-int-vector-local
+      (push-int-vector-local
+        (push-object-vector-local (vector-new 4) results)
+        doc-count)
+      request-count)
+    source-length))
+
+(defn make-lsp-server-test-diag [severity rule-id line col message-hash source]
+  (push-int-vector-local
+    (push-int-vector-local
+      (push-int-vector-local
+        (push-int-vector-local
+          (push-int-vector-local
+            (push-int-vector-local (vector-new 6) severity)
+            rule-id)
+          line)
+        col)
+      message-hash)
+    source))
+
+(defn make-lsp-server-test-diag-pair [left right]
+  (push-object-vector-local
+    (push-object-vector-local (vector-new 2) left)
+    right))
+
 ;; LspServer.ls - L# 製 LSP サーバー (ディスパッチャ/スタブ)
 ;;
 ;; P11-4 T4-2: L# 製 LSP の正式化
@@ -57,19 +102,17 @@
       requests
       (+ idx 1)
       count
-      (vector-push results (server-loop-step state (vector-get requests idx))))))
+      (push-object-vector-local results (server-loop-step state (vector-get requests idx))))))
 
 (defn server-loop-sequence [requests]
   (let [state (server-state-new)
     results (server-loop-sequence-loop state requests 0 (vector-length requests) (vector-new 8))
-    summary (vector-new 4)]
-    (vector-push
-      (vector-push
-        (vector-push
-          (vector-push summary results)
-          (server-state-doc-count state))
-        (server-state-request-count state))
-      (server-state-source-length state))))
+    summary (make-lsp-server-summary
+      results
+      (server-state-doc-count state)
+      (server-state-request-count state)
+      (server-state-source-length state))]
+    summary))
 
 ;; 各呼び出しで新規 state (旧単一ファイル実装と同じ)。共有は server-loop-step を直接使う。
 (defn server-loop [request]
@@ -91,13 +134,13 @@
     formatting (handle-formatting 0 state)
     completions (handle-completion 0 state)
     r2 (json-rpc-dispatch (lsp-method-shutdown) 0 state)
-    diag-a (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 1) 100) 3) 2) 0) 0)
-    diag-b (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 1) 100) 1) 1) 0) 0)
-    diags (vector-push (vector-push (vector-new 2) diag-a) diag-b)
+    diag-a (make-lsp-server-test-diag 1 100 3 2 0 0)
+    diag-b (make-lsp-server-test-diag 1 100 1 1 0 0)
+    diags (make-lsp-server-test-diag-pair diag-a diag-b)
     sorted (sort-diagnostics diags)
-    dup-a (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 2) 101) 5) 7) 0) 0)
-    dup-b (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-new 6) 1) 102) 5) 7) 0) 0)
-    dup-diags (vector-push (vector-push (vector-new 2) dup-a) dup-b)
+    dup-a (make-lsp-server-test-diag 2 101 5 7 0 0)
+    dup-b (make-lsp-server-test-diag 1 102 5 7 0 0)
+    dup-diags (make-lsp-server-test-diag-pair dup-a dup-b)
     merged (merge-duplicate-diagnostics dup-diags)]
     (do
       ;; capabilities の検証

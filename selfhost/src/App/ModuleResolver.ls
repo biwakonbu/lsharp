@@ -21,17 +21,77 @@
 (defn module-name-to-index-relative-loop [name idx len out] (if (>= idx len) (string-concat out ".path") (let [piece (if (= (path-char name idx) 46) "/" (substring name idx (+ idx 1)))] (module-name-to-index-relative-loop name (+ idx 1) len (string-concat out piece)))))
 (defn module-name-to-index-relative [name] (module-name-to-index-relative-loop name 0 (string-length name) ""))
 (defn module-path-cache-key [module-name source-root package-root] (let [key1 (string-concat "module|" module-name) key2 (string-concat key1 "|") key3 (string-concat key2 source-root) key4 (string-concat key3 "|") key5 (string-concat key4 package-root)] (+ (* (text-hash key5) 2) 1)))
-(defn make-module-path-cache-entry [state resolved-path] (vector-push (vector-push (vector-new 2) state) resolved-path))
+(defn make-module-path-cache-entry [state resolved-path]
+  (do
+    (root_push state)
+    (root_push resolved-path)
+    (let [entry1 (vector-push (vector-new 2) state)]
+      (do
+        (root_push entry1)
+        (let [entry2 (vector-push entry1 resolved-path)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            entry2))))))
 (defn module-path-cache-entry-state [entry] (vector-get entry 0))
 (defn module-path-cache-entry-path [entry] (vector-get entry 1))
+(defn ref-map-get-safe [map-ref key]
+  (let [map-value (ref-get map-ref)]
+    (do
+      (root_push map-value)
+      (let [value (map-get map-value key)]
+        (do
+          (root_pop)
+          value)))))
+(defn ref-map-insert-object-safe [map-ref key value]
+  (let [map-value (ref-get map-ref)]
+    (do
+      (root_push map-value)
+      (root_push value)
+      (let [next-map (map-insert map-value key value)]
+        (do
+          (root_pop)
+          (root_pop)
+          next-map)))))
 (defn is-trailing-path-whitespace [text idx] (let [ch (path-char text idx)] (if (= ch 10) true (if (= ch 13) true (if (= ch 32) true (if (= ch 9) true false))))))
 (defn trim-trailing-path-whitespace-loop [text end] (if (<= end 0) "" (if (is-trailing-path-whitespace text (- end 1)) (trim-trailing-path-whitespace-loop text (- end 1)) (substring text 0 end))))
 (defn trim-trailing-path-whitespace [text] (trim-trailing-path-whitespace-loop text (string-length text)))
 (defn module-path-cache-state [module-name source-root package-root] (let [nested-rel (module-name-to-relative module-name) local-nested (path-join source-root nested-rel)] (if (= (string-length package-root) 0) "D" (if (file-exists? local-nested) "L" (let [index-rel (module-name-to-index-relative module-name) index-root (path-join package-root ".lsharp/module-index") index-path (path-join index-root index-rel) indexed-target (if (file-exists? index-path) (trim-trailing-path-whitespace (read-file index-path)) "") stdlib-root (path-join package-root "stdlib") stdlib-nested (path-join stdlib-root nested-rel)] (if (> (string-length indexed-target) 0) (string-concat "I|" indexed-target) (if (file-exists? stdlib-nested) "S" "M")))))))
 (defn resolve-module-path [module-name source-root package-root] (let [nested-rel (module-name-to-relative module-name) local-nested (path-join source-root nested-rel)] (if (= (string-length package-root) 0) local-nested (if (file-exists? local-nested) local-nested (let [index-rel (module-name-to-index-relative module-name) index-root (path-join package-root ".lsharp/module-index") index-path (path-join index-root index-rel) indexed-target (if (file-exists? index-path) (trim-trailing-path-whitespace (read-file index-path)) "") stdlib-root (path-join package-root "stdlib") stdlib-nested (path-join stdlib-root nested-rel)] (if (> (string-length indexed-target) 0) indexed-target (if (file-exists? stdlib-nested) stdlib-nested local-nested)))))))
-(defn make-module-path-cache-result [did-resolve resolved-path] (vector-push (vector-push (vector-new 2) did-resolve) resolved-path))
+(defn make-module-path-cache-result [did-resolve resolved-path]
+  (do
+    (root_push resolved-path)
+    (let [result1 (vector-push (vector-new 2) did-resolve)]
+      (do
+        (root_push result1)
+        (let [result2 (vector-push result1 resolved-path)]
+          (do
+            (root_pop)
+            (root_pop)
+            result2))))))
 (defn module-path-cache-result-did-resolve [result] (vector-get result 0))
 (defn module-path-cache-result-path [result] (vector-get result 1))
-(defn resolve-module-path-with-cache-result [module-name source-root package-root cache-ref] (let [cache-key (module-path-cache-key module-name source-root package-root) state (module-path-cache-state module-name source-root package-root) cached-entry (map-get (ref-get cache-ref) cache-key)] (if (= 0 cached-entry) (let [resolved-path (resolve-module-path module-name source-root package-root)] (do (ref-set cache-ref (map-insert (ref-get cache-ref) cache-key (make-module-path-cache-entry state resolved-path))) (make-module-path-cache-result 1 resolved-path))) (if (text-eq (module-path-cache-entry-state cached-entry) state) (make-module-path-cache-result 0 (module-path-cache-entry-path cached-entry)) (let [resolved-path (resolve-module-path module-name source-root package-root)] (do (ref-set cache-ref (map-insert (ref-get cache-ref) cache-key (make-module-path-cache-entry state resolved-path))) (make-module-path-cache-result 1 resolved-path)))))))
+(defn resolve-module-path-with-cache-result [module-name source-root package-root cache-ref]
+  (let [cache-key (module-path-cache-key module-name source-root package-root)
+    state (module-path-cache-state module-name source-root package-root)
+    cached-entry (ref-map-get-safe cache-ref cache-key)]
+    (if (= 0 cached-entry)
+      (let [resolved-path (resolve-module-path module-name source-root package-root)
+        entry (make-module-path-cache-entry state resolved-path)]
+        (do
+          (root_push entry)
+          (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
+          (root_pop)
+          (make-module-path-cache-result 1 resolved-path)))
+      (if (text-eq (module-path-cache-entry-state cached-entry) state)
+        (make-module-path-cache-result 0 (module-path-cache-entry-path cached-entry))
+        (let [resolved-path (resolve-module-path module-name source-root package-root)
+          entry (make-module-path-cache-entry state resolved-path)]
+          (do
+            (root_push entry)
+            (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
+            (root_pop)
+            (make-module-path-cache-result 1 resolved-path)))))))
 (defn resolve-module-path-with-cache-counted [module-name source-root package-root cache-ref resolve-count-ref] (let [result (resolve-module-path-with-cache-result module-name source-root package-root cache-ref)] (do (if (= (module-path-cache-result-did-resolve result) 1) (do (ref-set resolve-count-ref (+ (ref-get resolve-count-ref) 1)) 0) 0) (module-path-cache-result-path result))))
 (defn resolve-module-path-with-cache [module-name source-root package-root cache-ref] (module-path-cache-result-path (resolve-module-path-with-cache-result module-name source-root package-root cache-ref)))

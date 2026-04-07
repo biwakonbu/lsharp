@@ -316,7 +316,7 @@ mod tests {
   (+ x y))"#;
         let status = DocStatus::default();
         let checkpoint = generate_review("test.ls", source, &status, &[]);
-        assert_eq!(checkpoint.entries[0].has_doc, true);
+        assert!(checkpoint.entries[0].has_doc);
     }
 
     #[test]

@@ -22,7 +22,7 @@ fn wasm_structure_dump(source: &str) -> String {
 /// Wasm バイナリのセクション構成をパースしてテキスト表現を返す
 fn dump_wasm_sections(bytes: &[u8]) -> String {
     let mut result = String::new();
-    result.push_str(&format!("=== Wasm バイナリ構造 ===\n"));
+    result.push_str(&"=== Wasm バイナリ構造 ===\n".to_string());
     result.push_str(&format!("バイナリサイズ: {} bytes\n", bytes.len()));
 
     // マジックバイトとバージョン

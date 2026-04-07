@@ -75,7 +75,7 @@ fn test_e2e_selfhost_lsp_diagnostic_ordering() {
 #[test]
 fn test_e2e_selfhost_lsp_runtime_handlers() {
     let source = selfhost_lsp_runtime_bundle();
-    let output = compile_and_run(&source);
+    let output = compile_and_run(source);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(lines[0], "7", "initialize capability count は 7 であるべき");
@@ -93,7 +93,7 @@ fn test_e2e_selfhost_lsp_runtime_handlers() {
 #[test]
 fn test_e2e_selfhost_lsp_runtime_sort_diagnostics() {
     let source = selfhost_lsp_runtime_bundle();
-    let output = compile_and_run(&source);
+    let output = compile_and_run(source);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -110,7 +110,7 @@ fn test_e2e_selfhost_lsp_runtime_sort_diagnostics() {
 #[test]
 fn test_e2e_selfhost_lsp_runtime_merge_duplicates() {
     let source = selfhost_lsp_runtime_bundle();
-    let output = compile_and_run(&source);
+    let output = compile_and_run(source);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(lines[11], "1", "merged diagnostics count は 1 であるべき");
@@ -124,7 +124,7 @@ fn test_e2e_selfhost_lsp_runtime_merge_duplicates() {
 #[test]
 fn test_e2e_selfhost_lsp_runtime_navigation_shapes() {
     let source = selfhost_lsp_runtime_bundle();
-    let output = compile_and_run(&source);
+    let output = compile_and_run(source);
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(

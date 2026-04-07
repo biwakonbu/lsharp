@@ -14,38 +14,54 @@
 (defn rpc-response [] 1)
 (defn rpc-notification [] 2)
 (defn rpc-error [] 3)
+(defn push-int-vector-local [dst value]
+  (do
+    (root_push dst)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        next-dst))))
+(defn push-object-vector-local [dst value]
+  (do
+    (root_push dst)
+    (root_push value)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        (root_pop)
+        next-dst))))
 
 ;; JSON-RPC メッセージ構築
 ;; [type, id, method-hash, params-count]
 (defn make-rpc-request [id method-hash param-count]
   (let [v (vector-new 4)]
-    (vector-push
-      (vector-push
-        (vector-push
-          (vector-push v 0)
+    (push-int-vector-local
+      (push-int-vector-local
+        (push-int-vector-local
+          (push-int-vector-local v 0)
           id)
         method-hash)
       param-count)))
 
 (defn make-rpc-response [id result]
   (let [v (vector-new 3)]
-    (vector-push
-      (vector-push
-        (vector-push v 1)
+    (push-object-vector-local
+      (push-int-vector-local
+        (push-int-vector-local v 1)
         id)
       result)))
 
 (defn make-rpc-notification [method-hash]
   (let [v (vector-new 2)]
-    (vector-push
-      (vector-push v 2)
+    (push-int-vector-local
+      (push-int-vector-local v 2)
       method-hash)))
 
 (defn make-rpc-error [id error-code]
   (let [v (vector-new 3)]
-    (vector-push
-      (vector-push
-        (vector-push v 3)
+    (push-int-vector-local
+      (push-int-vector-local
+        (push-int-vector-local v 3)
         id)
       error-code)))
 
@@ -240,13 +256,13 @@
 ;; サーバー capabilities: [sync, hover, completion, goto-def, references, rename, formatting]
 (defn make-server-capabilities []
   (let [v (vector-new 7)]
-    (vector-push
-      (vector-push
-        (vector-push
-          (vector-push
-            (vector-push
-              (vector-push
-                (vector-push v 1) 1) 1) 1) 1) 1) 1)))
+    (push-int-vector-local
+      (push-int-vector-local
+        (push-int-vector-local
+          (push-int-vector-local
+            (push-int-vector-local
+              (push-int-vector-local
+                (push-int-vector-local v 1) 1) 1) 1) 1) 1) 1)))
 
 ;; jsonrpc-handle-initialize: 初期化リクエスト → capabilities レスポンス
 (defn jsonrpc-handle-initialize [request-id]
@@ -283,7 +299,7 @@
 ;; handle-goto-def: 定義ジャンプ → [line, col] をレスポンスで返す
 (defn handle-goto-def [request-id line col]
   (let [pos (vector-new 2)]
-    (make-rpc-response request-id (vector-push (vector-push pos line) col))))
+    (make-rpc-response request-id (push-int-vector-local (push-int-vector-local pos line) col))))
 
 ;; handle-completion: キーワード補完候補数
 ;; defn, let, if, match, do, fn, type = 7

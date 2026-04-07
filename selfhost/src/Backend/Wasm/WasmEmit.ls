@@ -32,23 +32,39 @@
 (defn wasm-if [] 4)
 (defn wasm-else [] 5)
 (defn wasm-drop [] 26)
-(defn leb128-u-loop [v acc] (let [low7 (% v 128) rest (/ v 128)] (if (= rest 0) (vector-push acc low7) (leb128-u-loop rest (vector-push acc (+ low7 128))))))
+(defn push-int-vector [dst value]
+  (do
+    (root_push dst)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        next-dst))))
+(defn push-object-vector [dst value]
+  (do
+    (root_push dst)
+    (root_push value)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        (root_pop)
+        next-dst))))
+(defn leb128-u-loop [v acc] (let [low7 (% v 128) rest (/ v 128)] (if (= rest 0) (push-int-vector acc low7) (leb128-u-loop rest (push-int-vector acc (+ low7 128))))))
 (defn leb128-u [value] (leb128-u-loop value (vector-new 4)))
-(defn leb128-s-pos [v acc] (let [low7 (% v 128) rest (/ v 128)] (if (= rest 0) (if (< low7 64) (vector-push acc low7) (vector-push (vector-push acc (+ low7 128)) 0)) (leb128-s-pos rest (vector-push acc (+ low7 128))))))
-(defn leb128-s [value] (if (< value 0) (let [result (ref-new (vector-new 4)) v (ref-new value) done (ref-new 0)] (do (let [byte1 (% (+ (% (ref-get v) 128) 128) 128) rest1 (if (< (ref-get v) -64) 1 0)] (if (= rest1 0) (do (ref-set result (vector-push (ref-get result) byte1)) 0) (do (ref-set result (vector-push (ref-get result) (+ byte1 128))) (let [shifted (/ (- (ref-get v) byte1) 128) byte2 (% (+ (% shifted 128) 128) 128) rest2 (if (< shifted -64) 1 0)] (if (= rest2 0) (do (ref-set result (vector-push (ref-get result) byte2)) 0) (do (ref-set result (vector-push (ref-get result) (+ byte2 128))) (let [shifted2 (/ (- shifted byte2) 128) byte3 (% (+ (% shifted2 128) 128) 128)] (do (ref-set result (vector-push (ref-get result) byte3)) 0)))))))) (ref-get result))) (leb128-s-pos value (vector-new 4))))
+(defn leb128-s-pos [v acc] (let [low7 (% v 128) rest (/ v 128)] (if (= rest 0) (if (< low7 64) (push-int-vector acc low7) (push-int-vector (push-int-vector acc (+ low7 128)) 0)) (leb128-s-pos rest (push-int-vector acc (+ low7 128))))))
+(defn leb128-s [value] (if (< value 0) (let [result (ref-new (vector-new 4)) v (ref-new value) done (ref-new 0)] (do (let [byte1 (% (+ (% (ref-get v) 128) 128) 128) rest1 (if (< (ref-get v) -64) 1 0)] (if (= rest1 0) (do (ref-set result (push-int-vector (ref-get result) byte1)) 0) (do (ref-set result (push-int-vector (ref-get result) (+ byte1 128))) (let [shifted (/ (- (ref-get v) byte1) 128) byte2 (% (+ (% shifted 128) 128) 128) rest2 (if (< shifted -64) 1 0)] (if (= rest2 0) (do (ref-set result (push-int-vector (ref-get result) byte2)) 0) (do (ref-set result (push-int-vector (ref-get result) (+ byte2 128))) (let [shifted2 (/ (- shifted byte2) 128) byte3 (% (+ (% shifted2 128) 128) 128)] (do (ref-set result (push-int-vector (ref-get result) byte3)) 0)))))))) (ref-get result))) (leb128-s-pos value (vector-new 4))))
 (defn make-loop-step-state [done next-idx next-value]
-  (vector-push
-    (vector-push
-      (vector-push (vector-new 3) done)
+  (push-object-vector
+    (push-int-vector
+      (push-int-vector (vector-new 3) done)
       next-idx)
     next-value))
 
 (defn make-emit-if-state [done next-idx next-body next-if-depth next-if-flags]
-  (vector-push
-    (vector-push
-      (vector-push
-        (vector-push
-          (vector-push (vector-new 5) done)
+  (push-int-vector
+    (push-int-vector
+      (push-object-vector
+        (push-int-vector
+          (push-int-vector (vector-new 5) done)
           next-idx)
         next-body)
       next-if-depth)
@@ -56,7 +72,7 @@
 
 (defn emit-leb128 [bytes value] (let [leb (leb128-u value)] (append-byte-vector bytes leb 0 (vector-length leb))))
 (defn emit-leb128-s [bytes value] (let [leb (leb128-s value)] (append-byte-vector bytes leb 0 (vector-length leb))))
-(defn emit-byte [bytes b] (vector-push bytes b))
+(defn emit-byte [bytes b] (push-int-vector bytes b))
 (defn emit-header [] (let [h (vector-new 8)] (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push h 0) 97) 115) 109) 1) 0) 0) 0)))
 (defn emit-type-section-main [] (let [bytes (vector-new 16)] (let [b1 (emit-byte bytes 1) b2 (emit-byte b1 5) b3 (emit-byte b2 1) b4 (emit-byte b3 96) b5 (emit-byte b4 0) b6 (emit-byte b5 1) b7 (emit-byte b6 126)] b7)))
 (defn append-i64-param-types-step [dst idx param-count]

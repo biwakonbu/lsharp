@@ -153,7 +153,7 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
     let mut module_imports: HashMap<String, Vec<String>> = HashMap::new();
 
     for path in &source_paths {
-        let source = std::fs::read_to_string(&path)
+        let source = std::fs::read_to_string(path)
             .unwrap_or_else(|e| panic!("{:?} の読み込みに失敗: {}", path, e));
 
         let mut module_name: Option<String> = None;

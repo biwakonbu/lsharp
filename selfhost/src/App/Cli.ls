@@ -18,6 +18,8 @@
 (import Types.TypeInferCore)
 (import Types.TypeScheme)
 (import Backend.Wasm.WasmEmit)
+(defn push-int-vector-local [dst value] (do (root_push dst) (let [next-dst (vector-push dst value)] (do (root_pop) next-dst))))
+(defn push-object-vector-local [dst value] (do (root_push dst) (root_push value) (let [next-dst (vector-push dst value)] (do (root_pop) (root_pop) next-dst))))
 (defn exit-success [] 0)
 (defn exit-compile-error [] 1)
 (defn exit-runtime-error [] 2)
@@ -126,17 +128,17 @@
 (defn run-install [package opts] (if (> (string-length package) 0) (do (print-string (install-plan-title package)) (print-string "
 ") (print-string (install-plan-body package)) (print-string "
 ") (exit-success)) (exit-compile-error)))
-(defn repl-session-new [] (let [v (vector-new 3)] (vector-push (vector-push (vector-push v (ref-new 0)) (ref-new 0)) (ref-new 0))))
+(defn repl-session-new [] (push-object-vector-local (push-object-vector-local (push-object-vector-local (vector-new 3) (ref-new 0)) (ref-new 0)) (ref-new 0)))
 (defn repl-session-eval-count [session] (ref-get (vector-get session 0)))
 (defn repl-session-last-type-name [session] (ref-get (vector-get session 1)))
 (defn repl-session-total-input-bytes [session] (ref-get (vector-get session 2)))
 (defn repl-session-eval [session src] (let [program (parse-program src) ty (infer program) type-name (ty-name ty)] (do (ref-set (vector-get session 0) (+ (repl-session-eval-count session) 1)) (ref-set (vector-get session 1) type-name) (ref-set (vector-get session 2) (+ (repl-session-total-input-bytes session) (string-length src))) type-name)))
 (defn repl-session-run-loop [session inputs idx count] (if (>= idx count) 0 (do (repl-session-eval session (vector-get inputs idx)) (repl-session-run-loop session inputs (+ idx 1) count))))
-(defn repl-session-run [inputs] (let [session (repl-session-new) _ (repl-session-run-loop session inputs 0 (vector-length inputs)) summary (vector-new 3)] (vector-push (vector-push (vector-push summary (repl-session-eval-count session)) (repl-session-total-input-bytes session)) (repl-session-last-type-name session))))
+(defn repl-session-run [inputs] (let [session (repl-session-new) _ (repl-session-run-loop session inputs 0 (vector-length inputs)) summary (vector-new 3)] (push-int-vector-local (push-int-vector-local (push-int-vector-local summary (repl-session-eval-count session)) (repl-session-total-input-bytes session)) (repl-session-last-type-name session))))
 (defn repl-summary-type-text [summary] (string-concat "type:" (builtin-type-name-text (vector-get summary 2))))
 (defn repl-summary-evals-text [summary] (string-concat "evals:" (int-to-string (vector-get summary 0))))
 (defn repl-summary-input-bytes-text [summary] (string-concat "input-bytes:" (int-to-string (vector-get summary 1))))
-(defn repl-warmup-summary [] (let [inputs (vector-push (vector-new 1) "(defn main [] 42)")] (repl-session-run inputs)))
+(defn repl-warmup-summary [] (let [inputs (push-object-vector-local (vector-new 1) "(defn main [] 42)")] (repl-session-run inputs)))
 (defn repl-warmup-type-name [] (let [summary (repl-warmup-summary)] (vector-get summary 2)))
 (defn repl-warmup-type-text [] (builtin-type-name-text (repl-warmup-type-name)))
 (defn run-repl [opts] (let [summary (repl-warmup-summary)] (do (print-string (repl-summary-type-text summary)) (print-string "
@@ -145,8 +147,8 @@
 ") (exit-success))))
 (defn lsp-bool-text [value] (if (= value 1) "true" "false"))
 (defn lsp-sync-kind-text [kind] (if (= kind 1) "full" (string-concat "sync-" (int-to-string kind))))
-(defn lsp-loop-request [method-id params] (let [v (vector-new 2)] (vector-push (vector-push v method-id) params)))
-(defn lsp-init-summary [] (let [requests (vector-push (vector-new 1) (lsp-loop-request (lsp-method-initialize) 0)) summary (server-loop-sequence requests)] summary))
+(defn lsp-loop-request [method-id params] (push-object-vector-local (push-int-vector-local (vector-new 2) method-id) params))
+(defn lsp-init-summary [] (let [requests (push-object-vector-local (vector-new 1) (lsp-loop-request (lsp-method-initialize) 0)) summary (server-loop-sequence requests)] summary))
 (defn lsp-init-capabilities [summary] (let [results (vector-get summary 0)] (vector-get results 0)))
 (defn lsp-summary-requests-text [summary] (string-concat "requests:" (int-to-string (vector-get summary 2))))
 (defn lsp-summary-documents-text [summary] (string-concat "documents:" (int-to-string (vector-get summary 1))))
@@ -169,12 +171,12 @@
 (defn lsp-parse-diagnostic-to-lsp [diag src]
   (let [position (lsp-position-from-offset src (vector-get diag 2))
     result (vector-new 6)]
-    (vector-push
-      (vector-push
-        (vector-push
-          (vector-push
-            (vector-push
-              (vector-push result (lsp-parser-severity-to-lsp (vector-get diag 0)))
+    (push-int-vector-local
+      (push-int-vector-local
+        (push-int-vector-local
+          (push-int-vector-local
+            (push-int-vector-local
+              (push-int-vector-local result (lsp-parser-severity-to-lsp (vector-get diag 0)))
               (vector-get diag 1))
             (position-line position))
           (position-col position))
@@ -188,7 +190,7 @@
       src
       (+ idx 1)
       count
-      (vector-push diagnostics (lsp-parse-diagnostic-to-lsp (vector-get raw idx) src)))))
+      (push-object-vector-local diagnostics (lsp-parse-diagnostic-to-lsp (vector-get raw idx) src)))))
 (defn lsp-source-parse-diagnostics [src]
   (if (> (string-length src) 0)
     (let [raw (parse-diagnostics src)
@@ -198,12 +200,12 @@
 (defn lsp-type-severity-to-lsp [] 1)
 (defn lsp-type-diagnostic-to-lsp [code]
   (let [result (vector-new 6)]
-    (vector-push
-      (vector-push
-        (vector-push
-          (vector-push
-            (vector-push
-              (vector-push result (lsp-type-severity-to-lsp))
+    (push-int-vector-local
+      (push-int-vector-local
+        (push-int-vector-local
+          (push-int-vector-local
+            (push-int-vector-local
+              (push-int-vector-local result (lsp-type-severity-to-lsp))
               code)
             1)
           1)
@@ -215,7 +217,7 @@
       code (check-diagnostics-first-code program)]
       (if (= code 0)
         (vector-new 0)
-        (vector-push (vector-new 1) (lsp-type-diagnostic-to-lsp code))))
+        (push-object-vector-local (vector-new 1) (lsp-type-diagnostic-to-lsp code))))
     (vector-new 0)))
 (defn lsp-review-severity-to-lsp [severity]
   (if (string-eq severity "warning")
@@ -225,12 +227,12 @@
       (if (string-eq severity "hint") 4 1))))
 (defn lsp-review-diagnostic-to-lsp [diag]
   (let [result (vector-new 6)]
-    (vector-push
-      (vector-push
-        (vector-push
-          (vector-push
-            (vector-push
-              (vector-push result (lsp-review-severity-to-lsp (vector-get diag 3)))
+    (push-int-vector-local
+      (push-int-vector-local
+        (push-int-vector-local
+          (push-int-vector-local
+            (push-int-vector-local
+              (push-int-vector-local result (lsp-review-severity-to-lsp (vector-get diag 3)))
               (vector-get diag 0))
             (vector-get diag 4))
           (vector-get diag 5))
@@ -239,7 +241,7 @@
 (defn lsp-source-lint-diagnostics-loop [raw idx count diagnostics]
   (if (>= idx count)
     diagnostics
-    (lsp-source-lint-diagnostics-loop raw (+ idx 1) count (vector-push diagnostics (lsp-review-diagnostic-to-lsp (vector-get raw idx))))))
+    (lsp-source-lint-diagnostics-loop raw (+ idx 1) count (push-object-vector-local diagnostics (lsp-review-diagnostic-to-lsp (vector-get raw idx))))))
 (defn lsp-source-lint-diagnostics [src]
   (if (> (string-length src) 0)
     (let [program (parse-program src)
@@ -251,7 +253,7 @@
 (defn lsp-diagnostics-append-loop [extra idx count diagnostics]
   (if (>= idx count)
     diagnostics
-    (lsp-diagnostics-append-loop extra (+ idx 1) count (vector-push diagnostics (vector-get extra idx)))))
+    (lsp-diagnostics-append-loop extra (+ idx 1) count (push-object-vector-local diagnostics (vector-get extra idx)))))
 (defn lsp-diagnostics-append [diagnostics extra] (lsp-diagnostics-append-loop extra 0 (vector-length extra) diagnostics))
 (defn lsp-source-all-diagnostics [src]
   (if (> (string-length src) 0)
@@ -310,16 +312,16 @@
       rendered
       (lsp-transport-maybe-append-diagnostics-frame state method-id uri previous-src rendered))))
 (defn run-lsp-transport-request [request] (let [state (server-state-new)] (lsp-transport-dispatch-request state request)))
-(defn lsp-transport-sequence-loop [state requests idx count frames] (if (>= idx count) frames (lsp-transport-sequence-loop state requests (+ idx 1) count (vector-push frames (lsp-transport-dispatch-request state (vector-get requests idx))))))
-(defn run-lsp-transport-sequence [requests] (let [state (server-state-new) frames (lsp-transport-sequence-loop state requests 0 (vector-length requests) (vector-new 8)) summary (vector-new 4)] (vector-push (vector-push (vector-push (vector-push summary frames) (server-state-doc-count state)) (server-state-request-count state)) (server-state-source-length state))))
+(defn lsp-transport-sequence-loop [state requests idx count frames] (if (>= idx count) frames (lsp-transport-sequence-loop state requests (+ idx 1) count (push-object-vector-local frames (lsp-transport-dispatch-request state (vector-get requests idx))))))
+(defn run-lsp-transport-sequence [requests] (let [state (server-state-new) frames (lsp-transport-sequence-loop state requests 0 (vector-length requests) (vector-new 8)) summary (vector-new 4)] (push-int-vector-local (push-int-vector-local (push-int-vector-local (push-object-vector-local summary frames) (server-state-doc-count state)) (server-state-request-count state)) (server-state-source-length state))))
 (defn lsp-stdio-frame-header [frame] (vector-get frame 0))
 (defn lsp-stdio-frame-message [frame] (vector-get frame 1))
 (defn lsp-stdio-frame-content-length [frame] (lsp-parse-content-length (lsp-stdio-frame-header frame)))
-(defn lsp-stdio-message-request [msg] (let [parsed (parse-json-rpc-request msg) request-id (vector-get msg 1) method-id (vector-get parsed 0) params (vector-get parsed 1)] (vector-push (vector-push (vector-push (vector-push (vector-new 4) 2) request-id) method-id) params)))
-(defn lsp-stdio-dispatch-frame [state frame] (let [request (lsp-stdio-message-request (lsp-stdio-frame-message frame)) rendered (lsp-transport-dispatch-request state request) content-length (lsp-stdio-frame-content-length frame)] (vector-push (vector-push (vector-new 2) rendered) content-length)))
+(defn lsp-stdio-message-request [msg] (let [parsed (parse-json-rpc-request msg) request-id (vector-get msg 1) method-id (vector-get parsed 0) params (vector-get parsed 1)] (push-object-vector-local (push-int-vector-local (push-int-vector-local (push-int-vector-local (vector-new 4) 2) request-id) method-id) params)))
+(defn lsp-stdio-dispatch-frame [state frame] (let [request (lsp-stdio-message-request (lsp-stdio-frame-message frame)) rendered (lsp-transport-dispatch-request state request) content-length (lsp-stdio-frame-content-length frame)] (push-int-vector-local (push-object-vector-local (vector-new 2) rendered) content-length)))
 (defn run-lsp-stdio-frame [frame] (let [state (server-state-new)] (lsp-stdio-dispatch-frame state frame)))
-(defn lsp-stdio-sequence-loop [state frames idx count rendered last-content-length] (if (>= idx count) (vector-push (vector-push (vector-new 2) rendered) last-content-length) (let [result (lsp-stdio-dispatch-frame state (vector-get frames idx))] (lsp-stdio-sequence-loop state frames (+ idx 1) count (vector-push rendered (vector-get result 0)) (vector-get result 1)))))
-(defn run-lsp-stdio-sequence [frames] (let [state (server-state-new) result (lsp-stdio-sequence-loop state frames 0 (vector-length frames) (vector-new 8) 0) rendered (vector-get result 0) last-content-length (vector-get result 1) summary (vector-new 4)] (vector-push (vector-push (vector-push (vector-push summary rendered) (server-state-request-count state)) (server-state-source-length state)) last-content-length)))
+(defn lsp-stdio-sequence-loop [state frames idx count rendered last-content-length] (if (>= idx count) (push-int-vector-local (push-object-vector-local (vector-new 2) rendered) last-content-length) (let [result (lsp-stdio-dispatch-frame state (vector-get frames idx))] (lsp-stdio-sequence-loop state frames (+ idx 1) count (push-object-vector-local rendered (vector-get result 0)) (vector-get result 1)))))
+(defn run-lsp-stdio-sequence [frames] (let [state (server-state-new) result (lsp-stdio-sequence-loop state frames 0 (vector-length frames) (vector-new 8) 0) rendered (vector-get result 0) last-content-length (vector-get result 1) summary (vector-new 4)] (push-int-vector-local (push-int-vector-local (push-int-vector-local (push-object-vector-local summary rendered) (server-state-request-count state)) (server-state-source-length state)) last-content-length)))
 (defn lsp-stdio-find-header-end-loop [src idx len] (if (> (+ idx 3) len) len (if (= (string-char-at src idx) 13) (if (= (string-char-at src (+ idx 1)) 10) (if (= (string-char-at src (+ idx 2)) 13) (if (= (string-char-at src (+ idx 3)) 10) idx (lsp-stdio-find-header-end-loop src (+ idx 1) len)) (lsp-stdio-find-header-end-loop src (+ idx 1) len)) (lsp-stdio-find-header-end-loop src (+ idx 1) len)) (lsp-stdio-find-header-end-loop src (+ idx 1) len))))
 (defn lsp-stdio-find-pattern-loop [src pattern idx len]
   (if (>= idx len)
@@ -529,35 +531,35 @@
 (defn lsp-stdio-nav-params [body]
   (let [params (vector-new 4)
     with-position
-    (vector-push
-      (vector-push
-        (vector-push params (lsp-stdio-body-int-field body "\"uri\":"))
+    (push-int-vector-local
+      (push-int-vector-local
+        (push-int-vector-local params (lsp-stdio-body-int-field body "\"uri\":"))
         (lsp-stdio-body-int-field body "\"line\":"))
       (lsp-stdio-body-int-field-or body "\"col\":" "\"character\":"))]
     (if (= (lsp-stdio-body-has-field body "\"source\":\"") 1)
-      (vector-push with-position (lsp-stdio-body-string-field body "\"source\":\""))
+      (push-object-vector-local with-position (lsp-stdio-body-string-field body "\"source\":\""))
       with-position)))
 
 (defn lsp-stdio-document-params [body]
   (let [with-uri
-    (vector-push (vector-new 2) (lsp-stdio-body-int-field body "\"uri\":"))]
+    (push-int-vector-local (vector-new 2) (lsp-stdio-body-int-field body "\"uri\":"))]
     (let [with-source
       (if (= (lsp-stdio-body-has-field body "\"source\":\"") 1)
-        (vector-push with-uri (lsp-stdio-body-string-field body "\"source\":\""))
+        (push-object-vector-local with-uri (lsp-stdio-body-string-field body "\"source\":\""))
         (if (= (lsp-stdio-body-has-field body "\"text\":\"") 1)
-          (vector-push with-uri (lsp-stdio-body-string-field body "\"text\":\""))
+          (push-object-vector-local with-uri (lsp-stdio-body-string-field body "\"text\":\""))
           with-uri))]
       (if (= (lsp-stdio-body-has-field body "\"path\":\"") 1)
-        (vector-push with-source (lsp-stdio-body-string-field body "\"path\":\""))
+        (push-object-vector-local with-source (lsp-stdio-body-string-field body "\"path\":\""))
         with-source))))
 
 (defn lsp-stdio-rename-params [body]
   (let [params (vector-new 5)]
-    (vector-push
-      (vector-push
-        (vector-push
-          (vector-push
-            (vector-push params (lsp-stdio-body-int-field body "\"uri\":"))
+    (push-object-vector-local
+      (push-object-vector-local
+        (push-int-vector-local
+          (push-int-vector-local
+            (push-int-vector-local params (lsp-stdio-body-int-field body "\"uri\":"))
             (lsp-stdio-body-int-field body "\"line\":"))
           (lsp-stdio-body-int-field-or body "\"col\":" "\"character\":"))
         (lsp-stdio-body-string-field body "\"source\":\""))
@@ -571,12 +573,12 @@
     message-hash (lsp-stdio-body-int-field-from body "\"messageHash\":" start)
     source (lsp-stdio-body-int-field-from body "\"source\":" start)
     diag (vector-new 6)]
-    (vector-push
-      (vector-push
-        (vector-push
-          (vector-push
-            (vector-push
-              (vector-push diag severity)
+    (push-int-vector-local
+      (push-int-vector-local
+        (push-int-vector-local
+          (push-int-vector-local
+            (push-int-vector-local
+              (push-int-vector-local diag severity)
               rule-id)
             line)
           col)
@@ -591,12 +593,12 @@
         body
         (+ source-pos 1)
         len
-        (vector-push diagnostics (lsp-stdio-diagnostic body source-pos))))))
+        (push-object-vector-local diagnostics (lsp-stdio-diagnostic body source-pos))))))
 
 (defn lsp-stdio-publish-diagnostics-params [body]
   (let [uri (lsp-stdio-body-int-field body "\"uri\":")
     diagnostics (lsp-stdio-diagnostics-loop body 0 (string-length body) (vector-new 4))]
-    (vector-push (vector-push (vector-new 2) uri) diagnostics)))
+    (push-object-vector-local (push-int-vector-local (vector-new 2) uri) diagnostics)))
 
 (defn lsp-stdio-body-params [body]
   (let [method-id (lsp-stdio-body-method body)]
@@ -623,10 +625,10 @@
 (defn lsp-stdio-body-message [body]
   (let [method-id (lsp-stdio-body-method body)
     msg (vector-new 4)]
-    (vector-push
-      (vector-push
-        (vector-push
-          (vector-push msg 2)
+    (push-object-vector-local
+      (push-int-vector-local
+        (push-int-vector-local
+          (push-int-vector-local msg 2)
           (lsp-stdio-body-id body))
         method-id)
       (lsp-stdio-body-params body))))
@@ -676,7 +678,7 @@
 (defn cli-option-status-invalid-target [] 1)
 (defn cli-option-status-missing-value [] 2)
 (defn cli-option-status-unsupported-option [] 3)
-(defn cli-option-result [status target output-path detail] (let [result (vector-new 4)] (vector-push (vector-push (vector-push (vector-push result status) target) output-path) detail)))
+(defn cli-option-result [status target output-path detail] (let [result (vector-new 4)] (push-object-vector-local (push-object-vector-local (push-int-vector-local (push-int-vector-local result status) target) output-path) detail)))
 (defn cli-option-result-status [result] (vector-get result 0))
 (defn cli-option-result-target [result] (vector-get result 1))
 (defn cli-option-result-output-path [result] (vector-get result 2))

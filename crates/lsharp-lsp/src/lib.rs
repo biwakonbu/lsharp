@@ -503,6 +503,49 @@ mod params_normalizer {
         v.is_null() || (v.is_object() && v.as_object().unwrap().is_empty())
     }
 
+    pub struct ParamsNormalizer<S> {
+        inner: S,
+    }
+
+    impl<S> ParamsNormalizer<S> {
+        pub fn new(inner: S) -> Self {
+            Self { inner }
+        }
+    }
+
+    impl<S> tower_service::Service<Request> for ParamsNormalizer<S>
+    where
+        S: tower_service::Service<Request, Response = Option<Response>>,
+    {
+        type Response = S::Response;
+        type Error = S::Error;
+        type Future = S::Future;
+
+        fn poll_ready(
+            &mut self,
+            cx: &mut Context<'_>,
+        ) -> Poll<std::result::Result<(), Self::Error>> {
+            self.inner.poll_ready(cx)
+        }
+
+        fn call(&mut self, req: Request) -> Self::Future {
+            let needs_strip = PARAMLESS_METHODS.contains(&req.method())
+                && req.params().is_some_and(is_empty_params);
+
+            if needs_strip {
+                // params を除去した新しい Request を構築
+                let (method, id, _params) = req.into_parts();
+                let mut builder = Request::build(method);
+                if let Some(id) = id {
+                    builder = builder.id(id);
+                }
+                self.inner.call(builder.finish())
+            } else {
+                self.inner.call(req)
+            }
+        }
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -568,49 +611,6 @@ mod params_normalizer {
             let needs_strip = PARAMLESS_METHODS.contains(&req.method())
                 && req.params().is_some_and(is_empty_params);
             assert!(!needs_strip);
-        }
-    }
-
-    pub struct ParamsNormalizer<S> {
-        inner: S,
-    }
-
-    impl<S> ParamsNormalizer<S> {
-        pub fn new(inner: S) -> Self {
-            Self { inner }
-        }
-    }
-
-    impl<S> tower_service::Service<Request> for ParamsNormalizer<S>
-    where
-        S: tower_service::Service<Request, Response = Option<Response>>,
-    {
-        type Response = S::Response;
-        type Error = S::Error;
-        type Future = S::Future;
-
-        fn poll_ready(
-            &mut self,
-            cx: &mut Context<'_>,
-        ) -> Poll<std::result::Result<(), Self::Error>> {
-            self.inner.poll_ready(cx)
-        }
-
-        fn call(&mut self, req: Request) -> Self::Future {
-            let needs_strip = PARAMLESS_METHODS.contains(&req.method())
-                && req.params().is_some_and(is_empty_params);
-
-            if needs_strip {
-                // params を除去した新しい Request を構築
-                let (method, id, _params) = req.into_parts();
-                let mut builder = Request::build(method);
-                if let Some(id) = id {
-                    builder = builder.id(id);
-                }
-                self.inner.call(builder.finish())
-            } else {
-                self.inner.call(req)
-            }
         }
     }
 }
@@ -1300,7 +1300,7 @@ mod tests {
         source.push_str("(defn main [] (helper-500))\n");
 
         let changed_line = 501u32;
-        let target_line = format!("(defn helper-500 [] 500)");
+        let target_line = "(defn helper-500 [] 500)".to_string();
         let replacement_start = target_line.find("500)").expect("literal start") as u32;
         let replacement_end = replacement_start + 3;
 

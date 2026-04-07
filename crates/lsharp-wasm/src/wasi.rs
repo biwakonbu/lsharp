@@ -712,7 +712,9 @@ fn emit_wasm_wasi_with_options(
         let mut f = wasm_encoder::Function::new(vec![]);
         f.instruction(&wasm_encoder::Instruction::LocalGet(0));
         f.instruction(&wasm_encoder::Instruction::I32Eqz);
-        f.instruction(&wasm_encoder::Instruction::If(wasm_encoder::BlockType::Empty));
+        f.instruction(&wasm_encoder::Instruction::If(
+            wasm_encoder::BlockType::Empty,
+        ));
         f.instruction(&wasm_encoder::Instruction::Call(gc_collect_idx));
         f.instruction(&wasm_encoder::Instruction::Drop);
         f.instruction(&wasm_encoder::Instruction::End);
@@ -1683,7 +1685,8 @@ fn emit_gc_mark_candidate(
         ..
     } = globals;
     let GcRuntimeLayout {
-        gc_object_table_base, ..
+        gc_object_table_base,
+        ..
     } = layout;
     let GcMarkHelperLocals {
         old_count_local,

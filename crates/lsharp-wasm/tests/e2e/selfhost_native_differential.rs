@@ -558,7 +558,7 @@ fn run_native_codegen_harness(entry_source: &str) -> String {
         .join(format!("native-harness-{id}"));
     std::fs::create_dir_all(&dir).expect("native fixture dir 作成失敗");
 
-    let result = (|| {
+    let result = {
         for name in [
             "IR.ls",
             "NativeTarget.ls",
@@ -580,7 +580,7 @@ fn run_native_codegen_harness(entry_source: &str) -> String {
         }
         std::fs::write(dir.join("Main.ls"), entry_source).expect("Main.ls 書き込み失敗");
         compile_and_run_file(&dir.join("Main.ls"))
-    })();
+    };
 
     let _ = std::fs::remove_dir_all(&dir);
     result
@@ -593,7 +593,7 @@ fn run_native_linker_harness(entry_source: &str) -> String {
         .join(format!("native-linker-harness-{id}"));
     std::fs::create_dir_all(&dir).expect("native linker fixture dir 作成失敗");
 
-    let result = (|| {
+    let result = {
         for name in ["NativeTarget.ls", "Linker.ls"] {
             let source = selfhost_module(name);
             let flat_path = dir.join(name);
@@ -610,7 +610,7 @@ fn run_native_linker_harness(entry_source: &str) -> String {
         }
         std::fs::write(dir.join("Main.ls"), entry_source).expect("Main.ls 書き込み失敗");
         compile_and_run_file(&dir.join("Main.ls"))
-    })();
+    };
 
     let _ = std::fs::remove_dir_all(&dir);
     result

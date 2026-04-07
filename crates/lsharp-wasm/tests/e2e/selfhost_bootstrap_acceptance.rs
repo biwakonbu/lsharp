@@ -133,21 +133,104 @@ fn parse_emitted_wasm_modules(output: &str, expected_modules: usize) -> Vec<Vec<
     modules
 }
 
-/// 外部 import なしの Wasm モジュールを instantiate して i64 export を呼び出す
-fn run_exported_i64_no_imports(wasm: &[u8], export_name: &str) -> i64 {
+/// selfhost runtime 10-import layout の Wasm モジュールを instantiate して i64 export を呼び出す
+fn run_exported_i64_with_runtime_imports(wasm: &[u8], export_name: &str) -> i64 {
     let engine = wasmtime::Engine::default();
-    let module = wasmtime::Module::new(&engine, wasm).expect("stage2 Wasm の Module 構築に失敗");
-    let mut store = wasmtime::Store::new(&engine, ());
-    let instance = wasmtime::Instance::new(&mut store, &module, &[])
-        .expect("stage2 Wasm のインスタンス化に失敗 (import が存在する可能性あり)");
+    let module = wasmtime::Module::new(&engine, wasm)
+        .expect("runtime 10-import 付き stage2 Wasm の Module 構築に失敗");
+
+    struct State {
+        next_alloc: i64,
+        root_stack: Vec<i64>,
+    }
+
+    let mut store = wasmtime::Store::new(
+        &engine,
+        State {
+            next_alloc: 1024,
+            root_stack: Vec::new(),
+        },
+    );
+    let alloc = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, State>, size: i64| -> i64 {
+            let base = caller.data().next_alloc;
+            caller.data_mut().next_alloc = base + size;
+            base
+        },
+    );
+    let print = wasmtime::Func::wrap(&mut store, |_: wasmtime::Caller<'_, State>, _: i64| {});
+    let read_file = wasmtime::Func::wrap(
+        &mut store,
+        |_: wasmtime::Caller<'_, State>, _: i64| -> i64 { 0 },
+    );
+    let command_line_arg = wasmtime::Func::wrap(
+        &mut store,
+        |_: wasmtime::Caller<'_, State>, _: i64| -> i64 { 0 },
+    );
+    let string_concat = wasmtime::Func::wrap(
+        &mut store,
+        |_: wasmtime::Caller<'_, State>, _: i64, _: i64| -> i64 { 0 },
+    );
+    let substring = wasmtime::Func::wrap(
+        &mut store,
+        |_: wasmtime::Caller<'_, State>, _: i64, _: i64, _: i64| -> i64 { 0 },
+    );
+    let file_exists = wasmtime::Func::wrap(
+        &mut store,
+        |_: wasmtime::Caller<'_, State>, _: i64| -> i64 { 0 },
+    );
+    let root_push = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, State>, value: i64| -> i64 {
+            let slot =
+                i64::try_from(caller.data().root_stack.len()).expect("root_push: slot overflow");
+            caller.data_mut().root_stack.push(value);
+            slot
+        },
+    );
+    let root_pop = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, State>| -> i64 {
+            caller.data_mut().root_stack.pop().unwrap_or(0)
+        },
+    );
+    let root_set = wasmtime::Func::wrap(
+        &mut store,
+        |mut caller: wasmtime::Caller<'_, State>, slot: i64, value: i64| -> i64 {
+            let idx = usize::try_from(slot).expect("root_set: slot must be non-negative");
+            if idx < caller.data().root_stack.len() {
+                caller.data_mut().root_stack[idx] = value;
+            }
+            slot
+        },
+    );
+    let instance = wasmtime::Instance::new(
+        &mut store,
+        &module,
+        &[
+            alloc.into(),
+            print.into(),
+            read_file.into(),
+            command_line_arg.into(),
+            string_concat.into(),
+            substring.into(),
+            file_exists.into(),
+            root_push.into(),
+            root_pop.into(),
+            root_set.into(),
+        ],
+    )
+    .expect("runtime 10-import 付き stage2 Wasm のインスタンス化に失敗");
     let func = instance
         .get_typed_func::<(), i64>(&mut store, export_name)
         .unwrap_or_else(|e| panic!("{export_name} export の取得に失敗: {e}"));
     func.call(&mut store, ())
-        .expect("stage2 Wasm export の呼び出しに失敗")
+        .expect("runtime 10-import 付き stage2 Wasm export の呼び出しに失敗")
 }
 
-/// import なし関数型プログラム用 bootstrap ハーネス: compile-program-functions 経由で stage2 を生成し print する
+/// selfhost runtime 10-import layout 用 bootstrap ハーネス:
+/// compile-program-functions-with-base 経由で stage2 を生成し print する
 fn build_simple_bootstrap_harness(stage2_src: &str) -> String {
     format!(
         r#"
@@ -160,19 +243,23 @@ fn build_simple_bootstrap_harness(stage2_src: &str) -> String {
 
 (defn bootstrap-build-stage2 [src]
   (let [program (parse-program src)
-        pair    (compile-program-functions program)
+        pair    (compile-program-functions-with-base program 10)
         functions   (vector-get pair 1)
         func-count  (vector-length functions)
         header      (emit-header)
-        type-sec    (emit-type-section-functions functions)
-        func-sec    (emit-function-section-functions functions)
-        export-sec  (emit-export-section-main-index (- func-count 1))
-        code-sec    (emit-code-section-functions functions)
+        type-sec    (emit-type-section-wasi-quad-functions functions)
+        import-sec  (emit-import-section-runtime)
+        func-sec    (emit-function-section-wasi-quad-functions functions)
+        memory-sec  (emit-memory-section)
+        export-sec  (emit-export-section-main-index (+ 9 func-count))
+        code-sec    (emit-code-section-wasi-quad-functions functions)
         b0 (bootstrap-append-bytes (vector-new 64) header    0 (vector-length header))
         b1 (bootstrap-append-bytes b0 type-sec    0 (vector-length type-sec))
-        b2 (bootstrap-append-bytes b1 func-sec    0 (vector-length func-sec))
-        b3 (bootstrap-append-bytes b2 export-sec  0 (vector-length export-sec))]
-    (bootstrap-append-bytes b3 code-sec 0 (vector-length code-sec))))
+        b2 (bootstrap-append-bytes b1 import-sec  0 (vector-length import-sec))
+        b3 (bootstrap-append-bytes b2 func-sec    0 (vector-length func-sec))
+        b4 (bootstrap-append-bytes b3 memory-sec  0 (vector-length memory-sec))
+        b5 (bootstrap-append-bytes b4 export-sec  0 (vector-length export-sec))]
+    (bootstrap-append-bytes b5 code-sec 0 (vector-length code-sec))))
 
 (defn bootstrap-print-bytes [bytes idx count]
   (if (>= idx count) 0
@@ -254,11 +341,11 @@ fn build_alloc_bootstrap_harness_double(stage2_src: &str) -> String {
 ///
 /// これは stage0 (Rust) と stage1 の出力が「同じ意味論」を持つことを確認する。
 /// 完全な byte-level 一致は stage1/stage0 が異なるコード生成器を持つため不要だが、
-/// 計算結果 (pure 整数値) は一致しなければならない。
+/// 計算結果 (i64) は一致しなければならない。
 #[test]
 fn test_e2e_bootstrap_stage1_stage2_match() {
     // stage0 と stage1 が同じ結果を生むことを確認するテストケース群
-    // ただし import なし (pure 整数演算のみ) に限定する
+    // stage2 では selfhost runtime import が自動挿入されうるが、最終結果は pure i64 に限定する
     let cases: &[(&str, i64)] = &[
         ("(defn main [] 42)", 42),
         ("(defn main [] (+ 20 22))", 42),
@@ -295,7 +382,7 @@ fn test_e2e_bootstrap_stage1_stage2_match() {
         assert_valid_wasm(stage2);
 
         // stage2 を実行して計算結果が stage0 の期待値と一致することを確認
-        let stage2_result = run_exported_i64_no_imports(stage2, "_start");
+        let stage2_result = run_exported_i64_with_runtime_imports(stage2, "_start");
         assert_eq!(
             stage2_result, *expected,
             "BOOT-04 stage1_stage2_match: stage2 の計算結果が期待値と一致しない\n\
@@ -303,6 +390,27 @@ fn test_e2e_bootstrap_stage1_stage2_match() {
              expected={expected}, got={stage2_result}"
         );
     }
+}
+
+#[test]
+fn test_e2e_bootstrap_stage1_stage2_match_fib_runtime_layout() {
+    let src = "(defn fib [n] (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))) (defn main [] (fib 8))";
+    let harness = build_simple_bootstrap_harness(src);
+    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_wasm = compile_only(&stage1_source);
+    assert_valid_wasm(&stage1_wasm);
+
+    let out_a = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .unwrap_or_else(|e| panic!("fib stage1 run_a 失敗: {e}"));
+    let out_b = lsharp_wasm::wasi_runner::run_wasm_wasi(&stage1_wasm)
+        .unwrap_or_else(|e| panic!("fib stage1 run_b 失敗: {e}"));
+    assert_eq!(out_a, out_b, "fib stage1 → stage2 出力が非決定的");
+
+    let modules = parse_emitted_wasm_modules(&out_a, 1);
+    assert_eq!(modules.len(), 1, "fib stage2 モジュール数が不正");
+    let stage2 = &modules[0];
+    assert_valid_wasm(stage2);
+    assert_eq!(run_exported_i64_with_runtime_imports(stage2, "_start"), 21);
 }
 
 // =============================================================================
@@ -761,6 +869,13 @@ fn fixed_input_set_self_feed_targets() -> Vec<FixedInputSetTarget> {
     targets
 }
 
+fn fixed_input_set_target_by_path(path: &str) -> FixedInputSetTarget {
+    fixed_input_set_self_feed_targets()
+        .into_iter()
+        .find(|target| target.path == path)
+        .unwrap_or_else(|| panic!("BOOT-04: fixed input set target が見つからない: {path}"))
+}
+
 fn compile_fixed_input_target_with_stage1(
     stage1_self_compiler: &[u8],
     selfhost_root: &std::path::Path,
@@ -1119,6 +1234,60 @@ fn test_e2e_bootstrap_stage2_self_feed_fixed_input_set() {
         compiled.len(),
         targets.len(),
         "CP-01: stage2 self compiler は fixed input set 全件を再生成できるべき"
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_fixed_input_set_stage_chain_match_cli_module() {
+    let (stage1, stage2, selfhost_root) = build_stage1_and_stage2_self_compilers_from_main();
+    let repo_root = selfhost_project_root();
+    let target = fixed_input_set_target_by_path("src/App/Cli.ls");
+    let stage2_target = compile_fixed_input_target_with_stage1(&stage1, &selfhost_root, &repo_root, &target)
+        .expect("BOOT-04: stage1 compiler が App/Cli.ls の self-feed compile に失敗");
+    let stage3_target = compile_fixed_input_target_with_stage2(&stage2, &selfhost_root, &repo_root, &target)
+        .expect("BOOT-04: stage2 compiler が App/Cli.ls の self-feed compile に失敗");
+    assert_eq!(
+        stage2_target,
+        stage3_target,
+        "BOOT-04: App/Cli.ls の stage chain mismatch: {}",
+        serde_json::to_string_pretty(&serde_json::json!({
+            "path": target.path,
+            "stage2_output_wasm_bytes": stage2_target.len(),
+            "stage3_output_wasm_bytes": stage3_target.len(),
+            "stage2_fingerprint": super::selfhost_bootstrap_four_layer::hash_fingerprint(&stage2_target),
+            "stage3_fingerprint": super::selfhost_bootstrap_four_layer::hash_fingerprint(&stage3_target),
+            "export_match": extract_section_bytes(&stage2_target, 7) == extract_section_bytes(&stage3_target, 7),
+            "data_match": extract_section_bytes(&stage2_target, 11) == extract_section_bytes(&stage3_target, 11),
+            "first_diff": first_diff_index(&stage2_target, &stage3_target),
+        }))
+        .expect("BOOT-04: App/Cli.ls mismatch JSON serialize に失敗")
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_fixed_input_set_stage_chain_match_lsp_server_module() {
+    let (stage1, stage2, selfhost_root) = build_stage1_and_stage2_self_compilers_from_main();
+    let repo_root = selfhost_project_root();
+    let target = fixed_input_set_target_by_path("src/Tools/Lsp/LspServer.ls");
+    let stage2_target = compile_fixed_input_target_with_stage1(&stage1, &selfhost_root, &repo_root, &target)
+        .expect("BOOT-04: stage1 compiler が Tools/Lsp/LspServer.ls の self-feed compile に失敗");
+    let stage3_target = compile_fixed_input_target_with_stage2(&stage2, &selfhost_root, &repo_root, &target)
+        .expect("BOOT-04: stage2 compiler が Tools/Lsp/LspServer.ls の self-feed compile に失敗");
+    assert_eq!(
+        stage2_target,
+        stage3_target,
+        "BOOT-04: Tools/Lsp/LspServer.ls の stage chain mismatch: {}",
+        serde_json::to_string_pretty(&serde_json::json!({
+            "path": target.path,
+            "stage2_output_wasm_bytes": stage2_target.len(),
+            "stage3_output_wasm_bytes": stage3_target.len(),
+            "stage2_fingerprint": super::selfhost_bootstrap_four_layer::hash_fingerprint(&stage2_target),
+            "stage3_fingerprint": super::selfhost_bootstrap_four_layer::hash_fingerprint(&stage3_target),
+            "export_match": extract_section_bytes(&stage2_target, 7) == extract_section_bytes(&stage3_target, 7),
+            "data_match": extract_section_bytes(&stage2_target, 11) == extract_section_bytes(&stage3_target, 11),
+            "first_diff": first_diff_index(&stage2_target, &stage3_target),
+        }))
+        .expect("BOOT-04: Tools/Lsp/LspServer.ls mismatch JSON serialize に失敗")
     );
 }
 

@@ -1045,10 +1045,7 @@ fn test_e2e_selfhost_compiler_vector_push_builtin_lowering() {
         "vector-push lowering は growth 用 metadata local を保持すべき"
     );
     assert!(
-        lines[2]
-            .parse::<i64>()
-            .expect("IR length は整数であること")
-            >= 4,
+        lines[2].parse::<i64>().expect("IR length は整数であること") >= 4,
         "vector-push lowering は vector-new を含む body を持つべき"
     );
     assert_eq!(
@@ -1654,7 +1651,10 @@ fn test_e2e_selfhost_wasmemit_root_push_instr() {
     assert_eq!(lines[5], "0", "local decl count は 0");
     assert_eq!(lines[6], "66", "先頭命令は i64.const");
     assert_eq!(lines[7], "0", "const operand は 0");
-    assert_eq!(lines[8], "16", "root_push は call opcode へ lower されること");
+    assert_eq!(
+        lines[8], "16",
+        "root_push は call opcode へ lower されること"
+    );
     assert_eq!(lines[9], "7", "root_push import index は 7 であること");
     assert_eq!(lines[10], "11", "body は end で終わること");
 }
@@ -1704,7 +1704,10 @@ fn test_e2e_selfhost_wasmemit_root_pop_instr() {
     assert_eq!(lines[3], "1", "function count は 1");
     assert_eq!(lines[4], "4", "function body size は 4 であること");
     assert_eq!(lines[5], "0", "local decl count は 0");
-    assert_eq!(lines[6], "16", "root_pop は call opcode へ lower されること");
+    assert_eq!(
+        lines[6], "16",
+        "root_pop は call opcode へ lower されること"
+    );
     assert_eq!(lines[7], "8", "root_pop import index は 8 であること");
 }
 
@@ -1764,7 +1767,10 @@ fn test_e2e_selfhost_wasmemit_root_set_instr() {
     assert_eq!(lines[7], "0", "第1引数 const operand は 0");
     assert_eq!(lines[8], "66", "第2命令も i64.const");
     assert_eq!(lines[9], "1", "第2引数 const operand は 1");
-    assert_eq!(lines[10], "16", "root_set は call opcode へ lower されること");
+    assert_eq!(
+        lines[10], "16",
+        "root_set は call opcode へ lower されること"
+    );
     assert_eq!(lines[11], "9", "root_set import index は 9 であること");
     assert_eq!(lines[12], "11", "body は end で終わること");
 }

@@ -837,6 +837,49 @@ fn test_lower_self_recursive_heap_param_roots_loop_entry_and_updates_slot() {
 }
 
 #[test]
+fn test_lower_bootstrap_append_bytes_preserves_self_tco_at_high_function_index() {
+    let mut source = String::new();
+    for i in 0..900 {
+        source.push_str(&format!("(defn fn{i:04} [] {i})\n"));
+    }
+    source.push_str(
+        r#"
+        (defn bootstrap-append-bytes [dst src idx count]
+          (if (>= idx count)
+            dst
+            (bootstrap-append-bytes
+              (vector-push dst (vector-get src idx))
+              src (+ idx 1) count)))
+        (defn main [] 0)
+        "#,
+    );
+
+    let module = lower(&source);
+    let func_pos = module
+        .functions
+        .iter()
+        .position(|func| func.name == "bootstrap-append-bytes")
+        .unwrap();
+    let append_loop = &module.functions[func_pos];
+    let self_idx = module.imports.len() as u32 + func_pos as u32;
+
+    assert!(
+        append_loop
+            .body
+            .iter()
+            .any(|instr| matches!(instr, Instruction::Loop(_) | Instruction::LoopEmpty)),
+        "高 function index でも bootstrap-append-bytes は Loop に変換されるべき: {:?}",
+        append_loop.body
+    );
+    assert_eq!(
+        count_call_instr(&append_loop.body, self_idx),
+        0,
+        "高 function index でも bootstrap-append-bytes の自己再帰 Call は残らないべき: {:?}",
+        append_loop.body
+    );
+}
+
+#[test]
 fn test_lower_self_recursive_int_params_do_not_emit_root_updates() {
     let module = lower(
         r#"

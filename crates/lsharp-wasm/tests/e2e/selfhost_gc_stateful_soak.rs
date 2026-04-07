@@ -208,8 +208,11 @@ fn test_e2e_gc_repl_stateful_long_session_in_session_collector_telemetry() {
 "#
     );
 
-    let (output, telemetry) =
-        compile_and_capture_runtime_telemetry(&format!("{}\n{}", selfhost_cli_runtime_bundle(), harness));
+    let (output, telemetry) = compile_and_capture_runtime_telemetry(&format!(
+        "{}\n{}",
+        selfhost_cli_runtime_bundle(),
+        harness
+    ));
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert_eq!(
@@ -720,11 +723,12 @@ fn test_e2e_gc_lsp_actual_stdio_repeated_sequence_postsession_collector_telemetr
         )
     );
 
-    let (output, telemetry) = compile_and_capture_runtime_telemetry_after_collect_with_args_and_stdin(
-        selfhost_cli_runtime_bundle(),
-        &["lsp", "--stdio"],
-        &stdin,
-    );
+    let (output, telemetry) =
+        compile_and_capture_runtime_telemetry_after_collect_with_args_and_stdin(
+            selfhost_cli_runtime_bundle(),
+            &["lsp", "--stdio"],
+            &stdin,
+        );
 
     assert_eq!(
         output.matches("Content-Length:").count(),

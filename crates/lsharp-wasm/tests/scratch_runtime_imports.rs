@@ -16,9 +16,7 @@
 //!
 //! root_set (slot 9) は現行 emit path で未使用のため省略。
 
-use wasm_encoder::{
-    EntityType, ImportSection, TypeSection, ValType,
-};
+use wasm_encoder::{EntityType, ImportSection, TypeSection, ValType};
 
 fn build_runtime_type_section() -> TypeSection {
     let mut types = TypeSection::new();

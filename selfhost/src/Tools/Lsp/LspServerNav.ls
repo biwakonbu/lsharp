@@ -5,6 +5,42 @@
 (import Tools.Lsp.JsonRpc)
 (import Tools.Lsp.LspServerCore)
 
+(defn push-int-vector-local [dst value]
+  (do
+    (root_push dst)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        next-dst))))
+
+(defn push-object-vector-local [dst value]
+  (do
+    (root_push dst)
+    (root_push value)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        (root_pop)
+        next-dst))))
+
+(defn ref-map-get-safe [map-ref key]
+  (let [map-value (ref-get map-ref)]
+    (do
+      (root_push map-value)
+      (let [value (map-get map-value key)]
+        (do
+          (root_pop)
+          value)))))
+
+(defn ref-map-insert-int-safe [map-ref key value]
+  (let [map-value (ref-get map-ref)]
+    (do
+      (root_push map-value)
+      (let [next-map (map-insert map-value key value)]
+        (do
+          (root_pop)
+          next-map)))))
+
 ;; LspServerNav.ls - LSP ナビゲーション・補完・シンボル解析
 ;;
 ;; JSON レンダリング (ナビゲーション部)、位置/オフセット変換、
@@ -282,7 +318,7 @@
 ;; === 定義解決 ===
 
 (defn lsp-make-defn-resolution [uri offset]
-  (vector-push (vector-push (vector-new 2) uri) offset))
+  (push-int-vector-local (push-int-vector-local (vector-new 2) uri) offset))
 
 (defn lsp-defn-resolution-uri [resolution]
   (vector-get resolution 0))
@@ -332,12 +368,12 @@
 (defn lsp-path-seen? [seen-ref path]
   (if (= (string-length path) 0)
     1
-    (if (= (map-get (ref-get seen-ref) (lsp-path-key path)) 0) 0 1)))
+    (if (= (ref-map-get-safe seen-ref (lsp-path-key path)) 0) 0 1)))
 
 (defn lsp-mark-path-seen [seen-ref path]
   (if (> (string-length path) 0)
     (do
-      (ref-set seen-ref (map-insert (ref-get seen-ref) (lsp-path-key path) 1))
+      (ref-set seen-ref (ref-map-insert-int-safe seen-ref (lsp-path-key path) 1))
       0)
     0))
 
@@ -461,7 +497,7 @@
             (if (string-eq name target)
               (let [pos (lsp-position-from-offset src idx)
                 loc (make-location uri (position-line pos) (position-col pos))]
-                (lsp-find-occurrences-loop src target uri end len (vector-push results loc)))
+                (lsp-find-occurrences-loop src target uri end len (push-object-vector-local results loc)))
               (lsp-find-occurrences-loop src target uri end len results)))
           (lsp-find-occurrences-loop src target uri (+ idx 1) len results))
         (lsp-find-occurrences-loop src target uri (+ idx 1) len results)))))
@@ -473,7 +509,7 @@
   (if (>= idx len)
     items
     (lsp-merge-locations-loop
-      (vector-push items (vector-get extra idx))
+      (push-object-vector-local items (vector-get extra idx))
       extra
       (+ idx 1)
       len)))
@@ -577,15 +613,15 @@
         (string-eq (substring label 0 prefix-len) prefix)))))
 
 (defn lsp-make-completion-item [label kind insert-text]
-  (vector-push
-    (vector-push
-      (vector-push (vector-new 3) label)
+  (push-object-vector-local
+    (push-int-vector-local
+      (push-object-vector-local (vector-new 3) label)
       kind)
     insert-text))
 
 (defn lsp-append-keyword-item [label prefix kind items]
   (if (lsp-prefix-matches label prefix)
-    (vector-push items (lsp-make-completion-item label kind label))
+    (push-object-vector-local items (lsp-make-completion-item label kind label))
     items))
 
 (defn lsp-append-keyword-completions [prefix items]
@@ -607,7 +643,7 @@
         (if (> name-end name-start)
           (let [name (substring src name-start name-end)
             items (if (lsp-prefix-matches name prefix)
-              (vector-push items (lsp-make-completion-item name 3 name))
+              (push-object-vector-local items (lsp-make-completion-item name 3 name))
               items)]
             (lsp-append-defn-completions-loop src name-end len prefix items))
           (lsp-append-defn-completions-loop src (+ idx 1) len prefix items)))
@@ -629,7 +665,7 @@
 (defn lsp-completion-push-unique [items item]
   (if (= (lsp-completion-has-label-loop items (lsp-completion-item-label item) 0 (vector-length items)) 1)
     items
-    (vector-push items item)))
+    (push-object-vector-local items item)))
 
 (defn lsp-merge-completion-items-loop [items extra idx len]
   (if (>= idx len)
@@ -766,8 +802,8 @@
 (defn handle-hover-mock [params]
   (let [v (vector-new 2)
     contents (lsp-hover-mock-text params)]
-    (vector-push
-      (vector-push v 0) ;; range
+    (push-object-vector-local
+      (push-int-vector-local v 0) ;; range
       contents))) ;; contents: 型情報 text
 
 (defn handle-hover [params state]
@@ -788,8 +824,8 @@
               open-defn-offset (lsp-defn-resolution-offset resolution)
               defn-offset (if (>= open-defn-offset 0) open-defn-offset (lsp-find-defn-in-filesystem-imports state uri name))
               contents (lsp-hover-content-text defn-offset name)]
-              (vector-push
-                (vector-push (vector-new 2) range)
+              (push-object-vector-local
+                (push-object-vector-local (vector-new 2) range)
                 contents))
             (handle-hover-mock params))
         (handle-hover-mock params)))))
@@ -802,9 +838,9 @@
     uri (if (= params 0) 0 (vector-get params 0))
     line (if (= params 0) 0 1)
     col 0]
-    (vector-push
-      (vector-push
-        (vector-push v uri) ;; uri
+    (push-int-vector-local
+      (push-int-vector-local
+        (push-int-vector-local v uri) ;; uri
         line) ;; line
       col))) ;; col
 
@@ -841,7 +877,7 @@
 ;; シンボルの参照位置リストを返す (AC-206)
 ;; 各 location は [uri, line, col] の 3 要素
 (defn make-location [uri line col]
-  (vector-push (vector-push (vector-push (vector-new 3) uri) line) col))
+  (push-int-vector-local (push-int-vector-local (push-int-vector-local (vector-new 3) uri) line) col))
 
 (defn handle-references-mock [params]
   (let [;; モック: params の位置自体を 1 つの参照として返す
@@ -849,7 +885,7 @@
     line (if (= params 0) 0 (vector-get params 1))
     col (if (= params 0) 0 (vector-get params 2))
     loc (make-location uri line col)]
-    (vector-push (vector-new 1) loc)))
+    (push-object-vector-local (vector-new 1) loc)))
 
 (defn handle-references [params state]
   (do
@@ -873,16 +909,16 @@
 ;; シンボルのリネーム用 WorkspaceEdit を返す
 (defn handle-rename-mock [params]
   (let [v (vector-new 1)]
-    (vector-push v 0)))
+    (push-int-vector-local v 0)))
 
 (defn lsp-append-rename-edits-loop [locs idx len old-name-len new-name edits]
   (if (>= idx len)
     edits
-    (let [loc (vector-get locs idx)
-      line (vector-get loc 1)
-      col (vector-get loc 2)
-      edit (make-text-edit line col line (+ col old-name-len) new-name)]
-      (lsp-append-rename-edits-loop locs (+ idx 1) len old-name-len new-name (vector-push edits edit)))))
+      (let [loc (vector-get locs idx)
+        line (vector-get loc 1)
+        col (vector-get loc 2)
+        edit (make-text-edit line col line (+ col old-name-len) new-name)]
+      (lsp-append-rename-edits-loop locs (+ idx 1) len old-name-len new-name (push-object-vector-local edits edit)))))
 
 (defn lsp-build-rename-edits [locs old-name-len new-name]
   (lsp-append-rename-edits-loop locs 0 (vector-length locs) old-name-len new-name (vector-new 4)))
@@ -892,7 +928,7 @@
     matches
     (let [loc (vector-get locs idx)]
       (if (= (vector-get loc 0) target-uri)
-        (lsp-locations-for-uri-loop locs target-uri (+ idx 1) len (vector-push matches loc))
+        (lsp-locations-for-uri-loop locs target-uri (+ idx 1) len (push-object-vector-local matches loc))
         (lsp-locations-for-uri-loop locs target-uri (+ idx 1) len matches)))))
 
 (defn lsp-locations-for-uri [locs target-uri]
@@ -924,7 +960,7 @@
             new-name
             (+ idx 1)
             len
-            (vector-push changes change)))))))
+            (push-object-vector-local changes change)))))))
 
 (defn lsp-build-rename-changes [locs old-name-len new-name]
   (lsp-build-rename-changes-loop locs old-name-len new-name 0 (vector-length locs) (vector-new 4)))
@@ -956,7 +992,7 @@
 ;; Formatter.ls の format-program を呼び出して TextEdit リストを返す (AC-010)
 (defn handle-formatting-mock [params]
   (let [edit (vector-new 1)]
-    (vector-push edit 0)))
+    (push-int-vector-local edit 0)))
 
 (defn handle-formatting [params state]
   (do
@@ -967,7 +1003,7 @@
           program (parse-program src)
           formatted (format-program-with-source program src)
           edit (make-format-edit 1 1 (position-line end-pos) (position-col end-pos) formatted)]
-          (vector-push (vector-new 1) edit))
+          (push-object-vector-local (vector-new 1) edit))
         (handle-formatting-mock params)))))
 
 ;; textDocument/completion: コード補完
@@ -987,13 +1023,13 @@
           items)
         (let [items (vector-new 7)
           ;; L# キーワード: defn, let, if, match, do, fn, module
-          items (vector-push items (lsp-make-completion-item "defn" 14 "defn"))
-          items (vector-push items (lsp-make-completion-item "let" 14 "let"))
-          items (vector-push items (lsp-make-completion-item "if" 14 "if"))
-          items (vector-push items (lsp-make-completion-item "match" 14 "match"))
-          items (vector-push items (lsp-make-completion-item "do" 14 "do"))
-          items (vector-push items (lsp-make-completion-item "fn" 14 "fn"))
-          items (vector-push items (lsp-make-completion-item "module" 14 "module"))]
+          items (push-object-vector-local items (lsp-make-completion-item "defn" 14 "defn"))
+          items (push-object-vector-local items (lsp-make-completion-item "let" 14 "let"))
+          items (push-object-vector-local items (lsp-make-completion-item "if" 14 "if"))
+          items (push-object-vector-local items (lsp-make-completion-item "match" 14 "match"))
+          items (push-object-vector-local items (lsp-make-completion-item "do" 14 "do"))
+          items (push-object-vector-local items (lsp-make-completion-item "fn" 14 "fn"))
+          items (push-object-vector-local items (lsp-make-completion-item "module" 14 "module"))]
           items)))))
 
 ;; === 診断の安定順序制御 (T4b-3 AC-208/AC-209/AC-210/AC-211) ===
@@ -1011,7 +1047,7 @@
   (if (= idx 0)
     ;; 先頭に挿入
     (let [out (vector-new (+ (vector-length sorted) 1))
-      out (vector-push out elem)]
+      out (push-object-vector-local out elem)]
       (sort-diag-copy sorted 0 (vector-length sorted) out))
     (let [prev (vector-get sorted (- idx 1))
       prev-key (diagnostic-order-key prev)]
@@ -1021,14 +1057,14 @@
         ;; ここに挿入: 0..idx をコピー → elem → idx..len をコピー
         (let [out (vector-new (+ (vector-length sorted) 1))
           out (sort-diag-copy sorted 0 idx out)
-          out (vector-push out elem)]
+          out (push-object-vector-local out elem)]
           (sort-diag-copy sorted idx (vector-length sorted) out))))))
 
 ;; sorted の from..to をコピーして out に追加する
 (defn sort-diag-copy [src from to out]
   (if (>= from to)
     out
-    (sort-diag-copy src (+ from 1) to (vector-push out (vector-get src from)))))
+    (sort-diag-copy src (+ from 1) to (push-object-vector-local out (vector-get src from)))))
 
 ;; 挿入ソートの外側ループ: diagnostics の idx 番目から順に sorted に挿入
 (defn sort-diag-loop [diagnostics sorted idx len]
@@ -1044,7 +1080,7 @@
     (if (< len 2)
       diagnostics
       (let [first (vector-get diagnostics 0)
-        initial (vector-push (vector-new 1) first)]
+        initial (push-object-vector-local (vector-new 1) first)]
         (sort-diag-loop diagnostics initial 1 len)))))
 
 ;; 診断の重複マージ (AC-209)
@@ -1063,8 +1099,8 @@
         (if (= line0 line1)
           (if (= col0 col1)
             (if (< sev0 sev1)
-              (vector-push (vector-new 1) diag0)
-              (vector-push (vector-new 1) diag1))
+              (push-object-vector-local (vector-new 1) diag0)
+              (push-object-vector-local (vector-new 1) diag1))
             diagnostics)
           diagnostics))
       diagnostics)))
@@ -1131,8 +1167,8 @@
   (if (>= idx len)
     out
     (if (= idx replace-idx)
-      (dedup-replace-loop vec (vector-push out new-elem) replace-idx new-elem (+ idx 1) len)
-      (dedup-replace-loop vec (vector-push out (vector-get vec idx)) replace-idx new-elem (+ idx 1) len))))
+      (dedup-replace-loop vec (push-object-vector-local out new-elem) replace-idx new-elem (+ idx 1) len)
+      (dedup-replace-loop vec (push-object-vector-local out (vector-get vec idx)) replace-idx new-elem (+ idx 1) len))))
 
 (defn dedup-replace [vec replace-idx new-elem]
   (dedup-replace-loop vec (vector-new (vector-length vec)) replace-idx new-elem 0 (vector-length vec)))
@@ -1144,7 +1180,7 @@
     (let [diag (vector-get diags idx)
       existing-idx (dedup-find-span result diag 0 (vector-length result))]
       (if (< existing-idx 0)
-        (dedup-build diags (vector-push result diag) (+ idx 1) len)
+        (dedup-build diags (push-object-vector-local result diag) (+ idx 1) len)
         (let [existing (vector-get result existing-idx)
           best (dedup-diag-pick-best existing diag)
           new-result (dedup-replace result existing-idx best)]

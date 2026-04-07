@@ -415,8 +415,8 @@ mod tests {
     fn test_derive_eq_adt_no_args() {
         let variants = vec![make_variant("Nothing", 0), make_variant("Something", 0)];
         let decl = derive_eq_adt("Option", &variants);
-        if let Decl::Defn { body, .. } = &decl {
-            if let Expr::Match(_, _, arms) = body {
+        if let Decl::Defn { body, .. } = &decl
+            && let Expr::Match(_, _, arms) = body {
                 assert_eq!(arms.len(), 2);
                 // Nothing 腕の内側 match
                 if let Expr::Match(_, _, inner_arms) = &arms[0].body {
@@ -433,7 +433,6 @@ mod tests {
                     ));
                 }
             }
-        }
     }
 
     #[test]
@@ -462,8 +461,8 @@ mod tests {
     fn test_derive_eq_multi_field() {
         let variants = vec![make_variant("Pair", 2)];
         let decl = derive_eq_adt("Pair", &variants);
-        if let Decl::Defn { body, .. } = &decl {
-            if let Expr::Match(_, _, arms) = body {
+        if let Decl::Defn { body, .. } = &decl
+            && let Expr::Match(_, _, arms) = body {
                 assert_eq!(arms.len(), 1);
                 // Pair(a0, a1) のパターン
                 if let Pattern::Constructor(_, _, pats) = &arms[0].pattern {
@@ -474,7 +473,6 @@ mod tests {
                     assert!(matches!(&inner_arms[0].body, Expr::If(_, _, _, _)));
                 }
             }
-        }
     }
 
     #[test]

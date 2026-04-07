@@ -76,23 +76,59 @@
 ;; ============================================================
 ;; HashMap<name-hash, TypeScheme>
 
+(defn push-int-vector-local [dst value]
+  (do
+    (root_push dst)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        next-dst))))
+
+(defn push-object-vector-local [dst value]
+  (do
+    (root_push dst)
+    (root_push value)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        (root_pop)
+        next-dst))))
+
+(defn map-get-safe [m key]
+  (do
+    (root_push m)
+    (let [value (map-get m key)]
+      (do
+        (root_pop)
+        value))))
+
+(defn map-insert-object-safe [m key value]
+  (do
+    (root_push m)
+    (root_push value)
+    (let [next-map (map-insert m key value)]
+      (do
+        (root_pop)
+        (root_pop)
+        next-map))))
+
 (defn type-env-new []
   (map-new))
 
 ;; 型環境に型スキームを追加
 (defn type-env-insert [env name-hash scheme]
-  (map-insert env name-hash scheme))
+  (map-insert-object-safe env name-hash scheme))
 
 ;; 型環境から型スキームを取得 (0 = 未定義)
 (defn type-env-lookup [env name-hash]
-  (map-get env name-hash))
+  (map-get-safe env name-hash))
 
 ;; ============================================================
 ;; 推論結果 = [subst, type, error-code]
 ;; ============================================================
 
 (defn make-result [subst ty]
-  (vector-push (vector-push (vector-push (vector-new 3) subst) ty) 0))
+  (push-int-vector-local (push-object-vector-local (push-object-vector-local (vector-new 3) subst) ty) 0))
 
 (defn result-subst [r] (vector-get r 0))
 (defn result-type [r] (vector-get r 1))
@@ -100,9 +136,9 @@
 
 ;; エラー結果 (subst にエラーマーカー付き)
 (defn make-error-result-code [code]
-  (vector-push
-    (vector-push
-      (vector-push (vector-new 3) (map-insert (map-new) -1 1))
+  (push-int-vector-local
+    (push-object-vector-local
+      (push-object-vector-local (vector-new 3) (map-insert (map-new) -1 1))
       (mk-int))
     code))
 
@@ -114,7 +150,7 @@
 
 ;; 結果がエラーか判定
 (defn result-failed [r]
-  (map-get (result-subst r) -1))
+  (map-get-safe (result-subst r) -1))
 
 ;; ============================================================
 ;; 新しい型変数の生成

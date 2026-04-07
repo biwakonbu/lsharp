@@ -307,7 +307,7 @@ fn test_e2e_selfhost_lexer_tokenizes_large_input_without_stack_trap() {
         .expect("canonical Lexer.ls が読み込めない");
     let lexer_compat_ls = std::fs::read_to_string(selfhost_source_path("LexerCompat.ls"))
         .expect("canonical LexerCompat.ls が読み込めない");
-    let repeated_symbols = std::iter::repeat("x ").take(5000).collect::<String>();
+    let repeated_symbols = std::iter::repeat_n("x ", 5000).collect::<String>();
     let harness = format!(
         r#"
 (defn main []

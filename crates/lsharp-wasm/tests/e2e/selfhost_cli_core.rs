@@ -549,9 +549,7 @@ fn test_e2e_selfhost_cli_parse_source_recovery_summary() {
         lines
     );
     assert!(
-        lines
-            .iter()
-            .any(|line| *line == "diagnostics:1,P0001@1:1,first-body:unexpected token )"),
+        lines.contains(&"diagnostics:1,P0001@1:1,first-body:unexpected token )"),
         "parse recovery summary は code/location を含むべき: {:?}",
         lines
     );
@@ -582,9 +580,7 @@ fn test_e2e_selfhost_cli_parse_source_recovery_unexpected_bracket_summary() {
         lines
     );
     assert!(
-        lines
-            .iter()
-            .any(|line| *line == "diagnostics:1,P0001@1:1,first-body:unexpected token ]"),
+        lines.contains(&"diagnostics:1,P0001@1:1,first-body:unexpected token ]"),
         "parse recovery summary は unexpected token ] を含むべき: {:?}",
         lines
     );
@@ -615,9 +611,7 @@ fn test_e2e_selfhost_cli_check_source_type_error_summary() {
         lines
     );
     assert!(
-        lines
-            .iter()
-            .any(|line| *line == "diagnostics:1,T0001@1:1,first-body:if condition must be Bool"),
+        lines.contains(&"diagnostics:1,T0001@1:1,first-body:if condition must be Bool"),
         "check type-error summary は code/location を含むべき: {:?}",
         lines
     );
@@ -648,9 +642,7 @@ fn test_e2e_selfhost_cli_check_source_undefined_symbol_summary() {
         lines
     );
     assert!(
-        lines
-            .iter()
-            .any(|line| *line == "diagnostics:1,T0001@1:1,first-body:undefined symbol"),
+        lines.contains(&"diagnostics:1,T0001@1:1,first-body:undefined symbol"),
         "check undefined-symbol summary は code 別 body を含むべき: {:?}",
         lines
     );
@@ -3709,7 +3701,7 @@ fn test_e2e_selfhost_cli_main_with_args_compile_file() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
-        lines.len() >= 1,
+        !lines.is_empty(),
         "Cli main compile argv 出力が不足: {:?}",
         lines
     );
@@ -3766,7 +3758,7 @@ fn test_e2e_selfhost_cli_main_with_args_build_file() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
-        lines.len() >= 1,
+        !lines.is_empty(),
         "Cli main build argv 出力が不足: {:?}",
         lines
     );
@@ -3823,7 +3815,7 @@ fn test_e2e_selfhost_cli_main_with_args_compile_output_path() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
-        lines.len() >= 1,
+        !lines.is_empty(),
         "Cli main compile -o 出力が不足: {:?}",
         lines
     );
@@ -3859,7 +3851,7 @@ fn test_e2e_selfhost_cli_main_with_args_build_output_path() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
-        lines.len() >= 1,
+        !lines.is_empty(),
         "Cli main build --output 出力が不足: {:?}",
         lines
     );
@@ -3902,7 +3894,7 @@ fn test_e2e_selfhost_cli_main_with_args_compile_target_and_output_path() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
-        lines.len() >= 1,
+        !lines.is_empty(),
         "Cli main compile --target ... -o 出力が不足: {:?}",
         lines
     );
@@ -4000,7 +3992,7 @@ fn test_e2e_selfhost_cli_main_with_args_build_output_path_and_target_alias() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
-        lines.len() >= 1,
+        !lines.is_empty(),
         "Cli main build --output ... --target 出力が不足: {:?}",
         lines
     );

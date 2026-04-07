@@ -323,7 +323,7 @@ fn run_native_pipeline_harness(entry_source: &str) -> String {
         .join(format!("native-stage-chain-{id}"));
     std::fs::create_dir_all(&dir).expect("native stage-chain fixture dir 作成失敗");
 
-    let result = (|| {
+    let result = {
         for name in [
             "IR.ls",
             "NativeTarget.ls",
@@ -340,7 +340,7 @@ fn run_native_pipeline_harness(entry_source: &str) -> String {
         }
         std::fs::write(dir.join("Main.ls"), entry_source).expect("Main.ls 書き込み失敗");
         compile_and_run_file(&dir.join("Main.ls"))
-    })();
+    };
 
     let _ = std::fs::remove_dir_all(&dir);
     result
@@ -362,7 +362,7 @@ fn run_native_codegen_host_bytes_harness(entry_source: &str) -> Vec<u8> {
         .join(format!("native-host-bytes-{id}"));
     std::fs::create_dir_all(&dir).expect("native host-bytes fixture dir 作成失敗");
 
-    let result = (|| {
+    let result = {
         for name in ["IR.ls", "NativeTarget.ls", "NativeCodegen.ls"] {
             let path = dir.join(selfhost_fixture_module_relative_path(name));
             if let Some(parent) = path.parent() {
@@ -381,7 +381,7 @@ fn run_native_codegen_host_bytes_harness(entry_source: &str) -> Vec<u8> {
                     .unwrap_or_else(|_| panic!("byte parse 失敗: {line}"))
             })
             .collect::<Vec<u8>>()
-    })();
+    };
 
     let _ = std::fs::remove_dir_all(&dir);
     result
