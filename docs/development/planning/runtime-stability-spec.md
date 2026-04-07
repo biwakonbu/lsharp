@@ -329,6 +329,26 @@ gap を以下 4 slice に分けて段階導入する:
 2. G3-b → G3-c → G3-d の順
 3. 各 slice 完了時に selfhost bootstrap fixed-point を再確認
 
+### 棚卸し結果 (2026-04-07)
+
+4 slice すべて RED test を書いたところ **全 GREEN** だったベィ。現状の実装で既に
+カバーされていることが確認できた:
+
+| slice | 現在の実装位置 | 状態 |
+|-------|---------------|------|
+| G3-a (非自己再帰 heap param) | `should_root_user_call_argument` (`crates/lsharp-ir/src/lower/expr.rs:1870`) が direct user call の各 arg を caller 側で root_push。param は caller frame の root stack 経由で transitively 保護される | GREEN |
+| G3-b (let heap-local) | `emit_root_push_local` (`crates/lsharp-ir/src/lower/expr.rs:1823`) が heap 型 let binding を binding 時に root_push、scope 抜けで pop | GREEN |
+| G3-c (multi-arg operand stack spill) | caller-side spill は arg ごとに root_push を打つ実装 (line 1270/1298)。先行 arg は後続 arg 評価中の GC を生き延びる | GREEN |
+| G3-d (pattern match heap field) | match arm の field bind 時にも root が付与され、arm body の alloc を生き延びる | GREEN |
+
+regression guard test は `crates/lsharp-wasm/tests/e2e/runtime_allocator_closures.rs`
+に 4 件追加済み (`test_e2e_runtime_collector_preserves_*`)。
+
+**結論**: CP-05 G3 は新規実装不要。今後の構造改修 (例: 新しい lowering path や
+新ビルトイン追加) で root が漏れた場合の retainer として、上記 4 guard test を
+維持する。CP-05 のクローズは G1 (documented limitation) と合わせて完了扱いに
+できるベィ。
+
 ## 更新規則
 
 - P11-5 のランタイム安定化仕様はこの文書に一本化する

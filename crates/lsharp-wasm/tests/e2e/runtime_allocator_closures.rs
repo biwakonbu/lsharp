@@ -2112,6 +2112,126 @@ fn test_e2e_runtime_collector_preserves_non_self_recursive_heap_param() {
 }
 
 #[test]
+fn test_e2e_runtime_collector_preserves_let_heap_local_across_alloc() {
+    // CP-05 G3-b RED: let で束縛した heap local が body 内の alloc を跨いで
+    // 生存することを検証する。binding 時に root_push、scope 抜けで pop
+    // されるべき。
+    let (stdout, series) = compile_and_capture_runtime_telemetry_series(
+        r#"
+        (defn churn [n]
+          (if (<= n 0)
+            0
+            (let [s (string-concat "left" "right")]
+              (do
+                (string-length s)
+                (churn (- n 1))))))
+        (defn main []
+          (let [keeper (string-concat "keep" "!")]
+            (do
+              (churn 256)
+              (do (print-string (int-to-string (string-length keeper))) 0))))
+    "#,
+        1,
+    );
+    let telemetry = *series
+        .last()
+        .expect("collector telemetry series は 1 件以上必要");
+    assert_eq!(
+        stdout.trim(),
+        "5",
+        "let heap-local 'keep!' (length 5) は churn 後も生存しているべき: telemetry={:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.gc_collection_count > 0,
+        "churn 中に collector が走るべき: {:?}",
+        telemetry
+    );
+}
+
+#[test]
+fn test_e2e_runtime_collector_preserves_first_arg_across_second_arg_alloc() {
+    // CP-05 G3-c RED: 多引数 user call で先に評価された heap arg が、
+    // 後続 arg の評価中に走る GC を生き延びることを検証する。caller-side
+    // spill は各 arg 評価直前に root_push する必要がある。
+    let (stdout, series) = compile_and_capture_runtime_telemetry_series(
+        r#"
+        (defn churn [n]
+          (if (<= n 0)
+            0
+            (let [s (string-concat "left" "right")]
+              (do
+                (string-length s)
+                (churn (- n 1))))))
+        (defn pick-first [a b]
+          (string-length a))
+        (defn second-arg []
+          (do (churn 256) 7))
+        (defn main []
+          (let [len (pick-first (string-concat "keep" "!") (second-arg))]
+            (do (print-string (int-to-string len)) 0)))
+    "#,
+        1,
+    );
+    let telemetry = *series
+        .last()
+        .expect("collector telemetry series は 1 件以上必要");
+    assert_eq!(
+        stdout.trim(),
+        "5",
+        "first arg 'keep!' (length 5) は second arg 評価中の GC を生き延びるべき: telemetry={:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.gc_collection_count > 0,
+        "second-arg の churn 中に collector が走るべき: {:?}",
+        telemetry
+    );
+}
+
+#[test]
+fn test_e2e_runtime_collector_preserves_pattern_bound_heap_field_across_alloc() {
+    // CP-05 G3-d RED: pattern match で取り出した heap field が、
+    // arm body 内の alloc を跨いで生存することを検証する。pattern bind 時に
+    // root_push、arm 抜けで pop されるべき。
+    let (stdout, series) = compile_and_capture_runtime_telemetry_series(
+        r#"
+        (defn churn [n]
+          (if (<= n 0)
+            0
+            (let [s (string-concat "left" "right")]
+              (do
+                (string-length s)
+                (churn (- n 1))))))
+        (type Box (Wrap String))
+        (defn use-box [b]
+          (match b
+            [(Wrap s)
+             (let [_ (churn 256)]
+               (string-length s))]))
+        (defn main []
+          (let [len (use-box (Wrap (string-concat "keep" "!")))]
+            (do (print-string (int-to-string len)) 0)))
+    "#,
+        1,
+    );
+    let telemetry = *series
+        .last()
+        .expect("collector telemetry series は 1 件以上必要");
+    assert_eq!(
+        stdout.trim(),
+        "5",
+        "pattern-bound heap field 'keep!' (length 5) は arm body の churn を生き延びるべき: telemetry={:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.gc_collection_count > 0,
+        "arm body の churn 中に collector が走るべき: {:?}",
+        telemetry
+    );
+}
+
+#[test]
 fn test_e2e_int_to_string_large() {
     let result = compile_and_run(
         r#"
