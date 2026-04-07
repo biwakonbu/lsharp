@@ -1236,6 +1236,10 @@
       (vector-get step 2)
       (collect-function-irs functions (vector-get step 1) count (vector-get step 2)))))
 (defn compile-program-functions [decls] (let [n (vector-length decls) pass1 (register-defns decls 0 n (ftable-new) 0) ftable (vector-get pass1 0) functions (compile-defn-functions decls 0 n ftable (vector-new 8))] (vector-push (vector-push (vector-new 2) ftable) functions)))
+;; V2-11: import section を含む harness 向けに base offset を取る変種。
+;; base-idx は user func を ftable に登録する際の起点で、selfhost ランタイム
+;; (root_push 等) を import 0..base-idx-1 に置く構成と整合する。
+(defn compile-program-functions-with-base [decls base-idx] (let [n (vector-length decls) pass1 (register-defns decls 0 n (ftable-new) base-idx) ftable (vector-get pass1 0) functions (compile-defn-functions decls 0 n ftable (vector-new 8))] (vector-push (vector-push (vector-new 2) ftable) functions)))
 (defn compile-program [decls] (let [pair (compile-program-functions decls) ftable (vector-get pair 0) functions (vector-get pair 1) ir-list (collect-function-irs functions 0 (vector-length functions) (vector-new 8))] (vector-push (vector-push (vector-new 2) ftable) ir-list)))
 (defn lower [x] (let [n (vector-length x)] (if (= n 0) (vector-new 0) (if (and (= n 2) (or (= (vector-get x 0) 1) (= (vector-get x 0) 2))) (compile-expr x (env-new) (vector-new 8)) (let [pair (compile-program x) ir-list (vector-get pair 1)] (if (> (vector-length ir-list) 0) (vector-get ir-list 0) (vector-new 0)))))))
 (defn compile-function [param-hashes body] (let [env (ref-new (env-new)) idx (ref-new 1) i (ref-new 0) n (vector-length param-hashes)] (do (let [loop-done (ref-new 0)] (do (let [loop-body (ref-new 0)] (do (ref-set loop-body 1) (if (< (ref-get i) n) (do (ref-set env (env-bind (ref-get env) (vector-get param-hashes (ref-get i)) (ref-get idx))) (ref-set idx (+ (ref-get idx) 1)) (ref-set i (+ (ref-get i) 1)) (if (< (ref-get i) n) (do (ref-set env (env-bind (ref-get env) (vector-get param-hashes (ref-get i)) (ref-get idx))) (ref-set idx (+ (ref-get idx) 1)) (ref-set i (+ (ref-get i) 1)) 0) 0)) 0))) 0)) (compile-expr body (ref-get env) (vector-new 8)))))
