@@ -6,6 +6,7 @@ Cargo.lock
 .claude/plans/
 .claude/settings.local.json
 .claude/worktrees/
+.claude/scheduled_tasks.lock
 .agbullet/
 
 # IDE / エディタ
