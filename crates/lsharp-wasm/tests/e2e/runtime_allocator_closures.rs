@@ -119,14 +119,50 @@ fn collect_s15_fixed_point_proof() -> serde_json::Value {
     let data_b =
         super::selfhost_bootstrap_four_layer::extract_section_bytes(&stage3_self_compiler, 11);
 
+    let bytes_identical = stage2_self_compiler == stage3_self_compiler;
+    let exports_identical = export_a == export_b;
+    let data_sections_identical = data_a == data_b;
+    eprintln!(
+        "[S15 診断] bytes_identical={bytes_identical} exports_identical={exports_identical} data_sections_identical={data_sections_identical}"
+    );
+    eprintln!(
+        "[S15 診断] stage2 size={} stage3 size={}",
+        stage2_self_compiler.len(),
+        stage3_self_compiler.len()
+    );
+    if stage3_self_compiler.len() < 512 {
+        eprintln!(
+            "[S15 診断] stage3 先頭バイト (異常に小さい): {:?}",
+            &stage3_self_compiler[..stage3_self_compiler.len().min(64)]
+        );
+    }
     serde_json::json!({
         "gc_mode": "mark-sweep",
         "stage_pair": ["stage2", "stage3"],
-        "bytes_identical": stage2_self_compiler == stage3_self_compiler,
-        "exports_identical": export_a == export_b,
-        "data_sections_identical": data_a == data_b,
+        "bytes_identical": bytes_identical,
+        "exports_identical": exports_identical,
+        "data_sections_identical": data_sections_identical,
         "diagnostics_identical": true,
     })
+}
+
+/// V2-12 診断: S15 fixed-point proof のフィールドを個別に確認する軽量テスト。
+/// `test_e2e_alloc_metrics_ci_artifact_payload` の全体実行なしに、
+/// bytes/exports/data_sections のどれが失敗しているかを特定する。
+#[test]
+#[ignore]
+fn test_v2_12_diagnose_s15_proof_fields() {
+    let proof = collect_s15_fixed_point_proof();
+    println!("[V2-12 診断] s15_proof = {proof}");
+    let bytes_ok = proof["bytes_identical"] == serde_json::Value::Bool(true);
+    let exports_ok = proof["exports_identical"] == serde_json::Value::Bool(true);
+    let data_ok = proof["data_sections_identical"] == serde_json::Value::Bool(true);
+    println!(
+        "[V2-12 診断] bytes_identical={bytes_ok} exports_identical={exports_ok} data_sections_identical={data_ok}"
+    );
+    assert!(bytes_ok, "bytes_identical は false: stage2 ≠ stage3 (コードセクション差異の可能性)");
+    assert!(exports_ok, "exports_identical は false");
+    assert!(data_ok, "data_sections_identical は false");
 }
 
 fn collect_s16_workload_proof(proxy_workloads: &serde_json::Value) -> serde_json::Value {
