@@ -211,6 +211,16 @@ pub struct Infer {
     current_expr_scope: Option<String>,
 }
 
+struct DefnInferenceInput<'a> {
+    env: &'a TypeEnv,
+    name: &'a str,
+    expr_scope: &'a str,
+    params: &'a [Param],
+    return_ty: Option<&'a TypeExpr>,
+    body: &'a Expr,
+    span: Span,
+}
+
 impl Infer {
     pub fn new() -> Self {
         Self {
@@ -598,15 +608,15 @@ impl Infer {
         for (index, (qualified_name, params, return_ty, body, span, placeholder_ty)) in
             defn_infos.into_iter().enumerate()
         {
-            let (subst, ty) = self.infer_defn(
+            let (subst, ty) = self.infer_defn(DefnInferenceInput {
                 env,
-                &qualified_name,
-                &qualified_name,
+                name: &qualified_name,
+                expr_scope: &qualified_name,
                 params,
                 return_ty,
                 body,
                 span,
-            )?;
+            })?;
             // 仮登録型変数と推論結果の関数型を unify（循環参照の型を結びつける）
             let resolved_placeholder = placeholder_ty.apply_subst(&subst);
             let resolved_ty = ty.apply_subst(&subst);
@@ -959,11 +969,18 @@ impl Infer {
             );
         }
 
-        // root_pop: () -> Int (GC 未導入段階では no-op 互換)
-        env.insert(
-            "root_pop".to_string(),
-            TypeScheme::mono(Type::Fun(vec![], Box::new(Type::int()))),
-        );
+        // root_pop: forall a. () -> a (root stack から最新値を取り出す)
+        {
+            let a = self.var_gen.fresh_id();
+            env.insert(
+                "root_pop".to_string(),
+                TypeScheme {
+                    vars: vec![a],
+                    constraints: Vec::new(),
+                    ty: Type::Fun(vec![], Box::new(Type::Var(a))),
+                },
+            );
+        }
 
         // root_set: forall a. (Int, a) -> Int (既存 slot を別値へ差し替える)
         {
@@ -1501,15 +1518,15 @@ impl Infer {
             {
                 // impl メソッドの型推論
                 let specialized_name = format!("{trait_name}::{name}${type_name}");
-                let (subst, ty) = self.infer_defn(
+                let (subst, ty) = self.infer_defn(DefnInferenceInput {
                     env,
                     name,
-                    &specialized_name,
+                    expr_scope: &specialized_name,
                     params,
-                    return_ty.as_ref(),
+                    return_ty: return_ty.as_ref(),
                     body,
-                    *span,
-                )?;
+                    span: *span,
+                })?;
                 let final_ty = ty.apply_subst(&subst);
 
                 // 特化された型を環境に登録
@@ -1541,20 +1558,19 @@ impl Infer {
                 {
                     // デフォルト実装を型推論
                     let dummy_span = Span { start: 0, end: 0 };
-                    let result = self.infer_defn(
+                    let specialized_name = format!("{trait_name}::{trait_method_name}${type_name}");
+                    let result = self.infer_defn(DefnInferenceInput {
                         env,
-                        trait_method_name,
-                        &format!("{trait_name}::{trait_method_name}${type_name}"),
-                        &default_params,
-                        default_ret_ty.as_ref(),
-                        &default_body,
-                        dummy_span,
-                    );
+                        name: trait_method_name,
+                        expr_scope: &specialized_name,
+                        params: &default_params,
+                        return_ty: default_ret_ty.as_ref(),
+                        body: &default_body,
+                        span: dummy_span,
+                    });
 
                     if let Ok((subst, ty)) = result {
                         let final_ty = ty.apply_subst(&subst);
-                        let specialized_name =
-                            format!("{trait_name}::{trait_method_name}${type_name}");
                         let scheme = self.generalize(env, &final_ty);
                         env.insert(specialized_name, scheme);
                         method_types.push((trait_method_name.clone(), final_ty));
@@ -1800,14 +1816,17 @@ impl Infer {
     /// 関数定義の型推論
     fn infer_defn(
         &mut self,
-        env: &TypeEnv,
-        name: &str,
-        expr_scope: &str,
-        params: &[Param],
-        return_ty: Option<&TypeExpr>,
-        body: &Expr,
-        span: Span,
+        input: DefnInferenceInput<'_>,
     ) -> Result<(Substitution, Type), TypeError> {
+        let DefnInferenceInput {
+            env,
+            name,
+            expr_scope,
+            params,
+            return_ty,
+            body,
+            span,
+        } = input;
         let mut local_env = env.clone();
 
         // 再帰呼び出し用: 関数自身を型変数として環境に仮登録
@@ -2785,6 +2804,12 @@ mod tests {
     fn test_root_set_accepts_string_type() {
         let result = infer_one("(defn refresh [slot] (root_set slot \"hello\"))");
         assert_eq!(result, "(Int) -> Int");
+    }
+
+    #[test]
+    fn test_root_pop_can_be_constrained_to_string_type() {
+        let result = infer_one("(defn read-head [] (string-length (root_pop)))");
+        assert_eq!(result, "() -> Int");
     }
 
     #[test]

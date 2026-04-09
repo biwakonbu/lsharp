@@ -85,10 +85,16 @@
 
 ;; === 数値パース ===
 
-(defn parse-int-from-str [src pos end acc]
+(defn parse-int-digits-from-str [src pos end acc]
   (if (>= pos end) acc
     (let [digit (- (string-char-at src pos) 48)]
-      (parse-int-from-str src (+ pos 1) end (+ (* acc 10) digit)))))
+      (parse-int-digits-from-str src (+ pos 1) end (+ (* acc 10) digit)))))
+
+(defn parse-int-from-str [src pos end acc]
+  (if (>= pos end) acc
+    (if (== (string-char-at src pos) 45)
+      (- 0 (parse-int-digits-from-str src (+ pos 1) end 0))
+      (parse-int-digits-from-str src pos end acc))))
 
 (defn current-symbol-text-v3 [spans pos-ref src]
   (substring src (p-start spans pos-ref) (p-end spans pos-ref)))

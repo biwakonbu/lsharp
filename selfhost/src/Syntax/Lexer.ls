@@ -322,10 +322,12 @@
   (if (< (+ pos 1) len)
     (if (== (string-char-at src (+ pos 1)) 62) ;; >
       (+ (* 51 1000000) (+ pos 2)) ;; -> -> Arrow
-      (let [end (scan-symbol-end src (+ pos 1) len)
-        name (substring src pos end)
-        kind (classify-symbol name)]
-        (+ (* kind 1000000) end)))
+      (if (is-digit-char (string-char-at src (+ pos 1)))
+        (lex-number-token src pos len)
+        (let [end (scan-symbol-end src (+ pos 1) len)
+          name (substring src pos end)
+          kind (classify-symbol name)]
+          (+ (* kind 1000000) end))))
     (+ (* 20 1000000) (+ pos 1))))
 
 (defn lex-number-token [src pos len]

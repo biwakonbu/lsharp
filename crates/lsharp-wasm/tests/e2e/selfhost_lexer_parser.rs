@@ -3,6 +3,28 @@ use super::support::*;
 // =================================================// selfhost Lexer.ls 拡張テスト (Step 3)
 // =================================================
 #[test]
+fn test_e2e_selfhost_negative_int_parses_as_int() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "-1")
+        expr (vector-get program 0)]
+    (do
+      (print (vector-length program))
+      (print (vector-get expr 0))
+      (print (vector-get expr 1))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert_eq!(lines[0], "1", "program は 1 式を返すべき");
+    assert_eq!(lines[1], "1", "-1 は int node (tag=1) であるべき");
+    assert_eq!(lines[2], "-1", "-1 の値が保持されるべき");
+}
+
+#[test]
 fn test_e2e_selfhost_lexer_arrow_dot() {
     // Lexer.ls が -> と . を正しくトークン化できることを検証
     let source = r#"
