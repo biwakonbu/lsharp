@@ -2,9 +2,10 @@
 (import App.ModuleResolver)
 (import Syntax.Parser)
 (import Syntax.Lexer)
-(import Backend.Wasm.CompilerBase)
-(import Backend.Wasm.Compiler)
 (import Backend.Wasm.WasmEmit)
+(import Backend.Wasm.CompilerBase)
+(import Backend.Wasm.CompilerSplit)
+(import Backend.Wasm.Compiler)
 (defn find-first-defn-index [decls idx n]
   (if (>= idx n)
     -1

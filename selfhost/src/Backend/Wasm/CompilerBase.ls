@@ -703,3 +703,208 @@
       (string-key-hash-loop source (vector-get step 1) end (vector-get step 2)))))
 (defn normalize-map-key-hash [hash] (if (= hash 0) 2 (if (= hash -1) 1 hash)))
 (defn compile-string-key-hash-with-source [node source instrs] (let [start (vector-get node 1) end (vector-get node 2) hash (normalize-map-key-hash (string-key-hash-loop source start end 0))] (emit-to instrs (op-i64-const) hash)))
+(defn immediate-builtin-op [bop]
+  (or
+    (or
+      (or
+        (or (= bop (op-i64-add)) (= bop (op-i64-sub)))
+        (or (= bop (op-i64-mul)) (= bop (op-i64-div))))
+      (or
+        (or (= bop (op-i64-mod)) (= bop (op-i64-eq)))
+        (or (= bop (op-i64-gt)) (= bop (op-i64-lt)))))
+    (or
+      (or
+        (or (= bop (op-i64-ge)) (= bop (op-i64-le)))
+        (or (= bop (op-string-char-at)) (= bop (op-string-length))))
+      (or
+        (or (= bop (op-vector-length)) (= bop (op-map-size)))
+        (or
+          (or (= bop (op-map-contains)) (= bop (op-file-exists)))
+          (or
+            (or (= bop (op-print)) (= bop (op-root-push)))
+            (or (= bop (op-root-set)) (or (= bop 71) (= bop 72)))))))))
+(defn alloc-root-needed [expr]
+  (let [tag (vector-get expr 0)]
+    (if (= tag (tag-lit-int))
+      0
+      (if (= tag (tag-lit-bool))
+        0
+        (if (= tag (tag-apply))
+          (let [func-node (vector-get expr 1)
+            func-tag (vector-get func-node 0)
+            func-hash (if (= func-tag (tag-var)) (vector-get func-node 1) 0)
+            bop (builtin-opcode func-hash)]
+            (if (immediate-builtin-op bop) 0 1))
+          1)))))
+(defn simple-map-operand [expr] (let [tag (vector-get expr 0)] (if (= tag (tag-var)) true (if (= tag (tag-lit-int)) true (if (= tag (tag-lit-bool)) true (= tag (tag-lit-string)))))))
+(defn emit-root-push-drop [instrs local-idx]
+  (let [instrs1 (emit-to instrs (op-local-get) local-idx)]
+    (do
+      (root_push instrs1)
+      (let [instrs2 (emit-to instrs1 (op-root-push) 0)]
+        (do
+          (root_push instrs2)
+          (let [result (emit-to instrs2 (op-drop) 0)]
+            (do
+              (root_pop)
+              (root_pop)
+              result)))))))
+(defn emit-root-pop-drop [instrs]
+  (let [instrs1 (emit-to instrs (op-root-pop) 0)]
+    (do
+      (root_push instrs1)
+      (let [result (emit-to instrs1 (op-drop) 0)]
+        (do
+          (root_pop)
+          result)))))
+(defn emit-root-pop-drops-step [remaining instrs]
+  (if (<= remaining 0)
+    (make-compile-step-state 1 remaining instrs)
+    (make-compile-step-state 0 (- remaining 1) (emit-root-pop-drop instrs))))
+(defn continue-emit-root-pop-drops-step [state]
+  (if (= (vector-get state 0) 1)
+    state
+    (emit-root-pop-drops-step (vector-get state 1) (vector-get state 2))))
+(defn emit-root-pop-drops-step-8 [remaining instrs]
+  (let [step1 (emit-root-pop-drops-step remaining instrs)
+    step2 (continue-emit-root-pop-drops-step step1)
+    step3 (continue-emit-root-pop-drops-step step2)
+    step4 (continue-emit-root-pop-drops-step step3)
+    step5 (continue-emit-root-pop-drops-step step4)
+    step6 (continue-emit-root-pop-drops-step step5)
+    step7 (continue-emit-root-pop-drops-step step6)
+    step8 (continue-emit-root-pop-drops-step step7)]
+    step8))
+(defn continue-emit-root-pop-drops-step-8 [state]
+  (if (= (vector-get state 0) 1)
+    state
+    (emit-root-pop-drops-step-8 (vector-get state 1) (vector-get state 2))))
+(defn emit-root-pop-drops-step-64 [remaining instrs]
+  (let [step1 (emit-root-pop-drops-step-8 remaining instrs)
+    step2 (continue-emit-root-pop-drops-step-8 step1)
+    step3 (continue-emit-root-pop-drops-step-8 step2)
+    step4 (continue-emit-root-pop-drops-step-8 step3)
+    step5 (continue-emit-root-pop-drops-step-8 step4)
+    step6 (continue-emit-root-pop-drops-step-8 step5)
+    step7 (continue-emit-root-pop-drops-step-8 step6)
+    step8 (continue-emit-root-pop-drops-step-8 step7)]
+    step8))
+(defn emit-root-pop-drops [instrs remaining]
+  (let [step (emit-root-pop-drops-step-64 remaining instrs)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (emit-root-pop-drops (vector-get step 2) (vector-get step 1)))))
+(defn maybe-root-push-drop [instrs should-root local-idx] (if (= should-root 0) instrs (emit-root-push-drop instrs local-idx)))
+(defn maybe-root-pop-drop [instrs should-root] (if (= should-root 0) instrs (emit-root-pop-drop instrs)))
+(defn make-let-chain-next-value [node env instrs]
+  (do
+    (root_push node)
+    (root_push env)
+    (root_push instrs)
+    (let [base0 (push-object-vector (vector-new 3) node)]
+      (do
+        (root_push base0)
+        (let [base1 (push-object-vector base0 env)]
+          (do
+            (root_push base1)
+            (let [result (push-object-vector base1 instrs)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+(defn compile-let-chain-step-finish [name-hash body-expr init-instrs env rooted-count init-root]
+  (do
+    (root_push init-instrs)
+    (let [new-idx (+ 1 (map-size env))
+      next-instrs1 (emit-to init-instrs (op-local-set) new-idx)]
+      (do
+        (root_push next-instrs1)
+        (let [next-instrs2 (maybe-root-push-drop next-instrs1 init-root new-idx)]
+          (do
+            (root_push next-instrs2)
+            (let [next-env (env-bind env name-hash new-idx)]
+              (do
+                (root_push next-env)
+                (let [next-value (make-let-chain-next-value body-expr next-env next-instrs2)
+                  result (make-compile-step-state
+                    (if (= (vector-get body-expr 0) (tag-let)) 0 1)
+                    (+ rooted-count init-root)
+                    next-value)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
+(defn compile-defn-functions-step-finish [functions compiled-fn idx]
+  (let [updated-functions (push-object-vector functions compiled-fn)]
+    (do
+      (root_push updated-functions)
+      (let [next-state (make-compile-step-state 0 (+ idx 1) updated-functions)]
+        (do
+          (root_pop)
+          next-state)))))
+(defn compile-let-with-ftable-prepare [name-hash init-root init-instrs env]
+  (do
+    (root_push init-instrs)
+    (let [new-idx (+ 1 (map-size env))
+      instrs1 (emit-to init-instrs (op-local-set) new-idx)]
+      (do
+        (root_push instrs1)
+        (let [instrs2 (maybe-root-push-drop instrs1 init-root new-idx)]
+          (do
+            (root_push instrs2)
+            (let [new-env (env-bind env name-hash new-idx)]
+              (do
+                (root_push new-env)
+                (let [prep0 (push-object-vector (vector-new 2) new-env)]
+                  (do
+                    (root_push prep0)
+                    (let [result (push-object-vector prep0 instrs2)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        result))))))))))))
+(defn function-meta-ir [func-meta] (vector-get func-meta 0))
+(defn function-meta-param-count [func-meta] (vector-get func-meta 1))
+(defn function-meta-local-count [func-meta] (vector-get func-meta 2))
+(defn make-function-meta [param-count local-count ir]
+  (do
+    (root_push ir)
+    (let [meta1 (push-object-vector (vector-new 3) ir)]
+      (do
+        (root_push meta1)
+        (let [meta2 (push-int-vector meta1 param-count)]
+          (do
+            (root_push meta2)
+            (let [result (push-int-vector meta2 local-count)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+(defn make-register-state [done next-idx next-ftable next-func-idx]
+  (do
+    (root_push next-ftable)
+    (let [base0 (push-int-vector (vector-new 4) done)]
+      (do
+        (root_push base0)
+        (let [base1 (push-int-vector base0 next-idx)]
+          (do
+            (root_push base1)
+            (let [with-ftable (push-object-vector base1 next-ftable)]
+              (do
+                (root_push with-ftable)
+                (let [state (push-int-vector with-ftable next-func-idx)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    state))))))))))

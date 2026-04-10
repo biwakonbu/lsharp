@@ -590,6 +590,7 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "Constraints.ls" => "selfhost/src/Types/Constraints.ls",
         "MetadataCheck.ls" => "selfhost/src/Types/MetadataCheck.ls",
         "CompilerBase.ls" => "selfhost/src/Backend/Wasm/CompilerBase.ls",
+        "CompilerSplit.ls" => "selfhost/src/Backend/Wasm/CompilerSplit.ls",
         "Compiler.ls" => "selfhost/src/Backend/Wasm/Compiler.ls",
         "WasmEmit.ls" => "selfhost/src/Backend/Wasm/WasmEmit.ls",
         "Codegen.ls" => "selfhost/src/Backend/Wasm/Codegen.ls",
@@ -683,6 +684,7 @@ fn selfhost_module_raw(name: &str) -> &'static str {
         "TypeInferSmoke.ls" => include_str!("../../../../selfhost/src/Types/TypeInferSmoke.ls"),
         "TypeInfer.ls" => include_str!("../../../../selfhost/src/Types/TypeInfer.ls"),
         "CompilerBase.ls" => include_str!("../../../../selfhost/src/Backend/Wasm/CompilerBase.ls"),
+        "CompilerSplit.ls" => include_str!("../../../../selfhost/src/Backend/Wasm/CompilerSplit.ls"),
         "Compiler.ls" => include_str!("../../../../selfhost/src/Backend/Wasm/Compiler.ls"),
         "WasiBackend.ls" => include_str!("../../../../selfhost/src/Backend/Wasm/WasiBackend.ls"),
         "WasmEmit.ls" => include_str!("../../../../selfhost/src/Backend/Wasm/WasmEmit.ls"),
@@ -719,6 +721,8 @@ pub(crate) fn selfhost_module(name: &str) -> &'static str {
         "Compiler.ls" => concat!(
             include_str!("../../../../selfhost/src/Backend/Wasm/CompilerBase.ls"),
             "\n",
+            include_str!("../../../../selfhost/src/Backend/Wasm/CompilerSplit.ls"),
+            "\n",
             include_str!("../../../../selfhost/src/Backend/Wasm/Compiler.ls")
         ),
         other => selfhost_module_raw(other),
@@ -737,13 +741,23 @@ fn expand_selfhost_fixture_modules<'a>(modules: &'a [&'a str]) -> Vec<&'a str> {
     let mut expanded = modules.to_vec();
     let needs_compiler_base = expanded
         .iter()
-        .any(|name| matches!(*name, "Compiler.ls" | "CompilerMode.ls"));
+        .any(|name| matches!(*name, "CompilerSplit.ls" | "Compiler.ls" | "CompilerMode.ls"));
     if needs_compiler_base && !expanded.iter().any(|name| *name == "CompilerBase.ls") {
+        let insert_at = expanded
+            .iter()
+            .position(|name| matches!(*name, "CompilerSplit.ls" | "Compiler.ls" | "CompilerMode.ls"))
+            .unwrap_or(expanded.len());
+        expanded.insert(insert_at, "CompilerBase.ls");
+    }
+    let needs_compiler_split = expanded
+        .iter()
+        .any(|name| matches!(*name, "Compiler.ls" | "CompilerMode.ls"));
+    if needs_compiler_split && !expanded.iter().any(|name| *name == "CompilerSplit.ls") {
         let insert_at = expanded
             .iter()
             .position(|name| matches!(*name, "Compiler.ls" | "CompilerMode.ls"))
             .unwrap_or(expanded.len());
-        expanded.insert(insert_at, "CompilerBase.ls");
+        expanded.insert(insert_at, "CompilerSplit.ls");
     }
     expanded
 }
@@ -1027,6 +1041,11 @@ mod tests {
             "CompilerBase.ls は Backend/Wasm/CompilerBase.ls を指すべき"
         );
         assert!(
+            selfhost_source_path("CompilerSplit.ls")
+                .ends_with("selfhost/src/Backend/Wasm/CompilerSplit.ls"),
+            "CompilerSplit.ls は Backend/Wasm/CompilerSplit.ls を指すべき"
+        );
+        assert!(
             selfhost_source_path("WasmEmit.ls").ends_with("selfhost/src/Backend/Wasm/WasmEmit.ls"),
             "WasmEmit.ls は Backend/Wasm/WasmEmit.ls を指すべき"
         );
@@ -1039,7 +1058,9 @@ mod tests {
         assert!(selfhost_module("ModuleResolver.ls").contains("(module App.ModuleResolver)"));
         assert!(selfhost_module("CompilerMode.ls").contains("(module App.CompilerMode)"));
         assert!(selfhost_module("CompilerBase.ls").contains("(module Backend.Wasm.CompilerBase)"));
+        assert!(selfhost_module("CompilerSplit.ls").contains("(module Backend.Wasm.CompilerSplit)"));
         assert!(selfhost_module("Compiler.ls").contains("(module Backend.Wasm.CompilerBase)"));
+        assert!(selfhost_module("Compiler.ls").contains("(module Backend.Wasm.CompilerSplit)"));
         assert!(selfhost_module("PipelineSmoke.ls").contains("(module App.PipelineSmoke)"));
         assert!(
             selfhost_module("TypeInferFunctions.ls").contains("(module Types.TypeInferFunctions)")
@@ -1058,6 +1079,7 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first.as_ptr(), second.as_ptr());
         assert!(first.contains(selfhost_module("Cli.ls").trim()));
+        assert!(first.contains(selfhost_module("CompilerSplit.ls").trim()));
     }
 
     #[test]
