@@ -223,6 +223,10 @@ fn stack_safe_wasm_bytes_eq_helpers() -> &'static str {
 "#
 }
 
+fn with_stack_safe_wasm_bytes_eq_helpers(body: &str) -> String {
+    format!("{}\n{}", stack_safe_wasm_bytes_eq_helpers(), body)
+}
+
 fn assert_selfhost_direct_fixture_with_func_idx_is_deterministic(
     fixture_prefix: &str,
     file_name: &str,
@@ -1397,17 +1401,7 @@ fn test_e2e_selfhost_cli_compile_functions_data_with_cache_matches_fresh_compile
         ],
     );
 
-    let harness = r#"
-(defn wasm-bytes-eq-loop [left right idx n]
-  (if (>= idx n)
-    1
-    (if (= (vector-get left idx) (vector-get right idx))
-      (wasm-bytes-eq-loop left right (+ idx 1) n)
-      0)))
-(defn wasm-bytes-eq [left right]
-  (if (= (vector-length left) (vector-length right))
-    (wasm-bytes-eq-loop left right 0 (vector-length left))
-    0))
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
 (defn main []
   (let [cache-ref (ref-new (map-new))
         parse-count-ref (ref-new 0)
@@ -1432,7 +1426,7 @@ fn test_e2e_selfhost_cli_compile_functions_data_with_cache_matches_fresh_compile
       (print (wasm-bytes-eq wasm1 wasm2))
       (print (wasm-bytes-eq wasm2 fresh-wasm))
       0)))
-"#;
+"#);
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -1482,17 +1476,7 @@ fn test_e2e_selfhost_cli_direct_multifile_compile_is_deterministic() {
         ],
     );
 
-    let harness = r#"
-(defn wasm-bytes-eq-loop [left right idx n]
-  (if (>= idx n)
-    1
-    (if (= (vector-get left idx) (vector-get right idx))
-      (wasm-bytes-eq-loop left right (+ idx 1) n)
-      0)))
-(defn wasm-bytes-eq [left right]
-  (if (= (vector-length left) (vector-length right))
-    (wasm-bytes-eq-loop left right 0 (vector-length left))
-    0))
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
 (defn make-ir-fingerprint-state [done next-idx next-acc]
   (push-int-vector-local
     (push-int-vector-local
@@ -1646,7 +1630,7 @@ fn test_e2e_selfhost_cli_direct_multifile_compile_is_deterministic() {
       (print (vector-length wasm2))
       (print (wasm-bytes-eq wasm1 wasm2))
       0)))
-"#;
+"#);
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -1667,17 +1651,7 @@ fn test_e2e_selfhost_cli_direct_multifile_compile_is_deterministic() {
 fn test_e2e_selfhost_cli_direct_module_resolver_compile_is_deterministic() {
     let dir = selfhost_package_root();
 
-    let harness = r#"
-(defn wasm-bytes-eq-loop [left right idx n]
-  (if (>= idx n)
-    1
-    (if (= (vector-get left idx) (vector-get right idx))
-      (wasm-bytes-eq-loop left right (+ idx 1) n)
-      0)))
-(defn wasm-bytes-eq [left right]
-  (if (= (vector-length left) (vector-length right))
-    (wasm-bytes-eq-loop left right 0 (vector-length left))
-    0))
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
 (defn make-ir-fingerprint-state [done next-idx next-acc]
   (push-int-vector-local
     (push-int-vector-local
@@ -1893,7 +1867,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_compile_is_deterministic() {
       (print-ir-instr mismatch-ir-vec2 (+ mismatch-ir-idx 3))
       (print-ir-instr mismatch-ir-vec2 (+ mismatch-ir-idx 4))
       0)))
-"#;
+"#);
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -2027,17 +2001,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_without_import_scan_
         ],
     );
 
-    let harness = r#"
-(defn wasm-bytes-eq-loop [left right idx n]
-  (if (>= idx n)
-    1
-    (if (= (vector-get left idx) (vector-get right idx))
-      (wasm-bytes-eq-loop left right (+ idx 1) n)
-      0)))
-(defn wasm-bytes-eq [left right]
-  (if (= (vector-length left) (vector-length right))
-    (wasm-bytes-eq-loop left right 0 (vector-length left))
-    0))
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
 (defn compile-inline-file-state-no-import-scan [path func-idx]
   (let [src (read-file path)
         program (parse-program src)
@@ -2064,7 +2028,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_without_import_scan_
       (print (vector-length wasm2))
       (print (wasm-bytes-eq wasm1 wasm2))
       0)))
-"#;
+"#);
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -2091,17 +2055,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_pair_registration_direct_compile
         ],
     );
 
-    let harness = r#"
-(defn wasm-bytes-eq-loop [left right idx n]
-  (if (>= idx n)
-    1
-    (if (= (vector-get left idx) (vector-get right idx))
-      (wasm-bytes-eq-loop left right (+ idx 1) n)
-      0)))
-(defn wasm-bytes-eq [left right]
-  (if (= (vector-length left) (vector-length right))
-    (wasm-bytes-eq-loop left right 0 (vector-length left))
-    0))
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
 (defn compile-pair-registration-direct-state [path func-idx]
   (let [src (read-file path)
         program (parse-program src)
@@ -2127,7 +2081,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_pair_registration_direct_compile
       (print (vector-length wasm2))
       (print (wasm-bytes-eq wasm1 wasm2))
       0)))
-"#;
+"#);
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -2207,6 +2161,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_pair_creation_direct_compile_is_
 }
 
 #[test]
+#[ignore = "temporary diagnostic harness for local mismatch inspection"]
 fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_mismatch_probe() {
     let dir = cli_test_fixture_dir("module_resolver_full_inline_mismatch_probe");
     write_cli_fixture_files(
@@ -2217,17 +2172,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_mismatch_probe() {
         ],
     );
 
-    let harness = r#"
-(defn wasm-bytes-eq-loop [left right idx n]
-  (if (>= idx n)
-    1
-    (if (= (vector-get left idx) (vector-get right idx))
-      (wasm-bytes-eq-loop left right (+ idx 1) n)
-      0)))
-(defn wasm-bytes-eq [left right]
-  (if (= (vector-length left) (vector-length right))
-    (wasm-bytes-eq-loop left right 0 (vector-length left))
-    0))
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
 (defn make-ir-fingerprint-state [done next-idx next-acc]
   (push-int-vector-local
     (push-int-vector-local
@@ -2352,7 +2297,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_mismatch_probe() {
       (print (if (< mismatch-ir-idx 0) -1 (vector-get (vector-get mismatch-ir2 mismatch-ir-idx) 0)))
       (print (if (< mismatch-ir-idx 0) -1 (vector-get (vector-get mismatch-ir2 mismatch-ir-idx) 1)))
       0)))
-"#;
+"#);
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -2446,17 +2391,7 @@ fn test_e2e_selfhost_cli_compile_file_functions_data_module_resolver_is_determin
         ],
     );
 
-    let harness = r#"
-(defn wasm-bytes-eq-loop [left right idx n]
-  (if (>= idx n)
-    1
-    (if (= (vector-get left idx) (vector-get right idx))
-      (wasm-bytes-eq-loop left right (+ idx 1) n)
-      0)))
-(defn wasm-bytes-eq [left right]
-  (if (= (vector-length left) (vector-length right))
-    (wasm-bytes-eq-loop left right 0 (vector-length left))
-    0))
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
 (defn main []
   (let [payload1 (compile-file-functions-data "src/App/ModuleResolver.ls")
         payload2 (compile-file-functions-data "src/App/ModuleResolver.ls")
@@ -2471,7 +2406,7 @@ fn test_e2e_selfhost_cli_compile_file_functions_data_module_resolver_is_determin
       (print (vector-length wasm2))
       (print (wasm-bytes-eq wasm1 wasm2))
       0)))
-"#;
+"#);
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -2507,18 +2442,8 @@ fn test_e2e_selfhost_cli_direct_module_resolver_register_defns_is_deterministic(
         .to_string_lossy()
         .replace('\\', "\\\\");
 
-    let harness = format!(
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(&format!(
         r#"
-(defn wasm-bytes-eq-loop [left right idx n]
-  (if (>= idx n)
-    1
-    (if (= (vector-get left idx) (vector-get right idx))
-      (wasm-bytes-eq-loop left right (+ idx 1) n)
-      0)))
-(defn wasm-bytes-eq [left right]
-  (if (= (vector-length left) (vector-length right))
-    (wasm-bytes-eq-loop left right 0 (vector-length left))
-    0))
 (defn compile-file-state [path]
   (let [src (read-file path)
         program (parse-program src)
@@ -2544,7 +2469,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_register_defns_is_deterministic(
       (print (wasm-bytes-eq wasm1 wasm2))
       0)))
 "#
-    );
+    ));
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
@@ -2580,18 +2505,8 @@ fn test_e2e_selfhost_cli_direct_module_resolver_single_pair_pipeline_is_determin
         .to_string_lossy()
         .replace('\\', "\\\\");
 
-    let harness = format!(
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(&format!(
         r#"
-(defn wasm-bytes-eq-loop [left right idx n]
-  (if (>= idx n)
-    1
-    (if (= (vector-get left idx) (vector-get right idx))
-      (wasm-bytes-eq-loop left right (+ idx 1) n)
-      0)))
-(defn wasm-bytes-eq [left right]
-  (if (= (vector-length left) (vector-length right))
-    (wasm-bytes-eq-loop left right 0 (vector-length left))
-    0))
 (defn compile-file-state [path]
   (let [src (read-file path)
         program (parse-program src)
@@ -2638,7 +2553,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_single_pair_pipeline_is_determin
       (print (wasm-bytes-eq wasm1 wasm2))
       0)))
 "#
-    );
+    ));
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
@@ -2673,17 +2588,7 @@ fn test_e2e_selfhost_cli_compile_file_pairs_with_cache_pipeline_is_deterministic
         ],
     );
 
-    let harness = r#"
-(defn wasm-bytes-eq-loop [left right idx n]
-  (if (>= idx n)
-    1
-    (if (= (vector-get left idx) (vector-get right idx))
-      (wasm-bytes-eq-loop left right (+ idx 1) n)
-      0)))
-(defn wasm-bytes-eq [left right]
-  (if (= (vector-length left) (vector-length right))
-    (wasm-bytes-eq-loop left right 0 (vector-length left))
-    0))
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
 (defn compile-file-state [path]
   (let [cache-ref (ref-new (map-new))
         parse-count-ref (ref-new 0)
@@ -2725,7 +2630,7 @@ fn test_e2e_selfhost_cli_compile_file_pairs_with_cache_pipeline_is_deterministic
       (print (vector-length wasm2))
       (print (wasm-bytes-eq wasm1 wasm2))
       0)))
-"#;
+"#);
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -2760,17 +2665,7 @@ fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_pipeline_is_deterministic
         ],
     );
 
-    let harness = r#"
-(defn wasm-bytes-eq-loop [left right idx n]
-  (if (>= idx n)
-    1
-    (if (= (vector-get left idx) (vector-get right idx))
-      (wasm-bytes-eq-loop left right (+ idx 1) n)
-      0)))
-(defn wasm-bytes-eq [left right]
-  (if (= (vector-length left) (vector-length right))
-    (wasm-bytes-eq-loop left right 0 (vector-length left))
-    0))
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
 (defn compile-file-state [path]
   (let [cache-ref (ref-new (map-new))
         parse-count-ref (ref-new 0)
@@ -2816,7 +2711,7 @@ fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_pipeline_is_deterministic
       (print (vector-length wasm2))
       (print (wasm-bytes-eq wasm1 wasm2))
       0)))
-"#;
+"#);
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -2901,17 +2796,7 @@ fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_matches_manual_pair_pipel
         ],
     );
 
-    let harness = r#"
-(defn wasm-bytes-eq-loop [left right idx n]
-  (if (>= idx n)
-    1
-    (if (= (vector-get left idx) (vector-get right idx))
-      (wasm-bytes-eq-loop left right (+ idx 1) n)
-      0)))
-(defn wasm-bytes-eq [left right]
-  (if (= (vector-length left) (vector-length right))
-    (wasm-bytes-eq-loop left right 0 (vector-length left))
-    0))
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
 (defn compile-pair-state [pair]
   (do
     (root_push pair)
@@ -2939,10 +2824,7 @@ fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_matches_manual_pair_pipel
                         (root_pop)
                         (root_pop)
                         (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        payload2)))))))))))))
+                        payload2))))))))))))
 (defn main []
   (let [cache-ref (ref-new (map-new))
         parse-count-ref (ref-new 0)
@@ -2963,7 +2845,7 @@ fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_matches_manual_pair_pipel
       (print (vector-length manual-wasm))
       (print (wasm-bytes-eq loader-wasm manual-wasm))
       0)))
-"#;
+"#);
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -2998,17 +2880,7 @@ fn test_e2e_selfhost_cli_cache_miss_side_effects_match_manual_pair_pipeline() {
         ],
     );
 
-    let harness = r#"
-(defn wasm-bytes-eq-loop [left right idx n]
-  (if (>= idx n)
-    1
-    (if (= (vector-get left idx) (vector-get right idx))
-      (wasm-bytes-eq-loop left right (+ idx 1) n)
-      0)))
-(defn wasm-bytes-eq [left right]
-  (if (= (vector-length left) (vector-length right))
-    (wasm-bytes-eq-loop left right 0 (vector-length left))
-    0))
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
 (defn compile-pair-state [pair]
   (do
     (root_push pair)
@@ -3036,10 +2908,7 @@ fn test_e2e_selfhost_cli_cache_miss_side_effects_match_manual_pair_pipeline() {
                         (root_pop)
                         (root_pop)
                         (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        payload2)))))))))))))
+                        payload2))))))))))))
 (defn compile-manual-state [path]
   (let [src (read-file path)
         program (parse-program src)
@@ -3075,7 +2944,7 @@ fn test_e2e_selfhost_cli_cache_miss_side_effects_match_manual_pair_pipeline() {
       (print (vector-length sidefx-wasm))
       (print (wasm-bytes-eq plain-wasm sidefx-wasm))
       0)))
-"#;
+"#);
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -3110,17 +2979,7 @@ fn test_e2e_selfhost_cli_parse_src_decl_pair_side_effect_matches_manual_pair_pip
         ],
     );
 
-    let harness = r#"
-(defn wasm-bytes-eq-loop [left right idx n]
-  (if (>= idx n)
-    1
-    (if (= (vector-get left idx) (vector-get right idx))
-      (wasm-bytes-eq-loop left right (+ idx 1) n)
-      0)))
-(defn wasm-bytes-eq [left right]
-  (if (= (vector-length left) (vector-length right))
-    (wasm-bytes-eq-loop left right 0 (vector-length left))
-    0))
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
 (defn compile-pair-state [pair]
   (do
     (root_push pair)
@@ -3148,10 +3007,7 @@ fn test_e2e_selfhost_cli_parse_src_decl_pair_side_effect_matches_manual_pair_pip
                         (root_pop)
                         (root_pop)
                         (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        payload2)))))))))))))
+                        payload2))))))))))))
 (defn compile-manual-state [path]
   (let [src (read-file path)
         program (parse-program src)
@@ -3181,7 +3037,7 @@ fn test_e2e_selfhost_cli_parse_src_decl_pair_side_effect_matches_manual_pair_pip
       (print (vector-length parsed-wasm))
       (print (wasm-bytes-eq plain-wasm parsed-wasm))
       0)))
-"#;
+"#);
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -3437,18 +3293,8 @@ fn test_e2e_selfhost_cli_module_resolver_after_source_fingerprint_is_determinist
         .to_string_lossy()
         .replace('\\', "\\\\");
 
-    let harness = format!(
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(&format!(
         r#"
-(defn wasm-bytes-eq-loop [left right idx n]
-  (if (>= idx n)
-    1
-    (if (= (vector-get left idx) (vector-get right idx))
-      (wasm-bytes-eq-loop left right (+ idx 1) n)
-      0)))
-(defn wasm-bytes-eq [left right]
-  (if (= (vector-length left) (vector-length right))
-    (wasm-bytes-eq-loop left right 0 (vector-length left))
-    0))
 (defn compile-file-state [path]
   (let [src (read-file path)
         fingerprint (source-fingerprint src)
@@ -3497,7 +3343,7 @@ fn test_e2e_selfhost_cli_module_resolver_after_source_fingerprint_is_determinist
       (print (wasm-bytes-eq wasm1 wasm2))
       0)))
 "#
-    );
+    ));
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
@@ -3537,18 +3383,8 @@ fn test_e2e_selfhost_cli_module_resolver_after_src_decl_cache_insert_is_determin
         .to_string_lossy()
         .replace('\\', "\\\\");
 
-    let harness = format!(
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(&format!(
         r#"
-(defn wasm-bytes-eq-loop [left right idx n]
-  (if (>= idx n)
-    1
-    (if (= (vector-get left idx) (vector-get right idx))
-      (wasm-bytes-eq-loop left right (+ idx 1) n)
-      0)))
-(defn wasm-bytes-eq [left right]
-  (if (= (vector-length left) (vector-length right))
-    (wasm-bytes-eq-loop left right 0 (vector-length left))
-    0))
 (defn compile-file-state [path]
   (let [src (read-file path)
         fingerprint (source-fingerprint src)
@@ -3604,7 +3440,7 @@ fn test_e2e_selfhost_cli_module_resolver_after_src_decl_cache_insert_is_determin
       (print (wasm-bytes-eq wasm1 wasm2))
       0)))
 "#
-    );
+    ));
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run(&combined);
@@ -3640,18 +3476,8 @@ fn test_e2e_selfhost_cli_module_resolver_after_src_decl_cache_lookup_is_determin
         .to_string_lossy()
         .replace('\\', "\\\\");
 
-    let harness = format!(
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(&format!(
         r#"
-(defn wasm-bytes-eq-loop [left right idx n]
-  (if (>= idx n)
-    1
-    (if (= (vector-get left idx) (vector-get right idx))
-      (wasm-bytes-eq-loop left right (+ idx 1) n)
-      0)))
-(defn wasm-bytes-eq [left right]
-  (if (= (vector-length left) (vector-length right))
-    (wasm-bytes-eq-loop left right 0 (vector-length left))
-    0))
 (defn compile-file-state [path]
   (let [src (read-file path)
         fingerprint (source-fingerprint src)
@@ -3704,7 +3530,7 @@ fn test_e2e_selfhost_cli_module_resolver_after_src_decl_cache_lookup_is_determin
       (print (wasm-bytes-eq wasm1 wasm2))
       0)))
 "#
-    );
+    ));
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run(&combined);

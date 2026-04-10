@@ -17,6 +17,27 @@ fn run_parser_macroexpand_runtime(harness: &str) -> String {
     ))
 }
 
+/// TEST-SYNTAX-02p: 深い let 連鎖でも parse-program がトラップしない
+#[test]
+fn test_e2e_selfhost_parser_deep_let_chain() {
+    let mut nested_expr = "0".to_string();
+    for i in (0..512).rev() {
+        nested_expr = format!("(let [v{i:04} {i}] {nested_expr})");
+    }
+    let stage2_src = format!("(defn main [] {nested_expr})");
+    let harness = format!(
+        concat!(
+            "(defn main []\n",
+            "  (let [program (parse-program \"{src}\")]\n",
+            "    (do (print (vector-length program)) 0)))\n",
+        ),
+        src = stage2_src,
+    );
+
+    let output = run_parser_runtime(&harness);
+    assert_eq!(output.trim(), "1", "深い let 連鎖でも 1 decl を返すべき");
+}
+
 /// TEST-SYNTAX-02g: defmacro が canonical tag でパースされ collect-macros に拾われる
 ///
 /// selfhost Parser が `(defmacro ...)` を ast-defmacro として返し、

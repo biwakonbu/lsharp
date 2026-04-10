@@ -9,6 +9,9 @@
 (defn wasm-version-1 [] 0)
 (defn wasm-version-2 [] 0)
 (defn wasm-version-3 [] 0)
+(defn function-meta-ir [func-meta] (vector-get func-meta 0))
+(defn function-meta-param-count [func-meta] (vector-get func-meta 1))
+(defn function-meta-local-count [func-meta] (vector-get func-meta 2))
 (defn section-type [] 1)
 (defn section-import [] 2)
 (defn section-function [] 3)
@@ -122,7 +125,7 @@
   (if (>= idx func-count)
     (make-loop-step-state 1 idx dst)
     (let [func-meta (vector-get functions idx)
-      param-count (vector-get func-meta 0)
+      param-count (function-meta-param-count func-meta)
       body0 (emit-byte dst 96)
       body1 (emit-leb128 body0 param-count)
       body2 (append-i64-param-types body1 0 param-count)
@@ -339,10 +342,21 @@
     step8))
 
 (defn append-byte-vector [dst src idx count]
-  (let [step (append-byte-vector-step-512 dst src idx count)]
-    (if (= (vector-get step 0) 1)
-      (vector-get step 2)
-      (append-byte-vector (vector-get step 2) src (vector-get step 1) count))))
+  (do
+    (root_push dst)
+    (root_push src)
+    (let [step (append-byte-vector-step-512 dst src idx count)]
+      (do
+        (root_push step)
+        (let [result
+            (if (= (vector-get step 0) 1)
+              (vector-get step 2)
+              (append-byte-vector (vector-get step 2) src (vector-get step 1) count))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 
 (defn append-ir-instrs-step-with-if-state [body ir-instrs idx count if-depth if-flags]
   (if (>= idx count)
@@ -405,19 +419,49 @@
     step8))
 
 (defn append-ir-instrs-with-if-state [body ir-instrs idx count if-depth if-flags]
-  (let [step (append-ir-instrs-step-64-with-if-state body ir-instrs idx count if-depth if-flags)]
-    (if (= (vector-get step 0) 1)
-      (vector-get step 2)
-      (append-ir-instrs-with-if-state
-        (vector-get step 2)
-        ir-instrs
-        (vector-get step 1)
-        count
-        (vector-get step 3)
-        (vector-get step 4)))))
+  (do
+    (root_push body)
+    (root_push ir-instrs)
+    (let [step (append-ir-instrs-step-64-with-if-state body ir-instrs idx count if-depth if-flags)]
+      (do
+        (root_push step)
+        (let [result
+            (if (= (vector-get step 0) 1)
+              (vector-get step 2)
+              (append-ir-instrs-with-if-state
+                (vector-get step 2)
+                ir-instrs
+                (vector-get step 1)
+                count
+                (vector-get step 3)
+                (vector-get step 4)))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 (defn append-ir-instrs [body ir-instrs idx count] (append-ir-instrs-with-if-state body ir-instrs idx count 0 0))
-(defn build-function-body [ir-instrs] (let [body0 (emit-byte (vector-new 64) 0) body1 (append-ir-instrs body0 ir-instrs 0 (vector-length ir-instrs))] (emit-byte body1 11)))
-(defn build-function-body-function [func-meta] (let [local-count (vector-get func-meta 1) ir-instrs (vector-get func-meta 2) body0 (if (= local-count 0) (emit-byte (vector-new 64) 0) (emit-byte (emit-leb128 (emit-leb128 (vector-new 64) 1) local-count) 126)) body1 (append-ir-instrs body0 ir-instrs 0 (vector-length ir-instrs))] (emit-byte body1 11)))
+(defn build-function-body [ir-instrs]
+  (do
+    (root_push ir-instrs)
+    (let [body0 (emit-byte (vector-new 64) 0)
+      body1 (append-ir-instrs body0 ir-instrs 0 (vector-length ir-instrs))]
+      (do
+        (root_pop)
+        (emit-byte body1 11)))))
+(defn build-function-body-function [func-meta]
+  (do
+    (root_push func-meta)
+    (let [local-count (function-meta-local-count func-meta)
+      ir-instrs (function-meta-ir func-meta)]
+      (do
+        (root_push ir-instrs)
+        (let [body0 (if (= local-count 0) (emit-byte (vector-new 64) 0) (emit-byte (emit-leb128 (emit-leb128 (vector-new 64) 1) local-count) 126))
+          body1 (append-ir-instrs body0 ir-instrs 0 (vector-length ir-instrs))]
+          (do
+            (root_pop)
+            (root_pop)
+            (emit-byte body1 11)))))))
 (defn append-code-bodies-step [body ir-list idx func-count]
   (if (>= idx func-count)
     (make-loop-step-state 1 idx body)
@@ -475,10 +519,21 @@
     step8))
 
 (defn append-code-bodies [body ir-list idx func-count]
-  (let [step (append-code-bodies-step-512 body ir-list idx func-count)]
-    (if (= (vector-get step 0) 1)
-      (vector-get step 2)
-      (append-code-bodies (vector-get step 2) ir-list (vector-get step 1) func-count))))
+  (do
+    (root_push body)
+    (root_push ir-list)
+    (let [step (append-code-bodies-step-512 body ir-list idx func-count)]
+      (do
+        (root_push step)
+        (let [result
+            (if (= (vector-get step 0) 1)
+              (vector-get step 2)
+              (append-code-bodies (vector-get step 2) ir-list (vector-get step 1) func-count))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 (defn emit-code-section-list [ir-list] (let [func-count (vector-length ir-list) body0 (emit-leb128 (vector-new 64) func-count) body1 (append-code-bodies body0 ir-list 0 func-count) body-size (vector-length body1) result0 (emit-byte (vector-new 64) 10) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body1 0 body-size)))
 (defn append-code-bodies-functions-step [body functions idx func-count]
   (if (>= idx func-count)
@@ -537,10 +592,21 @@
     step8))
 
 (defn append-code-bodies-functions [body functions idx func-count]
-  (let [step (append-code-bodies-functions-step-512 body functions idx func-count)]
-    (if (= (vector-get step 0) 1)
-      (vector-get step 2)
-      (append-code-bodies-functions (vector-get step 2) functions (vector-get step 1) func-count))))
+  (do
+    (root_push body)
+    (root_push functions)
+    (let [step (append-code-bodies-functions-step-512 body functions idx func-count)]
+      (do
+        (root_push step)
+        (let [result
+            (if (= (vector-get step 0) 1)
+              (vector-get step 2)
+              (append-code-bodies-functions (vector-get step 2) functions (vector-get step 1) func-count))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 (defn emit-code-section-functions [functions] (let [func-count (vector-length functions) body0 (emit-leb128 (vector-new 64) func-count) body1 (append-code-bodies-functions body0 functions 0 func-count) body-size (vector-length body1) result0 (emit-byte (vector-new 64) 10) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body1 0 body-size)))
 (defn emit-code-section-functions-wasi [functions] (let [func-count (vector-length functions) body0 (emit-leb128 (vector-new 64) (+ func-count 1)) body1 (append-code-bodies-functions body0 functions 0 func-count) wrapper0 (emit-byte (vector-new 8) 0) wrapper1 (emit-byte wrapper0 16) wrapper2 (emit-leb128 wrapper1 (- func-count 1)) wrapper3 (emit-byte wrapper2 26) wrapper4 (emit-byte wrapper3 11) wrapper-size (vector-length wrapper4) body2 (emit-leb128 body1 wrapper-size) body3 (append-byte-vector body2 wrapper4 0 wrapper-size) body-size (vector-length body3) result0 (emit-byte (vector-new 64) 10) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body3 0 body-size)))
 ;; 10-import (alloc/print/read-file/command-line-arg/string-concat/substring/file-exists?/root_push/root_pop/root_set) + memory + data モデル用セクション生成関数群
@@ -754,5 +820,21 @@
                                                       (emit-ref-set-instr bytes operand)
                                                       (emit-runtime-ir-instr bytes opcode operand))))))))))))))))))))))))))))
 
-(defn emit-data-section [data-bytes offset] (let [data-len (vector-length data-bytes) body0 (emit-byte (vector-new 64) 1) body1 (emit-byte body0 0) body2 (emit-byte body1 65) body3 (emit-leb128 body2 offset) body4 (emit-byte body3 11) body5 (emit-leb128 body4 data-len) body-vec (append-byte-vector body5 data-bytes 0 data-len) body-size (vector-length body-vec) result0 (emit-byte (vector-new 64) 11) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body-vec 0 body-size)))
+(defn emit-data-section [data-bytes offset]
+  (do
+    (root_push data-bytes)
+    (let [data-len (vector-length data-bytes)
+      body0 (emit-byte (vector-new 64) 1)
+      body1 (emit-byte body0 0)
+      body2 (emit-byte body1 65)
+      body3 (emit-leb128 body2 offset)
+      body4 (emit-byte body3 11)
+      body5 (emit-leb128 body4 data-len)
+      body-vec (append-byte-vector body5 data-bytes 0 data-len)
+      body-size (vector-length body-vec)
+      result0 (emit-byte (vector-new 64) 11)
+      result1 (emit-leb128 result0 body-size)]
+      (do
+        (root_pop)
+        (append-byte-vector result1 body-vec 0 body-size)))))
 (defn main [] (let [header (emit-header) type-sec (emit-type-section-main) leb5 (leb128-u 5) leb300 (leb128-u 300) sleb-pos (leb128-s 5) sleb-neg1 (leb128-s -1) sleb-neg128 (leb128-s -128)] (do (print (vector-length header)) (print (vector-get header 0)) (print (vector-get header 1)) (print (vector-get header 2)) (print (vector-get header 3)) (print (vector-get header 4)) (print (vector-length type-sec)) (print (vector-get type-sec 0)) (print (vector-get type-sec 1)) (print (vector-get type-sec 2)) (print (vector-get type-sec 3)) (print (vector-get leb5 0)) (print (vector-get leb300 0)) (print (vector-get leb300 1)) (print (vector-get sleb-pos 0)) (print (vector-length sleb-neg1)) (print (vector-get sleb-neg1 0)) 0)))

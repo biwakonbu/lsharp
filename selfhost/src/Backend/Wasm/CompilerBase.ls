@@ -1,0 +1,705 @@
+(module Backend.Wasm.CompilerBase)
+(defn tag-lit-int [] 1)
+(defn tag-lit-bool [] 2)
+(defn tag-lit-string [] 3)
+(defn tag-var [] 4)
+(defn tag-apply [] 5)
+(defn tag-if [] 6)
+(defn tag-let [] 7)
+(defn tag-lambda [] 8)
+(defn tag-do [] 9)
+(defn tag-match [] 10)
+(defn tag-defn [] 20)
+(defn op-i64-const [] 1)
+(defn op-local-get [] 10)
+(defn op-local-set [] 11)
+(defn op-i64-add [] 20)
+(defn op-i64-sub [] 21)
+(defn op-i64-mul [] 22)
+(defn op-i64-div [] 23)
+(defn op-i64-mod [] 24)
+(defn op-i64-eq [] 30)
+(defn op-i64-gt [] 31)
+(defn op-i64-lt [] 32)
+(defn op-i64-ge [] 33)
+(defn op-i64-le [] 34)
+(defn op-call [] 40)
+(defn op-if [] 41)
+(defn op-end [] 43)
+(defn op-drop [] 44)
+(defn op-string-char-at [] 50)
+(defn op-string-length [] 51)
+(defn op-vector-length [] 52)
+(defn op-vector-get [] 53)
+(defn op-vector-new [] 54)
+(defn op-vector-push [] 55)
+(defn op-ref-new [] 56)
+(defn op-ref-get [] 57)
+(defn op-ref-set [] 58)
+(defn op-print [] 59)
+(defn op-map-new [] 60)
+(defn op-map-size [] 61)
+(defn op-map-insert [] 62)
+(defn op-map-get [] 63)
+(defn op-read-file [] 64)
+(defn op-map-contains [] 65)
+(defn op-map-remove [] 66)
+(defn op-command-line-arg [] 67)
+(defn op-runtime-hash-string [] 68)
+(defn op-substring [] 69)
+(defn op-string-concat [] 70)
+(defn op-file-exists [] 73)
+(defn op-root-push [] 74)
+(defn op-root-pop [] 75)
+(defn op-root-set [] 76)
+(defn builtin-add [] 43)
+(defn builtin-sub [] 45)
+(defn builtin-mul [] 42)
+(defn builtin-div [] 47)
+(defn builtin-eq [] 61)
+(defn builtin-gt [] 62)
+(defn builtin-lt [] 60)
+(defn builtin-mod [] 37)
+(defn builtin-string-char-at [] 6233512424790686798)
+(defn builtin-string-length [] 1391193567100747810)
+(defn builtin-vector-length [] 3361052332089172656)
+(defn builtin-vector-get [] 3208847393524684)
+(defn builtin-vector-new [] 3208847393531414)
+(defn builtin-vector-push [] 99474269199548772)
+(defn builtin-ref-new [] 104162612582)
+(defn builtin-ref-get [] 104162605852)
+(defn builtin-ref-set [] 104162617384)
+(defn builtin-print [] 106934957)
+(defn builtin-map-new [] 99619812783)
+(defn builtin-map-size [] 3088214349266)
+(defn builtin-map-get [] 99619806053)
+(defn builtin-map-insert [] 2967773707765834)
+(defn builtin-read-file [] 100097347767123)
+(defn builtin-map-contains [] (- 0 3820778934353407281))
+(defn builtin-map-remove [] 2967773956947477)
+(defn builtin-command-line-arg [] 4333701572691766591)
+(defn builtin-file-exists [] 2680668565995926546)
+(defn builtin-root-push [] 100385403511895)
+(defn builtin-root-pop [] 3238238822772)
+(defn builtin-root-set [] 3238238825349)
+(defn builtin-basic-opcode [name-hash]
+  (if (= name-hash (builtin-add))
+    (op-i64-add)
+    (if (= name-hash (builtin-sub))
+      (op-i64-sub)
+      (if (= name-hash (builtin-mul))
+        (op-i64-mul)
+        (if (= name-hash (builtin-div))
+          (op-i64-div)
+          (if (= name-hash (builtin-mod))
+            24
+            (if (= name-hash (builtin-eq))
+              (op-i64-eq)
+              (if (= name-hash (builtin-gt))
+                (op-i64-gt)
+                (if (= name-hash (builtin-lt))
+                  (op-i64-lt)
+                  (if (= name-hash 1983)
+                    (op-i64-ge)
+                    (if (= name-hash 1921)
+                      (op-i64-le)
+                      (if (= name-hash 1952)
+                        (op-i64-eq)
+                        0))))))))))))
+
+(defn builtin-string-opcode [name-hash]
+  (if (= name-hash (builtin-string-char-at))
+    (op-string-char-at)
+    (if (= name-hash (builtin-string-length))
+      (op-string-length)
+      (if (= name-hash (builtin-print))
+        (op-print)
+        (if (= name-hash 1391193566852316240)
+          (op-string-concat)
+          (if (= name-hash 101391823498833)
+            (op-substring)
+            0))))))
+
+(defn builtin-vector-ref-opcode [name-hash]
+  (if (= name-hash (builtin-vector-length))
+    (op-vector-length)
+    (if (= name-hash (builtin-vector-get))
+      (op-vector-get)
+      (if (= name-hash (builtin-vector-new))
+        (op-vector-new)
+        (if (= name-hash (builtin-vector-push))
+          (op-vector-push)
+          (if (= name-hash (builtin-ref-new))
+            (op-ref-new)
+            (if (= name-hash (builtin-ref-get))
+              (op-ref-get)
+              (if (= name-hash (builtin-ref-set))
+                (op-ref-set)
+                0))))))))
+
+(defn builtin-map-core-opcode [name-hash]
+  (if (= name-hash (builtin-map-new))
+    (op-map-new)
+    (if (= name-hash (builtin-map-size))
+      (op-map-size)
+      (if (= name-hash (builtin-map-get))
+        (op-map-get)
+        (if (= name-hash (builtin-map-insert))
+          (op-map-insert)
+          0)))))
+
+(defn builtin-io-opcode [name-hash]
+  (if (= name-hash (builtin-read-file))
+    (op-read-file)
+    (if (= name-hash (builtin-command-line-arg))
+      (op-command-line-arg)
+      (if (= name-hash (builtin-file-exists))
+        (op-file-exists)
+        0))))
+
+(defn builtin-map-extra-opcode [name-hash]
+  (if (= name-hash (builtin-map-contains))
+    (op-map-contains)
+    (if (= name-hash (builtin-map-remove))
+      (op-map-remove)
+      0)))
+
+(defn builtin-map-runtime-opcode [name-hash]
+  (let [core-op (builtin-map-core-opcode name-hash)]
+    (if (> core-op 0)
+      core-op
+      (let [io-op (builtin-io-opcode name-hash)]
+        (if (> io-op 0)
+          io-op
+          (builtin-map-extra-opcode name-hash))))))
+
+(defn builtin-logic-opcode [name-hash]
+  (if (= name-hash 96727)
+    71
+    (if (= name-hash 3555)
+      72
+      0)))
+
+(defn builtin-root-opcode [name-hash]
+  (if (= name-hash (builtin-root-push))
+    (op-root-push)
+    (if (= name-hash (builtin-root-pop))
+      (op-root-pop)
+      (if (= name-hash (builtin-root-set))
+        (op-root-set)
+        0))))
+
+(defn builtin-runtime-opcode [name-hash]
+  (let [string-op (builtin-string-opcode name-hash)]
+    (if (> string-op 0)
+      string-op
+      (let [vector-op (builtin-vector-ref-opcode name-hash)]
+        (if (> vector-op 0)
+          vector-op
+          (let [map-op (builtin-map-runtime-opcode name-hash)]
+            (if (> map-op 0)
+              map-op
+              (let [logic-op (builtin-logic-opcode name-hash)]
+                (if (> logic-op 0)
+                  logic-op
+                  (builtin-root-opcode name-hash))))))))))
+
+(defn builtin-opcode [name-hash]
+  (let [basic (builtin-basic-opcode name-hash)]
+    (if (> basic 0)
+      basic
+      (builtin-runtime-opcode name-hash))))
+
+(defn push-int-vector [dst value]
+  (do
+    (root_push dst)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        next-dst))))
+(defn emit-instr [opcode operand] (push-int-vector (push-int-vector (vector-new 2) opcode) operand))
+(defn push-object-vector [dst value]
+  (do
+    (root_push dst)
+    (root_push value)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        (root_pop)
+        next-dst))))
+(defn emit-to [instrs opcode operand]
+  (do
+    (root_push instrs)
+    (let [instr (emit-instr opcode operand)]
+      (do
+        (root_push instr)
+        (let [result (push-object-vector instrs instr)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+(defn make-max-local-slot-state [done next-idx next-value]
+  (push-int-vector
+    (push-int-vector
+      (push-int-vector (vector-new 3) done)
+      next-idx)
+    next-value))
+(defn max-local-slot-op [opcode operand current-max] (if (or (or (= opcode 10) (= opcode 11)) (or (= opcode 50) (= opcode 53))) (if (> operand current-max) operand current-max) (if (= opcode 54) (if (> (+ operand 1) current-max) (+ operand 1) current-max) (if (= opcode 55) (if (> (+ operand 5) current-max) (+ operand 5) current-max) (if (= opcode 56) (if (> (+ operand 1) current-max) (+ operand 1) current-max) (if (= opcode 58) (if (> operand current-max) operand current-max) (if (= opcode 60) (if (> operand current-max) operand current-max) (if (= opcode 62) (if (> (+ operand 5) current-max) (+ operand 5) current-max) (if (= opcode 63) (if (> (+ operand 5) current-max) (+ operand 5) current-max) (if (= opcode 65) (if (> (+ operand 5) current-max) (+ operand 5) current-max) (if (= opcode 66) (if (> (+ operand 5) current-max) (+ operand 5) current-max) current-max)))))))))))
+(defn max-local-slot-step [instrs idx count current-max]
+  (if (>= idx count)
+    (make-max-local-slot-state 1 idx current-max)
+    (let [instr (vector-get instrs idx)
+      opcode (vector-get instr 0)
+      operand (vector-get instr 1)
+      next-max (max-local-slot-op opcode operand current-max)]
+      (make-max-local-slot-state 0 (+ idx 1) next-max))))
+
+(defn continue-max-local-slot-step [instrs count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (max-local-slot-step instrs (vector-get state 1) count (vector-get state 2))))
+
+(defn max-local-slot-step-8 [instrs idx count current-max]
+  (let [step1 (max-local-slot-step instrs idx count current-max)]
+    (do
+      (root_push step1)
+      (let [step2 (continue-max-local-slot-step instrs count step1)]
+        (do
+          (root_push step2)
+          (let [step3 (continue-max-local-slot-step instrs count step2)]
+            (do
+              (root_push step3)
+              (let [step4 (continue-max-local-slot-step instrs count step3)]
+                (do
+                  (root_push step4)
+                  (let [step5 (continue-max-local-slot-step instrs count step4)]
+                    (do
+                      (root_push step5)
+                      (let [step6 (continue-max-local-slot-step instrs count step5)]
+                        (do
+                          (root_push step6)
+                          (let [step7 (continue-max-local-slot-step instrs count step6)]
+                            (do
+                              (root_push step7)
+                              (let [step8 (continue-max-local-slot-step instrs count step7)]
+                                (do
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  step8)))))))))))))))))
+
+(defn continue-max-local-slot-step-8 [instrs count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (max-local-slot-step-8 instrs (vector-get state 1) count (vector-get state 2))))
+
+(defn max-local-slot-step-64 [instrs idx count current-max]
+  (let [step1 (max-local-slot-step-8 instrs idx count current-max)]
+    (do
+      (root_push step1)
+      (let [step2 (continue-max-local-slot-step-8 instrs count step1)]
+        (do
+          (root_push step2)
+          (let [step3 (continue-max-local-slot-step-8 instrs count step2)]
+            (do
+              (root_push step3)
+              (let [step4 (continue-max-local-slot-step-8 instrs count step3)]
+                (do
+                  (root_push step4)
+                  (let [step5 (continue-max-local-slot-step-8 instrs count step4)]
+                    (do
+                      (root_push step5)
+                      (let [step6 (continue-max-local-slot-step-8 instrs count step5)]
+                        (do
+                          (root_push step6)
+                          (let [step7 (continue-max-local-slot-step-8 instrs count step6)]
+                            (do
+                              (root_push step7)
+                              (let [step8 (continue-max-local-slot-step-8 instrs count step7)]
+                                (do
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  (root_pop)
+                                  step8)))))))))))))))))
+
+(defn max-local-slot [instrs idx count current-max]
+  (let [step (max-local-slot-step-64 instrs idx count current-max)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (max-local-slot instrs (vector-get step 1) count (vector-get step 2)))))
+(defn env-new [] (map-new))
+(defn env-bind [env name-hash idx]
+  (let [env-slot (root_push env)]
+    (do
+      (root_set env-slot (map-insert env name-hash idx))
+      (root_pop))))
+(defn env-lookup [env name-hash]
+  (do
+    (root_push env)
+    (let [value (map-get env name-hash)]
+      (do
+        (root_pop)
+        value))))
+(defn ftable-new [] (map-new))
+(defn ftable-register [ftable name-hash func-idx]
+  (let [ftable-slot (root_push ftable)]
+    (do
+      (root_set ftable-slot (map-insert ftable name-hash func-idx))
+      (root_pop))))
+(defn ftable-lookup [ftable name-hash]
+  (do
+    (root_push ftable)
+    (let [value (map-get ftable name-hash)]
+      (do
+        (root_pop)
+        value))))
+(defn make-loop-step-state [done next-idx next-value]
+  (push-int-vector
+    (push-int-vector
+      (push-int-vector (vector-new 3) done)
+      next-idx)
+    next-value))
+
+(defn make-bind-node-params-state [done next-param-idx next-env next-local-idx]
+  (do
+    (root_push next-env)
+    (let [state
+        (push-int-vector
+          (push-object-vector
+            (push-int-vector
+              (push-int-vector (vector-new 4) done)
+              next-param-idx)
+            next-env)
+          next-local-idx)]
+      (do
+        (root_pop)
+        state))))
+
+(defn bind-node-params-step [node param-base idx param-count env next-idx]
+  (if (>= idx param-count)
+    (make-bind-node-params-state 1 idx env next-idx)
+    (make-bind-node-params-state
+      0
+      (+ idx 1)
+      (env-bind env (vector-get node (+ param-base idx)) next-idx)
+      (+ next-idx 1))))
+
+(defn continue-bind-node-params-step [node param-base param-count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (bind-node-params-step
+      node
+      param-base
+      (vector-get state 1)
+      param-count
+      (vector-get state 2)
+      (vector-get state 3))))
+
+(defn bind-node-params-step-8 [node param-base idx param-count env next-idx]
+  (let [step1 (bind-node-params-step node param-base idx param-count env next-idx)
+    step2 (continue-bind-node-params-step node param-base param-count step1)
+    step3 (continue-bind-node-params-step node param-base param-count step2)
+    step4 (continue-bind-node-params-step node param-base param-count step3)
+    step5 (continue-bind-node-params-step node param-base param-count step4)
+    step6 (continue-bind-node-params-step node param-base param-count step5)
+    step7 (continue-bind-node-params-step node param-base param-count step6)
+    step8 (continue-bind-node-params-step node param-base param-count step7)]
+    step8))
+
+(defn continue-bind-node-params-step-8 [node param-base param-count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (bind-node-params-step-8
+      node
+      param-base
+      (vector-get state 1)
+      param-count
+      (vector-get state 2)
+      (vector-get state 3))))
+
+(defn bind-node-params-step-64 [node param-base idx param-count env next-idx]
+  (let [step1 (bind-node-params-step-8 node param-base idx param-count env next-idx)
+    step2 (continue-bind-node-params-step-8 node param-base param-count step1)
+    step3 (continue-bind-node-params-step-8 node param-base param-count step2)
+    step4 (continue-bind-node-params-step-8 node param-base param-count step3)
+    step5 (continue-bind-node-params-step-8 node param-base param-count step4)
+    step6 (continue-bind-node-params-step-8 node param-base param-count step5)
+    step7 (continue-bind-node-params-step-8 node param-base param-count step6)
+    step8 (continue-bind-node-params-step-8 node param-base param-count step7)]
+    step8))
+
+(defn bind-node-params [node param-base idx param-count env next-idx]
+  (if (>= idx param-count)
+    env
+    (do
+      (root_push node)
+      (let [param-hash (vector-get node (+ param-base idx))
+        next-env (env-bind env param-hash next-idx)]
+        (do
+          (root_push next-env)
+          (let [result (bind-node-params node param-base (+ idx 1) param-count next-env (+ next-idx 1))]
+            (do
+              (root_pop)
+              (root_pop)
+              result)))))))
+(defn make-compile-step-state [done next-idx next-value]
+  (do
+    (root_push next-value)
+    (let [base0 (push-int-vector (vector-new 3) done)]
+      (do
+        (root_push base0)
+        (let [base1 (push-int-vector base0 next-idx)]
+          (do
+            (root_push base1)
+            (let [state (push-object-vector base1 next-value)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                state))))))))
+(defn string-literal-data-base [] 1024)
+(defn append-byte-vector-step [dst src idx count]
+  (if (>= idx count)
+    (make-compile-step-state 1 idx dst)
+    (make-compile-step-state 0 (+ idx 1) (push-int-vector dst (vector-get src idx)))))
+
+(defn continue-append-byte-vector-step [src count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (append-byte-vector-step (vector-get state 2) src (vector-get state 1) count)))
+
+(defn continue-append-byte-vector-step-times [src count remaining state]
+  (if (= remaining 0)
+    state
+    (if (= (vector-get state 0) 1)
+      state
+      (do
+        (root_push src)
+        (root_push state)
+        (let [next-state (continue-append-byte-vector-step src count state)]
+          (do
+            (root_push next-state)
+            (let [result (continue-append-byte-vector-step-times src count (- remaining 1) next-state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn append-byte-vector-step-8 [dst src idx count]
+  (do
+    (root_push src)
+    (let [state (append-byte-vector-step dst src idx count)]
+      (do
+        (root_push state)
+        (let [result (continue-append-byte-vector-step-times src count 7 state)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn continue-append-byte-vector-step-8 [src count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (append-byte-vector-step-8 (vector-get state 2) src (vector-get state 1) count)))
+
+(defn append-byte-vector-step-64 [dst src idx count]
+  (do
+    (root_push src)
+    (let [state (append-byte-vector-step dst src idx count)]
+      (do
+        (root_push state)
+        (let [result (continue-append-byte-vector-step-times src count 63 state)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn append-byte-vector [dst src idx count]
+  (if (>= idx count)
+    dst
+    (let [next-dst (push-int-vector dst (vector-get src idx))]
+      (do
+        (root_push next-dst)
+        (let [result (append-byte-vector next-dst src (+ idx 1) count)]
+          (do
+            (root_pop)
+            result))))))
+
+(defn string-to-byte-vector-step [text idx count bytes]
+  (if (>= idx count)
+    (make-compile-step-state 1 idx bytes)
+    (make-compile-step-state 0 (+ idx 1) (push-int-vector bytes (string-char-at text idx)))))
+
+(defn continue-string-to-byte-vector-step [text count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (string-to-byte-vector-step text (vector-get state 1) count (vector-get state 2))))
+
+(defn continue-string-to-byte-vector-step-times [text count remaining state]
+  (if (= remaining 0)
+    state
+    (if (= (vector-get state 0) 1)
+      state
+      (do
+        (root_push text)
+        (root_push state)
+        (let [next-state (continue-string-to-byte-vector-step text count state)]
+          (do
+            (root_push next-state)
+            (let [result (continue-string-to-byte-vector-step-times text count (- remaining 1) next-state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn string-to-byte-vector-step-8 [text idx count bytes]
+  (do
+    (root_push text)
+    (let [state (string-to-byte-vector-step text idx count bytes)]
+      (do
+        (root_push state)
+        (let [result (continue-string-to-byte-vector-step-times text count 7 state)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn continue-string-to-byte-vector-step-8 [text count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (string-to-byte-vector-step-8 text (vector-get state 1) count (vector-get state 2))))
+
+(defn string-to-byte-vector-step-64 [text idx count bytes]
+  (do
+    (root_push text)
+    (let [state (string-to-byte-vector-step text idx count bytes)]
+      (do
+        (root_push state)
+        (let [result (continue-string-to-byte-vector-step-times text count 63 state)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn string-to-byte-vector [text idx count bytes]
+  (if (>= idx count)
+    bytes
+    (let [next-bytes (push-int-vector bytes (string-char-at text idx))]
+      (do
+        (root_push next-bytes)
+        (let [result (string-to-byte-vector text (+ idx 1) count next-bytes)]
+          (do
+            (root_pop)
+            result))))))
+(defn write-i32-le [vec value] (push-int-vector (push-int-vector (push-int-vector (push-int-vector vec (% value 256)) (% (/ value 256) 256)) (% (/ value 65536) 256)) (% (/ value 16777216) 256)))
+(defn compile-string-literal-with-source [node source instrs data-ref]
+  (do
+    (root_push source)
+    (root_push instrs)
+    (root_push data-ref)
+    (let [start (vector-get node 1)
+      end (vector-get node 2)]
+      (let [text (substring source start end)
+        text-len (string-length text)]
+        (do
+          (root_push text)
+          (let [bytes (string-to-byte-vector text 0 text-len (vector-new 8))
+            offset (+ (string-literal-data-base) (vector-length (ref-get data-ref)))]
+            (let [header (write-i32-le (write-i32-le (vector-new 8) 1) text-len)]
+              (do
+                (root_push bytes)
+                (root_push header)
+                (let [data-with-header (append-byte-vector (ref-get data-ref) header 0 8)]
+                  (do
+                    (root_push data-with-header)
+                    (let [updated-data (append-byte-vector data-with-header bytes 0 (vector-length bytes))]
+                      (do
+                        (root_push updated-data)
+                        (let [result (emit-to instrs 1 offset)]
+                          (do
+                            (root_push result)
+                            (ref-set data-ref updated-data)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            result))))))))))))))
+(defn string-key-hash-step [source pos end acc]
+  (if (>= pos end)
+    (make-loop-step-state 1 pos acc)
+    (make-loop-step-state 0 (+ pos 1) (+ (string-char-at source pos) (* acc 31)))))
+
+(defn continue-string-key-hash-step [source end state]
+  (if (= (vector-get state 0) 1)
+    state
+    (string-key-hash-step source (vector-get state 1) end (vector-get state 2))))
+
+(defn continue-string-key-hash-step-times [source end remaining state]
+  (if (= remaining 0)
+    state
+    (if (= (vector-get state 0) 1)
+      state
+      (do
+        (root_push source)
+        (root_push state)
+        (let [next-state (continue-string-key-hash-step source end state)]
+          (do
+            (root_push next-state)
+            (let [result (continue-string-key-hash-step-times source end (- remaining 1) next-state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn string-key-hash-step-8 [source pos end acc]
+  (do
+    (root_push source)
+    (let [state (string-key-hash-step source pos end acc)]
+      (do
+        (root_push state)
+        (let [result (continue-string-key-hash-step-times source end 7 state)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn continue-string-key-hash-step-8 [source end state]
+  (if (= (vector-get state 0) 1)
+    state
+    (string-key-hash-step-8 source (vector-get state 1) end (vector-get state 2))))
+
+(defn string-key-hash-step-64 [source pos end acc]
+  (do
+    (root_push source)
+    (let [state (string-key-hash-step source pos end acc)]
+      (do
+        (root_push state)
+        (let [result (continue-string-key-hash-step-times source end 63 state)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn string-key-hash-loop [source pos end acc]
+  (let [step (string-key-hash-step-64 source pos end acc)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (string-key-hash-loop source (vector-get step 1) end (vector-get step 2)))))
+(defn normalize-map-key-hash [hash] (if (= hash 0) 2 (if (= hash -1) 1 hash)))
+(defn compile-string-key-hash-with-source [node source instrs] (let [start (vector-get node 1) end (vector-get node 2) hash (normalize-map-key-hash (string-key-hash-loop source start end 0))] (emit-to instrs (op-i64-const) hash)))
