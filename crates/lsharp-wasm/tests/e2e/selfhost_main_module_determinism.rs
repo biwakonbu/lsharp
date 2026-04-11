@@ -119,10 +119,11 @@ fn test_e2e_selfhost_main_module_structure() {
 ///            Backend.Wasm.WasiBackend, App.ModuleResolver
 ///   Level 1: Syntax.AST, Types.TypeScheme, Syntax.Lexer, Backend.Wasm.WasmEmit,
 ///            Backend.Native.NativeCodegen, Backend.Native.NativeEmit, Backend.Native.Linker
-///   Level 2: Syntax.Parser, Syntax.MacroExpand, Types.TypeInferCore, Backend.Wasm.Compiler,
+///   Level 2: Syntax.Parser, Syntax.MacroExpand, Types.TypeInferCore, Backend.Wasm.CompilerSplit,
 ///            Tools.Text.Linter, Tools.Text.FormatterExpr
-///   Level 3: Types.TypeInferFunctions, Types.TypeInferBuiltins, App.CompilerMode, Tools.Text.FormatterDecl
-///   Level 4: Types.TypeInfer, Tools.Text.Formatter
+///   Level 3: Types.TypeInferFunctions, Types.TypeInferBuiltins, Backend.Wasm.Compiler,
+///            Tools.Text.FormatterDecl
+///   Level 4: Types.TypeInfer, App.CompilerMode, Tools.Text.Formatter
 ///   Level 5: App.PipelineSmoke
 ///   Level 6: App.Main
 #[test]
@@ -361,7 +362,7 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         "Syntax.Parser",
         "Syntax.MacroExpand",
         "Types.TypeInferCore",
-        "Backend.Wasm.Compiler",
+        "Backend.Wasm.CompilerSplit",
         "Tools.Text.Linter",
         "Tools.Text.FormatterExpr",
     ]
@@ -376,11 +377,11 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
         );
     }
 
-    // Level 3: higher-order type infer / compiler-mode / formatter declaration split
+    // Level 3: higher-order type infer / compiler finalization / formatter declaration split
     let level_3: HashSet<&str> = [
         "Types.TypeInferFunctions",
         "Types.TypeInferBuiltins",
-        "App.CompilerMode",
+        "Backend.Wasm.Compiler",
         "Tools.Text.FormatterDecl",
     ]
     .iter()
@@ -395,7 +396,7 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
     }
 
     // Level 4: dispatcher 層
-    let level_4: HashSet<&str> = ["Types.TypeInfer", "Tools.Text.Formatter"]
+    let level_4: HashSet<&str> = ["Types.TypeInfer", "App.CompilerMode", "Tools.Text.Formatter"]
         .iter()
         .copied()
         .collect();

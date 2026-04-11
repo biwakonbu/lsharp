@@ -1617,8 +1617,8 @@ fn test_e2e_selfhost_cli_direct_multifile_compile_is_deterministic() {
         data (ref-get data-ref)]
     (vector-push (vector-push (vector-new 2) functions) data)))
 (defn main []
-  (let [payload1 (compile-inline-file-payload "src/Main.ls" 7)
-        payload2 (compile-inline-file-payload "src/Main.ls" 7)
+  (let [payload1 (compile-inline-file-state "src/Main.ls" 7)
+        payload2 (compile-inline-file-state "src/Main.ls" 7)
         functions1 (vector-get payload1 0)
         data1 (vector-get payload1 1)
         functions2 (vector-get payload2 0)

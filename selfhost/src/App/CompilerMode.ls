@@ -134,58 +134,41 @@
 (defn cache-compile-context-cache-ref [ctx] (vector-get ctx 2))
 (defn cache-compile-context-parse-count-ref [ctx] (vector-get ctx 3))
 (defn parse-src-decl-pair [src]
-  (let [src-slot (root_push src)
-    decls (parse-program src)
-    decls-slot (root_push decls)]
-    (do
-      (root_set src-slot (make-src-decl-pair src decls))
-      (root_pop)
-      (root_pop))))
+  (let [decls (parse-program src)
+    pair (make-src-decl-pair src decls)]
+    pair))
 (defn load-src-decl-pair-with-cache [path cache-ref parse-count-ref]
-  (let [path-slot (root_push path)
-    cache-slot (root_push cache-ref)
-    parse-slot (root_push parse-count-ref)
-    src (read-file path)
-    src-slot (root_push src)
+  (let [src (read-file path)
     fingerprint (source-fingerprint src)
     cache-key (src-decl-cache-key path)
     cached-entry (ref-map-get-safe cache-ref cache-key)]
     (if (= 0 cached-entry)
       (let [pair (parse-src-decl-pair src)
-        pair-slot (root_push pair)
-        entry (make-src-decl-cache-entry fingerprint pair)
-        entry-slot (root_push entry)]
+        entry (make-src-decl-cache-entry fingerprint pair)]
         (do
+          (root_push pair)
+          (root_push entry)
           (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
           (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
           (root_pop)
-          (root_set path-slot (clone-src-decl-pair pair))
           (root_pop)
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          (root_pop)))
+          pair))
       (if (= (src-decl-cache-entry-fingerprint cached-entry) fingerprint)
-        (do
-          (root_set path-slot (clone-src-decl-pair (src-decl-cache-entry-pair cached-entry)))
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          (root_pop))
-        (let [pair (parse-src-decl-pair src)
-          pair-slot (root_push pair)
-          entry (make-src-decl-cache-entry fingerprint pair)
-          entry-slot (root_push entry)]
+        (let [pair (src-decl-cache-entry-pair cached-entry)]
           (do
+            (root_push pair)
+            (root_pop)
+            pair))
+        (let [pair (parse-src-decl-pair src)
+          entry (make-src-decl-cache-entry fingerprint pair)]
+          (do
+            (root_push pair)
+            (root_push entry)
             (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
             (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
             (root_pop)
-            (root_set path-slot (clone-src-decl-pair pair))
             (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)))))))
+            pair))))))
 (defn make-pairs-step-state [done next-idx next-pairs]
   (do
     (root_push next-pairs)
@@ -270,10 +253,11 @@
         (do
           (ref-set seen-ref (ref-map-insert-int-safe seen-ref module-key 1))
           (let [path (resolve-module-path-with-cache module-name source-root package-root cache-ref)
-            src (read-file path)
-            decls (parse-program src)]
+            pair (load-src-decl-pair-with-cache path cache-ref parse-count-ref)
+            pair-slot (root_push pair)
+            src (vector-get pair 0)
+            decls (vector-get pair 1)]
             (do
-              (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
               (root_push src)
               (root_push decls)
               (let [pairs-with-deps (load-imports-from-decls-with-cache decls src 0 (vector-length decls) seen-ref pairs cache-ctx)]
@@ -281,6 +265,7 @@
                   (root_push pairs-with-deps)
                   (let [next-pairs (append-src-decl-pair pairs-with-deps src decls)]
                     (do
+                      (root_pop)
                       (root_pop)
                       (root_pop)
                       (root_pop)
@@ -322,10 +307,11 @@
               (do
                 (print 83)
                 (print (src-decl-cache-key path))
-                (let [src (read-file path)
-                  decls (parse-program src)]
+                (let [pair (load-src-decl-pair-with-cache path cache-ref parse-count-ref)
+                  pair-slot (root_push pair)
+                  src (vector-get pair 0)
+                  decls (vector-get pair 1)]
                   (do
-                    (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
                     (root_push src)
                     (root_push decls)
                     (let [pairs-with-deps (load-imports-from-decls-with-cache-progress decls src 0 (vector-length decls) seen-ref pairs cache-ctx)]
@@ -342,6 +328,7 @@
                             (root_pop)
                             (root_pop)
                             (root_pop)
+                            (root_pop)
                             next-pairs)))))))))
           (do
             (root_pop)
@@ -350,29 +337,32 @@
             (root_pop)
             pairs))))))
 (defn compile-file-pairs-with-cache [path cache-ref parse-count-ref]
-  (let [src (read-file path)
-    program (parse-program src)
+  (let [pair (load-src-decl-pair-with-cache path cache-ref parse-count-ref)
+    pair-slot (root_push pair)
     source-root (resolve-source-root path)
     package-root (resolve-package-root path)
-    seen-ref (ref-new (map-new))
-    cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref)]
+    src (vector-get pair 0)
+    program (vector-get pair 1)]
     (do
-      (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
       (root_push src)
       (root_push program)
-      (root_push seen-ref)
-      (root_push cache-ctx)
-      (let [imported-pairs (load-imports-from-decls-with-cache program src 0 (vector-length program) seen-ref (vector-new 8) cache-ctx)]
+      (let [seen-ref (ref-new (map-new))
+        cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref)]
         (do
-          (root_push imported-pairs)
-          (let [result (append-src-decl-pair imported-pairs src program)]
+          (root_push seen-ref)
+          (root_push cache-ctx)
+          (let [imported-pairs (load-imports-from-decls-with-cache program src 0 (vector-length program) seen-ref (vector-new 8) cache-ctx)]
             (do
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              result)))))))
+              (root_push imported-pairs)
+              (let [result (append-src-decl-pair imported-pairs src program)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 (defn compile-file-functions-with-cache [path func-idx cache-ref parse-count-ref data-ref]
   (let [all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)]
     (do
@@ -405,9 +395,69 @@
               (root_pop)
               (root_pop)
               payload2)))))))
-(defn compile-file-mode-cache-probe [] (let [path (command-line-arg 1) cache-ref (ref-new (map-new)) parse-count-ref (ref-new 0) pair (load-src-decl-pair-with-cache path cache-ref parse-count-ref) src (vector-get pair 0) decls (vector-get pair 1)] (do (print 80) (print (ref-get parse-count-ref)) (print (string-length src)) (print (vector-length decls)) 0)))
+(defn compile-file-mode-cache-probe []
+  (let [path (command-line-arg 1)
+    cache-ref (ref-new (map-new))
+    parse-count-ref (ref-new 0)
+    src (read-file path)
+    decls (parse-program src)
+    pair (make-src-decl-pair src decls)
+    fingerprint (source-fingerprint src)
+    cache-key (src-decl-cache-key path)
+    entry (make-src-decl-cache-entry fingerprint pair)]
+    (do
+      (root_push src)
+      (root_push decls)
+      (root_push pair)
+      (root_push entry)
+      (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
+      (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
+      (print 80)
+      (print (ref-get parse-count-ref))
+      (print (string-length src))
+      (print (vector-length decls))
+      (root_pop)
+      (root_pop)
+      (root_pop)
+      (root_pop)
+      0)))
 (defn compile-file-mode-cache-pairs-probe [] (let [path (command-line-arg 1) cache-ref (ref-new (map-new)) parse-count-ref (ref-new 0) all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref) n (vector-length all-pairs) entry-pair (vector-get all-pairs (- n 1)) entry-decls (vector-get entry-pair 1)] (do (print 81) (print (ref-get parse-count-ref)) (print n) (print (vector-length entry-decls)) 0)))
-(defn compile-file-mode-cache-pairs-progress-probe [] (let [path (command-line-arg 1) cache-ref (ref-new (map-new)) parse-count-ref (ref-new 0) pair (load-src-decl-pair-with-cache path cache-ref parse-count-ref) src (vector-get pair 0) program (vector-get pair 1) source-root (resolve-source-root path) package-root (resolve-package-root path) seen-ref (ref-new (map-new)) cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref) imported-pairs (load-imports-from-decls-with-cache-progress program src 0 (vector-length program) seen-ref (vector-new 8) cache-ctx)] (do (print 85) (print (ref-get parse-count-ref)) (print (vector-length imported-pairs)) 0)))
+(defn compile-file-mode-cache-pairs-progress-probe []
+  (let [path (command-line-arg 1)
+    cache-ref (ref-new (map-new))
+    parse-count-ref (ref-new 0)
+    src (read-file path)
+    program (parse-program src)
+    pair (make-src-decl-pair src program)
+    fingerprint (source-fingerprint src)
+    cache-key (src-decl-cache-key path)
+    entry (make-src-decl-cache-entry fingerprint pair)
+    source-root (resolve-source-root path)
+    package-root (resolve-package-root path)
+    seen-ref (ref-new (map-new))
+    cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref)]
+    (do
+      (root_push src)
+      (root_push program)
+      (root_push pair)
+      (root_push entry)
+      (root_push seen-ref)
+      (root_push cache-ctx)
+      (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
+      (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
+      (let [imported-pairs
+        (load-imports-from-decls-with-cache-progress program src 0 (vector-length program) seen-ref (vector-new 8) cache-ctx)]
+        (do
+          (print 85)
+          (print (ref-get parse-count-ref))
+          (print (vector-length imported-pairs))
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          0)))))
 (defn compile-file-mode-cache-compile-progress-probe []
   (let [path (command-line-arg 1)
     cache-ref (ref-new (map-new))
@@ -1231,9 +1281,11 @@
 (defn print-module-bytes-step-512 [bytes idx count] (let [step1 (print-module-bytes-step-64 bytes idx count) step2 (continue-print-module-bytes-step-64 bytes count step1) step3 (continue-print-module-bytes-step-64 bytes count step2) step4 (continue-print-module-bytes-step-64 bytes count step3) step5 (continue-print-module-bytes-step-64 bytes count step4) step6 (continue-print-module-bytes-step-64 bytes count step5) step7 (continue-print-module-bytes-step-64 bytes count step6) step8 (continue-print-module-bytes-step-64 bytes count step7)] step8))
 (defn continue-print-module-bytes-step-512 [bytes count state] (if (= (vector-get state 0) 1) state (print-module-bytes-step-512 bytes (vector-get state 1) count)))
 (defn print-module-bytes-step-4096 [bytes idx count] (let [step1 (print-module-bytes-step-512 bytes idx count) step2 (continue-print-module-bytes-step-512 bytes count step1) step3 (continue-print-module-bytes-step-512 bytes count step2) step4 (continue-print-module-bytes-step-512 bytes count step3) step5 (continue-print-module-bytes-step-512 bytes count step4) step6 (continue-print-module-bytes-step-512 bytes count step5) step7 (continue-print-module-bytes-step-512 bytes count step6) step8 (continue-print-module-bytes-step-512 bytes count step7)] step8))
-(defn print-module-bytes-loop [bytes idx count] (let [step (print-module-bytes-step-4096 bytes idx count)] (if (= (vector-get step 0) 1) 0 (print-module-bytes-loop bytes (vector-get step 1) count))))
+(defn continue-print-module-bytes-step-4096 [bytes count state] (if (= (vector-get state 0) 1) state (print-module-bytes-step-4096 bytes (vector-get state 1) count)))
+(defn print-module-bytes-step-32768 [bytes idx count] (let [step1 (print-module-bytes-step-4096 bytes idx count) step2 (continue-print-module-bytes-step-4096 bytes count step1) step3 (continue-print-module-bytes-step-4096 bytes count step2) step4 (continue-print-module-bytes-step-4096 bytes count step3) step5 (continue-print-module-bytes-step-4096 bytes count step4) step6 (continue-print-module-bytes-step-4096 bytes count step5) step7 (continue-print-module-bytes-step-4096 bytes count step6) step8 (continue-print-module-bytes-step-4096 bytes count step7)] step8))
+(defn print-module-bytes-loop [bytes idx count] (let [step (print-module-bytes-step-32768 bytes idx count)] (if (= (vector-get step 0) 1) 0 (print-module-bytes-loop bytes (vector-get step 1) count))))
 (defn print-wasm-module [bytes] (let [count (vector-length bytes)] (do (print count) (print-module-bytes-loop bytes 0 count) 0)))
-(defn append-section-bytes [dst section] (append-byte-vector dst section 0 (vector-length section)))
+(defn append-section-bytes [dst section] (append-byte-vector-chunked dst section 0 (vector-length section)))
 (defn print-ir-pairs [ir idx count] (if (>= idx count) 0 (let [instr (vector-get ir idx)] (do (print (vector-get instr 0)) (print (vector-get instr 1)) (print-ir-pairs ir (+ idx 1) count)))))
 (defn print-token-triples [spans idx count] (if (>= idx count) 0 (do (print (span-kind spans idx)) (print (span-start spans idx)) (print (span-end spans idx)) (print-token-triples spans (+ idx 1) count))))
 (defn build-wasm-bytes-wasi [functions data]
@@ -1243,12 +1295,12 @@
       (let [import-sec (emit-import-section-alloc-print-read-arg-concat-sub)]
         (let [func-sec (emit-function-section-wasi-quad-functions functions)]
           (let [memory-sec (emit-memory-section)]
-            (let [export-sec (emit-export-section-main-memory-index (+ 10 func-count) 0)]
-              (let [code-sec (emit-code-section-wasi-quad-functions functions)]
-                (let [data-sec (emit-data-section data 1024)]
-                  (let [b0 (append-section-bytes (vector-new 64) header)
-                    b1 (append-section-bytes b0 type-sec)
-                    b2 (append-section-bytes b1 import-sec)
+             (let [export-sec (emit-export-section-main-memory-index (+ 10 func-count) 0)]
+               (let [code-sec (emit-code-section-wasi-quad-functions functions)]
+                 (let [data-sec (emit-data-section data 1024)]
+                   (let [b0 (append-section-bytes (vector-new 64) header)
+                     b1 (append-section-bytes b0 type-sec)
+                     b2 (append-section-bytes b1 import-sec)
                     b3 (append-section-bytes b2 func-sec)
                     b4 (append-section-bytes b3 memory-sec)
                     b5 (append-section-bytes b4 export-sec)
@@ -1265,7 +1317,7 @@
         (do
           (print 51)
           (print (vector-length header))
-          (let [type-sec (emit-type-section-wasi-quad-functions functions)]
+          (let [type-sec (emit-type-section-wasi-quad-functions-progress-debug functions)]
             (do
               (print 52)
               (print (vector-length type-sec))
@@ -1285,10 +1337,10 @@
                             (do
                               (print 56)
                               (print (vector-length export-sec))
-                              (let [code-sec (emit-code-section-wasi-quad-functions functions)]
-                                (do
-                                  (print 57)
-                                  (print (vector-length code-sec))
+                              (let [code-sec (emit-code-section-wasi-quad-functions-progress-debug functions)]
+                                 (do
+                                   (print 57)
+                                   (print (vector-length code-sec))
                                   (let [data-sec (emit-data-section data 1024)]
                                     (do
                                       (print 58)
@@ -1297,34 +1349,34 @@
                                         (do
                                           (print 59)
                                           (print (vector-length b0))
-                                          (let [b1 (append-byte-vector b0 type-sec 0 (vector-length type-sec))]
-                                            (do
-                                              (print 60)
-                                              (print (vector-length b1))
-                                              (let [b2 (append-byte-vector b1 import-sec 0 (vector-length import-sec))]
-                                                (do
-                                                  (print 61)
-                                                  (print (vector-length b2))
-                                                  (let [b3 (append-byte-vector b2 func-sec 0 (vector-length func-sec))]
-                                                    (do
-                                                      (print 62)
-                                                      (print (vector-length b3))
-                                                      (let [b4 (append-byte-vector b3 memory-sec 0 (vector-length memory-sec))]
-                                                        (do
-                                                          (print 63)
-                                                          (print (vector-length b4))
-                                                          (let [b5 (append-byte-vector b4 export-sec 0 (vector-length export-sec))]
-                                                            (do
-                                                              (print 64)
-                                                              (print (vector-length b5))
-                                                              (let [b6 (append-byte-vector b5 code-sec 0 (vector-length code-sec))]
-                                                                (do
-                                                                  (print 65)
-                                                                  (print (vector-length b6))
-                                                                  (let [b7 (append-byte-vector b6 data-sec 0 (vector-length data-sec))]
-                                                                    (do
-                                                                      (print 66)
-                                                                      (print (vector-length b7))
+                                          (let [b1 (append-byte-vector-chunked b0 type-sec 0 (vector-length type-sec))]
+                                             (do
+                                               (print 60)
+                                               (print (vector-length b1))
+                                               (let [b2 (append-byte-vector-chunked b1 import-sec 0 (vector-length import-sec))]
+                                                 (do
+                                                   (print 61)
+                                                   (print (vector-length b2))
+                                                   (let [b3 (append-byte-vector-chunked b2 func-sec 0 (vector-length func-sec))]
+                                                     (do
+                                                       (print 62)
+                                                       (print (vector-length b3))
+                                                       (let [b4 (append-byte-vector-chunked b3 memory-sec 0 (vector-length memory-sec))]
+                                                         (do
+                                                           (print 63)
+                                                           (print (vector-length b4))
+                                                           (let [b5 (append-byte-vector-chunked b4 export-sec 0 (vector-length export-sec))]
+                                                             (do
+                                                               (print 64)
+                                                               (print (vector-length b5))
+                                                               (let [b6 (append-byte-vector-chunked b5 code-sec 0 (vector-length code-sec))]
+                                                                 (do
+                                                                   (print 65)
+                                                                   (print (vector-length b6))
+                                                                   (let [b7 (append-byte-vector-chunked b6 data-sec 0 (vector-length data-sec))]
+                                                                     (do
+                                                                       (print 66)
+                                                                       (print (vector-length b7))
                                                                       b7)))))))))))))))))))))))))))))))))))
 (defn compile-file-mode [] (let [path (command-line-arg 1) cache-ref (ref-new (map-new)) parse-count-ref (ref-new 0) data-ref (ref-new (vector-new 8)) functions (compile-file-functions-with-cache path 10 cache-ref parse-count-ref data-ref) wasm-bytes (build-wasm-bytes-wasi functions (ref-get data-ref))] (print-wasm-module wasm-bytes)))
 (defn compile-file-mode-build-progress-debug [] (let [path (command-line-arg 1) cache-ref (ref-new (map-new)) parse-count-ref (ref-new 0) data-ref (ref-new (vector-new 8)) functions (compile-file-functions-with-cache path 10 cache-ref parse-count-ref data-ref) wasm-bytes (build-wasm-bytes-wasi-progress-debug functions (ref-get data-ref))] (do (print 67) (print (vector-length wasm-bytes)) 0)))

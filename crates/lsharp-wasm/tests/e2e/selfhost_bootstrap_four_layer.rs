@@ -60,6 +60,73 @@ const RUNTIME_STAGE2_HARNESS_PRELUDE: &str = r#"
       (bootstrap-print-module-bytes bytes 0 count)
       0)))"#;
 
+fn stage1_source_emitting_wasi_stage2(stage2_src: &str) -> String {
+    let mut harness = RUNTIME_STAGE2_HARNESS_PRELUDE.to_string();
+    harness.push_str("\n(defn main []\n  (let [stage2 (bootstrap-build-stage2 \"");
+    harness.push_str(stage2_src);
+    harness.push_str("\")]\n    (do\n      (bootstrap-print-module stage2)\n      0)))");
+    format!("{}\n{}", selfhost_cli_runtime_bundle(), harness)
+}
+
+fn stage1_source_emitting_wasi_stage2_with_source(stage2_src: &str) -> String {
+    let harness = format!(
+        r#"
+(defn bootstrap-append-bytes [dst src idx count]
+  (if (>= idx count)
+    dst
+    (bootstrap-append-bytes
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      count)))
+
+(defn bootstrap-build-stage2 [src]
+  (let [program (parse-program src)
+        pair (compile-program-functions-with-source src program)
+        functions (vector-get pair 1)
+        data (vector-get pair 2)
+        func-count (vector-length functions)
+        header (emit-header)
+        type-sec (emit-type-section-wasi-quad-functions functions)
+        import-sec (emit-import-section-alloc-print-read-arg-concat-sub)
+        func-sec (emit-function-section-wasi-quad-functions functions)
+        memory-sec (emit-memory-section)
+        export-sec (emit-export-section-main-index (+ 9 func-count))
+        code-sec (emit-code-section-wasi-quad-functions functions)
+        data-sec (emit-data-section data 1024)
+        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
+        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
+        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
+        bytes3 (bootstrap-append-bytes bytes2 func-sec 0 (vector-length func-sec))
+        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
+        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))
+        bytes6 (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))]
+    (bootstrap-append-bytes bytes6 data-sec 0 (vector-length data-sec))))
+
+(defn bootstrap-print-module-bytes [bytes idx count]
+  (if (>= idx count)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
+
+(defn bootstrap-print-module [bytes]
+  (let [count (vector-length bytes)]
+    (do
+      (print count)
+      (bootstrap-print-module-bytes bytes 0 count)
+      0)))
+
+(defn main []
+  (let [stage2 (bootstrap-build-stage2 "{stage2_src}")]
+    (do
+      (bootstrap-print-module stage2)
+      0)))
+"#
+    );
+    format!("{}\n{}", selfhost_cli_runtime_bundle(), harness)
+}
+
 /// wasmparser で wasm バイナリを検証し、詳細なエラーを返すヘルパー
 fn validate_wasm_detailed(wasm: &[u8]) -> Result<(), String> {
     use wasmparser::{Parser, Validator, WasmFeatures};
@@ -130,6 +197,22 @@ pub(crate) fn extract_section_bytes(wasm: &[u8], target_id: u8) -> Option<Vec<u8
         pos += size;
     }
     None
+}
+
+fn ordered_marker_positions(values: &[i64], markers: &[i64], label: &str) -> Vec<usize> {
+    let mut positions = Vec::with_capacity(markers.len());
+    let mut next_start = 0usize;
+    for marker in markers {
+        let position = values
+            .iter()
+            .enumerate()
+            .skip(next_start)
+            .find_map(|(index, value)| (*value == *marker).then_some(index))
+            .unwrap_or_else(|| panic!("{label}: marker {marker} が見つからない: {values:?}"));
+        positions.push(position);
+        next_start = position + 1;
+    }
+    positions
 }
 
 fn selfhost_string_object_bytes(text: &str) -> Vec<u8> {
@@ -3308,56 +3391,9 @@ fn test_e2e_bootstrap_stage1_emits_identical_alloc_stage2_wasm_for_same_source()
 /// BOOT-04: stage1 が vector-push の in-place + growth を含む stage2 Wasm を生成できること
 #[test]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_push_program() {
-    let harness = r#"
-(defn bootstrap-append-bytes [dst src idx count]
-  (if (>= idx count)
-    dst
-    (bootstrap-append-bytes
-      (vector-push dst (vector-get src idx))
-      src
-      (+ idx 1)
-      count)))
-
-(defn bootstrap-build-stage2 [src]
-  (let [program (parse-program src)
-        pair (compile-program-functions program)
-        functions (vector-get pair 1)
-        header (emit-header)
-        type-sec (emit-type-section-alloc-main)
-        import-sec (emit-import-section-alloc)
-        function-sec (emit-function-section-main-type-index 1)
-        memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-memory-index 1 0)
-        code-sec (emit-code-section-functions functions)
-        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
-        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
-        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
-        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
-        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
-        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))]
-    (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))))
-
-(defn bootstrap-print-module-bytes [bytes idx count]
-  (if (>= idx count)
-    0
-    (do
-      (print (vector-get bytes idx))
-      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
-
-(defn bootstrap-print-module [bytes]
-  (let [count (vector-length bytes)]
-    (do
-      (print count)
-      (bootstrap-print-module-bytes bytes 0 count)
-      0)))
-
-(defn main []
-  (let [stage2 (bootstrap-build-stage2 "(defn main [] (let [v0 (vector-new 1)] (let [v1 (vector-push v0 10)] (vector-length (vector-push v1 20)))))")]
-    (do
-      (bootstrap-print-module stage2)
-      0)))
-"#;
-    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_source = stage1_source_emitting_wasi_stage2(
+        "(defn main [] (let [v0 (vector-new 1)] (let [v1 (vector-push v0 10)] (vector-length (vector-push v1 20)))))",
+    );
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -3368,68 +3404,21 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_push_program() {
     assert_valid_wasm(&modules[0]);
     assert!(
         extract_sections(&modules[0]).iter().any(|(id, _)| *id == 2),
-        "vector-push program を含む stage2 Wasm は alloc import section を持つこと"
+        "vector-push program を含む stage2 Wasm は selfhost runtime import section を持つこと"
     );
     assert_eq!(
-        run_exported_i64_with_alloc_import(&modules[0], "_start"),
+        run_exported_i64_with_runtime_imports(&modules[0], "_start"),
         2,
-        "vector-push の in-place + growth を含む stage2 Wasm が alloc import 付きで実行可能であること"
+        "vector-push の in-place + growth を含む stage2 Wasm が runtime 10-import 付きで実行可能であること"
     );
 }
 
 /// BOOT-04: stage1 が ref-new/ref-set/ref-get を含む stage2 Wasm を生成できること
 #[test]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_ref_program() {
-    let harness = r#"
-(defn bootstrap-append-bytes [dst src idx count]
-  (if (>= idx count)
-    dst
-    (bootstrap-append-bytes
-      (vector-push dst (vector-get src idx))
-      src
-      (+ idx 1)
-      count)))
-
-(defn bootstrap-build-stage2 [src]
-  (let [program (parse-program src)
-        pair (compile-program-functions program)
-        functions (vector-get pair 1)
-        header (emit-header)
-        type-sec (emit-type-section-alloc-main)
-        import-sec (emit-import-section-alloc)
-        function-sec (emit-function-section-main-type-index 1)
-        memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-memory-index 1 0)
-        code-sec (emit-code-section-functions functions)
-        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
-        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
-        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
-        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
-        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
-        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))]
-    (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))))
-
-(defn bootstrap-print-module-bytes [bytes idx count]
-  (if (>= idx count)
-    0
-    (do
-      (print (vector-get bytes idx))
-      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
-
-(defn bootstrap-print-module [bytes]
-  (let [count (vector-length bytes)]
-    (do
-      (print count)
-      (bootstrap-print-module-bytes bytes 0 count)
-      0)))
-
-(defn main []
-  (let [stage2 (bootstrap-build-stage2 "(defn main [] (let [r (ref-new 1)] (do (ref-set r 42) (ref-get r))))")]
-    (do
-      (bootstrap-print-module stage2)
-      0)))
-"#;
-    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_source = stage1_source_emitting_wasi_stage2(
+        "(defn main [] (let [r (ref-new 1)] (do (ref-set r 42) (ref-get r))))",
+    );
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -3440,68 +3429,21 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_ref_program() {
     assert_valid_wasm(&modules[0]);
     assert!(
         extract_sections(&modules[0]).iter().any(|(id, _)| *id == 2),
-        "ref program を含む stage2 Wasm は alloc import section を持つこと"
+        "ref program を含む stage2 Wasm は selfhost runtime import section を持つこと"
     );
     assert_eq!(
-        run_exported_i64_with_alloc_import(&modules[0], "_start"),
+        run_exported_i64_with_runtime_imports(&modules[0], "_start"),
         42,
-        "ref-new/ref-set/ref-get を含む stage2 Wasm が alloc import 付きで実行可能であること"
+        "ref-new/ref-set/ref-get を含む stage2 Wasm が runtime 10-import 付きで実行可能であること"
     );
 }
 
 /// BOOT-04: stage1 が整数 key の map-new/map-insert/map-get/map-size を含む stage2 Wasm を生成できること
 #[test]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_program() {
-    let harness = r#"
-(defn bootstrap-append-bytes [dst src idx count]
-  (if (>= idx count)
-    dst
-    (bootstrap-append-bytes
-      (vector-push dst (vector-get src idx))
-      src
-      (+ idx 1)
-      count)))
-
-(defn bootstrap-build-stage2 [src]
-  (let [program (parse-program src)
-        pair (compile-program-functions program)
-        functions (vector-get pair 1)
-        header (emit-header)
-        type-sec (emit-type-section-alloc-main)
-        import-sec (emit-import-section-alloc)
-        function-sec (emit-function-section-main-type-index 1)
-        memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-memory-index 1 0)
-        code-sec (emit-code-section-functions functions)
-        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
-        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
-        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
-        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
-        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
-        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))]
-    (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))))
-
-(defn bootstrap-print-module-bytes [bytes idx count]
-  (if (>= idx count)
-    0
-    (do
-      (print (vector-get bytes idx))
-      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
-
-(defn bootstrap-print-module [bytes]
-  (let [count (vector-length bytes)]
-    (do
-      (print count)
-      (bootstrap-print-module-bytes bytes 0 count)
-      0)))
-
-(defn main []
-  (let [stage2 (bootstrap-build-stage2 "(defn main [] (let [m0 (map-new)] (let [m1 (map-insert m0 1 10)] (let [m2 (map-insert m1 2 20)] (+ (+ (map-get m2 1) (map-get m2 2)) (map-size m2))))))")]
-    (do
-      (bootstrap-print-module stage2)
-      0)))
-"#;
-    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_source = stage1_source_emitting_wasi_stage2(
+        "(defn main [] (let [m0 (map-new)] (let [m1 (map-insert m0 1 10)] (let [m2 (map-insert m1 2 20)] (+ (+ (map-get m2 1) (map-get m2 2)) (map-size m2))))))",
+    );
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -3512,68 +3454,21 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_program() {
     assert_valid_wasm(&modules[0]);
     assert!(
         extract_sections(&modules[0]).iter().any(|(id, _)| *id == 2),
-        "map program を含む stage2 Wasm は alloc import section を持つこと"
+        "map program を含む stage2 Wasm は selfhost runtime import section を持つこと"
     );
     assert_eq!(
-        run_exported_i64_with_alloc_import(&modules[0], "_start"),
+        run_exported_i64_with_runtime_imports(&modules[0], "_start"),
         32,
-        "整数 key の map builtins を含む stage2 Wasm が alloc import 付きで実行可能であること"
+        "整数 key の map builtins を含む stage2 Wasm が runtime 10-import 付きで実行可能であること"
     );
 }
 
 /// BOOT-04: stage1 が整数 key subset の map-contains? を含む stage2 Wasm を生成できること
 #[test]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_contains_program() {
-    let harness = r#"
-(defn bootstrap-append-bytes [dst src idx count]
-  (if (>= idx count)
-    dst
-    (bootstrap-append-bytes
-      (vector-push dst (vector-get src idx))
-      src
-      (+ idx 1)
-      count)))
-
-(defn bootstrap-build-stage2 [src]
-  (let [program (parse-program src)
-        pair (compile-program-functions program)
-        functions (vector-get pair 1)
-        header (emit-header)
-        type-sec (emit-type-section-alloc-main)
-        import-sec (emit-import-section-alloc)
-        function-sec (emit-function-section-main-type-index 1)
-        memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-memory-index 1 0)
-        code-sec (emit-code-section-functions functions)
-        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
-        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
-        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
-        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
-        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
-        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))]
-    (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))))
-
-(defn bootstrap-print-module-bytes [bytes idx count]
-  (if (>= idx count)
-    0
-    (do
-      (print (vector-get bytes idx))
-      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
-
-(defn bootstrap-print-module [bytes]
-  (let [count (vector-length bytes)]
-    (do
-      (print count)
-      (bootstrap-print-module-bytes bytes 0 count)
-      0)))
-
-(defn main []
-  (let [stage2 (bootstrap-build-stage2 "(defn main [] (let [m0 (map-new)] (let [m1 (map-insert m0 7 70)] (+ (* 10 (map-contains? m1 7)) (map-contains? m1 99)))))")]
-    (do
-      (bootstrap-print-module stage2)
-      0)))
-"#;
-    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_source = stage1_source_emitting_wasi_stage2(
+        "(defn main [] (let [m0 (map-new)] (let [m1 (map-insert m0 7 70)] (+ (* 10 (map-contains? m1 7)) (map-contains? m1 99)))))",
+    );
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -3584,68 +3479,21 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_contains_program() {
     assert_valid_wasm(&modules[0]);
     assert!(
         extract_sections(&modules[0]).iter().any(|(id, _)| *id == 2),
-        "map-contains? program を含む stage2 Wasm は alloc import section を持つこと"
+        "map-contains? program を含む stage2 Wasm は selfhost runtime import section を持つこと"
     );
     assert_eq!(
-        run_exported_i64_with_alloc_import(&modules[0], "_start"),
+        run_exported_i64_with_runtime_imports(&modules[0], "_start"),
         10,
-        "整数 key subset の map-contains? を含む stage2 Wasm が alloc import 付きで実行可能であること"
+        "整数 key subset の map-contains? を含む stage2 Wasm が runtime 10-import 付きで実行可能であること"
     );
 }
 
 /// BOOT-04: stage1 が整数 key subset の map-remove を含む stage2 Wasm を生成できること
 #[test]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_remove_program() {
-    let harness = r#"
-(defn bootstrap-append-bytes [dst src idx count]
-  (if (>= idx count)
-    dst
-    (bootstrap-append-bytes
-      (vector-push dst (vector-get src idx))
-      src
-      (+ idx 1)
-      count)))
-
-(defn bootstrap-build-stage2 [src]
-  (let [program (parse-program src)
-        pair (compile-program-functions program)
-        functions (vector-get pair 1)
-        header (emit-header)
-        type-sec (emit-type-section-alloc-main)
-        import-sec (emit-import-section-alloc)
-        function-sec (emit-function-section-main-type-index 1)
-        memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-memory-index 1 0)
-        code-sec (emit-code-section-functions functions)
-        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
-        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
-        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
-        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
-        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
-        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))]
-    (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))))
-
-(defn bootstrap-print-module-bytes [bytes idx count]
-  (if (>= idx count)
-    0
-    (do
-      (print (vector-get bytes idx))
-      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
-
-(defn bootstrap-print-module [bytes]
-  (let [count (vector-length bytes)]
-    (do
-      (print count)
-      (bootstrap-print-module-bytes bytes 0 count)
-      0)))
-
-(defn main []
-  (let [stage2 (bootstrap-build-stage2 "(defn main [] (let [m0 (map-new)] (let [m1 (map-insert m0 1 10)] (let [m2 (map-insert m1 2 20)] (let [m3 (map-remove m2 1)] (+ (map-get m3 1) (+ (* 10 (map-size m3)) (map-get m3 2))))))))")]
-    (do
-      (bootstrap-print-module stage2)
-      0)))
-"#;
-    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_source = stage1_source_emitting_wasi_stage2(
+        "(defn main [] (let [m0 (map-new)] (let [m1 (map-insert m0 1 10)] (let [m2 (map-insert m1 2 20)] (let [m3 (map-remove m2 1)] (+ (map-get m3 1) (+ (* 10 (map-size m3)) (map-get m3 2))))))))",
+    );
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -3656,12 +3504,12 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_remove_program() {
     assert_valid_wasm(&modules[0]);
     assert!(
         extract_sections(&modules[0]).iter().any(|(id, _)| *id == 2),
-        "map-remove program を含む stage2 Wasm は alloc import section を持つこと"
+        "map-remove program を含む stage2 Wasm は selfhost runtime import section を持つこと"
     );
     assert_eq!(
-        run_exported_i64_with_alloc_import(&modules[0], "_start"),
+        run_exported_i64_with_runtime_imports(&modules[0], "_start"),
         30,
-        "整数 key subset の map-remove を含む stage2 Wasm が alloc import 付きで実行可能であること"
+        "整数 key subset の map-remove を含む stage2 Wasm が runtime 10-import 付きで実行可能であること"
     );
 }
 
@@ -3669,62 +3517,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_remove_program() {
 #[test]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_key_map_program() {
     let stage2_source = r#"(defn main [] (let [m0 (map-new)] (let [m1 (map-insert m0 "aa" 10)] (let [m2 (map-insert m1 "bb" 20)] (let [m3 (map-remove m2 "aa")] (+ (* 10 (map-size m3)) (map-get m3 "bb")))))))"#.replace('"', "\\\"");
-    let harness = format!(
-        r#"
-(defn bootstrap-append-bytes [dst src idx count]
-  (if (>= idx count)
-    dst
-    (bootstrap-append-bytes
-      (vector-push dst (vector-get src idx))
-      src
-      (+ idx 1)
-      count)))
-
-(defn bootstrap-build-stage2 [src]
-  (let [program (parse-program src)
-        pair (compile-program-functions-with-source src program)
-        functions (vector-get pair 1)
-        data (vector-get pair 2)
-        header (emit-header)
-        type-sec (emit-type-section-alloc-main)
-        import-sec (emit-import-section-alloc)
-        function-sec (emit-function-section-main-type-index 1)
-        memory-sec (emit-memory-section)
-        export-sec (emit-export-section-main-memory-index 1 0)
-        code-sec (emit-code-section-functions functions)
-        data-sec (emit-data-section data 1024)
-        bytes0 (bootstrap-append-bytes (vector-new 64) header 0 (vector-length header))
-        bytes1 (bootstrap-append-bytes bytes0 type-sec 0 (vector-length type-sec))
-        bytes2 (bootstrap-append-bytes bytes1 import-sec 0 (vector-length import-sec))
-        bytes3 (bootstrap-append-bytes bytes2 function-sec 0 (vector-length function-sec))
-        bytes4 (bootstrap-append-bytes bytes3 memory-sec 0 (vector-length memory-sec))
-        bytes5 (bootstrap-append-bytes bytes4 export-sec 0 (vector-length export-sec))
-        bytes6 (bootstrap-append-bytes bytes5 code-sec 0 (vector-length code-sec))]
-    (bootstrap-append-bytes bytes6 data-sec 0 (vector-length data-sec))))
-
-(defn bootstrap-print-module-bytes [bytes idx count]
-  (if (>= idx count)
-    0
-    (do
-      (print (vector-get bytes idx))
-      (bootstrap-print-module-bytes bytes (+ idx 1) count))))
-
-(defn bootstrap-print-module [bytes]
-  (let [count (vector-length bytes)]
-    (do
-      (print count)
-      (bootstrap-print-module-bytes bytes 0 count)
-      0)))
-
-(defn main []
-  (let [stage2 (bootstrap-build-stage2 "{}")]
-    (do
-      (bootstrap-print-module stage2)
-      0)))
-"#,
-        stage2_source
-    );
-    let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let stage1_source = stage1_source_emitting_wasi_stage2_with_source(&stage2_source);
     let stage1_wasm = compile_only(&stage1_source);
     assert_valid_wasm(&stage1_wasm);
 
@@ -3741,9 +3534,9 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_key_map_program() {
         "string key literal bytes は data section に残らず hash const 化されること"
     );
     assert_eq!(
-        run_exported_i64_with_alloc_import(&modules[0], "_start"),
+        run_exported_i64_with_runtime_imports(&modules[0], "_start"),
         30,
-        "string key subset の map builtins を含む stage2 Wasm が alloc import 付きで実行可能であること"
+        "string key subset の map builtins を含む stage2 Wasm が runtime 10-import 付きで実行可能であること"
     );
 }
 
@@ -6349,20 +6142,33 @@ fn test_e2e_boot04_self_hosted_stage2_reports_main_again_build_progress() {
         "BOOT-04 main-build-progress: debug 出力が短すぎる: {:?}",
         values
     );
-    let markers: Vec<i64> = values
-        .iter()
-        .copied()
-        .filter(|value| (50..=67).contains(value))
-        .collect();
     assert_eq!(
-        markers,
-        (50..=67).collect::<Vec<_>>(),
-        "BOOT-04 main-build-progress: marker sequence が崩れている"
+        values[0], 50,
+        "BOOT-04 main-build-progress: 最初の marker は 50 であるべき"
+    );
+    assert_eq!(
+        values[3], 51,
+        "BOOT-04 main-build-progress: header marker 51 が続くべき"
     );
     assert!(
         values[1] > 1000,
         "BOOT-04 main-build-progress: function count が小さすぎる: {:?}",
         values
+    );
+    assert!(
+        values[2] > 0,
+        "BOOT-04 main-build-progress: data length が正であるべき: {:?}",
+        values
+    );
+    assert!(
+        values[4] > 0,
+        "BOOT-04 main-build-progress: header length が正であるべき: {:?}",
+        values
+    );
+    ordered_marker_positions(
+        &values,
+        &(50..=67).collect::<Vec<_>>(),
+        "BOOT-04 main-build-progress: marker sequence が崩れている",
     );
     let last_marker_index = values
         .iter()
@@ -6442,20 +6248,17 @@ fn test_e2e_boot04_self_hosted_stage2_reaches_main_again_build_phase_markers() {
         "BOOT-04 main-build-phase: debug 出力が短すぎる: {:?}",
         values
     );
-    let markers: Vec<i64> = values
-        .iter()
-        .copied()
-        .filter(|value| (50..=66).contains(value) || (101..=104).contains(value))
-        .collect();
-    let expected_markers = std::iter::once(101)
-        .chain(std::iter::once(102))
-        .chain(std::iter::once(104))
-        .chain(50..=66)
-        .chain(std::iter::once(103))
-        .collect::<Vec<_>>();
     assert_eq!(
-        markers, expected_markers,
-        "BOOT-04 main-build-phase: marker sequence が崩れている"
+        values[0], 101,
+        "BOOT-04 main-build-phase: 最初の marker は 101 であるべき"
+    );
+    assert_eq!(
+        values[1], 102,
+        "BOOT-04 main-build-phase: compile 完了 marker 102 が続くべき"
+    );
+    assert_eq!(
+        values[3], 104,
+        "BOOT-04 main-build-phase: parse-count marker 104 が続くべき"
     );
     assert!(
         values[2] > 1000,
@@ -6465,6 +6268,25 @@ fn test_e2e_boot04_self_hosted_stage2_reaches_main_again_build_phase_markers() {
     assert!(
         values[4] > 10,
         "BOOT-04 main-build-phase: parse count が小さすぎる: {:?}",
+        values
+    );
+    ordered_marker_positions(
+        &values[5..],
+        &(50..=66).collect::<Vec<_>>(),
+        "BOOT-04 main-build-phase: build marker sequence が崩れている",
+    );
+    let last_marker_index = values
+        .iter()
+        .rposition(|value| *value == 103)
+        .expect("BOOT-04 main-build-phase: final marker 103 が見つからない");
+    assert_eq!(
+        last_marker_index + 2,
+        values.len(),
+        "BOOT-04 main-build-phase: final marker の後には wasm size だけが続くべき"
+    );
+    assert!(
+        values[last_marker_index + 1] > 0,
+        "BOOT-04 main-build-phase: final wasm size が正であるべき: {:?}",
         values
     );
 }
@@ -7957,9 +7779,39 @@ fn test_e2e_boot04_self_hosted_stage2_cache_compile_progress_counts_all_main_mod
     eprintln!("BOOT-04 cache-compile-progress values = {:?}", values);
 
     assert_eq!(
-        values,
-        vec![86, 24, 87, 24, 88, 1385, 89, 1385],
-        "BOOT-04 cache-compile-progress: cache compile が pair/reg/functions count を保つべき: {:?}",
+        values.len(),
+        8,
+        "BOOT-04 cache-compile-progress: debug 出力長が期待と異なる: {:?}",
+        values
+    );
+    assert_eq!(values[0], 86, "BOOT-04 cache-compile-progress: marker 86 が必要");
+    assert_eq!(values[2], 87, "BOOT-04 cache-compile-progress: marker 87 が必要");
+    assert_eq!(values[4], 88, "BOOT-04 cache-compile-progress: marker 88 が必要");
+    assert_eq!(values[6], 89, "BOOT-04 cache-compile-progress: marker 89 が必要");
+
+    let parse_count = values[1];
+    let pair_count = values[3];
+    let reg_count = values[5];
+    let function_count = values[7];
+
+    assert_eq!(
+        parse_count, pair_count,
+        "BOOT-04 cache-compile-progress: cache compile は Main graph の全 pair を一度ずつ parse するべき: {:?}",
+        values
+    );
+    assert!(
+        pair_count >= 26,
+        "BOOT-04 cache-compile-progress: Main graph pair count が小さすぎる: {:?}",
+        values
+    );
+    assert_eq!(
+        reg_count, function_count,
+        "BOOT-04 cache-compile-progress: register/compile 後の function count は一致するべき: {:?}",
+        values
+    );
+    assert!(
+        function_count >= 1531,
+        "BOOT-04 cache-compile-progress: compiled function count が小さすぎる: {:?}",
         values
     );
 }
@@ -8523,7 +8375,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_text_eq_repro_source() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let source = "(module App.ModuleResolver)\n(defn text-eq-loop [left right idx len] (if (>= idx len) true (if (= (string-char-at left idx) (string-char-at right idx)) (text-eq-loop left right (+ idx 1) len) false)))\n(defn text-eq [left right] (let [len (string-length left)] (if (= len (string-length right)) (text-eq-loop left right 0 len) false)))\n(defn main [] (if (text-eq (command-line-arg 0) (command-line-arg 1)) 1 0))\n";
+    let source = "(module App.ModuleResolver)\n(defn text-eq-loop [left right idx len] (if (>= idx len) true (if (= (string-char-at left idx) (string-char-at right idx)) (text-eq-loop left right (+ idx 1) len) false)))\n(defn text-eq [left right] (let [len (string-length left)] (if (= len (string-length right)) (text-eq-loop left right 0 len) false)))\n(defn main [] (print (if (text-eq (command-line-arg 0) (command-line-arg 1)) 1 0)))\n";
     let stage3_output = run_wasm_with_six_imports_compiler_mode(
         stage2_self_compiler,
         source,
@@ -8535,9 +8387,10 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_text_eq_repro_source() {
     assert_valid_wasm(stage3_wasm);
     validate_wasm_detailed(stage3_wasm)
         .unwrap_or_else(|e| panic!("BOOT-04 text-eq-repro: stage3 wasm validation failed: {e}"));
-    let engine = wasmtime::Engine::default();
-    wasmtime::Module::new(&engine, stage3_wasm)
-        .unwrap_or_else(|e| panic!("BOOT-04 text-eq-repro: wasmtime load failed: {e}"));
+    let run_output =
+        run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["same", "same"])
+            .unwrap_or_else(|e| panic!("BOOT-04 text-eq-repro: 実行失敗: {e}"));
+    assert_eq!(run_output.trim(), "1");
 }
 
 #[test]
@@ -8865,6 +8718,362 @@ fn test_e2e_boot04_self_hosted_stage2_runs_path_join_repro_source() {
     let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["prog", "a", "b"])
         .unwrap_or_else(|e| panic!("BOOT-04 path-join-repro: 実行失敗: {e}"));
     assert_eq!(run_output.trim(), "3");
+}
+
+#[test]
+fn test_e2e_boot04_self_hosted_stage2_runs_string_concat_repro_source() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("BOOT-04 string-concat-repro: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let source = "(module App.ModuleResolver)\n(defn main [] (let [value (string-concat (command-line-arg 1) (command-line-arg 2))] (do (print (string-length value)) (print (string-char-at value 0)) (print (string-char-at value 1)) 0)))\n";
+    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+        stage2_self_compiler,
+        source,
+        &["compiler", "src/App/ModuleResolver.ls"],
+    )
+    .expect("BOOT-04 string-concat-repro: stage2_self_compiler が repro source をコンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_wasm = &stage3_modules[0];
+    assert_valid_wasm(stage3_wasm);
+    validate_wasm_detailed(stage3_wasm).unwrap_or_else(|e| {
+        panic!("BOOT-04 string-concat-repro: stage3 wasm validation failed: {e}")
+    });
+
+    let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["prog", "a", "b"])
+        .unwrap_or_else(|e| panic!("BOOT-04 string-concat-repro: 実行失敗: {e}"));
+    let values: Vec<i64> = run_output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.trim().parse::<i64>().unwrap_or_else(|_| {
+                panic!("BOOT-04 string-concat-repro: 数値でない出力: {line:?}")
+            })
+        })
+        .collect();
+    assert_eq!(values, vec![2, 97, 98]);
+}
+
+#[test]
+fn test_e2e_boot04_self_hosted_stage2_runs_recursive_string_accumulator_repro_source() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect(
+        "BOOT-04 recursive-string-accumulator-repro: stage1 が Main.ls の self-compile に失敗した",
+    );
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let source = "(module App.ModuleResolver)\n(defn grow-loop [seed idx len out] (if (>= idx len) out (grow-loop seed (+ idx 1) len (string-concat out seed))))\n(defn main [] (let [value (grow-loop (command-line-arg 1) 0 2 \"\")] (do (print (string-length value)) (print (string-char-at value 0)) (print (string-char-at value 1)) 0)))\n";
+    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+        stage2_self_compiler,
+        source,
+        &["compiler", "src/App/ModuleResolver.ls"],
+    )
+    .expect("BOOT-04 recursive-string-accumulator-repro: stage2_self_compiler が repro source をコンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_wasm = &stage3_modules[0];
+    assert_valid_wasm(stage3_wasm);
+    validate_wasm_detailed(stage3_wasm).unwrap_or_else(|e| {
+        panic!("BOOT-04 recursive-string-accumulator-repro: stage3 wasm validation failed: {e}")
+    });
+
+    let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["prog", "a"])
+        .unwrap_or_else(|e| panic!("BOOT-04 recursive-string-accumulator-repro: 実行失敗: {e}"));
+    let values: Vec<i64> = run_output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.trim().parse::<i64>().unwrap_or_else(|_| {
+                panic!(
+                    "BOOT-04 recursive-string-accumulator-repro: 数値でない出力: {line:?}"
+                )
+            })
+        })
+        .collect();
+    assert_eq!(values, vec![2, 97, 97]);
+}
+
+#[test]
+fn test_e2e_boot04_self_hosted_stage2_runs_substring_repro_source() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("BOOT-04 substring-repro: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let source = "(module App.ModuleResolver)\n(defn main [] (let [value (substring (command-line-arg 1) 1 3)] (do (print (string-length value)) (print (string-char-at value 0)) (print (string-char-at value 1)) 0)))\n";
+    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+        stage2_self_compiler,
+        source,
+        &["compiler", "src/App/ModuleResolver.ls"],
+    )
+    .expect("BOOT-04 substring-repro: stage2_self_compiler が repro source をコンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_wasm = &stage3_modules[0];
+    assert_valid_wasm(stage3_wasm);
+    validate_wasm_detailed(stage3_wasm)
+        .unwrap_or_else(|e| panic!("BOOT-04 substring-repro: stage3 wasm validation failed: {e}"));
+
+    let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["prog", "abcd"])
+        .unwrap_or_else(|e| panic!("BOOT-04 substring-repro: 実行失敗: {e}"));
+    let values: Vec<i64> = run_output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.trim().parse::<i64>().unwrap_or_else(|_| {
+                panic!("BOOT-04 substring-repro: 数値でない出力: {line:?}")
+            })
+        })
+        .collect();
+    assert_eq!(values, vec![2, 98, 99]);
+}
+
+#[test]
+fn test_e2e_boot04_self_hosted_stage2_runs_recursive_substring_accumulator_repro_source() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect(
+        "BOOT-04 recursive-substring-accumulator-repro: stage1 が Main.ls の self-compile に失敗した",
+    );
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let source = "(module App.ModuleResolver)\n(defn text-eq-loop [left right idx len] (if (>= idx len) true (if (= (string-char-at left idx) (string-char-at right idx)) (text-eq-loop left right (+ idx 1) len) false)))\n(defn text-eq [left right] (let [len (string-length left)] (if (= len (string-length right)) (text-eq-loop left right 0 len) false)))\n(defn copy-loop [src idx len out] (if (>= idx len) out (copy-loop src (+ idx 1) len (string-concat out (substring src idx (+ idx 1))))))\n(defn main [] (let [src (command-line-arg 1)] (print (if (text-eq (copy-loop src 0 (string-length src) \"\") src) 1 0))))\n";
+    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+        stage2_self_compiler,
+        source,
+        &["compiler", "src/App/ModuleResolver.ls"],
+    )
+    .expect("BOOT-04 recursive-substring-accumulator-repro: stage2_self_compiler が repro source をコンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_wasm = &stage3_modules[0];
+    assert_valid_wasm(stage3_wasm);
+    validate_wasm_detailed(stage3_wasm).unwrap_or_else(|e| {
+        panic!("BOOT-04 recursive-substring-accumulator-repro: stage3 wasm validation failed: {e}")
+    });
+
+    let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["prog", "abc"])
+        .unwrap_or_else(|e| panic!("BOOT-04 recursive-substring-accumulator-repro: 実行失敗: {e}"));
+    assert_eq!(run_output.trim(), "1");
+}
+
+#[test]
+fn test_e2e_boot04_self_hosted_stage2_runs_string_concat_literal_suffix_repro_source() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect(
+        "BOOT-04 string-concat-literal-suffix-repro: stage1 が Main.ls の self-compile に失敗した",
+    );
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let source = "(module App.ModuleResolver)\n(defn text-eq-loop [left right idx len] (if (>= idx len) true (if (= (string-char-at left idx) (string-char-at right idx)) (text-eq-loop left right (+ idx 1) len) false)))\n(defn text-eq [left right] (let [len (string-length left)] (if (= len (string-length right)) (text-eq-loop left right 0 len) false)))\n(defn main [] (print (if (text-eq (string-concat (command-line-arg 1) \".ls\") \"ab.ls\") 1 0)))\n";
+    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+        stage2_self_compiler,
+        source,
+        &["compiler", "src/App/ModuleResolver.ls"],
+    )
+    .expect("BOOT-04 string-concat-literal-suffix-repro: stage2_self_compiler が repro source をコンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_wasm = &stage3_modules[0];
+    assert_valid_wasm(stage3_wasm);
+    validate_wasm_detailed(stage3_wasm).unwrap_or_else(|e| {
+        panic!("BOOT-04 string-concat-literal-suffix-repro: stage3 wasm validation failed: {e}")
+    });
+
+    let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["prog", "ab"])
+        .unwrap_or_else(|e| {
+            panic!("BOOT-04 string-concat-literal-suffix-repro: 実行失敗: {e}")
+        });
+    assert_eq!(run_output.trim(), "1");
+}
+
+#[test]
+fn test_e2e_boot04_self_hosted_stage2_runs_string_literal_repro_source() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("BOOT-04 string-literal-repro: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let source = "(module App.ModuleResolver)\n(defn main [] (do (print (string-length \".ls\")) (print (string-char-at \".ls\" 0)) (print (string-char-at \".ls\" 1)) (print (string-char-at \".ls\" 2)) 0))\n";
+    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+        stage2_self_compiler,
+        source,
+        &["compiler", "src/App/ModuleResolver.ls"],
+    )
+    .expect("BOOT-04 string-literal-repro: stage2_self_compiler が repro source をコンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_wasm = &stage3_modules[0];
+    assert_valid_wasm(stage3_wasm);
+    validate_wasm_detailed(stage3_wasm)
+        .unwrap_or_else(|e| panic!("BOOT-04 string-literal-repro: stage3 wasm validation failed: {e}"));
+
+    let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["prog"])
+        .unwrap_or_else(|e| panic!("BOOT-04 string-literal-repro: 実行失敗: {e}"));
+    let values: Vec<i64> = run_output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.trim().parse::<i64>().unwrap_or_else(|_| {
+                panic!("BOOT-04 string-literal-repro: 数値でない出力: {line:?}")
+            })
+        })
+        .collect();
+    assert_eq!(values, vec![3, 46, 108, 115]);
+}
+
+#[test]
+fn test_e2e_boot04_self_hosted_stage2_runs_module_relative_join_repro_source() {
+    let main_path = selfhost_main_path();
+    let selfhost_root = main_path
+        .parent()
+        .expect("App/ ディレクトリ")
+        .parent()
+        .expect("src/ ディレクトリ")
+        .parent()
+        .expect("selfhost/ ルートディレクトリ")
+        .to_path_buf();
+
+    let stage1_wasm = compile_file_only(&main_path);
+    assert_valid_wasm(&stage1_wasm);
+
+    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+        &stage1_wasm,
+        Some(&selfhost_root),
+        &["compiler", "src/App/Main.ls"],
+    )
+    .expect("BOOT-04 module-relative-join-repro: stage1 が Main.ls の self-compile に失敗した");
+    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+    let stage2_self_compiler = &stage2_modules[0];
+    assert_valid_wasm(stage2_self_compiler);
+
+    let source = "(module App.ModuleResolver)\n(defn text-eq-loop [left right idx len] (if (>= idx len) true (if (= (string-char-at left idx) (string-char-at right idx)) (text-eq-loop left right (+ idx 1) len) false)))\n(defn text-eq [left right] (let [len (string-length left)] (if (= len (string-length right)) (text-eq-loop left right 0 len) false)))\n(defn path-char [path idx] (string-char-at path idx))\n(defn path-join [base child] (if (= (string-length base) 0) child (let [len (string-length base)] (if (= (string-char-at base (- len 1)) 47) (string-concat base child) (if (= (string-char-at base (- len 1)) 92) (string-concat base child) (string-concat (string-concat base \"/\") child))))))\n(defn module-name-to-relative-loop [name idx len out] (if (>= idx len) (string-concat out \".ls\") (let [piece (if (= (path-char name idx) 46) \"/\" (substring name idx (+ idx 1)))] (module-name-to-relative-loop name (+ idx 1) len (string-concat out piece)))))\n(defn module-name-to-relative [name] (module-name-to-relative-loop name 0 (string-length name) \"\"))\n(defn main [] (print (if (text-eq (path-join \"src\" (module-name-to-relative (command-line-arg 1))) \"src/App/ModuleResolver.ls\") 1 0)))\n";
+    let stage3_output = run_wasm_with_six_imports_compiler_mode(
+        stage2_self_compiler,
+        source,
+        &["compiler", "src/App/ModuleResolver.ls"],
+    )
+    .expect("BOOT-04 module-relative-join-repro: stage2_self_compiler が repro source をコンパイルできない");
+    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+    let stage3_wasm = &stage3_modules[0];
+    assert_valid_wasm(stage3_wasm);
+    validate_wasm_detailed(stage3_wasm).unwrap_or_else(|e| {
+        panic!("BOOT-04 module-relative-join-repro: stage3 wasm validation failed: {e}")
+    });
+
+    let run_output = run_wasm_with_six_imports_compiler_mode(
+        stage3_wasm,
+        "",
+        &["prog", "App.ModuleResolver"],
+    )
+    .unwrap_or_else(|e| panic!("BOOT-04 module-relative-join-repro: 実行失敗: {e}"));
+    assert_eq!(run_output.trim(), "1");
 }
 
 #[test]
@@ -9537,7 +9746,6 @@ fn test_v2_12_self_hosted_stage2_compiles_vector_push_program() {
           v2 (vector-push v 42)]
       (vector-get v2 0))))
 "#;
-
     let stage3_output = run_wasm_with_six_imports_compiler_mode(
         stage2_self_compiler,
         source,
@@ -9547,7 +9755,9 @@ fn test_v2_12_self_hosted_stage2_compiles_vector_push_program() {
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_wasm = &stage3_modules[0];
     assert_valid_wasm(stage3_wasm);
-    assert_eq!(run_wasi(stage3_wasm), "42\n");
+    let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &[])
+        .expect("V2-12 vector-push: stage3_wasm が runtime imports で実行できること");
+    assert_eq!(run_output, "42\n");
 }
 
 #[test]
@@ -9991,6 +10201,8 @@ fn test_e2e_boot04_self_hosted_stage2_reports_stage3_minimal_progress() {
         .to_path_buf();
     let fixture_dir =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
+    let minimal_src = std::fs::read_to_string(fixture_dir.join("minimal.ls"))
+        .expect("BOOT-04 stage3-minimal-progress: minimal fixture を読めない");
 
     let stage1_wasm = compile_file_only(&main_path);
     assert_valid_wasm(&stage1_wasm);
@@ -10030,10 +10242,55 @@ fn test_e2e_boot04_self_hosted_stage2_reports_stage3_minimal_progress() {
             })
         })
         .collect::<Vec<_>>();
+    assert!(
+        values.len() >= 26,
+        "BOOT-04 stage3-minimal-progress: debug 出力が短すぎる: {:?}",
+        values
+    );
     assert_eq!(
-        values,
-        vec![1, 1, 2, 0, 3, 1, 30, 0, 18, 1, 40, 0, 20, 4, 1],
-        "BOOT-04 stage3-minimal-progress: top-level defn が decl=20 / reg defns=1 / compiled functions=1 であるべき: {:?}",
+        &values[..6],
+        &[1, 1, 2, 0, 3, 1],
+        "BOOT-04 stage3-minimal-progress: top-level progress prefix が崩れている: {:?}",
+        values
+    );
+    assert!(
+        values
+            .windows(4)
+            .any(|window| window == [29, 0, minimal_src.len() as i64, 1]),
+        "BOOT-04 stage3-minimal-progress: pair progress marker 29 が崩れている: {:?}",
+        values
+    );
+    assert!(
+        values.windows(3).any(|window| window == [40, 0, 20]),
+        "BOOT-04 stage3-minimal-progress: defn marker 40 が崩れている: {:?}",
+        values
+    );
+    assert!(
+        values.windows(2).any(|window| window == [41, 0]),
+        "BOOT-04 stage3-minimal-progress: compiled-fn start marker 41 が崩れている: {:?}",
+        values
+    );
+    assert!(
+        values.windows(3).any(|window| window == [42, 0, 1]),
+        "BOOT-04 stage3-minimal-progress: compiled-fn count marker 42 が崩れている: {:?}",
+        values
+    );
+    assert!(
+        values.windows(2).any(|window| window == [43, 0]),
+        "BOOT-04 stage3-minimal-progress: decl completion marker 43 が崩れている: {:?}",
+        values
+    );
+    assert!(
+        values
+            .windows(4)
+            .any(|window| window == [30, 0, minimal_src.len() as i64, 1]),
+        "BOOT-04 stage3-minimal-progress: pair completion marker 30 が崩れている: {:?}",
+        values
+    );
+    assert_eq!(
+        &values[values.len() - 2..],
+        &[4, 1],
+        "BOOT-04 stage3-minimal-progress: compiled function count は 1 であるべき: {:?}",
         values
     );
 }

@@ -422,22 +422,17 @@
     step8))
 
 (defn emit-user-call-root-pops [node arg-idx instrs]
-  (if (< arg-idx 0)
-    instrs
-    (do
-      (root_push node)
-      (let [arg-expr (vector-get node (+ 3 arg-idx))
-        next-instrs (maybe-root-pop-drop instrs (alloc-root-needed arg-expr))]
-        (do
-          (let [next-node (root_pop)]
-            (do
-              (root_push next-node)
-              (root_push next-instrs)
-              (let [result (emit-user-call-root-pops next-node (- arg-idx 1) next-instrs)]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  result)))))))))
+  (let [step (emit-user-call-root-pops-step-64 node arg-idx instrs)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (do
+        (root_push node)
+        (root_push step)
+        (let [result (emit-user-call-root-pops node (vector-get step 1) (vector-get step 2))]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
 
 (defn compile-user-call-with-source [node source env ftable instrs data-ref func-hash arg-count]
   (let [node-slot (root_push node)
@@ -504,9 +499,10 @@
 (defn apply-args-safe-for-ftable [node arg-idx arg-count]
   (if (>= arg-idx arg-count)
     true
-    (if (= (vector-get (vector-get node (+ 3 arg-idx)) 0) (tag-lit-string))
-      false
-      (apply-args-safe-for-ftable node (+ arg-idx 1) arg-count))))
+    (let [arg-tag (vector-get (vector-get node (+ 3 arg-idx)) 0)]
+      (if (or (= arg-tag (tag-lit-int)) (or (= arg-tag (tag-lit-bool)) (= arg-tag (tag-var))))
+        (apply-args-safe-for-ftable node (+ arg-idx 1) arg-count)
+        false))))
 
 (defn source-neutral-ftable-builtin-op [bop]
   (if (= bop (op-vector-new))
@@ -635,24 +631,26 @@
     (do
       (root_push vector-instrs)
       (root_push value-instrs)
-      (let [temp-base (max-root-temp-base env vector-instrs value-instrs)
-        vector-local temp-base
-        value-local (+ temp-base 1)
-        instrs1 (append-instr-vector instrs vector-instrs)
-        instrs2 (emit-to instrs1 (op-local-set) vector-local)
-        instrs3 (maybe-root-push-drop instrs2 vector-root vector-local)
-        instrs4 (append-instr-vector instrs3 value-instrs)
-        instrs5 (emit-to instrs4 (op-local-set) value-local)
-        instrs6 (maybe-root-push-drop instrs5 value-root value-local)
-        instrs7 (emit-to instrs6 (op-local-get) vector-local)
-        instrs8 (emit-to instrs7 (op-local-get) value-local)
-        instrs9 (emit-to instrs8 (op-vector-push) (+ 1 (map-size env)))
-        instrs10 (maybe-root-pop-drop instrs9 value-root)
-        instrs11 (maybe-root-pop-drop instrs10 vector-root)]
+      (let [result (compile-vector-push-instrs env instrs vector-instrs value-instrs vector-root value-root)]
         (do
           (root_pop)
           (root_pop)
-          instrs11)))))
+          result)))))
+(defn compile-vector-push-instrs [env instrs vector-instrs value-instrs vector-root value-root]
+  (let [temp-base (max-root-temp-base env vector-instrs value-instrs)
+    vector-local temp-base
+    value-local (+ temp-base 1)
+    instrs1 (append-instr-vector instrs vector-instrs)
+    instrs2 (emit-to instrs1 (op-local-set) vector-local)
+    instrs3 (maybe-root-push-drop instrs2 vector-root vector-local)
+    instrs4 (append-instr-vector instrs3 value-instrs)
+    instrs5 (emit-to instrs4 (op-local-set) value-local)
+    instrs6 (maybe-root-push-drop instrs5 value-root value-local)
+    instrs7 (emit-to instrs6 (op-local-get) vector-local)
+    instrs8 (emit-to instrs7 (op-local-get) value-local)
+    instrs9 (emit-to instrs8 (op-vector-push) (+ 1 (map-size env)))
+    instrs10 (maybe-root-pop-drop instrs9 value-root)]
+    (maybe-root-pop-drop instrs10 vector-root)))
 (defn compile-vector-push-with-ftable [node env ftable instrs]
   (let [vector-expr (vector-get node 3)
     value-expr (vector-get node 4)
@@ -663,24 +661,11 @@
     (do
       (root_push vector-instrs)
       (root_push value-instrs)
-      (let [temp-base (max-root-temp-base env vector-instrs value-instrs)
-        vector-local temp-base
-        value-local (+ temp-base 1)
-        instrs1 (append-instr-vector instrs vector-instrs)
-        instrs2 (emit-to instrs1 (op-local-set) vector-local)
-        instrs3 (maybe-root-push-drop instrs2 vector-root vector-local)
-        instrs4 (append-instr-vector instrs3 value-instrs)
-        instrs5 (emit-to instrs4 (op-local-set) value-local)
-        instrs6 (maybe-root-push-drop instrs5 value-root value-local)
-        instrs7 (emit-to instrs6 (op-local-get) vector-local)
-        instrs8 (emit-to instrs7 (op-local-get) value-local)
-        instrs9 (emit-to instrs8 (op-vector-push) (+ 1 (map-size env)))
-        instrs10 (maybe-root-pop-drop instrs9 value-root)
-        instrs11 (maybe-root-pop-drop instrs10 vector-root)]
+      (let [result (compile-vector-push-instrs env instrs vector-instrs value-instrs vector-root value-root)]
         (do
           (root_pop)
           (root_pop)
-          instrs11)))))
+          result)))))
 
 (defn compile-map-insert-builtin-instrs [env instrs map-instrs key-instrs value-instrs map-root key-root value-root bop]
   (let [temp-base (max-root-temp-base3 env map-instrs key-instrs value-instrs)
@@ -812,14 +797,19 @@
 (defn compile-string-concat-instrs [env instrs lhs-instrs rhs-instrs]
   (let [temp-base (max-root-temp-base env lhs-instrs rhs-instrs)
     lhs-local temp-base
+    rhs-local (+ temp-base 1)
     instrs1 (append-instr-vector instrs lhs-instrs)
     instrs2 (emit-to instrs1 (op-local-set) lhs-local)
     instrs3 (emit-root-push-drop instrs2 lhs-local)
     instrs4 (append-instr-vector instrs3 rhs-instrs)
-    instrs5 (emit-to instrs4 (op-local-get) lhs-local)
-    instrs6 (emit-to instrs5 (op-string-concat) 0)
-    instrs7 (emit-root-pop-drop instrs6)]
-    instrs7))
+    instrs5 (emit-to instrs4 (op-local-set) rhs-local)
+    instrs6 (emit-root-push-drop instrs5 rhs-local)
+    instrs7 (emit-to instrs6 (op-local-get) lhs-local)
+    instrs8 (emit-to instrs7 (op-local-get) rhs-local)
+    instrs9 (emit-to instrs8 (op-string-concat) 0)
+    instrs10 (emit-root-pop-drop instrs9)
+    instrs11 (emit-root-pop-drop instrs10)]
+    instrs11))
 
 (defn compile-string-concat-with-source [node source env ftable instrs data-ref]
   (let [lhs-instrs (compile-expr-with-source (vector-get node 3) source env ftable (vector-new 8) data-ref)
@@ -1564,14 +1554,15 @@
           (if (= (vector-get decl 0) 20)
             (let [name-hash (vector-get decl 1)
               next-ftable (ftable-register ftable name-hash func-idx)]
-              (do
-                (root_push next-ftable)
-                (let [state (make-register-state 0 (+ idx 1) next-ftable (+ func-idx 1))]
-                  (do
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    state))))
+                (do
+                  (root_push next-ftable)
+                  (let [state (make-register-state 0 (+ idx 1) next-ftable (+ func-idx 1))]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      state))))
             (let [state (make-register-state 0 (+ idx 1) ftable func-idx)]
               (do
                 (root_pop)

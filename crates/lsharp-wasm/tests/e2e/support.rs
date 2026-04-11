@@ -38,7 +38,7 @@ const SELFHOST_LSP_RUNTIME_MODULES: &[&str] = &[
     "LspServer.ls",
 ];
 static SELFHOST_FIXTURE_COUNTER: AtomicUsize = AtomicUsize::new(0);
-const ROOT_STACK_BYTES: i32 = 4096 * 8;
+const ROOT_STACK_BYTES: i32 = 8192 * 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RuntimeTelemetry {

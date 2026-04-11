@@ -524,13 +524,15 @@
             result))))))
 
 (defn append-byte-vector [dst src idx count]
-  (if (>= idx count)
-    dst
-    (let [next-dst (push-int-vector dst (vector-get src idx))]
+  (let [state (append-byte-vector-step-8 dst src idx count)]
+    (if (= (vector-get state 0) 1)
+      (vector-get state 2)
       (do
-        (root_push next-dst)
-        (let [result (append-byte-vector next-dst src (+ idx 1) count)]
+        (root_push src)
+        (root_push state)
+        (let [result (append-byte-vector (vector-get state 2) src (vector-get state 1) count)]
           (do
+            (root_pop)
             (root_pop)
             result))))))
 
@@ -592,13 +594,15 @@
             result))))))
 
 (defn string-to-byte-vector [text idx count bytes]
-  (if (>= idx count)
-    bytes
-    (let [next-bytes (push-int-vector bytes (string-char-at text idx))]
+  (let [state (string-to-byte-vector-step-8 text idx count bytes)]
+    (if (= (vector-get state 0) 1)
+      (vector-get state 2)
       (do
-        (root_push next-bytes)
-        (let [result (string-to-byte-vector text (+ idx 1) count next-bytes)]
+        (root_push text)
+        (root_push state)
+        (let [result (string-to-byte-vector text (vector-get state 1) count (vector-get state 2))]
           (do
+            (root_pop)
             (root_pop)
             result))))))
 (defn write-i32-le [vec value] (push-int-vector (push-int-vector (push-int-vector (push-int-vector vec (% value 256)) (% (/ value 256) 256)) (% (/ value 65536) 256)) (% (/ value 16777216) 256)))
@@ -871,19 +875,19 @@
                         (root_pop)
                         (root_pop)
                         result))))))))))))
-(defn function-meta-ir [func-meta] (vector-get func-meta 0))
-(defn function-meta-param-count [func-meta] (vector-get func-meta 1))
-(defn function-meta-local-count [func-meta] (vector-get func-meta 2))
+(defn function-meta-param-count [func-meta] (vector-get func-meta 0))
+(defn function-meta-local-count [func-meta] (vector-get func-meta 1))
+(defn function-meta-ir [func-meta] (vector-get func-meta 2))
 (defn make-function-meta [param-count local-count ir]
   (do
     (root_push ir)
-    (let [meta1 (push-object-vector (vector-new 3) ir)]
+    (let [meta1 (push-int-vector (vector-new 3) param-count)]
       (do
         (root_push meta1)
-        (let [meta2 (push-int-vector meta1 param-count)]
+        (let [meta2 (push-int-vector meta1 local-count)]
           (do
             (root_push meta2)
-            (let [result (push-int-vector meta2 local-count)]
+            (let [result (push-object-vector meta2 ir)]
               (do
                 (root_pop)
                 (root_pop)
