@@ -125,6 +125,267 @@ fn write_cli_fixture_files(dir: &std::path::Path, files: &[(&str, &str)]) {
     }
 }
 
+fn take_lsharp_toplevel_forms(source: &str, form_count: usize) -> String {
+    assert!(form_count > 0, "top-level form 数は 1 以上であるべき");
+
+    let mut forms = 0usize;
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for (idx, ch) in source.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => in_string = true,
+            '(' => depth += 1,
+            ')' => {
+                depth = depth.checked_sub(1).expect("top-level form の括弧が不正");
+                if depth == 0 {
+                    forms += 1;
+                    if forms == form_count {
+                        return source[..idx + ch.len_utf8()].to_string();
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    panic!(
+        "top-level form を {} 個切り出せない: 実際は {} 個",
+        form_count, forms
+    );
+}
+
+fn stack_safe_wasm_bytes_eq_helpers() -> &'static str {
+    r#"
+(defn make-wasm-bytes-eq-state [done next-idx mismatch]
+  (push-int-vector-local
+    (push-int-vector-local
+      (push-int-vector-local (vector-new 3) done)
+      next-idx)
+    mismatch))
+(defn wasm-bytes-eq-step [left right idx n]
+  (if (>= idx n)
+    (make-wasm-bytes-eq-state 1 idx 0)
+    (if (= (vector-get left idx) (vector-get right idx))
+      (make-wasm-bytes-eq-state 0 (+ idx 1) 0)
+      (make-wasm-bytes-eq-state 1 (+ idx 1) 1))))
+(defn continue-wasm-bytes-eq-step [left right n state]
+  (if (= (vector-get state 0) 1)
+    state
+    (wasm-bytes-eq-step left right (vector-get state 1) n)))
+(defn wasm-bytes-eq-step-8 [left right idx n]
+  (let [step1 (wasm-bytes-eq-step left right idx n)
+        step2 (continue-wasm-bytes-eq-step left right n step1)
+        step3 (continue-wasm-bytes-eq-step left right n step2)
+        step4 (continue-wasm-bytes-eq-step left right n step3)
+        step5 (continue-wasm-bytes-eq-step left right n step4)
+        step6 (continue-wasm-bytes-eq-step left right n step5)
+        step7 (continue-wasm-bytes-eq-step left right n step6)
+        step8 (continue-wasm-bytes-eq-step left right n step7)]
+    step8))
+(defn continue-wasm-bytes-eq-step-8 [left right n state]
+  (if (= (vector-get state 0) 1)
+    state
+    (wasm-bytes-eq-step-8 left right (vector-get state 1) n)))
+(defn wasm-bytes-eq-step-64 [left right idx n]
+  (let [step1 (wasm-bytes-eq-step-8 left right idx n)
+        step2 (continue-wasm-bytes-eq-step-8 left right n step1)
+        step3 (continue-wasm-bytes-eq-step-8 left right n step2)
+        step4 (continue-wasm-bytes-eq-step-8 left right n step3)
+        step5 (continue-wasm-bytes-eq-step-8 left right n step4)
+        step6 (continue-wasm-bytes-eq-step-8 left right n step5)
+        step7 (continue-wasm-bytes-eq-step-8 left right n step6)
+        step8 (continue-wasm-bytes-eq-step-8 left right n step7)]
+    step8))
+(defn wasm-bytes-eq-loop [left right idx n]
+  (let [state (wasm-bytes-eq-step-64 left right idx n)]
+    (if (= (vector-get state 2) 1)
+      0
+      (if (= (vector-get state 0) 1)
+        1
+        (wasm-bytes-eq-loop left right (vector-get state 1) n)))))
+(defn wasm-bytes-eq [left right]
+  (if (= (vector-length left) (vector-length right))
+    (wasm-bytes-eq-loop left right 0 (vector-length left))
+    0))
+"#
+}
+
+fn with_stack_safe_wasm_bytes_eq_helpers(body: &str) -> String {
+    format!("{}\n{}", stack_safe_wasm_bytes_eq_helpers(), body)
+}
+
+fn assert_selfhost_direct_fixture_with_func_idx_is_deterministic(
+    fixture_prefix: &str,
+    file_name: &str,
+    source: &str,
+    label: &str,
+    func_idx: usize,
+) {
+    let dir = cli_test_fixture_dir(fixture_prefix);
+    write_cli_fixture_files(&dir, &[(file_name, source)]);
+    let fixture_path = dir.join(file_name).to_string_lossy().replace('\\', "\\\\");
+    let wasm_bytes_eq_helpers = stack_safe_wasm_bytes_eq_helpers();
+
+    let harness = format!(
+        r#"
+{wasm_bytes_eq_helpers}
+(defn compile-file-state [path]
+  (let [src (read-file path)
+        program (parse-program src)
+        n (vector-length program)
+        reg-result (register-defns-chunked program 0 n (ftable-new) {func_idx})
+        ftable (vector-get reg-result 2)
+        data-ref (ref-new (vector-new 8))
+        functions (compile-defn-functions-with-source program 0 n src ftable data-ref (vector-new 8))
+        data (ref-get data-ref)]
+    (push-object-vector (vector-push (vector-push (vector-new 2) functions) data) program)))
+(defn main []
+  (let [state1 (compile-file-state "{fixture_path}")
+        state2 (compile-file-state "{fixture_path}")
+        functions1 (vector-get state1 0)
+        data1 (vector-get state1 1)
+        functions2 (vector-get state2 0)
+        data2 (vector-get state2 1)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)]
+    (do
+      (print (vector-length wasm1))
+      (print (vector-length wasm2))
+      (print (wasm-bytes-eq wasm1 wasm2))
+      0)))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "{} determinism 出力が不足: {:?}",
+        label,
+        lines
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "2回の {} compile で Wasm 長は一致するべき",
+        label
+    );
+    assert_eq!(
+        lines[2], "1",
+        "2回の {} compile は byte-identical であるべき: {:?}",
+        label, lines
+    );
+}
+
+fn assert_selfhost_direct_fixture_is_deterministic(
+    fixture_prefix: &str,
+    file_name: &str,
+    source: &str,
+    label: &str,
+) {
+    assert_selfhost_direct_fixture_with_func_idx_is_deterministic(
+        fixture_prefix,
+        file_name,
+        source,
+        label,
+        0,
+    );
+}
+
+fn assert_selfhost_inline_fixture_with_func_idx_is_deterministic(
+    fixture_prefix: &str,
+    source: &str,
+    label: &str,
+    func_idx: usize,
+) {
+    let dir = cli_test_fixture_dir(fixture_prefix);
+    write_cli_fixture_files(
+        &dir,
+        &[("lsharp.toml", ""), ("src/App/ModuleResolver.ls", source)],
+    );
+    let wasm_bytes_eq_helpers = stack_safe_wasm_bytes_eq_helpers();
+
+    let harness = format!(
+        r#"
+{wasm_bytes_eq_helpers}
+(defn compile-inline-file-state [path func-idx]
+  (let [src (read-file path)
+        program (parse-program src)
+        source-root (resolve-source-root path)
+        package-root (resolve-package-root path)
+        seen-ref (ref-new (map-new))
+        imported-pairs (load-imports-from-decls program src 0 (vector-length program) seen-ref (vector-new 8) source-root package-root)
+        all-pairs (append-src-decl-pair imported-pairs src program)
+        n (vector-length all-pairs)
+        reg-result (register-all-pairs all-pairs 0 n (ftable-new) {func_idx})
+        ftable (vector-get reg-result 0)
+        data-ref (ref-new (vector-new 8))
+        functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+        data (ref-get data-ref)]
+    (push-object-vector (vector-push (vector-push (vector-new 2) functions) data) program)))
+(defn main []
+  (let [state1 (compile-inline-file-state "src/App/ModuleResolver.ls" {func_idx})
+        state2 (compile-inline-file-state "src/App/ModuleResolver.ls" {func_idx})
+        functions1 (vector-get state1 0)
+        data1 (vector-get state1 1)
+        functions2 (vector-get state2 0)
+        data2 (vector-get state2 1)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)]
+    (do
+      (print (vector-length wasm1))
+      (print (vector-length wasm2))
+      (print (wasm-bytes-eq wasm1 wasm2))
+      0)))
+"#,
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "{} determinism 出力が不足: {:?}",
+        label,
+        lines
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "2回の {} compile で Wasm 長は一致するべき",
+        label
+    );
+    assert_eq!(
+        lines[2], "1",
+        "2回の {} compile は byte-identical であるべき: {:?}",
+        label, lines
+    );
+}
+
+fn assert_selfhost_inline_fixture_is_deterministic(
+    fixture_prefix: &str,
+    source: &str,
+    label: &str,
+) {
+    assert_selfhost_inline_fixture_with_func_idx_is_deterministic(fixture_prefix, source, label, 7);
+}
+
 fn cli_multifile_nested_fixture_files() -> [(&'static str, &'static str); 3] {
     [
         (
@@ -1117,15 +1378,231 @@ fn test_e2e_selfhost_cli_compile_functions_data_with_cache_invalidates_changed_m
     assert_eq!(lines[3], "2", "functions2 も 2 個保持するべき");
 }
 
-/// TEST-CLI-02-M1D: selfhost cached payload helper (func_idx=7) は compiler-mode inline path と同じ Wasm を組めること
+/// TEST-CLI-02-M1D: selfhost cached helper は changed module 後も fresh compile と同じ Wasm を返すこと
 #[test]
-fn test_e2e_selfhost_cli_compile_file_payload_with_cache_matches_inline_main() {
-    let dir = selfhost_package_root();
+fn test_e2e_selfhost_cli_compile_functions_data_with_cache_matches_fresh_compile_after_change() {
+    let dir = cli_test_fixture_dir("compile_functions_data_cache_dirty_parity");
+    write_cli_fixture_files(
+        &dir,
+        &[
+            (
+                "src/Main.ls",
+                "(module Main)\n(import App.Lib)\n(defn main [] (helper))",
+            ),
+            ("vendor/App/Lib.ls", "(module App.Lib)\n(defn helper [] 7)"),
+            (".lsharp/module-index/App/Lib.path", "vendor/App/Lib.ls"),
+            (
+                "src/App/Placeholder.ls",
+                "(module App.Placeholder)\n(defn unused [] 0)",
+            ),
+        ],
+    );
 
-    let harness = r#"
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
 (defn main []
-  (let [path "src/App/Main.ls"
-        src (read-file path)
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload1 (compile-file-functions-data-with-cache "src/Main.ls" cache-ref parse-count-ref)
+        count1 (ref-get parse-count-ref)
+        functions1 (vector-get payload1 0)
+        data1 (vector-get payload1 1)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        _ (write-file "src/App/Lib.ls" "(module App.Lib) (defn helper [] 9)")
+        payload2 (compile-file-functions-data-with-cache "src/Main.ls" cache-ref parse-count-ref)
+        count2 (ref-get parse-count-ref)
+        functions2 (vector-get payload2 0)
+        data2 (vector-get payload2 1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)
+        fresh-payload (compile-file-functions-data "src/Main.ls")
+        fresh-functions (vector-get fresh-payload 0)
+        fresh-data (vector-get fresh-payload 1)
+        fresh-wasm (build-wasm-bytes-wasi fresh-functions fresh-data)]
+    (do
+      (print count1)
+      (print count2)
+      (print (wasm-bytes-eq wasm1 wasm2))
+      (print (wasm-bytes-eq wasm2 fresh-wasm))
+      0)))
+"#,
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 4,
+        "compile-file-functions-data-with-cache dirty parity 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "2",
+        "初回 compile では main と vendor lib を parse するべき"
+    );
+    assert_eq!(
+        lines[1], "3",
+        "changed module 後は local lib だけ追加で再 parse するべき"
+    );
+    assert_eq!(
+        lines[2], "0",
+        "changed module 後の cached compile は initial output から変化するべき"
+    );
+    assert_eq!(
+        lines[3], "1",
+        "changed module 後の cached compile は fresh compile と byte-identical であるべき"
+    );
+}
+
+/// TEST-CLI-02-M1E: selfhost direct multi-file compile は同じ入力を 2 回与えても同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_direct_multifile_compile_is_deterministic() {
+    let dir = cli_test_fixture_dir("compile_functions_data_direct_determinism");
+    write_cli_fixture_files(
+        &dir,
+        &[
+            (
+                "src/Main.ls",
+                "(module Main)\n(import App.Lib)\n(defn main [] (helper))",
+            ),
+            ("vendor/App/Lib.ls", "(module App.Lib)\n(defn helper [] 7)"),
+            (".lsharp/module-index/App/Lib.path", "vendor/App/Lib.ls"),
+            (
+                "src/App/Placeholder.ls",
+                "(module App.Placeholder)\n(defn unused [] 0)",
+            ),
+        ],
+    );
+
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
+(defn make-ir-fingerprint-state [done next-idx next-acc]
+  (push-int-vector-local
+    (push-int-vector-local
+      (push-int-vector-local (vector-new 3) done)
+      next-idx)
+    next-acc))
+(defn ir-fingerprint-step [ir idx count acc]
+  (if (>= idx count)
+    (make-ir-fingerprint-state 1 idx acc)
+    (let [instr (vector-get ir idx)
+          opcode (vector-get instr 0)
+          operand (vector-get instr 1)]
+      (make-ir-fingerprint-state 0 (+ idx 1) (+ (* (+ (* acc 31) opcode) 31) operand)))))
+(defn continue-ir-fingerprint-step [ir count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (ir-fingerprint-step ir (vector-get state 1) count (vector-get state 2))))
+(defn ir-fingerprint-step-8 [ir idx count acc]
+  (let [step1 (ir-fingerprint-step ir idx count acc)
+        step2 (continue-ir-fingerprint-step ir count step1)
+        step3 (continue-ir-fingerprint-step ir count step2)
+        step4 (continue-ir-fingerprint-step ir count step3)
+        step5 (continue-ir-fingerprint-step ir count step4)
+        step6 (continue-ir-fingerprint-step ir count step5)
+        step7 (continue-ir-fingerprint-step ir count step6)
+        step8 (continue-ir-fingerprint-step ir count step7)]
+    step8))
+(defn continue-ir-fingerprint-step-8 [ir count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (ir-fingerprint-step-8 ir (vector-get state 1) count (vector-get state 2))))
+(defn ir-fingerprint-step-64 [ir idx count acc]
+  (let [step1 (ir-fingerprint-step-8 ir idx count acc)
+        step2 (continue-ir-fingerprint-step-8 ir count step1)
+        step3 (continue-ir-fingerprint-step-8 ir count step2)
+        step4 (continue-ir-fingerprint-step-8 ir count step3)
+        step5 (continue-ir-fingerprint-step-8 ir count step4)
+        step6 (continue-ir-fingerprint-step-8 ir count step5)
+        step7 (continue-ir-fingerprint-step-8 ir count step6)
+        step8 (continue-ir-fingerprint-step-8 ir count step7)]
+    step8))
+(defn ir-fingerprint-loop [ir idx count acc]
+  (let [step (ir-fingerprint-step-64 ir idx count acc)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (ir-fingerprint-loop ir (vector-get step 1) count (vector-get step 2)))))
+(defn ir-fingerprint [ir]
+  (ir-fingerprint-loop ir 0 (vector-length ir) 0))
+(defn function-fingerprint [func]
+  (let [param-count (vector-get func 0)
+        local-count (vector-get func 1)
+        ir (vector-get func 2)]
+    (+ (* (+ (* param-count 31) local-count) 31) (ir-fingerprint ir))))
+(defn first-function-mismatch [functions1 functions2 idx count]
+  (if (>= idx count)
+    -1
+    (if (= (function-fingerprint (vector-get functions1 idx)) (function-fingerprint (vector-get functions2 idx)))
+      (first-function-mismatch functions1 functions2 (+ idx 1) count)
+      idx)))
+(defn first-ir-mismatch [ir1 ir2 idx count]
+  (if (>= idx count)
+    -1
+    (let [instr1 (vector-get ir1 idx)
+          instr2 (vector-get ir2 idx)]
+      (if (and (= (vector-get instr1 0) (vector-get instr2 0)) (= (vector-get instr1 1) (vector-get instr2 1)))
+        (first-ir-mismatch ir1 ir2 (+ idx 1) count)
+        idx))))
+(defn print-ir-instr [ir idx]
+  (if (< idx 0)
+    (do
+      (print -1)
+      (print -1)
+      (print -1)
+      0)
+    (if (>= idx (vector-length ir))
+      (do
+        (print -1)
+        (print -1)
+        (print -1)
+        0)
+      (let [instr (vector-get ir idx)]
+        (do
+          (print idx)
+          (print (vector-get instr 0))
+          (print (vector-get instr 1))
+          0)))))
+(defn nth-defn [program idx seen target]
+  (if (>= idx (vector-length program))
+    (vector-new 5)
+    (let [decl (vector-get program idx)]
+      (if (= (vector-get decl 0) 20)
+        (if (= seen target)
+          decl
+          (nth-defn program (+ idx 1) (+ seen 1) target))
+        (nth-defn program (+ idx 1) seen target)))))
+(defn nth-defn-name-hash [program idx seen target]
+  (if (>= idx (vector-length program))
+    -1
+    (let [decl (vector-get program idx)]
+      (if (= (vector-get decl 0) 20)
+        (if (= seen target)
+          (vector-get decl 1)
+          (nth-defn-name-hash program (+ idx 1) (+ seen 1) target))
+        (nth-defn-name-hash program (+ idx 1) seen target)))))
+(defn nth-defn [program idx seen target]
+  (if (>= idx (vector-length program))
+    (vector-new 5)
+    (let [decl (vector-get program idx)]
+      (if (= (vector-get decl 0) 20)
+        (if (= seen target)
+          decl
+          (nth-defn program (+ idx 1) (+ seen 1) target))
+        (nth-defn program (+ idx 1) seen target)))))
+(defn compile-standalone-rooted [expr]
+  (do
+    (root_push expr)
+    (let [base (vector-new 8)]
+      (do
+        (root_push base)
+        (let [result (compile-expr-with-ftable expr (env-new) (ftable-new) base)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+(defn compile-inline-file-state [path func-idx]
+  (let [src (read-file path)
         program (parse-program src)
         source-root (resolve-source-root path)
         package-root (resolve-package-root path)
@@ -1133,25 +1610,2315 @@ fn test_e2e_selfhost_cli_compile_file_payload_with_cache_matches_inline_main() {
         imported-pairs (load-imports-from-decls program src 0 (vector-length program) seen-ref (vector-new 8) source-root package-root)
         all-pairs (vector-push imported-pairs (make-src-decl-pair src program))
         n (vector-length all-pairs)
+        reg-result (register-all-pairs all-pairs 0 n (ftable-new) func-idx)
+        ftable (vector-get reg-result 0)
+        data-ref (ref-new (vector-new 8))
+        functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+        data (ref-get data-ref)]
+    (vector-push (vector-push (vector-new 2) functions) data)))
+(defn main []
+  (let [payload1 (compile-inline-file-state "src/Main.ls" 7)
+        payload2 (compile-inline-file-state "src/Main.ls" 7)
+        functions1 (vector-get payload1 0)
+        data1 (vector-get payload1 1)
+        functions2 (vector-get payload2 0)
+        data2 (vector-get payload2 1)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)]
+    (do
+      (print (vector-length wasm1))
+      (print (vector-length wasm2))
+      (print (wasm-bytes-eq wasm1 wasm2))
+      0)))
+"#,
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "direct multi-file determinism 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "2回の direct compile で Wasm 長は一致するべき"
+    );
+    assert_eq!(
+        lines[2], "1",
+        "2回の direct compile は byte-identical であるべき"
+    );
+}
+
+/// TEST-CLI-02-M1F0: selfhost App.ModuleResolver の direct compile は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_compile_is_deterministic() {
+    let dir = selfhost_package_root();
+
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
+(defn make-ir-fingerprint-state [done next-idx next-acc]
+  (push-int-vector-local
+    (push-int-vector-local
+      (push-int-vector-local (vector-new 3) done)
+      next-idx)
+    next-acc))
+(defn ir-fingerprint-step [ir idx count acc]
+  (if (>= idx count)
+    (make-ir-fingerprint-state 1 idx acc)
+    (let [instr (vector-get ir idx)
+          opcode (vector-get instr 0)
+          operand (vector-get instr 1)]
+      (make-ir-fingerprint-state 0 (+ idx 1) (+ (* (+ (* acc 31) opcode) 31) operand)))))
+(defn continue-ir-fingerprint-step [ir count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (ir-fingerprint-step ir (vector-get state 1) count (vector-get state 2))))
+(defn ir-fingerprint-step-8 [ir idx count acc]
+  (let [step1 (ir-fingerprint-step ir idx count acc)
+        step2 (continue-ir-fingerprint-step ir count step1)
+        step3 (continue-ir-fingerprint-step ir count step2)
+        step4 (continue-ir-fingerprint-step ir count step3)
+        step5 (continue-ir-fingerprint-step ir count step4)
+        step6 (continue-ir-fingerprint-step ir count step5)
+        step7 (continue-ir-fingerprint-step ir count step6)
+        step8 (continue-ir-fingerprint-step ir count step7)]
+    step8))
+(defn continue-ir-fingerprint-step-8 [ir count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (ir-fingerprint-step-8 ir (vector-get state 1) count (vector-get state 2))))
+(defn ir-fingerprint-step-64 [ir idx count acc]
+  (let [step1 (ir-fingerprint-step-8 ir idx count acc)
+        step2 (continue-ir-fingerprint-step-8 ir count step1)
+        step3 (continue-ir-fingerprint-step-8 ir count step2)
+        step4 (continue-ir-fingerprint-step-8 ir count step3)
+        step5 (continue-ir-fingerprint-step-8 ir count step4)
+        step6 (continue-ir-fingerprint-step-8 ir count step5)
+        step7 (continue-ir-fingerprint-step-8 ir count step6)
+        step8 (continue-ir-fingerprint-step-8 ir count step7)]
+    step8))
+(defn ir-fingerprint-loop [ir idx count acc]
+  (let [step (ir-fingerprint-step-64 ir idx count acc)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (ir-fingerprint-loop ir (vector-get step 1) count (vector-get step 2)))))
+(defn ir-fingerprint [ir]
+  (ir-fingerprint-loop ir 0 (vector-length ir) 0))
+(defn function-fingerprint [func]
+  (let [param-count (vector-get func 0)
+        local-count (vector-get func 1)
+        ir (vector-get func 2)]
+    (+ (* (+ (* param-count 31) local-count) 31) (ir-fingerprint ir))))
+(defn first-function-mismatch [functions1 functions2 idx count]
+  (if (>= idx count)
+    -1
+    (if (= (function-fingerprint (vector-get functions1 idx)) (function-fingerprint (vector-get functions2 idx)))
+      (first-function-mismatch functions1 functions2 (+ idx 1) count)
+      idx)))
+(defn first-ir-mismatch [ir1 ir2 idx count]
+  (if (>= idx count)
+    -1
+    (let [instr1 (vector-get ir1 idx)
+          instr2 (vector-get ir2 idx)]
+      (if (and (= (vector-get instr1 0) (vector-get instr2 0)) (= (vector-get instr1 1) (vector-get instr2 1)))
+        (first-ir-mismatch ir1 ir2 (+ idx 1) count)
+        idx))))
+(defn print-ir-instr [ir idx]
+  (if (< idx 0)
+    (do
+      (print -1)
+      (print -1)
+      (print -1)
+      0)
+    (if (>= idx (vector-length ir))
+      (do
+        (print -1)
+        (print -1)
+        (print -1)
+        0)
+      (let [instr (vector-get ir idx)]
+        (do
+          (print idx)
+          (print (vector-get instr 0))
+          (print (vector-get instr 1))
+          0)))))
+(defn nth-defn [program idx seen target]
+  (if (>= idx (vector-length program))
+    (vector-new 5)
+    (let [decl (vector-get program idx)]
+      (if (= (vector-get decl 0) 20)
+        (if (= seen target)
+          decl
+          (nth-defn program (+ idx 1) (+ seen 1) target))
+        (nth-defn program (+ idx 1) seen target)))))
+(defn nth-defn-name-hash [program idx seen target]
+  (if (>= idx (vector-length program))
+    -1
+    (let [decl (vector-get program idx)]
+      (if (= (vector-get decl 0) 20)
+        (if (= seen target)
+          (vector-get decl 1)
+          (nth-defn-name-hash program (+ idx 1) (+ seen 1) target))
+        (nth-defn-name-hash program (+ idx 1) seen target)))))
+(defn nth-defn [program idx seen target]
+  (if (>= idx (vector-length program))
+    (vector-new 5)
+    (let [decl (vector-get program idx)]
+      (if (= (vector-get decl 0) 20)
+        (if (= seen target)
+          decl
+          (nth-defn program (+ idx 1) (+ seen 1) target))
+        (nth-defn program (+ idx 1) seen target)))))
+(defn compile-standalone-rooted [expr]
+  (do
+    (root_push expr)
+    (let [base (vector-new 8)]
+      (do
+        (root_push base)
+        (let [result (compile-expr-with-ftable expr (env-new) (ftable-new) base)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+(defn compile-inline-file-state [path func-idx]
+  (let [src (read-file path)
+        program (parse-program src)
+        source-root (resolve-source-root path)
+        package-root (resolve-package-root path)
+        seen-ref (ref-new (map-new))
+        imported-pairs (load-imports-from-decls program src 0 (vector-length program) seen-ref (vector-new 8) source-root package-root)
+        all-pairs (append-src-decl-pair imported-pairs src program)
+        n (vector-length all-pairs)
+        reg-result (register-all-pairs all-pairs 0 n (ftable-new) func-idx)
+        ftable (vector-get reg-result 0)
+        data-ref (ref-new (vector-new 8))
+        functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+        data (ref-get data-ref)]
+    (push-object-vector (vector-push (vector-push (vector-new 2) functions) data) program)))
+(defn main []
+  (let [state1 (compile-inline-file-state "src/App/ModuleResolver.ls" 7)
+        state2 (compile-inline-file-state "src/App/ModuleResolver.ls" 7)
+        functions1 (vector-get state1 0)
+        data1 (vector-get state1 1)
+        program1 (vector-get state1 2)
+        functions2 (vector-get state2 0)
+        data2 (vector-get state2 1)
+        program2 (vector-get state2 2)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)
+        mismatch-idx (first-function-mismatch functions1 functions2 0 (vector-length functions1))
+        mismatch-decl1 (if (< mismatch-idx 0) (vector-new 5) (nth-defn program1 0 0 mismatch-idx))
+        mismatch-decl2 (if (< mismatch-idx 0) (vector-new 5) (nth-defn program2 0 0 mismatch-idx))
+        mismatch-name-hash (if (< mismatch-idx 0) -1 (nth-defn-name-hash program1 0 0 mismatch-idx))
+        mismatch-func1 (if (< mismatch-idx 0) (vector-new 3) (vector-get functions1 mismatch-idx))
+        mismatch-func2 (if (< mismatch-idx 0) (vector-new 3) (vector-get functions2 mismatch-idx))
+        mismatch-ir-vec1 (if (< mismatch-idx 0) (vector-new 2) (vector-get mismatch-func1 2))
+        mismatch-ir-vec2 (if (< mismatch-idx 0) (vector-new 2) (vector-get mismatch-func2 2))
+        mismatch-body1 (if (< mismatch-idx 0) (vector-new 4) (vector-get mismatch-decl1 (+ 3 (vector-get mismatch-decl1 2))))
+        mismatch-body2 (if (< mismatch-idx 0) (vector-new 4) (vector-get mismatch-decl2 (+ 3 (vector-get mismatch-decl2 2))))
+        outer-if1 (if (< mismatch-idx 0) (vector-new 4) (vector-get mismatch-body1 3))
+        outer-if2 (if (< mismatch-idx 0) (vector-new 4) (vector-get mismatch-body2 3))
+        has-path-call1 (if (< mismatch-idx 0) (vector-new 6) (vector-get (vector-get outer-if1 3) 1))
+        has-path-call2 (if (< mismatch-idx 0) (vector-new 6) (vector-get (vector-get outer-if2 3) 1))
+        find-last-call1 (if (< mismatch-idx 0) (vector-new 7) (vector-get (vector-get (vector-get outer-if1 3) 2) 2))
+        find-last-call2 (if (< mismatch-idx 0) (vector-new 7) (vector-get (vector-get (vector-get outer-if2 3) 2) 2))
+        mismatch-ir-idx (if (< mismatch-idx 0) -1 (first-ir-mismatch mismatch-ir-vec1 mismatch-ir-vec2 0 (vector-length mismatch-ir-vec1)))]
+    (do
+      (print (vector-length wasm1))
+      (print (vector-length wasm2))
+      (print (wasm-bytes-eq wasm1 wasm2))
+      (print mismatch-idx)
+      (print mismatch-name-hash)
+      (print (if (< mismatch-idx 0) -1 (vector-get mismatch-func1 0)))
+      (print (if (< mismatch-idx 0) -1 (vector-get mismatch-func2 0)))
+      (print (if (< mismatch-idx 0) -1 (vector-get mismatch-func1 1)))
+      (print (if (< mismatch-idx 0) -1 (vector-get mismatch-func2 1)))
+      (print (if (< mismatch-idx 0) -1 (vector-get (vector-get has-path-call1 4) 0)))
+      (print (if (< mismatch-idx 0) -1 (vector-get (vector-get has-path-call1 4) 1)))
+      (print (if (< mismatch-idx 0) -1 (vector-get (vector-get has-path-call2 4) 0)))
+      (print (if (< mismatch-idx 0) -1 (vector-get (vector-get has-path-call2 4) 1)))
+      (print (if (< mismatch-idx 0) -1 (vector-get (vector-get find-last-call1 4) 0)))
+      (print (if (< mismatch-idx 0) -1 (vector-get (vector-get find-last-call1 4) 1)))
+      (print (if (< mismatch-idx 0) -1 (vector-get (vector-get find-last-call2 4) 0)))
+      (print (if (< mismatch-idx 0) -1 (vector-get (vector-get find-last-call2 4) 1)))
+      (print (function-fingerprint mismatch-func1))
+      (print (function-fingerprint (vector-get functions1 10)))
+      (print (function-fingerprint (vector-get functions1 11)))
+      (print (function-fingerprint (vector-get functions1 12)))
+      (print (function-fingerprint (vector-get functions1 13)))
+      (print (function-fingerprint (vector-get functions1 14)))
+      (print mismatch-ir-idx)
+      (print (if (< mismatch-ir-idx 0) -1 (vector-get (vector-get mismatch-ir-vec1 mismatch-ir-idx) 0)))
+      (print (if (< mismatch-ir-idx 0) -1 (vector-get (vector-get mismatch-ir-vec1 mismatch-ir-idx) 1)))
+      (print (if (< mismatch-ir-idx 0) -1 (vector-get (vector-get mismatch-ir-vec2 mismatch-ir-idx) 0)))
+      (print (if (< mismatch-ir-idx 0) -1 (vector-get (vector-get mismatch-ir-vec2 mismatch-ir-idx) 1)))
+      (print-ir-instr mismatch-ir-vec1 (- mismatch-ir-idx 4))
+      (print-ir-instr mismatch-ir-vec1 (- mismatch-ir-idx 3))
+      (print-ir-instr mismatch-ir-vec1 (- mismatch-ir-idx 2))
+      (print-ir-instr mismatch-ir-vec1 (- mismatch-ir-idx 1))
+      (print-ir-instr mismatch-ir-vec1 mismatch-ir-idx)
+      (print-ir-instr mismatch-ir-vec1 (+ mismatch-ir-idx 1))
+      (print-ir-instr mismatch-ir-vec1 (+ mismatch-ir-idx 2))
+      (print-ir-instr mismatch-ir-vec1 (+ mismatch-ir-idx 3))
+      (print-ir-instr mismatch-ir-vec1 (+ mismatch-ir-idx 4))
+      (print-ir-instr mismatch-ir-vec2 (- mismatch-ir-idx 4))
+      (print-ir-instr mismatch-ir-vec2 (- mismatch-ir-idx 3))
+      (print-ir-instr mismatch-ir-vec2 (- mismatch-ir-idx 2))
+      (print-ir-instr mismatch-ir-vec2 (- mismatch-ir-idx 1))
+      (print-ir-instr mismatch-ir-vec2 mismatch-ir-idx)
+      (print-ir-instr mismatch-ir-vec2 (+ mismatch-ir-idx 1))
+      (print-ir-instr mismatch-ir-vec2 (+ mismatch-ir-idx 2))
+      (print-ir-instr mismatch-ir-vec2 (+ mismatch-ir-idx 3))
+      (print-ir-instr mismatch-ir-vec2 (+ mismatch-ir-idx 4))
+      0)))
+"#,
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 10,
+        "module resolver direct determinism 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "2回の module resolver compile で Wasm 長は一致するべき: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[2], "1",
+        "2回の module resolver compile は byte-identical であるべき: {:?}",
+        lines
+    );
+}
+
+/// TEST-CLI-02-M1F0B: path-parent 最小 fixture の direct compile は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_direct_path_parent_fixture_is_deterministic() {
+    assert_selfhost_direct_fixture_is_deterministic(
+        "path_parent_direct_determinism",
+        "PathParentMini.ls",
+        "(defn path-char [path idx] (string-char-at path idx))\n\
+         (defn is-path-sep [path idx] (let [ch (path-char path idx)] (if (= ch 47) true (if (= ch 92) true false))))\n\
+         (defn has-path-sep [path idx len] (if (>= idx len) false (if (is-path-sep path idx) true (has-path-sep path (+ idx 1) len))))\n\
+         (defn find-last-path-sep [path idx len last] (if (>= idx len) last (find-last-path-sep path (+ idx 1) len (if (is-path-sep path idx) idx last))))\n\
+         (defn path-parent [path] (let [len (string-length path)] (if (= len 0) \"\" (if (has-path-sep path 0 len) (let [last (find-last-path-sep path 0 len -1)] (if (< last 0) \"\" (if (= last 0) \"/\" (substring path 0 last)))) \".\"))))",
+        "path-parent fixture",
+    );
+}
+
+/// TEST-CLI-02-M1F0B2: path-parent 最小 fixture の inline compile は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_inline_path_parent_fixture_is_deterministic() {
+    let source = "(defn path-char [path idx] (string-char-at path idx))\n\
+                  (defn is-path-sep [path idx] (let [ch (path-char path idx)] (if (= ch 47) true (if (= ch 92) true false))))\n\
+                  (defn has-path-sep [path idx len] (if (>= idx len) false (if (is-path-sep path idx) true (has-path-sep path (+ idx 1) len))))\n\
+                  (defn find-last-path-sep [path idx len last] (if (>= idx len) last (find-last-path-sep path (+ idx 1) len (if (is-path-sep path idx) idx last))))\n\
+                  (defn path-parent [path] (let [len (string-length path)] (if (= len 0) \"\" (if (has-path-sep path 0 len) (let [last (find-last-path-sep path 0 len -1)] (if (< last 0) \"\" (if (= last 0) \"/\" (substring path 0 last)))) \".\"))))";
+    assert_selfhost_inline_fixture_with_func_idx_is_deterministic(
+        "path_parent_inline_determinism",
+        source,
+        "path-parent inline fixture",
+        7,
+    );
+}
+
+/// TEST-CLI-02-M1F0C: ModuleResolver prefix (find-src-ancestor まで) の direct compile は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_prefix_is_deterministic() {
+    let prefix_source = take_lsharp_toplevel_forms(selfhost_module("ModuleResolver.ls"), 13);
+    assert_selfhost_direct_fixture_is_deterministic(
+        "module_resolver_prefix_direct_determinism",
+        "ModuleResolverPrefix.ls",
+        &prefix_source,
+        "module resolver prefix",
+    );
+}
+
+/// TEST-CLI-02-M1F0D: ModuleResolver 19 form prefix の direct compile は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_prefix_19_forms_is_deterministic() {
+    let prefix_source = take_lsharp_toplevel_forms(selfhost_module("ModuleResolver.ls"), 19);
+    assert_selfhost_direct_fixture_is_deterministic(
+        "module_resolver_prefix_19_direct_determinism",
+        "ModuleResolverPrefix19.ls",
+        &prefix_source,
+        "module resolver 19-form prefix",
+    );
+}
+
+/// TEST-CLI-02-M1F0E: ModuleResolver 26 form prefix の direct compile は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_prefix_26_forms_is_deterministic() {
+    let prefix_source = take_lsharp_toplevel_forms(selfhost_module("ModuleResolver.ls"), 26);
+    assert_selfhost_direct_fixture_is_deterministic(
+        "module_resolver_prefix_26_direct_determinism",
+        "ModuleResolverPrefix26.ls",
+        &prefix_source,
+        "module resolver 26-form prefix",
+    );
+}
+
+/// TEST-CLI-02-M1F0F: ModuleResolver 33 form prefix の direct compile は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_prefix_33_forms_is_deterministic() {
+    let prefix_source = take_lsharp_toplevel_forms(selfhost_module("ModuleResolver.ls"), 33);
+    assert_selfhost_direct_fixture_is_deterministic(
+        "module_resolver_prefix_33_direct_determinism",
+        "ModuleResolverPrefix33.ls",
+        &prefix_source,
+        "module resolver 33-form prefix",
+    );
+}
+
+/// TEST-CLI-02-M1F0G: ModuleResolver full source の single-file direct compile は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_full_fixture_is_deterministic() {
+    assert_selfhost_direct_fixture_is_deterministic(
+        "module_resolver_full_fixture_direct_determinism",
+        "ModuleResolverFull.ls",
+        selfhost_module("ModuleResolver.ls"),
+        "module resolver full fixture",
+    );
+}
+
+/// TEST-CLI-02-M1F0H: ModuleResolver full source の inline direct compile は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_fixture_is_deterministic() {
+    assert_selfhost_inline_fixture_is_deterministic(
+        "module_resolver_full_inline_fixture_direct_determinism",
+        selfhost_module("ModuleResolver.ls"),
+        "module resolver full inline fixture",
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_without_import_scan_is_deterministic() {
+    let dir = cli_test_fixture_dir("module_resolver_full_inline_without_import_scan");
+    write_cli_fixture_files(
+        &dir,
+        &[
+            ("lsharp.toml", ""),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
+        ],
+    );
+
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
+(defn compile-inline-file-state-no-import-scan [path func-idx]
+  (let [src (read-file path)
+        program (parse-program src)
+        pair (make-src-decl-pair src program)
+        all-pairs (push-object-vector (vector-new 8) pair)
+        n (vector-length all-pairs)
+        reg-result (register-all-pairs all-pairs 0 n (ftable-new) func-idx)
+        ftable (vector-get reg-result 0)
+        data-ref (ref-new (vector-new 8))
+        functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+        data (ref-get data-ref)]
+    (push-object-vector (vector-push (vector-push (vector-new 2) functions) data) program)))
+(defn main []
+  (let [state1 (compile-inline-file-state-no-import-scan "src/App/ModuleResolver.ls" 7)
+        state2 (compile-inline-file-state-no-import-scan "src/App/ModuleResolver.ls" 7)
+        functions1 (vector-get state1 0)
+        data1 (vector-get state1 1)
+        functions2 (vector-get state2 0)
+        data2 (vector-get state2 1)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)]
+    (do
+      (print (vector-length wasm1))
+      (print (vector-length wasm2))
+      (print (wasm-bytes-eq wasm1 wasm2))
+      0)))
+"#,
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "module resolver full inline no-import-scan determinism 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], lines[1]);
+    assert_eq!(
+        lines[2], "1",
+        "no-import-scan inline path は deterministic であるべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_pair_registration_direct_compile_is_deterministic()
+{
+    let dir = cli_test_fixture_dir("module_resolver_pair_registration_direct_compile");
+    write_cli_fixture_files(
+        &dir,
+        &[
+            ("lsharp.toml", ""),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
+        ],
+    );
+
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
+(defn compile-pair-registration-direct-state [path func-idx]
+  (let [src (read-file path)
+        program (parse-program src)
+        pair (make-src-decl-pair src program)
+        all-pairs (push-object-vector (vector-new 8) pair)
+        reg-result (register-all-pairs all-pairs 0 (vector-length all-pairs) (ftable-new) func-idx)
+        ftable (vector-get reg-result 0)
+        data-ref (ref-new (vector-new 8))
+        functions (compile-defn-functions-with-source program 0 (vector-length program) src ftable data-ref (vector-new 8))
+        data (ref-get data-ref)]
+    (push-object-vector (vector-push (vector-push (vector-new 2) functions) data) program)))
+(defn main []
+  (let [state1 (compile-pair-registration-direct-state "src/App/ModuleResolver.ls" 7)
+        state2 (compile-pair-registration-direct-state "src/App/ModuleResolver.ls" 7)
+        functions1 (vector-get state1 0)
+        data1 (vector-get state1 1)
+        functions2 (vector-get state2 0)
+        data2 (vector-get state2 1)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)]
+    (do
+      (print (vector-length wasm1))
+      (print (vector-length wasm2))
+      (print (wasm-bytes-eq wasm1 wasm2))
+      0)))
+"#,
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "module resolver pair-registration direct-compile determinism 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], lines[1]);
+    assert_eq!(
+        lines[2], "1",
+        "pair registration + direct compile path は deterministic であるべき"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_pair_creation_direct_compile_is_deterministic() {
+    let dir = cli_test_fixture_dir("module_resolver_pair_creation_direct_compile");
+    write_cli_fixture_files(
+        &dir,
+        &[
+            ("lsharp.toml", ""),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
+        ],
+    );
+    let wasm_bytes_eq_helpers = stack_safe_wasm_bytes_eq_helpers();
+
+    let harness = format!(
+        r#"
+{wasm_bytes_eq_helpers}
+(defn compile-pair-creation-direct-state [path func-idx]
+  (let [src (read-file path)
+        program (parse-program src)
+        pair (make-src-decl-pair src program)
+        all-pairs (push-object-vector (vector-new 8) pair)
+        reg-result (register-defns-chunked program 0 (vector-length program) (ftable-new) func-idx)
+        ftable (vector-get reg-result 0)
+        data-ref (ref-new (vector-new 8))
+        functions (compile-defn-functions-with-source program 0 (vector-length program) src ftable data-ref (vector-new 8))
+        data (ref-get data-ref)]
+    (push-object-vector (vector-push (vector-push (vector-new 2) functions) data) program)))
+(defn main []
+  (let [state1 (compile-pair-creation-direct-state "src/App/ModuleResolver.ls" 7)
+        state2 (compile-pair-creation-direct-state "src/App/ModuleResolver.ls" 7)
+        functions1 (vector-get state1 0)
+        data1 (vector-get state1 1)
+        functions2 (vector-get state2 0)
+        data2 (vector-get state2 1)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)]
+    (do
+      (print (vector-length wasm1))
+      (print (vector-length wasm2))
+      (print (wasm-bytes-eq wasm1 wasm2))
+      0)))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "module resolver pair-creation direct-compile determinism 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], lines[1]);
+    assert_eq!(
+        lines[2], "1",
+        "pair creation + direct compile path は deterministic であるべき"
+    );
+}
+
+#[test]
+#[ignore = "temporary diagnostic harness for local mismatch inspection"]
+fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_mismatch_probe() {
+    let dir = cli_test_fixture_dir("module_resolver_full_inline_mismatch_probe");
+    write_cli_fixture_files(
+        &dir,
+        &[
+            ("lsharp.toml", ""),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
+        ],
+    );
+
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
+(defn make-ir-fingerprint-state [done next-idx next-acc]
+  (push-int-vector-local
+    (push-int-vector-local
+      (push-int-vector-local (vector-new 3) done)
+      next-idx)
+    next-acc))
+(defn ir-fingerprint-step [ir idx count acc]
+  (if (>= idx count)
+    (make-ir-fingerprint-state 1 idx acc)
+    (let [instr (vector-get ir idx)
+          opcode (vector-get instr 0)
+          operand (vector-get instr 1)]
+      (make-ir-fingerprint-state 0 (+ idx 1) (+ (* (+ (* acc 31) opcode) 31) operand)))))
+(defn continue-ir-fingerprint-step [ir count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (ir-fingerprint-step ir (vector-get state 1) count (vector-get state 2))))
+(defn ir-fingerprint-step-8 [ir idx count acc]
+  (let [step1 (ir-fingerprint-step ir idx count acc)
+        step2 (continue-ir-fingerprint-step ir count step1)
+        step3 (continue-ir-fingerprint-step ir count step2)
+        step4 (continue-ir-fingerprint-step ir count step3)
+        step5 (continue-ir-fingerprint-step ir count step4)
+        step6 (continue-ir-fingerprint-step ir count step5)
+        step7 (continue-ir-fingerprint-step ir count step6)
+        step8 (continue-ir-fingerprint-step ir count step7)]
+    step8))
+(defn continue-ir-fingerprint-step-8 [ir count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (ir-fingerprint-step-8 ir (vector-get state 1) count (vector-get state 2))))
+(defn ir-fingerprint-step-64 [ir idx count acc]
+  (let [step1 (ir-fingerprint-step-8 ir idx count acc)
+        step2 (continue-ir-fingerprint-step-8 ir count step1)
+        step3 (continue-ir-fingerprint-step-8 ir count step2)
+        step4 (continue-ir-fingerprint-step-8 ir count step3)
+        step5 (continue-ir-fingerprint-step-8 ir count step4)
+        step6 (continue-ir-fingerprint-step-8 ir count step5)
+        step7 (continue-ir-fingerprint-step-8 ir count step6)
+        step8 (continue-ir-fingerprint-step-8 ir count step7)]
+    step8))
+(defn ir-fingerprint-loop [ir idx count acc]
+  (let [step (ir-fingerprint-step-64 ir idx count acc)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (ir-fingerprint-loop ir (vector-get step 1) count (vector-get step 2)))))
+(defn ir-fingerprint [ir]
+  (ir-fingerprint-loop ir 0 (vector-length ir) 0))
+(defn function-fingerprint [func]
+  (let [param-count (vector-get func 0)
+        local-count (vector-get func 1)
+        ir (vector-get func 2)]
+    (+ (* (+ (* param-count 31) local-count) 31) (ir-fingerprint ir))))
+(defn first-function-mismatch [functions1 functions2 idx count]
+  (if (>= idx count)
+    -1
+    (if (= (function-fingerprint (vector-get functions1 idx)) (function-fingerprint (vector-get functions2 idx)))
+      (first-function-mismatch functions1 functions2 (+ idx 1) count)
+      idx)))
+(defn first-ir-mismatch [ir1 ir2 idx count]
+  (if (>= idx count)
+    -1
+    (let [instr1 (vector-get ir1 idx)
+          instr2 (vector-get ir2 idx)]
+      (if (and (= (vector-get instr1 0) (vector-get instr2 0)) (= (vector-get instr1 1) (vector-get instr2 1)))
+        (first-ir-mismatch ir1 ir2 (+ idx 1) count)
+        idx))))
+(defn nth-defn-name-hash [program idx seen target]
+  (if (>= idx (vector-length program))
+    -1
+    (let [decl (vector-get program idx)]
+      (if (= (vector-get decl 0) 20)
+        (if (= seen target)
+          (vector-get decl 1)
+          (nth-defn-name-hash program (+ idx 1) (+ seen 1) target))
+        (nth-defn-name-hash program (+ idx 1) seen target)))))
+(defn compile-inline-file-state [path func-idx]
+  (let [src (read-file path)
+        program (parse-program src)
+        source-root (resolve-source-root path)
+        package-root (resolve-package-root path)
+        seen-ref (ref-new (map-new))
+        imported-pairs (load-imports-from-decls program src 0 (vector-length program) seen-ref (vector-new 8) source-root package-root)
+        all-pairs (append-src-decl-pair imported-pairs src program)
+        n (vector-length all-pairs)
         reg-result (register-all-pairs all-pairs 0 n (ftable-new) 7)
         ftable (vector-get reg-result 0)
         data-ref (ref-new (vector-new 8))
         functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
-        inline-data (ref-get data-ref)
-        inline-bytes (build-wasm-bytes-wasi functions inline-data)
+        data (ref-get data-ref)
+        state1 (push-object-vector (vector-new 3) functions)
+        state2 (push-object-vector state1 data)]
+    (push-object-vector state2 program)))
+(defn main []
+  (let [state1 (compile-inline-file-state "src/App/ModuleResolver.ls" 7)
+        state2 (compile-inline-file-state "src/App/ModuleResolver.ls" 7)
+        functions1 (vector-get state1 0)
+        data1 (vector-get state1 1)
+        program1 (vector-get state1 2)
+        functions2 (vector-get state2 0)
+        data2 (vector-get state2 1)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)
+        mismatch-idx (first-function-mismatch functions1 functions2 0 (vector-length functions1))
+        mismatch-name-hash (if (< mismatch-idx 0) -1 (nth-defn-name-hash program1 0 0 mismatch-idx))
+        mismatch-func1 (if (< mismatch-idx 0) (vector-new 3) (vector-get functions1 mismatch-idx))
+        mismatch-func2 (if (< mismatch-idx 0) (vector-new 3) (vector-get functions2 mismatch-idx))
+        mismatch-ir1 (if (< mismatch-idx 0) (vector-new 2) (vector-get mismatch-func1 2))
+        mismatch-ir2 (if (< mismatch-idx 0) (vector-new 2) (vector-get mismatch-func2 2))
+        mismatch-ir-idx (if (< mismatch-idx 0) -1 (first-ir-mismatch mismatch-ir1 mismatch-ir2 0 (vector-length mismatch-ir1)))]
+    (do
+      (print (vector-length wasm1))
+      (print (vector-length wasm2))
+      (print (wasm-bytes-eq wasm1 wasm2))
+      (print mismatch-idx)
+      (print mismatch-name-hash)
+      (print (if (< mismatch-idx 0) -1 (vector-get mismatch-func1 0)))
+      (print (if (< mismatch-idx 0) -1 (vector-get mismatch-func1 1)))
+      (print mismatch-ir-idx)
+      (print (if (< mismatch-ir-idx 0) -1 (vector-get (vector-get mismatch-ir1 mismatch-ir-idx) 0)))
+      (print (if (< mismatch-ir-idx 0) -1 (vector-get (vector-get mismatch-ir1 mismatch-ir-idx) 1)))
+      (print (if (< mismatch-ir-idx 0) -1 (vector-get (vector-get mismatch-ir2 mismatch-ir-idx) 0)))
+      (print (if (< mismatch-ir-idx 0) -1 (vector-get (vector-get mismatch-ir2 mismatch-ir-idx) 1)))
+      0)))
+"#,
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 12,
+        "module resolver full inline mismatch probe 出力が不足: {:?}",
+        lines
+    );
+    panic!("mismatch probe: {:?}", lines);
+}
+
+/// TEST-CLI-02-M1F0I: ModuleResolver 13 form prefix の inline direct compile は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_inline_prefix_13_forms_is_deterministic() {
+    let prefix_source = take_lsharp_toplevel_forms(selfhost_module("ModuleResolver.ls"), 13);
+    assert_selfhost_inline_fixture_is_deterministic(
+        "module_resolver_inline_prefix_13_direct_determinism",
+        &prefix_source,
+        "module resolver 13-form inline prefix",
+    );
+}
+
+/// TEST-CLI-02-M1F0J: ModuleResolver 26 form prefix の inline direct compile は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_inline_prefix_26_forms_is_deterministic() {
+    let prefix_source = take_lsharp_toplevel_forms(selfhost_module("ModuleResolver.ls"), 26);
+    assert_selfhost_inline_fixture_is_deterministic(
+        "module_resolver_inline_prefix_26_direct_determinism",
+        &prefix_source,
+        "module resolver 26-form inline prefix",
+    );
+}
+
+/// TEST-CLI-02-M1F0K: ModuleResolver 33 form prefix の inline direct compile は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_inline_prefix_33_forms_is_deterministic() {
+    let prefix_source = take_lsharp_toplevel_forms(selfhost_module("ModuleResolver.ls"), 33);
+    assert_selfhost_inline_fixture_is_deterministic(
+        "module_resolver_inline_prefix_33_direct_determinism",
+        &prefix_source,
+        "module resolver 33-form inline prefix",
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_inline_prefix_post33_bisect() {
+    for form_count in [34usize, 35, 36, 37, 38, 39] {
+        println!("bisect form_count={form_count}");
+        let prefix_source =
+            take_lsharp_toplevel_forms(selfhost_module("ModuleResolver.ls"), form_count);
+        let fixture_prefix = format!("module_resolver_inline_prefix_{form_count}_bisect");
+        let label = format!("module resolver {form_count}-form inline prefix");
+        assert_selfhost_inline_fixture_is_deterministic(&fixture_prefix, &prefix_source, &label);
+    }
+}
+
+/// TEST-CLI-02-M1F0L: ModuleResolver full source の single-file direct compile は func_idx=7 でも deterministic であること
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_full_fixture_func_idx_7_is_deterministic() {
+    assert_selfhost_direct_fixture_with_func_idx_is_deterministic(
+        "module_resolver_full_fixture_func_idx_7_direct_determinism",
+        "ModuleResolverFullFuncIdx7.ls",
+        selfhost_module("ModuleResolver.ls"),
+        "module resolver full fixture func_idx=7",
+        7,
+    );
+}
+
+/// TEST-CLI-02-M1F0M: ModuleResolver full source の inline direct compile は func_idx=0 でも deterministic であること
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_fixture_func_idx_0_is_deterministic() {
+    assert_selfhost_inline_fixture_with_func_idx_is_deterministic(
+        "module_resolver_full_inline_fixture_func_idx_0_direct_determinism",
+        selfhost_module("ModuleResolver.ls"),
+        "module resolver full inline fixture func_idx=0",
+        0,
+    );
+}
+
+/// TEST-CLI-02-M1F0N: ModuleResolver full source の compile-file-functions-data は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_compile_file_functions_data_module_resolver_is_deterministic() {
+    let dir = cli_test_fixture_dir("module_resolver_compile_file_functions_data_determinism");
+    write_cli_fixture_files(
+        &dir,
+        &[
+            ("lsharp.toml", ""),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
+        ],
+    );
+
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
+(defn main []
+  (let [payload1 (compile-file-functions-data "src/App/ModuleResolver.ls")
+        payload2 (compile-file-functions-data "src/App/ModuleResolver.ls")
+        functions1 (vector-get payload1 0)
+        data1 (vector-get payload1 1)
+        functions2 (vector-get payload2 0)
+        data2 (vector-get payload2 1)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)]
+    (do
+      (print (vector-length wasm1))
+      (print (vector-length wasm2))
+      (print (wasm-bytes-eq wasm1 wasm2))
+      0)))
+"#,
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "compile-file-functions-data ModuleResolver determinism 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "2回の compile-file-functions-data ModuleResolver compile で Wasm 長は一致するべき"
+    );
+    assert_eq!(
+        lines[2], "1",
+        "2回の compile-file-functions-data ModuleResolver compile は byte-identical であるべき: {:?}",
+        lines
+    );
+}
+
+/// TEST-CLI-02-M1F0O: ModuleResolver full source の register-defns direct compile は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_register_defns_is_deterministic() {
+    let dir = cli_test_fixture_dir("module_resolver_register_defns_direct_determinism");
+    write_cli_fixture_files(
+        &dir,
+        &[(
+            "ModuleResolverRegisterDefns.ls",
+            selfhost_module("ModuleResolver.ls"),
+        )],
+    );
+    let fixture_path = dir
+        .join("ModuleResolverRegisterDefns.ls")
+        .to_string_lossy()
+        .replace('\\', "\\\\");
+
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(&format!(
+        r#"
+(defn compile-file-state [path]
+  (let [src (read-file path)
+        program (parse-program src)
+        n (vector-length program)
+        reg-result (register-defns program 0 n (ftable-new) 0)
+        ftable (vector-get reg-result 0)
+        data-ref (ref-new (vector-new 8))
+        functions (compile-defn-functions-with-source program 0 n src ftable data-ref (vector-new 8))
+        data (ref-get data-ref)]
+    (push-object-vector (vector-push (vector-push (vector-new 2) functions) data) program)))
+(defn main []
+  (let [state1 (compile-file-state "{fixture_path}")
+        state2 (compile-file-state "{fixture_path}")
+        functions1 (vector-get state1 0)
+        data1 (vector-get state1 1)
+        functions2 (vector-get state2 0)
+        data2 (vector-get state2 1)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)]
+    (do
+      (print (vector-length wasm1))
+      (print (vector-length wasm2))
+      (print (wasm-bytes-eq wasm1 wasm2))
+      0)))
+"#
+    ));
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "register-defns ModuleResolver determinism 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "2回の register-defns ModuleResolver compile で Wasm 長は一致するべき"
+    );
+    assert_eq!(
+        lines[2], "1",
+        "2回の register-defns ModuleResolver compile は byte-identical であるべき: {:?}",
+        lines
+    );
+}
+
+/// TEST-CLI-02-M1F0P: ModuleResolver full source の single-pair pipeline compile は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_direct_module_resolver_single_pair_pipeline_is_deterministic() {
+    let dir = cli_test_fixture_dir("module_resolver_single_pair_pipeline_determinism");
+    write_cli_fixture_files(
+        &dir,
+        &[(
+            "ModuleResolverSinglePair.ls",
+            selfhost_module("ModuleResolver.ls"),
+        )],
+    );
+    let fixture_path = dir
+        .join("ModuleResolverSinglePair.ls")
+        .to_string_lossy()
+        .replace('\\', "\\\\");
+
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(&format!(
+        r#"
+(defn compile-file-state [path]
+  (let [src (read-file path)
+        program (parse-program src)
+        pair (make-src-decl-pair src program)]
+    (do
+      (root_push pair)
+      (let [all-pairs (push-object-vector (vector-new 8) pair)]
+        (do
+          (root_push all-pairs)
+          (let [n (vector-length all-pairs)
+                reg-result (register-all-pairs all-pairs 0 n (ftable-new) 0)]
+            (do
+              (root_push reg-result)
+              (let [ftable (vector-get reg-result 0)
+                    data-ref (ref-new (vector-new 8))
+                    functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+                    data (ref-get data-ref)]
+                (do
+                  (root_push functions)
+                  (root_push data)
+                  (let [payload1 (vector-push (vector-new 2) functions)]
+                    (do
+                      (root_push payload1)
+                      (let [payload2 (vector-push payload1 data)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          payload2)))))))))))))
+(defn main []
+  (let [state1 (compile-file-state "{fixture_path}")
+        state2 (compile-file-state "{fixture_path}")
+        functions1 (vector-get state1 0)
+        data1 (vector-get state1 1)
+        functions2 (vector-get state2 0)
+        data2 (vector-get state2 1)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)]
+    (do
+      (print (vector-length wasm1))
+      (print (vector-length wasm2))
+      (print (wasm-bytes-eq wasm1 wasm2))
+      0)))
+"#
+    ));
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "single-pair pipeline ModuleResolver determinism 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "2回の single-pair pipeline ModuleResolver compile で Wasm 長は一致するべき"
+    );
+    assert_eq!(
+        lines[2], "1",
+        "2回の single-pair pipeline ModuleResolver compile は byte-identical であるべき: {:?}",
+        lines
+    );
+}
+
+/// TEST-CLI-02-M1F0Q: ModuleResolver full source の compile-file-pairs-with-cache pipeline は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_compile_file_pairs_with_cache_pipeline_is_deterministic() {
+    let dir = cli_test_fixture_dir("module_resolver_pairs_cache_pipeline_determinism");
+    write_cli_fixture_files(
+        &dir,
+        &[
+            ("lsharp.toml", ""),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
+        ],
+    );
+
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
+(defn compile-file-state [path]
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)]
+    (do
+      (root_push all-pairs)
+      (let [n (vector-length all-pairs)
+            reg-result (register-all-pairs all-pairs 0 n (ftable-new) 0)]
+        (do
+          (root_push reg-result)
+          (let [ftable (vector-get reg-result 0)
+                data-ref (ref-new (vector-new 8))
+                functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+                data (ref-get data-ref)]
+            (do
+              (root_push functions)
+              (root_push data)
+              (let [payload1 (vector-push (vector-new 2) functions)]
+                (do
+                  (root_push payload1)
+                  (let [payload2 (vector-push payload1 data)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      payload2)))))))))))
+(defn main []
+  (let [state1 (compile-file-state "src/App/ModuleResolver.ls")
+        state2 (compile-file-state "src/App/ModuleResolver.ls")
+        functions1 (vector-get state1 0)
+        data1 (vector-get state1 1)
+        functions2 (vector-get state2 0)
+        data2 (vector-get state2 1)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)]
+    (do
+      (print (vector-length wasm1))
+      (print (vector-length wasm2))
+      (print (wasm-bytes-eq wasm1 wasm2))
+      0)))
+"#,
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "compile-file-pairs-with-cache pipeline ModuleResolver determinism 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "2回の compile-file-pairs-with-cache pipeline ModuleResolver compile で Wasm 長は一致するべき"
+    );
+    assert_eq!(
+        lines[2], "1",
+        "2回の compile-file-pairs-with-cache pipeline ModuleResolver compile は byte-identical であるべき: {:?}",
+        lines
+    );
+}
+
+/// TEST-CLI-02-M1F0R: ModuleResolver full source の load-src-decl-pair-with-cache pipeline は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_pipeline_is_deterministic() {
+    let dir = cli_test_fixture_dir("module_resolver_src_decl_pair_cache_pipeline_determinism");
+    write_cli_fixture_files(
+        &dir,
+        &[
+            ("lsharp.toml", ""),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
+        ],
+    );
+
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
+(defn compile-file-state [path]
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pair (load-src-decl-pair-with-cache path cache-ref parse-count-ref)]
+    (do
+      (root_push pair)
+      (let [all-pairs (push-object-vector (vector-new 8) pair)]
+        (do
+          (root_push all-pairs)
+          (let [n (vector-length all-pairs)
+                reg-result (register-all-pairs all-pairs 0 n (ftable-new) 0)]
+            (do
+              (root_push reg-result)
+              (let [ftable (vector-get reg-result 0)
+                    data-ref (ref-new (vector-new 8))
+                    functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+                    data (ref-get data-ref)]
+                (do
+                  (root_push functions)
+                  (root_push data)
+                  (let [payload1 (vector-push (vector-new 2) functions)]
+                    (do
+                      (root_push payload1)
+                      (let [payload2 (vector-push payload1 data)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          payload2)))))))))))))
+(defn main []
+  (let [state1 (compile-file-state "src/App/ModuleResolver.ls")
+        state2 (compile-file-state "src/App/ModuleResolver.ls")
+        functions1 (vector-get state1 0)
+        data1 (vector-get state1 1)
+        functions2 (vector-get state2 0)
+        data2 (vector-get state2 1)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)]
+    (do
+      (print (vector-length wasm1))
+      (print (vector-length wasm2))
+      (print (wasm-bytes-eq wasm1 wasm2))
+      0)))
+"#,
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "load-src-decl-pair-with-cache pipeline ModuleResolver determinism 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "2回の load-src-decl-pair-with-cache pipeline ModuleResolver compile で Wasm 長は一致するべき"
+    );
+    assert_eq!(
+        lines[2], "1",
+        "2回の load-src-decl-pair-with-cache pipeline ModuleResolver compile は byte-identical であるべき: {:?}",
+        lines
+    );
+}
+
+/// TEST-CLI-02-M1F0R1: load-src-decl-pair-with-cache は ModuleResolver の src/decls を壊さず返すこと
+#[test]
+fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_returns_expected_pair_shape() {
+    let dir = cli_test_fixture_dir("module_resolver_src_decl_pair_cache_shape");
+    write_cli_fixture_files(
+        &dir,
+        &[
+            ("lsharp.toml", ""),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
+        ],
+    );
+
+    let harness = r#"
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pair (load-src-decl-pair-with-cache "src/App/ModuleResolver.ls" cache-ref parse-count-ref)
+        src (vector-get pair 0)
+        decls (vector-get pair 1)]
+    (do
+      (print (ref-get parse-count-ref))
+      (print (string-length src))
+      (print (vector-length decls))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    let expected_decls = parse_for_pipeline(selfhost_module("ModuleResolver.ls"))
+        .decls
+        .len();
+
+    assert!(
+        lines.len() >= 3,
+        "load-src-decl-pair-with-cache shape 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "1", "初回 load では parse は 1 回だけ走るべき");
+    assert_eq!(
+        lines[1],
+        selfhost_module("ModuleResolver.ls").len().to_string(),
+        "返却された src length は canonical ModuleResolver と一致するべき"
+    );
+    assert_eq!(
+        lines[2],
+        expected_decls.to_string(),
+        "返却された decl count は canonical ModuleResolver parse 結果と一致するべき"
+    );
+}
+
+/// TEST-CLI-02-M1F0R2: load-src-decl-pair-with-cache の single-pair compile は manual pair path と一致すること
+#[test]
+fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_matches_manual_pair_pipeline() {
+    let dir = cli_test_fixture_dir("module_resolver_src_decl_pair_cache_matches_manual");
+    write_cli_fixture_files(
+        &dir,
+        &[
+            ("lsharp.toml", ""),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
+        ],
+    );
+
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
+(defn compile-pair-state [pair]
+  (do
+    (root_push pair)
+    (let [all-pairs (push-object-vector (vector-new 8) pair)]
+      (do
+        (root_push all-pairs)
+        (let [n (vector-length all-pairs)
+              reg-result (register-all-pairs all-pairs 0 n (ftable-new) 0)]
+          (do
+            (root_push reg-result)
+            (let [ftable (vector-get reg-result 0)
+                  data-ref (ref-new (vector-new 8))
+                  functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+                  data (ref-get data-ref)]
+              (do
+                (root_push functions)
+                (root_push data)
+                (let [payload1 (vector-push (vector-new 2) functions)]
+                  (do
+                    (root_push payload1)
+                    (let [payload2 (vector-push payload1 data)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        payload2))))))))))))
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        loader-pair (load-src-decl-pair-with-cache "src/App/ModuleResolver.ls" cache-ref parse-count-ref)
+        src (read-file "src/App/ModuleResolver.ls")
+        program (parse-program src)
+        manual-pair (make-src-decl-pair src program)
+        loader-state (compile-pair-state loader-pair)
+        manual-state (compile-pair-state manual-pair)
+        loader-functions (vector-get loader-state 0)
+        loader-data (vector-get loader-state 1)
+        manual-functions (vector-get manual-state 0)
+        manual-data (vector-get manual-state 1)
+        loader-wasm (build-wasm-bytes-wasi loader-functions loader-data)
+        manual-wasm (build-wasm-bytes-wasi manual-functions manual-data)]
+    (do
+      (print (vector-length loader-wasm))
+      (print (vector-length manual-wasm))
+      (print (wasm-bytes-eq loader-wasm manual-wasm))
+      0)))
+"#,
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "load-src-decl-pair-with-cache vs manual pair 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "loader pair と manual pair compile の Wasm 長は一致するべき"
+    );
+    assert_eq!(
+        lines[2], "1",
+        "loader pair compile は manual pair compile と byte-identical であるべき: {:?}",
+        lines
+    );
+}
+
+/// TEST-CLI-02-M1F0R3: cache miss side effects 後の manual pair compile は plain manual pair と一致すること
+#[test]
+fn test_e2e_selfhost_cli_cache_miss_side_effects_match_manual_pair_pipeline() {
+    let dir = cli_test_fixture_dir("module_resolver_cache_side_effects_match_manual");
+    write_cli_fixture_files(
+        &dir,
+        &[
+            ("lsharp.toml", ""),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
+        ],
+    );
+
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
+(defn compile-pair-state [pair]
+  (do
+    (root_push pair)
+    (let [all-pairs (push-object-vector (vector-new 8) pair)]
+      (do
+        (root_push all-pairs)
+        (let [n (vector-length all-pairs)
+              reg-result (register-all-pairs all-pairs 0 n (ftable-new) 0)]
+          (do
+            (root_push reg-result)
+            (let [ftable (vector-get reg-result 0)
+                  data-ref (ref-new (vector-new 8))
+                  functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+                  data (ref-get data-ref)]
+              (do
+                (root_push functions)
+                (root_push data)
+                (let [payload1 (vector-push (vector-new 2) functions)]
+                  (do
+                    (root_push payload1)
+                    (let [payload2 (vector-push payload1 data)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        payload2))))))))))))
+(defn compile-manual-state [path]
+  (let [src (read-file path)
+        program (parse-program src)
+        pair (make-src-decl-pair src program)]
+    (compile-pair-state pair)))
+(defn compile-manual-after-cache-miss-side-effects [path]
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        src (read-file path)
+        fingerprint (source-fingerprint src)
+        cache-key (src-decl-cache-key path)
+        pair (parse-src-decl-pair src)
+        entry (make-src-decl-cache-entry fingerprint pair)]
+    (do
+      (root_push entry)
+      (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
+      (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
+      (root_pop)
+      (let [program (parse-program src)
+            manual-pair (make-src-decl-pair src program)]
+        (compile-pair-state manual-pair)))))
+(defn main []
+  (let [plain-state (compile-manual-state "src/App/ModuleResolver.ls")
+        sidefx-state (compile-manual-after-cache-miss-side-effects "src/App/ModuleResolver.ls")
+        plain-functions (vector-get plain-state 0)
+        plain-data (vector-get plain-state 1)
+        sidefx-functions (vector-get sidefx-state 0)
+        sidefx-data (vector-get sidefx-state 1)
+        plain-wasm (build-wasm-bytes-wasi plain-functions plain-data)
+        sidefx-wasm (build-wasm-bytes-wasi sidefx-functions sidefx-data)]
+    (do
+      (print (vector-length plain-wasm))
+      (print (vector-length sidefx-wasm))
+      (print (wasm-bytes-eq plain-wasm sidefx-wasm))
+      0)))
+"#,
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "cache miss side effects vs manual pair 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "cache miss side effects 後の manual pair compile でも Wasm 長は一致するべき"
+    );
+    assert_eq!(
+        lines[2], "1",
+        "cache miss side effects 後の manual pair compile は plain manual pair と byte-identical であるべき: {:?}",
+        lines
+    );
+}
+
+/// TEST-CLI-02-M1F0R4: parse-src-decl-pair side effect 単独では manual pair compile が揺れないこと
+#[test]
+fn test_e2e_selfhost_cli_parse_src_decl_pair_side_effect_matches_manual_pair_pipeline() {
+    let dir = cli_test_fixture_dir("module_resolver_parse_src_decl_pair_side_effect");
+    write_cli_fixture_files(
+        &dir,
+        &[
+            ("lsharp.toml", ""),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
+        ],
+    );
+
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
+(defn compile-pair-state [pair]
+  (do
+    (root_push pair)
+    (let [all-pairs (push-object-vector (vector-new 8) pair)]
+      (do
+        (root_push all-pairs)
+        (let [n (vector-length all-pairs)
+              reg-result (register-all-pairs all-pairs 0 n (ftable-new) 0)]
+          (do
+            (root_push reg-result)
+            (let [ftable (vector-get reg-result 0)
+                  data-ref (ref-new (vector-new 8))
+                  functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+                  data (ref-get data-ref)]
+              (do
+                (root_push functions)
+                (root_push data)
+                (let [payload1 (vector-push (vector-new 2) functions)]
+                  (do
+                    (root_push payload1)
+                    (let [payload2 (vector-push payload1 data)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        payload2))))))))))))
+(defn compile-manual-state [path]
+  (let [src (read-file path)
+        program (parse-program src)
+        pair (make-src-decl-pair src program)]
+    (compile-pair-state pair)))
+(defn compile-manual-after-parse-side-effect [path]
+  (let [src (read-file path)
+        parsed-pair (parse-src-decl-pair src)]
+    (do
+      (root_push parsed-pair)
+      (let [program (parse-program src)
+            manual-pair (make-src-decl-pair src program)]
+        (do
+          (root_pop)
+          (compile-pair-state manual-pair))))))
+(defn main []
+  (let [plain-state (compile-manual-state "src/App/ModuleResolver.ls")
+        parsed-state (compile-manual-after-parse-side-effect "src/App/ModuleResolver.ls")
+        plain-functions (vector-get plain-state 0)
+        plain-data (vector-get plain-state 1)
+        parsed-functions (vector-get parsed-state 0)
+        parsed-data (vector-get parsed-state 1)
+        plain-wasm (build-wasm-bytes-wasi plain-functions plain-data)
+        parsed-wasm (build-wasm-bytes-wasi parsed-functions parsed-data)]
+    (do
+      (print (vector-length plain-wasm))
+      (print (vector-length parsed-wasm))
+      (print (wasm-bytes-eq plain-wasm parsed-wasm))
+      0)))
+"#,
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "parse-src-decl-pair side effect vs manual pair 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "parse-src-decl-pair side effect 後の manual pair compile でも Wasm 長は一致するべき"
+    );
+    assert_eq!(
+        lines[2], "1",
+        "parse-src-decl-pair side effect 後の manual pair compile は plain manual pair と byte-identical であるべき: {:?}",
+        lines
+    );
+}
+
+/// TEST-CLI-02-M1F0R2: ModuleResolver の single-pair compile 後に root stack が空へ戻ること
+#[test]
+fn test_e2e_selfhost_cli_manual_pair_compile_restores_root_stack() {
+    let dir = cli_test_fixture_dir("module_resolver_manual_pair_root_stack");
+    write_cli_fixture_files(
+        &dir,
+        &[
+            ("lsharp.toml", ""),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
+        ],
+    );
+
+    let harness = r#"
+(defn compile-pair-state [pair]
+  (do
+    (root_push pair)
+    (let [all-pairs (push-object-vector (vector-new 8) pair)]
+      (do
+        (root_push all-pairs)
+        (let [n (vector-length all-pairs)
+              reg-result (register-all-pairs all-pairs 0 n (ftable-new) 0)]
+          (do
+            (root_push reg-result)
+            (let [ftable (vector-get reg-result 0)
+                  data-ref (ref-new (vector-new 8))
+                  functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+                  data (ref-get data-ref)]
+              (do
+                (root_push functions)
+                (root_push data)
+                (let [payload1 (vector-push (vector-new 2) functions)]
+                  (do
+                    (root_push payload1)
+                    (let [payload2 (vector-push payload1 data)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        payload2))))))))))))
+(defn compile-manual-state [path]
+  (let [src (read-file path)
+        program (parse-program src)
+        pair (make-src-decl-pair src program)]
+    (compile-pair-state pair)))
+(defn main []
+  (let [state (compile-manual-state "src/App/ModuleResolver.ls")]
+    (do
+      (print (vector-length (vector-get state 0)))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let (output, telemetry) = compile_and_capture_runtime_telemetry_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        !lines.is_empty(),
+        "manual pair compile root telemetry 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        telemetry.root_stack_top, 0,
+        "manual pair compile 後に root stack は空であるべき: {:?}",
+        telemetry
+    );
+}
+
+/// TEST-CLI-02-M1F0R3: path-parent 最小 fixture の single-pair compile 後に root stack が空へ戻ること
+#[test]
+fn test_e2e_selfhost_cli_path_parent_manual_pair_compile_restores_root_stack() {
+    let dir = cli_test_fixture_dir("path_parent_manual_pair_root_stack");
+    write_cli_fixture_files(
+        &dir,
+        &[
+            ("lsharp.toml", ""),
+            (
+                "src/App/ModuleResolver.ls",
+                "(defn path-char [path idx] (string-char-at path idx))\n\
+                 (defn is-path-sep [path idx] (let [ch (path-char path idx)] (if (= ch 47) true (if (= ch 92) true false))))\n\
+                 (defn has-path-sep [path idx len] (if (>= idx len) false (if (is-path-sep path idx) true (has-path-sep path (+ idx 1) len))))\n\
+                 (defn find-last-path-sep [path idx len last] (if (>= idx len) last (find-last-path-sep path (+ idx 1) len (if (is-path-sep path idx) idx last))))\n\
+                 (defn path-parent [path] (let [len (string-length path)] (if (= len 0) \"\" (if (has-path-sep path 0 len) (let [last (find-last-path-sep path 0 len -1)] (if (< last 0) \"\" (if (= last 0) \"/\" (substring path 0 last)))) \".\"))))",
+            ),
+        ],
+    );
+
+    let harness = r#"
+(defn compile-pair-state [pair]
+  (do
+    (root_push pair)
+    (let [all-pairs (push-object-vector (vector-new 8) pair)]
+      (do
+        (root_push all-pairs)
+        (let [n (vector-length all-pairs)
+              reg-result (register-all-pairs all-pairs 0 n (ftable-new) 0)]
+          (do
+            (root_push reg-result)
+            (let [ftable (vector-get reg-result 0)
+                  data-ref (ref-new (vector-new 8))
+                  functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+                  data (ref-get data-ref)]
+              (do
+                (root_push functions)
+                (root_push data)
+                (let [payload1 (vector-push (vector-new 2) functions)]
+                  (do
+                    (root_push payload1)
+                    (let [payload2 (vector-push payload1 data)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        payload2))))))))))))
+(defn compile-manual-state [path]
+  (let [src (read-file path)
+        program (parse-program src)
+        pair (make-src-decl-pair src program)]
+    (compile-pair-state pair)))
+(defn main []
+  (let [state (compile-manual-state "src/App/ModuleResolver.ls")]
+    (do
+      (print (vector-length (vector-get state 0)))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let (output, telemetry) = compile_and_capture_runtime_telemetry_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        !lines.is_empty(),
+        "path-parent manual pair compile root telemetry 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        telemetry.root_stack_top, 0,
+        "path-parent manual pair compile 後に root stack は空であるべき: {:?}",
+        telemetry
+    );
+}
+
+/// TEST-CLI-02-M1F0R4: 最小 fixture の single-pair compile 後に root stack が空へ戻ること
+#[test]
+fn test_e2e_selfhost_cli_trivial_manual_pair_compile_restores_root_stack() {
+    let dir = cli_test_fixture_dir("trivial_manual_pair_root_stack");
+    write_cli_fixture_files(
+        &dir,
+        &[
+            ("lsharp.toml", ""),
+            ("src/App/ModuleResolver.ls", "(defn main [] 1)"),
+        ],
+    );
+
+    let harness = r#"
+(defn compile-pair-state [pair]
+  (do
+    (root_push pair)
+    (let [all-pairs (push-object-vector (vector-new 8) pair)]
+      (do
+        (root_push all-pairs)
+        (let [n (vector-length all-pairs)
+              reg-result (register-all-pairs all-pairs 0 n (ftable-new) 0)]
+          (do
+            (root_push reg-result)
+            (let [ftable (vector-get reg-result 0)
+                  data-ref (ref-new (vector-new 8))
+                  functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+                  data (ref-get data-ref)]
+              (do
+                (root_push functions)
+                (root_push data)
+                (let [payload1 (vector-push (vector-new 2) functions)]
+                  (do
+                    (root_push payload1)
+                    (let [payload2 (vector-push payload1 data)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        payload2))))))))))))
+(defn compile-manual-state [path]
+  (let [src (read-file path)
+        program (parse-program src)
+        pair (make-src-decl-pair src program)]
+    (compile-pair-state pair)))
+(defn main []
+  (let [state (compile-manual-state "src/App/ModuleResolver.ls")]
+    (do
+      (print (vector-length (vector-get state 0)))
+      0)))
+"#;
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let (output, telemetry) = compile_and_capture_runtime_telemetry_with_dir(&combined, &dir);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        !lines.is_empty(),
+        "trivial manual pair compile root telemetry 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        telemetry.root_stack_top, 0,
+        "trivial manual pair compile 後に root stack は空であるべき: {:?}",
+        telemetry
+    );
+}
+
+/// TEST-CLI-02-M1F0S: ModuleResolver full source は source-fingerprint 実行後でも direct compile が deterministic であること
+#[test]
+fn test_e2e_selfhost_cli_module_resolver_after_source_fingerprint_is_deterministic() {
+    let dir = cli_test_fixture_dir("module_resolver_after_source_fingerprint_determinism");
+    write_cli_fixture_files(
+        &dir,
+        &[(
+            "ModuleResolverAfterFingerprint.ls",
+            selfhost_module("ModuleResolver.ls"),
+        )],
+    );
+    let fixture_path = dir
+        .join("ModuleResolverAfterFingerprint.ls")
+        .to_string_lossy()
+        .replace('\\', "\\\\");
+
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(&format!(
+        r#"
+(defn compile-file-state [path]
+  (let [src (read-file path)
+        fingerprint (source-fingerprint src)
+        program (parse-program src)
+        pair (make-src-decl-pair src program)]
+    (do
+      (print fingerprint)
+      (root_push pair)
+      (let [all-pairs (push-object-vector (vector-new 8) pair)]
+        (do
+          (root_push all-pairs)
+          (let [n (vector-length all-pairs)
+                reg-result (register-all-pairs all-pairs 0 n (ftable-new) 0)]
+            (do
+              (root_push reg-result)
+              (let [ftable (vector-get reg-result 0)
+                    data-ref (ref-new (vector-new 8))
+                    functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+                    data (ref-get data-ref)]
+                (do
+                  (root_push functions)
+                  (root_push data)
+                  (let [payload1 (vector-push (vector-new 2) functions)]
+                    (do
+                      (root_push payload1)
+                      (let [payload2 (vector-push payload1 data)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          payload2)))))))))))))
+(defn main []
+  (let [state1 (compile-file-state "{fixture_path}")
+        state2 (compile-file-state "{fixture_path}")
+        functions1 (vector-get state1 0)
+        data1 (vector-get state1 1)
+        functions2 (vector-get state2 0)
+        data2 (vector-get state2 1)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)]
+    (do
+      (print (vector-length wasm1))
+      (print (vector-length wasm2))
+      (print (wasm-bytes-eq wasm1 wasm2))
+      0)))
+"#
+    ));
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 5,
+        "source-fingerprint 後 ModuleResolver determinism 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "2回の source-fingerprint 値は一致するべき"
+    );
+    assert_eq!(
+        lines[2], lines[3],
+        "2回の source-fingerprint 後 compile で Wasm 長は一致するべき"
+    );
+    assert_eq!(
+        lines[4], "1",
+        "2回の source-fingerprint 後 compile は byte-identical であるべき: {:?}",
+        lines
+    );
+}
+
+/// TEST-CLI-02-M1F0T: ModuleResolver full source は src-decl cache entry insert 後でも direct compile が deterministic であること
+#[test]
+fn test_e2e_selfhost_cli_module_resolver_after_src_decl_cache_insert_is_deterministic() {
+    let dir = cli_test_fixture_dir("module_resolver_after_src_decl_cache_insert_determinism");
+    write_cli_fixture_files(
+        &dir,
+        &[(
+            "ModuleResolverAfterCacheInsert.ls",
+            selfhost_module("ModuleResolver.ls"),
+        )],
+    );
+    let fixture_path = dir
+        .join("ModuleResolverAfterCacheInsert.ls")
+        .to_string_lossy()
+        .replace('\\', "\\\\");
+
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(&format!(
+        r#"
+(defn compile-file-state [path]
+  (let [src (read-file path)
+        fingerprint (source-fingerprint src)
+        cache-key (src-decl-cache-key path)
         cache-ref (ref-new (map-new))
         parse-count-ref (ref-new 0)
-        payload (compile-file-functions-payload-with-cache path 7 cache-ref parse-count-ref)
-        cached-functions (vector-get payload 0)
-        cached-data (vector-get payload 1)
-        cached-bytes (build-wasm-bytes-wasi cached-functions cached-data)]
+        pair (parse-src-decl-pair src)]
     (do
-      (print (vector-length functions))
-      (print (vector-length cached-functions))
-      (print (vector-length inline-data))
-      (print (vector-length cached-data))
-      (print (vector-length inline-bytes))
-      (print (vector-length cached-bytes))
+      (root_push pair)
+      (let [entry (make-src-decl-cache-entry fingerprint pair)]
+        (do
+          (root_push entry)
+          (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
+          (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
+          (root_pop)
+          (let [all-pairs (push-object-vector (vector-new 8) pair)]
+            (do
+              (root_push all-pairs)
+              (let [n (vector-length all-pairs)
+                    reg-result (register-all-pairs all-pairs 0 n (ftable-new) 0)]
+                (do
+                  (root_push reg-result)
+                  (let [ftable (vector-get reg-result 0)
+                        data-ref (ref-new (vector-new 8))
+                        functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+                        data (ref-get data-ref)]
+                    (do
+                      (root_push functions)
+                      (root_push data)
+                      (let [payload1 (vector-push (vector-new 2) functions)]
+                        (do
+                          (root_push payload1)
+                          (let [payload2 (vector-push payload1 data)]
+                            (do
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              payload2)))))))))))))))
+(defn main []
+  (let [state1 (compile-file-state "{fixture_path}")
+        state2 (compile-file-state "{fixture_path}")
+        functions1 (vector-get state1 0)
+        data1 (vector-get state1 1)
+        functions2 (vector-get state2 0)
+        data2 (vector-get state2 1)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)]
+    (do
+      (print (vector-length wasm1))
+      (print (vector-length wasm2))
+      (print (wasm-bytes-eq wasm1 wasm2))
+      0)))
+"#
+    ));
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 3,
+        "src-decl cache entry insert 後 ModuleResolver determinism 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "2回の src-decl cache entry insert 後 compile で Wasm 長は一致するべき"
+    );
+    assert_eq!(
+        lines[2], "1",
+        "2回の src-decl cache entry insert 後 compile は byte-identical であるべき: {:?}",
+        lines
+    );
+}
+
+/// TEST-CLI-02-M1F0U: ModuleResolver full source は empty cache lookup 後でも direct compile が deterministic であること
+#[test]
+fn test_e2e_selfhost_cli_module_resolver_after_src_decl_cache_lookup_is_deterministic() {
+    let dir = cli_test_fixture_dir("module_resolver_after_src_decl_cache_lookup_determinism");
+    write_cli_fixture_files(
+        &dir,
+        &[(
+            "ModuleResolverAfterCacheLookup.ls",
+            selfhost_module("ModuleResolver.ls"),
+        )],
+    );
+    let fixture_path = dir
+        .join("ModuleResolverAfterCacheLookup.ls")
+        .to_string_lossy()
+        .replace('\\', "\\\\");
+
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(&format!(
+        r#"
+(defn compile-file-state [path]
+  (let [src (read-file path)
+        fingerprint (source-fingerprint src)
+        cache-ref (ref-new (map-new))
+        cache-key (src-decl-cache-key path)
+        cached-entry (ref-map-get-safe cache-ref cache-key)
+        program (parse-program src)
+        pair (make-src-decl-pair src program)]
+    (do
+      (print fingerprint)
+      (print cached-entry)
+      (root_push pair)
+      (let [all-pairs (push-object-vector (vector-new 8) pair)]
+        (do
+          (root_push all-pairs)
+          (let [n (vector-length all-pairs)
+                reg-result (register-all-pairs all-pairs 0 n (ftable-new) 0)]
+            (do
+              (root_push reg-result)
+              (let [ftable (vector-get reg-result 0)
+                    data-ref (ref-new (vector-new 8))
+                    functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+                    data (ref-get data-ref)]
+                (do
+                  (root_push functions)
+                  (root_push data)
+                  (let [payload1 (vector-push (vector-new 2) functions)]
+                    (do
+                      (root_push payload1)
+                      (let [payload2 (vector-push payload1 data)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          payload2)))))))))))))
+(defn main []
+  (let [state1 (compile-file-state "{fixture_path}")
+        state2 (compile-file-state "{fixture_path}")
+        functions1 (vector-get state1 0)
+        data1 (vector-get state1 1)
+        functions2 (vector-get state2 0)
+        data2 (vector-get state2 1)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)]
+    (do
+      (print (vector-length wasm1))
+      (print (vector-length wasm2))
+      (print (wasm-bytes-eq wasm1 wasm2))
+      0)))
+"#
+    ));
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 7,
+        "empty cache lookup 後 ModuleResolver determinism 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], lines[2],
+        "2回の source-fingerprint 値は一致するべき"
+    );
+    assert_eq!(lines[1], "0", "初回 empty cache lookup は 0 を返すべき");
+    assert_eq!(lines[3], "0", "2回目 empty cache lookup も 0 を返すべき");
+    assert_eq!(
+        lines[4], lines[5],
+        "2回の empty cache lookup 後 compile で Wasm 長は一致するべき"
+    );
+    assert_eq!(
+        lines[6], "1",
+        "2回の empty cache lookup 後 compile は byte-identical であるべき: {:?}",
+        lines
+    );
+}
+
+/// TEST-CLI-02-M1F: selfhost App.Main の direct compile は 2 回連続でも同じ Wasm を返すこと
+#[test]
+fn test_e2e_selfhost_cli_direct_selfhost_main_compile_is_deterministic() {
+    let dir = selfhost_package_root();
+
+    let harness = r#"
+(defn make-byte-fingerprint-state [done next-pos next-acc]
+  (push-int-vector-local
+    (push-int-vector-local
+      (push-int-vector-local (vector-new 3) done)
+      next-pos)
+    next-acc))
+(defn wasm-bytes-fingerprint-step [bytes pos end acc]
+  (if (>= pos end)
+    (make-byte-fingerprint-state 1 pos acc)
+    (make-byte-fingerprint-state 0 (+ pos 1) (+ (* acc 31) (vector-get bytes pos)))))
+(defn continue-wasm-bytes-fingerprint-step [bytes end state]
+  (if (= (vector-get state 0) 1)
+    state
+    (wasm-bytes-fingerprint-step bytes (vector-get state 1) end (vector-get state 2))))
+(defn wasm-bytes-fingerprint-step-8 [bytes pos end acc]
+  (let [step1 (wasm-bytes-fingerprint-step bytes pos end acc)
+        step2 (continue-wasm-bytes-fingerprint-step bytes end step1)
+        step3 (continue-wasm-bytes-fingerprint-step bytes end step2)
+        step4 (continue-wasm-bytes-fingerprint-step bytes end step3)
+        step5 (continue-wasm-bytes-fingerprint-step bytes end step4)
+        step6 (continue-wasm-bytes-fingerprint-step bytes end step5)
+        step7 (continue-wasm-bytes-fingerprint-step bytes end step6)
+        step8 (continue-wasm-bytes-fingerprint-step bytes end step7)]
+    step8))
+(defn continue-wasm-bytes-fingerprint-step-8 [bytes end state]
+  (if (= (vector-get state 0) 1)
+    state
+    (wasm-bytes-fingerprint-step-8 bytes (vector-get state 1) end (vector-get state 2))))
+(defn wasm-bytes-fingerprint-step-64 [bytes pos end acc]
+  (let [step1 (wasm-bytes-fingerprint-step-8 bytes pos end acc)
+        step2 (continue-wasm-bytes-fingerprint-step-8 bytes end step1)
+        step3 (continue-wasm-bytes-fingerprint-step-8 bytes end step2)
+        step4 (continue-wasm-bytes-fingerprint-step-8 bytes end step3)
+        step5 (continue-wasm-bytes-fingerprint-step-8 bytes end step4)
+        step6 (continue-wasm-bytes-fingerprint-step-8 bytes end step5)
+        step7 (continue-wasm-bytes-fingerprint-step-8 bytes end step6)
+        step8 (continue-wasm-bytes-fingerprint-step-8 bytes end step7)]
+    step8))
+(defn wasm-bytes-fingerprint-loop [bytes pos end acc]
+  (let [step (wasm-bytes-fingerprint-step-64 bytes pos end acc)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (wasm-bytes-fingerprint-loop bytes (vector-get step 1) end (vector-get step 2)))))
+(defn wasm-bytes-fingerprint [bytes]
+  (wasm-bytes-fingerprint-loop bytes 0 (vector-length bytes) 0))
+(defn make-ir-fingerprint-state [done next-idx next-acc]
+  (push-int-vector-local
+    (push-int-vector-local
+      (push-int-vector-local (vector-new 3) done)
+      next-idx)
+    next-acc))
+(defn ir-fingerprint-step [ir idx count acc]
+  (if (>= idx count)
+    (make-ir-fingerprint-state 1 idx acc)
+    (let [instr (vector-get ir idx)
+          opcode (vector-get instr 0)
+          operand (vector-get instr 1)]
+      (make-ir-fingerprint-state 0 (+ idx 1) (+ (* (+ (* acc 31) opcode) 31) operand)))))
+(defn continue-ir-fingerprint-step [ir count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (ir-fingerprint-step ir (vector-get state 1) count (vector-get state 2))))
+(defn ir-fingerprint-step-8 [ir idx count acc]
+  (let [step1 (ir-fingerprint-step ir idx count acc)
+        step2 (continue-ir-fingerprint-step ir count step1)
+        step3 (continue-ir-fingerprint-step ir count step2)
+        step4 (continue-ir-fingerprint-step ir count step3)
+        step5 (continue-ir-fingerprint-step ir count step4)
+        step6 (continue-ir-fingerprint-step ir count step5)
+        step7 (continue-ir-fingerprint-step ir count step6)
+        step8 (continue-ir-fingerprint-step ir count step7)]
+    step8))
+(defn continue-ir-fingerprint-step-8 [ir count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (ir-fingerprint-step-8 ir (vector-get state 1) count (vector-get state 2))))
+(defn ir-fingerprint-step-64 [ir idx count acc]
+  (let [step1 (ir-fingerprint-step-8 ir idx count acc)
+        step2 (continue-ir-fingerprint-step-8 ir count step1)
+        step3 (continue-ir-fingerprint-step-8 ir count step2)
+        step4 (continue-ir-fingerprint-step-8 ir count step3)
+        step5 (continue-ir-fingerprint-step-8 ir count step4)
+        step6 (continue-ir-fingerprint-step-8 ir count step5)
+        step7 (continue-ir-fingerprint-step-8 ir count step6)
+        step8 (continue-ir-fingerprint-step-8 ir count step7)]
+    step8))
+(defn ir-fingerprint-loop [ir idx count acc]
+  (let [step (ir-fingerprint-step-64 ir idx count acc)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (ir-fingerprint-loop ir (vector-get step 1) count (vector-get step 2)))))
+(defn ir-fingerprint [ir]
+  (ir-fingerprint-loop ir 0 (vector-length ir) 0))
+(defn function-fingerprint [func]
+  (let [param-count (vector-get func 0)
+        local-count (vector-get func 1)
+        ir (vector-get func 2)]
+    (+ (* (+ (* param-count 31) local-count) 31) (ir-fingerprint ir))))
+(defn first-function-mismatch [functions1 functions2 idx count]
+  (if (>= idx count)
+    -1
+    (if (= (function-fingerprint (vector-get functions1 idx)) (function-fingerprint (vector-get functions2 idx)))
+      (first-function-mismatch functions1 functions2 (+ idx 1) count)
+      idx)))
+(defn first-ir-mismatch [ir1 ir2 idx count]
+  (if (>= idx count)
+    -1
+    (let [instr1 (vector-get ir1 idx)
+          instr2 (vector-get ir2 idx)]
+      (if (and (= (vector-get instr1 0) (vector-get instr2 0)) (= (vector-get instr1 1) (vector-get instr2 1)))
+        (first-ir-mismatch ir1 ir2 (+ idx 1) count)
+        idx))))
+(defn instr-op-at [ir idx]
+  (if (or (< idx 0) (>= idx (vector-length ir)))
+    -1
+    (vector-get (vector-get ir idx) 0)))
+(defn instr-operand-at [ir idx]
+  (if (or (< idx 0) (>= idx (vector-length ir)))
+    -1
+    (vector-get (vector-get ir idx) 1)))
+(defn count-defns-in-decls [decls idx n]
+  (if (>= idx n)
+    0
+    (+ (if (= (vector-get (vector-get decls idx) 0) 20) 1 0)
+       (count-defns-in-decls decls (+ idx 1) n))))
+(defn count-defns-in-pair [pair]
+  (let [decls (vector-get pair 1)]
+    (count-defns-in-decls decls 0 (vector-length decls))))
+(defn find-owner-pair-index [pairs pair-idx pair-count target base]
+  (if (>= pair-idx pair-count)
+    -1
+    (let [pair (vector-get pairs pair-idx)
+          pair-defn-count (count-defns-in-pair pair)]
+      (if (< target (+ base pair-defn-count))
+        pair-idx
+        (find-owner-pair-index pairs (+ pair-idx 1) pair-count target (+ base pair-defn-count))))))
+(defn find-owner-pair-base [pairs pair-idx pair-count target base]
+  (if (>= pair-idx pair-count)
+    -1
+    (let [pair (vector-get pairs pair-idx)
+          pair-defn-count (count-defns-in-pair pair)]
+      (if (< target (+ base pair-defn-count))
+        base
+        (find-owner-pair-base pairs (+ pair-idx 1) pair-count target (+ base pair-defn-count))))))
+(defn find-line-end [src idx len]
+  (if (>= idx len)
+    idx
+    (if (= (string-char-at src idx) 10)
+      idx
+      (find-line-end src (+ idx 1) len))))
+(defn source-first-line [src]
+  (let [len (string-length src)
+        end (find-line-end src 0 len)]
+    (substring src 0 end)))
+(defn make-functions-data-pair [functions data]
+  (push-object-vector (push-object-vector (vector-new 2) functions) data))
+(defn compile-inline-file-state [path func-idx]
+  (let [src (read-file path)
+        program (parse-program src)
+        source-root (resolve-source-root path)
+        package-root (resolve-package-root path)
+        seen-ref (ref-new (map-new))
+        imported-pairs (load-imports-from-decls program src 0 (vector-length program) seen-ref (vector-new 8) source-root package-root)
+        all-pairs (append-src-decl-pair imported-pairs src program)
+        n (vector-length all-pairs)
+        reg-result (register-all-pairs all-pairs 0 n (ftable-new) func-idx)
+        ftable (vector-get reg-result 0)
+        data-ref (ref-new (vector-new 8))
+        functions (compile-all-src-decl-pairs all-pairs 0 n ftable data-ref (vector-new 8))
+        data (ref-get data-ref)]
+    (push-object-vector (make-functions-data-pair functions data) all-pairs)))
+(defn main []
+  (let [state1 (compile-inline-file-state "src/App/Main.ls" 7)
+        state2 (compile-inline-file-state "src/App/Main.ls" 7)
+        functions1 (vector-get state1 0)
+        data1 (vector-get state1 1)
+        pairs1 (vector-get state1 2)
+        functions2 (vector-get state2 0)
+        data2 (vector-get state2 1)
+        function-count (vector-length functions1)
+        mismatch-idx (first-function-mismatch functions1 functions2 0 function-count)
+        owner-pair-idx (find-owner-pair-index pairs1 0 (vector-length pairs1) mismatch-idx 0)
+        owner-pair-base (find-owner-pair-base pairs1 0 (vector-length pairs1) mismatch-idx 0)
+        owner-local-idx (- mismatch-idx owner-pair-base)
+        owner-source (if (< owner-pair-idx 0) "" (vector-get (vector-get pairs1 owner-pair-idx) 0))
+        owner-module-line (source-first-line owner-source)
+        mismatch-func1 (if (< mismatch-idx 0) (vector-new 3) (vector-get functions1 mismatch-idx))
+        mismatch-func2 (if (< mismatch-idx 0) (vector-new 3) (vector-get functions2 mismatch-idx))
+        mismatch-ir-vec1 (if (< mismatch-idx 0) (vector-new 2) (vector-get mismatch-func1 2))
+        mismatch-ir-vec2 (if (< mismatch-idx 0) (vector-new 2) (vector-get mismatch-func2 2))
+        mismatch-ir-idx (if (< mismatch-idx 0) -1 (first-ir-mismatch mismatch-ir-vec1 mismatch-ir-vec2 0 (vector-length mismatch-ir-vec1)))
+        mismatch-instr1 (if (< mismatch-ir-idx 0) (vector-new 2) (vector-get mismatch-ir-vec1 mismatch-ir-idx))
+        mismatch-instr2 (if (< mismatch-ir-idx 0) (vector-new 2) (vector-get mismatch-ir-vec2 mismatch-ir-idx))
+        mismatch-local1 (if (< mismatch-idx 0) -1 (vector-get mismatch-func1 1))
+        mismatch-local2 (if (< mismatch-idx 0) -1 (vector-get mismatch-func2 1))
+        mismatch-ir1 (if (< mismatch-idx 0) -1 (ir-fingerprint (vector-get mismatch-func1 2)))
+        mismatch-ir2 (if (< mismatch-idx 0) -1 (ir-fingerprint (vector-get mismatch-func2 2)))
+        type1 (emit-type-section-wasi-quad-functions functions1)
+        type2 (emit-type-section-wasi-quad-functions functions2)
+        func1 (emit-function-section-wasi-quad-functions functions1)
+        func2 (emit-function-section-wasi-quad-functions functions2)
+        code1 (emit-code-section-wasi-quad-functions functions1)
+        code2 (emit-code-section-wasi-quad-functions functions2)
+        data-sec1 (emit-data-section data1 1024)
+        data-sec2 (emit-data-section data2 1024)
+        wasm1 (build-wasm-bytes-wasi functions1 data1)
+        wasm2 (build-wasm-bytes-wasi functions2 data2)]
+    (do
+      (print (vector-length wasm1))
+      (print (vector-length wasm2))
+      (print (wasm-bytes-fingerprint type1))
+      (print (wasm-bytes-fingerprint type2))
+      (print (wasm-bytes-fingerprint func1))
+      (print (wasm-bytes-fingerprint func2))
+      (print (wasm-bytes-fingerprint code1))
+      (print (wasm-bytes-fingerprint code2))
+      (print (wasm-bytes-fingerprint data-sec1))
+      (print (wasm-bytes-fingerprint data-sec2))
+      (print mismatch-idx)
+      (print owner-pair-idx)
+      (print owner-local-idx)
+      (print mismatch-local1)
+      (print mismatch-local2)
+      (print mismatch-ir1)
+      (print mismatch-ir2)
+      (print mismatch-ir-idx)
+      (print (if (< mismatch-ir-idx 0) -1 (vector-get mismatch-instr1 0)))
+      (print (if (< mismatch-ir-idx 0) -1 (vector-get mismatch-instr1 1)))
+      (print (if (< mismatch-ir-idx 0) -1 (vector-get mismatch-instr2 0)))
+      (print (if (< mismatch-ir-idx 0) -1 (vector-get mismatch-instr2 1)))
+      (print (instr-op-at mismatch-ir-vec1 38))
+      (print (instr-operand-at mismatch-ir-vec1 38))
+      (print (instr-op-at mismatch-ir-vec1 39))
+      (print (instr-operand-at mismatch-ir-vec1 39))
+      (print (instr-op-at mismatch-ir-vec1 40))
+      (print (instr-operand-at mismatch-ir-vec1 40))
+      (print (instr-op-at mismatch-ir-vec1 41))
+      (print (instr-operand-at mismatch-ir-vec1 41))
+      (print (instr-op-at mismatch-ir-vec1 42))
+      (print (instr-operand-at mismatch-ir-vec1 42))
+      (print (instr-op-at mismatch-ir-vec1 43))
+      (print (instr-operand-at mismatch-ir-vec1 43))
+      (print (instr-op-at mismatch-ir-vec1 44))
+      (print (instr-operand-at mismatch-ir-vec1 44))
+      (print (instr-op-at mismatch-ir-vec1 45))
+      (print (instr-operand-at mismatch-ir-vec1 45))
+      (print (instr-op-at mismatch-ir-vec1 46))
+      (print (instr-operand-at mismatch-ir-vec1 46))
+      (print (instr-op-at mismatch-ir-vec2 38))
+      (print (instr-operand-at mismatch-ir-vec2 38))
+      (print (instr-op-at mismatch-ir-vec2 39))
+      (print (instr-operand-at mismatch-ir-vec2 39))
+      (print (instr-op-at mismatch-ir-vec2 40))
+      (print (instr-operand-at mismatch-ir-vec2 40))
+      (print (instr-op-at mismatch-ir-vec2 41))
+      (print (instr-operand-at mismatch-ir-vec2 41))
+      (print (instr-op-at mismatch-ir-vec2 42))
+      (print (instr-operand-at mismatch-ir-vec2 42))
+      (print (instr-op-at mismatch-ir-vec2 43))
+      (print (instr-operand-at mismatch-ir-vec2 43))
+      (print (instr-op-at mismatch-ir-vec2 44))
+      (print (instr-operand-at mismatch-ir-vec2 44))
+      (print (instr-op-at mismatch-ir-vec2 45))
+      (print (instr-operand-at mismatch-ir-vec2 45))
+      (print (instr-op-at mismatch-ir-vec2 46))
+      (print (instr-operand-at mismatch-ir-vec2 46))
+      (print owner-module-line)
+      (print (wasm-bytes-fingerprint wasm1))
+      (print (wasm-bytes-fingerprint wasm2))
       0)))
 "#;
 
@@ -1160,21 +3927,38 @@ fn test_e2e_selfhost_cli_compile_file_payload_with_cache_matches_inline_main() {
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
-        lines.len() >= 6,
-        "compile-file-functions-payload-with-cache main 出力が不足: {:?}",
+        lines.len() >= 61,
+        "selfhost main direct determinism 出力が不足: {:?}",
         lines
     );
     assert_eq!(
         lines[0], lines[1],
-        "functions length は inline/cached で一致するべき"
+        "2回の selfhost main compile で Wasm 長は一致するべき"
     );
     assert_eq!(
         lines[2], lines[3],
-        "data section length は inline/cached で一致するべき"
+        "type section は一致するべき: {:?}",
+        lines
     );
     assert_eq!(
         lines[4], lines[5],
-        "build-wasm-bytes-wasi length は inline/cached で一致するべき"
+        "function section は一致するべき: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[6], lines[7],
+        "code section は一致するべき: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[8], lines[9],
+        "data section は一致するべき: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[59], lines[60],
+        "2回の selfhost main direct compile は fingerprint 一致であるべき: {:?}",
+        lines
     );
 }
 

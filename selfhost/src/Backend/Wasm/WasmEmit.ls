@@ -9,6 +9,9 @@
 (defn wasm-version-1 [] 0)
 (defn wasm-version-2 [] 0)
 (defn wasm-version-3 [] 0)
+(defn function-meta-param-count [func-meta] (vector-get func-meta 0))
+(defn function-meta-local-count [func-meta] (vector-get func-meta 1))
+(defn function-meta-ir [func-meta] (vector-get func-meta 2))
 (defn section-type [] 1)
 (defn section-import [] 2)
 (defn section-function [] 3)
@@ -50,7 +53,32 @@
         next-dst))))
 (defn leb128-u-loop [v acc] (let [low7 (% v 128) rest (/ v 128)] (if (= rest 0) (push-int-vector acc low7) (leb128-u-loop rest (push-int-vector acc (+ low7 128))))))
 (defn leb128-u [value] (leb128-u-loop value (vector-new 4)))
-(defn leb128-s-pos [v acc] (let [low7 (% v 128) rest (/ v 128)] (if (= rest 0) (if (< low7 64) (push-int-vector acc low7) (push-int-vector (push-int-vector acc (+ low7 128)) 0)) (leb128-s-pos rest (push-int-vector acc (+ low7 128))))))
+(defn leb128-s-pos [v acc]
+  (let [low7 (% v 128)
+    rest (/ v 128)]
+    (if (= rest 0)
+      (if (< low7 64)
+        (push-int-vector acc low7)
+        (do
+          (root_push acc)
+          (let [with-low7 (push-int-vector acc (+ low7 128))]
+            (do
+              (root_push with-low7)
+              (let [result (push-int-vector with-low7 0)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  result))))))
+      (do
+        (root_push acc)
+        (let [next-acc (push-int-vector acc (+ low7 128))]
+          (do
+            (root_push next-acc)
+            (let [result (leb128-s-pos rest next-acc)]
+              (do
+                (root_pop)
+                (root_pop)
+                result))))))))
 (defn leb128-s [value] (if (< value 0) (let [result (ref-new (vector-new 4)) v (ref-new value) done (ref-new 0)] (do (let [byte1 (% (+ (% (ref-get v) 128) 128) 128) rest1 (if (< (ref-get v) -64) 1 0)] (if (= rest1 0) (do (ref-set result (push-int-vector (ref-get result) byte1)) 0) (do (ref-set result (push-int-vector (ref-get result) (+ byte1 128))) (let [shifted (/ (- (ref-get v) byte1) 128) byte2 (% (+ (% shifted 128) 128) 128) rest2 (if (< shifted -64) 1 0)] (if (= rest2 0) (do (ref-set result (push-int-vector (ref-get result) byte2)) 0) (do (ref-set result (push-int-vector (ref-get result) (+ byte2 128))) (let [shifted2 (/ (- shifted byte2) 128) byte3 (% (+ (% shifted2 128) 128) 128)] (do (ref-set result (push-int-vector (ref-get result) byte3)) 0)))))))) (ref-get result))) (leb128-s-pos value (vector-new 4))))
 (defn make-loop-step-state [done next-idx next-value]
   (push-object-vector
@@ -70,8 +98,22 @@
       next-if-depth)
     next-if-flags))
 
-(defn emit-leb128 [bytes value] (let [leb (leb128-u value)] (append-byte-vector bytes leb 0 (vector-length leb))))
-(defn emit-leb128-s [bytes value] (let [leb (leb128-s value)] (append-byte-vector bytes leb 0 (vector-length leb))))
+(defn emit-leb128 [bytes value]
+  (let [leb (leb128-u value)]
+    (do
+      (root_push leb)
+      (let [result (append-byte-vector bytes leb 0 (vector-length leb))]
+        (do
+          (root_pop)
+          result)))))
+(defn emit-leb128-s [bytes value]
+  (let [leb (leb128-s value)]
+    (do
+      (root_push leb)
+      (let [result (append-byte-vector bytes leb 0 (vector-length leb))]
+        (do
+          (root_pop)
+          result)))))
 (defn emit-byte [bytes b] (push-int-vector bytes b))
 (defn emit-header [] (let [h (vector-new 8)] (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push (vector-push h 0) 97) 115) 109) 1) 0) 0) 0)))
 (defn emit-type-section-main [] (let [bytes (vector-new 16)] (let [b1 (emit-byte bytes 1) b2 (emit-byte b1 5) b3 (emit-byte b2 1) b4 (emit-byte b3 96) b5 (emit-byte b4 0) b6 (emit-byte b5 1) b7 (emit-byte b6 126)] b7)))
@@ -122,7 +164,7 @@
   (if (>= idx func-count)
     (make-loop-step-state 1 idx dst)
     (let [func-meta (vector-get functions idx)
-      param-count (vector-get func-meta 0)
+      param-count (function-meta-param-count func-meta)
       body0 (emit-byte dst 96)
       body1 (emit-leb128 body0 param-count)
       body2 (append-i64-param-types body1 0 param-count)
@@ -162,11 +204,38 @@
     step8 (continue-append-function-types-step-8 functions func-count step7)]
     step8))
 
+(defn continue-append-function-types-step-64 [functions func-count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (append-function-types-step-64 (vector-get state 2) functions (vector-get state 1) func-count)))
+
+(defn append-function-types-step-512 [dst functions idx func-count]
+  (let [step1 (append-function-types-step-64 dst functions idx func-count)
+    step2 (continue-append-function-types-step-64 functions func-count step1)
+    step3 (continue-append-function-types-step-64 functions func-count step2)
+    step4 (continue-append-function-types-step-64 functions func-count step3)
+    step5 (continue-append-function-types-step-64 functions func-count step4)
+    step6 (continue-append-function-types-step-64 functions func-count step5)
+    step7 (continue-append-function-types-step-64 functions func-count step6)
+    step8 (continue-append-function-types-step-64 functions func-count step7)]
+    step8))
+
 (defn append-function-types [dst functions idx func-count]
-  (let [step (append-function-types-step-64 dst functions idx func-count)]
-    (if (= (vector-get step 0) 1)
-      (vector-get step 2)
-      (append-function-types (vector-get step 2) functions (vector-get step 1) func-count))))
+  (do
+    (root_push dst)
+    (root_push functions)
+    (let [step (append-function-types-step-512 dst functions idx func-count)]
+      (do
+        (root_push step)
+        (let [result
+            (if (= (vector-get step 0) 1)
+              (vector-get step 2)
+              (append-function-types (vector-get step 2) functions (vector-get step 1) func-count))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 (defn emit-type-section-functions [functions] (let [func-count (vector-length functions) body0 (emit-leb128 (vector-new 32) func-count) body1 (append-function-types body0 functions 0 func-count) body-size (vector-length body1) result0 (emit-byte (vector-new 32) 1) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body1 0 body-size)))
 (defn emit-type-section-functions-wasi [functions] (let [func-count (vector-length functions) body0 (emit-leb128 (vector-new 32) (+ func-count 1)) body1 (append-function-types body0 functions 0 func-count) body2 (emit-byte body1 96) body3 (emit-leb128 body2 0) body4 (emit-leb128 body3 0) body-size (vector-length body4) result0 (emit-byte (vector-new 32) 1) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body4 0 body-size)))
 (defn emit-type-section-alloc-main [] (let [body0 (emit-leb128 (vector-new 24) 2) body1 (emit-byte body0 96) body2 (emit-leb128 body1 1) body3 (emit-byte body2 126) body4 (emit-byte body3 1) body5 (emit-byte body4 126) body6 (emit-byte body5 96) body7 (emit-leb128 body6 0) body8 (emit-byte body7 1) body9 (emit-byte body8 126) body-size (vector-length body9) result0 (emit-byte (vector-new 24) 1) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body9 0 body-size)))
@@ -339,10 +408,60 @@
     step8))
 
 (defn append-byte-vector [dst src idx count]
-  (let [step (append-byte-vector-step-512 dst src idx count)]
-    (if (= (vector-get step 0) 1)
-      (vector-get step 2)
-      (append-byte-vector (vector-get step 2) src (vector-get step 1) count))))
+  (do
+    (root_push dst)
+    (root_push src)
+    (let [step (append-byte-vector-step-512 dst src idx count)]
+      (do
+        (root_push step)
+        (let [result
+            (if (= (vector-get step 0) 1)
+              (vector-get step 2)
+              (append-byte-vector (vector-get step 2) src (vector-get step 1) count))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn append-byte-vector-chunked [dst src idx count]
+  (if (>= idx count)
+    dst
+    (do
+      (root_push dst)
+      (root_push src)
+      (let [chunk-end (if (> (+ idx 4096) count) count (+ idx 4096))
+        next-dst (append-byte-vector dst src idx (if (> (+ idx 4096) count) count (+ idx 4096)))]
+        (do
+          (root_push next-dst)
+          (let [result (append-byte-vector-chunked next-dst src chunk-end count)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
+
+(defn append-byte-vector-progress-debug [dst src idx count]
+  (do
+    (print 525)
+    (print idx)
+    (if (>= idx count)
+      dst
+      (do
+        (root_push dst)
+        (root_push src)
+        (let [chunk-end (if (> (+ idx 4096) count) count (+ idx 4096))
+          next-dst (append-byte-vector dst src idx (if (> (+ idx 4096) count) count (+ idx 4096)))]
+          (do
+            (print 526)
+            (print chunk-end)
+            (root_push next-dst)
+            (let [result (append-byte-vector-progress-debug next-dst src chunk-end count)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 
 (defn append-ir-instrs-step-with-if-state [body ir-instrs idx count if-depth if-flags]
   (if (>= idx count)
@@ -405,25 +524,120 @@
     step8))
 
 (defn append-ir-instrs-with-if-state [body ir-instrs idx count if-depth if-flags]
-  (let [step (append-ir-instrs-step-64-with-if-state body ir-instrs idx count if-depth if-flags)]
-    (if (= (vector-get step 0) 1)
-      (vector-get step 2)
-      (append-ir-instrs-with-if-state
-        (vector-get step 2)
-        ir-instrs
-        (vector-get step 1)
-        count
-        (vector-get step 3)
-        (vector-get step 4)))))
+  (do
+    (root_push body)
+    (root_push ir-instrs)
+    (let [step (append-ir-instrs-step-64-with-if-state body ir-instrs idx count if-depth if-flags)]
+      (do
+        (root_push step)
+        (let [result
+            (if (= (vector-get step 0) 1)
+              (vector-get step 2)
+              (append-ir-instrs-with-if-state
+                (vector-get step 2)
+                ir-instrs
+                (vector-get step 1)
+                count
+                (vector-get step 3)
+                (vector-get step 4)))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 (defn append-ir-instrs [body ir-instrs idx count] (append-ir-instrs-with-if-state body ir-instrs idx count 0 0))
-(defn build-function-body [ir-instrs] (let [body0 (emit-byte (vector-new 64) 0) body1 (append-ir-instrs body0 ir-instrs 0 (vector-length ir-instrs))] (emit-byte body1 11)))
-(defn build-function-body-function [func-meta] (let [local-count (vector-get func-meta 1) ir-instrs (vector-get func-meta 2) body0 (if (= local-count 0) (emit-byte (vector-new 64) 0) (emit-byte (emit-leb128 (emit-leb128 (vector-new 64) 1) local-count) 126)) body1 (append-ir-instrs body0 ir-instrs 0 (vector-length ir-instrs))] (emit-byte body1 11)))
+(defn append-ir-instrs-with-if-state-progress-debug [body ir-instrs idx count if-depth if-flags]
+  (do
+    (print 586)
+    (print idx)
+    (print 587)
+    (print if-depth)
+    (root_push body)
+    (root_push ir-instrs)
+    (let [step (append-ir-instrs-step-64-with-if-state body ir-instrs idx count if-depth if-flags)]
+      (do
+        (root_push step)
+        (print 588)
+        (print (vector-get step 1))
+        (let [result
+            (if (= (vector-get step 0) 1)
+              (vector-get step 2)
+              (append-ir-instrs-with-if-state-progress-debug
+                (vector-get step 2)
+                ir-instrs
+                (vector-get step 1)
+                count
+                (vector-get step 3)
+                (vector-get step 4)))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+(defn append-ir-instrs-progress-debug [body ir-instrs idx count] (append-ir-instrs-with-if-state-progress-debug body ir-instrs idx count 0 0))
+(defn build-function-body [ir-instrs]
+  (do
+    (root_push ir-instrs)
+    (let [body0 (emit-byte (vector-new 64) 0)
+      body1 (append-ir-instrs body0 ir-instrs 0 (vector-length ir-instrs))]
+      (do
+        (root_push body1)
+        (let [result (emit-byte body1 11)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+(defn build-function-body-function [func-meta]
+  (do
+    (root_push func-meta)
+    (let [local-count (function-meta-local-count func-meta)
+      ir-instrs (function-meta-ir func-meta)]
+      (do
+        (root_push ir-instrs)
+        (let [body0 (if (= local-count 0) (emit-byte (vector-new 64) 0) (emit-byte (emit-leb128 (emit-leb128 (vector-new 64) 1) local-count) 126))
+          body1 (append-ir-instrs body0 ir-instrs 0 (vector-length ir-instrs))]
+          (do
+            (root_push body1)
+            (let [result (emit-byte body1 11)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+(defn build-function-body-function-progress-debug [func-meta]
+  (do
+    (root_push func-meta)
+    (let [local-count (function-meta-local-count func-meta)
+      ir-instrs (function-meta-ir func-meta)]
+      (do
+        (print 582)
+        (print local-count)
+        (print 583)
+        (print (vector-length ir-instrs))
+        (root_push ir-instrs)
+        (let [body0 (if (= local-count 0) (emit-byte (vector-new 64) 0) (emit-byte (emit-leb128 (emit-leb128 (vector-new 64) 1) local-count) 126))]
+          (do
+            (print 584)
+            (print (vector-length body0))
+            (let [body1 (append-ir-instrs-progress-debug body0 ir-instrs 0 (vector-length ir-instrs))]
+              (do
+                (print 585)
+                (print (vector-length body1))
+                (root_push body1)
+                (let [result (emit-byte body1 11)]
+                  (do
+                    (print 589)
+                    (print (vector-length result))
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
 (defn append-code-bodies-step [body ir-list idx func-count]
   (if (>= idx func-count)
     (make-loop-step-state 1 idx body)
     (let [func-body (build-function-body (vector-get ir-list idx))
       with-size (emit-leb128 body (vector-length func-body))
-      with-body (append-byte-vector with-size func-body 0 (vector-length func-body))]
+      with-body (append-byte-vector-chunked with-size func-body 0 (vector-length func-body))]
       (make-loop-step-state 0 (+ idx 1) with-body))))
 
 (defn continue-append-code-bodies-step [ir-list func-count state]
@@ -475,23 +689,67 @@
     step8))
 
 (defn append-code-bodies [body ir-list idx func-count]
-  (let [step (append-code-bodies-step-512 body ir-list idx func-count)]
-    (if (= (vector-get step 0) 1)
-      (vector-get step 2)
-      (append-code-bodies (vector-get step 2) ir-list (vector-get step 1) func-count))))
+  (do
+    (root_push body)
+    (root_push ir-list)
+    (let [step (append-code-bodies-step-512 body ir-list idx func-count)]
+      (do
+        (root_push step)
+        (let [result
+            (if (= (vector-get step 0) 1)
+              (vector-get step 2)
+              (append-code-bodies (vector-get step 2) ir-list (vector-get step 1) func-count))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 (defn emit-code-section-list [ir-list] (let [func-count (vector-length ir-list) body0 (emit-leb128 (vector-new 64) func-count) body1 (append-code-bodies body0 ir-list 0 func-count) body-size (vector-length body1) result0 (emit-byte (vector-new 64) 10) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body1 0 body-size)))
 (defn append-code-bodies-functions-step [body functions idx func-count]
   (if (>= idx func-count)
     (make-loop-step-state 1 idx body)
-    (let [func-body (build-function-body-function (vector-get functions idx))
-      with-size (emit-leb128 body (vector-length func-body))
-      with-body (append-byte-vector with-size func-body 0 (vector-length func-body))]
-      (make-loop-step-state 0 (+ idx 1) with-body))))
+    (let [func-body (build-function-body-function (vector-get functions idx))]
+      (do
+        (root_push func-body)
+        (let [with-size (emit-leb128 body (vector-length func-body))
+          with-body (append-byte-vector-chunked with-size func-body 0 (vector-length func-body))]
+          (do
+            (root_pop)
+            (make-loop-step-state 0 (+ idx 1) with-body)))))))
+
+(defn append-code-bodies-functions-step-progress-debug [body functions idx func-count]
+  (if (>= idx func-count)
+    (make-loop-step-state 1 idx body)
+    (let [func-meta (vector-get functions idx)
+      local-count (function-meta-local-count func-meta)
+      ir-instrs (function-meta-ir func-meta)]
+      (do
+        (print 578)
+        (print idx)
+        (print 579)
+        (print local-count)
+        (print 580)
+        (print (vector-length ir-instrs))
+        (let [func-body (build-function-body-function-progress-debug func-meta)]
+          (do
+            (root_push func-body)
+            (let [with-size (emit-leb128 body (vector-length func-body))
+              with-body (append-byte-vector-chunked with-size func-body 0 (vector-length func-body))]
+              (do
+                (print 581)
+                (print (vector-length func-body))
+                (root_pop)
+                (make-loop-step-state 0 (+ idx 1) with-body)))))))))
 
 (defn continue-append-code-bodies-functions-step [functions func-count state]
   (if (= (vector-get state 0) 1)
     state
     (append-code-bodies-functions-step (vector-get state 2) functions (vector-get state 1) func-count)))
+
+(defn continue-append-code-bodies-functions-step-progress-debug [functions func-count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (append-code-bodies-functions-step-progress-debug (vector-get state 2) functions (vector-get state 1) func-count)))
 
 (defn append-code-bodies-functions-step-8 [body functions idx func-count]
   (let [step1 (append-code-bodies-functions-step body functions idx func-count)
@@ -504,10 +762,26 @@
     step8 (continue-append-code-bodies-functions-step functions func-count step7)]
     step8))
 
+(defn append-code-bodies-functions-step-8-progress-debug [body functions idx func-count]
+  (let [step1 (append-code-bodies-functions-step-progress-debug body functions idx func-count)
+    step2 (continue-append-code-bodies-functions-step-progress-debug functions func-count step1)
+    step3 (continue-append-code-bodies-functions-step-progress-debug functions func-count step2)
+    step4 (continue-append-code-bodies-functions-step-progress-debug functions func-count step3)
+    step5 (continue-append-code-bodies-functions-step-progress-debug functions func-count step4)
+    step6 (continue-append-code-bodies-functions-step-progress-debug functions func-count step5)
+    step7 (continue-append-code-bodies-functions-step-progress-debug functions func-count step6)
+    step8 (continue-append-code-bodies-functions-step-progress-debug functions func-count step7)]
+    step8))
+
 (defn continue-append-code-bodies-functions-step-8 [functions func-count state]
   (if (= (vector-get state 0) 1)
     state
     (append-code-bodies-functions-step-8 (vector-get state 2) functions (vector-get state 1) func-count)))
+
+(defn continue-append-code-bodies-functions-step-8-progress-debug [functions func-count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (append-code-bodies-functions-step-8-progress-debug (vector-get state 2) functions (vector-get state 1) func-count)))
 
 (defn append-code-bodies-functions-step-64 [body functions idx func-count]
   (let [step1 (append-code-bodies-functions-step-8 body functions idx func-count)
@@ -520,10 +794,26 @@
     step8 (continue-append-code-bodies-functions-step-8 functions func-count step7)]
     step8))
 
+(defn append-code-bodies-functions-step-64-progress-debug [body functions idx func-count]
+  (let [step1 (append-code-bodies-functions-step-8-progress-debug body functions idx func-count)
+    step2 (continue-append-code-bodies-functions-step-8-progress-debug functions func-count step1)
+    step3 (continue-append-code-bodies-functions-step-8-progress-debug functions func-count step2)
+    step4 (continue-append-code-bodies-functions-step-8-progress-debug functions func-count step3)
+    step5 (continue-append-code-bodies-functions-step-8-progress-debug functions func-count step4)
+    step6 (continue-append-code-bodies-functions-step-8-progress-debug functions func-count step5)
+    step7 (continue-append-code-bodies-functions-step-8-progress-debug functions func-count step6)
+    step8 (continue-append-code-bodies-functions-step-8-progress-debug functions func-count step7)]
+    step8))
+
 (defn continue-append-code-bodies-functions-step-64 [functions func-count state]
   (if (= (vector-get state 0) 1)
     state
     (append-code-bodies-functions-step-64 (vector-get state 2) functions (vector-get state 1) func-count)))
+
+(defn continue-append-code-bodies-functions-step-64-progress-debug [functions func-count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (append-code-bodies-functions-step-64-progress-debug (vector-get state 2) functions (vector-get state 1) func-count)))
 
 (defn append-code-bodies-functions-step-512 [body functions idx func-count]
   (let [step1 (append-code-bodies-functions-step-64 body functions idx func-count)
@@ -536,21 +826,148 @@
     step8 (continue-append-code-bodies-functions-step-64 functions func-count step7)]
     step8))
 
+(defn append-code-bodies-functions-step-512-progress-debug [body functions idx func-count]
+  (let [step1 (append-code-bodies-functions-step-64-progress-debug body functions idx func-count)
+    step2 (continue-append-code-bodies-functions-step-64-progress-debug functions func-count step1)
+    step3 (continue-append-code-bodies-functions-step-64-progress-debug functions func-count step2)
+    step4 (continue-append-code-bodies-functions-step-64-progress-debug functions func-count step3)
+    step5 (continue-append-code-bodies-functions-step-64-progress-debug functions func-count step4)
+    step6 (continue-append-code-bodies-functions-step-64-progress-debug functions func-count step5)
+    step7 (continue-append-code-bodies-functions-step-64-progress-debug functions func-count step6)
+    step8 (continue-append-code-bodies-functions-step-64-progress-debug functions func-count step7)]
+    step8))
+
 (defn append-code-bodies-functions [body functions idx func-count]
-  (let [step (append-code-bodies-functions-step-512 body functions idx func-count)]
-    (if (= (vector-get step 0) 1)
-      (vector-get step 2)
-      (append-code-bodies-functions (vector-get step 2) functions (vector-get step 1) func-count))))
+  (do
+    (root_push body)
+    (root_push functions)
+    (let [step (append-code-bodies-functions-step-512 body functions idx func-count)]
+      (do
+        (root_push step)
+        (let [result
+            (if (= (vector-get step 0) 1)
+              (vector-get step 2)
+              (append-code-bodies-functions (vector-get step 2) functions (vector-get step 1) func-count))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn append-code-bodies-functions-progress-debug [body functions idx func-count]
+  (do
+    (print 576)
+    (print idx)
+    (root_push body)
+    (root_push functions)
+    (let [step (append-code-bodies-functions-step-512-progress-debug body functions idx func-count)]
+      (do
+        (root_push step)
+        (print 577)
+        (print (vector-get step 1))
+        (let [result
+            (if (= (vector-get step 0) 1)
+              (vector-get step 2)
+              (append-code-bodies-functions-progress-debug (vector-get step 2) functions (vector-get step 1) func-count))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 (defn emit-code-section-functions [functions] (let [func-count (vector-length functions) body0 (emit-leb128 (vector-new 64) func-count) body1 (append-code-bodies-functions body0 functions 0 func-count) body-size (vector-length body1) result0 (emit-byte (vector-new 64) 10) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body1 0 body-size)))
 (defn emit-code-section-functions-wasi [functions] (let [func-count (vector-length functions) body0 (emit-leb128 (vector-new 64) (+ func-count 1)) body1 (append-code-bodies-functions body0 functions 0 func-count) wrapper0 (emit-byte (vector-new 8) 0) wrapper1 (emit-byte wrapper0 16) wrapper2 (emit-leb128 wrapper1 (- func-count 1)) wrapper3 (emit-byte wrapper2 26) wrapper4 (emit-byte wrapper3 11) wrapper-size (vector-length wrapper4) body2 (emit-leb128 body1 wrapper-size) body3 (append-byte-vector body2 wrapper4 0 wrapper-size) body-size (vector-length body3) result0 (emit-byte (vector-new 64) 10) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body3 0 body-size)))
 ;; 10-import (alloc/print/read-file/command-line-arg/string-concat/substring/file-exists?/root_push/root_pop/root_set) + memory + data モデル用セクション生成関数群
 ;; タイプセクション: type0=(i64->i64), type1=(i64->void), type2=(i64×2->i64), type3=(i64×3->i64), type4=(()->i64),
 ;;   type5..(5+N-1)=ユーザ関数型, type5+N=_start型
-(defn emit-type-section-wasi-quad-functions [functions] (let [func-count (vector-length functions) total-count (+ func-count 6) body0 (emit-leb128 (vector-new 64) total-count) body1 (emit-byte body0 96) body2 (emit-leb128 body1 1) body3 (emit-byte body2 126) body4 (emit-byte body3 1) body5 (emit-byte body4 126) body6 (emit-byte body5 96) body7 (emit-leb128 body6 1) body8 (emit-byte body7 126) body9 (emit-leb128 body8 0) body10 (emit-byte body9 96) body11 (emit-leb128 body10 2) body12 (emit-byte body11 126) body13 (emit-byte body12 126) body14 (emit-byte body13 1) body15 (emit-byte body14 126) body16 (emit-byte body15 96) body17 (emit-leb128 body16 3) body18 (emit-byte body17 126) body19 (emit-byte body18 126) body20 (emit-byte body19 126) body21 (emit-byte body20 1) body22 (emit-byte body21 126) body23 (emit-byte body22 96) body24 (emit-leb128 body23 0) body25 (emit-byte body24 1) body26 (emit-byte body25 126) body27 (append-function-types body26 functions 0 func-count) body28 (emit-byte body27 96) body29 (emit-leb128 body28 0) body30 (emit-leb128 body29 0) body-size (vector-length body30) result0 (emit-byte (vector-new 64) 1) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body30 0 body-size)))
+(defn emit-type-section-wasi-quad-functions [functions] (let [func-count (vector-length functions) total-count (+ func-count 6) body0 (emit-leb128 (vector-new 64) total-count) body1 (emit-byte body0 96) body2 (emit-leb128 body1 1) body3 (emit-byte body2 126) body4 (emit-byte body3 1) body5 (emit-byte body4 126) body6 (emit-byte body5 96) body7 (emit-leb128 body6 1) body8 (emit-byte body7 126) body9 (emit-leb128 body8 0) body10 (emit-byte body9 96) body11 (emit-leb128 body10 2) body12 (emit-byte body11 126) body13 (emit-byte body12 126) body14 (emit-byte body13 1) body15 (emit-byte body14 126) body16 (emit-byte body15 96) body17 (emit-leb128 body16 3) body18 (emit-byte body17 126) body19 (emit-byte body18 126) body20 (emit-byte body19 126) body21 (emit-byte body20 1) body22 (emit-byte body21 126) body23 (emit-byte body22 96) body24 (emit-leb128 body23 0) body25 (emit-byte body24 1) body26 (emit-byte body25 126) body27 (append-function-types body26 functions 0 func-count) body28 (emit-byte body27 96) body29 (emit-leb128 body28 0) body30 (emit-leb128 body29 0) body-size (vector-length body30) result0 (emit-byte (vector-new 64) 1) result1 (emit-leb128 result0 body-size)] (append-byte-vector-chunked result1 body30 0 body-size)))
+(defn emit-type-section-wasi-quad-functions-progress-debug [functions]
+  (let [func-count (vector-length functions)
+    total-count (+ func-count 6)
+    body0 (emit-leb128 (vector-new 64) total-count)
+    body1 (emit-byte body0 96)
+    body2 (emit-leb128 body1 1)
+    body3 (emit-byte body2 126)
+    body4 (emit-byte body3 1)
+    body5 (emit-byte body4 126)
+    body6 (emit-byte body5 96)
+    body7 (emit-leb128 body6 1)
+    body8 (emit-byte body7 126)
+    body9 (emit-leb128 body8 0)
+    body10 (emit-byte body9 96)
+    body11 (emit-leb128 body10 2)
+    body12 (emit-byte body11 126)
+    body13 (emit-byte body12 126)
+    body14 (emit-byte body13 1)
+    body15 (emit-byte body14 126)
+    body16 (emit-byte body15 96)
+    body17 (emit-leb128 body16 3)
+    body18 (emit-byte body17 126)
+    body19 (emit-byte body18 126)
+    body20 (emit-byte body19 126)
+    body21 (emit-byte body20 1)
+    body22 (emit-byte body21 126)
+    body23 (emit-byte body22 96)
+    body24 (emit-leb128 body23 0)
+    body25 (emit-byte body24 1)
+    body26 (emit-byte body25 126)]
+    (do
+      (print 521)
+      (print func-count)
+      (let [body27 (append-function-types body26 functions 0 func-count)]
+        (do
+          (print 522)
+          (print (vector-length body27))
+          (let [body28 (emit-byte body27 96)
+            body29 (emit-leb128 body28 0)
+            body30 (emit-leb128 body29 0)
+            body-size (vector-length body30)
+            result0 (emit-byte (vector-new 64) 1)
+            result1 (emit-leb128 result0 body-size)]
+            (do
+              (print 523)
+              (print body-size)
+              (let [result (append-byte-vector-progress-debug result1 body30 0 body-size)]
+                (do
+                  (print 524)
+                  (print (vector-length result))
+                  result)))))))))
 ;; 関数セクション: ユーザ関数 type5..(5+N-1) + _start type(5+N)
 (defn emit-function-section-wasi-quad-functions [functions] (let [func-count (vector-length functions) body0 (emit-leb128 (vector-new 32) (+ func-count 1)) body1 (append-type-index-sequence body0 5 (+ 5 func-count)) body2 (emit-leb128 body1 (+ 5 func-count)) body-size (vector-length body2) result0 (emit-byte (vector-new 32) 3) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body2 0 body-size)))
 ;; コードセクション: ユーザ関数ボディ + _start(import10個後の最終ユーザ関数=9+func_count を call)
-(defn emit-code-section-wasi-quad-functions [functions] (let [func-count (vector-length functions) main-func-idx (+ 9 func-count) body0 (emit-leb128 (vector-new 64) (+ func-count 1)) body1 (append-code-bodies-functions body0 functions 0 func-count) wrapper0 (emit-byte (vector-new 8) 0) wrapper1 (emit-byte wrapper0 16) wrapper2 (emit-leb128 wrapper1 main-func-idx) wrapper3 (emit-byte wrapper2 26) wrapper4 (emit-byte wrapper3 11) wrapper-size (vector-length wrapper4) body2 (emit-leb128 body1 wrapper-size) body3 (append-byte-vector body2 wrapper4 0 wrapper-size) body-size (vector-length body3) result0 (emit-byte (vector-new 64) 10) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body3 0 body-size)))
+(defn emit-code-section-wasi-quad-functions [functions] (let [func-count (vector-length functions) main-func-idx (+ 9 func-count) body0 (emit-leb128 (vector-new 64) (+ func-count 1)) body1 (append-code-bodies-functions body0 functions 0 func-count) wrapper0 (emit-byte (vector-new 8) 0) wrapper1 (emit-byte wrapper0 16) wrapper2 (emit-leb128 wrapper1 main-func-idx) wrapper3 (emit-byte wrapper2 26) wrapper4 (emit-byte wrapper3 11) wrapper-size (vector-length wrapper4) body2 (emit-leb128 body1 wrapper-size) body3 (append-byte-vector body2 wrapper4 0 wrapper-size) body-size (vector-length body3) result0 (emit-byte (vector-new 64) 10) result1 (emit-leb128 result0 body-size)] (append-byte-vector-chunked result1 body3 0 body-size)))
+(defn emit-code-section-wasi-quad-functions-progress-debug [functions]
+  (let [func-count (vector-length functions)
+    main-func-idx (+ 9 func-count)
+    body0 (emit-leb128 (vector-new 64) (+ func-count 1))]
+    (do
+      (print 571)
+      (print func-count)
+      (let [body1 (append-code-bodies-functions-progress-debug body0 functions 0 func-count)]
+        (do
+          (print 572)
+          (print (vector-length body1))
+          (let [wrapper0 (emit-byte (vector-new 8) 0)
+            wrapper1 (emit-byte wrapper0 16)
+            wrapper2 (emit-leb128 wrapper1 main-func-idx)
+            wrapper3 (emit-byte wrapper2 26)
+            wrapper4 (emit-byte wrapper3 11)
+            wrapper-size (vector-length wrapper4)]
+            (do
+              (print 573)
+              (print wrapper-size)
+              (let [body2 (emit-leb128 body1 wrapper-size)
+                body3 (append-byte-vector body2 wrapper4 0 wrapper-size)
+                body-size (vector-length body3)
+                result0 (emit-byte (vector-new 64) 10)
+                result1 (emit-leb128 result0 body-size)]
+                (do
+                  (print 574)
+                  (print body-size)
+                  (let [result (append-byte-vector-progress-debug result1 body3 0 body-size)]
+                    (do
+                      (print 575)
+                      (print (vector-length result))
+                      result)))))))))))
 (defn emit-code-section [ir-instrs] (emit-code-section-list (vector-push (vector-new 2) ir-instrs)))
 (defn emit-wasm [ir-instrs] (let [h (emit-header) t (emit-type-section-main) c (emit-code-section ir-instrs)] (+ (+ (vector-length h) (vector-length t)) (vector-length c))))
 (defn emit-wasm-with-target [ir-instrs target] (let [h (emit-header) i (emit-import-section-for-target target) t (emit-type-section-main) c (emit-code-section ir-instrs)] (+ (+ (+ (vector-length h) (vector-length i)) (vector-length t)) (vector-length c))))
@@ -600,6 +1017,19 @@
 (defn emit-map-get-instr [bytes operand] (let [tagged-idx (- operand 1) key-idx operand cap-idx (+ operand 1) result-idx (+ operand 2) i-idx (+ operand 3) ea-idx (+ operand 4) b1 (emit-leb128 (emit-byte bytes 33) key-idx) b2 (emit-leb128 (emit-byte b1 33) tagged-idx) b3 (emit-leb128 (emit-byte b2 32) tagged-idx) b4 (emit-byte b3 167) b5 (emit-byte b4 40) b6 (emit-byte b5 0) b7 (emit-byte b6 4) b8 (emit-byte b7 173) b9 (emit-leb128 (emit-byte b8 33) cap-idx) b10 (emit-leb128-s (emit-byte b9 66) 0) b11 (emit-leb128 (emit-byte b10 33) result-idx) b12 (emit-leb128-s (emit-byte b11 66) 0) b13 (emit-leb128 (emit-byte b12 33) i-idx) b14 (emit-block-empty b13) b15 (emit-loop-empty b14) b16 (emit-leb128 (emit-byte b15 32) i-idx) b17 (emit-leb128 (emit-byte b16 32) cap-idx) b18 (emit-byte b17 89) b19 (emit-br-if b18 1) b20 (emit-leb128 (emit-byte b19 32) tagged-idx) b21 (emit-byte b20 167) b22 (emit-byte b21 173) b23 (emit-leb128-s (emit-byte b22 66) 16) b24 (emit-byte b23 124) b25 (emit-leb128 (emit-byte b24 32) i-idx) b26 (emit-leb128-s (emit-byte b25 66) 16) b27 (emit-byte b26 126) b28 (emit-byte b27 124) b29 (emit-leb128 (emit-byte b28 33) ea-idx) b30 (emit-leb128 (emit-byte b29 32) ea-idx) b31 (emit-byte b30 167) b32 (emit-byte b31 41) b33 (emit-byte b32 0) b34 (emit-byte b33 0) b35 (emit-leb128 (emit-byte b34 32) key-idx) b36 (emit-byte b35 81) b37 (emit-byte (emit-byte b36 4) 64) b38 (emit-leb128 (emit-byte b37 32) ea-idx) b39 (emit-byte b38 167) b40 (emit-byte b39 41) b41 (emit-byte b40 0) b42 (emit-byte b41 8) b43 (emit-leb128 (emit-byte b42 33) result-idx) b44 (emit-br b43 2) b45 (emit-byte b44 11) b46 (emit-leb128 (emit-byte b45 32) i-idx) b47 (emit-leb128-s (emit-byte b46 66) 1) b48 (emit-byte b47 124) b49 (emit-leb128 (emit-byte b48 33) i-idx) b50 (emit-br b49 0) b51 (emit-byte b50 11) b52 (emit-byte b51 11) b53 (emit-leb128 (emit-byte b52 32) result-idx)] b53))
 (defn emit-map-contains-instr [bytes operand] (let [tagged-idx (- operand 1) key-idx operand cap-idx (+ operand 1) result-idx (+ operand 2) i-idx (+ operand 3) ea-idx (+ operand 4) b1 (emit-leb128 (emit-byte bytes 33) key-idx) b2 (emit-leb128 (emit-byte b1 33) tagged-idx) b3 (emit-leb128 (emit-byte b2 32) tagged-idx) b4 (emit-byte b3 167) b5 (emit-byte b4 40) b6 (emit-byte b5 0) b7 (emit-byte b6 4) b8 (emit-byte b7 173) b9 (emit-leb128 (emit-byte b8 33) cap-idx) b10 (emit-leb128-s (emit-byte b9 66) 0) b11 (emit-leb128 (emit-byte b10 33) result-idx) b12 (emit-leb128-s (emit-byte b11 66) 0) b13 (emit-leb128 (emit-byte b12 33) i-idx) b14 (emit-block-empty b13) b15 (emit-loop-empty b14) b16 (emit-leb128 (emit-byte b15 32) i-idx) b17 (emit-leb128 (emit-byte b16 32) cap-idx) b18 (emit-byte b17 89) b19 (emit-br-if b18 1) b20 (emit-leb128 (emit-byte b19 32) tagged-idx) b21 (emit-byte b20 167) b22 (emit-byte b21 173) b23 (emit-leb128-s (emit-byte b22 66) 16) b24 (emit-byte b23 124) b25 (emit-leb128 (emit-byte b24 32) i-idx) b26 (emit-leb128-s (emit-byte b25 66) 16) b27 (emit-byte b26 126) b28 (emit-byte b27 124) b29 (emit-leb128 (emit-byte b28 33) ea-idx) b30 (emit-leb128 (emit-byte b29 32) ea-idx) b31 (emit-byte b30 167) b32 (emit-byte b31 41) b33 (emit-byte b32 0) b34 (emit-byte b33 0) b35 (emit-leb128 (emit-byte b34 32) key-idx) b36 (emit-byte b35 81) b37 (emit-byte (emit-byte b36 4) 64) b38 (emit-leb128-s (emit-byte b37 66) 1) b39 (emit-leb128 (emit-byte b38 33) result-idx) b40 (emit-br b39 2) b41 (emit-byte b40 11) b42 (emit-leb128 (emit-byte b41 32) i-idx) b43 (emit-leb128-s (emit-byte b42 66) 1) b44 (emit-byte b43 124) b45 (emit-leb128 (emit-byte b44 33) i-idx) b46 (emit-br b45 0) b47 (emit-byte b46 11) b48 (emit-byte b47 11) b49 (emit-leb128 (emit-byte b48 32) result-idx)] b49))
 (defn emit-map-remove-instr [bytes operand] (let [tagged-idx (- operand 1) key-idx operand cap-idx (+ operand 1) i-idx (+ operand 2) ea-idx (+ operand 3) ek-idx (+ operand 4) b1 (emit-leb128 (emit-byte bytes 33) key-idx) b2 (emit-leb128 (emit-byte b1 33) tagged-idx) b3 (emit-leb128 (emit-byte b2 32) tagged-idx) b4 (emit-byte b3 167) b5 (emit-byte b4 40) b6 (emit-byte b5 0) b7 (emit-byte b6 4) b8 (emit-byte b7 173) b9 (emit-leb128 (emit-byte b8 33) cap-idx) b10 (emit-leb128-s (emit-byte b9 66) 0) b11 (emit-leb128 (emit-byte b10 33) i-idx) b12 (emit-block-empty b11) b13 (emit-loop-empty b12) b14 (emit-leb128 (emit-byte b13 32) i-idx) b15 (emit-leb128 (emit-byte b14 32) cap-idx) b16 (emit-byte b15 89) b17 (emit-br-if b16 1) b18 (emit-leb128 (emit-byte b17 32) tagged-idx) b19 (emit-byte b18 167) b20 (emit-byte b19 173) b21 (emit-leb128-s (emit-byte b20 66) 16) b22 (emit-byte b21 124) b23 (emit-leb128 (emit-byte b22 32) i-idx) b24 (emit-leb128-s (emit-byte b23 66) 16) b25 (emit-byte b24 126) b26 (emit-byte b25 124) b27 (emit-leb128 (emit-byte b26 33) ea-idx) b28 (emit-leb128 (emit-byte b27 32) ea-idx) b29 (emit-byte b28 167) b30 (emit-byte b29 41) b31 (emit-byte b30 0) b32 (emit-byte b31 0) b33 (emit-leb128 (emit-byte b32 33) ek-idx) b34 (emit-leb128 (emit-byte b33 32) ek-idx) b35 (emit-leb128 (emit-byte b34 32) key-idx) b36 (emit-byte b35 81) b37 (emit-byte (emit-byte b36 4) 64) b38 (emit-leb128 (emit-byte b37 32) ea-idx) b39 (emit-byte b38 167) b40 (emit-leb128-s (emit-byte b39 66) 0) b41 (emit-byte b40 55) b42 (emit-byte b41 0) b43 (emit-byte b42 0) b44 (emit-leb128 (emit-byte b43 32) ea-idx) b45 (emit-byte b44 167) b46 (emit-leb128-s (emit-byte b45 66) 0) b47 (emit-byte b46 55) b48 (emit-byte b47 0) b49 (emit-byte b48 8) b50 (emit-leb128 (emit-byte b49 32) tagged-idx) b51 (emit-byte b50 167) b52 (emit-leb128 (emit-byte b51 32) tagged-idx) b53 (emit-byte b52 167) b54 (emit-byte b53 40) b55 (emit-byte b54 0) b56 (emit-byte b55 8) b57 (emit-leb128 (emit-byte b56 65) 1) b58 (emit-byte b57 107) b59 (emit-byte b58 54) b60 (emit-byte b59 0) b61 (emit-byte b60 8) b62 (emit-br b61 2) b63 (emit-byte b62 11) b64 (emit-leb128 (emit-byte b63 32) i-idx) b65 (emit-leb128-s (emit-byte b64 66) 1) b66 (emit-byte b65 124) b67 (emit-leb128 (emit-byte b66 33) i-idx) b68 (emit-br b67 0) b69 (emit-byte b68 11) b70 (emit-byte b69 11) b71 (emit-leb128 (emit-byte b70 32) tagged-idx)] b71))
+(defn emit-runtime-ir-instr-tail [bytes opcode operand]
+  (if (= opcode 67)
+    (emit-runtime-ir-instr-tail-low bytes opcode operand)
+    (if (= opcode 68)
+      (emit-runtime-ir-instr-tail-low bytes opcode operand)
+      (if (= opcode 69)
+        (emit-runtime-ir-instr-tail-low bytes opcode operand)
+        (if (= opcode 70)
+          (emit-runtime-ir-instr-tail-low bytes opcode operand)
+          (if (= opcode 71)
+            (emit-runtime-ir-instr-tail-low bytes opcode operand)
+            (emit-runtime-ir-instr-tail-high bytes opcode operand)))))))
+
 (defn emit-runtime-ir-instr [bytes opcode operand]
   (if (= opcode 59)
     (emit-print-instr bytes)
@@ -618,27 +1048,7 @@
                 (emit-map-contains-instr bytes operand)
                 (if (= opcode 66)
                   (emit-map-remove-instr bytes operand)
-                  (if (= opcode 67)
-                    (emit-command-line-arg-instr bytes)
-                    (if (= opcode 68)
-                      (emit-runtime-hash-string-instr bytes)
-                      (if (= opcode 69)
-                        (emit-substring-instr bytes)
-                        (if (= opcode 70)
-                          (emit-string-concat-instr bytes)
-                          (if (= opcode 71)
-                            (emit-and-instr bytes)
-                            (if (= opcode 72)
-                              (emit-or-instr bytes)
-                              (if (= opcode 73)
-                                (emit-file-exists-instr bytes)
-                                (if (= opcode 74)
-                                  (emit-root-push-instr bytes)
-                                  (if (= opcode 75)
-                                    (emit-root-pop-instr bytes)
-                                    (if (= opcode 76)
-                                      (emit-root-set-instr bytes)
-                                      bytes)))))))))))))))))))
+                  (emit-runtime-ir-instr-tail bytes opcode operand))))))))))
 
 (defn emit-ir-instr [bytes opcode operand]
   (if (= opcode 1)
@@ -647,112 +1057,221 @@
       (emit-leb128 (emit-byte bytes 32) (- operand 1))
       (if (= opcode 11)
         (emit-leb128 (emit-byte bytes 33) (- operand 1))
-        (if (= opcode 20)
-          (emit-byte bytes 124)
-          (if (= opcode 21)
-            (emit-byte bytes 125)
-            (if (= opcode 22)
-              (emit-byte bytes 126)
-              (if (= opcode 23)
-                (emit-byte bytes 127)
-                (if (= opcode 24)
-                  (emit-byte bytes 129)
-                  (if (= opcode 30)
-                    (emit-byte (emit-byte bytes 81) 172)
-                    (if (= opcode 31)
-                      (emit-byte (emit-byte bytes 85) 172)
-                      (if (= opcode 32)
-                        (emit-byte (emit-byte bytes 83) 172)
-                        (if (= opcode 33)
-                          (emit-byte (emit-byte bytes 89) 172)
-                          (if (= opcode 34)
-                            (emit-byte (emit-byte bytes 87) 172)
-                            (if (= opcode 40)
-                              (emit-leb128 (emit-byte bytes 16) operand)
-                              (if (= opcode 41)
-                                (emit-byte (emit-byte (emit-byte bytes 167) 4) 126)
-                                (if (= opcode 43)
-                                  (emit-byte bytes 11)
-                                  (if (= opcode 44)
-                                    (emit-byte bytes 26)
-                                    (if (= opcode 50)
-                                      (emit-string-char-at-instr bytes operand)
-                                      (if (= opcode 51)
-                                        (let [b1 (emit-byte bytes 167)
-                                          b2 (emit-byte b1 40)
-                                          b3 (emit-byte b2 0)
-                                          b4 (emit-byte b3 4)]
-                                          (emit-byte b4 173))
-                                        (if (= opcode 52)
-                                          (let [b1 (emit-byte bytes 167)
-                                            b2 (emit-byte b1 40)
-                                            b3 (emit-byte b2 0)
-                                            b4 (emit-byte b3 8)]
-                                            (emit-byte b4 173))
-                                          (if (= opcode 53)
-                                            (emit-vector-get-instr bytes operand)
-                                            (if (= opcode 54)
-                                              (let [cap-idx (- operand 1)
-                                                addr-idx operand
-                                                b1 (emit-leb128 (emit-byte bytes 33) cap-idx)
-                                                b2 (emit-leb128-s (emit-byte b1 66) 16)
-                                                b3 (emit-leb128 (emit-byte b2 32) cap-idx)
-                                                b4 (emit-leb128-s (emit-byte b3 66) 8)
-                                                b5 (emit-byte b4 126)
-                                                b6 (emit-byte b5 124)
-                                                b7 (emit-leb128 (emit-byte b6 16) 0)
-                                                b8 (emit-leb128 (emit-byte b7 33) addr-idx)
-                                                b9 (emit-leb128 (emit-byte b8 32) addr-idx)
-                                                b10 (emit-byte b9 167)
-                                                b11 (emit-leb128 (emit-byte b10 65) 5)
-                                                b12 (emit-byte b11 54)
-                                                b13 (emit-byte b12 0)
-                                                b14 (emit-byte b13 0)
-                                                b15 (emit-leb128 (emit-byte b14 32) addr-idx)
-                                                b16 (emit-byte b15 167)
-                                                b17 (emit-leb128 (emit-byte b16 32) cap-idx)
-                                                b18 (emit-byte b17 167)
-                                                b19 (emit-byte b18 54)
-                                                b20 (emit-byte b19 0)
-                                                b21 (emit-byte b20 4)
-                                                b22 (emit-leb128 (emit-byte b21 32) addr-idx)
-                                                b23 (emit-byte b22 167)
-                                                b24 (emit-leb128 (emit-byte b23 65) 0)
-                                                b25 (emit-byte b24 54)
-                                                b26 (emit-byte b25 0)
-                                                b27 (emit-byte b26 8)
-                                                b28 (emit-leb128 (emit-byte b27 32) addr-idx)
-                                                b29 (emit-byte b28 167)
-                                                b30 (emit-leb128 (emit-byte b29 65) 0)
-                                                b31 (emit-byte b30 54)
-                                                b32 (emit-byte b31 0)
-                                                b33 (emit-byte b32 12)
-                                                b34 (emit-leb128 (emit-byte b33 32) addr-idx)
-                                                b35 (emit-byte b34 66)
-                                                b36 (emit-byte b35 128)
-                                                b37 (emit-byte b36 128)
-                                                b38 (emit-byte b37 128)
-                                                b39 (emit-byte b38 128)
-                                                b40 (emit-byte b39 128)
-                                                b41 (emit-byte b40 128)
-                                                b42 (emit-byte b41 128)
-                                                b43 (emit-byte b42 128)
-                                                b44 (emit-byte b43 128)
-                                                b45 (emit-byte b44 127)]
-                                                (emit-byte b45 124))
-                                              (if (= opcode 55)
-                                                (emit-vector-push-instr bytes operand)
-                                                (if (= opcode 56)
-                                                  (emit-ref-new-instr bytes operand)
-                                                  (if (= opcode 57)
-                                                    (let [b1 (emit-byte bytes 167)
-                                                      b2 (emit-byte b1 41)
-                                                      b3 (emit-byte b2 0)
-                                                      b4 (emit-byte b3 8)]
-                                                      b4)
-                                                    (if (= opcode 58)
-                                                      (emit-ref-set-instr bytes operand)
-                                                      (emit-runtime-ir-instr bytes opcode operand))))))))))))))))))))))))))))
+        (emit-ir-instr-basic bytes opcode operand)))))
 
-(defn emit-data-section [data-bytes offset] (let [data-len (vector-length data-bytes) body0 (emit-byte (vector-new 64) 1) body1 (emit-byte body0 0) body2 (emit-byte body1 65) body3 (emit-leb128 body2 offset) body4 (emit-byte body3 11) body5 (emit-leb128 body4 data-len) body-vec (append-byte-vector body5 data-bytes 0 data-len) body-size (vector-length body-vec) result0 (emit-byte (vector-new 64) 11) result1 (emit-leb128 result0 body-size)] (append-byte-vector result1 body-vec 0 body-size)))
+(defn emit-data-section [data-bytes offset]
+  (do
+    (root_push data-bytes)
+    (let [data-len (vector-length data-bytes)
+      body0 (emit-byte (vector-new 64) 1)]
+      (do
+        (root_push body0)
+        (let [body1 (emit-byte body0 0)]
+          (do
+            (root_push body1)
+            (let [body2 (emit-byte body1 65)]
+              (do
+                (root_push body2)
+                (let [body3 (emit-leb128 body2 offset)]
+                  (do
+                    (root_push body3)
+                    (let [body4 (emit-byte body3 11)]
+                      (do
+                        (root_push body4)
+                        (let [body5 (emit-leb128 body4 data-len)]
+                          (do
+                            (root_push body5)
+                            (let [body-vec (append-byte-vector-chunked body5 data-bytes 0 data-len)
+                              body-size (vector-length body-vec)
+                              result0 (emit-byte (vector-new 64) 11)]
+                              (do
+                                (root_push body-vec)
+                                (root_push result0)
+                                (let [result1 (emit-leb128 result0 body-size)]
+                                  (do
+                                    (root_push result1)
+                                    (let [result (append-byte-vector-chunked result1 body-vec 0 body-size)]
+                                      (do
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        (root_pop)
+                                        result))))))))))))))))))))
+
+(defn emit-ir-instr-basic [bytes opcode operand]
+  (if (= opcode 20)
+    (emit-ir-instr-basic-low bytes opcode operand)
+    (if (= opcode 21)
+      (emit-ir-instr-basic-low bytes opcode operand)
+      (if (= opcode 22)
+        (emit-ir-instr-basic-low bytes opcode operand)
+        (if (= opcode 23)
+          (emit-ir-instr-basic-low bytes opcode operand)
+          (if (= opcode 24)
+            (emit-ir-instr-basic-low bytes opcode operand)
+            (emit-ir-instr-basic-high bytes opcode operand)))))))
+
+(defn emit-ir-instr-tail [bytes opcode operand]
+  (if (= opcode 40)
+    (emit-leb128 (emit-byte bytes 16) operand)
+    (if (= opcode 41)
+      (emit-byte (emit-byte (emit-byte bytes 167) 4) 126)
+      (if (= opcode 43)
+        (emit-byte bytes 11)
+        (if (= opcode 44)
+          (emit-byte bytes 26)
+          (emit-ir-instr-complex bytes opcode operand))))))
+
+(defn emit-ir-instr-complex [bytes opcode operand]
+  (if (= opcode 50)
+    (emit-ir-instr-complex-low bytes opcode operand)
+    (if (= opcode 51)
+      (emit-ir-instr-complex-low bytes opcode operand)
+      (if (= opcode 52)
+        (emit-ir-instr-complex-low bytes opcode operand)
+        (if (= opcode 53)
+          (emit-ir-instr-complex-low bytes opcode operand)
+          (emit-ir-instr-complex-high bytes opcode operand))))))
+
+(defn emit-runtime-ir-instr-tail-low [bytes opcode operand]
+  (if (= opcode 67)
+    (emit-command-line-arg-instr bytes)
+    (if (= opcode 68)
+      (emit-runtime-hash-string-instr bytes)
+      (if (= opcode 69)
+        (emit-substring-instr bytes)
+        (if (= opcode 70)
+          (emit-string-concat-instr bytes)
+          (if (= opcode 71)
+            (emit-and-instr bytes)
+            bytes))))))
+
+(defn emit-runtime-ir-instr-tail-high [bytes opcode operand]
+  (if (= opcode 72)
+    (emit-or-instr bytes)
+    (if (= opcode 73)
+      (emit-file-exists-instr bytes)
+      (if (= opcode 74)
+        (emit-root-push-instr bytes)
+        (if (= opcode 75)
+          (emit-root-pop-instr bytes)
+          (if (= opcode 76)
+            (emit-root-set-instr bytes)
+            bytes))))))
+
+(defn emit-ir-instr-basic-low [bytes opcode operand]
+  (if (= opcode 20)
+    (emit-byte bytes 124)
+    (if (= opcode 21)
+      (emit-byte bytes 125)
+      (if (= opcode 22)
+        (emit-byte bytes 126)
+        (if (= opcode 23)
+          (emit-byte bytes 127)
+          (if (= opcode 24)
+            (emit-byte bytes 129)
+            (emit-ir-instr-basic-high bytes opcode operand)))))))
+
+(defn emit-ir-instr-basic-high [bytes opcode operand]
+  (if (= opcode 30)
+    (emit-byte (emit-byte bytes 81) 172)
+    (if (= opcode 31)
+      (emit-byte (emit-byte bytes 85) 172)
+      (if (= opcode 32)
+        (emit-byte (emit-byte bytes 83) 172)
+        (if (= opcode 33)
+          (emit-byte (emit-byte bytes 89) 172)
+          (if (= opcode 34)
+            (emit-byte (emit-byte bytes 87) 172)
+            (emit-ir-instr-tail bytes opcode operand)))))))
+
+(defn emit-ir-instr-complex-low [bytes opcode operand]
+  (if (= opcode 50)
+    (emit-string-char-at-instr bytes operand)
+    (if (= opcode 51)
+      (let [b1 (emit-byte bytes 167)
+        b2 (emit-byte b1 40)
+        b3 (emit-byte b2 0)
+        b4 (emit-byte b3 4)]
+        (emit-byte b4 173))
+      (if (= opcode 52)
+        (let [b1 (emit-byte bytes 167)
+          b2 (emit-byte b1 40)
+          b3 (emit-byte b2 0)
+          b4 (emit-byte b3 8)]
+          (emit-byte b4 173))
+        (if (= opcode 53)
+          (emit-vector-get-instr bytes operand)
+          (emit-ir-instr-complex-high bytes opcode operand))))))
+
+(defn emit-ir-instr-complex-high [bytes opcode operand]
+  (if (= opcode 54)
+    (let [cap-idx (- operand 1)
+      addr-idx operand
+      b1 (emit-leb128 (emit-byte bytes 33) cap-idx)
+      b2 (emit-leb128-s (emit-byte b1 66) 16)
+      b3 (emit-leb128 (emit-byte b2 32) cap-idx)
+      b4 (emit-leb128-s (emit-byte b3 66) 8)
+      b5 (emit-byte b4 126)
+      b6 (emit-byte b5 124)
+      b7 (emit-leb128 (emit-byte b6 16) 0)
+      b8 (emit-leb128 (emit-byte b7 33) addr-idx)
+      b9 (emit-leb128 (emit-byte b8 32) addr-idx)
+      b10 (emit-byte b9 167)
+      b11 (emit-leb128 (emit-byte b10 65) 5)
+      b12 (emit-byte b11 54)
+      b13 (emit-byte b12 0)
+      b14 (emit-byte b13 0)
+      b15 (emit-leb128 (emit-byte b14 32) addr-idx)
+      b16 (emit-byte b15 167)
+      b17 (emit-leb128 (emit-byte b16 32) cap-idx)
+      b18 (emit-byte b17 167)
+      b19 (emit-byte b18 54)
+      b20 (emit-byte b19 0)
+      b21 (emit-byte b20 4)
+      b22 (emit-leb128 (emit-byte b21 32) addr-idx)
+      b23 (emit-byte b22 167)
+      b24 (emit-leb128 (emit-byte b23 65) 0)
+      b25 (emit-byte b24 54)
+      b26 (emit-byte b25 0)
+      b27 (emit-byte b26 8)
+      b28 (emit-leb128 (emit-byte b27 32) addr-idx)
+      b29 (emit-byte b28 167)
+      b30 (emit-leb128 (emit-byte b29 65) 0)
+      b31 (emit-byte b30 54)
+      b32 (emit-byte b31 0)
+      b33 (emit-byte b32 12)
+      b34 (emit-leb128 (emit-byte b33 32) addr-idx)
+      b35 (emit-byte b34 66)
+      b36 (emit-byte b35 128)
+      b37 (emit-byte b36 128)
+      b38 (emit-byte b37 128)
+      b39 (emit-byte b38 128)
+      b40 (emit-byte b39 128)
+      b41 (emit-byte b40 128)
+      b42 (emit-byte b41 128)
+      b43 (emit-byte b42 128)
+      b44 (emit-byte b43 128)
+      b45 (emit-byte b44 127)]
+      (emit-byte b45 124))
+    (if (= opcode 55)
+      (emit-vector-push-instr bytes operand)
+      (if (= opcode 56)
+        (emit-ref-new-instr bytes operand)
+        (if (= opcode 57)
+          (let [b1 (emit-byte bytes 167)
+            b2 (emit-byte b1 41)
+            b3 (emit-byte b2 0)
+            b4 (emit-byte b3 8)]
+            b4)
+          (if (= opcode 58)
+            (emit-ref-set-instr bytes operand)
+            (emit-runtime-ir-instr bytes opcode operand)))))))
+
 (defn main [] (let [header (emit-header) type-sec (emit-type-section-main) leb5 (leb128-u 5) leb300 (leb128-u 300) sleb-pos (leb128-s 5) sleb-neg1 (leb128-s -1) sleb-neg128 (leb128-s -128)] (do (print (vector-length header)) (print (vector-get header 0)) (print (vector-get header 1)) (print (vector-get header 2)) (print (vector-get header 3)) (print (vector-get header 4)) (print (vector-length type-sec)) (print (vector-get type-sec 0)) (print (vector-get type-sec 1)) (print (vector-get type-sec 2)) (print (vector-get type-sec 3)) (print (vector-get leb5 0)) (print (vector-get leb300 0)) (print (vector-get leb300 1)) (print (vector-get sleb-pos 0)) (print (vector-length sleb-neg1)) (print (vector-get sleb-neg1 0)) 0)))

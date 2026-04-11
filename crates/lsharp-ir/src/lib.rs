@@ -1694,18 +1694,10 @@ fn compile_multi_file_with_mode(
             lsharp_syntax::parse(&source).map_err(|e| format!("{}: {e}", mod_path.display()))?;
         let direct_imports = collect_import_visibility(&program);
 
-        let (type_results, surface_hidden, surface_expr_types): (
-            Vec<(String, lsharp_types::types::TypeScheme)>,
-            HashSet<String>,
-            HashMap<ExprTypeKey, lsharp_types::types::Type>,
-        ) = if let Some(ref batch) = formatter_trio_batch
+        let surface = if let Some(ref batch) = formatter_trio_batch
             && let Some(surface) = batch.get(mod_name)
         {
-            (
-                surface.results.clone(),
-                surface.hidden.clone(),
-                surface.expr_types.clone(),
-            )
+            surface.clone()
         } else {
             // 型チェック（直接 import されたモジュールの公開シンボルだけを注入）
             let mut infer = lsharp_types::infer::Infer::new();
@@ -1726,8 +1718,17 @@ fn compile_multi_file_with_mode(
                 .map_err(|e| format!("{}: {e}", mod_path.display()))?;
             let hidden: HashSet<String> = infer.module_env.privates.iter().cloned().collect();
             let expr_types = infer.expr_type_results_snapshot();
-            (type_results, hidden, expr_types)
+            ModuleTypeSurface {
+                results: type_results,
+                hidden,
+                expr_types,
+            }
         };
+        let ModuleTypeSurface {
+            results: type_results,
+            hidden: surface_hidden,
+            expr_types: surface_expr_types,
+        } = surface;
 
         // 型結果を蓄積
         all_type_results.extend(type_results.clone());
@@ -3490,67 +3491,81 @@ mod memory_instruction_tests {
 
     #[test]
     fn test_memory_load_store_instructions() {
-        let instructions = [Instruction::I32Const(100),
+        let instructions = [
+            Instruction::I32Const(100),
             Instruction::I32Load { offset: 0 },
             Instruction::I32Const(200),
             Instruction::I32Const(42),
-            Instruction::I32Store { offset: 0 }];
+            Instruction::I32Store { offset: 0 },
+        ];
         assert_eq!(instructions.len(), 5);
     }
 
     #[test]
     fn test_i64_memory_instructions() {
-        let instructions = [Instruction::I32Const(100),
+        let instructions = [
+            Instruction::I32Const(100),
             Instruction::I64Load { offset: 0 },
             Instruction::I32Const(200),
             Instruction::I64Const(12345),
-            Instruction::I64Store { offset: 0 }];
+            Instruction::I64Store { offset: 0 },
+        ];
         assert_eq!(instructions.len(), 5);
     }
 
     #[test]
     fn test_byte_memory_instructions() {
-        let instructions = [Instruction::I32Const(100),
+        let instructions = [
+            Instruction::I32Const(100),
             Instruction::I32Load8U { offset: 0 },
             Instruction::I32Const(200),
             Instruction::I32Const(65),
-            Instruction::I32Store8 { offset: 0 }];
+            Instruction::I32Store8 { offset: 0 },
+        ];
         assert_eq!(instructions.len(), 5);
     }
 
     #[test]
     fn test_i32_arithmetic_instructions() {
-        let instructions = [Instruction::I32Const(10),
+        let instructions = [
+            Instruction::I32Const(10),
             Instruction::I32Const(20),
             Instruction::I32Add,
             Instruction::I32Sub,
-            Instruction::I32Mul];
+            Instruction::I32Mul,
+        ];
         assert_eq!(instructions.len(), 5);
     }
 
     #[test]
     fn test_i32_comparison_instructions() {
-        let instructions = [Instruction::I32Const(10),
+        let instructions = [
+            Instruction::I32Const(10),
             Instruction::I32Const(20),
             Instruction::I32GtU,
-            Instruction::I32GeU];
+            Instruction::I32GeU,
+        ];
         assert_eq!(instructions.len(), 4);
     }
 
     #[test]
     fn test_i32_bitwise_instructions() {
-        let instructions = [Instruction::I32Const(0xFF),
+        let instructions = [
+            Instruction::I32Const(0xFF),
             Instruction::I32Const(4),
             Instruction::I32Shl,
-            Instruction::I32ShrU];
+            Instruction::I32ShrU,
+        ];
         assert_eq!(instructions.len(), 4);
     }
 
     #[test]
     fn test_memory_management_instructions() {
-        let instructions = [Instruction::MemorySize,
+        let instructions = [
+            Instruction::MemorySize,
             Instruction::I32Const(1),
-            Instruction::MemoryGrow];
+            Instruction::MemoryGrow,
+        ];
         assert_eq!(instructions.len(), 3);
     }
 

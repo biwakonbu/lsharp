@@ -85,10 +85,16 @@
 
 ;; === 数値パース ===
 
-(defn parse-int-from-str [src pos end acc]
+(defn parse-int-digits-from-str [src pos end acc]
   (if (>= pos end) acc
     (let [digit (- (string-char-at src pos) 48)]
-      (parse-int-from-str src (+ pos 1) end (+ (* acc 10) digit)))))
+      (parse-int-digits-from-str src (+ pos 1) end (+ (* acc 10) digit)))))
+
+(defn parse-int-from-str [src pos end acc]
+  (if (>= pos end) acc
+    (if (== (string-char-at src pos) 45)
+      (- 0 (parse-int-digits-from-str src (+ pos 1) end 0))
+      (parse-int-digits-from-str src pos end acc))))
 
 (defn current-symbol-text-v3 [spans pos-ref src]
   (substring src (p-start spans pos-ref) (p-end spans pos-ref)))
@@ -890,6 +896,21 @@
                 cond-node) then-node) else-node))))))
 
 ;; === let 式 (複数バインディング対応) ===
+(defn parse-let-body-starts-let-v3 [spans pos-ref]
+  (if (== (p-current spans pos-ref) 0)
+    (let [next-idx (+ (ref-get pos-ref) 1)]
+      (if (>= (* next-idx 3) (vector-length spans))
+        0
+        (if (== (span-kind spans next-idx) 31) 1 0)))
+    0))
+
+(defn parse-let-body-v3 [spans pos-ref src]
+  (if (= (parse-let-body-starts-let-v3 spans pos-ref) 1)
+    (do
+      (p-advance pos-ref) ;; nested let の ( を消費
+      (parse-let-v3 spans pos-ref src))
+    (parse-expr-v3 spans pos-ref src)))
+
 (defn parse-let-v3 [spans pos-ref src]
   (do
     (p-advance pos-ref) ;; let を消費
@@ -902,13 +923,13 @@
         (p-advance pos-ref) ;; name を消費
         (let [init (parse-expr-v3 spans pos-ref src)]
           ;; 追加バインディングがあるかチェック
-          (if (== (p-current spans pos-ref) 3) ;; ] で終了
-            (do
-              (p-advance pos-ref) ;; ] を消費
-              (let [body (parse-expr-v3 spans pos-ref src)]
-                (do
-                  (p-expect spans pos-ref 1) ;; ) を消費
-                  (let [n (vector-new 8)]
+            (if (== (p-current spans pos-ref) 3) ;; ] で終了
+              (do
+                (p-advance pos-ref) ;; ] を消費
+               (let [body (parse-let-body-v3 spans pos-ref src)]
+                 (do
+                   (p-expect spans pos-ref 1) ;; ) を消費
+                   (let [n (vector-new 8)]
                     (vector-push (vector-push (vector-push (vector-push n 7)
                           nh) init) body)))))
             ;; 複数バインディング: 次のバインディングを body として再帰
@@ -934,7 +955,7 @@
   (if (== (p-current spans pos-ref) 3) ;; ] に到達
     (do
       (p-advance pos-ref) ;; ] を消費
-      (parse-expr-v3 spans pos-ref src)) ;; body をパース
+      (parse-let-body-v3 spans pos-ref src)) ;; body をパース
     ;; さらにバインディングがある
     (let [ns (p-start spans pos-ref)
       ne (p-end spans pos-ref)

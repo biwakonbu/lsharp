@@ -190,6 +190,8 @@ pub(crate) fn selfhost_source_path(name: &str) -> std::path::PathBuf {
         "TypeInferSmoke.ls" => "selfhost/src/Types/TypeInferSmoke.ls",
         "TypeInfer.ls" => "selfhost/src/Types/TypeInfer.ls",
         "Constraints.ls" => "selfhost/src/Types/Constraints.ls",
+        "CompilerBase.ls" => "selfhost/src/Backend/Wasm/CompilerBase.ls",
+        "CompilerSplit.ls" => "selfhost/src/Backend/Wasm/CompilerSplit.ls",
         "Compiler.ls" => "selfhost/src/Backend/Wasm/Compiler.ls",
         "WasmEmit.ls" => "selfhost/src/Backend/Wasm/WasmEmit.ls",
         "FormatterExpr.ls" => "selfhost/src/Tools/Text/FormatterExpr.ls",
@@ -266,6 +268,10 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
         .expect("canonical TypeInferRecord.ls が読み込めない");
     let type_infer_ls = std::fs::read_to_string(selfhost_source_path("TypeInfer.ls"))
         .expect("canonical TypeInfer.ls が読み込めない");
+    let compiler_base_ls = std::fs::read_to_string(selfhost_source_path("CompilerBase.ls"))
+        .expect("canonical CompilerBase.ls が読み込めない");
+    let compiler_split_ls = std::fs::read_to_string(selfhost_source_path("CompilerSplit.ls"))
+        .expect("canonical CompilerSplit.ls が読み込めない");
     let compiler_ls = std::fs::read_to_string(selfhost_source_path("Compiler.ls"))
         .expect("canonical Compiler.ls が読み込めない");
     let wasm_emit_ls = std::fs::read_to_string(selfhost_source_path("WasmEmit.ls"))
@@ -283,8 +289,7 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
     let cli_ls = std::fs::read_to_string(selfhost_source_path("Cli.ls"))
         .expect("canonical Cli.ls が読み込めない");
 
-    format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+    vec![
         token_ls,
         ast_ls,
         lexer_ls,
@@ -300,6 +305,8 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
         type_infer_block_ls,
         type_infer_pattern_ls,
         type_infer_record_ls,
+        compiler_base_ls,
+        compiler_split_ls,
         compiler_ls,
         wasm_emit_ls,
         formatter_expr_ls,
@@ -307,8 +314,9 @@ pub(crate) fn selfhost_cli_runtime_bundle() -> String {
         formatter_ls,
         test_runner_ls,
         doc_tools_ls,
-        cli_ls
-    )
+        cli_ls,
+    ]
+    .join("\n")
 }
 
 /// エントリ `.ls` ファイルから依存を解決してコンパイルし、WASI 実行結果を返す

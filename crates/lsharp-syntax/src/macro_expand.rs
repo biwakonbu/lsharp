@@ -1152,9 +1152,10 @@ mod tests {
         let expanded = expander.expand_program(prog).unwrap();
         assert_eq!(expanded.decls.len(), 1);
         if let Decl::Defn { body, .. } = &expanded.decls[0]
-            && let Expr::If(_, _, then_br, _) = body {
-                assert!(matches!(then_br.as_ref(), Expr::App(_, _, _)));
-            }
+            && let Expr::If(_, _, then_br, _) = body
+        {
+            assert!(matches!(then_br.as_ref(), Expr::App(_, _, _)));
+        }
     }
 
     // --- P10-3: 再帰マクロテスト ---

@@ -16,6 +16,16 @@
 > 下位セクションの `[~]` / `[ ]` は背景説明・証跡・再開メモを含む詳細であり、実際の残件カウントはこの節を基準に読む。
 > なお `docs/development/planning/phase12-package-ai-ecosystem-roadmap.md` の P12-0 / P12-A / P12-B / P12-C は現時点で TODO 反映済みで、追加の未完了項目はない。
 
+> **2026-04-08 再監査結果**:
+>
+> - `CP-05` / `BOOT-04` / 作業ツリー WIP / clippy 残 warning / e2e full-run の各メモは、再開用の stale 課題または解消済みメモだった。正本の current 残件としては数えない。
+> - 再確認証跡: `cargo test -q -p lsharp-wasm --test e2e test_e2e_runtime_collector_ignores_legacy_zero_root_slot_sentinel`, `cargo test -q -p lsharp-wasm --test e2e test_e2e_alloc_metrics_ci_artifact_payload`, `cargo test -q -p lsharp-wasm --test e2e test_e2e_gc_lsp_actual_stdio_repeated_sequence_in_session_collector_telemetry`, `cargo test -q -p lsharp-wasm --test e2e test_e2e_bootstrap_fixed_input_set_stage_chain_match`, `cargo clippy -q -- -D warnings`。
+- `test_e2e_selfhost_cli_compile_functions_data_with_cache_matches_fresh_compile_after_change` は green になり、dirty module change 後の cached compile が fresh compile と一致することは固定できた。一方で clean payload parity を詰める途中で、同一 source graph の direct selfhost compile が allocation 履歴で別 code-section fingerprint を返す兆候が見つかったため、cache helper 以前に selfhost compiler determinism を修正する必要がある。
+- [DEFERRED] `V2-08` Native backend self-regeneration — Deferred / v2 セクションの正本を参照。
+- [DEFERRED] `V2-09` Wasm/native differential zero — Deferred / v2 セクションの正本を参照。
+- [DEFERRED] `V2-10` Native-only RC distribution — Deferred / v2 セクションの正本を参照。
+- [ ] `SH-DET-01` selfhost compile determinism — 同一 source graph の repeated direct compile で code-section fingerprint が揺れないことを固定してから clean inline-vs-cached payload parity を再開する。
+
 > **2026-04-01 進捗メモ**（上の `[ ]` 残件カウントは変えない）:
 > - **マルチファイル型検査**: `crates/lsharp-ir/src/lib.rs` の `compile_multi_file` が `Tools.Text.FormatterExpr` / `FormatterDecl` / `Formatter` を import マージした疑似 1 プログラムとしてバッチ型推論（`try_infer_formatter_trio_batch`）。`FormatterExpr.ls` の再帰整形は `format-expr` / `format-expr-with-source`（`Formatter.ls` のディスパッチ）へ委譲し、単体モジュール順の `format-expr` 未束縛を避ける。
 > - **LSP**: STR-02 分割で欠けていた `json-rpc-dispatch` / `server-loop-step` / `server-loop-sequence` / `server-loop` を `selfhost/src/Tools/Lsp/LspServer.ls` に復元。`LspServerNav.ls` に `Syntax.Parser` / `Tools.Text.FormatterDecl` / `JsonRpc` / `LspServerCore` を接続。E2E の `App.Main` harness は `LspServerCore` + `LspServerNav` + `LspServer` を結合（`crates/lsharp-wasm/tests/e2e/support.rs`）。
@@ -245,22 +255,24 @@
 3. `selfhost/src/App/CompilerMode.ls`, `selfhost/src/App/ModuleResolver.ls`, `selfhost/src/Backend/Wasm/Compiler.ls`, `selfhost/src/Backend/Wasm/WasmEmit.ls`, `selfhost/src/Types/TypeScheme.ls`, `selfhost/src/Types/TypeInferCore.ls` に safe push / safe ref-map helper を入れて selfhost compile path を通した。
 4. 再検証では `test_v2_12_self_hosted_stage2_loads_compiler_mode_module`, `test_v2_12_self_hosted_stage2_reports_main_again_stage3_local_bounds`, `test_e2e_boot04_self_hosted_stage2_compiles_main_again`, `test_e2e_boot04_self_hosted_stage2_reports_stage3_minimal_progress`, `test_e2e_bootstrap_fixed_point_stage2_stage3`, `test_e2e_alloc_metrics_ci_artifact_payload` が通り、S15 proof も `bytes_identical=true`, `exports_identical=true`, `data_sections_identical=true` まで回復した。
 
-### 2026-04-08 セッション末時点の課題
+### 2026-04-08 セッション末時点の課題（再監査で解消済み）
 
-セッション中の e2e 部分実行で 1 件 FAIL を観測したかしら。詳細は以下:
+当時の再開メモでは fail / WIP / warning を暫定課題として列挙していたが、2026-04-08 の再監査で以下を確認して解消扱いにした:
 
-1. **`test_e2e_bootstrap_fixed_input_set_stage_chain_match` (FAIL)** — `crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs:1187`。fixed input set 54 件全てを stage1 と stage2 self-compiler でそれぞれ compile し、bytes 一致を要求する fixed-point gate。一部ターゲットで stage1 と stage2 の出力が divergent。
-   - 範囲特定が必要: `test_e2e_bootstrap_fixed_input_set_stage_chain_match_cli_module` (1133) と `_lsp_server_module` (1160) の 2 つの module 単位 variant も走らせて、どの module で割れているか切り分ける。
-   - first_diff index と export/data セクション一致状況は assertion JSON にダンプされるので、`cargo test ... -- --nocapture` で採取する。
-2. **作業ツリー WIP の commit 整理** — `git diff --stat selfhost/` で **+1207 / -259 (8 files)** の in-progress 改修が乗っている (Compiler.ls +710, CompilerMode.ls +349 等)。clippy auto-fix 由来の `crates/` 配下修正と混在しているため、commit 前に責務単位の分割が必要。
-3. **clippy 残 warnings 12 件** — `type_complexity` / `too_many_arguments` 等の設計レベル指摘で auto-fix 不可。本筋の改修と独立して判断する。
-4. **e2e フル走行未達** — `cargo test -p lsharp-wasm --test e2e` は wall-time 1.5h+ で 1113 tests のうち bootstrap_four_layer 後半まで未到達。CI 枠 / 夜間ジョブで完走させる必要がある。
+1. **`test_e2e_bootstrap_fixed_input_set_stage_chain_match*`** — full-set 本体と CLI/LSP module variant の 3 本とも再 green。
+2. **作業ツリー WIP commit 整理** — 当時メモにあった `selfhost/` 大型差分は現時点では残っておらず、課題メモは stale。
+3. **clippy warning** — stale に残っていた `too_many_arguments` / `type_complexity` の 2 warning を `DefnInferenceInput` 導入と `ModuleTypeSurface` 再利用で解消し、`cargo clippy -q -- -D warnings` まで再 green。
+4. **e2e full-run 未達メモ** — wall-time 注意メモとしては残るが、現時点の正本 blocker ではない。runtime / bootstrap の代表 gate は focused proof tests で再確認済み。
 
 確認済み GREEN:
-- Phase 11 fixed-input gate (`scripts/ci/compile-phase11-inputs.sh`)
-- 単体テスト全クレート: lsharp-syntax 153 / lsharp-types 175 (GADT 12 含む) / lsharp-ir 212 / lsharp-docs 23 / lsharp-lsp 51
-- `test_deep_nested_if_50/500/2000` (parser iterative は実装済み)
-- `test_e2e_alloc_metrics_ci_artifact_payload` (V2-12 S15 fixed-point regression は user の rooting 修正で解消観測)
+- `scripts/ci/compile-phase11-inputs.sh`
+- `cargo test -q -p lsharp-types`
+- `cargo test -q -p lsharp-ir`
+- `cargo test -q -p lsharp-wasm --test e2e test_e2e_runtime_collector_ignores_legacy_zero_root_slot_sentinel`
+- `cargo test -q -p lsharp-wasm --test e2e test_e2e_alloc_metrics_ci_artifact_payload`
+- `cargo test -q -p lsharp-wasm --test e2e test_e2e_gc_lsp_actual_stdio_repeated_sequence_in_session_collector_telemetry`
+- `cargo test -q -p lsharp-wasm --test e2e test_e2e_bootstrap_fixed_input_set_stage_chain_match`
+- `cargo clippy -q -- -D warnings`
 
 ---
 

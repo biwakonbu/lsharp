@@ -200,7 +200,9 @@ fn test_v2_12_diagnose_s15_proof_fields() {
     );
 
     // 参考情報: bytes/data は固定点未収束 (既知の制限、アサートしない)
-    eprintln!("[V2-12 診断] 注: bytes_identical={bytes_ok}, data_sections_identical={data_ok} は固定点未収束のため false 許容");
+    eprintln!(
+        "[V2-12 診断] 注: bytes_identical={bytes_ok}, data_sections_identical={data_ok} は固定点未収束のため false 許容"
+    );
 }
 
 fn collect_s16_workload_proof(proxy_workloads: &serde_json::Value) -> serde_json::Value {
@@ -2343,11 +2345,15 @@ fn test_v2_12_stage2_six_import_debug_probe() {
     .expect("V2-12 debug probe: stage1 WASI compile 失敗");
 
     let stage2_bytes = {
-        let lines: Vec<&str> = stage2_output.lines().filter(|l| !l.trim().is_empty()).collect();
+        let lines: Vec<&str> = stage2_output
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .collect();
         assert!(!lines.is_empty(), "stage2 出力が空");
         let len: usize = lines[0].trim().parse().expect("stage2 先頭行が数値でない");
         assert_eq!(lines.len(), len + 1, "stage2 出力長が不正");
-        lines[1..].iter()
+        lines[1..]
+            .iter()
             .map(|l| l.trim().parse::<u8>().expect("stage2 byte 値が範囲外"))
             .collect::<Vec<u8>>()
     };
@@ -2356,12 +2362,24 @@ fn test_v2_12_stage2_six_import_debug_probe() {
 
     // probe1: compile-file-mode-cache-pairs-probe (arg9 non-empty)
     // Main.ls をロードして pair 数と decl 数を表示する
-    let probe1_output = super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode_fs(
-        &stage2_bytes,
-        &selfhost_root,
-        &["compiler", "src/App/Main.ls", "", "", "", "", "", "", "", "probe"],
-    )
-    .expect("V2-12 debug: stage2 probe1 (cache-pairs-probe) 実行失敗");
+    let probe1_output =
+        super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode_fs(
+            &stage2_bytes,
+            &selfhost_root,
+            &[
+                "compiler",
+                "src/App/Main.ls",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "probe",
+            ],
+        )
+        .expect("V2-12 debug: stage2 probe1 (cache-pairs-probe) 実行失敗");
 
     let probe1_values: Vec<i64> = probe1_output
         .lines()
@@ -2369,27 +2387,41 @@ fn test_v2_12_stage2_six_import_debug_probe() {
         .map(|l| l.trim().parse::<i64>().expect("probe1 出力が数値でない"))
         .collect();
 
-    eprintln!("V2-12 debug probe1 (cache-pairs-probe) output: {:?}", probe1_values);
+    eprintln!(
+        "V2-12 debug probe1 (cache-pairs-probe) output: {:?}",
+        probe1_values
+    );
 
     // Expected: [81, parse_count, n, last_pair_decl_count]
     assert!(!probe1_values.is_empty(), "probe1 出力が空");
-    assert_eq!(probe1_values[0], 81, "probe1 marker が 81 でない: {:?}", probe1_values);
+    assert_eq!(
+        probe1_values[0], 81,
+        "probe1 marker が 81 でない: {:?}",
+        probe1_values
+    );
     if probe1_values.len() >= 3 {
         let parse_count = probe1_values[1];
         let n = probe1_values[2];
         eprintln!("V2-12 debug: parse_count={parse_count}, n_pairs={n}");
-        assert!(n > 1, "pair 数が 1 以下 (n={n}): Main.ls は多数のモジュールをインポートするはず");
-        assert!(parse_count > 1, "parse_count が 1 以下 (parse_count={parse_count})");
+        assert!(
+            n > 1,
+            "pair 数が 1 以下 (n={n}): Main.ls は多数のモジュールをインポートするはず"
+        );
+        assert!(
+            parse_count > 1,
+            "parse_count が 1 以下 (parse_count={parse_count})"
+        );
     }
 
     // probe2: compile-file-mode-build-progress-debug (arg5 non-empty)
     // compile-file-functions-with-cache を使って wasm サイズを表示する
-    let probe2_output = super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode_fs(
-        &stage2_bytes,
-        &selfhost_root,
-        &["compiler", "src/App/Main.ls", "", "", "", "probe"],
-    )
-    .expect("V2-12 debug: stage2 probe2 (build-progress-debug) 実行失敗");
+    let probe2_output =
+        super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode_fs(
+            &stage2_bytes,
+            &selfhost_root,
+            &["compiler", "src/App/Main.ls", "", "", "", "probe"],
+        )
+        .expect("V2-12 debug: stage2 probe2 (build-progress-debug) 実行失敗");
 
     let probe2_values: Vec<i64> = probe2_output
         .lines()
@@ -2397,11 +2429,18 @@ fn test_v2_12_stage2_six_import_debug_probe() {
         .map(|l| l.trim().parse::<i64>().expect("probe2 出力が数値でない"))
         .collect();
 
-    eprintln!("V2-12 debug probe2 (build-progress-debug) output: {:?}", probe2_values);
+    eprintln!(
+        "V2-12 debug probe2 (build-progress-debug) output: {:?}",
+        probe2_values
+    );
 
     // Expected: [67, wasm_size]
     assert!(!probe2_values.is_empty(), "probe2 出力が空");
-    assert_eq!(probe2_values[0], 67, "probe2 marker が 67 でない: {:?}", probe2_values);
+    assert_eq!(
+        probe2_values[0], 67,
+        "probe2 marker が 67 でない: {:?}",
+        probe2_values
+    );
     if probe2_values.len() >= 2 {
         let wasm_size = probe2_values[1];
         eprintln!("V2-12 debug: wasm_size={wasm_size}");
@@ -2439,9 +2478,13 @@ fn test_v2_12_stage2_production_output_size() {
 
     // stage2 をバイトに変換（probe と同じ）
     let stage2_bytes = {
-        let lines: Vec<&str> = stage2_output.lines().filter(|l| !l.trim().is_empty()).collect();
+        let lines: Vec<&str> = stage2_output
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .collect();
         let len: usize = lines[0].trim().parse().expect("stage2 先頭行が数値でない");
-        lines[1..=len].iter()
+        lines[1..=len]
+            .iter()
             .map(|l| l.trim().parse::<u8>().expect("stage2 byte が範囲外"))
             .collect::<Vec<u8>>()
     };
@@ -2449,12 +2492,13 @@ fn test_v2_12_stage2_production_output_size() {
     eprintln!("V2-12 prod: stage2 size = {} bytes", stage2_bytes.len());
 
     // Production mode: compile-file-mode (no extra args)
-    let prod_output = super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode_fs(
-        &stage2_bytes,
-        &selfhost_root,
-        &["compiler", "src/App/Main.ls"],
-    )
-    .expect("V2-12 prod: stage2 production mode 実行失敗");
+    let prod_output =
+        super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode_fs(
+            &stage2_bytes,
+            &selfhost_root,
+            &["compiler", "src/App/Main.ls"],
+        )
+        .expect("V2-12 prod: stage2 production mode 実行失敗");
 
     let prod_values: Vec<i64> = prod_output
         .lines()
@@ -2466,7 +2510,10 @@ fn test_v2_12_stage2_production_output_size() {
     if !prod_values.is_empty() {
         let reported_len = prod_values[0];
         eprintln!("V2-12 prod: reported wasm length = {}", reported_len);
-        eprintln!("V2-12 prod: first 5 values = {:?}", &prod_values[..prod_values.len().min(5)]);
+        eprintln!(
+            "V2-12 prod: first 5 values = {:?}",
+            &prod_values[..prod_values.len().min(5)]
+        );
 
         assert!(
             reported_len > 10000,

@@ -40,7 +40,20 @@ fn lsp_diagnostic_helpers_source() -> String {
     let start = source
         .find(";; === 診断の安定順序制御")
         .expect("diagnostics section start が LspServerNav.ls に見つからない");
-    source[start..].to_string()
+    let mut helpers = r#"
+(defn push-object-vector-local [dst value]
+  (do
+    (root_push dst)
+    (root_push value)
+    (let [next-dst (vector-push dst value)]
+      (do
+        (root_pop)
+        (root_pop)
+        next-dst))))
+"#
+    .to_string();
+    helpers.push_str(&source[start..]);
+    helpers
 }
 
 fn run_lsp_diagnostic_harness(harness: &str) -> Vec<String> {
