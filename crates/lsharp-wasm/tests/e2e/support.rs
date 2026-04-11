@@ -684,7 +684,9 @@ fn selfhost_module_raw(name: &str) -> &'static str {
         "TypeInferSmoke.ls" => include_str!("../../../../selfhost/src/Types/TypeInferSmoke.ls"),
         "TypeInfer.ls" => include_str!("../../../../selfhost/src/Types/TypeInfer.ls"),
         "CompilerBase.ls" => include_str!("../../../../selfhost/src/Backend/Wasm/CompilerBase.ls"),
-        "CompilerSplit.ls" => include_str!("../../../../selfhost/src/Backend/Wasm/CompilerSplit.ls"),
+        "CompilerSplit.ls" => {
+            include_str!("../../../../selfhost/src/Backend/Wasm/CompilerSplit.ls")
+        }
         "Compiler.ls" => include_str!("../../../../selfhost/src/Backend/Wasm/Compiler.ls"),
         "WasiBackend.ls" => include_str!("../../../../selfhost/src/Backend/Wasm/WasiBackend.ls"),
         "WasmEmit.ls" => include_str!("../../../../selfhost/src/Backend/Wasm/WasmEmit.ls"),
@@ -739,13 +741,21 @@ fn selfhost_fixture_dir(prefix: &str) -> std::path::PathBuf {
 /// ModuleGraph::discover が `nearest_src_root` で解決できるよう、`src/<canonical-relative>` に書き出す
 fn expand_selfhost_fixture_modules<'a>(modules: &'a [&'a str]) -> Vec<&'a str> {
     let mut expanded = modules.to_vec();
-    let needs_compiler_base = expanded
-        .iter()
-        .any(|name| matches!(*name, "CompilerSplit.ls" | "Compiler.ls" | "CompilerMode.ls"));
+    let needs_compiler_base = expanded.iter().any(|name| {
+        matches!(
+            *name,
+            "CompilerSplit.ls" | "Compiler.ls" | "CompilerMode.ls"
+        )
+    });
     if needs_compiler_base && !expanded.iter().any(|name| *name == "CompilerBase.ls") {
         let insert_at = expanded
             .iter()
-            .position(|name| matches!(*name, "CompilerSplit.ls" | "Compiler.ls" | "CompilerMode.ls"))
+            .position(|name| {
+                matches!(
+                    *name,
+                    "CompilerSplit.ls" | "Compiler.ls" | "CompilerMode.ls"
+                )
+            })
             .unwrap_or(expanded.len());
         expanded.insert(insert_at, "CompilerBase.ls");
     }
@@ -1058,7 +1068,9 @@ mod tests {
         assert!(selfhost_module("ModuleResolver.ls").contains("(module App.ModuleResolver)"));
         assert!(selfhost_module("CompilerMode.ls").contains("(module App.CompilerMode)"));
         assert!(selfhost_module("CompilerBase.ls").contains("(module Backend.Wasm.CompilerBase)"));
-        assert!(selfhost_module("CompilerSplit.ls").contains("(module Backend.Wasm.CompilerSplit)"));
+        assert!(
+            selfhost_module("CompilerSplit.ls").contains("(module Backend.Wasm.CompilerSplit)")
+        );
         assert!(selfhost_module("Compiler.ls").contains("(module Backend.Wasm.CompilerBase)"));
         assert!(selfhost_module("Compiler.ls").contains("(module Backend.Wasm.CompilerSplit)"));
         assert!(selfhost_module("PipelineSmoke.ls").contains("(module App.PipelineSmoke)"));

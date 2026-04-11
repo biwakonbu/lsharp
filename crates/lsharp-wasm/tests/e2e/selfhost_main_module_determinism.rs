@@ -396,10 +396,14 @@ fn test_e2e_selfhost_module_graph_topological_sort() {
     }
 
     // Level 4: dispatcher 層
-    let level_4: HashSet<&str> = ["Types.TypeInfer", "App.CompilerMode", "Tools.Text.Formatter"]
-        .iter()
-        .copied()
-        .collect();
+    let level_4: HashSet<&str> = [
+        "Types.TypeInfer",
+        "App.CompilerMode",
+        "Tools.Text.Formatter",
+    ]
+    .iter()
+    .copied()
+    .collect();
     for module in &level_4 {
         assert_eq!(
             levels[*module], 4,

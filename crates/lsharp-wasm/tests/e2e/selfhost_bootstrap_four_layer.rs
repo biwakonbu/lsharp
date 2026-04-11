@@ -502,10 +502,11 @@ fn local_bound_violation_indices(wasm: &[u8]) -> Vec<u32> {
                     _ => None,
                 };
                 if let Some(local_index) = local_index
-                    && local_index >= total_locals {
-                        violated = true;
-                        break;
-                    }
+                    && local_index >= total_locals
+                {
+                    violated = true;
+                    break;
+                }
             }
             if violated {
                 indices.push(absolute_index);
@@ -642,17 +643,19 @@ fn local_bound_violations(wasm: &[u8]) -> Vec<String> {
                     _ => None,
                 };
                 if let Some(local_index) = local_index
-                    && (max_local_op.is_none() || local_index >= max_local_ref) {
-                        max_local_ref = local_index;
-                        max_local_op = Some(format!("{op:?}"));
-                    }
+                    && (max_local_op.is_none() || local_index >= max_local_ref)
+                {
+                    max_local_ref = local_index;
+                    max_local_op = Some(format!("{op:?}"));
+                }
             }
             if let Some(max_local_op) = max_local_op
-                && max_local_ref >= total_locals {
-                    violations.push(format!(
+                && max_local_ref >= total_locals
+            {
+                violations.push(format!(
                         "func {absolute_index} (defined #{defined_index}, type {type_index}): params={param_count} locals={declared_locals} total={total_locals} max_ref={max_local_ref} via {max_local_op}; body_prefix={body_prefix:?}"
                     ));
-                }
+            }
             defined_index += 1;
         }
     }
@@ -1102,11 +1105,12 @@ fn read_path_text_with_root<T>(
         let len = i32::from_le_bytes(header[4..8].try_into().expect("len header 長が不正"));
         if tag == 1
             && let Ok(len) = usize::try_from(len)
-                && addr_usize + 8 + len <= data_size {
-                    let text = String::from_utf8(read_string_object_bytes(caller, addr))
-                        .expect("path string object bytes が UTF-8 ではない");
-                    return text;
-                }
+            && addr_usize + 8 + len <= data_size
+        {
+            let text = String::from_utf8(read_string_object_bytes(caller, addr))
+                .expect("path string object bytes が UTF-8 ではない");
+            return text;
+        }
     }
 
     let max_len = (data_size - addr_usize).min(512);
@@ -6346,9 +6350,7 @@ fn test_e2e_boot04_self_hosted_stage2_reaches_main_again_build_compile_progress_
         .filter(|line| !line.trim().is_empty())
         .map(|line| {
             line.trim().parse::<i64>().unwrap_or_else(|_| {
-                panic!(
-                    "BOOT-04 main-build-compile-progress: 数値でない debug 出力: {line:?}"
-                )
+                panic!("BOOT-04 main-build-compile-progress: 数値でない debug 出力: {line:?}")
             })
         })
         .collect();
@@ -6398,8 +6400,7 @@ fn test_e2e_boot04_self_hosted_stage2_reaches_main_again_build_compile_progress_
 }
 
 #[test]
-fn test_e2e_boot04_self_hosted_stage2_warm_target_defn_parity_reaches_ast_make_type_constrained()
-{
+fn test_e2e_boot04_self_hosted_stage2_warm_target_defn_parity_reaches_ast_make_type_constrained() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
         .parent()
@@ -6511,7 +6512,9 @@ fn test_e2e_boot04_self_hosted_stage2_target_defn_parity_reaches_ast_make_type_c
         values
             .chunks_exact(2)
             .find_map(|chunk| (chunk[0] == marker).then_some(chunk[1]))
-            .unwrap_or_else(|| panic!("BOOT-04 target-defn: marker {marker} が見つからない: {values:?}"))
+            .unwrap_or_else(|| {
+                panic!("BOOT-04 target-defn: marker {marker} が見つからない: {values:?}")
+            })
     }
 
     let main_path = selfhost_main_path();
@@ -6565,9 +6568,9 @@ fn test_e2e_boot04_self_hosted_stage2_target_defn_parity_reaches_ast_make_type_c
         .lines()
         .filter(|line| !line.trim().is_empty())
         .map(|line| {
-            line.trim().parse::<i64>().unwrap_or_else(|_| {
-                panic!("BOOT-04 target-defn: 数値でない debug 出力: {line:?}")
-            })
+            line.trim()
+                .parse::<i64>()
+                .unwrap_or_else(|_| panic!("BOOT-04 target-defn: 数値でない debug 出力: {line:?}"))
         })
         .collect();
     eprintln!("BOOT-04 target-defn values = {:?}", values);
@@ -6579,17 +6582,54 @@ fn test_e2e_boot04_self_hosted_stage2_target_defn_parity_reaches_ast_make_type_c
     );
     assert_eq!(marker_value(&values, 121), 59);
     assert_eq!(marker_value(&values, 124), 20);
-    assert!(marker_value(&values, 125) > 0, "BOOT-04 target-defn: param-count は正であるべき: {:?}", values);
-    assert!(marker_value(&values, 126) > 0, "BOOT-04 target-defn: body tag は正であるべき: {:?}", values);
+    assert!(
+        marker_value(&values, 125) > 0,
+        "BOOT-04 target-defn: param-count は正であるべき: {:?}",
+        values
+    );
+    assert!(
+        marker_value(&values, 126) > 0,
+        "BOOT-04 target-defn: body tag は正であるべき: {:?}",
+        values
+    );
     assert_eq!(marker_value(&values, 127), 5);
     assert_eq!(marker_value(&values, 128), 4);
-    assert_eq!(marker_value(&values, 129), marker_value(&values, 131), "BOOT-04 target-defn: use-site と def-site の hash は一致するべき: {:?}", values);
-    assert!(marker_value(&values, 130) > 0, "BOOT-04 target-defn: use-site lookup は空であってはいけない: {:?}", values);
-    assert!(marker_value(&values, 132) > 0, "BOOT-04 target-defn: def-site lookup は空であってはいけない: {:?}", values);
-    assert!(marker_value(&values, 133) > 0, "BOOT-04 target-defn: local use-site lookup は空であってはいけない: {:?}", values);
-    assert!(marker_value(&values, 134) > 0, "BOOT-04 target-defn: local def-site lookup は空であってはいけない: {:?}", values);
-    assert!(marker_value(&values, 123) > 0, "BOOT-04 target-defn: ftable IR は空であってはいけない: {:?}", values);
-    assert!(marker_value(&values, 122) > 0, "BOOT-04 target-defn: source-aware IR は空であってはいけない: {:?}", values);
+    assert_eq!(
+        marker_value(&values, 129),
+        marker_value(&values, 131),
+        "BOOT-04 target-defn: use-site と def-site の hash は一致するべき: {:?}",
+        values
+    );
+    assert!(
+        marker_value(&values, 130) > 0,
+        "BOOT-04 target-defn: use-site lookup は空であってはいけない: {:?}",
+        values
+    );
+    assert!(
+        marker_value(&values, 132) > 0,
+        "BOOT-04 target-defn: def-site lookup は空であってはいけない: {:?}",
+        values
+    );
+    assert!(
+        marker_value(&values, 133) > 0,
+        "BOOT-04 target-defn: local use-site lookup は空であってはいけない: {:?}",
+        values
+    );
+    assert!(
+        marker_value(&values, 134) > 0,
+        "BOOT-04 target-defn: local def-site lookup は空であってはいけない: {:?}",
+        values
+    );
+    assert!(
+        marker_value(&values, 123) > 0,
+        "BOOT-04 target-defn: ftable IR は空であってはいけない: {:?}",
+        values
+    );
+    assert!(
+        marker_value(&values, 122) > 0,
+        "BOOT-04 target-defn: source-aware IR は空であってはいけない: {:?}",
+        values
+    );
 }
 
 #[test]
@@ -6604,7 +6644,9 @@ fn test_e2e_boot04_stage1_target_defn_parity_reports_ast_make_type_constrained_l
         values
             .chunks_exact(2)
             .find_map(|chunk| (chunk[0] == marker).then_some(chunk[1]))
-            .unwrap_or_else(|| panic!("BOOT-04 stage1 target-defn: marker {marker} が見つからない: {values:?}"))
+            .unwrap_or_else(|| {
+                panic!("BOOT-04 stage1 target-defn: marker {marker} が見つからない: {values:?}")
+            })
     }
 
     let main_path = selfhost_main_path();
@@ -6662,20 +6704,42 @@ fn test_e2e_boot04_stage1_target_defn_parity_reports_ast_make_type_constrained_l
     assert_eq!(marker_value(&values, 127), 5);
     assert_eq!(marker_value(&values, 128), 4);
     assert_eq!(marker_value(&values, 129), marker_value(&values, 131));
-    assert!(marker_value(&values, 130) > 0, "stage1 use-site lookup は空であってはいけない: {:?}", values);
-    assert!(marker_value(&values, 132) > 0, "stage1 def-site lookup は空であってはいけない: {:?}", values);
-    assert!(marker_value(&values, 133) > 0, "stage1 local use-site lookup は空であってはいけない: {:?}", values);
-    assert!(marker_value(&values, 134) > 0, "stage1 local def-site lookup は空であってはいけない: {:?}", values);
-    assert!(marker_value(&values, 123) > 0, "stage1 ftable IR は空であってはいけない: {:?}", values);
-    assert!(marker_value(&values, 122) > 0, "stage1 source-aware IR は空であってはいけない: {:?}", values);
+    assert!(
+        marker_value(&values, 130) > 0,
+        "stage1 use-site lookup は空であってはいけない: {:?}",
+        values
+    );
+    assert!(
+        marker_value(&values, 132) > 0,
+        "stage1 def-site lookup は空であってはいけない: {:?}",
+        values
+    );
+    assert!(
+        marker_value(&values, 133) > 0,
+        "stage1 local use-site lookup は空であってはいけない: {:?}",
+        values
+    );
+    assert!(
+        marker_value(&values, 134) > 0,
+        "stage1 local def-site lookup は空であってはいけない: {:?}",
+        values
+    );
+    assert!(
+        marker_value(&values, 123) > 0,
+        "stage1 ftable IR は空であってはいけない: {:?}",
+        values
+    );
+    assert!(
+        marker_value(&values, 122) > 0,
+        "stage1 source-aware IR は空であってはいけない: {:?}",
+        values
+    );
 }
 
 #[test]
 fn test_debug_boot04_stage2_first_defn_probe_on_minimal_make_type_constrained_shape() {
-    let temp_root = std::env::temp_dir().join(format!(
-        "lsharp_target_defn_minimal_{}",
-        std::process::id()
-    ));
+    let temp_root =
+        std::env::temp_dir().join(format!("lsharp_target_defn_minimal_{}", std::process::id()));
     std::fs::create_dir_all(&temp_root).expect("temp dir should be created");
     let source_path = temp_root.join("mini_ast_shape.ls");
     std::fs::write(
@@ -6709,7 +6773,10 @@ fn test_debug_boot04_stage2_first_defn_probe_on_minimal_make_type_constrained_sh
         &source_step_args,
     )
     .expect("stage1 first-defn probe on minimal source should run");
-    eprintln!("BOOT-04 minimal first-defn stage1 = {:?}", stage1_probe_output);
+    eprintln!(
+        "BOOT-04 minimal first-defn stage1 = {:?}",
+        stage1_probe_output
+    );
 
     let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
         &stage1_wasm,
@@ -6733,10 +6800,8 @@ fn test_debug_boot04_stage2_first_defn_probe_on_minimal_make_type_constrained_sh
 
 #[test]
 fn test_debug_boot04_stage2_first_defn_ir_parity_on_minimal_demo_main_shape() {
-    let temp_root = std::env::temp_dir().join(format!(
-        "lsharp_demo_main_minimal_{}",
-        std::process::id()
-    ));
+    let temp_root =
+        std::env::temp_dir().join(format!("lsharp_demo_main_minimal_{}", std::process::id()));
     std::fs::create_dir_all(&temp_root).expect("temp dir should be created");
     let source_path = temp_root.join("mini_demo_main_shape.ls");
     std::fs::write(
@@ -6795,7 +6860,10 @@ fn test_debug_boot04_stage2_first_defn_ir_parity_on_minimal_demo_main_shape() {
         ],
     )
     .expect("stage2 first-defn-ir-parity probe on minimal demo-main source should run");
-    eprintln!("BOOT-04 minimal demo-main first-defn-ir-parity = {:?}", probe_output);
+    eprintln!(
+        "BOOT-04 minimal demo-main first-defn-ir-parity = {:?}",
+        probe_output
+    );
     assert!(!probe_output.trim().is_empty());
 }
 
@@ -6849,7 +6917,10 @@ fn test_debug_boot04_stage2_first_defn_source_probe_on_minimal_text_eq_loop_shap
         &probe_args,
     )
     .expect("stage2 first-defn source probe on minimal text-eq-loop source should run");
-    eprintln!("BOOT-04 minimal text-eq-loop source probe = {:?}", probe_output);
+    eprintln!(
+        "BOOT-04 minimal text-eq-loop source probe = {:?}",
+        probe_output
+    );
     assert!(!probe_output.trim().is_empty());
 }
 
@@ -6857,7 +6928,10 @@ fn test_debug_boot04_stage2_first_defn_source_probe_on_minimal_text_eq_loop_shap
 fn test_debug_boot04_stage2_first_defn_source_step_probe_on_minimal_path_parent_shape() {
     let temp_root = selfhost_project_root()
         .join("target/test-artifacts")
-        .join(format!("lsharp_path_parent_minimal_step_probe_{}", std::process::id()));
+        .join(format!(
+            "lsharp_path_parent_minimal_step_probe_{}",
+            std::process::id()
+        ));
     let _ = std::fs::remove_dir_all(&temp_root);
     std::fs::create_dir_all(&temp_root).expect("temp dir should be created");
     let source_path = temp_root.join("mini_path_parent_shape.ls");
@@ -7068,7 +7142,10 @@ fn test_debug_boot04_stage1_build_compile_progress_on_app_cli() {
         ],
     )
     .expect("stage1 build compile progress on App/Cli.ls should run");
-    eprintln!("BOOT-04 App/Cli stage1 build compile progress = {:?}", progress_output);
+    eprintln!(
+        "BOOT-04 App/Cli stage1 build compile progress = {:?}",
+        progress_output
+    );
     assert!(!progress_output.trim().is_empty());
 }
 
@@ -7080,7 +7157,7 @@ fn test_debug_boot04_stage1_build_compile_progress_on_compiler_module() {
         args: &[&str],
     ) -> Result<String, String> {
         use wasmtime::{Engine, Linker, Module, Store};
-        use wasmtime_wasi::{preview1::WasiP1Ctx, WasiCtxBuilder};
+        use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
 
         let engine = Engine::default();
         let mut linker = Linker::<WasiP1Ctx>::new(&engine);
@@ -7174,7 +7251,7 @@ fn test_debug_boot04_stage1_build_compile_progress_on_compiler_mode_module() {
         args: &[&str],
     ) -> Result<String, String> {
         use wasmtime::{Engine, Linker, Module, Store};
-        use wasmtime_wasi::{preview1::WasiP1Ctx, WasiCtxBuilder};
+        use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
 
         let engine = Engine::default();
         let mut linker = Linker::<WasiP1Ctx>::new(&engine);
@@ -7320,12 +7397,10 @@ fn test_debug_boot04_stage1_build_compile_progress_on_minimal_vector_push_shape(
         .parent()
         .expect("selfhost/ ルートディレクトリ")
         .to_path_buf();
-    let temp_root = selfhost_root
-        .join("target/test-artifacts")
-        .join(format!(
-            "lsharp_vector_push_minimal_build_progress_{}",
-            std::process::id()
-        ));
+    let temp_root = selfhost_root.join("target/test-artifacts").join(format!(
+        "lsharp_vector_push_minimal_build_progress_{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&temp_root);
     std::fs::create_dir_all(&temp_root).expect("temp dir should be created");
     let source_path = temp_root.join("mini_vector_push_shape.ls");
@@ -7381,7 +7456,7 @@ fn test_debug_boot04_stage1_build_compile_progress_on_padded_vector_push_shape()
         args: &[&str],
     ) -> Result<String, String> {
         use wasmtime::{Engine, Linker, Module, Store};
-        use wasmtime_wasi::{preview1::WasiP1Ctx, WasiCtxBuilder};
+        use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
 
         let engine = Engine::default();
         let mut linker = Linker::<WasiP1Ctx>::new(&engine);
@@ -7433,12 +7508,10 @@ fn test_debug_boot04_stage1_build_compile_progress_on_padded_vector_push_shape()
         .parent()
         .expect("selfhost/ ルートディレクトリ")
         .to_path_buf();
-    let temp_root = selfhost_root
-        .join("target/test-artifacts")
-        .join(format!(
-            "lsharp_vector_push_padded_build_progress_{}",
-            std::process::id()
-        ));
+    let temp_root = selfhost_root.join("target/test-artifacts").join(format!(
+        "lsharp_vector_push_padded_build_progress_{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&temp_root);
     std::fs::create_dir_all(&temp_root).expect("temp dir should be created");
     let source_path = temp_root.join("padded_vector_push_shape.ls");
@@ -7498,7 +7571,7 @@ fn test_debug_boot04_stage1_build_compile_progress_on_large_ftable_vector_push_s
         args: &[&str],
     ) -> Result<String, String> {
         use wasmtime::{Engine, Linker, Module, Store};
-        use wasmtime_wasi::{preview1::WasiP1Ctx, WasiCtxBuilder};
+        use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
 
         let engine = Engine::default();
         let mut linker = Linker::<WasiP1Ctx>::new(&engine);
@@ -7550,12 +7623,10 @@ fn test_debug_boot04_stage1_build_compile_progress_on_large_ftable_vector_push_s
         .parent()
         .expect("selfhost/ ルートディレクトリ")
         .to_path_buf();
-    let temp_root = selfhost_root
-        .join("target/test-artifacts")
-        .join(format!(
-            "lsharp_vector_push_large_ftable_build_progress_{}",
-            std::process::id()
-        ));
+    let temp_root = selfhost_root.join("target/test-artifacts").join(format!(
+        "lsharp_vector_push_large_ftable_build_progress_{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&temp_root);
     std::fs::create_dir_all(&temp_root).expect("temp dir should be created");
     let source_path = temp_root.join("large_ftable_vector_push_shape.ls");
@@ -7611,7 +7682,8 @@ fn test_debug_boot04_stage1_build_compile_progress_on_large_ftable_vector_push_s
 }
 
 #[test]
-fn test_e2e_boot04_stage2_first_defn_source_probe_emits_expected_plus_ir_on_minimal_text_eq_loop_shape() {
+fn test_e2e_boot04_stage2_first_defn_source_probe_emits_expected_plus_ir_on_minimal_text_eq_loop_shape()
+ {
     let temp_root = selfhost_project_root()
         .join("target/test-artifacts")
         .join(format!(
@@ -7675,8 +7747,8 @@ fn test_e2e_boot04_stage2_first_defn_source_probe_emits_expected_plus_ir_on_mini
     assert_eq!(
         values,
         vec![
-            301, 1, 302, 6, 303, 5, 304, 3, 206, 0, 209, 2, 207, 10, 208, 3, 206, 1, 209, 2,
-            207, 1, 208, 1, 206, 2, 209, 2, 207, 20, 208, 0,
+            301, 1, 302, 6, 303, 5, 304, 3, 206, 0, 209, 2, 207, 10, 208, 3, 206, 1, 209, 2, 207,
+            1, 208, 1, 206, 2, 209, 2, 207, 20, 208, 0,
         ],
         "minimal text-eq-loop source probe は (+ idx 1) を local-get / i64-const / i64-add に lower すべき: {:?}",
         values
@@ -7715,8 +7787,9 @@ fn test_debug_boot04_stage2_ast_chunked_step_progress_on_ast_file() {
     }
     args.push("ast-chunked-step");
 
-    let output = run_wasm_with_six_imports_compiler_mode_fs(stage2_self_compiler, &selfhost_root, &args)
-        .expect("stage2 ast-chunked-step probe should run");
+    let output =
+        run_wasm_with_six_imports_compiler_mode_fs(stage2_self_compiler, &selfhost_root, &args)
+            .expect("stage2 ast-chunked-step probe should run");
     eprintln!("BOOT-04 ast-chunked-step values = {:?}", output);
     assert!(!output.trim().is_empty());
 }
@@ -7784,10 +7857,22 @@ fn test_e2e_boot04_self_hosted_stage2_cache_compile_progress_counts_all_main_mod
         "BOOT-04 cache-compile-progress: debug 出力長が期待と異なる: {:?}",
         values
     );
-    assert_eq!(values[0], 86, "BOOT-04 cache-compile-progress: marker 86 が必要");
-    assert_eq!(values[2], 87, "BOOT-04 cache-compile-progress: marker 87 が必要");
-    assert_eq!(values[4], 88, "BOOT-04 cache-compile-progress: marker 88 が必要");
-    assert_eq!(values[6], 89, "BOOT-04 cache-compile-progress: marker 89 が必要");
+    assert_eq!(
+        values[0], 86,
+        "BOOT-04 cache-compile-progress: marker 86 が必要"
+    );
+    assert_eq!(
+        values[2], 87,
+        "BOOT-04 cache-compile-progress: marker 87 が必要"
+    );
+    assert_eq!(
+        values[4], 88,
+        "BOOT-04 cache-compile-progress: marker 88 が必要"
+    );
+    assert_eq!(
+        values[6], 89,
+        "BOOT-04 cache-compile-progress: marker 89 が必要"
+    );
 
     let parse_count = values[1];
     let pair_count = values[3];
@@ -8168,12 +8253,16 @@ fn test_v2_12_self_hosted_stage2_emits_data_section_for_string_literals() {
     let hello = b"hello";
     let world = b"world";
     assert!(
-        data_section.windows(hello.len()).any(|window| window == hello),
+        data_section
+            .windows(hello.len())
+            .any(|window| window == hello),
         "V2-12 string-data: data section に hello bytes が見つからない: {:?}",
         &data_section[..data_section.len().min(64)]
     );
     assert!(
-        data_section.windows(world.len()).any(|window| window == world),
+        data_section
+            .windows(world.len())
+            .any(|window| window == world),
         "V2-12 string-data: data section に world bytes が見つからない: {:?}",
         &data_section[..data_section.len().min(64)]
     );
@@ -8219,15 +8308,16 @@ fn test_v2_12_self_hosted_stage2_keeps_if_and_string_expr_tags() {
     let stage2_self_compiler = &stage2_modules[0];
     assert_valid_wasm(stage2_self_compiler);
 
-    let printed = run_wasm_with_six_imports_compiler_mode(stage2_self_compiler, source, &expr_tag_args)
-        .expect("V2-12 expr-tag: stage2_self_compiler の expr-tag 実行に失敗した");
+    let printed =
+        run_wasm_with_six_imports_compiler_mode(stage2_self_compiler, source, &expr_tag_args)
+            .expect("V2-12 expr-tag: stage2_self_compiler の expr-tag 実行に失敗した");
     let values: Vec<i64> = printed
         .lines()
         .filter(|line| !line.trim().is_empty())
         .map(|line| {
-            line.trim().parse::<i64>().unwrap_or_else(|_| {
-                panic!("V2-12 expr-tag: 数値でない診断出力: {line:?}")
-            })
+            line.trim()
+                .parse::<i64>()
+                .unwrap_or_else(|_| panic!("V2-12 expr-tag: 数値でない診断出力: {line:?}"))
         })
         .collect();
 
@@ -8387,9 +8477,8 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_text_eq_repro_source() {
     assert_valid_wasm(stage3_wasm);
     validate_wasm_detailed(stage3_wasm)
         .unwrap_or_else(|e| panic!("BOOT-04 text-eq-repro: stage3 wasm validation failed: {e}"));
-    let run_output =
-        run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["same", "same"])
-            .unwrap_or_else(|e| panic!("BOOT-04 text-eq-repro: 実行失敗: {e}"));
+    let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["same", "same"])
+        .unwrap_or_else(|e| panic!("BOOT-04 text-eq-repro: 実行失敗: {e}"));
     assert_eq!(run_output.trim(), "1");
 }
 
@@ -8669,8 +8758,9 @@ fn test_e2e_boot04_self_hosted_stage2_runs_path_parent_repro_source() {
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_wasm = &stage3_modules[0];
     assert_valid_wasm(stage3_wasm);
-    validate_wasm_detailed(stage3_wasm)
-        .unwrap_or_else(|e| panic!("BOOT-04 path-parent-repro: stage3 wasm validation failed: {e}"));
+    validate_wasm_detailed(stage3_wasm).unwrap_or_else(|e| {
+        panic!("BOOT-04 path-parent-repro: stage3 wasm validation failed: {e}")
+    });
 
     let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["prog", "a/b"])
         .unwrap_or_else(|e| panic!("BOOT-04 path-parent-repro: 実行失敗: {e}"));
@@ -8751,7 +8841,9 @@ fn test_e2e_boot04_self_hosted_stage2_runs_string_concat_repro_source() {
         source,
         &["compiler", "src/App/ModuleResolver.ls"],
     )
-    .expect("BOOT-04 string-concat-repro: stage2_self_compiler が repro source をコンパイルできない");
+    .expect(
+        "BOOT-04 string-concat-repro: stage2_self_compiler が repro source をコンパイルできない",
+    );
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_wasm = &stage3_modules[0];
     assert_valid_wasm(stage3_wasm);
@@ -8765,9 +8857,9 @@ fn test_e2e_boot04_self_hosted_stage2_runs_string_concat_repro_source() {
         .lines()
         .filter(|line| !line.trim().is_empty())
         .map(|line| {
-            line.trim().parse::<i64>().unwrap_or_else(|_| {
-                panic!("BOOT-04 string-concat-repro: 数値でない出力: {line:?}")
-            })
+            line.trim()
+                .parse::<i64>()
+                .unwrap_or_else(|_| panic!("BOOT-04 string-concat-repro: 数値でない出力: {line:?}"))
         })
         .collect();
     assert_eq!(values, vec![2, 97, 98]);
@@ -8821,9 +8913,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_recursive_string_accumulator_repro_so
         .filter(|line| !line.trim().is_empty())
         .map(|line| {
             line.trim().parse::<i64>().unwrap_or_else(|_| {
-                panic!(
-                    "BOOT-04 recursive-string-accumulator-repro: 数値でない出力: {line:?}"
-                )
+                panic!("BOOT-04 recursive-string-accumulator-repro: 数値でない出力: {line:?}")
             })
         })
         .collect();
@@ -8874,9 +8964,9 @@ fn test_e2e_boot04_self_hosted_stage2_runs_substring_repro_source() {
         .lines()
         .filter(|line| !line.trim().is_empty())
         .map(|line| {
-            line.trim().parse::<i64>().unwrap_or_else(|_| {
-                panic!("BOOT-04 substring-repro: 数値でない出力: {line:?}")
-            })
+            line.trim()
+                .parse::<i64>()
+                .unwrap_or_else(|_| panic!("BOOT-04 substring-repro: 数値でない出力: {line:?}"))
         })
         .collect();
     assert_eq!(values, vec![2, 98, 99]);
@@ -8970,9 +9060,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_string_concat_literal_suffix_repro_so
     });
 
     let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["prog", "ab"])
-        .unwrap_or_else(|e| {
-            panic!("BOOT-04 string-concat-literal-suffix-repro: 実行失敗: {e}")
-        });
+        .unwrap_or_else(|e| panic!("BOOT-04 string-concat-literal-suffix-repro: 実行失敗: {e}"));
     assert_eq!(run_output.trim(), "1");
 }
 
@@ -9007,12 +9095,15 @@ fn test_e2e_boot04_self_hosted_stage2_runs_string_literal_repro_source() {
         source,
         &["compiler", "src/App/ModuleResolver.ls"],
     )
-    .expect("BOOT-04 string-literal-repro: stage2_self_compiler が repro source をコンパイルできない");
+    .expect(
+        "BOOT-04 string-literal-repro: stage2_self_compiler が repro source をコンパイルできない",
+    );
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_wasm = &stage3_modules[0];
     assert_valid_wasm(stage3_wasm);
-    validate_wasm_detailed(stage3_wasm)
-        .unwrap_or_else(|e| panic!("BOOT-04 string-literal-repro: stage3 wasm validation failed: {e}"));
+    validate_wasm_detailed(stage3_wasm).unwrap_or_else(|e| {
+        panic!("BOOT-04 string-literal-repro: stage3 wasm validation failed: {e}")
+    });
 
     let run_output = run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["prog"])
         .unwrap_or_else(|e| panic!("BOOT-04 string-literal-repro: 実行失敗: {e}"));
@@ -9067,12 +9158,9 @@ fn test_e2e_boot04_self_hosted_stage2_runs_module_relative_join_repro_source() {
         panic!("BOOT-04 module-relative-join-repro: stage3 wasm validation failed: {e}")
     });
 
-    let run_output = run_wasm_with_six_imports_compiler_mode(
-        stage3_wasm,
-        "",
-        &["prog", "App.ModuleResolver"],
-    )
-    .unwrap_or_else(|e| panic!("BOOT-04 module-relative-join-repro: 実行失敗: {e}"));
+    let run_output =
+        run_wasm_with_six_imports_compiler_mode(stage3_wasm, "", &["prog", "App.ModuleResolver"])
+            .unwrap_or_else(|e| panic!("BOOT-04 module-relative-join-repro: 実行失敗: {e}"));
     assert_eq!(run_output.trim(), "1");
 }
 
@@ -9698,9 +9786,7 @@ fn test_v2_12_self_hosted_stage2_compiles_large_let_chain() {
         .map(|idx| format!("v{idx} {idx}"))
         .collect::<Vec<_>>()
         .join(" ");
-    let source = format!(
-        "(module App.Main)\n(defn main []\n  (let [{bindings}]\n    v159))\n"
-    );
+    let source = format!("(module App.Main)\n(defn main []\n  (let [{bindings}]\n    v159))\n");
 
     let stage3_output = run_wasm_with_six_imports_compiler_mode(
         stage2_self_compiler,
@@ -9903,7 +9989,9 @@ fn test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff
         &selfhost_root,
         &["compiler", "src/App/CompilerMode.ls"],
     )
-    .expect("V2-12 CompilerMode diff: stage2_self_compiler が CompilerMode.ls をコンパイルできない");
+    .expect(
+        "V2-12 CompilerMode diff: stage2_self_compiler が CompilerMode.ls をコンパイルできない",
+    );
     let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
     let stage3_compiler_mode = &stage3_modules[0];
 

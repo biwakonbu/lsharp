@@ -1995,8 +1995,14 @@ mod tests {
         assert_eq!(prog.decls.len(), 1);
         if let Decl::TypeDef { variants, .. } = &prog.decls[0] {
             assert_eq!(variants.len(), 2);
-            assert!(variants[0].return_type.is_some(), "IntLit should have return_type");
-            assert!(variants[1].return_type.is_some(), "BoolLit should have return_type");
+            assert!(
+                variants[0].return_type.is_some(),
+                "IntLit should have return_type"
+            );
+            assert!(
+                variants[1].return_type.is_some(),
+                "BoolLit should have return_type"
+            );
         } else {
             panic!("expected TypeDef");
         }

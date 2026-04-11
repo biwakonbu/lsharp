@@ -236,10 +236,7 @@ fn assert_selfhost_direct_fixture_with_func_idx_is_deterministic(
 ) {
     let dir = cli_test_fixture_dir(fixture_prefix);
     write_cli_fixture_files(&dir, &[(file_name, source)]);
-    let fixture_path = dir
-        .join(file_name)
-        .to_string_lossy()
-        .replace('\\', "\\\\");
+    let fixture_path = dir.join(file_name).to_string_lossy().replace('\\', "\\\\");
     let wasm_bytes_eq_helpers = stack_safe_wasm_bytes_eq_helpers();
 
     let harness = format!(
@@ -283,7 +280,11 @@ fn assert_selfhost_direct_fixture_with_func_idx_is_deterministic(
         label,
         lines
     );
-    assert_eq!(lines[0], lines[1], "2回の {} compile で Wasm 長は一致するべき", label);
+    assert_eq!(
+        lines[0], lines[1],
+        "2回の {} compile で Wasm 長は一致するべき",
+        label
+    );
     assert_eq!(
         lines[2], "1",
         "2回の {} compile は byte-identical であるべき: {:?}",
@@ -315,10 +316,7 @@ fn assert_selfhost_inline_fixture_with_func_idx_is_deterministic(
     let dir = cli_test_fixture_dir(fixture_prefix);
     write_cli_fixture_files(
         &dir,
-        &[
-            ("lsharp.toml", ""),
-            ("src/App/ModuleResolver.ls", source),
-        ],
+        &[("lsharp.toml", ""), ("src/App/ModuleResolver.ls", source)],
     );
     let wasm_bytes_eq_helpers = stack_safe_wasm_bytes_eq_helpers();
 
@@ -368,7 +366,11 @@ fn assert_selfhost_inline_fixture_with_func_idx_is_deterministic(
         label,
         lines
     );
-    assert_eq!(lines[0], lines[1], "2回の {} compile で Wasm 長は一致するべき", label);
+    assert_eq!(
+        lines[0], lines[1],
+        "2回の {} compile で Wasm 長は一致するべき",
+        label
+    );
     assert_eq!(
         lines[2], "1",
         "2回の {} compile は byte-identical であるべき: {:?}",
@@ -381,12 +383,7 @@ fn assert_selfhost_inline_fixture_is_deterministic(
     source: &str,
     label: &str,
 ) {
-    assert_selfhost_inline_fixture_with_func_idx_is_deterministic(
-        fixture_prefix,
-        source,
-        label,
-        7,
-    );
+    assert_selfhost_inline_fixture_with_func_idx_is_deterministic(fixture_prefix, source, label, 7);
 }
 
 fn cli_multifile_nested_fixture_files() -> [(&'static str, &'static str); 3] {
@@ -1401,7 +1398,8 @@ fn test_e2e_selfhost_cli_compile_functions_data_with_cache_matches_fresh_compile
         ],
     );
 
-    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
 (defn main []
   (let [cache-ref (ref-new (map-new))
         parse-count-ref (ref-new 0)
@@ -1426,7 +1424,8 @@ fn test_e2e_selfhost_cli_compile_functions_data_with_cache_matches_fresh_compile
       (print (wasm-bytes-eq wasm1 wasm2))
       (print (wasm-bytes-eq wasm2 fresh-wasm))
       0)))
-"#);
+"#,
+    );
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -1476,7 +1475,8 @@ fn test_e2e_selfhost_cli_direct_multifile_compile_is_deterministic() {
         ],
     );
 
-    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
 (defn make-ir-fingerprint-state [done next-idx next-acc]
   (push-int-vector-local
     (push-int-vector-local
@@ -1630,7 +1630,8 @@ fn test_e2e_selfhost_cli_direct_multifile_compile_is_deterministic() {
       (print (vector-length wasm2))
       (print (wasm-bytes-eq wasm1 wasm2))
       0)))
-"#);
+"#,
+    );
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -1642,8 +1643,14 @@ fn test_e2e_selfhost_cli_direct_multifile_compile_is_deterministic() {
         "direct multi-file determinism 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], lines[1], "2回の direct compile で Wasm 長は一致するべき");
-    assert_eq!(lines[2], "1", "2回の direct compile は byte-identical であるべき");
+    assert_eq!(
+        lines[0], lines[1],
+        "2回の direct compile で Wasm 長は一致するべき"
+    );
+    assert_eq!(
+        lines[2], "1",
+        "2回の direct compile は byte-identical であるべき"
+    );
 }
 
 /// TEST-CLI-02-M1F0: selfhost App.ModuleResolver の direct compile は 2 回連続でも同じ Wasm を返すこと
@@ -1651,7 +1658,8 @@ fn test_e2e_selfhost_cli_direct_multifile_compile_is_deterministic() {
 fn test_e2e_selfhost_cli_direct_module_resolver_compile_is_deterministic() {
     let dir = selfhost_package_root();
 
-    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
 (defn make-ir-fingerprint-state [done next-idx next-acc]
   (push-int-vector-local
     (push-int-vector-local
@@ -1867,7 +1875,8 @@ fn test_e2e_selfhost_cli_direct_module_resolver_compile_is_deterministic() {
       (print-ir-instr mismatch-ir-vec2 (+ mismatch-ir-idx 3))
       (print-ir-instr mismatch-ir-vec2 (+ mismatch-ir-idx 4))
       0)))
-"#);
+"#,
+    );
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -1997,11 +2006,15 @@ fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_without_import_scan_
         &dir,
         &[
             ("lsharp.toml", ""),
-            ("src/App/ModuleResolver.ls", selfhost_module("ModuleResolver.ls")),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
         ],
     );
 
-    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
 (defn compile-inline-file-state-no-import-scan [path func-idx]
   (let [src (read-file path)
         program (parse-program src)
@@ -2028,7 +2041,8 @@ fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_without_import_scan_
       (print (vector-length wasm2))
       (print (wasm-bytes-eq wasm1 wasm2))
       0)))
-"#);
+"#,
+    );
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -2041,21 +2055,29 @@ fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_without_import_scan_
         lines
     );
     assert_eq!(lines[0], lines[1]);
-    assert_eq!(lines[2], "1", "no-import-scan inline path は deterministic であるべき");
+    assert_eq!(
+        lines[2], "1",
+        "no-import-scan inline path は deterministic であるべき"
+    );
 }
 
 #[test]
-fn test_e2e_selfhost_cli_direct_module_resolver_pair_registration_direct_compile_is_deterministic() {
+fn test_e2e_selfhost_cli_direct_module_resolver_pair_registration_direct_compile_is_deterministic()
+{
     let dir = cli_test_fixture_dir("module_resolver_pair_registration_direct_compile");
     write_cli_fixture_files(
         &dir,
         &[
             ("lsharp.toml", ""),
-            ("src/App/ModuleResolver.ls", selfhost_module("ModuleResolver.ls")),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
         ],
     );
 
-    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
 (defn compile-pair-registration-direct-state [path func-idx]
   (let [src (read-file path)
         program (parse-program src)
@@ -2081,7 +2103,8 @@ fn test_e2e_selfhost_cli_direct_module_resolver_pair_registration_direct_compile
       (print (vector-length wasm2))
       (print (wasm-bytes-eq wasm1 wasm2))
       0)))
-"#);
+"#,
+    );
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -2107,7 +2130,10 @@ fn test_e2e_selfhost_cli_direct_module_resolver_pair_creation_direct_compile_is_
         &dir,
         &[
             ("lsharp.toml", ""),
-            ("src/App/ModuleResolver.ls", selfhost_module("ModuleResolver.ls")),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
         ],
     );
     let wasm_bytes_eq_helpers = stack_safe_wasm_bytes_eq_helpers();
@@ -2168,11 +2194,15 @@ fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_mismatch_probe() {
         &dir,
         &[
             ("lsharp.toml", ""),
-            ("src/App/ModuleResolver.ls", selfhost_module("ModuleResolver.ls")),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
         ],
     );
 
-    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
 (defn make-ir-fingerprint-state [done next-idx next-acc]
   (push-int-vector-local
     (push-int-vector-local
@@ -2297,7 +2327,8 @@ fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_mismatch_probe() {
       (print (if (< mismatch-ir-idx 0) -1 (vector-get (vector-get mismatch-ir2 mismatch-ir-idx) 0)))
       (print (if (< mismatch-ir-idx 0) -1 (vector-get (vector-get mismatch-ir2 mismatch-ir-idx) 1)))
       0)))
-"#);
+"#,
+    );
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -2349,7 +2380,8 @@ fn test_e2e_selfhost_cli_direct_module_resolver_inline_prefix_33_forms_is_determ
 fn test_e2e_selfhost_cli_direct_module_resolver_inline_prefix_post33_bisect() {
     for form_count in [34usize, 35, 36, 37, 38, 39] {
         println!("bisect form_count={form_count}");
-        let prefix_source = take_lsharp_toplevel_forms(selfhost_module("ModuleResolver.ls"), form_count);
+        let prefix_source =
+            take_lsharp_toplevel_forms(selfhost_module("ModuleResolver.ls"), form_count);
         let fixture_prefix = format!("module_resolver_inline_prefix_{form_count}_bisect");
         let label = format!("module resolver {form_count}-form inline prefix");
         assert_selfhost_inline_fixture_is_deterministic(&fixture_prefix, &prefix_source, &label);
@@ -2387,11 +2419,15 @@ fn test_e2e_selfhost_cli_compile_file_functions_data_module_resolver_is_determin
         &dir,
         &[
             ("lsharp.toml", ""),
-            ("src/App/ModuleResolver.ls", selfhost_module("ModuleResolver.ls")),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
         ],
     );
 
-    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
 (defn main []
   (let [payload1 (compile-file-functions-data "src/App/ModuleResolver.ls")
         payload2 (compile-file-functions-data "src/App/ModuleResolver.ls")
@@ -2406,7 +2442,8 @@ fn test_e2e_selfhost_cli_compile_file_functions_data_module_resolver_is_determin
       (print (vector-length wasm2))
       (print (wasm-bytes-eq wasm1 wasm2))
       0)))
-"#);
+"#,
+    );
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -2435,7 +2472,10 @@ fn test_e2e_selfhost_cli_direct_module_resolver_register_defns_is_deterministic(
     let dir = cli_test_fixture_dir("module_resolver_register_defns_direct_determinism");
     write_cli_fixture_files(
         &dir,
-        &[("ModuleResolverRegisterDefns.ls", selfhost_module("ModuleResolver.ls"))],
+        &[(
+            "ModuleResolverRegisterDefns.ls",
+            selfhost_module("ModuleResolver.ls"),
+        )],
     );
     let fixture_path = dir
         .join("ModuleResolverRegisterDefns.ls")
@@ -2498,7 +2538,10 @@ fn test_e2e_selfhost_cli_direct_module_resolver_single_pair_pipeline_is_determin
     let dir = cli_test_fixture_dir("module_resolver_single_pair_pipeline_determinism");
     write_cli_fixture_files(
         &dir,
-        &[("ModuleResolverSinglePair.ls", selfhost_module("ModuleResolver.ls"))],
+        &[(
+            "ModuleResolverSinglePair.ls",
+            selfhost_module("ModuleResolver.ls"),
+        )],
     );
     let fixture_path = dir
         .join("ModuleResolverSinglePair.ls")
@@ -2584,11 +2627,15 @@ fn test_e2e_selfhost_cli_compile_file_pairs_with_cache_pipeline_is_deterministic
         &dir,
         &[
             ("lsharp.toml", ""),
-            ("src/App/ModuleResolver.ls", selfhost_module("ModuleResolver.ls")),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
         ],
     );
 
-    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
 (defn compile-file-state [path]
   (let [cache-ref (ref-new (map-new))
         parse-count-ref (ref-new 0)
@@ -2630,7 +2677,8 @@ fn test_e2e_selfhost_cli_compile_file_pairs_with_cache_pipeline_is_deterministic
       (print (vector-length wasm2))
       (print (wasm-bytes-eq wasm1 wasm2))
       0)))
-"#);
+"#,
+    );
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -2661,11 +2709,15 @@ fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_pipeline_is_deterministic
         &dir,
         &[
             ("lsharp.toml", ""),
-            ("src/App/ModuleResolver.ls", selfhost_module("ModuleResolver.ls")),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
         ],
     );
 
-    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
 (defn compile-file-state [path]
   (let [cache-ref (ref-new (map-new))
         parse-count-ref (ref-new 0)
@@ -2711,7 +2763,8 @@ fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_pipeline_is_deterministic
       (print (vector-length wasm2))
       (print (wasm-bytes-eq wasm1 wasm2))
       0)))
-"#);
+"#,
+    );
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -2742,7 +2795,10 @@ fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_returns_expected_pair_sha
         &dir,
         &[
             ("lsharp.toml", ""),
-            ("src/App/ModuleResolver.ls", selfhost_module("ModuleResolver.ls")),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
         ],
     );
 
@@ -2764,7 +2820,9 @@ fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_returns_expected_pair_sha
     let output = compile_and_run_with_dir(&combined, &dir);
     let _ = std::fs::remove_dir_all(&dir);
     let lines: Vec<&str> = output.trim().lines().collect();
-    let expected_decls = parse_for_pipeline(selfhost_module("ModuleResolver.ls")).decls.len();
+    let expected_decls = parse_for_pipeline(selfhost_module("ModuleResolver.ls"))
+        .decls
+        .len();
 
     assert!(
         lines.len() >= 3,
@@ -2792,11 +2850,15 @@ fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_matches_manual_pair_pipel
         &dir,
         &[
             ("lsharp.toml", ""),
-            ("src/App/ModuleResolver.ls", selfhost_module("ModuleResolver.ls")),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
         ],
     );
 
-    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
 (defn compile-pair-state [pair]
   (do
     (root_push pair)
@@ -2845,7 +2907,8 @@ fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_matches_manual_pair_pipel
       (print (vector-length manual-wasm))
       (print (wasm-bytes-eq loader-wasm manual-wasm))
       0)))
-"#);
+"#,
+    );
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -2876,11 +2939,15 @@ fn test_e2e_selfhost_cli_cache_miss_side_effects_match_manual_pair_pipeline() {
         &dir,
         &[
             ("lsharp.toml", ""),
-            ("src/App/ModuleResolver.ls", selfhost_module("ModuleResolver.ls")),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
         ],
     );
 
-    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
 (defn compile-pair-state [pair]
   (do
     (root_push pair)
@@ -2944,7 +3011,8 @@ fn test_e2e_selfhost_cli_cache_miss_side_effects_match_manual_pair_pipeline() {
       (print (vector-length sidefx-wasm))
       (print (wasm-bytes-eq plain-wasm sidefx-wasm))
       0)))
-"#);
+"#,
+    );
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -2975,11 +3043,15 @@ fn test_e2e_selfhost_cli_parse_src_decl_pair_side_effect_matches_manual_pair_pip
         &dir,
         &[
             ("lsharp.toml", ""),
-            ("src/App/ModuleResolver.ls", selfhost_module("ModuleResolver.ls")),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
         ],
     );
 
-    let harness = with_stack_safe_wasm_bytes_eq_helpers(r#"
+    let harness = with_stack_safe_wasm_bytes_eq_helpers(
+        r#"
 (defn compile-pair-state [pair]
   (do
     (root_push pair)
@@ -3037,7 +3109,8 @@ fn test_e2e_selfhost_cli_parse_src_decl_pair_side_effect_matches_manual_pair_pip
       (print (vector-length parsed-wasm))
       (print (wasm-bytes-eq plain-wasm parsed-wasm))
       0)))
-"#);
+"#,
+    );
 
     let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let output = compile_and_run_with_dir(&combined, &dir);
@@ -3068,7 +3141,10 @@ fn test_e2e_selfhost_cli_manual_pair_compile_restores_root_stack() {
         &dir,
         &[
             ("lsharp.toml", ""),
-            ("src/App/ModuleResolver.ls", selfhost_module("ModuleResolver.ls")),
+            (
+                "src/App/ModuleResolver.ls",
+                selfhost_module("ModuleResolver.ls"),
+            ),
         ],
     );
 
@@ -3286,7 +3362,10 @@ fn test_e2e_selfhost_cli_module_resolver_after_source_fingerprint_is_determinist
     let dir = cli_test_fixture_dir("module_resolver_after_source_fingerprint_determinism");
     write_cli_fixture_files(
         &dir,
-        &[("ModuleResolverAfterFingerprint.ls", selfhost_module("ModuleResolver.ls"))],
+        &[(
+            "ModuleResolverAfterFingerprint.ls",
+            selfhost_module("ModuleResolver.ls"),
+        )],
     );
     let fixture_path = dir
         .join("ModuleResolverAfterFingerprint.ls")
@@ -3376,7 +3455,10 @@ fn test_e2e_selfhost_cli_module_resolver_after_src_decl_cache_insert_is_determin
     let dir = cli_test_fixture_dir("module_resolver_after_src_decl_cache_insert_determinism");
     write_cli_fixture_files(
         &dir,
-        &[("ModuleResolverAfterCacheInsert.ls", selfhost_module("ModuleResolver.ls"))],
+        &[(
+            "ModuleResolverAfterCacheInsert.ls",
+            selfhost_module("ModuleResolver.ls"),
+        )],
     );
     let fixture_path = dir
         .join("ModuleResolverAfterCacheInsert.ls")
@@ -3469,7 +3551,10 @@ fn test_e2e_selfhost_cli_module_resolver_after_src_decl_cache_lookup_is_determin
     let dir = cli_test_fixture_dir("module_resolver_after_src_decl_cache_lookup_determinism");
     write_cli_fixture_files(
         &dir,
-        &[("ModuleResolverAfterCacheLookup.ls", selfhost_module("ModuleResolver.ls"))],
+        &[(
+            "ModuleResolverAfterCacheLookup.ls",
+            selfhost_module("ModuleResolver.ls"),
+        )],
     );
     let fixture_path = dir
         .join("ModuleResolverAfterCacheLookup.ls")
@@ -3542,10 +3627,16 @@ fn test_e2e_selfhost_cli_module_resolver_after_src_decl_cache_lookup_is_determin
         "empty cache lookup 後 ModuleResolver determinism 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], lines[2], "2回の source-fingerprint 値は一致するべき");
+    assert_eq!(
+        lines[0], lines[2],
+        "2回の source-fingerprint 値は一致するべき"
+    );
     assert_eq!(lines[1], "0", "初回 empty cache lookup は 0 を返すべき");
     assert_eq!(lines[3], "0", "2回目 empty cache lookup も 0 を返すべき");
-    assert_eq!(lines[4], lines[5], "2回の empty cache lookup 後 compile で Wasm 長は一致するべき");
+    assert_eq!(
+        lines[4], lines[5],
+        "2回の empty cache lookup 後 compile で Wasm 長は一致するべき"
+    );
     assert_eq!(
         lines[6], "1",
         "2回の empty cache lookup 後 compile は byte-identical であるべき: {:?}",
@@ -3840,11 +3931,30 @@ fn test_e2e_selfhost_cli_direct_selfhost_main_compile_is_deterministic() {
         "selfhost main direct determinism 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], lines[1], "2回の selfhost main compile で Wasm 長は一致するべき");
-    assert_eq!(lines[2], lines[3], "type section は一致するべき: {:?}", lines);
-    assert_eq!(lines[4], lines[5], "function section は一致するべき: {:?}", lines);
-    assert_eq!(lines[6], lines[7], "code section は一致するべき: {:?}", lines);
-    assert_eq!(lines[8], lines[9], "data section は一致するべき: {:?}", lines);
+    assert_eq!(
+        lines[0], lines[1],
+        "2回の selfhost main compile で Wasm 長は一致するべき"
+    );
+    assert_eq!(
+        lines[2], lines[3],
+        "type section は一致するべき: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[4], lines[5],
+        "function section は一致するべき: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[6], lines[7],
+        "code section は一致するべき: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[8], lines[9],
+        "data section は一致するべき: {:?}",
+        lines
+    );
     assert_eq!(
         lines[59], lines[60],
         "2回の selfhost main direct compile は fingerprint 一致であるべき: {:?}",

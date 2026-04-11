@@ -406,7 +406,8 @@ fn test_e2e_bootstrap_stage1_stage2_match() {
 
 #[test]
 fn test_e2e_bootstrap_stage1_stage2_match_fib_runtime_layout() {
-    let src = "(defn fib [n] (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))) (defn main [] (fib 8))";
+    let src =
+        "(defn fib [n] (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))) (defn main [] (fib 8))";
     let harness = build_simple_bootstrap_harness(src);
     let stage1_source = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
     let stage1_wasm = compile_only(&stage1_source);
@@ -688,10 +689,8 @@ fn test_e2e_bootstrap_fixed_point_minimal_build_progress_matches_stage2_stage3()
     )
     .expect("minimal-build-progress: stage3 compiler が minimal.ls build-progress 実行に失敗");
 
-    let stage2_values =
-        parse_printed_i64_lines(&stage2_progress, "minimal-build-progress stage2");
-    let stage3_values =
-        parse_printed_i64_lines(&stage3_progress, "minimal-build-progress stage3");
+    let stage2_values = parse_printed_i64_lines(&stage2_progress, "minimal-build-progress stage2");
+    let stage3_values = parse_printed_i64_lines(&stage3_progress, "minimal-build-progress stage3");
 
     eprintln!(
         "BOOT-04 minimal-build-progress stage2={:?} stage3={:?}",
@@ -1320,10 +1319,12 @@ fn test_e2e_bootstrap_fixed_input_set_stage_chain_match_cli_module() {
     let (stage1, stage2, selfhost_root) = build_stage1_and_stage2_self_compilers_from_main();
     let repo_root = selfhost_project_root();
     let target = fixed_input_set_target_by_path("src/App/Cli.ls");
-    let stage2_target = compile_fixed_input_target_with_stage1(&stage1, &selfhost_root, &repo_root, &target)
-        .expect("BOOT-04: stage1 compiler が App/Cli.ls の self-feed compile に失敗");
-    let stage3_target = compile_fixed_input_target_with_stage2(&stage2, &selfhost_root, &repo_root, &target)
-        .expect("BOOT-04: stage2 compiler が App/Cli.ls の self-feed compile に失敗");
+    let stage2_target =
+        compile_fixed_input_target_with_stage1(&stage1, &selfhost_root, &repo_root, &target)
+            .expect("BOOT-04: stage1 compiler が App/Cli.ls の self-feed compile に失敗");
+    let stage3_target =
+        compile_fixed_input_target_with_stage2(&stage2, &selfhost_root, &repo_root, &target)
+            .expect("BOOT-04: stage2 compiler が App/Cli.ls の self-feed compile に失敗");
     assert_eq!(
         stage2_target,
         stage3_target,
@@ -1347,10 +1348,16 @@ fn test_e2e_bootstrap_fixed_input_set_stage_chain_match_lsp_server_module() {
     let (stage1, stage2, selfhost_root) = build_stage1_and_stage2_self_compilers_from_main();
     let repo_root = selfhost_project_root();
     let target = fixed_input_set_target_by_path("src/Tools/Lsp/LspServer.ls");
-    let stage2_target = compile_fixed_input_target_with_stage1(&stage1, &selfhost_root, &repo_root, &target)
-        .expect("BOOT-04: stage1 compiler が Tools/Lsp/LspServer.ls の self-feed compile に失敗");
-    let stage3_target = compile_fixed_input_target_with_stage2(&stage2, &selfhost_root, &repo_root, &target)
-        .expect("BOOT-04: stage2 compiler が Tools/Lsp/LspServer.ls の self-feed compile に失敗");
+    let stage2_target =
+        compile_fixed_input_target_with_stage1(&stage1, &selfhost_root, &repo_root, &target)
+            .expect(
+                "BOOT-04: stage1 compiler が Tools/Lsp/LspServer.ls の self-feed compile に失敗",
+            );
+    let stage3_target =
+        compile_fixed_input_target_with_stage2(&stage2, &selfhost_root, &repo_root, &target)
+            .expect(
+                "BOOT-04: stage2 compiler が Tools/Lsp/LspServer.ls の self-feed compile に失敗",
+            );
     assert_eq!(
         stage2_target,
         stage3_target,

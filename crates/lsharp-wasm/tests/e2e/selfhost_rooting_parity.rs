@@ -751,17 +751,15 @@ fn test_e2e_selfhost_compiler_nested_user_call_let_chain_keeps_file_exists_condi
         instrs
     );
     assert!(
-        instrs
-            .iter()
-            .any(|(opcode, _)| *opcode == OP_FILE_EXISTS),
+        instrs.iter().any(|(opcode, _)| *opcode == OP_FILE_EXISTS),
         "nested user-call let chain は file-exists? 条件まで lowering できるべき: {:?}",
         instrs
     );
 }
 
 #[test]
-fn test_e2e_selfhost_compiler_actual_module_resolver_module_path_cache_state_keeps_calls_and_file_exists(
-) {
+fn test_e2e_selfhost_compiler_actual_module_resolver_module_path_cache_state_keeps_calls_and_file_exists()
+ {
     let (_local_count, instrs) =
         compile_selfhost_ir_report_for_function(selfhost_module("ModuleResolver.ls"), 30);
 
@@ -771,17 +769,15 @@ fn test_e2e_selfhost_compiler_actual_module_resolver_module_path_cache_state_kee
         instrs
     );
     assert!(
-        instrs
-            .iter()
-            .any(|(opcode, _)| *opcode == OP_FILE_EXISTS),
+        instrs.iter().any(|(opcode, _)| *opcode == OP_FILE_EXISTS),
         "actual ModuleResolver.module-path-cache-state は file-exists? 条件まで lowering できるべき: {:?}",
         instrs
     );
 }
 
 #[test]
-fn test_e2e_selfhost_compiler_mode_main_multifile_module_resolver_function_keeps_calls_and_file_exists(
-) {
+fn test_e2e_selfhost_compiler_mode_main_multifile_module_resolver_function_keeps_calls_and_file_exists()
+ {
     let (_local_count, instrs) =
         compile_selfhost_cli_file_ir_report_for_function("selfhost/src/App/Main.ls", 30);
 
@@ -791,9 +787,7 @@ fn test_e2e_selfhost_compiler_mode_main_multifile_module_resolver_function_keeps
         instrs
     );
     assert!(
-        instrs
-            .iter()
-            .any(|(opcode, _)| *opcode == OP_FILE_EXISTS),
+        instrs.iter().any(|(opcode, _)| *opcode == OP_FILE_EXISTS),
         "multi-file CompilerMode compile の ModuleResolver.module-path-cache-state は file-exists? 条件まで lowering できるべき: {:?}",
         instrs
     );

@@ -416,23 +416,24 @@ mod tests {
         let variants = vec![make_variant("Nothing", 0), make_variant("Something", 0)];
         let decl = derive_eq_adt("Option", &variants);
         if let Decl::Defn { body, .. } = &decl
-            && let Expr::Match(_, _, arms) = body {
-                assert_eq!(arms.len(), 2);
-                // Nothing 腕の内側 match
-                if let Expr::Match(_, _, inner_arms) = &arms[0].body {
-                    assert_eq!(inner_arms.len(), 2); // Nothing + wildcard
-                    // Nothing -> true
-                    assert!(matches!(
-                        &inner_arms[0].body,
-                        Expr::Lit(_, Literal::Bool(true))
-                    ));
-                    // _ -> false
-                    assert!(matches!(
-                        &inner_arms[1].body,
-                        Expr::Lit(_, Literal::Bool(false))
-                    ));
-                }
+            && let Expr::Match(_, _, arms) = body
+        {
+            assert_eq!(arms.len(), 2);
+            // Nothing 腕の内側 match
+            if let Expr::Match(_, _, inner_arms) = &arms[0].body {
+                assert_eq!(inner_arms.len(), 2); // Nothing + wildcard
+                // Nothing -> true
+                assert!(matches!(
+                    &inner_arms[0].body,
+                    Expr::Lit(_, Literal::Bool(true))
+                ));
+                // _ -> false
+                assert!(matches!(
+                    &inner_arms[1].body,
+                    Expr::Lit(_, Literal::Bool(false))
+                ));
             }
+        }
     }
 
     #[test]
@@ -462,17 +463,18 @@ mod tests {
         let variants = vec![make_variant("Pair", 2)];
         let decl = derive_eq_adt("Pair", &variants);
         if let Decl::Defn { body, .. } = &decl
-            && let Expr::Match(_, _, arms) = body {
-                assert_eq!(arms.len(), 1);
-                // Pair(a0, a1) のパターン
-                if let Pattern::Constructor(_, _, pats) = &arms[0].pattern {
-                    assert_eq!(pats.len(), 2);
-                }
-                // 内側 match の成功ボディは If (a0==b0) (a1==b1) false
-                if let Expr::Match(_, _, inner_arms) = &arms[0].body {
-                    assert!(matches!(&inner_arms[0].body, Expr::If(_, _, _, _)));
-                }
+            && let Expr::Match(_, _, arms) = body
+        {
+            assert_eq!(arms.len(), 1);
+            // Pair(a0, a1) のパターン
+            if let Pattern::Constructor(_, _, pats) = &arms[0].pattern {
+                assert_eq!(pats.len(), 2);
             }
+            // 内側 match の成功ボディは If (a0==b0) (a1==b1) false
+            if let Expr::Match(_, _, inner_arms) = &arms[0].body {
+                assert!(matches!(&inner_arms[0].body, Expr::If(_, _, _, _)));
+            }
+        }
     }
 
     #[test]

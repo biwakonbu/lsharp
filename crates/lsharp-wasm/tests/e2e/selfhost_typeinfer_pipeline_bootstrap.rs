@@ -923,8 +923,8 @@ fn test_e2e_selfhost_module_declarations() {
         let path = selfhost_source_path(filename);
         assert!(path.exists(), "{} が見つからない", filename);
 
-        let source =
-            std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{} の読み込みに失敗", filename));
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|_| panic!("{} の読み込みに失敗", filename));
 
         // テキストベースで module 宣言の存在を確認
         let module_decl = format!("(module {})", expected_module);

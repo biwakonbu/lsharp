@@ -3491,67 +3491,81 @@ mod memory_instruction_tests {
 
     #[test]
     fn test_memory_load_store_instructions() {
-        let instructions = [Instruction::I32Const(100),
+        let instructions = [
+            Instruction::I32Const(100),
             Instruction::I32Load { offset: 0 },
             Instruction::I32Const(200),
             Instruction::I32Const(42),
-            Instruction::I32Store { offset: 0 }];
+            Instruction::I32Store { offset: 0 },
+        ];
         assert_eq!(instructions.len(), 5);
     }
 
     #[test]
     fn test_i64_memory_instructions() {
-        let instructions = [Instruction::I32Const(100),
+        let instructions = [
+            Instruction::I32Const(100),
             Instruction::I64Load { offset: 0 },
             Instruction::I32Const(200),
             Instruction::I64Const(12345),
-            Instruction::I64Store { offset: 0 }];
+            Instruction::I64Store { offset: 0 },
+        ];
         assert_eq!(instructions.len(), 5);
     }
 
     #[test]
     fn test_byte_memory_instructions() {
-        let instructions = [Instruction::I32Const(100),
+        let instructions = [
+            Instruction::I32Const(100),
             Instruction::I32Load8U { offset: 0 },
             Instruction::I32Const(200),
             Instruction::I32Const(65),
-            Instruction::I32Store8 { offset: 0 }];
+            Instruction::I32Store8 { offset: 0 },
+        ];
         assert_eq!(instructions.len(), 5);
     }
 
     #[test]
     fn test_i32_arithmetic_instructions() {
-        let instructions = [Instruction::I32Const(10),
+        let instructions = [
+            Instruction::I32Const(10),
             Instruction::I32Const(20),
             Instruction::I32Add,
             Instruction::I32Sub,
-            Instruction::I32Mul];
+            Instruction::I32Mul,
+        ];
         assert_eq!(instructions.len(), 5);
     }
 
     #[test]
     fn test_i32_comparison_instructions() {
-        let instructions = [Instruction::I32Const(10),
+        let instructions = [
+            Instruction::I32Const(10),
             Instruction::I32Const(20),
             Instruction::I32GtU,
-            Instruction::I32GeU];
+            Instruction::I32GeU,
+        ];
         assert_eq!(instructions.len(), 4);
     }
 
     #[test]
     fn test_i32_bitwise_instructions() {
-        let instructions = [Instruction::I32Const(0xFF),
+        let instructions = [
+            Instruction::I32Const(0xFF),
             Instruction::I32Const(4),
             Instruction::I32Shl,
-            Instruction::I32ShrU];
+            Instruction::I32ShrU,
+        ];
         assert_eq!(instructions.len(), 4);
     }
 
     #[test]
     fn test_memory_management_instructions() {
-        let instructions = [Instruction::MemorySize,
+        let instructions = [
+            Instruction::MemorySize,
             Instruction::I32Const(1),
-            Instruction::MemoryGrow];
+            Instruction::MemoryGrow,
+        ];
         assert_eq!(instructions.len(), 3);
     }
 
