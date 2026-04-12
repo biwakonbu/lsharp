@@ -69,6 +69,14 @@
 (defn emit-pop-rbp []
   (vector-push (vector-new 1) 93)) ;; 0x5D
 
+;; x86_64 の PUSH rcx
+(defn emit-push-rcx []
+  (vector-push (vector-new 1) 81)) ;; 0x51
+
+;; x86_64 の POP rcx
+(defn emit-pop-rcx []
+  (vector-push (vector-new 1) 89)) ;; 0x59
+
 ;; x86_64 の MOV rbp, rsp
 (defn emit-mov-rbp-rsp []
   (let [bytes (vector-new 3)]
@@ -410,7 +418,7 @@
       (if (= target-param-count 2)
         11
         (if (= target-param-count 1)
-        8
+        10
         5)))
     (vector-length (codegen-ir-instr opcode operand))))
 
@@ -452,10 +460,10 @@
       target-meta (vector-get function-metas operand)
       target-param-count (native-function-param-count target-meta)
       rel (if (= target-param-count 2)
-            (- target-offset (+ current-offset 11))
-            (if (= target-param-count 1)
-            (- target-offset (+ current-offset 8))
-            (- target-offset (+ current-offset 5))))]
+             (- target-offset (+ current-offset 11))
+             (if (= target-param-count 1)
+             (- target-offset (+ current-offset 9))
+             (- target-offset (+ current-offset 5))))]
       (if (= target-param-count 2)
         (let [call-bytes (emit-call-rel32 rel)
           bytes (vector-new 11)
@@ -469,21 +477,25 @@
           b8 (vector-push b7 (vector-get call-bytes 1))
           b9 (vector-push b8 (vector-get call-bytes 2))
           b10 (vector-push b9 (vector-get call-bytes 3))
-          b11 (vector-push b10 (vector-get call-bytes 4))]
-          b11)
-        (if (= target-param-count 1)
-        (let [call-bytes (emit-call-rel32 rel)
-          bytes (vector-new 8)
-          b1 (vector-push bytes 72)
-          b2 (vector-push b1 137)
-          b3 (vector-push b2 199)
-          b4 (vector-push b3 (vector-get call-bytes 0))
-          b5 (vector-push b4 (vector-get call-bytes 1))
-          b6 (vector-push b5 (vector-get call-bytes 2))
-          b7 (vector-push b6 (vector-get call-bytes 3))
-          b8 (vector-push b7 (vector-get call-bytes 4))]
-          b8)
-        (emit-call-rel32 rel))))
+           b11 (vector-push b10 (vector-get call-bytes 4))]
+           b11)
+         (if (= target-param-count 1)
+         (let [call-bytes (emit-call-rel32 rel)
+           push-rcx (emit-push-rcx)
+           pop-rcx (emit-pop-rcx)
+           bytes (vector-new 10)
+           b1 (vector-push bytes 72)
+           b2 (vector-push b1 137)
+           b3 (vector-push b2 199)
+           b4 (vector-push b3 (vector-get push-rcx 0))
+           b5 (vector-push b4 (vector-get call-bytes 0))
+           b6 (vector-push b5 (vector-get call-bytes 1))
+           b7 (vector-push b6 (vector-get call-bytes 2))
+           b8 (vector-push b7 (vector-get call-bytes 3))
+           b9 (vector-push b8 (vector-get call-bytes 4))
+           b10 (vector-push b9 (vector-get pop-rcx 0))]
+           b10)
+         (emit-call-rel32 rel))))
     (codegen-ir-instr opcode operand)))
 
 (defn generate-native-instr-bundle-loop-x86 [ir-func result function-starts function-metas current-offset idx len]
@@ -672,6 +684,16 @@
   (let [bytes (vector-new 4)]
     (vector-push (vector-push (vector-push (vector-push bytes 224) 3) 9) 170)))
 
+;; AArch64 MOV x10, x9
+(defn emit-aarch64-mov-x10-x9 []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 234) 3) 9) 170)))
+
+;; AArch64 MOV x9, x10
+(defn emit-aarch64-mov-x9-x10 []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 233) 3) 10) 170)))
+
 ;; AArch64 ADD w0, w1, w0
 (defn emit-aarch64-add-w0-w1-w0 []
   (let [bytes (vector-new 4)]
@@ -794,7 +816,9 @@
       target-param-count (native-function-param-count target-meta)]
       (if (= target-param-count 2)
         12
-        4))
+        (if (= target-param-count 1)
+          12
+          4)))
     (vector-length (codegen-ir-instr-aarch64 opcode operand))))
 
 (defn native-function-body-size-aarch64-loop [ir-func function-metas idx len total]
@@ -836,8 +860,10 @@
       target-meta (vector-get function-metas operand)
       target-param-count (native-function-param-count target-meta)
       disp (if (= target-param-count 2)
-             (- target-offset (+ current-offset 8))
-             (- target-offset current-offset))]
+              (- target-offset (+ current-offset 8))
+              (if (= target-param-count 1)
+                (- target-offset (+ current-offset 4))
+                (- target-offset current-offset)))]
       (if (= target-param-count 2)
         (let [call-bytes (emit-aarch64-bl disp)
           bytes (vector-new 12)
@@ -852,9 +878,27 @@
           b9 (vector-push b8 (vector-get call-bytes 0))
           b10 (vector-push b9 (vector-get call-bytes 1))
           b11 (vector-push b10 (vector-get call-bytes 2))
-          b12 (vector-push b11 (vector-get call-bytes 3))]
-          b12)
-        (emit-aarch64-bl disp)))
+           b12 (vector-push b11 (vector-get call-bytes 3))]
+           b12)
+         (if (= target-param-count 1)
+           (let [save-prev (emit-aarch64-mov-x10-x9)
+             call-bytes (emit-aarch64-bl disp)
+             restore-prev (emit-aarch64-mov-x9-x10)
+             bytes (vector-new 12)
+             b1 (vector-push bytes (vector-get save-prev 0))
+             b2 (vector-push b1 (vector-get save-prev 1))
+             b3 (vector-push b2 (vector-get save-prev 2))
+             b4 (vector-push b3 (vector-get save-prev 3))
+             b5 (vector-push b4 (vector-get call-bytes 0))
+             b6 (vector-push b5 (vector-get call-bytes 1))
+             b7 (vector-push b6 (vector-get call-bytes 2))
+             b8 (vector-push b7 (vector-get call-bytes 3))
+             b9 (vector-push b8 (vector-get restore-prev 0))
+             b10 (vector-push b9 (vector-get restore-prev 1))
+             b11 (vector-push b10 (vector-get restore-prev 2))
+             b12 (vector-push b11 (vector-get restore-prev 3))]
+             b12)
+           (emit-aarch64-bl disp))))
     (codegen-ir-instr-aarch64 opcode operand)))
 
 (defn generate-native-instr-bundle-loop-aarch64 [ir-func result function-starts function-metas current-offset idx len]
