@@ -131,9 +131,11 @@ Phase 13 (Component Model) に進む前に、以下のゲートを全て通過�
 
 ## P13: Phase 13 完了条件 (Component Model)
 
-### 条件 1: WASI Preview2 migration [pending]
+### 条件 1: WASI Preview2 migration [done]
 - dual-mode WASI runner で preview1 / preview2 両方が動作すること
 - preview2 codegen path が代表 E2E tests を通すこと
+- **現況**: `crates/lsharp-wasm/src/wasi_runner.rs` は `WasiMode` ベースの `run_wasm_with_mode` / `run_wasm_with_mode_capture` / `run_wasm_with_mode_and_args_inherit_stdin_capture` を持ち、preview1 core Wasm と preview2 component を同じ dispatcher で起動できる。`test_run_wasm_with_mode_dispatches_preview1_core_module` / `test_run_wasm_with_mode_dispatches_preview2_component` / `test_run_wasm_with_mode_capture_preserves_preview2_stdin_and_stdout` が runner dispatch を固定し、`crates/lsharp-driver/src/main.rs` の `LSHARP_PATH=.wasm` / `.component.wasm` 委譲もこの共通 helper を通る。
+- **達成**: preview2 codegen path も `test_emit_wasm_wasi_p2_runs_print_via_component_runner` / `test_emit_wasm_wasi_p2_supports_stdin_and_args` / `test_emit_wasm_wasi_p2_supports_file_roundtrip` に加え、public compile/build surface では `test_compile_without_lsharp_path_uses_embedded_component_default_path` / `test_build_without_lsharp_path_uses_embedded_component_default_path` / `test_compile_with_preview1_target_without_lsharp_path_writes_runnable_wasm_artifact`、actual selfhost CLI では `test_e2e_selfhost_cli_main_with_args_compile_target_and_output_path` / `test_e2e_selfhost_cli_main_with_args_compile_target_changes_wasm_size` が通っており、代表 E2E を伴って Condition 1 を close した
 
 ### 条件 2 (P13-B): WIT world definitions [pending]
 - `wit/lsharp-compiler.wit` と `wit/lsharp-http-handler.wit` が定義され、Component Model adapter が動作すること
