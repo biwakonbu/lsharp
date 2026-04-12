@@ -127,6 +127,23 @@
     bytes (vector-new 4)]
     (vector-push (vector-push (vector-push (vector-push bytes byte0) byte1) byte2) byte3)))
 
+;; 符号付き 32bit 値を two's complement little-endian 4 bytes に分解する
+(defn encode-s32-le [value]
+  (if (< value 0)
+    (encode-u32-le (+ 4294967296 value))
+    (encode-u32-le value)))
+
+;; x86_64 の CALL rel32
+(defn emit-call-rel32 [disp]
+  (let [imm (encode-s32-le disp)
+    bytes (vector-new 5)
+    b1 (vector-push bytes 232)
+    b2 (vector-push b1 (vector-get imm 0))
+    b3 (vector-push b2 (vector-get imm 1))
+    b4 (vector-push b3 (vector-get imm 2))
+    b5 (vector-push b4 (vector-get imm 3))]
+    b5))
+
 ;; ローカル変数の stack slot offset (rbp/sp からの byte 数)
 (defn local-slot-offset [idx]
   (* (+ idx 1) 8))
@@ -175,6 +192,18 @@
     (if (= found 0)
       0
       (align-16 (* (+ max-local 1) 8)))))
+
+(defn find-call-loop [ir-func idx len]
+  (if (>= idx len)
+    0
+    (let [instr (vector-get ir-func idx)
+      opcode (vector-get instr 0)]
+      (if (= opcode 40)
+        1
+        (find-call-loop ir-func (+ idx 1) len)))))
+
+(defn native-has-call [ir-func]
+  (find-call-loop ir-func 0 (vector-length ir-func)))
 
 ;; x86_64 の SUB rsp, imm32
 (defn emit-sub-rsp-imm32 [value]
@@ -304,6 +333,56 @@
                           ;; 未知の opcode: NOP
                           (vector-push (vector-new 1) 144)))))))))))))) ;; 0x90
 
+(defn native-instr-size-x86 [opcode operand]
+  (if (= opcode 40)
+    5
+    (vector-length (codegen-ir-instr opcode operand))))
+
+(defn native-function-body-size-x86-loop [ir-func idx len total]
+  (if (>= idx len)
+    total
+    (let [instr (vector-get ir-func idx)
+      opcode (vector-get instr 0)
+      operand (vector-get instr 1)
+      next-total (+ total (native-instr-size-x86 opcode operand))]
+      (native-function-body-size-x86-loop ir-func (+ idx 1) len next-total))))
+
+(defn native-function-size-x86 [ir-func]
+  (let [stack-bytes (native-local-stack-bytes ir-func)
+    frame-bytes (if (> stack-bytes 0) 14 0)
+    body-bytes (native-function-body-size-x86-loop ir-func 0 (vector-length ir-func) 0)]
+    (+ (+ 6 frame-bytes) body-bytes)))
+
+(defn collect-function-starts-x86-loop [functions idx len starts offset]
+  (if (>= idx len)
+    starts
+    (let [ir-func (vector-get functions idx)
+      next-starts (vector-push starts offset)
+      next-offset (+ offset (native-function-size-x86 ir-func))]
+      (collect-function-starts-x86-loop functions (+ idx 1) len next-starts next-offset))))
+
+(defn collect-function-starts-x86 [functions]
+  (collect-function-starts-x86-loop functions 0 (vector-length functions) (vector-new 8) 0))
+
+(defn codegen-ir-instr-bundle-x86 [opcode operand current-offset function-starts]
+  (if (= opcode 40)
+    (let [target-offset (vector-get function-starts operand)
+      rel (- target-offset (+ current-offset 5))]
+      (emit-call-rel32 rel))
+    (codegen-ir-instr opcode operand)))
+
+(defn generate-native-instr-bundle-loop-x86 [ir-func result function-starts current-offset idx len]
+  (if (>= idx len)
+    current-offset
+    (let [instr (vector-get ir-func idx)
+      opcode (vector-get instr 0)
+      operand (vector-get instr 1)
+      native (codegen-ir-instr-bundle-x86 opcode operand current-offset function-starts)
+      native-len (vector-length native)]
+      (do
+        (append-native-bytes-loop result native 0 native-len)
+        (generate-native-instr-bundle-loop-x86 ir-func result function-starts (+ current-offset native-len) (+ idx 1) len)))))
+
 ;; === コード生成メイン関数 ===
 
 (defn append-native-bytes-loop [result native idx len]
@@ -355,8 +434,51 @@
             (append-native-bytes-loop result (emit-add-rsp-imm32 stack-bytes) 0 7)
             0)
           (ref-set result (vector-push (ref-get result) (vector-get epilogue-pop 0)))
+           (ref-set result (vector-push (ref-get result) (vector-get epilogue-ret 0)))
+           (ref-get result))))))
+
+(defn generate-native-function-x86-64-bundle [ir-func result function-starts function-start]
+  (let [stack-bytes (native-local-stack-bytes ir-func)
+    prologue-push (emit-push-rbp)
+    prologue-mov (emit-mov-rbp-rsp)
+    base-offset (+ function-start 4)
+    body-offset (if (> stack-bytes 0) (+ base-offset 7) base-offset)
+    n (vector-length ir-func)]
+    (do
+      (ref-set result (vector-push (ref-get result) (vector-get prologue-push 0)))
+      (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 0)))
+      (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 1)))
+      (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 2)))
+      (if (> stack-bytes 0)
+        (append-native-bytes-loop result (emit-sub-rsp-imm32 stack-bytes) 0 7)
+        0)
+      (generate-native-instr-bundle-loop-x86 ir-func result function-starts body-offset 0 n)
+      (if (> stack-bytes 0)
+        (append-native-bytes-loop result (emit-add-rsp-imm32 stack-bytes) 0 7)
+        0)
+      (let [epilogue-pop (emit-pop-rbp)
+        epilogue-ret (emit-ret)]
+        (do
+          (ref-set result (vector-push (ref-get result) (vector-get epilogue-pop 0)))
           (ref-set result (vector-push (ref-get result) (vector-get epilogue-ret 0)))
-          (ref-get result))))))
+          0)))))
+
+(defn generate-native-x86-64-bundle-loop [functions result function-starts idx len]
+  (if (>= idx len)
+    0
+    (let [ir-func (vector-get functions idx)
+      function-start (vector-get function-starts idx)]
+      (do
+        (generate-native-function-x86-64-bundle ir-func result function-starts function-start)
+        (generate-native-x86-64-bundle-loop functions result function-starts (+ idx 1) len)))))
+
+(defn generate-native-x86-64-bundle [functions]
+  (let [result (ref-new (vector-new 128))
+    function-starts (collect-function-starts-x86 functions)
+    n (vector-length functions)]
+    (do
+      (generate-native-x86-64-bundle-loop functions result function-starts 0 n)
+      (ref-get result))))
 
 ;; === AArch64 命令エンコーダ ===
 
@@ -377,6 +499,24 @@
 (defn emit-aarch64-ret []
   (let [bytes (vector-new 4)]
     (vector-push (vector-push (vector-push (vector-push bytes 192) 3) 95) 214)))
+
+;; AArch64: stp x29, x30, [sp, #-16]!
+(defn emit-aarch64-save-fp-lr []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 253) 123) 191) 169)))
+
+;; AArch64: ldp x29, x30, [sp], #16
+(defn emit-aarch64-restore-fp-lr []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 253) 123) 193) 168)))
+
+;; AArch64 BL imm26
+(defn emit-aarch64-bl [byte-disp]
+  (let [word-disp (/ byte-disp 4)
+    imm26 (if (< word-disp 0)
+            (+ 67108864 word-disp)
+            word-disp)]
+    (encode-u32-le (+ 2483027968 imm26))))
 
 ;; AArch64 NOP 命令
 ;; エンコーディング: 0xD503201F → [0x1F, 0x20, 0x03, 0xD5]
@@ -492,8 +632,59 @@
                     (if (= opcode 44)
                       ;; drop -> 1 段下の値へ戻す
                       (emit-aarch64-mov-x0-x1)
-                      ;; 未知の opcode: NOP
-                      (emit-aarch64-nop))))))))))))
+                       ;; 未知の opcode: NOP
+                       (emit-aarch64-nop))))))))))))
+
+(defn native-instr-size-aarch64 [opcode operand]
+  (if (= opcode 40)
+    4
+    (vector-length (codegen-ir-instr-aarch64 opcode operand))))
+
+(defn native-function-body-size-aarch64-loop [ir-func idx len total]
+  (if (>= idx len)
+    total
+    (let [instr (vector-get ir-func idx)
+      opcode (vector-get instr 0)
+      operand (vector-get instr 1)
+      next-total (+ total (native-instr-size-aarch64 opcode operand))]
+      (native-function-body-size-aarch64-loop ir-func (+ idx 1) len next-total))))
+
+(defn native-function-size-aarch64 [ir-func]
+  (let [stack-bytes (native-local-stack-bytes ir-func)
+    stack-frame-bytes (if (> stack-bytes 0) 8 0)
+    call-frame-bytes (if (= (native-has-call ir-func) 1) 8 0)
+    body-bytes (native-function-body-size-aarch64-loop ir-func 0 (vector-length ir-func) 0)]
+    (+ (+ (+ 4 stack-frame-bytes) call-frame-bytes) body-bytes)))
+
+(defn collect-function-starts-aarch64-loop [functions idx len starts offset]
+  (if (>= idx len)
+    starts
+    (let [ir-func (vector-get functions idx)
+      next-starts (vector-push starts offset)
+      next-offset (+ offset (native-function-size-aarch64 ir-func))]
+      (collect-function-starts-aarch64-loop functions (+ idx 1) len next-starts next-offset))))
+
+(defn collect-function-starts-aarch64 [functions]
+  (collect-function-starts-aarch64-loop functions 0 (vector-length functions) (vector-new 8) 0))
+
+(defn codegen-ir-instr-bundle-aarch64 [opcode operand current-offset function-starts]
+  (if (= opcode 40)
+    (let [target-offset (vector-get function-starts operand)
+      disp (- target-offset current-offset)]
+      (emit-aarch64-bl disp))
+    (codegen-ir-instr-aarch64 opcode operand)))
+
+(defn generate-native-instr-bundle-loop-aarch64 [ir-func result function-starts current-offset idx len]
+  (if (>= idx len)
+    current-offset
+    (let [instr (vector-get ir-func idx)
+      opcode (vector-get instr 0)
+      operand (vector-get instr 1)
+      native (codegen-ir-instr-bundle-aarch64 opcode operand current-offset function-starts)
+      native-len (vector-length native)]
+      (do
+        (append-native-bytes-loop result native 0 native-len)
+        (generate-native-instr-bundle-loop-aarch64 ir-func result function-starts (+ current-offset native-len) (+ idx 1) len)))))
 
 ;; === AArch64 コード生成 ===
 
@@ -515,8 +706,12 @@
 (defn generate-native-aarch64 [ir-func]
   (let [result (ref-new (vector-new 16))
     stack-bytes (native-local-stack-bytes ir-func)
+    has-call (native-has-call ir-func)
     n (vector-length ir-func)]
     (do
+      (if (= has-call 1)
+        (append-native-bytes-loop result (emit-aarch64-save-fp-lr) 0 4)
+        0)
       (if (> stack-bytes 0)
         (append-native-bytes-loop result (emit-aarch64-sub-sp stack-bytes) 0 4)
         0)
@@ -526,8 +721,50 @@
           (if (> stack-bytes 0)
             (append-native-bytes-loop result (emit-aarch64-add-sp stack-bytes) 0 4)
             0)
+          (if (= has-call 1)
+            (append-native-bytes-loop result (emit-aarch64-restore-fp-lr) 0 4)
+            0)
           (append-native-bytes-loop result ret-bytes 0 4)
           (ref-get result))))))
+
+(defn generate-native-function-aarch64-bundle [ir-func result function-starts function-start]
+  (let [stack-bytes (native-local-stack-bytes ir-func)
+    has-call (native-has-call ir-func)
+    after-call-save (if (= has-call 1) (+ function-start 4) function-start)
+    body-offset (if (> stack-bytes 0) (+ after-call-save 4) after-call-save)
+    n (vector-length ir-func)]
+    (do
+      (if (= has-call 1)
+        (append-native-bytes-loop result (emit-aarch64-save-fp-lr) 0 4)
+        0)
+      (if (> stack-bytes 0)
+        (append-native-bytes-loop result (emit-aarch64-sub-sp stack-bytes) 0 4)
+        0)
+      (generate-native-instr-bundle-loop-aarch64 ir-func result function-starts body-offset 0 n)
+      (if (> stack-bytes 0)
+        (append-native-bytes-loop result (emit-aarch64-add-sp stack-bytes) 0 4)
+        0)
+      (if (= has-call 1)
+        (append-native-bytes-loop result (emit-aarch64-restore-fp-lr) 0 4)
+        0)
+      (append-native-bytes-loop result (emit-aarch64-ret) 0 4))))
+
+(defn generate-native-aarch64-bundle-loop [functions result function-starts idx len]
+  (if (>= idx len)
+    0
+    (let [ir-func (vector-get functions idx)
+      function-start (vector-get function-starts idx)]
+      (do
+        (generate-native-function-aarch64-bundle ir-func result function-starts function-start)
+        (generate-native-aarch64-bundle-loop functions result function-starts (+ idx 1) len)))))
+
+(defn generate-native-aarch64-bundle [functions]
+  (let [result (ref-new (vector-new 128))
+    function-starts (collect-function-starts-aarch64 functions)
+    n (vector-length functions)]
+    (do
+      (generate-native-aarch64-bundle-loop functions result function-starts 0 n)
+      (ref-get result))))
 
 ;; IR 関数をネイティブコードに変換
 ;; ir-func: IR 命令列の Vector [[opcode, operand], ...]
@@ -541,12 +778,21 @@
       ;; x86_64 (arch=1) またはデフォルト
       (generate-native-x86-64 ir-func))))
 
+(defn generate-native-bundle [functions target]
+  (let [arch (target-arch target)]
+    (if (= arch 2)
+      (generate-native-aarch64-bundle functions)
+      (generate-native-x86-64-bundle functions))))
+
 ;; ネイティブコード生成のトップレベル関数
 ;; source-ir: プログラム全体の IR
 ;; target: ターゲット記述子
 ;; 戻り値: ネイティブ機械語バイト列
 (defn emit-native [source-ir target]
   (generate-native source-ir target))
+
+(defn emit-native-bundle [functions target]
+  (generate-native-bundle functions target))
 
 ;; ネイティブコンパイルパイプライン関数
 ;; IR -> ネイティブコード生成 -> バイト列
