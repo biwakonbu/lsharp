@@ -20,11 +20,31 @@ fn instruction_name(instr: &lsharp_ir::Instruction) -> String {
 }
 
 fn supported_native_opcodes_x86_64() -> BTreeSet<&'static str> {
-    BTreeSet::from(["I64Const", "I64Add", "I64Sub", "LocalGet", "LocalSet"])
+    BTreeSet::from([
+        "I64Const",
+        "I64Add",
+        "I64Sub",
+        "I32Const",
+        "I32Add",
+        "I32WrapI64",
+        "I64ExtendI32S",
+        "I64ExtendI32U",
+        "LocalGet",
+        "LocalSet",
+    ])
 }
 
 fn supported_native_opcodes_aarch64() -> BTreeSet<&'static str> {
-    BTreeSet::from(["I64Const", "LocalGet", "LocalSet"])
+    BTreeSet::from([
+        "I64Const",
+        "I32Const",
+        "I32Add",
+        "I32WrapI64",
+        "I64ExtendI32S",
+        "I64ExtendI32U",
+        "LocalGet",
+        "LocalSet",
+    ])
 }
 
 fn collect_native_stage23_gap_report(
@@ -93,7 +113,7 @@ fn write_native_stage23_gap_report(
         std::fs::create_dir_all(parent).map_err(|e| format!("gap report dir 作成失敗: {e}"))?;
     }
     let json = format!(
-        "{{\n  \"entry_path\": \"{}\",\n  \"function_count\": {},\n  \"instruction_count\": {},\n  \"supported_x86_64\": [\"I64Const\", \"I64Add\", \"I64Sub\", \"LocalGet\", \"LocalSet\"],\n  \"supported_aarch64\": [\"I64Const\", \"LocalGet\", \"LocalSet\"],\n  \"unsupported_x86_64\": {},\n  \"unsupported_aarch64\": {},\n  \"opcode_histogram\": {}\n}}\n",
+        "{{\n  \"entry_path\": \"{}\",\n  \"function_count\": {},\n  \"instruction_count\": {},\n  \"supported_x86_64\": [\"I64Const\", \"I64Add\", \"I64Sub\", \"I32Const\", \"I32Add\", \"I32WrapI64\", \"I64ExtendI32S\", \"I64ExtendI32U\", \"LocalGet\", \"LocalSet\"],\n  \"supported_aarch64\": [\"I64Const\", \"I32Const\", \"I32Add\", \"I32WrapI64\", \"I64ExtendI32S\", \"I64ExtendI32U\", \"LocalGet\", \"LocalSet\"],\n  \"unsupported_x86_64\": {},\n  \"unsupported_aarch64\": {},\n  \"opcode_histogram\": {}\n}}\n",
         json_escape(&report.entry_path),
         report.function_count,
         report.instruction_count,
@@ -174,6 +194,26 @@ fn test_e2e_native_actual_stage23_gap_report_for_representative_entry() {
             .iter()
             .any(|name| name == "LocalGet" || name == "LocalSet"),
         "aarch64 gap report から LocalGet/LocalSet は消えているべき: {:?}",
+        report.unsupported_aarch64
+    );
+    assert!(
+        !report.unsupported_x86_64.iter().any(|name| {
+            matches!(
+                name.as_str(),
+                "I32Const" | "I32Add" | "I32WrapI64" | "I64ExtendI32S" | "I64ExtendI32U"
+            )
+        }),
+        "x86_64 gap report から i32 core opcode は消えているべき: {:?}",
+        report.unsupported_x86_64
+    );
+    assert!(
+        !report.unsupported_aarch64.iter().any(|name| {
+            matches!(
+                name.as_str(),
+                "I32Const" | "I32Add" | "I32WrapI64" | "I64ExtendI32S" | "I64ExtendI32U"
+            )
+        }),
+        "aarch64 gap report から i32 core opcode は消えているべき: {:?}",
         report.unsupported_aarch64
     );
 }

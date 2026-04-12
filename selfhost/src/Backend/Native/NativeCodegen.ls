@@ -77,6 +77,42 @@
         137) ;; 0x89
       229))) ;; 0xE5 (rsp -> rbp)
 
+;; x86_64 の MOV rcx, rax
+(defn emit-mov-rcx-rax []
+  (let [bytes (vector-new 3)]
+    (vector-push (vector-push (vector-push bytes 72) 137) 193)))
+
+;; x86_64 の MOV rax, rcx
+(defn emit-mov-rax-rcx []
+  (let [bytes (vector-new 3)]
+    (vector-push (vector-push (vector-push bytes 72) 137) 200)))
+
+;; x86_64 の MOV eax, imm32
+(defn emit-mov-eax-imm32 [value]
+  (let [imm (encode-u32-le value)
+    bytes (vector-new 5)
+    b1 (vector-push bytes 184)
+    b2 (vector-push b1 (vector-get imm 0))
+    b3 (vector-push b2 (vector-get imm 1))
+    b4 (vector-push b3 (vector-get imm 2))
+    b5 (vector-push b4 (vector-get imm 3))]
+    b5))
+
+;; x86_64 の ADD eax, ecx
+(defn emit-add-eax-ecx []
+  (let [bytes (vector-new 2)]
+    (vector-push (vector-push bytes 1) 200)))
+
+;; x86_64 の MOV eax, eax
+(defn emit-mov-eax-eax []
+  (let [bytes (vector-new 2)]
+    (vector-push (vector-push bytes 137) 192)))
+
+;; x86_64 の MOVSXD rax, eax
+(defn emit-movsxd-rax-eax []
+  (let [bytes (vector-new 3)]
+    (vector-push (vector-push (vector-push bytes 72) 99) 192)))
+
 ;; 32bit 値を little-endian 4 bytes に分解する
 (defn encode-u32-le [value]
   (let [byte0 (% value 256)
@@ -187,6 +223,36 @@
     b7 (vector-push b6 (vector-get disp 3))]
     b7))
 
+;; x86_64 の local.get: 直前値を rcx へ逃がしてから rax へ load
+(defn emit-local-get-x86 [offset]
+  (let [load (emit-mov-rax-from-local offset)
+    bytes (vector-new 10)
+    b1 (vector-push bytes 72)
+    b2 (vector-push b1 137)
+    b3 (vector-push b2 193)
+    b4 (vector-push b3 (vector-get load 0))
+    b5 (vector-push b4 (vector-get load 1))
+    b6 (vector-push b5 (vector-get load 2))
+    b7 (vector-push b6 (vector-get load 3))
+    b8 (vector-push b7 (vector-get load 4))
+    b9 (vector-push b8 (vector-get load 5))
+    b10 (vector-push b9 (vector-get load 6))]
+    b10))
+
+;; x86_64 の i32.const: 直前値を rcx へ逃がしてから eax へ即値をロード
+(defn emit-i32-const-x86 [value]
+  (let [mov-imm (emit-mov-eax-imm32 value)
+    bytes (vector-new 8)
+    b1 (vector-push bytes 72)
+    b2 (vector-push b1 137)
+    b3 (vector-push b2 193)
+    b4 (vector-push b3 (vector-get mov-imm 0))
+    b5 (vector-push b4 (vector-get mov-imm 1))
+    b6 (vector-push b5 (vector-get mov-imm 2))
+    b7 (vector-push b6 (vector-get mov-imm 3))
+    b8 (vector-push b7 (vector-get mov-imm 4))]
+    b8))
+
 ;; === IR -> ネイティブ変換 ===
 
 ;; IR opcode をネイティブ命令列に変換 (x86_64)
@@ -195,22 +261,40 @@
   (if (= opcode 1)
     ;; i64.const -> mov rax, imm64
     (emit-mov-imm64 (reg-rax) operand)
-    (if (= opcode 10)
-      ;; local.get -> mov rax, [rbp-offset]
-      (emit-mov-rax-from-local (local-slot-offset operand))
-      (if (= opcode 11)
-        ;; local.set -> mov [rbp-offset], rax
-        (emit-mov-local-from-rax (local-slot-offset operand))
-    (if (= opcode 20)
-      ;; i64.add -> add rax, rcx (簡易版)
-      ;; 0x48 0x01 0xC8
-      (vector-push (vector-push (vector-push (vector-new 3) 72) 1) 200)
-      (if (= opcode 21)
-        ;; i64.sub -> sub rax, rcx
-        ;; 0x48 0x29 0xC8
-        (vector-push (vector-push (vector-push (vector-new 3) 72) 41) 200)
-        ;; 未知の opcode: NOP
-        (vector-push (vector-new 1) 144))))))) ;; 0x90
+    (if (= opcode 3)
+      ;; i32.const -> mov eax, imm32
+      (emit-i32-const-x86 operand)
+      (if (= opcode 10)
+        ;; local.get -> rcx へ退避してから mov rax, [rbp-offset]
+        (emit-local-get-x86 (local-slot-offset operand))
+        (if (= opcode 11)
+          ;; local.set -> mov [rbp-offset], rax
+          (emit-mov-local-from-rax (local-slot-offset operand))
+          (if (= opcode 20)
+            ;; i64.add -> add rax, rcx (簡易版)
+            ;; 0x48 0x01 0xC8
+            (vector-push (vector-push (vector-push (vector-new 3) 72) 1) 200)
+            (if (= opcode 21)
+              ;; i64.sub -> sub rax, rcx
+              ;; 0x48 0x29 0xC8
+              (vector-push (vector-push (vector-push (vector-new 3) 72) 41) 200)
+              (if (= opcode 24)
+                ;; i32.add -> add eax, ecx
+                (emit-add-eax-ecx)
+                (if (= opcode 36)
+                  ;; i64.extend_i32_s -> movsxd rax, eax
+                  (emit-movsxd-rax-eax)
+                  (if (= opcode 37)
+                    ;; i64.extend_i32_u -> mov eax, eax
+                    (emit-mov-eax-eax)
+                    (if (= opcode 38)
+                      ;; i32.wrap_i64 -> mov eax, eax
+                      (emit-mov-eax-eax)
+                      (if (= opcode 44)
+                        ;; drop -> 1 段下の値へ戻す
+                        (emit-mov-rax-rcx)
+                        ;; 未知の opcode: NOP
+                        (vector-push (vector-new 1) 144))))))))))))) ;; 0x90
 
 ;; === コード生成メイン関数 ===
 
@@ -292,6 +376,31 @@
   (let [bytes (vector-new 4)]
     (vector-push (vector-push (vector-push (vector-push bytes 31) 32) 3) 213)))
 
+;; AArch64 MOV x1, x0
+(defn emit-aarch64-mov-x1-x0 []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 225) 3) 0) 170)))
+
+;; AArch64 MOV x0, x1
+(defn emit-aarch64-mov-x0-x1 []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 224) 3) 1) 170)))
+
+;; AArch64 ADD w0, w1, w0
+(defn emit-aarch64-add-w0-w1-w0 []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 32) 0) 0) 11)))
+
+;; AArch64 MOV w0, w0
+(defn emit-aarch64-mov-w0-w0 []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 224) 3) 0) 42)))
+
+;; AArch64 SXTW x0, w0
+(defn emit-aarch64-sxtw-x0-w0 []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 0) 124) 64) 147)))
+
 ;; AArch64 SUB sp, sp, #imm
 (defn emit-aarch64-sub-sp [imm]
   (encode-u32-le (+ (+ 3506438144 (* imm 1024)) 1023)))
@@ -310,19 +419,65 @@
   (let [scaled (/ offset 8)]
     (encode-u32-le (+ (+ 4181721088 (* scaled 1024)) 992))))
 
+;; AArch64 の local.get: 直前値を x1 へ退避してから x0 へ load
+(defn emit-local-get-aarch64 [offset]
+  (let [load (emit-aarch64-ldr-x0-sp offset)
+    bytes (vector-new 8)
+    b1 (vector-push bytes 225)
+    b2 (vector-push b1 3)
+    b3 (vector-push b2 0)
+    b4 (vector-push b3 170)
+    b5 (vector-push b4 (vector-get load 0))
+    b6 (vector-push b5 (vector-get load 1))
+    b7 (vector-push b6 (vector-get load 2))
+    b8 (vector-push b7 (vector-get load 3))]
+    b8))
+
+;; AArch64 の i32.const: 直前値を x1 へ退避してから w0 へ即値をロード
+(defn emit-i32-const-aarch64 [value]
+  (let [movz (emit-aarch64-movz-w0 value)
+    bytes (vector-new 8)
+    b1 (vector-push bytes 225)
+    b2 (vector-push b1 3)
+    b3 (vector-push b2 0)
+    b4 (vector-push b3 170)
+    b5 (vector-push b4 (vector-get movz 0))
+    b6 (vector-push b5 (vector-get movz 1))
+    b7 (vector-push b6 (vector-get movz 2))
+    b8 (vector-push b7 (vector-get movz 3))]
+    b8))
+
 ;; IR opcode を AArch64 命令列に変換
 (defn codegen-ir-instr-aarch64 [opcode operand]
   (if (= opcode 1)
     ;; i64.const -> MOVZ W0, #operand
     (emit-aarch64-movz-w0 operand)
-    (if (= opcode 10)
-      ;; local.get -> LDR x0, [sp, #offset]
-      (emit-aarch64-ldr-x0-sp (local-slot-offset operand))
-      (if (= opcode 11)
-        ;; local.set -> STR x0, [sp, #offset]
-        (emit-aarch64-str-x0-sp (local-slot-offset operand))
-    ;; 未知の opcode: NOP
-    (emit-aarch64-nop)))))
+    (if (= opcode 3)
+      ;; i32.const -> MOV x1, x0; MOVZ W0, #operand
+      (emit-i32-const-aarch64 operand)
+      (if (= opcode 10)
+        ;; local.get -> MOV x1, x0; LDR x0, [sp, #offset]
+        (emit-local-get-aarch64 (local-slot-offset operand))
+        (if (= opcode 11)
+          ;; local.set -> STR x0, [sp, #offset]
+          (emit-aarch64-str-x0-sp (local-slot-offset operand))
+          (if (= opcode 24)
+            ;; i32.add -> add w0, w1, w0
+            (emit-aarch64-add-w0-w1-w0)
+            (if (= opcode 36)
+              ;; i64.extend_i32_s -> sxtw x0, w0
+              (emit-aarch64-sxtw-x0-w0)
+              (if (= opcode 37)
+                ;; i64.extend_i32_u -> mov w0, w0
+                (emit-aarch64-mov-w0-w0)
+                (if (= opcode 38)
+                  ;; i32.wrap_i64 -> mov w0, w0
+                  (emit-aarch64-mov-w0-w0)
+                  (if (= opcode 44)
+                    ;; drop -> 1 段下の値へ戻す
+                    (emit-aarch64-mov-x0-x1)
+                    ;; 未知の opcode: NOP
+                    (emit-aarch64-nop)))))))))))
 
 ;; === AArch64 コード生成 ===
 

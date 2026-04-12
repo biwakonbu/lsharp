@@ -10,6 +10,7 @@
 ;; 定数
 (defn ir-i64-const [] 1)
 (defn ir-f64-const [] 2)
+(defn ir-i32-const [] 3)
 
 ;; ローカル変数
 (defn ir-local-get [] 10)
@@ -20,6 +21,7 @@
 (defn ir-i64-sub [] 21)
 (defn ir-i64-mul [] 22)
 (defn ir-i64-div [] 23)
+(defn ir-i32-add [] 24)
 
 ;; 比較
 (defn ir-i64-eq [] 30)
@@ -28,6 +30,9 @@
 (defn ir-i64-gt [] 33)
 (defn ir-i64-le [] 34)
 (defn ir-i64-ge [] 35)
+(defn ir-i64-extend-i32-s [] 36)
+(defn ir-i64-extend-i32-u [] 37)
+(defn ir-i32-wrap-i64 [] 38)
 
 ;; 制御フロー
 (defn ir-call [] 40)
@@ -70,9 +75,29 @@
 (defn make-i64-const [value]
   (make-instr 1 value))
 
+;; 32bit 定数ロード
+(defn make-i32-const [value]
+  (make-instr 3 value))
+
 ;; ローカル変数取得
 (defn make-local-get [idx]
   (make-instr 10 idx))
+
+;; 32bit 加算
+(defn make-i32-add []
+  (make-instr 24 0))
+
+;; 64bit -> 32bit truncation
+(defn make-i32-wrap-i64 []
+  (make-instr 38 0))
+
+;; 32bit -> 64bit sign extension
+(defn make-i64-extend-i32-s []
+  (make-instr 36 0))
+
+;; 32bit -> 64bit zero extension
+(defn make-i64-extend-i32-u []
+  (make-instr 37 0))
 
 ;; 関数呼び出し
 (defn make-call [func-idx]
