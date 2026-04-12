@@ -87,6 +87,11 @@
   (let [bytes (vector-new 3)]
     (vector-push (vector-push (vector-push bytes 72) 137) 200)))
 
+;; x86_64 の MOV rdi, rax
+(defn emit-mov-rdi-rax []
+  (let [bytes (vector-new 3)]
+    (vector-push (vector-push (vector-push bytes 72) 137) 199)))
+
 ;; x86_64 の MOV eax, imm32
 (defn emit-mov-eax-imm32 [value]
   (let [imm (encode-u32-le value)
@@ -185,13 +190,25 @@
       next-state (update-max-local-index opcode operand state)]
       (find-max-local-index-loop ir-func (+ idx 1) len next-state))))
 
-(defn native-local-stack-bytes [ir-func]
+(defn native-slot-count-from-ir [ir-func]
   (let [state (find-max-local-index-loop ir-func 0 (vector-length ir-func) (make-local-scan-state 0 0))
     found (local-scan-found state)
     max-local (local-scan-max state)]
     (if (= found 0)
       0
-      (align-16 (* (+ max-local 1) 8)))))
+      (+ max-local 1))))
+
+(defn native-local-stack-bytes-with-min-slots [ir-func min-slot-count]
+  (let [slot-count-from-ir (native-slot-count-from-ir ir-func)
+    slot-count (if (> min-slot-count slot-count-from-ir)
+                 min-slot-count
+                 slot-count-from-ir)]
+    (if (= slot-count 0)
+      0
+      (align-16 (* slot-count 8)))))
+
+(defn native-local-stack-bytes [ir-func]
+  (native-local-stack-bytes-with-min-slots ir-func 0))
 
 (defn find-call-loop [ir-func idx len]
   (if (>= idx len)
@@ -204,6 +221,23 @@
 
 (defn native-has-call [ir-func]
   (find-call-loop ir-func 0 (vector-length ir-func)))
+
+;; function meta: [param-count, local-count, ir]
+(defn make-native-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn native-function-param-count [func-meta]
+  (vector-get func-meta 0))
+
+(defn native-function-local-count [func-meta]
+  (vector-get func-meta 1))
+
+(defn native-function-ir [func-meta]
+  (vector-get func-meta 2))
 
 ;; x86_64 の SUB rsp, imm32
 (defn emit-sub-rsp-imm32 [value]
@@ -238,6 +272,19 @@
     b1 (vector-push bytes 72)
     b2 (vector-push b1 137)
     b3 (vector-push b2 133)
+    b4 (vector-push b3 (vector-get disp 0))
+    b5 (vector-push b4 (vector-get disp 1))
+    b6 (vector-push b5 (vector-get disp 2))
+     b7 (vector-push b6 (vector-get disp 3))]
+     b7))
+
+;; x86_64 の MOV [rbp-offset], rdi
+(defn emit-mov-local-from-rdi [offset]
+  (let [disp (encode-u32-le (- 4294967296 offset))
+    bytes (vector-new 7)
+    b1 (vector-push bytes 72)
+    b2 (vector-push b1 137)
+    b3 (vector-push b2 189)
     b4 (vector-push b3 (vector-get disp 0))
     b5 (vector-push b4 (vector-get disp 1))
     b6 (vector-push b5 (vector-get disp 2))
@@ -333,55 +380,79 @@
                           ;; 未知の opcode: NOP
                           (vector-push (vector-new 1) 144)))))))))))))) ;; 0x90
 
-(defn native-instr-size-x86 [opcode operand]
+(defn native-instr-size-x86 [opcode operand function-metas]
   (if (= opcode 40)
-    5
+    (let [target-meta (vector-get function-metas operand)
+      target-param-count (native-function-param-count target-meta)]
+      (if (= target-param-count 1)
+        8
+        5))
     (vector-length (codegen-ir-instr opcode operand))))
 
-(defn native-function-body-size-x86-loop [ir-func idx len total]
+(defn native-function-body-size-x86-loop [ir-func function-metas idx len total]
   (if (>= idx len)
     total
     (let [instr (vector-get ir-func idx)
       opcode (vector-get instr 0)
       operand (vector-get instr 1)
-      next-total (+ total (native-instr-size-x86 opcode operand))]
-      (native-function-body-size-x86-loop ir-func (+ idx 1) len next-total))))
+      next-total (+ total (native-instr-size-x86 opcode operand function-metas))]
+      (native-function-body-size-x86-loop ir-func function-metas (+ idx 1) len next-total))))
 
-(defn native-function-size-x86 [ir-func]
-  (let [stack-bytes (native-local-stack-bytes ir-func)
+(defn native-function-size-x86 [func-meta function-metas]
+  (let [param-count (native-function-param-count func-meta)
+    local-count (native-function-local-count func-meta)
+    ir-func (native-function-ir func-meta)
+    stack-bytes (native-local-stack-bytes-with-min-slots ir-func (+ param-count local-count))
     frame-bytes (if (> stack-bytes 0) 14 0)
-    body-bytes (native-function-body-size-x86-loop ir-func 0 (vector-length ir-func) 0)]
-    (+ (+ 6 frame-bytes) body-bytes)))
+    param-spill-bytes (if (= param-count 1) 7 0)
+    body-bytes (native-function-body-size-x86-loop ir-func function-metas 0 (vector-length ir-func) 0)]
+    (+ (+ (+ 6 frame-bytes) param-spill-bytes) body-bytes)))
 
 (defn collect-function-starts-x86-loop [functions idx len starts offset]
   (if (>= idx len)
     starts
-    (let [ir-func (vector-get functions idx)
+    (let [func-meta (vector-get functions idx)
       next-starts (vector-push starts offset)
-      next-offset (+ offset (native-function-size-x86 ir-func))]
+      next-offset (+ offset (native-function-size-x86 func-meta functions))]
       (collect-function-starts-x86-loop functions (+ idx 1) len next-starts next-offset))))
 
 (defn collect-function-starts-x86 [functions]
   (collect-function-starts-x86-loop functions 0 (vector-length functions) (vector-new 8) 0))
 
-(defn codegen-ir-instr-bundle-x86 [opcode operand current-offset function-starts]
+(defn codegen-ir-instr-bundle-x86 [opcode operand current-offset function-starts function-metas]
   (if (= opcode 40)
     (let [target-offset (vector-get function-starts operand)
-      rel (- target-offset (+ current-offset 5))]
-      (emit-call-rel32 rel))
+      target-meta (vector-get function-metas operand)
+      target-param-count (native-function-param-count target-meta)
+      rel (if (= target-param-count 1)
+            (- target-offset (+ current-offset 8))
+            (- target-offset (+ current-offset 5)))]
+      (if (= target-param-count 1)
+        (let [call-bytes (emit-call-rel32 rel)
+          bytes (vector-new 8)
+          b1 (vector-push bytes 72)
+          b2 (vector-push b1 137)
+          b3 (vector-push b2 199)
+          b4 (vector-push b3 (vector-get call-bytes 0))
+          b5 (vector-push b4 (vector-get call-bytes 1))
+          b6 (vector-push b5 (vector-get call-bytes 2))
+          b7 (vector-push b6 (vector-get call-bytes 3))
+          b8 (vector-push b7 (vector-get call-bytes 4))]
+          b8)
+        (emit-call-rel32 rel)))
     (codegen-ir-instr opcode operand)))
 
-(defn generate-native-instr-bundle-loop-x86 [ir-func result function-starts current-offset idx len]
+(defn generate-native-instr-bundle-loop-x86 [ir-func result function-starts function-metas current-offset idx len]
   (if (>= idx len)
     current-offset
     (let [instr (vector-get ir-func idx)
       opcode (vector-get instr 0)
       operand (vector-get instr 1)
-      native (codegen-ir-instr-bundle-x86 opcode operand current-offset function-starts)
+      native (codegen-ir-instr-bundle-x86 opcode operand current-offset function-starts function-metas)
       native-len (vector-length native)]
       (do
         (append-native-bytes-loop result native 0 native-len)
-        (generate-native-instr-bundle-loop-x86 ir-func result function-starts (+ current-offset native-len) (+ idx 1) len)))))
+        (generate-native-instr-bundle-loop-x86 ir-func result function-starts function-metas (+ current-offset native-len) (+ idx 1) len)))))
 
 ;; === コード生成メイン関数 ===
 
@@ -437,12 +508,16 @@
            (ref-set result (vector-push (ref-get result) (vector-get epilogue-ret 0)))
            (ref-get result))))))
 
-(defn generate-native-function-x86-64-bundle [ir-func result function-starts function-start]
-  (let [stack-bytes (native-local-stack-bytes ir-func)
+(defn generate-native-function-x86-64-bundle [func-meta result function-starts function-metas function-start]
+  (let [param-count (native-function-param-count func-meta)
+    local-count (native-function-local-count func-meta)
+    ir-func (native-function-ir func-meta)
+    stack-bytes (native-local-stack-bytes-with-min-slots ir-func (+ param-count local-count))
     prologue-push (emit-push-rbp)
     prologue-mov (emit-mov-rbp-rsp)
     base-offset (+ function-start 4)
-    body-offset (if (> stack-bytes 0) (+ base-offset 7) base-offset)
+    after-stack-offset (if (> stack-bytes 0) (+ base-offset 7) base-offset)
+    body-offset (if (= param-count 1) (+ after-stack-offset 7) after-stack-offset)
     n (vector-length ir-func)]
     (do
       (ref-set result (vector-push (ref-get result) (vector-get prologue-push 0)))
@@ -452,7 +527,10 @@
       (if (> stack-bytes 0)
         (append-native-bytes-loop result (emit-sub-rsp-imm32 stack-bytes) 0 7)
         0)
-      (generate-native-instr-bundle-loop-x86 ir-func result function-starts body-offset 0 n)
+      (if (= param-count 1)
+        (append-native-bytes-loop result (emit-mov-local-from-rdi (local-slot-offset 0)) 0 7)
+        0)
+      (generate-native-instr-bundle-loop-x86 ir-func result function-starts function-metas body-offset 0 n)
       (if (> stack-bytes 0)
         (append-native-bytes-loop result (emit-add-rsp-imm32 stack-bytes) 0 7)
         0)
@@ -466,10 +544,10 @@
 (defn generate-native-x86-64-bundle-loop [functions result function-starts idx len]
   (if (>= idx len)
     0
-    (let [ir-func (vector-get functions idx)
+    (let [func-meta (vector-get functions idx)
       function-start (vector-get function-starts idx)]
       (do
-        (generate-native-function-x86-64-bundle ir-func result function-starts function-start)
+        (generate-native-function-x86-64-bundle func-meta result function-starts functions function-start)
         (generate-native-x86-64-bundle-loop functions result function-starts (+ idx 1) len)))))
 
 (defn generate-native-x86-64-bundle [functions]
@@ -649,19 +727,23 @@
       next-total (+ total (native-instr-size-aarch64 opcode operand))]
       (native-function-body-size-aarch64-loop ir-func (+ idx 1) len next-total))))
 
-(defn native-function-size-aarch64 [ir-func]
-  (let [stack-bytes (native-local-stack-bytes ir-func)
+(defn native-function-size-aarch64 [func-meta]
+  (let [param-count (native-function-param-count func-meta)
+    local-count (native-function-local-count func-meta)
+    ir-func (native-function-ir func-meta)
+    stack-bytes (native-local-stack-bytes-with-min-slots ir-func (+ param-count local-count))
     stack-frame-bytes (if (> stack-bytes 0) 8 0)
     call-frame-bytes (if (= (native-has-call ir-func) 1) 8 0)
+    param-spill-bytes (if (= param-count 1) 4 0)
     body-bytes (native-function-body-size-aarch64-loop ir-func 0 (vector-length ir-func) 0)]
-    (+ (+ (+ 4 stack-frame-bytes) call-frame-bytes) body-bytes)))
+    (+ (+ (+ (+ 4 stack-frame-bytes) call-frame-bytes) param-spill-bytes) body-bytes)))
 
 (defn collect-function-starts-aarch64-loop [functions idx len starts offset]
   (if (>= idx len)
     starts
-    (let [ir-func (vector-get functions idx)
+    (let [func-meta (vector-get functions idx)
       next-starts (vector-push starts offset)
-      next-offset (+ offset (native-function-size-aarch64 ir-func))]
+      next-offset (+ offset (native-function-size-aarch64 func-meta))]
       (collect-function-starts-aarch64-loop functions (+ idx 1) len next-starts next-offset))))
 
 (defn collect-function-starts-aarch64 [functions]
@@ -727,11 +809,15 @@
           (append-native-bytes-loop result ret-bytes 0 4)
           (ref-get result))))))
 
-(defn generate-native-function-aarch64-bundle [ir-func result function-starts function-start]
-  (let [stack-bytes (native-local-stack-bytes ir-func)
+(defn generate-native-function-aarch64-bundle [func-meta result function-starts function-start]
+  (let [param-count (native-function-param-count func-meta)
+    local-count (native-function-local-count func-meta)
+    ir-func (native-function-ir func-meta)
+    stack-bytes (native-local-stack-bytes-with-min-slots ir-func (+ param-count local-count))
     has-call (native-has-call ir-func)
     after-call-save (if (= has-call 1) (+ function-start 4) function-start)
-    body-offset (if (> stack-bytes 0) (+ after-call-save 4) after-call-save)
+    after-stack-offset (if (> stack-bytes 0) (+ after-call-save 4) after-call-save)
+    body-offset (if (= param-count 1) (+ after-stack-offset 4) after-stack-offset)
     n (vector-length ir-func)]
     (do
       (if (= has-call 1)
@@ -739,6 +825,9 @@
         0)
       (if (> stack-bytes 0)
         (append-native-bytes-loop result (emit-aarch64-sub-sp stack-bytes) 0 4)
+        0)
+      (if (= param-count 1)
+        (append-native-bytes-loop result (emit-aarch64-str-x0-sp (local-slot-offset 0)) 0 4)
         0)
       (generate-native-instr-bundle-loop-aarch64 ir-func result function-starts body-offset 0 n)
       (if (> stack-bytes 0)
@@ -752,10 +841,10 @@
 (defn generate-native-aarch64-bundle-loop [functions result function-starts idx len]
   (if (>= idx len)
     0
-    (let [ir-func (vector-get functions idx)
+    (let [func-meta (vector-get functions idx)
       function-start (vector-get function-starts idx)]
       (do
-        (generate-native-function-aarch64-bundle ir-func result function-starts function-start)
+        (generate-native-function-aarch64-bundle func-meta result function-starts function-start)
         (generate-native-aarch64-bundle-loop functions result function-starts (+ idx 1) len)))))
 
 (defn generate-native-aarch64-bundle [functions]
@@ -778,7 +867,17 @@
       ;; x86_64 (arch=1) またはデフォルト
       (generate-native-x86-64 ir-func))))
 
-(defn generate-native-bundle [functions target]
+(defn wrap-ir-functions-as-meta-loop [functions idx len result]
+  (if (>= idx len)
+    result
+    (let [ir-func (vector-get functions idx)
+      next-result (vector-push result (make-native-function-meta 0 0 ir-func))]
+      (wrap-ir-functions-as-meta-loop functions (+ idx 1) len next-result))))
+
+(defn wrap-ir-functions-as-meta [functions]
+  (wrap-ir-functions-as-meta-loop functions 0 (vector-length functions) (vector-new 8)))
+
+(defn generate-native-function-meta-bundle [functions target]
   (let [arch (target-arch target)]
     (if (= arch 2)
       (generate-native-aarch64-bundle functions)
@@ -792,7 +891,10 @@
   (generate-native source-ir target))
 
 (defn emit-native-bundle [functions target]
-  (generate-native-bundle functions target))
+  (generate-native-function-meta-bundle (wrap-ir-functions-as-meta functions) target))
+
+(defn emit-native-function-meta-bundle [functions target]
+  (generate-native-function-meta-bundle functions target))
 
 ;; ネイティブコンパイルパイプライン関数
 ;; IR -> ネイティブコード生成 -> バイト列

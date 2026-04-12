@@ -914,6 +914,43 @@ fn host_target_direct_call_bundle_code_bytes() -> Vec<u8> {
     )
 }
 
+fn host_target_direct_call_arg_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [caller-ir (vector-push
+                    (vector-push (vector-new 2) (make-i64-const 42))
+                    (make-call 1))
+        callee-ir (vector-push (vector-new 1) (make-local-get 0))
+        caller (make-function-meta 0 0 caller-ir)
+        callee (make-function-meta 1 0 callee-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) callee)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 /// ネイティブバイト列を `.s` アセンブリシムでラップし、
 /// clang (arm64) でリンクして実行する。戻り値は exit code。
 fn link_and_run_native_host_binary(code: &[u8]) -> Result<i32, String> {
@@ -1227,6 +1264,34 @@ fn test_e2e_native_host_binary_direct_call_bundle_link_and_execute() {
         exit_code,
         42,
         "host binary direct call bundle: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01g: direct call bundle が 1 引数を callee local slot へ渡して実行できること。
+#[test]
+fn test_e2e_native_host_binary_direct_call_arg_bundle_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_direct_call_arg_bundle_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: direct call arg bundle を含む host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("direct call arg bundle host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "host binary direct call arg bundle: exit code 42 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),
