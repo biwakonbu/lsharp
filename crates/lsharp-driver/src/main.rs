@@ -894,8 +894,9 @@ fn maybe_delegate_to_external_compiler() -> miette::Result<()> {
             );
             let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
             let output =
-                lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args_inherit_stdin_capture(
+                lsharp_wasm::wasi_runner::run_wasm_with_mode_and_args_inherit_stdin_capture(
                     &wasm_bytes,
+                    lsharp_wasm::wasi_runner::WasiMode::Preview1,
                     Some(&current_dir),
                     &arg_refs,
                 )
@@ -927,17 +928,19 @@ fn maybe_delegate_to_external_compiler() -> miette::Result<()> {
                 std::env::args().skip(1).collect(),
             );
             let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            let output = lsharp_wasm::wasi_runner::run_wasm_component_with_dir_and_args_inherit_stdin_capture(
-                &component_bytes,
-                Some(&current_dir),
-                &arg_refs,
-            )
-            .map_err(|e| {
-                miette::miette!(
-                    "LSHARP_PATH 先の component artifact 実行に失敗しました ({}): {e}",
-                    delegate_path.display()
+            let output =
+                lsharp_wasm::wasi_runner::run_wasm_with_mode_and_args_inherit_stdin_capture(
+                    &component_bytes,
+                    lsharp_wasm::wasi_runner::WasiMode::Preview2,
+                    Some(&current_dir),
+                    &arg_refs,
                 )
-            })?;
+                .map_err(|e| {
+                    miette::miette!(
+                        "LSHARP_PATH 先の component artifact 実行に失敗しました ({}): {e}",
+                        delegate_path.display()
+                    )
+                })?;
             print!("{}", output.stdout);
             std::process::exit(output.exit_code);
         }

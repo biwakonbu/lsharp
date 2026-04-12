@@ -20,6 +20,65 @@ pub enum WasiMode {
     Preview2,
 }
 
+/// 明示した WASI mode で Wasm/Component を実行し、stdout を返す
+pub fn run_wasm_with_mode(wasm_bytes: &[u8], mode: WasiMode) -> Result<String, String> {
+    run_wasm_with_mode_and_dir_args_and_stdin(wasm_bytes, mode, None, &[], "")
+}
+
+/// 明示した WASI mode で Wasm/Component を実行する (ファイルシステム・argv・stdin 付き)
+pub fn run_wasm_with_mode_and_dir_args_and_stdin(
+    wasm_bytes: &[u8],
+    mode: WasiMode,
+    dir: Option<&std::path::Path>,
+    args: &[&str],
+    stdin: &str,
+) -> Result<String, String> {
+    let output = run_wasm_with_mode_capture(wasm_bytes, mode, dir, args, stdin)?;
+    if output.exit_code == 0 {
+        Ok(output.stdout)
+    } else {
+        Err(format!(
+            "WASI {:?} 実行に失敗: exit code {}",
+            mode, output.exit_code
+        ))
+    }
+}
+
+/// 明示した WASI mode で Wasm/Component を実行し、stdout と exit code を返す
+pub fn run_wasm_with_mode_capture(
+    wasm_bytes: &[u8],
+    mode: WasiMode,
+    dir: Option<&std::path::Path>,
+    args: &[&str],
+    stdin: &str,
+) -> Result<ExecutionOutput, String> {
+    match mode {
+        WasiMode::Preview1 => {
+            run_wasm_wasi_with_dir_args_and_stdin_capture(wasm_bytes, dir, args, stdin)
+        }
+        WasiMode::Preview2 => {
+            run_wasm_component_with_dir_args_and_stdin_capture(wasm_bytes, dir, args, stdin)
+        }
+    }
+}
+
+/// 明示した WASI mode で Wasm/Component を実行し、親 stdin を継承した stdout/exit code を返す
+pub fn run_wasm_with_mode_and_args_inherit_stdin_capture(
+    wasm_bytes: &[u8],
+    mode: WasiMode,
+    dir: Option<&std::path::Path>,
+    args: &[&str],
+) -> Result<ExecutionOutput, String> {
+    match mode {
+        WasiMode::Preview1 => {
+            run_wasm_wasi_with_dir_and_args_inherit_stdin_capture(wasm_bytes, dir, args)
+        }
+        WasiMode::Preview2 => {
+            run_wasm_component_with_dir_and_args_inherit_stdin_capture(wasm_bytes, dir, args)
+        }
+    }
+}
+
 /// Wasm/Component 実行結果
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutionOutput {
@@ -437,6 +496,15 @@ mod tests {
         crate::wasi::emit_wasm_wasi(&module).unwrap()
     }
 
+    fn compile_preview2(source: &str) -> Vec<u8> {
+        let program = lsharp_syntax::parse(source).unwrap();
+        let mut infer = Infer::new();
+        let type_results = infer.infer_program(&program).unwrap();
+        let mut lower = Lower::new();
+        let module = lower.lower_program(&program, &type_results).unwrap();
+        crate::wasi::emit_wasm_wasi_p2(&module).unwrap()
+    }
+
     #[test]
     fn test_run_wasm_wasi_invalid_bytes() {
         // 不正な Wasm バイナリでエラーが返ること
@@ -667,6 +735,53 @@ mod tests {
         let cloned = mode;
         assert_eq!(mode, copied);
         assert_eq!(mode, cloned);
+    }
+
+    #[test]
+    fn test_run_wasm_with_mode_dispatches_preview1_core_module() {
+        let wasm_bytes = compile_preview1(r#"(defn main [] (print 42))"#);
+
+        let result = run_wasm_with_mode(&wasm_bytes, WasiMode::Preview1);
+
+        assert!(
+            result.is_ok(),
+            "preview1 dispatch should succeed: {result:?}"
+        );
+        assert_eq!(result.unwrap().trim(), "42");
+    }
+
+    #[test]
+    fn test_run_wasm_with_mode_dispatches_preview2_component() {
+        let component_bytes = compile_preview2(r#"(defn main [] (print 42))"#);
+
+        let result = run_wasm_with_mode(&component_bytes, WasiMode::Preview2);
+
+        assert!(
+            result.is_ok(),
+            "preview2 dispatch should succeed: {result:?}"
+        );
+        assert_eq!(result.unwrap().trim(), "42");
+    }
+
+    #[test]
+    fn test_run_wasm_with_mode_capture_preserves_preview2_stdin_and_stdout() {
+        let component_bytes = compile_preview2("(defn main [] (do (print-string (read-stdin)) 0))");
+
+        let result = run_wasm_with_mode_capture(
+            &component_bytes,
+            WasiMode::Preview2,
+            None,
+            &[],
+            "preview2-stdin",
+        );
+
+        assert!(
+            result.is_ok(),
+            "preview2 capture helper should preserve stdin/stdout: {result:?}"
+        );
+        let output = result.unwrap();
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.stdout, "preview2-stdin");
     }
 
     #[test]
