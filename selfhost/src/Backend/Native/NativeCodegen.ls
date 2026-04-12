@@ -92,6 +92,16 @@
   (let [bytes (vector-new 3)]
     (vector-push (vector-push (vector-push bytes 72) 137) 199)))
 
+;; x86_64 の MOV rsi, rax
+(defn emit-mov-rsi-rax []
+  (let [bytes (vector-new 3)]
+    (vector-push (vector-push (vector-push bytes 72) 137) 198)))
+
+;; x86_64 の MOV rdi, rcx
+(defn emit-mov-rdi-rcx []
+  (let [bytes (vector-new 3)]
+    (vector-push (vector-push (vector-push bytes 72) 137) 207)))
+
 ;; x86_64 の MOV eax, imm32
 (defn emit-mov-eax-imm32 [value]
   (let [imm (encode-u32-le value)
@@ -291,6 +301,19 @@
     b7 (vector-push b6 (vector-get disp 3))]
     b7))
 
+;; x86_64 の MOV [rbp-offset], rsi
+(defn emit-mov-local-from-rsi [offset]
+  (let [disp (encode-u32-le (- 4294967296 offset))
+    bytes (vector-new 7)
+    b1 (vector-push bytes 72)
+    b2 (vector-push b1 137)
+    b3 (vector-push b2 181)
+    b4 (vector-push b3 (vector-get disp 0))
+    b5 (vector-push b4 (vector-get disp 1))
+    b6 (vector-push b5 (vector-get disp 2))
+    b7 (vector-push b6 (vector-get disp 3))]
+    b7))
+
 ;; x86_64 の MOV rax, [rbp-offset]
 (defn emit-mov-rax-from-local [offset]
   (let [disp (encode-u32-le (- 4294967296 offset))
@@ -384,9 +407,11 @@
   (if (= opcode 40)
     (let [target-meta (vector-get function-metas operand)
       target-param-count (native-function-param-count target-meta)]
-      (if (= target-param-count 1)
+      (if (= target-param-count 2)
+        11
+        (if (= target-param-count 1)
         8
-        5))
+        5)))
     (vector-length (codegen-ir-instr opcode operand))))
 
 (defn native-function-body-size-x86-loop [ir-func function-metas idx len total]
@@ -404,7 +429,9 @@
     ir-func (native-function-ir func-meta)
     stack-bytes (native-local-stack-bytes-with-min-slots ir-func (+ param-count local-count))
     frame-bytes (if (> stack-bytes 0) 14 0)
-    param-spill-bytes (if (= param-count 1) 7 0)
+    param-spill-bytes (if (= param-count 2)
+                        14
+                        (if (= param-count 1) 7 0))
     body-bytes (native-function-body-size-x86-loop ir-func function-metas 0 (vector-length ir-func) 0)]
     (+ (+ (+ 6 frame-bytes) param-spill-bytes) body-bytes)))
 
@@ -424,10 +451,27 @@
     (let [target-offset (vector-get function-starts operand)
       target-meta (vector-get function-metas operand)
       target-param-count (native-function-param-count target-meta)
-      rel (if (= target-param-count 1)
+      rel (if (= target-param-count 2)
+            (- target-offset (+ current-offset 11))
+            (if (= target-param-count 1)
             (- target-offset (+ current-offset 8))
-            (- target-offset (+ current-offset 5)))]
-      (if (= target-param-count 1)
+            (- target-offset (+ current-offset 5))))]
+      (if (= target-param-count 2)
+        (let [call-bytes (emit-call-rel32 rel)
+          bytes (vector-new 11)
+          b1 (vector-push bytes 72)
+          b2 (vector-push b1 137)
+          b3 (vector-push b2 198)
+          b4 (vector-push b3 72)
+          b5 (vector-push b4 137)
+          b6 (vector-push b5 207)
+          b7 (vector-push b6 (vector-get call-bytes 0))
+          b8 (vector-push b7 (vector-get call-bytes 1))
+          b9 (vector-push b8 (vector-get call-bytes 2))
+          b10 (vector-push b9 (vector-get call-bytes 3))
+          b11 (vector-push b10 (vector-get call-bytes 4))]
+          b11)
+        (if (= target-param-count 1)
         (let [call-bytes (emit-call-rel32 rel)
           bytes (vector-new 8)
           b1 (vector-push bytes 72)
@@ -439,7 +483,7 @@
           b7 (vector-push b6 (vector-get call-bytes 3))
           b8 (vector-push b7 (vector-get call-bytes 4))]
           b8)
-        (emit-call-rel32 rel)))
+        (emit-call-rel32 rel))))
     (codegen-ir-instr opcode operand)))
 
 (defn generate-native-instr-bundle-loop-x86 [ir-func result function-starts function-metas current-offset idx len]
@@ -517,7 +561,9 @@
     prologue-mov (emit-mov-rbp-rsp)
     base-offset (+ function-start 4)
     after-stack-offset (if (> stack-bytes 0) (+ base-offset 7) base-offset)
-    body-offset (if (= param-count 1) (+ after-stack-offset 7) after-stack-offset)
+    body-offset (if (= param-count 2)
+                  (+ after-stack-offset 14)
+                  (if (= param-count 1) (+ after-stack-offset 7) after-stack-offset))
     n (vector-length ir-func)]
     (do
       (ref-set result (vector-push (ref-get result) (vector-get prologue-push 0)))
@@ -527,9 +573,13 @@
       (if (> stack-bytes 0)
         (append-native-bytes-loop result (emit-sub-rsp-imm32 stack-bytes) 0 7)
         0)
-      (if (= param-count 1)
-        (append-native-bytes-loop result (emit-mov-local-from-rdi (local-slot-offset 0)) 0 7)
-        0)
+      (if (= param-count 2)
+        (do
+          (append-native-bytes-loop result (emit-mov-local-from-rdi (local-slot-offset 0)) 0 7)
+          (append-native-bytes-loop result (emit-mov-local-from-rsi (local-slot-offset 1)) 0 7))
+        (if (= param-count 1)
+          (append-native-bytes-loop result (emit-mov-local-from-rdi (local-slot-offset 0)) 0 7)
+          0))
       (generate-native-instr-bundle-loop-x86 ir-func result function-starts function-metas body-offset 0 n)
       (if (> stack-bytes 0)
         (append-native-bytes-loop result (emit-add-rsp-imm32 stack-bytes) 0 7)
@@ -607,20 +657,40 @@
   (let [bytes (vector-new 4)]
     (vector-push (vector-push (vector-push (vector-push bytes 225) 3) 0) 170)))
 
+;; AArch64 MOV x9, x0
+(defn emit-aarch64-mov-x9-x0 []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 233) 3) 0) 170)))
+
 ;; AArch64 MOV x0, x1
 (defn emit-aarch64-mov-x0-x1 []
   (let [bytes (vector-new 4)]
     (vector-push (vector-push (vector-push (vector-push bytes 224) 3) 1) 170)))
+
+;; AArch64 MOV x0, x9
+(defn emit-aarch64-mov-x0-x9 []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 224) 3) 9) 170)))
 
 ;; AArch64 ADD w0, w1, w0
 (defn emit-aarch64-add-w0-w1-w0 []
   (let [bytes (vector-new 4)]
     (vector-push (vector-push (vector-push (vector-push bytes 32) 0) 0) 11)))
 
+;; AArch64 ADD w0, w9, w0
+(defn emit-aarch64-add-w0-w9-w0 []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 32) 1) 0) 11)))
+
 ;; AArch64 MUL w0, w1, w0
 (defn emit-aarch64-mul-w0-w1-w0 []
   (let [bytes (vector-new 4)]
     (vector-push (vector-push (vector-push (vector-push bytes 32) 124) 0) 27)))
+
+;; AArch64 MUL w0, w9, w0
+(defn emit-aarch64-mul-w0-w9-w0 []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 32) 125) 0) 27)))
 
 ;; AArch64 MOV w0, w0
 (defn emit-aarch64-mov-w0-w0 []
@@ -645,16 +715,21 @@
   (let [scaled (/ offset 8)]
     (encode-u32-le (+ (+ 4177526784 (* scaled 1024)) 992))))
 
+;; AArch64 STR x1, [sp, #offset]
+(defn emit-aarch64-str-x1-sp [offset]
+  (let [scaled (/ offset 8)]
+    (encode-u32-le (+ (+ 4177526785 (* scaled 1024)) 992))))
+
 ;; AArch64 LDR x0, [sp, #offset]
 (defn emit-aarch64-ldr-x0-sp [offset]
   (let [scaled (/ offset 8)]
     (encode-u32-le (+ (+ 4181721088 (* scaled 1024)) 992))))
 
-;; AArch64 の local.get: 直前値を x1 へ退避してから x0 へ load
+;; AArch64 の local.get: 直前値を x9 へ退避してから x0 へ load
 (defn emit-local-get-aarch64 [offset]
   (let [load (emit-aarch64-ldr-x0-sp offset)
     bytes (vector-new 8)
-    b1 (vector-push bytes 225)
+    b1 (vector-push bytes 233)
     b2 (vector-push b1 3)
     b3 (vector-push b2 0)
     b4 (vector-push b3 170)
@@ -664,11 +739,11 @@
     b8 (vector-push b7 (vector-get load 3))]
     b8))
 
-;; AArch64 の i32.const: 直前値を x1 へ退避してから w0 へ即値をロード
+;; AArch64 の i32.const: 直前値を x9 へ退避してから w0 へ即値をロード
 (defn emit-i32-const-aarch64 [value]
   (let [movz (emit-aarch64-movz-w0 value)
     bytes (vector-new 8)
-    b1 (vector-push bytes 225)
+    b1 (vector-push bytes 233)
     b2 (vector-push b1 3)
     b3 (vector-push b2 0)
     b4 (vector-push b3 170)
@@ -680,24 +755,24 @@
 
 ;; IR opcode を AArch64 命令列に変換
 (defn codegen-ir-instr-aarch64 [opcode operand]
-  (if (= opcode 1)
+    (if (= opcode 1)
     ;; i64.const -> MOVZ W0, #operand
     (emit-aarch64-movz-w0 operand)
     (if (= opcode 3)
-      ;; i32.const -> MOV x1, x0; MOVZ W0, #operand
+      ;; i32.const -> MOV x9, x0; MOVZ W0, #operand
       (emit-i32-const-aarch64 operand)
       (if (= opcode 10)
-        ;; local.get -> MOV x1, x0; LDR x0, [sp, #offset]
+        ;; local.get -> MOV x9, x0; LDR x0, [sp, #offset]
         (emit-local-get-aarch64 (local-slot-offset operand))
         (if (= opcode 11)
           ;; local.set -> STR x0, [sp, #offset]
           (emit-aarch64-str-x0-sp (local-slot-offset operand))
           (if (= opcode 24)
-            ;; i32.add -> add w0, w1, w0
-            (emit-aarch64-add-w0-w1-w0)
+            ;; i32.add -> add w0, w9, w0
+            (emit-aarch64-add-w0-w9-w0)
             (if (= opcode 25)
-              ;; i32.mul -> mul w0, w1, w0
-              (emit-aarch64-mul-w0-w1-w0)
+              ;; i32.mul -> mul w0, w9, w0
+              (emit-aarch64-mul-w0-w9-w0)
               (if (= opcode 36)
                 ;; i64.extend_i32_s -> sxtw x0, w0
                 (emit-aarch64-sxtw-x0-w0)
@@ -709,33 +784,39 @@
                     (emit-aarch64-mov-w0-w0)
                     (if (= opcode 44)
                       ;; drop -> 1 段下の値へ戻す
-                      (emit-aarch64-mov-x0-x1)
+                      (emit-aarch64-mov-x0-x9)
                        ;; 未知の opcode: NOP
                        (emit-aarch64-nop))))))))))))
 
-(defn native-instr-size-aarch64 [opcode operand]
+(defn native-instr-size-aarch64 [opcode operand function-metas]
   (if (= opcode 40)
-    4
+    (let [target-meta (vector-get function-metas operand)
+      target-param-count (native-function-param-count target-meta)]
+      (if (= target-param-count 2)
+        12
+        4))
     (vector-length (codegen-ir-instr-aarch64 opcode operand))))
 
-(defn native-function-body-size-aarch64-loop [ir-func idx len total]
+(defn native-function-body-size-aarch64-loop [ir-func function-metas idx len total]
   (if (>= idx len)
     total
     (let [instr (vector-get ir-func idx)
       opcode (vector-get instr 0)
       operand (vector-get instr 1)
-      next-total (+ total (native-instr-size-aarch64 opcode operand))]
-      (native-function-body-size-aarch64-loop ir-func (+ idx 1) len next-total))))
+      next-total (+ total (native-instr-size-aarch64 opcode operand function-metas))]
+      (native-function-body-size-aarch64-loop ir-func function-metas (+ idx 1) len next-total))))
 
-(defn native-function-size-aarch64 [func-meta]
+(defn native-function-size-aarch64 [func-meta function-metas]
   (let [param-count (native-function-param-count func-meta)
     local-count (native-function-local-count func-meta)
     ir-func (native-function-ir func-meta)
     stack-bytes (native-local-stack-bytes-with-min-slots ir-func (+ param-count local-count))
     stack-frame-bytes (if (> stack-bytes 0) 8 0)
     call-frame-bytes (if (= (native-has-call ir-func) 1) 8 0)
-    param-spill-bytes (if (= param-count 1) 4 0)
-    body-bytes (native-function-body-size-aarch64-loop ir-func 0 (vector-length ir-func) 0)]
+    param-spill-bytes (if (= param-count 2)
+                        8
+                        (if (= param-count 1) 4 0))
+    body-bytes (native-function-body-size-aarch64-loop ir-func function-metas 0 (vector-length ir-func) 0)]
     (+ (+ (+ (+ 4 stack-frame-bytes) call-frame-bytes) param-spill-bytes) body-bytes)))
 
 (defn collect-function-starts-aarch64-loop [functions idx len starts offset]
@@ -743,30 +824,50 @@
     starts
     (let [func-meta (vector-get functions idx)
       next-starts (vector-push starts offset)
-      next-offset (+ offset (native-function-size-aarch64 func-meta))]
+      next-offset (+ offset (native-function-size-aarch64 func-meta functions))]
       (collect-function-starts-aarch64-loop functions (+ idx 1) len next-starts next-offset))))
 
 (defn collect-function-starts-aarch64 [functions]
   (collect-function-starts-aarch64-loop functions 0 (vector-length functions) (vector-new 8) 0))
 
-(defn codegen-ir-instr-bundle-aarch64 [opcode operand current-offset function-starts]
+(defn codegen-ir-instr-bundle-aarch64 [opcode operand current-offset function-starts function-metas]
   (if (= opcode 40)
     (let [target-offset (vector-get function-starts operand)
-      disp (- target-offset current-offset)]
-      (emit-aarch64-bl disp))
+      target-meta (vector-get function-metas operand)
+      target-param-count (native-function-param-count target-meta)
+      disp (if (= target-param-count 2)
+             (- target-offset (+ current-offset 8))
+             (- target-offset current-offset))]
+      (if (= target-param-count 2)
+        (let [call-bytes (emit-aarch64-bl disp)
+          bytes (vector-new 12)
+          b1 (vector-push bytes 225)
+          b2 (vector-push b1 3)
+          b3 (vector-push b2 0)
+          b4 (vector-push b3 170)
+          b5 (vector-push b4 224)
+          b6 (vector-push b5 3)
+          b7 (vector-push b6 9)
+          b8 (vector-push b7 170)
+          b9 (vector-push b8 (vector-get call-bytes 0))
+          b10 (vector-push b9 (vector-get call-bytes 1))
+          b11 (vector-push b10 (vector-get call-bytes 2))
+          b12 (vector-push b11 (vector-get call-bytes 3))]
+          b12)
+        (emit-aarch64-bl disp)))
     (codegen-ir-instr-aarch64 opcode operand)))
 
-(defn generate-native-instr-bundle-loop-aarch64 [ir-func result function-starts current-offset idx len]
+(defn generate-native-instr-bundle-loop-aarch64 [ir-func result function-starts function-metas current-offset idx len]
   (if (>= idx len)
     current-offset
     (let [instr (vector-get ir-func idx)
       opcode (vector-get instr 0)
       operand (vector-get instr 1)
-      native (codegen-ir-instr-bundle-aarch64 opcode operand current-offset function-starts)
+      native (codegen-ir-instr-bundle-aarch64 opcode operand current-offset function-starts function-metas)
       native-len (vector-length native)]
       (do
         (append-native-bytes-loop result native 0 native-len)
-        (generate-native-instr-bundle-loop-aarch64 ir-func result function-starts (+ current-offset native-len) (+ idx 1) len)))))
+        (generate-native-instr-bundle-loop-aarch64 ir-func result function-starts function-metas (+ current-offset native-len) (+ idx 1) len)))))
 
 ;; === AArch64 コード生成 ===
 
@@ -809,7 +910,7 @@
           (append-native-bytes-loop result ret-bytes 0 4)
           (ref-get result))))))
 
-(defn generate-native-function-aarch64-bundle [func-meta result function-starts function-start]
+(defn generate-native-function-aarch64-bundle [func-meta result function-starts function-metas function-start]
   (let [param-count (native-function-param-count func-meta)
     local-count (native-function-local-count func-meta)
     ir-func (native-function-ir func-meta)
@@ -817,7 +918,9 @@
     has-call (native-has-call ir-func)
     after-call-save (if (= has-call 1) (+ function-start 4) function-start)
     after-stack-offset (if (> stack-bytes 0) (+ after-call-save 4) after-call-save)
-    body-offset (if (= param-count 1) (+ after-stack-offset 4) after-stack-offset)
+    body-offset (if (= param-count 2)
+                  (+ after-stack-offset 8)
+                  (if (= param-count 1) (+ after-stack-offset 4) after-stack-offset))
     n (vector-length ir-func)]
     (do
       (if (= has-call 1)
@@ -826,10 +929,14 @@
       (if (> stack-bytes 0)
         (append-native-bytes-loop result (emit-aarch64-sub-sp stack-bytes) 0 4)
         0)
-      (if (= param-count 1)
-        (append-native-bytes-loop result (emit-aarch64-str-x0-sp (local-slot-offset 0)) 0 4)
-        0)
-      (generate-native-instr-bundle-loop-aarch64 ir-func result function-starts body-offset 0 n)
+      (if (= param-count 2)
+        (do
+          (append-native-bytes-loop result (emit-aarch64-str-x0-sp (local-slot-offset 0)) 0 4)
+          (append-native-bytes-loop result (emit-aarch64-str-x1-sp (local-slot-offset 1)) 0 4))
+        (if (= param-count 1)
+          (append-native-bytes-loop result (emit-aarch64-str-x0-sp (local-slot-offset 0)) 0 4)
+          0))
+      (generate-native-instr-bundle-loop-aarch64 ir-func result function-starts function-metas body-offset 0 n)
       (if (> stack-bytes 0)
         (append-native-bytes-loop result (emit-aarch64-add-sp stack-bytes) 0 4)
         0)
@@ -844,7 +951,7 @@
     (let [func-meta (vector-get functions idx)
       function-start (vector-get function-starts idx)]
       (do
-        (generate-native-function-aarch64-bundle func-meta result function-starts function-start)
+        (generate-native-function-aarch64-bundle func-meta result function-starts functions function-start)
         (generate-native-aarch64-bundle-loop functions result function-starts (+ idx 1) len)))))
 
 (defn generate-native-aarch64-bundle [functions]
