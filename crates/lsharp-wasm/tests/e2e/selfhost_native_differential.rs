@@ -3352,6 +3352,256 @@ fn test_native_codegen_emits_x86_direct_call_nine_arg_bundle_bytes() {
     assert_eq!(lines[123], "195", "payload 末尾は ret");
 }
 
+/// NATIVE-REAL-08p: x86_64 で 10 引数 direct call bundle が 4 stack arg を持つこと
+#[test]
+fn test_native_codegen_emits_x86_direct_call_ten_arg_bundle_bytes() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [caller-ir (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push
+                            (vector-push
+                              (vector-push
+                                (vector-push
+                                  (vector-push
+                                    (vector-push
+                                      (vector-push (vector-new 11) (make-instr 3 40))
+                                      (make-instr 3 2))
+                                    (make-instr 3 5))
+                                  (make-instr 3 7))
+                                (make-instr 3 11))
+                              (make-instr 3 14))
+                            (make-instr 3 17))
+                          (make-instr 3 19))
+                        (make-instr 3 23))
+                      (make-instr 3 29))
+                    (make-call 1))
+        callee-ir-head (vector-push
+                         (vector-push
+                           (vector-push
+                             (vector-push
+                               (vector-push
+                                 (vector-push
+                                   (vector-push
+                                     (vector-push
+                                       (vector-push
+                                         (vector-push
+                                           (vector-push (vector-new 17) (make-local-get 0))
+                                           (make-local-get 1))
+                                         (make-instr 24 0))
+                                       (make-local-get 2))
+                                     (make-instr 24 0))
+                                   (make-local-get 3))
+                                 (make-instr 24 0))
+                               (make-local-get 4))
+                             (make-instr 24 0))
+                           (make-local-get 5))
+                         (make-instr 24 0))
+        callee-ir-mid (vector-push
+                        (vector-push callee-ir-head (make-local-get 6))
+                        (make-instr 24 0))
+        callee-ir-tail (vector-push
+                         (vector-push callee-ir-mid (make-local-get 7))
+                         (make-instr 24 0))
+        callee-ir-more (vector-push
+                         (vector-push callee-ir-tail (make-local-get 8))
+                         (make-instr 24 0))
+        callee-ir (vector-push
+                    (vector-push callee-ir-more (make-local-get 9))
+                    (make-instr 24 0))
+        caller (make-function-meta 0 0 caller-ir)
+        callee (make-function-meta 10 0 callee-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) callee)
+        target (make-target 1)
+        native (emit-native-function-meta-bundle functions target)]
+    (do
+      (print (vector-length native))
+      (print (vector-get native 539))
+      (print (vector-get native 540))
+      (print (vector-get native 541))
+      (print (vector-get native 542))
+      (print (vector-get native 543))
+      (print (vector-get native 544))
+      (print (vector-get native 545))
+      (print (vector-get native 546))
+      (print (vector-get native 547))
+      (print (vector-get native 548))
+      (print (vector-get native 549))
+      (print (vector-get native 550))
+      (print (vector-get native 551))
+      (print (vector-get native 552))
+      (print (vector-get native 553))
+      (print (vector-get native 554))
+      (print (vector-get native 555))
+      (print (vector-get native 556))
+      (print (vector-get native 557))
+      (print (vector-get native 558))
+      (print (vector-get native 559))
+      (print (vector-get native 560))
+      (print (vector-get native 561))
+      (print (vector-get native 562))
+      (print (vector-get native 563))
+      (print (vector-get native 564))
+      (print (vector-get native 565))
+      (print (vector-get native 566))
+      (print (vector-get native 567))
+      (print (vector-get native 568))
+      (print (vector-get native 569))
+      (print (vector-get native 570))
+      (print (vector-get native 571))
+      (print (vector-get native 572))
+      (print (vector-get native 573))
+      (print (vector-get native 574))
+      (print (vector-get native 575))
+      (print (vector-get native 576))
+      (print (vector-get native 577))
+      (print (vector-get native 578))
+      (print (vector-get native 579))
+      (print (vector-get native 580))
+      (print (vector-get native 581))
+      (print (vector-get native 582))
+      (print (vector-get native 583))
+      (print (vector-get native 584))
+      (print (vector-get native 585))
+      (print (vector-get native 586))
+      (print (vector-get native 587))
+      (print (vector-get native 588))
+      (print (vector-get native 589))
+      (print (vector-get native 590))
+      (print (vector-get native 591))
+      (print (vector-get native 592))
+      (print (vector-get native 593))
+      (print (vector-get native 594))
+      (print (vector-get native 595))
+      (print (vector-get native 596))
+      (print (vector-get native 597))
+      (print (vector-get native 598))
+      (print (vector-get native 599))
+      (print (vector-get native 600))
+      (print (vector-get native 601))
+      (print (vector-get native 602))
+      (print (vector-get native 603))
+      (print (vector-get native 604))
+      (print (vector-get native 605))
+      (print (vector-get native 606))
+      (print (vector-get native 607))
+      (print (vector-get native 608))
+      (print (vector-get native 609))
+      (print (vector-get native 610))
+      (print (vector-get native 611))
+      (print (vector-get native 612))
+      (print (vector-get native 613))
+      (print (vector-get native 614))
+      (print (vector-get native 615))
+      (print (vector-get native 616))
+      (print (vector-get native 617))
+      (print (vector-get native 618))
+      (print (vector-get native 619))
+      (print (vector-get native 620))
+      (print (vector-get native 621))
+      (print (vector-get native 622))
+      (print (vector-get native 623))
+      (print (vector-get native 624))
+      (print (vector-get native 625))
+      (print (vector-get native 626))
+      (print (vector-get native 627))
+      (print (vector-get native 628))
+      (print (vector-get native 629))
+      (print (vector-get native 630))
+      (print (vector-get native 631))
+      (print (vector-get native 632))
+      (print (vector-get native 653))
+      (print (vector-get native 654))
+      (print (vector-get native 655))
+      (print (vector-get native 660))
+      (print (vector-get native 661))
+      (print (vector-get native 662))
+      (print (vector-get native 667))
+      (print (vector-get native 668))
+      (print (vector-get native 669))
+      (print (vector-get native 674))
+      (print (vector-get native 675))
+      (print (vector-get native 676))
+      (print (vector-get native 681))
+      (print (vector-get native 682))
+      (print (vector-get native 683))
+      (print (vector-get native 688))
+      (print (vector-get native 689))
+      (print (vector-get native 690))
+      (print (vector-get native 695))
+      (print (vector-get native 696))
+      (print (vector-get native 697))
+      (print (vector-get native 698))
+      (print (vector-get native 699))
+      (print (vector-get native 700))
+      (print (vector-get native 701))
+      (print (vector-get native 706))
+      (print (vector-get native 707))
+      (print (vector-get native 708))
+      (print (vector-get native 709))
+      (print (vector-get native 710))
+      (print (vector-get native 711))
+      (print (vector-get native 712))
+      (print (vector-get native 717))
+      (print (vector-get native 718))
+      (print (vector-get native 719))
+      (print (vector-get native 720))
+      (print (vector-get native 721))
+      (print (vector-get native 722))
+      (print (vector-get native 723))
+      (print (vector-get native 728))
+      (print (vector-get native 729))
+      (print (vector-get native 730))
+      (print (vector-get native 731))
+      (print (vector-get native 732))
+      (print (vector-get native 733))
+      (print (vector-get native 734))
+      (print (vector-get native 864))
+      (print (vector-get native 865))
+      0)))"#,
+    );
+
+    let lines: Vec<&str> = output.trim().lines().collect();
+    let expected = [
+        "866", "72", "129", "236", "32", "0", "0", "0", "72", "137", "68", "36", "24", "72", "137",
+        "76", "36", "16", "72", "139", "141", "248", "255", "255", "255", "72", "137", "76", "36",
+        "8", "76", "139", "141", "240", "255", "255", "255", "76", "137", "12", "36", "76", "139",
+        "141", "232", "255", "255", "255", "76", "139", "133", "224", "255", "255", "255", "72",
+        "139", "141", "216", "255", "255", "255", "72", "139", "149", "208", "255", "255", "255",
+        "72", "139", "181", "200", "255", "255", "255", "72", "139", "189", "192", "255", "255",
+        "255", "232", "16", "0", "0", "0", "72", "129", "196", "32", "0", "0", "0", "72", "137",
+        "189", "72", "137", "181", "72", "137", "149", "72", "137", "141", "76", "137", "133",
+        "76", "137", "141", "72", "139", "69", "16", "72", "137", "133", "72", "139", "69", "24",
+        "72", "137", "133", "72", "139", "69", "32", "72", "137", "133", "72", "139", "69", "40",
+        "72", "137", "133", "93", "195",
+    ];
+
+    assert!(
+        lines.len() >= expected.len(),
+        "x86 direct call ten-arg bundle bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        &lines[..expected.len()],
+        expected,
+        "x86_64 direct call ten-arg bundle payload/call-layout exact bytes が一致しない"
+    );
+}
+
 /// NATIVE-REAL-09: emit-object が生成した native bytes 全体を object file へ保持すること
 #[test]
 fn test_native_emit_object_keeps_full_native_payload() {
