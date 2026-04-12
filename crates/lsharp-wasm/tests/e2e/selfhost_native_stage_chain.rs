@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 static NATIVE_STAGE_CHAIN_COUNTER: AtomicUsize = AtomicUsize::new(0);
 static NATIVE_HOST_EXEC_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct NativeTargetSummary {
     native_len: i64,
     object_len: i64,
@@ -19,6 +19,51 @@ struct NativeTargetSummary {
     response_object_byte: i64,
     multi_response_object2_byte: i64,
     multi_link_response_len: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NativeBundleSummary {
+    program_object_hash: i64,
+    runtime_object_hash: i64,
+    response_path_hash: i64,
+    program_binary_hash: i64,
+    response_text_hash: i64,
+    response_text_len: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NativeObservationSummary {
+    target: NativeTargetSummary,
+    bundle: NativeBundleSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NativeStageObservation {
+    darwin: NativeObservationSummary,
+    linux: NativeObservationSummary,
+    aarch64: NativeObservationSummary,
+}
+
+#[derive(Debug)]
+struct NativeHostArtifactBundle {
+    program_object: Vec<u8>,
+    runtime_object: Vec<u8>,
+    response_text: String,
+    program_binary: Vec<u8>,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    exit_code: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NativeHostBundleObservation {
+    program_object_hash: u64,
+    runtime_object_hash: u64,
+    response_text_hash: u64,
+    program_binary_hash: u64,
+    stdout_hash: u64,
+    stderr_hash: u64,
+    exit_code: i32,
 }
 
 /// NATIVE-05/NATIVE-06: selfhost/src/App/Main.ls の native summary が
@@ -94,6 +139,46 @@ fn test_e2e_selfhost_main_native_summary_matches_direct_pipeline_harness() {
     assert_eq!(
         actual, expected,
         "selfhost/src/App/Main.ls native summary が direct native pipeline harness と一致しない"
+    );
+}
+
+/// V2-08: selfhost main smoke が canonical native bundle summary を公開すること。
+#[test]
+fn test_e2e_selfhost_main_native_bundle_summary_matches_canonical_contract() {
+    let output = compile_and_run_file(&selfhost_main_path());
+    let lines = parse_numeric_lines(&output);
+    assert!(
+        lines.len() >= 89,
+        "selfhost/src/App/Main.ls native bundle summary 出力が不足: {:?}",
+        lines
+    );
+
+    let expected = expected_native_bundle_summary();
+    let actual = [
+        parse_main_bundle_summary(&lines, NativeBundleKind::Darwin),
+        parse_main_bundle_summary(&lines, NativeBundleKind::Linux),
+        parse_main_bundle_summary(&lines, NativeBundleKind::Aarch64),
+    ];
+
+    assert_eq!(
+        actual,
+        [expected.clone(), expected.clone(), expected],
+        "selfhost/src/App/Main.ls native bundle summary が canonical contract と一致しない"
+    );
+}
+
+/// V2-08: stage1-native の比較面として使う observation summary が 2 回実行で一致すること。
+#[test]
+fn test_e2e_stage1_native_observation_summary_two_run_determinism() {
+    let run1 = compile_and_run_file(&selfhost_main_path());
+    let run2 = compile_and_run_file(&selfhost_main_path());
+
+    let obs1 = parse_main_stage_observation(&parse_numeric_lines(&run1));
+    let obs2 = parse_main_stage_observation(&parse_numeric_lines(&run2));
+
+    assert_eq!(
+        obs1, obs2,
+        "stage1-native observation summary が 2 回実行で一致しない"
     );
 }
 
@@ -190,6 +275,89 @@ fn parse_main_summary(lines: &[i64], kind: NativeSummaryKind) -> NativeTargetSum
     }
 }
 
+fn parse_main_stage_observation(lines: &[i64]) -> NativeStageObservation {
+    NativeStageObservation {
+        darwin: NativeObservationSummary {
+            target: parse_main_summary(lines, NativeSummaryKind::Darwin),
+            bundle: parse_main_bundle_summary(lines, NativeBundleKind::Darwin),
+        },
+        linux: NativeObservationSummary {
+            target: parse_main_summary(lines, NativeSummaryKind::Linux),
+            bundle: parse_main_bundle_summary(lines, NativeBundleKind::Linux),
+        },
+        aarch64: NativeObservationSummary {
+            target: parse_main_summary(lines, NativeSummaryKind::Aarch64),
+            bundle: parse_main_bundle_summary(lines, NativeBundleKind::Aarch64),
+        },
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum NativeBundleKind {
+    Darwin,
+    Linux,
+    Aarch64,
+}
+
+fn parse_main_bundle_summary(lines: &[i64], kind: NativeBundleKind) -> NativeBundleSummary {
+    let offset = match kind {
+        NativeBundleKind::Darwin => 71,
+        NativeBundleKind::Linux => 77,
+        NativeBundleKind::Aarch64 => 83,
+    };
+    NativeBundleSummary {
+        program_object_hash: lines[offset],
+        runtime_object_hash: lines[offset + 1],
+        response_path_hash: lines[offset + 2],
+        program_binary_hash: lines[offset + 3],
+        response_text_hash: lines[offset + 4],
+        response_text_len: lines[offset + 5],
+    }
+}
+
+fn expected_native_bundle_summary() -> NativeBundleSummary {
+    let program_object = "program.o";
+    let runtime_object = "runtime.o";
+    let response_path = "linker-response.txt";
+    let program_binary = "program.native";
+    let response_text = "-o\nprogram.native\nprogram.o\nruntime.o\n";
+
+    NativeBundleSummary {
+        program_object_hash: lsharp_name_hash(program_object),
+        runtime_object_hash: lsharp_name_hash(runtime_object),
+        response_path_hash: lsharp_name_hash(response_path),
+        program_binary_hash: lsharp_name_hash(program_binary),
+        response_text_hash: lsharp_name_hash(response_text),
+        response_text_len: response_text.chars().count() as i64,
+    }
+}
+
+fn lsharp_name_hash(text: &str) -> i64 {
+    text.chars().fold(0_i64, |acc, ch| {
+        acc.wrapping_mul(31).wrapping_add(i64::from(u32::from(ch)))
+    })
+}
+
+fn observe_native_host_bundle(bundle: &NativeHostArtifactBundle) -> NativeHostBundleObservation {
+    NativeHostBundleObservation {
+        program_object_hash: super::selfhost_bootstrap_four_layer::hash_fingerprint(
+            &bundle.program_object,
+        ),
+        runtime_object_hash: super::selfhost_bootstrap_four_layer::hash_fingerprint(
+            &bundle.runtime_object,
+        ),
+        response_text_hash: super::selfhost_bootstrap_four_layer::hash_fingerprint(
+            bundle.response_text.as_bytes(),
+        ),
+        program_binary_hash: super::selfhost_bootstrap_four_layer::hash_fingerprint(
+            &bundle.program_binary,
+        ),
+        stdout_hash: super::selfhost_bootstrap_four_layer::hash_fingerprint(&bundle.stdout),
+        stderr_hash: super::selfhost_bootstrap_four_layer::hash_fingerprint(&bundle.stderr),
+        exit_code: bundle.exit_code,
+    }
+}
+
 /// NATIVE-02: NativeTarget descriptor が policy field を公開すること。
 ///
 /// target descriptor を単なる triple から一段拡張し、calling convention /
@@ -233,6 +401,104 @@ fn test_e2e_native_target_descriptor_exposes_policy_fields() {
             12, 2, 2, 16, 1, 2, 1, 1, 1, 1, // aarch64-apple-darwin
         ],
         "NativeTarget descriptor policy field が期待値と一致しない"
+    );
+}
+
+/// V2-08: representative build entry で使う native artifact 名が canonical に固定されること。
+#[test]
+fn test_e2e_native_linker_exposes_canonical_stage_artifact_paths() {
+    let output = run_native_pipeline_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.Linker)
+
+(defn emit-artifacts [triple-id]
+  (let [target (make-target triple-id)]
+    (do
+      (print-string (default-program-object-path target))
+      (print-string "\n")
+      (print-string (default-runtime-object-path target))
+      (print-string "\n")
+      (print-string (default-linker-response-path target))
+      (print-string "\n")
+      (print-string (default-program-binary-path target))
+      (print-string "\n")
+      0)))
+
+(defn main []
+  (do
+    (emit-artifacts 1)
+    (emit-artifacts 3)
+    (emit-artifacts 2)
+    0))"#,
+    );
+
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec![
+            "program.o",
+            "runtime.o",
+            "linker-response.txt",
+            "program.native",
+            "program.o",
+            "runtime.o",
+            "linker-response.txt",
+            "program.native",
+            "program.o",
+            "runtime.o",
+            "linker-response.txt",
+            "program.native",
+        ],
+        "native linker artifact contract が canonical 名からずれている"
+    );
+}
+
+/// V2-08: native linker の response file テキストが canonical 順序で構築されること。
+#[test]
+fn test_e2e_native_linker_generates_canonical_response_file_text() {
+    let output = run_native_pipeline_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.Linker)
+
+(defn emit-response [triple-id]
+  (let [target (make-target triple-id)
+    objects (vector-push
+              (vector-push (vector-new 2) (default-program-object-path target))
+              (default-runtime-object-path target))
+    args (build-linker-response-args objects (default-program-binary-path target) target)
+    response (generate-response-file-text args)]
+    (do
+      (print-string response)
+      0)))
+
+(defn main []
+  (do
+    (emit-response 1)
+    (emit-response 3)
+    (emit-response 2)
+    0))"#,
+    );
+
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec![
+            "-o",
+            "program.native",
+            "program.o",
+            "runtime.o",
+            "-o",
+            "program.native",
+            "program.o",
+            "runtime.o",
+            "-o",
+            "program.native",
+            "program.o",
+            "runtime.o",
+        ],
+        "native linker response file text が canonical 順序からずれている"
     );
 }
 
@@ -387,6 +653,31 @@ fn run_native_codegen_host_bytes_harness(entry_source: &str) -> Vec<u8> {
     result
 }
 
+fn host_target_const_42_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [instr (vector-push (vector-push (vector-new 2) 1) 42)
+        ir (vector-push (vector-new 1) instr)
+        target (host-target)
+        code (emit-native ir target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 /// ネイティブバイト列を `.s` アセンブリシムでラップし、
 /// clang (arm64) でリンクして実行する。戻り値は exit code。
 fn link_and_run_native_host_binary(code: &[u8]) -> Result<i32, String> {
@@ -431,6 +722,95 @@ fn link_and_run_native_host_binary(code: &[u8]) -> Result<i32, String> {
     result
 }
 
+/// canonical artifact 名で object / response / binary を materialize し、実行まで行う。
+fn build_and_run_native_host_bundle_with_canonical_artifacts(
+    code: &[u8],
+) -> Result<NativeHostArtifactBundle, String> {
+    let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/e2e-native-fixtures")
+        .join(format!("native-host-bundle-{id}"));
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let result = (|| {
+        let byte_strs: Vec<String> = code.iter().map(|b| format!("0x{b:02x}")).collect();
+        let program_asm = format!(
+            ".section __TEXT,__text\n.globl _main\n_main:\n    .byte {}\n",
+            byte_strs.join(", ")
+        );
+        std::fs::write(dir.join("program.s"), program_asm)
+            .map_err(|e| format!("program.s 書き込み失敗: {e}"))?;
+
+        let runtime_asm =
+            ".section __TEXT,__text\n.globl _lsharp_runtime_stub\n_lsharp_runtime_stub:\n    ret\n";
+        std::fs::write(dir.join("runtime.s"), runtime_asm)
+            .map_err(|e| format!("runtime.s 書き込み失敗: {e}"))?;
+
+        let compile_program = std::process::Command::new("clang")
+            .args(["-arch", "arm64", "-c", "program.s", "-o", "program.o"])
+            .current_dir(&dir)
+            .output()
+            .map_err(|e| format!("program.o 生成失敗: {e}"))?;
+        if !compile_program.status.success() {
+            return Err(format!(
+                "program.o 生成失敗:\nstdout: {}\nstderr: {}",
+                String::from_utf8_lossy(&compile_program.stdout),
+                String::from_utf8_lossy(&compile_program.stderr),
+            ));
+        }
+
+        let compile_runtime = std::process::Command::new("clang")
+            .args(["-arch", "arm64", "-c", "runtime.s", "-o", "runtime.o"])
+            .current_dir(&dir)
+            .output()
+            .map_err(|e| format!("runtime.o 生成失敗: {e}"))?;
+        if !compile_runtime.status.success() {
+            return Err(format!(
+                "runtime.o 生成失敗:\nstdout: {}\nstderr: {}",
+                String::from_utf8_lossy(&compile_runtime.stdout),
+                String::from_utf8_lossy(&compile_runtime.stderr),
+            ));
+        }
+
+        let response_text = "-o\nprogram.native\nprogram.o\nruntime.o\n".to_string();
+        std::fs::write(dir.join("linker-response.txt"), &response_text)
+            .map_err(|e| format!("linker-response.txt 書き込み失敗: {e}"))?;
+
+        let link_result = std::process::Command::new("clang")
+            .arg("@linker-response.txt")
+            .current_dir(&dir)
+            .output()
+            .map_err(|e| format!("clang response-file 実行失敗: {e}"))?;
+        if !link_result.status.success() {
+            return Err(format!(
+                "canonical response-file link 失敗:\nstdout: {}\nstderr: {}",
+                String::from_utf8_lossy(&link_result.stdout),
+                String::from_utf8_lossy(&link_result.stderr),
+            ));
+        }
+
+        let run_result = std::process::Command::new(dir.join("program.native"))
+            .output()
+            .map_err(|e| format!("program.native 実行失敗: {e}"))?;
+
+        Ok(NativeHostArtifactBundle {
+            program_object: std::fs::read(dir.join("program.o"))
+                .map_err(|e| format!("program.o 読み込み失敗: {e}"))?,
+            runtime_object: std::fs::read(dir.join("runtime.o"))
+                .map_err(|e| format!("runtime.o 読み込み失敗: {e}"))?,
+            response_text,
+            program_binary: std::fs::read(dir.join("program.native"))
+                .map_err(|e| format!("program.native 読み込み失敗: {e}"))?,
+            stdout: run_result.stdout,
+            stderr: run_result.stderr,
+            exit_code: run_result.status.code().unwrap_or(-1),
+        })
+    })();
+
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
 /// NATIVE-HOST-01: stage1-native-emitted object をホスト (aarch64-apple-darwin) でリンク・実行する
 ///
 /// stage1 (Wasm で動く L# コンパイラ) が `host-target()` (aarch64-apple-darwin) 向けに
@@ -442,28 +822,7 @@ fn link_and_run_native_host_binary(code: &[u8]) -> Result<i32, String> {
 ///        生成されることで exit code 42 を得られる。
 #[test]
 fn test_e2e_native_host_binary_link_and_execute() {
-    let code_bytes = run_native_codegen_host_bytes_harness(
-        r#"(module Main)
-(import Backend.Native.NativeTarget)
-(import Backend.Native.NativeCodegen)
-(import IR.IR)
-
-(defn print-bytes [bytes idx n]
-  (if (>= idx n)
-    0
-    (do
-      (print (vector-get bytes idx))
-      (print-bytes bytes (+ idx 1) n))))
-
-(defn main []
-  (let [instr (vector-push (vector-push (vector-new 2) 1) 42)
-        ir (vector-push (vector-new 1) instr)
-        target (host-target)
-        code (emit-native ir target)]
-    (do
-      (print-bytes code 0 (vector-length code))
-      0)))"#,
-    );
+    let code_bytes = host_target_const_42_code_bytes();
 
     assert!(
         !code_bytes.is_empty(),
@@ -482,6 +841,63 @@ fn test_e2e_native_host_binary_link_and_execute() {
         exit_code,
         code_bytes.len(),
         code_bytes
+    );
+}
+
+/// V2-08: canonical native artifact bundle で materialize した `program.native` が実行できること。
+#[test]
+fn test_e2e_native_host_bundle_uses_canonical_artifact_contract() {
+    let code_bytes = host_target_const_42_code_bytes();
+
+    let bundle = build_and_run_native_host_bundle_with_canonical_artifacts(&code_bytes)
+        .expect("canonical native bundle materialization に失敗");
+
+    assert_eq!(
+        bundle.response_text, "-o\nprogram.native\nprogram.o\nruntime.o\n",
+        "canonical linker response text が期待値と一致しない"
+    );
+    assert!(
+        !bundle.program_object.is_empty(),
+        "program.o が空 — canonical artifact bundle が materialize できていない"
+    );
+    assert!(
+        !bundle.runtime_object.is_empty(),
+        "runtime.o が空 — canonical artifact bundle が materialize できていない"
+    );
+    assert!(
+        !bundle.program_binary.is_empty(),
+        "program.native が空 — canonical artifact bundle が materialize できていない"
+    );
+    assert!(
+        bundle.stdout.is_empty(),
+        "tiny host-target bundle の stdout は空であるべき"
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "tiny host-target bundle の stderr は空であるべき"
+    );
+    assert_eq!(
+        bundle.exit_code, 42,
+        "canonical artifact bundle から起動した program.native の exit code が 42 でない"
+    );
+}
+
+/// V2-08: host-side proxy の `stage2-native` / `stage3-native` 観測面が一致すること。
+#[test]
+fn test_e2e_stage23_native_host_bundle_proxy_observations_match() {
+    let stage1_code = host_target_const_42_code_bytes();
+    let stage2_bundle = build_and_run_native_host_bundle_with_canonical_artifacts(&stage1_code)
+        .expect("proxy stage2-native bundle materialization に失敗");
+    let stage3_code = host_target_const_42_code_bytes();
+    let stage3_bundle = build_and_run_native_host_bundle_with_canonical_artifacts(&stage3_code)
+        .expect("proxy stage3-native bundle materialization に失敗");
+
+    let stage2_obs = observe_native_host_bundle(&stage2_bundle);
+    let stage3_obs = observe_native_host_bundle(&stage3_bundle);
+
+    assert_eq!(
+        stage2_obs, stage3_obs,
+        "host-side proxy stage2/stage3 の exit/stdout/stderr/artifact hash が一致しない"
     );
 }
 

@@ -12,6 +12,24 @@
 (defn select-linker [target]
   (target-linker-flavor target))
 
+;; representative build entry で使う native artifact 名を固定する。
+;; 現状は tier1 target すべてで同じ canonical 名を使う。
+(defn default-program-object-path [target]
+  "program.o")
+
+(defn default-runtime-object-path [target]
+  "runtime.o")
+
+(defn default-linker-response-path [target]
+  "linker-response.txt")
+
+(defn default-program-binary-path [target]
+  "program.native")
+
+;; canonical response file では tier1 target すべてで -o を使う。
+(defn linker-output-flag [target]
+  "-o")
+
 ;; リンカー引数をリスト形式で構築
 ;; objects: オブジェクトファイルパスの Vector
 ;; output: 出力ファイルパス (文字列ハッシュ)
@@ -36,6 +54,14 @@
         n (vector-length objects)]
         (append-linker-objects args objects (ref-get i) n)))))
 
+;; representative build entry で使う string ベースの response file 引数を構築する。
+(defn build-linker-response-args [objects output target]
+  (let [args (ref-new (vector-new 16))]
+    (do
+      (ref-set args (vector-push (ref-get args) (linker-output-flag target)))
+      (ref-set args (vector-push (ref-get args) output))
+      (append-linker-objects args objects 0 (vector-length objects)))))
+
 ;; === Response File 生成 ===
 
 ;; response file のコンテンツを生成
@@ -56,6 +82,19 @@
   (let [result (ref-new (vector-new 64))
     n (vector-length args)]
     (append-response-args result args 0 n)))
+
+;; canonical response file のテキスト版を生成する。
+(defn append-response-text-lines [result args idx n]
+  (if (>= idx n)
+    result
+    (append-response-text-lines
+      (string-concat result (string-concat (vector-get args idx) "\n"))
+      args
+      (+ idx 1)
+      n)))
+
+(defn generate-response-file-text [args]
+  (append-response-text-lines "" args 0 (vector-length args)))
 
 ;; response file を書き出す (将来の実装: ファイル I/O)
 ;; 現在はバイト列を返すのみ
