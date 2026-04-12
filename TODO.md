@@ -24,7 +24,7 @@
 - [DEFERRED] `V2-08` Native backend self-regeneration — Deferred / v2 セクションの正本を参照。
 - [DEFERRED] `V2-09` Wasm/native differential zero — Deferred / v2 セクションの正本を参照。
 - [DEFERRED] `V2-10` Native-only RC distribution — Deferred / v2 セクションの正本を参照。
-- [ ] `SH-DET-01` selfhost compile determinism — 同一 source graph の repeated direct compile で code-section fingerprint が揺れないことを固定してから clean inline-vs-cached payload parity を再開する。
+- [x] `SH-DET-01` selfhost compile determinism — 同一 source graph の repeated direct compile determinism を固定し、direct determinism slice 44 件・focused rerun 6 件・snapshot 14 件・`cargo clippy -q -- -D warnings` で確認済み。
 
 > **2026-04-01 進捗メモ**（上の `[ ]` 残件カウントは変えない）:
 > - **マルチファイル型検査**: `crates/lsharp-ir/src/lib.rs` の `compile_multi_file` が `Tools.Text.FormatterExpr` / `FormatterDecl` / `Formatter` を import マージした疑似 1 プログラムとしてバッチ型推論（`try_infer_formatter_trio_batch`）。`FormatterExpr.ls` の再帰整形は `format-expr` / `format-expr-with-source`（`Formatter.ls` のディスパッチ）へ委譲し、単体モジュール順の `format-expr` 未束縛を避ける。

@@ -726,7 +726,9 @@
           (or (= bop (op-map-contains)) (= bop (op-file-exists)))
           (or
             (or (= bop (op-print)) (= bop (op-root-push)))
-            (or (= bop (op-root-set)) (or (= bop 71) (= bop 72)))))))))
+            (or
+              (or (= bop (op-root-pop)) (= bop (op-root-set)))
+              (or (= bop 71) (= bop 72)))))))))
 (defn alloc-root-needed [expr]
   (let [tag (vector-get expr 0)]
     (if (= tag (tag-lit-int))

@@ -1,18 +1,19 @@
 ---
 source: crates/lsharp-wasm/tests/snapshot.rs
+assertion_line: 158
 expression: dump
 ---
 === Wasm バイナリ構造 ===
-バイナリサイズ: 2414 bytes
+バイナリサイズ: 4485 bytes
 マジック: 00 61 73 6d
 バージョン: 1
 
 セクション数: 8
   [ 1] Type         141 bytes
   [ 2] Import       320 bytes
-  [ 3] Function     20 bytes
+  [ 3] Function     22 bytes
   [ 5] Memory       3 bytes
-  [ 6] Global       25 bytes
-  [ 7] Export       110 bytes
-  [10] Code         1761 bytes
+  [ 6] Global       45 bytes
+  [ 7] Export       250 bytes
+  [10] Code         3669 bytes
   [11] Data         7 bytes
