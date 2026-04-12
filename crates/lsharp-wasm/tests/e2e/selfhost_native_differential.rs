@@ -1122,6 +1122,120 @@ fn test_native_codegen_emits_x86_i32_mul_bytes() {
     assert_eq!(lines[5], "195", "payload 末尾は ret");
 }
 
+/// NATIVE-REAL-08d: x86_64 で direct call bundle が rel32 call bytes を持つこと
+#[test]
+fn test_native_codegen_emits_x86_direct_call_bundle_bytes() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+(import IR.IR)
+
+(defn main []
+  (let [caller-ir (vector-push (vector-new 1) (make-call 1))
+        callee-ir (vector-push (vector-new 1) (make-instr 3 42))
+        functions (vector-push (vector-push (vector-new 2) caller-ir) callee-ir)
+        target (make-target 1)
+        native (emit-native-bundle functions target)]
+    (do
+      (print (vector-length native))
+      (print (vector-get native 4))
+      (print (vector-get native 5))
+      (print (vector-get native 6))
+      (print (vector-get native 7))
+      (print (vector-get native 8))
+      (print (vector-get native 23))
+      (print (vector-get native 24))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 8,
+        "x86 direct call bundle bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "25",
+        "x86_64 direct call bundle payload は 25 bytes であるべき"
+    );
+    assert_eq!(lines[1], "232", "direct call は call rel32 opcode 0xE8");
+    assert_eq!(lines[2], "2", "forward call offset の下位 byte は 2");
+    assert_eq!(lines[3], "0", "forward call offset byte1 は 0");
+    assert_eq!(lines[4], "0", "forward call offset byte2 は 0");
+    assert_eq!(lines[5], "0", "forward call offset byte3 は 0");
+    assert_eq!(lines[6], "93", "callee epilogue 先頭は pop rbp");
+    assert_eq!(lines[7], "195", "callee epilogue 末尾は ret");
+}
+
+/// NATIVE-REAL-08e: AArch64 で direct call bundle が BL + callee bytes を持つこと
+#[test]
+fn test_native_codegen_emits_aarch64_direct_call_bundle_bytes() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+(import IR.IR)
+
+(defn main []
+  (let [caller-ir (vector-push (vector-new 1) (make-call 1))
+        callee-ir (vector-push (vector-new 1) (make-instr 3 42))
+        functions (vector-push (vector-push (vector-new 2) caller-ir) callee-ir)
+        target (make-target 2)
+        native (emit-native-bundle functions target)]
+    (do
+      (print (vector-length native))
+      (print (vector-get native 0))
+      (print (vector-get native 1))
+      (print (vector-get native 2))
+      (print (vector-get native 3))
+      (print (vector-get native 4))
+      (print (vector-get native 5))
+      (print (vector-get native 6))
+      (print (vector-get native 7))
+      (print (vector-get native 24))
+      (print (vector-get native 25))
+      (print (vector-get native 26))
+      (print (vector-get native 27))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 13,
+        "aarch64 direct call bundle bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "28",
+        "aarch64 direct call bundle payload は 28 bytes であるべき"
+    );
+    assert_eq!(
+        lines[1], "253",
+        "direct call bundle 先頭は save fp/lr byte 0"
+    );
+    assert_eq!(
+        lines[2], "123",
+        "direct call bundle 先頭は save fp/lr byte 1"
+    );
+    assert_eq!(
+        lines[3], "191",
+        "direct call bundle 先頭は save fp/lr byte 2"
+    );
+    assert_eq!(
+        lines[4], "169",
+        "direct call bundle 先頭は save fp/lr byte 3"
+    );
+    assert_eq!(lines[5], "3", "direct call bundle の BL byte 0 は 3");
+    assert_eq!(lines[6], "0", "direct call bundle の BL byte 1 は 0");
+    assert_eq!(lines[7], "0", "direct call bundle の BL byte 2 は 0");
+    assert_eq!(lines[8], "148", "direct call bundle の BL byte 3 は 148");
+    assert_eq!(lines[9], "192", "callee epilogue 先頭は RET byte 0");
+    assert_eq!(lines[10], "3", "callee epilogue 2 byte 目は RET byte 1");
+    assert_eq!(lines[11], "95", "callee epilogue 3 byte 目は RET byte 2");
+    assert_eq!(lines[12], "214", "callee epilogue 末尾は RET byte 3");
+}
+
 /// NATIVE-REAL-09: emit-object が生成した native bytes 全体を object file へ保持すること
 #[test]
 fn test_native_emit_object_keeps_full_native_payload() {

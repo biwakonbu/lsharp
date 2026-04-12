@@ -27,8 +27,11 @@ Wasmtime embedding + Component Model を正式配布モデルに据える方針�
 - `test_e2e_native_host_binary_i32_add_link_and_execute`
 - `test_e2e_native_host_binary_i32_mul_link_and_execute`
 - `test_e2e_native_host_binary_drop_restores_previous_value`
+- `test_e2e_native_host_binary_direct_call_bundle_link_and_execute`
 - `test_native_codegen_emits_x86_i32_core_instruction_bytes`
 - `test_native_codegen_emits_x86_i32_mul_bytes`
+- `test_native_codegen_emits_x86_direct_call_bundle_bytes`
+- `test_native_codegen_emits_aarch64_direct_call_bundle_bytes`
 - `test_e2e_native_host_bundle_uses_canonical_artifact_contract`
 - `test_e2e_stage23_native_host_bundle_proxy_observations_match`
 
@@ -36,7 +39,8 @@ Wasmtime embedding + Component Model を正式配布モデルに据える方針�
 加えて `scripts/ci/build-native.sh` により、Darwin arm64 ホストでは `stage1-native` / `stage2-native` / `stage3-native` の proxy bundle artifact を `ci-artifacts/native-proxy/<id>/` に materialize でき、representative build entry の IR opcode gap を `actual-stage23-gap.json` として出力できる。
 また `selfhost/src/Backend/Native/NativeCodegen.ls` は x86_64 / aarch64 ともに `LocalGet` / `LocalSet` を stack slot として emit できるようになり、host-target の local roundtrip は `test_e2e_native_host_binary_local_roundtrip_link_and_execute` で固定済みである。
 加えて i32 arithmetic core (`I32Const`, `I32Add`, `I32Mul`, `I32WrapI64`, `I64ExtendI32S`, `I64ExtendI32U`) も両 arch の backend に追加され、AArch64 host execution と x86_64 byte invariant で固定された。`Drop` も `local.get` 前段値への limited restore は host test で固定済みだが、representative stage23 全面からはまだ blocker を外していない。
-その結果 `actual-stage23-gap.json` の先頭 blocker は `Call`、`Drop`、`I32Store`、`I32Load`、`I64Load/Store`、control-flow / memory ops 群へ前進した。
+さらに `emit-native-bundle` による direct intra-bundle call の最小 slice を追加し、x86_64 では rel32 call bytes、AArch64 では `fp/lr` save/restore を伴う direct call bundle host execution を固定した。これは no-arg / intra-bundle の call-frame discipline を示す partial evidence であり、representative stage23 の `Call`（引数受け渡し・import/runtime 境界・実 LoweredModule function plumbing）をまだ置き換えてはいない。
+その結果 `actual-stage23-gap.json` の先頭 blocker は引き続き representative `Call`、`Drop`、`I32Store`、`I32Load`、`I64Load/Store`、control-flow / memory ops 群である。
 ただし `stage1-native -> stage2-native -> stage3-native` の true self-regeneration 完了証跡ではない。
 
 ## 設計
