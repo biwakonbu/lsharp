@@ -551,6 +551,13 @@
         (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 0)))
       call-seq)))
 
+(defn emit-drop-bundle-x86 [frame-base-slot-count current-depth]
+  (if (>= current-depth 3)
+    (concat-byte-vectors
+      (emit-mov-rax-rcx)
+      (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 0)))
+    (emit-mov-rax-rcx)))
+
 ;; === IR -> ネイティブ変換 ===
 
 ;; IR opcode をネイティブ命令列に変換 (x86_64)
@@ -612,7 +619,9 @@
       (if (>= current-depth 2) 15 8)
       (if (= opcode 10)
         (if (>= current-depth 2) 17 10)
-        (vector-length (codegen-ir-instr opcode operand))))))
+        (if (= opcode 44)
+          (if (>= current-depth 3) 10 3)
+          (vector-length (codegen-ir-instr opcode operand)))))))
 
 (defn native-function-body-size-x86-loop [ir-func function-metas idx len total current-depth]
   (if (>= idx len)
@@ -686,7 +695,9 @@
       (emit-i32-const-bundle-x86 operand frame-base-slot-count current-depth)
       (if (= opcode 10)
         (emit-local-get-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)
-        (codegen-ir-instr opcode operand)))))
+        (if (= opcode 44)
+          (emit-drop-bundle-x86 frame-base-slot-count current-depth)
+          (codegen-ir-instr opcode operand))))))
 
 (defn generate-native-instr-bundle-loop-x86 [ir-func result function-starts function-metas frame-base-slot-count current-offset current-depth idx len]
   (if (>= idx len)
@@ -1036,6 +1047,13 @@
         (emit-aarch64-ldr-x9-sp (native-value-window-spill-offset frame-base-slot-count 0)))
       call-seq)))
 
+(defn emit-drop-bundle-aarch64 [frame-base-slot-count current-depth]
+  (if (>= current-depth 3)
+    (concat-byte-vectors
+      (emit-aarch64-mov-x0-x9)
+      (emit-aarch64-ldr-x9-sp (native-value-window-spill-offset frame-base-slot-count 0)))
+    (emit-aarch64-mov-x0-x9)))
+
 ;; IR opcode を AArch64 命令列に変換
 (defn codegen-ir-instr-aarch64 [opcode operand]
     (if (= opcode 1)
@@ -1086,7 +1104,9 @@
       (if (>= current-depth 2) 12 8)
       (if (= opcode 10)
         (if (>= current-depth 2) 12 8)
-        (vector-length (codegen-ir-instr-aarch64 opcode operand))))))
+        (if (= opcode 44)
+          (if (>= current-depth 3) 8 4)
+          (vector-length (codegen-ir-instr-aarch64 opcode operand)))))))
 
 (defn native-function-body-size-aarch64-loop [ir-func function-metas idx len total current-depth]
   (if (>= idx len)
@@ -1163,7 +1183,9 @@
       (emit-i32-const-bundle-aarch64 operand frame-base-slot-count current-depth)
       (if (= opcode 10)
         (emit-local-get-bundle-aarch64 (local-slot-offset operand) frame-base-slot-count current-depth)
-        (codegen-ir-instr-aarch64 opcode operand)))))
+        (if (= opcode 44)
+          (emit-drop-bundle-aarch64 frame-base-slot-count current-depth)
+          (codegen-ir-instr-aarch64 opcode operand))))))
 
 (defn generate-native-instr-bundle-loop-aarch64 [ir-func result function-starts function-metas frame-base-slot-count current-offset current-depth idx len]
   (if (>= idx len)
