@@ -103,6 +103,11 @@
   (let [bytes (vector-new 2)]
     (vector-push (vector-push bytes 1) 200)))
 
+;; x86_64 の IMUL eax, ecx
+(defn emit-imul-eax-ecx []
+  (let [bytes (vector-new 3)]
+    (vector-push (vector-push (vector-push bytes 15) 175) 193)))
+
 ;; x86_64 の MOV eax, eax
 (defn emit-mov-eax-eax []
   (let [bytes (vector-new 2)]
@@ -281,20 +286,23 @@
               (if (= opcode 24)
                 ;; i32.add -> add eax, ecx
                 (emit-add-eax-ecx)
-                (if (= opcode 36)
-                  ;; i64.extend_i32_s -> movsxd rax, eax
-                  (emit-movsxd-rax-eax)
-                  (if (= opcode 37)
-                    ;; i64.extend_i32_u -> mov eax, eax
-                    (emit-mov-eax-eax)
-                    (if (= opcode 38)
-                      ;; i32.wrap_i64 -> mov eax, eax
+                (if (= opcode 25)
+                  ;; i32.mul -> imul eax, ecx
+                  (emit-imul-eax-ecx)
+                  (if (= opcode 36)
+                    ;; i64.extend_i32_s -> movsxd rax, eax
+                    (emit-movsxd-rax-eax)
+                    (if (= opcode 37)
+                      ;; i64.extend_i32_u -> mov eax, eax
                       (emit-mov-eax-eax)
-                      (if (= opcode 44)
-                        ;; drop -> 1 段下の値へ戻す
-                        (emit-mov-rax-rcx)
-                        ;; 未知の opcode: NOP
-                        (vector-push (vector-new 1) 144))))))))))))) ;; 0x90
+                      (if (= opcode 38)
+                        ;; i32.wrap_i64 -> mov eax, eax
+                        (emit-mov-eax-eax)
+                        (if (= opcode 44)
+                          ;; drop -> 1 段下の値へ戻す
+                          (emit-mov-rax-rcx)
+                          ;; 未知の opcode: NOP
+                          (vector-push (vector-new 1) 144)))))))))))))) ;; 0x90
 
 ;; === コード生成メイン関数 ===
 
@@ -391,6 +399,11 @@
   (let [bytes (vector-new 4)]
     (vector-push (vector-push (vector-push (vector-push bytes 32) 0) 0) 11)))
 
+;; AArch64 MUL w0, w1, w0
+(defn emit-aarch64-mul-w0-w1-w0 []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 32) 124) 0) 27)))
+
 ;; AArch64 MOV w0, w0
 (defn emit-aarch64-mov-w0-w0 []
   (let [bytes (vector-new 4)]
@@ -464,20 +477,23 @@
           (if (= opcode 24)
             ;; i32.add -> add w0, w1, w0
             (emit-aarch64-add-w0-w1-w0)
-            (if (= opcode 36)
-              ;; i64.extend_i32_s -> sxtw x0, w0
-              (emit-aarch64-sxtw-x0-w0)
-              (if (= opcode 37)
-                ;; i64.extend_i32_u -> mov w0, w0
-                (emit-aarch64-mov-w0-w0)
-                (if (= opcode 38)
-                  ;; i32.wrap_i64 -> mov w0, w0
+            (if (= opcode 25)
+              ;; i32.mul -> mul w0, w1, w0
+              (emit-aarch64-mul-w0-w1-w0)
+              (if (= opcode 36)
+                ;; i64.extend_i32_s -> sxtw x0, w0
+                (emit-aarch64-sxtw-x0-w0)
+                (if (= opcode 37)
+                  ;; i64.extend_i32_u -> mov w0, w0
                   (emit-aarch64-mov-w0-w0)
-                  (if (= opcode 44)
-                    ;; drop -> 1 段下の値へ戻す
-                    (emit-aarch64-mov-x0-x1)
-                    ;; 未知の opcode: NOP
-                    (emit-aarch64-nop)))))))))))
+                  (if (= opcode 38)
+                    ;; i32.wrap_i64 -> mov w0, w0
+                    (emit-aarch64-mov-w0-w0)
+                    (if (= opcode 44)
+                      ;; drop -> 1 段下の値へ戻す
+                      (emit-aarch64-mov-x0-x1)
+                      ;; 未知の opcode: NOP
+                      (emit-aarch64-nop))))))))))))
 
 ;; === AArch64 コード生成 ===
 

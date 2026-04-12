@@ -808,6 +808,86 @@ fn host_target_i32_add_code_bytes() -> Vec<u8> {
     )
 }
 
+fn host_target_i32_mul_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [instr1 (make-instr 3 21)
+        instr2 (make-instr 11 0)
+        instr3 (make-instr 3 2)
+        instr4 (make-instr 11 1)
+        instr5 (make-local-get 0)
+        instr6 (make-local-get 1)
+        instr7 (make-instr 25 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 7) instr1)
+                       instr2)
+                     instr3)
+                   instr4)
+                 instr5)
+               instr6)
+             instr7)
+        target (host-target)
+        code (emit-native ir target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_drop_restore_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [instr1 (make-instr 3 42)
+        instr2 (make-instr 11 0)
+        instr3 (make-instr 3 7)
+        instr4 (make-local-get 0)
+        instr5 (make-instr 44 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push (vector-new 5) instr1)
+                   instr2)
+                 instr3)
+               instr4)
+             instr5)
+        target (host-target)
+        code (emit-native ir target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 /// ネイティブバイト列を `.s` アセンブリシムでラップし、
 /// clang (arm64) でリンクして実行する。戻り値は exit code。
 fn link_and_run_native_host_binary(code: &[u8]) -> Result<i32, String> {
@@ -1037,6 +1117,62 @@ fn test_e2e_native_host_binary_i32_add_link_and_execute() {
         exit_code,
         42,
         "host binary i32 add: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d: i32.const/local.get/i32.mul を含む host target バイト列がリンク・実行できること。
+#[test]
+fn test_e2e_native_host_binary_i32_mul_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_i32_mul_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: i32.const/local.get/i32.mul を含む host target 向けコードバイト列が空"
+    );
+
+    let exit_code =
+        link_and_run_native_host_binary(&code_bytes).expect("i32 mul host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "host binary i32 mul: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01e: Drop が local.get 前の値へ戻せること。
+#[test]
+fn test_e2e_native_host_binary_drop_restores_previous_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_drop_restore_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: drop restore を含む host target 向けコードバイト列が空"
+    );
+
+    let exit_code =
+        link_and_run_native_host_binary(&code_bytes).expect("drop restore host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        7,
+        "host binary drop restore: exit code 7 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),

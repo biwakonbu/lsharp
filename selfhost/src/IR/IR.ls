@@ -22,6 +22,7 @@
 (defn ir-i64-mul [] 22)
 (defn ir-i64-div [] 23)
 (defn ir-i32-add [] 24)
+(defn ir-i32-mul [] 25)
 
 ;; 比較
 (defn ir-i64-eq [] 30)
@@ -86,6 +87,10 @@
 ;; 32bit 加算
 (defn make-i32-add []
   (make-instr 24 0))
+
+;; 32bit 乗算
+(defn make-i32-mul []
+  (make-instr 25 0))
 
 ;; 64bit -> 32bit truncation
 (defn make-i32-wrap-i64 []
