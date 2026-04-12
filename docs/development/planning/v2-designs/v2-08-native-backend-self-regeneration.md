@@ -23,11 +23,14 @@ Wasmtime embedding + Component Model を正式配布モデルに据える方針�
 - `test_e2e_native_linker_generates_canonical_response_file_text`
 - `test_e2e_selfhost_main_native_bundle_summary_matches_canonical_contract`
 - `test_e2e_stage1_native_observation_summary_two_run_determinism`
+- `test_e2e_native_host_binary_local_roundtrip_link_and_execute`
 - `test_e2e_native_host_bundle_uses_canonical_artifact_contract`
 - `test_e2e_stage23_native_host_bundle_proxy_observations_match`
 
 これらは native module skeleton / execution slice / structural parity に加えて、representative build entry における canonical artifact 名 / response file text / bundle summary 契約、tiny host-target program に対する canonical bundle materialization、および host-side proxy の `stage2-native` / `stage3-native` compare loop を示す partial evidence である。
-加えて `scripts/ci/build-native.sh` により、Darwin arm64 ホストでは `stage1-native` / `stage2-native` / `stage3-native` の proxy bundle artifact を `ci-artifacts/native-proxy/<id>/` に materialize できる。
+加えて `scripts/ci/build-native.sh` により、Darwin arm64 ホストでは `stage1-native` / `stage2-native` / `stage3-native` の proxy bundle artifact を `ci-artifacts/native-proxy/<id>/` に materialize でき、representative build entry の IR opcode gap を `actual-stage23-gap.json` として出力できる。
+また `selfhost/src/Backend/Native/NativeCodegen.ls` は x86_64 / aarch64 ともに `LocalGet` / `LocalSet` を stack slot として emit できるようになり、host-target の local roundtrip は `test_e2e_native_host_binary_local_roundtrip_link_and_execute` で固定済みである。
+その結果 `actual-stage23-gap.json` の先頭 blocker は `Call`、`I32WrapI64`、`Drop`、`I32Const`、`I32Add`、`I32Store`、control-flow / memory ops 群へ前進した。
 ただし `stage1-native -> stage2-native -> stage3-native` の true self-regeneration 完了証跡ではない。
 
 ## 設計
@@ -38,6 +41,7 @@ Wasmtime embedding + Component Model を正式配布モデルに据える方針�
 - `program.o`, `runtime.o`, `linker-response.txt`, `program.native` の artifact 契約を target ごとに固定する
 - `selfhost/src/App/PipelineSmoke.ls` から canonical artifact 名と response-file text を hash/length summary として観測できるようにする
 - `scripts/ci/build-native.sh` は現時点では true native compiler build ではなく、canonical proxy bundle を artifact 化する build entry として扱う
+- `actual-stage23-gap.json` は representative build entry を actual stage23 へ進めるための blocker report として扱う
 
 ### stage chain
 

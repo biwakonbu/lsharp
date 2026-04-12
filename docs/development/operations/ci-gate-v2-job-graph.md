@@ -78,7 +78,7 @@ GitHub の branch protection UI では required check として Actions 表示�
 
 ## アーティファクト
 
-`ci-gate-v2` はジョブ結果サマリーを `ci-gate-v2-results` として保存する（`retention-days: 30`）。`gc-metrics-artifact` は `gc-metrics-{sha}` として `ci-artifacts/gc-metrics/{commit_sha}/` directory を保存し、`collect-gc-metrics.sh` が正規化した `summary.json` と `collector-proof.json` を同梱する。`native-proxy-artifact` は `native-proxy-{sha}` として `ci-artifacts/native-proxy/{commit_sha}/` directory を保存し、`build-native.sh` が `manifest.json` と `stage1-native` / `stage2-native` / `stage3-native` canonical bundle を同梱する。`test-fresh-clone` は upstream の `fresh-clone-artifact` が `fresh-clone-archive-${sha}` を publish し、それを download して binary-only smoke を行う。
+`ci-gate-v2` はジョブ結果サマリーを `ci-gate-v2-results` として保存する（`retention-days: 30`）。`gc-metrics-artifact` は `gc-metrics-{sha}` として `ci-artifacts/gc-metrics/{commit_sha}/` directory を保存し、`collect-gc-metrics.sh` が正規化した `summary.json` と `collector-proof.json` を同梱する。`native-proxy-artifact` は `native-proxy-{sha}` として `ci-artifacts/native-proxy/{commit_sha}/` directory を保存し、`build-native.sh` が `manifest.json`、`stage1-native` / `stage2-native` / `stage3-native` canonical bundle、`actual-stage23-gap.json` blocker report を同梱する。`test-fresh-clone` は upstream の `fresh-clone-artifact` が `fresh-clone-archive-${sha}` を publish し、それを download して binary-only smoke を行う。
 
 ## 同時実行制御
 
