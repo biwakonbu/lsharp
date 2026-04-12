@@ -1271,9 +1271,9 @@
                 result))))))))
 (defn compile-defn-functions-with-source [decls idx n source ftable data-ref functions]
   (compile-defn-functions-chunked-with-source decls idx n source ftable data-ref functions))
-(defn compile-program-functions-with-source [src decls]
+(defn compile-program-functions-with-source-base [src decls base-idx]
   (let [n (vector-length decls)
-    pass1 (register-defns-chunked decls 0 n (ftable-new) 0)
+    pass1 (register-defns-chunked decls 0 n (ftable-new) base-idx)
     ftable (vector-get pass1 2)
     data-ref (ref-new (vector-new 8))
     functions (compile-defn-functions-chunked-with-source decls 0 n src ftable data-ref (vector-new 8))
@@ -1289,6 +1289,8 @@
                 (root_pop)
                 (root_pop)
                 payload3))))))))
+(defn compile-program-functions-with-source [src decls]
+  (compile-program-functions-with-source-base src decls 10))
 (defn compile-program-with-source [src decls]
   (let [pair (compile-program-functions-with-source src decls)
     ftable (vector-get pair 0)
@@ -1908,9 +1910,9 @@
 (defn main [] (compiler-main-run))
 (defn compiler-main-lit-node [] (vector-push (vector-push (vector-new 2) 1) 42))
 (defn compiler-main-do-node [] (let [n (vector-new 8)] (let [n1 (vector-push n 9) n2 (vector-push n1 2) e1 (vector-push (vector-push (vector-new 2) 1) 10) n3 (vector-push n2 e1) e2 (vector-push (vector-push (vector-new 2) 1) 20) n4 (vector-push n3 e2)] n4)))
-(defn compiler-main-add-node [] (let [n (vector-new 8)] (let [n1 (vector-push n 5) n2 (vector-push n1 43) n3 (vector-push n2 2) a1 (vector-push (vector-push (vector-new 2) 1) 3) n4 (vector-push n3 a1) a2 (vector-push (vector-push (vector-new 2) 1) 4) n5 (vector-push n4 a2)] n5)))
+(defn compiler-main-add-node [] (let [callee (vector-push (vector-push (vector-new 2) (tag-var)) 999) n (vector-new 8)] (let [n1 (vector-push n (tag-apply)) n2 (vector-push n1 callee) n3 (vector-push n2 2) a1 (vector-push (vector-push (vector-new 2) 1) 3) n4 (vector-push n3 a1) a2 (vector-push (vector-push (vector-new 2) 1) 4) n5 (vector-push n4 a2)] n5)))
 (defn compiler-main-run [] (let [lit-node (compiler-main-lit-node) env (env-new) instrs (compile-expr lit-node env (vector-new 8)) do-node (compiler-main-do-node) do-instrs (compile-expr do-node env (vector-new 8)) leb-small (leb128-unsigned 5) leb-medium (leb128-unsigned 300) add-node (compiler-main-add-node) add-instrs (compile-expr add-node env (vector-new 8))] (compiler-main-report instrs do-instrs leb-small leb-medium add-instrs)))
-(defn compiler-main-report [instrs do-instrs leb-small leb-medium add-instrs] (do (print (vector-length instrs)) (let [instr0 (vector-get instrs 0)] (do (print (vector-get instr0 0)) (print (vector-get instr0 1)))) (print (vector-length do-instrs)) (print (vector-length leb-small)) (print (vector-get leb-small 0)) (print (vector-length leb-medium)) (print (vector-get leb-medium 0)) (print (vector-get leb-medium 1)) (print (vector-length add-instrs)) (let [ai0 (vector-get add-instrs 0) ai1 (vector-get add-instrs 1) ai2 (vector-get add-instrs 2)] (do (print (vector-get ai0 0)) (print (vector-get ai0 1)) (print (vector-get ai1 0)) (print (vector-get ai1 1)) (print (vector-get ai2 0)) 0)) 0))
+(defn compiler-main-report [instrs do-instrs leb-small leb-medium add-instrs] (do (print (vector-length instrs)) (let [instr0 (vector-get instrs 0)] (do (print (vector-get instr0 0)) (print (vector-get instr0 1)))) (print (vector-length do-instrs)) (print (vector-length leb-small)) (print (vector-get leb-small 0)) (print (vector-length leb-medium)) (print (vector-get leb-medium 0)) (print (vector-get leb-medium 1)) (print (vector-length add-instrs)) (let [ai0 (vector-get add-instrs 0) ai2 (vector-get add-instrs 2) ai-last (vector-get add-instrs (- (vector-length add-instrs) 1))] (do (print (vector-get ai0 0)) (print (vector-get ai0 1)) (print (vector-get ai2 0)) (print (vector-get ai2 1)) (print (vector-get ai-last 0)) 0)) 0))
 (defn compile-if-with-source [node source env ftable instrs data-ref]
   (compile-if-with-source-impl node source env ftable instrs data-ref))
 (defn compile-let-with-ftable-impl [node env ftable instrs]

@@ -9947,6 +9947,7 @@ fn test_v2_12_self_hosted_stage2_loads_compiler_mode_module() {
 }
 
 #[test]
+#[ignore = "診断専用: regular invariant は test_v2_12_self_hosted_stage2_loads_compiler_mode_module が担う"]
 fn test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
