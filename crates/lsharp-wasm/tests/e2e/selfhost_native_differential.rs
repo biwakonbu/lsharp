@@ -999,6 +999,68 @@ fn test_native_codegen_processes_multiple_ir_instructions() {
     assert_eq!(lines[5], "3", "末尾 RET の 2 byte 目は 0x03");
 }
 
+/// NATIVE-REAL-08b: x86_64 で i32.const / i32.wrap_i64 / i64.extend_i32_s が distinct bytes を持つこと
+#[test]
+fn test_native_codegen_emits_x86_i32_core_instruction_bytes() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn make-instr [opcode operand]
+  (vector-push (vector-push (vector-new 2) opcode) operand))
+
+(defn main []
+  (let [instr1 (make-instr 3 42)
+        instr2 (make-instr 38 0)
+        instr3 (make-instr 36 0)
+        ir (vector-push
+             (vector-push
+               (vector-push (vector-new 3) instr1)
+               instr2)
+             instr3)
+        target (make-target 1)
+        native (emit-native ir target)]
+    (do
+      (print (vector-length native))
+      (print (vector-get native 4))
+      (print (vector-get native 5))
+      (print (vector-get native 6))
+      (print (vector-get native 7))
+      (print (vector-get native 8))
+      (print (vector-get native 11))
+      (print (vector-get native 12))
+      (print (vector-get native 13))
+      (print (vector-get native 14))
+      (print (vector-get native 15))
+      (print (vector-get native 16))
+      (print (vector-get native 17))
+      (print (vector-get native 18))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 13,
+        "x86 i32 core bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "19", "x86_64 payload は 19 bytes であるべき");
+    assert_eq!(lines[1], "72", "i32.const 前段は mov rcx, rax の 0x48");
+    assert_eq!(lines[2], "137", "i32.const 前段 2 byte 目は 0x89");
+    assert_eq!(lines[3], "193", "i32.const 前段 3 byte 目は 0xC1");
+    assert_eq!(lines[4], "184", "i32.const 本体は mov eax, imm32 の 0xB8");
+    assert_eq!(lines[5], "42", "i32.const 即値の下位 byte は 42");
+    assert_eq!(lines[6], "0", "i32.const 即値の上位 byte は 0");
+    assert_eq!(lines[7], "137", "i32.wrap_i64 は mov eax, eax の 0x89");
+    assert_eq!(lines[8], "192", "i32.wrap_i64 は mov eax, eax の 0xC0");
+    assert_eq!(lines[9], "72", "i64.extend_i32_s は movsxd prefix 0x48");
+    assert_eq!(lines[10], "99", "i64.extend_i32_s は movsxd opcode 0x63");
+    assert_eq!(lines[11], "192", "i64.extend_i32_s は movsxd ModRM 0xC0");
+    assert_eq!(lines[12], "93", "epilogue 先頭は pop rbp");
+    assert_eq!(lines[13], "195", "epilogue 末尾は ret");
+}
+
 /// NATIVE-REAL-09: emit-object が生成した native bytes 全体を object file へ保持すること
 #[test]
 fn test_native_emit_object_keeps_full_native_payload() {
