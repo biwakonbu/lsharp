@@ -28,6 +28,7 @@ rm -rf "${ARTIFACT_DIR}"
 mkdir -p "${ARTIFACT_DIR}"
 
 export LSHARP_NATIVE_PROXY_ARTIFACT_DIR="${ARTIFACT_DIR}"
+export LSHARP_NATIVE_STAGE23_GAP_REPORT="${ARTIFACT_DIR}/actual-stage23-gap.json"
 
 echo "=== native proxy bundle gate ==="
 echo "artifact dir: ${ARTIFACT_DIR}"
@@ -38,6 +39,9 @@ cargo test -p lsharp-wasm --test e2e \
 cargo test -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_stage23_native_host_bundle_proxy_observations_match \
   -- --exact --nocapture
+cargo test -p lsharp-wasm --test e2e \
+  e2e::selfhost_native_stage23_gap::test_e2e_native_actual_stage23_gap_report_for_representative_entry \
+  -- --exact --nocapture
 
 for stage in stage1-native stage2-native stage3-native; do
   if [[ ! -s "${ARTIFACT_DIR}/${stage}/summary.json" ]]; then
@@ -45,6 +49,10 @@ for stage in stage1-native stage2-native stage3-native; do
     exit 1
   fi
 done
+if [[ ! -s "${ARTIFACT_DIR}/actual-stage23-gap.json" ]]; then
+  echo "ERROR: missing actual stage23 gap report" >&2
+  exit 1
+fi
 
 python3 - "${ARTIFACT_DIR}" <<'PY'
 import json

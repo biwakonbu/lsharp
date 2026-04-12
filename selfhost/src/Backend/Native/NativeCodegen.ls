@@ -77,6 +77,116 @@
         137) ;; 0x89
       229))) ;; 0xE5 (rsp -> rbp)
 
+;; 32bit 値を little-endian 4 bytes に分解する
+(defn encode-u32-le [value]
+  (let [byte0 (% value 256)
+    byte1 (% (/ value 256) 256)
+    byte2 (% (/ value 65536) 256)
+    byte3 (% (/ value 16777216) 256)
+    bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes byte0) byte1) byte2) byte3)))
+
+;; ローカル変数の stack slot offset (rbp/sp からの byte 数)
+(defn local-slot-offset [idx]
+  (* (+ idx 1) 8))
+
+;; 16 byte alignment を満たす stack size に丸める
+(defn align-16 [value]
+  (let [remainder (% value 16)]
+    (if (= remainder 0)
+      value
+      (+ value (- 16 remainder)))))
+
+;; LocalGet / LocalSet に現れる最大ローカル index を収集
+(defn make-local-scan-state [found max-local]
+  (vector-push (vector-push (vector-new 2) found) max-local))
+
+(defn local-scan-found [state]
+  (vector-get state 0))
+
+(defn local-scan-max [state]
+  (vector-get state 1))
+
+(defn update-max-local-index [opcode operand state]
+  (if (= opcode 10)
+    (if (> operand (local-scan-max state))
+      (make-local-scan-state 1 operand)
+      (make-local-scan-state 1 (local-scan-max state)))
+    (if (= opcode 11)
+      (if (> operand (local-scan-max state))
+        (make-local-scan-state 1 operand)
+        (make-local-scan-state 1 (local-scan-max state)))
+      state)))
+
+(defn find-max-local-index-loop [ir-func idx len state]
+  (if (>= idx len)
+    state
+    (let [instr (vector-get ir-func idx)
+      opcode (vector-get instr 0)
+      operand (vector-get instr 1)
+      next-state (update-max-local-index opcode operand state)]
+      (find-max-local-index-loop ir-func (+ idx 1) len next-state))))
+
+(defn native-local-stack-bytes [ir-func]
+  (let [state (find-max-local-index-loop ir-func 0 (vector-length ir-func) (make-local-scan-state 0 0))
+    found (local-scan-found state)
+    max-local (local-scan-max state)]
+    (if (= found 0)
+      0
+      (align-16 (* (+ max-local 1) 8)))))
+
+;; x86_64 の SUB rsp, imm32
+(defn emit-sub-rsp-imm32 [value]
+  (let [imm (encode-u32-le value)
+    bytes (vector-new 7)
+    b1 (vector-push bytes 72)
+    b2 (vector-push b1 129)
+    b3 (vector-push b2 236)
+    b4 (vector-push b3 (vector-get imm 0))
+    b5 (vector-push b4 (vector-get imm 1))
+    b6 (vector-push b5 (vector-get imm 2))
+    b7 (vector-push b6 (vector-get imm 3))]
+    b7))
+
+;; x86_64 の ADD rsp, imm32
+(defn emit-add-rsp-imm32 [value]
+  (let [imm (encode-u32-le value)
+    bytes (vector-new 7)
+    b1 (vector-push bytes 72)
+    b2 (vector-push b1 129)
+    b3 (vector-push b2 196)
+    b4 (vector-push b3 (vector-get imm 0))
+    b5 (vector-push b4 (vector-get imm 1))
+    b6 (vector-push b5 (vector-get imm 2))
+    b7 (vector-push b6 (vector-get imm 3))]
+    b7))
+
+;; x86_64 の MOV [rbp-offset], rax
+(defn emit-mov-local-from-rax [offset]
+  (let [disp (encode-u32-le (- 4294967296 offset))
+    bytes (vector-new 7)
+    b1 (vector-push bytes 72)
+    b2 (vector-push b1 137)
+    b3 (vector-push b2 133)
+    b4 (vector-push b3 (vector-get disp 0))
+    b5 (vector-push b4 (vector-get disp 1))
+    b6 (vector-push b5 (vector-get disp 2))
+    b7 (vector-push b6 (vector-get disp 3))]
+    b7))
+
+;; x86_64 の MOV rax, [rbp-offset]
+(defn emit-mov-rax-from-local [offset]
+  (let [disp (encode-u32-le (- 4294967296 offset))
+    bytes (vector-new 7)
+    b1 (vector-push bytes 72)
+    b2 (vector-push b1 139)
+    b3 (vector-push b2 133)
+    b4 (vector-push b3 (vector-get disp 0))
+    b5 (vector-push b4 (vector-get disp 1))
+    b6 (vector-push b5 (vector-get disp 2))
+    b7 (vector-push b6 (vector-get disp 3))]
+    b7))
+
 ;; === IR -> ネイティブ変換 ===
 
 ;; IR opcode をネイティブ命令列に変換 (x86_64)
@@ -85,6 +195,12 @@
   (if (= opcode 1)
     ;; i64.const -> mov rax, imm64
     (emit-mov-imm64 (reg-rax) operand)
+    (if (= opcode 10)
+      ;; local.get -> mov rax, [rbp-offset]
+      (emit-mov-rax-from-local (local-slot-offset operand))
+      (if (= opcode 11)
+        ;; local.set -> mov [rbp-offset], rax
+        (emit-mov-local-from-rax (local-slot-offset operand))
     (if (= opcode 20)
       ;; i64.add -> add rax, rcx (簡易版)
       ;; 0x48 0x01 0xC8
@@ -94,7 +210,7 @@
         ;; 0x48 0x29 0xC8
         (vector-push (vector-push (vector-push (vector-new 3) 72) 41) 200)
         ;; 未知の opcode: NOP
-        (vector-push (vector-new 1) 144))))) ;; 0x90
+        (vector-push (vector-new 1) 144))))))) ;; 0x90
 
 ;; === コード生成メイン関数 ===
 
@@ -124,6 +240,7 @@
 ;; 戻り値: ネイティブ機械語バイト列
 (defn generate-native-x86-64 [ir-func]
   (let [result (ref-new (vector-new 64))
+    stack-bytes (native-local-stack-bytes ir-func)
     ;; 関数プロローグ
     prologue-push (emit-push-rbp)
     prologue-mov (emit-mov-rbp-rsp)
@@ -131,6 +248,9 @@
     _ (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 0)))
     _ (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 1)))
     _ (ref-set result (vector-push (ref-get result) (vector-get prologue-mov 2)))
+    _ (if (> stack-bytes 0)
+        (append-native-bytes-loop result (emit-sub-rsp-imm32 stack-bytes) 0 7)
+        0)
     ;; IR 命令列を順にネイティブ bytes へ落とす
     n (vector-length ir-func)]
     (do
@@ -139,6 +259,9 @@
       (let [epilogue-pop (emit-pop-rbp)
         epilogue-ret (emit-ret)]
         (do
+          (if (> stack-bytes 0)
+            (append-native-bytes-loop result (emit-add-rsp-imm32 stack-bytes) 0 7)
+            0)
           (ref-set result (vector-push (ref-get result) (vector-get epilogue-pop 0)))
           (ref-set result (vector-push (ref-get result) (vector-get epilogue-ret 0)))
           (ref-get result))))))
@@ -169,13 +292,37 @@
   (let [bytes (vector-new 4)]
     (vector-push (vector-push (vector-push (vector-push bytes 31) 32) 3) 213)))
 
+;; AArch64 SUB sp, sp, #imm
+(defn emit-aarch64-sub-sp [imm]
+  (encode-u32-le (+ (+ 3506438144 (* imm 1024)) 1023)))
+
+;; AArch64 ADD sp, sp, #imm
+(defn emit-aarch64-add-sp [imm]
+  (encode-u32-le (+ (+ 2432696320 (* imm 1024)) 1023)))
+
+;; AArch64 STR x0, [sp, #offset]
+(defn emit-aarch64-str-x0-sp [offset]
+  (let [scaled (/ offset 8)]
+    (encode-u32-le (+ (+ 4177526784 (* scaled 1024)) 992))))
+
+;; AArch64 LDR x0, [sp, #offset]
+(defn emit-aarch64-ldr-x0-sp [offset]
+  (let [scaled (/ offset 8)]
+    (encode-u32-le (+ (+ 4181721088 (* scaled 1024)) 992))))
+
 ;; IR opcode を AArch64 命令列に変換
 (defn codegen-ir-instr-aarch64 [opcode operand]
   (if (= opcode 1)
     ;; i64.const -> MOVZ W0, #operand
     (emit-aarch64-movz-w0 operand)
+    (if (= opcode 10)
+      ;; local.get -> LDR x0, [sp, #offset]
+      (emit-aarch64-ldr-x0-sp (local-slot-offset operand))
+      (if (= opcode 11)
+        ;; local.set -> STR x0, [sp, #offset]
+        (emit-aarch64-str-x0-sp (local-slot-offset operand))
     ;; 未知の opcode: NOP
-    (emit-aarch64-nop)))
+    (emit-aarch64-nop)))))
 
 ;; === AArch64 コード生成 ===
 
@@ -196,11 +343,18 @@
 ;; 戻り値: AArch64 機械語バイト列
 (defn generate-native-aarch64 [ir-func]
   (let [result (ref-new (vector-new 16))
+    stack-bytes (native-local-stack-bytes ir-func)
     n (vector-length ir-func)]
     (do
+      (if (> stack-bytes 0)
+        (append-native-bytes-loop result (emit-aarch64-sub-sp stack-bytes) 0 4)
+        0)
       (generate-native-instr-loop-aarch64 ir-func result 0 n)
       (let [ret-bytes (emit-aarch64-ret)]
         (do
+          (if (> stack-bytes 0)
+            (append-native-bytes-loop result (emit-aarch64-add-sp stack-bytes) 0 4)
+            0)
           (append-native-bytes-loop result ret-bytes 0 4)
           (ref-get result))))))
 

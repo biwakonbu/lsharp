@@ -2304,7 +2304,8 @@ fn test_e2e_native_ops01_proxy_artifact_contract() {
         script_content.contains("ci-artifacts/native-proxy/")
             && script_content.contains("stage1-native")
             && script_content.contains("stage2-native")
-            && script_content.contains("stage3-native"),
+            && script_content.contains("stage3-native")
+            && script_content.contains("actual-stage23-gap.json"),
         "build-native.sh は native proxy artifact 契約を保持すること"
     );
 
@@ -2332,7 +2333,8 @@ fn test_e2e_native_ops01_proxy_artifact_contract() {
         std::fs::read_to_string(&policy).expect("artifact-policy.md の読み込みに失敗");
     assert!(
         policy_content.contains("native-proxy-{commit_sha}")
-            && policy_content.contains("ci-artifacts/native-proxy/{commit_sha}/"),
+            && policy_content.contains("ci-artifacts/native-proxy/{commit_sha}/")
+            && policy_content.contains("actual-stage23-gap.json"),
         "artifact-policy.md は native proxy artifact 名と path を記述すること"
     );
 

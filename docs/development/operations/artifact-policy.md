@@ -15,7 +15,7 @@ CI / CD パイプラインで生成される **workflow-local artifact** と、�
 | Bootstrap diff | `bootstrap-diff-{commit_sha}` | `.github/workflows/ci.yml` `bootstrap` | fixed-point / stage-chain 比較レポート |
 | Fresh clone archive | `fresh-clone-archive-{commit_sha}` | `.github/workflows/ci.yml` `fresh-clone-artifact` | binary-only gate 用の release-style archive |
 | GC metrics | `gc-metrics-{commit_sha}` | `.github/workflows/ci.yml` `gc-metrics-artifact` | runtime stability 用の GC/alloc metrics directory (`summary.json` + `collector-proof.json`) |
-| Native proxy artifact | `native-proxy-{commit_sha}` | `.github/workflows/ci.yml` `native-proxy-artifact` | Darwin arm64 host で materialize した `stage1-native` / `stage2-native` / `stage3-native` proxy bundle (`manifest.json` + canonical bundle files) |
+| Native proxy artifact | `native-proxy-{commit_sha}` | `.github/workflows/ci.yml` `native-proxy-artifact` | Darwin arm64 host で materialize した `stage1-native` / `stage2-native` / `stage3-native` proxy bundle (`manifest.json` + canonical bundle files) と `actual-stage23-gap.json` |
 | Shadow oracle 結果 | `shadow-oracle-results` | `.github/workflows/ci.yml` `shadow-oracle` | differential test の補助成果物 |
 | Release build artifact | `lsharp-{version}-{target}` | `.github/workflows/release.yml` `build` | release workflow 内で download される論理名 |
 
@@ -94,7 +94,7 @@ bash scripts/checksum.sh dist > dist/checksums.txt
 - 不要な中間成果物は `if-no-files-found: ignore` で欠落を許容する
 - 大容量アーティファクト（Wasm バイナリ等）は圧縮して保存する
 - `gc-metrics-{commit_sha}` は `ci-artifacts/gc-metrics/{commit_sha}/` directory を正本とし、`collect-gc-metrics.sh` が `summary.json` と sibling `collector-proof.json` を常に揃えた上で PR では 5 日、main では 30 日保持する
-- `native-proxy-{commit_sha}` は `ci-artifacts/native-proxy/{commit_sha}/` directory を正本とし、`scripts/ci/build-native.sh` が `stage1-native` / `stage2-native` / `stage3-native` canonical bundle と top-level `manifest.json` を揃えた上で PR では 5 日、main では 30 日保持する
+- `native-proxy-{commit_sha}` は `ci-artifacts/native-proxy/{commit_sha}/` directory を正本とし、`scripts/ci/build-native.sh` が `stage1-native` / `stage2-native` / `stage3-native` canonical bundle、top-level `manifest.json`、および representative build entry の actual blocker report `actual-stage23-gap.json` を揃えた上で PR では 5 日、main では 30 日保持する
 - release workflow の `lsharp-{version}-{target}` は **workflow-local artifact** であり、ユーザー向け名称は GitHub Release asset `lsharp-{version}-{target}.{ext}` と `lsharp-{version}-{target}.component.wasm` として別に扱う
 
 ## GC metrics artifact の受理 / 却下
