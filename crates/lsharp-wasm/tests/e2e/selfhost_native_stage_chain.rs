@@ -982,7 +982,7 @@ fn host_target_direct_call_two_arg_bundle_code_bytes() -> Vec<u8> {
                     (vector-push
                       (vector-push (vector-new 3) (make-local-get 0))
                       (make-local-get 1))
-                    (make-instr 24 0))
+                            (make-instr 24 0)))
         caller (make-function-meta 0 0 caller-ir)
         callee (make-function-meta 2 0 callee-ir)
         functions (vector-push (vector-push (vector-new 2) caller) callee)
@@ -1082,7 +1082,7 @@ fn host_target_direct_call_four_arg_bundle_code_bytes() -> Vec<u8> {
                             (vector-push
                               (vector-push (vector-new 7) (make-local-get 0))
                               (make-local-get 1))
-                            (make-instr 24 0))
+                            (make-instr 24 0)))
                           (make-local-get 2))
                         (make-instr 24 0))
                       (make-local-get 3))
@@ -1625,6 +1625,104 @@ fn host_target_direct_call_eleven_arg_bundle_code_bytes() -> Vec<u8> {
                     (make-instr 24 0))
         caller (make-function-meta 0 0 caller-ir)
         callee (make-function-meta 11 0 callee-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) callee)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_direct_call_twelve_arg_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [caller-ir (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push
+                            (vector-push
+                              (vector-push
+                                (vector-push
+                                  (vector-push
+                                    (vector-push
+                                      (vector-push
+                                        (vector-push
+                                          (vector-push (vector-new 13) (make-instr 3 40))
+                                          (make-instr 3 2))
+                                        (make-instr 3 5))
+                                      (make-instr 3 7))
+                                    (make-instr 3 11))
+                                  (make-instr 3 14))
+                                (make-instr 3 17))
+                              (make-instr 3 19))
+                            (make-instr 3 23))
+                          (make-instr 3 29))
+                        (make-instr 3 31))
+                      (make-instr 3 37))
+                    (make-call 1))
+        callee-ir-head (vector-push
+                         (vector-push
+                           (vector-push
+                             (vector-push
+                               (vector-push
+                                 (vector-push
+                                   (vector-push
+                                     (vector-push
+                                       (vector-push
+                                         (vector-push
+                                           (vector-push
+                                             (vector-push
+                                               (vector-push (vector-new 23) (make-local-get 0))
+                                               (make-local-get 1))
+                                             (make-instr 24 0))
+                                           (make-local-get 2))
+                                         (make-instr 24 0))
+                                       (make-local-get 3))
+                                     (make-instr 24 0))
+                                   (make-local-get 4))
+                                 (make-instr 24 0))
+                               (make-local-get 5))
+                             (make-instr 24 0))
+                           (make-local-get 6))
+                         (make-instr 24 0))
+        callee-ir-mid (vector-push
+                        (vector-push callee-ir-head (make-local-get 7))
+                        (make-instr 24 0))
+        callee-ir-tail (vector-push
+                         (vector-push callee-ir-mid (make-local-get 8))
+                         (make-instr 24 0))
+        callee-ir-more (vector-push
+                         (vector-push callee-ir-tail (make-local-get 9))
+                         (make-instr 24 0))
+        callee-ir-last (vector-push
+                         (vector-push callee-ir-more (make-local-get 10))
+                         (make-instr 24 0))
+        callee-ir (vector-push
+                    (vector-push callee-ir-last (make-local-get 11))
+                    (make-instr 24 0))
+        caller (make-function-meta 0 0 caller-ir)
+        callee (make-function-meta 12 0 callee-ir)
         functions (vector-push (vector-push (vector-new 2) caller) callee)
         target (host-target)
         code (emit-native-function-meta-bundle functions target)]
@@ -2384,6 +2482,34 @@ fn test_e2e_native_host_binary_direct_call_eleven_arg_bundle_link_and_execute() 
         exit_code,
         198,
         "host binary direct call eleven-arg bundle: exit code 198 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01u: 12 引数 direct call bundle が host binary として link/run できること。
+#[test]
+fn test_e2e_native_host_binary_direct_call_twelve_arg_bundle_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_direct_call_twelve_arg_bundle_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: direct call twelve-arg bundle host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("direct call twelve-arg host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        235,
+        "host binary direct call twelve-arg bundle: exit code 235 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),
