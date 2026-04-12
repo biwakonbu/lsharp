@@ -2292,6 +2292,60 @@ fn test_e2e_gc06_ci_artifact_contract() {
     );
 }
 
+/// TEST-NATIVE-OPS-01: native proxy artifact job / script / docs が揃っていること
+#[test]
+fn test_e2e_native_ops01_proxy_artifact_contract() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let script = project_root.join("scripts/ci/build-native.sh");
+    assert!(script.is_file(), "scripts/ci/build-native.sh が存在しない");
+    let script_content =
+        std::fs::read_to_string(&script).expect("build-native.sh の読み込みに失敗");
+    assert!(
+        script_content.contains("ci-artifacts/native-proxy/")
+            && script_content.contains("stage1-native")
+            && script_content.contains("stage2-native")
+            && script_content.contains("stage3-native"),
+        "build-native.sh は native proxy artifact 契約を保持すること"
+    );
+
+    let ci = project_root.join(".github/workflows/ci.yml");
+    assert!(ci.is_file(), "ci.yml が存在しない");
+    let ci_content = std::fs::read_to_string(&ci).expect("ci.yml の読み込みに失敗");
+    for expected in [
+        "native-proxy-artifact:",
+        "name: Native proxy artifact",
+        "runs-on: macos-latest",
+        "bash scripts/ci/build-native.sh",
+        "name: native-proxy-${{ github.sha }}",
+        "path: ci-artifacts/native-proxy/${{ github.sha }}/",
+    ] {
+        assert!(
+            ci_content.contains(expected),
+            "ci.yml は native proxy artifact wiring `{}` を含むこと",
+            expected
+        );
+    }
+
+    let policy = project_root.join("docs/development/operations/artifact-policy.md");
+    assert!(policy.is_file(), "artifact-policy.md が存在しない");
+    let policy_content =
+        std::fs::read_to_string(&policy).expect("artifact-policy.md の読み込みに失敗");
+    assert!(
+        policy_content.contains("native-proxy-{commit_sha}")
+            && policy_content.contains("ci-artifacts/native-proxy/{commit_sha}/"),
+        "artifact-policy.md は native proxy artifact 名と path を記述すること"
+    );
+
+    let job_graph = project_root.join("docs/development/operations/ci-gate-v2-job-graph.md");
+    assert!(job_graph.is_file(), "ci-gate-v2-job-graph.md が存在しない");
+    let job_graph_content =
+        std::fs::read_to_string(&job_graph).expect("ci-gate-v2-job-graph.md の読み込みに失敗");
+    assert!(
+        job_graph_content.contains("native-proxy-artifact"),
+        "ci-gate-v2-job-graph.md は native-proxy-artifact job を記述すること"
+    );
+}
+
 /// TEST-OPS-04: legacy-rust-bootstrap/ ディレクトリ構造
 #[test]
 fn test_e2e_ops04_legacy_isolation() {

@@ -27,6 +27,7 @@ Wasmtime embedding + Component Model を正式配布モデルに据える方針�
 - `test_e2e_stage23_native_host_bundle_proxy_observations_match`
 
 これらは native module skeleton / execution slice / structural parity に加えて、representative build entry における canonical artifact 名 / response file text / bundle summary 契約、tiny host-target program に対する canonical bundle materialization、および host-side proxy の `stage2-native` / `stage3-native` compare loop を示す partial evidence である。
+加えて `scripts/ci/build-native.sh` により、Darwin arm64 ホストでは `stage1-native` / `stage2-native` / `stage3-native` の proxy bundle artifact を `ci-artifacts/native-proxy/<id>/` に materialize できる。
 ただし `stage1-native -> stage2-native -> stage3-native` の true self-regeneration 完了証跡ではない。
 
 ## 設計
@@ -36,6 +37,7 @@ Wasmtime embedding + Component Model を正式配布モデルに据える方針�
 - `selfhost/src/App/Main.ls` compile を representative entry に固定する
 - `program.o`, `runtime.o`, `linker-response.txt`, `program.native` の artifact 契約を target ごとに固定する
 - `selfhost/src/App/PipelineSmoke.ls` から canonical artifact 名と response-file text を hash/length summary として観測できるようにする
+- `scripts/ci/build-native.sh` は現時点では true native compiler build ではなく、canonical proxy bundle を artifact 化する build entry として扱う
 
 ### stage chain
 

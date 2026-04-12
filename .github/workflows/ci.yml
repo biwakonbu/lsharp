@@ -161,6 +161,26 @@ jobs:
           path: ci-artifacts/gc-metrics/${{ github.sha }}/
           retention-days: ${{ github.event_name == 'pull_request' && 5 || 30 }}
 
+  native-proxy-artifact:
+    name: Native proxy artifact
+    runs-on: macos-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: build-native.sh
+        env:
+          NATIVE_PROXY_ARTIFACT_ID: ${{ github.sha }}
+        run: bash scripts/ci/build-native.sh
+      - name: artifact 保存
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-proxy-${{ github.sha }}
+          path: ci-artifacts/native-proxy/${{ github.sha }}/
+          retention-days: ${{ github.event_name == 'pull_request' && 5 || 30 }}
+          if-no-files-found: error
+
   # Phase 14: エディタ拡張のビルド検証
   editor-extension-build:
     name: Editor Extension Build
@@ -194,7 +214,7 @@ jobs:
   ci-gate:
     name: CI Gate
     runs-on: ubuntu-latest
-    needs: [test, lint, format, bootstrap, audit-docs, default-path-smoke, test-fresh-clone, fresh-clone-smoke, gc-metrics-artifact, editor-extension-build]
+    needs: [test, lint, format, bootstrap, audit-docs, default-path-smoke, test-fresh-clone, fresh-clone-smoke, gc-metrics-artifact, native-proxy-artifact, editor-extension-build]
     if: always()
     steps:
       - name: 全ジョブの結果を検証
@@ -204,12 +224,13 @@ jobs:
                 "${{ needs.format.result }}" != "success" ||
                 "${{ needs.bootstrap.result }}" != "success" ||
                 "${{ needs.audit-docs.result }}" != "success" ||
-                "${{ needs.default-path-smoke.result }}" != "success" ||
-                "${{ needs.test-fresh-clone.result }}" != "success" ||
-                "${{ needs.fresh-clone-smoke.result }}" != "success" ||
-                "${{ needs.gc-metrics-artifact.result }}" != "success" ||
-                "${{ needs.editor-extension-build.result }}" != "success" ]]; then
-            echo "CI failed: test=${{ needs.test.result }}, lint=${{ needs.lint.result }}, format=${{ needs.format.result }}, bootstrap=${{ needs.bootstrap.result }}, audit-docs=${{ needs.audit-docs.result }}, default-path-smoke=${{ needs.default-path-smoke.result }}, test-fresh-clone=${{ needs.test-fresh-clone.result }}, fresh-clone-smoke=${{ needs.fresh-clone-smoke.result }}, gc-metrics-artifact=${{ needs.gc-metrics-artifact.result }}, editor-extension-build=${{ needs.editor-extension-build.result }}"
+                 "${{ needs.default-path-smoke.result }}" != "success" ||
+                 "${{ needs.test-fresh-clone.result }}" != "success" ||
+                 "${{ needs.fresh-clone-smoke.result }}" != "success" ||
+                 "${{ needs.gc-metrics-artifact.result }}" != "success" ||
+                 "${{ needs.native-proxy-artifact.result }}" != "success" ||
+                 "${{ needs.editor-extension-build.result }}" != "success" ]]; then
+            echo "CI failed: test=${{ needs.test.result }}, lint=${{ needs.lint.result }}, format=${{ needs.format.result }}, bootstrap=${{ needs.bootstrap.result }}, audit-docs=${{ needs.audit-docs.result }}, default-path-smoke=${{ needs.default-path-smoke.result }}, test-fresh-clone=${{ needs.test-fresh-clone.result }}, fresh-clone-smoke=${{ needs.fresh-clone-smoke.result }}, gc-metrics-artifact=${{ needs.gc-metrics-artifact.result }}, native-proxy-artifact=${{ needs.native-proxy-artifact.result }}, editor-extension-build=${{ needs.editor-extension-build.result }}"
             exit 1
           fi
           echo "All checks passed."
@@ -218,7 +239,7 @@ jobs:
   ci-gate-v2:
     name: CI Gate v2
     runs-on: ubuntu-latest
-    needs: [test, lint, format, bootstrap, audit-docs, default-path-smoke, test-fresh-clone, fresh-clone-smoke, gc-metrics-artifact, shadow-oracle, editor-extension-build]
+    needs: [test, lint, format, bootstrap, audit-docs, default-path-smoke, test-fresh-clone, fresh-clone-smoke, gc-metrics-artifact, native-proxy-artifact, shadow-oracle, editor-extension-build]
     if: always()
     steps:
       - name: gate-v2 全ジョブの結果を検証
@@ -232,6 +253,7 @@ jobs:
           echo "test-fresh-clone=${{ needs.test-fresh-clone.result }}"
           echo "fresh-clone-smoke=${{ needs.fresh-clone-smoke.result }}"
           echo "gc-metrics-artifact=${{ needs.gc-metrics-artifact.result }}"
+          echo "native-proxy-artifact=${{ needs.native-proxy-artifact.result }}"
           echo "shadow-oracle=${{ needs.shadow-oracle.result }}"
           echo "editor-extension-build=${{ needs.editor-extension-build.result }}"
           if [[ "${{ needs.test.result }}" != "success" ||
@@ -243,6 +265,7 @@ jobs:
                 "${{ needs.test-fresh-clone.result }}" != "success" ||
                 "${{ needs.fresh-clone-smoke.result }}" != "success" ||
                 "${{ needs.gc-metrics-artifact.result }}" != "success" ||
+                "${{ needs.native-proxy-artifact.result }}" != "success" ||
                 "${{ needs.editor-extension-build.result }}" != "success" ]]; then
             echo "CI Gate v2 failed (required jobs)"
             exit 1

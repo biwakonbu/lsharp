@@ -358,6 +358,59 @@ fn observe_native_host_bundle(bundle: &NativeHostArtifactBundle) -> NativeHostBu
     }
 }
 
+fn host_native_exec_supported() -> bool {
+    cfg!(all(target_os = "macos", target_arch = "aarch64"))
+}
+
+fn write_native_host_bundle_artifact(
+    root_dir: &std::path::Path,
+    label: &str,
+    bundle: &NativeHostArtifactBundle,
+) -> Result<(), String> {
+    let stage_dir = root_dir.join(label);
+    let _ = std::fs::remove_dir_all(&stage_dir);
+    std::fs::create_dir_all(&stage_dir)
+        .map_err(|e| format!("native proxy artifact dir 作成失敗: {e}"))?;
+
+    std::fs::write(stage_dir.join("program.o"), &bundle.program_object)
+        .map_err(|e| format!("program.o 書き込み失敗: {e}"))?;
+    std::fs::write(stage_dir.join("runtime.o"), &bundle.runtime_object)
+        .map_err(|e| format!("runtime.o 書き込み失敗: {e}"))?;
+    std::fs::write(stage_dir.join("linker-response.txt"), &bundle.response_text)
+        .map_err(|e| format!("linker-response.txt 書き込み失敗: {e}"))?;
+    std::fs::write(stage_dir.join("program.native"), &bundle.program_binary)
+        .map_err(|e| format!("program.native 書き込み失敗: {e}"))?;
+    std::fs::write(stage_dir.join("stdout.txt"), &bundle.stdout)
+        .map_err(|e| format!("stdout.txt 書き込み失敗: {e}"))?;
+    std::fs::write(stage_dir.join("stderr.txt"), &bundle.stderr)
+        .map_err(|e| format!("stderr.txt 書き込み失敗: {e}"))?;
+
+    let observation = observe_native_host_bundle(bundle);
+    let summary = format!(
+        "{{\"label\":\"{label}\",\"exit_code\":{},\"program_object_hash\":{},\"runtime_object_hash\":{},\"response_text_hash\":{},\"program_binary_hash\":{},\"stdout_hash\":{},\"stderr_hash\":{}}}",
+        observation.exit_code,
+        observation.program_object_hash,
+        observation.runtime_object_hash,
+        observation.response_text_hash,
+        observation.program_binary_hash,
+        observation.stdout_hash,
+        observation.stderr_hash,
+    );
+    std::fs::write(stage_dir.join("summary.json"), summary)
+        .map_err(|e| format!("summary.json 書き込み失敗: {e}"))?;
+    Ok(())
+}
+
+fn maybe_write_native_host_bundle_artifact(
+    label: &str,
+    bundle: &NativeHostArtifactBundle,
+) -> Result<(), String> {
+    let Some(root_dir) = std::env::var_os("LSHARP_NATIVE_PROXY_ARTIFACT_DIR") else {
+        return Ok(());
+    };
+    write_native_host_bundle_artifact(&std::path::PathBuf::from(root_dir), label, bundle)
+}
+
 /// NATIVE-02: NativeTarget descriptor が policy field を公開すること。
 ///
 /// target descriptor を単なる triple から一段拡張し、calling convention /
@@ -681,6 +734,10 @@ fn host_target_const_42_code_bytes() -> Vec<u8> {
 /// ネイティブバイト列を `.s` アセンブリシムでラップし、
 /// clang (arm64) でリンクして実行する。戻り値は exit code。
 fn link_and_run_native_host_binary(code: &[u8]) -> Result<i32, String> {
+    if !host_native_exec_supported() {
+        return Err("host native execution は macOS arm64 でのみサポート".to_string());
+    }
+
     let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
     let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/e2e-native-fixtures")
@@ -726,6 +783,12 @@ fn link_and_run_native_host_binary(code: &[u8]) -> Result<i32, String> {
 fn build_and_run_native_host_bundle_with_canonical_artifacts(
     code: &[u8],
 ) -> Result<NativeHostArtifactBundle, String> {
+    if !host_native_exec_supported() {
+        return Err(
+            "canonical host bundle materialization は macOS arm64 でのみサポート".to_string(),
+        );
+    }
+
     let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
     let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../target/e2e-native-fixtures")
@@ -822,6 +885,10 @@ fn build_and_run_native_host_bundle_with_canonical_artifacts(
 ///        生成されることで exit code 42 を得られる。
 #[test]
 fn test_e2e_native_host_binary_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
     let code_bytes = host_target_const_42_code_bytes();
 
     assert!(
@@ -846,11 +913,86 @@ fn test_e2e_native_host_binary_link_and_execute() {
 
 /// V2-08: canonical native artifact bundle で materialize した `program.native` が実行できること。
 #[test]
+fn test_e2e_native_host_bundle_artifact_writer_materializes_canonical_files() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_const_42_code_bytes();
+    let bundle = build_and_run_native_host_bundle_with_canonical_artifacts(&code_bytes)
+        .expect("artifact writer 用 canonical bundle materialization に失敗");
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/e2e-native-artifacts")
+        .join(format!(
+            "native-proxy-artifact-{}",
+            NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("artifact writer test dir の作成に失敗");
+
+    write_native_host_bundle_artifact(&dir, "stage2-native", &bundle)
+        .expect("native proxy artifact writer に失敗");
+
+    let stage_dir = dir.join("stage2-native");
+    assert_eq!(
+        std::fs::read(stage_dir.join("program.o")).expect("program.o 読み込み失敗"),
+        bundle.program_object,
+        "artifact writer が program.o を canonical 名で書き出していない"
+    );
+    assert_eq!(
+        std::fs::read(stage_dir.join("runtime.o")).expect("runtime.o 読み込み失敗"),
+        bundle.runtime_object,
+        "artifact writer が runtime.o を canonical 名で書き出していない"
+    );
+    assert_eq!(
+        std::fs::read_to_string(stage_dir.join("linker-response.txt"))
+            .expect("linker-response.txt 読み込み失敗"),
+        bundle.response_text,
+        "artifact writer が canonical response file text を保持していない"
+    );
+    assert_eq!(
+        std::fs::read(stage_dir.join("program.native")).expect("program.native 読み込み失敗"),
+        bundle.program_binary,
+        "artifact writer が program.native を canonical 名で書き出していない"
+    );
+    assert_eq!(
+        std::fs::read(stage_dir.join("stdout.txt")).expect("stdout.txt 読み込み失敗"),
+        bundle.stdout,
+        "artifact writer が stdout.txt を書き出していない"
+    );
+    assert_eq!(
+        std::fs::read(stage_dir.join("stderr.txt")).expect("stderr.txt 読み込み失敗"),
+        bundle.stderr,
+        "artifact writer が stderr.txt を書き出していない"
+    );
+
+    let summary =
+        std::fs::read_to_string(stage_dir.join("summary.json")).expect("summary.json 読み込み失敗");
+    assert!(
+        summary.contains("\"label\":\"stage2-native\""),
+        "summary.json に stage label が無い: {summary}"
+    );
+    assert!(
+        summary.contains("\"exit_code\":42"),
+        "summary.json に exit_code が無い: {summary}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// V2-08: canonical native artifact bundle で materialize した `program.native` が実行できること。
+#[test]
 fn test_e2e_native_host_bundle_uses_canonical_artifact_contract() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
     let code_bytes = host_target_const_42_code_bytes();
 
     let bundle = build_and_run_native_host_bundle_with_canonical_artifacts(&code_bytes)
         .expect("canonical native bundle materialization に失敗");
+    maybe_write_native_host_bundle_artifact("stage1-native", &bundle)
+        .expect("stage1-native artifact 書き出しに失敗");
 
     assert_eq!(
         bundle.response_text, "-o\nprogram.native\nprogram.o\nruntime.o\n",
@@ -885,12 +1027,20 @@ fn test_e2e_native_host_bundle_uses_canonical_artifact_contract() {
 /// V2-08: host-side proxy の `stage2-native` / `stage3-native` 観測面が一致すること。
 #[test]
 fn test_e2e_stage23_native_host_bundle_proxy_observations_match() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
     let stage1_code = host_target_const_42_code_bytes();
     let stage2_bundle = build_and_run_native_host_bundle_with_canonical_artifacts(&stage1_code)
         .expect("proxy stage2-native bundle materialization に失敗");
+    maybe_write_native_host_bundle_artifact("stage2-native", &stage2_bundle)
+        .expect("stage2-native artifact 書き出しに失敗");
     let stage3_code = host_target_const_42_code_bytes();
     let stage3_bundle = build_and_run_native_host_bundle_with_canonical_artifacts(&stage3_code)
         .expect("proxy stage3-native bundle materialization に失敗");
+    maybe_write_native_host_bundle_artifact("stage3-native", &stage3_bundle)
+        .expect("stage3-native artifact 書き出しに失敗");
 
     let stage2_obs = observe_native_host_bundle(&stage2_bundle);
     let stage3_obs = observe_native_host_bundle(&stage3_bundle);
@@ -948,6 +1098,10 @@ fn native_exit_code_for_const(n: u32) -> i32 {
 /// ZERO-DIFF-01: const 0 — Wasm stdout と native exit code がともに 0
 #[test]
 fn test_e2e_zero_diff_const_0() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
     let wasm_output = compile_and_run("(defn main [] (do (print 0) 0))");
     assert_eq!(wasm_output.trim(), "0", "Wasm: const 0 を print すること");
 
@@ -964,6 +1118,10 @@ fn test_e2e_zero_diff_const_0() {
 /// ZERO-DIFF-02: const 1 — Wasm stdout と native exit code がともに 1
 #[test]
 fn test_e2e_zero_diff_const_1() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
     let wasm_output = compile_and_run("(defn main [] (do (print 1) 0))");
     assert_eq!(wasm_output.trim(), "1", "Wasm: const 1 を print すること");
 
@@ -983,6 +1141,10 @@ fn test_e2e_zero_diff_const_1() {
 /// このテストでは Wasm 側も含めた完全な zero-diff を検証する。
 #[test]
 fn test_e2e_zero_diff_const_42() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
     let wasm_output = compile_and_run("(defn main [] (do (print 42) 0))");
     assert_eq!(wasm_output.trim(), "42", "Wasm: const 42 を print すること");
 
@@ -999,6 +1161,10 @@ fn test_e2e_zero_diff_const_42() {
 /// ZERO-DIFF-04: const 100 — Wasm stdout と native exit code がともに 100
 #[test]
 fn test_e2e_zero_diff_const_100() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
     let wasm_output = compile_and_run("(defn main [] (do (print 100) 0))");
     assert_eq!(
         wasm_output.trim(),
@@ -1022,6 +1188,10 @@ fn test_e2e_zero_diff_const_100() {
 /// zero-diff サンプルの全件合否を出力する。
 #[test]
 fn test_e2e_zero_diff_sample_summary() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
     let samples: &[(u32, &str)] = &[(0, "0"), (1, "1"), (42, "42"), (100, "100")];
     let mut passed = 0usize;
     let mut failed_cases: Vec<String> = Vec::new();
