@@ -137,14 +137,20 @@ Phase 13 (Component Model) に進む前に、以下のゲートを全て通過�
 - **現況**: `crates/lsharp-wasm/src/wasi_runner.rs` は `WasiMode` ベースの `run_wasm_with_mode` / `run_wasm_with_mode_capture` / `run_wasm_with_mode_and_args_inherit_stdin_capture` を持ち、preview1 core Wasm と preview2 component を同じ dispatcher で起動できる。`test_run_wasm_with_mode_dispatches_preview1_core_module` / `test_run_wasm_with_mode_dispatches_preview2_component` / `test_run_wasm_with_mode_capture_preserves_preview2_stdin_and_stdout` が runner dispatch を固定し、`crates/lsharp-driver/src/main.rs` の `LSHARP_PATH=.wasm` / `.component.wasm` 委譲もこの共通 helper を通る。
 - **達成**: preview2 codegen path も `test_emit_wasm_wasi_p2_runs_print_via_component_runner` / `test_emit_wasm_wasi_p2_supports_stdin_and_args` / `test_emit_wasm_wasi_p2_supports_file_roundtrip` に加え、public compile/build surface では `test_compile_without_lsharp_path_uses_embedded_component_default_path` / `test_build_without_lsharp_path_uses_embedded_component_default_path` / `test_compile_with_preview1_target_without_lsharp_path_writes_runnable_wasm_artifact`、actual selfhost CLI では `test_e2e_selfhost_cli_main_with_args_compile_target_and_output_path` / `test_e2e_selfhost_cli_main_with_args_compile_target_changes_wasm_size` が通っており、代表 E2E を伴って Condition 1 を close した
 
-### 条件 2 (P13-B): WIT world definitions [pending]
+### 条件 2 (P13-B): WIT world definitions [done]
 - `wit/lsharp-compiler.wit` と `wit/lsharp-http-handler.wit` が定義され、Component Model adapter が動作すること
 - core Wasm -> component 変換の post-processing が CI で安定すること
+- **現況**: `wit/lsharp-compiler.wit` と `wit/lsharp-http-handler.wit` はともに正本として存在し、`test_componentize_core_module_with_preview1_adapter` / `test_embed_component_metadata_for_http_handler_world_resolves_vendored_http_deps` が compiler world / HTTP handler world の metadata 埋め込みを固定している。さらに `test_http_handler_world_instantiates_dummy_component_against_synthetic_host` は staged WIT workspace から生成した dummy component を synthetic host で validate / instantiate できることを確認している。
+- **達成**: `test_emit_wasm_wasi_p2_basic_program_compiles` / `test_compile_file_wasi_component_output_validates_as_component` が `lsharp-compiler` world の component 化を、`crates/lsharp-wasm/build.rs` の binding 生成と `test_compile_file_handle_only_emits_http_handler_component_export` が `lsharp-http-handler` world の post-processing を固定しており、Condition 2 を close した
 
-### 条件 3 (P13-C): Single binary distribution [pending]
+### 条件 3 (P13-C): Single binary distribution [done]
 - host launcher に compiler component が埋め込まれ、`lsharp compile` が動作すること
 - `--target wasi-component` / `--target web-wasm` の 2 target が使えること
+- **現況**: `crates/lsharp-driver/src/main.rs` は `embedded-lsharp.component.wasm` を `include_bytes!` で埋め込み、adjacent sidecar があればそちらを優先する host launcher として動作する。`test_compile_without_lsharp_path_uses_embedded_component_default_path` / `test_build_without_lsharp_path_uses_embedded_component_default_path` は `LSHARP_PATH` なしの `lsharp compile` / `lsharp build` が embedded guest component 経由で動くことを固定している。
+- **達成**: `test_compile_with_preview1_target_without_lsharp_path_writes_runnable_wasm_artifact` / `test_compile_with_web_wasm_target_without_lsharp_path_uses_rust_builtin_path` / `test_cli_compile_target_accepts_wasi_component_alias_and_web_wasm` により single-binary launcher と `wasi-component` / `web-wasm` target surface が public path で成立しており、Condition 3 を close した
 
-### 条件 4: HTTP handler model [pending]
+### 条件 4: HTTP handler model [done]
 - `wasi:http/incoming-handler` world の guest 実装が動作すること
 - L# program が `(defn handle [request] response)` で HTTP handler を記述できること
+- **現況**: `emit_wasm_wasi_p2` は `main` を持たず単一引数の `handle` を持つ module を `emit_wasm_http_handler_p2` へ分岐させ、`test_compile_file_handle_only_emits_http_handler_component_export` は handle-only source が `wasi:http/incoming-handler@0.2.3` export を持つ component になることを確認している。
+- **達成**: `test_http_handler_world_calls_lsharp_handle_and_sets_response_outparam` が `(defn handle [request] "ok")` を component 化し、HTTP world へ instantiate したうえで response outparam へ `"ok"` を書くところまで固定しており、Condition 4 を close した
