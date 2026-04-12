@@ -118,12 +118,12 @@ bash scripts/checksum.sh dist > dist/checksums.txt
 
 ### 受理の意味
 
-- 受理は「GC-06 の第 1 段 artifact が構造的に有効で、既存 GC-05 representative workload の proxy 証跡も回収できた」という意味であり、S14-S16 の full gate 達成を意味しない。
+- current required path では、受理は「collector-backed `summary.json` / `collector-proof.json` が構造的に有効で、representative workload と S14/S15/S16 の machine-readable evidence が揃った」ことを意味する。
 - `summary.json` は `s14_reason` / `s15_reason` / `s16_reason` を持ち、`blocked` / `n/a` の理由を machine-readable に保持する。
 - `collect-gc-metrics.sh` は sibling `collector-proof.json` が存在する場合はそれを `summary.json` へ merge して同一 validator に通し、受理後は current `s15_*` / `s16_*` slot と `s15_reason` / `s16_reason` を持つ normalized sidecar として `collector-proof.json` を常に書き戻す。
-- proof bundle 未指定でも `collector-proof.json` は emit され、bump / blocked path では `summary.json` 側の `s15_*` / `s16_*` slot と machine-readable reason をそのまま mirror する。
-- bump allocator の proxy metrics は collector 有効 GC の単調増加判定 / fixed-point / crash-free を直接閉じない。
-- そのため `gc-metrics-artifact` が green でも、`docs/development/planning/runtime-stability-spec.md` S14-S16 は別途 `blocked` のまま残りうる。
+- proof bundle 未指定でも `collector-proof.json` は emit され、fixture の bump / blocked path では `summary.json` 側の `s15_*` / `s16_*` slot と machine-readable reason をそのまま mirror する。
+- validate-only fixture では bump allocator / `blocked` / `n/a` payload を引き続き扱うが、required PR artifact は collector-backed path を正本とする。
+- そのため current `gc-metrics-artifact` が green で `s14_status = s15_status = s16_status = pass` を保持していれば、`docs/development/planning/runtime-stability-spec.md` S14-S16 の closure evidence として扱う。
 
 ## 証跡
 

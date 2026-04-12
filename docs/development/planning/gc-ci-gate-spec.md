@@ -6,10 +6,10 @@
 ## 目的と適用範囲
 
 - 現在の required job は `.github/workflows/ci.yml` の `gc-metrics-artifact` である。
-- 現在の artifact 生成は `scripts/ci/collect-gc-metrics.sh` が担い、`test_e2e_alloc_metrics_ci_artifact_payload` の成功と JSON 形状検証までを blocking にしている。
-- 現状の payload は `allocator_mode = bump` 前提の proxy metrics だが、既存 GC-05 representative workload（light compile+run / REPL 50 eval / stateful REPL session / actual `lsp --stdio` repeated sequence）の実行結果を `proxy_workloads` として自己記述する。
-- ただし collector 有効 GC の S14-S16 を直接判定する artifact ではない。
-- したがって本書では **現在の blocking 条件** と **S14-S16 を閉じるための machine-readable 判定規則** を分けて定義する。
+- 現在の artifact 生成は `scripts/ci/collect-gc-metrics.sh` が担い、`test_e2e_alloc_metrics_ci_artifact_payload` の成功と JSON 形状検証を blocking にしている。
+- required path が生成する payload は **collector-backed** であり、`allocator_mode = "collector"`、`s14_status` / `s15_status` / `s16_status`、actual `s15_proof` / `s16_proof`、`heap_bytes_series`、representative workload の `proxy_workloads` を同時に保持する。
+- validate-only fixture / proof overlay path では、bump / blocked / `n/a` payload も引き続き許可し、validator 契約の回帰テストに使う。
+- したがって本書では **現在の required collector path** と **fixture / overlay path** の両方を定義する。
 
 ## 収集メトリクス
 
@@ -73,21 +73,44 @@
 現行の `summary.json` は次の 21 キーを必須とする。
 `gate_status` / `s14_status` / `s15_status` / `s16_status` は artifact が自己記述する gate 状態であり、
 仕様の 4 値 (`pass` / `fail` / `blocked` / `n/a`) を直接保持する。
+required path ではこれに加えて `gc_collection_count` / `gc_freed_count` / `gc_free_list_count` /
+`gc_live_alloc_count` の collector telemetry key も出力される。
 
 ```json
 {
-  "allocator_mode": "bump",
+  "allocator_mode": "collector",
   "ci_level": "simple",
   "gate_status": "accepted",
-  "s14_status": "n/a",
-  "s14_reason": "allocator_mode_bump",
-  "s15_status": "n/a",
-  "s16_status": "n/a",
-  "s15_reason": "allocator_mode_bump",
-  "s16_reason": "allocator_mode_bump",
-  "s15_proof": null,
-  "s16_proof": null,
-  "heap_bytes_series": [],
+  "s14_status": "pass",
+  "s14_reason": null,
+  "s15_status": "pass",
+  "s16_status": "pass",
+  "s15_reason": null,
+  "s16_reason": null,
+  "s15_proof": {
+    "gc_mode": "mark-sweep",
+    "stage_pair": ["stage2", "stage3"],
+    "bytes_identical": true,
+    "exports_identical": true,
+    "data_sections_identical": true,
+    "diagnostics_identical": true
+  },
+  "s16_proof": {
+    "gc_mode": "mark-sweep",
+    "completed_workloads": [
+      "compile_run_light_loop",
+      "repl_soak_50_eval",
+      "repl_stateful_long_session",
+      "repl_stateful_single_session",
+      "lsp_actual_stdio_repeated_sequence"
+    ],
+    "all_workloads_completed": true,
+    "sigsegv_count": 0,
+    "trap_count": 0,
+    "unreachable_count": 0,
+    "dangling_pointer_count": 0
+  },
+  "heap_bytes_series": [6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144],
     "proxy_workloads": {
       "compile_run_light_loop": { "status": "pass", "iterations": 48, "last_stdout": "1" },
       "repl_soak_50_eval": { "status": "pass", "iterations": 50, "eval_count": 50 },
@@ -111,21 +134,25 @@
        "response_frames": 61
      }
    },
-   "peak_alloc_bytes": 0,
-   "total_alloc_count": 0,
-   "live_alloc_count": 0,
-  "max_single_alloc": 0,
-  "alloc_span": 0,
-  "leak_growing_count": 0,
-  "leak_total": 0,
-  "leak_suspect": 0
-}
+    "peak_alloc_bytes": 240,
+    "total_alloc_count": 5,
+    "live_alloc_count": 5,
+   "max_single_alloc": 128,
+   "alloc_span": 240,
+   "leak_growing_count": 50,
+   "leak_total": 50,
+   "leak_suspect": 1,
+   "gc_collection_count": 20,
+   "gc_freed_count": 3840,
+   "gc_free_list_count": 384,
+   "gc_live_alloc_count": 0
+ }
 ```
 
-`gate_status` は artifact が構造・proxy metrics の採取に成功した場合は `"accepted"` となる。
-`s14_status` / `s15_status` / `s16_status` は bump allocator では常に `"n/a"` であり、
-collector 有効になって初めて `"pass"` / `"fail"` / `"blocked"` に変わる。
-現在の bump artifact でも schema は固定し、`heap_bytes_series` には空配列を入れておく。
+`gate_status` は artifact が構造・collector telemetry・proof slot の採取に成功した場合は `"accepted"` となる。
+current required path では `s14_status` / `s15_status` / `s16_status` は collector-backed payload
+から直接 `"pass"` / `"fail"` を評価する。bump allocator の `n/a` や `blocked` は validate-only fixture /
+proof overlay path では引き続き有効であり、schema 自体は同一とする。
 `s14_reason` は S14 が `blocked` / `n/a` の理由を表す machine-readable slot であり、
 現行 contract では `collector_heap_series_missing` / `allocator_mode_bump` の enum string を使う。
 `pass` / `fail` のときは `null` を要求する。
@@ -169,9 +196,9 @@ proof bundle は次の 6 キーだけを許可する（部分指定可）。
 
 ### artifact acceptance の意味
 
-- 受理 (`accepted`) は **artifact の構造と proxy metrics / representative workload の採取に成功した** ことだけを意味する。
-- 受理は S14-S16 の達成を意味しない。
-- 現在の `gc-metrics-artifact` required check は **artifact rejection を blocking にする第 1 段** であり、collector 有効 gate の代替ではない。
+- `accepted` は artifact の構造が妥当であることを示す。
+- current required path では、これに加えて `s14_status` / `s15_status` / `s16_status` が collector payload から直接評価されるため、3 つがすべて `pass` なら S14-S16 の machine-readable closure evidence になる。
+- validate-only fixture / proof overlay path では `accepted` と `blocked` / `n/a` の組み合わせも許可し、validator 契約の回帰テストに使う。
 
 ## S14-S16 判定状態
 
@@ -181,20 +208,20 @@ machine-readable に扱うため、S14-S16 の状態は次の 4 値で固定す�
 |---|---|
 | `pass` | 判定に必要な証跡が揃い、規則を満たした |
 | `fail` | 判定に必要な証跡が揃い、規則に違反した |
-| `blocked` | 判定対象の gate が required だが、collector 有効証跡が未配線で閉じられない |
-| `n/a` | 現在の artifact が bump allocator proxy metrics であり、その gate を直接判定できない |
+| `blocked` | fixture / overlay では schema 上の slot はあるが、必要 proof が未投入で gate を閉じられない |
+| `n/a` | fixture が bump allocator path を模擬しており、その gate を直接判定しない |
 
-現在の `summary.json` だけで読める状態は次の通り。
+current required `summary.json` だけで読める状態は次の通り。
 
-| Gate | bump artifact 単独の状態 | 理由 |
+| Gate | current required artifact の状態 | 理由 |
 |---|---|---|
-| S14 | `n/a` | bump payload では `heap_bytes_series = []` で、collector 有効証跡がない |
-| S15 | `n/a` | bootstrap fixed-point の比較対象が artifact にない |
-| S16 | `n/a` | GC 起因 crash / dangling pointer / workload 完走の collector 有効証跡がない |
+| S14 | `pass` | collector-backed `heap_bytes_series` を monotonic-trend evaluator が通過 |
+| S15 | `pass` | `stage2` / `stage3` fixed-point compare を `s15_proof` が保持 |
+| S16 | `pass` | required workload 完走と crash-free counters を `s16_proof` が保持 |
 
-`CP-05` / `GC-06` の完了判定では、S14-S16 が `pass` になるまで **論理上は `blocked`** とみなす。  
-つまり、現在の PR CI は green でも runtime stability gate は未完了のままでよい。
-その一方で `proxy_workloads` により、light compile+run / REPL / stateful long-session REPL / actual `lsp --stdio` repeated sequence が artifact 上で機械可読に追跡できる。
+validate-only fixture では bump / blocked / `n/a` payload も引き続き扱うが、required PR CI path は
+runtime stability gate の直接証跡を出す。`proxy_workloads` により、light compile+run / REPL /
+stateful long-session REPL / actual `lsp --stdio` repeated sequence も artifact 上で機械可読に追跡できる。
 
 ## monotonic trend evaluation rules (S14)
 
