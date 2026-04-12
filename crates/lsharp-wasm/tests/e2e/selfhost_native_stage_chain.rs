@@ -1043,6 +1043,121 @@ fn host_target_direct_call_three_arg_bundle_code_bytes() -> Vec<u8> {
     )
 }
 
+fn host_target_direct_call_four_arg_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [caller-ir (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push (vector-new 5) (make-instr 3 40))
+                          (make-instr 3 2))
+                        (make-instr 3 5))
+                      (make-instr 3 7))
+                    (make-call 1))
+        callee-ir (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push
+                            (vector-push
+                              (vector-push (vector-new 7) (make-local-get 0))
+                              (make-local-get 1))
+                            (make-instr 24 0))
+                          (make-local-get 2))
+                        (make-instr 24 0))
+                      (make-local-get 3))
+                    (make-instr 24 0))
+        caller (make-function-meta 0 0 caller-ir)
+        callee (make-function-meta 4 0 callee-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) callee)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_direct_call_five_arg_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [caller-ir (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push
+                            (vector-push (vector-new 6) (make-instr 3 40))
+                            (make-instr 3 2))
+                          (make-instr 3 5))
+                        (make-instr 3 7))
+                      (make-instr 3 11))
+                    (make-call 1))
+        callee-ir-base (vector-push
+                         (vector-push
+                           (vector-push
+                             (vector-push
+                               (vector-push
+                                 (vector-push
+                                   (vector-push
+                                     (vector-push (vector-new 9) (make-local-get 0))
+                                     (make-local-get 1))
+                                   (make-instr 24 0))
+                                 (make-local-get 2))
+                               (make-instr 24 0))
+                             (make-local-get 3))
+                           (make-instr 24 0))
+                         (make-local-get 4))
+        callee-ir (vector-push callee-ir-base (make-instr 24 0))
+        caller (make-function-meta 0 0 caller-ir)
+        callee (make-function-meta 5 0 callee-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) callee)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 fn host_target_direct_call_two_arg_drop_restore_code_bytes() -> Vec<u8> {
     run_native_codegen_host_bytes_harness(
         r#"(module Main)
@@ -1569,6 +1684,62 @@ fn test_e2e_native_host_binary_direct_call_three_arg_bundle_link_and_execute() {
         exit_code,
         47,
         "host binary direct call three-arg bundle: exit code 47 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01m: 4 引数 direct call bundle が host binary として link/run できること。
+#[test]
+fn test_e2e_native_host_binary_direct_call_four_arg_bundle_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_direct_call_four_arg_bundle_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: direct call four-arg bundle host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("direct call four-arg host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        54,
+        "host binary direct call four-arg bundle: exit code 54 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01n: 5 引数 direct call bundle が host binary として link/run できること。
+#[test]
+fn test_e2e_native_host_binary_direct_call_five_arg_bundle_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_direct_call_five_arg_bundle_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: direct call five-arg bundle host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("direct call five-arg host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        65,
+        "host binary direct call five-arg bundle: exit code 65 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),
