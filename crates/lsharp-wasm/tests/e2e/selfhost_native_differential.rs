@@ -1272,43 +1272,53 @@ fn test_native_codegen_emits_x86_direct_call_arg_bundle_bytes() {
       (print (vector-get native 19))
       (print (vector-get native 20))
       (print (vector-get native 21))
-      (print (vector-get native 35))
-      (print (vector-get native 36))
+      (print (vector-get native 22))
+      (print (vector-get native 23))
       (print (vector-get native 37))
-      (print (vector-get native 59))
-      (print (vector-get native 60))
+      (print (vector-get native 38))
+      (print (vector-get native 39))
+      (print (vector-get native 61))
+      (print (vector-get native 62))
       0)))"#,
     );
     let lines: Vec<&str> = output.trim().lines().collect();
 
     assert!(
-        lines.len() >= 14,
+        lines.len() >= 16,
         "x86 direct call arg bundle bytes 出力が不足: {:?}",
         lines
     );
     assert_eq!(
-        lines[0], "61",
-        "x86_64 direct call arg bundle payload は 61 bytes であるべき"
+        lines[0], "63",
+        "x86_64 direct call arg bundle payload は 63 bytes であるべき"
     );
     assert_eq!(lines[1], "72", "arg move 先頭は mov rdi, rax の 0x48");
     assert_eq!(lines[2], "137", "arg move 2 byte 目は 0x89");
     assert_eq!(lines[3], "199", "arg move 3 byte 目は ModRM 0xC7");
-    assert_eq!(lines[4], "232", "direct call は call rel32 opcode 0xE8");
-    assert_eq!(lines[5], "2", "forward call offset の下位 byte は 2");
-    assert_eq!(lines[6], "0", "forward call offset byte1 は 0");
-    assert_eq!(lines[7], "0", "forward call offset byte2 は 0");
-    assert_eq!(lines[8], "0", "forward call offset byte3 は 0");
     assert_eq!(
-        lines[9], "72",
+        lines[4], "81",
+        "1 引数 call 前に previous-value 用 rcx を push する"
+    );
+    assert_eq!(lines[5], "232", "direct call は call rel32 opcode 0xE8");
+    assert_eq!(lines[6], "3", "forward call offset の下位 byte は 3");
+    assert_eq!(lines[7], "0", "forward call offset byte1 は 0");
+    assert_eq!(lines[8], "0", "forward call offset byte2 は 0");
+    assert_eq!(lines[9], "0", "forward call offset byte3 は 0");
+    assert_eq!(
+        lines[10], "89",
+        "1 引数 call 後に previous-value 用 rcx を pop する"
+    );
+    assert_eq!(
+        lines[11], "72",
         "callee param spill は mov [rbp-offset], rdi の 0x48"
     );
-    assert_eq!(lines[10], "137", "callee param spill 2 byte 目は 0x89");
+    assert_eq!(lines[12], "137", "callee param spill 2 byte 目は 0x89");
     assert_eq!(
-        lines[11], "189",
+        lines[13], "189",
         "callee param spill 3 byte 目は ModRM 0xBD"
     );
-    assert_eq!(lines[12], "93", "payload 末尾手前は pop rbp");
-    assert_eq!(lines[13], "195", "payload 末尾は ret");
+    assert_eq!(lines[14], "93", "payload 末尾手前は pop rbp");
+    assert_eq!(lines[15], "195", "payload 末尾は ret");
 }
 
 /// NATIVE-REAL-08g: x86_64 で 2 引数 direct call bundle が arg move + rel32 call bytes を持つこと
