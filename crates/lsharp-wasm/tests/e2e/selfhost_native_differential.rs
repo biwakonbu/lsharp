@@ -1545,6 +1545,140 @@ fn test_native_codegen_emits_x86_direct_call_three_arg_bundle_bytes() {
     assert_eq!(lines[29], "195", "payload 末尾は ret");
 }
 
+/// NATIVE-REAL-08i: x86_64 の 3-value window で drop;drop が spilled previous を復元すること
+#[test]
+fn test_native_codegen_emits_x86_three_value_double_drop_bytes() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push (vector-new 5) (make-instr 3 7))
+                   (make-instr 3 40))
+                 (make-instr 3 2))
+               (make-instr 44 0))
+             (make-instr 44 0))
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (make-target 1)
+        native (emit-native-function-meta-bundle functions target)]
+    (do
+      (print (vector-length native))
+      (print (vector-get native 27))
+      (print (vector-get native 28))
+      (print (vector-get native 29))
+      (print (vector-get native 30))
+      (print (vector-get native 31))
+      (print (vector-get native 32))
+      (print (vector-get native 33))
+      (print (vector-get native 34))
+      (print (vector-get native 35))
+      (print (vector-get native 36))
+      (print (vector-get native 37))
+      (print (vector-get native 38))
+      (print (vector-get native 39))
+      (print (vector-get native 40))
+      (print (vector-get native 41))
+      (print (vector-get native 42))
+      (print (vector-get native 43))
+      (print (vector-get native 44))
+      (print (vector-get native 45))
+      (print (vector-get native 46))
+      (print (vector-get native 47))
+      (print (vector-get native 48))
+      (print (vector-get native 49))
+      (print (vector-get native 50))
+      (print (vector-get native 51))
+      (print (vector-get native 52))
+      (print (vector-get native 53))
+      (print (vector-get native 54))
+      (print (vector-get native 62))
+      (print (vector-get native 63))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 31,
+        "x86 three-value double-drop bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "64",
+        "x86_64 three-value double-drop payload は 64 bytes であるべき"
+    );
+    assert_eq!(lines[1], "72", "third push spill store 先頭は 0x48");
+    assert_eq!(lines[2], "137", "third push spill store 2 byte 目は 0x89");
+    assert_eq!(
+        lines[3], "141",
+        "third push spill store 3 byte 目は ModRM 0x8D"
+    );
+    assert_eq!(lines[4], "248", "spill store offset byte0 は -8");
+    assert_eq!(lines[5], "255", "spill store offset byte1 は 0xFF");
+    assert_eq!(lines[6], "255", "spill store offset byte2 は 0xFF");
+    assert_eq!(lines[7], "255", "spill store offset byte3 は 0xFF");
+    assert_eq!(lines[8], "72", "third push で current->previous の 0x48");
+    assert_eq!(
+        lines[9], "137",
+        "third push で current->previous 2 byte 目は 0x89"
+    );
+    assert_eq!(
+        lines[10], "193",
+        "third push で current->previous 3 byte 目は ModRM 0xC1"
+    );
+    assert_eq!(lines[11], "184", "third push の mov eax, imm32 opcode");
+    assert_eq!(lines[12], "2", "third push 即値の下位 byte は 2");
+    assert_eq!(lines[13], "0", "third push 即値 byte1 は 0");
+    assert_eq!(lines[14], "0", "third push 即値 byte2 は 0");
+    assert_eq!(lines[15], "0", "third push 即値 byte3 は 0");
+    assert_eq!(lines[16], "72", "first drop の mov rax, rcx 先頭は 0x48");
+    assert_eq!(lines[17], "137", "first drop 2 byte 目は 0x89");
+    assert_eq!(lines[18], "200", "first drop 3 byte 目は ModRM 0xC8");
+    assert_eq!(lines[19], "72", "first drop restore spill 先頭は 0x48");
+    assert_eq!(
+        lines[20], "139",
+        "first drop restore spill 2 byte 目は 0x8B"
+    );
+    assert_eq!(
+        lines[21], "141",
+        "first drop restore spill 3 byte 目は ModRM 0x8D"
+    );
+    assert_eq!(
+        lines[22], "248",
+        "first drop restore spill offset byte0 は -8"
+    );
+    assert_eq!(
+        lines[23], "255",
+        "first drop restore spill offset byte1 は 0xFF"
+    );
+    assert_eq!(
+        lines[24], "255",
+        "first drop restore spill offset byte2 は 0xFF"
+    );
+    assert_eq!(
+        lines[25], "255",
+        "first drop restore spill offset byte3 は 0xFF"
+    );
+    assert_eq!(lines[26], "72", "second drop の mov rax, rcx 先頭は 0x48");
+    assert_eq!(lines[27], "137", "second drop 2 byte 目は 0x89");
+    assert_eq!(lines[28], "200", "second drop 3 byte 目は ModRM 0xC8");
+    assert_eq!(lines[29], "93", "payload 末尾手前は pop rbp");
+    assert_eq!(lines[30], "195", "payload 末尾は ret");
+}
+
 /// NATIVE-REAL-09: emit-object が生成した native bytes 全体を object file へ保持すること
 #[test]
 fn test_native_emit_object_keeps_full_native_payload() {
