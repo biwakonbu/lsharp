@@ -1420,6 +1420,131 @@ fn test_native_codegen_emits_x86_direct_call_two_arg_bundle_bytes() {
     assert_eq!(lines[19], "195", "payload 末尾は ret");
 }
 
+/// NATIVE-REAL-08h: x86_64 で 3 引数 direct call bundle が spill load + arg moves + rel32 call bytes を持つこと
+#[test]
+fn test_native_codegen_emits_x86_direct_call_three_arg_bundle_bytes() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [caller-ir (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push (vector-new 4) (make-instr 3 40))
+                        (make-instr 3 2))
+                      (make-instr 3 5))
+                    (make-call 1))
+        callee-ir (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push (vector-new 5) (make-local-get 0))
+                          (make-local-get 1))
+                        (make-instr 24 0))
+                      (make-local-get 2))
+                    (make-instr 24 0))
+        caller (make-function-meta 0 0 caller-ir)
+        callee (make-function-meta 3 0 callee-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) callee)
+        target (make-target 1)
+        native (emit-native-function-meta-bundle functions target)]
+    (do
+      (print (vector-length native))
+      (print (vector-get native 42))
+      (print (vector-get native 43))
+      (print (vector-get native 44))
+      (print (vector-get native 45))
+      (print (vector-get native 46))
+      (print (vector-get native 47))
+      (print (vector-get native 48))
+      (print (vector-get native 49))
+      (print (vector-get native 50))
+      (print (vector-get native 51))
+      (print (vector-get native 52))
+      (print (vector-get native 53))
+      (print (vector-get native 54))
+      (print (vector-get native 55))
+      (print (vector-get native 56))
+      (print (vector-get native 57))
+      (print (vector-get native 58))
+      (print (vector-get native 59))
+      (print (vector-get native 80))
+      (print (vector-get native 81))
+      (print (vector-get native 82))
+      (print (vector-get native 87))
+      (print (vector-get native 88))
+      (print (vector-get native 89))
+      (print (vector-get native 94))
+      (print (vector-get native 95))
+      (print (vector-get native 96))
+      (print (vector-get native 142))
+      (print (vector-get native 143))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 30,
+        "x86 direct call three-arg bundle bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "144",
+        "x86_64 direct call three-arg bundle payload は 144 bytes であるべき"
+    );
+    assert_eq!(lines[1], "72", "arg2 move 先頭は mov rdx, rax の 0x48");
+    assert_eq!(lines[2], "137", "arg2 move 2 byte 目は 0x89");
+    assert_eq!(lines[3], "194", "arg2 move 3 byte 目は ModRM 0xC2");
+    assert_eq!(lines[4], "72", "arg1 move 先頭は mov rsi, rcx の 0x48");
+    assert_eq!(lines[5], "137", "arg1 move 2 byte 目は 0x89");
+    assert_eq!(lines[6], "206", "arg1 move 3 byte 目は ModRM 0xCE");
+    assert_eq!(
+        lines[7], "72",
+        "arg0 load 先頭は mov rdi, [rbp-offset] の 0x48"
+    );
+    assert_eq!(lines[8], "139", "arg0 load 2 byte 目は 0x8B");
+    assert_eq!(lines[9], "189", "arg0 load 3 byte 目は ModRM 0xBD");
+    assert_eq!(lines[10], "248", "arg0 spill load offset byte0 は -8");
+    assert_eq!(lines[11], "255", "arg0 spill load offset byte1 は 0xFF");
+    assert_eq!(lines[12], "255", "arg0 spill load offset byte2 は 0xFF");
+    assert_eq!(lines[13], "255", "arg0 spill load offset byte3 は 0xFF");
+    assert_eq!(lines[14], "232", "direct call は call rel32 opcode 0xE8");
+    assert_eq!(lines[15], "9", "forward call offset の下位 byte は 9");
+    assert_eq!(lines[16], "0", "forward call offset byte1 は 0");
+    assert_eq!(lines[17], "0", "forward call offset byte2 は 0");
+    assert_eq!(lines[18], "0", "forward call offset byte3 は 0");
+    assert_eq!(lines[19], "72", "callee param0 spill 先頭は 0x48");
+    assert_eq!(lines[20], "137", "callee param0 spill 2 byte 目は 0x89");
+    assert_eq!(
+        lines[21], "189",
+        "callee param0 spill 3 byte 目は ModRM 0xBD"
+    );
+    assert_eq!(lines[22], "72", "callee param1 spill 先頭は 0x48");
+    assert_eq!(lines[23], "137", "callee param1 spill 2 byte 目は 0x89");
+    assert_eq!(
+        lines[24], "181",
+        "callee param1 spill 3 byte 目は ModRM 0xB5"
+    );
+    assert_eq!(lines[25], "72", "callee param2 spill 先頭は 0x48");
+    assert_eq!(lines[26], "137", "callee param2 spill 2 byte 目は 0x89");
+    assert_eq!(
+        lines[27], "149",
+        "callee param2 spill 3 byte 目は ModRM 0x95"
+    );
+    assert_eq!(lines[28], "93", "payload 末尾手前は pop rbp");
+    assert_eq!(lines[29], "195", "payload 末尾は ret");
+}
+
 /// NATIVE-REAL-09: emit-object が生成した native bytes 全体を object file へ保持すること
 #[test]
 fn test_native_emit_object_keeps_full_native_payload() {
