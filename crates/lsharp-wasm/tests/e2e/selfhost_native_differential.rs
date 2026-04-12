@@ -1061,6 +1061,67 @@ fn test_native_codegen_emits_x86_i32_core_instruction_bytes() {
     assert_eq!(lines[13], "195", "epilogue 末尾は ret");
 }
 
+/// NATIVE-REAL-08c: x86_64 で i32.mul が distinct bytes を持つこと
+#[test]
+fn test_native_codegen_emits_x86_i32_mul_bytes() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn make-instr [opcode operand]
+  (vector-push (vector-push (vector-new 2) opcode) operand))
+
+(defn main []
+  (let [instr1 (make-instr 3 21)
+        instr2 (make-instr 11 0)
+        instr3 (make-instr 3 2)
+        instr4 (make-instr 11 1)
+        instr5 (make-instr 10 0)
+        instr6 (make-instr 10 1)
+        instr7 (make-instr 25 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 7) instr1)
+                       instr2)
+                     instr3)
+                   instr4)
+                 instr5)
+               instr6)
+             instr7)
+        target (make-target 1)
+        native (emit-native ir target)]
+    (do
+      (print (vector-length native))
+      (print (vector-get native 61))
+      (print (vector-get native 62))
+      (print (vector-get native 63))
+      (print (vector-get native 71))
+      (print (vector-get native 72))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 6,
+        "x86 i32 mul bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "73",
+        "x86_64 i32.mul payload は 73 bytes であるべき"
+    );
+    assert_eq!(lines[1], "15", "i32.mul は imul opcode prefix 0x0F");
+    assert_eq!(lines[2], "175", "i32.mul は imul opcode 0xAF");
+    assert_eq!(lines[3], "193", "i32.mul は imul ModRM 0xC1");
+    assert_eq!(lines[4], "93", "stack epilogue 後半は pop rbp");
+    assert_eq!(lines[5], "195", "payload 末尾は ret");
+}
+
 /// NATIVE-REAL-09: emit-object が生成した native bytes 全体を object file へ保持すること
 #[test]
 fn test_native_emit_object_keeps_full_native_payload() {
