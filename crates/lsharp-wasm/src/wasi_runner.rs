@@ -11,6 +11,16 @@
 use wasmtime::*;
 use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
 
+const DEFAULT_MAX_WASM_STACK: usize = 16 * 1024 * 1024;
+
+fn configured_engine() -> Result<Engine, String> {
+    let mut config = Config::new();
+    // セルフホストの stage1→stage2 実行は深い再帰を踏みやすいため、
+    // wasmtime のデフォルト stack より広めに取る。
+    config.max_wasm_stack(DEFAULT_MAX_WASM_STACK);
+    Engine::new(&config).map_err(|e| format!("wasmtime engine 初期化に失敗: {e}"))
+}
+
 /// WASI 実行モードの選択
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WasiMode {
@@ -173,7 +183,7 @@ fn run_wasm_wasi_capture(
     args: &[&str],
     stdin_mode: StdinMode<'_>,
 ) -> Result<ExecutionOutput, String> {
-    let engine = Engine::default();
+    let engine = configured_engine()?;
     let mut linker = Linker::<WasiP1Ctx>::new(&engine);
     wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |t| t)
         .map_err(|e| format!("WASI リンクに失敗: {e}"))?;
@@ -333,7 +343,7 @@ fn run_wasm_component_capture(
     args: &[&str],
     stdin_mode: StdinMode<'_>,
 ) -> Result<ExecutionOutput, String> {
-    let engine = Engine::default();
+    let engine = configured_engine()?;
 
     let mut linker = ComponentLinker::<ComponentState>::new(&engine);
     wasmtime_wasi::add_to_linker_sync(&mut linker)
