@@ -319,13 +319,13 @@
 (defn native-max-stack-depth [ir-func function-metas]
   (native-max-stack-depth-loop ir-func function-metas 0 (vector-length ir-func) 0 0))
 
-;; 現状の partial slice では 21-value window ぶんまで spill slot を確保する
+;; 現状の partial slice では 22-value window ぶんまで spill slot を確保する
 (defn native-value-window-spill-slot-count [ir-func function-metas]
   (let [extra-depth (- (native-max-stack-depth ir-func function-metas) 2)]
     (if (< extra-depth 0)
       0
-      (if (> extra-depth 19)
-        19
+      (if (> extra-depth 20)
+        20
         extra-depth))))
 
 (defn native-frame-base-slot-count [ir-func min-slot-count]
@@ -825,6 +825,32 @@
         36)
       112)))
 
+;; x86_64 の MOV [rsp+112], rcx
+(defn emit-mov-fifteenth-stack-from-rcx []
+  (let [bytes (vector-new 5)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push bytes 72)
+            137)
+          76)
+        36)
+      112)))
+
+;; x86_64 の MOV [rsp+120], rax
+(defn emit-mov-sixteenth-stack-from-rax []
+  (let [bytes (vector-new 5)]
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push
+            (vector-push bytes 72)
+            137)
+          68)
+        36)
+      120)))
+
 ;; x86_64 の MOV [rsp], r9
 (defn emit-mov-top-stack-from-r9 []
   (let [bytes (vector-new 4)]
@@ -1012,7 +1038,13 @@
 
 ;; x86_64 bundle の i32.const: spill window が必要なら old previous を spill する
 (defn emit-i32-const-bundle-x86 [value frame-base-slot-count current-depth]
-  (if (>= current-depth 20)
+  (if (>= current-depth 21)
+    (concat-byte-vectors
+      (concat-byte-vectors
+        (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count 18))
+        (emit-mov-local-from-rdx (native-value-window-spill-offset frame-base-slot-count 19)))
+      (emit-i32-const-bundle-x86 value frame-base-slot-count 20))
+    (if (>= current-depth 20)
     (concat-byte-vectors
       (concat-byte-vectors
         (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count 17))
@@ -1288,11 +1320,17 @@
         (concat-byte-vectors
           (emit-mov-local-from-rcx (native-value-window-spill-offset frame-base-slot-count 0))
           (emit-i32-const-x86 value))
-         (emit-i32-const-x86 value)))))))))))))))))))))
+         (emit-i32-const-x86 value))))))))))))))))))))))
 
 ;; x86_64 bundle の local.get: spill window が必要なら old previous を spill する
 (defn emit-local-get-bundle-x86 [offset frame-base-slot-count current-depth]
-  (if (>= current-depth 20)
+  (if (>= current-depth 21)
+    (concat-byte-vectors
+      (concat-byte-vectors
+        (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count 18))
+        (emit-mov-local-from-rdx (native-value-window-spill-offset frame-base-slot-count 19)))
+      (emit-local-get-bundle-x86 offset frame-base-slot-count 20))
+    (if (>= current-depth 20)
     (concat-byte-vectors
       (concat-byte-vectors
         (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count 17))
@@ -1568,7 +1606,7 @@
         (concat-byte-vectors
           (emit-mov-local-from-rcx (native-value-window-spill-offset frame-base-slot-count 0))
           (emit-local-get-x86 offset))
-        (emit-local-get-x86 offset)))))))))))))))))))))
+        (emit-local-get-x86 offset))))))))))))))))))))))
 
 (defn emit-three-arg-call-x86 [rel frame-base-slot-count]
   (concat-byte-vectors
@@ -2074,6 +2112,81 @@
       (concat-byte-vectors stack-setup reg-setup)
       call-seq)))
 
+(defn emit-twenty-two-arg-call-x86 [rel frame-base-slot-count]
+  (let [stack0 (concat-byte-vectors
+                 (emit-sub-rsp-imm32 128)
+                 (emit-mov-sixteenth-stack-from-rax))
+        stack1 (concat-byte-vectors stack0 (emit-mov-fifteenth-stack-from-rcx))
+        stack2 (concat-byte-vectors
+                 stack1
+                 (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 0)))
+        stack3 (concat-byte-vectors stack2 (emit-mov-fourteenth-stack-from-rcx))
+        stack4 (concat-byte-vectors
+                 stack3
+                 (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 1)))
+        stack5 (concat-byte-vectors stack4 (emit-mov-thirteenth-stack-from-rcx))
+        stack6 (concat-byte-vectors
+                 stack5
+                 (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 2)))
+        stack7 (concat-byte-vectors stack6 (emit-mov-twelfth-stack-from-rcx))
+        stack8 (concat-byte-vectors
+                 stack7
+                 (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 3)))
+        stack9 (concat-byte-vectors stack8 (emit-mov-eleventh-stack-from-rcx))
+        stack10 (concat-byte-vectors
+                  stack9
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 4)))
+        stack11 (concat-byte-vectors stack10 (emit-mov-tenth-stack-from-rcx))
+        stack12 (concat-byte-vectors
+                  stack11
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 5)))
+        stack13 (concat-byte-vectors stack12 (emit-mov-ninth-stack-from-rcx))
+        stack14 (concat-byte-vectors
+                  stack13
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 6)))
+        stack15 (concat-byte-vectors stack14 (emit-mov-eighth-stack-from-rcx))
+        stack16 (concat-byte-vectors
+                  stack15
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 7)))
+        stack17 (concat-byte-vectors stack16 (emit-mov-seventh-stack-from-rcx))
+        stack18 (concat-byte-vectors
+                  stack17
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 8)))
+        stack19 (concat-byte-vectors stack18 (emit-mov-sixth-stack-from-rcx))
+        stack20 (concat-byte-vectors
+                  stack19
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 9)))
+        stack21 (concat-byte-vectors stack20 (emit-mov-fifth-stack-from-rcx))
+        stack22 (concat-byte-vectors
+                  stack21
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 10)))
+        stack23 (concat-byte-vectors stack22 (emit-mov-fourth-stack-from-rcx))
+        stack24 (concat-byte-vectors
+                  stack23
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 11)))
+        stack25 (concat-byte-vectors stack24 (emit-mov-third-stack-from-rcx))
+        stack26 (concat-byte-vectors
+                  stack25
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 12)))
+        stack27 (concat-byte-vectors stack26 (emit-mov-second-stack-from-rcx))
+        stack-setup (concat-byte-vectors
+                      stack27
+                      (emit-mov-r9-from-local (native-value-window-spill-offset frame-base-slot-count 13)))
+        reg0 (concat-byte-vectors
+               (emit-mov-top-stack-from-r9)
+               (emit-mov-r9-from-local (native-value-window-spill-offset frame-base-slot-count 14)))
+        reg1 (concat-byte-vectors reg0 (emit-mov-r8-from-local (native-value-window-spill-offset frame-base-slot-count 15)))
+        reg2 (concat-byte-vectors reg1 (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 16)))
+        reg3 (concat-byte-vectors reg2 (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count 17)))
+        reg4 (concat-byte-vectors reg3 (emit-mov-rsi-from-local (native-value-window-spill-offset frame-base-slot-count 18)))
+        reg-setup (concat-byte-vectors reg4 (emit-mov-rdi-from-local (native-value-window-spill-offset frame-base-slot-count 19)))
+        call-seq (concat-byte-vectors
+                   (emit-call-rel32 rel)
+                   (emit-add-rsp-imm32 128))]
+    (concat-byte-vectors
+      (concat-byte-vectors stack-setup reg-setup)
+      call-seq)))
+
 (defn emit-twenty-one-arg-call-x86 [rel frame-base-slot-count]
   (let [stack0 (concat-byte-vectors
                  (emit-sub-rsp-imm32 128)
@@ -2288,7 +2401,13 @@
       call-seq)))
 
 (defn emit-drop-bundle-x86 [frame-base-slot-count current-depth]
-  (if (>= current-depth 21)
+  (if (>= current-depth 22)
+    (concat-byte-vectors
+      (emit-drop-bundle-x86 frame-base-slot-count 21)
+      (concat-byte-vectors
+        (emit-mov-rsi-from-local (native-value-window-spill-offset frame-base-slot-count 19))
+        (emit-mov-local-from-rsi (native-value-window-spill-offset frame-base-slot-count 18))))
+    (if (>= current-depth 21)
     (concat-byte-vectors
       (emit-drop-bundle-x86 frame-base-slot-count 20)
       (concat-byte-vectors
@@ -2562,7 +2681,7 @@
           (concat-byte-vectors
             (emit-mov-rax-rcx)
             (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 0)))
-        (emit-mov-rax-rcx)))))))))))))))))))))
+        (emit-mov-rax-rcx))))))))))))))))))))))
 
 ;; === IR -> ネイティブ変換 ===
 
@@ -2652,14 +2771,21 @@
       next-depth (apply-stack-delta current-depth (opcode-stack-delta opcode operand function-metas))]
       (native-function-body-size-x86-loop ir-func function-metas (+ idx 1) len next-total next-depth))))
 
+(defn native-param-spill-bytes-x86-twenty-to-twenty-two [param-count]
+  (if (= param-count 22)
+    224
+    (if (= param-count 21)
+      210
+      (+ 53 (* (- param-count 7) 11)))))
+
 (defn native-function-size-x86 [func-meta function-metas]
   (let [param-count (native-function-param-count func-meta)
     local-count (native-function-local-count func-meta)
     ir-func (native-function-ir func-meta)
     stack-bytes (native-local-stack-bytes-with-window ir-func (+ param-count local-count) function-metas)
     frame-bytes (if (> stack-bytes 0) 14 0)
-    param-spill-bytes (if (= param-count 21)
-                        210
+    param-spill-bytes (if (>= param-count 20)
+                        (native-param-spill-bytes-x86-twenty-to-twenty-two param-count)
                         (if (> param-count 6)
                           (+ 53 (* (- param-count 7) 11))
                           (if (= param-count 6)
@@ -2687,6 +2813,69 @@
 (defn collect-function-starts-x86 [functions]
   (collect-function-starts-x86-loop functions 0 (vector-length functions) (vector-new 8) 0))
 
+(defn emit-call-bundle-x86-twenty-to-twenty-two [target-param-count rel frame-base-slot-count]
+  (if (= target-param-count 22)
+    (emit-twenty-two-arg-call-x86 rel frame-base-slot-count)
+    (if (= target-param-count 21)
+      (emit-twenty-one-arg-call-x86 rel frame-base-slot-count)
+      (emit-twenty-arg-call-x86 rel frame-base-slot-count))))
+
+(defn emit-call-bundle-x86-ten-to-nineteen [target-param-count rel frame-base-slot-count]
+  (if (= target-param-count 19)
+    (emit-nineteen-arg-call-x86 rel frame-base-slot-count)
+    (if (= target-param-count 18)
+      (emit-eighteen-arg-call-x86 rel frame-base-slot-count)
+      (if (= target-param-count 17)
+        (emit-seventeen-arg-call-x86 rel frame-base-slot-count)
+        (if (= target-param-count 16)
+          (emit-sixteen-arg-call-x86 rel frame-base-slot-count)
+          (if (= target-param-count 15)
+            (emit-fifteen-arg-call-x86 rel frame-base-slot-count)
+            (if (= target-param-count 14)
+              (emit-fourteen-arg-call-x86 rel frame-base-slot-count)
+              (if (= target-param-count 13)
+                (emit-thirteen-arg-call-x86 rel frame-base-slot-count)
+                (if (= target-param-count 12)
+                  (emit-twelve-arg-call-x86 rel frame-base-slot-count)
+                  (if (= target-param-count 11)
+                    (emit-eleven-arg-call-x86 rel frame-base-slot-count)
+                    (emit-ten-arg-call-x86 rel frame-base-slot-count)))))))))))
+
+(defn emit-call-bundle-x86-one-to-nine [target-param-count rel frame-base-slot-count current-depth]
+  (if (= target-param-count 9)
+    (emit-nine-arg-call-x86 rel frame-base-slot-count)
+    (if (= target-param-count 8)
+      (emit-eight-arg-call-x86 rel frame-base-slot-count)
+      (if (= target-param-count 7)
+        (emit-seven-arg-call-x86 rel frame-base-slot-count)
+        (if (= target-param-count 6)
+          (emit-six-arg-call-x86 rel frame-base-slot-count)
+          (if (= target-param-count 5)
+            (emit-five-arg-call-x86 rel frame-base-slot-count)
+            (if (= target-param-count 4)
+              (emit-four-arg-call-x86 rel frame-base-slot-count)
+              (if (= target-param-count 3)
+                (emit-three-arg-call-x86 rel frame-base-slot-count)
+                (if (= target-param-count 2)
+                  (emit-two-arg-call-x86 rel frame-base-slot-count current-depth)
+                  (if (= target-param-count 1)
+                    (let [call-rel (emit-call-rel32 rel)
+                      push-rcx (emit-push-rcx)
+                      pop-rcx (emit-pop-rcx)
+                      bytes (vector-new 10)
+                      b1 (vector-push bytes 72)
+                      b2 (vector-push b1 137)
+                      b3 (vector-push b2 199)
+                      b4 (vector-push b3 (vector-get push-rcx 0))
+                      b5 (vector-push b4 (vector-get call-rel 0))
+                      b6 (vector-push b5 (vector-get call-rel 1))
+                      b7 (vector-push b6 (vector-get call-rel 2))
+                      b8 (vector-push b7 (vector-get call-rel 3))
+                      b9 (vector-push b8 (vector-get call-rel 4))
+                      b10 (vector-push b9 (vector-get pop-rcx 0))]
+                      b10)
+                    (emit-call-rel32 rel)))))))))))
+
 (defn codegen-ir-instr-bundle-x86 [opcode operand current-offset function-starts function-metas frame-base-slot-count current-depth]
   (if (= opcode 40)
     (let [target-offset (vector-get function-starts operand)
@@ -2711,63 +2900,11 @@
                           (if (= target-param-count 1)
                             (- target-offset (+ current-offset 9))
                             (- target-offset (+ current-offset 5)))))))))))
-      call-bytes (if (= target-param-count 21)
-                   (emit-twenty-one-arg-call-x86 rel frame-base-slot-count)
-                   (if (= target-param-count 20)
-                     (emit-twenty-arg-call-x86 rel frame-base-slot-count)
-                     (if (= target-param-count 19)
-                       (emit-nineteen-arg-call-x86 rel frame-base-slot-count)
-                       (if (= target-param-count 18)
-                         (emit-eighteen-arg-call-x86 rel frame-base-slot-count)
-                         (if (= target-param-count 17)
-                           (emit-seventeen-arg-call-x86 rel frame-base-slot-count)
-                           (if (= target-param-count 16)
-                             (emit-sixteen-arg-call-x86 rel frame-base-slot-count)
-                             (if (= target-param-count 15)
-                               (emit-fifteen-arg-call-x86 rel frame-base-slot-count)
-                               (if (= target-param-count 14)
-                                 (emit-fourteen-arg-call-x86 rel frame-base-slot-count)
-                                 (if (= target-param-count 13)
-                                   (emit-thirteen-arg-call-x86 rel frame-base-slot-count)
-                                   (if (= target-param-count 12)
-                                     (emit-twelve-arg-call-x86 rel frame-base-slot-count)
-                                     (if (= target-param-count 11)
-                                       (emit-eleven-arg-call-x86 rel frame-base-slot-count)
-                                       (if (= target-param-count 10)
-                                         (emit-ten-arg-call-x86 rel frame-base-slot-count)
-                                         (if (= target-param-count 9)
-                                           (emit-nine-arg-call-x86 rel frame-base-slot-count)
-                                           (if (= target-param-count 8)
-                                             (emit-eight-arg-call-x86 rel frame-base-slot-count)
-                                             (if (= target-param-count 7)
-                                               (emit-seven-arg-call-x86 rel frame-base-slot-count)
-                                               (if (= target-param-count 6)
-                                                 (emit-six-arg-call-x86 rel frame-base-slot-count)
-                                                 (if (= target-param-count 5)
-                                                   (emit-five-arg-call-x86 rel frame-base-slot-count)
-                                                   (if (= target-param-count 4)
-                                                     (emit-four-arg-call-x86 rel frame-base-slot-count)
-                                                     (if (= target-param-count 3)
-                                                       (emit-three-arg-call-x86 rel frame-base-slot-count)
-                                                       (if (= target-param-count 2)
-                                                         (emit-two-arg-call-x86 rel frame-base-slot-count current-depth)
-                                                         (if (= target-param-count 1)
-                                                           (let [call-rel (emit-call-rel32 rel)
-                                                             push-rcx (emit-push-rcx)
-                                                             pop-rcx (emit-pop-rcx)
-                                                             bytes (vector-new 10)
-                                                             b1 (vector-push bytes 72)
-                                                             b2 (vector-push b1 137)
-                                                             b3 (vector-push b2 199)
-                                                             b4 (vector-push b3 (vector-get push-rcx 0))
-                                                             b5 (vector-push b4 (vector-get call-rel 0))
-                                                             b6 (vector-push b5 (vector-get call-rel 1))
-                                                             b7 (vector-push b6 (vector-get call-rel 2))
-                                                             b8 (vector-push b7 (vector-get call-rel 3))
-                                                             b9 (vector-push b8 (vector-get call-rel 4))
-                                                             b10 (vector-push b9 (vector-get pop-rcx 0))]
-                                                             b10)
-                                                           (emit-call-rel32 rel))))))))))))))))))))))]
+      call-bytes (if (>= target-param-count 20)
+                    (emit-call-bundle-x86-twenty-to-twenty-two target-param-count rel frame-base-slot-count)
+                    (if (>= target-param-count 10)
+                      (emit-call-bundle-x86-ten-to-nineteen target-param-count rel frame-base-slot-count)
+                      (emit-call-bundle-x86-one-to-nine target-param-count rel frame-base-slot-count current-depth)))]
       call-bytes)
     (if (= opcode 3)
       (emit-i32-const-bundle-x86 operand frame-base-slot-count current-depth)
@@ -2844,6 +2981,121 @@
            (ref-set result (vector-push (ref-get result) (vector-get epilogue-ret 0)))
            (ref-get result))))))
 
+(defn spill-native-function-params-x86-twenty-to-twenty-two [param-count result]
+  (if (= param-count 22)
+    (do
+      (append-native-bytes-loop result (emit-mov-local-from-rdi (local-slot-offset 0)) 0 7)
+      (append-native-bytes-loop result (emit-mov-local-from-rsi (local-slot-offset 1)) 0 7)
+      (append-native-bytes-loop result (emit-mov-local-from-rdx (local-slot-offset 2)) 0 7)
+      (append-native-bytes-loop result (emit-mov-local-from-rcx (local-slot-offset 3)) 0 7)
+      (append-native-bytes-loop result (emit-mov-local-from-r8 (local-slot-offset 4)) 0 7)
+      (append-native-bytes-loop result (emit-mov-local-from-r9 (local-slot-offset 5)) 0 7)
+      (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 16) 0 4)
+      (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 6)) 0 7)
+      (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 24) 0 4)
+      (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 7)) 0 7)
+      (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 32) 0 4)
+      (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 8)) 0 7)
+      (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 40) 0 4)
+      (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 9)) 0 7)
+      (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 48) 0 4)
+      (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 10)) 0 7)
+      (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 56) 0 4)
+      (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 11)) 0 7)
+      (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 64) 0 4)
+      (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 12)) 0 7)
+      (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 72) 0 4)
+      (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 13)) 0 7)
+      (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 80) 0 4)
+      (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 14)) 0 7)
+      (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 88) 0 4)
+      (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 15)) 0 7)
+      (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 96) 0 4)
+      (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 16)) 0 7)
+      (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 104) 0 4)
+      (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 17)) 0 7)
+      (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 112) 0 4)
+      (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 18)) 0 7)
+      (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 120) 0 4)
+      (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 19)) 0 7)
+      (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm32 128) 0 7)
+      (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 20)) 0 7)
+      (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm32 136) 0 7)
+      (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 21)) 0 7))
+    (if (= param-count 21)
+      (do
+        (append-native-bytes-loop result (emit-mov-local-from-rdi (local-slot-offset 0)) 0 7)
+        (append-native-bytes-loop result (emit-mov-local-from-rsi (local-slot-offset 1)) 0 7)
+        (append-native-bytes-loop result (emit-mov-local-from-rdx (local-slot-offset 2)) 0 7)
+        (append-native-bytes-loop result (emit-mov-local-from-rcx (local-slot-offset 3)) 0 7)
+        (append-native-bytes-loop result (emit-mov-local-from-r8 (local-slot-offset 4)) 0 7)
+        (append-native-bytes-loop result (emit-mov-local-from-r9 (local-slot-offset 5)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 16) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 6)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 24) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 7)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 32) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 8)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 40) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 9)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 48) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 10)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 56) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 11)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 64) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 12)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 72) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 13)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 80) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 14)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 88) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 15)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 96) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 16)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 104) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 17)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 112) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 18)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 120) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 19)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm32 128) 0 7)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 20)) 0 7))
+      (do
+        (append-native-bytes-loop result (emit-mov-local-from-rdi (local-slot-offset 0)) 0 7)
+        (append-native-bytes-loop result (emit-mov-local-from-rsi (local-slot-offset 1)) 0 7)
+        (append-native-bytes-loop result (emit-mov-local-from-rdx (local-slot-offset 2)) 0 7)
+        (append-native-bytes-loop result (emit-mov-local-from-rcx (local-slot-offset 3)) 0 7)
+        (append-native-bytes-loop result (emit-mov-local-from-r8 (local-slot-offset 4)) 0 7)
+        (append-native-bytes-loop result (emit-mov-local-from-r9 (local-slot-offset 5)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 16) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 6)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 24) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 7)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 32) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 8)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 40) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 9)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 48) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 10)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 56) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 11)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 64) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 12)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 72) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 13)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 80) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 14)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 88) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 15)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 96) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 16)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 104) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 17)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 112) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 18)) 0 7)
+        (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 120) 0 4)
+        (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 19)) 0 7)))))
+
 (defn generate-native-function-x86-64-bundle [func-meta result function-starts function-metas function-start]
   (let [param-count (native-function-param-count func-meta)
     local-count (native-function-local-count func-meta)
@@ -2854,8 +3106,8 @@
     prologue-mov (emit-mov-rbp-rsp)
     base-offset (+ function-start 4)
     after-stack-offset (if (> stack-bytes 0) (+ base-offset 7) base-offset)
-    param-spill-bytes (if (= param-count 21)
-                        210
+    param-spill-bytes (if (>= param-count 20)
+                        (native-param-spill-bytes-x86-twenty-to-twenty-two param-count)
                         (if (> param-count 6)
                           (+ 53 (* (- param-count 7) 11))
                           (if (= param-count 6)
@@ -2879,80 +3131,8 @@
       (if (> stack-bytes 0)
         (append-native-bytes-loop result (emit-sub-rsp-imm32 stack-bytes) 0 7)
         0)
-      (if (= param-count 21)
-        (do
-          (append-native-bytes-loop result (emit-mov-local-from-rdi (local-slot-offset 0)) 0 7)
-          (append-native-bytes-loop result (emit-mov-local-from-rsi (local-slot-offset 1)) 0 7)
-          (append-native-bytes-loop result (emit-mov-local-from-rdx (local-slot-offset 2)) 0 7)
-          (append-native-bytes-loop result (emit-mov-local-from-rcx (local-slot-offset 3)) 0 7)
-          (append-native-bytes-loop result (emit-mov-local-from-r8 (local-slot-offset 4)) 0 7)
-          (append-native-bytes-loop result (emit-mov-local-from-r9 (local-slot-offset 5)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 16) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 6)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 24) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 7)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 32) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 8)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 40) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 9)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 48) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 10)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 56) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 11)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 64) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 12)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 72) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 13)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 80) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 14)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 88) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 15)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 96) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 16)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 104) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 17)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 112) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 18)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 120) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 19)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm32 128) 0 7)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 20)) 0 7))
-        (if (= param-count 20)
-        (do
-          (append-native-bytes-loop result (emit-mov-local-from-rdi (local-slot-offset 0)) 0 7)
-          (append-native-bytes-loop result (emit-mov-local-from-rsi (local-slot-offset 1)) 0 7)
-          (append-native-bytes-loop result (emit-mov-local-from-rdx (local-slot-offset 2)) 0 7)
-          (append-native-bytes-loop result (emit-mov-local-from-rcx (local-slot-offset 3)) 0 7)
-          (append-native-bytes-loop result (emit-mov-local-from-r8 (local-slot-offset 4)) 0 7)
-          (append-native-bytes-loop result (emit-mov-local-from-r9 (local-slot-offset 5)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 16) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 6)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 24) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 7)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 32) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 8)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 40) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 9)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 48) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 10)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 56) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 11)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 64) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 12)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 72) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 13)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 80) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 14)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 88) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 15)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 96) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 16)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 104) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 17)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 112) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 18)) 0 7)
-          (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm8 120) 0 4)
-          (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 19)) 0 7))
+      (if (>= param-count 20)
+        (spill-native-function-params-x86-twenty-to-twenty-two param-count result)
         (if (= param-count 19)
         (do
           (append-native-bytes-loop result (emit-mov-local-from-rdi (local-slot-offset 0)) 0 7)
@@ -3271,7 +3451,7 @@
                       (append-native-bytes-loop result (emit-mov-local-from-rsi (local-slot-offset 1)) 0 7))
                     (if (= param-count 1)
                       (append-native-bytes-loop result (emit-mov-local-from-rdi (local-slot-offset 0)) 0 7)
-                      0)))))))))))))))))))))
+                      0))))))))))))))))))))
       (generate-native-instr-bundle-loop-x86 ir-func result function-starts function-metas frame-base-slot-count body-offset 0 0 n)
       (if (> stack-bytes 0)
         (append-native-bytes-loop result (emit-add-rsp-imm32 stack-bytes) 0 7)
@@ -3607,7 +3787,13 @@
 
 ;; AArch64 bundle の i32.const: spill window が必要なら old previous を spill する
 (defn emit-i32-const-bundle-aarch64 [value frame-base-slot-count current-depth]
-  (if (>= current-depth 20)
+  (if (>= current-depth 21)
+    (concat-byte-vectors
+      (concat-byte-vectors
+        (emit-aarch64-ldr-x10-sp (native-value-window-spill-offset frame-base-slot-count 18))
+        (emit-aarch64-str-x10-sp (native-value-window-spill-offset frame-base-slot-count 19)))
+      (emit-i32-const-bundle-aarch64 value frame-base-slot-count 20))
+    (if (>= current-depth 20)
     (concat-byte-vectors
       (concat-byte-vectors
         (emit-aarch64-ldr-x10-sp (native-value-window-spill-offset frame-base-slot-count 17))
@@ -3883,11 +4069,17 @@
         (concat-byte-vectors
           (emit-aarch64-str-x9-sp (native-value-window-spill-offset frame-base-slot-count 0))
           (emit-i32-const-aarch64 value))
-        (emit-i32-const-aarch64 value)))))))))))))))))))))
+        (emit-i32-const-aarch64 value))))))))))))))))))))))
 
 ;; AArch64 bundle の local.get: spill window が必要なら old previous を spill する
 (defn emit-local-get-bundle-aarch64 [offset frame-base-slot-count current-depth]
-  (if (>= current-depth 20)
+  (if (>= current-depth 21)
+    (concat-byte-vectors
+      (concat-byte-vectors
+        (emit-aarch64-ldr-x10-sp (native-value-window-spill-offset frame-base-slot-count 18))
+        (emit-aarch64-str-x10-sp (native-value-window-spill-offset frame-base-slot-count 19)))
+      (emit-local-get-bundle-aarch64 offset frame-base-slot-count 20))
+    (if (>= current-depth 20)
     (concat-byte-vectors
       (concat-byte-vectors
         (emit-aarch64-ldr-x10-sp (native-value-window-spill-offset frame-base-slot-count 17))
@@ -4163,7 +4355,7 @@
         (concat-byte-vectors
           (emit-aarch64-str-x9-sp (native-value-window-spill-offset frame-base-slot-count 0))
           (emit-local-get-aarch64 offset))
-        (emit-local-get-aarch64 offset)))))))))))))))))))))
+        (emit-local-get-aarch64 offset))))))))))))))))))))))
 
 (defn emit-three-arg-call-aarch64 [disp frame-base-slot-count]
   (concat-byte-vectors
@@ -4564,6 +4756,70 @@
                    (emit-aarch64-add-sp 80))]
     (concat-byte-vectors reg-setup call-seq)))
 
+(defn emit-twenty-two-arg-call-aarch64 [disp frame-base-slot-count]
+  (let [stack0 (concat-byte-vectors
+                 (emit-aarch64-sub-sp 112)
+                 (emit-aarch64-ldr-x10-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 11))))
+        stack1 (concat-byte-vectors stack0 (emit-aarch64-str-x10-sp 0))
+        stack2 (concat-byte-vectors
+                  stack1
+                  (emit-aarch64-ldr-x10-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 10))))
+        stack3 (concat-byte-vectors stack2 (emit-aarch64-str-x10-sp 8))
+        stack4 (concat-byte-vectors
+                  stack3
+                  (emit-aarch64-ldr-x10-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 9))))
+        stack5 (concat-byte-vectors stack4 (emit-aarch64-str-x10-sp 16))
+        stack6 (concat-byte-vectors
+                  stack5
+                  (emit-aarch64-ldr-x10-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 8))))
+        stack7 (concat-byte-vectors stack6 (emit-aarch64-str-x10-sp 24))
+        stack8 (concat-byte-vectors
+                  stack7
+                  (emit-aarch64-ldr-x10-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 7))))
+        stack9 (concat-byte-vectors stack8 (emit-aarch64-str-x10-sp 32))
+        stack10 (concat-byte-vectors
+                   stack9
+                   (emit-aarch64-ldr-x10-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 6))))
+        stack11 (concat-byte-vectors stack10 (emit-aarch64-str-x10-sp 40))
+        stack12 (concat-byte-vectors
+                   stack11
+                   (emit-aarch64-ldr-x10-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 5))))
+        stack13 (concat-byte-vectors stack12 (emit-aarch64-str-x10-sp 48))
+        stack14 (concat-byte-vectors
+                   stack13
+                   (emit-aarch64-ldr-x10-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 4))))
+        stack15 (concat-byte-vectors stack14 (emit-aarch64-str-x10-sp 56))
+        stack16 (concat-byte-vectors
+                   stack15
+                   (emit-aarch64-ldr-x10-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 3))))
+        stack17 (concat-byte-vectors stack16 (emit-aarch64-str-x10-sp 64))
+        stack18 (concat-byte-vectors
+                   stack17
+                   (emit-aarch64-ldr-x10-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 2))))
+        stack19 (concat-byte-vectors stack18 (emit-aarch64-str-x10-sp 72))
+        stack20 (concat-byte-vectors
+                   stack19
+                   (emit-aarch64-ldr-x10-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 1))))
+        stack21 (concat-byte-vectors stack20 (emit-aarch64-str-x10-sp 80))
+        stack22 (concat-byte-vectors
+                   stack21
+                   (emit-aarch64-ldr-x10-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 0))))
+        stack23 (concat-byte-vectors stack22 (emit-aarch64-str-x10-sp 88))
+        stack24 (concat-byte-vectors stack23 (emit-aarch64-str-x9-sp 96))
+        stack25 (concat-byte-vectors stack24 (emit-aarch64-str-x0-sp 104))
+        reg0 (concat-byte-vectors stack25 (emit-aarch64-ldr-x7-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 12))))
+        reg1 (concat-byte-vectors reg0 (emit-aarch64-ldr-x6-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 13))))
+        reg2 (concat-byte-vectors reg1 (emit-aarch64-ldr-x5-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 14))))
+        reg3 (concat-byte-vectors reg2 (emit-aarch64-ldr-x4-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 15))))
+        reg4 (concat-byte-vectors reg3 (emit-aarch64-ldr-x3-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 16))))
+        reg5 (concat-byte-vectors reg4 (emit-aarch64-ldr-x2-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 17))))
+        reg6 (concat-byte-vectors reg5 (emit-aarch64-ldr-x1-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 18))))
+        reg-setup (concat-byte-vectors reg6 (emit-aarch64-ldr-x0-sp (+ 112 (native-value-window-spill-offset frame-base-slot-count 19))))
+        call-seq (concat-byte-vectors
+                   (emit-aarch64-bl disp)
+                   (emit-aarch64-add-sp 112))]
+    (concat-byte-vectors reg-setup call-seq)))
+
 (defn emit-twenty-one-arg-call-aarch64 [disp frame-base-slot-count]
   (let [stack0 (concat-byte-vectors
                  (emit-aarch64-sub-sp 112)
@@ -4745,7 +5001,13 @@
       call-seq)))
 
 (defn emit-drop-bundle-aarch64 [frame-base-slot-count current-depth]
-  (if (>= current-depth 21)
+  (if (>= current-depth 22)
+    (concat-byte-vectors
+      (emit-drop-bundle-aarch64 frame-base-slot-count 21)
+      (concat-byte-vectors
+        (emit-aarch64-ldr-x1-sp (native-value-window-spill-offset frame-base-slot-count 19))
+        (emit-aarch64-str-x1-sp (native-value-window-spill-offset frame-base-slot-count 18))))
+    (if (>= current-depth 21)
     (concat-byte-vectors
       (emit-drop-bundle-aarch64 frame-base-slot-count 20)
       (concat-byte-vectors
@@ -5019,7 +5281,7 @@
           (concat-byte-vectors
             (emit-aarch64-mov-x0-x9)
             (emit-aarch64-ldr-x9-sp (native-value-window-spill-offset frame-base-slot-count 0)))
-        (emit-aarch64-mov-x0-x9)))))))))))))))))))))
+        (emit-aarch64-mov-x0-x9))))))))))))))))))))))
 
 ;; IR opcode を AArch64 命令列に変換
 (defn codegen-ir-instr-aarch64 [opcode operand]
@@ -5056,35 +5318,47 @@
                        ;; 未知の opcode: NOP
                        (emit-aarch64-nop))))))))))))
 
+(defn native-call-bundle-size-aarch64-twenty-to-twenty-two [target-param-count]
+  (if (= target-param-count 22)
+    148
+    (if (= target-param-count 21)
+      140
+      128)))
+
+(defn native-call-bundle-disp-aarch64-twenty-to-twenty-two [target-param-count target-offset current-offset]
+  (if (= target-param-count 22)
+    (- target-offset (+ current-offset 140))
+    (if (= target-param-count 21)
+      (- target-offset (+ current-offset 132))
+      (- target-offset (+ current-offset 120)))))
+
 (defn native-instr-size-aarch64 [opcode operand function-metas current-depth]
   (if (= opcode 40)
     (let [target-meta (vector-get function-metas operand)
       target-param-count (native-function-param-count target-meta)
-      size (if (= target-param-count 21)
-             140
-             (if (= target-param-count 20)
-               128
-               (if (> target-param-count 9)
-                 (+ 52 (* (- target-param-count 10) 8))
-                 (if (= target-param-count 9)
-                   48
-                   (if (= target-param-count 8)
-                     36
-                     (if (= target-param-count 7)
-                       32
-                       (if (= target-param-count 6)
-                         28
-                         (if (= target-param-count 5)
-                           24
-                           (if (= target-param-count 4)
-                             20
-                             (if (= target-param-count 3)
-                               16
-                               (if (= target-param-count 2)
-                                 (if (>= current-depth 3) 16 12)
-                                 (if (= target-param-count 1)
-                                   12
-                                    4))))))))))))]
+      size (if (>= target-param-count 20)
+             (native-call-bundle-size-aarch64-twenty-to-twenty-two target-param-count)
+             (if (> target-param-count 9)
+               (+ 52 (* (- target-param-count 10) 8))
+               (if (= target-param-count 9)
+                48
+                (if (= target-param-count 8)
+                  36
+                  (if (= target-param-count 7)
+                    32
+                    (if (= target-param-count 6)
+                      28
+                      (if (= target-param-count 5)
+                        24
+                        (if (= target-param-count 4)
+                          20
+                          (if (= target-param-count 3)
+                            16
+                            (if (= target-param-count 2)
+                              (if (>= current-depth 3) 16 12)
+                               (if (= target-param-count 1)
+                                 12
+                                  4)))))))))))]
       size)
     (if (= opcode 3)
       (if (>= current-depth 2) (+ 12 (* (- current-depth 2) 8)) 8)
@@ -5142,95 +5416,104 @@
 (defn collect-function-starts-aarch64 [functions]
   (collect-function-starts-aarch64-loop functions 0 (vector-length functions) (vector-new 8) 0))
 
+(defn emit-call-bundle-aarch64-twenty-to-twenty-two [target-param-count disp frame-base-slot-count]
+  (if (= target-param-count 22)
+    (emit-twenty-two-arg-call-aarch64 disp frame-base-slot-count)
+    (if (= target-param-count 21)
+      (emit-twenty-one-arg-call-aarch64 disp frame-base-slot-count)
+      (emit-twenty-arg-call-aarch64 disp frame-base-slot-count))))
+
+(defn emit-call-bundle-aarch64-ten-to-nineteen [target-param-count disp frame-base-slot-count]
+  (if (= target-param-count 19)
+    (emit-nineteen-arg-call-aarch64 disp frame-base-slot-count)
+    (if (= target-param-count 18)
+      (emit-eighteen-arg-call-aarch64 disp frame-base-slot-count)
+      (if (= target-param-count 17)
+        (emit-seventeen-arg-call-aarch64 disp frame-base-slot-count)
+        (if (= target-param-count 16)
+          (emit-sixteen-arg-call-aarch64 disp frame-base-slot-count)
+          (if (= target-param-count 15)
+            (emit-fifteen-arg-call-aarch64 disp frame-base-slot-count)
+            (if (= target-param-count 14)
+              (emit-fourteen-arg-call-aarch64 disp frame-base-slot-count)
+              (if (= target-param-count 13)
+                (emit-thirteen-arg-call-aarch64 disp frame-base-slot-count)
+                (if (= target-param-count 12)
+                  (emit-twelve-arg-call-aarch64 disp frame-base-slot-count)
+                  (if (= target-param-count 11)
+                    (emit-eleven-arg-call-aarch64 disp frame-base-slot-count)
+                    (emit-ten-arg-call-aarch64 disp frame-base-slot-count)))))))))))
+
+(defn emit-call-bundle-aarch64-one-to-nine [target-param-count disp frame-base-slot-count current-depth]
+  (if (= target-param-count 9)
+    (emit-nine-arg-call-aarch64 disp frame-base-slot-count)
+    (if (= target-param-count 8)
+      (emit-eight-arg-call-aarch64 disp frame-base-slot-count)
+      (if (= target-param-count 7)
+        (emit-seven-arg-call-aarch64 disp frame-base-slot-count)
+        (if (= target-param-count 6)
+          (emit-six-arg-call-aarch64 disp frame-base-slot-count)
+          (if (= target-param-count 5)
+            (emit-five-arg-call-aarch64 disp frame-base-slot-count)
+            (if (= target-param-count 4)
+              (emit-four-arg-call-aarch64 disp frame-base-slot-count)
+              (if (= target-param-count 3)
+                (emit-three-arg-call-aarch64 disp frame-base-slot-count)
+                (if (= target-param-count 2)
+                  (emit-two-arg-call-aarch64 disp frame-base-slot-count current-depth)
+                  (if (= target-param-count 1)
+                    (let [save-prev (emit-aarch64-mov-x10-x9)
+                      call-bl (emit-aarch64-bl disp)
+                      restore-prev (emit-aarch64-mov-x9-x10)
+                      bytes (vector-new 12)
+                      b1 (vector-push bytes (vector-get save-prev 0))
+                      b2 (vector-push b1 (vector-get save-prev 1))
+                      b3 (vector-push b2 (vector-get save-prev 2))
+                      b4 (vector-push b3 (vector-get save-prev 3))
+                      b5 (vector-push b4 (vector-get call-bl 0))
+                      b6 (vector-push b5 (vector-get call-bl 1))
+                      b7 (vector-push b6 (vector-get call-bl 2))
+                      b8 (vector-push b7 (vector-get call-bl 3))
+                      b9 (vector-push b8 (vector-get restore-prev 0))
+                      b10 (vector-push b9 (vector-get restore-prev 1))
+                      b11 (vector-push b10 (vector-get restore-prev 2))
+                      b12 (vector-push b11 (vector-get restore-prev 3))]
+                      b12)
+                    (emit-aarch64-bl disp)))))))))))
+
 (defn codegen-ir-instr-bundle-aarch64 [opcode operand current-offset function-starts function-metas frame-base-slot-count current-depth]
   (if (= opcode 40)
     (let [target-offset (vector-get function-starts operand)
       target-meta (vector-get function-metas operand)
       target-param-count (native-function-param-count target-meta)
-      disp (if (= target-param-count 21)
-             (- target-offset (+ current-offset 132))
-             (if (= target-param-count 20)
-               (- target-offset (+ current-offset 120))
-               (if (> target-param-count 9)
-                 (- target-offset (+ current-offset (+ 44 (* (- target-param-count 10) 8))))
-                 (if (= target-param-count 9)
-                   (- target-offset (+ current-offset 40))
-                   (if (= target-param-count 8)
-                     (- target-offset (+ current-offset 32))
-                     (if (= target-param-count 7)
-                       (- target-offset (+ current-offset 28))
-                       (if (= target-param-count 6)
-                         (- target-offset (+ current-offset 24))
-                         (if (= target-param-count 5)
-                           (- target-offset (+ current-offset 20))
-                           (if (= target-param-count 4)
-                             (- target-offset (+ current-offset 16))
-                             (if (= target-param-count 3)
-                               (- target-offset (+ current-offset 12))
-                               (if (= target-param-count 2)
-                                 (- target-offset (+ current-offset 8))
-                                 (if (= target-param-count 1)
-                                   (- target-offset (+ current-offset 4))
-                                   (- target-offset current-offset)))))))))))))
-      call-bytes (if (= target-param-count 21)
-                   (emit-twenty-one-arg-call-aarch64 disp frame-base-slot-count)
-                   (if (= target-param-count 20)
-                     (emit-twenty-arg-call-aarch64 disp frame-base-slot-count)
-                     (if (= target-param-count 19)
-                       (emit-nineteen-arg-call-aarch64 disp frame-base-slot-count)
-                       (if (= target-param-count 18)
-                         (emit-eighteen-arg-call-aarch64 disp frame-base-slot-count)
-                         (if (= target-param-count 17)
-                           (emit-seventeen-arg-call-aarch64 disp frame-base-slot-count)
-                           (if (= target-param-count 16)
-                             (emit-sixteen-arg-call-aarch64 disp frame-base-slot-count)
-                             (if (= target-param-count 15)
-                               (emit-fifteen-arg-call-aarch64 disp frame-base-slot-count)
-                               (if (= target-param-count 14)
-                                 (emit-fourteen-arg-call-aarch64 disp frame-base-slot-count)
-                                 (if (= target-param-count 13)
-                                   (emit-thirteen-arg-call-aarch64 disp frame-base-slot-count)
-                                   (if (= target-param-count 12)
-                                     (emit-twelve-arg-call-aarch64 disp frame-base-slot-count)
-                                     (if (= target-param-count 11)
-                                       (emit-eleven-arg-call-aarch64 disp frame-base-slot-count)
-                                       (if (= target-param-count 10)
-                                         (emit-ten-arg-call-aarch64 disp frame-base-slot-count)
-                                         (if (= target-param-count 9)
-                                           (emit-nine-arg-call-aarch64 disp frame-base-slot-count)
-                                           (if (= target-param-count 8)
-                                             (emit-eight-arg-call-aarch64 disp frame-base-slot-count)
-                                             (if (= target-param-count 7)
-                                               (emit-seven-arg-call-aarch64 disp frame-base-slot-count)
-                                               (if (= target-param-count 6)
-                                                 (emit-six-arg-call-aarch64 disp frame-base-slot-count)
-                                                 (if (= target-param-count 5)
-                                                   (emit-five-arg-call-aarch64 disp frame-base-slot-count)
-                                                   (if (= target-param-count 4)
-                                                     (emit-four-arg-call-aarch64 disp frame-base-slot-count)
-                                                     (if (= target-param-count 3)
-                                                       (emit-three-arg-call-aarch64 disp frame-base-slot-count)
-                                                       (if (= target-param-count 2)
-                                                         (emit-two-arg-call-aarch64 disp frame-base-slot-count current-depth)
-                                                         (if (= target-param-count 1)
-                                                           (let [save-prev (emit-aarch64-mov-x10-x9)
-                                                             call-bl (emit-aarch64-bl disp)
-                                                             restore-prev (emit-aarch64-mov-x9-x10)
-                                                             bytes (vector-new 12)
-                                                             b1 (vector-push bytes (vector-get save-prev 0))
-                                                             b2 (vector-push b1 (vector-get save-prev 1))
-                                                             b3 (vector-push b2 (vector-get save-prev 2))
-                                                             b4 (vector-push b3 (vector-get save-prev 3))
-                                                             b5 (vector-push b4 (vector-get call-bl 0))
-                                                             b6 (vector-push b5 (vector-get call-bl 1))
-                                                             b7 (vector-push b6 (vector-get call-bl 2))
-                                                             b8 (vector-push b7 (vector-get call-bl 3))
-                                                             b9 (vector-push b8 (vector-get restore-prev 0))
-                                                             b10 (vector-push b9 (vector-get restore-prev 1))
-                                                             b11 (vector-push b10 (vector-get restore-prev 2))
-                                                             b12 (vector-push b11 (vector-get restore-prev 3))]
-                                                             b12)
-                                                           (emit-aarch64-bl disp))))))))))))))))))))))]
+      disp (if (>= target-param-count 20)
+             (native-call-bundle-disp-aarch64-twenty-to-twenty-two target-param-count target-offset current-offset)
+             (if (> target-param-count 9)
+               (- target-offset (+ current-offset (+ 44 (* (- target-param-count 10) 8))))
+              (if (= target-param-count 9)
+                (- target-offset (+ current-offset 40))
+                (if (= target-param-count 8)
+                  (- target-offset (+ current-offset 32))
+                  (if (= target-param-count 7)
+                    (- target-offset (+ current-offset 28))
+                    (if (= target-param-count 6)
+                      (- target-offset (+ current-offset 24))
+                      (if (= target-param-count 5)
+                        (- target-offset (+ current-offset 20))
+                        (if (= target-param-count 4)
+                          (- target-offset (+ current-offset 16))
+                          (if (= target-param-count 3)
+                            (- target-offset (+ current-offset 12))
+                            (if (= target-param-count 2)
+                              (- target-offset (+ current-offset 8))
+                               (if (= target-param-count 1)
+                                 (- target-offset (+ current-offset 4))
+                                 (- target-offset current-offset))))))))))))
+      call-bytes (if (>= target-param-count 20)
+                    (emit-call-bundle-aarch64-twenty-to-twenty-two target-param-count disp frame-base-slot-count)
+                    (if (>= target-param-count 10)
+                      (emit-call-bundle-aarch64-ten-to-nineteen target-param-count disp frame-base-slot-count)
+                      (emit-call-bundle-aarch64-one-to-nine target-param-count disp frame-base-slot-count current-depth)))]
       call-bytes)
     (if (= opcode 3)
       (emit-i32-const-bundle-aarch64 operand frame-base-slot-count current-depth)
@@ -5291,8 +5574,117 @@
           (if (= has-call 1)
             (append-native-bytes-loop result (emit-aarch64-restore-fp-lr) 0 4)
             0)
-          (append-native-bytes-loop result ret-bytes 0 4)
-          (ref-get result))))))
+           (append-native-bytes-loop result ret-bytes 0 4)
+           (ref-get result))))))
+
+(defn spill-native-function-params-aarch64-twenty-to-twenty-two [param-count result stack-arg-base-offset]
+  (if (= param-count 22)
+    (do
+      (append-native-bytes-loop result (emit-aarch64-str-x0-sp (local-slot-offset 0)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x1-sp (local-slot-offset 1)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x2-sp (local-slot-offset 2)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x3-sp (local-slot-offset 3)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x4-sp (local-slot-offset 4)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x5-sp (local-slot-offset 5)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x6-sp (local-slot-offset 6)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x7-sp (local-slot-offset 7)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp stack-arg-base-offset) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 8)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 8)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 9)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 16)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 10)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 24)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 11)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 32)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 12)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 40)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 13)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 48)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 14)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 56)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 15)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 64)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 16)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 72)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 17)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 80)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 18)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 88)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 19)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 96)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 20)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 104)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 21)) 0 4))
+    (if (= param-count 21)
+      (do
+        (append-native-bytes-loop result (emit-aarch64-str-x0-sp (local-slot-offset 0)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x1-sp (local-slot-offset 1)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x2-sp (local-slot-offset 2)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x3-sp (local-slot-offset 3)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x4-sp (local-slot-offset 4)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x5-sp (local-slot-offset 5)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x6-sp (local-slot-offset 6)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x7-sp (local-slot-offset 7)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp stack-arg-base-offset) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 8)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 8)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 9)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 16)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 10)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 24)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 11)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 32)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 12)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 40)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 13)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 48)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 14)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 56)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 15)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 64)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 16)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 72)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 17)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 80)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 18)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 88)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 19)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 96)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 20)) 0 4))
+      (do
+        (append-native-bytes-loop result (emit-aarch64-str-x0-sp (local-slot-offset 0)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x1-sp (local-slot-offset 1)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x2-sp (local-slot-offset 2)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x3-sp (local-slot-offset 3)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x4-sp (local-slot-offset 4)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x5-sp (local-slot-offset 5)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x6-sp (local-slot-offset 6)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x7-sp (local-slot-offset 7)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp stack-arg-base-offset) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 8)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 8)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 9)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 16)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 10)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 24)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 11)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 32)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 12)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 40)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 13)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 48)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 14)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 56)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 15)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 64)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 16)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 72)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 17)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 80)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 18)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 88)) 0 4)
+        (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 19)) 0 4)))))
 
 (defn generate-native-function-aarch64-bundle [func-meta result function-starts function-metas function-start]
   (let [param-count (native-function-param-count func-meta)
@@ -5330,76 +5722,8 @@
       (if (> stack-bytes 0)
         (append-native-bytes-loop result (emit-aarch64-sub-sp stack-bytes) 0 4)
         0)
-      (if (= param-count 21)
-        (do
-          (append-native-bytes-loop result (emit-aarch64-str-x0-sp (local-slot-offset 0)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x1-sp (local-slot-offset 1)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x2-sp (local-slot-offset 2)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x3-sp (local-slot-offset 3)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x4-sp (local-slot-offset 4)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x5-sp (local-slot-offset 5)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x6-sp (local-slot-offset 6)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x7-sp (local-slot-offset 7)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp stack-arg-base-offset) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 8)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 8)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 9)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 16)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 10)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 24)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 11)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 32)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 12)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 40)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 13)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 48)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 14)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 56)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 15)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 64)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 16)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 72)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 17)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 80)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 18)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 88)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 19)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 96)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 20)) 0 4))
-        (if (= param-count 20)
-        (do
-          (append-native-bytes-loop result (emit-aarch64-str-x0-sp (local-slot-offset 0)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x1-sp (local-slot-offset 1)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x2-sp (local-slot-offset 2)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x3-sp (local-slot-offset 3)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x4-sp (local-slot-offset 4)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x5-sp (local-slot-offset 5)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x6-sp (local-slot-offset 6)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x7-sp (local-slot-offset 7)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp stack-arg-base-offset) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 8)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 8)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 9)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 16)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 10)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 24)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 11)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 32)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 12)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 40)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 13)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 48)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 14)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 56)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 15)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 64)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 16)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 72)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 17)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 80)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 18)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 88)) 0 4)
-          (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 19)) 0 4))
+      (if (>= param-count 20)
+        (spill-native-function-params-aarch64-twenty-to-twenty-two param-count result stack-arg-base-offset)
         (if (= param-count 19)
         (do
           (append-native-bytes-loop result (emit-aarch64-str-x0-sp (local-slot-offset 0)) 0 4)
@@ -5693,7 +6017,7 @@
                       (append-native-bytes-loop result (emit-aarch64-str-x1-sp (local-slot-offset 1)) 0 4))
                     (if (= param-count 1)
                       (append-native-bytes-loop result (emit-aarch64-str-x0-sp (local-slot-offset 0)) 0 4)
-                      0)))))))))))))))))))))
+                      0))))))))))))))))))))
       (generate-native-instr-bundle-loop-aarch64 ir-func result function-starts function-metas frame-base-slot-count body-offset 0 0 n)
       (if (> stack-bytes 0)
         (append-native-bytes-loop result (emit-aarch64-add-sp stack-bytes) 0 4)
