@@ -3386,6 +3386,123 @@ fn host_target_direct_call_twenty_seven_arg_bundle_code_bytes() -> Vec<u8> {
     )
 }
 
+fn host_target_direct_call_twenty_eight_arg_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [caller-ir0 (vector-push (vector-new 29) (make-instr 3 31))
+        caller-ir1 (vector-push caller-ir0 (make-instr 3 2))
+        caller-ir2 (vector-push caller-ir1 (make-instr 3 3))
+        caller-ir3 (vector-push caller-ir2 (make-instr 3 5))
+        caller-ir4 (vector-push caller-ir3 (make-instr 3 7))
+        caller-ir5 (vector-push caller-ir4 (make-instr 3 11))
+        caller-ir6 (vector-push caller-ir5 (make-instr 3 13))
+        caller-ir7 (vector-push caller-ir6 (make-instr 3 14))
+        caller-ir8 (vector-push caller-ir7 (make-instr 3 17))
+        caller-ir9 (vector-push caller-ir8 (make-instr 3 19))
+        caller-ir10 (vector-push caller-ir9 (make-instr 3 23))
+        caller-ir11 (vector-push caller-ir10 (make-instr 3 29))
+        caller-ir12 (vector-push caller-ir11 (make-instr 3 31))
+        caller-ir13 (vector-push caller-ir12 (make-instr 3 37))
+        caller-ir14 (vector-push caller-ir13 (make-instr 3 1))
+        caller-ir15 (vector-push caller-ir14 (make-instr 3 2))
+        caller-ir16 (vector-push caller-ir15 (make-instr 3 4))
+        caller-ir17 (vector-push caller-ir16 (make-instr 3 3))
+        caller-ir18 (vector-push caller-ir17 (make-instr 3 1))
+        caller-ir19 (vector-push caller-ir18 (make-instr 3 1))
+        caller-ir20 (vector-push caller-ir19 (make-instr 3 1))
+        caller-ir21 (vector-push caller-ir20 (make-instr 3 2))
+        caller-ir22 (vector-push caller-ir21 (make-instr 3 41))
+        caller-ir23 (vector-push caller-ir22 (make-instr 3 8))
+        caller-ir24 (vector-push caller-ir23 (make-instr 3 13))
+        caller-ir25 (vector-push caller-ir24 (make-instr 3 5))
+        caller-ir26 (vector-push caller-ir25 (make-instr 3 7))
+        caller-ir27 (vector-push caller-ir26 (make-instr 3 11))
+        caller-ir (vector-push caller-ir27 (make-call 1))
+        callee-ir0 (vector-push (vector-new 55) (make-local-get 0))
+        callee-ir1 (vector-push callee-ir0 (make-local-get 1))
+        callee-ir2 (vector-push callee-ir1 (make-instr 24 0))
+        callee-ir3 (vector-push callee-ir2 (make-local-get 2))
+        callee-ir4 (vector-push callee-ir3 (make-instr 24 0))
+        callee-ir5 (vector-push callee-ir4 (make-local-get 3))
+        callee-ir6 (vector-push callee-ir5 (make-instr 24 0))
+        callee-ir7 (vector-push callee-ir6 (make-local-get 4))
+        callee-ir8 (vector-push callee-ir7 (make-instr 24 0))
+        callee-ir9 (vector-push callee-ir8 (make-local-get 5))
+        callee-ir10 (vector-push callee-ir9 (make-instr 24 0))
+        callee-ir11 (vector-push callee-ir10 (make-local-get 6))
+        callee-ir12 (vector-push callee-ir11 (make-instr 24 0))
+        callee-ir13 (vector-push callee-ir12 (make-local-get 7))
+        callee-ir14 (vector-push callee-ir13 (make-instr 24 0))
+        callee-ir15 (vector-push callee-ir14 (make-local-get 8))
+        callee-ir16 (vector-push callee-ir15 (make-instr 24 0))
+        callee-ir17 (vector-push callee-ir16 (make-local-get 9))
+        callee-ir18 (vector-push callee-ir17 (make-instr 24 0))
+        callee-ir19 (vector-push callee-ir18 (make-local-get 10))
+        callee-ir20 (vector-push callee-ir19 (make-instr 24 0))
+        callee-ir21 (vector-push callee-ir20 (make-local-get 11))
+        callee-ir22 (vector-push callee-ir21 (make-instr 24 0))
+        callee-ir23 (vector-push callee-ir22 (make-local-get 12))
+        callee-ir24 (vector-push callee-ir23 (make-instr 24 0))
+        callee-ir25 (vector-push callee-ir24 (make-local-get 13))
+        callee-ir26 (vector-push callee-ir25 (make-instr 24 0))
+        callee-ir27 (vector-push callee-ir26 (make-local-get 14))
+        callee-ir28 (vector-push callee-ir27 (make-instr 24 0))
+        callee-ir29 (vector-push callee-ir28 (make-local-get 15))
+        callee-ir30 (vector-push callee-ir29 (make-instr 24 0))
+        callee-ir31 (vector-push callee-ir30 (make-local-get 16))
+        callee-ir32 (vector-push callee-ir31 (make-instr 24 0))
+        callee-ir33 (vector-push callee-ir32 (make-local-get 17))
+        callee-ir34 (vector-push callee-ir33 (make-instr 24 0))
+        callee-ir35 (vector-push callee-ir34 (make-local-get 18))
+        callee-ir36 (vector-push callee-ir35 (make-instr 24 0))
+        callee-ir37 (vector-push callee-ir36 (make-local-get 19))
+        callee-ir38 (vector-push callee-ir37 (make-instr 24 0))
+        callee-ir39 (vector-push callee-ir38 (make-local-get 20))
+        callee-ir40 (vector-push callee-ir39 (make-instr 24 0))
+        callee-ir41 (vector-push callee-ir40 (make-local-get 21))
+        callee-ir42 (vector-push callee-ir41 (make-instr 24 0))
+        callee-ir43 (vector-push callee-ir42 (make-local-get 22))
+        callee-ir44 (vector-push callee-ir43 (make-instr 24 0))
+        callee-ir45 (vector-push callee-ir44 (make-local-get 23))
+        callee-ir46 (vector-push callee-ir45 (make-instr 24 0))
+        callee-ir47 (vector-push callee-ir46 (make-local-get 24))
+        callee-ir48 (vector-push callee-ir47 (make-instr 24 0))
+        callee-ir49 (vector-push callee-ir48 (make-local-get 25))
+        callee-ir50 (vector-push callee-ir49 (make-instr 24 0))
+        callee-ir51 (vector-push callee-ir50 (make-local-get 26))
+        callee-ir52 (vector-push callee-ir51 (make-instr 24 0))
+        callee-ir53 (vector-push callee-ir52 (make-local-get 27))
+        callee-ir (vector-push callee-ir53 (make-instr 24 0))
+        caller (make-function-meta 0 0 caller-ir)
+        callee (make-function-meta 28 0 callee-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) callee)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 fn host_target_direct_call_two_arg_drop_restore_code_bytes() -> Vec<u8> {
     run_native_codegen_host_bytes_harness(
         r#"(module Main)
@@ -4584,6 +4701,34 @@ fn test_e2e_native_host_binary_direct_call_twenty_seven_arg_bundle_link_and_exec
         exit_code,
         75,
         "host binary direct call twenty-seven-arg bundle: exit code 75 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01zk: 28 引数 direct call bundle が host binary として link/run できること。
+#[test]
+fn test_e2e_native_host_binary_direct_call_twenty_eight_arg_bundle_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_direct_call_twenty_eight_arg_bundle_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: direct call twenty-eight-arg bundle host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("direct call twenty-eight-arg host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        86,
+        "host binary direct call twenty-eight-arg bundle: exit code 86 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),
