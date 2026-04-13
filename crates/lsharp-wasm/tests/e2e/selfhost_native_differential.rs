@@ -3124,6 +3124,11 @@ fn test_native_codegen_emits_x86_direct_call_nine_arg_bundle_bytes() {
       (print (vector-get native 717))
       0)))"#,
     );
+    std::fs::write(
+        "/Users/biwakonbu/.copilot/session-state/263086ba-9594-429c-a3e4-f0d13815c738/files/native30.txt",
+        &output,
+    )
+    .unwrap();
 
     let lines: Vec<&str> = output.trim().lines().collect();
 
@@ -6240,6 +6245,46 @@ fn test_native_codegen_emits_x86_direct_call_twenty_nine_arg_bundle_bytes() {
         &lines[..expected.len()],
         expected.as_slice(),
         "x86_64 direct call twenty-nine-arg helper payload/call-layout exact bytes が一致しない"
+    );
+}
+
+/// NATIVE-REAL-08zj: x86_64 で 30 引数 direct call bundle helper が 24 stack arg / spill 30 を生成できること
+#[test]
+fn test_native_codegen_emits_x86_direct_call_thirty_arg_bundle_bytes() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeCodegen)
+
+(defn print-range [bytes idx end]
+  (if (>= idx end)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-range bytes (+ idx 1) end))))
+
+(defn main []
+  (let [call-bytes (emit-thirty-arg-call-x86 16 0)
+        spill-ref (ref-new (vector-new 8))]
+    (do
+      (spill-native-function-params-x86-twenty-to-thirty 30 spill-ref)
+      (print (vector-length call-bytes))
+      (print-range call-bytes 0 (vector-length call-bytes))
+      (print (vector-length (ref-get spill-ref)))
+      (print-range (ref-get spill-ref) 0 (vector-length (ref-get spill-ref)))
+      0)))"#,
+    );
+
+    let lines: Vec<&str> = output.trim().lines().collect();
+    let expected: Vec<&str> = r#"358 72 129 236 192 0 0 0 72 137 132 36 184 0 0 0 72 137 140 36 176 0 0 0 72 139 141 248 255 255 255 72 137 140 36 168 0 0 0 72 139 141 240 255 255 255 72 137 140 36 160 0 0 0 72 139 141 232 255 255 255 72 137 140 36 152 0 0 0 72 139 141 224 255 255 255 72 137 140 36 144 0 0 0 72 139 141 216 255 255 255 72 137 140 36 136 0 0 0 72 139 141 208 255 255 255 72 137 140 36 128 0 0 0 72 139 141 200 255 255 255 72 137 76 36 120 72 139 141 192 255 255 255 72 137 76 36 112 72 139 141 184 255 255 255 72 137 76 36 104 72 139 141 176 255 255 255 72 137 76 36 96 72 139 141 168 255 255 255 72 137 76 36 88 72 139 141 160 255 255 255 72 137 76 36 80 72 139 141 152 255 255 255 72 137 76 36 72 72 139 141 144 255 255 255 72 137 76 36 64 72 139 141 136 255 255 255 72 137 76 36 56 72 139 141 128 255 255 255 72 137 76 36 48 72 139 141 120 255 255 255 72 137 76 36 40 72 139 141 112 255 255 255 72 137 76 36 32 72 139 141 104 255 255 255 72 137 76 36 24 72 139 141 96 255 255 255 72 137 76 36 16 72 139 141 88 255 255 255 72 137 76 36 8 76 139 141 80 255 255 255 76 137 12 36 76 139 141 72 255 255 255 76 139 133 64 255 255 255 72 139 141 56 255 255 255 72 139 149 48 255 255 255 72 139 181 40 255 255 255 72 139 189 32 255 255 255 232 16 0 0 0 72 129 196 192 0 0 0 336 72 137 189 248 255 255 255 72 137 181 240 255 255 255 72 137 149 232 255 255 255 72 137 141 224 255 255 255 76 137 133 216 255 255 255 76 137 141 208 255 255 255 72 139 69 16 72 137 133 200 255 255 255 72 139 69 24 72 137 133 192 255 255 255 72 139 69 32 72 137 133 184 255 255 255 72 139 69 40 72 137 133 176 255 255 255 72 139 69 48 72 137 133 168 255 255 255 72 139 69 56 72 137 133 160 255 255 255 72 139 69 64 72 137 133 152 255 255 255 72 139 69 72 72 137 133 144 255 255 255 72 139 69 80 72 137 133 136 255 255 255 72 139 69 88 72 137 133 128 255 255 255 72 139 69 96 72 137 133 120 255 255 255 72 139 69 104 72 137 133 112 255 255 255 72 139 69 112 72 137 133 104 255 255 255 72 139 69 120 72 137 133 96 255 255 255 72 139 133 128 0 0 0 72 137 133 88 255 255 255 72 139 133 136 0 0 0 72 137 133 80 255 255 255 72 139 133 144 0 0 0 72 137 133 72 255 255 255 72 139 133 152 0 0 0 72 137 133 64 255 255 255 72 139 133 160 0 0 0 72 137 133 56 255 255 255 72 139 133 168 0 0 0 72 137 133 48 255 255 255 72 139 133 176 0 0 0 72 137 133 40 255 255 255 72 139 133 184 0 0 0 72 137 133 32 255 255 255 72 139 133 192 0 0 0 72 137 133 24 255 255 255 72 139 133 200 0 0 0 72 137 133 16 255 255 255"#.split_whitespace().collect();
+    assert!(
+        lines.len() >= expected.len(),
+        "x86 direct call thirty-arg helper bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        &lines[..expected.len()],
+        expected.as_slice(),
+        "x86_64 direct call thirty-arg helper payload/call-layout exact bytes が一致しない"
     );
 }
 
