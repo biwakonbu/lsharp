@@ -319,13 +319,13 @@
 (defn native-max-stack-depth [ir-func function-metas]
   (native-max-stack-depth-loop ir-func function-metas 0 (vector-length ir-func) 0 0))
 
-;; 現状の partial slice では 35-value window ぶんまで spill slot を確保する
+;; 現状の partial slice では 36-value window ぶんまで spill slot を確保する
 (defn native-value-window-spill-slot-count [ir-func function-metas]
   (let [extra-depth (- (native-max-stack-depth ir-func function-metas) 2)]
     (if (< extra-depth 0)
       0
-      (if (> extra-depth 34)
-        34
+      (if (> extra-depth 35)
+        35
         extra-depth))))
 
 (defn native-frame-base-slot-count [ir-func min-slot-count]
@@ -1427,9 +1427,43 @@
     b8 (vector-push b7 (vector-get disp 3))]
     b8))
 
+;; x86_64 の MOV [rsp+232], rcx
+(defn emit-mov-thirtieth-stack-from-rcx []
+  (let [disp (encode-u32-le 232)
+    bytes (vector-new 8)
+    b1 (vector-push bytes 72)
+    b2 (vector-push b1 137)
+    b3 (vector-push b2 140)
+    b4 (vector-push b3 36)
+    b5 (vector-push b4 (vector-get disp 0))
+    b6 (vector-push b5 (vector-get disp 1))
+    b7 (vector-push b6 (vector-get disp 2))
+    b8 (vector-push b7 (vector-get disp 3))]
+    b8))
+
+;; x86_64 の MOV [rsp+240], rax
+(defn emit-mov-thirty-first-stack-from-rax []
+  (let [disp (encode-u32-le 240)
+    bytes (vector-new 8)
+    b1 (vector-push bytes 72)
+    b2 (vector-push b1 137)
+    b3 (vector-push b2 132)
+    b4 (vector-push b3 36)
+    b5 (vector-push b4 (vector-get disp 0))
+    b6 (vector-push b5 (vector-get disp 1))
+    b7 (vector-push b6 (vector-get disp 2))
+    b8 (vector-push b7 (vector-get disp 3))]
+    b8))
+
 ;; x86_64 bundle の i32.const: spill window が必要なら old previous を spill する
 (defn emit-i32-const-bundle-x86 [value frame-base-slot-count current-depth]
-  (if (>= current-depth 35)
+  (if (>= current-depth 36)
+    (concat-byte-vectors
+      (concat-byte-vectors
+        (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count 33))
+        (emit-mov-local-from-rdx (native-value-window-spill-offset frame-base-slot-count 34)))
+      (emit-i32-const-bundle-x86 value frame-base-slot-count 35))
+    (if (>= current-depth 35)
     (concat-byte-vectors
       (concat-byte-vectors
         (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count 32))
@@ -1795,11 +1829,17 @@
         (concat-byte-vectors
           (emit-mov-local-from-rcx (native-value-window-spill-offset frame-base-slot-count 0))
            (emit-i32-const-x86 value))
-            (emit-i32-const-x86 value))))))))))))))))))))))))))))))))))))
+            (emit-i32-const-x86 value)))))))))))))))))))))))))))))))))))))
 
 ;; x86_64 bundle の local.get: spill window が必要なら old previous を spill する
 (defn emit-local-get-bundle-x86 [offset frame-base-slot-count current-depth]
-  (if (>= current-depth 35)
+  (if (>= current-depth 36)
+    (concat-byte-vectors
+      (concat-byte-vectors
+        (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count 33))
+        (emit-mov-local-from-rdx (native-value-window-spill-offset frame-base-slot-count 34)))
+      (emit-local-get-bundle-x86 offset frame-base-slot-count 35))
+    (if (>= current-depth 35)
     (concat-byte-vectors
       (concat-byte-vectors
         (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count 32))
@@ -2164,8 +2204,8 @@
       (if (>= current-depth 2)
         (concat-byte-vectors
           (emit-mov-local-from-rcx (native-value-window-spill-offset frame-base-slot-count 0))
-           (emit-local-get-x86 offset))
-            (emit-local-get-x86 offset))))))))))))))))))))))))))))))))))))
+            (emit-local-get-x86 offset))
+            (emit-local-get-x86 offset)))))))))))))))))))))))))))))))))))))
 
 (defn emit-twenty-six-arg-call-x86 [rel frame-base-slot-count]
   (let [stack0 (concat-byte-vectors
@@ -3384,6 +3424,141 @@
         call-seq (concat-byte-vectors
                    (emit-call-rel32 rel)
                    (emit-add-rsp-imm32 240))]
+    (concat-byte-vectors
+      (concat-byte-vectors stack-setup reg-setup)
+      call-seq)))
+
+(defn emit-thirty-seven-arg-call-x86 [rel frame-base-slot-count]
+  (let [stack0 (concat-byte-vectors
+                 (emit-sub-rsp-imm32 248)
+                 (emit-mov-thirty-first-stack-from-rax))
+        stack1 (concat-byte-vectors stack0 (emit-mov-thirtieth-stack-from-rcx))
+        stack2 (concat-byte-vectors
+                 stack1
+                 (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 0)))
+        stack3 (concat-byte-vectors stack2 (emit-mov-twenty-ninth-stack-from-rcx))
+        stack4 (concat-byte-vectors
+                 stack3
+                 (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 1)))
+        stack5 (concat-byte-vectors stack4 (emit-mov-twenty-eighth-stack-from-rcx))
+        stack6 (concat-byte-vectors
+                 stack5
+                 (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 2)))
+        stack7 (concat-byte-vectors stack6 (emit-mov-twenty-seventh-stack-from-rcx))
+        stack8 (concat-byte-vectors
+                 stack7
+                 (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 3)))
+        stack9 (concat-byte-vectors stack8 (emit-mov-twenty-sixth-stack-from-rcx))
+        stack10 (concat-byte-vectors
+                  stack9
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 4)))
+        stack11 (concat-byte-vectors stack10 (emit-mov-twenty-fifth-stack-from-rcx))
+        stack12 (concat-byte-vectors
+                  stack11
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 5)))
+        stack13 (concat-byte-vectors stack12 (emit-mov-twenty-fourth-stack-from-rcx))
+        stack14 (concat-byte-vectors
+                  stack13
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 6)))
+        stack15 (concat-byte-vectors stack14 (emit-mov-twenty-third-stack-from-rcx))
+        stack16 (concat-byte-vectors
+                  stack15
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 7)))
+        stack17 (concat-byte-vectors stack16 (emit-mov-twenty-second-stack-from-rcx))
+        stack18 (concat-byte-vectors
+                  stack17
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 8)))
+        stack19 (concat-byte-vectors stack18 (emit-mov-twenty-first-stack-from-rcx))
+        stack20 (concat-byte-vectors
+                  stack19
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 9)))
+        stack21 (concat-byte-vectors stack20 (emit-mov-twentieth-stack-from-rcx))
+        stack22 (concat-byte-vectors
+                  stack21
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 10)))
+        stack23 (concat-byte-vectors stack22 (emit-mov-nineteenth-stack-from-rcx))
+        stack24 (concat-byte-vectors
+                  stack23
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 11)))
+        stack25 (concat-byte-vectors stack24 (emit-mov-eighteenth-stack-from-rcx))
+        stack26 (concat-byte-vectors
+                  stack25
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 12)))
+        stack27 (concat-byte-vectors stack26 (emit-mov-seventeenth-stack-from-rcx))
+        stack28 (concat-byte-vectors
+                  stack27
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 13)))
+        stack29 (concat-byte-vectors stack28 (emit-mov-sixteenth-stack-from-rcx))
+        stack30 (concat-byte-vectors
+                  stack29
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 14)))
+        stack31 (concat-byte-vectors stack30 (emit-mov-fifteenth-stack-from-rcx))
+        stack32 (concat-byte-vectors
+                  stack31
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 15)))
+        stack33 (concat-byte-vectors stack32 (emit-mov-fourteenth-stack-from-rcx))
+        stack34 (concat-byte-vectors
+                  stack33
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 16)))
+        stack35 (concat-byte-vectors stack34 (emit-mov-thirteenth-stack-from-rcx))
+        stack36 (concat-byte-vectors
+                  stack35
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 17)))
+        stack37 (concat-byte-vectors stack36 (emit-mov-twelfth-stack-from-rcx))
+        stack38 (concat-byte-vectors
+                  stack37
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 18)))
+        stack39 (concat-byte-vectors stack38 (emit-mov-eleventh-stack-from-rcx))
+        stack40 (concat-byte-vectors
+                  stack39
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 19)))
+        stack41 (concat-byte-vectors stack40 (emit-mov-tenth-stack-from-rcx))
+        stack42 (concat-byte-vectors
+                  stack41
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 20)))
+        stack43 (concat-byte-vectors stack42 (emit-mov-ninth-stack-from-rcx))
+        stack44 (concat-byte-vectors
+                  stack43
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 21)))
+        stack45 (concat-byte-vectors stack44 (emit-mov-eighth-stack-from-rcx))
+        stack46 (concat-byte-vectors
+                  stack45
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 22)))
+        stack47 (concat-byte-vectors stack46 (emit-mov-seventh-stack-from-rcx))
+        stack48 (concat-byte-vectors
+                  stack47
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 23)))
+        stack49 (concat-byte-vectors stack48 (emit-mov-sixth-stack-from-rcx))
+        stack50 (concat-byte-vectors
+                  stack49
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 24)))
+        stack51 (concat-byte-vectors stack50 (emit-mov-fifth-stack-from-rcx))
+        stack52 (concat-byte-vectors
+                  stack51
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 25)))
+        stack53 (concat-byte-vectors stack52 (emit-mov-fourth-stack-from-rcx))
+        stack54 (concat-byte-vectors
+                  stack53
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 26)))
+        stack55 (concat-byte-vectors stack54 (emit-mov-third-stack-from-rcx))
+        stack56 (concat-byte-vectors
+                  stack55
+                  (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 27)))
+        stack57 (concat-byte-vectors stack56 (emit-mov-second-stack-from-rcx))
+        stack-setup (concat-byte-vectors
+                      stack57
+                      (emit-mov-r9-from-local (native-value-window-spill-offset frame-base-slot-count 28)))
+        reg0 (concat-byte-vectors
+               (emit-mov-top-stack-from-r9)
+               (emit-mov-r9-from-local (native-value-window-spill-offset frame-base-slot-count 29)))
+        reg1 (concat-byte-vectors reg0 (emit-mov-r8-from-local (native-value-window-spill-offset frame-base-slot-count 30)))
+        reg2 (concat-byte-vectors reg1 (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 31)))
+        reg3 (concat-byte-vectors reg2 (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count 32)))
+        reg4 (concat-byte-vectors reg3 (emit-mov-rsi-from-local (native-value-window-spill-offset frame-base-slot-count 33)))
+        reg-setup (concat-byte-vectors reg4 (emit-mov-rdi-from-local (native-value-window-spill-offset frame-base-slot-count 34)))
+        call-seq (concat-byte-vectors
+                   (emit-call-rel32 rel)
+                   (emit-add-rsp-imm32 248))]
     (concat-byte-vectors
       (concat-byte-vectors stack-setup reg-setup)
       call-seq)))
@@ -4759,7 +4934,9 @@
                           (vector-push (vector-new 1) 144)))))))))))))) ;; 0x90
 
 (defn native-call-bundle-size-x86-twenty-plus [target-param-count]
-  (if (= target-param-count 36)
+  (if (= target-param-count 37)
+    462
+    (if (= target-param-count 36)
     447
     (if (= target-param-count 35)
     432
@@ -4791,7 +4968,7 @@
                           238
                           (if (= target-param-count 21)
                             226
-                            214)))))))))))))))))
+                            214))))))))))))))))))
 
 (defn native-call-bundle-size-x86 [target-param-count current-depth]
   (if (>= target-param-count 20)
@@ -4916,6 +5093,11 @@
     420
     (native-param-spill-bytes-x86-twenty-to-thirty-five param-count)))
 
+(defn native-param-spill-bytes-x86-twenty-to-thirty-seven [param-count]
+  (if (= param-count 37)
+    434
+    (native-param-spill-bytes-x86-twenty-to-thirty-six param-count)))
+
 (defn native-function-size-x86 [func-meta function-metas]
   (let [param-count (native-function-param-count func-meta)
     local-count (native-function-local-count func-meta)
@@ -4923,7 +5105,7 @@
     stack-bytes (native-local-stack-bytes-with-window ir-func (+ param-count local-count) function-metas)
     frame-bytes (if (> stack-bytes 0) 14 0)
     param-spill-bytes (if (>= param-count 20)
-                        (native-param-spill-bytes-x86-twenty-to-thirty-six param-count)
+                        (native-param-spill-bytes-x86-twenty-to-thirty-seven param-count)
                         (if (> param-count 6)
                           (+ 53 (* (- param-count 7) 11))
                           (if (= param-count 6)
@@ -5028,6 +5210,11 @@
     (emit-thirty-six-arg-call-x86 rel frame-base-slot-count)
     (emit-call-bundle-x86-twenty-to-thirty-five target-param-count rel frame-base-slot-count)))
 
+(defn emit-call-bundle-x86-twenty-to-thirty-seven [target-param-count rel frame-base-slot-count]
+  (if (= target-param-count 37)
+    (emit-thirty-seven-arg-call-x86 rel frame-base-slot-count)
+    (emit-call-bundle-x86-twenty-to-thirty-six target-param-count rel frame-base-slot-count)))
+
 (defn emit-call-bundle-x86-ten-to-nineteen [target-param-count rel frame-base-slot-count]
   (if (= target-param-count 19)
     (emit-nineteen-arg-call-x86 rel frame-base-slot-count)
@@ -5091,7 +5278,9 @@
       target-param-count (native-function-param-count target-meta)
       rel (if (>= target-param-count 20)
               (- target-offset
-                (if (= target-param-count 36)
+                (if (= target-param-count 37)
+                  (+ current-offset 455)
+                  (if (= target-param-count 36)
                   (+ current-offset 440)
                   (if (= target-param-count 35)
                   (+ current-offset 425)
@@ -5123,7 +5312,7 @@
                                         (+ current-offset 231)
                                         (if (= target-param-count 21)
                                           (+ current-offset 219)
-                                          (+ current-offset 207))))))))))))))))))
+                                          (+ current-offset 207)))))))))))))))))))
                 (if (> target-param-count 8)
                   (- target-offset (+ current-offset (+ 75 (* (- target-param-count 9) 12))))
                  (if (= target-param-count 8)
@@ -5144,10 +5333,10 @@
                               (- target-offset (+ current-offset 9))
                               (- target-offset (+ current-offset 5))))))))))))
       call-bytes (if (>= target-param-count 20)
-                    (emit-call-bundle-x86-twenty-to-thirty-six target-param-count rel frame-base-slot-count)
-                      (if (>= target-param-count 10)
-                        (emit-call-bundle-x86-ten-to-nineteen target-param-count rel frame-base-slot-count)
-                        (emit-call-bundle-x86-one-to-nine target-param-count rel frame-base-slot-count current-depth)))]
+                    (emit-call-bundle-x86-twenty-to-thirty-seven target-param-count rel frame-base-slot-count)
+                       (if (>= target-param-count 10)
+                         (emit-call-bundle-x86-ten-to-nineteen target-param-count rel frame-base-slot-count)
+                         (emit-call-bundle-x86-one-to-nine target-param-count rel frame-base-slot-count current-depth)))]
       call-bytes)
     (if (= opcode 3)
       (emit-i32-const-bundle-x86 operand frame-base-slot-count current-depth)
@@ -5703,6 +5892,14 @@
       (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 35)) 0 7))
     (spill-native-function-params-x86-twenty-to-thirty-five param-count result)))
 
+(defn spill-native-function-params-x86-twenty-to-thirty-seven [param-count result]
+  (if (= param-count 37)
+    (do
+      (spill-native-function-params-x86-twenty-to-thirty-six 36 result)
+      (append-native-bytes-loop result (emit-mov-rax-from-rbp-plus-imm32 256) 0 7)
+      (append-native-bytes-loop result (emit-mov-local-from-rax (local-slot-offset 36)) 0 7))
+    (spill-native-function-params-x86-twenty-to-thirty-six param-count result)))
+
 (defn generate-native-function-x86-64-bundle [func-meta result function-starts function-metas function-start]
   (let [param-count (native-function-param-count func-meta)
     local-count (native-function-local-count func-meta)
@@ -5714,7 +5911,7 @@
     base-offset (+ function-start 4)
     after-stack-offset (if (> stack-bytes 0) (+ base-offset 7) base-offset)
     param-spill-bytes (if (>= param-count 20)
-                        (native-param-spill-bytes-x86-twenty-to-thirty-six param-count)
+                        (native-param-spill-bytes-x86-twenty-to-thirty-seven param-count)
                         (if (> param-count 6)
                           (+ 53 (* (- param-count 7) 11))
                           (if (= param-count 6)
@@ -5739,7 +5936,7 @@
         (append-native-bytes-loop result (emit-sub-rsp-imm32 stack-bytes) 0 7)
         0)
       (if (>= param-count 20)
-        (spill-native-function-params-x86-twenty-to-thirty-six param-count result)
+        (spill-native-function-params-x86-twenty-to-thirty-seven param-count result)
         (if (= param-count 19)
         (do
           (append-native-bytes-loop result (emit-mov-local-from-rdi (local-slot-offset 0)) 0 7)
@@ -6394,7 +6591,13 @@
 
 ;; AArch64 bundle の i32.const: spill window が必要なら old previous を spill する
 (defn emit-i32-const-bundle-aarch64 [value frame-base-slot-count current-depth]
-  (if (>= current-depth 35)
+  (if (>= current-depth 36)
+    (concat-byte-vectors
+      (concat-byte-vectors
+        (emit-aarch64-ldr-x10-sp (native-value-window-spill-offset frame-base-slot-count 33))
+        (emit-aarch64-str-x10-sp (native-value-window-spill-offset frame-base-slot-count 34)))
+      (emit-i32-const-bundle-aarch64 value frame-base-slot-count 35))
+    (if (>= current-depth 35)
     (concat-byte-vectors
       (concat-byte-vectors
         (emit-aarch64-ldr-x10-sp (native-value-window-spill-offset frame-base-slot-count 32))
@@ -6760,11 +6963,17 @@
         (concat-byte-vectors
           (emit-aarch64-str-x9-sp (native-value-window-spill-offset frame-base-slot-count 0))
            (emit-i32-const-aarch64 value))
-            (emit-i32-const-aarch64 value))))))))))))))))))))))))))))))))))))
+            (emit-i32-const-aarch64 value)))))))))))))))))))))))))))))))))))))
 
 ;; AArch64 bundle の local.get: spill window が必要なら old previous を spill する
 (defn emit-local-get-bundle-aarch64 [offset frame-base-slot-count current-depth]
-  (if (>= current-depth 35)
+  (if (>= current-depth 36)
+    (concat-byte-vectors
+      (concat-byte-vectors
+        (emit-aarch64-ldr-x10-sp (native-value-window-spill-offset frame-base-slot-count 33))
+        (emit-aarch64-str-x10-sp (native-value-window-spill-offset frame-base-slot-count 34)))
+      (emit-local-get-bundle-aarch64 offset frame-base-slot-count 35))
+    (if (>= current-depth 35)
     (concat-byte-vectors
       (concat-byte-vectors
         (emit-aarch64-ldr-x10-sp (native-value-window-spill-offset frame-base-slot-count 32))
@@ -7130,7 +7339,7 @@
         (concat-byte-vectors
           (emit-aarch64-str-x9-sp (native-value-window-spill-offset frame-base-slot-count 0))
            (emit-local-get-aarch64 offset))
-            (emit-local-get-aarch64 offset))))))))))))))))))))))))))))))))))))
+            (emit-local-get-aarch64 offset)))))))))))))))))))))))))))))))))))))
 
 (defn emit-twenty-six-arg-call-aarch64 [disp frame-base-slot-count]
   (let [stack0 (concat-byte-vectors
@@ -8230,6 +8439,130 @@
         call-seq (concat-byte-vectors
                    (emit-aarch64-bl disp)
                    (emit-aarch64-add-sp 224))]
+    (concat-byte-vectors reg7 call-seq)))
+
+(defn emit-thirty-seven-arg-call-aarch64 [disp frame-base-slot-count]
+  (let [stack0 (concat-byte-vectors
+                 (emit-aarch64-sub-sp 240)
+                 (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 26))))
+        stack1 (concat-byte-vectors stack0 (emit-aarch64-str-x10-sp 0))
+        stack2 (concat-byte-vectors
+                    stack1
+                    (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 25))))
+        stack3 (concat-byte-vectors stack2 (emit-aarch64-str-x10-sp 8))
+        stack4 (concat-byte-vectors
+                    stack3
+                    (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 24))))
+        stack5 (concat-byte-vectors stack4 (emit-aarch64-str-x10-sp 16))
+        stack6 (concat-byte-vectors
+                    stack5
+                    (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 23))))
+        stack7 (concat-byte-vectors stack6 (emit-aarch64-str-x10-sp 24))
+        stack8 (concat-byte-vectors
+                    stack7
+                    (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 22))))
+        stack9 (concat-byte-vectors stack8 (emit-aarch64-str-x10-sp 32))
+        stack10 (concat-byte-vectors
+                     stack9
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 21))))
+        stack11 (concat-byte-vectors stack10 (emit-aarch64-str-x10-sp 40))
+        stack12 (concat-byte-vectors
+                     stack11
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 20))))
+        stack13 (concat-byte-vectors stack12 (emit-aarch64-str-x10-sp 48))
+        stack14 (concat-byte-vectors
+                     stack13
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 19))))
+        stack15 (concat-byte-vectors stack14 (emit-aarch64-str-x10-sp 56))
+        stack16 (concat-byte-vectors
+                     stack15
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 18))))
+        stack17 (concat-byte-vectors stack16 (emit-aarch64-str-x10-sp 64))
+        stack18 (concat-byte-vectors
+                     stack17
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 17))))
+        stack19 (concat-byte-vectors stack18 (emit-aarch64-str-x10-sp 72))
+        stack20 (concat-byte-vectors
+                     stack19
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 16))))
+        stack21 (concat-byte-vectors stack20 (emit-aarch64-str-x10-sp 80))
+        stack22 (concat-byte-vectors
+                     stack21
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 15))))
+        stack23 (concat-byte-vectors stack22 (emit-aarch64-str-x10-sp 88))
+        stack24 (concat-byte-vectors
+                     stack23
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 14))))
+        stack25 (concat-byte-vectors stack24 (emit-aarch64-str-x10-sp 96))
+        stack26 (concat-byte-vectors
+                     stack25
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 13))))
+        stack27 (concat-byte-vectors stack26 (emit-aarch64-str-x10-sp 104))
+        stack28 (concat-byte-vectors
+                     stack27
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 12))))
+        stack29 (concat-byte-vectors stack28 (emit-aarch64-str-x10-sp 112))
+        stack30 (concat-byte-vectors
+                     stack29
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 11))))
+        stack31 (concat-byte-vectors stack30 (emit-aarch64-str-x10-sp 120))
+        stack32 (concat-byte-vectors
+                     stack31
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 10))))
+        stack33 (concat-byte-vectors stack32 (emit-aarch64-str-x10-sp 128))
+        stack34 (concat-byte-vectors
+                     stack33
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 9))))
+        stack35 (concat-byte-vectors stack34 (emit-aarch64-str-x10-sp 136))
+        stack36 (concat-byte-vectors
+                     stack35
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 8))))
+        stack37 (concat-byte-vectors stack36 (emit-aarch64-str-x10-sp 144))
+        stack38 (concat-byte-vectors
+                     stack37
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 7))))
+        stack39 (concat-byte-vectors stack38 (emit-aarch64-str-x10-sp 152))
+        stack40 (concat-byte-vectors
+                     stack39
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 6))))
+        stack41 (concat-byte-vectors stack40 (emit-aarch64-str-x10-sp 160))
+        stack42 (concat-byte-vectors
+                     stack41
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 5))))
+        stack43 (concat-byte-vectors stack42 (emit-aarch64-str-x10-sp 168))
+        stack44 (concat-byte-vectors
+                     stack43
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 4))))
+        stack45 (concat-byte-vectors stack44 (emit-aarch64-str-x10-sp 176))
+        stack46 (concat-byte-vectors
+                     stack45
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 3))))
+        stack47 (concat-byte-vectors stack46 (emit-aarch64-str-x10-sp 184))
+        stack48 (concat-byte-vectors
+                     stack47
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 2))))
+        stack49 (concat-byte-vectors stack48 (emit-aarch64-str-x10-sp 192))
+        stack50 (concat-byte-vectors
+                     stack49
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 1))))
+        stack51 (concat-byte-vectors stack50 (emit-aarch64-str-x10-sp 200))
+        stack52 (concat-byte-vectors
+                     stack51
+                     (emit-aarch64-ldr-x10-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 0))))
+        stack53 (concat-byte-vectors stack52 (emit-aarch64-str-x10-sp 208))
+        stack54 (concat-byte-vectors stack53 (emit-aarch64-str-x9-sp 216))
+        stack55 (concat-byte-vectors stack54 (emit-aarch64-str-x0-sp 224))
+        reg0 (concat-byte-vectors stack55 (emit-aarch64-ldr-x7-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 27))))
+        reg1 (concat-byte-vectors reg0 (emit-aarch64-ldr-x6-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 28))))
+        reg2 (concat-byte-vectors reg1 (emit-aarch64-ldr-x5-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 29))))
+        reg3 (concat-byte-vectors reg2 (emit-aarch64-ldr-x4-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 30))))
+        reg4 (concat-byte-vectors reg3 (emit-aarch64-ldr-x3-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 31))))
+        reg5 (concat-byte-vectors reg4 (emit-aarch64-ldr-x2-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 32))))
+        reg6 (concat-byte-vectors reg5 (emit-aarch64-ldr-x1-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 33))))
+        reg7 (concat-byte-vectors reg6 (emit-aarch64-ldr-x0-sp (+ 240 (native-value-window-spill-offset frame-base-slot-count 34))))
+        call-seq (concat-byte-vectors
+                   (emit-aarch64-bl disp)
+                   (emit-aarch64-add-sp 240))]
     (concat-byte-vectors reg7 call-seq)))
 
 (defn emit-three-arg-call-aarch64 [disp frame-base-slot-count]
@@ -9486,6 +9819,11 @@
     260
     (native-call-bundle-size-aarch64-twenty-to-thirty-five target-param-count)))
 
+(defn native-call-bundle-size-aarch64-twenty-to-thirty-seven [target-param-count]
+  (if (= target-param-count 37)
+    268
+    (native-call-bundle-size-aarch64-twenty-to-thirty-six target-param-count)))
+
 (defn native-call-bundle-disp-aarch64-twenty-to-twenty-two [target-param-count target-offset current-offset]
   (if (= target-param-count 22)
     (- target-offset (+ current-offset 140))
@@ -9563,13 +9901,18 @@
     (- target-offset (+ current-offset 252))
     (native-call-bundle-disp-aarch64-twenty-to-thirty-five target-param-count target-offset current-offset)))
 
+(defn native-call-bundle-disp-aarch64-twenty-to-thirty-seven [target-param-count target-offset current-offset]
+  (if (= target-param-count 37)
+    (- target-offset (+ current-offset 260))
+    (native-call-bundle-disp-aarch64-twenty-to-thirty-six target-param-count target-offset current-offset)))
+
 (defn native-instr-size-aarch64 [opcode operand function-metas current-depth]
   (if (= opcode 40)
     (let [target-meta (vector-get function-metas operand)
       target-param-count (native-function-param-count target-meta)
       size (if (>= target-param-count 20)
-             (native-call-bundle-size-aarch64-twenty-to-thirty-six target-param-count)
-               (if (> target-param-count 9)
+             (native-call-bundle-size-aarch64-twenty-to-thirty-seven target-param-count)
+                (if (> target-param-count 9)
                   (+ 52 (* (- target-param-count 10) 8))
                  (if (= target-param-count 9)
                 48
@@ -9724,6 +10067,11 @@
     (emit-thirty-six-arg-call-aarch64 disp frame-base-slot-count)
     (emit-call-bundle-aarch64-twenty-to-thirty-five target-param-count disp frame-base-slot-count)))
 
+(defn emit-call-bundle-aarch64-twenty-to-thirty-seven [target-param-count disp frame-base-slot-count]
+  (if (= target-param-count 37)
+    (emit-thirty-seven-arg-call-aarch64 disp frame-base-slot-count)
+    (emit-call-bundle-aarch64-twenty-to-thirty-six target-param-count disp frame-base-slot-count)))
+
 (defn emit-call-bundle-aarch64-ten-to-nineteen [target-param-count disp frame-base-slot-count]
   (if (= target-param-count 19)
     (emit-nineteen-arg-call-aarch64 disp frame-base-slot-count)
@@ -9788,8 +10136,8 @@
       target-meta (vector-get function-metas operand)
       target-param-count (native-function-param-count target-meta)
       disp (if (>= target-param-count 20)
-             (native-call-bundle-disp-aarch64-twenty-to-thirty-six target-param-count target-offset current-offset)
-                (if (> target-param-count 9)
+             (native-call-bundle-disp-aarch64-twenty-to-thirty-seven target-param-count target-offset current-offset)
+                 (if (> target-param-count 9)
                   (- target-offset (+ current-offset (+ 44 (* (- target-param-count 10) 8))))
               (if (= target-param-count 9)
                 (- target-offset (+ current-offset 40))
@@ -9811,10 +10159,10 @@
                                  (- target-offset (+ current-offset 4))
                                  (- target-offset current-offset))))))))))))
       call-bytes (if (>= target-param-count 20)
-                    (emit-call-bundle-aarch64-twenty-to-thirty-six target-param-count disp frame-base-slot-count)
-                     (if (>= target-param-count 10)
-                       (emit-call-bundle-aarch64-ten-to-nineteen target-param-count disp frame-base-slot-count)
-                       (emit-call-bundle-aarch64-one-to-nine target-param-count disp frame-base-slot-count current-depth)))]
+                    (emit-call-bundle-aarch64-twenty-to-thirty-seven target-param-count disp frame-base-slot-count)
+                      (if (>= target-param-count 10)
+                        (emit-call-bundle-aarch64-ten-to-nineteen target-param-count disp frame-base-slot-count)
+                        (emit-call-bundle-aarch64-one-to-nine target-param-count disp frame-base-slot-count current-depth)))]
       call-bytes)
     (if (= opcode 3)
       (emit-i32-const-bundle-aarch64 operand frame-base-slot-count current-depth)
@@ -10339,6 +10687,14 @@
       (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 35)) 0 4))
     (spill-native-function-params-aarch64-twenty-to-thirty-five param-count result stack-arg-base-offset)))
 
+(defn spill-native-function-params-aarch64-twenty-to-thirty-seven [param-count result stack-arg-base-offset]
+  (if (= param-count 37)
+    (do
+      (spill-native-function-params-aarch64-twenty-to-thirty-six 36 result stack-arg-base-offset)
+      (append-native-bytes-loop result (emit-aarch64-ldr-x10-sp (+ stack-arg-base-offset 224)) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-str-x10-sp (local-slot-offset 36)) 0 4))
+    (spill-native-function-params-aarch64-twenty-to-thirty-six param-count result stack-arg-base-offset)))
+
 (defn generate-native-function-aarch64-bundle [func-meta result function-starts function-metas function-start]
   (let [param-count (native-function-param-count func-meta)
     local-count (native-function-local-count func-meta)
@@ -10376,7 +10732,7 @@
         (append-native-bytes-loop result (emit-aarch64-sub-sp stack-bytes) 0 4)
         0)
       (if (>= param-count 20)
-        (spill-native-function-params-aarch64-twenty-to-thirty-six param-count result stack-arg-base-offset)
+        (spill-native-function-params-aarch64-twenty-to-thirty-seven param-count result stack-arg-base-offset)
         (if (= param-count 19)
         (do
           (append-native-bytes-loop result (emit-aarch64-str-x0-sp (local-slot-offset 0)) 0 4)
