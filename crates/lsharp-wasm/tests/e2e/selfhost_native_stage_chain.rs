@@ -8602,6 +8602,98 @@ fn native_exit_code_for_const_sequence(values: &[u32]) -> i32 {
     })
 }
 
+fn native_exit_code_for_direct_call_sum(values: &[u32]) -> i32 {
+    assert!(
+        !values.is_empty(),
+        "direct call sum: 少なくとも 1 個の値が必要"
+    );
+
+    let mut caller_bindings = String::new();
+    for (idx, value) in values.iter().enumerate() {
+        if idx == 0 {
+            caller_bindings.push_str(&format!(
+                "        caller-ir0 (vector-push (vector-new {len}) (make-instr 3 {value}))\n",
+                len = values.len() + 1
+            ));
+        } else {
+            caller_bindings.push_str(&format!(
+                "        caller-ir{idx} (vector-push caller-ir{prev} (make-instr 3 {value}))\n",
+                prev = idx - 1
+            ));
+        }
+    }
+
+    let mut callee_bindings = format!(
+        "        callee-ir0 (vector-push (vector-new {len}) (make-local-get 0))\n",
+        len = values.len() * 2 - 1
+    );
+    let mut callee_last = 0usize;
+    for idx in 1..values.len() {
+        let get_idx = callee_last + 1;
+        let add_idx = callee_last + 2;
+        callee_bindings.push_str(&format!(
+            "        callee-ir{get_idx} (vector-push callee-ir{prev} (make-local-get {idx}))\n",
+            prev = callee_last
+        ));
+        callee_bindings.push_str(&format!(
+            "        callee-ir{add_idx} (vector-push callee-ir{get_idx} (make-instr 24 0))\n",
+        ));
+        callee_last = add_idx;
+    }
+
+    let source = format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx len]
+  (if (>= idx len)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) len))))
+
+(defn main []
+  (let [
+{caller_bindings}{callee_bindings}        caller-ir (vector-push caller-ir{caller_last} (make-call 1))
+        callee-ir callee-ir{callee_last}
+        caller (make-function-meta 0 0 caller-ir)
+        callee (make-function-meta {param_count} 0 callee-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) callee)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+        caller_bindings = caller_bindings,
+        callee_bindings = callee_bindings,
+        caller_last = values.len() - 1,
+        callee_last = callee_last,
+        param_count = values.len()
+    );
+
+    let code_bytes = run_native_codegen_host_bytes_harness(&source);
+    assert!(
+        !code_bytes.is_empty(),
+        "native direct call sum {:?}: コードバイト列が空",
+        values
+    );
+    link_and_run_native_host_binary(&code_bytes).unwrap_or_else(|e| {
+        panic!(
+            "native direct call sum {:?}: リンク・実行失敗: {}",
+            values, e
+        )
+    })
+}
+
 fn native_exit_code_for_direct_call_local_get(values: &[u32], local_idx: usize) -> i32 {
     assert!(
         !values.is_empty(),
@@ -8758,6 +8850,81 @@ fn test_e2e_native_host_binary_forty_eight_arg_local_get_46_roundtrip() {
     assert_eq!(
         exit_code, 25,
         "48 引数 direct call の local.get 46 は 25 を返すべきだが {} を得た",
+        exit_code
+    );
+}
+
+fn forty_nine_arg_values() -> [u32; 49] {
+    [
+        31, 2, 3, 5, 7, 11, 13, 14, 17, 19, 23, 29, 31, 37, 1, 2, 4, 3, 1, 1, 1, 2, 41, 8, 13, 5,
+        7, 11, 3, 2, 4, 6, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+    ]
+}
+
+/// NATIVE-HOST-020i: 49 引数 direct call bundle でも caller/callee の和を host binary で実行できること。
+#[test]
+fn test_e2e_native_host_binary_direct_call_forty_nine_arg_bundle_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = forty_nine_arg_values();
+    let exit_code = native_exit_code_for_direct_call_sum(&values);
+
+    assert_eq!(
+        exit_code, 167,
+        "host binary direct call forty-nine-arg bundle: exit code 167 を期待したが {} を得た",
+        exit_code
+    );
+}
+
+/// NATIVE-HOST-020j: 49-value window の i32.const 連続 push でも最新値を保持できること。
+#[test]
+fn test_e2e_native_host_binary_forty_nine_i32_const_window_keeps_latest_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = forty_nine_arg_values();
+    let exit_code = native_exit_code_for_const_sequence(&values);
+
+    assert_eq!(
+        exit_code, 27,
+        "49-value window の i32.const sequence は最新値 27 を返すべきだが {} を得た",
+        exit_code
+    );
+}
+
+/// NATIVE-HOST-020k: 49 引数 direct call でも末尾 local.get 48 を正しく受け取れること。
+#[test]
+fn test_e2e_native_host_binary_forty_nine_arg_local_get_48_roundtrip() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = forty_nine_arg_values();
+    let exit_code = native_exit_code_for_direct_call_local_get(&values, 48);
+
+    assert_eq!(
+        exit_code, 27,
+        "49 引数 direct call の local.get 48 は 27 を返すべきだが {} を得た",
+        exit_code
+    );
+}
+
+/// NATIVE-HOST-020l: 49 引数 direct call でも新規 spill 境界の local.get 46 を正しく受け取れること。
+#[test]
+fn test_e2e_native_host_binary_forty_nine_arg_local_get_46_roundtrip() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = forty_nine_arg_values();
+    let exit_code = native_exit_code_for_direct_call_local_get(&values, 46);
+
+    assert_eq!(
+        exit_code, 25,
+        "49 引数 direct call の local.get 46 は 25 を返すべきだが {} を得た",
         exit_code
     );
 }
