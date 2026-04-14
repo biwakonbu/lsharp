@@ -39,6 +39,7 @@ const SELFHOST_LSP_RUNTIME_MODULES: &[&str] = &[
 ];
 static SELFHOST_FIXTURE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 const ROOT_STACK_BYTES: i32 = 8192 * 8;
+pub(crate) const NATIVE_HARNESS_STACK_BYTES: usize = 32 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RuntimeTelemetry {
@@ -957,6 +958,23 @@ pub(crate) fn selfhost_native_codegen_bundle() -> &'static str {
 /// エントリ `.ls` ファイルから依存を解決してコンパイルし、WASI 実行結果を返す
 pub(crate) fn compile_and_run_file(path: &std::path::Path) -> String {
     try_compile_and_run_file(path).unwrap()
+}
+
+/// 深い selfhost native harness 用に大きめの stack でクロージャを実行する。
+pub(crate) fn run_with_expanded_stack<T, F>(stack_size: usize, f: F) -> T
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    match std::thread::Builder::new()
+        .stack_size(stack_size)
+        .spawn(f)
+        .expect("expanded stack thread 起動失敗")
+        .join()
+    {
+        Ok(value) => value,
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
 }
 
 // =====================================================// ブートストラップ検証: セルフホストモジュールの個別コンパイル・実行
