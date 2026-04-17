@@ -9232,6 +9232,116 @@ fn test_e2e_native_host_binary_fifty_three_arg_local_get_50_roundtrip() {
     );
 }
 
+fn fifty_four_arg_values() -> [u32; 54] {
+    [
+        31, 2, 3, 5, 7, 11, 13, 14, 17, 19, 23, 29, 31, 37, 1, 2, 4, 3, 1, 1, 1, 2, 41, 8, 13, 5,
+        7, 11, 3, 2, 4, 6, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+        29, 30, 31, 32,
+    ]
+}
+
+/// NATIVE-HOST-021c: 54 引数 direct call bundle でも caller/callee の和を host binary で実行できること。
+#[test]
+fn test_e2e_native_host_binary_direct_call_fifty_four_arg_bundle_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = fifty_four_arg_values();
+    let exit_code = native_exit_code_for_direct_call_sum(&values);
+
+    assert_eq!(
+        exit_code, 61,
+        "host binary direct call fifty-four-arg bundle: exit code 61 を期待したが {} を得た",
+        exit_code
+    );
+}
+
+/// NATIVE-HOST-021d: 54-value window の i32.const 連続 push でも最新値を保持できること。
+#[test]
+fn test_e2e_native_host_binary_fifty_four_i32_const_window_keeps_latest_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = fifty_four_arg_values();
+    let exit_code = native_exit_code_for_const_sequence(&values);
+
+    assert_eq!(
+        exit_code, 32,
+        "54-value window の i32.const sequence は最新値 32 を返すべきだが {} を得た",
+        exit_code
+    );
+}
+
+/// NATIVE-HOST-021e: 54 引数 direct call でも末尾 local.get 53 を正しく受け取れること。
+#[test]
+fn test_e2e_native_host_binary_fifty_four_arg_local_get_53_roundtrip() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = fifty_four_arg_values();
+    let exit_code = native_exit_code_for_direct_call_local_get(&values, 53);
+
+    assert_eq!(
+        exit_code, 32,
+        "54 引数 direct call の local.get 53 は 32 を返すべきだが {} を得た",
+        exit_code
+    );
+}
+
+/// NATIVE-HOST-021ea: 54 引数 direct call でも末尾 1 個手前 local.get 52 を正しく受け取れること。
+#[test]
+fn test_e2e_native_host_binary_fifty_four_arg_local_get_52_roundtrip() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = fifty_four_arg_values();
+    let exit_code = native_exit_code_for_direct_call_local_get(&values, 52);
+
+    assert_eq!(
+        exit_code, 31,
+        "54 引数 direct call の local.get 52 は 31 を返すべきだが {} を得た",
+        exit_code
+    );
+}
+
+/// NATIVE-HOST-021f: 54 引数 direct call でも spill 境界の local.get 51 を正しく受け取れること。
+#[test]
+fn test_e2e_native_host_binary_fifty_four_arg_local_get_51_roundtrip() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = fifty_four_arg_values();
+    let exit_code = native_exit_code_for_direct_call_local_get(&values, 51);
+
+    assert_eq!(
+        exit_code, 30,
+        "54 引数 direct call の local.get 51 は 30 を返すべきだが {} を得た",
+        exit_code
+    );
+}
+
+/// NATIVE-HOST-021g: 54 引数 direct call でも先頭 local.get 0 を正しく受け取れること。
+#[test]
+fn test_e2e_native_host_binary_fifty_four_arg_local_get_0_roundtrip() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = fifty_four_arg_values();
+    let exit_code = native_exit_code_for_direct_call_local_get(&values, 0);
+
+    assert_eq!(
+        exit_code, 31,
+        "54 引数 direct call の local.get 0 は 31 を返すべきだが {} を得た",
+        exit_code
+    );
+}
+
 /// ZERO-DIFF-02: const 1 — Wasm stdout と native exit code がともに 1
 #[test]
 fn test_e2e_zero_diff_const_1() {
