@@ -137,9 +137,12 @@ fn maybe_write_native_stage23_gap_report(report: &NativeStage23GapReport) -> Res
 #[test]
 fn test_e2e_native_actual_stage23_gap_report_for_representative_entry() {
     let entry_path = selfhost_main_path();
-    let module = lsharp_ir::compile_multi_file(&entry_path)
-        .expect("selfhost App/Main.ls の multi-file compile に失敗");
-    let report = collect_native_stage23_gap_report(&entry_path, &module);
+    let compile_entry_path = entry_path.clone();
+    let report = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        let module = lsharp_ir::compile_multi_file(&compile_entry_path)
+            .expect("selfhost App/Main.ls の multi-file compile に失敗");
+        collect_native_stage23_gap_report(&compile_entry_path, &module)
+    });
 
     maybe_write_native_stage23_gap_report(&report)
         .expect("actual-stage23 gap report の書き出しに失敗");
