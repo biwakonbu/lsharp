@@ -863,10 +863,8 @@ fn has_advanced_features(nodes: &[RegexNode]) -> bool {
             RegexNode::Backreference(_) | RegexNode::Lookahead(_) | RegexNode::LookaheadNeg(_) => {
                 return true;
             }
-            RegexNode::Group(inner) => {
-                if has_advanced_features(inner) {
-                    return true;
-                }
+            RegexNode::Group(inner) if has_advanced_features(inner) => {
+                return true;
             }
             RegexNode::Alternation(alts) => {
                 for alt in alts {
@@ -875,10 +873,10 @@ fn has_advanced_features(nodes: &[RegexNode]) -> bool {
                     }
                 }
             }
-            RegexNode::Star(inner) | RegexNode::Plus(inner) | RegexNode::Optional(inner) => {
-                if has_advanced_features(&[inner.as_ref().clone()]) {
-                    return true;
-                }
+            RegexNode::Star(inner) | RegexNode::Plus(inner) | RegexNode::Optional(inner)
+                if has_advanced_features(std::slice::from_ref(inner.as_ref())) =>
+            {
+                return true;
             }
             _ => {}
         }
