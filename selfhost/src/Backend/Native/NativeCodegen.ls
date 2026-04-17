@@ -10723,6 +10723,11 @@
   (let [bytes (vector-new 4)]
     (vector-push (vector-push (vector-push (vector-push bytes 32) 1) 0) 11)))
 
+;; AArch64 ADD x0, x9, x0
+(defn emit-aarch64-add-x0-x9-x0 []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 32) 1) 0) 139)))
+
 ;; AArch64 MUL w0, w1, w0
 (defn emit-aarch64-mul-w0-w1-w0 []
   (let [bytes (vector-new 4)]
@@ -10732,6 +10737,11 @@
 (defn emit-aarch64-mul-w0-w9-w0 []
   (let [bytes (vector-new 4)]
     (vector-push (vector-push (vector-push (vector-push bytes 32) 125) 0) 27)))
+
+;; AArch64 SUB x0, x9, x0
+(defn emit-aarch64-sub-x0-x9-x0 []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 32) 1) 0) 203)))
 
 ;; AArch64 MOV w0, w0
 (defn emit-aarch64-mov-w0-w0 []
@@ -17182,26 +17192,32 @@
         (if (= opcode 11)
           ;; local.set -> STR x0, [sp, #offset]
           (emit-aarch64-str-x0-sp (local-slot-offset operand))
-          (if (= opcode 24)
-            ;; i32.add -> add w0, w9, w0
-            (emit-aarch64-add-w0-w9-w0)
-            (if (= opcode 25)
-              ;; i32.mul -> mul w0, w9, w0
-              (emit-aarch64-mul-w0-w9-w0)
-              (if (= opcode 36)
-                ;; i64.extend_i32_s -> sxtw x0, w0
-                (emit-aarch64-sxtw-x0-w0)
-                (if (= opcode 37)
-                  ;; i64.extend_i32_u -> mov w0, w0
-                  (emit-aarch64-mov-w0-w0)
-                  (if (= opcode 38)
-                    ;; i32.wrap_i64 -> mov w0, w0
-                    (emit-aarch64-mov-w0-w0)
-                    (if (= opcode 44)
-                      ;; drop -> 1 段下の値へ戻す
-                      (emit-aarch64-mov-x0-x9)
-                       ;; 未知の opcode: NOP
-                       (emit-aarch64-nop))))))))))))
+          (if (= opcode 20)
+            ;; i64.add -> add x0, x9, x0
+            (emit-aarch64-add-x0-x9-x0)
+            (if (= opcode 21)
+              ;; i64.sub -> sub x0, x9, x0
+              (emit-aarch64-sub-x0-x9-x0)
+              (if (= opcode 24)
+                ;; i32.add -> add w0, w9, w0
+                (emit-aarch64-add-w0-w9-w0)
+                (if (= opcode 25)
+                  ;; i32.mul -> mul w0, w9, w0
+                  (emit-aarch64-mul-w0-w9-w0)
+                  (if (= opcode 36)
+                    ;; i64.extend_i32_s -> sxtw x0, w0
+                    (emit-aarch64-sxtw-x0-w0)
+                    (if (= opcode 37)
+                      ;; i64.extend_i32_u -> mov w0, w0
+                      (emit-aarch64-mov-w0-w0)
+                      (if (= opcode 38)
+                        ;; i32.wrap_i64 -> mov w0, w0
+                        (emit-aarch64-mov-w0-w0)
+                        (if (= opcode 44)
+                          ;; drop -> 1 段下の値へ戻す
+                          (emit-aarch64-mov-x0-x9)
+                           ;; 未知の opcode: NOP
+                           (emit-aarch64-nop))))))))))))))
 
 (defn native-call-bundle-size-aarch64-twenty-to-twenty-two [target-param-count]
   (if (= target-param-count 22)
