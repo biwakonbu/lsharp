@@ -1124,6 +1124,97 @@ fn test_native_codegen_emits_x86_i32_mul_bytes() {
     assert_eq!(lines[5], "195", "payload 末尾は ret");
 }
 
+fn assert_x86_i32_logic_tail(name: &str, opcode: u32, expected_instr: [u32; 2]) {
+    let output = run_native_codegen_harness(&format!(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn make-instr [opcode operand]
+  (vector-push (vector-push (vector-new 2) opcode) operand))
+
+(defn main []
+  (let [instr1 (make-instr 3 12)
+        instr2 (make-instr 11 0)
+        instr3 (make-instr 3 10)
+        instr4 (make-instr 11 1)
+        instr5 (make-instr 10 0)
+        instr6 (make-instr 10 1)
+        instr7 (make-instr {opcode} 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 7) instr1)
+                       instr2)
+                     instr3)
+                   instr4)
+                 instr5)
+               instr6)
+             instr7)
+        target (make-target 1)
+        native (emit-native ir target)
+        n (vector-length native)]
+    (do
+      (print n)
+      (print (vector-get native (- n 11)))
+      (print (vector-get native (- n 10)))
+      (print (vector-get native (- n 9)))
+      (print (vector-get native (- n 8)))
+      (print (vector-get native (- n 7)))
+      (print (vector-get native (- n 6)))
+      (print (vector-get native (- n 5)))
+      (print (vector-get native (- n 4)))
+      (print (vector-get native (- n 3)))
+      (print (vector-get native (- n 2)))
+      (print (vector-get native (- n 1)))
+      0)))"#,
+    ));
+    let values: Vec<u32> = output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u32>()
+                .unwrap_or_else(|_| panic!("{name}: 数値出力であるべきだが `{line}` を得た"))
+        })
+        .collect();
+
+    assert!(
+        values.len() >= 12,
+        "{name}: logic tail 出力が不足: {values:?}"
+    );
+    assert!(
+        values[0] >= 11,
+        "{name}: payload 長が短すぎるため logic tail を検査できない: {values:?}"
+    );
+    assert_eq!(
+        &values[1..12],
+        &[
+            expected_instr[0],
+            expected_instr[1],
+            72,
+            129,
+            196,
+            16,
+            0,
+            0,
+            0,
+            93,
+            195,
+        ],
+        "{name}: x86 logic tail は opcode + add rsp,16 + epilogue であるべき"
+    );
+}
+
+/// NATIVE-REAL-08c1: x86_64 で i32.and / i32.or が distinct bytes を持つこと
+#[test]
+fn test_native_codegen_emits_x86_i32_logic_bytes() {
+    assert_x86_i32_logic_tail("i32.and", 26, [33, 200]);
+    assert_x86_i32_logic_tail("i32.or", 27, [9, 200]);
+}
+
 fn assert_x86_i64_compare_tail(name: &str, opcode: u32, setcc_opcode: u32) {
     let output = run_native_codegen_harness(&format!(
         r#"(module Main)

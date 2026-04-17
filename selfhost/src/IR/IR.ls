@@ -23,6 +23,8 @@
 (defn ir-i64-div [] 23)
 (defn ir-i32-add [] 24)
 (defn ir-i32-mul [] 25)
+(defn ir-i32-and [] 26)
+(defn ir-i32-or [] 27)
 
 ;; 比較
 (defn ir-i64-eq [] 30)
@@ -91,6 +93,14 @@
 ;; 32bit 乗算
 (defn make-i32-mul []
   (make-instr 25 0))
+
+;; 32bit AND
+(defn make-i32-and []
+  (make-instr 26 0))
+
+;; 32bit OR
+(defn make-i32-or []
+  (make-instr 27 0))
 
 ;; 64bit -> 32bit truncation
 (defn make-i32-wrap-i64 []

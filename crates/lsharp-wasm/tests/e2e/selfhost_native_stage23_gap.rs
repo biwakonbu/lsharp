@@ -33,6 +33,8 @@ fn supported_native_opcodes_x86_64() -> BTreeSet<&'static str> {
         "I32Const",
         "I32Add",
         "I32Mul",
+        "I32And",
+        "I32Or",
         "I32WrapI64",
         "I64ExtendI32S",
         "I64ExtendI32U",
@@ -55,6 +57,8 @@ fn supported_native_opcodes_aarch64() -> BTreeSet<&'static str> {
         "I32Const",
         "I32Add",
         "I32Mul",
+        "I32And",
+        "I32Or",
         "I32WrapI64",
         "I64ExtendI32S",
         "I64ExtendI32U",
@@ -129,7 +133,7 @@ fn write_native_stage23_gap_report(
         std::fs::create_dir_all(parent).map_err(|e| format!("gap report dir 作成失敗: {e}"))?;
     }
     let json = format!(
-        "{{\n  \"entry_path\": \"{}\",\n  \"function_count\": {},\n  \"instruction_count\": {},\n  \"supported_x86_64\": [\"I64Const\", \"I64Add\", \"I64Sub\", \"I64Eq\", \"I64Ne\", \"I64LtS\", \"I64GtS\", \"I64LeS\", \"I64GeS\", \"I32Const\", \"I32Add\", \"I32Mul\", \"I32WrapI64\", \"I64ExtendI32S\", \"I64ExtendI32U\", \"LocalGet\", \"LocalSet\"],\n  \"supported_aarch64\": [\"I64Const\", \"I64Add\", \"I64Sub\", \"I64Eq\", \"I64Ne\", \"I64LtS\", \"I64GtS\", \"I64LeS\", \"I64GeS\", \"I32Const\", \"I32Add\", \"I32Mul\", \"I32WrapI64\", \"I64ExtendI32S\", \"I64ExtendI32U\", \"LocalGet\", \"LocalSet\"],\n  \"unsupported_x86_64\": {},\n  \"unsupported_aarch64\": {},\n  \"opcode_histogram\": {}\n}}\n",
+        "{{\n  \"entry_path\": \"{}\",\n  \"function_count\": {},\n  \"instruction_count\": {},\n  \"supported_x86_64\": [\"I64Const\", \"I64Add\", \"I64Sub\", \"I64Eq\", \"I64Ne\", \"I64LtS\", \"I64GtS\", \"I64LeS\", \"I64GeS\", \"I32Const\", \"I32Add\", \"I32Mul\", \"I32And\", \"I32Or\", \"I32WrapI64\", \"I64ExtendI32S\", \"I64ExtendI32U\", \"LocalGet\", \"LocalSet\"],\n  \"supported_aarch64\": [\"I64Const\", \"I64Add\", \"I64Sub\", \"I64Eq\", \"I64Ne\", \"I64LtS\", \"I64GtS\", \"I64LeS\", \"I64GeS\", \"I32Const\", \"I32Add\", \"I32Mul\", \"I32And\", \"I32Or\", \"I32WrapI64\", \"I64ExtendI32S\", \"I64ExtendI32U\", \"LocalGet\", \"LocalSet\"],\n  \"unsupported_x86_64\": {},\n  \"unsupported_aarch64\": {},\n  \"opcode_histogram\": {}\n}}\n",
         json_escape(&report.entry_path),
         report.function_count,
         report.instruction_count,
@@ -219,7 +223,14 @@ fn test_e2e_native_actual_stage23_gap_report_for_representative_entry() {
         !report.unsupported_x86_64.iter().any(|name| {
             matches!(
                 name.as_str(),
-                "I32Const" | "I32Add" | "I32Mul" | "I32WrapI64" | "I64ExtendI32S" | "I64ExtendI32U"
+                "I32Const"
+                    | "I32Add"
+                    | "I32Mul"
+                    | "I32And"
+                    | "I32Or"
+                    | "I32WrapI64"
+                    | "I64ExtendI32S"
+                    | "I64ExtendI32U"
             )
         }),
         "x86_64 gap report から i32 core opcode は消えているべき: {:?}",
@@ -229,7 +240,14 @@ fn test_e2e_native_actual_stage23_gap_report_for_representative_entry() {
         !report.unsupported_aarch64.iter().any(|name| {
             matches!(
                 name.as_str(),
-                "I32Const" | "I32Add" | "I32Mul" | "I32WrapI64" | "I64ExtendI32S" | "I64ExtendI32U"
+                "I32Const"
+                    | "I32Add"
+                    | "I32Mul"
+                    | "I32And"
+                    | "I32Or"
+                    | "I32WrapI64"
+                    | "I64ExtendI32S"
+                    | "I64ExtendI32U"
             )
         }),
         "aarch64 gap report から i32 core opcode は消えているべき: {:?}",
