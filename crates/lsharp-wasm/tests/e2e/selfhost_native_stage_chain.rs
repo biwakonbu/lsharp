@@ -941,6 +941,54 @@ fn host_target_i64_sub_code_bytes() -> Vec<u8> {
     )
 }
 
+fn host_target_i64_compare_code_bytes(lhs: i64, rhs: i64, opcode: u32) -> Vec<u8> {
+    let source = format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [instr1 (make-i64-const {lhs})
+        instr2 (make-instr 11 0)
+        instr3 (make-i64-const {rhs})
+        instr4 (make-instr 11 1)
+        instr5 (make-local-get 0)
+        instr6 (make-local-get 1)
+        instr7 (make-instr {opcode} 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 7) instr1)
+                       instr2)
+                     instr3)
+                   instr4)
+                 instr5)
+               instr6)
+             instr7)
+        target (host-target)
+        code (emit-native ir target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+        lhs = lhs,
+        rhs = rhs,
+        opcode = opcode
+    );
+
+    run_native_codegen_host_bytes_harness(&source)
+}
+
 fn host_target_drop_restore_code_bytes() -> Vec<u8> {
     run_native_codegen_host_bytes_harness(
         r#"(module Main)
@@ -7011,6 +7059,75 @@ fn test_e2e_native_host_binary_i64_sub_link_and_execute() {
         code_bytes.len(),
         code_bytes
     );
+}
+
+fn assert_host_target_i64_compare_exit_code(
+    name: &str,
+    lhs: i64,
+    rhs: i64,
+    opcode: u32,
+    expected_exit_code: i32,
+) {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_i64_compare_code_bytes(lhs, rhs, opcode);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: {name} を含む host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .unwrap_or_else(|_| panic!("{name} host binary 実行に失敗"));
+
+    assert_eq!(
+        exit_code,
+        expected_exit_code,
+        "host binary {name}: exit code {} を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        expected_exit_code,
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d4: i64.eq を含む host target バイト列がリンク・実行できること。
+#[test]
+fn test_e2e_native_host_binary_i64_eq_link_and_execute() {
+    assert_host_target_i64_compare_exit_code("i64 eq", 42, 42, 30, 1);
+}
+
+/// NATIVE-HOST-01d5: i64.ne を含む host target バイト列がリンク・実行できること。
+#[test]
+fn test_e2e_native_host_binary_i64_ne_link_and_execute() {
+    assert_host_target_i64_compare_exit_code("i64 ne", 42, 2, 31, 1);
+}
+
+/// NATIVE-HOST-01d6: i64.lt_s を含む host target バイト列がリンク・実行できること。
+#[test]
+fn test_e2e_native_host_binary_i64_lt_link_and_execute() {
+    assert_host_target_i64_compare_exit_code("i64 lt", 2, 42, 32, 1);
+}
+
+/// NATIVE-HOST-01d7: i64.gt_s を含む host target バイト列がリンク・実行できること。
+#[test]
+fn test_e2e_native_host_binary_i64_gt_link_and_execute() {
+    assert_host_target_i64_compare_exit_code("i64 gt", 42, 2, 33, 1);
+}
+
+/// NATIVE-HOST-01d8: i64.le_s を含む host target バイト列がリンク・実行できること。
+#[test]
+fn test_e2e_native_host_binary_i64_le_link_and_execute() {
+    assert_host_target_i64_compare_exit_code("i64 le", 42, 42, 34, 1);
+}
+
+/// NATIVE-HOST-01d9: i64.ge_s を含む host target バイト列がリンク・実行できること。
+#[test]
+fn test_e2e_native_host_binary_i64_ge_link_and_execute() {
+    assert_host_target_i64_compare_exit_code("i64 ge", 42, 42, 35, 1);
 }
 
 /// NATIVE-HOST-01e: Drop が local.get 前の値へ戻せること。

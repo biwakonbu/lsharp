@@ -1124,6 +1124,119 @@ fn test_native_codegen_emits_x86_i32_mul_bytes() {
     assert_eq!(lines[5], "195", "payload 末尾は ret");
 }
 
+fn assert_x86_i64_compare_tail(name: &str, opcode: u32, setcc_opcode: u32) {
+    let output = run_native_codegen_harness(&format!(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn make-instr [opcode operand]
+  (vector-push (vector-push (vector-new 2) opcode) operand))
+
+(defn main []
+  (let [instr1 (make-instr 1 42)
+        instr2 (make-instr 11 0)
+        instr3 (make-instr 1 2)
+        instr4 (make-instr 11 1)
+        instr5 (make-instr 10 0)
+        instr6 (make-instr 10 1)
+        instr7 (make-instr {opcode} 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 7) instr1)
+                       instr2)
+                     instr3)
+                   instr4)
+                 instr5)
+               instr6)
+             instr7)
+        target (make-target 1)
+        native (emit-native ir target)
+        n (vector-length native)]
+    (do
+      (print n)
+      (print (vector-get native (- n 18)))
+      (print (vector-get native (- n 17)))
+      (print (vector-get native (- n 16)))
+      (print (vector-get native (- n 15)))
+      (print (vector-get native (- n 14)))
+      (print (vector-get native (- n 13)))
+      (print (vector-get native (- n 12)))
+      (print (vector-get native (- n 11)))
+      (print (vector-get native (- n 10)))
+      (print (vector-get native (- n 9)))
+      (print (vector-get native (- n 8)))
+      (print (vector-get native (- n 7)))
+      (print (vector-get native (- n 6)))
+      (print (vector-get native (- n 5)))
+      (print (vector-get native (- n 4)))
+      (print (vector-get native (- n 3)))
+      (print (vector-get native (- n 2)))
+      (print (vector-get native (- n 1)))
+      0)))"#,
+    ));
+    let values: Vec<u32> = output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u32>()
+                .unwrap_or_else(|_| panic!("{name}: 数値出力であるべきだが `{line}` を得た"))
+        })
+        .collect();
+
+    assert!(
+        values.len() >= 19,
+        "{name}: compare tail 出力が不足: {values:?}"
+    );
+    assert!(
+        values[0] >= 18,
+        "{name}: payload 長が短すぎるため compare tail を検査できない: {values:?}"
+    );
+    assert_eq!(
+        &values[1..19],
+        &[
+            72,
+            57,
+            193,
+            15,
+            setcc_opcode,
+            192,
+            15,
+            182,
+            192,
+            72,
+            129,
+            196,
+            16,
+            0,
+            0,
+            0,
+            93,
+            195,
+        ],
+        "{name}: x86 compare tail は cmp + setcc + movzx + add rsp,16 + epilogue であるべき"
+    );
+}
+
+/// NATIVE-REAL-08c2: x86_64 で i64 compare 群が cmp + setcc + movzx bytes を持つこと
+#[test]
+fn test_native_codegen_emits_x86_i64_compare_bytes() {
+    for (name, opcode, setcc_opcode) in [
+        ("i64.eq", 30, 148),
+        ("i64.ne", 31, 149),
+        ("i64.lt_s", 32, 156),
+        ("i64.gt_s", 33, 159),
+        ("i64.le_s", 34, 158),
+        ("i64.ge_s", 35, 157),
+    ] {
+        assert_x86_i64_compare_tail(name, opcode, setcc_opcode);
+    }
+}
+
 /// NATIVE-REAL-08d: x86_64 で direct call bundle が rel32 call bytes を持つこと
 #[test]
 fn test_native_codegen_emits_x86_direct_call_bundle_bytes() {
