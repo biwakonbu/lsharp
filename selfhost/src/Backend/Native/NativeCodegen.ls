@@ -9183,16 +9183,29 @@
     body-bytes (native-function-body-size-x86-loop ir-func function-metas 0 (vector-length ir-func) 0 0)]
     (+ (+ (+ 6 frame-bytes) param-spill-bytes) body-bytes)))
 
-(defn collect-function-starts-x86-loop [functions idx len starts offset]
+(defn collect-callable-function-starts-x86-loop [functions idx len starts offset]
   (if (>= idx len)
     starts
     (let [func-meta (vector-get functions idx)
       next-starts (vector-push starts offset)
       next-offset (+ offset (native-function-size-x86 func-meta functions))]
-      (collect-function-starts-x86-loop functions (+ idx 1) len next-starts next-offset))))
+      (collect-callable-function-starts-x86-loop functions (+ idx 1) len next-starts next-offset))))
+
+(defn collect-callable-function-starts-x86 [functions import-count]
+  (collect-callable-function-starts-x86-loop functions import-count (vector-length functions) (vector-new 8) 0))
+
+(defn callable-user-total-size-x86-loop [functions idx len total]
+  (if (>= idx len)
+    total
+    (let [func-meta (vector-get functions idx)
+      next-total (+ total (native-function-size-x86 func-meta functions))]
+      (callable-user-total-size-x86-loop functions (+ idx 1) len next-total))))
+
+(defn callable-user-total-size-x86 [functions import-count]
+  (callable-user-total-size-x86-loop functions import-count (vector-length functions) 0))
 
 (defn collect-function-starts-x86 [functions]
-  (collect-function-starts-x86-loop functions 0 (vector-length functions) (vector-new 8) 0))
+  (collect-callable-function-starts-x86 functions 0))
 
 (defn emit-call-bundle-x86-twenty-to-twenty-two [target-param-count rel frame-base-slot-count]
   (if (= target-param-count 22)
@@ -9446,10 +9459,12 @@
                       b10)
                     (emit-call-rel32 rel)))))))))))
 
-(defn codegen-ir-instr-bundle-x86 [opcode operand current-offset function-starts function-metas frame-base-slot-count current-depth]
+(defn codegen-ir-instr-bundle-x86-with-import-count [opcode operand current-offset function-starts function-metas import-count import-stub-offset frame-base-slot-count current-depth]
   (if (= opcode 40)
-    (let [target-offset (vector-get function-starts operand)
-      target-meta (vector-get function-metas operand)
+    (let [target-meta (vector-get function-metas operand)
+      target-offset (if (< operand import-count)
+                      import-stub-offset
+                      (vector-get function-starts (- operand import-count)))
       target-param-count (native-function-param-count target-meta)
       rel (if (>= target-param-count 20)
               (- target-offset
@@ -9555,18 +9570,24 @@
           (emit-drop-bundle-x86 frame-base-slot-count current-depth)
           (codegen-ir-instr opcode operand))))))
 
-(defn generate-native-instr-bundle-loop-x86 [ir-func result function-starts function-metas frame-base-slot-count current-offset current-depth idx len]
+(defn codegen-ir-instr-bundle-x86 [opcode operand current-offset function-starts function-metas frame-base-slot-count current-depth]
+  (codegen-ir-instr-bundle-x86-with-import-count opcode operand current-offset function-starts function-metas 0 0 frame-base-slot-count current-depth))
+
+(defn generate-native-instr-bundle-loop-x86-with-import-count [ir-func result function-starts function-metas import-count import-stub-offset frame-base-slot-count current-offset current-depth idx len]
   (if (>= idx len)
     current-offset
     (let [instr (vector-get ir-func idx)
       opcode (vector-get instr 0)
       operand (vector-get instr 1)
-      native (codegen-ir-instr-bundle-x86 opcode operand current-offset function-starts function-metas frame-base-slot-count current-depth)
+      native (codegen-ir-instr-bundle-x86-with-import-count opcode operand current-offset function-starts function-metas import-count import-stub-offset frame-base-slot-count current-depth)
       native-len (vector-length native)
       next-depth (apply-stack-delta current-depth (opcode-stack-delta opcode operand function-metas))]
       (do
         (append-native-bytes-loop result native 0 native-len)
-        (generate-native-instr-bundle-loop-x86 ir-func result function-starts function-metas frame-base-slot-count (+ current-offset native-len) next-depth (+ idx 1) len)))))
+        (generate-native-instr-bundle-loop-x86-with-import-count ir-func result function-starts function-metas import-count import-stub-offset frame-base-slot-count (+ current-offset native-len) next-depth (+ idx 1) len)))))
+
+(defn generate-native-instr-bundle-loop-x86 [ir-func result function-starts function-metas frame-base-slot-count current-offset current-depth idx len]
+  (generate-native-instr-bundle-loop-x86-with-import-count ir-func result function-starts function-metas 0 0 frame-base-slot-count current-offset current-depth idx len))
 
 ;; === コード生成メイン関数 ===
 
@@ -10317,7 +10338,7 @@
     (spill-native-function-params-x86-twenty-plus param-count result)
     (spill-native-function-params-x86-twenty-to-sixty param-count result)))
 
-(defn generate-native-function-x86-64-bundle [func-meta result function-starts function-metas function-start]
+(defn generate-native-function-x86-64-bundle-with-import-count [func-meta result function-starts function-metas import-count import-stub-offset function-start]
   (let [param-count (native-function-param-count func-meta)
     local-count (native-function-local-count func-meta)
     ir-func (native-function-ir func-meta)
@@ -10673,7 +10694,7 @@
                     (if (= param-count 1)
                       (append-native-bytes-loop result (emit-mov-local-from-rdi (local-slot-offset 0)) 0 7)
                       0))))))))))))))))))))
-      (generate-native-instr-bundle-loop-x86 ir-func result function-starts function-metas frame-base-slot-count body-offset 0 0 n)
+      (generate-native-instr-bundle-loop-x86-with-import-count ir-func result function-starts function-metas import-count import-stub-offset frame-base-slot-count body-offset 0 0 n)
       (if (> stack-bytes 0)
         (append-native-bytes-loop result (emit-add-rsp-imm32 stack-bytes) 0 7)
         0)
@@ -10684,22 +10705,33 @@
           (ref-set result (vector-push (ref-get result) (vector-get epilogue-ret 0)))
           0)))))
 
-(defn generate-native-x86-64-bundle-loop [functions result function-starts idx len]
+(defn generate-native-function-x86-64-bundle [func-meta result function-starts function-metas function-start]
+  (generate-native-function-x86-64-bundle-with-import-count func-meta result function-starts function-metas 0 0 function-start))
+
+(defn generate-native-x86-64-bundle-loop-with-import-count [functions result function-starts import-count import-stub-offset idx len]
   (if (>= idx len)
     0
-    (let [func-meta (vector-get functions idx)
+    (let [actual-idx (+ idx import-count)
+      func-meta (vector-get functions actual-idx)
       function-start (vector-get function-starts idx)]
       (do
-        (generate-native-function-x86-64-bundle func-meta result function-starts functions function-start)
-        (generate-native-x86-64-bundle-loop functions result function-starts (+ idx 1) len)))))
+        (generate-native-function-x86-64-bundle-with-import-count func-meta result function-starts functions import-count import-stub-offset function-start)
+        (generate-native-x86-64-bundle-loop-with-import-count functions result function-starts import-count import-stub-offset (+ idx 1) len)))))
+
+(defn generate-native-x86-64-bundle-with-import-count [functions import-count]
+  (let [result (ref-new (vector-new 128))
+    function-starts (collect-callable-function-starts-x86 functions import-count)
+    import-stub-offset (callable-user-total-size-x86 functions import-count)
+    n (- (vector-length functions) import-count)]
+    (do
+      (generate-native-x86-64-bundle-loop-with-import-count functions result function-starts import-count import-stub-offset 0 n)
+      (if (> import-count 0)
+        (append-native-bytes-loop result (emit-ret) 0 1)
+        0)
+      (ref-get result))))
 
 (defn generate-native-x86-64-bundle [functions]
-  (let [result (ref-new (vector-new 128))
-    function-starts (collect-function-starts-x86 functions)
-    n (vector-length functions)]
-    (do
-      (generate-native-x86-64-bundle-loop functions result function-starts 0 n)
-      (ref-get result))))
+  (generate-native-x86-64-bundle-with-import-count functions 0))
 
 ;; === AArch64 命令エンコーダ ===
 
@@ -17908,16 +17940,29 @@
     body-bytes (native-function-body-size-aarch64-loop ir-func function-metas 0 (vector-length ir-func) 0 0)]
     (+ (+ (+ (+ 4 stack-frame-bytes) call-frame-bytes) param-spill-bytes) body-bytes)))
 
-(defn collect-function-starts-aarch64-loop [functions idx len starts offset]
+(defn collect-callable-function-starts-aarch64-loop [functions idx len starts offset]
   (if (>= idx len)
     starts
     (let [func-meta (vector-get functions idx)
       next-starts (vector-push starts offset)
       next-offset (+ offset (native-function-size-aarch64 func-meta functions))]
-      (collect-function-starts-aarch64-loop functions (+ idx 1) len next-starts next-offset))))
+      (collect-callable-function-starts-aarch64-loop functions (+ idx 1) len next-starts next-offset))))
+
+(defn collect-callable-function-starts-aarch64 [functions import-count]
+  (collect-callable-function-starts-aarch64-loop functions import-count (vector-length functions) (vector-new 8) 0))
+
+(defn callable-user-total-size-aarch64-loop [functions idx len total]
+  (if (>= idx len)
+    total
+    (let [func-meta (vector-get functions idx)
+      next-total (+ total (native-function-size-aarch64 func-meta functions))]
+      (callable-user-total-size-aarch64-loop functions (+ idx 1) len next-total))))
+
+(defn callable-user-total-size-aarch64 [functions import-count]
+  (callable-user-total-size-aarch64-loop functions import-count (vector-length functions) 0))
 
 (defn collect-function-starts-aarch64 [functions]
-  (collect-function-starts-aarch64-loop functions 0 (vector-length functions) (vector-new 8) 0))
+  (collect-callable-function-starts-aarch64 functions 0))
 
 (defn emit-call-bundle-aarch64-twenty-to-twenty-two [target-param-count disp frame-base-slot-count]
   (if (= target-param-count 22)
@@ -18173,10 +18218,12 @@
                       b12)
                     (emit-aarch64-bl disp)))))))))))
 
-(defn codegen-ir-instr-bundle-aarch64 [opcode operand current-offset function-starts function-metas frame-base-slot-count current-depth]
+(defn codegen-ir-instr-bundle-aarch64-with-import-count [opcode operand current-offset function-starts function-metas import-count import-stub-offset frame-base-slot-count current-depth]
   (if (= opcode 40)
-    (let [target-offset (vector-get function-starts operand)
-      target-meta (vector-get function-metas operand)
+    (let [target-meta (vector-get function-metas operand)
+      target-offset (if (< operand import-count)
+                      import-stub-offset
+                      (vector-get function-starts (- operand import-count)))
       target-param-count (native-function-param-count target-meta)
       disp (if (>= target-param-count 20)
              (native-call-bundle-disp-aarch64-twenty-to-sixty target-param-count target-offset current-offset)
@@ -18215,18 +18262,24 @@
           (emit-drop-bundle-aarch64 frame-base-slot-count current-depth)
           (codegen-ir-instr-aarch64 opcode operand))))))
 
-(defn generate-native-instr-bundle-loop-aarch64 [ir-func result function-starts function-metas frame-base-slot-count current-offset current-depth idx len]
+(defn codegen-ir-instr-bundle-aarch64 [opcode operand current-offset function-starts function-metas frame-base-slot-count current-depth]
+  (codegen-ir-instr-bundle-aarch64-with-import-count opcode operand current-offset function-starts function-metas 0 0 frame-base-slot-count current-depth))
+
+(defn generate-native-instr-bundle-loop-aarch64-with-import-count [ir-func result function-starts function-metas import-count import-stub-offset frame-base-slot-count current-offset current-depth idx len]
   (if (>= idx len)
     current-offset
     (let [instr (vector-get ir-func idx)
       opcode (vector-get instr 0)
       operand (vector-get instr 1)
-      native (codegen-ir-instr-bundle-aarch64 opcode operand current-offset function-starts function-metas frame-base-slot-count current-depth)
+      native (codegen-ir-instr-bundle-aarch64-with-import-count opcode operand current-offset function-starts function-metas import-count import-stub-offset frame-base-slot-count current-depth)
       native-len (vector-length native)
       next-depth (apply-stack-delta current-depth (opcode-stack-delta opcode operand function-metas))]
       (do
         (append-native-bytes-loop result native 0 native-len)
-        (generate-native-instr-bundle-loop-aarch64 ir-func result function-starts function-metas frame-base-slot-count (+ current-offset native-len) next-depth (+ idx 1) len)))))
+        (generate-native-instr-bundle-loop-aarch64-with-import-count ir-func result function-starts function-metas import-count import-stub-offset frame-base-slot-count (+ current-offset native-len) next-depth (+ idx 1) len)))))
+
+(defn generate-native-instr-bundle-loop-aarch64 [ir-func result function-starts function-metas frame-base-slot-count current-offset current-depth idx len]
+  (generate-native-instr-bundle-loop-aarch64-with-import-count ir-func result function-starts function-metas 0 0 frame-base-slot-count current-offset current-depth idx len))
 
 ;; === AArch64 コード生成 ===
 
@@ -18944,7 +18997,7 @@
     (spill-native-function-params-aarch64-twenty-plus param-count result stack-arg-base-offset)
     (spill-native-function-params-aarch64-twenty-to-sixty param-count result stack-arg-base-offset)))
 
-(defn generate-native-function-aarch64-bundle [func-meta result function-starts function-metas function-start]
+(defn generate-native-function-aarch64-bundle-with-import-count [func-meta result function-starts function-metas import-count import-stub-offset function-start]
   (let [param-count (native-function-param-count func-meta)
     local-count (native-function-local-count func-meta)
     ir-func (native-function-ir func-meta)
@@ -19276,7 +19329,7 @@
                     (if (= param-count 1)
                       (append-native-bytes-loop result (emit-aarch64-str-x0-sp (local-slot-offset 0)) 0 4)
                       0))))))))))))))))))))
-      (generate-native-instr-bundle-loop-aarch64 ir-func result function-starts function-metas frame-base-slot-count body-offset 0 0 n)
+      (generate-native-instr-bundle-loop-aarch64-with-import-count ir-func result function-starts function-metas import-count import-stub-offset frame-base-slot-count body-offset 0 0 n)
       (if (> stack-bytes 0)
         (append-native-bytes-loop result (emit-aarch64-add-sp stack-bytes) 0 4)
         0)
@@ -19285,22 +19338,33 @@
         0)
       (append-native-bytes-loop result (emit-aarch64-ret) 0 4))))
 
-(defn generate-native-aarch64-bundle-loop [functions result function-starts idx len]
+(defn generate-native-function-aarch64-bundle [func-meta result function-starts function-metas function-start]
+  (generate-native-function-aarch64-bundle-with-import-count func-meta result function-starts function-metas 0 0 function-start))
+
+(defn generate-native-aarch64-bundle-loop-with-import-count [functions result function-starts import-count import-stub-offset idx len]
   (if (>= idx len)
     0
-    (let [func-meta (vector-get functions idx)
+    (let [actual-idx (+ idx import-count)
+      func-meta (vector-get functions actual-idx)
       function-start (vector-get function-starts idx)]
       (do
-        (generate-native-function-aarch64-bundle func-meta result function-starts functions function-start)
-        (generate-native-aarch64-bundle-loop functions result function-starts (+ idx 1) len)))))
+        (generate-native-function-aarch64-bundle-with-import-count func-meta result function-starts functions import-count import-stub-offset function-start)
+        (generate-native-aarch64-bundle-loop-with-import-count functions result function-starts import-count import-stub-offset (+ idx 1) len)))))
+
+(defn generate-native-aarch64-bundle-with-import-count [functions import-count]
+  (let [result (ref-new (vector-new 128))
+    function-starts (collect-callable-function-starts-aarch64 functions import-count)
+    import-stub-offset (callable-user-total-size-aarch64 functions import-count)
+    n (- (vector-length functions) import-count)]
+    (do
+      (generate-native-aarch64-bundle-loop-with-import-count functions result function-starts import-count import-stub-offset 0 n)
+      (if (> import-count 0)
+        (append-native-bytes-loop result (emit-aarch64-ret) 0 4)
+        0)
+      (ref-get result))))
 
 (defn generate-native-aarch64-bundle [functions]
-  (let [result (ref-new (vector-new 128))
-    function-starts (collect-function-starts-aarch64 functions)
-    n (vector-length functions)]
-    (do
-      (generate-native-aarch64-bundle-loop functions result function-starts 0 n)
-      (ref-get result))))
+  (generate-native-aarch64-bundle-with-import-count functions 0))
 
 ;; IR 関数をネイティブコードに変換
 ;; ir-func: IR 命令列の Vector [[opcode, operand], ...]
@@ -19330,6 +19394,12 @@
       (generate-native-aarch64-bundle functions)
       (generate-native-x86-64-bundle functions))))
 
+(defn generate-native-function-meta-bundle-with-import-count [functions import-count target]
+  (let [arch (target-arch target)]
+    (if (= arch 2)
+      (generate-native-aarch64-bundle-with-import-count functions import-count)
+      (generate-native-x86-64-bundle-with-import-count functions import-count))))
+
 ;; ネイティブコード生成のトップレベル関数
 ;; source-ir: プログラム全体の IR
 ;; target: ターゲット記述子
@@ -19342,6 +19412,9 @@
 
 (defn emit-native-function-meta-bundle [functions target]
   (generate-native-function-meta-bundle functions target))
+
+(defn emit-native-function-meta-bundle-with-import-count [functions import-count target]
+  (generate-native-function-meta-bundle-with-import-count functions import-count target))
 
 ;; ネイティブコンパイルパイプライン関数
 ;; IR -> ネイティブコード生成 -> バイト列

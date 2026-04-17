@@ -1600,6 +1600,98 @@ fn test_native_codegen_emits_x86_direct_call_arg_bundle_bytes() {
     assert_eq!(lines[15], "195", "payload 末尾は ret");
 }
 
+/// NATIVE-REAL-08f2: x86_64 で import prefix を含む actual module index space の 1 引数 call が同じ rel32 bytes を持つこと
+#[test]
+fn test_native_codegen_emits_x86_import_prefixed_direct_call_arg_bundle_bytes() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [import-meta (make-function-meta 0 0 (vector-new 0))
+        caller-ir (vector-push
+                    (vector-push (vector-new 2) (make-instr 1 42))
+                    (make-call 2))
+        callee-ir (vector-push (vector-new 1) (make-local-get 0))
+        caller (make-function-meta 0 0 caller-ir)
+        callee (make-function-meta 1 0 callee-ir)
+        functions (vector-push
+                    (vector-push
+                      (vector-push (vector-new 3) import-meta)
+                      caller)
+                    callee)
+        target (make-target 1)
+        native (emit-native-function-meta-bundle-with-import-count functions 1 target)]
+    (do
+      (print (vector-length native))
+      (print (vector-get native 14))
+      (print (vector-get native 15))
+      (print (vector-get native 16))
+      (print (vector-get native 17))
+      (print (vector-get native 18))
+      (print (vector-get native 19))
+      (print (vector-get native 20))
+      (print (vector-get native 21))
+      (print (vector-get native 22))
+      (print (vector-get native 23))
+      (print (vector-get native 37))
+      (print (vector-get native 38))
+      (print (vector-get native 39))
+      (print (vector-get native 61))
+      (print (vector-get native 62))
+      (print (vector-get native 63))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 17,
+        "x86 import-prefixed direct call arg bundle bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "64",
+        "x86_64 import-prefixed direct call arg bundle payload は 64 bytes であるべき"
+    );
+    assert_eq!(lines[1], "72", "arg move 先頭は mov rdi, rax の 0x48");
+    assert_eq!(lines[2], "137", "arg move 2 byte 目は 0x89");
+    assert_eq!(lines[3], "199", "arg move 3 byte 目は ModRM 0xC7");
+    assert_eq!(
+        lines[4], "81",
+        "1 引数 call 前に previous-value 用 rcx を push する"
+    );
+    assert_eq!(lines[5], "232", "direct call は call rel32 opcode 0xE8");
+    assert_eq!(lines[6], "3", "forward call offset の下位 byte は 3");
+    assert_eq!(lines[7], "0", "forward call offset byte1 は 0");
+    assert_eq!(lines[8], "0", "forward call offset byte2 は 0");
+    assert_eq!(lines[9], "0", "forward call offset byte3 は 0");
+    assert_eq!(
+        lines[10], "89",
+        "1 引数 call 後に previous-value 用 rcx を pop する"
+    );
+    assert_eq!(
+        lines[11], "72",
+        "callee param spill は mov [rbp-offset], rdi の 0x48"
+    );
+    assert_eq!(lines[12], "137", "callee param spill 2 byte 目は 0x89");
+    assert_eq!(
+        lines[13], "189",
+        "callee param spill 3 byte 目は ModRM 0xBD"
+    );
+    assert_eq!(lines[14], "93", "callee epilogue 手前は pop rbp");
+    assert_eq!(lines[15], "195", "callee epilogue 末尾は ret");
+    assert_eq!(lines[16], "195", "import stub 末尾は ret");
+}
+
 /// NATIVE-REAL-08g: x86_64 で 2 引数 direct call bundle が arg move + rel32 call bytes を持つこと
 #[test]
 fn test_native_codegen_emits_x86_direct_call_two_arg_bundle_bytes() {
