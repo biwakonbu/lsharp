@@ -271,34 +271,38 @@
   (vector-get func-meta 2))
 
 ;; 現在サポートしている IR opcode の stack effect を返す
-(defn opcode-stack-delta [opcode operand function-metas]
+(defn opcode-pushes-stack [opcode]
   (if (= opcode 1)
     1
     (if (= opcode 3)
       1
       (if (= opcode 10)
         1
-        (if (= opcode 11)
-          -1
-          (if (= opcode 20)
-            -1
-            (if (= opcode 21)
-              -1
-              (if (= opcode 24)
-                -1
-                (if (= opcode 25)
-                  -1
-                  (if (= opcode 36)
-                    0
-                    (if (= opcode 37)
-                      0
-                      (if (= opcode 38)
-                        0
-                        (if (= opcode 40)
-                          (- 1 (native-function-param-count (vector-get function-metas operand)))
-                          (if (= opcode 44)
-                            -1
-                            0))))))))))))))
+        0))))
+
+(defn opcode-reduces-stack [opcode]
+  (if (= opcode 11)
+    1
+    (if (= opcode 20)
+      1
+      (if (= opcode 21)
+        1
+        (if (= opcode 24)
+          1
+          (if (= opcode 25)
+            1
+            (if (= opcode 44)
+              1
+              (is-i64-compare-opcode opcode))))))))
+
+(defn opcode-stack-delta [opcode operand function-metas]
+  (if (= opcode 40)
+    (- 1 (native-function-param-count (vector-get function-metas operand)))
+    (if (= (opcode-pushes-stack opcode) 1)
+      1
+      (if (= (opcode-reduces-stack opcode) 1)
+        -1
+        0))))
 
 (defn apply-stack-delta [current-depth delta]
   (let [next-depth (+ current-depth delta)]
@@ -1340,6 +1344,99 @@
     b7 (vector-push b6 (vector-get mov-imm 3))
     b8 (vector-push b7 (vector-get mov-imm 4))]
      b8))
+
+;; x86_64 CMP rcx, rax
+(defn emit-cmp-rcx-rax []
+  (let [bytes (vector-new 3)]
+    (vector-push (vector-push (vector-push bytes 72) 57) 193)))
+
+;; x86_64 SETE al
+(defn emit-sete-al []
+  (let [bytes (vector-new 3)]
+    (vector-push (vector-push (vector-push bytes 15) 148) 192)))
+
+;; x86_64 SETNE al
+(defn emit-setne-al []
+  (let [bytes (vector-new 3)]
+    (vector-push (vector-push (vector-push bytes 15) 149) 192)))
+
+;; x86_64 SETL al
+(defn emit-setl-al []
+  (let [bytes (vector-new 3)]
+    (vector-push (vector-push (vector-push bytes 15) 156) 192)))
+
+;; x86_64 SETG al
+(defn emit-setg-al []
+  (let [bytes (vector-new 3)]
+    (vector-push (vector-push (vector-push bytes 15) 159) 192)))
+
+;; x86_64 SETLE al
+(defn emit-setle-al []
+  (let [bytes (vector-new 3)]
+    (vector-push (vector-push (vector-push bytes 15) 158) 192)))
+
+;; x86_64 SETGE al
+(defn emit-setge-al []
+  (let [bytes (vector-new 3)]
+    (vector-push (vector-push (vector-push bytes 15) 157) 192)))
+
+;; x86_64 MOVZX eax, al
+(defn emit-movzx-eax-al []
+  (let [bytes (vector-new 3)]
+    (vector-push (vector-push (vector-push bytes 15) 182) 192)))
+
+(defn emit-compare-x86 [setcc]
+  (concat-byte-vectors
+    (concat-byte-vectors
+      (emit-cmp-rcx-rax)
+      setcc)
+    (emit-movzx-eax-al)))
+
+(defn emit-i64-eq-x86 []
+  (emit-compare-x86 (emit-sete-al)))
+
+(defn emit-i64-ne-x86 []
+  (emit-compare-x86 (emit-setne-al)))
+
+(defn emit-i64-lt-x86 []
+  (emit-compare-x86 (emit-setl-al)))
+
+(defn emit-i64-gt-x86 []
+  (emit-compare-x86 (emit-setg-al)))
+
+(defn emit-i64-le-x86 []
+  (emit-compare-x86 (emit-setle-al)))
+
+(defn emit-i64-ge-x86 []
+  (emit-compare-x86 (emit-setge-al)))
+
+(defn is-i64-compare-opcode [opcode]
+  (if (= opcode 30)
+    1
+    (if (= opcode 31)
+      1
+      (if (= opcode 32)
+        1
+        (if (= opcode 33)
+          1
+          (if (= opcode 34)
+            1
+            (if (= opcode 35)
+              1
+              0)))))))
+
+(defn emit-i64-compare-x86 [opcode]
+  (if (= opcode 30)
+    (emit-i64-eq-x86)
+    (if (= opcode 31)
+      (emit-i64-ne-x86)
+      (if (= opcode 32)
+        (emit-i64-lt-x86)
+        (if (= opcode 33)
+          (emit-i64-gt-x86)
+          (if (= opcode 34)
+            (emit-i64-le-x86)
+            (emit-i64-ge-x86)))))))
 
 ;; x86_64 の MOV [rsp+200], rcx
 (defn emit-mov-twenty-sixth-stack-from-rcx []
@@ -8669,12 +8766,10 @@
           ;; local.set -> mov [rbp-offset], rax
           (emit-mov-local-from-rax (local-slot-offset operand))
           (if (= opcode 20)
-            ;; i64.add -> add rax, rcx (簡易版)
-            ;; 0x48 0x01 0xC8
+            ;; i64.add -> add rax, rcx
             (vector-push (vector-push (vector-push (vector-new 3) 72) 1) 200)
             (if (= opcode 21)
               ;; i64.sub -> sub rax, rcx
-              ;; 0x48 0x29 0xC8
               (vector-push (vector-push (vector-push (vector-new 3) 72) 41) 200)
               (if (= opcode 24)
                 ;; i32.add -> add eax, ecx
@@ -8682,20 +8777,22 @@
                 (if (= opcode 25)
                   ;; i32.mul -> imul eax, ecx
                   (emit-imul-eax-ecx)
-                  (if (= opcode 36)
-                    ;; i64.extend_i32_s -> movsxd rax, eax
-                    (emit-movsxd-rax-eax)
-                    (if (= opcode 37)
-                      ;; i64.extend_i32_u -> mov eax, eax
-                      (emit-mov-eax-eax)
-                      (if (= opcode 38)
-                        ;; i32.wrap_i64 -> mov eax, eax
+                  (if (= (is-i64-compare-opcode opcode) 1)
+                    (emit-i64-compare-x86 opcode)
+                    (if (= opcode 36)
+                      ;; i64.extend_i32_s -> movsxd rax, eax
+                      (emit-movsxd-rax-eax)
+                      (if (= opcode 37)
+                        ;; i64.extend_i32_u -> mov eax, eax
                         (emit-mov-eax-eax)
-                        (if (= opcode 44)
-                          ;; drop -> 1 段下の値へ戻す
-                          (emit-mov-rax-rcx)
-                          ;; 未知の opcode: NOP
-                          (vector-push (vector-new 1) 144)))))))))))))) ;; 0x90
+                        (if (= opcode 38)
+                          ;; i32.wrap_i64 -> mov eax, eax
+                          (emit-mov-eax-eax)
+                          (if (= opcode 44)
+                            ;; drop -> 1 段下の値へ戻す
+                            (emit-mov-rax-rcx)
+                            ;; 未知の opcode: NOP
+                            (vector-push (vector-new 1) 144))))))))))))))) ;; 0x90
 
 (defn native-call-bundle-size-x86-twenty-plus-core [target-param-count]
   (if (= target-param-count 58)
@@ -10742,6 +10839,77 @@
 (defn emit-aarch64-sub-x0-x9-x0 []
   (let [bytes (vector-new 4)]
     (vector-push (vector-push (vector-push (vector-push bytes 32) 1) 0) 203)))
+
+;; AArch64 CMP x9, x0
+(defn emit-aarch64-cmp-x9-x0 []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 63) 1) 0) 235)))
+
+;; AArch64 CSET w0, eq
+(defn emit-aarch64-cset-w0-eq []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 224) 23) 159) 26)))
+
+;; AArch64 CSET w0, ne
+(defn emit-aarch64-cset-w0-ne []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 224) 7) 159) 26)))
+
+;; AArch64 CSET w0, lt
+(defn emit-aarch64-cset-w0-lt []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 224) 167) 159) 26)))
+
+;; AArch64 CSET w0, gt
+(defn emit-aarch64-cset-w0-gt []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 224) 215) 159) 26)))
+
+;; AArch64 CSET w0, le
+(defn emit-aarch64-cset-w0-le []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 224) 199) 159) 26)))
+
+;; AArch64 CSET w0, ge
+(defn emit-aarch64-cset-w0-ge []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 224) 183) 159) 26)))
+
+(defn emit-aarch64-compare [cset]
+  (concat-byte-vectors
+    (emit-aarch64-cmp-x9-x0)
+    cset))
+
+(defn emit-aarch64-i64-eq []
+  (emit-aarch64-compare (emit-aarch64-cset-w0-eq)))
+
+(defn emit-aarch64-i64-ne []
+  (emit-aarch64-compare (emit-aarch64-cset-w0-ne)))
+
+(defn emit-aarch64-i64-lt []
+  (emit-aarch64-compare (emit-aarch64-cset-w0-lt)))
+
+(defn emit-aarch64-i64-gt []
+  (emit-aarch64-compare (emit-aarch64-cset-w0-gt)))
+
+(defn emit-aarch64-i64-le []
+  (emit-aarch64-compare (emit-aarch64-cset-w0-le)))
+
+(defn emit-aarch64-i64-ge []
+  (emit-aarch64-compare (emit-aarch64-cset-w0-ge)))
+
+(defn emit-i64-compare-aarch64 [opcode]
+  (if (= opcode 30)
+    (emit-aarch64-i64-eq)
+    (if (= opcode 31)
+      (emit-aarch64-i64-ne)
+      (if (= opcode 32)
+        (emit-aarch64-i64-lt)
+        (if (= opcode 33)
+          (emit-aarch64-i64-gt)
+          (if (= opcode 34)
+            (emit-aarch64-i64-le)
+            (emit-aarch64-i64-ge)))))))
 
 ;; AArch64 MOV w0, w0
 (defn emit-aarch64-mov-w0-w0 []
@@ -17180,7 +17348,7 @@
 
 ;; IR opcode を AArch64 命令列に変換
 (defn codegen-ir-instr-aarch64 [opcode operand]
-    (if (= opcode 1)
+  (if (= opcode 1)
     ;; i64.const -> MOVZ W0, #operand
     (emit-aarch64-movz-w0 operand)
     (if (= opcode 3)
@@ -17204,20 +17372,22 @@
                 (if (= opcode 25)
                   ;; i32.mul -> mul w0, w9, w0
                   (emit-aarch64-mul-w0-w9-w0)
-                  (if (= opcode 36)
-                    ;; i64.extend_i32_s -> sxtw x0, w0
-                    (emit-aarch64-sxtw-x0-w0)
-                    (if (= opcode 37)
-                      ;; i64.extend_i32_u -> mov w0, w0
-                      (emit-aarch64-mov-w0-w0)
-                      (if (= opcode 38)
-                        ;; i32.wrap_i64 -> mov w0, w0
+                  (if (= (is-i64-compare-opcode opcode) 1)
+                    (emit-i64-compare-aarch64 opcode)
+                    (if (= opcode 36)
+                      ;; i64.extend_i32_s -> sxtw x0, w0
+                      (emit-aarch64-sxtw-x0-w0)
+                      (if (= opcode 37)
+                        ;; i64.extend_i32_u -> mov w0, w0
                         (emit-aarch64-mov-w0-w0)
-                        (if (= opcode 44)
-                          ;; drop -> 1 段下の値へ戻す
-                          (emit-aarch64-mov-x0-x9)
-                           ;; 未知の opcode: NOP
-                           (emit-aarch64-nop))))))))))))))
+                        (if (= opcode 38)
+                          ;; i32.wrap_i64 -> mov w0, w0
+                          (emit-aarch64-mov-w0-w0)
+                          (if (= opcode 44)
+                            ;; drop -> 1 段下の値へ戻す
+                            (emit-aarch64-mov-x0-x9)
+                            ;; 未知の opcode: NOP
+                            (emit-aarch64-nop)))))))))))))))
 
 (defn native-call-bundle-size-aarch64-twenty-to-twenty-two [target-param-count]
   (if (= target-param-count 22)
