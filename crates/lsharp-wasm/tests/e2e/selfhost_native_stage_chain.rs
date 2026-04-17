@@ -9248,6 +9248,14 @@ fn fifty_five_arg_values() -> [u32; 55] {
     ]
 }
 
+fn fifty_six_arg_values() -> [u32; 56] {
+    [
+        31, 2, 3, 5, 7, 11, 13, 14, 17, 19, 23, 29, 31, 37, 1, 2, 4, 3, 1, 1, 1, 2, 41, 8, 13, 5,
+        7, 11, 3, 2, 4, 6, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+        29, 30, 31, 32, 33, 34,
+    ]
+}
+
 /// NATIVE-HOST-021c: 54 引数 direct call bundle でも caller/callee の和を host binary で実行できること。
 #[test]
 fn test_e2e_native_host_binary_direct_call_fifty_four_arg_bundle_link_and_execute() {
@@ -9448,6 +9456,108 @@ fn test_e2e_native_host_binary_fifty_five_arg_local_get_0_roundtrip() {
     assert_eq!(
         exit_code, 31,
         "55 引数 direct call の local.get 0 は 31 を返すべきだが {} を得た",
+        exit_code
+    );
+}
+
+/// NATIVE-HOST-021l: 56 引数 direct call bundle でも caller/callee の和を host binary で実行できること。
+#[test]
+fn test_e2e_native_host_binary_direct_call_fifty_six_arg_bundle_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = fifty_six_arg_values();
+    let exit_code = native_exit_code_for_direct_call_sum(&values);
+
+    assert_eq!(
+        exit_code, 128,
+        "host binary direct call fifty-six-arg bundle: exit code 128 を期待したが {} を得た",
+        exit_code
+    );
+}
+
+/// NATIVE-HOST-021m: 56-value window の i32.const 連続 push でも最新値を保持できること。
+#[test]
+fn test_e2e_native_host_binary_fifty_six_i32_const_window_keeps_latest_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = fifty_six_arg_values();
+    let exit_code = native_exit_code_for_const_sequence(&values);
+
+    assert_eq!(
+        exit_code, 34,
+        "56-value window の i32.const sequence は最新値 34 を返すべきだが {} を得た",
+        exit_code
+    );
+}
+
+/// NATIVE-HOST-021ma: 56 引数 direct call でも末尾 local.get 55 を正しく受け取れること。
+#[test]
+fn test_e2e_native_host_binary_fifty_six_arg_local_get_55_roundtrip() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = fifty_six_arg_values();
+    let exit_code = native_exit_code_for_direct_call_local_get(&values, 55);
+
+    assert_eq!(
+        exit_code, 34,
+        "56 引数 direct call の local.get 55 は 34 を返すべきだが {} を得た",
+        exit_code
+    );
+}
+
+/// NATIVE-HOST-021mb: 56 引数 direct call でも末尾 1 個手前 local.get 54 を正しく受け取れること。
+#[test]
+fn test_e2e_native_host_binary_fifty_six_arg_local_get_54_roundtrip() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = fifty_six_arg_values();
+    let exit_code = native_exit_code_for_direct_call_local_get(&values, 54);
+
+    assert_eq!(
+        exit_code, 33,
+        "56 引数 direct call の local.get 54 は 33 を返すべきだが {} を得た",
+        exit_code
+    );
+}
+
+/// NATIVE-HOST-021n: 56 引数 direct call でも spill 境界の local.get 53 を正しく受け取れること。
+#[test]
+fn test_e2e_native_host_binary_fifty_six_arg_local_get_53_roundtrip() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = fifty_six_arg_values();
+    let exit_code = native_exit_code_for_direct_call_local_get(&values, 53);
+
+    assert_eq!(
+        exit_code, 32,
+        "56 引数 direct call の local.get 53 は 32 を返すべきだが {} を得た",
+        exit_code
+    );
+}
+
+/// NATIVE-HOST-021o: 56 引数 direct call でも先頭 local.get 0 を正しく受け取れること。
+#[test]
+fn test_e2e_native_host_binary_fifty_six_arg_local_get_0_roundtrip() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = fifty_six_arg_values();
+    let exit_code = native_exit_code_for_direct_call_local_get(&values, 0);
+
+    assert_eq!(
+        exit_code, 31,
+        "56 引数 direct call の local.get 0 は 31 を返すべきだが {} を得た",
         exit_code
     );
 }
