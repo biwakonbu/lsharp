@@ -160,28 +160,32 @@ pub(crate) fn compile_only(source: &str) -> Vec<u8> {
 
 /// ドライバの `lsharp compile` と同等の経路でファイルをコンパイルする (エラーは Result)
 pub(crate) fn try_compile_file_only(file: &std::path::Path) -> Result<Vec<u8>, String> {
-    let source = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
-    let program =
-        lsharp_syntax::parse(&source).map_err(|e| format!("{}: {e:?}", file.display()))?;
+    let file = file.to_path_buf();
+    run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        let source =
+            std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+        let program =
+            lsharp_syntax::parse(&source).map_err(|e| format!("{}: {e:?}", file.display()))?;
 
-    let module = if program
-        .decls
-        .iter()
-        .any(|decl| matches!(decl, lsharp_syntax::ast::Decl::ImportDecl { .. }))
-    {
-        lsharp_ir::compile_multi_file(file).map_err(|e| format!("{}: {e}", file.display()))?
-    } else {
-        let mut infer = Infer::new();
-        let type_results = infer
-            .infer_program(&program)
-            .map_err(|e| format!("{}: {e:?}", file.display()))?;
-        let mut lower = Lower::new();
-        lower
-            .lower_program(&program, &type_results)
-            .map_err(|e| format!("{}: {e:?}", file.display()))?
-    };
+        let module = if program
+            .decls
+            .iter()
+            .any(|decl| matches!(decl, lsharp_syntax::ast::Decl::ImportDecl { .. }))
+        {
+            lsharp_ir::compile_multi_file(&file).map_err(|e| format!("{}: {e}", file.display()))?
+        } else {
+            let mut infer = Infer::new();
+            let type_results = infer
+                .infer_program(&program)
+                .map_err(|e| format!("{}: {e:?}", file.display()))?;
+            let mut lower = Lower::new();
+            lower
+                .lower_program(&program, &type_results)
+                .map_err(|e| format!("{}: {e:?}", file.display()))?
+        };
 
-    lsharp_wasm::wasi::emit_wasm_wasi(&module).map_err(|e| format!("Wasm: {e:?}"))
+        lsharp_wasm::wasi::emit_wasm_wasi(&module).map_err(|e| format!("Wasm: {e:?}"))
+    })
 }
 
 /// ドライバの `lsharp compile` と同等の経路でファイルをコンパイルする

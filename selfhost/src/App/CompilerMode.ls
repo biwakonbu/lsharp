@@ -85,16 +85,18 @@
 (defn source-fingerprint-step-4096 [src pos end acc] (let [step1 (source-fingerprint-step-512 src pos end acc) step2 (continue-source-fingerprint-step-512 src end step1) step3 (continue-source-fingerprint-step-512 src end step2) step4 (continue-source-fingerprint-step-512 src end step3) step5 (continue-source-fingerprint-step-512 src end step4) step6 (continue-source-fingerprint-step-512 src end step5) step7 (continue-source-fingerprint-step-512 src end step6) step8 (continue-source-fingerprint-step-512 src end step7)] step8))
 (defn continue-source-fingerprint-step-4096 [src end state] (if (= (vector-get state 0) 1) state (source-fingerprint-step-4096 src (vector-get state 1) end (vector-get state 2))))
 (defn source-fingerprint-step-32768 [src pos end acc] (let [step1 (source-fingerprint-step-4096 src pos end acc) step2 (continue-source-fingerprint-step-4096 src end step1) step3 (continue-source-fingerprint-step-4096 src end step2) step4 (continue-source-fingerprint-step-4096 src end step3) step5 (continue-source-fingerprint-step-4096 src end step4) step6 (continue-source-fingerprint-step-4096 src end step5) step7 (continue-source-fingerprint-step-4096 src end step6) step8 (continue-source-fingerprint-step-4096 src end step7)] step8))
+(defn continue-source-fingerprint-step-32768 [src end state] (if (= (vector-get state 0) 1) state (source-fingerprint-step-32768 src (vector-get state 1) end (vector-get state 2))))
+(defn source-fingerprint-step-262144 [src pos end acc] (let [step1 (source-fingerprint-step-32768 src pos end acc) step2 (continue-source-fingerprint-step-32768 src end step1) step3 (continue-source-fingerprint-step-32768 src end step2) step4 (continue-source-fingerprint-step-32768 src end step3) step5 (continue-source-fingerprint-step-32768 src end step4) step6 (continue-source-fingerprint-step-32768 src end step5) step7 (continue-source-fingerprint-step-32768 src end step6) step8 (continue-source-fingerprint-step-32768 src end step7)] step8))
 (defn source-fingerprint-loop [src pos end acc]
   (do
     (root_push src)
-    (let [step (source-fingerprint-step-32768 src pos end acc)]
+    (let [step (source-fingerprint-step-262144 src pos end acc)]
       (do
         (root_push step)
         (let [result
-            (if (= (vector-get step 0) 1)
-              (vector-get step 2)
-              (source-fingerprint-loop src (vector-get step 1) end (vector-get step 2)))]
+          (if (= (vector-get step 0) 1)
+            (vector-get step 2)
+            (source-fingerprint-loop src (vector-get step 1) end (vector-get step 2)))]
           (do
             (root_pop)
             (root_pop)
@@ -506,9 +508,9 @@
                   (print 89)
                   (print (vector-length functions))
                   (root_pop)
-                   (root_pop)
-                   (root_pop)
-                   0)))))))))
+                  (root_pop)
+                  (root_pop)
+                  0)))))))))
 (defn compile-file-mode-cache-compile-phase-probe []
   (let [path (command-line-arg 1)
     cache-ref (ref-new (map-new))
@@ -941,10 +943,10 @@
             (root_pop)
             (root_pop)
             (root_pop)
-             (root_pop)
-             (root_pop)
-             (root_pop)
-             result))))))
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 (defn print-user-call-arg-instrs-lengths [arg-instrs-list idx count]
   (if (>= idx count)
     0
@@ -1050,11 +1052,11 @@
                       (emit-to instrs bop (+ 1 (map-size env)))
                       (if (nullary-builtin-op bop)
                         (emit-to instrs bop 0)
-                          (if (and (source-neutral-ftable-builtin-op bop) (apply-args-safe-for-ftable node 0 arg-count))
-                           (compile-builtin-apply-with-ftable node env ftable instrs bop)
-                           (if (source-builtin-map-op bop)
-                             (compile-map-builtin-with-source node source env ftable instrs data-ref bop)
-                             (compile-simple-builtin-with-source-probe node source env ftable instrs data-ref bop rooted-count)))))))))
+                        (if (and (source-neutral-ftable-builtin-op bop) (apply-args-safe-for-ftable node 0 arg-count))
+                          (compile-builtin-apply-with-ftable node env ftable instrs bop)
+                          (if (source-builtin-map-op bop)
+                            (compile-map-builtin-with-source node source env ftable instrs data-ref bop)
+                            (compile-simple-builtin-with-source-probe node source env ftable instrs data-ref bop rooted-count)))))))))
             (compile-user-call-with-source-probe node source env ftable instrs data-ref func-hash arg-count)))))))
 (defn compile-expr-with-source-probe-dispatch [node source env ftable instrs data-ref rooted-count]
   (if (= (vector-get node 0) (tag-let))
@@ -1170,14 +1172,14 @@
         (do
           (root_push decl)
           (let [next-functions (if (= (vector-get decl 0) 20)
-            (let [compiled-fn (compile-defn-function-with-source decl src ftable data-ref)]
-              (do
-                (root_push compiled-fn)
-                (let [updated-functions (push-object-vector functions compiled-fn)]
-                  (do
-                    (root_pop)
-                    updated-functions))))
-            functions)]
+              (let [compiled-fn (compile-defn-function-with-source decl src ftable data-ref)]
+                (do
+                  (root_push compiled-fn)
+                  (let [updated-functions (push-object-vector functions compiled-fn)]
+                    (do
+                      (root_pop)
+                      updated-functions))))
+              functions)]
             (do
               (root_push next-functions)
               (let [result (compile-defn-functions-linear-with-source decls (+ idx 1) n src ftable data-ref next-functions)]
@@ -1231,19 +1233,19 @@
           (print idx)
           (print (vector-get decl 0))
           (let [next-functions (if (= (vector-get decl 0) 20)
-            (let [compiled-fn (compile-defn-function-with-source decl src ftable data-ref)]
-              (do
-                (print 41)
-                (print idx)
-                (root_push compiled-fn)
-                (let [updated-functions (push-object-vector functions compiled-fn)]
-                  (do
-                    (print 42)
-                    (print idx)
-                    (print (vector-length updated-functions))
-                    (root_pop)
-                    updated-functions))))
-            functions)]
+              (let [compiled-fn (compile-defn-function-with-source decl src ftable data-ref)]
+                (do
+                  (print 41)
+                  (print idx)
+                  (root_push compiled-fn)
+                  (let [updated-functions (push-object-vector functions compiled-fn)]
+                    (do
+                      (print 42)
+                      (print idx)
+                      (print (vector-length updated-functions))
+                      (root_pop)
+                      updated-functions))))
+              functions)]
             (do
               (print 43)
               (print idx)
@@ -1316,12 +1318,12 @@
       (let [import-sec (emit-import-section-alloc-print-read-arg-concat-sub)]
         (let [func-sec (emit-function-section-wasi-quad-functions functions)]
           (let [memory-sec (emit-memory-section)]
-             (let [export-sec (emit-export-section-main-memory-index (+ 10 func-count) 0)]
-               (let [code-sec (emit-code-section-wasi-quad-functions functions)]
-                 (let [data-sec (emit-data-section data 1024)]
-                   (let [b0 (append-section-bytes (vector-new 64) header)
-                     b1 (append-section-bytes b0 type-sec)
-                     b2 (append-section-bytes b1 import-sec)
+            (let [export-sec (emit-export-section-main-memory-index (+ 10 func-count) 0)]
+              (let [code-sec (emit-code-section-wasi-quad-functions functions)]
+                (let [data-sec (emit-data-section data 1024)]
+                  (let [b0 (append-section-bytes (vector-new 64) header)
+                    b1 (append-section-bytes b0 type-sec)
+                    b2 (append-section-bytes b1 import-sec)
                     b3 (append-section-bytes b2 func-sec)
                     b4 (append-section-bytes b3 memory-sec)
                     b5 (append-section-bytes b4 export-sec)
@@ -1359,9 +1361,9 @@
                               (print 56)
                               (print (vector-length export-sec))
                               (let [code-sec (emit-code-section-wasi-quad-functions-progress-debug functions)]
-                                 (do
-                                   (print 57)
-                                   (print (vector-length code-sec))
+                                (do
+                                  (print 57)
+                                  (print (vector-length code-sec))
                                   (let [data-sec (emit-data-section data 1024)]
                                     (do
                                       (print 58)
@@ -1371,33 +1373,33 @@
                                           (print 59)
                                           (print (vector-length b0))
                                           (let [b1 (append-byte-vector-chunked b0 type-sec 0 (vector-length type-sec))]
-                                             (do
-                                               (print 60)
-                                               (print (vector-length b1))
-                                               (let [b2 (append-byte-vector-chunked b1 import-sec 0 (vector-length import-sec))]
-                                                 (do
-                                                   (print 61)
-                                                   (print (vector-length b2))
-                                                   (let [b3 (append-byte-vector-chunked b2 func-sec 0 (vector-length func-sec))]
-                                                     (do
-                                                       (print 62)
-                                                       (print (vector-length b3))
-                                                       (let [b4 (append-byte-vector-chunked b3 memory-sec 0 (vector-length memory-sec))]
-                                                         (do
-                                                           (print 63)
-                                                           (print (vector-length b4))
-                                                           (let [b5 (append-byte-vector-chunked b4 export-sec 0 (vector-length export-sec))]
-                                                             (do
-                                                               (print 64)
-                                                               (print (vector-length b5))
-                                                               (let [b6 (append-byte-vector-chunked b5 code-sec 0 (vector-length code-sec))]
-                                                                 (do
-                                                                   (print 65)
-                                                                   (print (vector-length b6))
-                                                                   (let [b7 (append-byte-vector-chunked b6 data-sec 0 (vector-length data-sec))]
-                                                                     (do
-                                                                       (print 66)
-                                                                       (print (vector-length b7))
+                                            (do
+                                              (print 60)
+                                              (print (vector-length b1))
+                                              (let [b2 (append-byte-vector-chunked b1 import-sec 0 (vector-length import-sec))]
+                                                (do
+                                                  (print 61)
+                                                  (print (vector-length b2))
+                                                  (let [b3 (append-byte-vector-chunked b2 func-sec 0 (vector-length func-sec))]
+                                                    (do
+                                                      (print 62)
+                                                      (print (vector-length b3))
+                                                      (let [b4 (append-byte-vector-chunked b3 memory-sec 0 (vector-length memory-sec))]
+                                                        (do
+                                                          (print 63)
+                                                          (print (vector-length b4))
+                                                          (let [b5 (append-byte-vector-chunked b4 export-sec 0 (vector-length export-sec))]
+                                                            (do
+                                                              (print 64)
+                                                              (print (vector-length b5))
+                                                              (let [b6 (append-byte-vector-chunked b5 code-sec 0 (vector-length code-sec))]
+                                                                (do
+                                                                  (print 65)
+                                                                  (print (vector-length b6))
+                                                                  (let [b7 (append-byte-vector-chunked b6 data-sec 0 (vector-length data-sec))]
+                                                                    (do
+                                                                      (print 66)
+                                                                      (print (vector-length b7))
                                                                       b7)))))))))))))))))))))))))))))))))))
 (defn compile-file-mode [] (let [path (command-line-arg 1) cache-ref (ref-new (map-new)) parse-count-ref (ref-new 0) data-ref (ref-new (vector-new 8)) functions (compile-file-functions-with-cache path 10 cache-ref parse-count-ref data-ref) wasm-bytes (build-wasm-bytes-wasi functions (ref-get data-ref))] (print-wasm-module wasm-bytes)))
 (defn compile-file-mode-build-progress-debug [] (let [path (command-line-arg 1) cache-ref (ref-new (map-new)) parse-count-ref (ref-new 0) data-ref (ref-new (vector-new 8)) functions (compile-file-functions-with-cache path 10 cache-ref parse-count-ref data-ref) wasm-bytes (build-wasm-bytes-wasi-progress-debug functions (ref-get data-ref))] (do (print 67) (print (vector-length wasm-bytes)) 0)))
