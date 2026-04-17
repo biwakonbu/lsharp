@@ -693,7 +693,7 @@ fn try_infer_formatter_trio_batch(
 
     let mut by_mod: HashMap<String, Vec<(String, lsharp_types::types::TypeScheme)>> =
         HashMap::new();
-    for ((name, scheme), origin) in type_results.into_iter().zip(defn_origins.into_iter()) {
+    for ((name, scheme), origin) in type_results.into_iter().zip(defn_origins) {
         by_mod.entry(origin).or_default().push((name, scheme));
     }
 
@@ -2198,8 +2198,7 @@ pub fn compile_multi_file_incremental(
             link_module_ir_segments(&new_segments)
         };
 
-    for ((mod_name, mut entry), segments) in cache_entries.into_iter().zip(new_segments.into_iter())
-    {
+    for ((mod_name, mut entry), segments) in cache_entries.into_iter().zip(new_segments) {
         entry.set_ir(final_module.clone());
         entry.set_ir_segments(segments);
         cache.insert_module(mod_name, entry);
