@@ -5,6 +5,14 @@ use super::selfhost_bootstrap_four_layer::{
 };
 use super::support::*;
 
+fn run_bootstrap_acceptance_with_expanded_stack<T, F>(body: F) -> T
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, body)
+}
+
 // =============================================================================
 // BOOT-04 受入テスト: True stage1-stage2-stage3 bootstrap の実体比較テスト
 //
@@ -134,15 +142,385 @@ fn parse_emitted_wasm_modules(output: &str, expected_modules: usize) -> Vec<Vec<
 }
 
 fn parse_printed_i64_lines(output: &str, context: &str) -> Vec<i64> {
-    output
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| {
-            line.trim()
+    let mut values = Vec::new();
+    let mut current = String::new();
+
+    for ch in output.chars() {
+        if ch.is_ascii_digit() {
+            current.push(ch);
+            continue;
+        }
+        if ch == '-' {
+            if current.is_empty() {
+                current.push(ch);
+            } else {
+                let value = current
+                    .parse::<i64>()
+                    .unwrap_or_else(|_| panic!("{context}: 数値でない debug 出力: {current:?}"));
+                values.push(value);
+                current.clear();
+                current.push(ch);
+            }
+            continue;
+        }
+        if !current.is_empty() && current != "-" {
+            let value = current
                 .parse::<i64>()
-                .unwrap_or_else(|_| panic!("{context}: 数値でない debug 出力: {line:?}"))
-        })
-        .collect()
+                .unwrap_or_else(|_| panic!("{context}: 数値でない debug 出力: {current:?}"));
+            values.push(value);
+        }
+        current.clear();
+    }
+
+    if !current.is_empty() && current != "-" {
+        let value = current
+            .parse::<i64>()
+            .unwrap_or_else(|_| panic!("{context}: 数値でない debug 出力: {current:?}"));
+        values.push(value);
+    }
+
+    assert!(
+        !values.is_empty(),
+        "{context}: 数値が見つからない debug 出力: {output:?}"
+    );
+    values
+}
+
+fn compiler_mode_probe_args(entry_path: &'static str, probe_arg_index: usize) -> Vec<&'static str> {
+    assert!(
+        probe_arg_index >= 2,
+        "probe arg index は path より後である必要がある"
+    );
+    let mut args = vec![""; probe_arg_index + 1];
+    args[0] = "compiler";
+    args[1] = entry_path;
+    args[probe_arg_index] = "1";
+    args
+}
+
+fn run_stage1_compiler_probe(
+    entry_path: &'static str,
+    probe_arg_index: usize,
+    context: &'static str,
+) -> Vec<i64> {
+    run_bootstrap_acceptance_with_expanded_stack(move || {
+        let main_path = selfhost_main_path();
+        let selfhost_root = main_path
+            .parent()
+            .expect("App/ ディレクトリ")
+            .parent()
+            .expect("src/ ディレクトリ")
+            .parent()
+            .expect("selfhost/ ルートディレクトリ")
+            .to_path_buf();
+        let stage1_wasm = compile_file_only(&main_path);
+        assert_valid_wasm(&stage1_wasm);
+        let args = compiler_mode_probe_args(entry_path, probe_arg_index);
+        let output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+            &stage1_wasm,
+            Some(&selfhost_root),
+            &args,
+        )
+        .unwrap_or_else(|err| panic!("{context}: stage1 probe 実行に失敗: {err}"));
+        parse_printed_i64_lines(&output, context)
+    })
+}
+
+fn run_stage1_main_compiler_probe(probe_arg_index: usize, context: &'static str) -> Vec<i64> {
+    run_stage1_compiler_probe("src/App/Main.ls", probe_arg_index, context)
+}
+
+fn assert_probe_pattern(output: &[i64], pattern: &[Option<i64>], context: &str) {
+    assert_eq!(
+        output.len(),
+        pattern.len(),
+        "{context}: probe 出力長が不正: output={output:?}"
+    );
+    for (idx, expected) in pattern.iter().enumerate() {
+        if let Some(expected) = expected {
+            assert_eq!(
+                output[idx], *expected,
+                "{context}: probe marker mismatch at index {idx}: output={output:?}"
+            );
+        }
+    }
+}
+
+fn assert_probe_prefix(output: &[i64], pattern: &[Option<i64>], context: &str) {
+    assert!(
+        output.len() >= pattern.len(),
+        "{context}: probe 出力が短すぎる: output={output:?}"
+    );
+    for (idx, expected) in pattern.iter().enumerate() {
+        if let Some(expected) = expected {
+            assert_eq!(
+                output[idx], *expected,
+                "{context}: probe prefix mismatch at index {idx}: output={output:?}"
+            );
+        }
+    }
+}
+
+fn assert_probe_markers_in_order(output: &[i64], markers: &[i64], context: &str) {
+    let mut next = 0usize;
+    for value in output {
+        if next < markers.len() && *value == markers[next] {
+            next += 1;
+        }
+    }
+    assert_eq!(
+        next,
+        markers.len(),
+        "{context}: probe marker が不足: output={output:?}"
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_stage1_compile_phase_probe_reaches_compile_complete() {
+    let output = run_stage1_main_compiler_probe(
+        18,
+        "stage1 compile-phase probe should finish Main.ls compile phase",
+    );
+    assert_probe_pattern(
+        &output,
+        &[
+            Some(150),
+            None,
+            Some(151),
+            None,
+            Some(152),
+            None,
+            Some(153),
+            None,
+            Some(154),
+            None,
+        ],
+        "stage1 compile-phase probe",
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_stage1_build_phase_probe_reaches_build_complete() {
+    let output =
+        run_stage1_main_compiler_probe(14, "stage1 build-phase probe should finish Main.ls build");
+    assert_probe_pattern(
+        &output,
+        &[
+            Some(101),
+            Some(102),
+            None,
+            Some(104),
+            None,
+            Some(50),
+            None,
+            Some(51),
+            None,
+            Some(52),
+            None,
+            Some(53),
+            None,
+            Some(54),
+            None,
+            Some(55),
+            None,
+            Some(56),
+            None,
+            Some(57),
+            None,
+            Some(58),
+            None,
+            Some(59),
+            None,
+            Some(60),
+            None,
+            Some(61),
+            None,
+            Some(62),
+            None,
+            Some(63),
+            None,
+            Some(64),
+            None,
+            Some(65),
+            None,
+            Some(66),
+            None,
+            Some(103),
+            None,
+        ],
+        "stage1 build-phase probe",
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_stage1_cache_probe_emits_cache_marker() {
+    let output = run_stage1_main_compiler_probe(8, "stage1 cache probe should emit cache marker");
+    assert_probe_pattern(&output, &[Some(80), None, None, None], "stage1 cache probe");
+}
+
+#[test]
+fn test_e2e_bootstrap_stage1_ast_chunked_step_progress_probe_reaches_first_pair_complete() {
+    let output = run_stage1_main_compiler_probe(
+        20,
+        "stage1 ast chunked step progress probe should finish first pair",
+    );
+    assert_probe_pattern(
+        &output,
+        &[Some(150), None, Some(151), None, Some(153), None],
+        "stage1 ast chunked step progress probe",
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_stage1_module_resolver_first_defn_source_probe_reaches_prefix() {
+    let output = run_stage1_compiler_probe(
+        "src/App/ModuleResolver.ls",
+        22,
+        "stage1 ModuleResolver first-defn source probe should reach prefix",
+    );
+    assert_probe_prefix(
+        &output,
+        &[Some(301), None, Some(302), None],
+        "stage1 ModuleResolver first-defn source probe",
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_stage1_module_resolver_ast_chunked_step_probe_reaches_completion() {
+    let output = run_stage1_compiler_probe(
+        "src/App/ModuleResolver.ls",
+        20,
+        "stage1 ModuleResolver ast chunked step probe should finish file compile",
+    );
+    assert_probe_pattern(
+        &output,
+        &[Some(150), None, Some(151), None, Some(153), None],
+        "stage1 ModuleResolver ast chunked step probe",
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_stage1_backend_compiler_pair_progress_probe_reaches_final_markers() {
+    let output = run_stage1_compiler_probe(
+        "src/Backend/Wasm/Compiler.ls",
+        19,
+        "stage1 Backend/Wasm/Compiler pair progress probe should finish compile",
+    );
+    assert_probe_markers_in_order(
+        &output,
+        &[150, 151, 152, 160, 161, 153, 154],
+        "stage1 Backend/Wasm/Compiler pair progress probe",
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_stage1_compiler_mode_pair_progress_probe_reaches_final_markers() {
+    let output = run_stage1_compiler_probe(
+        "src/App/CompilerMode.ls",
+        19,
+        "stage1 App/CompilerMode pair progress probe should finish compile",
+    );
+    assert_probe_markers_in_order(
+        &output,
+        &[150, 151, 152, 160, 161, 153, 154],
+        "stage1 App/CompilerMode pair progress probe",
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_stage1_compiler_mode_token_debug_emits_token_count() {
+    let output = run_stage1_compiler_probe(
+        "src/App/CompilerMode.ls",
+        7,
+        "stage1 App/CompilerMode token debug should finish lexing",
+    );
+    assert!(
+        output.len() >= 3 && output[0] == 72,
+        "stage1 App/CompilerMode token debug: unexpected output={output:?}"
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_stage1_pipeline_smoke_pair_progress_probe_reaches_final_markers() {
+    let output = run_stage1_compiler_probe(
+        "src/App/PipelineSmoke.ls",
+        19,
+        "stage1 App/PipelineSmoke pair progress probe should finish compile",
+    );
+    assert_probe_markers_in_order(
+        &output,
+        &[150, 151, 152, 160, 161, 153, 154],
+        "stage1 App/PipelineSmoke pair progress probe",
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_stage1_native_codegen_pair_progress_probe_reaches_final_markers() {
+    let output = run_stage1_compiler_probe(
+        "src/Backend/Native/NativeCodegen.ls",
+        19,
+        "stage1 Backend/Native/NativeCodegen pair progress probe should finish compile",
+    );
+    assert_probe_markers_in_order(
+        &output,
+        &[150, 151, 152, 160, 161, 153, 154],
+        "stage1 Backend/Native/NativeCodegen pair progress probe",
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_stage1_native_codegen_cache_pairs_probe_emits_counts() {
+    let output = run_stage1_compiler_probe(
+        "src/Backend/Native/NativeCodegen.ls",
+        9,
+        "stage1 Backend/Native/NativeCodegen cache pairs probe should finish import loading",
+    );
+    assert_probe_prefix(
+        &output,
+        &[Some(81), None, None, None],
+        "stage1 Backend/Native/NativeCodegen cache pairs probe",
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_stage1_native_codegen_cache_probe_emits_marker() {
+    let output = run_stage1_compiler_probe(
+        "src/Backend/Native/NativeCodegen.ls",
+        8,
+        "stage1 Backend/Native/NativeCodegen cache probe should finish entry parse",
+    );
+    assert_probe_prefix(
+        &output,
+        &[Some(80), None, None, None],
+        "stage1 Backend/Native/NativeCodegen cache probe",
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_stage1_native_codegen_ir_debug_emits_decl_count() {
+    let output = run_stage1_compiler_probe(
+        "src/Backend/Native/NativeCodegen.ls",
+        6,
+        "stage1 Backend/Native/NativeCodegen ir debug should finish parse",
+    );
+    assert_probe_prefix(
+        &output,
+        &[Some(71), None, None],
+        "stage1 Backend/Native/NativeCodegen ir debug",
+    );
+}
+
+#[test]
+fn test_e2e_bootstrap_stage1_native_codegen_token_debug_emits_token_count() {
+    let output = run_stage1_compiler_probe(
+        "src/Backend/Native/NativeCodegen.ls",
+        7,
+        "stage1 Backend/Native/NativeCodegen token debug should finish lexing",
+    );
+    assert!(
+        output.len() >= 3 && output[0] == 72,
+        "stage1 Backend/Native/NativeCodegen token debug: unexpected output={output:?}"
+    );
 }
 
 /// selfhost runtime 10-import layout の Wasm モジュールを instantiate して i64 export を呼び出す
@@ -438,269 +816,275 @@ fn test_e2e_bootstrap_stage1_stage2_match_fib_runtime_layout() {
 /// 直接 assert し、stage3 から minimal.ls の再コンパイルまで通す。
 #[test]
 fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
-    let main_path = selfhost_main_path();
-    let artifact_id = bootstrap_diff_artifact_id();
-    let selfhost_root = main_path
-        .parent()
-        .expect("App/ ディレクトリ")
-        .parent()
-        .expect("src/ ディレクトリ")
-        .parent()
-        .expect("selfhost/ ルートディレクトリ")
-        .to_path_buf();
-    let fixture_dir =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
+    run_bootstrap_acceptance_with_expanded_stack(|| {
+        let main_path = selfhost_main_path();
+        let artifact_id = bootstrap_diff_artifact_id();
+        let selfhost_root = main_path
+            .parent()
+            .expect("App/ ディレクトリ")
+            .parent()
+            .expect("src/ ディレクトリ")
+            .parent()
+            .expect("selfhost/ ルートディレクトリ")
+            .to_path_buf();
+        let fixture_dir =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
 
-    let stage1_wasm = compile_file_only(&main_path);
-    assert_valid_wasm(&stage1_wasm);
+        let stage1_wasm = compile_file_only(&main_path);
+        assert_valid_wasm(&stage1_wasm);
 
-    // --- Phase A: stage1 が Main.ls から stage2 self compiler を決定論的に出力すること ---
-    let stage2_output_run1 = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm,
-        Some(&selfhost_root),
-        &["compiler", "src/App/Main.ls"],
-    )
-    .expect("fixed-point Phase A: stage1 run_1 が Main.ls の self-compile に失敗");
-    let stage2_output_run2 = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm,
-        Some(&selfhost_root),
-        &["compiler", "src/App/Main.ls"],
-    )
-    .expect("fixed-point Phase A: stage1 run_2 が Main.ls の self-compile に失敗");
+        // --- Phase A: stage1 が Main.ls から stage2 self compiler を決定論的に出力すること ---
+        let stage2_output_run1 = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+            &stage1_wasm,
+            Some(&selfhost_root),
+            &["compiler", "src/App/Main.ls"],
+        )
+        .expect("fixed-point Phase A: stage1 run_1 が Main.ls の self-compile に失敗");
+        let stage2_output_run2 = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+            &stage1_wasm,
+            Some(&selfhost_root),
+            &["compiler", "src/App/Main.ls"],
+        )
+        .expect("fixed-point Phase A: stage1 run_2 が Main.ls の self-compile に失敗");
 
-    assert_eq!(
-        stage2_output_run1, stage2_output_run2,
-        "BOOT-04 fixed-point Phase A 失敗: stage1 が非決定的な stage2 self compiler を出力"
-    );
+        assert_eq!(
+            stage2_output_run1, stage2_output_run2,
+            "BOOT-04 fixed-point Phase A 失敗: stage1 が非決定的な stage2 self compiler を出力"
+        );
 
-    let stage2_modules_run1 = parse_emitted_wasm_modules(&stage2_output_run1, 1);
-    let stage2_modules_run2 = parse_emitted_wasm_modules(&stage2_output_run2, 1);
+        let stage2_modules_run1 = parse_emitted_wasm_modules(&stage2_output_run1, 1);
+        let stage2_modules_run2 = parse_emitted_wasm_modules(&stage2_output_run2, 1);
 
-    assert_eq!(
-        stage2_modules_run1[0], stage2_modules_run2[0],
-        "BOOT-04 fixed-point Phase A 失敗: stage2 self compiler bytes が 2 回の実行で一致しない"
-    );
-    assert_valid_wasm(&stage2_modules_run1[0]);
+        assert_eq!(
+            stage2_modules_run1[0], stage2_modules_run2[0],
+            "BOOT-04 fixed-point Phase A 失敗: stage2 self compiler bytes が 2 回の実行で一致しない"
+        );
+        assert_valid_wasm(&stage2_modules_run1[0]);
 
-    let stage2_self_compiler = stage2_modules_run1[0].clone();
+        let stage2_self_compiler = stage2_modules_run1[0].clone();
 
-    eprintln!(
-        "BOOT-04 fixed-point Phase A: stage2 self compiler ({} bytes) は決定的",
-        stage2_self_compiler.len()
-    );
+        eprintln!(
+            "BOOT-04 fixed-point Phase A: stage2 self compiler ({} bytes) は決定的",
+            stage2_self_compiler.len()
+        );
 
-    // --- Phase B: stage2 が Main.ls から stage3 self compiler を決定論的に出力すること ---
-    let stage3_output_run1 = run_wasm_with_six_imports_compiler_mode_fs(
-        &stage2_self_compiler,
-        &selfhost_root,
-        &["compiler", "src/App/Main.ls"],
-    )
-    .expect("fixed-point Phase B: stage2 run_1 が Main.ls の再コンパイルに失敗");
-    let stage3_output_run2 = run_wasm_with_six_imports_compiler_mode_fs(
-        &stage2_self_compiler,
-        &selfhost_root,
-        &["compiler", "src/App/Main.ls"],
-    )
-    .expect("fixed-point Phase B: stage2 run_2 が Main.ls の再コンパイルに失敗");
+        // --- Phase B: stage2 が Main.ls から stage3 self compiler を決定論的に出力すること ---
+        let stage3_output_run1 = run_wasm_with_six_imports_compiler_mode_fs(
+            &stage2_self_compiler,
+            &selfhost_root,
+            &["compiler", "src/App/Main.ls"],
+        )
+        .expect("fixed-point Phase B: stage2 run_1 が Main.ls の再コンパイルに失敗");
+        let stage3_output_run2 = run_wasm_with_six_imports_compiler_mode_fs(
+            &stage2_self_compiler,
+            &selfhost_root,
+            &["compiler", "src/App/Main.ls"],
+        )
+        .expect("fixed-point Phase B: stage2 run_2 が Main.ls の再コンパイルに失敗");
 
-    assert_eq!(
-        stage3_output_run1, stage3_output_run2,
-        "BOOT-04 fixed-point Phase B 失敗: stage2 が非決定的な stage3 self compiler を出力"
-    );
+        assert_eq!(
+            stage3_output_run1, stage3_output_run2,
+            "BOOT-04 fixed-point Phase B 失敗: stage2 が非決定的な stage3 self compiler を出力"
+        );
 
-    let stage3_modules_run1 = parse_emitted_wasm_modules(&stage3_output_run1, 1);
-    let stage3_modules_run2 = parse_emitted_wasm_modules(&stage3_output_run2, 1);
-    assert_eq!(
-        stage3_modules_run1[0], stage3_modules_run2[0],
-        "BOOT-04 fixed-point Phase B 失敗: stage3 self compiler bytes が 2 回の実行で一致しない"
-    );
-    assert_valid_wasm(&stage3_modules_run1[0]);
+        let stage3_modules_run1 = parse_emitted_wasm_modules(&stage3_output_run1, 1);
+        let stage3_modules_run2 = parse_emitted_wasm_modules(&stage3_output_run2, 1);
+        assert_eq!(
+            stage3_modules_run1[0], stage3_modules_run2[0],
+            "BOOT-04 fixed-point Phase B 失敗: stage3 self compiler bytes が 2 回の実行で一致しない"
+        );
+        assert_valid_wasm(&stage3_modules_run1[0]);
 
-    let stage3_self_compiler = stage3_modules_run1[0].clone();
+        let stage3_self_compiler = stage3_modules_run1[0].clone();
 
-    // stage3 も実際に自己ホストコンパイラとして minimal.ls をコンパイルできることを確認する。
-    let stage4_output = run_wasm_with_six_imports_compiler_mode_fs(
-        &stage3_self_compiler,
-        &fixture_dir,
-        &["compiler", "minimal.ls"],
-    )
-    .expect("fixed-point Phase B: stage3 self compiler が minimal.ls をコンパイルできない");
-    let stage4_modules = parse_emitted_wasm_modules(&stage4_output, 1);
-    let stage4_wasm = &stage4_modules[0];
-    assert_valid_wasm(stage4_wasm);
-    let stage4_run = run_wasm_with_six_imports_compiler_mode(stage4_wasm, "", &[]);
-    assert!(
-        stage4_run.is_ok(),
-        "fixed-point Phase B: stage4 minimal 実行失敗: {:?}",
-        stage4_run.err()
-    );
+        // stage3 も実際に自己ホストコンパイラとして minimal.ls をコンパイルできることを確認する。
+        let stage4_output = run_wasm_with_six_imports_compiler_mode_fs(
+            &stage3_self_compiler,
+            &fixture_dir,
+            &["compiler", "minimal.ls"],
+        )
+        .expect("fixed-point Phase B: stage3 self compiler が minimal.ls をコンパイルできない");
+        let stage4_modules = parse_emitted_wasm_modules(&stage4_output, 1);
+        let stage4_wasm = &stage4_modules[0];
+        assert_valid_wasm(stage4_wasm);
+        let stage4_run = run_wasm_with_six_imports_compiler_mode(stage4_wasm, "", &[]);
+        assert!(
+            stage4_run.is_ok(),
+            "fixed-point Phase B: stage4 minimal 実行失敗: {:?}",
+            stage4_run.err()
+        );
 
-    let stage2_sections = extract_sections(&stage2_self_compiler);
-    let stage3_sections = extract_sections(&stage3_self_compiler);
-    let diff_at = first_diff_index(&stage2_self_compiler, &stage3_self_compiler);
-    let export_a = extract_section_bytes(&stage2_self_compiler, 7);
-    let export_b = extract_section_bytes(&stage3_self_compiler, 7);
-    let data_a = extract_section_bytes(&stage2_self_compiler, 11);
-    let data_b = extract_section_bytes(&stage3_self_compiler, 11);
+        let stage2_sections = extract_sections(&stage2_self_compiler);
+        let stage3_sections = extract_sections(&stage3_self_compiler);
+        let diff_at = first_diff_index(&stage2_self_compiler, &stage3_self_compiler);
+        let export_a = extract_section_bytes(&stage2_self_compiler, 7);
+        let export_b = extract_section_bytes(&stage3_self_compiler, 7);
+        let data_a = extract_section_bytes(&stage2_self_compiler, 11);
+        let data_b = extract_section_bytes(&stage3_self_compiler, 11);
 
-    let diff_report = [
-        "Bootstrap Diff Report".to_string(),
-        "=====================".to_string(),
-        format!("commit: {artifact_id}"),
-        "timestamp: 1970-01-01T00:00:00Z".to_string(),
-        "test: test_e2e_bootstrap_fixed_point_stage2_stage3".to_string(),
-        String::new(),
-        format!(
-            "Layer 1 (hash):    {} ({:#018x} vs {:#018x})",
-            if stage2_self_compiler == stage3_self_compiler {
-                "MATCH"
-            } else {
-                "MISMATCH"
-            },
-            super::selfhost_bootstrap_four_layer::hash_fingerprint(&stage2_self_compiler),
-            super::selfhost_bootstrap_four_layer::hash_fingerprint(&stage3_self_compiler)
-        ),
-        format!(
-            "Layer 2 (export):  {} ({} bytes vs {} bytes)",
-            if export_a == export_b {
-                "MATCH"
-            } else {
-                "MISMATCH"
-            },
-            export_a.as_ref().map_or(0, Vec::len),
-            export_b.as_ref().map_or(0, Vec::len)
-        ),
-        format!(
-            "Layer 3 (data):    {}",
-            match (&data_a, &data_b) {
-                (None, None) => "ABSENT".to_string(),
-                (Some(left), Some(right)) if left == right => {
-                    format!("MATCH ({} bytes vs {} bytes)", left.len(), right.len())
+        let diff_report = [
+            "Bootstrap Diff Report".to_string(),
+            "=====================".to_string(),
+            format!("commit: {artifact_id}"),
+            "timestamp: 1970-01-01T00:00:00Z".to_string(),
+            "test: test_e2e_bootstrap_fixed_point_stage2_stage3".to_string(),
+            String::new(),
+            format!(
+                "Layer 1 (hash):    {} ({:#018x} vs {:#018x})",
+                if stage2_self_compiler == stage3_self_compiler {
+                    "MATCH"
+                } else {
+                    "MISMATCH"
+                },
+                super::selfhost_bootstrap_four_layer::hash_fingerprint(&stage2_self_compiler),
+                super::selfhost_bootstrap_four_layer::hash_fingerprint(&stage3_self_compiler)
+            ),
+            format!(
+                "Layer 2 (export):  {} ({} bytes vs {} bytes)",
+                if export_a == export_b {
+                    "MATCH"
+                } else {
+                    "MISMATCH"
+                },
+                export_a.as_ref().map_or(0, Vec::len),
+                export_b.as_ref().map_or(0, Vec::len)
+            ),
+            format!(
+                "Layer 3 (data):    {}",
+                match (&data_a, &data_b) {
+                    (None, None) => "ABSENT".to_string(),
+                    (Some(left), Some(right)) if left == right => {
+                        format!("MATCH ({} bytes vs {} bytes)", left.len(), right.len())
+                    }
+                    (Some(left), Some(right)) => {
+                        format!("MISMATCH ({} bytes vs {} bytes)", left.len(), right.len())
+                    }
+                    (Some(left), None) => format!("MISMATCH ({} bytes vs absent)", left.len()),
+                    (None, Some(right)) => format!("MISMATCH (absent vs {} bytes)", right.len()),
                 }
-                (Some(left), Some(right)) => {
-                    format!("MISMATCH ({} bytes vs {} bytes)", left.len(), right.len())
-                }
-                (Some(left), None) => format!("MISMATCH ({} bytes vs absent)", left.len()),
-                (None, Some(right)) => format!("MISMATCH (absent vs {} bytes)", right.len()),
-            }
-        ),
-        "Layer 4 (diag):    MATCH (0 vs 0)".to_string(),
-        String::new(),
-        format!("stage1_a.wasm: {} bytes", stage2_self_compiler.len()),
-        format!("stage1_b.wasm: {} bytes", stage3_self_compiler.len()),
-        format!("first_diff: {diff_at:?}"),
-        String::new(),
-    ]
-    .join("\n");
+            ),
+            "Layer 4 (diag):    MATCH (0 vs 0)".to_string(),
+            String::new(),
+            format!("stage1_a.wasm: {} bytes", stage2_self_compiler.len()),
+            format!("stage1_b.wasm: {} bytes", stage3_self_compiler.len()),
+            format!("first_diff: {diff_at:?}"),
+            String::new(),
+        ]
+        .join("\n");
 
-    write_bootstrap_diff_artifact(&BootstrapDiffArtifactFixture {
-        artifact_id: &artifact_id,
-        test_name: "test_e2e_bootstrap_fixed_point_stage2_stage3",
-        left_key: "a",
-        right_key: "b",
-        left_label: "stage1_a",
-        right_label: "stage1_b",
-        left_wasm: Some(&stage2_self_compiler),
-        right_wasm: Some(&stage3_self_compiler),
-        diff_report: &diff_report,
-        metadata: serde_json::json!({
-            "commit_sha": artifact_id,
-            "timestamp": "1970-01-01T00:00:00Z",
-            "test_name": "test_e2e_bootstrap_fixed_point_stage2_stage3",
-            "stage1_a_size": stage2_self_compiler.len(),
-            "stage1_b_size": stage3_self_compiler.len(),
-            "layers": {
-                "hash": if stage2_self_compiler == stage3_self_compiler { "match" } else { "mismatch" },
-                "export": if export_a == export_b { "match" } else { "mismatch" },
-                "data": if data_a == data_b { "match" } else { "mismatch" },
-                "diagnostics": "match"
-            },
-            "first_diff": diff_at
-        }),
-        left_sections: Some(serde_json::json!(stage2_sections)),
-        right_sections: Some(serde_json::json!(stage3_sections)),
-        left_export: export_a.as_deref(),
-        right_export: export_b.as_deref(),
-        left_data: data_a.as_deref(),
-        right_data: data_b.as_deref(),
-    });
+        write_bootstrap_diff_artifact(&BootstrapDiffArtifactFixture {
+            artifact_id: &artifact_id,
+            test_name: "test_e2e_bootstrap_fixed_point_stage2_stage3",
+            left_key: "a",
+            right_key: "b",
+            left_label: "stage1_a",
+            right_label: "stage1_b",
+            left_wasm: Some(&stage2_self_compiler),
+            right_wasm: Some(&stage3_self_compiler),
+            diff_report: &diff_report,
+            metadata: serde_json::json!({
+                "commit_sha": artifact_id,
+                "timestamp": "1970-01-01T00:00:00Z",
+                "test_name": "test_e2e_bootstrap_fixed_point_stage2_stage3",
+                "stage1_a_size": stage2_self_compiler.len(),
+                "stage1_b_size": stage3_self_compiler.len(),
+                "layers": {
+                    "hash": if stage2_self_compiler == stage3_self_compiler { "match" } else { "mismatch" },
+                    "export": if export_a == export_b { "match" } else { "mismatch" },
+                    "data": if data_a == data_b { "match" } else { "mismatch" },
+                    "diagnostics": "match"
+                },
+                "first_diff": diff_at
+            }),
+            left_sections: Some(serde_json::json!(stage2_sections)),
+            right_sections: Some(serde_json::json!(stage3_sections)),
+            left_export: export_a.as_deref(),
+            right_export: export_b.as_deref(),
+            left_data: data_a.as_deref(),
+            right_data: data_b.as_deref(),
+        });
 
-    assert!(
-        stage2_self_compiler == stage3_self_compiler,
-        "BOOT-04 fixed-point 失敗: stage2 ({} bytes) != stage3 ({} bytes), \
+        assert!(
+            stage2_self_compiler == stage3_self_compiler,
+            "BOOT-04 fixed-point 失敗: stage2 ({} bytes) != stage3 ({} bytes), \
          first_diff={diff_at:?}, stage2_sections={stage2_sections:?}, stage3_sections={stage3_sections:?}",
-        stage2_self_compiler.len(),
-        stage3_self_compiler.len(),
-    );
+            stage2_self_compiler.len(),
+            stage3_self_compiler.len(),
+        );
 
-    eprintln!(
-        "BOOT-04 fixed-point 達成: stage2 == stage3 ({} bytes)",
-        stage2_self_compiler.len()
-    );
+        eprintln!(
+            "BOOT-04 fixed-point 達成: stage2 == stage3 ({} bytes)",
+            stage2_self_compiler.len()
+        );
+    });
 }
 
 #[test]
 fn test_e2e_bootstrap_fixed_point_minimal_build_progress_matches_stage2_stage3() {
-    let main_path = selfhost_main_path();
-    let selfhost_root = main_path
-        .parent()
-        .expect("App/ ディレクトリ")
-        .parent()
-        .expect("src/ ディレクトリ")
-        .parent()
-        .expect("selfhost/ ルートディレクトリ")
-        .to_path_buf();
-    let fixture_dir =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
+    run_bootstrap_acceptance_with_expanded_stack(|| {
+        let main_path = selfhost_main_path();
+        let selfhost_root = main_path
+            .parent()
+            .expect("App/ ディレクトリ")
+            .parent()
+            .expect("src/ ディレクトリ")
+            .parent()
+            .expect("selfhost/ ルートディレクトリ")
+            .to_path_buf();
+        let fixture_dir =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures");
 
-    let stage1_wasm = compile_file_only(&main_path);
-    assert_valid_wasm(&stage1_wasm);
+        let stage1_wasm = compile_file_only(&main_path);
+        assert_valid_wasm(&stage1_wasm);
 
-    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm,
-        Some(&selfhost_root),
-        &["compiler", "src/App/Main.ls"],
-    )
-    .expect("minimal-build-progress: stage1 が Main.ls の self-compile に失敗");
-    let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
-    let stage2_self_compiler = stage2_modules[0].clone();
-    assert_valid_wasm(&stage2_self_compiler);
+        let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+            &stage1_wasm,
+            Some(&selfhost_root),
+            &["compiler", "src/App/Main.ls"],
+        )
+        .expect("minimal-build-progress: stage1 が Main.ls の self-compile に失敗");
+        let stage2_modules = parse_emitted_wasm_modules(&stage2_output, 1);
+        let stage2_self_compiler = stage2_modules[0].clone();
+        assert_valid_wasm(&stage2_self_compiler);
 
-    let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
-        &stage2_self_compiler,
-        &selfhost_root,
-        &["compiler", "src/App/Main.ls"],
-    )
-    .expect("minimal-build-progress: stage2 が Main.ls の再コンパイルに失敗");
-    let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
-    let stage3_self_compiler = stage3_modules[0].clone();
-    assert_valid_wasm(&stage3_self_compiler);
+        let stage3_output = run_wasm_with_six_imports_compiler_mode_fs(
+            &stage2_self_compiler,
+            &selfhost_root,
+            &["compiler", "src/App/Main.ls"],
+        )
+        .expect("minimal-build-progress: stage2 が Main.ls の再コンパイルに失敗");
+        let stage3_modules = parse_emitted_wasm_modules(&stage3_output, 1);
+        let stage3_self_compiler = stage3_modules[0].clone();
+        assert_valid_wasm(&stage3_self_compiler);
 
-    let stage2_progress = run_wasm_with_six_imports_compiler_mode_fs(
-        &stage2_self_compiler,
-        &fixture_dir,
-        &["compiler", "minimal.ls", "", "", "", "build-progress"],
-    )
-    .expect("minimal-build-progress: stage2 compiler が minimal.ls build-progress 実行に失敗");
-    let stage3_progress = run_wasm_with_six_imports_compiler_mode_fs(
-        &stage3_self_compiler,
-        &fixture_dir,
-        &["compiler", "minimal.ls", "", "", "", "build-progress"],
-    )
-    .expect("minimal-build-progress: stage3 compiler が minimal.ls build-progress 実行に失敗");
+        let stage2_progress = run_wasm_with_six_imports_compiler_mode_fs(
+            &stage2_self_compiler,
+            &fixture_dir,
+            &["compiler", "minimal.ls", "", "", "", "build-progress"],
+        )
+        .expect("minimal-build-progress: stage2 compiler が minimal.ls build-progress 実行に失敗");
+        let stage3_progress = run_wasm_with_six_imports_compiler_mode_fs(
+            &stage3_self_compiler,
+            &fixture_dir,
+            &["compiler", "minimal.ls", "", "", "", "build-progress"],
+        )
+        .expect("minimal-build-progress: stage3 compiler が minimal.ls build-progress 実行に失敗");
 
-    let stage2_values = parse_printed_i64_lines(&stage2_progress, "minimal-build-progress stage2");
-    let stage3_values = parse_printed_i64_lines(&stage3_progress, "minimal-build-progress stage3");
+        let stage2_values =
+            parse_printed_i64_lines(&stage2_progress, "minimal-build-progress stage2");
+        let stage3_values =
+            parse_printed_i64_lines(&stage3_progress, "minimal-build-progress stage3");
 
-    eprintln!(
-        "BOOT-04 minimal-build-progress stage2={:?} stage3={:?}",
-        stage2_values, stage3_values
-    );
+        eprintln!(
+            "BOOT-04 minimal-build-progress stage2={:?} stage3={:?}",
+            stage2_values, stage3_values
+        );
 
-    assert_eq!(
-        stage2_values, stage3_values,
-        "BOOT-04 minimal-build-progress mismatch: stage2={stage2_values:?}, stage3={stage3_values:?}"
-    );
+        assert_eq!(
+            stage2_values, stage3_values,
+            "BOOT-04 minimal-build-progress mismatch: stage2={stage2_values:?}, stage3={stage3_values:?}"
+        );
+    });
 }
 
 /// CP-01 / BOOT-04: stage0(Rust) から stage1 self compiler と stage2 self compiler を得る。
@@ -746,27 +1130,35 @@ fn build_stage2_self_compiler_from_main() -> (Vec<u8>, std::path::PathBuf) {
 /// stage2 自己コンパイラが **同一バイト列** で再出力できること（決定性の固定点エビデンス）
 #[test]
 fn test_e2e_bootstrap_stage2_compiler_wasmemit_modules_deterministic() {
-    let (stage2, root) = build_stage2_self_compiler_from_main();
+    run_bootstrap_acceptance_with_expanded_stack(|| {
+        let (stage2, root) = build_stage2_self_compiler_from_main();
 
-    for rel in [
-        "src/Backend/Wasm/Compiler.ls",
-        "src/Backend/Wasm/WasmEmit.ls",
-    ] {
-        let out_a = run_wasm_with_six_imports_compiler_mode_fs(&stage2, &root, &["compiler", rel])
-            .unwrap_or_else(|e| panic!("CP-01: stage2 が {rel} を 1 回目コンパイルできない: {e}"));
-        let out_b = run_wasm_with_six_imports_compiler_mode_fs(&stage2, &root, &["compiler", rel])
-            .unwrap_or_else(|e| panic!("CP-01: stage2 が {rel} を 2 回目コンパイルできない: {e}"));
+        for rel in [
+            "src/Backend/Wasm/Compiler.ls",
+            "src/Backend/Wasm/WasmEmit.ls",
+        ] {
+            let out_a =
+                run_wasm_with_six_imports_compiler_mode_fs(&stage2, &root, &["compiler", rel])
+                    .unwrap_or_else(|e| {
+                        panic!("CP-01: stage2 が {rel} を 1 回目コンパイルできない: {e}")
+                    });
+            let out_b =
+                run_wasm_with_six_imports_compiler_mode_fs(&stage2, &root, &["compiler", rel])
+                    .unwrap_or_else(|e| {
+                        panic!("CP-01: stage2 が {rel} を 2 回目コンパイルできない: {e}")
+                    });
 
-        assert_eq!(out_a, out_b, "CP-01: stage2 の {rel} 出力が非決定的");
+            assert_eq!(out_a, out_b, "CP-01: stage2 の {rel} 出力が非決定的");
 
-        let mods = parse_emitted_wasm_modules(&out_a, 1);
-        assert_eq!(
-            mods.len(),
-            1,
-            "CP-01: {rel} のコンパイル出力は 1 wasm モジュールであるべき"
-        );
-        assert_valid_wasm(&mods[0]);
-    }
+            let mods = parse_emitted_wasm_modules(&out_a, 1);
+            assert_eq!(
+                mods.len(),
+                1,
+                "CP-01: {rel} のコンパイル出力は 1 wasm モジュールであるべき"
+            );
+            assert_valid_wasm(&mods[0]);
+        }
+    });
 }
 
 #[test]
@@ -1139,193 +1531,199 @@ fn compile_fixed_input_target_with_rust_incremental(
 
 #[test]
 fn test_e2e_bootstrap_stage2_self_feed_fixed_input_set() {
-    let (stage2, root) = build_stage2_self_compiler_from_main();
-    let artifact_id = bootstrap_diff_artifact_id();
-    let repo_root = selfhost_project_root();
-    let targets = fixed_input_set_self_feed_targets();
+    run_bootstrap_acceptance_with_expanded_stack(|| {
+        let (stage2, root) = build_stage2_self_compiler_from_main();
+        let artifact_id = bootstrap_diff_artifact_id();
+        let repo_root = selfhost_project_root();
+        let targets = fixed_input_set_self_feed_targets();
 
-    assert_eq!(
-        targets.len(),
-        54,
-        "CP-01: fixed input set は selfhost/stdlib/examples の合計 54 件であるべき"
-    );
-
-    let mut compiled = Vec::new();
-    let mut failures = Vec::new();
-    for target in &targets {
-        let root_dir = match target.root {
-            FixedInputSetRoot::Selfhost => &root,
-            FixedInputSetRoot::Repo => &repo_root,
-        };
-        let out_a = run_wasm_with_six_imports_compiler_mode_fs(
-            &stage2,
-            root_dir,
-            &["compiler", target.path.as_str()],
+        assert_eq!(
+            targets.len(),
+            54,
+            "CP-01: fixed input set は selfhost/stdlib/examples の合計 54 件であるべき"
         );
-        let out_b = run_wasm_with_six_imports_compiler_mode_fs(
-            &stage2,
-            root_dir,
-            &["compiler", target.path.as_str()],
-        );
-        match (out_a, out_b) {
-            (Ok(output_a), Ok(output_b)) => {
-                if output_a != output_b {
-                    failures.push(serde_json::json!({
-                        "path": target.path,
-                        "root": target.root.label(),
-                        "error": "stage2 self-feed 出力が非決定的",
-                    }));
-                    continue;
-                }
 
-                let parsed = std::panic::catch_unwind(|| parse_emitted_wasm_modules(&output_a, 1));
-                let Ok(modules_a) = parsed else {
-                    failures.push(serde_json::json!({
-                        "path": target.path,
-                        "root": target.root.label(),
-                        "error": "stage2 出力が単一 wasm モジュールとして復元できない",
-                    }));
-                    continue;
-                };
-                let parsed = std::panic::catch_unwind(|| parse_emitted_wasm_modules(&output_b, 1));
-                let Ok(modules_b) = parsed else {
-                    failures.push(serde_json::json!({
-                        "path": target.path,
-                        "root": target.root.label(),
-                        "error": "stage2 2回目出力が単一 wasm モジュールとして復元できない",
-                    }));
-                    continue;
-                };
-                let wasm_a = &modules_a[0];
-                let wasm_b = &modules_b[0];
-                if std::panic::catch_unwind(|| assert_valid_wasm(wasm_a)).is_err() {
-                    failures.push(serde_json::json!({
-                        "path": target.path,
-                        "root": target.root.label(),
-                        "error": "stage2 出力 wasm の検証に失敗",
-                    }));
-                    continue;
-                }
-                if std::panic::catch_unwind(|| assert_valid_wasm(wasm_b)).is_err() {
-                    failures.push(serde_json::json!({
-                        "path": target.path,
-                        "root": target.root.label(),
-                        "error": "stage2 2回目出力 wasm の検証に失敗",
-                    }));
-                    continue;
-                }
-                if wasm_a != wasm_b {
-                    failures.push(serde_json::json!({
-                        "path": target.path,
-                        "root": target.root.label(),
-                        "error": "stage2 self-feed wasm が byte-identical でない",
-                    }));
-                    continue;
-                }
-                compiled.push(serde_json::json!({
+        let mut compiled = Vec::new();
+        let mut failures = Vec::new();
+        for target in &targets {
+            let root_dir = match target.root {
+                FixedInputSetRoot::Selfhost => &root,
+                FixedInputSetRoot::Repo => &repo_root,
+            };
+            let out_a = run_wasm_with_six_imports_compiler_mode_fs(
+                &stage2,
+                root_dir,
+                &["compiler", target.path.as_str()],
+            );
+            let out_b = run_wasm_with_six_imports_compiler_mode_fs(
+                &stage2,
+                root_dir,
+                &["compiler", target.path.as_str()],
+            );
+            match (out_a, out_b) {
+                (Ok(output_a), Ok(output_b)) => {
+                    if output_a != output_b {
+                        failures.push(serde_json::json!({
+                            "path": target.path,
+                            "root": target.root.label(),
+                            "error": "stage2 self-feed 出力が非決定的",
+                        }));
+                        continue;
+                    }
+
+                    let parsed =
+                        std::panic::catch_unwind(|| parse_emitted_wasm_modules(&output_a, 1));
+                    let Ok(modules_a) = parsed else {
+                        failures.push(serde_json::json!({
+                            "path": target.path,
+                            "root": target.root.label(),
+                            "error": "stage2 出力が単一 wasm モジュールとして復元できない",
+                        }));
+                        continue;
+                    };
+                    let parsed =
+                        std::panic::catch_unwind(|| parse_emitted_wasm_modules(&output_b, 1));
+                    let Ok(modules_b) = parsed else {
+                        failures.push(serde_json::json!({
+                            "path": target.path,
+                            "root": target.root.label(),
+                            "error": "stage2 2回目出力が単一 wasm モジュールとして復元できない",
+                        }));
+                        continue;
+                    };
+                    let wasm_a = &modules_a[0];
+                    let wasm_b = &modules_b[0];
+                    if std::panic::catch_unwind(|| assert_valid_wasm(wasm_a)).is_err() {
+                        failures.push(serde_json::json!({
+                            "path": target.path,
+                            "root": target.root.label(),
+                            "error": "stage2 出力 wasm の検証に失敗",
+                        }));
+                        continue;
+                    }
+                    if std::panic::catch_unwind(|| assert_valid_wasm(wasm_b)).is_err() {
+                        failures.push(serde_json::json!({
+                            "path": target.path,
+                            "root": target.root.label(),
+                            "error": "stage2 2回目出力 wasm の検証に失敗",
+                        }));
+                        continue;
+                    }
+                    if wasm_a != wasm_b {
+                        failures.push(serde_json::json!({
+                            "path": target.path,
+                            "root": target.root.label(),
+                            "error": "stage2 self-feed wasm が byte-identical でない",
+                        }));
+                        continue;
+                    }
+                    compiled.push(serde_json::json!({
                     "path": target.path,
                     "root": target.root.label(),
                     "output_wasm_bytes": wasm_a.len(),
                     "fingerprint": super::selfhost_bootstrap_four_layer::hash_fingerprint(wasm_a),
                 }));
+                }
+                (Err(err), _) | (_, Err(err)) => failures.push(serde_json::json!({
+                    "path": target.path,
+                    "root": target.root.label(),
+                    "error": err,
+                })),
             }
-            (Err(err), _) | (_, Err(err)) => failures.push(serde_json::json!({
-                "path": target.path,
-                "root": target.root.label(),
-                "error": err,
-            })),
         }
-    }
 
-    let mut report_lines = vec![
-        "Bootstrap Fixed Input Set Self-Feed Report".to_string(),
-        "==========================================".to_string(),
-        format!("commit: {artifact_id}"),
-        "timestamp: 1970-01-01T00:00:00Z".to_string(),
-        "test: test_e2e_bootstrap_stage2_self_feed_fixed_input_set".to_string(),
-        format!("stage2_self_compiler_bytes: {}", stage2.len()),
-        format!("target_count: {}", targets.len()),
-        format!("compiled_count: {}", compiled.len()),
-        format!("failed_count: {}", failures.len()),
-        String::new(),
-    ];
-    report_lines.extend(compiled.iter().map(|entry| {
-        format!(
-            "PASS [{}] {} -> {} bytes",
-            entry["root"].as_str().unwrap_or("unknown"),
-            entry["path"].as_str().unwrap_or("<missing>"),
-            entry["output_wasm_bytes"].as_u64().unwrap_or(0)
-        )
-    }));
-    report_lines.extend(failures.iter().map(|entry| {
-        format!(
-            "FAIL [{}] {} -> {}",
-            entry["root"].as_str().unwrap_or("unknown"),
-            entry["path"].as_str().unwrap_or("<missing>"),
-            entry["error"]
-                .as_str()
-                .unwrap_or("unknown error")
-                .lines()
-                .next()
-                .unwrap_or("unknown error")
-        )
-    }));
-    let report = report_lines.join("\n");
+        let mut report_lines = vec![
+            "Bootstrap Fixed Input Set Self-Feed Report".to_string(),
+            "==========================================".to_string(),
+            format!("commit: {artifact_id}"),
+            "timestamp: 1970-01-01T00:00:00Z".to_string(),
+            "test: test_e2e_bootstrap_stage2_self_feed_fixed_input_set".to_string(),
+            format!("stage2_self_compiler_bytes: {}", stage2.len()),
+            format!("target_count: {}", targets.len()),
+            format!("compiled_count: {}", compiled.len()),
+            format!("failed_count: {}", failures.len()),
+            String::new(),
+        ];
+        report_lines.extend(compiled.iter().map(|entry| {
+            format!(
+                "PASS [{}] {} -> {} bytes",
+                entry["root"].as_str().unwrap_or("unknown"),
+                entry["path"].as_str().unwrap_or("<missing>"),
+                entry["output_wasm_bytes"].as_u64().unwrap_or(0)
+            )
+        }));
+        report_lines.extend(failures.iter().map(|entry| {
+            format!(
+                "FAIL [{}] {} -> {}",
+                entry["root"].as_str().unwrap_or("unknown"),
+                entry["path"].as_str().unwrap_or("<missing>"),
+                entry["error"]
+                    .as_str()
+                    .unwrap_or("unknown error")
+                    .lines()
+                    .next()
+                    .unwrap_or("unknown error")
+            )
+        }));
+        let report = report_lines.join("\n");
 
-    let metadata = serde_json::json!({
-        "commit_sha": artifact_id,
-        "timestamp": "1970-01-01T00:00:00Z",
-        "test_name": "test_e2e_bootstrap_stage2_self_feed_fixed_input_set",
-        "stage2_self_compiler_bytes": stage2.len(),
-        "target_count": targets.len(),
-        "compiled_count": compiled.len(),
-        "failed_count": failures.len(),
-        "compiled_targets": compiled,
-        "failed_targets": failures,
+        let metadata = serde_json::json!({
+            "commit_sha": artifact_id,
+            "timestamp": "1970-01-01T00:00:00Z",
+            "test_name": "test_e2e_bootstrap_stage2_self_feed_fixed_input_set",
+            "stage2_self_compiler_bytes": stage2.len(),
+            "target_count": targets.len(),
+            "compiled_count": compiled.len(),
+            "failed_count": failures.len(),
+            "compiled_targets": compiled,
+            "failed_targets": failures,
+        });
+        let artifact_dir =
+            write_fixed_input_set_self_feed_artifact(&artifact_id, &report, &metadata);
+
+        let written_metadata: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(artifact_dir.join("fixed-input-set-self-feed.json"))
+                .expect("CP-01 self-feed artifact JSON の読み込みに失敗"),
+        )
+        .expect("CP-01 self-feed artifact JSON は JSON であること");
+        assert_eq!(
+            written_metadata["compiled_count"].as_u64(),
+            Some(compiled.len() as u64),
+            "CP-01 self-feed artifact は compiled_count を保持すること"
+        );
+        assert_eq!(
+            written_metadata["failed_count"].as_u64(),
+            Some(failures.len() as u64),
+            "CP-01 self-feed artifact は failed_count を保持すること"
+        );
+
+        assert!(
+            failures.is_empty(),
+            "CP-01: stage2 self-feed fixed input set に失敗がある: {}",
+            serde_json::to_string_pretty(&written_metadata["failed_targets"])
+                .expect("CP-01 failure JSON serialize に失敗")
+        );
+        assert_eq!(
+            compiled.len(),
+            targets.len(),
+            "CP-01: stage2 self compiler は fixed input set 全件を再生成できるべき"
+        );
     });
-    let artifact_dir = write_fixed_input_set_self_feed_artifact(&artifact_id, &report, &metadata);
-
-    let written_metadata: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(artifact_dir.join("fixed-input-set-self-feed.json"))
-            .expect("CP-01 self-feed artifact JSON の読み込みに失敗"),
-    )
-    .expect("CP-01 self-feed artifact JSON は JSON であること");
-    assert_eq!(
-        written_metadata["compiled_count"].as_u64(),
-        Some(compiled.len() as u64),
-        "CP-01 self-feed artifact は compiled_count を保持すること"
-    );
-    assert_eq!(
-        written_metadata["failed_count"].as_u64(),
-        Some(failures.len() as u64),
-        "CP-01 self-feed artifact は failed_count を保持すること"
-    );
-
-    assert!(
-        failures.is_empty(),
-        "CP-01: stage2 self-feed fixed input set に失敗がある: {}",
-        serde_json::to_string_pretty(&written_metadata["failed_targets"])
-            .expect("CP-01 failure JSON serialize に失敗")
-    );
-    assert_eq!(
-        compiled.len(),
-        targets.len(),
-        "CP-01: stage2 self compiler は fixed input set 全件を再生成できるべき"
-    );
 }
 
 #[test]
 fn test_e2e_bootstrap_fixed_input_set_stage_chain_match_cli_module() {
-    let (stage1, stage2, selfhost_root) = build_stage1_and_stage2_self_compilers_from_main();
-    let repo_root = selfhost_project_root();
-    let target = fixed_input_set_target_by_path("src/App/Cli.ls");
-    let stage2_target =
-        compile_fixed_input_target_with_stage1(&stage1, &selfhost_root, &repo_root, &target)
-            .expect("BOOT-04: stage1 compiler が App/Cli.ls の self-feed compile に失敗");
-    let stage3_target =
-        compile_fixed_input_target_with_stage2(&stage2, &selfhost_root, &repo_root, &target)
-            .expect("BOOT-04: stage2 compiler が App/Cli.ls の self-feed compile に失敗");
-    assert_eq!(
+    run_bootstrap_acceptance_with_expanded_stack(|| {
+        let (stage1, stage2, selfhost_root) = build_stage1_and_stage2_self_compilers_from_main();
+        let repo_root = selfhost_project_root();
+        let target = fixed_input_set_target_by_path("src/App/Cli.ls");
+        let stage2_target =
+            compile_fixed_input_target_with_stage1(&stage1, &selfhost_root, &repo_root, &target)
+                .expect("BOOT-04: stage1 compiler が App/Cli.ls の self-feed compile に失敗");
+        let stage3_target =
+            compile_fixed_input_target_with_stage2(&stage2, &selfhost_root, &repo_root, &target)
+                .expect("BOOT-04: stage2 compiler が App/Cli.ls の self-feed compile に失敗");
+        assert_eq!(
         stage2_target,
         stage3_target,
         "BOOT-04: App/Cli.ls の stage chain mismatch: {}",
@@ -1341,24 +1739,30 @@ fn test_e2e_bootstrap_fixed_input_set_stage_chain_match_cli_module() {
         }))
         .expect("BOOT-04: App/Cli.ls mismatch JSON serialize に失敗")
     );
+    });
 }
 
 #[test]
 fn test_e2e_bootstrap_fixed_input_set_stage_chain_match_lsp_server_module() {
-    let (stage1, stage2, selfhost_root) = build_stage1_and_stage2_self_compilers_from_main();
-    let repo_root = selfhost_project_root();
-    let target = fixed_input_set_target_by_path("src/Tools/Lsp/LspServer.ls");
-    let stage2_target =
-        compile_fixed_input_target_with_stage1(&stage1, &selfhost_root, &repo_root, &target)
-            .expect(
-                "BOOT-04: stage1 compiler が Tools/Lsp/LspServer.ls の self-feed compile に失敗",
-            );
-    let stage3_target =
-        compile_fixed_input_target_with_stage2(&stage2, &selfhost_root, &repo_root, &target)
-            .expect(
-                "BOOT-04: stage2 compiler が Tools/Lsp/LspServer.ls の self-feed compile に失敗",
-            );
-    assert_eq!(
+    run_bootstrap_acceptance_with_expanded_stack(|| {
+        let (stage1, stage2, selfhost_root) = build_stage1_and_stage2_self_compilers_from_main();
+        let repo_root = selfhost_project_root();
+        let target = fixed_input_set_target_by_path("src/Tools/Lsp/LspServer.ls");
+        let stage2_target = compile_fixed_input_target_with_stage1(
+            &stage1,
+            &selfhost_root,
+            &repo_root,
+            &target,
+        )
+        .expect("BOOT-04: stage1 compiler が Tools/Lsp/LspServer.ls の self-feed compile に失敗");
+        let stage3_target = compile_fixed_input_target_with_stage2(
+            &stage2,
+            &selfhost_root,
+            &repo_root,
+            &target,
+        )
+        .expect("BOOT-04: stage2 compiler が Tools/Lsp/LspServer.ls の self-feed compile に失敗");
+        assert_eq!(
         stage2_target,
         stage3_target,
         "BOOT-04: Tools/Lsp/LspServer.ls の stage chain mismatch: {}",
@@ -1374,25 +1778,27 @@ fn test_e2e_bootstrap_fixed_input_set_stage_chain_match_lsp_server_module() {
         }))
         .expect("BOOT-04: Tools/Lsp/LspServer.ls mismatch JSON serialize に失敗")
     );
+    });
 }
 
 #[test]
 fn test_e2e_bootstrap_fixed_input_set_stage_chain_match() {
-    let (stage1, stage2, selfhost_root) = build_stage1_and_stage2_self_compilers_from_main();
-    let repo_root = selfhost_project_root();
-    let artifact_id = bootstrap_diff_artifact_id();
-    let targets = fixed_input_set_self_feed_targets();
+    run_bootstrap_acceptance_with_expanded_stack(|| {
+        let (stage1, stage2, selfhost_root) = build_stage1_and_stage2_self_compilers_from_main();
+        let repo_root = selfhost_project_root();
+        let artifact_id = bootstrap_diff_artifact_id();
+        let targets = fixed_input_set_self_feed_targets();
 
-    assert_eq!(
-        targets.len(),
-        54,
-        "BOOT-04: fixed input set は selfhost/stdlib/examples の合計 54 件であるべき"
-    );
+        assert_eq!(
+            targets.len(),
+            54,
+            "BOOT-04: fixed input set は selfhost/stdlib/examples の合計 54 件であるべき"
+        );
 
-    let mut matched = Vec::new();
-    let mut failures = Vec::new();
-    for target in &targets {
-        match (
+        let mut matched = Vec::new();
+        let mut failures = Vec::new();
+        for target in &targets {
+            match (
             compile_fixed_input_target_with_stage1(&stage1, &selfhost_root, &repo_root, target),
             compile_fixed_input_target_with_stage2(&stage2, &selfhost_root, &repo_root, target),
         ) {
@@ -1440,103 +1846,106 @@ fn test_e2e_bootstrap_fixed_input_set_stage_chain_match() {
                 "error": format!("stage1 compiler: {stage1_err}; stage2 compiler: {stage2_err}"),
             })),
         }
-    }
+        }
 
-    let mut report_lines = vec![
-        "Bootstrap Fixed Input Set Stage Chain Report".to_string(),
-        "===========================================".to_string(),
-        format!("commit: {artifact_id}"),
-        "timestamp: 1970-01-01T00:00:00Z".to_string(),
-        "test: test_e2e_bootstrap_fixed_input_set_stage_chain_match".to_string(),
-        format!("stage1_self_compiler_bytes: {}", stage1.len()),
-        format!("stage2_self_compiler_bytes: {}", stage2.len()),
-        format!("target_count: {}", targets.len()),
-        format!("matched_count: {}", matched.len()),
-        format!("failed_count: {}", failures.len()),
-        String::new(),
-    ];
-    report_lines.extend(matched.iter().map(|entry| {
-        format!(
-            "MATCH [{}] {} -> {} bytes",
-            entry["root"].as_str().unwrap_or("unknown"),
-            entry["path"].as_str().unwrap_or("<missing>"),
-            entry["output_wasm_bytes"].as_u64().unwrap_or(0)
-        )
-    }));
-    report_lines.extend(failures.iter().map(|entry| {
-        format!(
-            "FAIL [{}] {} -> {}",
-            entry["root"].as_str().unwrap_or("unknown"),
-            entry["path"].as_str().unwrap_or("<missing>"),
-            entry["error"]
-                .as_str()
-                .unwrap_or("unknown error")
-                .lines()
-                .next()
-                .unwrap_or("unknown error")
-        )
-    }));
-    let report = report_lines.join("\n");
+        let mut report_lines = vec![
+            "Bootstrap Fixed Input Set Stage Chain Report".to_string(),
+            "===========================================".to_string(),
+            format!("commit: {artifact_id}"),
+            "timestamp: 1970-01-01T00:00:00Z".to_string(),
+            "test: test_e2e_bootstrap_fixed_input_set_stage_chain_match".to_string(),
+            format!("stage1_self_compiler_bytes: {}", stage1.len()),
+            format!("stage2_self_compiler_bytes: {}", stage2.len()),
+            format!("target_count: {}", targets.len()),
+            format!("matched_count: {}", matched.len()),
+            format!("failed_count: {}", failures.len()),
+            String::new(),
+        ];
+        report_lines.extend(matched.iter().map(|entry| {
+            format!(
+                "MATCH [{}] {} -> {} bytes",
+                entry["root"].as_str().unwrap_or("unknown"),
+                entry["path"].as_str().unwrap_or("<missing>"),
+                entry["output_wasm_bytes"].as_u64().unwrap_or(0)
+            )
+        }));
+        report_lines.extend(failures.iter().map(|entry| {
+            format!(
+                "FAIL [{}] {} -> {}",
+                entry["root"].as_str().unwrap_or("unknown"),
+                entry["path"].as_str().unwrap_or("<missing>"),
+                entry["error"]
+                    .as_str()
+                    .unwrap_or("unknown error")
+                    .lines()
+                    .next()
+                    .unwrap_or("unknown error")
+            )
+        }));
+        let report = report_lines.join("\n");
 
-    let metadata = serde_json::json!({
-        "commit_sha": artifact_id,
-        "timestamp": "1970-01-01T00:00:00Z",
-        "test_name": "test_e2e_bootstrap_fixed_input_set_stage_chain_match",
-        "stage1_self_compiler_bytes": stage1.len(),
-        "stage2_self_compiler_bytes": stage2.len(),
-        "target_count": targets.len(),
-        "matched_count": matched.len(),
-        "failed_count": failures.len(),
-        "matched_targets": matched,
-        "failed_targets": failures,
+        let metadata = serde_json::json!({
+            "commit_sha": artifact_id,
+            "timestamp": "1970-01-01T00:00:00Z",
+            "test_name": "test_e2e_bootstrap_fixed_input_set_stage_chain_match",
+            "stage1_self_compiler_bytes": stage1.len(),
+            "stage2_self_compiler_bytes": stage2.len(),
+            "target_count": targets.len(),
+            "matched_count": matched.len(),
+            "failed_count": failures.len(),
+            "matched_targets": matched,
+            "failed_targets": failures,
+        });
+        let artifact_dir =
+            write_fixed_input_set_stage_chain_artifact(&artifact_id, &report, &metadata);
+
+        let written_metadata: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(artifact_dir.join("fixed-input-set-stage-chain.json"))
+                .expect("BOOT-04 stage-chain artifact JSON の読み込みに失敗"),
+        )
+        .expect("BOOT-04 stage-chain artifact JSON は JSON であること");
+        assert_eq!(
+            written_metadata["matched_count"].as_u64(),
+            Some(matched.len() as u64),
+            "BOOT-04 stage-chain artifact は matched_count を保持すること"
+        );
+        assert_eq!(
+            written_metadata["failed_count"].as_u64(),
+            Some(failures.len() as u64),
+            "BOOT-04 stage-chain artifact は failed_count を保持すること"
+        );
+        assert!(
+            failures.is_empty(),
+            "BOOT-04: full fixed input set stage chain compare に失敗がある: {}",
+            serde_json::to_string_pretty(&written_metadata["failed_targets"])
+                .expect("BOOT-04 failure JSON serialize に失敗")
+        );
+        assert_eq!(
+            matched.len(),
+            targets.len(),
+            "BOOT-04: full fixed input set の stage2/stage3 compare は全件一致するべき"
+        );
     });
-    let artifact_dir = write_fixed_input_set_stage_chain_artifact(&artifact_id, &report, &metadata);
-
-    let written_metadata: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(artifact_dir.join("fixed-input-set-stage-chain.json"))
-            .expect("BOOT-04 stage-chain artifact JSON の読み込みに失敗"),
-    )
-    .expect("BOOT-04 stage-chain artifact JSON は JSON であること");
-    assert_eq!(
-        written_metadata["matched_count"].as_u64(),
-        Some(matched.len() as u64),
-        "BOOT-04 stage-chain artifact は matched_count を保持すること"
-    );
-    assert_eq!(
-        written_metadata["failed_count"].as_u64(),
-        Some(failures.len() as u64),
-        "BOOT-04 stage-chain artifact は failed_count を保持すること"
-    );
-    assert!(
-        failures.is_empty(),
-        "BOOT-04: full fixed input set stage chain compare に失敗がある: {}",
-        serde_json::to_string_pretty(&written_metadata["failed_targets"])
-            .expect("BOOT-04 failure JSON serialize に失敗")
-    );
-    assert_eq!(
-        matched.len(),
-        targets.len(),
-        "BOOT-04: full fixed input set の stage2/stage3 compare は全件一致するべき"
-    );
 }
 
 #[test]
 fn test_e2e_incremental_compile_matches_full_compile_fixed_input_set() {
-    let artifact_id = bootstrap_diff_artifact_id();
-    let selfhost_root = selfhost_package_root();
-    let repo_root = selfhost_project_root();
-    let targets = fixed_input_set_self_feed_targets();
+    run_bootstrap_acceptance_with_expanded_stack(|| {
+        let artifact_id = bootstrap_diff_artifact_id();
+        let selfhost_root = selfhost_package_root();
+        let repo_root = selfhost_project_root();
+        let targets = fixed_input_set_self_feed_targets();
 
-    assert_eq!(
-        targets.len(),
-        54,
-        "INC-H1: fixed input set は selfhost/stdlib/examples の合計 54 件であるべき"
-    );
+        assert_eq!(
+            targets.len(),
+            54,
+            "INC-H1: fixed input set は selfhost/stdlib/examples の合計 54 件であるべき"
+        );
 
-    let mut matched = Vec::new();
-    let mut failures = Vec::new();
-    for target in &targets {
-        match (
+        let mut matched = Vec::new();
+        let mut failures = Vec::new();
+        for target in &targets {
+            match (
             compile_fixed_input_target_with_rust_full(&selfhost_root, &repo_root, target),
             compile_fixed_input_target_with_rust_incremental(&selfhost_root, &repo_root, target),
         ) {
@@ -1604,81 +2013,82 @@ fn test_e2e_incremental_compile_matches_full_compile_fixed_input_set() {
                 "error": format!("full compile: {full_err}; incremental compile: {incremental_err}"),
             })),
         }
-    }
+        }
 
-    let mut report_lines = vec![
-        "Incremental Fixed Input Set Compare Report".to_string(),
-        "=========================================".to_string(),
-        format!("commit: {artifact_id}"),
-        "timestamp: 1970-01-01T00:00:00Z".to_string(),
-        "test: test_e2e_incremental_compile_matches_full_compile_fixed_input_set".to_string(),
-        format!("target_count: {}", targets.len()),
-        format!("matched_count: {}", matched.len()),
-        format!("failed_count: {}", failures.len()),
-        String::new(),
-    ];
-    report_lines.extend(matched.iter().map(|entry| {
-        format!(
-            "MATCH [{}] {} -> {} bytes",
-            entry["root"].as_str().unwrap_or("unknown"),
-            entry["path"].as_str().unwrap_or("<missing>"),
-            entry["output_wasm_bytes"].as_u64().unwrap_or(0)
-        )
-    }));
-    report_lines.extend(failures.iter().map(|entry| {
-        format!(
-            "FAIL [{}] {} -> {}",
-            entry["root"].as_str().unwrap_or("unknown"),
-            entry["path"].as_str().unwrap_or("<missing>"),
-            entry["error"]
-                .as_str()
-                .unwrap_or("unknown error")
-                .lines()
-                .next()
-                .unwrap_or("unknown error")
-        )
-    }));
-    let report = report_lines.join("\n");
+        let mut report_lines = vec![
+            "Incremental Fixed Input Set Compare Report".to_string(),
+            "=========================================".to_string(),
+            format!("commit: {artifact_id}"),
+            "timestamp: 1970-01-01T00:00:00Z".to_string(),
+            "test: test_e2e_incremental_compile_matches_full_compile_fixed_input_set".to_string(),
+            format!("target_count: {}", targets.len()),
+            format!("matched_count: {}", matched.len()),
+            format!("failed_count: {}", failures.len()),
+            String::new(),
+        ];
+        report_lines.extend(matched.iter().map(|entry| {
+            format!(
+                "MATCH [{}] {} -> {} bytes",
+                entry["root"].as_str().unwrap_or("unknown"),
+                entry["path"].as_str().unwrap_or("<missing>"),
+                entry["output_wasm_bytes"].as_u64().unwrap_or(0)
+            )
+        }));
+        report_lines.extend(failures.iter().map(|entry| {
+            format!(
+                "FAIL [{}] {} -> {}",
+                entry["root"].as_str().unwrap_or("unknown"),
+                entry["path"].as_str().unwrap_or("<missing>"),
+                entry["error"]
+                    .as_str()
+                    .unwrap_or("unknown error")
+                    .lines()
+                    .next()
+                    .unwrap_or("unknown error")
+            )
+        }));
+        let report = report_lines.join("\n");
 
-    let metadata = serde_json::json!({
-        "commit_sha": artifact_id,
-        "timestamp": "1970-01-01T00:00:00Z",
-        "test_name": "test_e2e_incremental_compile_matches_full_compile_fixed_input_set",
-        "target_count": targets.len(),
-        "matched_count": matched.len(),
-        "failed_count": failures.len(),
-        "matched_targets": matched,
-        "failed_targets": failures,
+        let metadata = serde_json::json!({
+            "commit_sha": artifact_id,
+            "timestamp": "1970-01-01T00:00:00Z",
+            "test_name": "test_e2e_incremental_compile_matches_full_compile_fixed_input_set",
+            "target_count": targets.len(),
+            "matched_count": matched.len(),
+            "failed_count": failures.len(),
+            "matched_targets": matched,
+            "failed_targets": failures,
+        });
+        let artifact_dir =
+            write_fixed_input_set_incremental_compare_artifact(&artifact_id, &report, &metadata);
+
+        let written_metadata: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(artifact_dir.join("fixed-input-set-incremental-compare.json"))
+                .expect("INC-H1 artifact JSON の読み込みに失敗"),
+        )
+        .expect("INC-H1 artifact JSON は JSON であること");
+        assert_eq!(
+            written_metadata["matched_count"].as_u64(),
+            Some(matched.len() as u64),
+            "INC-H1 artifact は matched_count を保持すること"
+        );
+        assert_eq!(
+            written_metadata["failed_count"].as_u64(),
+            Some(failures.len() as u64),
+            "INC-H1 artifact は failed_count を保持すること"
+        );
+        assert!(
+            failures.is_empty(),
+            "INC-H1: fixed input set の full vs incremental compare に失敗がある: {}",
+            serde_json::to_string_pretty(&written_metadata["failed_targets"])
+                .expect("INC-H1 failure JSON serialize に失敗")
+        );
+        assert_eq!(
+            matched.len(),
+            targets.len(),
+            "INC-H1: fixed input set の full / incremental compare は全件一致するべき"
+        );
     });
-    let artifact_dir =
-        write_fixed_input_set_incremental_compare_artifact(&artifact_id, &report, &metadata);
-
-    let written_metadata: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(artifact_dir.join("fixed-input-set-incremental-compare.json"))
-            .expect("INC-H1 artifact JSON の読み込みに失敗"),
-    )
-    .expect("INC-H1 artifact JSON は JSON であること");
-    assert_eq!(
-        written_metadata["matched_count"].as_u64(),
-        Some(matched.len() as u64),
-        "INC-H1 artifact は matched_count を保持すること"
-    );
-    assert_eq!(
-        written_metadata["failed_count"].as_u64(),
-        Some(failures.len() as u64),
-        "INC-H1 artifact は failed_count を保持すること"
-    );
-    assert!(
-        failures.is_empty(),
-        "INC-H1: fixed input set の full vs incremental compare に失敗がある: {}",
-        serde_json::to_string_pretty(&written_metadata["failed_targets"])
-            .expect("INC-H1 failure JSON serialize に失敗")
-    );
-    assert_eq!(
-        matched.len(),
-        targets.len(),
-        "INC-H1: fixed input set の full / incremental compare は全件一致するべき"
-    );
 }
 
 // =============================================================================

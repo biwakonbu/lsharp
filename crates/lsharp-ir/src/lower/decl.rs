@@ -525,13 +525,21 @@ impl Lower {
         let (param_types, result_type, inferred_param_type_names) =
             if let Some(ty) = self.type_results.get(name) {
                 match ty {
-                    Type::Fun(params, ret) => {
-                        let p: Vec<IrType> = params.iter().map(type_to_ir).collect();
-                        let param_type_names = params.iter().map(type_to_name).collect();
+                    Type::Fun(inferred_params, ret) if inferred_params.len() == params.len() => {
+                        let p: Vec<IrType> = inferred_params.iter().map(type_to_ir).collect();
+                        let param_type_names = inferred_params.iter().map(type_to_name).collect();
                         let r = type_to_ir(ret);
                         (p, r, param_type_names)
                     }
-                    _ => (Vec::new(), type_to_ir(ty), vec![None; params.len()]),
+                    Type::Fun(_, ret) => {
+                        let p = vec![IrType::I64; params.len()];
+                        (p, type_to_ir(ret), vec![None; params.len()])
+                    }
+                    _ => (
+                        vec![IrType::I64; params.len()],
+                        type_to_ir(ty),
+                        vec![None; params.len()],
+                    ),
                 }
             } else {
                 let p = vec![IrType::I64; params.len()];

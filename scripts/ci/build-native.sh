@@ -30,14 +30,17 @@ mkdir -p "${ARTIFACT_DIR}"
 export LSHARP_NATIVE_PROXY_ARTIFACT_DIR="${ARTIFACT_DIR}"
 export LSHARP_NATIVE_STAGE23_GAP_REPORT="${ARTIFACT_DIR}/actual-stage23-gap.json"
 
-echo "=== native proxy bundle gate ==="
+echo "=== native representative artifact gate ==="
 echo "artifact dir: ${ARTIFACT_DIR}"
 
 cargo test -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_host_bundle_uses_canonical_artifact_contract \
   -- --exact --nocapture
 cargo test -p lsharp-wasm --test e2e \
-  e2e::selfhost_native_stage_chain::test_e2e_stage23_native_host_bundle_proxy_observations_match \
+  e2e::selfhost_native_stage_chain::test_e2e_selfhost_main_native_host_bundle_uses_representative_artifact_contract \
+  -- --exact --nocapture
+cargo test -p lsharp-wasm --test e2e \
+  e2e::selfhost_native_stage_chain::test_e2e_stage23_representative_native_host_bundle_artifact_observations_match \
   -- --exact --nocapture
 cargo test -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage23_gap::test_e2e_native_actual_stage23_gap_report_for_representative_entry \
@@ -70,4 +73,4 @@ for label in labels:
 (root / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 PY
 
-echo "native proxy bundle gate complete."
+echo "native representative artifact gate complete."

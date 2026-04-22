@@ -1,8 +1,13 @@
 //! lower モジュールのテスト
 
+use std::collections::HashMap;
+
 use super::*;
 use crate::{Instruction, Module};
-use lsharp_types::infer::Infer;
+use lsharp_types::{
+    infer::Infer,
+    types::{Type, TypeScheme},
+};
 
 /// ソースコードから IR モジュールを生成するヘルパー
 fn lower(source: &str) -> Module {
@@ -84,6 +89,47 @@ fn test_lower_function_call() {
         "(defn double [x] (* x 2))
          (defn main [] (double 21))",
         "lower_function_call",
+    );
+}
+
+#[test]
+fn test_lower_function_prefers_ast_arity_when_inferred_name_collides() {
+    let program = lsharp_syntax::parse("(defn make-if [cond then else] cond)").unwrap();
+    let expr_type_results = HashMap::new();
+    let type_results = vec![(
+        "make-if".to_string(),
+        TypeScheme::mono(Type::Fun(vec![], Box::new(Type::int()))),
+    )];
+
+    let mut lowerer = Lower::new();
+    let module = lowerer
+        .lower_program_with_expr_types(&program, &type_results, &expr_type_results)
+        .unwrap();
+    let func = module
+        .functions
+        .iter()
+        .find(|func| func.name == "make-if")
+        .unwrap();
+    let total_locals = (func.params.len() + func.locals.len()) as u32;
+    let used_locals: Vec<u32> = func
+        .body
+        .iter()
+        .filter_map(|instr| match instr {
+            Instruction::LocalGet(idx)
+            | Instruction::LocalSet(idx)
+            | Instruction::LocalTee(idx) => Some(*idx),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(
+        func.params.len(),
+        3,
+        "AST 側の引数数を優先しないと local index が壊れる: {func:?}"
+    );
+    assert!(
+        used_locals.iter().all(|idx| *idx < total_locals),
+        "local index が宣言数を超えている: total={total_locals}, used={used_locals:?}, func={func:?}"
     );
 }
 

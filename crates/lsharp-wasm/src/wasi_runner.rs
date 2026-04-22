@@ -11,7 +11,8 @@
 use wasmtime::*;
 use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
 
-const DEFAULT_MAX_WASM_STACK: usize = 16 * 1024 * 1024;
+const DEFAULT_MAX_WASM_STACK: usize = 64 * 1024 * 1024;
+const DEFAULT_STDOUT_CAPTURE_BYTES: usize = 16 * 1024 * 1024;
 
 fn configured_engine() -> Result<Engine, String> {
     let mut config = Config::new();
@@ -94,6 +95,21 @@ pub fn run_wasm_with_mode_and_args_inherit_stdin_capture(
 pub struct ExecutionOutput {
     pub stdout: String,
     pub exit_code: i32,
+}
+
+fn decode_stdout_bytes(bytes: &[u8]) -> Result<String, String> {
+    String::from_utf8(bytes.to_vec()).map_err(|e| {
+        let lossy = String::from_utf8_lossy(bytes);
+        let hex_prefix = bytes
+            .iter()
+            .take(32)
+            .map(|b| format!("{b:02x}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!(
+            "stdout の UTF-8 変換に失敗: {e}; lossy_stdout={lossy:?}; stdout_hex_prefix={hex_prefix}"
+        )
+    })
 }
 
 enum StdinMode<'a> {
@@ -188,7 +204,7 @@ fn run_wasm_wasi_capture(
     wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |t| t)
         .map_err(|e| format!("WASI リンクに失敗: {e}"))?;
 
-    let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(4 * 1024 * 1024);
+    let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(DEFAULT_STDOUT_CAPTURE_BYTES);
     let mut builder = WasiCtxBuilder::new();
     builder.stdout(stdout.clone());
     match stdin_mode {
@@ -224,13 +240,15 @@ fn run_wasm_wasi_capture(
         .get_typed_func::<(), ()>(&mut store, "_start")
         .map_err(|e| format!("_start 関数が見つかりません: {e}"))?;
     let execution = start.call(&mut store, ());
+    let mut trap_error = None;
     let exit_code = match execution {
         Ok(()) => 0,
         Err(e) => {
             if let Some(exit) = extract_i32_exit(&e) {
                 exit
             } else {
-                return Err(format!("実行に失敗: {e}"));
+                trap_error = Some(format!("実行に失敗: {e:#}"));
+                1
             }
         }
     };
@@ -239,8 +257,13 @@ fn run_wasm_wasi_capture(
     let bytes = stdout
         .try_into_inner()
         .ok_or_else(|| "stdout の取得に失敗".to_string())?;
-    let stdout = String::from_utf8(bytes.to_vec())
-        .map_err(|e| format!("stdout の UTF-8 変換に失敗: {e}"))?;
+    let stdout = decode_stdout_bytes(&bytes)?;
+    if let Some(trap_error) = trap_error {
+        if stdout.is_empty() {
+            return Err(trap_error);
+        }
+        return Err(format!("{trap_error}; stdout={stdout:?}"));
+    }
     Ok(ExecutionOutput { stdout, exit_code })
 }
 
@@ -349,7 +372,7 @@ fn run_wasm_component_capture(
     wasmtime_wasi::add_to_linker_sync(&mut linker)
         .map_err(|e| format!("WASI Preview2 リンクに失敗: {e}"))?;
 
-    let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(4 * 1024 * 1024);
+    let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(DEFAULT_STDOUT_CAPTURE_BYTES);
     let mut builder = WasiCtxBuilder::new();
     builder.stdout(stdout.clone());
     match stdin_mode {
@@ -402,8 +425,7 @@ fn run_wasm_component_capture(
     let bytes = stdout
         .try_into_inner()
         .ok_or_else(|| "stdout の取得に失敗".to_string())?;
-    let stdout = String::from_utf8(bytes.to_vec())
-        .map_err(|e| format!("stdout の UTF-8 変換に失敗: {e}"))?;
+    let stdout = decode_stdout_bytes(&bytes)?;
     Ok(ExecutionOutput { stdout, exit_code })
 }
 

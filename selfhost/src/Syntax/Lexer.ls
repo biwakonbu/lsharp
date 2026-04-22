@@ -77,21 +77,33 @@
 (defn skip-comment [src pos len]
   (if (>= pos len)
     pos
-    (if (== (string-char-at src pos) 10) ;; newline
-      (+ pos 1)
-      (skip-comment src (+ pos 1) len))))
+    (do
+      (root_push src)
+      (let [result
+        (if (== (string-char-at src pos) 10) ;; newline
+          (+ pos 1)
+          (skip-comment src (+ pos 1) len))]
+        (do
+          (root_pop)
+          result)))))
 
 ;; 空白とコメントをスキップし、次のトークン開始位置を返す
 (defn skip-ws-loop [src pos len]
   (if (>= pos len)
     pos
-    (let [c (string-char-at src pos)]
-      (if (is-ws c)
-        (skip-ws-loop src (+ pos 1) len)
-        (if (== c 59) ;; ;
-          (let [end (skip-comment src (+ pos 1) len)]
-            (skip-ws-loop src end len))
-          pos)))))
+    (do
+      (root_push src)
+      (let [c (string-char-at src pos)
+        result
+          (if (is-ws c)
+            (skip-ws-loop src (+ pos 1) len)
+            (if (== c 59) ;; ;
+              (let [end (skip-comment src (+ pos 1) len)]
+                (skip-ws-loop src end len))
+              pos))]
+        (do
+          (root_pop)
+          result)))))
 
 ;; === キーワード判定 ===
 
@@ -203,6 +215,42 @@
           (classify-symbol-high-head head name)
           (classify-symbol-tail-head head name))))))
 
+(defn symbol-hash-loop [src pos end acc]
+  (if (>= pos end)
+    acc
+    (symbol-hash-loop src (+ pos 1) end
+      (+ (string-char-at src pos) (* acc 31)))))
+
+(defn symbol-hash [src start end]
+  (symbol-hash-loop src start end 0))
+
+(defn classify-symbol-hash [h]
+  (if (= h 3211) 36 ;; do
+    (if (= h 2843923108583) 44 ;; defmacro
+      (if (= h 3079433) 30 ;; defn
+        (if (= h 107035) 31 ;; let
+          (if (= h 3110171557) 38 ;; import
+            (if (= h 3236384) 41 ;; impl
+              (if (= h 3357) 32 ;; if
+                (if (= h 103668165) 33 ;; match
+                  (if (= h 3226183276) 37 ;; module
+                    (if (= h 110621198) 40 ;; trait
+                      (if (= h 3569038) 13 ;; true
+                        (if (= h 3575610) 34 ;; type
+                          (if (= h 3272) 35 ;; fn
+                            (if (= h 97196323) 14 ;; false
+                              (if (= h 113097959) 42 ;; where
+                                (if (= h 102764717443) 43 ;; private
+                                  (if (= h 3417674) 49 ;; open
+                                    (if (= h 84175086742643798) 46 ;; constrained
+                                      (if (= h 84174152258849223) 47 ;; computation
+                                        (if (= h 90425257883) 48 ;; builder
+                                          (if (= h 3360058449) 39 ;; record
+                                            20))))))))))))))))))))))
+
+(defn classify-symbol-span [src start end]
+  (classify-symbol-hash (symbol-hash src start end)))
+
 ;; === 数値読み取り ===
 
 ;; 数字を 1 文字だけ前進させる
@@ -235,10 +283,16 @@
 
 ;; 数字の終端位置を返す
 (defn scan-digits [src pos len]
-  (let [next (scan-digits-step-8 src pos len)]
-    (if (= next pos)
-      pos
-      (scan-digits src next len))))
+  (do
+    (root_push src)
+    (let [next (scan-digits-step-8 src pos len)
+      result
+        (if (= next pos)
+          pos
+          (scan-digits src next len))]
+      (do
+        (root_pop)
+        result))))
 
 ;; 小数を含む数値の終端位置を返す
 ;; 先頭の整数部は既に scan-digits 済みである前提
@@ -296,10 +350,16 @@
 
 ;; シンボルの終端位置を返す
 (defn scan-symbol-end [src pos len]
-  (let [next (scan-symbol-end-step-32 src pos len)]
-    (if (= next pos)
-      pos
-      (scan-symbol-end src next len))))
+  (do
+    (root_push src)
+    (let [next (scan-symbol-end-step-32 src pos len)
+      result
+        (if (= next pos)
+          pos
+          (scan-symbol-end src next len))]
+      (do
+        (root_pop)
+        result))))
 
 ;; === 文字列読み取り ===
 
@@ -307,12 +367,18 @@
 (defn scan-string-end [src pos len]
   (if (>= pos len)
     pos ;; 未終端 (エラーは呼び出し側で)
-    (let [c (string-char-at src pos)]
-      (if (== c 34) ;; "
-        (+ pos 1)
-        (if (== c 92) ;; \  (エスケープ)
-          (scan-string-end src (+ pos 2) len)
-          (scan-string-end src (+ pos 1) len))))))
+    (do
+      (root_push src)
+      (let [c (string-char-at src pos)
+        result
+          (if (== c 34) ;; "
+            (+ pos 1)
+            (if (== c 92) ;; \  (エスケープ)
+              (scan-string-end src (+ pos 2) len)
+              (scan-string-end src (+ pos 1) len)))]
+        (do
+          (root_pop)
+          result)))))
 
 ;; === メインのトークナイザー ===
 
@@ -325,8 +391,7 @@
       (if (is-digit-char (string-char-at src (+ pos 1)))
         (lex-number-token src pos len)
         (let [end (scan-symbol-end src (+ pos 1) len)
-          name (substring src pos end)
-          kind (classify-symbol name)]
+          kind (classify-symbol-span src pos end)]
           (+ (* kind 1000000) end))))
     (+ (* 20 1000000) (+ pos 1))))
 
@@ -339,8 +404,7 @@
 
 (defn lex-symbol-token [src pos len]
   (let [end (scan-symbol-end src (+ pos 1) len)
-    name (substring src pos end)
-    kind (classify-symbol name)]
+    kind (classify-symbol-span src pos end)]
     (+ (* kind 1000000) end)))
 
 (defn lex-one-structured-rest [src pos len c]
@@ -403,62 +467,131 @@
 ;; selfhost stage2 の stack でも大入力を扱えるよう、
 ;; tokenization は複数段の helper でまとめて処理して再帰深さを抑える。
 (defn make-tokenize-state [done next-pos next-tokens]
-  (vector-push
-    (vector-push
-      (vector-push (vector-new 4) done)
-      next-pos)
-    next-tokens))
+  (do
+    (root_push next-tokens)
+    (let [state0 (vector-push (vector-new 4) done)]
+      (do
+        (root_push state0)
+        (let [state1 (vector-push state0 next-pos)]
+          (do
+            (root_push state1)
+            (let [state (vector-push state1 next-tokens)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                state))))))))
 
 (defn append-span-token [tokens kind start end]
-  (vector-push (vector-push (vector-push tokens kind) start) end))
+  (do
+    (root_push tokens)
+    (let [with-kind (vector-push tokens kind)]
+      (do
+        (root_push with-kind)
+        (let [with-start (vector-push with-kind start)]
+          (do
+            (root_push with-start)
+            (let [updated (vector-push with-start end)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                updated))))))))
 
 ;; === T2-1: 値つきトークン (kind, start, end) 3つ組 ===
 
 ;; 全トークンを (kind, start, end) 3つ組の Vector に収集
 ;; 結果の Vector は [kind0, start0, end0, kind1, start1, end1, ...] のフラット構造
 (defn tokenize-spans-step [src pos len tokens]
-  (let [ws-pos (skip-ws-loop src pos len)]
-    (if (>= ws-pos len)
-      ;; EOF トークン: (99, pos, pos)
-      (make-tokenize-state 1 ws-pos (append-span-token tokens 99 ws-pos ws-pos))
-      (let [result (lex-one src ws-pos len)
-        kind (/ result 1000000)
-        end-pos (- result (* kind 1000000))]
-        (if (== kind 99)
+  (do
+    (root_push src)
+    (root_push tokens)
+    (let [ws-pos (skip-ws-loop src pos len)
+      state
+        (if (>= ws-pos len)
+          ;; EOF トークン: (99, pos, pos)
           (make-tokenize-state 1 ws-pos (append-span-token tokens 99 ws-pos ws-pos))
-          (make-tokenize-state 0 end-pos (append-span-token tokens kind ws-pos end-pos)))))))
+          (let [result (lex-one src ws-pos len)
+            kind (/ result 1000000)
+            end-pos (- result (* kind 1000000))]
+            (if (== kind 99)
+              (make-tokenize-state 1 ws-pos (append-span-token tokens 99 ws-pos ws-pos))
+              (make-tokenize-state 0 end-pos (append-span-token tokens kind ws-pos end-pos)))))]
+      (do
+        (root_pop)
+        (root_pop)
+        state))))
 
 ;; 1 回の helper 呼び出しで複数トークンを進め、selfhost 実行時の再帰フレーム数をさらに抑える。
 (defn tokenize-spans-step-2 [src pos len tokens]
-  (let [step1 (tokenize-spans-step src pos len tokens)]
-    (if (= (vector-get step1 0) 1)
-      step1
-      (tokenize-spans-step src (vector-get step1 1) len (vector-get step1 2)))))
+  (do
+    (root_push src)
+    (root_push tokens)
+    (let [step1 (tokenize-spans-step src pos len tokens)]
+      (do
+        (root_push step1)
+        (let [result
+          (if (= (vector-get step1 0) 1)
+            step1
+            (tokenize-spans-step src (vector-get step1 1) len (vector-get step1 2)))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 
 (defn tokenize-spans-step-4 [src pos len tokens]
-  (let [step1 (tokenize-spans-step-2 src pos len tokens)]
-    (if (= (vector-get step1 0) 1)
-      step1
-      (tokenize-spans-step-2 src (vector-get step1 1) len (vector-get step1 2)))))
+  (do
+    (root_push src)
+    (root_push tokens)
+    (let [step1 (tokenize-spans-step-2 src pos len tokens)]
+      (do
+        (root_push step1)
+        (let [result
+          (if (= (vector-get step1 0) 1)
+            step1
+            (tokenize-spans-step-2 src (vector-get step1 1) len (vector-get step1 2)))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 
 (defn tokenize-spans-step-8 [src pos len tokens]
-  (let [step1 (tokenize-spans-step-4 src pos len tokens)]
-    (if (= (vector-get step1 0) 1)
-      step1
-      (tokenize-spans-step-4 src (vector-get step1 1) len (vector-get step1 2)))))
+  (do
+    (root_push src)
+    (root_push tokens)
+    (let [step1 (tokenize-spans-step-4 src pos len tokens)]
+      (do
+        (root_push step1)
+        (let [result
+          (if (= (vector-get step1 0) 1)
+            step1
+            (tokenize-spans-step-4 src (vector-get step1 1) len (vector-get step1 2)))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 
 (defn tokenize-spans-step-512-loop-bounded [src pos len tokens remaining]
-  (let [step (tokenize-spans-step-8 src pos len tokens)]
-    (if (= (vector-get step 0) 1)
-      step
-      (if (<= remaining 1)
-        step
-        (tokenize-spans-step-512-loop-bounded
-          src
-          (vector-get step 1)
-          len
-          (vector-get step 2)
-          (- remaining 1))))))
+  (do
+    (root_push src)
+    (root_push tokens)
+    (let [step (tokenize-spans-step-8 src pos len tokens)]
+      (do
+        (root_push step)
+        (let [result
+          (if (= (vector-get step 0) 1)
+            step
+            (if (<= remaining 1)
+              step
+              (tokenize-spans-step-512-loop-bounded src (vector-get step 1) len (vector-get step 2) (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 
 ;; stage2 compiler 自身でも大きい入力を裁けるよう、
 ;; 8 トークン束を 64 回回す bounded loop でまとめて進める。
@@ -466,28 +599,63 @@
   (tokenize-spans-step-512-loop-bounded src pos len tokens 64))
 
 (defn tokenize-spans-outer-loop-bounded [src pos len tokens remaining]
-  (let [step (tokenize-spans-step-512 src pos len tokens)
-    done (vector-get step 0)
-    next-pos (vector-get step 1)
-    next-tokens (vector-get step 2)]
-    (if (= done 1)
-      (make-tokenize-state 1 next-pos next-tokens)
-      (if (<= remaining 1)
-        (make-tokenize-state 0 next-pos next-tokens)
-        (tokenize-spans-outer-loop-bounded src next-pos len next-tokens (- remaining 1))))))
+  (do
+    (root_push src)
+    (root_push tokens)
+    (let [step (tokenize-spans-step-512 src pos len tokens)
+      done (vector-get step 0)
+      next-pos (vector-get step 1)
+      next-tokens (vector-get step 2)]
+      (do
+        (root_push step)
+        (root_push next-tokens)
+        (let [result
+          (if (= done 1)
+            (make-tokenize-state 1 next-pos next-tokens)
+            (if (<= remaining 1)
+              (make-tokenize-state 0 next-pos next-tokens)
+              (tokenize-spans-outer-loop-bounded src next-pos len next-tokens (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 
 (defn tokenize-spans-loop [src pos len tokens]
-  (let [batch (tokenize-spans-outer-loop-bounded src pos len tokens 256)
-    done (vector-get batch 0)
-    next-pos (vector-get batch 1)
-    next-tokens (vector-get batch 2)]
-    (if (= done 1)
-      next-tokens
-      (tokenize-spans-loop src next-pos len next-tokens))))
+  (do
+    (root_push src)
+    (root_push tokens)
+    (let [batch (tokenize-spans-outer-loop-bounded src pos len tokens 256)
+      done (vector-get batch 0)
+      next-pos (vector-get batch 1)
+      next-tokens (vector-get batch 2)]
+      (do
+        (root_push batch)
+        (root_push next-tokens)
+        (let [result
+          (if (= done 1)
+            next-tokens
+            (tokenize-spans-loop src next-pos len next-tokens))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
 
 ;; ソース文字列をトークン化して (kind, start, end) 3つ組を返す
 (defn tokenize-with-spans [src]
-  (tokenize-spans-loop src 0 (string-length src) (vector-new 32)))
+  (do
+    (root_push src)
+    (let [tokens (vector-new 32)]
+      (do
+        (root_push tokens)
+        (let [result (tokenize-spans-loop src 0 (string-length src) tokens)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
 
 ;; === トークン値の取得 ===
 

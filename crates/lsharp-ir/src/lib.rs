@@ -693,7 +693,7 @@ fn try_infer_formatter_trio_batch(
 
     let mut by_mod: HashMap<String, Vec<(String, lsharp_types::types::TypeScheme)>> =
         HashMap::new();
-    for ((name, scheme), origin) in type_results.into_iter().zip(defn_origins.into_iter()) {
+    for ((name, scheme), origin) in type_results.into_iter().zip(defn_origins) {
         by_mod.entry(origin).or_default().push((name, scheme));
     }
 
@@ -2198,8 +2198,7 @@ pub fn compile_multi_file_incremental(
             link_module_ir_segments(&new_segments)
         };
 
-    for ((mod_name, mut entry), segments) in cache_entries.into_iter().zip(new_segments.into_iter())
-    {
+    for ((mod_name, mut entry), segments) in cache_entries.into_iter().zip(new_segments) {
         entry.set_ir(final_module.clone());
         entry.set_ir_segments(segments);
         cache.insert_module(mod_name, entry);
@@ -3588,5 +3587,54 @@ mod memory_instruction_tests {
         assert_eq!(format!("{}", Instruction::MemoryGrow), "memory.grow");
         assert_eq!(format!("{}", Instruction::MemorySize), "memory.size");
         assert_eq!(format!("{}", Instruction::I32Add), "i32.add");
+    }
+}
+
+#[cfg(test)]
+mod selfhost_collision_tests {
+    use std::collections::HashSet;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn selfhost_path(rel: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join(rel)
+    }
+
+    fn parse_defn_names(rel: &str) -> HashSet<String> {
+        let path = selfhost_path(rel);
+        let source = fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("{} を読めませんでした: {err}", path.display()));
+        let program = lsharp_syntax::parse(&source)
+            .unwrap_or_else(|err| panic!("{} を parse できませんでした: {err}", path.display()));
+        program
+            .decls
+            .into_iter()
+            .filter_map(|decl| match decl {
+                lsharp_syntax::ast::Decl::Defn { name, .. } => Some(name),
+                lsharp_syntax::ast::Decl::Private { inner, .. } => match *inner {
+                    lsharp_syntax::ast::Decl::Defn { name, .. } => Some(name),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_selfhost_ir_control_flow_builders_do_not_reuse_ast_make_if_name() {
+        let ast_names = parse_defn_names("selfhost/src/Syntax/AST.ls");
+        let ir_names = parse_defn_names("selfhost/src/IR/IR.ls");
+
+        assert!(
+            ast_names.contains("make-if"),
+            "Syntax.AST 側の make-if 前提が崩れている"
+        );
+        assert!(
+            !ir_names.contains("make-if"),
+            "IR.IR に make-if があると multi-file lowering で Syntax.AST.make-if と衝突する"
+        );
     }
 }
