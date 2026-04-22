@@ -56,6 +56,13 @@ struct NativeHostArtifactBundle {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct NativeHostExecutionResult {
+    exit_code: i32,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct NativeHostBundleObservation {
     program_object_hash: u64,
     runtime_object_hash: u64,
@@ -64,6 +71,23 @@ struct NativeHostBundleObservation {
     stdout_hash: u64,
     stderr_hash: u64,
     exit_code: i32,
+}
+
+#[derive(Debug, Clone)]
+struct NativeEntrypointBundle {
+    function_start_len: usize,
+    main_func_idx: usize,
+    declared_code_len: usize,
+    entrypoint_offset: usize,
+    code_bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NativeHostArtifactObservation {
+    program_object_hash: u64,
+    runtime_object_hash: u64,
+    response_text_hash: u64,
+    program_binary_hash: u64,
 }
 
 /// NATIVE-05/NATIVE-06: selfhost/src/App/Main.ls の native summary が
@@ -339,7 +363,22 @@ fn lsharp_name_hash(text: &str) -> i64 {
 }
 
 fn observe_native_host_bundle(bundle: &NativeHostArtifactBundle) -> NativeHostBundleObservation {
+    let artifact = observe_native_host_artifact_bundle(bundle);
     NativeHostBundleObservation {
+        program_object_hash: artifact.program_object_hash,
+        runtime_object_hash: artifact.runtime_object_hash,
+        response_text_hash: artifact.response_text_hash,
+        program_binary_hash: artifact.program_binary_hash,
+        stdout_hash: super::selfhost_bootstrap_four_layer::hash_fingerprint(&bundle.stdout),
+        stderr_hash: super::selfhost_bootstrap_four_layer::hash_fingerprint(&bundle.stderr),
+        exit_code: bundle.exit_code,
+    }
+}
+
+fn observe_native_host_artifact_bundle(
+    bundle: &NativeHostArtifactBundle,
+) -> NativeHostArtifactObservation {
+    NativeHostArtifactObservation {
         program_object_hash: super::selfhost_bootstrap_four_layer::hash_fingerprint(
             &bundle.program_object,
         ),
@@ -352,9 +391,6 @@ fn observe_native_host_bundle(bundle: &NativeHostArtifactBundle) -> NativeHostBu
         program_binary_hash: super::selfhost_bootstrap_four_layer::hash_fingerprint(
             &bundle.program_binary,
         ),
-        stdout_hash: super::selfhost_bootstrap_four_layer::hash_fingerprint(&bundle.stdout),
-        stderr_hash: super::selfhost_bootstrap_four_layer::hash_fingerprint(&bundle.stderr),
-        exit_code: bundle.exit_code,
     }
 }
 
@@ -378,8 +414,17 @@ fn write_native_host_bundle_artifact(
         .map_err(|e| format!("runtime.o 書き込み失敗: {e}"))?;
     std::fs::write(stage_dir.join("linker-response.txt"), &bundle.response_text)
         .map_err(|e| format!("linker-response.txt 書き込み失敗: {e}"))?;
-    std::fs::write(stage_dir.join("program.native"), &bundle.program_binary)
+    let program_binary_path = stage_dir.join("program.native");
+    std::fs::write(&program_binary_path, &bundle.program_binary)
         .map_err(|e| format!("program.native 書き込み失敗: {e}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let permissions = std::fs::Permissions::from_mode(0o755);
+        std::fs::set_permissions(&program_binary_path, permissions)
+            .map_err(|e| format!("program.native の execute bit 設定失敗: {e}"))?;
+    }
     std::fs::write(stage_dir.join("stdout.txt"), &bundle.stdout)
         .map_err(|e| format!("stdout.txt 書き込み失敗: {e}"))?;
     std::fs::write(stage_dir.join("stderr.txt"), &bundle.stderr)
@@ -635,11 +680,103 @@ fn test_e2e_stage1_native_two_run_determinism() {
     );
 }
 
+/// V2-08: representative build entry を actual import-count 付き function-meta bundle へ落とせること。
+#[test]
+fn test_e2e_selfhost_main_native_function_meta_bundle_with_import_count_emits_code_bytes() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-compiler-runtime",
+        &[
+            "Main.ls",
+            "Token.ls",
+            "AST.ls",
+            "Lexer.ls",
+            "Parser.ls",
+            "IR.ls",
+            "Type.ls",
+            "TypeScheme.ls",
+            "TypeInferCore.ls",
+            "TypeInferFunctions.ls",
+            "TypeInferBuiltins.ls",
+            "TypeInfer.ls",
+            "TypeInferApply.ls",
+            "TypeInferBlock.ls",
+            "TypeInferPattern.ls",
+            "TypeInferRecord.ls",
+            "CompilerMode.ls",
+            "Compiler.ls",
+            "WasiBackend.ls",
+            "WasmEmit.ls",
+            "ModuleResolver.ls",
+            "CompilerMode.ls",
+            "NativeTarget.ls",
+            "NativeCodegen.ls",
+            "NativeEmit.ls",
+        ],
+        "src/App/HarnessMain.ls",
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        target (host-target)
+        code (emit-native-function-meta-bundle-with-import-count native-callables 10 target)]
+    (do
+      (print (vector-length callables))
+      (print (vector-length code))
+      0)))"#,
+        &[],
+    )
+    .expect("representative native function-meta bundle harness 実行に失敗");
+
+    let lines = parse_numeric_lines(&output);
+    assert!(
+        lines.len() >= 2,
+        "representative native bundle summary 出力が不足: {lines:?}"
+    );
+    assert!(
+        lines[0] > 0,
+        "representative entry の function-meta 数が 0: {lines:?}"
+    );
+    assert!(
+        lines[1] > 0,
+        "representative entry の native bundle size が 0: {lines:?}"
+    );
+}
+
 fn run_native_pipeline_harness(entry_source: &str) -> String {
     let id = NATIVE_STAGE_CHAIN_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/e2e-native-fixtures")
-        .join(format!("native-stage-chain-{id}"));
+    let dir = target_fixture_dir("e2e-native-fixtures", "native-stage-chain", id);
     std::fs::create_dir_all(&dir).expect("native stage-chain fixture dir 作成失敗");
     let entry_source = entry_source.to_string();
     let work_dir = dir.clone();
@@ -678,9 +815,7 @@ fn run_native_pipeline_harness(entry_source: &str) -> String {
 /// バイトは1行1数値 (0-255) として stdout に出力される。
 fn run_native_codegen_host_bytes_harness(entry_source: &str) -> Vec<u8> {
     let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/e2e-native-fixtures")
-        .join(format!("native-host-bytes-{id}"));
+    let dir = target_fixture_dir("e2e-native-fixtures", "native-host-bytes", id);
     std::fs::create_dir_all(&dir).expect("native host-bytes fixture dir 作成失敗");
     let entry_source = entry_source.to_string();
     let work_dir = dir.clone();
@@ -710,6 +845,256 @@ fn run_native_codegen_host_bytes_harness(entry_source: &str) -> Vec<u8> {
     result
 }
 
+fn run_selfhost_main_native_function_meta_bundle_host_bytes_harness() -> NativeEntrypointBundle {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-representative-host-bytes",
+        &[
+            "Main.ls",
+            "Token.ls",
+            "AST.ls",
+            "Lexer.ls",
+            "Parser.ls",
+            "IR.ls",
+            "Type.ls",
+            "TypeScheme.ls",
+            "TypeInferCore.ls",
+            "TypeInferFunctions.ls",
+            "TypeInferBuiltins.ls",
+            "TypeInfer.ls",
+            "TypeInferApply.ls",
+            "TypeInferBlock.ls",
+            "TypeInferPattern.ls",
+            "TypeInferRecord.ls",
+            "CompilerMode.ls",
+            "Compiler.ls",
+            "WasiBackend.ls",
+            "WasmEmit.ls",
+            "ModuleResolver.ls",
+            "CompilerMode.ls",
+            "NativeTarget.ls",
+            "NativeCodegen.ls",
+            "NativeEmit.ls",
+        ],
+        "src/App/HarnessMain.ls",
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn print-bytes [bytes idx len]
+  (if (>= idx len)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) len))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pairs (compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        ftable (vector-get reg-result 0)
+        main-pair (vector-get pairs (- (vector-length pairs) 1))
+        main-decls (vector-get main-pair 1)
+        main-defn-idx (find-first-defn-index main-decls 0 (vector-length main-decls))
+        main-hash (vector-get (vector-get main-decls main-defn-idx) 1)
+        main-func-idx (map-get ftable main-hash)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        target (host-target)
+        bundle-payload (emit-native-selfhost-function-meta-bundle-entrypoint-payload-for-function-with-import-count callables 10 main-func-idx target)
+        code (vector-get bundle-payload 0)
+        entrypoint-offset (vector-get bundle-payload 1)]
+    (do
+      (print (vector-length callables))
+      (print main-func-idx)
+      (print (vector-length code))
+      (print entrypoint-offset)
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+        &[],
+    )
+    .expect("representative native host bytes harness 実行に失敗");
+
+    let mut lines = output.trim().lines();
+    let function_start_len = lines
+        .next()
+        .unwrap_or_else(|| panic!("representative entrypoint offset 出力が不足: {output}"))
+        .parse::<usize>()
+        .unwrap_or_else(|_| panic!("representative function-start length parse 失敗: {output}"));
+    let main_func_idx = lines
+        .next()
+        .unwrap_or_else(|| panic!("representative main func idx 出力が不足: {output}"))
+        .parse::<usize>()
+        .unwrap_or_else(|_| panic!("representative main func idx parse 失敗: {output}"));
+    let declared_code_len = lines
+        .next()
+        .unwrap_or_else(|| panic!("representative declared code len 出力が不足: {output}"))
+        .parse::<usize>()
+        .unwrap_or_else(|_| panic!("representative declared code len parse 失敗: {output}"));
+    let entrypoint_offset = lines
+        .next()
+        .unwrap_or_else(|| panic!("representative entrypoint offset 出力が不足: {output}"))
+        .parse::<usize>()
+        .unwrap_or_else(|_| panic!("representative entrypoint offset parse 失敗: {output}"));
+    assert!(
+        main_func_idx >= 10,
+        "representative main func idx が import count 未満: main_func_idx={main_func_idx} function_starts={function_start_len}"
+    );
+    assert!(
+        function_start_len > 0,
+        "representative function-starts length が 0"
+    );
+    let code_bytes = lines
+        .map(|line| {
+            let value = line
+                .parse::<i64>()
+                .unwrap_or_else(|_| panic!("representative byte parse 失敗: {line}"));
+            value.rem_euclid(256) as u8
+        })
+        .collect();
+    NativeEntrypointBundle {
+        function_start_len,
+        main_func_idx,
+        declared_code_len,
+        entrypoint_offset,
+        code_bytes,
+    }
+}
+
+fn host_target_recursive_if_bundle_entrypoint() -> NativeEntrypointBundle {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-bundle-recursive-if",
+        &["IR.ls", "NativeTarget.ls", "NativeCodegen.ls"],
+        "Main.ls",
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx len]
+  (if (>= idx len)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) len))))
+
+(defn main []
+  (let [helper-load (make-instr 10 0)
+        helper-if (make-instr 41 0)
+        helper-reload (make-instr 10 0)
+        helper-one (make-instr 1 1)
+        helper-sub (make-instr 21 0)
+        helper-call (make-instr 40 0)
+        helper-else (make-instr 79 0)
+        helper-base (make-instr 1 42)
+        helper-end (make-instr 43 0)
+        helper-ir (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push
+                            (vector-push
+                              (vector-push
+                                (vector-push (vector-new 8) helper-load)
+                                helper-if)
+                              helper-reload)
+                            helper-one)
+                          helper-sub)
+                        helper-call)
+                      helper-else)
+                    helper-base)
+        helper-ir2 (vector-push helper-ir helper-end)
+        helper-meta (make-function-meta 1 0 helper-ir2)
+        main-arg (make-instr 1 3)
+        main-call (make-instr 40 0)
+        main-ir (vector-push (vector-push (vector-new 2) main-arg) main-call)
+        main-meta (make-function-meta 0 0 main-ir)
+        functions (vector-push (vector-push (vector-new 2) helper-meta) main-meta)
+        target (host-target)
+        bundle-payload (emit-native-function-meta-bundle-entrypoint-payload-with-import-count functions 0 target)
+        code (vector-get bundle-payload 0)
+        entrypoint-offset (vector-get bundle-payload 1)]
+    (do
+      (print 2)
+      (print 1)
+      (print (vector-length code))
+      (print entrypoint-offset)
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+        &[],
+    )
+    .expect("recursive if bundle harness 実行に失敗");
+
+    let mut lines = output.trim().lines();
+    let function_start_len = lines
+        .next()
+        .unwrap_or_else(|| panic!("recursive if bundle function count 出力が不足: {output}"))
+        .parse::<usize>()
+        .unwrap_or_else(|_| panic!("recursive if bundle function count parse 失敗: {output}"));
+    let main_func_idx = lines
+        .next()
+        .unwrap_or_else(|| panic!("recursive if bundle main func idx 出力が不足: {output}"))
+        .parse::<usize>()
+        .unwrap_or_else(|_| panic!("recursive if bundle main func idx parse 失敗: {output}"));
+    let declared_code_len = lines
+        .next()
+        .unwrap_or_else(|| panic!("recursive if bundle declared code len 出力が不足: {output}"))
+        .parse::<usize>()
+        .unwrap_or_else(|_| panic!("recursive if bundle declared code len parse 失敗: {output}"));
+    let entrypoint_offset = lines
+        .next()
+        .unwrap_or_else(|| panic!("recursive if bundle entrypoint offset 出力が不足: {output}"))
+        .parse::<usize>()
+        .unwrap_or_else(|_| panic!("recursive if bundle entrypoint offset parse 失敗: {output}"));
+    let code_bytes = lines
+        .map(|line: &str| {
+            line.parse::<u8>()
+                .unwrap_or_else(|_| panic!("recursive if bundle byte parse 失敗: {line}"))
+        })
+        .collect::<Vec<u8>>();
+
+    NativeEntrypointBundle {
+        function_start_len,
+        main_func_idx,
+        declared_code_len,
+        entrypoint_offset,
+        code_bytes,
+    }
+}
+
 fn host_target_const_42_code_bytes() -> Vec<u8> {
     run_native_codegen_host_bytes_harness(
         r#"(module Main)
@@ -733,6 +1118,41 @@ fn host_target_const_42_code_bytes() -> Vec<u8> {
       (print-bytes code 0 (vector-length code))
        0)))"#,
     )
+}
+
+fn host_target_plain_program_code_bytes(instrs: &[(u32, i64)]) -> Vec<u8> {
+    let instr_bindings = instrs
+        .iter()
+        .enumerate()
+        .map(|(idx, (opcode, operand))| format!("instr{idx} (make-instr {opcode} {operand})"))
+        .collect::<Vec<_>>()
+        .join("\n        ");
+    let ir_expr = (0..instrs.len()).fold(format!("(vector-new {})", instrs.len()), |expr, idx| {
+        format!("(vector-push {expr} instr{idx})")
+    });
+    let source = format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [{instr_bindings}
+        ir {ir_expr}
+        target (host-target)
+        code (emit-native ir target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    );
+    run_native_codegen_host_bytes_harness(&source)
 }
 
 fn host_target_local_roundtrip_code_bytes() -> Vec<u8> {
@@ -767,6 +1187,43 @@ fn host_target_local_roundtrip_code_bytes() -> Vec<u8> {
       (print-bytes code 0 (vector-length code))
       0)))"#,
     )
+}
+
+fn host_target_if_else_code_bytes(cond: i64) -> Vec<u8> {
+    host_target_plain_program_code_bytes(&[(3, cond), (41, 0), (3, 42), (79, 0), (3, 7), (43, 0)])
+}
+
+fn host_target_if_empty_local_set_code_bytes(cond: i64) -> Vec<u8> {
+    host_target_plain_program_code_bytes(&[
+        (1, 7),
+        (11, 0),
+        (3, cond),
+        (83, 0),
+        (1, 42),
+        (11, 0),
+        (43, 0),
+        (10, 0),
+    ])
+}
+
+fn host_target_block_br_code_bytes() -> Vec<u8> {
+    host_target_plain_program_code_bytes(&[(1, 42), (84, 0), (80, 0), (1, 7), (43, 0)])
+}
+
+fn host_target_loop_countdown_code_bytes(loop_opcode: u32) -> Vec<u8> {
+    host_target_plain_program_code_bytes(&[
+        (1, 5),
+        (11, 0),
+        (loop_opcode, 0),
+        (10, 0),
+        (1, 1),
+        (21, 0),
+        (11, 0),
+        (10, 0),
+        (81, 0),
+        (43, 0),
+        (10, 0),
+    ])
 }
 
 fn host_target_i32_add_code_bytes() -> Vec<u8> {
@@ -806,6 +1263,41 @@ fn host_target_i32_add_code_bytes() -> Vec<u8> {
              instr7)
         target (host-target)
         code (emit-native ir target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_selfhost_style_param1_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [instr (make-local-get 1)
+        ir (vector-push (vector-new 1) instr)
+        func (make-function-meta 2 0 ir)
+        functions (vector-push (vector-new 1) func)
+        normalized (normalize-selfhost-native-function-metas functions)
+        target (host-target)
+        code (emit-native-function-meta-bundle normalized target)]
     (do
       (print-bytes code 0 (vector-length code))
       0)))"#,
@@ -897,6 +1389,962 @@ fn host_target_i32_logic_code_bytes(lhs: i32, rhs: i32, opcode: u32) -> Vec<u8> 
       0)))"#,
     );
     run_native_codegen_host_bytes_harness(&source)
+}
+
+fn host_target_selfhost_root_push_drop_restore_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [instr1 (make-instr 3 42)
+        instr2 (make-instr 11 0)
+        instr3 (make-instr 3 7)
+        instr4 (make-local-get 0)
+        instr5 (make-instr 74 0)
+        instr6 (make-instr 44 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 6) instr1)
+                     instr2)
+                   instr3)
+                 instr4)
+               instr5)
+             instr6)
+        target (host-target)
+        code (emit-native ir target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_selfhost_root_pop_drop_restore_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [instr1 (make-instr 3 42)
+        instr2 (make-instr 75 0)
+        instr3 (make-instr 44 0)
+        ir (vector-push
+             (vector-push
+               (vector-push (vector-new 3) instr1)
+               instr2)
+             instr3)
+        target (host-target)
+        code (emit-native ir target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_selfhost_root_set_drop_restore_bottom_bundle_code_bytes() -> Vec<u8> {
+    host_target_single_arg_memory_program_bundle_code_bytes(&[
+        (3, 99),
+        (3, 1),
+        (3, 42),
+        (76, 0),
+        (44, 0),
+    ])
+}
+
+fn host_target_selfhost_command_line_arg_string_length_bundle_code_bytes(
+    arg_index: u32,
+) -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 {arg_index})
+        instr1 (make-instr 67 0)
+        instr2 (make-instr 51 0)
+        ir (vector-push
+             (vector-push
+               (vector-push (vector-new 3) instr0)
+               instr1)
+             instr2)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    ))
+}
+
+fn host_target_selfhost_command_line_arg_string_char_at_bundle_code_bytes(
+    arg_index: u32,
+    char_index: u32,
+) -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 {arg_index})
+        instr1 (make-instr 67 0)
+        instr2 (make-instr 3 {char_index})
+        instr3 (make-instr 50 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push (vector-new 4) instr0)
+                 instr1)
+               instr2)
+             instr3)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    ))
+}
+
+fn host_target_selfhost_print_bundle_code_bytes(value: u32) -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 {value})
+        instr1 (make-instr 59 0)
+        ir (vector-push
+             (vector-push (vector-new 2) instr0)
+             instr1)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    ))
+}
+
+fn host_target_selfhost_vector_new_length_bundle_code_bytes(capacity: u32) -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 {capacity})
+        instr1 (make-instr 54 0)
+        instr2 (make-instr 52 0)
+        ir (vector-push
+             (vector-push
+               (vector-push (vector-new 3) instr0)
+               instr1)
+             instr2)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    ))
+}
+
+fn host_target_selfhost_vector_push_length_bundle_code_bytes(capacity: u32, value: u32) -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 {capacity})
+        instr1 (make-instr 54 0)
+        instr2 (make-instr 3 {value})
+        instr3 (make-instr 55 0)
+        instr4 (make-instr 52 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push (vector-new 5) instr0)
+                   instr1)
+                 instr2)
+               instr3)
+             instr4)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    ))
+}
+
+fn host_target_selfhost_vector_push_get_bundle_code_bytes(
+    capacity: u32,
+    value: u32,
+    index: u32,
+) -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 {capacity})
+        instr1 (make-instr 54 0)
+        instr2 (make-instr 3 {value})
+        instr3 (make-instr 55 0)
+        instr4 (make-instr 3 {index})
+        instr5 (make-instr 53 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 6) instr0)
+                     instr1)
+                   instr2)
+                 instr3)
+               instr4)
+             instr5)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    ))
+}
+
+fn host_target_selfhost_vector_get_manual_seed_bundle_code_bytes(
+    capacity: u32,
+    length: u32,
+    value: u32,
+    index: u32,
+) -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 {capacity})
+        instr1 (make-instr 54 0)
+        instr2 (make-instr 11 0)
+        instr3 (make-instr 10 0)
+        instr4 (make-instr 38 0)
+        instr5 (make-instr 3 {length})
+        instr6 (make-instr 46 8)
+        instr7 (make-instr 10 0)
+        instr8 (make-instr 38 0)
+        instr9 (make-instr 3 16)
+        instr10 (make-instr 24 0)
+        instr11 (make-instr 3 {value})
+        instr12 (make-instr 49 0)
+        instr13 (make-instr 10 0)
+        instr14 (make-instr 3 {index})
+        instr15 (make-instr 53 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push
+                           (vector-push
+                             (vector-push
+                               (vector-push
+                                 (vector-push
+                                   (vector-push
+                                     (vector-push
+                                       (vector-push
+                                         (vector-push (vector-new 16) instr0)
+                                         instr1)
+                                       instr2)
+                                     instr3)
+                                   instr4)
+                                 instr5)
+                               instr6)
+                             instr7)
+                           instr8)
+                         instr9)
+                       instr10)
+                     instr11)
+                   instr12)
+                 instr13)
+               instr14)
+             instr15)
+        func (make-function-meta 0 1 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    ))
+}
+
+fn host_target_selfhost_ref_new_get_bundle_code_bytes(value: u32) -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 {value})
+        instr1 (make-instr 56 0)
+        instr2 (make-instr 57 0)
+        ir (vector-push
+             (vector-push
+               (vector-push (vector-new 3) instr0)
+               instr1)
+             instr2)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    ))
+}
+
+fn host_target_selfhost_ref_set_get_bundle_code_bytes(
+    initial_value: u32,
+    next_value: u32,
+) -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 {initial_value})
+        instr1 (make-instr 56 0)
+        instr2 (make-instr 11 0)
+        instr3 (make-instr 10 0)
+        instr4 (make-instr 3 {next_value})
+        instr5 (make-instr 58 0)
+        instr6 (make-instr 44 0)
+        instr7 (make-instr 10 0)
+        instr8 (make-instr 57 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push
+                           (vector-push (vector-new 9) instr0)
+                           instr1)
+                         instr2)
+                       instr3)
+                     instr4)
+                   instr5)
+                 instr6)
+               instr7)
+             instr8)
+        func (make-function-meta 0 1 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    ))
+}
+
+fn host_target_selfhost_substring_length_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 1)
+        instr1 (make-instr 67 0)
+        instr2 (make-instr 3 1)
+        instr3 (make-instr 3 4)
+        instr4 (make-instr 69 0)
+        instr5 (make-instr 51 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 6) instr0)
+                     instr1)
+                   instr2)
+                 instr3)
+               instr4)
+             instr5)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_selfhost_substring_char_at_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 1)
+        instr1 (make-instr 67 0)
+        instr2 (make-instr 3 1)
+        instr3 (make-instr 3 4)
+        instr4 (make-instr 69 0)
+        instr5 (make-instr 3 0)
+        instr6 (make-instr 50 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 7) instr0)
+                       instr1)
+                     instr2)
+                   instr3)
+                 instr4)
+               instr5)
+             instr6)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_selfhost_string_concat_length_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 1)
+        instr1 (make-instr 67 0)
+        instr2 (make-instr 3 2)
+        instr3 (make-instr 67 0)
+        instr4 (make-instr 70 0)
+        instr5 (make-instr 51 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 6) instr0)
+                     instr1)
+                   instr2)
+                 instr3)
+               instr4)
+             instr5)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_selfhost_string_concat_char_at_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 1)
+        instr1 (make-instr 67 0)
+        instr2 (make-instr 3 2)
+        instr3 (make-instr 67 0)
+        instr4 (make-instr 70 0)
+        instr5 (make-instr 3 2)
+        instr6 (make-instr 50 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 7) instr0)
+                       instr1)
+                     instr2)
+                   instr3)
+                 instr4)
+               instr5)
+             instr6)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_selfhost_map_new_size_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 60 0)
+        instr1 (make-instr 61 0)
+        ir (vector-push
+             (vector-push (vector-new 2) instr0)
+             instr1)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+        0)))"#,
+    )
+}
+
+fn host_target_selfhost_map_insert_size_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 60 0)
+        instr1 (make-i64-const 7)
+        instr2 (make-i64-const 42)
+        instr3 (make-instr 62 0)
+        instr4 (make-instr 61 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push (vector-new 5) instr0)
+                   instr1)
+                 instr2)
+               instr3)
+             instr4)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_selfhost_map_insert_get_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 60 0)
+        instr1 (make-i64-const 7)
+        instr2 (make-i64-const 42)
+        instr3 (make-instr 62 0)
+        instr4 (make-i64-const 7)
+        instr5 (make-instr 63 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 6) instr0)
+                     instr1)
+                   instr2)
+                 instr3)
+               instr4)
+             instr5)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_selfhost_map_insert_get_print_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 60 0)
+        instr1 (make-i64-const 7)
+        instr2 (make-i64-const 42)
+        instr3 (make-instr 62 0)
+        instr4 (make-i64-const 7)
+        instr5 (make-instr 63 0)
+        instr6 (make-instr 59 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 7) instr0)
+                       instr1)
+                     instr2)
+                   instr3)
+                 instr4)
+               instr5)
+             instr6)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_selfhost_map_get_missing_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 60 0)
+        instr1 (make-i64-const 99)
+        instr2 (make-instr 63 0)
+        ir (vector-push
+             (vector-push
+               (vector-push (vector-new 3) instr0)
+               instr1)
+             instr2)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
 }
 
 fn host_target_i64_add_code_bytes() -> Vec<u8> {
@@ -1024,8 +2472,405 @@ fn host_target_i64_mul_code_bytes() -> Vec<u8> {
         code (emit-native ir target)]
     (do
       (print-bytes code 0 (vector-length code))
+       0)))"#,
+    )
+}
+
+fn host_target_selfhost_file_exists_raw_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 1)
+        instr1 (make-instr 67 0)
+        instr2 (make-instr 73 0)
+        ir (vector-push
+             (vector-push
+               (vector-push (vector-new 3) instr0)
+               instr1)
+             instr2)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
       0)))"#,
     )
+}
+
+fn host_target_selfhost_file_exists_tagged_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 1)
+        instr1 (make-instr 67 0)
+        instr2 (make-instr 3 2)
+        instr3 (make-instr 67 0)
+        instr4 (make-instr 70 0)
+        instr5 (make-instr 73 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 6) instr0)
+                     instr1)
+                   instr2)
+                 instr3)
+               instr4)
+             instr5)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_selfhost_read_file_raw_length_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 1)
+        instr1 (make-instr 67 0)
+        instr2 (make-instr 64 0)
+        instr3 (make-instr 51 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push (vector-new 4) instr0)
+                 instr1)
+               instr2)
+             instr3)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_selfhost_read_file_tagged_char_at_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 1)
+        instr1 (make-instr 67 0)
+        instr2 (make-instr 3 2)
+        instr3 (make-instr 67 0)
+        instr4 (make-instr 70 0)
+        instr5 (make-instr 64 0)
+        instr6 (make-instr 3 0)
+        instr7 (make-instr 50 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push (vector-new 8) instr0)
+                         instr1)
+                       instr2)
+                     instr3)
+                   instr4)
+                 instr5)
+               instr6)
+             instr7)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_i64_div_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [instr1 (make-i64-const 84)
+        instr2 (make-instr 11 0)
+        instr3 (make-i64-const 2)
+        instr4 (make-instr 11 1)
+        instr5 (make-local-get 0)
+        instr6 (make-local-get 1)
+        instr7 (make-instr 23 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 7) instr1)
+                       instr2)
+                     instr3)
+                   instr4)
+                 instr5)
+               instr6)
+             instr7)
+        target (host-target)
+        code (emit-native ir target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+       0)))"#,
+    )
+}
+
+fn host_target_i64_rem_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [instr1 (make-i64-const 85)
+        instr2 (make-instr 11 0)
+        instr3 (make-i64-const 43)
+        instr4 (make-instr 11 1)
+        instr5 (make-local-get 0)
+        instr6 (make-local-get 1)
+        instr7 (make-instr 28 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 7) instr1)
+                       instr2)
+                     instr3)
+                   instr4)
+                 instr5)
+               instr6)
+             instr7)
+        target (host-target)
+        code (emit-native ir target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_single_arg_memory_program_bundle_code_bytes(instrs: &[(u32, u32)]) -> Vec<u8> {
+    let instr_bindings = instrs
+        .iter()
+        .enumerate()
+        .map(|(idx, (opcode, operand))| format!("instr{idx} (make-instr {opcode} {operand})"))
+        .collect::<Vec<_>>()
+        .join("\n        ");
+    let ir_expr = (0..instrs.len()).fold(format!("(vector-new {})", instrs.len()), |expr, idx| {
+        format!("(vector-push {expr} instr{idx})")
+    });
+    let source = format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [{instr_bindings}
+        ir {ir_expr}
+        func (make-function-meta 1 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    );
+    run_native_codegen_host_bytes_harness(&source)
+}
+
+fn host_target_single_arg_memory_bundle_code_bytes(opcode: u32, offset: u32) -> Vec<u8> {
+    host_target_single_arg_memory_program_bundle_code_bytes(&[(10, 0), (opcode, offset)])
+}
+
+fn host_target_single_arg_memory_store_then_load_bundle_code_bytes(
+    value_opcode: u32,
+    value_operand: u32,
+    store_opcode: u32,
+    store_offset: u32,
+    load_opcode: u32,
+    load_offset: u32,
+) -> Vec<u8> {
+    host_target_single_arg_memory_program_bundle_code_bytes(&[
+        (10, 0),
+        (value_opcode, value_operand),
+        (store_opcode, store_offset),
+        (10, 0),
+        (load_opcode, load_offset),
+    ])
+}
+
+fn host_target_single_arg_i64_store_then_load_double_drop_bundle_code_bytes() -> Vec<u8> {
+    host_target_single_arg_memory_program_bundle_code_bytes(&[
+        (3, 5),
+        (3, 7),
+        (10, 0),
+        (3, 42),
+        (49, 8),
+        (10, 0),
+        (48, 8),
+        (44, 0),
+        (44, 0),
+    ])
+}
+
+fn host_target_single_arg_memory_fill_load_sum_bundle_code_bytes(
+    fill_value: u32,
+    fill_len: u32,
+) -> Vec<u8> {
+    host_target_single_arg_memory_program_bundle_code_bytes(&[
+        (10, 0),
+        (3, fill_value),
+        (3, fill_len),
+        (78, 0),
+        (10, 0),
+        (47, 4),
+        (10, 0),
+        (47, 5),
+        (24, 0),
+    ])
+}
+
+fn host_target_single_arg_memory_copy_load_sum_bundle_code_bytes(copy_len: u32) -> Vec<u8> {
+    host_target_single_arg_memory_program_bundle_code_bytes(&[
+        (10, 0),
+        (1, 8),
+        (20, 0),
+        (10, 0),
+        (3, copy_len),
+        (77, 0),
+        (10, 0),
+        (47, 12),
+        (10, 0),
+        (47, 13),
+        (24, 0),
+    ])
+}
+
+fn host_target_single_arg_memory_fill_drop_restored_bottom_bundle_code_bytes() -> Vec<u8> {
+    host_target_single_arg_memory_program_bundle_code_bytes(&[
+        (3, 5),
+        (3, 7),
+        (10, 0),
+        (3, 42),
+        (3, 1),
+        (78, 0),
+        (44, 0),
+    ])
 }
 
 fn host_target_i64_compare_code_bytes(lhs: i64, rhs: i64, opcode: u32) -> Vec<u8> {
@@ -1253,6 +3098,220 @@ fn host_target_import_call_stub_code_bytes() -> Vec<u8> {
     (do
       (print-bytes code 0 (vector-length code))
       0)))"#,
+    )
+}
+
+fn host_target_selfhost_alloc_import_bundle_code_bytes(size: u32) -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [print-import (make-function-meta 1 0 (vector-new 0))
+        alloc-import (make-function-meta 1 0 (vector-new 0))
+        instr0 (make-i64-const {size})
+        instr1 (make-call 1)
+        instr2 (make-instr 59 0)
+        ir (vector-push
+             (vector-push
+               (vector-push (vector-new 3) instr0)
+               instr1)
+             instr2)
+        caller (make-function-meta 0 0 ir)
+        functions (vector-push
+                    (vector-push
+                      (vector-push (vector-new 3) print-import)
+                      alloc-import)
+                    caller)
+        target (host-target)
+        code (emit-native-function-meta-bundle-with-import-count functions 2 target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    ))
+}
+
+fn host_target_selfhost_alloc_runtime_bundle_code_bytes(
+    local_count: u32,
+    instr_exprs: &[String],
+) -> Vec<u8> {
+    let mut instr_bindings = String::new();
+    let mut ir_bindings = String::new();
+    for (idx, expr) in instr_exprs.iter().enumerate() {
+        instr_bindings.push_str(&format!("        instr{idx} {expr}\n"));
+        if idx == 0 {
+            ir_bindings.push_str(&format!(
+                "        ir0 (vector-push (vector-new {}) instr0)\n",
+                instr_exprs.len()
+            ));
+        } else {
+            ir_bindings.push_str(&format!(
+                "        ir{idx} (vector-push ir{} instr{idx})\n",
+                idx - 1
+            ));
+        }
+    }
+    let ir_name = if instr_exprs.is_empty() {
+        "(vector-new 0)".to_string()
+    } else {
+        format!("ir{}", instr_exprs.len() - 1)
+    };
+
+    run_native_codegen_host_bytes_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [print-import (make-function-meta 1 0 (vector-new 0))
+        alloc-import (make-function-meta 1 0 (vector-new 0))
+{instr_bindings}{ir_bindings}        caller (make-function-meta 0 {local_count} {ir_name})
+        functions (vector-push
+                    (vector-push
+                      (vector-push (vector-new 3) print-import)
+                      alloc-import)
+                    caller)
+        target (host-target)
+        code (emit-native-function-meta-bundle-with-import-count functions 2 target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    ))
+}
+
+fn host_target_selfhost_alloc_i32_store_load_bundle_code_bytes(value: u32) -> Vec<u8> {
+    host_target_selfhost_alloc_runtime_bundle_code_bytes(
+        1,
+        &[
+            "(make-i64-const 4)".to_string(),
+            "(make-call 1)".to_string(),
+            "(make-instr 11 0)".to_string(),
+            "(make-instr 10 0)".to_string(),
+            "(make-instr 38 0)".to_string(),
+            format!("(make-i32-const {value})"),
+            "(make-i32-store 0)".to_string(),
+            "(make-instr 10 0)".to_string(),
+            "(make-instr 38 0)".to_string(),
+            "(make-instr 45 0)".to_string(),
+            "(make-instr 59 0)".to_string(),
+        ],
+    )
+}
+
+fn host_target_selfhost_alloc_i32_load8_u_bundle_code_bytes() -> Vec<u8> {
+    host_target_selfhost_alloc_runtime_bundle_code_bytes(
+        1,
+        &[
+            "(make-i64-const 4)".to_string(),
+            "(make-call 1)".to_string(),
+            "(make-instr 11 0)".to_string(),
+            "(make-instr 10 0)".to_string(),
+            "(make-instr 38 0)".to_string(),
+            "(make-i32-const 25185)".to_string(),
+            "(make-i32-store 0)".to_string(),
+            "(make-instr 10 0)".to_string(),
+            "(make-instr 38 0)".to_string(),
+            "(make-instr 47 1)".to_string(),
+            "(make-instr 59 0)".to_string(),
+        ],
+    )
+}
+
+fn host_target_selfhost_alloc_i64_store_load_bundle_code_bytes(value: u32) -> Vec<u8> {
+    host_target_selfhost_alloc_runtime_bundle_code_bytes(
+        1,
+        &[
+            "(make-i64-const 8)".to_string(),
+            "(make-call 1)".to_string(),
+            "(make-instr 11 0)".to_string(),
+            "(make-instr 10 0)".to_string(),
+            "(make-instr 38 0)".to_string(),
+            format!("(make-i64-const {value})"),
+            "(make-instr 49 0)".to_string(),
+            "(make-instr 10 0)".to_string(),
+            "(make-instr 38 0)".to_string(),
+            "(make-instr 48 0)".to_string(),
+            "(make-instr 59 0)".to_string(),
+        ],
+    )
+}
+
+fn host_target_selfhost_alloc_memory_copy_bundle_code_bytes() -> Vec<u8> {
+    host_target_selfhost_alloc_runtime_bundle_code_bytes(
+        2,
+        &[
+            "(make-i64-const 4)".to_string(),
+            "(make-call 1)".to_string(),
+            "(make-instr 11 0)".to_string(),
+            "(make-instr 10 0)".to_string(),
+            "(make-instr 38 0)".to_string(),
+            "(make-i32-const 25185)".to_string(),
+            "(make-i32-store 0)".to_string(),
+            "(make-i64-const 4)".to_string(),
+            "(make-call 1)".to_string(),
+            "(make-instr 11 1)".to_string(),
+            "(make-instr 10 1)".to_string(),
+            "(make-instr 38 0)".to_string(),
+            "(make-instr 10 0)".to_string(),
+            "(make-instr 38 0)".to_string(),
+            "(make-i32-const 2)".to_string(),
+            "(make-instr 77 0)".to_string(),
+            "(make-instr 10 1)".to_string(),
+            "(make-instr 38 0)".to_string(),
+            "(make-instr 47 1)".to_string(),
+            "(make-instr 59 0)".to_string(),
+        ],
+    )
+}
+
+fn host_target_selfhost_alloc_memory_fill_bundle_code_bytes(fill_value: u32) -> Vec<u8> {
+    host_target_selfhost_alloc_runtime_bundle_code_bytes(
+        1,
+        &[
+            "(make-i64-const 4)".to_string(),
+            "(make-call 1)".to_string(),
+            "(make-instr 11 0)".to_string(),
+            "(make-instr 10 0)".to_string(),
+            "(make-instr 38 0)".to_string(),
+            format!("(make-i32-const {fill_value})"),
+            "(make-i32-const 3)".to_string(),
+            "(make-instr 78 0)".to_string(),
+            "(make-instr 10 0)".to_string(),
+            "(make-instr 38 0)".to_string(),
+            "(make-instr 47 2)".to_string(),
+            "(make-instr 59 0)".to_string(),
+        ],
     )
 }
 
@@ -6911,21 +8970,119 @@ fn host_target_direct_call_arg_drop_restore_code_bytes() -> Vec<u8> {
 /// ネイティブバイト列を `.s` アセンブリシムでラップし、
 /// clang (arm64) でリンクして実行する。戻り値は exit code。
 fn link_and_run_native_host_binary(code: &[u8]) -> Result<i32, String> {
+    link_and_run_native_host_binary_with_args(code, &[])
+}
+
+fn link_and_run_native_host_binary_with_args(code: &[u8], args: &[&str]) -> Result<i32, String> {
+    Ok(link_and_run_native_host_binary_capture_with_args(code, args)?.exit_code)
+}
+
+fn link_and_run_native_host_binary_capture_with_args(
+    code: &[u8],
+    args: &[&str],
+) -> Result<NativeHostExecutionResult, String> {
     if !host_native_exec_supported() {
         return Err("host native execution は macOS arm64 でのみサポート".to_string());
     }
 
     let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/e2e-native-fixtures")
-        .join(format!("native-host-exec-{id}"));
+    let dir = target_fixture_dir("e2e-native-fixtures", "native-host-exec", id);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
     let result = (|| {
         // バイト列を _main シンボルのアセンブリ .byte ディレクティブとして書き出す
         let byte_strs: Vec<String> = code.iter().map(|b| format!("0x{b:02x}")).collect();
         let asm_content = format!(
-            ".section __TEXT,__text\n.globl _main\n_main:\n    .byte {}\n",
+            ".section __TEXT,__text\n\
+             .globl _generated\n\
+             _generated:\n\
+                  .byte {}\n\
+             .globl _main\n\
+             _main:\n\
+                 stp x21, x22, [sp, #-32]!\n\
+                 str x30, [sp, #16]\n\
+                 mov x19, x0\n\
+                 mov x20, x1\n\
+                 mov x21, #0\n\
+                 mov x22, #0\n\
+                 bl _generated\n\
+                 ldr x30, [sp, #16]\n\
+                 ldp x21, x22, [sp], #32\n\
+                 ret\n",
+            byte_strs.join(", ")
+        );
+        std::fs::write(dir.join("prog.s"), &asm_content)
+            .map_err(|e| format!("prog.s 書き込み失敗: {e}"))?;
+
+        let link_result = std::process::Command::new("clang")
+            .args(["-arch", "arm64", "prog.s", "-o", "prog"])
+            .current_dir(&dir)
+            .output()
+            .map_err(|e| format!("clang 実行失敗: {e}"))?;
+
+        if !link_result.status.success() {
+            return Err(format!(
+                "リンク失敗:\nstdout: {}\nstderr: {}",
+                String::from_utf8_lossy(&link_result.stdout),
+                String::from_utf8_lossy(&link_result.stderr),
+            ));
+        }
+
+        let run_result = std::process::Command::new(dir.join("prog"))
+            .args(args)
+            .output()
+            .map_err(|e| format!("実行失敗: {e}"))?;
+
+        Ok(NativeHostExecutionResult {
+            exit_code: run_result.status.code().unwrap_or(-1),
+            stdout: run_result.stdout,
+            stderr: run_result.stderr,
+        })
+    })();
+
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+fn link_and_run_native_host_binary_with_cells_arg(
+    code: &[u8],
+    cell0: u64,
+    cell1: u64,
+) -> Result<i32, String> {
+    if !host_native_exec_supported() {
+        return Err("host native execution は macOS arm64 でのみサポート".to_string());
+    }
+
+    let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = target_fixture_dir("e2e-native-fixtures", "native-host-exec-cells", id);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let result = (|| {
+        let byte_strs: Vec<String> = code.iter().map(|b| format!("0x{b:02x}")).collect();
+        let asm_content = format!(
+            ".section __DATA,__data\n\
+             .p2align 3\n\
+             _lsharp_test_cells:\n\
+                  .quad {cell0}\n\
+                 .quad {cell1}\n\
+             .section __TEXT,__text\n\
+             .globl _generated\n\
+             _generated:\n\
+                  .byte {}\n\
+             .globl _main\n\
+             _main:\n\
+                 stp x21, x22, [sp, #-32]!\n\
+                 str x30, [sp, #16]\n\
+                 mov x19, #0\n\
+                 mov x20, #0\n\
+                 mov x21, #0\n\
+                 mov x22, #0\n\
+                 adrp x0, _lsharp_test_cells@PAGE\n\
+                 add x0, x0, _lsharp_test_cells@PAGEOFF\n\
+                 bl _generated\n\
+                 ldr x30, [sp, #16]\n\
+                 ldp x21, x22, [sp], #32\n\
+                 ret\n",
             byte_strs.join(", ")
         );
         std::fs::write(dir.join("prog.s"), &asm_content)
@@ -6957,6 +9114,120 @@ fn link_and_run_native_host_binary(code: &[u8]) -> Result<i32, String> {
 }
 
 /// canonical artifact 名で object / response / binary を materialize し、実行まで行う。
+fn materialize_native_host_bundle_artifacts_in_dir(
+    dir: &std::path::Path,
+    code: &[u8],
+) -> Result<String, String> {
+    let byte_strs: Vec<String> = code.iter().map(|b| format!("0x{b:02x}")).collect();
+    let program_asm = format!(
+        ".section __TEXT,__text\n\
+             .globl _generated\n\
+             _generated:\n\
+                  .byte {}\n\
+             .globl _main\n\
+             _main:\n\
+                 stp x21, x22, [sp, #-32]!\n\
+                 str x30, [sp, #16]\n\
+                 mov x19, x0\n\
+                 mov x20, x1\n\
+                 mov x21, #0\n\
+                 mov x22, #0\n\
+                 bl _generated\n\
+                 ldr x30, [sp, #16]\n\
+                 ldp x21, x22, [sp], #32\n\
+                 ret\n",
+        byte_strs.join(", ")
+    );
+    std::fs::write(dir.join("program.s"), program_asm)
+        .map_err(|e| format!("program.s 書き込み失敗: {e}"))?;
+
+    let runtime_asm =
+        ".section __TEXT,__text\n.globl _lsharp_runtime_stub\n_lsharp_runtime_stub:\n    ret\n";
+    std::fs::write(dir.join("runtime.s"), runtime_asm)
+        .map_err(|e| format!("runtime.s 書き込み失敗: {e}"))?;
+
+    let compile_program = std::process::Command::new("clang")
+        .args(["-arch", "arm64", "-c", "program.s", "-o", "program.o"])
+        .current_dir(dir)
+        .output()
+        .map_err(|e| format!("program.o 生成失敗: {e}"))?;
+    if !compile_program.status.success() {
+        return Err(format!(
+            "program.o 生成失敗:\nstdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&compile_program.stdout),
+            String::from_utf8_lossy(&compile_program.stderr),
+        ));
+    }
+
+    let compile_runtime = std::process::Command::new("clang")
+        .args(["-arch", "arm64", "-c", "runtime.s", "-o", "runtime.o"])
+        .current_dir(dir)
+        .output()
+        .map_err(|e| format!("runtime.o 生成失敗: {e}"))?;
+    if !compile_runtime.status.success() {
+        return Err(format!(
+            "runtime.o 生成失敗:\nstdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&compile_runtime.stdout),
+            String::from_utf8_lossy(&compile_runtime.stderr),
+        ));
+    }
+
+    let response_text = "-o\nprogram.native\nprogram.o\nruntime.o\n".to_string();
+    std::fs::write(dir.join("linker-response.txt"), &response_text)
+        .map_err(|e| format!("linker-response.txt 書き込み失敗: {e}"))?;
+
+    let link_result = std::process::Command::new("clang")
+        .arg("-Wl,-stack_size,0x08000000")
+        .arg("@linker-response.txt")
+        .current_dir(dir)
+        .output()
+        .map_err(|e| format!("clang response-file 実行失敗: {e}"))?;
+    if !link_result.status.success() {
+        return Err(format!(
+            "canonical response-file link 失敗:\nstdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&link_result.stdout),
+            String::from_utf8_lossy(&link_result.stderr),
+        ));
+    }
+
+    let relink_result = std::process::Command::new("clang")
+        .arg("-Wl,-stack_size,0x08000000")
+        .arg("@linker-response.txt")
+        .current_dir(dir)
+        .output()
+        .map_err(|e| format!("clang stack-size relink 実行失敗: {e}"))?;
+    if !relink_result.status.success() {
+        return Err(format!(
+            "canonical stack-size relink 失敗:\nstdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&relink_result.stdout),
+            String::from_utf8_lossy(&relink_result.stderr),
+        ));
+    }
+
+    Ok(response_text)
+}
+
+fn read_native_host_bundle_from_dir(
+    dir: &std::path::Path,
+    response_text: String,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+    exit_code: i32,
+) -> Result<NativeHostArtifactBundle, String> {
+    Ok(NativeHostArtifactBundle {
+        program_object: std::fs::read(dir.join("program.o"))
+            .map_err(|e| format!("program.o 読み込み失敗: {e}"))?,
+        runtime_object: std::fs::read(dir.join("runtime.o"))
+            .map_err(|e| format!("runtime.o 読み込み失敗: {e}"))?,
+        response_text,
+        program_binary: std::fs::read(dir.join("program.native"))
+            .map_err(|e| format!("program.native 読み込み失敗: {e}"))?,
+        stdout,
+        stderr,
+        exit_code,
+    })
+}
+
 fn build_and_run_native_host_bundle_with_canonical_artifacts(
     code: &[u8],
 ) -> Result<NativeHostArtifactBundle, String> {
@@ -6967,16 +9238,92 @@ fn build_and_run_native_host_bundle_with_canonical_artifacts(
     }
 
     let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/e2e-native-fixtures")
-        .join(format!("native-host-bundle-{id}"));
+    let dir = target_fixture_dir("e2e-native-fixtures", "native-host-bundle", id);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
     let result = (|| {
-        let byte_strs: Vec<String> = code.iter().map(|b| format!("0x{b:02x}")).collect();
+        let response_text = materialize_native_host_bundle_artifacts_in_dir(&dir, code)?;
+
+        let run_result = std::process::Command::new(dir.join("program.native"))
+            .output()
+            .map_err(|e| format!("program.native 実行失敗: {e}"))?;
+
+        read_native_host_bundle_from_dir(
+            &dir,
+            response_text,
+            run_result.stdout,
+            run_result.stderr,
+            run_result.status.code().unwrap_or(-1),
+        )
+    })();
+
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
+    code: &[u8],
+    entrypoint_offset: usize,
+) -> Result<NativeHostArtifactBundle, String> {
+    if !host_native_exec_supported() {
+        return Err(
+            "canonical host bundle materialization は macOS arm64 でのみサポート".to_string(),
+        );
+    }
+    if entrypoint_offset > code.len() {
+        return Err(format!(
+            "entrypoint offset が code bytes 範囲外: offset={} len={}",
+            entrypoint_offset,
+            code.len()
+        ));
+    }
+    let entrypoint_offset = align_aarch64_entrypoint_to_function_start(code, entrypoint_offset);
+
+    let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = target_fixture_dir(
+        "e2e-native-fixtures",
+        "native-host-bundle-artifact-entrypoint",
+        id,
+    );
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let result = (|| {
+        let prefix_bytes = &code[..entrypoint_offset];
+        let suffix_bytes = &code[entrypoint_offset..];
+        let prefix_text = if prefix_bytes.is_empty() {
+            "0x1f, 0x20, 0x03, 0xd5".to_string()
+        } else {
+            prefix_bytes
+                .iter()
+                .map(|b| format!("0x{b:02x}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let suffix_text = suffix_bytes
+            .iter()
+            .map(|b| format!("0x{b:02x}"))
+            .collect::<Vec<_>>()
+            .join(", ");
         let program_asm = format!(
-            ".section __TEXT,__text\n.globl _main\n_main:\n    .byte {}\n",
-            byte_strs.join(", ")
+            ".section __TEXT,__text\n\
+             .globl _main\n\
+             _main:\n\
+                 stp x21, x22, [sp, #-32]!\n\
+                 str x30, [sp, #16]\n\
+                 mov x19, x0\n\
+                 mov x20, x1\n\
+                 mov x21, #0\n\
+                 mov x22, #0\n\
+                 bl _lsharp_entry\n\
+                 ldr x30, [sp, #16]\n\
+                 ldp x21, x22, [sp], #32\n\
+                 ret\n\
+             .globl _lsharp_bundle\n\
+             _lsharp_bundle:\n\
+                  .byte {prefix_text}\n\
+             .globl _lsharp_entry\n\
+             _lsharp_entry:\n\
+                 .byte {suffix_text}\n"
         );
         std::fs::write(dir.join("program.s"), program_asm)
             .map_err(|e| format!("program.s 書き込み失敗: {e}"))?;
@@ -7017,6 +9364,7 @@ fn build_and_run_native_host_bundle_with_canonical_artifacts(
             .map_err(|e| format!("linker-response.txt 書き込み失敗: {e}"))?;
 
         let link_result = std::process::Command::new("clang")
+            .arg("-Wl,-stack_size,0x08000000")
             .arg("@linker-response.txt")
             .current_dir(&dir)
             .output()
@@ -7029,26 +9377,141 @@ fn build_and_run_native_host_bundle_with_canonical_artifacts(
             ));
         }
 
-        let run_result = std::process::Command::new(dir.join("program.native"))
+        let relink_result = std::process::Command::new("clang")
+            .arg("-Wl,-stack_size,0x08000000")
+            .arg("@linker-response.txt")
+            .current_dir(&dir)
             .output()
-            .map_err(|e| format!("program.native 実行失敗: {e}"))?;
+            .map_err(|e| format!("clang stack-size relink 実行失敗: {e}"))?;
+        if !relink_result.status.success() {
+            return Err(format!(
+                "canonical stack-size relink 失敗:\nstdout: {}\nstderr: {}",
+                String::from_utf8_lossy(&relink_result.stdout),
+                String::from_utf8_lossy(&relink_result.stderr),
+            ));
+        }
 
-        Ok(NativeHostArtifactBundle {
-            program_object: std::fs::read(dir.join("program.o"))
-                .map_err(|e| format!("program.o 読み込み失敗: {e}"))?,
-            runtime_object: std::fs::read(dir.join("runtime.o"))
-                .map_err(|e| format!("runtime.o 読み込み失敗: {e}"))?,
-            response_text,
-            program_binary: std::fs::read(dir.join("program.native"))
-                .map_err(|e| format!("program.native 読み込み失敗: {e}"))?,
-            stdout: run_result.stdout,
-            stderr: run_result.stderr,
-            exit_code: run_result.status.code().unwrap_or(-1),
-        })
+        read_native_host_bundle_from_dir(&dir, response_text, Vec::new(), Vec::new(), 0)
     })();
 
     let _ = std::fs::remove_dir_all(&dir);
     result
+}
+
+fn build_and_run_native_host_bundle_with_canonical_artifacts_and_entrypoint(
+    code: &[u8],
+    entrypoint_offset: usize,
+) -> Result<NativeHostArtifactBundle, String> {
+    if !host_native_exec_supported() {
+        return Err(
+            "canonical host bundle materialization は macOS arm64 でのみサポート".to_string(),
+        );
+    }
+    if entrypoint_offset > code.len() {
+        return Err(format!(
+            "entrypoint offset が code bytes 範囲外: offset={} len={}",
+            entrypoint_offset,
+            code.len()
+        ));
+    }
+
+    let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = target_fixture_dir(
+        "e2e-native-fixtures",
+        "native-host-bundle-artifact-entrypoint-exec",
+        id,
+    );
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let result = (|| {
+        let bundle = build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
+            code,
+            entrypoint_offset,
+        )?;
+        std::fs::write(dir.join("program.o"), &bundle.program_object)
+            .map_err(|e| format!("program.o 書き込み失敗: {e}"))?;
+        std::fs::write(dir.join("runtime.o"), &bundle.runtime_object)
+            .map_err(|e| format!("runtime.o 書き込み失敗: {e}"))?;
+        std::fs::write(dir.join("linker-response.txt"), &bundle.response_text)
+            .map_err(|e| format!("linker-response.txt 書き込み失敗: {e}"))?;
+        let program_binary_path = dir.join("program.native");
+        let relink_result = std::process::Command::new("clang")
+            .arg("-Wl,-stack_size,0x08000000")
+            .arg("@linker-response.txt")
+            .current_dir(&dir)
+            .output()
+            .map_err(|e| format!("final exec-dir relink 実行失敗: {e}"))?;
+        if !relink_result.status.success() {
+            return Err(format!(
+                "final exec-dir relink 失敗:\nstdout: {}\nstderr: {}",
+                String::from_utf8_lossy(&relink_result.stdout),
+                String::from_utf8_lossy(&relink_result.stderr),
+            ));
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let permissions = std::fs::Permissions::from_mode(0o755);
+            std::fs::set_permissions(&program_binary_path, permissions)
+                .map_err(|e| format!("program.native の execute bit 設定失敗: {e}"))?;
+        }
+
+        let run_result = std::process::Command::new(&program_binary_path)
+            .output()
+            .map_err(|e| format!("program.native 実行失敗: {e}"))?;
+
+        read_native_host_bundle_from_dir(
+            &dir,
+            bundle.response_text,
+            run_result.stdout,
+            run_result.stderr,
+            run_result.status.code().unwrap_or(-1),
+        )
+    })();
+
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+fn align_aarch64_entrypoint_to_function_start(code: &[u8], entrypoint_offset: usize) -> usize {
+    const SAVE_FP_LR_PROLOGUE: [u8; 4] = [0xfd, 0x7b, 0xbf, 0xa9];
+
+    if entrypoint_offset >= code.len() {
+        return entrypoint_offset;
+    }
+
+    let mut candidate = entrypoint_offset - (entrypoint_offset % 4);
+    loop {
+        if candidate + SAVE_FP_LR_PROLOGUE.len() <= code.len()
+            && code[candidate..candidate + SAVE_FP_LR_PROLOGUE.len()] == SAVE_FP_LR_PROLOGUE
+        {
+            return candidate;
+        }
+        if candidate < 4 {
+            break;
+        }
+        candidate -= 4;
+    }
+
+    entrypoint_offset
+}
+
+#[test]
+fn test_align_aarch64_entrypoint_to_function_start_rewinds_to_save_fp_lr_prologue() {
+    let code = vec![
+        0x1f, 0x20, 0x03, 0xd5, // nop
+        0xfd, 0x7b, 0xbf, 0xa9, // stp x29, x30, [sp, #-16]!
+        0xff, 0x43, 0x03, 0xd1, // sub sp, sp, #0xd0
+        0xe0, 0x03, 0x00, 0xaa, // mov x0, x0
+        0xc0, 0x03, 0x5f, 0xd6, // ret
+    ];
+
+    assert_eq!(
+        align_aarch64_entrypoint_to_function_start(&code, 12),
+        4,
+        "AArch64 entrypoint は直前の save-fp/lr prologue へ巻き戻すべき"
+    );
 }
 
 /// NATIVE-HOST-01: stage1-native-emitted object をホスト (aarch64-apple-darwin) でリンク・実行する
@@ -7109,6 +9572,173 @@ fn test_e2e_native_host_binary_local_roundtrip_link_and_execute() {
         exit_code,
         42,
         "host binary local roundtrip: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01b1: selfhost-style 1-based param slot を正規化した function-meta bundle が第1引数を返すこと。
+#[test]
+fn test_e2e_native_host_binary_selfhost_style_param1_bundle_returns_argc() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_style_param1_bundle_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost-style param bundle の host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("selfhost-style param bundle host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code, 1,
+        "selfhost-style param bundle: exit code 1 (argc) を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01c0: typed if/else/end を含む plain native code が host 上で true branch を返すこと。
+#[test]
+fn test_e2e_native_host_binary_if_else_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_if_else_code_bytes(1);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: if/else/end を含む plain native code が空"
+    );
+
+    let exit_code =
+        link_and_run_native_host_binary(&code_bytes).expect("if/else host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "host binary if/else: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01c1: if-empty/end が false branch で既存 local 値を保つこと。
+#[test]
+fn test_e2e_native_host_binary_if_empty_false_branch_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_if_empty_local_set_code_bytes(0);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: if-empty/end を含む plain native code が空"
+    );
+
+    let exit_code =
+        link_and_run_native_host_binary(&code_bytes).expect("if-empty host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        7,
+        "host binary if-empty false branch: exit code 7 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01c2: block-empty/br/end が block 終端へ分岐できること。
+#[test]
+fn test_e2e_native_host_binary_block_br_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_block_br_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: block-empty/br/end を含む plain native code が空"
+    );
+
+    let exit_code =
+        link_and_run_native_host_binary(&code_bytes).expect("block/br host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "host binary block/br: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01c3: typed loop/br_if/end が 1 local の countdown loop を実行できること。
+#[test]
+fn test_e2e_native_host_binary_loop_br_if_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_loop_countdown_code_bytes(82);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: loop/br_if/end を含む plain native code が空"
+    );
+
+    let exit_code =
+        link_and_run_native_host_binary(&code_bytes).expect("loop/br_if host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        0,
+        "host binary loop/br_if: exit code 0 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01c4: loop-empty/br_if/end も同じ 1 local countdown loop を実行できること。
+#[test]
+fn test_e2e_native_host_binary_loop_empty_br_if_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_loop_countdown_code_bytes(85);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: loop-empty/br_if/end を含む plain native code が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("loop-empty/br_if host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        0,
+        "host binary loop-empty/br_if: exit code 0 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),
@@ -7205,6 +9835,31 @@ fn assert_host_target_i32_logic_exit_code(
     );
 }
 
+fn assert_host_target_exit_code(name: &str, code_bytes: Vec<u8>, expected_exit_code: i32) {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: {name} を含む host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .unwrap_or_else(|_| panic!("{name} host binary 実行に失敗"));
+
+    assert_eq!(
+        exit_code,
+        expected_exit_code,
+        "host binary {name}: exit code {} を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        expected_exit_code,
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
 /// NATIVE-HOST-01d1: i32.and を含む host target バイト列がリンク・実行できること。
 #[test]
 fn test_e2e_native_host_binary_i32_and_link_and_execute() {
@@ -7215,6 +9870,728 @@ fn test_e2e_native_host_binary_i32_and_link_and_execute() {
 #[test]
 fn test_e2e_native_host_binary_i32_or_link_and_execute() {
     assert_host_target_i32_logic_exit_code("i32 or", 12, 3, 27, 15);
+}
+
+/// NATIVE-HOST-01d2a: selfhost builtin logical and (opcode 71) が host binary で実行できること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_and_link_and_execute() {
+    assert_host_target_i32_logic_exit_code("selfhost and", 12, 10, 71, 8);
+}
+
+/// NATIVE-HOST-01d2b: selfhost builtin logical or (opcode 72) が host binary で実行できること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_or_link_and_execute() {
+    assert_host_target_i32_logic_exit_code("selfhost or", 12, 3, 72, 15);
+}
+
+/// NATIVE-HOST-01d2c: selfhost root_push (opcode 74) が current value を保ったまま drop 後に previous value を復元できること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_root_push_drop_restores_previous_value() {
+    assert_host_target_exit_code(
+        "selfhost root_push",
+        host_target_selfhost_root_push_drop_restore_code_bytes(),
+        7,
+    );
+}
+
+/// NATIVE-HOST-01d2d: selfhost root_pop (opcode 75) が drop 後に previous value を復元できること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_root_pop_drop_restores_previous_value() {
+    assert_host_target_exit_code(
+        "selfhost root_pop",
+        host_target_selfhost_root_pop_drop_restore_code_bytes(),
+        42,
+    );
+}
+
+/// NATIVE-HOST-01d2e: selfhost root_set (opcode 76) が bundle path で slot を畳みつつ value を返し、drop 後に bottom value を復元できること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_root_set_drop_restores_bottom_value() {
+    assert_host_target_exit_code(
+        "selfhost root_set bundle",
+        host_target_selfhost_root_set_drop_restore_bottom_bundle_code_bytes(),
+        99,
+    );
+}
+
+/// NATIVE-HOST-01d2f: selfhost command-line-arg/string-length が no-arg で空文字長 0 を返せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_command_line_arg_string_length_no_arg_returns_zero() {
+    assert_host_target_exit_code(
+        "selfhost command-line-arg/string-length no-arg bundle",
+        host_target_selfhost_command_line_arg_string_length_bundle_code_bytes(1),
+        0,
+    );
+}
+
+/// NATIVE-HOST-01d2g: selfhost command-line-arg/string-length が argv[1] の長さを返せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_command_line_arg_string_length_reads_host_argv() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_command_line_arg_string_length_bundle_code_bytes(1);
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost command-line-arg/string-length bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &["abc"])
+        .expect("selfhost command-line-arg/string-length host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        3,
+        "host binary selfhost command-line-arg/string-length: exit code 3 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2ga: selfhost string-char-at (opcode 50) が AArch64 bundle path で argv 文字列から 1 byte を読めること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_command_line_arg_string_char_at_reads_host_argv_byte() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_command_line_arg_string_char_at_bundle_code_bytes(1, 1);
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost command-line-arg/string-char-at bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &["abc"])
+        .expect("selfhost command-line-arg/string-char-at host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        98,
+        "host binary selfhost command-line-arg/string-char-at: exit code 98 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2h: selfhost print (opcode 59) が AArch64 bundle path で stdout に整数を出力して 0 を返せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_print_bundle_writes_stdout() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_print_bundle_code_bytes(42);
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost print bundle 向けコードバイト列が空"
+    );
+
+    let result = link_and_run_native_host_binary_capture_with_args(&code_bytes, &[])
+        .expect("selfhost print host binary 実行に失敗");
+
+    assert_eq!(
+        result.exit_code,
+        0,
+        "host binary selfhost print bundle: exit code 0 を期待したが {} を得た\n\
+         stdout={:?}\n\
+         stderr={:?}\n\
+         bytes ({} bytes): {:?}",
+        result.exit_code,
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr),
+        code_bytes.len(),
+        code_bytes
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout),
+        "42\n",
+        "host binary selfhost print bundle: stdout が期待値と一致しない\n\
+         stderr={:?}\n\
+         bytes ({} bytes): {:?}",
+        String::from_utf8_lossy(&result.stderr),
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2i: selfhost vector-new/vector-length が AArch64 bundle path で empty vector の長さ 0 を返せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_vector_new_length_bundle_returns_empty_length() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_vector_new_length_bundle_code_bytes(4);
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost vector-new/vector-length bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("selfhost vector-new/vector-length host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        0,
+        "host binary selfhost vector-new/vector-length bundle: exit code 0 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2j: selfhost vector-push (opcode 55) が AArch64 bundle path で spare capacity に 1 要素を追加し、length=1 を返せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_vector_push_bundle_updates_length() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_vector_push_length_bundle_code_bytes(4, 42);
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost vector-push/length bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("selfhost vector-push/length host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        1,
+        "host binary selfhost vector-push/length bundle: exit code 1 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2k: selfhost vector-get (opcode 53) が AArch64 bundle path で push 済み要素 42 を読み戻せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_vector_get_bundle_reads_pushed_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_vector_push_get_bundle_code_bytes(4, 42, 0);
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost vector-push/get bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("selfhost vector-push/get host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "host binary selfhost vector-push/get bundle: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2ka: selfhost vector-get (opcode 53) が AArch64 bundle path で manually seeded elem[0]=42 を読み戻せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_vector_get_bundle_reads_manual_seeded_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_vector_get_manual_seed_bundle_code_bytes(4, 1, 42, 0);
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost vector-get manual-seed bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("selfhost vector-get manual-seed host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "host binary selfhost vector-get manual-seed bundle: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2l: selfhost ref-new/ref-get が AArch64 bundle path で作成した ref cell から値 42 を読み戻せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_ref_new_get_bundle_reads_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_ref_new_get_bundle_code_bytes(42);
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost ref-new/ref-get bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("selfhost ref-new/ref-get host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "host binary selfhost ref-new/ref-get bundle: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2m: selfhost ref-set が AArch64 bundle path で ref cell を更新し、drop 後の ref-get が新値 99 を返せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_ref_set_bundle_updates_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_ref_set_get_bundle_code_bytes(10, 99);
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost ref-set/ref-get bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("selfhost ref-set/ref-get host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        99,
+        "host binary selfhost ref-set/ref-get bundle: exit code 99 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2n: selfhost substring (opcode 69) が AArch64 bundle path で "hello"[1,4) の長さ 3 を返せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_substring_bundle_returns_length() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_substring_length_bundle_code_bytes();
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost substring/string-length bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &["hello"])
+        .expect("selfhost substring/string-length host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        3,
+        "host binary selfhost substring/string-length bundle: exit code 3 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2o: selfhost substring (opcode 69) が AArch64 bundle path で "hello"[1,4) の先頭文字 'e' を返せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_substring_bundle_copies_payload() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_substring_char_at_bundle_code_bytes();
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost substring/string-char-at bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &["hello"])
+        .expect("selfhost substring/string-char-at host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        101,
+        "host binary selfhost substring/string-char-at bundle: exit code 101 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2p: selfhost string-concat (opcode 70) が AArch64 bundle path で "ab" + "Z" の長さ 3 を返せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_string_concat_bundle_returns_length() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_string_concat_length_bundle_code_bytes();
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost string-concat/string-length bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &["ab", "Z"])
+        .expect("selfhost string-concat/string-length host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        3,
+        "host binary selfhost string-concat/string-length bundle: exit code 3 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2q: selfhost string-concat (opcode 70) が AArch64 bundle path で rhs 側の 'Z' を保持できること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_string_concat_bundle_copies_rhs_payload() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_string_concat_char_at_bundle_code_bytes();
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost string-concat/string-char-at bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &["ab", "Z"])
+        .expect("selfhost string-concat/string-char-at host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        90,
+        "host binary selfhost string-concat/string-char-at bundle: exit code 90 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2r: selfhost map-new/map-size が AArch64 bundle path で空 map の size 0 を返せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_map_new_size_bundle_returns_zero() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_map_new_size_bundle_code_bytes();
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost map-new/map-size bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("selfhost map-new/map-size host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        0,
+        "host binary selfhost map-new/map-size bundle: exit code 0 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2w: selfhost map-insert/map-size が AArch64 bundle path で size 1 を返せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_map_insert_size_bundle_returns_one() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_map_insert_size_bundle_code_bytes();
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost map-insert/map-size bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("selfhost map-insert/map-size host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        1,
+        "host binary selfhost map-insert/map-size bundle: exit code 1 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2x: selfhost map-insert/map-get が AArch64 bundle path で挿入値 42 を返せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_map_insert_get_bundle_returns_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_map_insert_get_bundle_code_bytes();
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost map-insert/map-get bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("selfhost map-insert/map-get host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "host binary selfhost map-insert/map-get bundle: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2x2: selfhost map-insert/map-get の直後に print を続けても AArch64 bundle path の helper offset が崩れず stdout へ 42 を書けること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_map_insert_get_then_print_writes_stdout() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_map_insert_get_print_bundle_code_bytes();
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost map-insert/map-get/print bundle 向けコードバイト列が空"
+    );
+
+    let result = link_and_run_native_host_binary_capture_with_args(&code_bytes, &[])
+        .expect("selfhost map-insert/map-get/print host binary 実行に失敗");
+
+    assert_eq!(
+        result.exit_code,
+        0,
+        "host binary selfhost map-insert/map-get/print bundle: exit code 0 を期待したが {} を得た\n\
+         stdout={:?}\n\
+         stderr={:?}\n\
+         bytes ({} bytes): {:?}",
+        result.exit_code,
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr),
+        code_bytes.len(),
+        code_bytes
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout),
+        "42\n",
+        "host binary selfhost map-insert/map-get/print bundle: stdout が期待値と一致しない\n\
+         stderr={:?}\n\
+         bytes ({} bytes): {:?}",
+        String::from_utf8_lossy(&result.stderr),
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2y: selfhost map-get が AArch64 bundle path で missing key に 0 を返すこと。
+#[test]
+fn test_e2e_native_host_binary_selfhost_map_get_missing_bundle_returns_zero() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_map_get_missing_bundle_code_bytes();
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost map-get missing bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("selfhost map-get missing host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        0,
+        "host binary selfhost map-get missing bundle: exit code 0 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2s: selfhost file-exists? (opcode 73) が AArch64 bundle path で raw path の存在を判定できること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_file_exists_raw_bundle_returns_one() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let dir = target_fixture_dir(
+        "e2e-native-fixtures",
+        "native-selfhost-file-exists-raw",
+        NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed),
+    );
+    std::fs::create_dir_all(&dir).expect("file-exists raw fixture dir 作成失敗");
+    let path = dir.join("present.txt");
+    std::fs::write(&path, "present").expect("file-exists raw fixture file 書き込み失敗");
+    let path_arg = path.to_string_lossy().into_owned();
+
+    let code_bytes = host_target_selfhost_file_exists_raw_bundle_code_bytes();
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost file-exists? raw bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &[&path_arg])
+        .expect("selfhost file-exists? raw host binary 実行に失敗");
+
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        exit_code,
+        1,
+        "host binary selfhost file-exists? raw bundle: exit code 1 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2u: selfhost read-file (opcode 64) が AArch64 bundle path で raw path の長さ 5 を返せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_read_file_raw_bundle_returns_length() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let dir = target_fixture_dir(
+        "e2e-native-fixtures",
+        "native-selfhost-read-file-raw",
+        NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed),
+    );
+    std::fs::create_dir_all(&dir).expect("read-file raw fixture dir 作成失敗");
+    let path = dir.join("fixture.txt");
+    std::fs::write(&path, "hello").expect("read-file raw fixture file 書き込み失敗");
+    let path_arg = path.to_string_lossy().into_owned();
+
+    let code_bytes = host_target_selfhost_read_file_raw_length_bundle_code_bytes();
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost read-file raw bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &[&path_arg])
+        .expect("selfhost read-file raw host binary 実行に失敗");
+
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        exit_code,
+        5,
+        "host binary selfhost read-file raw bundle: exit code 5 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2t: selfhost file-exists? (opcode 73) が AArch64 bundle path で tagged path の存在を判定できること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_file_exists_tagged_bundle_returns_one() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let dir = target_fixture_dir(
+        "e2e-native-fixtures",
+        "native-selfhost-file-exists-tagged",
+        NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed),
+    );
+    std::fs::create_dir_all(&dir).expect("file-exists tagged fixture dir 作成失敗");
+    let path = dir.join("present.txt");
+    std::fs::write(&path, "present").expect("file-exists tagged fixture file 書き込み失敗");
+    let path_arg = path.to_string_lossy().into_owned();
+
+    let code_bytes = host_target_selfhost_file_exists_tagged_bundle_code_bytes();
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost file-exists? tagged bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &[&path_arg, ""])
+        .expect("selfhost file-exists? tagged host binary 実行に失敗");
+
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        exit_code,
+        1,
+        "host binary selfhost file-exists? tagged bundle: exit code 1 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2v: selfhost read-file (opcode 64) が AArch64 bundle path で tagged path から payload 先頭 byte 'h' を返せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_read_file_tagged_bundle_copies_payload() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let dir = target_fixture_dir(
+        "e2e-native-fixtures",
+        "native-selfhost-read-file-tagged",
+        NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed),
+    );
+    std::fs::create_dir_all(&dir).expect("read-file tagged fixture dir 作成失敗");
+    let path = dir.join("fixture.txt");
+    std::fs::write(&path, "hello").expect("read-file tagged fixture file 書き込み失敗");
+    let path_arg = path.to_string_lossy().into_owned();
+
+    let code_bytes = host_target_selfhost_read_file_tagged_char_at_bundle_code_bytes();
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost read-file tagged bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &[&path_arg, ""])
+        .expect("selfhost read-file tagged host binary 実行に失敗");
+
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        exit_code,
+        104,
+        "host binary selfhost read-file tagged bundle: exit code 104 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
 }
 
 /// NATIVE-HOST-01d3: i64.const/local.get/i64.add を含む host target バイト列がリンク・実行できること。
@@ -7294,6 +10671,321 @@ fn test_e2e_native_host_binary_i64_mul_link_and_execute() {
         exit_code,
         42,
         "host binary i64 mul: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d5b: i64.const/local.get/i64.div を含む host target バイト列がリンク・実行できること。
+#[test]
+fn test_e2e_native_host_binary_i64_div_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_i64_div_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: i64.const/local.get/i64.div を含む host target 向けコードバイト列が空"
+    );
+
+    let exit_code =
+        link_and_run_native_host_binary(&code_bytes).expect("i64 div host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "host binary i64 div: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d5c: i64.const/local.get/i64.rem を含む host target バイト列がリンク・実行できること。
+#[test]
+fn test_e2e_native_host_binary_i64_rem_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_i64_rem_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: i64.const/local.get/i64.rem を含む host target 向けコードバイト列が空"
+    );
+
+    let exit_code =
+        link_and_run_native_host_binary(&code_bytes).expect("i64 rem host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "host binary i64 rem: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d5d: 1 引数 bundle の i64.load offset=8 が host target で実行できること。
+#[test]
+fn test_e2e_native_host_binary_i64_load_offset_eight_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_single_arg_memory_bundle_code_bytes(48, 8);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: i64.load bundle code bytes が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_cells_arg(&code_bytes, 0, 42)
+        .expect("i64 load host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "host binary i64 load: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d5e: 1 引数 bundle の i32.load offset=4 が host target で実行できること。
+#[test]
+fn test_e2e_native_host_binary_i32_load_offset_four_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_single_arg_memory_bundle_code_bytes(45, 4);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: i32.load bundle code bytes が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_cells_arg(&code_bytes, 42u64 << 32, 0)
+        .expect("i32 load host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "host binary i32 load: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d5f: 1 引数 bundle の i32.load8_u offset=1 が host target で実行できること。
+#[test]
+fn test_e2e_native_host_binary_i32_load8_u_offset_one_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_single_arg_memory_bundle_code_bytes(47, 1);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: i32.load8_u bundle code bytes が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_cells_arg(&code_bytes, 42u64 << 8, 0)
+        .expect("i32 load8_u host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "host binary i32 load8_u: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d5g: 1 引数 bundle の i64.store offset=8 後に同アドレスを i64.load できること。
+#[test]
+fn test_e2e_native_host_binary_i64_store_offset_eight_then_load_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes =
+        host_target_single_arg_memory_store_then_load_bundle_code_bytes(1, 42, 49, 8, 48, 8);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: i64.store/i64.load bundle code bytes が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_cells_arg(&code_bytes, 0, 0)
+        .expect("i64 store/load host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "host binary i64 store/load: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d5h: 1 引数 bundle の i32.store offset=4 後に同アドレスを i32.load できること。
+#[test]
+fn test_e2e_native_host_binary_i32_store_offset_four_then_load_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes =
+        host_target_single_arg_memory_store_then_load_bundle_code_bytes(3, 42, 46, 4, 45, 4);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: i32.store/i32.load bundle code bytes が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_cells_arg(&code_bytes, 0, 0)
+        .expect("i32 store/load host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "host binary i32 store/load: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d5i: i64.store が top 2 値を消費したあと、spill 側の 2 値を復元できること。
+#[test]
+fn test_e2e_native_host_binary_i64_store_then_load_double_drop_restores_bottom_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_single_arg_i64_store_then_load_double_drop_bundle_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: i64.store deep restore bundle code bytes が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_cells_arg(&code_bytes, 0, 0)
+        .expect("i64 store deep restore host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        5,
+        "host binary i64 store deep restore: exit code 5 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d5j: 1 引数 bundle の memory.fill が複数 byte を埋め、境界外を壊さないこと。
+#[test]
+fn test_e2e_native_host_binary_memory_fill_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_single_arg_memory_fill_load_sum_bundle_code_bytes(42, 5);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: memory.fill bundle code bytes が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_cells_arg(&code_bytes, 7u64 << 40, 0)
+        .expect("memory.fill host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        49,
+        "host binary memory.fill: exit code 49 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d5k: 1 引数 bundle の memory.copy が複数 byte を複写し、境界外を壊さないこと。
+#[test]
+fn test_e2e_native_host_binary_memory_copy_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_single_arg_memory_copy_load_sum_bundle_code_bytes(5);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: memory.copy bundle code bytes が空"
+    );
+
+    let dst_cell = 9u64 | (9u64 << 8) | (9u64 << 16) | (9u64 << 24) | (9u64 << 32) | (11u64 << 40);
+    let exit_code = link_and_run_native_host_binary_with_cells_arg(
+        &code_bytes,
+        0x0807_0605_0403_0201,
+        dst_cell,
+    )
+    .expect("memory.copy host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        16,
+        "host binary memory.copy: exit code 16 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d5l: memory.fill が top 3 値を消費したあと spill 側の底値を復元できること。
+#[test]
+fn test_e2e_native_host_binary_memory_fill_drop_restores_bottom_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_single_arg_memory_fill_drop_restored_bottom_bundle_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: memory.fill deep restore bundle code bytes が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_cells_arg(&code_bytes, 0, 0)
+        .expect("memory.fill deep restore host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        5,
+        "host binary memory.fill deep restore: exit code 5 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),
@@ -7505,6 +11197,258 @@ fn test_e2e_native_host_binary_import_call_stub_link_and_execute() {
         "host binary import call stub: exit code 42 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01g4: import idx 1 が per-import stub 経由で selfhost __alloc helper に到達し、ret stub の値をそのまま返さないこと。
+#[test]
+fn test_e2e_native_host_binary_selfhost_alloc_import_bundle_writes_allocated_offset() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_alloc_import_bundle_code_bytes(17);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost alloc import bundle 向けコードバイト列が空"
+    );
+
+    let result = link_and_run_native_host_binary_capture_with_args(&code_bytes, &[])
+        .expect("selfhost alloc import bundle host binary 実行に失敗");
+
+    assert_eq!(
+        result.exit_code,
+        0,
+        "host binary selfhost alloc import bundle: exit code 0 を期待したが {} を得た\n\
+         stdout={:?}\n\
+         stderr={:?}\n\
+         bytes ({} bytes): {:?}",
+        result.exit_code,
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr),
+        code_bytes.len(),
+        code_bytes
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout),
+        "65536\n",
+        "host binary selfhost alloc import bundle: stdout が期待値と一致しない\n\
+         stderr={:?}\n\
+         bytes ({} bytes): {:?}",
+        String::from_utf8_lossy(&result.stderr),
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01g5: alloc-backed i32.store/i32.load が linear offset を x21 heap base に rebased して roundtrip できること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_alloc_i32_store_load_bundle_writes_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_alloc_i32_store_load_bundle_code_bytes(42);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost alloc i32.store/load bundle 向けコードバイト列が空"
+    );
+
+    let result = link_and_run_native_host_binary_capture_with_args(&code_bytes, &[])
+        .expect("selfhost alloc i32.store/load bundle host binary 実行に失敗");
+
+    assert_eq!(
+        result.exit_code,
+        0,
+        "host binary selfhost alloc i32.store/load bundle: exit code 0 を期待したが {} を得た\n\
+         stdout={:?}\n\
+         stderr={:?}\n\
+         bytes ({} bytes): {:?}",
+        result.exit_code,
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr),
+        code_bytes.len(),
+        code_bytes
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout),
+        "42\n",
+        "host binary selfhost alloc i32.store/load bundle: stdout が期待値と一致しない\n\
+         stderr={:?}\n\
+         bytes ({} bytes): {:?}",
+        String::from_utf8_lossy(&result.stderr),
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01g6: alloc-backed i32.load8_u が rebased address から byte を読めること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_alloc_i32_load8_u_bundle_writes_byte() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_alloc_i32_load8_u_bundle_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost alloc i32.load8_u bundle 向けコードバイト列が空"
+    );
+
+    let result = link_and_run_native_host_binary_capture_with_args(&code_bytes, &[])
+        .expect("selfhost alloc i32.load8_u bundle host binary 実行に失敗");
+
+    assert_eq!(
+        result.exit_code,
+        0,
+        "host binary selfhost alloc i32.load8_u bundle: exit code 0 を期待したが {} を得た\n\
+         stdout={:?}\n\
+         stderr={:?}\n\
+         bytes ({} bytes): {:?}",
+        result.exit_code,
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr),
+        code_bytes.len(),
+        code_bytes
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout),
+        "98\n",
+        "host binary selfhost alloc i32.load8_u bundle: stdout が期待値と一致しない\n\
+         stderr={:?}\n\
+         bytes ({} bytes): {:?}",
+        String::from_utf8_lossy(&result.stderr),
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01g7: alloc-backed i64.store/i64.load が rebased address で roundtrip できること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_alloc_i64_store_load_bundle_writes_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_alloc_i64_store_load_bundle_code_bytes(42);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost alloc i64.store/load bundle 向けコードバイト列が空"
+    );
+
+    let result = link_and_run_native_host_binary_capture_with_args(&code_bytes, &[])
+        .expect("selfhost alloc i64.store/load bundle host binary 実行に失敗");
+
+    assert_eq!(
+        result.exit_code,
+        0,
+        "host binary selfhost alloc i64.store/load bundle: exit code 0 を期待したが {} を得た\n\
+         stdout={:?}\n\
+         stderr={:?}\n\
+         bytes ({} bytes): {:?}",
+        result.exit_code,
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr),
+        code_bytes.len(),
+        code_bytes
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout),
+        "42\n",
+        "host binary selfhost alloc i64.store/load bundle: stdout が期待値と一致しない\n\
+         stderr={:?}\n\
+         bytes ({} bytes): {:?}",
+        String::from_utf8_lossy(&result.stderr),
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01g8: alloc-backed memory.copy が src/dst offset を x21 heap base へ rebased して byte を複写できること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_alloc_memory_copy_bundle_writes_copied_byte() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_alloc_memory_copy_bundle_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost alloc memory.copy bundle 向けコードバイト列が空"
+    );
+
+    let result = link_and_run_native_host_binary_capture_with_args(&code_bytes, &[])
+        .expect("selfhost alloc memory.copy bundle host binary 実行に失敗");
+
+    assert_eq!(
+        result.exit_code,
+        0,
+        "host binary selfhost alloc memory.copy bundle: exit code 0 を期待したが {} を得た\n\
+         stdout={:?}\n\
+         stderr={:?}\n\
+         bytes ({} bytes): {:?}",
+        result.exit_code,
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr),
+        code_bytes.len(),
+        code_bytes
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout),
+        "98\n",
+        "host binary selfhost alloc memory.copy bundle: stdout が期待値と一致しない\n\
+         stderr={:?}\n\
+         bytes ({} bytes): {:?}",
+        String::from_utf8_lossy(&result.stderr),
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01g9: alloc-backed memory.fill が rebased destination へ byte を埋められること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_alloc_memory_fill_bundle_writes_filled_byte() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_alloc_memory_fill_bundle_code_bytes(42);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost alloc memory.fill bundle 向けコードバイト列が空"
+    );
+
+    let result = link_and_run_native_host_binary_capture_with_args(&code_bytes, &[])
+        .expect("selfhost alloc memory.fill bundle host binary 実行に失敗");
+
+    assert_eq!(
+        result.exit_code,
+        0,
+        "host binary selfhost alloc memory.fill bundle: exit code 0 を期待したが {} を得た\n\
+         stdout={:?}\n\
+         stderr={:?}\n\
+         bytes ({} bytes): {:?}",
+        result.exit_code,
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr),
+        code_bytes.len(),
+        code_bytes
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout),
+        "42\n",
+        "host binary selfhost alloc memory.fill bundle: stdout が期待値と一致しない\n\
+         stderr={:?}\n\
+         bytes ({} bytes): {:?}",
+        String::from_utf8_lossy(&result.stderr),
         code_bytes.len(),
         code_bytes
     );
@@ -8954,6 +12898,19 @@ fn test_e2e_native_host_bundle_artifact_writer_materializes_canonical_files() {
         bundle.program_binary,
         "artifact writer が program.native を canonical 名で書き出していない"
     );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mode = std::fs::metadata(stage_dir.join("program.native"))
+            .expect("program.native metadata 読み込み失敗")
+            .permissions()
+            .mode();
+        assert!(
+            mode & 0o111 != 0,
+            "artifact writer が program.native に execute bit を付けていない: mode={mode:o}"
+        );
+    }
     assert_eq!(
         std::fs::read(stage_dir.join("stdout.txt")).expect("stdout.txt 読み込み失敗"),
         bundle.stdout,
@@ -9023,6 +12980,61 @@ fn test_e2e_native_host_bundle_uses_canonical_artifact_contract() {
     );
 }
 
+/// V2-08: representative build entry 由来の stage1-native artifact が canonical 契約で materialize できること。
+#[test]
+fn test_e2e_selfhost_main_native_host_bundle_uses_representative_artifact_contract() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let bundle_input = run_selfhost_main_native_function_meta_bundle_host_bytes_harness();
+    assert!(
+        !bundle_input.code_bytes.is_empty(),
+        "representative build entry の native code bytes が空"
+    );
+    assert!(
+        bundle_input.entrypoint_offset < bundle_input.code_bytes.len(),
+        "representative entrypoint offset が code bytes 範囲外: offset={} len={} declared_len={} function_starts={} main_func_idx={}",
+        bundle_input.entrypoint_offset,
+        bundle_input.code_bytes.len(),
+        bundle_input.declared_code_len,
+        bundle_input.function_start_len,
+        bundle_input.main_func_idx
+    );
+
+    let bundle = build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
+        &bundle_input.code_bytes,
+        bundle_input.entrypoint_offset,
+    )
+    .expect("representative native bundle materialization に失敗");
+    maybe_write_native_host_bundle_artifact("stage1-native", &bundle)
+        .expect("representative stage1-native artifact 書き出しに失敗");
+
+    assert_eq!(
+        bundle.response_text, "-o\nprogram.native\nprogram.o\nruntime.o\n",
+        "representative canonical linker response text が期待値と一致しない"
+    );
+    assert!(
+        !bundle.program_object.is_empty(),
+        "representative program.o が空"
+    );
+    assert!(
+        !bundle.runtime_object.is_empty(),
+        "representative runtime.o が空"
+    );
+    assert!(
+        !bundle.program_binary.is_empty(),
+        "representative program.native が空"
+    );
+    assert!(
+        bundle.stdout.is_empty() && bundle.stderr.is_empty() && bundle.exit_code == 0,
+        "artifact-only representative bundle は実行情報を持たない想定: stdout={:?} stderr={:?} exit={}",
+        bundle.stdout,
+        bundle.stderr,
+        bundle.exit_code
+    );
+}
+
 /// V2-08: host-side proxy の `stage2-native` / `stage3-native` 観測面が一致すること。
 #[test]
 fn test_e2e_stage23_native_host_bundle_proxy_observations_match() {
@@ -9047,6 +13059,75 @@ fn test_e2e_stage23_native_host_bundle_proxy_observations_match() {
     assert_eq!(
         stage2_obs, stage3_obs,
         "host-side proxy stage2/stage3 の exit/stdout/stderr/artifact hash が一致しない"
+    );
+}
+
+/// V2-08: representative build entry の `program.native` が stage observation を実行できること。
+#[test]
+fn test_e2e_selfhost_main_representative_native_host_bundle_executes_stage_observation() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let expected_output = compile_and_run_file(&selfhost_main_path());
+    let expected = parse_main_stage_observation(&parse_numeric_lines(&expected_output));
+    let bundle_input = run_selfhost_main_native_function_meta_bundle_host_bytes_harness();
+    let bundle = build_and_run_native_host_bundle_with_canonical_artifacts_and_entrypoint(
+        &bundle_input.code_bytes,
+        bundle_input.entrypoint_offset,
+    )
+    .expect("representative native bundle materialization に失敗");
+
+    assert_eq!(
+        bundle.exit_code, 0,
+        "representative program.native が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "representative program.native が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+
+    let actual_output = String::from_utf8(bundle.stdout)
+        .unwrap_or_else(|e| panic!("representative stdout UTF-8 decode 失敗: {e}"));
+    let actual = parse_main_stage_observation(&parse_numeric_lines(&actual_output));
+    assert_eq!(
+        actual, expected,
+        "representative program.native の stage observation が selfhost main と一致しない"
+    );
+}
+
+/// V2-08: representative build entry 由来の stage2-native / stage3-native artifact 観測面が一致すること。
+#[test]
+fn test_e2e_stage23_representative_native_host_bundle_artifact_observations_match() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let bundle_input = run_selfhost_main_native_function_meta_bundle_host_bytes_harness();
+    let stage2_bundle = build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
+        &bundle_input.code_bytes,
+        bundle_input.entrypoint_offset,
+    )
+    .expect("representative stage2-native bundle materialization に失敗");
+    maybe_write_native_host_bundle_artifact("stage2-native", &stage2_bundle)
+        .expect("representative stage2-native artifact 書き出しに失敗");
+    let stage3_bundle = build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
+        &bundle_input.code_bytes,
+        bundle_input.entrypoint_offset,
+    )
+    .expect("representative stage3-native bundle materialization に失敗");
+    maybe_write_native_host_bundle_artifact("stage3-native", &stage3_bundle)
+        .expect("representative stage3-native artifact 書き出しに失敗");
+
+    let stage2_obs = observe_native_host_artifact_bundle(&stage2_bundle);
+    let stage3_obs = observe_native_host_artifact_bundle(&stage3_bundle);
+
+    assert_eq!(
+        stage2_obs, stage3_obs,
+        "representative stage2/stage3 の artifact hash が一致しない"
     );
 }
 
@@ -9153,6 +13234,96 @@ fn native_exit_code_for_const_sequence(values: &[u32]) -> i32 {
         panic!(
             "native const sequence {:?}: リンク・実行失敗: {}",
             values, e
+        )
+    })
+}
+
+fn native_exit_code_for_const_sequence_after_drops(values: &[u32], drop_count: usize) -> i32 {
+    assert!(
+        !values.is_empty(),
+        "const sequence after drops: 少なくとも 1 個の値が必要"
+    );
+    assert!(
+        drop_count < values.len(),
+        "const sequence after drops: drop 回数 {} は値数 {} 未満である必要がある",
+        drop_count,
+        values.len()
+    );
+
+    let mut bindings = String::new();
+    for (idx, value) in values.iter().enumerate() {
+        bindings.push_str(&format!(
+            "        instr{idx} (vector-push (vector-push (vector-new 2) 3) {value})\n",
+        ));
+        if idx == 0 {
+            bindings.push_str(&format!(
+                "        ir0 (vector-push (vector-new {len}) instr0)\n",
+                len = values.len() + drop_count
+            ));
+        } else {
+            bindings.push_str(&format!(
+                "        ir{idx} (vector-push ir{prev} instr{idx})\n",
+                prev = idx - 1
+            ));
+        }
+    }
+
+    let mut last_idx = values.len() - 1;
+    for drop_idx in 0..drop_count {
+        let instr_idx = values.len() + drop_idx;
+        bindings.push_str(&format!("        instr{instr_idx} (make-instr 44 0)\n",));
+        bindings.push_str(&format!(
+            "        ir{instr_idx} (vector-push ir{prev} instr{instr_idx})\n",
+            prev = last_idx
+        ));
+        last_idx = instr_idx;
+    }
+
+    let source = format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx len]
+  (if (>= idx len)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) len))))
+
+(defn main []
+  (let [
+{bindings}        ir ir{last_idx}
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+        bindings = bindings,
+        last_idx = last_idx
+    );
+
+    let code_bytes = run_native_codegen_host_bytes_harness(&source);
+    assert!(
+        !code_bytes.is_empty(),
+        "native const sequence {:?} after {} drops: コードバイト列が空",
+        values,
+        drop_count
+    );
+    link_and_run_native_host_binary(&code_bytes).unwrap_or_else(|e| {
+        panic!(
+            "native const sequence {:?} after {} drops: リンク・実行失敗: {}",
+            values, drop_count, e
         )
     })
 }
@@ -10599,6 +14770,40 @@ fn test_e2e_native_host_binary_sixty_one_i32_const_window_keeps_latest_value() {
     );
 }
 
+/// NATIVE-HOST-021zj: 61-value window で 23 回 drop しても spill 境界の値まで戻れること。
+#[test]
+fn test_e2e_native_host_binary_sixty_one_i32_const_window_twenty_three_drops_reach_spill21() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = sixty_one_arg_values();
+    let exit_code = native_exit_code_for_const_sequence_after_drops(&values, 23);
+
+    assert_eq!(
+        exit_code, 16,
+        "61-value window の 23 drop 後は spill21 の値 16 を返すべきだが {} を得た",
+        exit_code
+    );
+}
+
+/// NATIVE-HOST-021zk: 61-value window で 60 回 drop しても最下段の値まで戻れること。
+#[test]
+fn test_e2e_native_host_binary_sixty_one_i32_const_window_sixty_drops_reach_bottom_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let values = sixty_one_arg_values();
+    let exit_code = native_exit_code_for_const_sequence_after_drops(&values, 60);
+
+    assert_eq!(
+        exit_code, 31,
+        "61-value window の 60 drop 後は最下段の値 31 を返すべきだが {} を得た",
+        exit_code
+    );
+}
+
 /// NATIVE-HOST-021zj: 61 引数 direct call でも末尾 local.get 60 を正しく受け取れること。
 #[test]
 fn test_e2e_native_host_binary_sixty_one_arg_local_get_60_roundtrip() {
@@ -10780,5 +14985,232 @@ fn test_e2e_zero_diff_sample_summary() {
         samples.len(),
         "ZERO-DIFF-SUMMARY: 全 {} サンプルが通過すること",
         samples.len()
+    );
+}
+
+// =============================================================================
+// V2-08-CF: Control-Flow テスト (if/else/end, block/br, loop/brif)
+// =============================================================================
+
+fn host_target_if_else_false_code_bytes() -> Vec<u8> {
+    // [i32.const 0, if, i32.const 42, else, i32.const 7, end] → else branch → returns 7
+    host_target_plain_program_code_bytes(&[(3, 0), (41, 0), (3, 42), (79, 0), (3, 7), (43, 0)])
+}
+
+fn x86_target_if_else_code_bytes(cond: i64) -> Vec<u8> {
+    // x86_64 target で if/else/end の機械語バイト列を生成する
+    run_native_codegen_host_bytes_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [ic  (make-instr 3 {cond})
+        if1 (make-instr 41 0)
+        ic42 (make-instr 3 42)
+        els (make-instr 79 0)
+        ic7 (make-instr 3 7)
+        end (make-instr 43 0)
+        ir (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push (vector-new 6) ic)
+                      if1)
+                    ic42)
+                  els)
+                ic7)
+              end)
+        target (make-target 1)
+        code (emit-native ir target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+        cond = cond
+    ))
+}
+
+fn x86_target_loop_brif_code_bytes() -> Vec<u8> {
+    // x86_64 target で loop/brif/end の機械語バイト列を生成する
+    // IR: [i64.const 1, loop, i64.const 0, brif(0), end]
+    // loop opcode=82 (LoopEmpty), brif opcode=81
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [ic1  (make-instr 1 1)
+        lp   (make-instr 82 0)
+        ic0  (make-instr 1 0)
+        bri  (make-instr 81 0)
+        end  (make-instr 43 0)
+        ir (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push (vector-new 5) ic1)
+                    lp)
+                  ic0)
+                bri)
+              end)
+        target (make-target 1)
+        code (emit-native ir target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+/// V2-08-CF-01: if/else/end の false branch が host 上で else 値 (7) を返すこと。
+#[test]
+fn test_e2e_native_host_binary_if_else_false_branch_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_if_else_false_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "V2-08-CF: if/else false branch コードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("if/else false branch host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        7,
+        "V2-08-CF: if/else false branch: exit code 7 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// V2-08-CF-BUNDLE-01: function-meta bundle entrypoint path でも if + direct recursion が base case 42 で停止すること。
+#[test]
+fn test_e2e_native_host_bundle_entrypoint_recursive_if_returns_base_case() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let bundle_input = host_target_recursive_if_bundle_entrypoint();
+    assert!(
+        !bundle_input.code_bytes.is_empty(),
+        "bundle entrypoint recursive if コードバイト列が空"
+    );
+    assert!(
+        bundle_input.entrypoint_offset < bundle_input.code_bytes.len(),
+        "bundle entrypoint recursive if の entrypoint offset が範囲外: offset={} len={}",
+        bundle_input.entrypoint_offset,
+        bundle_input.code_bytes.len()
+    );
+
+    let bundle = build_and_run_native_host_bundle_with_canonical_artifacts_and_entrypoint(
+        &bundle_input.code_bytes,
+        bundle_input.entrypoint_offset,
+    )
+    .expect("bundle entrypoint recursive if host binary 実行に失敗");
+
+    assert_eq!(
+        bundle.exit_code, 42,
+        "bundle entrypoint recursive if: exit code 42 を期待したが {} を得た\nstdout={:?}\nstderr={:?}\nbytes ({} bytes): {:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr),
+        bundle_input.code_bytes.len(),
+        bundle_input.code_bytes
+    );
+}
+
+/// V2-08-CF-02: x86_64 で if/else/end が TEST+JZ+JMP バイトを含むこと。
+#[test]
+fn test_native_codegen_emits_x86_if_else_structural_bytes() {
+    let code_bytes = x86_target_if_else_code_bytes(1);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "V2-08-CF: x86_64 if/else コードバイト列が空"
+    );
+
+    // TEST eax, eax (85 C0) が含まれることを確認
+    let has_test_eax = code_bytes.windows(2).any(|w| w[0] == 0x85 && w[1] == 0xC0);
+    assert!(
+        has_test_eax,
+        "V2-08-CF: x86_64 if/else コードに TEST eax,eax (85 C0) が含まれない\nbytes: {:?}",
+        code_bytes
+    );
+
+    // JZ rel32 (0F 84) が含まれることを確認
+    let has_jz = code_bytes.windows(2).any(|w| w[0] == 0x0F && w[1] == 0x84);
+    assert!(
+        has_jz,
+        "V2-08-CF: x86_64 if/else コードに JZ rel32 (0F 84) が含まれない\nbytes: {:?}",
+        code_bytes
+    );
+
+    // JMP rel32 (E9) が含まれることを確認 (else → end)
+    let has_jmp = code_bytes.iter().any(|&b| b == 0xE9);
+    assert!(
+        has_jmp,
+        "V2-08-CF: x86_64 if/else コードに JMP rel32 (E9) が含まれない\nbytes: {:?}",
+        code_bytes
+    );
+
+    eprintln!(
+        "✓ V2-08-CF: x86_64 if/else structural bytes OK ({} bytes)",
+        code_bytes.len()
+    );
+}
+
+/// V2-08-CF-03: x86_64 で loop/brif/end が JNZ バイトを含むこと。
+#[test]
+fn test_native_codegen_emits_x86_loop_brif_structural_bytes() {
+    let code_bytes = x86_target_loop_brif_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "V2-08-CF: x86_64 loop/brif コードバイト列が空"
+    );
+
+    // TEST eax, eax (85 C0) が含まれることを確認 (brif の条件チェック)
+    let has_test_eax = code_bytes.windows(2).any(|w| w[0] == 0x85 && w[1] == 0xC0);
+    assert!(
+        has_test_eax,
+        "V2-08-CF: x86_64 loop/brif コードに TEST eax,eax (85 C0) が含まれない\nbytes: {:?}",
+        code_bytes
+    );
+
+    // JNZ rel32 (0F 85) が含まれることを確認 (brif の条件分岐)
+    let has_jnz = code_bytes.windows(2).any(|w| w[0] == 0x0F && w[1] == 0x85);
+    assert!(
+        has_jnz,
+        "V2-08-CF: x86_64 loop/brif コードに JNZ rel32 (0F 85) が含まれない\nbytes: {:?}",
+        code_bytes
+    );
+
+    eprintln!(
+        "✓ V2-08-CF: x86_64 loop/brif structural bytes OK ({} bytes)",
+        code_bytes.len()
     );
 }

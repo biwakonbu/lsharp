@@ -1673,12 +1673,29 @@
 (defn compile-defn-functions-step [decls idx n ftable functions]
   (if (>= idx n)
     (make-compile-step-state 1 idx functions)
-    (let [decl (vector-get decls idx)]
+    (let [decls-slot (root_push decls)
+      ftable-slot (root_push ftable)
+      functions-slot (root_push functions)
+      decl (vector-get decls idx)]
       (if (= (vector-get decl 0) 20)
-        (let [compiled-fn (compile-defn-function decl ftable)
-          next-functions (push-object-vector functions compiled-fn)]
-          (make-compile-step-state 0 (+ idx 1) next-functions))
-        (make-compile-step-state 0 (+ idx 1) functions)))))
+        (do
+          (root_push decl)
+          (let [compiled-fn (compile-defn-function decl ftable)]
+            (do
+              (root_push compiled-fn)
+              (let [result (compile-defn-functions-step-finish functions compiled-fn idx)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))
+        (do
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (make-compile-step-state 0 (+ idx 1) functions))))))
 
 (defn continue-compile-defn-functions-step [decls n ftable state]
   (if (= (vector-get state 0) 1)
@@ -1977,11 +1994,35 @@
 (defn compile-defn-functions-step-with-source-body-impl-3 [decls idx n source ftable data-ref functions]
   (if (>= idx n)
     (make-compile-step-state 1 idx functions)
-    (let [decl (vector-get decls idx)]
+    (let [decls-slot (root_push decls)
+      source-slot (root_push source)
+      ftable-slot (root_push ftable)
+      data-slot (root_push data-ref)
+      functions-slot (root_push functions)
+      decl (vector-get decls idx)]
       (if (= (vector-get decl 0) 20)
-        (let [compiled-fn (compile-defn-function-with-source decl source ftable data-ref)]
-          (compile-defn-functions-step-finish functions compiled-fn idx))
-        (make-compile-step-state 0 (+ idx 1) functions)))))
+        (do
+          (root_push decl)
+          (let [compiled-fn (compile-defn-function-with-source decl source ftable data-ref)]
+            (do
+              (root_push compiled-fn)
+              (let [result (compile-defn-functions-step-finish functions compiled-fn idx)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))
+        (do
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (make-compile-step-state 0 (+ idx 1) functions))))))
 (defn compile-let-with-ftable-impl-body-impl-3 [node env ftable instrs]
   (let [name-hash (vector-get node 1)
     init-expr (vector-get node 2)

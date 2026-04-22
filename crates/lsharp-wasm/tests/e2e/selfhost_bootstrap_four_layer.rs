@@ -3,6 +3,14 @@ use serde_json::Value;
 use std::collections::{HashMap, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 
+const SELFHOST_MAX_WASM_STACK: usize = 64 * 1024 * 1024;
+
+fn configured_selfhost_engine() -> wasmtime::Engine {
+    let mut config = wasmtime::Config::new();
+    config.max_wasm_stack(SELFHOST_MAX_WASM_STACK);
+    wasmtime::Engine::new(&config).expect("selfhost wasmtime engine 初期化に失敗")
+}
+
 const TEST_I64_IF_WASM: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../tests/fixtures/selfhost-debug/test_i64_if.wasm"
@@ -1447,7 +1455,7 @@ fn run_wasm_with_six_imports_compiler_mode_inner(
     args: &[&str],
     printed_first_on_error: bool,
 ) -> Result<String, String> {
-    let engine = wasmtime::Engine::default();
+    let engine = configured_selfhost_engine();
     let module = wasmtime::Module::new(&engine, wasm)
         .map_err(|e| format!("Wasm モジュールの読み込みに失敗: {} / {:?}", e, e))?;
     let mut store = wasmtime::Store::new(

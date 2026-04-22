@@ -22,6 +22,7 @@ use std::sync::{
 };
 
 const SELFHOST_LSP_RUNTIME_SENTINEL: &str = ";;__SELFHOST_LSP_RUNTIME__";
+const WASI_STDOUT_CAPTURE_BYTES: usize = 16 * 1024 * 1024;
 const SELFHOST_LSP_RUNTIME_MODULES: &[&str] = &[
     "Token.ls",
     "AST.ls",
@@ -38,8 +39,11 @@ const SELFHOST_LSP_RUNTIME_MODULES: &[&str] = &[
     "LspServer.ls",
 ];
 static SELFHOST_FIXTURE_COUNTER: AtomicUsize = AtomicUsize::new(0);
-const ROOT_STACK_BYTES: i32 = 8192 * 8;
-pub(crate) const NATIVE_HARNESS_STACK_BYTES: usize = 32 * 1024 * 1024;
+static FIXTURE_RUN_ID: OnceLock<String> = OnceLock::new();
+const ROOT_STACK_BYTES: i32 = 32768 * 8;
+// selfhost acceptance は Wasmtime 側で 64 MiB の wasm stack を許可するため、
+// それを包む host thread には十分な余裕を持たせる。
+pub(crate) const NATIVE_HARNESS_STACK_BYTES: usize = 128 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RuntimeTelemetry {
@@ -315,7 +319,7 @@ fn capture_runtime_telemetry_with_context(
     wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |ctx| ctx)
         .expect("WASI linker 構築に失敗");
 
-    let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(4 * 1024 * 1024);
+    let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(WASI_STDOUT_CAPTURE_BYTES);
     let stdin = wasmtime_wasi::pipe::MemoryInputPipe::new(stdin_data.as_bytes().to_vec());
     let mut builder = WasiCtxBuilder::new();
     builder.stdout(stdout.clone());
@@ -376,7 +380,7 @@ fn capture_runtime_telemetry_series_with_context(
     wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |ctx| ctx)
         .expect("WASI linker 構築に失敗");
 
-    let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(4 * 1024 * 1024);
+    let stdout = wasmtime_wasi::pipe::MemoryOutputPipe::new(WASI_STDOUT_CAPTURE_BYTES);
     let stdin = wasmtime_wasi::pipe::MemoryInputPipe::new(stdin_data.as_bytes().to_vec());
     let mut builder = WasiCtxBuilder::new();
     builder.stdout(stdout.clone());
@@ -736,11 +740,209 @@ pub(crate) fn selfhost_module(name: &str) -> &'static str {
     }
 }
 
+fn fixture_run_id() -> &'static str {
+    FIXTURE_RUN_ID.get_or_init(|| {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        format!("p{}-{nanos}", std::process::id())
+    })
+}
+
+pub(crate) fn target_fixture_dir(category: &str, prefix: &str, id: usize) -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target")
+        .join(category)
+        .join(format!("{prefix}-{}-{id}", fixture_run_id()))
+}
+
 fn selfhost_fixture_dir(prefix: &str) -> std::path::PathBuf {
     let id = SELFHOST_FIXTURE_COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/e2e-selfhost-fixtures")
-        .join(format!("{prefix}-{id}"))
+    target_fixture_dir("e2e-selfhost-fixtures", prefix, id)
+}
+
+fn read_leb_u32_local(bytes: &[u8], pos: &mut usize) -> u32 {
+    let mut value = 0_u32;
+    let mut shift = 0;
+    loop {
+        let byte = bytes[*pos];
+        *pos += 1;
+        value |= u32::from(byte & 0x7f) << shift;
+        if byte & 0x80 == 0 {
+            break;
+        }
+        shift += 7;
+    }
+    value
+}
+
+fn extract_section_bytes_local(wasm: &[u8], target_id: u8) -> Option<Vec<u8>> {
+    use wasmparser::{Parser, Payload};
+
+    for payload in Parser::new(0).parse_all(wasm) {
+        let Ok(payload) = payload else {
+            return None;
+        };
+        match payload {
+            Payload::TypeSection(reader) if target_id == 1 => {
+                let range = reader.range();
+                return Some(wasm.get(range.start..range.end)?.to_vec());
+            }
+            Payload::FunctionSection(reader) if target_id == 3 => {
+                let range = reader.range();
+                return Some(wasm.get(range.start..range.end)?.to_vec());
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+struct LocalBoundViolation {
+    absolute_index: u32,
+    local_index: u32,
+    total_locals: u32,
+    param_count: u32,
+    declared_locals: u32,
+}
+
+const WASI_USER_FUNC_BASE: u32 = 26;
+
+fn first_local_bound_violation(wasm: &[u8]) -> Option<LocalBoundViolation> {
+    use wasmparser::{Operator, Parser, Payload, TypeRef};
+
+    let type_bytes = extract_section_bytes_local(wasm, 1)?;
+    let function_bytes = extract_section_bytes_local(wasm, 3)?;
+    let mut pos = 0usize;
+    let type_count = read_leb_u32_local(&type_bytes, &mut pos) as usize;
+    let mut param_counts = Vec::with_capacity(type_count);
+    for _ in 0..type_count {
+        if pos >= type_bytes.len() || type_bytes[pos] != 0x60 {
+            break;
+        }
+        pos += 1;
+        let param_count = read_leb_u32_local(&type_bytes, &mut pos);
+        param_counts.push(param_count);
+        pos += param_count as usize;
+        let result_count = read_leb_u32_local(&type_bytes, &mut pos);
+        pos += result_count as usize;
+    }
+
+    let mut pos = 0usize;
+    let function_count = read_leb_u32_local(&function_bytes, &mut pos) as usize;
+    let mut type_indices = Vec::with_capacity(function_count);
+    for _ in 0..function_count {
+        type_indices.push(read_leb_u32_local(&function_bytes, &mut pos));
+    }
+
+    let mut imported_functions = 0u32;
+    for payload in Parser::new(0).parse_all(wasm) {
+        let Ok(payload) = payload else {
+            return None;
+        };
+        if let Payload::ImportSection(reader) = payload {
+            for import in reader.into_iter().flatten() {
+                if matches!(import.ty, TypeRef::Func(_)) {
+                    imported_functions += 1;
+                }
+            }
+        }
+    }
+
+    let mut func_index = 0u32;
+    for payload in Parser::new(0).parse_all(wasm) {
+        let Ok(payload) = payload else {
+            return None;
+        };
+        let Payload::CodeSectionEntry(body) = payload else {
+            continue;
+        };
+        let declared_locals = body
+            .get_locals_reader()
+            .ok()
+            .map(|reader| {
+                let mut total = 0_u32;
+                for local in reader.into_iter().flatten() {
+                    total += local.0;
+                }
+                total
+            })
+            .unwrap_or(0);
+        let type_index = type_indices.get(func_index as usize).copied().unwrap_or(0);
+        let param_count = param_counts.get(type_index as usize).copied().unwrap_or(0);
+        let total_locals = param_count + declared_locals;
+        let mut reader = match body.get_operators_reader() {
+            Ok(reader) => reader,
+            Err(_) => return None,
+        };
+        while !reader.eof() {
+            let Ok(op) = reader.read() else {
+                return None;
+            };
+            let local_index = match op {
+                Operator::LocalGet { local_index }
+                | Operator::LocalSet { local_index }
+                | Operator::LocalTee { local_index } => Some(local_index),
+                _ => None,
+            };
+            if let Some(local_index) = local_index
+                && local_index >= total_locals
+            {
+                return Some(LocalBoundViolation {
+                    absolute_index: imported_functions + func_index,
+                    local_index,
+                    total_locals,
+                    param_count,
+                    declared_locals,
+                });
+            }
+        }
+        func_index += 1;
+    }
+    None
+}
+
+fn rust_function_local_summary(
+    entry_path: &std::path::Path,
+    absolute_index: u32,
+) -> Option<(String, String)> {
+    let module = lsharp_ir::compile_multi_file(entry_path).ok()?;
+    let idx = absolute_index.checked_sub(WASI_USER_FUNC_BASE)? as usize;
+    let func = module.functions.get(idx)?;
+    let total_locals = (func.params.len() + func.locals.len()) as u32;
+    let mut max_local = None;
+    let mut first_invalid = None;
+    for instr in &func.body {
+        let local_index = match instr {
+            lsharp_ir::Instruction::LocalGet(local_index)
+            | lsharp_ir::Instruction::LocalSet(local_index)
+            | lsharp_ir::Instruction::LocalTee(local_index) => Some(*local_index),
+            _ => None,
+        };
+        if let Some(local_index) = local_index {
+            max_local =
+                Some(max_local.map_or(local_index, |current: u32| current.max(local_index)));
+            if first_invalid.is_none() && local_index >= total_locals {
+                first_invalid = Some(format!("{instr:?}"));
+            }
+        }
+    }
+    let body = func
+        .body
+        .iter()
+        .enumerate()
+        .map(|(idx, instr)| format!("{idx}:{instr:?}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let summary = format!(
+        "Rust IR params {}, locals {}, max body local {:?}, first invalid {:?}; body [{body}]",
+        func.params.len(),
+        func.locals.len(),
+        max_local,
+        first_invalid
+    );
+    Some((func.name.clone(), summary))
 }
 
 /// ModuleGraph::discover が `nearest_src_root` で解決できるよう、`src/<canonical-relative>` に書き出す
@@ -808,6 +1010,62 @@ fn try_compile_and_run_selfhost_fixture_entry(
         std::fs::write(&entry_path, entry_source)
             .map_err(|e| format!("{}: {e}", entry_path.display()))?;
         try_compile_and_run_file(&entry_path)
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+pub(crate) fn try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+    fixture_name: &str,
+    modules: &[&str],
+    entry_file: &str,
+    entry_source: &str,
+    args: &[&str],
+) -> Result<String, String> {
+    let dir = selfhost_fixture_dir(fixture_name);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let result = (|| {
+        write_selfhost_fixture_modules(&dir, modules)?;
+        let entry_path = dir.join(entry_file);
+        if let Some(parent) = entry_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        std::fs::write(&entry_path, entry_source)
+            .map_err(|e| format!("{}: {e}", entry_path.display()))?;
+        let wasm = try_compile_file_only(&entry_path)?;
+        wasmparser::Validator::new()
+            .validate_all(&wasm)
+            .map_err(|e| {
+                if let Some(detail) = first_local_bound_violation(&wasm) {
+                    let entry_path_for_name = entry_path.clone();
+                    let function_detail = run_with_expanded_stack(
+                        NATIVE_HARNESS_STACK_BYTES,
+                        move || rust_function_local_summary(&entry_path_for_name, detail.absolute_index),
+                    );
+                    match function_detail {
+                        Some((name, rust_summary)) => format!(
+                            "Wasm validate: {e}; function {} ({name}): local {} >= total_locals {} (params {}, declared {}); {rust_summary}",
+                            detail.absolute_index,
+                            detail.local_index,
+                            detail.total_locals,
+                            detail.param_count,
+                            detail.declared_locals
+                        ),
+                        None => format!(
+                            "Wasm validate: {e}; function {}: local {} >= total_locals {} (params {}, declared {})",
+                            detail.absolute_index,
+                            detail.local_index,
+                            detail.total_locals,
+                            detail.param_count,
+                            detail.declared_locals
+                        ),
+                    }
+                } else {
+                    format!("Wasm validate: {e}")
+                }
+            })?;
+        lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(&wasm, Some(&dir), args)
+            .map_err(|e| format!("実行: {e:?}"))
     })();
     let _ = std::fs::remove_dir_all(&dir);
     result
@@ -1130,5 +1388,19 @@ mod tests {
             bundle.as_ptr(),
             selfhost_typeinfer_runtime_bundle().as_ptr()
         );
+    }
+
+    #[test]
+    fn test_support_target_fixture_dir_is_process_scoped() {
+        let first = target_fixture_dir("e2e-native-fixtures", "native-host-bytes", 0);
+        let second = target_fixture_dir("e2e-native-fixtures", "native-host-bytes", 1);
+
+        let first = first.to_string_lossy();
+        let second = second.to_string_lossy();
+        assert!(first.contains("target/e2e-native-fixtures/"));
+        assert!(first.contains("/native-host-bytes-"));
+        assert!(first.ends_with("-0"));
+        assert!(second.ends_with("-1"));
+        assert_ne!(first, second, "counter が違えば fixture dir も変わるべき");
     }
 }

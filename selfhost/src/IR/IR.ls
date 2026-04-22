@@ -21,10 +21,20 @@
 (defn ir-i64-sub [] 21)
 (defn ir-i64-mul [] 22)
 (defn ir-i64-div [] 23)
+(defn ir-i64-rem [] 28)
 (defn ir-i32-add [] 24)
 (defn ir-i32-mul [] 25)
 (defn ir-i32-and [] 26)
 (defn ir-i32-or [] 27)
+
+;; メモリ操作
+(defn ir-i32-load [] 45)
+(defn ir-i32-store [] 46)
+(defn ir-i32-load8-u [] 47)
+(defn ir-i64-load [] 48)
+(defn ir-i64-store [] 49)
+(defn ir-memory-copy [] 77)
+(defn ir-memory-fill [] 78)
 
 ;; 比較
 (defn ir-i64-eq [] 30)
@@ -37,11 +47,20 @@
 (defn ir-i64-extend-i32-u [] 37)
 (defn ir-i32-wrap-i64 [] 38)
 
-;; 制御フロー
+;; 制御フロー (基本)
 (defn ir-call [] 40)
-(defn ir-if [] 41)
-(defn ir-block [] 42)
-(defn ir-end [] 43)
+(defn ir-if [] 41)        ;; IfEmpty: 結果なし if 開始
+(defn ir-block [] 42)     ;; BlockEmpty: 結果なし block 開始
+(defn ir-end [] 43)       ;; End: block/loop/if の終端
+
+;; 制御フロー (拡張: opcodes 79-85)
+(defn ir-else [] 79)          ;; Else: if の else 分岐
+(defn ir-br [] 80)            ;; Br(depth): 無条件分岐
+(defn ir-brif [] 81)          ;; BrIf(depth): 条件付き分岐
+(defn ir-loop [] 82)          ;; LoopEmpty: 結果なし loop 開始
+(defn ir-if-typed [] 83)      ;; If(ty): 結果あり if 開始
+(defn ir-block-typed [] 84)   ;; Block(ty): 結果あり block 開始
+(defn ir-loop-typed [] 85)    ;; Loop(ty): 結果あり loop 開始
 
 ;; スタック操作
 (defn ir-drop [] 44)
@@ -70,9 +89,44 @@
 
 ;; === 命令構築 ===
 
+(defn vector-push-pair-rooted [base first second]
+  (do
+    (root_push first)
+    (root_push second)
+    (let [base-slot (root_push base)
+      with-first (vector-push base first)]
+      (do
+        (root_set base-slot with-first)
+        (let [result (vector-push with-first second)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn vector-push-triple-rooted [base first second third]
+  (do
+    (root_push first)
+    (root_push second)
+    (root_push third)
+    (let [base-slot (root_push base)
+      with-first (vector-push base first)]
+      (do
+        (root_set base-slot with-first)
+        (let [with-second (vector-push with-first second)]
+          (do
+            (root_set base-slot with-second)
+            (let [result (vector-push with-second third)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
 ;; 命令は [opcode, operand] の Vector
 (defn make-instr [opcode operand]
-  (vector-push (vector-push (vector-new 2) opcode) operand))
+  (vector-push-pair-rooted (vector-new 2) opcode operand))
 
 ;; 定数ロード
 (defn make-i64-const [value]
@@ -102,6 +156,38 @@
 (defn make-i32-or []
   (make-instr 27 0))
 
+;; 64bit remainder
+(defn make-i64-rem []
+  (make-instr 28 0))
+
+;; 32bit load
+(defn make-i32-load [offset]
+  (make-instr 45 offset))
+
+;; 32bit store
+(defn make-i32-store [offset]
+  (make-instr 46 offset))
+
+;; 32bit byte load (zero-extend)
+(defn make-i32-load8-u [offset]
+  (make-instr 47 offset))
+
+;; 64bit load
+(defn make-i64-load [offset]
+  (make-instr 48 offset))
+
+;; 64bit store
+(defn make-i64-store [offset]
+  (make-instr 49 offset))
+
+;; bulk memory copy
+(defn make-memory-copy []
+  (make-instr 77 0))
+
+;; bulk memory fill
+(defn make-memory-fill []
+  (make-instr 78 0))
+
 ;; 64bit -> 32bit truncation
 (defn make-i32-wrap-i64 []
   (make-instr 38 0))
@@ -118,22 +204,53 @@
 (defn make-call [func-idx]
   (make-instr 40 func-idx))
 
+;; 制御フロー命令構築
+(defn make-ir-if []
+  (make-instr 41 0))
+
+(defn make-ir-block []
+  (make-instr 42 0))
+
+(defn make-ir-end []
+  (make-instr 43 0))
+
+(defn make-ir-else []
+  (make-instr 79 0))
+
+(defn make-ir-br [depth]
+  (make-instr 80 depth))
+
+(defn make-ir-brif [depth]
+  (make-instr 81 depth))
+
+(defn make-ir-loop []
+  (make-instr 82 0))
+
+(defn make-ir-if-typed []
+  (make-instr 83 0))
+
+(defn make-ir-block-typed []
+  (make-instr 84 0))
+
+(defn make-ir-loop-typed []
+  (make-instr 85 0))
+
 ;; === Backend 3層境界型 ===
 
 ;; FrontendResult: パーサ + 型推論の出力
 ;; [ast, type-env, errors] の3要素 Vector
 (defn make-frontend-result [ast type-env errors]
-  (vector-push (vector-push (vector-push (vector-new 3) ast) type-env) errors))
+  (vector-push-triple-rooted (vector-new 3) ast type-env errors))
 
 ;; LoweredModule: IR lowering の出力
 ;; [functions, globals, imports] の3要素 Vector
 (defn make-lowered-module [functions globals imports]
-  (vector-push (vector-push (vector-push (vector-new 3) functions) globals) imports))
+  (vector-push-triple-rooted (vector-new 3) functions globals imports))
 
 ;; CodegenArtifact: Wasm コード生成の出力
 ;; [wasm-bytes, source-map, debug-info] の3要素 Vector
 (defn make-codegen-artifact [wasm-bytes source-map debug-info]
-  (vector-push (vector-push (vector-push (vector-new 3) wasm-bytes) source-map) debug-info))
+  (vector-push-triple-rooted (vector-new 3) wasm-bytes source-map debug-info))
 
 ;; === IR snapshot シリアライザ ===
 

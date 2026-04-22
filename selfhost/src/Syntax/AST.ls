@@ -42,38 +42,151 @@
 (defn ast-pat-lit [] 42)
 (defn ast-pat-constructor [] 43)
 (defn ast-pat-recordpat [] 44)
-(defn make-lit-int [value] (let [v (vector-new 2)] (vector-push (vector-push v 1) value)))
-(defn make-lit-float [start end] (let [v (vector-new 3)] (vector-push (vector-push (vector-push v (ast-lit-float)) start) end)))
-(defn make-lit-bool [b] (let [v (vector-new 2)] (vector-push (vector-push v 2) b)))
-(defn make-var [name-hash] (let [v (vector-new 2)] (vector-push (vector-push v 4) name-hash)))
-(defn make-lit-unit [] (vector-push (vector-new 1) (ast-lit-unit)))
-(defn make-if [cond-expr then-expr else-expr] (let [v (vector-new 4)] (vector-push (vector-push (vector-push (vector-push v (ast-if)) cond-expr) then-expr) else-expr)))
-(defn make-let [name-hash init-expr body-expr] (let [v (vector-new 4)] (vector-push (vector-push (vector-push (vector-push v (ast-let)) name-hash) init-expr) body-expr)))
-(defn make-ann [expr] (let [v (vector-new 2)] (vector-push (vector-push v (ast-ann)) expr)))
-(defn make-recordlit [type-name-hash] (let [v (vector-new 8)] (vector-push (vector-push (vector-push v (ast-recordlit)) type-name-hash) 0)))
-(defn make-fieldaccess [expr field-name-hash] (let [v (vector-new 3)] (vector-push (vector-push (vector-push v (ast-fieldaccess)) expr) field-name-hash)))
-(defn make-recordupdate [base-expr] (let [v (vector-new 8)] (vector-push (vector-push (vector-push v (ast-recordupdate)) base-expr) 0)))
-(defn make-computation [builder-hash] (let [v (vector-new 8)] (vector-push (vector-push (vector-push v (ast-computation)) builder-hash) 0)))
-(defn make-type-decl [name-hash] (let [v (vector-new 2)] (vector-push (vector-push v (ast-type-decl)) name-hash)))
-(defn make-record-def [name-hash] (let [v (vector-new 2)] (vector-push (vector-push v (ast-recorddef)) name-hash)))
-(defn make-type-alias [name-hash] (let [v (vector-new 2)] (vector-push (vector-push v (ast-typealias)) name-hash)))
-(defn make-type-constrained [name-hash] (let [v (vector-new 2)] (vector-push (vector-push v (ast-typeconstrained)) name-hash)))
-(defn make-module-decl [name-hash] (let [v (vector-new 8)] (vector-push (vector-push (vector-push v (ast-module-decl)) name-hash) 0)))
-(defn make-import-decl [name-hash name-start name-end] (let [v (vector-new 4)] (vector-push (vector-push (vector-push (vector-push v (ast-import-decl)) name-hash) name-start) name-end)))
-(defn make-trait-def [name-hash] (let [v (vector-new 8)] (vector-push (vector-push (vector-push v (ast-traitdef)) name-hash) 0)))
-(defn make-impl-def [trait-name-hash type-name-hash] (let [v (vector-new 8)] (vector-push (vector-push (vector-push (vector-push v (ast-impldef)) trait-name-hash) type-name-hash) 0)))
-(defn make-private [inner-node] (let [v (vector-new 2)] (vector-push (vector-push v (ast-private)) inner-node)))
-(defn make-computation-builder [name-hash bind-hash return-hash] (let [v (vector-new 4)] (vector-push (vector-push (vector-push (vector-push v (ast-computationbuilder)) name-hash) bind-hash) return-hash)))
-(defn make-defmacro [name-hash] (let [v (vector-new 3)] (vector-push (vector-push (vector-push v (ast-defmacro)) name-hash) 0)))
-(defn make-quote [expr] (let [v (vector-new 2)] (vector-push (vector-push v (ast-quote)) expr)))
-(defn make-unquote [expr] (let [v (vector-new 2)] (vector-push (vector-push v (ast-unquote)) expr)))
-(defn make-unquote-splice [expr] (let [v (vector-new 2)] (vector-push (vector-push v (ast-unquote-splice)) expr)))
+(defn vector-push-single-rooted [base value]
+  (do
+    (root_push value)
+    (let [base-slot (root_push base)
+      result (vector-push base value)]
+      (do
+        (root_set base-slot result)
+        (root_pop)
+        (root_pop)
+        result))))
+
+(defn vector-push-pair-rooted [base first second]
+  (do
+    (root_push first)
+    (root_push second)
+    (let [base-slot (root_push base)
+      with-first (vector-push base first)]
+      (do
+        (root_set base-slot with-first)
+        (let [result (vector-push with-first second)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn vector-push-triple-rooted [base first second third]
+  (do
+    (root_push first)
+    (root_push second)
+    (root_push third)
+    (let [base-slot (root_push base)
+      with-first (vector-push base first)]
+      (do
+        (root_set base-slot with-first)
+        (let [with-second (vector-push with-first second)]
+          (do
+            (root_set base-slot with-second)
+            (let [result (vector-push with-second third)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn vector-push-quad-rooted [base first second third fourth]
+  (do
+    (root_push first)
+    (root_push second)
+    (root_push third)
+    (root_push fourth)
+    (let [base-slot (root_push base)
+      with-first (vector-push base first)]
+      (do
+        (root_set base-slot with-first)
+        (let [with-second (vector-push with-first second)]
+          (do
+            (root_set base-slot with-second)
+            (let [with-third (vector-push with-second third)]
+              (do
+                (root_set base-slot with-third)
+                (let [result (vector-push with-third fourth)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))))))))
+
+(defn make-lit-int [value] (vector-push-pair-rooted (vector-new 2) 1 value))
+(defn make-lit-float [start end] (vector-push-triple-rooted (vector-new 3) (ast-lit-float) start end))
+(defn make-lit-bool [b] (vector-push-pair-rooted (vector-new 2) 2 b))
+(defn make-var [name-hash] (vector-push-pair-rooted (vector-new 2) 4 name-hash))
+(defn make-lit-unit [] (vector-push-single-rooted (vector-new 1) (ast-lit-unit)))
+(defn make-if [cond-expr then-expr else-expr] (vector-push-triple-rooted (vector-push-single-rooted (vector-new 4) (ast-if)) cond-expr then-expr else-expr))
+(defn make-let [name-hash init-expr body-expr] (vector-push-pair-rooted (vector-push-pair-rooted (vector-new 4) (ast-let) name-hash) init-expr body-expr))
+(defn make-ann [expr] (vector-push-pair-rooted (vector-new 2) (ast-ann) expr))
+(defn make-recordlit [type-name-hash] (vector-push-triple-rooted (vector-new 8) (ast-recordlit) type-name-hash 0))
+(defn make-fieldaccess [expr field-name-hash] (vector-push-triple-rooted (vector-new 3) (ast-fieldaccess) expr field-name-hash))
+(defn make-recordupdate [base-expr] (vector-push-triple-rooted (vector-new 8) (ast-recordupdate) base-expr 0))
+(defn make-computation [builder-hash] (vector-push-triple-rooted (vector-new 8) (ast-computation) builder-hash 0))
+(defn make-type-decl [name-hash] (vector-push-pair-rooted (vector-new 2) (ast-type-decl) name-hash))
+(defn make-record-def [name-hash] (vector-push-pair-rooted (vector-new 2) (ast-recorddef) name-hash))
+(defn make-type-alias [name-hash] (vector-push-pair-rooted (vector-new 2) (ast-typealias) name-hash))
+(defn make-type-constrained [name-hash] (vector-push-pair-rooted (vector-new 2) (ast-typeconstrained) name-hash))
+(defn make-module-decl [name-hash] (vector-push-triple-rooted (vector-new 8) (ast-module-decl) name-hash 0))
+(defn make-import-decl [name-hash name-start name-end] (vector-push-pair-rooted (vector-push-pair-rooted (vector-new 4) (ast-import-decl) name-hash) name-start name-end))
+(defn make-trait-def [name-hash] (vector-push-triple-rooted (vector-new 8) (ast-traitdef) name-hash 0))
+(defn make-impl-def [trait-name-hash type-name-hash] (vector-push-pair-rooted (vector-push-pair-rooted (vector-new 8) (ast-impldef) trait-name-hash) type-name-hash 0))
+(defn make-private [inner-node] (vector-push-pair-rooted (vector-new 2) (ast-private) inner-node))
+(defn make-computation-builder [name-hash bind-hash return-hash] (vector-push-pair-rooted (vector-push-pair-rooted (vector-new 4) (ast-computationbuilder) name-hash) bind-hash return-hash))
+(defn make-defmacro [name-hash] (vector-push-triple-rooted (vector-new 3) (ast-defmacro) name-hash 0))
+(defn make-quote [expr] (vector-push-pair-rooted (vector-new 2) (ast-quote) expr))
+(defn make-unquote [expr] (vector-push-pair-rooted (vector-new 2) (ast-unquote) expr))
+(defn make-unquote-splice [expr] (vector-push-pair-rooted (vector-new 2) (ast-unquote-splice) expr))
 (defn ast-tag [node] (vector-get node 0))
 (defn ast-is-leaf [tag] (if (= tag 1) 1 (if (= tag 2) 1 (if (= tag 4) 1 (if (= tag 3) 1 (if (= tag 19) 1 (if (= tag 32) 1 0)))))))
-(defn recordlit-contains-var-loop [node target-hash idx count] (if (>= idx count) 0 (let [expr (vector-get node (+ 4 (* idx 2))) found (ast-contains-var expr target-hash)] (if (= found 1) 1 (recordlit-contains-var-loop node target-hash (+ idx 1) count)))))
-(defn recordupdate-contains-var-loop [node target-hash idx count] (if (>= idx count) 0 (let [expr (vector-get node (+ 4 (* idx 2))) found (ast-contains-var expr target-hash)] (if (= found 1) 1 (recordupdate-contains-var-loop node target-hash (+ idx 1) count)))))
-(defn computation-contains-var-loop [node target-hash idx count] (if (>= idx count) 0 (let [expr (vector-get node (+ 5 (* idx 3))) found (ast-contains-var expr target-hash)] (if (= found 1) 1 (computation-contains-var-loop node target-hash (+ idx 1) count)))))
-(defn ast-contains-var [node target-hash] (let [tag (vector-get node 0)] (if (= tag 4) (if (= (vector-get node 1) target-hash) 1 0) (if (= tag 1) 0 (if (= tag 2) 0 (if (= tag 3) 0 (if (= tag 11) (ast-contains-var (vector-get node 1) target-hash) (if (= tag 12) (recordlit-contains-var-loop node target-hash 0 (vector-get node 2)) (if (= tag 13) (ast-contains-var (vector-get node 1) target-hash) (if (= tag 14) (let [base-found (ast-contains-var (vector-get node 1) target-hash)] (if (= base-found 1) 1 (recordupdate-contains-var-loop node target-hash 0 (vector-get node 2)))) (if (= tag 15) (computation-contains-var-loop node target-hash 0 (vector-get node 2)) (if (= tag 16) (ast-contains-var (vector-get node 1) target-hash) (if (= tag 17) (ast-contains-var (vector-get node 1) target-hash) (if (= tag 18) (ast-contains-var (vector-get node 1) target-hash) (if (= tag 6) (let [r1 (ast-contains-var (vector-get node 1) target-hash)] (if (= r1 1) 1 (let [r2 (ast-contains-var (vector-get node 2) target-hash)] (if (= r2 1) 1 (ast-contains-var (vector-get node 3) target-hash))))) (if (= tag 7) (let [r1 (ast-contains-var (vector-get node 2) target-hash)] (if (= r1 1) 1 (ast-contains-var (vector-get node 3) target-hash))) (if (= tag 5) (let [argc (vector-get node 2)] (if (> argc 0) (let [r1 (ast-contains-var (vector-get node 3) target-hash)] (if (= r1 1) 1 (if (> argc 1) (ast-contains-var (vector-get node 4) target-hash) 0))) 0)) 0)))))))))))))))))
+(defn recordlit-contains-var-loop [node target-hash idx count] (if (>= idx count) 0 (if (= (ast-contains-var (vector-get node (+ 4 (* idx 2))) target-hash) 1) 1 (recordlit-contains-var-loop node target-hash (+ idx 1) count))))
+(defn recordupdate-contains-var-loop [node target-hash idx count] (if (>= idx count) 0 (if (= (ast-contains-var (vector-get node (+ 4 (* idx 2))) target-hash) 1) 1 (recordupdate-contains-var-loop node target-hash (+ idx 1) count))))
+(defn computation-contains-var-loop [node target-hash idx count] (if (>= idx count) 0 (if (= (ast-contains-var (vector-get node (+ 5 (* idx 3))) target-hash) 1) 1 (computation-contains-var-loop node target-hash (+ idx 1) count))))
+(defn apply-contains-var-loop [node target-hash idx count] (if (>= idx count) 0 (if (= (ast-contains-var (vector-get node (+ 3 idx)) target-hash) 1) 1 (apply-contains-var-loop node target-hash (+ idx 1) count))))
+(defn do-contains-var-loop [node target-hash idx count] (if (>= idx count) 0 (if (= (ast-contains-var (vector-get node (+ 2 idx)) target-hash) 1) 1 (do-contains-var-loop node target-hash (+ idx 1) count))))
+(defn match-contains-var-loop [node target-hash idx count] (if (>= idx count) 0 (if (= (ast-contains-var (vector-get node (+ 4 (* idx 2))) target-hash) 1) 1 (match-contains-var-loop node target-hash (+ idx 1) count))))
+(defn if-contains-var [node target-hash] (if (= (ast-contains-var (vector-get node 1) target-hash) 1) 1 (if (= (ast-contains-var (vector-get node 2) target-hash) 1) 1 (ast-contains-var (vector-get node 3) target-hash))))
+(defn let-contains-var [node target-hash] (if (= (ast-contains-var (vector-get node 2) target-hash) 1) 1 (ast-contains-var (vector-get node 3) target-hash)))
+(defn apply-contains-var [node target-hash] (apply-contains-var-loop node target-hash 0 (vector-get node 2)))
+(defn do-contains-var [node target-hash] (do-contains-var-loop node target-hash 0 (vector-get node 1)))
+(defn match-contains-var [node target-hash] (let [scrutinee-found (ast-contains-var (vector-get node 1) target-hash)] (if (= scrutinee-found 1) 1 (match-contains-var-loop node target-hash 0 (vector-get node 2)))))
+(defn ast-contains-var [node target-hash]
+  (let [tag (vector-get node 0)]
+    (if (= tag 4)
+      (if (= (vector-get node 1) target-hash) 1 0)
+      (if (= tag 1) 0
+        (if (= tag 2) 0
+          (if (= tag 3) 0
+            (if (= tag 11)
+              (ast-contains-var (vector-get node 1) target-hash)
+              (if (= tag 12)
+                (recordlit-contains-var-loop node target-hash 0 (vector-get node 2))
+                (if (= tag 13)
+                  (ast-contains-var (vector-get node 1) target-hash)
+                  (if (= tag 14)
+                    (if (= (ast-contains-var (vector-get node 1) target-hash) 1) 1
+                      (recordupdate-contains-var-loop node target-hash 0 (vector-get node 2)))
+                    (if (= tag 15)
+                      (computation-contains-var-loop node target-hash 0 (vector-get node 2))
+                      (if (= tag 16)
+                        (ast-contains-var (vector-get node 1) target-hash)
+                        (if (= tag 17)
+                          (ast-contains-var (vector-get node 1) target-hash)
+                          (if (= tag 18)
+                            (ast-contains-var (vector-get node 1) target-hash)
+                            (if (= tag 6)
+                              (if-contains-var node target-hash)
+                              (if (= tag 7)
+                                (let-contains-var node target-hash)
+                                (if (= tag 5)
+                                  (apply-contains-var node target-hash)
+                                  (if (= tag 9)
+                                    (do-contains-var node target-hash)
+                                    (if (= tag 10)
+                                      (match-contains-var node target-hash)
+                                      0)))))))))))))))))))
 (defn recordlit-count-fields-loop [node idx count] (if (>= idx count) 0 (+ (ast-count-nodes (vector-get node (+ 4 (* idx 2)))) (recordlit-count-fields-loop node (+ idx 1) count))))
 (defn recordupdate-count-fields-loop [node idx count] (if (>= idx count) 0 (+ (ast-count-nodes (vector-get node (+ 4 (* idx 2)))) (recordupdate-count-fields-loop node (+ idx 1) count))))
 (defn computation-count-steps-loop [node idx count] (if (>= idx count) 0 (+ (ast-count-nodes (vector-get node (+ 5 (* idx 3)))) (computation-count-steps-loop node (+ idx 1) count))))

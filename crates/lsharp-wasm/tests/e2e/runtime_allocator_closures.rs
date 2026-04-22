@@ -78,73 +78,75 @@ fn parse_compiler_emitted_wasm(output: &str) -> Vec<u8> {
 }
 
 fn collect_s15_fixed_point_proof() -> serde_json::Value {
-    let main_path = selfhost_main_path();
-    let selfhost_root = main_path
-        .parent()
-        .expect("App/ ディレクトリ")
-        .parent()
-        .expect("src/ ディレクトリ")
-        .parent()
-        .expect("selfhost/ ルートディレクトリ")
-        .to_path_buf();
+    run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, || {
+        let main_path = selfhost_main_path();
+        let selfhost_root = main_path
+            .parent()
+            .expect("App/ ディレクトリ")
+            .parent()
+            .expect("src/ ディレクトリ")
+            .parent()
+            .expect("selfhost/ ルートディレクトリ")
+            .to_path_buf();
 
-    let stage1_wasm = compile_file_only(&main_path);
-    assert_valid_wasm(&stage1_wasm);
+        let stage1_wasm = compile_file_only(&main_path);
+        assert_valid_wasm(&stage1_wasm);
 
-    let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
-        &stage1_wasm,
-        Some(&selfhost_root),
-        &["compiler", "src/App/Main.ls"],
-    )
-    .expect("collector S15 proof: stage1 が Main.ls の self-compile に失敗");
-    let stage2_self_compiler = parse_compiler_emitted_wasm(&stage2_output);
-    assert_valid_wasm(&stage2_self_compiler);
-
-    let stage3_output =
-        super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode_fs(
-            &stage2_self_compiler,
-            &selfhost_root,
+        let stage2_output = lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(
+            &stage1_wasm,
+            Some(&selfhost_root),
             &["compiler", "src/App/Main.ls"],
         )
-        .expect("collector S15 proof: stage2 が Main.ls の再コンパイルに失敗");
-    let stage3_self_compiler = parse_compiler_emitted_wasm(&stage3_output);
-    assert_valid_wasm(&stage3_self_compiler);
+        .expect("collector S15 proof: stage1 が Main.ls の self-compile に失敗");
+        let stage2_self_compiler = parse_compiler_emitted_wasm(&stage2_output);
+        assert_valid_wasm(&stage2_self_compiler);
 
-    let export_a =
-        super::selfhost_bootstrap_four_layer::extract_section_bytes(&stage2_self_compiler, 7);
-    let export_b =
-        super::selfhost_bootstrap_four_layer::extract_section_bytes(&stage3_self_compiler, 7);
-    let data_a =
-        super::selfhost_bootstrap_four_layer::extract_section_bytes(&stage2_self_compiler, 11);
-    let data_b =
-        super::selfhost_bootstrap_four_layer::extract_section_bytes(&stage3_self_compiler, 11);
+        let stage3_output =
+            super::selfhost_bootstrap_four_layer::run_wasm_with_six_imports_compiler_mode_fs(
+                &stage2_self_compiler,
+                &selfhost_root,
+                &["compiler", "src/App/Main.ls"],
+            )
+            .expect("collector S15 proof: stage2 が Main.ls の再コンパイルに失敗");
+        let stage3_self_compiler = parse_compiler_emitted_wasm(&stage3_output);
+        assert_valid_wasm(&stage3_self_compiler);
 
-    let bytes_identical = stage2_self_compiler == stage3_self_compiler;
-    let exports_identical = export_a == export_b;
-    let data_sections_identical = data_a == data_b;
-    eprintln!(
-        "[S15 診断] bytes_identical={bytes_identical} exports_identical={exports_identical} data_sections_identical={data_sections_identical}"
-    );
-    eprintln!(
-        "[S15 診断] stage2 size={} stage3 size={}",
-        stage2_self_compiler.len(),
-        stage3_self_compiler.len()
-    );
-    if stage3_self_compiler.len() < 512 {
+        let export_a =
+            super::selfhost_bootstrap_four_layer::extract_section_bytes(&stage2_self_compiler, 7);
+        let export_b =
+            super::selfhost_bootstrap_four_layer::extract_section_bytes(&stage3_self_compiler, 7);
+        let data_a =
+            super::selfhost_bootstrap_four_layer::extract_section_bytes(&stage2_self_compiler, 11);
+        let data_b =
+            super::selfhost_bootstrap_four_layer::extract_section_bytes(&stage3_self_compiler, 11);
+
+        let bytes_identical = stage2_self_compiler == stage3_self_compiler;
+        let exports_identical = export_a == export_b;
+        let data_sections_identical = data_a == data_b;
         eprintln!(
-            "[S15 診断] stage3 先頭バイト (異常に小さい): {:?}",
-            &stage3_self_compiler[..stage3_self_compiler.len().min(64)]
+            "[S15 診断] bytes_identical={bytes_identical} exports_identical={exports_identical} data_sections_identical={data_sections_identical}"
         );
-    }
-    serde_json::json!({
-        "gc_mode": "mark-sweep",
-        "stage_pair": ["stage2", "stage3"],
-        "bytes_identical": bytes_identical,
-        "exports_identical": exports_identical,
-        "data_sections_identical": data_sections_identical,
-        "diagnostics_identical": true,
-        "stage2_size": stage2_self_compiler.len(),
-        "stage3_size": stage3_self_compiler.len(),
+        eprintln!(
+            "[S15 診断] stage2 size={} stage3 size={}",
+            stage2_self_compiler.len(),
+            stage3_self_compiler.len()
+        );
+        if stage3_self_compiler.len() < 512 {
+            eprintln!(
+                "[S15 診断] stage3 先頭バイト (異常に小さい): {:?}",
+                &stage3_self_compiler[..stage3_self_compiler.len().min(64)]
+            );
+        }
+        serde_json::json!({
+            "gc_mode": "mark-sweep",
+            "stage_pair": ["stage2", "stage3"],
+            "bytes_identical": bytes_identical,
+            "exports_identical": exports_identical,
+            "data_sections_identical": data_sections_identical,
+            "diagnostics_identical": true,
+            "stage2_size": stage2_self_compiler.len(),
+            "stage3_size": stage3_self_compiler.len(),
+        })
     })
 }
 

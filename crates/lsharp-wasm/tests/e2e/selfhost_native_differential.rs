@@ -553,9 +553,7 @@ static NATIVE_HARNESS_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 fn run_native_codegen_harness(entry_source: &str) -> String {
     let id = NATIVE_HARNESS_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/e2e-native-fixtures")
-        .join(format!("native-harness-{id}"));
+    let dir = target_fixture_dir("e2e-native-fixtures", "native-harness", id);
     std::fs::create_dir_all(&dir).expect("native fixture dir 作成失敗");
     let entry_source = entry_source.to_string();
     let work_dir = dir.clone();
@@ -590,9 +588,7 @@ fn run_native_codegen_harness(entry_source: &str) -> String {
 
 fn run_native_linker_harness(entry_source: &str) -> String {
     let id = NATIVE_HARNESS_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target/e2e-native-fixtures")
-        .join(format!("native-linker-harness-{id}"));
+    let dir = target_fixture_dir("e2e-native-fixtures", "native-linker-harness", id);
     std::fs::create_dir_all(&dir).expect("native linker fixture dir 作成失敗");
 
     let result = {
@@ -1285,6 +1281,518 @@ fn test_native_codegen_emits_x86_i64_mul_bytes() {
         &values[1..14],
         &[72, 15, 175, 193, 72, 129, 196, 16, 0, 0, 0, 93, 195],
         "x86 i64.mul tail は imul + add rsp,16 + epilogue であるべき"
+    );
+}
+
+/// NATIVE-REAL-08c4: x86_64 で i64.div が distinct bytes を持つこと
+#[test]
+fn test_native_codegen_emits_x86_i64_div_bytes() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn make-instr [opcode operand]
+  (vector-push (vector-push (vector-new 2) opcode) operand))
+
+(defn main []
+  (let [instr1 (make-instr 1 84)
+        instr2 (make-instr 11 0)
+        instr3 (make-instr 1 2)
+        instr4 (make-instr 11 1)
+        instr5 (make-instr 10 0)
+        instr6 (make-instr 10 1)
+        instr7 (make-instr 23 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 7) instr1)
+                       instr2)
+                     instr3)
+                   instr4)
+                 instr5)
+               instr6)
+             instr7)
+        target (make-target 1)
+        native (emit-native ir target)
+        n (vector-length native)]
+    (do
+      (print n)
+      (print (vector-get native (- n 20)))
+      (print (vector-get native (- n 19)))
+      (print (vector-get native (- n 18)))
+      (print (vector-get native (- n 17)))
+      (print (vector-get native (- n 16)))
+      (print (vector-get native (- n 15)))
+      (print (vector-get native (- n 14)))
+      (print (vector-get native (- n 13)))
+      (print (vector-get native (- n 12)))
+      (print (vector-get native (- n 11)))
+      (print (vector-get native (- n 10)))
+      (print (vector-get native (- n 9)))
+      (print (vector-get native (- n 8)))
+      (print (vector-get native (- n 7)))
+      (print (vector-get native (- n 6)))
+      (print (vector-get native (- n 5)))
+      (print (vector-get native (- n 4)))
+      (print (vector-get native (- n 3)))
+      (print (vector-get native (- n 2)))
+      (print (vector-get native (- n 1)))
+      0)))"#,
+    );
+    let values: Vec<u32> = output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u32>()
+                .unwrap_or_else(|_| panic!("i64.div: 数値出力であるべきだが `{line}` を得た"))
+        })
+        .collect();
+
+    assert!(values.len() >= 21, "i64.div tail 出力が不足: {values:?}");
+    assert!(
+        values[0] >= 20,
+        "i64.div payload 長が短すぎるため tail を検査できない: {values:?}"
+    );
+    assert_eq!(
+        &values[1..21],
+        &[
+            72, 137, 198, 72, 137, 200, 72, 153, 72, 247, 254, 72, 129, 196, 16, 0, 0, 0, 93, 195,
+        ],
+        "x86 i64.div tail は divisor save + dividend restore + cqo/idiv + add rsp,16 + epilogue であるべき"
+    );
+}
+
+/// NATIVE-REAL-08c5: x86_64 で i64.rem が distinct bytes を持つこと
+#[test]
+fn test_native_codegen_emits_x86_i64_rem_bytes() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn make-instr [opcode operand]
+  (vector-push (vector-push (vector-new 2) opcode) operand))
+
+(defn main []
+  (let [instr1 (make-instr 1 85)
+        instr2 (make-instr 11 0)
+        instr3 (make-instr 1 43)
+        instr4 (make-instr 11 1)
+        instr5 (make-instr 10 0)
+        instr6 (make-instr 10 1)
+        instr7 (make-instr 28 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 7) instr1)
+                       instr2)
+                     instr3)
+                   instr4)
+                 instr5)
+               instr6)
+             instr7)
+        target (make-target 1)
+        native (emit-native ir target)
+        n (vector-length native)]
+    (do
+      (print n)
+      (print (vector-get native (- n 23)))
+      (print (vector-get native (- n 22)))
+      (print (vector-get native (- n 21)))
+      (print (vector-get native (- n 20)))
+      (print (vector-get native (- n 19)))
+      (print (vector-get native (- n 18)))
+      (print (vector-get native (- n 17)))
+      (print (vector-get native (- n 16)))
+      (print (vector-get native (- n 15)))
+      (print (vector-get native (- n 14)))
+      (print (vector-get native (- n 13)))
+      (print (vector-get native (- n 12)))
+      (print (vector-get native (- n 11)))
+      (print (vector-get native (- n 10)))
+      (print (vector-get native (- n 9)))
+      (print (vector-get native (- n 8)))
+      (print (vector-get native (- n 7)))
+      (print (vector-get native (- n 6)))
+      (print (vector-get native (- n 5)))
+      (print (vector-get native (- n 4)))
+      (print (vector-get native (- n 3)))
+      (print (vector-get native (- n 2)))
+      (print (vector-get native (- n 1)))
+      0)))"#,
+    );
+    let values: Vec<u32> = output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u32>()
+                .unwrap_or_else(|_| panic!("i64.rem: 数値出力であるべきだが `{line}` を得た"))
+        })
+        .collect();
+
+    assert!(values.len() >= 24, "i64.rem tail 出力が不足: {values:?}");
+    assert!(
+        values[0] >= 23,
+        "i64.rem payload 長が短すぎるため tail を検査できない: {values:?}"
+    );
+    assert_eq!(
+        &values[1..24],
+        &[
+            72, 137, 198, 72, 137, 200, 72, 153, 72, 247, 254, 72, 137, 208, 72, 129, 196, 16, 0,
+            0, 0, 93, 195,
+        ],
+        "x86 i64.rem tail は divisor save + dividend restore + cqo/idiv + mov rax,rdx + add rsp,16 + epilogue であるべき"
+    );
+}
+
+fn assert_x86_memory_load_tail(
+    name: &str,
+    opcode: u32,
+    offset: u32,
+    tail_len: usize,
+    expected_tail: &[u32],
+) {
+    let output = run_native_codegen_harness(&format!(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn make-instr [opcode operand]
+  (vector-push (vector-push (vector-new 2) opcode) operand))
+
+(defn print-tail [native idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get native idx))
+      (print-tail native (+ idx 1) n))))
+
+(defn main []
+  (let [instr1 (make-instr 1 0)
+        instr2 (make-instr {opcode} {offset})
+        ir (vector-push
+             (vector-push (vector-new 2) instr1)
+             instr2)
+        target (make-target 1)
+        native (emit-native ir target)
+        n (vector-length native)]
+    (do
+      (print n)
+      (print-tail native (- n {tail_len}) n)
+      0)))"#
+    ));
+    let values: Vec<u32> = output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u32>()
+                .unwrap_or_else(|_| panic!("{name}: 数値出力であるべきだが `{line}` を得た"))
+        })
+        .collect();
+
+    assert!(
+        values.len() >= (tail_len + 1),
+        "{name}: tail 出力が不足: {values:?}"
+    );
+    assert!(
+        values[0] >= tail_len as u32,
+        "{name}: payload 長が短すぎるため tail を検査できない: {values:?}"
+    );
+    assert_eq!(
+        &values[1..(tail_len + 1)],
+        expected_tail,
+        "{name}: x86 load tail が期待と異なる"
+    );
+}
+
+/// NATIVE-REAL-08c6: x86_64 で i64/i32 load 系が distinct bytes を持つこと
+#[test]
+fn test_native_codegen_emits_x86_memory_load_bytes() {
+    assert_x86_memory_load_tail("i64.load", 48, 8, 6, &[72, 139, 64, 8, 93, 195]);
+    assert_x86_memory_load_tail("i32.load", 45, 4, 5, &[139, 64, 4, 93, 195]);
+    assert_x86_memory_load_tail("i32.load8_u", 47, 1, 6, &[15, 182, 64, 1, 93, 195]);
+}
+
+fn assert_x86_memory_store_tail(
+    name: &str,
+    value_opcode: u32,
+    value_operand: u32,
+    store_opcode: u32,
+    store_offset: u32,
+    tail_len: usize,
+    expected_tail: &[u32],
+) {
+    let output = run_native_codegen_harness(&format!(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn make-instr [opcode operand]
+  (vector-push (vector-push (vector-new 2) opcode) operand))
+
+(defn print-tail [native idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get native idx))
+      (print-tail native (+ idx 1) n))))
+
+(defn main []
+  (let [instr1 (make-instr 1 0)
+        instr2 (make-instr 11 0)
+        instr3 (make-instr {value_opcode} {value_operand})
+        instr4 (make-instr 11 1)
+        instr5 (make-instr 10 0)
+        instr6 (make-instr 10 1)
+        instr7 (make-instr {store_opcode} {store_offset})
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 7) instr1)
+                       instr2)
+                     instr3)
+                   instr4)
+                 instr5)
+               instr6)
+             instr7)
+        target (make-target 1)
+        native (emit-native ir target)
+        n (vector-length native)]
+    (do
+      (print n)
+      (print-tail native (- n {tail_len}) n)
+      0)))"#
+    ));
+    let values: Vec<u32> = output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u32>()
+                .unwrap_or_else(|_| panic!("{name}: 数値出力であるべきだが `{line}` を得た"))
+        })
+        .collect();
+
+    assert!(
+        values.len() >= (tail_len + 1),
+        "{name}: tail 出力が不足: {values:?}"
+    );
+    assert!(
+        values[0] >= tail_len as u32,
+        "{name}: payload 長が短すぎるため tail を検査できない: {values:?}"
+    );
+    assert_eq!(
+        &values[1..(tail_len + 1)],
+        expected_tail,
+        "{name}: x86 store tail が期待と異なる"
+    );
+}
+
+/// NATIVE-REAL-08c7: x86_64 で i64/i32 store 系が distinct bytes を持つこと
+#[test]
+fn test_native_codegen_emits_x86_memory_store_bytes() {
+    assert_x86_memory_store_tail(
+        "i64.store",
+        1,
+        42,
+        49,
+        8,
+        13,
+        &[72, 137, 65, 8, 72, 129, 196, 16, 0, 0, 0, 93, 195],
+    );
+    assert_x86_memory_store_tail(
+        "i32.store",
+        3,
+        42,
+        46,
+        4,
+        12,
+        &[137, 65, 4, 72, 129, 196, 16, 0, 0, 0, 93, 195],
+    );
+}
+
+fn assert_x86_memory_bulk_tail(
+    name: &str,
+    instrs: &[(u32, u32)],
+    tail_len: usize,
+    expected_tail: &[u32],
+) {
+    let instr_bindings = instrs
+        .iter()
+        .enumerate()
+        .map(|(idx, (opcode, operand))| format!("instr{idx} (make-instr {opcode} {operand})"))
+        .collect::<Vec<_>>()
+        .join("\n        ");
+    let ir_expr = (0..instrs.len()).fold(format!("(vector-new {})", instrs.len()), |expr, idx| {
+        format!("(vector-push {expr} instr{idx})")
+    });
+    let output = run_native_codegen_harness(&format!(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn make-instr [opcode operand]
+  (vector-push (vector-push (vector-new 2) opcode) operand))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-tail [native idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get native idx))
+      (print-tail native (+ idx 1) n))))
+
+(defn main []
+  (let [{instr_bindings}
+        ir {ir_expr}
+        func (make-function-meta 1 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (make-target 1)
+        native (emit-native-function-meta-bundle functions target)
+        n (vector-length native)]
+    (do
+      (print n)
+      (print-tail native (- n {tail_len}) n)
+      0)))"#
+    ));
+    let values: Vec<u32> = output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u32>()
+                .unwrap_or_else(|_| panic!("{name}: 数値出力であるべきだが `{line}` を得た"))
+        })
+        .collect();
+
+    assert!(
+        values.len() >= (tail_len + 1),
+        "{name}: tail 出力が不足: {values:?}"
+    );
+    assert!(
+        values[0] >= tail_len as u32,
+        "{name}: payload 長が短すぎるため tail を検査できない: {values:?}"
+    );
+    assert_eq!(
+        &values[1..(tail_len + 1)],
+        expected_tail,
+        "{name}: x86 memory bulk tail が期待と異なる"
+    );
+}
+
+fn assert_x86_plain_control_tail(
+    name: &str,
+    instrs: &[(u32, i64)],
+    tail_len: usize,
+    expected_tail: &[u32],
+) {
+    let instr_bindings = instrs
+        .iter()
+        .enumerate()
+        .map(|(idx, (opcode, operand))| format!("instr{idx} (make-instr {opcode} {operand})"))
+        .collect::<Vec<_>>()
+        .join("\n        ");
+    let ir_expr = (0..instrs.len()).fold(format!("(vector-new {})", instrs.len()), |expr, idx| {
+        format!("(vector-push {expr} instr{idx})")
+    });
+    let output = run_native_codegen_harness(&format!(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn make-instr [opcode operand]
+  (vector-push (vector-push (vector-new 2) opcode) operand))
+
+(defn print-tail [native idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get native idx))
+      (print-tail native (+ idx 1) n))))
+
+(defn main []
+  (let [{instr_bindings}
+        ir {ir_expr}
+        target (make-target 1)
+        native (emit-native ir target)
+        n (vector-length native)]
+    (do
+      (print n)
+      (print-tail native (- n {tail_len}) n)
+      0)))"#
+    ));
+    let values: Vec<u32> = output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u32>()
+                .unwrap_or_else(|_| panic!("{name}: 数値出力であるべきだが `{line}` を得た"))
+        })
+        .collect();
+
+    assert!(
+        values.len() >= (tail_len + 1),
+        "{name}: tail 出力が不足: {values:?}"
+    );
+    assert!(
+        values[0] >= tail_len as u32,
+        "{name}: payload 長が短すぎるため tail を検査できない: {values:?}"
+    );
+    assert_eq!(
+        &values[1..(tail_len + 1)],
+        expected_tail,
+        "{name}: x86 control-flow tail が期待と異なる"
+    );
+}
+
+/// NATIVE-REAL-08c8: x86_64 で memory.copy / memory.fill が dedicated bytes を持つこと。
+#[test]
+fn test_native_codegen_emits_x86_memory_bulk_bytes() {
+    assert_x86_memory_bulk_tail(
+        "memory.copy",
+        &[(10, 0), (10, 0), (3, 5), (77, 0)],
+        24,
+        &[
+            72, 139, 189, 240, 255, 255, 255, 72, 137, 206, 72, 137, 193, 243, 164, 72, 129, 196,
+            16, 0, 0, 0, 93, 195,
+        ],
+    );
+    assert_x86_memory_bulk_tail(
+        "memory.fill",
+        &[(10, 0), (3, 42), (3, 5), (78, 0)],
+        27,
+        &[
+            72, 137, 202, 72, 139, 189, 240, 255, 255, 255, 72, 137, 193, 72, 137, 208, 243, 170,
+            72, 129, 196, 16, 0, 0, 0, 93, 195,
+        ],
+    );
+}
+
+/// NATIVE-REAL-08c9: x86_64 で plain if/else/end が dedicated bytes を持つこと。
+#[test]
+fn test_native_codegen_emits_x86_if_else_bytes() {
+    assert_x86_plain_control_tail(
+        "if/else",
+        &[(3, 1), (41, 0), (3, 42), (79, 0), (3, 7), (43, 0)],
+        25,
+        &[
+            0, 0, 72, 137, 193, 184, 42, 0, 0, 0, 233, 8, 0, 0, 0, 72, 137, 193, 184, 7, 0, 0, 0,
+            93, 195,
+        ],
     );
 }
 
@@ -2048,6 +2556,95 @@ fn test_native_codegen_emits_x86_three_value_double_drop_bytes() {
     assert_eq!(lines[28], "200", "second drop 3 byte 目は ModRM 0xC8");
     assert_eq!(lines[29], "93", "payload 末尾手前は pop rbp");
     assert_eq!(lines[30], "195", "payload 末尾は ret");
+}
+
+/// NATIVE-REAL-08ia: x86_64 の 24-value drop helper が spill21 まで low->high に詰め直すこと。
+#[test]
+fn test_native_codegen_emits_x86_deep_drop_helper_bytes() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeCodegen)
+
+(defn main []
+  (let [native (emit-drop-bundle-x86 0 24)]
+    (do
+      (print (vector-length native))
+      (print (vector-get native 0))
+      (print (vector-get native 1))
+      (print (vector-get native 2))
+      (print (vector-get native 3))
+      (print (vector-get native 4))
+      (print (vector-get native 5))
+      (print (vector-get native 6))
+      (print (vector-get native 7))
+      (print (vector-get native 8))
+      (print (vector-get native 9))
+      (print (vector-get native 290))
+      (print (vector-get native 291))
+      (print (vector-get native 292))
+      (print (vector-get native 293))
+      (print (vector-get native 294))
+      (print (vector-get native 295))
+      (print (vector-get native 296))
+      (print (vector-get native 297))
+      (print (vector-get native 298))
+      (print (vector-get native 299))
+      (print (vector-get native 300))
+      (print (vector-get native 301))
+      (print (vector-get native 302))
+      (print (vector-get native 303))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 25,
+        "x86 deep-drop helper bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "304",
+        "24-value deep drop helper は 304 bytes であるべき"
+    );
+    assert_eq!(lines[1], "72", "deep drop 先頭は mov rax, rcx の 0x48");
+    assert_eq!(lines[2], "137", "deep drop 2 byte 目は 0x89");
+    assert_eq!(lines[3], "200", "deep drop 3 byte 目は ModRM 0xC8");
+    assert_eq!(lines[4], "72", "deep drop restore spill0 先頭は 0x48");
+    assert_eq!(lines[5], "139", "deep drop restore spill0 2 byte 目は 0x8B");
+    assert_eq!(
+        lines[6], "141",
+        "deep drop restore spill0 3 byte 目は ModRM 0x8D"
+    );
+    assert_eq!(
+        lines[7], "248",
+        "deep drop restore spill0 offset byte0 は -8"
+    );
+    assert_eq!(
+        lines[8], "255",
+        "deep drop restore spill0 offset byte1 は 0xFF"
+    );
+    assert_eq!(
+        lines[9], "255",
+        "deep drop restore spill0 offset byte2 は 0xFF"
+    );
+    assert_eq!(
+        lines[10], "255",
+        "deep drop restore spill0 offset byte3 は 0xFF"
+    );
+    assert_eq!(lines[11], "72", "末尾 shift load 先頭は 0x48");
+    assert_eq!(lines[12], "139", "末尾 shift load 2 byte 目は 0x8B");
+    assert_eq!(lines[13], "181", "末尾 shift load 3 byte 目は ModRM 0xB5");
+    assert_eq!(lines[14], "80", "末尾 shift load offset byte0 は -176");
+    assert_eq!(lines[15], "255", "末尾 shift load offset byte1 は 0xFF");
+    assert_eq!(lines[16], "255", "末尾 shift load offset byte2 は 0xFF");
+    assert_eq!(lines[17], "255", "末尾 shift load offset byte3 は 0xFF");
+    assert_eq!(lines[18], "72", "末尾 shift store 先頭は 0x48");
+    assert_eq!(lines[19], "137", "末尾 shift store 2 byte 目は 0x89");
+    assert_eq!(lines[20], "181", "末尾 shift store 3 byte 目は ModRM 0xB5");
+    assert_eq!(lines[21], "88", "末尾 shift store offset byte0 は -168");
+    assert_eq!(lines[22], "255", "末尾 shift store offset byte1 は 0xFF");
+    assert_eq!(lines[23], "255", "末尾 shift store offset byte2 は 0xFF");
+    assert_eq!(lines[24], "255", "末尾 shift store offset byte3 は 0xFF");
 }
 
 /// NATIVE-REAL-08j: x86_64 で 4 引数 direct call bundle が 2-spill load + arg moves + rel32 call bytes を持つこと
