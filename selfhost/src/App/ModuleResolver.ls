@@ -9,7 +9,24 @@
 (defn find-last-path-sep [path idx len last] (if (>= idx len) last (find-last-path-sep path (+ idx 1) len (if (is-path-sep path idx) idx last))))
 (defn path-parent [path] (let [len (string-length path)] (if (= len 0) "" (if (has-path-sep path 0 len) (let [last (find-last-path-sep path 0 len -1)] (if (< last 0) "" (if (= last 0) "/" (substring path 0 last)))) "."))))
 (defn path-basename [path] (let [len (string-length path)] (if (= len 0) "" (if (has-path-sep path 0 len) (let [last (find-last-path-sep path 0 len -1)] (if (< last 0) path (substring path (+ last 1) len))) path))))
-(defn path-join [base child] (if (= (string-length base) 0) child (let [len (string-length base)] (if (is-path-sep base (- len 1)) (string-concat base child) (string-concat (string-concat base "/") child)))))
+(defn path-join [base child]
+  (if (= (string-length base) 0)
+    child
+    (let [len (string-length base)]
+      (if (is-path-sep base (- len 1))
+        (string-concat base child)
+        (do
+          (root_push base)
+          (root_push child)
+          (let [with-sep (string-concat base "/")]
+            (do
+              (root_push with-sep)
+              (let [joined (string-concat with-sep child)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  joined)))))))))
 (defn find-src-ancestor [dir] (if (= (string-length dir) 0) "" (if (is-src-dir-name (path-basename dir)) dir (let [parent (path-parent dir)] (if (same-path parent dir) "" (find-src-ancestor parent))))))
 (defn find-manifest-root [dir] (if (= (string-length dir) 0) "" (if (file-exists? (path-join dir "lsharp.toml")) dir (let [parent (path-parent dir)] (if (same-path parent dir) "" (find-manifest-root parent))))))
 (defn resolve-source-root [entry-path] (let [entry-dir (path-parent entry-path) manifest-root (find-manifest-root entry-dir) src-root (find-src-ancestor entry-dir)] (if (> (string-length src-root) 0) src-root (if (> (string-length manifest-root) 0) (path-join manifest-root "src") entry-dir))))

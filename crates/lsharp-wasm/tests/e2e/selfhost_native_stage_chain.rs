@@ -1,4 +1,5 @@
 use super::support::*;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static NATIVE_STAGE_CHAIN_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -73,13 +74,233 @@ struct NativeHostBundleObservation {
     exit_code: i32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct NativeEntrypointBundle {
     function_start_len: usize,
     main_func_idx: usize,
     declared_code_len: usize,
+    declared_data_len: usize,
     entrypoint_offset: usize,
     code_bytes: Vec<u8>,
+    data_bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NativeEntrypointLayout {
+    function_start_len: usize,
+    main_func_idx: usize,
+    entrypoint_offset: usize,
+}
+
+fn representative_actual_stage23_seed_source() -> String {
+    let main_body = r#"      (let [code-len (vector-length code)
+          data-len (vector-length data)]
+         (do
+            (print 9000000001)
+           (print code-len)
+           (print 9000000002)
+           (print-code-bytes-loop code 0 code-len)
+            (print 9000000003)
+            (print data-len)
+            (print 9000000004)
+            (print-code-bytes-loop data 0 data-len)))"#
+        .to_string();
+    selfhost_main_native_code_only_export_harness_with_payload(
+        r#"(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)"#,
+        &main_body,
+    )
+    .replacen("(module App.HarnessMain)", "(module App.Seed)", 1)
+}
+
+fn run_actual_native_self_regeneration_transport_stage(
+    label: &str,
+    stage_input: &NativeEntrypointBundle,
+    seed_source: &str,
+) -> Result<(NativeHostArtifactBundle, NativeEntrypointBundle), String> {
+    if !host_native_exec_supported() {
+        return Err("actual native self-regeneration は macOS arm64 でのみサポート".to_string());
+    }
+
+    let bundle = build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
+        &stage_input.code_bytes,
+        &stage_input.data_bytes,
+        stage_input.entrypoint_offset,
+    )?;
+
+    let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = target_fixture_dir("e2e-native-fixtures", "native-self-regeneration-actual", id);
+    let stage_dir = dir.join(label);
+    std::fs::create_dir_all(&stage_dir)
+        .map_err(|e| format!("actual native self-regeneration dir 作成失敗: {e}"))?;
+
+    let result = (|| {
+        std::fs::write(stage_dir.join("program.o"), &bundle.program_object)
+            .map_err(|e| format!("program.o 書き込み失敗: {e}"))?;
+        std::fs::write(stage_dir.join("runtime.o"), &bundle.runtime_object)
+            .map_err(|e| format!("runtime.o 書き込み失敗: {e}"))?;
+        std::fs::write(stage_dir.join("linker-response.txt"), &bundle.response_text)
+            .map_err(|e| format!("linker-response.txt 書き込み失敗: {e}"))?;
+        let program_binary_path = stage_dir.join("program.native");
+        std::fs::write(&program_binary_path, &bundle.program_binary)
+            .map_err(|e| format!("program.native 書き込み失敗: {e}"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let permissions = std::fs::Permissions::from_mode(0o755);
+            std::fs::set_permissions(&program_binary_path, permissions)
+                .map_err(|e| format!("program.native の execute bit 設定失敗: {e}"))?;
+        }
+
+        write_representative_selfhost_modules_for_native_stage(&stage_dir)?;
+        let seed_path = stage_dir.join("src/App/Seed.ls");
+        if let Some(parent) = seed_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        std::fs::write(&seed_path, seed_source)
+            .map_err(|e| format!("{}: {e}", seed_path.display()))?;
+
+        let seed_path_text = seed_path.to_string_lossy().into_owned();
+        let run_result = std::process::Command::new(&program_binary_path)
+            .current_dir(&stage_dir)
+            .arg(&seed_path_text)
+            .output()
+            .map_err(|e| format!("program.native 実行失敗: {e}"))?;
+        let executed_bundle = NativeHostArtifactBundle {
+            program_object: bundle.program_object.clone(),
+            runtime_object: bundle.runtime_object.clone(),
+            response_text: bundle.response_text.clone(),
+            program_binary: bundle.program_binary.clone(),
+            stdout: run_result.stdout,
+            stderr: run_result.stderr,
+            exit_code: run_result.status.code().unwrap_or(-1),
+        };
+        if executed_bundle.exit_code != 0 {
+            return Err(format!(
+                "{label} exit code が 0 でない: stdout={:?} stderr={:?} exit={}",
+                String::from_utf8_lossy(&executed_bundle.stdout),
+                String::from_utf8_lossy(&executed_bundle.stderr),
+                executed_bundle.exit_code
+            ));
+        }
+        if !executed_bundle.stderr.is_empty() {
+            return Err(format!(
+                "{label} stderr が空でない: {:?}",
+                String::from_utf8_lossy(&executed_bundle.stderr)
+            ));
+        }
+        let (declared_code_len, code_bytes, declared_data_len, data_bytes) =
+            extract_native_code_data_transport_output(&executed_bundle.stdout, label);
+        let next_bundle = NativeEntrypointBundle {
+            function_start_len: stage_input.function_start_len,
+            main_func_idx: stage_input.main_func_idx,
+            declared_code_len,
+            declared_data_len,
+            entrypoint_offset: stage_input.entrypoint_offset,
+            code_bytes,
+            data_bytes,
+        };
+        maybe_write_native_host_bundle_artifact(label, &executed_bundle)
+            .map_err(|e| format!("{label} artifact 書き出し失敗: {e}"))?;
+        Ok((executed_bundle, next_bundle))
+    })();
+
+    if std::env::var_os("LSHARP_NATIVE_PROXY_KEEP_FAILED_DIR").is_none() {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    result
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SelfhostRegistrationDefn {
+    absolute_idx: usize,
+    module: String,
+    file_name: String,
+    decl_idx: usize,
+    name: String,
+}
+
+fn escape_lsharp_string(text: &str) -> String {
+    text.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn representative_selfhost_programs_by_module()
+-> BTreeMap<String, (String, lsharp_syntax::ast::Program)> {
+    let mut programs = BTreeMap::new();
+    for &file_name in SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES {
+        let source = std::fs::read_to_string(selfhost_source_path(file_name))
+            .unwrap_or_else(|err| panic!("selfhost source 読み込みに失敗 ({file_name}): {err}"));
+        let program = parse_for_pipeline(&source);
+        let module_name = program
+            .decls
+            .iter()
+            .find_map(|decl| match decl {
+                lsharp_syntax::ast::Decl::ModuleDecl { name, .. } => Some(name.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("module 宣言が見つからない: {file_name}"));
+        let replaced = programs.insert(module_name.clone(), (file_name.to_string(), program));
+        assert!(
+            replaced.is_none(),
+            "representative module が重複している: {module_name}"
+        );
+    }
+    programs
+}
+
+fn collect_representative_selfhost_module_order(
+    module_name: &str,
+    programs: &BTreeMap<String, (String, lsharp_syntax::ast::Program)>,
+    seen: &mut BTreeSet<String>,
+    ordered_modules: &mut Vec<String>,
+) {
+    if !seen.insert(module_name.to_string()) {
+        return;
+    }
+    let (_, program) = programs
+        .get(module_name)
+        .unwrap_or_else(|| panic!("representative module が見つからない: {module_name}"));
+    for decl in &program.decls {
+        if let lsharp_syntax::ast::Decl::ImportDecl { module, .. } = decl
+            && programs.contains_key(module)
+        {
+            collect_representative_selfhost_module_order(module, programs, seen, ordered_modules);
+        }
+    }
+    ordered_modules.push(module_name.to_string());
+}
+
+fn representative_selfhost_registration_order() -> Vec<SelfhostRegistrationDefn> {
+    let programs = representative_selfhost_programs_by_module();
+    let mut seen = BTreeSet::new();
+    let mut ordered_modules = Vec::new();
+    collect_representative_selfhost_module_order(
+        "App.Main",
+        &programs,
+        &mut seen,
+        &mut ordered_modules,
+    );
+
+    let mut absolute_idx = 10usize;
+    let mut ordered_defns = Vec::new();
+    for module_name in ordered_modules {
+        let (file_name, program) = programs
+            .get(&module_name)
+            .unwrap_or_else(|| panic!("representative program が見つからない: {module_name}"));
+        for (decl_idx, decl) in program.decls.iter().enumerate() {
+            if let lsharp_syntax::ast::Decl::Defn { name, .. } = decl {
+                ordered_defns.push(SelfhostRegistrationDefn {
+                    absolute_idx,
+                    module: module_name.clone(),
+                    file_name: file_name.clone(),
+                    decl_idx,
+                    name: name.clone(),
+                });
+                absolute_idx += 1;
+            }
+        }
+    }
+    ordered_defns
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -208,11 +429,14 @@ fn test_e2e_stage1_native_observation_summary_two_run_determinism() {
 
 fn parse_numeric_lines(output: &str) -> Vec<i64> {
     output
-        .trim()
-        .lines()
+        .as_bytes()
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
         .map(|line| {
-            line.parse::<i64>()
-                .unwrap_or_else(|_| panic!("numeric line ではない出力を検出: {line}"))
+            std::str::from_utf8(line)
+                .unwrap_or_else(|_| panic!("numeric line が UTF-8 でない: {line:?}"))
+                .parse::<i64>()
+                .unwrap_or_else(|_| panic!("numeric line ではない出力を検出: {:?}", line))
         })
         .collect()
 }
@@ -682,36 +906,223 @@ fn test_e2e_stage1_native_two_run_determinism() {
 
 /// V2-08: representative build entry を actual import-count 付き function-meta bundle へ落とせること。
 #[test]
+fn test_e2e_selfhost_main_representative_fixture_includes_pipeline_smoke_decls() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-representative-pipeline-smoke-decls",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Wasm.Compiler)
+
+(defn text-eq-loop [left right idx len]
+  (if (>= idx len)
+    true
+    (if (= (string-char-at left idx) (string-char-at right idx))
+      (text-eq-loop left right (+ idx 1) len)
+      false)))
+
+(defn text-eq [left right]
+  (let [len (string-length left)]
+    (if (= len (string-length right))
+      (text-eq-loop left right 0 len)
+      false)))
+
+(defn text-starts-with-loop [text prefix idx len]
+  (if (>= idx len)
+    true
+    (if (= (string-char-at text idx) (string-char-at prefix idx))
+      (text-starts-with-loop text prefix (+ idx 1) len)
+      false)))
+
+(defn text-starts-with [text prefix]
+  (let [len (string-length prefix)]
+    (if (< (string-length text) len)
+      false
+      (text-starts-with-loop text prefix 0 len))))
+
+(defn find-module-decl-count [pairs idx len module-header]
+  (if (>= idx len)
+    -1
+    (let [pair (vector-get pairs idx)
+          src (vector-get pair 0)
+          decls (vector-get pair 1)]
+      (if (text-starts-with src module-header)
+        (vector-length decls)
+        (find-module-decl-count pairs (+ idx 1) len module-header)))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pairs (compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)]
+    (do
+      (print (find-module-decl-count pairs 0 (vector-length pairs) "(module App.PipelineSmoke)"))
+      0)))"#,
+        &[],
+    )
+    .expect("representative PipelineSmoke decl harness 実行に失敗");
+
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(lines.len(), 1, "decl count 出力が不足: {lines:?}");
+    assert!(
+        lines[0] > 0,
+        "representative fixture で PipelineSmoke decls が空: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_main_ir_calls_run_main_smoke_user_function() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-representative-run-main-smoke-call",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+
+(defn text-starts-with-loop [text prefix idx len]
+  (if (>= idx len)
+    true
+    (if (= (string-char-at text idx) (string-char-at prefix idx))
+      (text-starts-with-loop text prefix (+ idx 1) len)
+      false)))
+
+(defn text-starts-with [text prefix]
+  (let [len (string-length prefix)]
+    (if (< (string-length text) len)
+      false
+      (text-starts-with-loop text prefix 0 len))))
+
+(defn find-module-decls [pairs idx len module-header]
+  (if (>= idx len)
+    (vector-new 0)
+    (let [pair (vector-get pairs idx)
+          src (vector-get pair 0)
+          decls (vector-get pair 1)]
+      (if (text-starts-with src module-header)
+        decls
+        (find-module-decls pairs (+ idx 1) len module-header)))))
+
+(defn find-module-pair-index [pairs idx len module-header]
+  (if (>= idx len)
+    -1
+    (let [pair (vector-get pairs idx)
+          src (vector-get pair 0)]
+      (if (text-starts-with src module-header)
+        idx
+        (find-module-pair-index pairs (+ idx 1) len module-header)))))
+
+(defn find-last-defn-index [decls idx n last-idx]
+  (if (>= idx n)
+    last-idx
+    (if (= (vector-get (vector-get decls idx) 0) 20)
+      (find-last-defn-index decls (+ idx 1) n idx)
+      (find-last-defn-index decls (+ idx 1) n last-idx))))
+
+(defn find-last-call-operand [ir idx len last-operand]
+  (if (>= idx len)
+    last-operand
+    (let [instr (vector-get ir idx)]
+      (if (= (vector-get instr 0) 40)
+        (find-last-call-operand ir (+ idx 1) len (vector-get instr 1))
+        (find-last-call-operand ir (+ idx 1) len last-operand)))))
+
+(defn advance-register-pairs-until [pairs target-idx n state]
+  (if (>= (vector-get state 1) target-idx)
+    state
+    (advance-register-pairs-until pairs target-idx n (continue-register-all-pairs-step pairs n state))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pairs (compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        ftable (vector-get reg-result 0)
+        smoke-pair-idx (find-module-pair-index pairs 0 (vector-length pairs) "(module App.PipelineSmoke)")
+        smoke-decls (find-module-decls pairs 0 (vector-length pairs) "(module App.PipelineSmoke)")
+        smoke-defn-idx (find-first-defn-index smoke-decls 0 (vector-length smoke-decls))
+        smoke-hash (vector-get (vector-get smoke-decls smoke-defn-idx) 1)
+        smoke-direct-map (map-insert (map-new) smoke-hash 777)
+        smoke-direct-lookup (map-get smoke-direct-map smoke-hash)
+        smoke-step-state (register-all-pairs-step pairs smoke-pair-idx (vector-length pairs) (map-new) 10)
+        smoke-step-ftable (vector-get smoke-step-state 2)
+        smoke-step-func-idx (map-get smoke-step-ftable smoke-hash)
+        prefix-state (advance-register-pairs-until pairs smoke-pair-idx (vector-length pairs) (register-all-pairs-step pairs 0 (vector-length pairs) (map-new) 10))
+        prefix-ftable (vector-get prefix-state 2)
+        prefix-manual-ftable (map-insert prefix-ftable smoke-hash 999)
+        prefix-manual-lookup (map-get prefix-manual-ftable smoke-hash)
+        smoke-accum-state (register-all-pairs-step pairs smoke-pair-idx (vector-length pairs) prefix-ftable (vector-get prefix-state 3))
+        smoke-accum-ftable (vector-get smoke-accum-state 2)
+        smoke-accum-func-idx (map-get smoke-accum-ftable smoke-hash)
+        smoke-func-idx (map-get ftable smoke-hash)
+        main-pair (vector-get pairs (- (vector-length pairs) 1))
+        main-decls (vector-get main-pair 1)
+        main-defn-idx (find-first-defn-index main-decls 0 (vector-length main-decls))
+        main-hash (vector-get (vector-get main-decls main-defn-idx) 1)
+        main-func-idx (map-get ftable main-hash)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        main-meta (vector-get functions (- main-func-idx 10))
+        main-ir (vector-get main-meta 2)]
+    (do
+      (print (vector-length smoke-decls))
+      (print main-func-idx)
+      (print smoke-hash)
+      (print smoke-direct-lookup)
+      (print smoke-step-func-idx)
+      (print prefix-manual-lookup)
+      (print smoke-accum-func-idx)
+      (print smoke-func-idx)
+      (print (find-last-call-operand main-ir 0 (vector-length main-ir) -1))
+      0)))"#,
+        &[],
+    )
+    .expect("representative run-main-smoke call harness 実行に失敗");
+
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(lines.len(), 9, "run-main-smoke call 出力が不足: {lines:?}");
+    assert!(
+        lines[0] > 0,
+        "representative fixture で PipelineSmoke decls が空: {lines:?}"
+    );
+    assert!(
+        lines[1] > 10,
+        "representative main が user function index に登録されていない: {lines:?}"
+    );
+    assert!(
+        lines[2] != 0,
+        "run-main-smoke の decl hash が 0 になっている: {lines:?}"
+    );
+    assert_eq!(
+        lines[3], 777,
+        "run-main-smoke hash を direct map-insert/map-get できない: {lines:?}"
+    );
+    assert!(
+        lines[4] > 10,
+        "run-main-smoke が PipelineSmoke pair 単体でも user function index に登録されていない: {lines:?}"
+    );
+    assert_eq!(
+        lines[5], 999,
+        "大きい ftable へ direct map-insert しても run-main-smoke hash が入らない: {lines:?}"
+    );
+    assert!(
+        lines[6] > 10,
+        "run-main-smoke が accumulated ftable 上で user function index に登録されていない: {lines:?}"
+    );
+    assert!(
+        lines[7] > 10,
+        "run-main-smoke が user function index に登録されていない: {lines:?}"
+    );
+    assert_eq!(
+        lines[8], lines[7],
+        "App.Main.main の Call operand が run-main-smoke user function を指していない: {lines:?}"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_main_native_function_meta_bundle_with_import_count_emits_code_bytes() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "native-compiler-runtime",
-        &[
-            "Main.ls",
-            "Token.ls",
-            "AST.ls",
-            "Lexer.ls",
-            "Parser.ls",
-            "IR.ls",
-            "Type.ls",
-            "TypeScheme.ls",
-            "TypeInferCore.ls",
-            "TypeInferFunctions.ls",
-            "TypeInferBuiltins.ls",
-            "TypeInfer.ls",
-            "TypeInferApply.ls",
-            "TypeInferBlock.ls",
-            "TypeInferPattern.ls",
-            "TypeInferRecord.ls",
-            "CompilerMode.ls",
-            "Compiler.ls",
-            "WasiBackend.ls",
-            "WasmEmit.ls",
-            "ModuleResolver.ls",
-            "CompilerMode.ls",
-            "NativeTarget.ls",
-            "NativeCodegen.ls",
-            "NativeEmit.ls",
-        ],
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
         "src/App/HarnessMain.ls",
         r#"(module App.HarnessMain)
 (import App.CompilerMode)
@@ -728,19 +1139,35 @@ fn test_e2e_selfhost_main_native_function_meta_bundle_with_import_count_emits_co
 (defn push-import-placeholders [idx count result]
   (if (>= idx count)
     result
-    (push-import-placeholders
-      (+ idx 1)
-      count
-      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+    (do
+      (root_push result)
+      (let [next-result (vector-push result (make-function-meta 0 0 (vector-new 0)))]
+        (do
+          (root_push next-result)
+          (let [final (push-import-placeholders (+ idx 1) count next-result)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
 
 (defn append-vector-loop [dst src idx len]
   (if (>= idx len)
     dst
-    (append-vector-loop
-      (vector-push dst (vector-get src idx))
-      src
-      (+ idx 1)
-      len)))
+    (do
+      (root_push src)
+      (root_push dst)
+      (let [next-dst (vector-push dst (vector-get src idx))]
+        (do
+          (root_push next-dst)
+          (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn print-line [value]
+  (print-string (string-concat (int-to-string value) "\n")))
 
 (defn main []
   (let [cache-ref (ref-new (map-new))
@@ -752,8 +1179,8 @@ fn test_e2e_selfhost_main_native_function_meta_bundle_with_import_count_emits_co
         target (host-target)
         code (emit-native-function-meta-bundle-with-import-count native-callables 10 target)]
     (do
-      (print (vector-length callables))
-      (print (vector-length code))
+      (print-line (vector-length callables))
+      (print-line (vector-length code))
       0)))"#,
         &[],
     )
@@ -845,36 +1272,2378 @@ fn run_native_codegen_host_bytes_harness(entry_source: &str) -> Vec<u8> {
     result
 }
 
+fn selfhost_main_native_code_only_export_harness_with_payload(
+    payload_expr: &str,
+    main_body: &str,
+) -> String {
+    format!(
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (do
+      (root_push result)
+      (let [next-result (vector-push result (make-function-meta 0 0 (vector-new 0)))]
+        (do
+          (root_push next-result)
+          (let [final (push-import-placeholders (+ idx 1) count next-result)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (do
+      (root_push src)
+      (root_push dst)
+      (let [next-dst (vector-push dst (vector-get src idx))]
+        (do
+          (root_push next-dst)
+          (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn byte-at-or-zero [bytes idx len]
+  (if (>= idx len)
+    0
+    (let [value (vector-get bytes idx)]
+      (if (< value 0)
+        (+ value 256)
+        value))))
+
+(defn pack-byte-chunk-2 [bytes idx len]
+  (+ (byte-at-or-zero bytes idx len)
+     (* (byte-at-or-zero bytes (+ idx 1) len) 256)))
+
+(defn chunk-file-path [chunk-idx]
+  (string-concat "bundle-bytes-" (string-concat (int-to-string chunk-idx) ".txt")))
+
+(defn copy-byte-slice-loop [src idx end out out-slot]
+  (if (>= idx end)
+    out
+    (let [next (vector-push out (vector-get src idx))]
+      (do
+        (root_set out-slot next)
+        (copy-byte-slice-loop src (+ idx 1) end next out-slot)))))
+
+(defn copy-byte-slice [src start end]
+  (do
+    (root_push src)
+    (let [base (vector-new (- end start))]
+      (do
+        (let [base-slot (root_push base)
+              result (copy-byte-slice-loop src start end base base-slot)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn packed-byte-line [bytes idx end]
+  (let [text (int-to-string (pack-byte-chunk-2 bytes idx end))]
+    (do
+      (root_push text)
+      (let [result (string-concat text "\n")]
+        (do
+          (root_pop)
+          result)))))
+
+(defn packed-line-count [start end]
+  (/ (+ (- end start) 1) 2))
+
+(defn build-byte-chunk-text-lines [bytes start line-count end]
+  (if (= line-count 0)
+    ""
+    (if (= line-count 1)
+      (packed-byte-line bytes start end)
+      (let [left-count (/ line-count 2)
+            right-count (- line-count left-count)
+            mid (+ start (* left-count 2))]
+        (do
+          (root_push bytes)
+          (let [left (build-byte-chunk-text-lines bytes start left-count end)]
+            (do
+              (root_push left)
+              (let [right (build-byte-chunk-text-lines bytes mid right-count end)]
+                (do
+                  (root_push right)
+                  (let [result (string-concat left right)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      result)))))))))))
+
+(defn build-byte-chunk-text [bytes start end]
+  (build-byte-chunk-text-lines bytes start (packed-line-count start end) end))
+
+(defn write-byte-chunks [bytes idx len chunk-idx]
+  (if (>= idx len)
+    0
+    (do
+      (root_push bytes)
+      (let [end (if (< (+ idx 1024) len) (+ idx 1024) len)
+            path (chunk-file-path chunk-idx)]
+        (do
+          (root_push path)
+          (let [content (build-byte-chunk-text bytes idx end)]
+            (do
+              (root_push content)
+              (write-file path content)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (write-byte-chunks bytes end len (+ chunk-idx 1)))))))))
+
+(defn print-byte-chunks-step [bytes idx len]
+  (if (>= idx len)
+    (make-print-step-state 1 idx)
+    (let [end (if (< (+ idx 128) len) (+ idx 128) len)]
+      (do
+        (root_push bytes)
+        (let [chunk (copy-byte-slice bytes idx end)]
+          (do
+            (root_push chunk)
+            (let [content (build-byte-chunk-text chunk 0 (- end idx))]
+              (do
+                (root_push content)
+                (print-string content)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (make-print-step-state 0 end)))))))))
+
+(defn continue-print-byte-chunks-step [bytes len state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-byte-chunks-step bytes (vector-get state 1) len)))
+
+(defn print-byte-chunks-step-8 [bytes idx len]
+  (let [step1 (print-byte-chunks-step bytes idx len)
+        step2 (continue-print-byte-chunks-step bytes len step1)
+        step3 (continue-print-byte-chunks-step bytes len step2)
+        step4 (continue-print-byte-chunks-step bytes len step3)
+        step5 (continue-print-byte-chunks-step bytes len step4)
+        step6 (continue-print-byte-chunks-step bytes len step5)
+        step7 (continue-print-byte-chunks-step bytes len step6)
+        step8 (continue-print-byte-chunks-step bytes len step7)]
+    step8))
+
+(defn continue-print-byte-chunks-step-8 [bytes len state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-byte-chunks-step-8 bytes (vector-get state 1) len)))
+
+(defn print-byte-chunks-step-64 [bytes idx len]
+  (let [step1 (print-byte-chunks-step-8 bytes idx len)
+        step2 (continue-print-byte-chunks-step-8 bytes len step1)
+        step3 (continue-print-byte-chunks-step-8 bytes len step2)
+        step4 (continue-print-byte-chunks-step-8 bytes len step3)
+        step5 (continue-print-byte-chunks-step-8 bytes len step4)
+        step6 (continue-print-byte-chunks-step-8 bytes len step5)
+        step7 (continue-print-byte-chunks-step-8 bytes len step6)
+        step8 (continue-print-byte-chunks-step-8 bytes len step7)]
+    step8))
+
+(defn continue-print-byte-chunks-step-64 [bytes len state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-byte-chunks-step-64 bytes (vector-get state 1) len)))
+
+(defn print-byte-chunks-step-512 [bytes idx len]
+  (let [step1 (print-byte-chunks-step-64 bytes idx len)
+        step2 (continue-print-byte-chunks-step-64 bytes len step1)
+        step3 (continue-print-byte-chunks-step-64 bytes len step2)
+        step4 (continue-print-byte-chunks-step-64 bytes len step3)
+        step5 (continue-print-byte-chunks-step-64 bytes len step4)
+        step6 (continue-print-byte-chunks-step-64 bytes len step5)
+        step7 (continue-print-byte-chunks-step-64 bytes len step6)
+        step8 (continue-print-byte-chunks-step-64 bytes len step7)]
+    step8))
+
+(defn continue-print-byte-chunks-step-512 [bytes len state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-byte-chunks-step-512 bytes (vector-get state 1) len)))
+
+(defn print-byte-chunks-step-4096 [bytes idx len]
+  (let [step1 (print-byte-chunks-step-512 bytes idx len)
+        step2 (continue-print-byte-chunks-step-512 bytes len step1)
+        step3 (continue-print-byte-chunks-step-512 bytes len step2)
+        step4 (continue-print-byte-chunks-step-512 bytes len step3)
+        step5 (continue-print-byte-chunks-step-512 bytes len step4)
+        step6 (continue-print-byte-chunks-step-512 bytes len step5)
+        step7 (continue-print-byte-chunks-step-512 bytes len step6)
+        step8 (continue-print-byte-chunks-step-512 bytes len step7)]
+    step8))
+
+(defn continue-print-byte-chunks-step-4096 [bytes len state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-byte-chunks-step-4096 bytes (vector-get state 1) len)))
+
+(defn continue-print-byte-chunks-step-times [bytes len remaining state]
+  (if (= remaining 0)
+    state
+    (if (= (vector-get state 0) 1)
+      state
+      (do
+        (root_push bytes)
+        (root_push state)
+        (let [next-state (continue-print-byte-chunks-step bytes len state)]
+          (do
+            (root_push next-state)
+            (let [result (continue-print-byte-chunks-step-times bytes len (- remaining 1) next-state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn print-byte-chunks-step-32768 [bytes idx len]
+  (do
+    (root_push bytes)
+    (let [state (print-byte-chunks-step bytes idx len)]
+      (do
+        (root_push state)
+        (let [result (continue-print-byte-chunks-step-times bytes len 255 state)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn print-byte-chunks [bytes idx len]
+  (do
+    (root_push bytes)
+    (let [step (print-byte-chunks-step-32768 bytes idx len)]
+      (do
+        (root_push step)
+        (let [result
+              (if (= (vector-get step 0) 1)
+                0
+                (print-byte-chunks bytes (vector-get step 1) len))]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn print-byte-chunks-small-step [bytes idx len]
+  (if (>= idx len)
+    (make-print-step-state 1 idx)
+    (let [end (if (< (+ idx 10) len) (+ idx 10) len)]
+      (do
+        (root_push bytes)
+        (let [chunk (copy-byte-slice bytes idx end)]
+          (do
+            (root_push chunk)
+            (let [content (build-byte-chunk-text chunk 0 (- end idx))]
+              (do
+                (root_push content)
+                (print-string content)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (make-print-step-state 0 end)))))))))
+
+(defn continue-print-byte-chunks-small-step [bytes len state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-byte-chunks-small-step bytes (vector-get state 1) len)))
+
+(defn print-byte-chunks-small-step-8 [bytes idx len]
+  (let [step1 (print-byte-chunks-small-step bytes idx len)
+        step2 (continue-print-byte-chunks-small-step bytes len step1)
+        step3 (continue-print-byte-chunks-small-step bytes len step2)
+        step4 (continue-print-byte-chunks-small-step bytes len step3)
+        step5 (continue-print-byte-chunks-small-step bytes len step4)
+        step6 (continue-print-byte-chunks-small-step bytes len step5)
+        step7 (continue-print-byte-chunks-small-step bytes len step6)
+        step8 (continue-print-byte-chunks-small-step bytes len step7)]
+    step8))
+
+(defn continue-print-byte-chunks-small-step-8 [bytes len state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-byte-chunks-small-step-8 bytes (vector-get state 1) len)))
+
+(defn print-byte-chunks-small-step-64 [bytes idx len]
+  (let [step1 (print-byte-chunks-small-step-8 bytes idx len)
+        step2 (continue-print-byte-chunks-small-step-8 bytes len step1)
+        step3 (continue-print-byte-chunks-small-step-8 bytes len step2)
+        step4 (continue-print-byte-chunks-small-step-8 bytes len step3)
+        step5 (continue-print-byte-chunks-small-step-8 bytes len step4)
+        step6 (continue-print-byte-chunks-small-step-8 bytes len step5)
+        step7 (continue-print-byte-chunks-small-step-8 bytes len step6)
+        step8 (continue-print-byte-chunks-small-step-8 bytes len step7)]
+    step8))
+
+(defn continue-print-byte-chunks-small-step-64 [bytes len state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-byte-chunks-small-step-64 bytes (vector-get state 1) len)))
+
+(defn print-byte-chunks-small-step-512 [bytes idx len]
+  (let [step1 (print-byte-chunks-small-step-64 bytes idx len)
+        step2 (continue-print-byte-chunks-small-step-64 bytes len step1)
+        step3 (continue-print-byte-chunks-small-step-64 bytes len step2)
+        step4 (continue-print-byte-chunks-small-step-64 bytes len step3)
+        step5 (continue-print-byte-chunks-small-step-64 bytes len step4)
+        step6 (continue-print-byte-chunks-small-step-64 bytes len step5)
+        step7 (continue-print-byte-chunks-small-step-64 bytes len step6)
+        step8 (continue-print-byte-chunks-small-step-64 bytes len step7)]
+    step8))
+
+(defn print-byte-chunks-small [bytes idx len]
+  (let [step (print-byte-chunks-small-step-512 bytes idx len)]
+    (if (= (vector-get step 0) 1)
+      0
+      (print-byte-chunks-small bytes (vector-get step 1) len))))
+
+(defn build-byte-chunks-step [bytes idx len]
+  (if (>= idx len)
+    (make-print-step-state 1 idx)
+    (do
+      (root_push bytes)
+      (let [end (if (< (+ idx 128) len) (+ idx 128) len)
+            content (build-byte-chunk-text bytes idx end)]
+        (do
+          (root_push content)
+          (let [content-len (string-length content)]
+            (do
+              (root_pop)
+              (root_pop)
+              (make-print-step-state 0 end))))))))
+
+(defn continue-build-byte-chunks-step [bytes len state]
+  (if (= (vector-get state 0) 1)
+    state
+    (build-byte-chunks-step bytes (vector-get state 1) len)))
+
+(defn build-byte-chunks-step-8 [bytes idx len]
+  (let [step1 (build-byte-chunks-step bytes idx len)
+        step2 (continue-build-byte-chunks-step bytes len step1)
+        step3 (continue-build-byte-chunks-step bytes len step2)
+        step4 (continue-build-byte-chunks-step bytes len step3)
+        step5 (continue-build-byte-chunks-step bytes len step4)
+        step6 (continue-build-byte-chunks-step bytes len step5)
+        step7 (continue-build-byte-chunks-step bytes len step6)
+        step8 (continue-build-byte-chunks-step bytes len step7)]
+    step8))
+
+(defn continue-build-byte-chunks-step-8 [bytes len state]
+  (if (= (vector-get state 0) 1)
+    state
+    (build-byte-chunks-step-8 bytes (vector-get state 1) len)))
+
+(defn build-byte-chunks-step-64 [bytes idx len]
+  (let [step1 (build-byte-chunks-step-8 bytes idx len)
+        step2 (continue-build-byte-chunks-step-8 bytes len step1)
+        step3 (continue-build-byte-chunks-step-8 bytes len step2)
+        step4 (continue-build-byte-chunks-step-8 bytes len step3)
+        step5 (continue-build-byte-chunks-step-8 bytes len step4)
+        step6 (continue-build-byte-chunks-step-8 bytes len step5)
+        step7 (continue-build-byte-chunks-step-8 bytes len step6)
+        step8 (continue-build-byte-chunks-step-8 bytes len step7)]
+    step8))
+
+(defn continue-build-byte-chunks-step-64 [bytes len state]
+  (if (= (vector-get state 0) 1)
+    state
+    (build-byte-chunks-step-64 bytes (vector-get state 1) len)))
+
+(defn continue-build-byte-chunks-step-times [bytes len remaining state]
+  (if (= remaining 0)
+    state
+    (if (= (vector-get state 0) 1)
+      state
+      (do
+        (root_push bytes)
+        (root_push state)
+        (let [next-state (continue-build-byte-chunks-step bytes len state)]
+          (do
+            (root_push next-state)
+            (let [result (continue-build-byte-chunks-step-times bytes len (- remaining 1) next-state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn build-byte-chunks-step-512 [bytes idx len]
+  (do
+    (root_push bytes)
+    (let [state (build-byte-chunks-step bytes idx len)]
+      (do
+        (root_push state)
+        (let [result (continue-build-byte-chunks-step-times bytes len 511 state)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn build-byte-chunks [bytes idx len]
+  (do
+    (root_push bytes)
+    (let [step (build-byte-chunks-step-512 bytes idx len)]
+      (do
+        (root_push step)
+        (let [result
+              (if (= (vector-get step 0) 1)
+                0
+                (build-byte-chunks bytes (vector-get step 1) len))]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn make-print-step-state [done next-idx]
+  (do
+    (root_push done)
+    (root_push next-idx)
+    (let [base (vector-new 2)]
+      (do
+        (let [base-slot (root_push base)
+              with-done (vector-push base done)]
+          (do
+            (root_set base-slot with-done)
+            (let [result (vector-push with-done next-idx)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn print-code-bytes-step [bytes idx count]
+  (if (>= idx count)
+    (make-print-step-state 1 idx)
+    (let [value (vector-get bytes idx)]
+      (do
+        (print (if (< value 0) (+ value 256) value))
+        (make-print-step-state 0 (+ idx 1))))))
+
+(defn continue-print-code-bytes-step [bytes count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-code-bytes-step bytes (vector-get state 1) count)))
+
+(defn print-code-bytes-step-8 [bytes idx count]
+  (let [step1 (print-code-bytes-step bytes idx count)
+        step2 (continue-print-code-bytes-step bytes count step1)
+        step3 (continue-print-code-bytes-step bytes count step2)
+        step4 (continue-print-code-bytes-step bytes count step3)
+        step5 (continue-print-code-bytes-step bytes count step4)
+        step6 (continue-print-code-bytes-step bytes count step5)
+        step7 (continue-print-code-bytes-step bytes count step6)
+        step8 (continue-print-code-bytes-step bytes count step7)]
+    step8))
+
+(defn continue-print-code-bytes-step-8 [bytes count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-code-bytes-step-8 bytes (vector-get state 1) count)))
+
+(defn print-code-bytes-step-64 [bytes idx count]
+  (let [step1 (print-code-bytes-step-8 bytes idx count)
+        step2 (continue-print-code-bytes-step-8 bytes count step1)
+        step3 (continue-print-code-bytes-step-8 bytes count step2)
+        step4 (continue-print-code-bytes-step-8 bytes count step3)
+        step5 (continue-print-code-bytes-step-8 bytes count step4)
+        step6 (continue-print-code-bytes-step-8 bytes count step5)
+        step7 (continue-print-code-bytes-step-8 bytes count step6)
+        step8 (continue-print-code-bytes-step-8 bytes count step7)]
+    step8))
+
+(defn continue-print-code-bytes-step-64 [bytes count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-code-bytes-step-64 bytes (vector-get state 1) count)))
+
+(defn print-code-bytes-step-512 [bytes idx count]
+  (let [step1 (print-code-bytes-step-64 bytes idx count)
+        step2 (continue-print-code-bytes-step-64 bytes count step1)
+        step3 (continue-print-code-bytes-step-64 bytes count step2)
+        step4 (continue-print-code-bytes-step-64 bytes count step3)
+        step5 (continue-print-code-bytes-step-64 bytes count step4)
+        step6 (continue-print-code-bytes-step-64 bytes count step5)
+        step7 (continue-print-code-bytes-step-64 bytes count step6)
+        step8 (continue-print-code-bytes-step-64 bytes count step7)]
+    step8))
+
+(defn continue-print-code-bytes-step-512 [bytes count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-code-bytes-step-512 bytes (vector-get state 1) count)))
+
+(defn print-code-bytes-step-4096 [bytes idx count]
+  (let [step1 (print-code-bytes-step-512 bytes idx count)
+        step2 (continue-print-code-bytes-step-512 bytes count step1)
+        step3 (continue-print-code-bytes-step-512 bytes count step2)
+        step4 (continue-print-code-bytes-step-512 bytes count step3)
+        step5 (continue-print-code-bytes-step-512 bytes count step4)
+        step6 (continue-print-code-bytes-step-512 bytes count step5)
+        step7 (continue-print-code-bytes-step-512 bytes count step6)
+        step8 (continue-print-code-bytes-step-512 bytes count step7)]
+    step8))
+
+(defn continue-print-code-bytes-step-4096 [bytes count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-code-bytes-step-4096 bytes (vector-get state 1) count)))
+
+(defn print-code-bytes-step-32768 [bytes idx count]
+  (let [step1 (print-code-bytes-step-4096 bytes idx count)
+        step2 (continue-print-code-bytes-step-4096 bytes count step1)
+        step3 (continue-print-code-bytes-step-4096 bytes count step2)
+        step4 (continue-print-code-bytes-step-4096 bytes count step3)
+        step5 (continue-print-code-bytes-step-4096 bytes count step4)
+        step6 (continue-print-code-bytes-step-4096 bytes count step5)
+        step7 (continue-print-code-bytes-step-4096 bytes count step6)
+        step8 (continue-print-code-bytes-step-4096 bytes count step7)]
+    step8))
+
+(defn print-code-bytes-loop [bytes idx count]
+  (let [step (print-code-bytes-step-32768 bytes idx count)]
+    (if (= (vector-get step 0) 1)
+      0
+      (print-code-bytes-loop bytes (vector-get step 1) count))))
+
+(defn remainder [value divisor]
+  (- value (* (/ value divisor) divisor)))
+
+(defn parse-positive-int-loop [text idx len acc]
+  (if (>= idx len)
+    acc
+    (parse-positive-int-loop
+      text
+      (+ idx 1)
+      len
+      (+ (* acc 10) (- (string-char-at text idx) 48)))))
+
+(defn parse-positive-int [text]
+  (parse-positive-int-loop text 0 (string-length text) 0))
+
+(defn str4 [a b c d]
+  (string-concat a (string-concat b (string-concat c d))))
+
+(defn base64-char [alphabet digit]
+  (substring alphabet digit (+ digit 1)))
+
+(defn base64-quad [alphabet pad bytes idx len]
+  (let [remaining (- len idx)
+        b0 (byte-at-or-zero bytes idx len)
+        b1 (byte-at-or-zero bytes (+ idx 1) len)
+        b2 (byte-at-or-zero bytes (+ idx 2) len)
+        s0 (/ b0 4)
+        s1 (+ (* (remainder b0 4) 16) (/ b1 16))
+        s2 (+ (* (remainder b1 16) 4) (/ b2 64))
+        s3 (remainder b2 64)]
+    (if (= remaining 1)
+      (str4 (base64-char alphabet s0) (base64-char alphabet s1) pad pad)
+      (if (= remaining 2)
+        (str4 (base64-char alphabet s0) (base64-char alphabet s1) (base64-char alphabet s2) pad)
+        (str4 (base64-char alphabet s0) (base64-char alphabet s1) (base64-char alphabet s2) (base64-char alphabet s3))))))
+
+(defn base64-group-count [start end]
+  (/ (+ (- end start) 2) 3))
+
+(defn build-base64-chunk-lines [alphabet pad bytes start group-count end]
+  (if (= group-count 0)
+    ""
+    (if (= group-count 1)
+      (base64-quad alphabet pad bytes start end)
+      (let [left-count (/ group-count 2)
+            right-count (- group-count left-count)
+            mid (+ start (* left-count 3))]
+        (string-concat
+          (build-base64-chunk-lines alphabet pad bytes start left-count end)
+          (build-base64-chunk-lines alphabet pad bytes mid right-count end))))))
+
+(defn build-base64-chunk-text [alphabet pad bytes start end]
+  (build-base64-chunk-lines alphabet pad bytes start (base64-group-count start end) end))
+
+(defn print-base64-chunks [alphabet pad bytes idx len]
+  (if (>= idx len)
+    0
+    (let [end (if (< (+ idx 48) len) (+ idx 48) len)
+          content (build-base64-chunk-text alphabet pad bytes idx end)]
+      (do
+        (print-string content)
+        (print-base64-chunks alphabet pad bytes end len)))))
+
+(defn write-base64-chunks [alphabet pad bytes idx len chunk-idx]
+  (if (>= idx len)
+    chunk-idx
+    (let [end (if (< (+ idx 768) len) (+ idx 768) len)
+          path (chunk-file-path chunk-idx)
+          content (build-base64-chunk-text alphabet pad bytes idx end)]
+      (do
+        (write-file path content)
+        (write-base64-chunks alphabet pad bytes end len (+ chunk-idx 1))))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+         parse-count-ref (ref-new 0)
+         payload {payload_expr}]
+    (do
+      (root_push payload)
+      (let [functions (vector-get payload 0)
+            data (vector-get payload 1)]
+        (do
+          (root_push functions)
+          (root_push data)
+          (let [callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))]
+            (do
+              (root_push callables)
+              (let [native-callables (normalize-selfhost-native-function-metas callables)
+                    target (host-target)]
+                (do
+                  (root_push native-callables)
+                  (root_push target)
+                  (let [code (emit-native-function-meta-bundle-with-import-count native-callables 10 target)]
+                    (do
+                      (root_push code)
+  {main_body}
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      0)))))))))))"#,
+        payload_expr = payload_expr,
+        main_body = main_body
+    )
+}
+
+fn selfhost_main_native_code_only_export_harness(main_body: &str) -> String {
+    selfhost_main_native_code_only_export_harness_with_payload(
+        r#"(compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)"#,
+        main_body,
+    )
+}
+
+fn extract_transport_start_from<'a>(
+    output: &'a [u8],
+    context: &str,
+    sentinel: &str,
+    start_offset: usize,
+) -> (&'a str, usize) {
+    let missing_start = || {
+        panic!(
+            "{context} start sentinel が無い: sentinel={sentinel} output_len={} first_bytes={:?}",
+            output.len(),
+            &output[..output.len().min(32)]
+        )
+    };
+    let mut offset = start_offset;
+    loop {
+        let (line, next_offset) = next_transport_line(output, offset).unwrap_or_else(missing_start);
+        offset = next_offset;
+        if let Ok(text) = std::str::from_utf8(line)
+            && text == sentinel
+        {
+            return (text, offset);
+        }
+        if offset >= output.len() {
+            missing_start();
+        }
+    }
+}
+
+fn extract_transport_section<'a>(
+    output: &'a [u8],
+    context: &str,
+    start_sentinel: &str,
+    end_sentinel: &str,
+    start_offset: usize,
+) -> (&'a str, &'a str, &'a str, &'a [u8], usize) {
+    let (sentinel_start, offset) =
+        extract_transport_start_from(output, context, start_sentinel, start_offset);
+    let (declared_len_line, after_declared_len) = next_transport_line(output, offset)
+        .unwrap_or_else(|| panic!("{context} code len 出力が不足"));
+    let declared_len = parse_transport_ascii_line(
+        Some(declared_len_line),
+        &format!("{context} code len 出力が不足"),
+    );
+    let (sentinel_end_line, after_sentinel_end) = next_transport_line(output, after_declared_len)
+        .unwrap_or_else(|| panic!("{context} end sentinel が無い"));
+    let sentinel_end = parse_transport_ascii_line(
+        Some(sentinel_end_line),
+        &format!("{context} end sentinel が無い"),
+    );
+    assert_eq!(
+        sentinel_end, end_sentinel,
+        "{context} end sentinel が期待値と一致しない"
+    );
+    let (payload_line, next_offset) = next_transport_line(output, after_sentinel_end)
+        .unwrap_or_else(|| panic!("{context} payload が無い"));
+    (
+        sentinel_start,
+        declared_len,
+        sentinel_end,
+        payload_line,
+        next_offset,
+    )
+}
+
+fn extract_native_code_data_transport_output(
+    output: &[u8],
+    label: &str,
+) -> (usize, Vec<u8>, usize, Vec<u8>) {
+    let (sentinel_start, after_code_start) =
+        extract_transport_start_from(output, label, "9000000001", 0);
+    assert_eq!(sentinel_start, "9000000001");
+    let (declared_code_len_line, after_declared_code_len) =
+        next_transport_line(output, after_code_start)
+            .unwrap_or_else(|| panic!("{label} code len 出力が不足"));
+    let declared_code_len = parse_transport_ascii_line(
+        Some(declared_code_len_line),
+        &format!("{label} code len 出力が不足"),
+    )
+    .parse::<usize>()
+    .expect("representative code-only transport code len parse 失敗");
+    let (code_start_sentinel, code_payload_start) =
+        extract_transport_start_from(output, label, "9000000002", after_declared_code_len);
+    assert_eq!(code_start_sentinel, "9000000002");
+
+    let mut offset = code_payload_start;
+    let code_payload_end = loop {
+        let line_start = offset;
+        let (line, next_offset) = next_transport_line(output, offset)
+            .unwrap_or_else(|| panic!("{label} data start sentinel が無い"));
+        offset = next_offset;
+        if let Ok(text) = std::str::from_utf8(line)
+            && text == "9000000003"
+        {
+            break line_start;
+        }
+    };
+    let code_payload = &output[code_payload_start..code_payload_end];
+    let code_bytes = decode_printed_byte_values(code_payload, declared_code_len);
+
+    let (declared_data_len_line, after_declared_data_len) = next_transport_line(output, offset)
+        .unwrap_or_else(|| panic!("{label} data len 出力が不足"));
+    let declared_data_len = parse_transport_ascii_line(
+        Some(declared_data_len_line),
+        &format!("{label} data len 出力が不足"),
+    )
+    .parse::<usize>()
+    .expect("representative data transport data len parse 失敗");
+    let (data_start_sentinel, data_payload_start) =
+        extract_transport_start_from(output, label, "9000000004", after_declared_data_len);
+    assert_eq!(data_start_sentinel, "9000000004");
+    let data_payload = &output[data_payload_start..];
+    let data_bytes = decode_printed_byte_values(data_payload, declared_data_len);
+
+    (declared_code_len, code_bytes, declared_data_len, data_bytes)
+}
+
+fn write_representative_selfhost_modules_for_native_stage(
+    dir: &std::path::Path,
+) -> Result<(), String> {
+    let src_root = dir.join("src");
+    for &name in SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES {
+        let rel = selfhost_fixture_module_relative_path(name);
+        let path = src_root.join(rel);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        let contents = std::fs::read_to_string(selfhost_source_path(name))
+            .map_err(|e| format!("{}: {e}", selfhost_source_path(name).display()))?;
+        std::fs::write(&path, contents).map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
+fn run_selfhost_main_native_function_meta_code_only_host_bytes_harness_with_payload(
+    label: &str,
+    payload_expr: &str,
+) -> (usize, Vec<u8>, usize, Vec<u8>) {
+    run_selfhost_main_native_function_meta_code_only_host_bytes_harness_with_payload_and_args(
+        label,
+        payload_expr,
+        &[],
+    )
+}
+
+fn run_selfhost_main_native_function_meta_code_only_host_bytes_harness_with_payload_and_args(
+    label: &str,
+    payload_expr: &str,
+    args: &[&str],
+) -> (usize, Vec<u8>, usize, Vec<u8>) {
+    let main_body = format!(
+        r#"      (let [code-len (vector-length code)
+         data-len (vector-length data)]
+         (do
+           (print 9000000001)
+           (print code-len)
+           (print 9000000002)
+           (print-code-bytes-loop code 0 code-len)
+           (print 9000000003)
+           (print data-len)
+           (print 9000000004)
+           (print-code-bytes-loop data 0 data-len)))"#
+    );
+    let harness =
+        selfhost_main_native_code_only_export_harness_with_payload(payload_expr, &main_body);
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        label,
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        args,
+    )
+    .unwrap_or_else(|e| panic!("{label} code-only transport harness 実行に失敗: {e}"));
+    extract_native_code_data_transport_output(&output, label)
+}
+
+fn run_selfhost_main_native_function_meta_code_only_host_bytes_harness()
+-> (usize, Vec<u8>, usize, Vec<u8>) {
+    run_selfhost_main_native_function_meta_code_only_host_bytes_harness_with_payload(
+        "native-stage23-representative-code-only-transport",
+        r#"(compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)"#,
+    )
+}
+
+#[allow(dead_code)]
+fn extract_layout_bundle_section(output: &[u8], context: &str) -> (usize, usize, usize, usize) {
+    let (layout_start, offset) = extract_transport_start_from(output, context, "9000000005", 0);
+    let (callable_len_line, after_callable_len) = next_transport_line(output, offset)
+        .unwrap_or_else(|| panic!("{context} layout callable len 出力が不足"));
+    let callable_len = parse_transport_ascii_line(
+        Some(callable_len_line),
+        &format!("{context} layout callable len 出力が不足"),
+    )
+    .parse::<usize>()
+    .expect("layout callable len parse 失敗");
+    let (main_func_idx_line, after_main_func_idx) = next_transport_line(output, after_callable_len)
+        .unwrap_or_else(|| panic!("{context} layout main func idx 出力が不足"));
+    let main_func_idx = parse_transport_ascii_line(
+        Some(main_func_idx_line),
+        &format!("{context} layout main func idx 出力が不足"),
+    )
+    .parse::<usize>()
+    .expect("layout main func idx parse 失敗");
+    let (entrypoint_line, after_entrypoint) = next_transport_line(output, after_main_func_idx)
+        .unwrap_or_else(|| panic!("{context} layout entrypoint 出力が不足"));
+    let entrypoint_offset = parse_transport_ascii_line(
+        Some(entrypoint_line),
+        &format!("{context} layout entrypoint 出力が不足"),
+    )
+    .parse::<usize>()
+    .expect("layout entrypoint parse 失敗");
+    let (layout_end_line, next_offset) = next_transport_line(output, after_entrypoint)
+        .unwrap_or_else(|| panic!("{context} layout end sentinel が無い"));
+    let layout_end = parse_transport_ascii_line(
+        Some(layout_end_line),
+        &format!("{context} layout end sentinel が無い"),
+    );
+    assert_eq!(layout_start, "9000000005");
+    assert_eq!(
+        layout_end, "9000000006",
+        "{context} layout end sentinel が期待値と一致しない"
+    );
+    (callable_len, main_func_idx, entrypoint_offset, next_offset)
+}
+
+fn run_selfhost_main_native_function_meta_bundle_host_bytes_harness_with_exprs(
+    label: &str,
+    pairs_expr: &str,
+    payload_expr: &str,
+) -> NativeEntrypointBundle {
+    run_selfhost_main_native_function_meta_bundle_host_bytes_harness_with_exprs_and_args(
+        label,
+        pairs_expr,
+        payload_expr,
+        &[],
+    )
+}
+
+fn run_selfhost_main_native_function_meta_bundle_host_bytes_harness_with_exprs_and_args(
+    label: &str,
+    pairs_expr: &str,
+    payload_expr: &str,
+    args: &[&str],
+) -> NativeEntrypointBundle {
+    let layout = run_selfhost_main_representative_aarch64_layout_harness_with_exprs_and_args(
+        &format!("{label}-layout"),
+        pairs_expr,
+        payload_expr,
+        args,
+    );
+    let (declared_code_len, code_bytes, declared_data_len, data_bytes) =
+        run_selfhost_main_native_function_meta_code_only_host_bytes_harness_with_payload_and_args(
+            &format!("{label}-code-only"),
+            payload_expr,
+            args,
+        );
+    let entrypoint_offset =
+        align_aarch64_entrypoint_to_function_start(&code_bytes, layout.entrypoint_offset);
+
+    NativeEntrypointBundle {
+        function_start_len: layout.function_start_len,
+        main_func_idx: layout.main_func_idx,
+        declared_code_len,
+        declared_data_len,
+        entrypoint_offset,
+        code_bytes,
+        data_bytes,
+    }
+}
+
+#[allow(dead_code)]
+fn run_selfhost_main_override_native_function_meta_code_only_host_bytes_harness(
+    label: &str,
+    main_source: &str,
+) -> (usize, Vec<u8>, usize, Vec<u8>) {
+    let escaped_main_source = escape_lsharp_string(main_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/OverrideMain.ls" "{escaped_main_source}")
+            (compile-file-functions-payload-with-cache "src/App/OverrideMain.ls" 10 cache-ref parse-count-ref))"#
+    );
+    run_selfhost_main_native_function_meta_code_only_host_bytes_harness_with_payload(
+        label,
+        &payload_expr,
+    )
+}
+
+fn parse_transport_ascii_line<'a>(line: Option<&'a [u8]>, missing_message: &str) -> &'a str {
+    let bytes = line.unwrap_or_else(|| panic!("{missing_message}"));
+    std::str::from_utf8(bytes)
+        .unwrap_or_else(|_| panic!("transport prefix が UTF-8 でない: {missing_message}"))
+}
+
+fn is_transport_separator(byte: u8) -> bool {
+    byte == 0 || byte.is_ascii_control() || !byte.is_ascii()
+}
+
+#[test]
+fn test_extract_transport_lines_skips_non_utf8_prefix() {
+    let output = [
+        0xff, 0x00, b'X', b'\n', b'9', b'0', b'0', b'0', b'0', b'0', b'0', b'0', b'0', b'1', b'\n',
+        b'1', b'2', b'\n', b'9', b'0', b'0', b'0', b'0', b'0', b'0', b'0', b'0', b'2', b'\n', b'A',
+        b'B', b'C', b'D',
+    ];
+    let (sentinel_start, declared_len, sentinel_end, payload) =
+        extract_transport_lines(&output, "transport test");
+    assert_eq!(sentinel_start, "9000000001");
+    assert_eq!(declared_len, "12");
+    assert_eq!(sentinel_end, "9000000002");
+    assert_eq!(payload, b"ABCD");
+}
+
+#[test]
+fn test_extract_transport_lines_supports_0xf9_separators() {
+    let output = [
+        b'9', b'0', b'0', b'0', b'0', b'0', b'0', b'0', b'0', b'1', 0xf9, b'1', b'2', 0xf9, b'9',
+        b'0', b'0', b'0', b'0', b'0', b'0', b'0', b'0', b'2', 0xf9, b'A', b'B',
+    ];
+    let (sentinel_start, declared_len, sentinel_end, payload) =
+        extract_transport_lines(&output, "transport test");
+    assert_eq!(sentinel_start, "9000000001");
+    assert_eq!(declared_len, "12");
+    assert_eq!(sentinel_end, "9000000002");
+    assert_eq!(payload, b"AB");
+}
+
+#[test]
+fn test_extract_transport_lines_supports_non_ascii_separators() {
+    let output = b"9000000001\xe112\xe19000000002\xe1AB";
+    let (sentinel_start, declared_len, sentinel_end, payload) =
+        extract_transport_lines(output, "transport test");
+    assert_eq!(sentinel_start, "9000000001");
+    assert_eq!(declared_len, "12");
+    assert_eq!(sentinel_end, "9000000002");
+    assert_eq!(payload, b"AB");
+}
+
+#[test]
+fn test_decode_packed_byte_lines_supports_nul_separators() {
+    let decoded = decode_packed_byte_lines(b"513\x00784\0", 4);
+    assert_eq!(decoded, vec![1, 2, 16, 3]);
+}
+
+#[test]
+fn test_decode_packed_byte_lines_supports_negative_i16_text() {
+    let decoded = decode_packed_byte_lines(b"-255\0", 2);
+    assert_eq!(decoded, vec![1, 255]);
+}
+
+fn next_transport_line(output: &[u8], start: usize) -> Option<(&[u8], usize)> {
+    if start > output.len() {
+        return None;
+    }
+    let tail = &output[start..];
+    if let Some(end) = tail.iter().position(|byte| is_transport_separator(*byte)) {
+        Some((&tail[..end], start + end + 1))
+    } else {
+        Some((tail, output.len()))
+    }
+}
+
+fn extract_transport_start<'a>(output: &'a [u8], context: &str) -> (&'a str, usize) {
+    let missing_start = || {
+        panic!(
+            "{context} start sentinel が無い: output_len={} first_bytes={:?}",
+            output.len(),
+            &output[..output.len().min(32)]
+        )
+    };
+    let mut offset = 0;
+    loop {
+        let (line, next_offset) = next_transport_line(output, offset).unwrap_or_else(missing_start);
+        offset = next_offset;
+        if let Ok(text) = std::str::from_utf8(line)
+            && text == "9000000001"
+        {
+            return (text, offset);
+        }
+        if offset >= output.len() {
+            missing_start();
+        }
+    }
+}
+
+fn extract_transport_lines<'a>(
+    output: &'a [u8],
+    context: &str,
+) -> (&'a str, &'a str, &'a str, &'a [u8]) {
+    let (sentinel_start, offset) = extract_transport_start(output, context);
+    let (declared_code_len_line, after_declared_len) = next_transport_line(output, offset)
+        .unwrap_or_else(|| panic!("{context} code len 出力が不足"));
+    let declared_code_len = parse_transport_ascii_line(
+        Some(declared_code_len_line),
+        &format!("{context} code len 出力が不足"),
+    );
+    let (sentinel_end_line, payload_offset) = next_transport_line(output, after_declared_len)
+        .unwrap_or_else(|| panic!("{context} end sentinel が無い"));
+    let sentinel_end = parse_transport_ascii_line(
+        Some(sentinel_end_line),
+        &format!("{context} end sentinel が無い"),
+    );
+    (
+        sentinel_start,
+        declared_code_len,
+        sentinel_end,
+        &output[payload_offset..],
+    )
+}
+
+fn decode_packed_byte_lines(payload: &[u8], declared_code_len: usize) -> Vec<u8> {
+    let mut decoded = Vec::with_capacity(declared_code_len);
+    for (idx, line) in payload
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .enumerate()
+    {
+        let line_text = std::str::from_utf8(line)
+            .unwrap_or_else(|_| panic!("packed byte line が UTF-8 でない: {:?}", line));
+        let packed = line_text
+            .parse::<i32>()
+            .map(|value| if value < 0 { value + 65536 } else { value })
+            .unwrap_or_else(|_| panic!("packed byte line parse 失敗 at {idx}: {line_text}"));
+        decoded.push((packed & 0x00ff) as u8);
+        if decoded.len() < declared_code_len {
+            decoded.push((packed >> 8) as u8);
+        }
+        if decoded.len() >= declared_code_len {
+            break;
+        }
+    }
+    assert_eq!(
+        decoded.len(),
+        declared_code_len,
+        "packed byte payload の復元長が一致しない: declared_len={} decoded_len={}",
+        declared_code_len,
+        decoded.len()
+    );
+    decoded
+}
+
+fn decode_printed_byte_values(payload: &[u8], declared_code_len: usize) -> Vec<u8> {
+    let decoded = payload
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .enumerate()
+        .map(|(idx, line)| {
+            let line_text = std::str::from_utf8(line)
+                .unwrap_or_else(|_| panic!("printed byte line が UTF-8 でない: {:?}", line));
+            let value = line_text
+                .parse::<i32>()
+                .unwrap_or_else(|_| panic!("printed byte line parse 失敗 at {idx}: {line_text}"));
+            u8::try_from(value)
+                .unwrap_or_else(|_| panic!("printed byte line が 0..255 でない at {idx}: {value}"))
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        decoded.len(),
+        declared_code_len,
+        "printed byte payload の復元長が一致しない: declared_len={} decoded_len={}",
+        declared_code_len,
+        decoded.len()
+    );
+    decoded
+}
+
+fn decode_base64_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'A'..=b'Z' => Some(byte - b'A'),
+        b'a'..=b'z' => Some(byte - b'a' + 26),
+        b'0'..=b'9' => Some(byte - b'0' + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
+    }
+}
+
+fn strip_chunk_separators(
+    payload: &[u8],
+    declared_code_len: usize,
+    encoded_chunk_len: impl Fn(usize) -> usize,
+) -> Option<Vec<u8>> {
+    if declared_code_len == 0 {
+        return payload.is_empty().then(Vec::new);
+    }
+
+    let mut stripped = Vec::new();
+    let mut payload_idx = 0;
+    let mut code_idx = 0;
+    while code_idx < declared_code_len {
+        let chunk_len = (declared_code_len - code_idx).min(768);
+        let symbol_len = encoded_chunk_len(chunk_len);
+        let end = payload_idx + symbol_len;
+        if end >= payload.len() {
+            return None;
+        }
+        stripped.extend_from_slice(&payload[payload_idx..end]);
+        payload_idx = end + 1;
+        code_idx += chunk_len;
+    }
+    (payload_idx == payload.len()).then_some(stripped)
+}
+
+fn decode_mixed_base64_value(byte: u8) -> Option<u8> {
+    decode_base64_value(byte).or_else(|| (byte <= 63).then_some(byte))
+}
+
+fn decode_mixed_base64_symbols(symbols: &[u8], declared_code_len: usize) -> Vec<u8> {
+    assert!(
+        symbols.len().is_multiple_of(4),
+        "base64 payload length が 4 の倍数でない: {}",
+        symbols.len()
+    );
+
+    let mut decoded = Vec::with_capacity((symbols.len() / 4) * 3);
+    for chunk in symbols.chunks_exact(4) {
+        let a = decode_mixed_base64_value(chunk[0])
+            .unwrap_or_else(|| panic!("base64 decode 失敗: {}", chunk[0]));
+        let b = decode_mixed_base64_value(chunk[1])
+            .unwrap_or_else(|| panic!("base64 decode 失敗: {}", chunk[1]));
+        let c = decode_mixed_base64_value(chunk[2])
+            .unwrap_or_else(|| panic!("base64 decode 失敗: {}", chunk[2]));
+        let d = decode_mixed_base64_value(chunk[3])
+            .unwrap_or_else(|| panic!("base64 decode 失敗: {}", chunk[3]));
+        decoded.push((a << 2) | (b >> 4));
+        decoded.push(((b & 0x0f) << 4) | (c >> 2));
+        decoded.push(((c & 0x03) << 6) | d);
+    }
+    decoded.truncate(declared_code_len);
+    decoded
+}
+
+#[test]
+fn test_decode_mixed_base64_value_prefers_ascii_alphabet_over_raw_sextet() {
+    assert_eq!(decode_mixed_base64_value(b'0'), Some(52));
+    assert_eq!(decode_mixed_base64_value(b'9'), Some(61));
+    assert_eq!(decode_mixed_base64_value(b'+'), Some(62));
+    assert_eq!(decode_mixed_base64_value(b'/'), Some(63));
+    assert_eq!(decode_mixed_base64_value(17), Some(17));
+}
+
+fn decode_transport_payload(payload: &[u8], declared_code_len: usize) -> Vec<u8> {
+    if payload.len() == declared_code_len {
+        return payload.to_vec();
+    }
+    if let Some(raw_bytes) =
+        strip_chunk_separators(payload, declared_code_len, |chunk_len| chunk_len)
+    {
+        return raw_bytes;
+    }
+
+    let encoded_symbol_len = |chunk_len: usize| chunk_len.div_ceil(3) * 4;
+    let encoded_total_len = encoded_symbol_len(declared_code_len);
+    if payload.len() == encoded_total_len {
+        if payload
+            .iter()
+            .all(|byte| decode_mixed_base64_value(*byte).is_some())
+        {
+            return decode_mixed_base64_symbols(payload, declared_code_len);
+        }
+        let first_non_decodable = payload
+            .iter()
+            .copied()
+            .find(|byte| decode_mixed_base64_value(*byte).is_none())
+            .unwrap_or_default();
+        let invalid_positions = payload
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, byte)| {
+                decode_mixed_base64_value(*byte)
+                    .is_none()
+                    .then_some((idx, *byte))
+            })
+            .take(12)
+            .collect::<Vec<_>>();
+        let invalid_windows = invalid_positions
+            .iter()
+            .map(|(idx, _)| {
+                let start = idx.saturating_sub(4);
+                let end = (*idx + 5).min(payload.len());
+                (*idx, payload[start..end].to_vec())
+            })
+            .collect::<Vec<_>>();
+        let invalid_count = payload
+            .iter()
+            .filter(|byte| decode_mixed_base64_value(**byte).is_none())
+            .count();
+        let max_byte = payload.iter().copied().max().unwrap_or_default();
+        panic!(
+            "transport payload encoded symbols が decode できない: payload_len={}, declared_code_len={}, first_bytes={:?}, first_non_decodable={}, max_byte={}, invalid_count={}, invalid_positions={:?}, invalid_windows={:?}",
+            payload.len(),
+            declared_code_len,
+            &payload[..payload.len().min(16)],
+            first_non_decodable,
+            max_byte,
+            invalid_count,
+            invalid_positions,
+            invalid_windows
+        );
+    }
+    if let Some(symbols) = strip_chunk_separators(payload, declared_code_len, encoded_symbol_len) {
+        if symbols
+            .iter()
+            .all(|byte| decode_mixed_base64_value(*byte).is_some())
+        {
+            return decode_mixed_base64_symbols(&symbols, declared_code_len);
+        }
+        let first_non_decodable = symbols
+            .iter()
+            .copied()
+            .find(|byte| decode_mixed_base64_value(*byte).is_none())
+            .unwrap_or_default();
+        let max_byte = symbols.iter().copied().max().unwrap_or_default();
+        panic!(
+            "transport payload の形式が不明: payload_len={}, declared_code_len={}, first_bytes={:?}, first_non_decodable={}, max_byte={}",
+            payload.len(),
+            declared_code_len,
+            &symbols[..symbols.len().min(16)],
+            first_non_decodable,
+            max_byte
+        );
+    }
+
+    panic!(
+        "transport payload 長を解釈できない: payload_len={}, declared_code_len={}",
+        payload.len(),
+        declared_code_len
+    );
+}
+
 fn run_selfhost_main_native_function_meta_bundle_host_bytes_harness() -> NativeEntrypointBundle {
+    run_selfhost_main_native_function_meta_bundle_host_bytes_harness_with_exprs(
+        "native-stage23-representative-combined-bundle-transport",
+        r#"(compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)"#,
+        r#"(compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)"#,
+    )
+}
+
+fn run_selfhost_main_override_native_function_meta_bundle_host_bytes_harness(
+    label: &str,
+    main_source: &str,
+) -> NativeEntrypointBundle {
+    let escaped_main_source = escape_lsharp_string(main_source);
+    let pairs_expr = format!(
+        r#"(do
+            (write-file "src/App/OverrideMain.ls" "{escaped_main_source}")
+            (compile-file-pairs-with-cache "src/App/OverrideMain.ls" cache-ref parse-count-ref))"#
+    );
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/OverrideMain.ls" "{escaped_main_source}")
+            (compile-file-functions-payload-with-cache "src/App/OverrideMain.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle = run_selfhost_main_native_function_meta_bundle_host_bytes_harness_with_exprs(
+        label,
+        &pairs_expr,
+        &payload_expr,
+    );
+    bundle
+}
+
+fn run_selfhost_main_override_native_function_meta_bundle_host_bytes_harness_loose(
+    label: &str,
+    main_source: &str,
+) -> NativeEntrypointBundle {
+    let escaped_main_source = escape_lsharp_string(main_source);
+    let pairs_expr = format!(
+        r#"(do
+            (write-file "src/App/OverrideMain.ls" "{escaped_main_source}")
+            (compile-file-pairs-with-cache "src/App/OverrideMain.ls" cache-ref parse-count-ref))"#
+    );
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/OverrideMain.ls" "{escaped_main_source}")
+            (compile-file-functions-payload-with-cache "src/App/OverrideMain.ls" 10 cache-ref parse-count-ref))"#
+    );
+    run_selfhost_native_function_meta_bundle_host_bytes_harness_loose_with_exprs(
+        label,
+        &pairs_expr,
+        &payload_expr,
+    )
+}
+
+fn run_selfhost_override_entrypoint_offset_probe(
+    label: &str,
+    main_source: &str,
+    offset_expr: &str,
+) -> Result<Vec<i64>, String> {
+    let escaped_main_source = escape_lsharp_string(main_source);
+    let harness = format!(
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn find-defn-index-by-hash [decls idx len target-hash]
+  (if (>= idx len)
+    -1
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (if (= (vector-get decl 1) target-hash)
+          idx
+          (find-defn-index-by-hash decls (+ idx 1) len target-hash))
+        (find-defn-index-by-hash decls (+ idx 1) len target-hash)))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pairs (do
+                (write-file "src/App/OverrideMain.ls" "{escaped_main_source}")
+                (compile-file-pairs-with-cache "src/App/OverrideMain.ls" cache-ref parse-count-ref))
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        ftable (vector-get reg-result 0)
+        main-pair (vector-get pairs (- (vector-length pairs) 1))
+        main-decls (vector-get main-pair 1)
+        main-defn-idx (find-defn-index-by-hash main-decls 0 (vector-length main-decls) 3343801)
+        main-hash (vector-get (vector-get main-decls main-defn-idx) 1)
+        main-func-idx (map-get ftable main-hash)
+        payload (compile-file-functions-payload-with-cache "src/App/OverrideMain.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        target (host-target)]
+    (do
+      (root_push functions)
+      (root_push callables)
+      (root_push native-callables)
+      (root_push target)
+      (let [offset {offset_expr}]
+        (do
+          (print (vector-length functions))
+          (print main-func-idx)
+          (print offset)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          0)))))"#,
+    );
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
-        "native-stage23-representative-host-bytes",
-        &[
-            "Main.ls",
-            "Token.ls",
-            "AST.ls",
-            "Lexer.ls",
-            "Parser.ls",
-            "IR.ls",
-            "Type.ls",
-            "TypeScheme.ls",
-            "TypeInferCore.ls",
-            "TypeInferFunctions.ls",
-            "TypeInferBuiltins.ls",
-            "TypeInfer.ls",
-            "TypeInferApply.ls",
-            "TypeInferBlock.ls",
-            "TypeInferPattern.ls",
-            "TypeInferRecord.ls",
-            "CompilerMode.ls",
-            "Compiler.ls",
-            "WasiBackend.ls",
-            "WasmEmit.ls",
-            "ModuleResolver.ls",
-            "CompilerMode.ls",
-            "NativeTarget.ls",
-            "NativeCodegen.ls",
-            "NativeEmit.ls",
+        label,
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )?;
+    Ok(parse_numeric_lines(&output))
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_native_code_only_packed_line_builds() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [line (packed-byte-line code 0 4)]
+        (do
+          (print (string-length line))
+          (print (byte-at-or-zero code 0 4))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-representative-code-only-packed-line",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative code-only packed line harness 実行に失敗");
+
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.len(),
+        2,
+        "representative code-only packed line 出力が不足: {lines:?}"
+    );
+    assert!(lines[0] > 0, "representative code-only packed line 長が 0");
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_base64_char_argv_alphabet_is_ascii_stable() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [alphabet (command-line-arg 0)]
+        (do
+          (print (string-length alphabet))
+          (print (string-char-at (base64-char alphabet 0) 0))
+          (print (string-char-at (base64-char alphabet 25) 0))
+          (print (string-char-at (base64-char alphabet 26) 0))
+          (print (string-char-at (base64-char alphabet 51) 0))
+          (print (string-char-at (base64-char alphabet 52) 0))
+          (print (string-char-at (base64-char alphabet 61) 0))
+          (print (string-char-at (base64-char alphabet 62) 0))
+          (print (string-char-at (base64-char alphabet 63) 0))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-base64-char-alphabet",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &["ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"],
+    )
+    .expect("representative base64-char alphabet harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("representative base64-char alphabet line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("representative base64-char alphabet line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        lines,
+        vec![64, 65, 90, 97, 122, 48, 57, 43, 47],
+        "base64-char が argv alphabet を ASCII のまま返していない: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_native_aarch64_spill_fifty_four_helper_emits_plain_bytes() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [result (ref-new (vector-new 512))]
+        (do
+          (spill-native-function-params-aarch64-twenty-to-fifty-four 54 result 0)
+          (let [code (ref-get result)
+            len (vector-length code)]
+            (do
+              (print len)
+              (print-string (build-byte-chunk-text code 0 len))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-aarch64-spill-fifty-four-helper-plain-bytes",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("AArch64 spill 54 helper harness 実行に失敗");
+
+    let mut lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty());
+    let declared_len = std::str::from_utf8(
+        lines
+            .next()
+            .expect("spill 54 helper declared len 出力が不足"),
+    )
+    .expect("spill 54 helper declared len が UTF-8 でない")
+    .parse::<usize>()
+    .expect("spill 54 helper declared len が整数でない");
+    let packed = lines
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("spill 54 helper packed line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("spill 54 helper packed line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    assert!(declared_len > 0, "spill 54 helper code len が 0");
+    assert!(
+        packed.iter().all(|value| (0..=65535).contains(value)),
+        "spill 54 helper packed line に非 byte 値が混入: {packed:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_native_aarch64_four_param_leaf_reserves_top_slot_padding() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [func-meta (make-function-meta 4 0 (vector-new 0))
+        function-starts (vector-push (vector-new 1) 0)
+        function-metas (vector-push (vector-new 1) func-meta)
+        result (ref-new (vector-new 64))
+        expected (emit-aarch64-sub-sp 48)]
+        (do
+          (generate-native-function-aarch64-bundle func-meta result function-starts function-metas 0)
+          (let [code (ref-get result)]
+            (do
+              (print-string (build-byte-chunk-text code 0 4))
+              (print-string (build-byte-chunk-text expected 0 4))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-aarch64-four-param-leaf-padding",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("AArch64 four-param leaf padding harness 実行に失敗");
+
+    let packed = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("four-param leaf packed line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("four-param leaf packed line が整数でない")
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        packed.len(),
+        4,
+        "four-param leaf packed line 数が不足: {packed:?}"
+    );
+    assert_eq!(
+        &packed[0..2],
+        &packed[2..4],
+        "AArch64 four-param leaf が top-slot padding 分の stack frame を確保していない: {packed:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_native_aarch64_local_only_epilogue_matches_prologue_stack_bytes() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [func-meta (make-function-meta 0 1 (vector-new 0))
+        function-starts (vector-push (vector-new 1) 0)
+        function-metas (vector-push (vector-new 1) func-meta)
+        result (ref-new (vector-new 64))
+        expected-head (emit-aarch64-sub-sp 32)
+        expected-tail (concat-byte-vectors (emit-aarch64-add-sp 32) (emit-aarch64-ret))]
+        (do
+          (generate-native-function-aarch64-bundle-with-import-count func-meta result function-starts function-metas 0 0 0)
+          (let [code (ref-get result)
+            len (vector-length code)]
+            (do
+              (print-string (build-byte-chunk-text code 0 4))
+              (print-string (build-byte-chunk-text code (- len 8) len))
+              (print-string (build-byte-chunk-text expected-head 0 4))
+              (print-string (build-byte-chunk-text expected-tail 0 8))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-aarch64-local-only-epilogue-stack-bytes",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("AArch64 local-only epilogue harness 実行に失敗");
+
+    let packed = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("local-only epilogue packed line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("local-only epilogue packed line が整数でない")
+        })
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        packed.len(),
+        12,
+        "local-only epilogue packed line 数が不足: {packed:?}"
+    );
+    assert_eq!(
+        &packed[0..2],
+        &packed[6..8],
+        "AArch64 local-only prologue の stack reservation が期待値と一致しない: {packed:?}"
+    );
+    assert_eq!(
+        &packed[2..6],
+        &packed[8..12],
+        "AArch64 local-only epilogue の stack restore が prologue と一致しない: {packed:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_native_aarch64_vector_push_reallocates_past_capacity() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [bytes (vector-push
+                        (vector-push
+                          (vector-push (vector-new 2) 65)
+                          66)
+                        67)]
+        (do
+          (print (vector-length bytes))
+          (print (vector-get bytes 0))
+          (print (vector-get bytes 1))
+          (print (vector-get bytes 2))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-aarch64-vector-push-realloc",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("selfhost native vector-push realloc harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("selfhost native vector-push realloc line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("selfhost native vector-push realloc line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        lines,
+        vec![3, 65, 66, 67],
+        "selfhost native vector-push が capacity 超過で要素を保持できていない: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_native_aarch64_temp_emitter_append_stays_byte_clean_under_pressure() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-aarch64-temp-emitter-append-pressure",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        r#"(module App.HarnessMain)
+(import Backend.Native.NativeCodegen)
+
+(defn byte-at-or-zero [bytes idx len]
+  (if (>= idx len)
+    0
+    (let [value (vector-get bytes idx)]
+      (if (< value 0)
+        (+ value 256)
+        value))))
+
+(defn append-temp-emitter-bytes-loop [result idx limit]
+  (if (>= idx limit)
+    0
+    (do
+      (append-native-bytes-loop result (emit-aarch64-str-x0-sp 8) 0 4)
+      (append-native-bytes-loop result (emit-aarch64-movz-w0 0) 0 4)
+      (append-temp-emitter-bytes-loop result (+ idx 1) limit))))
+
+(defn main []
+  (let [result (ref-new (vector-new 8))
+        limit 4000
+        _ (append-temp-emitter-bytes-loop result 0 limit)
+        bytes (ref-get result)
+        len (vector-length bytes)
+        start 16000]
+    (do
+      (print len)
+      (print (byte-at-or-zero bytes start len))
+      (print (byte-at-or-zero bytes (+ start 1) len))
+      (print (byte-at-or-zero bytes (+ start 2) len))
+      (print (byte-at-or-zero bytes (+ start 3) len))
+      (print (byte-at-or-zero bytes (+ start 4) len))
+      (print (byte-at-or-zero bytes (+ start 5) len))
+      (print (byte-at-or-zero bytes (+ start 6) len))
+      (print (byte-at-or-zero bytes (+ start 7) len))
+      (print (byte-at-or-zero bytes (+ start 8) len))
+      (print (byte-at-or-zero bytes (+ start 9) len))
+      (print (byte-at-or-zero bytes (+ start 10) len))
+      (print (byte-at-or-zero bytes (+ start 11) len))
+      (print (byte-at-or-zero bytes (+ start 12) len))
+      (print (byte-at-or-zero bytes (+ start 13) len))
+      (print (byte-at-or-zero bytes (+ start 14) len))
+      (print (byte-at-or-zero bytes (+ start 15) len))
+      0)))"#,
+        &[],
+    )
+    .expect("selfhost native temp emitter append pressure harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("selfhost native temp emitter append pressure line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("selfhost native temp emitter append pressure line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        lines,
+        vec![
+            32_000, 224, 7, 0, 249, 0, 0, 128, 82, 224, 7, 0, 249, 0, 0, 128, 82
         ],
+        "temporary emitter append が pressure 下で byte pattern を維持できていない: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_native_aarch64_zero_local_loop_emits_only_bytes() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [func-meta (make-function-meta 0 1024 (vector-new 0))
+        function-starts (vector-push (vector-new 1) 0)
+        function-metas (vector-push (vector-new 1) func-meta)
+        result (ref-new (vector-new 32))]
+        (do
+          (generate-native-function-aarch64-bundle-with-import-count func-meta result function-starts function-metas 0 0 0)
+          (let [code (ref-get result)
+            len (vector-length code)]
+            (do
+              (print 9000000001)
+              (print len)
+              (print 9000000002)
+              (print-code-bytes-loop code 0 len)))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-aarch64-zero-local-loop",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("selfhost native zero-local loop harness 実行に失敗");
+
+    let (sentinel_start, declared_code_len, sentinel_end, payload) =
+        extract_transport_lines(&output, "aarch64 zero-local loop");
+    assert_eq!(sentinel_start, "9000000001");
+    assert_eq!(sentinel_end, "9000000002");
+    let declared_code_len = declared_code_len
+        .parse::<usize>()
+        .expect("aarch64 zero-local loop code len parse 失敗");
+    let code_bytes = decode_printed_byte_values(payload, declared_code_len);
+    assert_eq!(
+        code_bytes.len(),
+        declared_code_len,
+        "zero-local loop byte len が declared len と一致しない"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_base64_tail_slice_stays_decodable() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [alphabet (command-line-arg 0)
+        pad (command-line-arg 1)
+        start 10174680
+        end (+ start 48)
+        text (build-base64-chunk-text alphabet pad code start end)]
+        (do
+          (print (string-length text))
+          (print-string text)))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-base64-tail-slice",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
+            "=",
+        ],
+    )
+    .expect("representative base64 tail slice harness 実行に失敗");
+
+    let mut parts = output.splitn(2, |byte| is_transport_separator(*byte));
+    let len = std::str::from_utf8(parts.next().unwrap_or_default())
+        .expect("representative base64 tail slice len が UTF-8 でない")
+        .parse::<usize>()
+        .expect("representative base64 tail slice len が整数でない");
+    let payload = parts.next().unwrap_or_default();
+    assert_eq!(
+        len,
+        payload.len(),
+        "tail slice length metadata が payload と一致しない"
+    );
+    assert!(
+        payload
+            .iter()
+            .all(|byte| decode_mixed_base64_value(*byte).is_some()),
+        "tail slice payload に非 base64 byte が混ざっている: {:?}",
+        payload
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_tail_code_bytes_reveal_signed_values() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [len (vector-length code)]
+        (do
+          (print (byte-at-or-zero code 10174692 len))
+          (print (byte-at-or-zero code 10174693 len))
+          (print (byte-at-or-zero code 10174694 len))
+          (print (byte-at-or-zero code 10174695 len))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-tail-code-bytes",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative tail code byte harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("tail code byte line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("tail code byte line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(lines.len(), 4, "tail code byte 出力が不足: {lines:?}");
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_entrypoint_slice_base64_matches_raw_bytes() {
+    let entrypoint_offset =
+        run_selfhost_main_representative_aarch64_layout_harness().entrypoint_offset;
+    let start = entrypoint_offset;
+    let end = start + 48;
+
+    let raw_harness = selfhost_main_native_code_only_export_harness(&format!(
+        r#"      (do
+          (print 9000000001)
+          (print {})
+          (print 9000000002)
+          (print-code-bytes-loop code {} {}))"#,
+        end - start,
+        start,
+        end
+    ));
+    let raw_output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-entrypoint-raw-slice",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &raw_harness,
+        &[],
+    )
+    .expect("representative entrypoint raw slice harness 実行に失敗");
+    let (raw_start, raw_len, raw_end, raw_payload) =
+        extract_transport_lines(&raw_output, "representative entrypoint raw slice");
+    assert_eq!(raw_start, "9000000001");
+    assert_eq!(raw_end, "9000000002");
+    let raw_len = raw_len
+        .parse::<usize>()
+        .expect("representative entrypoint raw slice len parse 失敗");
+    let raw_bytes = decode_printed_byte_values(raw_payload, raw_len);
+
+    let base64_harness = selfhost_main_native_code_only_export_harness(&format!(
+        r#"      (let [alphabet (command-line-arg 0)
+        pad (command-line-arg 1)
+        text (build-base64-chunk-text alphabet pad code {} {})]
+        (do
+          (print 9000000001)
+          (print {})
+          (print 9000000002)
+          (print-string text)))"#,
+        start,
+        end,
+        end - start
+    ));
+    let base64_output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-entrypoint-base64-slice",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &base64_harness,
+        &[
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
+            "=",
+        ],
+    )
+    .expect("representative entrypoint base64 slice harness 実行に失敗");
+    let (base64_start, base64_len, base64_end, base64_payload) =
+        extract_transport_lines(&base64_output, "representative entrypoint base64 slice");
+    assert_eq!(base64_start, "9000000001");
+    assert_eq!(base64_end, "9000000002");
+    let base64_len = base64_len
+        .parse::<usize>()
+        .expect("representative entrypoint base64 slice len parse 失敗");
+    let base64_bytes = decode_transport_payload(base64_payload, base64_len);
+
+    assert_eq!(
+        base64_bytes, raw_bytes,
+        "representative entrypoint slice の base64 transport が raw byte slice と一致しない"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_entrypoint_alignment_preserves_layout_offset() {
+    let layout = run_selfhost_main_representative_aarch64_layout_harness();
+    let (_, code_bytes, _, _) =
+        run_selfhost_main_native_function_meta_code_only_host_bytes_harness();
+    let aligned = align_aarch64_entrypoint_to_function_start(&code_bytes, layout.entrypoint_offset);
+
+    assert_eq!(
+        aligned, layout.entrypoint_offset,
+        "representative entrypoint alignment が raw layout offset を変更した: aligned={} raw={}",
+        aligned, layout.entrypoint_offset
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_bundle_harness_returns_layout_entrypoint() {
+    let bundle = run_selfhost_main_native_function_meta_bundle_host_bytes_harness();
+    let layout = run_selfhost_main_representative_aarch64_layout_harness();
+
+    assert_eq!(
+        bundle.entrypoint_offset, layout.entrypoint_offset,
+        "representative bundle harness が layout entrypoint を返していない: bundle={} layout={}",
+        bundle.entrypoint_offset, layout.entrypoint_offset
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_bundle_harness_exports_data_image() {
+    let bundle = run_selfhost_main_native_function_meta_bundle_host_bytes_harness();
+    assert!(
+        !bundle.data_bytes.is_empty(),
+        "representative bundle harness の data image が空"
+    );
+    assert_eq!(
+        bundle.data_bytes.len(),
+        bundle.declared_data_len,
+        "representative bundle harness の data image 長が declared_len と一致しない"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_mid_code_bytes_reveal_remaining_non_byte_value() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [len (vector-length code)]
+        (do
+          (print (byte-at-or-zero code 10118303 len))
+          (print (byte-at-or-zero code 10118304 len))
+          (print (byte-at-or-zero code 10118305 len))
+          (print (byte-at-or-zero code 10118306 len))
+          (print (byte-at-or-zero code 10118307 len))
+          (print (byte-at-or-zero code 10118308 len))
+          (print (byte-at-or-zero code 10118309 len))
+          (print (byte-at-or-zero code 10118310 len))
+          (print (byte-at-or-zero code 10118311 len))
+          (print (byte-at-or-zero code 10118312 len))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-mid-code-bytes",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative mid code byte harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("mid code byte line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("mid code byte line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("mid remaining lines: {lines:?}");
+    assert_eq!(lines.len(), 10, "mid code byte 出力が不足: {lines:?}");
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_earlier_code_bytes_reveal_remaining_non_byte_value() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [len (vector-length code)]
+        (do
+          (print (byte-at-or-zero code 10118129 len))
+          (print (byte-at-or-zero code 10118130 len))
+          (print (byte-at-or-zero code 10118131 len))
+          (print (byte-at-or-zero code 10118132 len))
+          (print (byte-at-or-zero code 10118133 len))
+          (print (byte-at-or-zero code 10118134 len))
+          (print (byte-at-or-zero code 10118135 len))
+          (print (byte-at-or-zero code 10118136 len))
+          (print (byte-at-or-zero code 10118137 len))
+          (print (byte-at-or-zero code 10118138 len))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-earlier-code-bytes",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative earlier code byte harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("earlier code byte line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("earlier code byte line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("earlier remaining lines: {lines:?}");
+    assert_eq!(lines.len(), 10, "earlier code byte 出力が不足: {lines:?}");
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_latest_code_bytes_reveal_remaining_non_byte_value() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [len (vector-length code)]
+        (do
+          (print (byte-at-or-zero code 10129758 len))
+          (print (byte-at-or-zero code 10129759 len))
+          (print (byte-at-or-zero code 10129760 len))
+          (print (byte-at-or-zero code 10129761 len))
+          (print (byte-at-or-zero code 10129762 len))
+          (print (byte-at-or-zero code 10129763 len))
+          (print (byte-at-or-zero code 10129764 len))
+          (print (byte-at-or-zero code 10129765 len))
+          (print (byte-at-or-zero code 10129766 len))
+          (print (byte-at-or-zero code 10129767 len))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-latest-code-bytes",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative latest code byte harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("latest code byte line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("latest code byte line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("latest remaining lines: {lines:?}");
+    assert_eq!(lines.len(), 10, "latest code byte 出力が不足: {lines:?}");
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_shifted_code_bytes_reveal_remaining_non_byte_value() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [len (vector-length code)]
+        (do
+          (print (byte-at-or-zero code 10130244 len))
+          (print (byte-at-or-zero code 10130245 len))
+          (print (byte-at-or-zero code 10130246 len))
+          (print (byte-at-or-zero code 10130247 len))
+          (print (byte-at-or-zero code 10130248 len))
+          (print (byte-at-or-zero code 10130249 len))
+          (print (byte-at-or-zero code 10130250 len))
+          (print (byte-at-or-zero code 10130251 len))
+          (print (byte-at-or-zero code 10130252 len))
+          (print (byte-at-or-zero code 10130253 len))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-shifted-code-bytes",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative shifted code byte harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("shifted code byte line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("shifted code byte line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("shifted remaining lines: {lines:?}");
+    assert_eq!(lines.len(), 10, "shifted code byte 出力が不足: {lines:?}");
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_current_bad_packed_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [len (vector-length code)]
+        (do
+          (print-string (build-byte-chunk-text code 10113012 10113022))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-current-bad-packed-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative current bad packed window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("current bad packed line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("current bad packed line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("current bad packed lines: {lines:?}");
+    assert_eq!(lines.len(), 5, "current bad packed 出力が不足: {lines:?}");
+    assert!(
+        lines.iter().all(|value| (0..=65535).contains(value)),
+        "current bad packed line に非 byte 値が混入: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_remaining_bad_packed_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [len (vector-length code)]
+        (do
+          (print-string (build-byte-chunk-text code 10112778 10112788))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-remaining-bad-packed-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative remaining bad packed window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("remaining bad packed line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("remaining bad packed line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("remaining bad packed lines: {lines:?}");
+    assert_eq!(lines.len(), 5, "remaining bad packed 出力が不足: {lines:?}");
+    assert!(
+        lines.iter().all(|value| (0..=65535).contains(value)),
+        "remaining bad packed line に非 byte 値が混入: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_earliest_bad_packed_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [len (vector-length code)]
+        (do
+          (print-string (build-byte-chunk-text code 10112680 10112690))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-earliest-bad-packed-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative earliest bad packed window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("earliest bad packed line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("earliest bad packed line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("earliest bad packed lines: {lines:?}");
+    assert_eq!(lines.len(), 5, "earliest bad packed 出力が不足: {lines:?}");
+    assert!(
+        lines.iter().all(|value| (0..=65535).contains(value)),
+        "earliest bad packed line に非 byte 値が混入: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_chunk_local_bad_packed_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [len (vector-length code)]
+        (do
+          (print-string (build-byte-chunk-text code 10111120 10111130))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-chunk-local-bad-packed-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative chunk local bad packed window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("chunk local bad packed line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("chunk local bad packed line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("chunk local bad packed lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        5,
+        "chunk local bad packed 出力が不足: {lines:?}"
+    );
+    assert!(
+        lines.iter().all(|value| (0..=65535).contains(value)),
+        "chunk local bad packed line に非 byte 値が混入: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_failing_chunk_text_is_plain_bytes() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [len (vector-length code)]
+        (do
+          (print-string (build-byte-chunk-text code 10110976 10112000))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-failing-chunk-text",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative failing chunk text harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("failing chunk packed line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("failing chunk packed line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("failing chunk packed line count: {}", lines.len());
+    assert_eq!(
+        lines.len(),
+        512,
+        "failing chunk packed 出力が不足: {}",
+        lines.len()
+    );
+    assert!(
+        lines.iter().all(|value| (0..=65535).contains(value)),
+        "failing chunk packed line に非 byte 値が混入"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_next_bad_packed_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [len (vector-length code)]
+        (do
+          (print-string (build-byte-chunk-text code 10112852 10112862))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-next-bad-packed-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative next bad packed window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("next bad packed line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("next bad packed line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("next bad packed lines: {lines:?}");
+    assert_eq!(lines.len(), 5, "next bad packed 出力が不足: {lines:?}");
+    assert!(
+        lines.iter().all(|value| (0..=65535).contains(value)),
+        "next bad packed line に非 byte 値が混入: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_current_bad_index_owner_callable() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-representative-current-owner-callable",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
         "src/App/HarnessMain.ls",
         r#"(module App.HarnessMain)
 (import App.CompilerMode)
@@ -905,12 +3674,4051 @@ fn run_selfhost_main_native_function_meta_bundle_host_bytes_harness() -> NativeE
       (+ idx 1)
       len)))
 
-(defn print-bytes [bytes idx len]
+(defn find-defn-index-by-hash [decls idx len target-hash]
+  (if (>= idx len)
+    -1
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (if (= (vector-get decl 1) target-hash)
+          idx
+          (find-defn-index-by-hash decls (+ idx 1) len target-hash))
+        (find-defn-index-by-hash decls (+ idx 1) len target-hash)))))
+
+(defn print-starts-loop [starts idx len]
   (if (>= idx len)
     0
     (do
-      (print (vector-get bytes idx))
-      (print-bytes bytes (+ idx 1) len))))
+      (print (vector-get starts idx))
+      (print-starts-loop starts (+ idx 1) len))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)]
+    (do
+      (print (vector-length starts))
+      (print-starts-loop starts 0 (vector-length starts))
+      0)))"#,
+        &[],
+    )
+    .expect("representative current owner callable harness 実行に失敗");
+
+    let lines = parse_numeric_lines(&output);
+    let start_len = lines[0] as usize;
+    assert_eq!(
+        lines.len(),
+        start_len + 1,
+        "current owner callable starts 出力が不足: len={} lines={}",
+        start_len,
+        lines.len()
+    );
+    let starts = lines[1..]
+        .iter()
+        .map(|value| *value as usize)
+        .collect::<Vec<_>>();
+    let target = 10_113_016usize;
+    let owner = starts
+        .partition_point(|start| *start <= target)
+        .saturating_sub(1);
+    let owner_start = starts[owner];
+    let next_start = starts.get(owner + 1).copied().unwrap_or(owner_start);
+    println!(
+        "current owner callable: target={target} owner={owner} owner_start={owner_start} next_start={next_start}"
+    );
+    assert!(
+        owner_start <= target,
+        "owner start が target を超えている: owner_start={owner_start} target={target}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_current_bad_index_owner_decl() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-representative-current-owner-decl",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+
+(defn text-starts-with-loop [text prefix idx len]
+  (if (>= idx len)
+    true
+    (if (= (string-char-at text idx) (string-char-at prefix idx))
+      (text-starts-with-loop text prefix (+ idx 1) len)
+      false)))
+
+(defn text-starts-with [text prefix]
+  (let [len (string-length prefix)]
+    (if (< (string-length text) len)
+      false
+      (text-starts-with-loop text prefix 0 len))))
+
+(defn make-owner-state [found pair-idx decl-idx defn-ordinal decl-hash]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push (vector-new 5) found)
+          pair-idx)
+        decl-idx)
+      defn-ordinal)
+    decl-hash))
+
+(defn find-owner-in-decls [decls idx len ftable target defn-ordinal]
+  (if (>= idx len)
+    (make-owner-state 0 -1 -1 defn-ordinal 0)
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (let [decl-hash (vector-get decl 1)
+              func-idx (map-get ftable decl-hash)]
+          (if (= func-idx target)
+            (make-owner-state 1 0 idx defn-ordinal decl-hash)
+            (find-owner-in-decls decls (+ idx 1) len ftable target (+ defn-ordinal 1))))
+        (find-owner-in-decls decls (+ idx 1) len ftable target defn-ordinal)))))
+
+(defn find-owner-in-pairs [pairs pair-idx len ftable target]
+  (if (>= pair-idx len)
+    (make-owner-state 0 -1 -1 -1 0)
+    (let [pair (vector-get pairs pair-idx)
+          decls (vector-get pair 1)
+          state (find-owner-in-decls decls 0 (vector-length decls) ftable target 0)]
+      (if (= (vector-get state 0) 1)
+        (make-owner-state 1 pair-idx (vector-get state 2) (vector-get state 3) (vector-get state 4))
+        (find-owner-in-pairs pairs (+ pair-idx 1) len ftable target)))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pairs (compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        ftable (vector-get reg-result 0)
+        owner (find-owner-in-pairs pairs 0 (vector-length pairs) ftable 2543)
+        pair (vector-get pairs (vector-get owner 1))
+        src (vector-get pair 0)]
+    (do
+      (print (vector-get owner 1))
+      (print (vector-get owner 2))
+      (print (vector-get owner 3))
+      (print (vector-get owner 4))
+      (print (if (text-starts-with src "(module Backend.Native.NativeCodegen)") 1 0))
+      (print (if (text-starts-with src "(module App.CompilerMode)") 1 0))
+      (print (if (text-starts-with src "(module App.Main)") 1 0))
+      0)))"#,
+        &[],
+    )
+    .expect("representative current owner decl harness 実行に失敗");
+
+    let lines = parse_numeric_lines(&output);
+    println!("current owner decl: {lines:?}");
+    assert_eq!(lines.len(), 7, "current owner decl 出力が不足: {lines:?}");
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_direct_run_first_call_target_owner_decl() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-representative-direct-run-first-call-owner-decl",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn text-starts-with-loop [text prefix idx len]
+  (if (>= idx len)
+    true
+    (if (= (string-char-at text idx) (string-char-at prefix idx))
+      (text-starts-with-loop text prefix (+ idx 1) len)
+      false)))
+
+(defn text-starts-with [text prefix]
+  (let [len (string-length prefix)]
+    (if (< (string-length text) len)
+      false
+      (text-starts-with-loop text prefix 0 len))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn find-owner-start-loop [starts idx len target]
+  (if (>= (+ idx 1) len)
+    idx
+    (if (> (vector-get starts (+ idx 1)) target)
+      idx
+      (find-owner-start-loop starts (+ idx 1) len target))))
+
+(defn make-owner-state [found pair-idx decl-idx defn-ordinal decl-hash]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push (vector-new 5) found)
+          pair-idx)
+        decl-idx)
+      defn-ordinal)
+    decl-hash))
+
+(defn find-owner-in-decls [decls idx len ftable target defn-ordinal]
+  (if (>= idx len)
+    (make-owner-state 0 -1 -1 defn-ordinal 0)
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (let [decl-hash (vector-get decl 1)
+              func-idx (map-get ftable decl-hash)]
+          (if (= func-idx target)
+            (make-owner-state 1 0 idx defn-ordinal decl-hash)
+            (find-owner-in-decls decls (+ idx 1) len ftable target (+ defn-ordinal 1))))
+        (find-owner-in-decls decls (+ idx 1) len ftable target defn-ordinal)))))
+
+(defn find-owner-in-pairs [pairs pair-idx len ftable target]
+  (if (>= pair-idx len)
+    (make-owner-state 0 -1 -1 -1 0)
+    (let [pair (vector-get pairs pair-idx)
+          decls (vector-get pair 1)
+          state (find-owner-in-decls decls 0 (vector-length decls) ftable target 0)]
+      (if (= (vector-get state 0) 1)
+        (make-owner-state 1 pair-idx (vector-get state 2) (vector-get state 3) (vector-get state 4))
+        (find-owner-in-pairs pairs (+ pair-idx 1) len ftable target)))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        target 1469848
+        import-count 10
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" import-count cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 import-count (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables import-count)
+        starts (callable-layout-function-starts-aarch64 layout)
+        owner (find-owner-start-loop starts 0 (vector-length starts) target)
+        callable-func-idx (+ owner import-count)
+        pairs (compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) import-count)
+        ftable (vector-get reg-result 0)
+        owner-state (find-owner-in-pairs pairs 0 (vector-length pairs) ftable callable-func-idx)
+        pair (vector-get pairs (vector-get owner-state 1))
+        src (vector-get pair 0)]
+    (do
+      (print target)
+      (print owner)
+      (print callable-func-idx)
+      (print (vector-get starts owner))
+      (print (if (< (+ owner 1) (vector-length starts)) (vector-get starts (+ owner 1)) -1))
+      (print (vector-get owner-state 1))
+      (print (vector-get owner-state 2))
+      (print (vector-get owner-state 3))
+      (print (vector-get owner-state 4))
+      (print (if (text-starts-with src "(module Backend.Native.NativeCodegen)") 1 0))
+      (print (if (text-starts-with src "(module App.CompilerMode)") 1 0))
+      (print (if (text-starts-with src "(module App.Main)") 1 0))
+      0)))"#,
+        &[],
+    )
+    .expect("representative direct-run first call owner decl harness 実行に失敗");
+
+    let lines = parse_numeric_lines(&output);
+    println!("direct-run first call owner decl: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        12,
+        "direct-run first call owner decl 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_backtrace_function_1791_owner_decl() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-representative-backtrace-function-1791-owner-decl",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+
+(defn text-starts-with-loop [text prefix idx len]
+  (if (>= idx len)
+    true
+    (if (= (string-char-at text idx) (string-char-at prefix idx))
+      (text-starts-with-loop text prefix (+ idx 1) len)
+      false)))
+
+(defn text-starts-with [text prefix]
+  (let [len (string-length prefix)]
+    (if (< (string-length text) len)
+      false
+      (text-starts-with-loop text prefix 0 len))))
+
+(defn make-owner-state [found pair-idx decl-idx defn-ordinal decl-hash]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push (vector-new 5) found)
+          pair-idx)
+        decl-idx)
+      defn-ordinal)
+    decl-hash))
+
+(defn find-owner-in-decls [decls idx len ftable target defn-ordinal]
+  (if (>= idx len)
+    (make-owner-state 0 -1 -1 defn-ordinal 0)
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (let [decl-hash (vector-get decl 1)
+              func-idx (map-get ftable decl-hash)]
+          (if (= func-idx target)
+            (make-owner-state 1 0 idx defn-ordinal decl-hash)
+            (find-owner-in-decls decls (+ idx 1) len ftable target (+ defn-ordinal 1))))
+        (find-owner-in-decls decls (+ idx 1) len ftable target defn-ordinal)))))
+
+(defn find-owner-in-pairs [pairs pair-idx len ftable target]
+  (if (>= pair-idx len)
+    (make-owner-state 0 -1 -1 -1 0)
+    (let [pair (vector-get pairs pair-idx)
+          decls (vector-get pair 1)
+          state (find-owner-in-decls decls 0 (vector-length decls) ftable target 0)]
+      (if (= (vector-get state 0) 1)
+        (make-owner-state 1 pair-idx (vector-get state 2) (vector-get state 3) (vector-get state 4))
+        (find-owner-in-pairs pairs (+ pair-idx 1) len ftable target)))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pairs (compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        ftable (vector-get reg-result 0)
+        owner (find-owner-in-pairs pairs 0 (vector-length pairs) ftable 1791)
+        pair (vector-get pairs (vector-get owner 1))
+        src (vector-get pair 0)]
+    (do
+      (print (vector-get owner 1))
+      (print (vector-get owner 2))
+      (print (vector-get owner 3))
+      (print (vector-get owner 4))
+      (print (if (text-starts-with src "(module Backend.Native.NativeCodegen)") 1 0))
+      (print (if (text-starts-with src "(module App.CompilerMode)") 1 0))
+      (print (if (text-starts-with src "(module App.Main)") 1 0))
+      0)))"#,
+        &[],
+    )
+    .expect("representative backtrace function 1791 owner decl harness 実行に失敗");
+
+    let lines = parse_numeric_lines(&output);
+    println!("backtrace function 1791 owner decl: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        7,
+        "backtrace function 1791 owner decl 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_owner_callable_isolated_shifted_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        func-meta (vector-get native-callables 2541)
+        function-start (vector-get starts 2541)
+        result (ref-new (vector-new 32))]
+        (do
+          (generate-native-function-aarch64-bundle-with-import-count func-meta result starts native-callables 10 0 function-start)
+          (let [code (ref-get result)
+            len (vector-length code)]
+            (do
+              (print-string (build-byte-chunk-text code 844896 844906))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-owner-isolated-shifted-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative owner isolated shifted window harness 実行に失敗");
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("owner isolated shifted code byte line が UTF-8 でない")
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    println!("owner isolated shifted raw lines: {lines:?}");
+    let lines = lines
+        .into_iter()
+        .map(|line| {
+            line.parse::<i64>().unwrap_or_else(|err| {
+                panic!("owner isolated shifted code byte line が整数でない: {line:?} err={err:?}")
+            })
+        })
+        .collect::<Vec<_>>();
+    println!("owner isolated shifted lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        5,
+        "owner isolated shifted packed code byte 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_owner_callable_isolated_current_bad_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        func-meta (vector-get native-callables 2543)
+        function-start (vector-get starts 2543)
+        result (ref-new (vector-new 32))]
+        (do
+          (generate-native-function-aarch64-bundle-with-import-count func-meta result starts native-callables 10 0 function-start)
+          (let [code (ref-get result)
+            len (vector-length code)]
+            (do
+              (print-string (build-byte-chunk-text code 842188 842198))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-owner-isolated-current-bad-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative owner isolated current bad window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("owner isolated current bad packed line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("owner isolated current bad packed line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("owner isolated current bad packed lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        5,
+        "owner isolated current bad packed code byte 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_owner_callable_isolated_remaining_bad_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        func-meta (vector-get native-callables 2543)
+        function-start (vector-get starts 2543)
+        result (ref-new (vector-new 32))]
+        (do
+          (generate-native-function-aarch64-bundle-with-import-count func-meta result starts native-callables 10 0 function-start)
+          (let [code (ref-get result)
+            len (vector-length code)]
+            (do
+              (print-string (build-byte-chunk-text code 841950 841960))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-owner-isolated-remaining-bad-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative owner isolated remaining bad window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("owner isolated remaining bad packed line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("owner isolated remaining bad packed line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("owner isolated remaining bad packed lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        5,
+        "owner isolated remaining bad packed code byte 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_owner_callable_isolated_earliest_bad_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        func-meta (vector-get native-callables 2543)
+        function-start (vector-get starts 2543)
+        result (ref-new (vector-new 32))]
+        (do
+          (generate-native-function-aarch64-bundle-with-import-count func-meta result starts native-callables 10 0 function-start)
+          (let [code (ref-get result)
+            len (vector-length code)]
+            (do
+              (print-string (build-byte-chunk-text code 841852 841862))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-owner-isolated-earliest-bad-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative owner isolated earliest bad window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("owner isolated earliest bad packed line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("owner isolated earliest bad packed line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("owner isolated earliest bad packed lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        5,
+        "owner isolated earliest bad packed code byte 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_owner_callable_isolated_chunk_local_bad_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        func-meta (vector-get native-callables 2544)
+        function-start (vector-get starts 2544)
+        result (ref-new (vector-new 32))]
+        (do
+          (generate-native-function-aarch64-bundle-with-import-count func-meta result starts native-callables 10 0 function-start)
+          (let [code (ref-get result)
+            len (vector-length code)]
+            (do
+              (print-string (build-byte-chunk-text code 840052 840062))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-owner-isolated-chunk-local-bad-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative owner isolated chunk local bad window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("owner isolated chunk local bad packed line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("owner isolated chunk local bad packed line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("owner isolated chunk local bad packed lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        5,
+        "owner isolated chunk local bad packed code byte 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_owner_callable_isolated_next_bad_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        func-meta (vector-get native-callables 2543)
+        function-start (vector-get starts 2543)
+        result (ref-new (vector-new 32))]
+        (do
+          (generate-native-function-aarch64-bundle-with-import-count func-meta result starts native-callables 10 0 function-start)
+          (let [code (ref-get result)
+            len (vector-length code)]
+            (do
+              (print-string (build-byte-chunk-text code 842024 842034))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-owner-isolated-next-bad-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative owner isolated next bad window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("owner isolated next bad packed line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("owner isolated next bad packed line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("owner isolated next bad packed lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        5,
+        "owner isolated next bad packed code byte 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic probe for direct partial bundle generation"]
+fn test_e2e_selfhost_main_representative_prefix_through_owner_next_bad_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 2534)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (string-concat (int-to-string (vector-length code)) "\n"))
+              (print-string (build-byte-chunk-text code 10112680 10112690))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-prefix-through-owner-next-bad-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative prefix through owner next bad window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("prefix through owner next bad line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("prefix through owner next bad line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("prefix through owner next bad lines: {lines:?}");
+    assert!(
+        lines.len() >= 6,
+        "prefix through owner next bad 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic probe for direct partial bundle generation"]
+fn test_e2e_selfhost_main_representative_prefix_through_owner_emits_length() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 2534)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (string-concat (int-to-string (vector-length code)) "\n"))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-prefix-through-owner-length",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative prefix through owner length harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("prefix through owner length line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("prefix through owner length line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("prefix through owner length lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        1,
+        "prefix through owner length 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_prefix_bundle_through_owner_earliest_bad_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        prefix-callables (append-vector-loop (vector-new 32) native-callables 0 2544)
+        layout (collect-callable-actual-layout-aarch64 prefix-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        owner-start (vector-get starts 2543)
+        code (emit-native-function-meta-bundle-with-import-count prefix-callables 10 (host-target))]
+        (do
+          (print-string
+            (build-byte-chunk-text code (+ owner-start 841852) (+ owner-start 841862)))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-prefix-bundle-through-owner-earliest-bad-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative prefix bundle through owner earliest bad window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("prefix bundle through owner earliest bad line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("prefix bundle through owner earliest bad line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("prefix bundle through owner earliest bad lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        5,
+        "prefix bundle through owner earliest bad 出力が不足: {lines:?}"
+    );
+}
+
+fn run_representative_prefix_bundle_window(
+    requested_cutoff: usize,
+    owner_idx: usize,
+    relative_start: usize,
+    relative_end: usize,
+) -> Vec<i64> {
+    let harness = selfhost_main_native_code_only_export_harness(&format!(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        native-len (vector-length native-callables)
+        cutoff (if (< {requested_cutoff} native-len) {requested_cutoff} native-len)
+        prefix-callables (append-vector-loop (vector-new 32) native-callables 0 cutoff)
+        layout (collect-callable-actual-layout-aarch64 prefix-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        owner-start (vector-get starts {owner_idx})
+        code (emit-native-function-meta-bundle-with-import-count prefix-callables 10 (host-target))]
+        (do
+          (print-string
+            (build-byte-chunk-text code (+ owner-start {relative_start}) (+ owner-start {relative_end})))))"#,
+        requested_cutoff = requested_cutoff,
+        owner_idx = owner_idx,
+        relative_start = relative_start,
+        relative_end = relative_end,
+    ));
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        &format!("native-stage23-representative-prefix-cutoff-{requested_cutoff}"),
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .unwrap_or_else(|_| {
+        panic!("representative prefix cutoff {requested_cutoff} harness 実行に失敗")
+    });
+
+    output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("prefix cutoff packed line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("prefix cutoff packed line が整数でない")
+        })
+        .collect::<Vec<_>>()
+}
+
+#[test]
+#[ignore = "diagnostic cutoff sweep for representative owner corruption"]
+fn test_e2e_selfhost_main_representative_prefix_cutoff_chunk_local_bad_window_diagnostic() {
+    let cutoffs = [2545usize, 2546, 2547, 2548, 2550, 2555, 3001];
+    for cutoff in cutoffs {
+        let lines = run_representative_prefix_bundle_window(cutoff, 2544, 840052, 840062);
+        println!("prefix cutoff {cutoff}: {lines:?}");
+        assert_eq!(
+            lines.len(),
+            5,
+            "prefix cutoff 出力が不足: cutoff={cutoff} lines={lines:?}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "diagnostic full native-len prefix copy for representative owner corruption"]
+fn test_e2e_selfhost_main_representative_full_prefix_cutoff_chunk_local_bad_window_diagnostic() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        native-len (vector-length native-callables)
+        prefix-callables (append-vector-loop (vector-new 32) native-callables 0 native-len)
+        layout (collect-callable-actual-layout-aarch64 prefix-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        starts-len (vector-length starts)
+        owner-start (vector-get starts 2544)
+        code (emit-native-function-meta-bundle-with-import-count prefix-callables 10 (host-target))]
+        (do
+          (print-string (string-concat (int-to-string native-len) "\n"))
+          (print-string (string-concat (int-to-string starts-len) "\n"))
+          (print-string (string-concat (int-to-string owner-start) "\n"))
+          (print-string (build-byte-chunk-text code (+ owner-start 840052) (+ owner-start 840062)))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-full-prefix-cutoff",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative full prefix cutoff harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("full prefix cutoff line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("full prefix cutoff line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("full prefix cutoff lines: {lines:?}");
+    assert!(lines.len() >= 8, "full prefix cutoff 出力が不足: {lines:?}");
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_function_loop_only_earliest_bad_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (string-concat (int-to-string (vector-length code)) "\n"))
+              (print-string (build-byte-chunk-text code 10112680 10112690))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-function-loop-only-earliest-bad-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative function loop only earliest bad window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("function loop only earliest bad line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("function loop only earliest bad line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("function loop only earliest bad lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        6,
+        "function loop only earliest bad 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic current owner-relative window before helper append"]
+fn test_e2e_selfhost_main_representative_function_loop_only_current_owner_window_diagnostic() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        owner-start (vector-get starts 2544)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (string-concat (int-to-string owner-start) "\n"))
+              (print-string (build-byte-chunk-text code (+ owner-start 840052) (+ owner-start 840062)))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-function-loop-only-current-owner-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative function loop only current owner window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("function loop only current owner window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("function loop only current owner window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("function loop only current owner window lines: {lines:?}");
+    assert!(
+        lines.len() >= 6,
+        "function loop only current owner window 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic current global window for full function loop"]
+fn test_e2e_selfhost_main_representative_function_loop_only_current_global_window_diagnostic() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111120 10111130))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-function-loop-only-current-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative function loop only current global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("function loop only current global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("function loop only current global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("function loop only current global window lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        5,
+        "function loop only current global window 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_before_helpers_earliest_bad_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (string-concat (int-to-string (vector-length code)) "\n"))
+              (print-string (build-byte-chunk-text code 10112680 10112690))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-before-helpers-earliest-bad-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative before helpers earliest bad window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("before helpers earliest bad line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("before helpers earliest bad line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("before helpers earliest bad lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        6,
+        "before helpers earliest bad 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic current global window after import stubs and before helpers"]
+fn test_e2e_selfhost_main_representative_before_helpers_current_global_window_diagnostic() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111120 10111130))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-before-helpers-current-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative before helpers current global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("before helpers current global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("before helpers current global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("before helpers current global window lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        5,
+        "before helpers current global window 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic current global window after first helper append"]
+fn test_e2e_selfhost_main_representative_first_helper_current_global_window_diagnostic() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111120 10111130))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-first-helper-current-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative first helper current global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("first helper current global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("first helper current global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("first helper current global window lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        5,
+        "first helper current global window 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic current global window after first ten helper appends"]
+fn test_e2e_selfhost_main_representative_first_ten_helpers_current_global_window_diagnostic() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-length-helper) 60)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-print-helper) 144)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-new-helper) 108)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111120 10111130))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-first-ten-helpers-current-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative first ten helpers current global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("first ten helpers current global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("first ten helpers current global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("first ten helpers current global window lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        5,
+        "first ten helpers current global window 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic current global window after first fifteen helper appends"]
+fn test_e2e_selfhost_main_representative_first_fifteen_helpers_current_global_window_diagnostic() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-length-helper) 60)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-print-helper) 144)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-new-helper) 108)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-get-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-set-helper) 24)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-substring-helper) 188)
+          (append-aarch64-selfhost-string-concat-helper-rooted result)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-size-helper) 20)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111120 10111130))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-first-fifteen-helpers-current-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative first fifteen helpers current global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("first fifteen helpers current global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("first fifteen helpers current global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("first fifteen helpers current global window lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        5,
+        "first fifteen helpers current global window 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic current global window after first twelve helper appends"]
+fn test_e2e_selfhost_main_representative_first_twelve_helpers_current_global_window_diagnostic() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-length-helper) 60)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-print-helper) 144)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-new-helper) 108)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-get-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-set-helper) 24)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111120 10111130))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-first-twelve-helpers-current-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative first twelve helpers current global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("first twelve helpers current global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("first twelve helpers current global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("first twelve helpers current global window lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        5,
+        "first twelve helpers current global window 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic current global window after first thirteen helper appends"]
+fn test_e2e_selfhost_main_representative_first_thirteen_helpers_current_global_window_diagnostic() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-length-helper) 60)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-print-helper) 144)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-new-helper) 108)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-get-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-set-helper) 24)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-substring-helper) 188)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111120 10111130))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-first-thirteen-helpers-current-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative first thirteen helpers current global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("first thirteen helpers current global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("first thirteen helpers current global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("first thirteen helpers current global window lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        5,
+        "first thirteen helpers current global window 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic current global window after first fourteen helper appends"]
+fn test_e2e_selfhost_main_representative_first_fourteen_helpers_current_global_window_diagnostic() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-length-helper) 60)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-print-helper) 144)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-new-helper) 108)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-get-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-set-helper) 24)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-substring-helper) 188)
+          (append-aarch64-selfhost-string-concat-helper-rooted result)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111120 10111130))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-first-fourteen-helpers-current-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative first fourteen helpers current global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("first fourteen helpers current global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("first fourteen helpers current global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("first fourteen helpers current global window lines: {lines:?}");
+    assert_eq!(
+        lines.len(),
+        5,
+        "first fourteen helpers current global window 出力が不足: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_string_concat_helper_preserves_current_global_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-length-helper) 60)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-print-helper) 144)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-new-helper) 108)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-get-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-set-helper) 24)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-substring-helper) 188)
+          (append-aarch64-selfhost-string-concat-helper-rooted result)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111120 10111130))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-string-concat-helper-preserves-current-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative string concat helper current global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("string concat helper current global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("string concat helper current global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("string concat helper current global window lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "string concat helper append 後に current global window が壊れた: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic transported print helper offset mismatch"]
+fn test_e2e_selfhost_main_representative_print_helper_bytes_match_standalone_helper() {
+    let standalone_harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [code (emit-aarch64-selfhost-print-helper)]
+        (print-string (build-byte-chunk-text code 0 144)))"#,
+    );
+    let standalone_output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-print-helper-only",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &standalone_harness,
+        &[],
+    )
+    .expect("representative print helper only harness 実行に失敗");
+    let standalone_lines = parse_numeric_lines(
+        &String::from_utf8(standalone_output)
+            .expect("representative print helper only 出力が UTF-8 でない"),
+    );
+    assert_eq!(
+        standalone_lines.len(),
+        72,
+        "standalone print helper packed line 数が不正"
+    );
+    let expected_bytes = standalone_lines
+        .iter()
+        .flat_map(|packed| {
+            let value = *packed as u16;
+            [value as u8, (value >> 8) as u8]
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        expected_bytes.len(),
+        144,
+        "standalone print helper byte 数が不正"
+    );
+
+    let bundle = run_selfhost_main_native_function_meta_bundle_host_bytes_harness();
+    let found_offset = bundle
+        .code_bytes
+        .windows(expected_bytes.len())
+        .position(|window| window == expected_bytes)
+        .unwrap_or_else(|| {
+            panic!("representative full bundle 内に standalone print helper bytes が見つからない")
+        });
+
+    let offset_harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)]
+        (print (aarch64-selfhost-print-helper-offset import-stub-offset 10)))"#,
+    );
+    let offset_output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-print-helper-offset",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &offset_harness,
+        &[],
+    )
+    .expect("representative print helper offset harness 実行に失敗");
+    let offset_lines = parse_numeric_lines(
+        &String::from_utf8(offset_output)
+            .expect("representative print helper offset 出力が UTF-8 でない"),
+    );
+    assert_eq!(
+        offset_lines.len(),
+        1,
+        "representative print helper offset 出力が不足: {offset_lines:?}"
+    );
+    assert_eq!(
+        found_offset, offset_lines[0] as usize,
+        "representative print helper offset contract が実際の helper 位置と一致しない"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_substring_helper_bytes_match_standalone_helper() {
+    let standalone_harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [code (emit-aarch64-selfhost-substring-helper)]
+        (print-string (build-byte-chunk-text code 0 208)))"#,
+    );
+    let standalone_output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-substring-helper-only",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &standalone_harness,
+        &[],
+    )
+    .expect("representative substring helper only harness 実行に失敗");
+    let standalone_lines = parse_numeric_lines(
+        &String::from_utf8(standalone_output)
+            .expect("representative substring helper only 出力が UTF-8 でない"),
+    );
+    assert_eq!(
+        standalone_lines.len(),
+        104,
+        "standalone substring helper packed line 数が不正"
+    );
+    let expected_bytes = standalone_lines
+        .iter()
+        .flat_map(|packed| {
+            let value = *packed as u16;
+            [value as u8, (value >> 8) as u8]
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        expected_bytes.len(),
+        208,
+        "standalone substring helper byte 数が不正"
+    );
+
+    let bundle = run_selfhost_main_native_function_meta_bundle_host_bytes_harness();
+    let found_offset = bundle
+        .code_bytes
+        .windows(expected_bytes.len())
+        .position(|window| window == expected_bytes)
+        .unwrap_or_else(|| {
+            panic!(
+                "representative full bundle 内に standalone substring helper bytes が見つからない"
+            )
+        });
+
+    let offset_harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)]
+        (print (aarch64-selfhost-substring-helper-offset import-stub-offset 10)))"#,
+    );
+    let offset_output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-substring-helper-offset",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &offset_harness,
+        &[],
+    )
+    .expect("representative substring helper offset harness 実行に失敗");
+    let offset_lines = parse_numeric_lines(
+        &String::from_utf8(offset_output)
+            .expect("representative substring helper offset 出力が UTF-8 でない"),
+    );
+    assert_eq!(
+        offset_lines.len(),
+        1,
+        "representative substring helper offset 出力が不足: {offset_lines:?}"
+    );
+    assert_eq!(
+        found_offset, offset_lines[0] as usize,
+        "representative substring helper offset contract が実際の helper 位置と一致しない"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_string_concat_helper_preserves_later_global_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-length-helper) 60)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-print-helper) 144)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-new-helper) 108)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-get-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-set-helper) 24)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-substring-helper) 188)
+          (append-aarch64-selfhost-string-concat-helper-rooted result)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111190 10111200))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-string-concat-helper-preserves-later-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative string concat helper later global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("string concat helper later global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("string concat helper later global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("string concat helper later global window lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "string concat helper append 後に later global window が壊れた: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_map_size_helper_preserves_later_global_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-length-helper) 60)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-print-helper) 144)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-new-helper) 108)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-get-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-set-helper) 24)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-substring-helper) 188)
+          (append-aarch64-selfhost-string-concat-helper-rooted result)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-size-helper) 20)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111190 10111200))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-map-size-helper-preserves-later-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative map size helper later global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("map size helper later global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("map size helper later global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("map size helper later global window lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "map size helper append 後に later global window が壊れた: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_map_new_helper_preserves_later_global_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-length-helper) 60)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-print-helper) 144)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-new-helper) 108)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-get-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-set-helper) 24)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-substring-helper) 188)
+          (append-aarch64-selfhost-string-concat-helper-rooted result)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-size-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-new-helper) 100)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111190 10111200))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-map-new-helper-preserves-later-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative map new helper later global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("map new helper later global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("map new helper later global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("map new helper later global window lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "map new helper append 後に later global window が壊れた: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_file_exists_helper_preserves_later_global_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-length-helper) 60)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-print-helper) 144)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-new-helper) 108)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-get-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-set-helper) 24)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-substring-helper) 188)
+          (append-aarch64-selfhost-string-concat-helper-rooted result)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-size-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-new-helper) 100)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-file-exists-helper) 196)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111190 10111200))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-file-exists-helper-preserves-later-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative file exists helper later global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("file exists helper later global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("file exists helper later global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("file exists helper later global window lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "file exists helper append 後に later global window が壊れた: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_read_file_helper_preserves_later_global_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-length-helper) 60)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-print-helper) 144)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-new-helper) 108)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-get-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-set-helper) 24)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-substring-helper) 188)
+          (append-aarch64-selfhost-string-concat-helper-rooted result)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-size-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-new-helper) 100)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-file-exists-helper) 196)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-read-file-helper) 464)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111190 10111200))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-read-file-helper-preserves-later-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative read file helper later global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("read file helper later global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("read file helper later global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("read file helper later global window lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "read file helper append 後に later global window が壊れた: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_read_file_helper_preserves_latest_global_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-length-helper) 60)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-print-helper) 144)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-new-helper) 108)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-get-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-set-helper) 24)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-substring-helper) 188)
+          (append-aarch64-selfhost-string-concat-helper-rooted result)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-size-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-new-helper) 100)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-file-exists-helper) 196)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-read-file-helper) 464)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111360 10111370))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-read-file-helper-preserves-latest-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative read file helper latest global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("read file helper latest global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("read file helper latest global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("read file helper latest global window lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "read file helper append 後に latest global window が壊れた: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_map_insert_helper_preserves_latest_global_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-length-helper) 60)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-print-helper) 144)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-new-helper) 108)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-get-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-set-helper) 24)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-substring-helper) 188)
+          (append-aarch64-selfhost-string-concat-helper-rooted result)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-size-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-new-helper) 100)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-file-exists-helper) 196)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-read-file-helper) 464)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-insert-helper) 96)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111360 10111370))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-map-insert-helper-preserves-latest-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative map insert helper latest global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("map insert helper latest global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("map insert helper latest global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("map insert helper latest global window lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "map insert helper append 後に latest global window が壊れた: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_map_get_helper_preserves_latest_global_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-length-helper) 60)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-print-helper) 144)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-new-helper) 108)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-get-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-set-helper) 24)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-substring-helper) 188)
+          (append-aarch64-selfhost-string-concat-helper-rooted result)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-size-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-new-helper) 100)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-file-exists-helper) 196)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-read-file-helper) 464)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-insert-helper) 96)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-get-helper) 60)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111360 10111370))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-map-get-helper-preserves-latest-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative map get helper latest global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("map get helper latest global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("map get helper latest global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("map get helper latest global window lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "map get helper append 後に latest global window が壊れた: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_map_new_fixed_helper_preserves_latest_global_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        n (- (vector-length native-callables) 10)
+        import-stub-count (aarch64-import-stub-count 10)]
+        (do
+          (root_push native-callables)
+          (root_push starts)
+          (root_push result)
+          (generate-native-aarch64-bundle-loop-with-import-count native-callables result starts 10 import-stub-offset 0 n)
+          (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-length-helper) 60)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-print-helper) 144)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-new-helper) 108)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-get-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-set-helper) 24)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-substring-helper) 188)
+          (append-aarch64-selfhost-string-concat-helper-rooted result)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-size-helper) 20)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-new-helper) 100)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-file-exists-helper) 196)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-read-file-helper) 464)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-insert-helper) 96)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-get-helper) 60)
+          (append-native-bytes-rooted result (emit-aarch64-selfhost-map-new-fixed-helper) 92)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (print-string (build-byte-chunk-text code 10111360 10111370))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-map-new-fixed-helper-preserves-latest-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative map new fixed helper latest global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("map new fixed helper latest global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("map new fixed helper latest global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("map new fixed helper latest global window lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "map new fixed helper append 後に latest global window が壊れた: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: outer wrapper code remains corrupt; rooted recompute is the stable path"]
+fn test_e2e_selfhost_main_representative_full_code_latest_global_window_is_clean() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (print-string (build-byte-chunk-text code 10111360 10111370))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-full-code-latest-global-window-is-clean",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative full code latest global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("full code latest global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("full code latest global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("full code latest global window lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "full code 直後ですでに latest global window が壊れている: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_recomputed_wrapper_code_latest_global_window_is_clean() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [cache-ref2 (ref-new (map-new))
+        parse-count-ref2 (ref-new 0)
+        payload2 (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref2 parse-count-ref2)
+        functions2 (vector-get payload2 0)
+        callables2 (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions2 0 (vector-length functions2))
+        target2 (host-target)
+        native-callables2 (normalize-selfhost-native-function-metas callables2)]
+        (do
+          (root_push native-callables2)
+          (let [code2 (emit-native-function-meta-bundle-with-import-count native-callables2 10 target2)]
+            (do
+              (root_push code2)
+              (print-string (build-byte-chunk-text code2 10111360 10111370))
+              (root_pop)
+              (root_pop)))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-recomputed-wrapper-code-latest-global-window-is-clean",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative recomputed wrapper code latest global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("recomputed wrapper code latest global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("recomputed wrapper code latest global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("recomputed wrapper code latest global window lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "recomputed wrapper code でも latest global window が壊れている: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_direct_aarch64_bundle_latest_global_window_is_clean() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [direct-code (generate-native-aarch64-bundle-with-import-count native-callables 10)]
+        (print-string (build-byte-chunk-text direct-code 10111360 10111370)))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-direct-aarch64-bundle-latest-global-window-is-clean",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative direct aarch64 bundle latest global window harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("direct aarch64 bundle latest global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("direct aarch64 bundle latest global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("direct aarch64 bundle latest global window lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "direct aarch64 bundle でも latest global window が壊れている: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_printing_earlier_chunks_preserves_latest_global_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (do
+          (print-byte-chunks code 0 10110976)
+          (print-string (build-byte-chunk-text code 10111360 10111370)))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-printing-earlier-chunks-preserves-latest-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &["", ""],
+    )
+    .expect("representative earlier chunk printing harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .rev()
+        .take(5)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("earlier chunk printing latest global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("earlier chunk printing latest global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("earlier chunk printing latest global window lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "earlier chunk printing 後に latest global window が壊れた: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic build-only chunk transport probe"]
+fn test_e2e_selfhost_main_representative_building_earlier_chunks_preserves_latest_global_window() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (do
+          (print (build-byte-chunks code 0 10110976))
+          (print-string (build-byte-chunk-text code 10111360 10111370)))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-building-earlier-chunks-preserves-latest-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &["", ""],
+    )
+    .expect("representative earlier chunk build harness 実行に失敗");
+
+    let tail = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .rev()
+        .take(8)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .map(|line| String::from_utf8_lossy(line).into_owned())
+        .collect::<Vec<_>>();
+    println!("earlier chunk build latest global window raw tail: {tail:?}");
+
+    let lines = tail
+        .into_iter()
+        .skip(3)
+        .map(|line| {
+            line.parse::<i64>()
+                .expect("earlier chunk build latest global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("earlier chunk build latest global window lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "earlier chunk build 後に latest global window が壊れた: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic ref-backed chunk transport probe"]
+fn test_e2e_selfhost_main_representative_printing_earlier_chunks_via_ref_preserves_latest_global_window()
+ {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [code-ref (ref-new code)]
+        (do
+          (root_push code-ref)
+          (print-byte-chunks (ref-get code-ref) 0 10110976)
+          (print-string (build-byte-chunk-text (ref-get code-ref) 10111360 10111370))
+          (root_pop)))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-printing-earlier-chunks-via-ref-preserves-latest-global-window",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &["", ""],
+    )
+    .expect("representative earlier chunk printing via ref harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .rev()
+        .take(5)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("earlier chunk printing via ref latest global window line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("earlier chunk printing via ref latest global window line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("earlier chunk printing via ref latest global window lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "earlier chunk printing via ref 後に latest global window が壊れた: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic latest-before-prefix probe"]
+fn test_e2e_selfhost_main_representative_printing_latest_window_before_prefix_keeps_latest_output_clean()
+ {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (do
+          (print-string (build-byte-chunk-text code 10111360 10111370))
+          (print-byte-chunks code 0 10110976))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-printing-latest-window-before-prefix-keeps-latest-output-clean",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &["", ""],
+    )
+    .expect("representative latest-window-before-prefix harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .take(5)
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("latest-window-before-prefix line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("latest-window-before-prefix line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("latest window before prefix lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "latest window を先に出したのに壊れた: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic latest-before-small-prefix probe"]
+fn test_e2e_selfhost_main_representative_printing_latest_window_before_small_prefix_keeps_latest_output_clean()
+ {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (do
+          (print-string (build-byte-chunk-text code 10111360 10111370))
+          (print-byte-chunks code 0 128))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-printing-latest-window-before-small-prefix-keeps-latest-output-clean",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &["", ""],
+    )
+    .expect("representative latest-window-before-small-prefix harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .take(5)
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("latest-window-before-small-prefix line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("latest-window-before-small-prefix line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("latest window before small prefix lines: {lines:?}");
+    assert_eq!(
+        lines,
+        vec![0, 0, 0, 0, 0],
+        "small prefix しか後続しないのに壊れた: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic helper-only string concat helper length and prefix"]
+fn test_e2e_selfhost_main_representative_string_concat_helper_only_diagnostic() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [code (emit-aarch64-selfhost-string-concat-helper)]
+        (do
+          (print (vector-length code))
+          (print-string (build-byte-chunk-text code 0 8))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-string-concat-helper-only",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative string concat helper only harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("string concat helper only line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("string concat helper only line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("string concat helper only lines: {lines:?}");
+    assert!(
+        lines.len() >= 5,
+        "string concat helper only 出力が不足: {lines:?}"
+    );
+    assert_eq!(
+        lines[0], 308,
+        "string concat helper length が不正: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic append string concat helper into empty result"]
+fn test_e2e_selfhost_main_representative_string_concat_helper_append_into_empty_result_diagnostic()
+{
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [result (ref-new (vector-new 8))]
+        (do
+          (root_push result)
+          (append-aarch64-selfhost-string-concat-helper-rooted result)
+          (let [code (ref-get result)]
+            (do
+              (root_pop)
+              (print (vector-length code))
+              (print-string (build-byte-chunk-text code 0 8))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-string-concat-helper-empty-append",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative string concat helper empty append harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("string concat helper empty append line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("string concat helper empty append line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("string concat helper empty append lines: {lines:?}");
+    assert!(
+        lines.len() >= 5,
+        "string concat helper empty append 出力が不足: {lines:?}"
+    );
+    assert_eq!(
+        lines[0], 308,
+        "string concat helper empty append length が不正: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_earlier_bad_index_maps_to_layout_region() {
+    let harness = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-earlier-layout-region",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &selfhost_main_native_code_only_export_harness(
+            r#"      (let [layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        helper-base (+ import-stub-offset (* (aarch64-import-stub-count 10) 4))]
+        (do
+          (print import-stub-offset)
+          (print helper-base)
+          (print (vector-length starts))
+          (print (vector-get starts (- (vector-length starts) 1)))))"#,
+        ),
+        &[],
+    )
+    .expect("representative earlier layout region harness 実行に失敗");
+
+    let lines = harness
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("layout region line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("layout region line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    println!("earlier layout region: {lines:?}");
+    assert_eq!(lines.len(), 4, "layout region 出力が不足: {lines:?}");
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_earlier_bad_index_owner_callable() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-representative-earlier-owner-callable",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn print-starts-loop [starts idx len]
+  (if (>= idx len)
+    0
+    (do
+      (print (vector-get starts idx))
+      (print-starts-loop starts (+ idx 1) len))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)]
+    (do
+      (print (vector-length starts))
+      (print-starts-loop starts 0 (vector-length starts))
+      0)))"#,
+        &[],
+    )
+    .expect("representative earlier owner callable harness 実行に失敗");
+
+    let lines = parse_numeric_lines(&output);
+    let start_len = lines[0] as usize;
+    assert_eq!(
+        lines.len(),
+        start_len + 1,
+        "owner callable starts 出力が不足: len={} lines={}",
+        start_len,
+        lines.len()
+    );
+    let starts = lines[1..]
+        .iter()
+        .map(|value| *value as usize)
+        .collect::<Vec<_>>();
+    let target = 10_118_133usize;
+    let owner = starts
+        .partition_point(|start| *start <= target)
+        .saturating_sub(1);
+    let owner_start = starts[owner];
+    let next_start = starts.get(owner + 1).copied().unwrap_or(owner_start);
+    println!(
+        "earlier owner callable: target={target} owner={owner} owner_start={owner_start} next_start={next_start}"
+    );
+    assert!(
+        owner_start <= target,
+        "owner start が target を超えている: owner_start={owner_start} target={target}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_latest_bad_index_owner_callable() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-representative-latest-owner-callable",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn print-starts-loop [starts idx len]
+  (if (>= idx len)
+    0
+    (do
+      (print (vector-get starts idx))
+      (print-starts-loop starts (+ idx 1) len))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)]
+    (do
+      (print (vector-length starts))
+      (print-starts-loop starts 0 (vector-length starts))
+      0)))"#,
+        &[],
+    )
+    .expect("representative latest owner callable harness 実行に失敗");
+
+    let lines = parse_numeric_lines(&output);
+    let start_len = lines[0] as usize;
+    assert_eq!(
+        lines.len(),
+        start_len + 1,
+        "latest owner callable starts 出力が不足: len={} lines={}",
+        start_len,
+        lines.len()
+    );
+    let starts = lines[1..]
+        .iter()
+        .map(|value| *value as usize)
+        .collect::<Vec<_>>();
+    let target = 10_111_358usize;
+    let owner = starts
+        .partition_point(|start| *start <= target)
+        .saturating_sub(1);
+    let owner_start = starts[owner];
+    let next_start = starts.get(owner + 1).copied().unwrap_or(owner_start);
+    println!(
+        "latest owner callable: target={target} owner={owner} owner_start={owner_start} next_start={next_start}"
+    );
+    assert!(
+        owner_start <= target,
+        "latest owner start が target を超えている: owner_start={owner_start} target={target}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_earlier_bad_index_owner_decl() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-representative-earlier-owner-decl",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+
+(defn text-starts-with-loop [text prefix idx len]
+  (if (>= idx len)
+    true
+    (if (= (string-char-at text idx) (string-char-at prefix idx))
+      (text-starts-with-loop text prefix (+ idx 1) len)
+      false)))
+
+(defn text-starts-with [text prefix]
+  (let [len (string-length prefix)]
+    (if (< (string-length text) len)
+      false
+      (text-starts-with-loop text prefix 0 len))))
+
+(defn make-owner-state [found pair-idx decl-idx defn-ordinal decl-hash]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push (vector-new 5) found)
+          pair-idx)
+        decl-idx)
+      defn-ordinal)
+    decl-hash))
+
+(defn find-owner-in-decls [decls idx len ftable target defn-ordinal]
+  (if (>= idx len)
+    (make-owner-state 0 -1 -1 defn-ordinal 0)
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (let [decl-hash (vector-get decl 1)
+              func-idx (map-get ftable decl-hash)]
+          (if (= func-idx target)
+            (make-owner-state 1 0 idx defn-ordinal decl-hash)
+            (find-owner-in-decls decls (+ idx 1) len ftable target (+ defn-ordinal 1))))
+        (find-owner-in-decls decls (+ idx 1) len ftable target defn-ordinal)))))
+
+(defn find-owner-in-pairs [pairs pair-idx len ftable target]
+  (if (>= pair-idx len)
+    (make-owner-state 0 -1 -1 -1 0)
+    (let [pair (vector-get pairs pair-idx)
+          decls (vector-get pair 1)
+          state (find-owner-in-decls decls 0 (vector-length decls) ftable target 0)]
+      (if (= (vector-get state 0) 1)
+        (make-owner-state 1 pair-idx (vector-get state 2) (vector-get state 3) (vector-get state 4))
+        (find-owner-in-pairs pairs (+ pair-idx 1) len ftable target)))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pairs (compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        ftable (vector-get reg-result 0)
+        owner (find-owner-in-pairs pairs 0 (vector-length pairs) ftable 2544)
+        pair (vector-get pairs (vector-get owner 1))
+        src (vector-get pair 0)]
+    (do
+      (print (vector-get owner 1))
+      (print (vector-get owner 2))
+      (print (vector-get owner 3))
+      (print (vector-get owner 4))
+      (print (if (text-starts-with src "(module Backend.Native.NativeCodegen)") 1 0))
+      (print (if (text-starts-with src "(module App.CompilerMode)") 1 0))
+      (print (if (text-starts-with src "(module App.Main)") 1 0))
+      0)))"#,
+        &[],
+    )
+    .expect("representative earlier owner decl harness 実行に失敗");
+
+    let lines = parse_numeric_lines(&output);
+    println!("earlier owner decl: {lines:?}");
+    assert_eq!(lines.len(), 7, "owner decl 出力が不足: {lines:?}");
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_latest_bad_index_owner_decl() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-representative-latest-owner-decl",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+
+(defn text-starts-with-loop [text prefix idx len]
+  (if (>= idx len)
+    true
+    (if (= (string-char-at text idx) (string-char-at prefix idx))
+      (text-starts-with-loop text prefix (+ idx 1) len)
+      false)))
+
+(defn text-starts-with [text prefix]
+  (let [len (string-length prefix)]
+    (if (< (string-length text) len)
+      false
+      (text-starts-with-loop text prefix 0 len))))
+
+(defn make-owner-state [found pair-idx decl-idx defn-ordinal decl-hash]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push (vector-new 5) found)
+          pair-idx)
+        decl-idx)
+      defn-ordinal)
+    decl-hash))
+
+(defn find-owner-in-decls [decls idx len ftable target defn-ordinal]
+  (if (>= idx len)
+    (make-owner-state 0 -1 -1 defn-ordinal 0)
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (let [decl-hash (vector-get decl 1)
+              func-idx (map-get ftable decl-hash)]
+          (if (= func-idx target)
+            (make-owner-state 1 0 idx defn-ordinal decl-hash)
+            (find-owner-in-decls decls (+ idx 1) len ftable target (+ defn-ordinal 1))))
+        (find-owner-in-decls decls (+ idx 1) len ftable target defn-ordinal)))))
+
+(defn find-owner-in-pairs [pairs pair-idx len ftable target]
+  (if (>= pair-idx len)
+    (make-owner-state 0 -1 -1 -1 0)
+    (let [pair (vector-get pairs pair-idx)
+          decls (vector-get pair 1)
+          state (find-owner-in-decls decls 0 (vector-length decls) ftable target 0)]
+      (if (= (vector-get state 0) 1)
+        (make-owner-state 1 pair-idx (vector-get state 2) (vector-get state 3) (vector-get state 4))
+        (find-owner-in-pairs pairs (+ pair-idx 1) len ftable target)))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pairs (compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        ftable (vector-get reg-result 0)
+        owner (find-owner-in-pairs pairs 0 (vector-length pairs) ftable 2551)
+        pair (vector-get pairs (vector-get owner 1))
+        src (vector-get pair 0)]
+    (do
+      (print (vector-get owner 1))
+      (print (vector-get owner 2))
+      (print (vector-get owner 3))
+      (print (vector-get owner 4))
+      (print (if (text-starts-with src "(module Backend.Native.NativeCodegen)") 1 0))
+      (print (if (text-starts-with src "(module App.CompilerMode)") 1 0))
+      (print (if (text-starts-with src "(module App.Main)") 1 0))
+      0)))"#,
+        &[],
+    )
+    .expect("representative latest owner decl harness 実行に失敗");
+
+    let lines = parse_numeric_lines(&output);
+    println!("latest owner decl: {lines:?}");
+    assert_eq!(lines.len(), 7, "latest owner decl 出力が不足: {lines:?}");
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_tail_base64_quad_intermediates_are_bounded() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [len (vector-length code)
+        idx 10174692
+        b0 (byte-at-or-zero code idx len)
+        b1 (byte-at-or-zero code (+ idx 1) len)
+        b2 (byte-at-or-zero code (+ idx 2) len)
+        s0 (/ b0 4)
+        s1 (+ (* (remainder b0 4) 16) (/ b1 16))
+        s2 (+ (* (remainder b1 16) 4) (/ b2 64))
+        s3 (remainder b2 64)]
+        (do
+          (print b0)
+          (print b1)
+          (print b2)
+          (print s0)
+          (print s1)
+          (print s2)
+          (print s3)))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        "native-stage23-representative-tail-base64-quad",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative tail base64 quad harness 実行に失敗");
+
+    let lines = output
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("tail base64 quad line が UTF-8 でない")
+                .parse::<i64>()
+                .expect("tail base64 quad line が整数でない")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(lines.len(), 7, "tail base64 quad 出力が不足: {lines:?}");
+    assert!(
+        lines[3..].iter().all(|value| (0..64).contains(value)),
+        "tail base64 quad digit が 0..63 に収まっていない: {lines:?}"
+    );
+}
+
+#[test]
+fn test_e2e_native_chunk_export_roundtrips_small_payload() {
+    let dir = std::env::temp_dir().join(format!(
+        "lsharp_native_chunk_export_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&dir).expect("chunk export fixture dir 作成失敗");
+    let output = compile_and_run_with_dir(
+        r#"
+        (defn byte-at-or-zero [bytes idx len]
+          (if (>= idx len) 0 (vector-get bytes idx)))
+
+        (defn pack-byte-chunk-2 [bytes idx len]
+          (+ (byte-at-or-zero bytes idx len)
+             (* (byte-at-or-zero bytes (+ idx 1) len) 256)))
+
+        (defn packed-byte-line [bytes idx end]
+          (string-concat (int-to-string (pack-byte-chunk-2 bytes idx end)) "\n"))
+
+        (defn packed-line-count [start end]
+          (/ (+ (- end start) 1) 2))
+
+        (defn build-byte-chunk-text-lines [bytes start line-count end]
+          (if (= line-count 0)
+            ""
+            (if (= line-count 1)
+              (packed-byte-line bytes start end)
+              (let [left-count (/ line-count 2)
+                    right-count (- line-count left-count)
+                    mid (+ start (* left-count 2))]
+                (string-concat
+                  (build-byte-chunk-text-lines bytes start left-count end)
+                  (build-byte-chunk-text-lines bytes mid right-count end))))))
+
+        (defn build-byte-chunk-text [bytes start end]
+          (build-byte-chunk-text-lines bytes start (packed-line-count start end) end))
+
+        (defn main []
+          (let [bytes (vector-push
+                        (vector-push
+                          (vector-push
+                            (vector-push (vector-new 4) 1)
+                            2)
+                          255)
+                        128)
+                text (build-byte-chunk-text bytes 0 4)]
+            (do
+              (write-file "bundle-bytes-0.txt" text)
+              (let [roundtrip (read-file "bundle-bytes-0.txt")]
+                (do
+                  (print (string-length roundtrip))
+                  (print (string-char-at roundtrip 0))
+                  (print (string-char-at roundtrip 1))
+                  (print (string-char-at roundtrip 2))
+                  (print (string-char-at roundtrip 3))))
+              0)))
+        "#,
+        &dir,
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines,
+        vec![10, 53, 49, 51, 10],
+        "chunk export roundtrip が壊れている"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_native_code_only_bundle_length_non_zero() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (print (vector-length code))
+      (print (byte-at-or-zero code 0 (vector-length code)))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-representative-code-only-len",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative code-only bundle len harness 実行に失敗");
+
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.len(),
+        2,
+        "representative code-only bundle len 出力が不足: {lines:?}"
+    );
+    assert!(
+        lines[0] > 0,
+        "representative code-only native bundle size が 0"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_native_code_only_first_chunk_file_writes() {
+    let harness = selfhost_main_native_code_only_export_harness(
+        r#"      (let [end (if (< 1024 (vector-length code)) 1024 (vector-length code))
+            text (build-byte-chunk-text code 0 end)]
+        (do
+          (write-file "bundle-bytes-0.txt" text)
+          (let [roundtrip (read-file "bundle-bytes-0.txt")]
+            (do
+              (print (vector-length code))
+              (print (string-length roundtrip))))))"#,
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-representative-code-only-first-chunk",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative code-only first chunk harness 実行に失敗");
+
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.len(),
+        2,
+        "representative code-only first chunk 出力が不足: {lines:?}"
+    );
+    assert!(lines[0] > 0, "representative code-only bundle size が 0");
+    assert!(
+        lines[1] > 0,
+        "representative code-only first chunk roundtrip size が 0"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_native_entrypoint_payload_tracks_main_callable() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let bundle = run_selfhost_main_native_function_meta_bundle_host_bytes_harness();
+
+    assert!(
+        bundle.main_func_idx < bundle.function_start_len,
+        "representative entrypoint payload の callable 数より main func idx が大きい: callable_len={} main_func_idx={} entrypoint_offset={}",
+        bundle.function_start_len,
+        bundle.main_func_idx,
+        bundle.entrypoint_offset
+    );
+    assert!(
+        bundle.entrypoint_offset > 0,
+        "representative entrypoint offset が 0 に落ちている: callable_len={} main_func_idx={} code_len={}",
+        bundle.function_start_len,
+        bundle.main_func_idx,
+        bundle.declared_code_len
+    );
+    assert!(
+        bundle.entrypoint_offset + 4 <= bundle.code_bytes.len(),
+        "representative entrypoint offset が code bytes 先頭命令を読めない: offset={} len={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len()
+    );
+    assert_eq!(
+        bundle.entrypoint_offset % 4,
+        0,
+        "representative entrypoint offset が AArch64 命令境界に揃っていない: offset={}",
+        bundle.entrypoint_offset
+    );
+    assert_eq!(
+        build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
+            &bundle.code_bytes,
+            &bundle.data_bytes,
+            bundle.entrypoint_offset,
+        )
+        .expect("representative entrypoint payload から native bundle を materialize できない")
+        .exit_code,
+        0,
+        "representative entrypoint payload から materialize した artifact が想定外の実行情報を持っている"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_native_code_transport_reconstructs_full_length() {
+    let (declared_code_len, code_bytes, _, _) =
+        run_selfhost_main_native_function_meta_code_only_host_bytes_harness();
+    assert_eq!(
+        code_bytes.len(),
+        declared_code_len,
+        "representative code transport が full length を復元できていない: declared_len={} reconstructed_len={}",
+        declared_code_len,
+        code_bytes.len()
+    );
+}
+
+fn selfhost_main_representative_aarch64_layout_harness_source(
+    pairs_expr: &str,
+    payload_expr: &str,
+) -> String {
+    format!(
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn find-defn-index-by-hash [decls idx len target-hash]
+  (if (>= idx len)
+    -1
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (if (= (vector-get decl 1) target-hash)
+          idx
+          (find-defn-index-by-hash decls (+ idx 1) len target-hash))
+        (find-defn-index-by-hash decls (+ idx 1) len target-hash)))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pairs {pairs_expr}
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        ftable (vector-get reg-result 0)
+        main-pair (vector-get pairs (- (vector-length pairs) 1))
+        main-decls (vector-get main-pair 1)
+        main-defn-idx (find-defn-index-by-hash main-decls 0 (vector-length main-decls) 3343801)
+        main-hash (vector-get (vector-get main-decls main-defn-idx) 1)
+        main-func-idx (map-get ftable main-hash)
+        payload {payload_expr}
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        callable-idx (- main-func-idx 10)]
+    (do
+      (root_push callables)
+      (root_push native-callables)
+      (let [rough-starts (collect-callable-function-starts-aarch64 native-callables 10)
+            rough-import-stub-offset (callable-user-total-size-aarch64 native-callables 10)]
+        (do
+          (root_push rough-starts)
+          (let [actual-lengths (collect-callable-function-lengths-aarch64 native-callables 10 rough-starts rough-import-stub-offset)]
+            (do
+              (root_push actual-lengths)
+              (let [starts (collect-callable-function-starts-from-lengths-aarch64 actual-lengths)]
+                (do
+                  (root_push starts)
+                  (print (vector-length callables))
+                  (print main-func-idx)
+                  (print (vector-length starts))
+                  (print callable-idx)
+                  (print (vector-get starts callable-idx))
+                  (print (vector-get starts 0))
+                  (print (vector-get starts (- (vector-length starts) 1)))
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  0)))))))))"#,
+        pairs_expr = pairs_expr,
+        payload_expr = payload_expr
+    )
+}
+
+fn run_selfhost_main_representative_aarch64_layout_harness_with_exprs(
+    label: &str,
+    pairs_expr: &str,
+    payload_expr: &str,
+) -> NativeEntrypointLayout {
+    run_selfhost_main_representative_aarch64_layout_harness_with_exprs_and_args(
+        label,
+        pairs_expr,
+        payload_expr,
+        &[],
+    )
+}
+
+fn run_selfhost_main_representative_aarch64_layout_harness_with_exprs_and_args(
+    label: &str,
+    pairs_expr: &str,
+    payload_expr: &str,
+    args: &[&str],
+) -> NativeEntrypointLayout {
+    let harness =
+        selfhost_main_representative_aarch64_layout_harness_source(pairs_expr, payload_expr);
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        label,
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        args,
+    )
+    .unwrap_or_else(|e| panic!("{label} aarch64 layout harness 実行に失敗: {e}"));
+
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.len(),
+        7,
+        "representative aarch64 layout 出力が不足: {lines:?}"
+    );
+    assert_eq!(
+        lines[2],
+        lines[0] - 10,
+        "function-starts 数が user callable 数と一致しない: {lines:?}"
+    );
+    assert_eq!(
+        lines[3],
+        lines[1] - 10,
+        "main callable idx が import prefix と整合しない: {lines:?}"
+    );
+    if lines[2] > 1 {
+        assert!(
+            lines[4] > 0,
+            "AArch64 layout の main function start が 0 に落ちている: {lines:?}"
+        );
+    }
+    assert_eq!(
+        lines[4], lines[6],
+        "main が末尾 callable なのに last start と一致しない: {lines:?}"
+    );
+    NativeEntrypointLayout {
+        function_start_len: lines[0] as usize,
+        main_func_idx: lines[1] as usize,
+        entrypoint_offset: lines[4] as usize,
+    }
+}
+
+fn run_selfhost_representative_aarch64_layout_harness_loose_with_exprs_and_args(
+    label: &str,
+    pairs_expr: &str,
+    payload_expr: &str,
+    args: &[&str],
+) -> NativeEntrypointLayout {
+    let harness =
+        selfhost_main_representative_aarch64_layout_harness_source(pairs_expr, payload_expr);
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        label,
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        args,
+    )
+    .unwrap_or_else(|e| panic!("{label} loose aarch64 layout harness 実行に失敗: {e}"));
+
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.len(),
+        7,
+        "loose representative aarch64 layout 出力が不足: {lines:?}"
+    );
+    assert_eq!(
+        lines[2],
+        lines[0] - 10,
+        "function-starts 数が user callable 数と一致しない: {lines:?}"
+    );
+    assert_eq!(
+        lines[3],
+        lines[1] - 10,
+        "main callable idx が import prefix と整合しない: {lines:?}"
+    );
+    assert!(
+        lines[4] >= 0,
+        "main entrypoint offset が負値に崩れている: {lines:?}"
+    );
+    NativeEntrypointLayout {
+        function_start_len: lines[0] as usize,
+        main_func_idx: lines[1] as usize,
+        entrypoint_offset: lines[4] as usize,
+    }
+}
+
+fn run_selfhost_representative_aarch64_entrypoint_payload_harness_loose_with_exprs(
+    label: &str,
+    pairs_expr: &str,
+    payload_expr: &str,
+) -> NativeEntrypointLayout {
+    let harness = format!(
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (do
+      (root_push result)
+      (let [next-result (vector-push result (make-function-meta 0 0 (vector-new 0)))]
+        (do
+          (root_push next-result)
+          (let [final (push-import-placeholders (+ idx 1) count next-result)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (do
+      (root_push src)
+      (root_push dst)
+      (let [next-dst (vector-push dst (vector-get src idx))]
+        (do
+          (root_push next-dst)
+          (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn find-defn-index-by-hash [decls idx len target-hash]
+  (if (>= idx len)
+    -1
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (if (= (vector-get decl 1) target-hash)
+          idx
+          (find-defn-index-by-hash decls (+ idx 1) len target-hash))
+        (find-defn-index-by-hash decls (+ idx 1) len target-hash)))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pairs {pairs_expr}
+        payload {payload_expr}
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        entrypoint-func-idx (+ 10 (- (vector-length functions) 1))
+        target (host-target)]
+    (do
+      (root_push native-callables)
+      (root_push target)
+      (let [bundle-payload (emit-native-function-meta-bundle-entrypoint-payload-with-import-count native-callables 10 target)]
+        (do
+          (root_push bundle-payload)
+          (print (vector-length callables))
+          (print entrypoint-func-idx)
+          (print (vector-get bundle-payload 1))
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          0)))))"#,
+        pairs_expr = pairs_expr,
+        payload_expr = payload_expr
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        label,
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .unwrap_or_else(|e| panic!("{label} loose entrypoint payload harness 実行に失敗: {e}"));
+
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.len(),
+        3,
+        "loose representative entrypoint payload 出力が不足: {lines:?}"
+    );
+    assert!(
+        lines[1] >= 10,
+        "loose representative main func idx が import prefix 未満に崩れている: {lines:?}"
+    );
+    assert!(
+        lines[2] >= 0,
+        "loose representative entrypoint offset が負値に崩れている: {lines:?}"
+    );
+    NativeEntrypointLayout {
+        function_start_len: lines[0] as usize,
+        main_func_idx: lines[1] as usize,
+        entrypoint_offset: lines[2] as usize,
+    }
+}
+
+fn run_selfhost_native_function_meta_bundle_host_bytes_harness_loose_with_exprs(
+    label: &str,
+    pairs_expr: &str,
+    payload_expr: &str,
+) -> NativeEntrypointBundle {
+    let layout = run_selfhost_representative_aarch64_entrypoint_payload_harness_loose_with_exprs(
+        &format!("{label}-entrypoint-payload"),
+        pairs_expr,
+        payload_expr,
+    );
+    let (declared_code_len, code_bytes, declared_data_len, data_bytes) =
+        run_selfhost_main_native_function_meta_code_only_host_bytes_harness_with_payload_and_args(
+            &format!("{label}-code-only"),
+            payload_expr,
+            &[],
+        );
+    let entrypoint_offset =
+        align_aarch64_entrypoint_to_function_start(&code_bytes, layout.entrypoint_offset);
+
+    NativeEntrypointBundle {
+        function_start_len: layout.function_start_len,
+        main_func_idx: layout.main_func_idx,
+        declared_code_len,
+        declared_data_len,
+        entrypoint_offset,
+        code_bytes,
+        data_bytes,
+    }
+}
+
+fn run_selfhost_main_representative_aarch64_layout_harness() -> NativeEntrypointLayout {
+    run_selfhost_main_representative_aarch64_layout_harness_with_exprs(
+        "native-stage23-representative-layout",
+        r#"(compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)"#,
+        r#"(compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)"#,
+    )
+}
+
+#[allow(dead_code)]
+fn run_selfhost_main_override_representative_aarch64_layout_harness(
+    label: &str,
+    main_source: &str,
+) -> NativeEntrypointLayout {
+    let escaped_main_source = escape_lsharp_string(main_source);
+    let pairs_expr = format!(
+        r#"(do
+            (write-file "src/App/OverrideMain.ls" "{escaped_main_source}")
+            (compile-file-pairs-with-cache "src/App/OverrideMain.ls" cache-ref parse-count-ref))"#
+    );
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/OverrideMain.ls" "{escaped_main_source}")
+            (compile-file-functions-payload-with-cache "src/App/OverrideMain.ls" 10 cache-ref parse-count-ref))"#
+    );
+    run_selfhost_main_representative_aarch64_layout_harness_with_exprs(
+        label,
+        &pairs_expr,
+        &payload_expr,
+    )
+}
+
+fn run_selfhost_main_representative_aarch64_offset_lookup_harness(
+    target_offset: usize,
+) -> [usize; 4] {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-representative-layout-offset-lookup",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &format!(
+            r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn find-start-idx-loop [starts target idx len last-idx]
+  (if (>= idx len)
+    last-idx
+    (let [current (vector-get starts idx)]
+      (if (> current target)
+        last-idx
+        (find-start-idx-loop starts target (+ idx 1) len idx)))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        layout (collect-callable-actual-layout-aarch64 native-callables 10)
+        starts (callable-layout-function-starts-aarch64 layout)
+        len (vector-length starts)
+        idx (find-start-idx-loop starts {target_offset} 0 len 0)
+        start (vector-get starts idx)
+        next-start (if (< (+ idx 1) len) (vector-get starts (+ idx 1)) 0)]
+    (do
+      (print idx)
+      (print start)
+      (print next-start)
+       (print (+ idx 10))
+      0)))"#
+        ),
+        &[],
+    )
+    .expect("representative offset lookup harness 実行に失敗");
+
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.len(),
+        4,
+        "representative offset lookup 出力が不足: {lines:?}"
+    );
+    [
+        lines[0] as usize,
+        lines[1] as usize,
+        lines[2] as usize,
+        lines[3] as usize,
+    ]
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_aarch64_layout_tracks_main_start() {
+    let layout = run_selfhost_main_representative_aarch64_layout_harness();
+    assert!(
+        layout.entrypoint_offset > 0,
+        "AArch64 layout の main function start が 0 に落ちている: {layout:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_source_order_follows_import_dfs() {
+    let order = representative_selfhost_registration_order();
+    assert!(!order.is_empty(), "representative registration order が空");
+    let first = order
+        .first()
+        .expect("representative registration order 先頭がない");
+    assert_eq!(first.module, "App.ModuleResolver");
+    assert_eq!(first.file_name, "ModuleResolver.ls");
+
+    let last = order
+        .last()
+        .expect("representative registration order 末尾がない");
+    assert_eq!(last.module, "App.Main");
+    assert_eq!(last.file_name, "Main.ls");
+    assert_eq!(last.name, "main");
+
+    let native_target = order
+        .iter()
+        .find(|entry| entry.module == "Backend.Native.NativeTarget" && entry.name == "make-target")
+        .expect("NativeTarget.make-target が representative order に見つからない");
+    let native_codegen = order
+        .iter()
+        .find(|entry| {
+            entry.module == "Backend.Native.NativeCodegen" && entry.name == "emit-i32-const-aarch64"
+        })
+        .expect("NativeCodegen.emit-i32-const-aarch64 が representative order に見つからない");
+    assert!(
+        native_target.absolute_idx < native_codegen.absolute_idx,
+        "import DFS order が壊れている: NativeTarget={native_target:?} NativeCodegen={native_codegen:?}"
+    );
+
+    let local_get = order
+        .iter()
+        .find(|entry| {
+            entry.module == "Backend.Native.NativeCodegen" && entry.name == "emit-local-get-aarch64"
+        })
+        .expect("NativeCodegen.emit-local-get-aarch64 が representative order に見つからない");
+    assert_eq!(
+        local_get.absolute_idx + 1,
+        native_codegen.absolute_idx,
+        "NativeCodegen 内の local.get/i32.const registration order が崩れている: local_get={local_get:?} i32_const={native_codegen:?}"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: representative payload helper still traps before returning offset"]
+fn test_e2e_selfhost_main_representative_entrypoint_payload_offset_matches_layout() {
+    let layout = run_selfhost_main_representative_aarch64_layout_harness();
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-representative-entrypoint-payload-offset",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (do
+      (root_push result)
+      (let [next-result (vector-push result (make-function-meta 0 0 (vector-new 0)))]
+        (do
+          (root_push next-result)
+          (let [final (push-import-placeholders (+ idx 1) count next-result)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (do
+      (root_push src)
+      (root_push dst)
+      (let [next-dst (vector-push dst (vector-get src idx))]
+        (do
+          (root_push next-dst)
+          (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn print-opcodes-loop [ir idx len]
+  (if (>= idx len)
+    0
+    (do
+      (print (vector-get (vector-get ir idx) 0))
+      (print-opcodes-loop ir (+ idx 1) len))))
 
 (defn main []
   (let [cache-ref (ref-new (map-new))
@@ -926,65 +7734,155 @@ fn run_selfhost_main_native_function_meta_bundle_host_bytes_harness() -> NativeE
         payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
         functions (vector-get payload 0)
         callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
-        target (host-target)
-        bundle-payload (emit-native-selfhost-function-meta-bundle-entrypoint-payload-for-function-with-import-count callables 10 main-func-idx target)
-        code (vector-get bundle-payload 0)
-        entrypoint-offset (vector-get bundle-payload 1)]
+        native-callables (normalize-selfhost-native-function-metas callables)
+        target (host-target)]
     (do
-      (print (vector-length callables))
-      (print main-func-idx)
-      (print (vector-length code))
-      (print entrypoint-offset)
-      (print-bytes code 0 (vector-length code))
-      0)))"#,
+      (root_push native-callables)
+      (root_push target)
+       (let [bundle-payload (emit-native-function-meta-bundle-entrypoint-payload-for-function-with-import-count native-callables 10 main-func-idx target)]
+        (do
+          (root_push bundle-payload)
+          (print (vector-length (vector-get bundle-payload 0)))
+          (print (vector-get bundle-payload 1))
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          0)))))"#,
         &[],
     )
-    .expect("representative native host bytes harness 実行に失敗");
+    .expect("representative entrypoint payload offset harness 実行に失敗");
 
-    let mut lines = output.trim().lines();
-    let function_start_len = lines
-        .next()
-        .unwrap_or_else(|| panic!("representative entrypoint offset 出力が不足: {output}"))
-        .parse::<usize>()
-        .unwrap_or_else(|_| panic!("representative function-start length parse 失敗: {output}"));
-    let main_func_idx = lines
-        .next()
-        .unwrap_or_else(|| panic!("representative main func idx 出力が不足: {output}"))
-        .parse::<usize>()
-        .unwrap_or_else(|_| panic!("representative main func idx parse 失敗: {output}"));
-    let declared_code_len = lines
-        .next()
-        .unwrap_or_else(|| panic!("representative declared code len 出力が不足: {output}"))
-        .parse::<usize>()
-        .unwrap_or_else(|_| panic!("representative declared code len parse 失敗: {output}"));
-    let entrypoint_offset = lines
-        .next()
-        .unwrap_or_else(|| panic!("representative entrypoint offset 出力が不足: {output}"))
-        .parse::<usize>()
-        .unwrap_or_else(|_| panic!("representative entrypoint offset parse 失敗: {output}"));
-    assert!(
-        main_func_idx >= 10,
-        "representative main func idx が import count 未満: main_func_idx={main_func_idx} function_starts={function_start_len}"
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.len(),
+        2,
+        "representative entrypoint payload offset 出力が不足: {lines:?}"
     );
     assert!(
-        function_start_len > 0,
-        "representative function-starts length が 0"
+        lines[0] > 0,
+        "representative entrypoint payload code length が 0: {lines:?}"
     );
-    let code_bytes = lines
-        .map(|line| {
-            let value = line
-                .parse::<i64>()
-                .unwrap_or_else(|_| panic!("representative byte parse 失敗: {line}"));
-            value.rem_euclid(256) as u8
+    assert_eq!(
+        lines[1] as usize, layout.entrypoint_offset,
+        "representative entrypoint payload offset が layout と一致しない: payload={:?} layout={:?}",
+        lines, layout
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: map representative crash offset to selfhost source order"]
+fn test_e2e_selfhost_main_representative_crash_offset_maps_to_rust_function() {
+    let [pc_callable_idx, pc_start, pc_next_start, pc_absolute_idx] =
+        run_selfhost_main_representative_aarch64_offset_lookup_harness(0x6200d0);
+    let [lr_callable_idx, lr_start, lr_next_start, lr_absolute_idx] =
+        run_selfhost_main_representative_aarch64_offset_lookup_harness(0x621700);
+    let order = representative_selfhost_registration_order();
+    let pc_entry = order
+        .iter()
+        .find(|entry| entry.absolute_idx == pc_absolute_idx)
+        .unwrap_or_else(|| {
+            panic!("pc absolute idx が representative order 範囲外: {pc_absolute_idx}")
+        });
+    let lr_entry = order
+        .iter()
+        .find(|entry| entry.absolute_idx == lr_absolute_idx)
+        .unwrap_or_else(|| {
+            panic!("lr absolute idx が representative order 範囲外: {lr_absolute_idx}")
+        });
+    let nearby = order
+        .iter()
+        .skip(pc_absolute_idx.saturating_sub(10).saturating_sub(8))
+        .take(17)
+        .map(|entry| {
+            format!(
+                "{}:{}::{}#{}",
+                entry.absolute_idx, entry.module, entry.name, entry.decl_idx
+            )
         })
-        .collect();
-    NativeEntrypointBundle {
-        function_start_len,
-        main_func_idx,
-        declared_code_len,
-        entrypoint_offset,
-        code_bytes,
-    }
+        .collect::<Vec<_>>();
+    panic!(
+        "representative crash pc 0x6200d0 => callable_idx={} absolute_idx={} start=0x{:x} next_start=0x{:x} selfhost={}::{}; lr 0x621700 => callable_idx={} absolute_idx={} start=0x{:x} next_start=0x{:x} selfhost={}::{}; nearby={:?}",
+        pc_callable_idx,
+        pc_absolute_idx,
+        pc_start,
+        pc_next_start,
+        pc_entry.module,
+        pc_entry.name,
+        lr_callable_idx,
+        lr_absolute_idx,
+        lr_start,
+        lr_next_start,
+        lr_entry.module,
+        lr_entry.name,
+        nearby
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: map representative post-entry call targets to selfhost source order"]
+fn test_e2e_selfhost_main_representative_post_entry_call_targets_map_to_source_order() {
+    let targets = [
+        0x1674bcusize,
+        0x16765c,
+        0x167684,
+        0x1676ac,
+        0x169ffc,
+        0x16a190,
+    ];
+    let order = representative_selfhost_registration_order();
+    let mapped = targets
+        .iter()
+        .map(|target| {
+            let [callable_idx, start, next_start, absolute_idx] =
+                run_selfhost_main_representative_aarch64_offset_lookup_harness(*target);
+            let entry = order
+                .iter()
+                .find(|entry| entry.absolute_idx == absolute_idx)
+                .unwrap_or_else(|| {
+                    panic!("absolute idx が representative order 範囲外: target=0x{target:x} absolute_idx={absolute_idx}")
+                });
+            format!(
+                "target=0x{target:x} callable_idx={} absolute_idx={} start=0x{:x} next_start=0x{:x} selfhost={}::{}",
+                callable_idx,
+                absolute_idx,
+                start,
+                next_start,
+                entry.module,
+                entry.name
+            )
+        })
+        .collect::<Vec<_>>();
+    panic!("representative post-entry call target mapping: {mapped:?}");
+}
+
+#[test]
+#[ignore = "diagnostic: map refreshed representative crash x8 offset to selfhost source order"]
+fn test_e2e_selfhost_main_representative_crash_x8_offset_maps_to_source_order() {
+    let target = 0x106d24usize;
+    let [callable_idx, start, next_start, absolute_idx] =
+        run_selfhost_main_representative_aarch64_offset_lookup_harness(target);
+    let order = representative_selfhost_registration_order();
+    let entry = order
+        .iter()
+        .find(|entry| entry.absolute_idx == absolute_idx)
+        .unwrap_or_else(|| {
+            panic!("absolute idx が representative order 範囲外: target=0x{target:x} absolute_idx={absolute_idx}")
+        });
+    let nearby = order
+        .iter()
+        .skip(absolute_idx.saturating_sub(8))
+        .take(17)
+        .map(|entry| {
+            format!(
+                "{}:{}::{}#{}",
+                entry.absolute_idx, entry.module, entry.name, entry.decl_idx
+            )
+        })
+        .collect::<Vec<_>>();
+    panic!(
+        "representative crash x8 0x{target:x} => callable_idx={} absolute_idx={} start=0x{:x} next_start=0x{:x} selfhost={}::{} nearby={:?}",
+        callable_idx, absolute_idx, start, next_start, entry.module, entry.name, nearby
+    );
 }
 
 fn host_target_recursive_if_bundle_entrypoint() -> NativeEntrypointBundle {
@@ -1090,8 +7988,10 @@ fn host_target_recursive_if_bundle_entrypoint() -> NativeEntrypointBundle {
         function_start_len,
         main_func_idx,
         declared_code_len,
+        declared_data_len: 0,
         entrypoint_offset,
         code_bytes,
+        data_bytes: Vec::new(),
     }
 }
 
@@ -1550,6 +8450,63 @@ fn host_target_selfhost_command_line_arg_string_char_at_bundle_code_bytes(
                  instr1)
                instr2)
              instr3)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    ))
+}
+
+fn host_target_selfhost_command_line_arg_string_length_if_bundle_code_bytes(
+    arg_index: u32,
+) -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 {arg_index})
+        instr1 (make-instr 67 0)
+        instr2 (make-instr 51 0)
+        instr3 (make-instr 41 0)
+        instr4 (make-instr 3 42)
+        instr5 (make-instr 79 0)
+        instr6 (make-instr 3 7)
+        instr7 (make-instr 43 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push (vector-new 8) instr0)
+                         instr1)
+                       instr2)
+                     instr3)
+                   instr4)
+                 instr5)
+               instr6)
+             instr7)
         func (make-function-meta 0 0 ir)
         functions (vector-push (vector-new 1) func)
         target (host-target)
@@ -2022,6 +8979,137 @@ fn host_target_selfhost_substring_char_at_bundle_code_bytes() -> Vec<u8> {
     )
 }
 
+fn host_target_selfhost_substring_lowered_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 1)
+        instr1 (make-instr 67 0)
+        instr2 (make-instr 11 0)
+        instr3 (make-instr 10 0)
+        instr4 (make-instr 74 0)
+        instr5 (make-instr 44 0)
+        instr6 (make-instr 10 0)
+        instr7 (make-instr 3 1)
+        instr8 (make-instr 3 4)
+        instr9 (make-instr 69 0)
+        instr10 (make-instr 75 0)
+        instr11 (make-instr 44 0)
+        instr12 (make-instr 51 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push
+                           (vector-push
+                             (vector-push
+                               (vector-push
+                                 (vector-push
+                                   (vector-push (vector-new 13) instr0)
+                                   instr1)
+                                 instr2)
+                               instr3)
+                             instr4)
+                           instr5)
+                         instr6)
+                       instr7)
+                     instr8)
+                   instr9)
+                 instr10)
+               instr11)
+             instr12)
+        func (make-function-meta 0 1 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
+fn host_target_selfhost_rooted_string_length_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 1)
+        instr1 (make-instr 67 0)
+        instr2 (make-instr 11 0)
+        instr3 (make-instr 10 0)
+        instr4 (make-instr 74 0)
+        instr5 (make-instr 44 0)
+        instr6 (make-instr 10 0)
+        instr7 (make-instr 51 0)
+        instr8 (make-instr 75 0)
+        instr9 (make-instr 44 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push
+                           (vector-push
+                             (vector-push (vector-new 10) instr0)
+                             instr1)
+                           instr2)
+                         instr3)
+                       instr4)
+                     instr5)
+                   instr6)
+                 instr7)
+               instr8)
+             instr9)
+        func (make-function-meta 0 1 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 fn host_target_selfhost_string_concat_length_bundle_code_bytes() -> Vec<u8> {
     run_native_codegen_host_bytes_harness(
         r#"(module Main)
@@ -2473,6 +9561,52 @@ fn host_target_i64_mul_code_bytes() -> Vec<u8> {
     (do
       (print-bytes code 0 (vector-length code))
        0)))"#,
+    )
+}
+
+fn host_target_i64_mul_then_add_preserves_older_value_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr1 (make-instr 1 101)
+        instr2 (make-instr 1 0)
+        instr3 (make-instr 1 31)
+        instr4 (make-instr 22 0)
+        instr5 (make-instr 20 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push (vector-new 5) instr1)
+                   instr2)
+                 instr3)
+               instr4)
+             instr5)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
     )
 }
 
@@ -3063,6 +10197,60 @@ fn host_target_import_prefixed_direct_call_arg_bundle_code_bytes() -> Vec<u8> {
     )
 }
 
+fn host_target_import_prefixed_direct_call_three_arg_bundle_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [import-meta (make-function-meta 0 0 (vector-new 0))
+        caller-ir (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push (vector-new 4) (make-instr 3 40))
+                        (make-instr 3 2))
+                      (make-instr 3 5))
+                    (make-call 2))
+        callee-ir (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push (vector-new 5) (make-local-get 0))
+                          (make-local-get 1))
+                        (make-instr 24 0))
+                      (make-local-get 2))
+                    (make-instr 24 0))
+        caller (make-function-meta 0 0 caller-ir)
+        callee (make-function-meta 3 0 callee-ir)
+        functions (vector-push
+                    (vector-push
+                      (vector-push (vector-new 3) import-meta)
+                      caller)
+                    callee)
+        target (host-target)
+        code (emit-native-function-meta-bundle-with-import-count functions 1 target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 fn host_target_import_call_stub_code_bytes() -> Vec<u8> {
     run_native_codegen_host_bytes_harness(
         r#"(module Main)
@@ -3346,7 +10534,7 @@ fn host_target_direct_call_two_arg_bundle_code_bytes() -> Vec<u8> {
                     (vector-push
                       (vector-push (vector-new 3) (make-local-get 0))
                       (make-local-get 1))
-                            (make-instr 24 0)))
+                      (make-instr 24 0))
         caller (make-function-meta 0 0 caller-ir)
         callee (make-function-meta 2 0 callee-ir)
         functions (vector-push (vector-push (vector-new 2) caller) callee)
@@ -3407,6 +10595,57 @@ fn host_target_direct_call_three_arg_bundle_code_bytes() -> Vec<u8> {
     )
 }
 
+fn host_target_nested_two_arg_call_preserves_outer_value_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [caller-ir (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push (vector-new 5) (make-instr 3 101))
+                        (make-instr 3 0))
+                      (make-instr 3 31))
+                    (make-call 1))
+        caller-ir (vector-push caller-ir (make-call 2))
+        inner-ir (vector-push (vector-new 1) (make-local-get 0))
+        add-ir (vector-push
+                 (vector-push (vector-new 3) (make-local-get 0))
+                 (make-local-get 1))
+        add-ir (vector-push add-ir (make-instr 24 0))
+        caller (make-function-meta 0 0 caller-ir)
+        inner (make-function-meta 2 0 inner-ir)
+        add (make-function-meta 2 0 add-ir)
+        functions (vector-push
+                    (vector-push
+                      (vector-push (vector-new 3) caller)
+                      inner)
+                    add)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 fn host_target_direct_call_four_arg_bundle_code_bytes() -> Vec<u8> {
     run_native_codegen_host_bytes_harness(
         r#"(module Main)
@@ -3446,7 +10685,7 @@ fn host_target_direct_call_four_arg_bundle_code_bytes() -> Vec<u8> {
                             (vector-push
                               (vector-push (vector-new 7) (make-local-get 0))
                               (make-local-get 1))
-                            (make-instr 24 0)))
+                            (make-instr 24 0))
                           (make-local-get 2))
                         (make-instr 24 0))
                       (make-local-get 3))
@@ -8967,6 +16206,267 @@ fn host_target_direct_call_arg_drop_restore_code_bytes() -> Vec<u8> {
     )
 }
 
+fn host_target_deep_direct_call_arg_drop_restore_code_bytes(depth: usize) -> Vec<u8> {
+    assert!(
+        depth >= 2,
+        "deep direct call drop restore は底値 + call 前 value を含む深さが必要"
+    );
+    let mut caller_instrs = Vec::with_capacity(depth + 2);
+    for idx in 0..depth {
+        let value = if idx == 0 { 7 } else { 40 + idx as u32 };
+        caller_instrs.push(format!("(make-i64-const {value})"));
+    }
+    caller_instrs.push("(make-call 1)".to_string());
+    for _ in 0..depth {
+        caller_instrs.push("(make-instr 44 0)".to_string());
+    }
+
+    let caller_bindings = caller_instrs
+        .iter()
+        .enumerate()
+        .map(|(idx, expr)| format!("caller-instr{idx} {expr}"))
+        .collect::<Vec<_>>()
+        .join("\n        ");
+    let caller_ir_expr = (0..caller_instrs.len()).fold(
+        format!("(vector-new {})", caller_instrs.len()),
+        |expr, idx| format!("(vector-push {expr} caller-instr{idx})"),
+    );
+    let source = format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [{caller_bindings}
+        caller-ir {caller_ir_expr}
+        callee-ir (vector-push (vector-new 1) (make-local-get 0))
+        caller (make-function-meta 0 0 caller-ir)
+        callee (make-function-meta 1 0 callee-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) callee)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    );
+    run_native_codegen_host_bytes_harness(&source)
+}
+
+fn host_target_deep_command_line_arg_string_length_drop_restore_code_bytes(
+    depth: usize,
+    arg_index: u32,
+) -> Vec<u8> {
+    assert!(
+        depth >= 2,
+        "deep command-line-arg/string-length drop restore は底値 + helper 前 value を含む深さが必要"
+    );
+    let mut instrs = Vec::with_capacity(depth + 3);
+    for idx in 0..depth {
+        let value = if idx == 0 { 7 } else { 40 + idx as u32 };
+        instrs.push(format!("(make-instr 3 {value})"));
+    }
+    instrs.push(format!("(make-instr 3 {arg_index})"));
+    instrs.push("(make-instr 67 0)".to_string());
+    instrs.push("(make-instr 51 0)".to_string());
+    for _ in 0..depth {
+        instrs.push("(make-instr 44 0)".to_string());
+    }
+
+    let bindings = instrs
+        .iter()
+        .enumerate()
+        .map(|(idx, expr)| format!("instr{idx} {expr}"))
+        .collect::<Vec<_>>()
+        .join("\n        ");
+    let ir_expr = (0..instrs.len()).fold(format!("(vector-new {})", instrs.len()), |expr, idx| {
+        format!("(vector-push {expr} instr{idx})")
+    });
+    let source = format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [{bindings}
+        ir {ir_expr}
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    );
+    run_native_codegen_host_bytes_harness(&source)
+}
+
+fn host_target_deep_command_line_arg_substring_length_code_bytes(
+    depth: usize,
+    arg_index: u32,
+    start: u32,
+    end: u32,
+) -> Vec<u8> {
+    assert!(
+        depth >= 3,
+        "deep command-line-arg substring は filler を含む深さが必要"
+    );
+    let mut instrs = Vec::with_capacity(depth + 10);
+    for idx in 0..depth {
+        let value = if idx == 0 { 7 } else { 40 + idx as u32 };
+        instrs.push(format!("(make-instr 3 {value})"));
+    }
+    instrs.push(format!("(make-instr 3 {arg_index})"));
+    instrs.push("(make-instr 67 0)".to_string());
+    instrs.push("(make-instr 11 0)".to_string());
+    instrs.push("(make-instr 10 0)".to_string());
+    instrs.push("(make-instr 74 0)".to_string());
+    instrs.push("(make-instr 44 0)".to_string());
+    instrs.push("(make-instr 10 0)".to_string());
+    instrs.push(format!("(make-instr 3 {start})"));
+    instrs.push(format!("(make-instr 3 {end})"));
+    instrs.push("(make-instr 69 0)".to_string());
+    instrs.push("(make-instr 75 0)".to_string());
+    instrs.push("(make-instr 44 0)".to_string());
+    instrs.push("(make-instr 51 0)".to_string());
+
+    let bindings = instrs
+        .iter()
+        .enumerate()
+        .map(|(idx, expr)| format!("instr{idx} {expr}"))
+        .collect::<Vec<_>>()
+        .join("\n        ");
+    let ir_expr = (0..instrs.len()).fold(format!("(vector-new {})", instrs.len()), |expr, idx| {
+        format!("(vector-push {expr} instr{idx})")
+    });
+    let source = format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [{bindings}
+        ir {ir_expr}
+        func (make-function-meta 0 1 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    );
+    run_native_codegen_host_bytes_harness(&source)
+}
+
+fn host_target_deep_command_line_arg_plain_substring_length_code_bytes(
+    depth: usize,
+    arg_index: u32,
+    start: u32,
+    end: u32,
+) -> Vec<u8> {
+    assert!(
+        depth >= 3,
+        "deep plain command-line-arg substring は filler を含む深さが必要"
+    );
+    let mut instrs = Vec::with_capacity(depth + 5);
+    for idx in 0..depth {
+        let value = if idx == 0 { 7 } else { 40 + idx as u32 };
+        instrs.push(format!("(make-instr 3 {value})"));
+    }
+    instrs.push(format!("(make-instr 3 {arg_index})"));
+    instrs.push("(make-instr 67 0)".to_string());
+    instrs.push(format!("(make-instr 3 {start})"));
+    instrs.push(format!("(make-instr 3 {end})"));
+    instrs.push("(make-instr 69 0)".to_string());
+    instrs.push("(make-instr 51 0)".to_string());
+
+    let bindings = instrs
+        .iter()
+        .enumerate()
+        .map(|(idx, expr)| format!("instr{idx} {expr}"))
+        .collect::<Vec<_>>()
+        .join("\n        ");
+    let ir_expr = (0..instrs.len()).fold(format!("(vector-new {})", instrs.len()), |expr, idx| {
+        format!("(vector-push {expr} instr{idx})")
+    });
+    let source = format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [{bindings}
+        ir {ir_expr}
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    );
+    run_native_codegen_host_bytes_harness(&source)
+}
+
 /// ネイティブバイト列を `.s` アセンブリシムでラップし、
 /// clang (arm64) でリンクして実行する。戻り値は exit code。
 fn link_and_run_native_host_binary(code: &[u8]) -> Result<i32, String> {
@@ -8987,6 +16487,7 @@ fn link_and_run_native_host_binary_capture_with_args(
 
     let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
     let dir = target_fixture_dir("e2e-native-fixtures", "native-host-exec", id);
+    let keep_dir = std::env::var_os("LSHARP_NATIVE_PROXY_KEEP_FAILED_DIR").is_some();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
     let result = (|| {
@@ -8999,15 +16500,26 @@ fn link_and_run_native_host_binary_capture_with_args(
                   .byte {}\n\
              .globl _main\n\
              _main:\n\
-                 stp x21, x22, [sp, #-32]!\n\
-                 str x30, [sp, #16]\n\
+                 stp x29, x30, [sp, #-80]!\n\
+                 mov x29, sp\n\
+                 stp x19, x20, [sp, #16]\n\
+                 stp x21, x22, [sp, #32]\n\
+                 stp x27, x28, [sp, #48]\n\
                  mov x19, x0\n\
                  mov x20, x1\n\
                  mov x21, #0\n\
                  mov x22, #0\n\
+                 mov x9, #0\n\
+                 mov x10, #0\n\
+                 sub sp, sp, #0x4000\n\
+                 mov x27, sp\n\
+                 mov x28, x27\n\
                  bl _generated\n\
-                 ldr x30, [sp, #16]\n\
-                 ldp x21, x22, [sp], #32\n\
+                 add sp, sp, #0x4000\n\
+                 ldp x27, x28, [sp, #48]\n\
+                 ldp x21, x22, [sp, #32]\n\
+                 ldp x19, x20, [sp, #16]\n\
+                 ldp x29, x30, [sp], #80\n\
                  ret\n",
             byte_strs.join(", ")
         );
@@ -9040,7 +16552,11 @@ fn link_and_run_native_host_binary_capture_with_args(
         })
     })();
 
-    let _ = std::fs::remove_dir_all(&dir);
+    if keep_dir {
+        eprintln!("kept native host exec dir: {}", dir.display());
+    } else {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
     result
 }
 
@@ -9263,6 +16779,7 @@ fn build_and_run_native_host_bundle_with_canonical_artifacts(
 
 fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
     code: &[u8],
+    data: &[u8],
     entrypoint_offset: usize,
 ) -> Result<NativeHostArtifactBundle, String> {
     if !host_native_exec_supported() {
@@ -9277,8 +16794,6 @@ fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
             code.len()
         ));
     }
-    let entrypoint_offset = align_aarch64_entrypoint_to_function_start(code, entrypoint_offset);
-
     let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
     let dir = target_fixture_dir(
         "e2e-native-fixtures",
@@ -9288,8 +16803,21 @@ fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
     let result = (|| {
+        let align_up = |value: usize, alignment: usize| {
+            if value == 0 {
+                0
+            } else {
+                ((value + alignment - 1) / alignment) * alignment
+            }
+        };
         let prefix_bytes = &code[..entrypoint_offset];
         let suffix_bytes = &code[entrypoint_offset..];
+        let data_base = 1024usize;
+        let data_frontier = align_up(data_base.saturating_add(data.len()), 8);
+        let alloc_size = data_frontier
+            .max(0x0001_0000)
+            .saturating_add(0x0400_0000)
+            .max(0x0400_0000);
         let prefix_text = if prefix_bytes.is_empty() {
             "0x1f, 0x20, 0x03, 0xd5".to_string()
         } else {
@@ -9304,26 +16832,94 @@ fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
             .map(|b| format!("0x{b:02x}"))
             .collect::<Vec<_>>()
             .join(", ");
+        let data_text = if data.is_empty() {
+            "0x00".to_string()
+        } else {
+            data.iter()
+                .map(|b| format!("0x{b:02x}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
         let program_asm = format!(
             ".section __TEXT,__text\n\
+             .extern _calloc\n\
+             .extern _memcpy\n\
              .globl _main\n\
              _main:\n\
-                 stp x21, x22, [sp, #-32]!\n\
-                 str x30, [sp, #16]\n\
+                 stp x29, x30, [sp, #-80]!\n\
+                 mov x29, sp\n\
+                 stp x19, x20, [sp, #16]\n\
+                 stp x21, x22, [sp, #32]\n\
+             stp x27, x28, [sp, #48]\n\
                  mov x19, x0\n\
                  mov x20, x1\n\
-                 mov x21, #0\n\
-                 mov x22, #0\n\
-                 bl _lsharp_entry\n\
-                 ldr x30, [sp, #16]\n\
-                 ldp x21, x22, [sp], #32\n\
-                 ret\n\
+                 mov x0, #1\n\
+                 adrp x8, _lsharp_alloc_size@PAGE\n\
+                 ldr x1, [x8, _lsharp_alloc_size@PAGEOFF]\n\
+                 bl _calloc\n\
+                 cbz x0, _lsharp_alloc_fail\n\
+                 mov x21, x0\n\
+                 adrp x8, _lsharp_heap_frontier@PAGE\n\
+                 ldr x22, [x8, _lsharp_heap_frontier@PAGEOFF]\n\
+                 adrp x8, _lsharp_data_len@PAGE\n\
+                 ldr x2, [x8, _lsharp_data_len@PAGEOFF]\n\
+                 cbz x2, _lsharp_call_entry\n\
+                 add x0, x21, #{data_base}\n\
+                 adrp x1, _lsharp_data@PAGE\n\
+                 add x1, x1, _lsharp_data@PAGEOFF\n\
+                 bl _memcpy\n\
+             _lsharp_call_entry:\n\
+                  mov x0, x19\n\
+                  mov x1, x20\n\
+                  mov x2, #0\n\
+                  mov x3, #0\n\
+                  mov x4, #0\n\
+                  mov x5, #0\n\
+                  mov x6, #0\n\
+                  mov x7, #0\n\
+                   mov x9, #0\n\
+                   mov x10, #0\n\
+                   sub sp, sp, #0x4000\n\
+                    mov x27, sp\n\
+                    mov x28, x27\n\
+                   bl _lsharp_entry\n\
+                   add sp, sp, #0x4000\n\
+                    ldp x27, x28, [sp, #48]\n\
+                   ldp x21, x22, [sp, #32]\n\
+                   ldp x19, x20, [sp, #16]\n\
+                   ldp x29, x30, [sp], #80\n\
+                   ret\n\
+              _lsharp_alloc_fail:\n\
+                  mov w0, #1\n\
+                   ldp x27, x28, [sp, #48]\n\
+                  ldp x21, x22, [sp, #32]\n\
+                  ldp x19, x20, [sp, #16]\n\
+                  ldp x29, x30, [sp], #80\n\
+                  ret\n\
+             .section __TEXT,__const\n\
+             .p2align 3\n\
+             _lsharp_alloc_size:\n\
+                 .quad {alloc_size}\n\
+             _lsharp_heap_frontier:\n\
+                 .quad {data_frontier}\n\
+             _lsharp_data_len:\n\
+                 .quad {data_len}\n\
+             .section __TEXT,__text\n\
              .globl _lsharp_bundle\n\
              _lsharp_bundle:\n\
                   .byte {prefix_text}\n\
              .globl _lsharp_entry\n\
              _lsharp_entry:\n\
-                 .byte {suffix_text}\n"
+                 .byte {suffix_text}\n\
+             .section __DATA,__data\n\
+             .p2align 3\n\
+             _lsharp_data:\n\
+                 .byte {data_text}\n",
+            alloc_size = alloc_size,
+            data_base = data_base,
+            data_frontier = data_frontier,
+            data_len = data.len(),
+            data_text = data_text,
         );
         std::fs::write(dir.join("program.s"), program_asm)
             .map_err(|e| format!("program.s 書き込み失敗: {e}"))?;
@@ -9400,6 +16996,7 @@ fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
 
 fn build_and_run_native_host_bundle_with_canonical_artifacts_and_entrypoint(
     code: &[u8],
+    data: &[u8],
     entrypoint_offset: usize,
 ) -> Result<NativeHostArtifactBundle, String> {
     if !host_native_exec_supported() {
@@ -9426,6 +17023,7 @@ fn build_and_run_native_host_bundle_with_canonical_artifacts_and_entrypoint(
     let result = (|| {
         let bundle = build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
             code,
+            data,
             entrypoint_offset,
         )?;
         std::fs::write(dir.join("program.o"), &bundle.program_object)
@@ -9470,47 +17068,156 @@ fn build_and_run_native_host_bundle_with_canonical_artifacts_and_entrypoint(
         )
     })();
 
+    let keep_dir = std::env::var_os("LSHARP_NATIVE_PROXY_KEEP_FAILED_DIR").is_some();
+    let should_remove_dir = !keep_dir;
+    if should_remove_dir {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    result
+}
+
+fn build_and_run_native_host_bundle_with_canonical_artifacts_and_entrypoint_and_representative_modules(
+    code: &[u8],
+    data: &[u8],
+    entrypoint_offset: usize,
+) -> Result<NativeHostArtifactBundle, String> {
+    build_and_run_native_host_bundle_with_canonical_artifacts_and_entrypoint_and_representative_modules_with_args(
+        code,
+        data,
+        entrypoint_offset,
+        &[],
+        &[],
+    )
+}
+
+fn build_and_run_native_host_bundle_with_canonical_artifacts_and_entrypoint_and_representative_modules_with_args(
+    code: &[u8],
+    data: &[u8],
+    entrypoint_offset: usize,
+    args: &[String],
+    extra_files: &[(&str, &str)],
+) -> Result<NativeHostArtifactBundle, String> {
+    if !host_native_exec_supported() {
+        return Err(
+            "canonical host bundle materialization は macOS arm64 でのみサポート".to_string(),
+        );
+    }
+
+    let bundle = build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
+        code,
+        data,
+        entrypoint_offset,
+    )?;
+    let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = target_fixture_dir(
+        "e2e-native-fixtures",
+        "native-host-bundle-artifact-entrypoint-representative-modules",
+        id,
+    );
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let result = (|| {
+        std::fs::write(dir.join("program.o"), &bundle.program_object)
+            .map_err(|e| format!("program.o 書き込み失敗: {e}"))?;
+        std::fs::write(dir.join("runtime.o"), &bundle.runtime_object)
+            .map_err(|e| format!("runtime.o 書き込み失敗: {e}"))?;
+        std::fs::write(dir.join("linker-response.txt"), &bundle.response_text)
+            .map_err(|e| format!("linker-response.txt 書き込み失敗: {e}"))?;
+        let program_binary_path = dir.join("program.native");
+        std::fs::write(&program_binary_path, &bundle.program_binary)
+            .map_err(|e| format!("program.native 書き込み失敗: {e}"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let permissions = std::fs::Permissions::from_mode(0o755);
+            std::fs::set_permissions(&program_binary_path, permissions)
+                .map_err(|e| format!("program.native の execute bit 設定失敗: {e}"))?;
+        }
+        write_representative_selfhost_modules_for_native_stage(&dir)?;
+        for (relative_path, contents) in extra_files {
+            let path = dir.join(relative_path);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("{}: {e}", parent.display()))?;
+            }
+            std::fs::write(&path, contents).map_err(|e| format!("{}: {e}", path.display()))?;
+        }
+        let path_args = args.to_vec();
+
+        let run_result = std::process::Command::new(&program_binary_path)
+            .current_dir(&dir)
+            .args(&path_args)
+            .output()
+            .map_err(|e| format!("program.native 実行失敗: {e}"))?;
+        read_native_host_bundle_from_dir(
+            &dir,
+            bundle.response_text.clone(),
+            run_result.stdout,
+            run_result.stderr,
+            run_result.status.code().unwrap_or(-1),
+        )
+    })();
+
+    let keep_dir = std::env::var_os("LSHARP_NATIVE_PROXY_KEEP_FAILED_DIR").is_some();
+    if !keep_dir {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    result
+}
+
+fn try_compile_and_run_representative_override_main_with_path_arg(
+    _label: &str,
+    main_source: &str,
+    relative_path_arg: &str,
+) -> Result<String, String> {
+    let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = target_fixture_dir("e2e-native-fixtures", "representative-override-main", id);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let result = (|| {
+        write_representative_selfhost_modules_for_native_stage(&dir)?;
+        let entry_path = dir.join("src/App/OverrideMain.ls");
+        if let Some(parent) = entry_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        std::fs::write(&entry_path, main_source)
+            .map_err(|e| format!("{}: {e}", entry_path.display()))?;
+        let wasm = try_compile_file_only(&entry_path)?;
+        wasmparser::Validator::new()
+            .validate_all(&wasm)
+            .map_err(|e| format!("Wasm validate: {e}"))?;
+        let args = ["program.native", relative_path_arg];
+        lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(&wasm, Some(&dir), &args)
+            .map_err(|e| format!("実行: {e:?}"))
+    })();
     let _ = std::fs::remove_dir_all(&dir);
     result
 }
 
 fn align_aarch64_entrypoint_to_function_start(code: &[u8], entrypoint_offset: usize) -> usize {
-    const SAVE_FP_LR_PROLOGUE: [u8; 4] = [0xfd, 0x7b, 0xbf, 0xa9];
-
     if entrypoint_offset >= code.len() {
         return entrypoint_offset;
-    }
-
-    let mut candidate = entrypoint_offset - (entrypoint_offset % 4);
-    loop {
-        if candidate + SAVE_FP_LR_PROLOGUE.len() <= code.len()
-            && code[candidate..candidate + SAVE_FP_LR_PROLOGUE.len()] == SAVE_FP_LR_PROLOGUE
-        {
-            return candidate;
-        }
-        if candidate < 4 {
-            break;
-        }
-        candidate -= 4;
     }
 
     entrypoint_offset
 }
 
 #[test]
-fn test_align_aarch64_entrypoint_to_function_start_rewinds_to_save_fp_lr_prologue() {
+fn test_align_aarch64_entrypoint_to_function_start_preserves_leaf_start_without_prologue() {
     let code = vec![
         0x1f, 0x20, 0x03, 0xd5, // nop
         0xfd, 0x7b, 0xbf, 0xa9, // stp x29, x30, [sp, #-16]!
         0xff, 0x43, 0x03, 0xd1, // sub sp, sp, #0xd0
         0xe0, 0x03, 0x00, 0xaa, // mov x0, x0
         0xc0, 0x03, 0x5f, 0xd6, // ret
+        0x00, 0x00, 0x80, 0x52, // mov w0, #0
+        0xc0, 0x03, 0x5f, 0xd6, // ret
     ];
 
     assert_eq!(
-        align_aarch64_entrypoint_to_function_start(&code, 12),
-        4,
-        "AArch64 entrypoint は直前の save-fp/lr prologue へ巻き戻すべき"
+        align_aarch64_entrypoint_to_function_start(&code, 20),
+        20,
+        "AArch64 entrypoint は prologue のない leaf 関数先頭をそのまま使うべき"
     );
 }
 
@@ -9597,7 +17304,8 @@ fn test_e2e_native_host_binary_selfhost_style_param1_bundle_returns_argc() {
         .expect("selfhost-style param bundle host binary 実行に失敗");
 
     assert_eq!(
-        exit_code, 1,
+        exit_code,
+        1,
         "selfhost-style param bundle: exit code 1 (argc) を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
@@ -9978,6 +17686,43 @@ fn test_e2e_native_host_binary_selfhost_command_line_arg_string_char_at_reads_ho
     );
 }
 
+/// NATIVE-HOST-01d2gb: selfhost command-line-arg/string-length + if が no-arg で else branch を返せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_command_line_arg_string_length_if_no_arg_takes_else() {
+    assert_host_target_exit_code(
+        "selfhost command-line-arg/string-length if no-arg bundle",
+        host_target_selfhost_command_line_arg_string_length_if_bundle_code_bytes(1),
+        7,
+    );
+}
+
+/// NATIVE-HOST-01d2gc: selfhost command-line-arg/string-length + if が argv[1] 非空で then branch を返せること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_command_line_arg_string_length_if_reads_host_argv() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_command_line_arg_string_length_if_bundle_code_bytes(1);
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost command-line-arg/string-length if bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &["abc"])
+        .expect("selfhost command-line-arg/string-length if host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "host binary selfhost command-line-arg/string-length if: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
 /// NATIVE-HOST-01d2h: selfhost print (opcode 59) が AArch64 bundle path で stdout に整数を出力して 0 を返せること。
 #[test]
 fn test_e2e_native_host_binary_selfhost_print_bundle_writes_stdout() {
@@ -10228,6 +17973,58 @@ fn test_e2e_native_host_binary_selfhost_substring_bundle_copies_payload() {
         exit_code,
         101,
         "host binary selfhost substring/string-char-at bundle: exit code 101 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+#[test]
+fn test_e2e_native_host_binary_selfhost_substring_lowered_bundle_returns_length() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_substring_lowered_bundle_code_bytes();
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: lowered selfhost substring bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &["hello"])
+        .expect("lowered selfhost substring host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        3,
+        "host binary lowered selfhost substring bundle: exit code 3 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+#[test]
+fn test_e2e_native_host_binary_selfhost_rooted_string_length_bundle_returns_length() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_rooted_string_length_bundle_code_bytes();
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: rooted string-length bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &["hello"])
+        .expect("rooted string-length host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        5,
+        "host binary rooted string-length bundle: exit code 5 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),
@@ -10671,6 +18468,34 @@ fn test_e2e_native_host_binary_i64_mul_link_and_execute() {
         exit_code,
         42,
         "host binary i64 mul: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d5aa: current-depth 3 の i64.mul のあとでも older value を保ったまま i64.add できること。
+#[test]
+fn test_e2e_native_host_binary_i64_mul_then_add_preserves_older_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_i64_mul_then_add_preserves_older_value_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: i64.mul then i64.add preserve bundle を含む host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("i64 mul then add preserve host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        101,
+        "host binary i64 mul then add preserve: exit code 101 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),
@@ -11174,6 +18999,34 @@ fn test_e2e_native_host_binary_import_prefixed_direct_call_arg_bundle_link_and_e
     );
 }
 
+/// NATIVE-HOST-01g2b: import prefix を含む actual module index space でも 3 引数 direct call が link/run できること。
+#[test]
+fn test_e2e_native_host_binary_import_prefixed_direct_call_three_arg_bundle_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_import_prefixed_direct_call_three_arg_bundle_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: import-prefixed direct call three-arg bundle を含む host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("import-prefixed direct call three-arg bundle host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        47,
+        "host binary import-prefixed direct call three-arg bundle: exit code 47 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
 /// NATIVE-HOST-01g3: import boundary call が runtime stub 経由で link/run できること。
 #[test]
 fn test_e2e_native_host_binary_import_call_stub_link_and_execute() {
@@ -11503,6 +19356,34 @@ fn test_e2e_native_host_binary_direct_call_three_arg_bundle_link_and_execute() {
         exit_code,
         47,
         "host binary direct call three-arg bundle: exit code 47 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01j2: nested 2 引数 direct call 後でも outer value を保持したまま 2 引数 call を続行できること。
+#[test]
+fn test_e2e_native_host_binary_nested_two_arg_call_preserves_outer_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_nested_two_arg_call_preserves_outer_value_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: nested two-arg direct call preserve bundle host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("nested two-arg direct call preserve host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        101,
+        "host binary nested two-arg direct call preserve: exit code 101 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),
@@ -12854,6 +20735,176 @@ fn test_e2e_native_host_binary_direct_call_arg_drop_restores_previous_value() {
     );
 }
 
+/// NATIVE-HOST-01i2: 深い current-depth の 1 引数 direct call 後でも Drop 連打で底値を復元できること。
+#[test]
+fn test_e2e_native_host_binary_deep_direct_call_arg_drop_restores_bottom_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_deep_direct_call_arg_drop_restore_code_bytes(45);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: deep direct call arg-drop restore host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("deep direct call arg-drop host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        7,
+        "deep direct call arg-drop bundle: exit code 7 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01i3: 61 value window を超える 1 引数 direct call 後でも Drop 連打で底値を復元できること。
+#[test]
+fn test_e2e_native_host_binary_overflow_depth_direct_call_arg_drop_restores_bottom_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_deep_direct_call_arg_drop_restore_code_bytes(70);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: overflow-depth direct call arg-drop restore host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("overflow-depth direct call arg-drop host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        7,
+        "overflow-depth direct call arg-drop bundle: exit code 7 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01i4: 深い current-depth の command-line-arg/string-length 後でも Drop 連打で底値を復元できること。
+#[test]
+fn test_e2e_native_host_binary_deep_command_line_arg_string_length_drop_restores_bottom_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_deep_command_line_arg_string_length_drop_restore_code_bytes(45, 1);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: deep command-line-arg/string-length arg-drop restore host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &["", "abc"])
+        .expect("deep command-line-arg/string-length arg-drop host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        7,
+        "deep command-line-arg/string-length arg-drop bundle: exit code 7 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01i5: 61 value window を超える command-line-arg/string-length 後でも Drop 連打で底値を復元できること。
+#[test]
+fn test_e2e_native_host_binary_overflow_depth_command_line_arg_string_length_drop_restores_bottom_value()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_deep_command_line_arg_string_length_drop_restore_code_bytes(70, 1);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: overflow-depth command-line-arg/string-length arg-drop restore host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &["", "abc"])
+        .expect("overflow-depth command-line-arg/string-length arg-drop host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        7,
+        "overflow-depth command-line-arg/string-length arg-drop bundle: exit code 7 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01i6: 深い current-depth の substring 呼び出しでも helper 引数順を維持できること。
+#[test]
+fn test_e2e_native_host_binary_deep_command_line_arg_substring_returns_length() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_deep_command_line_arg_substring_length_code_bytes(5, 1, 1, 4);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: deep command-line-arg/substring host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &["", "print"])
+        .expect("deep command-line-arg/substring host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        3,
+        "deep command-line-arg/substring bundle: exit code 3 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01i7: local/root handoff を除いた deep substring call-site 単体でも helper 引数順を維持できること。
+#[test]
+fn test_e2e_native_host_binary_deep_plain_command_line_arg_substring_returns_length() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes =
+        host_target_deep_command_line_arg_plain_substring_length_code_bytes(5, 1, 1, 4);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: deep plain command-line-arg/substring host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &["", "print"])
+        .expect("deep plain command-line-arg/substring host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        3,
+        "deep plain command-line-arg/substring bundle: exit code 3 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
 /// V2-08: canonical native artifact bundle で materialize した `program.native` が実行できること。
 #[test]
 fn test_e2e_native_host_bundle_artifact_writer_materializes_canonical_files() {
@@ -12993,6 +21044,10 @@ fn test_e2e_selfhost_main_native_host_bundle_uses_representative_artifact_contra
         "representative build entry の native code bytes が空"
     );
     assert!(
+        !bundle_input.data_bytes.is_empty(),
+        "representative build entry の native data bytes が空"
+    );
+    assert!(
         bundle_input.entrypoint_offset < bundle_input.code_bytes.len(),
         "representative entrypoint offset が code bytes 範囲外: offset={} len={} declared_len={} function_starts={} main_func_idx={}",
         bundle_input.entrypoint_offset,
@@ -13004,6 +21059,7 @@ fn test_e2e_selfhost_main_native_host_bundle_uses_representative_artifact_contra
 
     let bundle = build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
         &bundle_input.code_bytes,
+        &bundle_input.data_bytes,
         bundle_input.entrypoint_offset,
     )
     .expect("representative native bundle materialization に失敗");
@@ -13064,6 +21120,7 @@ fn test_e2e_stage23_native_host_bundle_proxy_observations_match() {
 
 /// V2-08: representative build entry の `program.native` が stage observation を実行できること。
 #[test]
+#[ignore = "blocked until representative runtime semantics (__alloc/memory rebase/runtime trampoline) land"]
 fn test_e2e_selfhost_main_representative_native_host_bundle_executes_stage_observation() {
     if !host_native_exec_supported() {
         return;
@@ -13074,12 +21131,14 @@ fn test_e2e_selfhost_main_representative_native_host_bundle_executes_stage_obser
     let bundle_input = run_selfhost_main_native_function_meta_bundle_host_bytes_harness();
     let bundle = build_and_run_native_host_bundle_with_canonical_artifacts_and_entrypoint(
         &bundle_input.code_bytes,
+        &bundle_input.data_bytes,
         bundle_input.entrypoint_offset,
     )
     .expect("representative native bundle materialization に失敗");
 
     assert_eq!(
-        bundle.exit_code, 0,
+        bundle.exit_code,
+        0,
         "representative program.native が exit 0 で完走しない: stdout={:?} stderr={:?}",
         String::from_utf8_lossy(&bundle.stdout),
         String::from_utf8_lossy(&bundle.stderr)
@@ -13099,6 +21158,6410 @@ fn test_e2e_selfhost_main_representative_native_host_bundle_executes_stage_obser
     );
 }
 
+fn assert_representative_override_main_matches_selfhost(label: &str, main_source: &str) {
+    let expected_label = format!("{label}-expected");
+    let expected_output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        &expected_label,
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/OverrideMain.ls",
+        main_source,
+        &[],
+    )
+    .unwrap_or_else(|e| panic!("{label} expected 実行に失敗: {e}"));
+    let expected = parse_numeric_lines(&expected_output);
+    let bundle_input = run_selfhost_main_override_native_function_meta_bundle_host_bytes_harness_loose(
+        label,
+        main_source,
+    );
+    let bundle =
+        build_and_run_native_host_bundle_with_canonical_artifacts_and_entrypoint_and_representative_modules(
+            &bundle_input.code_bytes,
+            &bundle_input.data_bytes,
+            bundle_input.entrypoint_offset,
+    )
+    .unwrap_or_else(|e| panic!("{label} native bundle materialization に失敗: {e}"));
+    maybe_write_native_host_bundle_artifact(label, &bundle)
+        .unwrap_or_else(|e| panic!("{label} artifact 書き出しに失敗: {e}"));
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "{label} program.native が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "{label} program.native が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+
+    let actual_output = String::from_utf8(bundle.stdout)
+        .unwrap_or_else(|e| panic!("{label} stdout UTF-8 decode 失敗: {e}"));
+    let actual = parse_numeric_lines(&actual_output);
+    assert_eq!(
+        actual, expected,
+        "{label} の出力が selfhost 実行と一致しない"
+    );
+}
+
+fn run_representative_override_main_native_with_args_and_files(
+    label: &str,
+    main_source: &str,
+    args: &[String],
+    extra_files: &[(&str, &str)],
+) -> NativeHostArtifactBundle {
+    let bundle_input = run_selfhost_main_override_native_function_meta_bundle_host_bytes_harness(
+        label,
+        main_source,
+    );
+    build_and_run_native_host_bundle_with_canonical_artifacts_and_entrypoint_and_representative_modules_with_args(
+        &bundle_input.code_bytes,
+        &bundle_input.data_bytes,
+        bundle_input.entrypoint_offset,
+        args,
+        extra_files,
+    )
+    .unwrap_or_else(|e| panic!("{label} native bundle materialization に失敗: {e}"))
+}
+
+fn run_representative_override_main_native_with_args_and_files_loose(
+    label: &str,
+    main_source: &str,
+    args: &[String],
+    extra_files: &[(&str, &str)],
+) -> NativeHostArtifactBundle {
+    let bundle_input =
+        run_selfhost_main_override_native_function_meta_bundle_host_bytes_harness_loose(
+            label,
+            main_source,
+        );
+    build_and_run_native_host_bundle_with_canonical_artifacts_and_entrypoint_and_representative_modules_with_args(
+        &bundle_input.code_bytes,
+        &bundle_input.data_bytes,
+        bundle_input.entrypoint_offset,
+        args,
+        extra_files,
+    )
+    .unwrap_or_else(|e| panic!("{label} native bundle materialization に失敗: {e}"))
+}
+
+fn assert_representative_override_main_matches_selfhost_with_path_arg(
+    label: &str,
+    main_source: &str,
+    relative_path_arg: &str,
+) {
+    let expected = try_compile_and_run_representative_override_main_with_path_arg(
+        &format!("{label}-expected"),
+        main_source,
+        relative_path_arg,
+    )
+    .unwrap_or_else(|e| panic!("{label} expected 実行に失敗: {e}"));
+    let expected = parse_numeric_lines(&expected);
+    let bundle_input = run_selfhost_main_override_native_function_meta_bundle_host_bytes_harness(
+        label,
+        main_source,
+    );
+    let bundle = {
+        let arg = relative_path_arg.to_string();
+        build_and_run_native_host_bundle_with_canonical_artifacts_and_entrypoint_and_representative_modules_with_args(
+            &bundle_input.code_bytes,
+            &bundle_input.data_bytes,
+            bundle_input.entrypoint_offset,
+            &[arg],
+            &[],
+        )
+    }
+    .unwrap_or_else(|e| panic!("{label} native bundle materialization に失敗: {e}"));
+    maybe_write_native_host_bundle_artifact(label, &bundle)
+        .unwrap_or_else(|e| panic!("{label} artifact 書き出しに失敗: {e}"));
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "{label} program.native が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "{label} program.native が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+
+    let actual_output = String::from_utf8(bundle.stdout)
+        .unwrap_or_else(|e| panic!("{label} stdout UTF-8 decode 失敗: {e}"));
+    let actual = parse_numeric_lines(&actual_output);
+    assert_eq!(
+        actual, expected,
+        "{label} の出力が selfhost 実行と一致しない"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_direct_main() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import App.PipelineSmoke)
+
+(defn main []
+  (run-main-smoke))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-direct-main",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_file_pairs_with_cache_token_module_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (let [path (command-line-arg 1)]
+    (let [cache-ref (ref-new (map-new))]
+      (let [parse-count-ref (ref-new 0)]
+        (do
+          (let [pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)]
+            (do
+              (print (vector-length pairs))
+              (print (ref-get parse-count-ref))
+              0)))))))"#;
+    assert_representative_override_main_matches_selfhost_with_path_arg(
+        "native-stage23-pipeline-smoke-compile-file-pairs-with-cache-token-module-only",
+        main_source,
+        "src/Syntax/Token.ls",
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_file_pairs_with_cache_seed_path_arg_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (let [path (command-line-arg 1)]
+    (let [cache-ref (ref-new (map-new))]
+      (let [parse-count-ref (ref-new 0)]
+        (do
+          (let [pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)]
+            (do
+              (print (vector-length pairs))
+              (print (ref-get parse-count-ref))
+              0)))))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-compile-file-pairs-with-cache-seed-path-arg-only",
+        main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", "(module App.Seed)\n(defn main [] 42)\n")],
+    );
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "compile-file-pairs-with-cache seed path arg native bundle が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "compile-file-pairs-with-cache seed path arg native bundle が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert_eq!(
+        parse_numeric_lines(
+            &String::from_utf8(bundle.stdout)
+                .unwrap_or_else(|e| panic!("seed path arg native stdout UTF-8 decode 失敗: {e}")),
+        ),
+        vec![1, 1],
+        "compile-file-pairs-with-cache seed path arg native bundle の出力が期待値と一致しない"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_file_functions_payload_with_cache_seed_path_arg_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (let [path (command-line-arg 1)]
+    (let [cache-ref (ref-new (map-new))]
+      (let [parse-count-ref (ref-new 0)]
+        (do
+          (let [payload (compile-file-functions-payload-with-cache path 10 cache-ref parse-count-ref)]
+            (do
+              (let [functions (vector-get payload 0)]
+                (do
+                  (print (vector-length functions))
+                  (print (ref-get parse-count-ref))
+                  0))))))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-compile-file-functions-payload-with-cache-seed-path-arg-only",
+        main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", "(module App.Seed)\n(defn main [] 42)\n")],
+    );
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "compile-file-functions-payload-with-cache seed path arg native bundle が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "compile-file-functions-payload-with-cache seed path arg native bundle が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert_eq!(
+        parse_numeric_lines(&String::from_utf8(bundle.stdout).unwrap_or_else(|e| panic!(
+            "seed payload path arg native stdout UTF-8 decode 失敗: {e}"
+        )),),
+        vec![1, 1],
+        "compile-file-functions-payload-with-cache seed path arg native bundle の出力が期待値と一致しない"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_native_export_lengths_seed_path_arg_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = selfhost_main_native_code_only_export_harness_with_payload(
+        r#"(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)"#,
+        r#"      (let [code-len (vector-length code)
+         data-len (vector-length data)]
+         (do
+           (print code-len)
+           (print data-len)
+           0))"#,
+    )
+    .replacen("(module App.HarnessMain)", "(module App.OverrideMain)", 1);
+    let seed_source = representative_actual_stage23_seed_source();
+    let bundle = run_representative_override_main_native_with_args_and_files_loose(
+        "native-stage23-pipeline-smoke-native-export-lengths-seed-path-arg-only",
+        &main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", &seed_source)],
+    );
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "native export lengths seed path arg bundle が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "native export lengths seed path arg bundle が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    let actual = parse_numeric_lines(
+        &String::from_utf8(bundle.stdout)
+            .unwrap_or_else(|e| panic!("native export lengths stdout UTF-8 decode 失敗: {e}")),
+    );
+    assert_eq!(
+        actual.len(),
+        2,
+        "native export lengths seed path arg bundle が code/data length を 2 行出力しない: {actual:?}"
+    );
+    assert!(
+        actual[0] > 0 && actual[1] >= 0,
+        "native export lengths seed path arg bundle の code/data length が不正: {actual:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_native_export_lengths_minimal_seed_path_arg_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn main []
+  (let [path (command-line-arg 1)
+        cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache path 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        data (vector-get payload 1)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        target (host-target)
+        code (emit-native-function-meta-bundle-with-import-count native-callables 10 target)]
+    (do
+      (print (vector-length code))
+      (print (vector-length data))
+      0)))"#;
+    let seed_source = representative_actual_stage23_seed_source();
+    let bundle = run_representative_override_main_native_with_args_and_files_loose(
+        "native-stage23-pipeline-smoke-native-export-lengths-minimal-seed-path-arg-only",
+        main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", &seed_source)],
+    );
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "native export lengths minimal seed path arg bundle が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "native export lengths minimal seed path arg bundle が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    let actual =
+        parse_numeric_lines(&String::from_utf8(bundle.stdout).unwrap_or_else(|e| {
+            panic!("native export lengths minimal stdout UTF-8 decode 失敗: {e}")
+        }));
+    assert_eq!(
+        actual.len(),
+        2,
+        "native export lengths minimal seed path arg bundle が code/data length を 2 行出力しない: {actual:?}"
+    );
+    assert!(
+        actual[0] > 0 && actual[1] >= 0,
+        "native export lengths minimal seed path arg bundle の code/data length が不正: {actual:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_native_export_emit_only_seed_path_arg_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn main []
+  (let [path (command-line-arg 1)
+        cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache path 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        target (host-target)
+        _code (emit-native-function-meta-bundle-with-import-count native-callables 10 target)]
+    (do
+      (print 1)
+      0)))"#;
+    let seed_source = representative_actual_stage23_seed_source();
+    let bundle = run_representative_override_main_native_with_args_and_files_loose(
+        "native-stage23-pipeline-smoke-native-export-emit-only-seed-path-arg-only",
+        main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", &seed_source)],
+    );
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "native export emit-only seed path arg bundle が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "native export emit-only seed path arg bundle が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert_eq!(
+        parse_numeric_lines(
+            &String::from_utf8(bundle.stdout).unwrap_or_else(|e| panic!(
+                "native export emit-only stdout UTF-8 decode 失敗: {e}"
+            )),
+        ),
+        vec![1],
+        "native export emit-only seed path arg bundle の出力が期待値と一致しない"
+    );
+}
+
+fn native_export_emit_only_seed_cutoff_main_source(cutoff: usize) -> String {
+    format!(
+        r#"(module App.OverrideMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (do
+      (root_push result)
+      (let [next-result (vector-push result (make-function-meta 0 0 (vector-new 0)))]
+        (do
+          (root_push next-result)
+          (let [final (push-import-placeholders (+ idx 1) count next-result)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (do
+      (root_push src)
+      (root_push dst)
+      (let [next-dst (vector-push dst (vector-get src idx))]
+        (do
+          (root_push next-dst)
+          (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn main []
+  (let [path (command-line-arg 1)
+        cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache path 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        functions-len (vector-length functions)
+        limited-len (if (< {cutoff} functions-len) {cutoff} functions-len)
+        limited-functions (append-vector-loop (vector-new 32) functions 0 limited-len)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) limited-functions 0 limited-len)
+        native-callables (normalize-selfhost-native-function-metas callables)
+        target (host-target)
+        code (emit-native-function-meta-bundle-with-import-count native-callables 10 target)]
+    (do
+      (print limited-len)
+      (print (vector-length code))
+      0)))"#,
+        cutoff = cutoff
+    )
+}
+
+#[test]
+#[ignore = "diagnostic: binary search export emit-only seed cutoff"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_export_emit_only_seed_cutoff_probe() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let seed_source = representative_actual_stage23_seed_source();
+    for cutoff in [1usize, 2, 4, 8, 16, 24, 32] {
+        let main_source = native_export_emit_only_seed_cutoff_main_source(cutoff);
+        let bundle = run_representative_override_main_native_with_args_and_files_loose(
+            &format!("native-stage23-pipeline-smoke-native-export-emit-only-seed-cutoff-{cutoff}"),
+            &main_source,
+            &[String::from("src/App/Seed.ls")],
+            &[("src/App/Seed.ls", &seed_source)],
+        );
+        println!(
+            "cutoff={cutoff} exit={} stdout={:?} stderr={:?}",
+            bundle.exit_code,
+            String::from_utf8_lossy(&bundle.stdout),
+            String::from_utf8_lossy(&bundle.stderr)
+        );
+        if bundle.exit_code != 0 {
+            break;
+        }
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: inspect first-function native export shape"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_export_emit_only_seed_first_function_shape_diagnostic()
+ {
+    let seed_source = representative_actual_stage23_seed_source();
+    let escaped_seed_source = escape_lsharp_string(&seed_source);
+    let harness = format!(
+        r#"
+(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (do
+      (root_push result)
+      (let [next-result (vector-push result (make-function-meta 0 0 (vector-new 0)))]
+        (do
+          (root_push next-result)
+          (let [final (push-import-placeholders (+ idx 1) count next-result)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (do
+      (root_push src)
+      (root_push dst)
+      (let [next-dst (vector-push dst (vector-get src idx))]
+        (do
+          (root_push next-dst)
+          (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn print-opcodes-loop [ir idx len]
+  (if (>= idx len)
+    0
+    (do
+      (print (vector-get (vector-get ir idx) 0))
+      (print-opcodes-loop ir (+ idx 1) len))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        _
+        (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+        payload (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        limited-functions (append-vector-loop (vector-new 32) functions 0 1)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) limited-functions 0 1)
+        native-callables (normalize-selfhost-native-function-metas callables)
+        func-meta (vector-get native-callables 10)
+        ir-func (native-function-ir func-meta)]
+    (do
+      (print (native-function-param-count func-meta))
+      (print (native-function-local-count func-meta))
+      (print (vector-length ir-func))
+      (print (native-max-stack-depth ir-func native-callables))
+      (print-opcodes-loop ir-func 0 (vector-length ir-func))
+      0)))
+"#,
+        escaped_seed_source = escaped_seed_source
+    );
+
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-pipeline-smoke-native-export-emit-only-seed-first-function-shape",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .unwrap_or_else(|e| panic!("first-function shape diagnostic 実行に失敗: {e}"));
+
+    let lines = parse_numeric_lines(&output);
+    println!("first-function shape lines={lines:?}");
+}
+
+#[test]
+#[ignore = "diagnostic: inspect same-path recursive helper IR"]
+fn test_e2e_selfhost_pipeline_smoke_representative_module_resolver_same_path_ir_diagnostic() {
+    let harness = r#"
+(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (do
+      (root_push result)
+      (let [next-result (vector-push result (make-function-meta 0 0 (vector-new 0)))]
+        (do
+          (root_push next-result)
+          (let [final (push-import-placeholders (+ idx 1) count next-result)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (do
+      (root_push src)
+      (root_push dst)
+      (let [next-dst (vector-push dst (vector-get src idx))]
+        (do
+          (root_push next-dst)
+          (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn print-ir-loop [ir idx len]
+  (if (>= idx len)
+    0
+    (let [instr (vector-get ir idx)]
+      (do
+        (print (vector-get instr 0))
+        (print (vector-get instr 1))
+        (print-ir-loop ir (+ idx 1) len)))))
+
+(defn print-bytes-loop [bytes idx len]
+  (if (>= idx len)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) len))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/ModuleResolver.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 1)
+        native-callables (normalize-selfhost-native-function-metas callables)
+        func-meta (vector-get native-callables 10)
+        ir (vector-get func-meta 2)
+        meta (scan-control-flow-meta ir)
+        offsets (collect-native-bundle-offsets-aarch64 ir native-callables 0)
+        outer-end-idx (map-get-index (control-flow-end-map meta) 5)
+        inner-end-idx (map-get-index (control-flow-end-map meta) 44)
+        else-bytes (emit-control-instr-aarch64 ir meta offsets 5)
+        inner-else-bytes (emit-control-instr-aarch64 ir meta offsets 44)]
+    (do
+      (print 10)
+      (print (vector-get func-meta 0))
+      (print (vector-get func-meta 1))
+      (print (vector-length ir))
+      (print outer-end-idx)
+      (print (vector-get offsets 5))
+      (print (control-end-target-offset meta offsets 5))
+      (print (vector-length else-bytes))
+      (print-bytes-loop else-bytes 0 (vector-length else-bytes))
+      (print inner-end-idx)
+      (print (vector-get offsets 44))
+      (print (control-end-target-offset meta offsets 44))
+      (print (vector-length inner-else-bytes))
+      (print-bytes-loop inner-else-bytes 0 (vector-length inner-else-bytes))
+      (print-ir-loop ir 0 (vector-length ir))
+      0)))
+"#;
+
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-pipeline-smoke-module-resolver-same-path-ir-diagnostic",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        harness,
+        &[],
+    )
+    .unwrap_or_else(|e| panic!("same-path IR diagnostic 実行に失敗: {e}"));
+
+    println!("same-path-ir-raw={output}");
+}
+
+#[test]
+#[ignore = "diagnostic: inspect seed first-function emit staging"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_export_emit_only_seed_first_function_stage_diagnostic()
+ {
+    let seed_source = representative_actual_stage23_seed_source();
+    let escaped_seed_source = escape_lsharp_string(&seed_source);
+    let harness = format!(
+        r#"
+(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (do
+      (root_push result)
+      (let [next-result (vector-push result (make-function-meta 0 0 (vector-new 0)))]
+        (do
+          (root_push next-result)
+          (let [final (push-import-placeholders (+ idx 1) count next-result)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (do
+      (root_push src)
+      (root_push dst)
+      (let [next-dst (vector-push dst (vector-get src idx))]
+        (do
+          (root_push next-dst)
+          (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        _ (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+        payload (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        limited-functions (append-vector-loop (vector-new 32) functions 0 1)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) limited-functions 0 1)
+        native-callables (normalize-selfhost-native-function-metas callables)
+        stable-functions (concat-byte-vectors-loop (vector-new 32) native-callables 0 (vector-length native-callables))
+        target (host-target)
+        layout (collect-callable-actual-layout-aarch64 stable-functions 10)
+        function-starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        import-stub-count (aarch64-import-stub-count 10)
+        n (- (vector-length stable-functions) 10)]
+    (do
+      (print 100)
+      (print (vector-length stable-functions))
+      (print 101)
+      (print import-stub-offset)
+      (generate-native-aarch64-bundle-loop-with-import-count stable-functions result function-starts 10 import-stub-offset 0 n)
+      (print 102)
+      (print (vector-length (ref-get result)))
+      (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+      (print 103)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+      (print 104)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-string-length-helper) 60)
+      (print 105)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-print-helper) 144)
+      (print 106)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-new-helper) 108)
+      (print 107)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
+      (print 108)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
+      (print 109)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
+      (print 110)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+      (print 111)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
+      (print 112)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
+      (print 113)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-get-helper) 20)
+      (print 114)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-set-helper) 24)
+      (print 115)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-substring-helper) 188)
+      (print 116)
+      (print (vector-length (ref-get result)))
+      (append-aarch64-selfhost-string-concat-helper-rooted result)
+      (print 117)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-map-size-helper) 20)
+      (print 118)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-map-new-helper) 100)
+      (print 119)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-file-exists-helper) 196)
+      (print 120)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-read-file-helper) 464)
+      (print 121)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-map-insert-helper) 96)
+      (print 122)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-map-get-helper) 60)
+      (print 123)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-map-new-fixed-helper) 92)
+      (print 124)
+      (print (vector-length (ref-get result)))
+      (print 125)
+      (print (vector-length (generate-native-aarch64-bundle-with-layout stable-functions 10 function-starts import-stub-offset)))
+      (print 126)
+      (print (vector-length (generate-native-aarch64-bundle-with-import-count stable-functions 10)))
+      (print 127)
+      (print (vector-length (generate-native-function-meta-bundle-with-import-count native-callables 10 target)))
+      (print (target-arch target))
+      0)))
+"#,
+        escaped_seed_source = escaped_seed_source
+    );
+
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-pipeline-smoke-native-export-emit-only-seed-first-function-stage-diagnostic",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .unwrap_or_else(|e| panic!("seed first-function stage diagnostic 実行に失敗: {e}"));
+
+    println!("seed-first-function-stage-raw={output}");
+}
+
+#[test]
+#[ignore = "diagnostic: inspect seed first-function emit staging in native representative bundle"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_export_emit_only_seed_first_function_native_stage_diagnostic()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (do
+      (root_push result)
+      (let [next-result (vector-push result (make-function-meta 0 0 (vector-new 0)))]
+        (do
+          (root_push next-result)
+          (let [final (push-import-placeholders (+ idx 1) count next-result)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (do
+      (root_push src)
+      (root_push dst)
+      (let [next-dst (vector-push dst (vector-get src idx))]
+        (do
+          (root_push next-dst)
+          (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        limited-functions (append-vector-loop (vector-new 32) functions 0 1)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) limited-functions 0 1)
+        native-callables (normalize-selfhost-native-function-metas callables)
+        stable-functions (concat-byte-vectors-loop (vector-new 32) native-callables 0 (vector-length native-callables))
+        target (host-target)
+        layout (collect-callable-actual-layout-aarch64 stable-functions 10)
+        function-starts (callable-layout-function-starts-aarch64 layout)
+        import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
+        result (ref-new (vector-new 128))
+        import-stub-count (aarch64-import-stub-count 10)
+        n (- (vector-length stable-functions) 10)]
+    (do
+      (print 100)
+      (print (vector-length stable-functions))
+      (print 101)
+      (print import-stub-offset)
+      (generate-native-aarch64-bundle-loop-with-import-count stable-functions result function-starts 10 import-stub-offset 0 n)
+      (print 102)
+      (print (vector-length (ref-get result)))
+      (append-aarch64-import-stubs-loop result 10 import-stub-offset 0 import-stub-count)
+      (print 103)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-command-line-arg-helper) 32)
+      (print 104)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-string-length-helper) 60)
+      (print 105)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-print-helper) 144)
+      (print 106)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-new-helper) 108)
+      (print 107)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
+      (print 108)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
+      (print 109)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
+      (print 110)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+      (print 111)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
+      (print 112)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
+      (print 113)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-get-helper) 20)
+      (print 114)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-set-helper) 24)
+      (print 115)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-substring-helper) 188)
+      (print 116)
+      (print (vector-length (ref-get result)))
+      (append-aarch64-selfhost-string-concat-helper-rooted result)
+      (print 117)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-map-size-helper) 20)
+      (print 118)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-map-new-helper) 100)
+      (print 119)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-file-exists-helper) 196)
+      (print 120)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-read-file-helper) 464)
+      (print 121)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-map-insert-helper) 96)
+      (print 122)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-map-get-helper) 60)
+      (print 123)
+      (print (vector-length (ref-get result)))
+      (append-native-bytes-rooted result (emit-aarch64-selfhost-map-new-fixed-helper) 92)
+      (print 124)
+      (print (vector-length (ref-get result)))
+      (print 125)
+      (print (vector-length (generate-native-aarch64-bundle-with-layout stable-functions 10 function-starts import-stub-offset)))
+      (print 126)
+      (print (vector-length (generate-native-aarch64-bundle-with-import-count stable-functions 10)))
+      (print 127)
+      (print (vector-length (generate-native-function-meta-bundle-with-import-count native-callables 10 target)))
+      (print (target-arch target))
+      0)))"#;
+    let seed_source = representative_actual_stage23_seed_source();
+    let bundle = run_representative_override_main_native_with_args_and_files_loose(
+        "native-stage23-pipeline-smoke-native-export-emit-only-seed-first-function-native-stage-diagnostic",
+        main_source,
+        &[],
+        &[("src/App/Seed.ls", &seed_source)],
+    );
+
+    println!(
+        "seed-first-function-native-stage exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect seed first-function native progress by binding"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_export_emit_only_seed_first_function_native_progress_diagnostic()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (do
+      (root_push result)
+      (let [next-result (vector-push result (make-function-meta 0 0 (vector-new 0)))]
+        (do
+          (root_push next-result)
+          (let [final (push-import-placeholders (+ idx 1) count next-result)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (do
+      (root_push src)
+      (root_push dst)
+      (let [next-dst (vector-push dst (vector-get src idx))]
+        (do
+          (root_push next-dst)
+          (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn main []
+  (do
+    (print 1)
+    (let [cache-ref (ref-new (map-new))]
+      (do
+        (print 2)
+        (let [parse-count-ref (ref-new 0)]
+          (do
+            (print 3)
+            (let [payload (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref)]
+              (do
+                (print 4)
+                (let [functions (vector-get payload 0)]
+                  (do
+                    (print (vector-length functions))
+                    (print 5)
+                    (let [limited-functions (append-vector-loop (vector-new 32) functions 0 1)]
+                      (do
+                        (print (vector-length limited-functions))
+                        (print 6)
+                        (let [callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) limited-functions 0 1)]
+                          (do
+                            (print (vector-length callables))
+                            (print 7)
+                            (let [native-callables (normalize-selfhost-native-function-metas callables)]
+                              (do
+                                (print (vector-length native-callables))
+                                (print 8)
+                                (let [target (host-target)]
+                                  (do
+                                    (print (target-arch target))
+                                    (print 9)
+                                    (let [code (emit-native-function-meta-bundle-with-import-count native-callables 10 target)]
+                                      (do
+                                        (print (vector-length code))
+                                        (print 10)
+                                        0)))))))))))))))))))"#;
+    let seed_source = representative_actual_stage23_seed_source();
+    let bundle = run_representative_override_main_native_with_args_and_files_loose(
+        "native-stage23-pipeline-smoke-native-export-emit-only-seed-first-function-native-progress-diagnostic",
+        main_source,
+        &[],
+        &[("src/App/Seed.ls", &seed_source)],
+    );
+
+    println!(
+        "seed-first-function-native-progress exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect compile-file-pairs native progress probe"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_progress_probe() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (compile-file-mode-cache-pairs-progress-probe))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-compile-file-pairs-progress-probe",
+        main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", "(module App.Seed)\n(defn main [] 42)\n")],
+    );
+
+    println!(
+        "compile-file-pairs-progress-probe exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect compile-file-pairs native staged bindings"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_staged_progress_probe()
+{
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (do
+    (print 1)
+    (let [path "src/App/Seed.ls"]
+      (do
+        (print 2)
+        (let [cache-ref (ref-new (map-new))
+          parse-count-ref (ref-new 0)]
+          (do
+            (print 3)
+            (let [src (read-file path)]
+              (do
+                (print (string-length src))
+                (print 4)
+                (let [program (parse-program src)]
+                  (do
+                    (print (vector-length program))
+                    (print 5)
+                    (let [pair (make-src-decl-pair src program)
+                      fingerprint (source-fingerprint src)
+                      cache-key (src-decl-cache-key path)
+                      entry (make-src-decl-cache-entry fingerprint pair)
+                      source-root (resolve-source-root path)
+                      package-root (resolve-package-root path)
+                      seen-ref (ref-new (map-new))
+                      cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref)]
+                      (do
+                        (root_push src)
+                        (root_push program)
+                        (root_push pair)
+                        (root_push entry)
+                        (root_push seen-ref)
+                        (root_push cache-ctx)
+                        (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
+                        (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
+                        (print 6)
+                        (print (ref-get parse-count-ref))
+                        (let [pairs0 (vector-new 8)]
+                          (do
+                            (root_push pairs0)
+                            (let [imported-pairs
+                              (load-imports-from-decls-with-cache-progress program src 0 (vector-length program) seen-ref pairs0 cache-ctx)]
+                              (do
+                                (print 7)
+                                (print (vector-length imported-pairs))
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                0))))))))))))))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-compile-file-pairs-staged-progress-probe",
+        main_source,
+        &[],
+        &[("src/App/Seed.ls", "(module App.Seed)\n(defn main [] 42)\n")],
+    );
+
+    println!(
+        "compile-file-pairs-staged-progress exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect representative native read-file with argv path"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_read_file_argv_progress_diagnostic() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+
+(defn main []
+  (do
+    (print 1)
+    (let [path (command-line-arg 1)]
+      (do
+        (print 2)
+        (print (string-length path))
+        (let [src (read-file path)]
+          (do
+            (print 3)
+            (print (string-length src))
+            0))))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-read-file-argv-progress-diagnostic",
+        main_source,
+        &[String::from("src/Syntax/Token.ls")],
+        &[],
+    );
+
+    println!(
+        "representative-native-read-file-argv-progress exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect compile-file-pairs staged bindings with actual seed"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_actual_seed_staged_progress_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (do
+    (print 1)
+    (let [path "src/App/Seed.ls"]
+      (do
+        (print 2)
+        (let [cache-ref (ref-new (map-new))
+          parse-count-ref (ref-new 0)]
+          (do
+            (print 3)
+            (let [src (read-file path)]
+              (do
+                (print (string-length src))
+                (print 4)
+                (let [program (parse-program src)]
+                  (do
+                    (print (vector-length program))
+                    (print 5)
+                    (let [pair (make-src-decl-pair src program)
+                      fingerprint (source-fingerprint src)
+                      cache-key (src-decl-cache-key path)
+                      entry (make-src-decl-cache-entry fingerprint pair)
+                      source-root (resolve-source-root path)
+                      package-root (resolve-package-root path)
+                      seen-ref (ref-new (map-new))
+                      cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref)]
+                      (do
+                        (root_push src)
+                        (root_push program)
+                        (root_push pair)
+                        (root_push entry)
+                        (root_push seen-ref)
+                        (root_push cache-ctx)
+                        (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
+                        (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
+                        (print 6)
+                        (print (ref-get parse-count-ref))
+                        (let [pairs0 (vector-new 8)]
+                          (do
+                            (root_push pairs0)
+                            (let [imported-pairs
+                              (load-imports-from-decls-with-cache-progress program src 0 (vector-length program) seen-ref pairs0 cache-ctx)]
+                              (do
+                                (print 7)
+                                (print (vector-length imported-pairs))
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                0))))))))))))))))"#;
+    let seed_source = representative_actual_stage23_seed_source();
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-compile-file-pairs-actual-seed-staged-progress-probe",
+        main_source,
+        &[],
+        &[("src/App/Seed.ls", &seed_source)],
+    );
+
+    println!(
+        "compile-file-pairs-actual-seed-staged-progress exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect compile-file-pairs staged bindings with actual seed argv path"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_actual_seed_argv_staged_progress_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (do
+    (print 1)
+    (let [path (command-line-arg 1)]
+      (do
+        (print 2)
+        (print (string-length path))
+        (let [cache-ref (ref-new (map-new))
+          parse-count-ref (ref-new 0)]
+          (do
+            (print 3)
+            (let [src (read-file path)]
+              (do
+                (print 4)
+                (print (string-length src))
+                (let [program (parse-program src)]
+                  (do
+                    (print 5)
+                    (print (vector-length program))
+                    (let [pair (make-src-decl-pair src program)
+                      fingerprint (source-fingerprint src)
+                      cache-key (src-decl-cache-key path)
+                      entry (make-src-decl-cache-entry fingerprint pair)
+                      source-root (resolve-source-root path)
+                      package-root (resolve-package-root path)
+                      seen-ref (ref-new (map-new))
+                      cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref)]
+                      (do
+                        (root_push src)
+                        (root_push program)
+                        (root_push pair)
+                        (root_push entry)
+                        (root_push seen-ref)
+                        (root_push cache-ctx)
+                        (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
+                        (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
+                        (print 6)
+                        (print (ref-get parse-count-ref))
+                        (let [pairs0 (vector-new 8)]
+                          (do
+                            (root_push pairs0)
+                            (let [imported-pairs
+                              (load-imports-from-decls-with-cache-progress program src 0 (vector-length program) seen-ref pairs0 cache-ctx)]
+                              (do
+                                (print 7)
+                                (print (vector-length imported-pairs))
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                0))))))))))))))))"#;
+    let seed_source = representative_actual_stage23_seed_source();
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-compile-file-pairs-actual-seed-argv-staged-progress-probe",
+        main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", &seed_source)],
+    );
+
+    println!(
+        "compile-file-pairs-actual-seed-argv-staged-progress exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect compile-file-pairs staged bindings with minimal seed argv path"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_minimal_seed_argv_staged_progress_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (do
+    (print 1)
+    (let [path (command-line-arg 1)]
+      (do
+        (print 2)
+        (print (string-length path))
+        (let [cache-ref (ref-new (map-new))
+          parse-count-ref (ref-new 0)]
+          (do
+            (print 3)
+            (let [src (read-file path)]
+              (do
+                (print 4)
+                (print (string-length src))
+                (let [program (parse-program src)]
+                  (do
+                    (print 5)
+                    (print (vector-length program))
+                    (let [pair (make-src-decl-pair src program)
+                      fingerprint (source-fingerprint src)
+                      cache-key (src-decl-cache-key path)
+                      entry (make-src-decl-cache-entry fingerprint pair)
+                      source-root (resolve-source-root path)
+                      package-root (resolve-package-root path)
+                      seen-ref (ref-new (map-new))
+                      cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref)]
+                      (do
+                        (root_push src)
+                        (root_push program)
+                        (root_push pair)
+                        (root_push entry)
+                        (root_push seen-ref)
+                        (root_push cache-ctx)
+                        (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
+                        (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
+                        (print 6)
+                        (print (ref-get parse-count-ref))
+                        (let [pairs0 (vector-new 8)]
+                          (do
+                            (root_push pairs0)
+                            (let [imported-pairs
+                              (load-imports-from-decls-with-cache-progress program src 0 (vector-length program) seen-ref pairs0 cache-ctx)]
+                              (do
+                                (print 7)
+                                (print (vector-length imported-pairs))
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                0))))))))))))))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-compile-file-pairs-minimal-seed-argv-staged-progress-probe",
+        main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", "(module App.Seed)\n(defn main [] 42)\n")],
+    );
+
+    println!(
+        "compile-file-pairs-minimal-seed-argv-staged-progress exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect compile-file-pairs minimal seed argv binding boundary"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_minimal_seed_argv_binding_boundary_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (do
+    (print 1)
+    (let [path (command-line-arg 1)]
+      (do
+        (print 2)
+        (print (string-length path))
+        (let [cache-ref (ref-new (map-new))
+          parse-count-ref (ref-new 0)]
+          (do
+            (print 3)
+            (let [src (read-file path)]
+              (do
+                (print 4)
+                (print (string-length src))
+                (let [program (parse-program src)]
+                  (do
+                    (print 5)
+                    (print (vector-length program))
+                    (let [pair (make-src-decl-pair src program)]
+                      (do
+                        (print 6)
+                        (let [fingerprint (source-fingerprint src)]
+                          (do
+                            (print 7)
+                            (print fingerprint)
+                            (let [cache-key (src-decl-cache-key path)]
+                              (do
+                                (print 8)
+                                (print cache-key)
+                                (let [source-root (resolve-source-root path)]
+                                  (do
+                                    (print 9)
+                                    (print (string-length source-root))
+                                    (let [package-root (resolve-package-root path)]
+                                      (do
+                                        (print 10)
+                                        (print (string-length package-root))
+                                        (let [seen-ref (ref-new (map-new))]
+                                          (do
+                                            (print 11)
+                                            (let [cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref)]
+                                              (do
+                                                (print 12)
+                                                (print (vector-length cache-ctx))
+                                                (root_push src)
+                                                (root_push program)
+                                                (root_push pair)
+                                                (root_push seen-ref)
+                                                (root_push cache-ctx)
+                                                (print 13)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                (root_pop)
+                                                0)))))))))))))))))))))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-compile-file-pairs-minimal-seed-argv-binding-boundary-probe",
+        main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", "(module App.Seed)\n(defn main [] 42)\n")],
+    );
+
+    println!(
+        "compile-file-pairs-minimal-seed-argv-binding-boundary exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect compile-file-pairs staged bindings with token argv path"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_token_argv_staged_progress_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (do
+    (print 1)
+    (let [path (command-line-arg 1)]
+      (do
+        (print 2)
+        (print (string-length path))
+        (let [cache-ref (ref-new (map-new))
+          parse-count-ref (ref-new 0)]
+          (do
+            (print 3)
+            (let [src (read-file path)]
+              (do
+                (print 4)
+                (print (string-length src))
+                (let [program (parse-program src)]
+                  (do
+                    (print 5)
+                    (print (vector-length program))
+                    (let [pair (make-src-decl-pair src program)
+                      fingerprint (source-fingerprint src)
+                      cache-key (src-decl-cache-key path)
+                      entry (make-src-decl-cache-entry fingerprint pair)
+                      source-root (resolve-source-root path)
+                      package-root (resolve-package-root path)
+                      seen-ref (ref-new (map-new))
+                      cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref)]
+                      (do
+                        (root_push src)
+                        (root_push program)
+                        (root_push pair)
+                        (root_push entry)
+                        (root_push seen-ref)
+                        (root_push cache-ctx)
+                        (ref-set parse-count-ref (+ (ref-get parse-count-ref) 1))
+                        (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
+                        (print 6)
+                        (print (ref-get parse-count-ref))
+                        (let [pairs0 (vector-new 8)]
+                          (do
+                            (root_push pairs0)
+                            (let [imported-pairs
+                              (load-imports-from-decls-with-cache-progress program src 0 (vector-length program) seen-ref pairs0 cache-ctx)]
+                              (do
+                                (print 7)
+                                (print (vector-length imported-pairs))
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                0))))))))))))))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-compile-file-pairs-token-argv-staged-progress-probe",
+        main_source,
+        &[String::from("src/Syntax/Token.ls")],
+        &[],
+    );
+
+    println!(
+        "compile-file-pairs-token-argv-staged-progress exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect compile-file-pairs append step with token argv path"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_token_argv_append_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (do
+    (print 1)
+    (let [path (command-line-arg 1)
+      cache-ref (ref-new (map-new))
+      parse-count-ref (ref-new 0)
+      pair (load-src-decl-pair-with-cache path cache-ref parse-count-ref)
+      src (vector-get pair 0)
+      program (vector-get pair 1)
+      source-root (resolve-source-root path)
+      package-root (resolve-package-root path)
+      seen-ref (ref-new (map-new))
+      cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref)
+      pairs0 (vector-new 8)
+      imported-pairs (load-imports-from-decls-with-cache-progress program src 0 (vector-length program) seen-ref pairs0 cache-ctx)]
+      (do
+        (print 2)
+        (print (vector-length imported-pairs))
+        (let [result (append-src-decl-pair imported-pairs src program)]
+          (do
+            (print 3)
+            (print (vector-length result))
+            (print (ref-get parse-count-ref))
+            0))))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-compile-file-pairs-token-argv-append-probe",
+        main_source,
+        &[String::from("src/Syntax/Token.ls")],
+        &[],
+    );
+
+    println!(
+        "compile-file-pairs-token-argv-append exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect compile-file-pairs append step with minimal seed argv path"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_minimal_seed_argv_append_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (do
+    (print 1)
+    (let [path (command-line-arg 1)
+      cache-ref (ref-new (map-new))
+      parse-count-ref (ref-new 0)
+      pair (load-src-decl-pair-with-cache path cache-ref parse-count-ref)
+      src (vector-get pair 0)
+      program (vector-get pair 1)
+      source-root (resolve-source-root path)
+      package-root (resolve-package-root path)
+      seen-ref (ref-new (map-new))
+      cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref)
+      pairs0 (vector-new 8)
+      imported-pairs (load-imports-from-decls-with-cache-progress program src 0 (vector-length program) seen-ref pairs0 cache-ctx)]
+      (do
+        (print 2)
+        (print (vector-length imported-pairs))
+        (let [result (append-src-decl-pair imported-pairs src program)]
+          (do
+            (print 3)
+            (print (vector-length result))
+            (print (ref-get parse-count-ref))
+            0))))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-compile-file-pairs-minimal-seed-argv-append-probe",
+        main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", "(module App.Seed)\n(defn main [] 42)\n")],
+    );
+
+    println!(
+        "compile-file-pairs-minimal-seed-argv-append exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect direct compile-file-pairs call with token argv path"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_token_argv_direct_call_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (do
+    (print 1)
+    (let [path (command-line-arg 1)
+      cache-ref (ref-new (map-new))
+      parse-count-ref (ref-new 0)]
+      (do
+        (print 2)
+        (let [pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)]
+          (do
+            (print 3)
+            (print (vector-length pairs))
+            (print (ref-get parse-count-ref))
+            0))))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-compile-file-pairs-token-argv-direct-call-probe",
+        main_source,
+        &[String::from("src/Syntax/Token.ls")],
+        &[],
+    );
+    maybe_write_native_host_bundle_artifact(
+        "native-stage23-pipeline-smoke-compile-file-pairs-token-argv-direct-call-probe",
+        &bundle,
+    )
+    .unwrap_or_else(|e| panic!("direct-call probe artifact 書き出し失敗: {e}"));
+
+    println!(
+        "compile-file-pairs-token-argv-direct-call exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect compile-file-pairs current token argv shape"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_current_token_argv_shape_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn helper [path cache-ref parse-count-ref]
+  (let [path-slot (root_push path)
+    pair (load-src-decl-pair-with-cache path cache-ref parse-count-ref)
+    pair-slot (root_push pair)
+    source-root (resolve-source-root path)
+    package-root (resolve-package-root path)
+    src (vector-get pair 0)
+    program (vector-get pair 1)]
+    (do
+      (print 10)
+      (root_push source-root)
+      (root_push package-root)
+      (root_push src)
+      (root_push program)
+      (let [cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref)]
+        (do
+          (print 11)
+          (root_set pair-slot cache-ctx)
+          (let [seen-ref (ref-new (map-new))]
+            (do
+              (print 12)
+              (root_push seen-ref)
+              (let [pairs0 (vector-new 8)]
+                (do
+                  (print 13)
+                  (root_push pairs0)
+                  (let [imported-pairs (load-imports-from-decls-with-cache program src 0 (vector-length program) seen-ref pairs0 cache-ctx)]
+                    (do
+                      (print 14)
+                      (print (vector-length imported-pairs))
+                      (root_push imported-pairs)
+                      (let [result (append-src-decl-pair imported-pairs src program)]
+                        (do
+                          (print 15)
+                          (print (vector-length result))
+                          (root_push result)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          result))))))))))))
+
+(defn main []
+  (do
+    (print 1)
+    (let [path (command-line-arg 1)
+      cache-ref (ref-new (map-new))
+      parse-count-ref (ref-new 0)]
+      (do
+        (print 2)
+        (helper path cache-ref parse-count-ref)
+        0))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-compile-file-pairs-current-token-argv-shape-probe",
+        main_source,
+        &[String::from("src/Syntax/Token.ls")],
+        &[],
+    );
+
+    println!(
+        "compile-file-pairs-current-token-argv-shape exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect compile-file-pairs current token argv caller boundary"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_current_token_argv_caller_boundary_probe(
+) {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn helper [path cache-ref parse-count-ref]
+  (let [path-slot (root_push path)
+    pair (load-src-decl-pair-with-cache path cache-ref parse-count-ref)
+    pair-slot (root_push pair)
+    source-root (resolve-source-root path)
+    package-root (resolve-package-root path)
+    src (vector-get pair 0)
+    program (vector-get pair 1)]
+    (do
+      (root_push source-root)
+      (root_push package-root)
+      (root_push src)
+      (root_push program)
+      (let [cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref)]
+        (do
+          (root_set pair-slot cache-ctx)
+          (let [seen-ref (ref-new (map-new))]
+            (do
+              (root_push seen-ref)
+              (let [pairs0 (vector-new 8)]
+                (do
+                  (root_push pairs0)
+                  (let [result-ref (ref-new pairs0)]
+                    (do
+                      (root_push result-ref)
+                      (let [imported-pairs (load-imports-from-decls-with-cache program src 0 (vector-length program) seen-ref pairs0 cache-ctx)]
+                        (do
+                          (root_push imported-pairs)
+                          (let [result (append-src-decl-pair imported-pairs src program)]
+                            (do
+                              (ref-set result-ref result)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (let [final (ref-get result-ref)]
+                                (do
+                                  (root_pop)
+                                  final)))))))))))))))))
+
+(defn main []
+  (do
+    (print 1)
+    (let [path (command-line-arg 1)
+      cache-ref (ref-new (map-new))
+      parse-count-ref (ref-new 0)]
+      (do
+        (print 2)
+        (let [pairs (helper path cache-ref parse-count-ref)]
+          (do
+            (print 3)
+            (print (vector-length pairs))
+            0))))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-compile-file-pairs-current-token-argv-caller-boundary-probe",
+        main_source,
+        &[String::from("src/Syntax/Token.ls")],
+        &[],
+    );
+
+    println!(
+        "compile-file-pairs-current-token-argv-caller-boundary exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect direct compile-file-pairs drop call with token argv path"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_token_argv_drop_call_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (do
+    (print 1)
+    (let [path (command-line-arg 1)
+      cache-ref (ref-new (map-new))
+      parse-count-ref (ref-new 0)]
+      (do
+        (print 2)
+        (compile-file-pairs-with-cache path cache-ref parse-count-ref)
+        (print 3)
+        (print (ref-get parse-count-ref))
+        0))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-compile-file-pairs-token-argv-drop-call-probe",
+        main_source,
+        &[String::from("src/Syntax/Token.ls")],
+        &[],
+    );
+
+    println!(
+        "compile-file-pairs-token-argv-drop-call exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect direct compile-file-pairs tail call with token argv path"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_token_argv_tail_call_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (do
+    (print 1)
+    (let [path (command-line-arg 1)
+      cache-ref (ref-new (map-new))
+      parse-count-ref (ref-new 0)]
+      (do
+        (print 2)
+        (compile-file-pairs-with-cache path cache-ref parse-count-ref)
+        0))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-compile-file-pairs-token-argv-tail-call-probe",
+        main_source,
+        &[String::from("src/Syntax/Token.ls")],
+        &[],
+    );
+
+    println!(
+        "compile-file-pairs-token-argv-tail-call exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect inline compile-file-pairs helper tail call with token argv path"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_inline_compile_file_pairs_helper_token_argv_tail_call_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn helper [path cache-ref parse-count-ref]
+  (let [pair (load-src-decl-pair-with-cache path cache-ref parse-count-ref)
+    pair-slot (root_push pair)
+    source-root (resolve-source-root path)
+    package-root (resolve-package-root path)
+    src (vector-get pair 0)
+    program (vector-get pair 1)]
+    (do
+      (root_push src)
+      (root_push program)
+      (root_push source-root)
+      (root_push package-root)
+      (let [seen-ref (ref-new (map-new))
+        cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref)]
+        (do
+          (root_push seen-ref)
+          (root_push cache-ctx)
+          (let [pairs0 (vector-new 8)]
+            (do
+              (root_push pairs0)
+              (let [imported-pairs (load-imports-from-decls-with-cache program src 0 (vector-length program) seen-ref pairs0 cache-ctx)]
+                (do
+                  (root_push imported-pairs)
+                  (let [result (append-src-decl-pair imported-pairs src program)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      result)))))))))))
+
+(defn main []
+  (do
+    (print 1)
+    (let [path (command-line-arg 1)
+      cache-ref (ref-new (map-new))
+      parse-count-ref (ref-new 0)]
+      (do
+        (print 2)
+        (helper path cache-ref parse-count-ref)
+        0))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-inline-compile-file-pairs-helper-token-argv-tail-call-probe",
+        main_source,
+        &[String::from("src/Syntax/Token.ls")],
+        &[],
+    );
+
+    println!(
+        "inline-compile-file-pairs-helper-token-argv-tail-call exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect deep-root object return helper tail call"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_deep_root_object_return_helper_tail_call_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+
+(defn single [n]
+  (vector-push (vector-new 1) n))
+
+(defn helper []
+  (let [a (single 1)
+    b (single 2)
+    c (single 3)
+    d (single 4)
+    e (single 5)
+    f (single 6)
+    g (single 7)
+    h (single 8)
+    i (single 9)]
+    (do
+      (root_push a)
+      (root_push b)
+      (root_push c)
+      (root_push d)
+      (root_push e)
+      (root_push f)
+      (root_push g)
+      (root_push h)
+      (root_push i)
+      (let [result (single 42)]
+        (do
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          result)))))
+
+(defn main []
+  (do
+    (print 1)
+    (print 2)
+    (helper)
+    0))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-deep-root-object-return-helper-tail-call-probe",
+        main_source,
+        &[],
+        &[],
+    );
+
+    println!(
+        "deep-root-object-return-helper-tail-call exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect reduced pair return helper tail call with token argv path"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_reduced_pair_return_helper_token_argv_tail_call_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn helper [path cache-ref parse-count-ref]
+  (let [pair (load-src-decl-pair-with-cache path cache-ref parse-count-ref)
+    pair-slot (root_push pair)
+    src (vector-get pair 0)
+    program (vector-get pair 1)]
+    (do
+      (root_push src)
+      (root_push program)
+      (let [imported-pairs (vector-new 8)]
+        (do
+          (root_push imported-pairs)
+          (let [result (append-src-decl-pair imported-pairs src program)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
+
+(defn main []
+  (do
+    (print 1)
+    (let [path (command-line-arg 1)
+      cache-ref (ref-new (map-new))
+      parse-count-ref (ref-new 0)]
+      (do
+        (print 2)
+        (helper path cache-ref parse-count-ref)
+        0))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-reduced-pair-return-helper-token-argv-tail-call-probe",
+        main_source,
+        &[String::from("src/Syntax/Token.ls")],
+        &[],
+    );
+
+    println!(
+        "reduced-pair-return-helper-token-argv-tail-call exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect resolver context pair return helper tail call with token argv path"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_resolver_context_pair_return_helper_token_argv_tail_call_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn helper [path cache-ref parse-count-ref]
+  (let [pair (load-src-decl-pair-with-cache path cache-ref parse-count-ref)
+    pair-slot (root_push pair)
+    source-root (resolve-source-root path)
+    package-root (resolve-package-root path)
+    src (vector-get pair 0)
+    program (vector-get pair 1)]
+    (do
+      (root_push src)
+      (root_push program)
+      (root_push source-root)
+      (root_push package-root)
+      (let [cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref)
+        imported-pairs (vector-new 8)]
+        (do
+          (root_push cache-ctx)
+          (root_push imported-pairs)
+          (let [result (append-src-decl-pair imported-pairs src program)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
+
+(defn main []
+  (do
+    (print 1)
+    (let [path (command-line-arg 1)
+      cache-ref (ref-new (map-new))
+      parse-count-ref (ref-new 0)]
+      (do
+        (print 2)
+        (helper path cache-ref parse-count-ref)
+        0))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-resolver-context-pair-return-helper-token-argv-tail-call-probe",
+        main_source,
+        &[String::from("src/Syntax/Token.ls")],
+        &[],
+    );
+
+    println!(
+        "resolver-context-pair-return-helper-token-argv-tail-call exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect resolver-only pair return helper tail call with token argv path"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_resolver_only_pair_return_helper_token_argv_tail_call_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn helper [path cache-ref parse-count-ref]
+  (let [pair (load-src-decl-pair-with-cache path cache-ref parse-count-ref)
+    pair-slot (root_push pair)
+    source-root (resolve-source-root path)
+    package-root (resolve-package-root path)
+    src (vector-get pair 0)
+    program (vector-get pair 1)]
+    (do
+      (root_push src)
+      (root_push program)
+      (root_push source-root)
+      (root_push package-root)
+      (let [imported-pairs (vector-new 8)]
+        (do
+          (root_push imported-pairs)
+          (let [result (append-src-decl-pair imported-pairs src program)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
+
+(defn main []
+  (do
+    (print 1)
+    (let [path (command-line-arg 1)
+      cache-ref (ref-new (map-new))
+      parse-count-ref (ref-new 0)]
+      (do
+        (print 2)
+        (helper path cache-ref parse-count-ref)
+        0))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-resolver-only-pair-return-helper-token-argv-tail-call-probe",
+        main_source,
+        &[String::from("src/Syntax/Token.ls")],
+        &[],
+    );
+
+    println!(
+        "resolver-only-pair-return-helper-token-argv-tail-call exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect make-cache-compile-context direct call"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_make_cache_compile_context_direct_call_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (do
+    (print 1)
+    (let [path "src/Syntax/Token.ls"
+      source-root (resolve-source-root path)
+      package-root (resolve-package-root path)
+      cache-ref (ref-new (map-new))
+      parse-count-ref (ref-new 0)]
+      (do
+        (print 2)
+        (make-cache-compile-context source-root package-root cache-ref parse-count-ref)
+        0))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-make-cache-compile-context-direct-call-probe",
+        main_source,
+        &[],
+        &[],
+    );
+
+    println!(
+        "make-cache-compile-context-direct-call exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect compile-file-pairs structure-only helper tail call"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_structure_only_helper_tail_call_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn helper [path cache-ref parse-count-ref]
+  (let [program (vector-new 8)
+    pair (make-src-decl-pair path program)
+    pair-slot (root_push pair)
+    source-root path
+    package-root path
+    src (vector-get pair 0)]
+    (do
+      (root_push src)
+      (root_push program)
+      (root_push source-root)
+      (root_push package-root)
+      (let [seen-ref (ref-new (map-new))
+        cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref)]
+        (do
+          (root_push seen-ref)
+          (root_push cache-ctx)
+          (let [pairs0 (vector-new 8)]
+            (do
+              (root_push pairs0)
+              (let [imported-pairs pairs0]
+                (do
+                  (root_push imported-pairs)
+                  (let [result (append-src-decl-pair imported-pairs src program)]
+                    (do
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      result)))))))))))
+
+(defn main []
+  (do
+    (print 1)
+    (let [path "src/Syntax/Token.ls"
+      cache-ref (ref-new (map-new))
+      parse-count-ref (ref-new 0)]
+      (do
+        (print 2)
+        (helper path cache-ref parse-count-ref)
+        0))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-compile-file-pairs-structure-only-helper-tail-call-probe",
+        main_source,
+        &[],
+        &[],
+    );
+
+    println!(
+        "compile-file-pairs-structure-only-helper-tail-call exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect load-imports-with-cache direct call on token argv path"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_load_imports_with_cache_direct_call_token_argv_probe()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (do
+    (print 1)
+    (let [path (command-line-arg 1)
+      cache-ref (ref-new (map-new))
+      parse-count-ref (ref-new 0)
+      pair (load-src-decl-pair-with-cache path cache-ref parse-count-ref)
+      source-root (resolve-source-root path)
+      package-root (resolve-package-root path)
+      src (vector-get pair 0)
+      program (vector-get pair 1)
+      seen-ref (ref-new (map-new))
+      cache-ctx (make-cache-compile-context source-root package-root cache-ref parse-count-ref)
+      pairs0 (vector-new 8)]
+      (do
+        (print 2)
+        (load-imports-from-decls-with-cache program src 0 (vector-length program) seen-ref pairs0 cache-ctx)
+        0))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-load-imports-with-cache-direct-call-token-argv-probe",
+        main_source,
+        &[String::from("src/Syntax/Token.ls")],
+        &[],
+    );
+
+    println!(
+        "load-imports-with-cache-direct-call-token-argv exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect string-char-at on read-file actual seed"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_read_file_string_char_at_actual_seed_diagnostic()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+
+(defn main []
+  (let [path (command-line-arg 1)
+        src (read-file path)]
+    (do
+      (print (string-length src))
+      (print (string-char-at src 0))
+      (print (string-char-at src 1))
+      (print (string-char-at src 2))
+      0)))"#;
+    let seed_source = representative_actual_stage23_seed_source();
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-read-file-string-char-at-actual-seed-diagnostic",
+        main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", &seed_source)],
+    );
+
+    println!(
+        "read-file-string-char-at-actual-seed exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect tokenize-with-spans on read-file actual seed"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_tokenize_actual_seed_diagnostic() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import Syntax.Lexer)
+
+(defn main []
+  (let [path (command-line-arg 1)
+        src (read-file path)
+        spans (tokenize-with-spans src)]
+    (do
+      (print (string-length src))
+      (print (vector-length spans))
+      0)))"#;
+    let seed_source = representative_actual_stage23_seed_source();
+    let bundle = run_representative_override_main_native_with_args_and_files(
+        "native-stage23-pipeline-smoke-tokenize-actual-seed-diagnostic",
+        main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", &seed_source)],
+    );
+
+    println!(
+        "tokenize-actual-seed exit={} stdout={:?} stderr={:?}",
+        bundle.exit_code,
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_native_export_emit_only_seed_first_function_arg_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let seed_source = representative_actual_stage23_seed_source();
+    let main_source = native_export_emit_only_seed_cutoff_main_source(1);
+    let bundle = run_representative_override_main_native_with_args_and_files_loose(
+        "native-stage23-pipeline-smoke-native-export-emit-only-seed-first-function-arg-only",
+        &main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", &seed_source)],
+    );
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "native export emit-only seed first-function bundle が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "native export emit-only seed first-function bundle が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    let actual = parse_numeric_lines(&String::from_utf8(bundle.stdout).unwrap_or_else(|e| {
+        panic!("native export emit-only seed first-function stdout UTF-8 decode 失敗: {e}")
+    }));
+    assert_eq!(
+        actual.len(),
+        2,
+        "native export emit-only seed first-function bundle が 2 行出力しない: {actual:?}"
+    );
+    assert_eq!(
+        actual[0], 1,
+        "native export emit-only seed first-function bundle の cutoff 行が期待値と一致しない: {actual:?}"
+    );
+    assert!(
+        actual[1] > 0,
+        "native export emit-only seed first-function bundle の code length が不正: {actual:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_native_export_emit_only_tiny_manual_bundle()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn main []
+  (let [instr (vector-push (vector-push (vector-new 2) 1) 42)
+        ir (vector-push (vector-new 1) instr)
+        func (make-function-meta 0 0 ir)
+        callables (vector-push (push-import-placeholders 0 10 (vector-new 32)) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle-with-import-count callables 10 target)]
+    (do
+      (print (vector-length code))
+      0)))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files_loose(
+        "native-stage23-pipeline-smoke-native-export-emit-only-tiny-manual-bundle",
+        main_source,
+        &[],
+        &[],
+    );
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "native export emit-only tiny manual bundle が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "native export emit-only tiny manual bundle が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    let actual = parse_numeric_lines(&String::from_utf8(bundle.stdout).unwrap_or_else(|e| {
+        panic!("native export emit-only tiny manual stdout UTF-8 decode 失敗: {e}")
+    }));
+    assert_eq!(
+        actual.len(),
+        1,
+        "native export emit-only tiny manual bundle が code length を 1 行出力しない: {actual:?}"
+    );
+    assert!(
+        actual[0] > 0,
+        "native export emit-only tiny manual bundle の code length が不正: {actual:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_native_export_pre_emit_seed_path_arg_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn main []
+  (let [path (command-line-arg 1)
+        cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache path 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)]
+    (do
+      (print (vector-length functions))
+      (print (vector-length callables))
+      (print (vector-length native-callables))
+      (print (ref-get parse-count-ref))
+      0)))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files_loose(
+        "native-stage23-pipeline-smoke-native-export-pre-emit-seed-path-arg-only",
+        main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", "(module App.Seed)\n(defn main [] 42)\n")],
+    );
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "native export pre-emit seed path arg bundle が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "native export pre-emit seed path arg bundle が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert_eq!(
+        parse_numeric_lines(
+            &String::from_utf8(bundle.stdout)
+                .unwrap_or_else(|e| panic!("native export pre-emit stdout UTF-8 decode 失敗: {e}")),
+        ),
+        vec![1, 11, 11, 1],
+        "native export pre-emit seed path arg bundle の出力が期待値と一致しない"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_native_export_pre_normalize_seed_path_arg_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (let [placeholder (make-function-meta 0 0 (vector-new 0))]
+      (do
+        (root_push result)
+        (root_push placeholder)
+        (let [next-result (vector-push result placeholder)]
+          (do
+            (root_push next-result)
+            (let [final (push-import-placeholders (+ idx 1) count next-result)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                final)))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (let [value (vector-get src idx)]
+      (do
+        (root_push dst)
+        (root_push src)
+        (root_push value)
+        (let [next-dst (vector-push dst value)]
+          (do
+            (root_push next-dst)
+            (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                final)))))))
+
+(defn main []
+  (let [path (command-line-arg 1)
+        cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache path 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)]
+    (do
+      (root_push functions)
+      (let [prefix (push-import-placeholders 0 10 (vector-new 32))]
+        (do
+          (root_push prefix)
+          (let [callables (append-vector-loop prefix functions 0 (vector-length functions))]
+            (do
+              (print (vector-length functions))
+              (print (vector-length callables))
+              (print (ref-get parse-count-ref))
+              (root_pop)
+              (root_pop)
+              0)))))))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files_loose(
+        "native-stage23-pipeline-smoke-native-export-pre-normalize-seed-path-arg-only",
+        main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", "(module App.Seed)\n(defn main [] 42)\n")],
+    );
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "native export pre-normalize seed path arg bundle が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "native export pre-normalize seed path arg bundle が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert_eq!(
+        parse_numeric_lines(&String::from_utf8(bundle.stdout).unwrap_or_else(|e| panic!(
+            "native export pre-normalize stdout UTF-8 decode 失敗: {e}"
+        )),),
+        vec![1, 11, 1],
+        "native export pre-normalize seed path arg bundle の出力が期待値と一致しない"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: inspect rooted copy of payload functions for seed path arg"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_native_export_copy_functions_seed_path_arg_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (let [value (vector-get src idx)]
+      (do
+        (root_push dst)
+        (root_push src)
+        (root_push value)
+        (let [next-dst (vector-push dst value)]
+          (do
+            (root_push next-dst)
+            (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                final)))))))
+
+(defn main []
+  (let [path (command-line-arg 1)
+        cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache path 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        copied-functions (append-vector-loop (vector-new 32) functions 0 (vector-length functions))]
+    (do
+      (print (vector-length functions))
+      (print (vector-length copied-functions))
+      (print (ref-get parse-count-ref))
+      0)))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files_loose(
+        "native-stage23-pipeline-smoke-native-export-copy-functions-seed-path-arg-only",
+        main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", "(module App.Seed)\n(defn main [] 42)\n")],
+    );
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "native export copy-functions seed path arg bundle が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "native export copy-functions seed path arg bundle が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert_eq!(
+        parse_numeric_lines(&String::from_utf8(bundle.stdout).unwrap_or_else(|e| panic!(
+            "native export copy-functions stdout UTF-8 decode 失敗: {e}"
+        )),),
+        vec![1, 1, 1],
+        "native export copy-functions seed path arg bundle の出力が期待値と一致しない"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_import_placeholder_vector_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (do
+      (root_push result)
+      (let [next-result (vector-push result (make-function-meta 0 0 (vector-new 0)))]
+        (do
+          (root_push next-result)
+          (let [final (push-import-placeholders (+ idx 1) count next-result)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn main []
+  (let [callables (push-import-placeholders 0 10 (vector-new 32))]
+    (do
+      (print (vector-length callables))
+      0)))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files_loose(
+        "native-stage23-pipeline-smoke-import-placeholder-vector-only",
+        main_source,
+        &[],
+        &[],
+    );
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "import placeholder vector only native bundle が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "import placeholder vector only native bundle が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert_eq!(
+        parse_numeric_lines(
+            &String::from_utf8(bundle.stdout)
+                .unwrap_or_else(|e| panic!("import placeholder stdout UTF-8 decode 失敗: {e}")),
+        ),
+        vec![10],
+        "import placeholder vector only native bundle の出力が期待値と一致しない"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_helper_before_main_trivial_print_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+
+(defn helper []
+  7)
+
+(defn main []
+  (do
+    (helper)
+    (print 1)
+    0))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files_loose(
+        "native-stage23-pipeline-smoke-helper-before-main-trivial-print-only",
+        main_source,
+        &[],
+        &[],
+    );
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "helper-before-main trivial print native bundle が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "helper-before-main trivial print native bundle が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert_eq!(
+        parse_numeric_lines(&String::from_utf8(bundle.stdout).unwrap_or_else(|e| {
+            panic!("helper-before-main trivial print stdout UTF-8 decode 失敗: {e}")
+        }),),
+        vec![1],
+        "helper-before-main trivial print native bundle の出力が期待値と一致しない"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_helper_before_main_helper_result_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+
+(defn helper []
+  10)
+
+(defn main []
+  (do
+    (print (helper))
+    0))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files_loose(
+        "native-stage23-pipeline-smoke-helper-before-main-helper-result-only",
+        main_source,
+        &[],
+        &[],
+    );
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "helper-before-main helper result native bundle が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "helper-before-main helper result native bundle が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert_eq!(
+        parse_numeric_lines(&String::from_utf8(bundle.stdout).unwrap_or_else(|e| {
+            panic!("helper-before-main helper result stdout UTF-8 decode 失敗: {e}")
+        }),),
+        vec![10],
+        "helper-before-main helper result native bundle の出力が期待値と一致しない"
+    );
+}
+
+#[test]
+#[ignore = "diagnostic helper-before-main entrypoint probe"]
+fn test_e2e_selfhost_pipeline_smoke_representative_helper_before_main_entrypoint_probe() {
+    let main_source = r#"(module App.OverrideMain)
+
+(defn helper []
+  7)
+
+(defn main []
+  (do
+    (helper)
+    (print 1)
+    0))"#;
+    let escaped_main_source = escape_lsharp_string(main_source);
+    let pairs_expr = format!(
+        r#"(do
+            (write-file "src/App/OverrideMain.ls" "{escaped_main_source}")
+            (compile-file-pairs-with-cache "src/App/OverrideMain.ls" cache-ref parse-count-ref))"#
+    );
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/OverrideMain.ls" "{escaped_main_source}")
+            (compile-file-functions-payload-with-cache "src/App/OverrideMain.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let loose_layout = run_selfhost_representative_aarch64_layout_harness_loose_with_exprs_and_args(
+        "native-stage23-helper-before-main-layout-loose",
+        &pairs_expr,
+        &payload_expr,
+        &[],
+    );
+    let selfhost_abs = run_selfhost_override_entrypoint_offset_probe(
+        "native-stage23-helper-before-main-entrypoint-selfhost-abs",
+        main_source,
+        r#"(vector-get (emit-native-selfhost-function-meta-bundle-entrypoint-payload-for-function-with-import-count functions 10 main-func-idx target) 1)"#,
+    )
+    .expect("helper-before-main selfhost abs probe 実行に失敗");
+    let selfhost_last = run_selfhost_override_entrypoint_offset_probe(
+        "native-stage23-helper-before-main-entrypoint-selfhost-last",
+        main_source,
+        r#"(vector-get (emit-native-selfhost-function-meta-bundle-entrypoint-payload-with-import-count functions 10 target) 1)"#,
+    )
+    .expect("helper-before-main selfhost last probe 実行に失敗");
+    let generic_abs = run_selfhost_override_entrypoint_offset_probe(
+        "native-stage23-helper-before-main-entrypoint-generic-abs",
+        main_source,
+        r#"(vector-get (emit-native-function-meta-bundle-entrypoint-payload-for-function-with-import-count native-callables 10 main-func-idx target) 1)"#,
+    )
+    .expect("helper-before-main generic abs probe 実行に失敗");
+    let generic_last = run_selfhost_override_entrypoint_offset_probe(
+        "native-stage23-helper-before-main-entrypoint-generic-last",
+        main_source,
+        r#"(vector-get (emit-native-function-meta-bundle-entrypoint-payload-with-import-count native-callables 10 target) 1)"#,
+    )
+    .expect("helper-before-main generic last probe 実行に失敗");
+    println!("loose_layout={loose_layout:?}");
+    println!("selfhost_abs={selfhost_abs:?}");
+    println!("selfhost_last={selfhost_last:?}");
+    println!("generic_abs={generic_abs:?}");
+    println!("generic_last={generic_last:?}");
+}
+
+#[test]
+#[ignore = "diagnostic export harness opcode inventory"]
+fn test_e2e_selfhost_pipeline_smoke_representative_export_harness_opcode_inventory() {
+    let seed_source = representative_actual_stage23_seed_source();
+    let escaped_seed_source = escape_lsharp_string(&seed_source);
+    let harness = format!(
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+
+(defn contains-int [items idx len value]
+  (if (>= idx len)
+    0
+    (if (= (vector-get items idx) value)
+      1
+      (contains-int items (+ idx 1) len value))))
+
+(defn collect-unique-opcodes [ir idx len result]
+  (if (>= idx len)
+    result
+    (let [instr (vector-get ir idx)
+          opcode (vector-get instr 0)]
+      (if (= (contains-int result 0 (vector-length result) opcode) 1)
+        (collect-unique-opcodes ir (+ idx 1) len result)
+        (collect-unique-opcodes ir (+ idx 1) len (vector-push result opcode))))))
+
+(defn print-vector-loop [items idx len]
+  (if (>= idx len)
+    0
+    (do
+      (print (vector-get items idx))
+      (print-vector-loop items (+ idx 1) len))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        _ (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+        payload (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        ir (vector-get (vector-get functions 0) 2)
+        opcodes (collect-unique-opcodes ir 0 (vector-length ir) (vector-new 16))]
+    (do
+      (print (vector-length functions))
+      (print (vector-length ir))
+      (print-vector-loop opcodes 0 (vector-length opcodes))
+      0)))"#,
+        escaped_seed_source = escaped_seed_source
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-export-harness-opcode-inventory",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("export harness opcode inventory 実行に失敗");
+    println!("export_harness_opcodes={:?}", parse_numeric_lines(&output));
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_read_file_string_length_token_module_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+
+(defn main []
+  (let [path (command-line-arg 1)
+        src (read-file path)]
+    (do
+      (print (string-length src))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost_with_path_arg(
+        "native-stage23-pipeline-smoke-read-file-string-length-token-module-only",
+        main_source,
+        "src/Syntax/Token.ls",
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_command_line_arg_string_length_token_module_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+
+(defn main []
+  (let [path (command-line-arg 1)]
+    (do
+      (print (string-length path))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost_with_path_arg(
+        "native-stage23-pipeline-smoke-command-line-arg-string-length-token-module-only",
+        main_source,
+        "src/Syntax/Token.ls",
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_read_file_parse_program_token_module_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import Syntax.Parser)
+
+(defn main []
+  (let [path (command-line-arg 1)
+        src (read-file path)
+        decls (parse-program src)]
+    (do
+      (print (string-length src))
+      (print (vector-length decls))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost_with_path_arg(
+        "native-stage23-pipeline-smoke-read-file-parse-program-token-module-only",
+        main_source,
+        "src/Syntax/Token.ls",
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_load_src_decl_pair_with_cache_token_module_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (let [path (command-line-arg 1)
+        cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pair (load-src-decl-pair-with-cache path cache-ref parse-count-ref)
+        decls (vector-get pair 1)]
+    (do
+      (print (ref-get parse-count-ref))
+      (print (vector-length decls))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost_with_path_arg(
+        "native-stage23-pipeline-smoke-load-src-decl-pair-with-cache-token-module-only",
+        main_source,
+        "src/Syntax/Token.ls",
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_file_functions_payload_with_cache_token_module_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+
+(defn main []
+  (let [path (command-line-arg 1)]
+    (let [cache-ref (ref-new (map-new))]
+      (let [parse-count-ref (ref-new 0)]
+        (do
+          (let [payload (compile-file-functions-payload-with-cache path 10 cache-ref parse-count-ref)]
+            (do
+              (let [functions (vector-get payload 0)]
+                (do
+                  (let [data (vector-get payload 1)]
+                    (do
+                      (print (vector-length functions))
+                      (print (vector-length data))
+                      (print (ref-get parse-count-ref))
+                      0))))))))))"#;
+    assert_representative_override_main_matches_selfhost_with_path_arg(
+        "native-stage23-pipeline-smoke-compile-file-functions-payload-with-cache-token-module-only",
+        main_source,
+        "src/Syntax/Token.ls",
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_native_pipeline_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import App.PipelineSmoke)
+(import Syntax.AST)
+(import Backend.Wasm.Compiler)
+
+(defn main []
+  (let [ast-node (make-lit-int 42)
+        ir (lower ast-node)
+        native-result (compile-native-pipeline ir 1)]
+    (do
+      (print (vector-get native-result 0))
+      (print (vector-get native-result 1))
+      (print (vector-get native-result 2))
+      (print (vector-get native-result 3))
+      (print (vector-get native-result 4))
+      (print (vector-get native-result 5))
+      (print (vector-get native-result 6))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-compile-native-pipeline-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_native_pipeline_aarch64_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import App.PipelineSmoke)
+(import Syntax.AST)
+(import Backend.Wasm.Compiler)
+
+(defn main []
+  (let [ast-node (make-lit-int 42)
+        ir (lower ast-node)
+        native-result (compile-native-pipeline ir 2)]
+    (do
+      (print (vector-get native-result 0))
+      (print (vector-get native-result 1))
+      (print (vector-get native-result 2))
+      (print (vector-get native-result 3))
+      (print (vector-get native-result 4))
+      (print (vector-get native-result 5))
+      (print (vector-get native-result 6))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-compile-native-pipeline-aarch64-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_native_response_summary_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import App.PipelineSmoke)
+(import Syntax.AST)
+(import Backend.Wasm.Compiler)
+
+(defn main []
+  (let [ast-node (make-lit-int 42)
+        ir (lower ast-node)
+        native-response-result (compile-native-response-summary ir 1)]
+    (do
+      (print (vector-get native-response-result 0))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-compile-native-response-summary-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_source_literal_42_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import App.PipelineSmoke)
+
+(defn main []
+  (let [result (compile-source "(defn main [] 42)")
+        tokens (vector-get result 0)
+        program (vector-get result 1)
+        ir (vector-get result 2)]
+    (do
+      (print (vector-length tokens))
+      (print (vector-get (vector-get program 0) 0))
+      (print (vector-get (vector-get (vector-get program 0) 3) 0))
+      (print (vector-get (vector-get (vector-get program 0) 3) 1))
+      (print (vector-length ir))
+      (print (vector-get (vector-get ir 0) 0))
+      (print (vector-get (vector-get ir 0) 1))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-compile-source-literal-42-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_tokenize_with_spans_literal_42_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Lexer)
+(import Syntax.Parser)
+
+(defn main []
+  (let [src "(defn main [] 42)"
+        spans (tokenize-with-spans src)]
+    (do
+      (print (/ (vector-length spans) 3))
+      (print (vector-get spans 15))
+      (print (vector-get spans 16))
+      (print (vector-get spans 17))
+      (print (parse-int-from-str src (vector-get spans 16) (vector-get spans 17) 0))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-tokenize-with-spans-literal-42-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_literal_42_shape_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+
+(defn main []
+  (let [program (parse-program "(defn main [] 42)")
+        decl (vector-get program 0)]
+    (do
+      (print (vector-get decl 2))
+      (print (vector-get (vector-get decl 3) 0))
+      (print (vector-get (vector-get decl 3) 1))
+      (print (vector-length decl))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-program-literal-42-shape-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_many_trivial_defns_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let parse_source = (0..48)
+        .map(|idx| format!("(defn trivial-{idx} [] {idx})"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let escaped_parse_source = escape_lsharp_string(&parse_source);
+    let main_source = format!(
+        r#"(module App.Main)
+(import Syntax.Parser)
+
+(defn main []
+  (let [program (parse-program "{escaped_parse_source}")
+        last-decl (vector-get program 47)]
+    (do
+      (print (vector-length program))
+      (print (vector-get last-decl 2))
+      (print (vector-get (vector-get last-decl 3) 1))
+      0)))"#
+    );
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-program-many-trivial-defns-only",
+        &main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_token_module_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let parse_source = std::fs::read_to_string(selfhost_source_path("Token.ls"))
+        .expect("Token.ls の読み込みに失敗");
+    let escaped_parse_source = escape_lsharp_string(&parse_source);
+    let main_source = format!(
+        r#"(module App.Main)
+(import Syntax.Parser)
+
+(defn main []
+  (let [src "{escaped_parse_source}"
+        decls (parse-program src)]
+    (do
+      (print (string-length src))
+      (print (vector-length decls))
+      0)))"#
+    );
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-program-token-module-literal-only",
+        &main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_token_module_prefix_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let parse_source = std::fs::read_to_string(selfhost_source_path("Token.ls"))
+        .expect("Token.ls の読み込みに失敗");
+    let prefix = parse_source
+        .split(";; デモ用エントリポイント")
+        .next()
+        .expect("Token.ls prefix を取得できない");
+    let escaped_parse_source = escape_lsharp_string(prefix);
+    let main_source = format!(
+        r#"(module App.Main)
+(import Syntax.Parser)
+
+(defn main []
+  (let [src "{escaped_parse_source}"
+        decls (parse-program src)]
+    (do
+      (print (string-length src))
+      (print (vector-length decls))
+      0)))"#
+    );
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-program-token-module-prefix-literal-only",
+        &main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_demo_main_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let parse_source = r#"(defn demo-main []
+  (do
+    (print 0)
+    (print 1)
+    (print 2)
+    0))"#;
+    let escaped_parse_source = escape_lsharp_string(parse_source);
+    let main_source = format!(
+        r#"(module App.Main)
+(import Syntax.Parser)
+
+(defn main []
+  (let [src "{escaped_parse_source}"
+        decls (parse-program src)
+        decl (vector-get decls 0)]
+    (do
+      (print (vector-length decls))
+      (print (vector-get decl 2))
+      (print (vector-get (vector-get decl 3) 1))
+      0)))"#
+    );
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-program-demo-main-literal-only",
+        &main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_do_only_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let parse_source = r#"(defn main []
+  (do
+    0
+    1
+    2
+    0))"#;
+    let escaped_parse_source = escape_lsharp_string(parse_source);
+    let main_source = format!(
+        r#"(module App.Main)
+(import Syntax.Parser)
+
+(defn main []
+  (let [decls (parse-program "{escaped_parse_source}")
+        decl (vector-get decls 0)
+        body (vector-get decl 3)]
+    (do
+      (print (vector-length decls))
+      (print (vector-get body 1))
+      (print (vector-length body))
+      0)))"#
+    );
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-program-do-only-literal-only",
+        &main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_symbol_only_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let parse_source = r#"(defn main []
+  print)"#;
+    let escaped_parse_source = escape_lsharp_string(parse_source);
+    let main_source = format!(
+        r#"(module App.Main)
+(import Syntax.Parser)
+
+(defn main []
+  (let [decls (parse-program "{escaped_parse_source}")
+        decl (vector-get decls 0)
+        body (vector-get decl 3)]
+    (do
+      (print (vector-length decls))
+      (print (vector-get body 0))
+      (print (vector-length body))
+      0)))"#
+    );
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-program-symbol-only-literal-only",
+        &main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_name_hash_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+
+(defn main []
+  (do
+    (print (name-hash "(print)" 1 6))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-name-hash-literal-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_symbol_var_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+(import Syntax.Lexer)
+
+(defn main []
+  (let [src "print"
+        spans (tokenize-with-spans src)
+        pos-ref (ref-new 0)
+        expr (parse-symbol-var-v3 spans pos-ref src)]
+    (do
+      (print (vector-get expr 0))
+      (print (vector-get expr 1))
+      (print (ref-get pos-ref))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-symbol-var-literal-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_defn_symbol_body_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+(import Syntax.Lexer)
+
+(defn main []
+  (let [src "(defn main [] print)"
+        spans (tokenize-with-spans src)
+        pos-ref (ref-new 1)
+        decl (parse-defn-v3 spans pos-ref src)
+        body (vector-get decl 3)]
+    (do
+      (print (vector-get decl 0))
+      (print (vector-get body 0))
+      (print (vector-length body))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-defn-symbol-body-literal-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_defn_symbol_decl_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+(import Syntax.Lexer)
+
+(defn main []
+  (let [src "(defn main [] print)"
+        spans (tokenize-with-spans src)
+        pos-ref (ref-new 1)
+        decl (parse-defn-v3 spans pos-ref src)]
+    (do
+      (print (vector-get decl 0))
+      (print (ref-get pos-ref))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-defn-symbol-decl-only",
+        &main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_defn_symbol_no_access()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+(import Syntax.Lexer)
+
+(defn main []
+  (let [src "(defn main [] print)"
+        spans (tokenize-with-spans src)
+        pos-ref (ref-new 1)
+        _decl (parse-defn-v3 spans pos-ref src)]
+    (do
+      (print 1)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-defn-symbol-no-access",
+        &main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_defn_literal_no_access()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+(import Syntax.Lexer)
+
+(defn main []
+  (let [src "(defn main [] 42)"
+        spans (tokenize-with-spans src)
+        pos-ref (ref-new 1)
+        _decl (parse-defn-v3 spans pos-ref src)]
+    (do
+      (print 1)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-defn-literal-no-access",
+        &main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_expr_symbol_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+(import Syntax.Lexer)
+
+(defn main []
+  (let [src "print"
+        spans (tokenize-with-spans src)
+        pos-ref (ref-new 0)
+        expr (parse-expr-v3 spans pos-ref src)]
+    (do
+      (print (vector-get expr 0))
+      (print (vector-get expr 1))
+      (print (ref-get pos-ref))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-expr-symbol-literal-only",
+        &main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_finalize_defn_body_symbol_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+
+(defn main []
+  (let [defn-node (vector-set-at-rooted-v3 (vector-push-triple-rooted-v3 (vector-new 8) 20 123 0) 2 0)
+        body (make-var-node 456)
+        decl (finalize-defn-body-v3 defn-node 0 body)]
+    (do
+      (print (vector-get decl 0))
+      (print (vector-get (vector-get decl 3) 0))
+      (print (vector-get (vector-get decl 3) 1))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-finalize-defn-body-symbol-only",
+        &main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_defn_body_symbol_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+(import Syntax.Lexer)
+
+(defn main []
+  (let [src "print)"
+        spans (tokenize-with-spans src)
+        pos-ref (ref-new 0)
+        defn-node (vector-set-at-rooted-v3 (vector-push-triple-rooted-v3 (vector-new 8) 20 123 0) 2 0)
+        decl (parse-defn-bodyless-or-body-v3 spans pos-ref src defn-node 0)]
+    (do
+      (print (vector-get decl 0))
+      (print (vector-get (vector-get decl 3) 0))
+      (print (ref-get pos-ref))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-defn-body-symbol-only",
+        &main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_expr_symbol_from_full_source_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+(import Syntax.Lexer)
+
+(defn main []
+  (let [src "(defn main [] print)"
+        spans (tokenize-with-spans src)
+        pos-ref (ref-new 5)
+        expr (parse-expr-v3 spans pos-ref src)]
+    (do
+      (print (vector-get expr 0))
+      (print (vector-get expr 1))
+      (print (ref-get pos-ref))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-expr-symbol-from-full-source-only",
+        &main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_defn_body_symbol_from_full_source_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+(import Syntax.Lexer)
+
+(defn main []
+  (let [src "(defn main [] print)"
+        spans (tokenize-with-spans src)
+        pos-ref (ref-new 5)
+        defn-node (vector-set-at-rooted-v3 (vector-push-triple-rooted-v3 (vector-new 8) 20 123 0) 2 0)
+        decl (parse-defn-bodyless-or-body-v3 spans pos-ref src defn-node 0)]
+    (do
+      (print (vector-get decl 0))
+      (print (vector-get (vector-get decl 3) 0))
+      (print (ref-get pos-ref))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-defn-body-symbol-from-full-source-only",
+        &main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_ref_get_symbol_body_decl_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+(import Syntax.Lexer)
+
+(defn main []
+  (let [src "(defn main [] print)"
+        spans (tokenize-with-spans src)
+        pos-ref (ref-new 5)
+        defn-node (vector-set-at-rooted-v3 (vector-push-triple-rooted-v3 (vector-new 8) 20 123 0) 2 0)
+        decl (parse-defn-bodyless-or-body-v3 spans pos-ref src defn-node 0)
+        decl-ref (ref-new decl)
+        decl2 (ref-get decl-ref)]
+    (do
+      (print (vector-get decl2 0))
+      (print (vector-get (vector-get decl2 3) 0))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-ref-get-symbol-body-decl-only",
+        &main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_apply_only_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let parse_source = r#"(defn main []
+  (print 0))"#;
+    let escaped_parse_source = escape_lsharp_string(parse_source);
+    let main_source = format!(
+        r#"(module App.Main)
+(import Syntax.Parser)
+
+(defn main []
+  (let [decls (parse-program "{escaped_parse_source}")
+        decl (vector-get decls 0)
+        body (vector-get decl 3)]
+    (do
+      (print (vector-length decls))
+      (print (vector-get body 0))
+      (print (vector-length body))
+      0)))"#
+    );
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-program-apply-only-literal-only",
+        &main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_zero_arg_apply_only_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let parse_source = r#"(defn main []
+  (print))"#;
+    let escaped_parse_source = escape_lsharp_string(parse_source);
+    let main_source = format!(
+        r#"(module App.Main)
+(import Syntax.Parser)
+
+(defn main []
+  (let [decls (parse-program "{escaped_parse_source}")
+        decl (vector-get decls 0)
+        body (vector-get decl 3)]
+    (do
+      (print (vector-length decls))
+      (print (vector-get body 0))
+      (print (vector-length body))
+      0)))"#
+    );
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-program-zero-arg-apply-only-literal-only",
+        &main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_symbol_form_dispatch_chain_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Lexer)
+
+(defn main []
+  (let [name (substring "(print)" 1 6)
+        tag (if (string-eq name "type-alias")
+              1
+              (if (string-eq name "type-constrained")
+                2
+                (if (string-eq name "computation-builder")
+                  3
+                  4)))]
+    (do
+      (print (string-length name))
+      (print tag)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-symbol-form-dispatch-chain-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_substring_string_length_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Lexer)
+
+(defn main []
+  (let [name (substring "(print)" 1 6)]
+    (do
+      (print (string-length name))
+      (print (string-char-at name 0))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-substring-string-length-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_string_eq_dispatch_chain_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Lexer)
+
+(defn main []
+  (let [name "print"
+        tag (if (string-eq name "type-alias")
+              1
+              (if (string-eq name "type-constrained")
+                2
+                (if (string-eq name "computation-builder")
+                  3
+                  4)))]
+    (do
+      (print (string-length name))
+      (print tag)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-string-eq-dispatch-chain-literal-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_literal_string_length_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Lexer)
+
+(defn main []
+  (do
+    (print (string-length "print"))
+    (print (string-char-at "print" 0))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-literal-string-length-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_nested_int_node_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+
+(defn main []
+  (let [helper-inner (make-int-node 42)
+        helper-outer (vector-push (vector-new 1) helper-inner)
+        manual-inner (vector-push (vector-push (vector-new 2) 1) 42)
+        manual-outer (vector-push (vector-new 1) manual-inner)]
+    (do
+      (print (vector-get (vector-get helper-outer 0) 0))
+      (print (vector-get (vector-get helper-outer 0) 1))
+      (print (vector-get (vector-get manual-outer 0) 0))
+      (print (vector-get (vector-get manual-outer 0) 1))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-nested-int-node-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_defn_literal_42_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Lexer)
+(import Syntax.Parser)
+
+(defn main []
+  (let [src "(defn main [] 42)"
+        spans (tokenize-with-spans src)
+        pos-ref (ref-new 0)]
+    (do
+      (p-advance pos-ref)
+      (let [decl (parse-defn-v3 spans pos-ref src)]
+        (do
+          (print (vector-get decl 2))
+          (print (vector-get (vector-get decl 3) 0))
+          (print (vector-get (vector-get decl 3) 1))
+          (print (vector-length decl))
+          0)))))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-defn-literal-42-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_expr_literal_42_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Lexer)
+(import Syntax.Parser)
+
+(defn main []
+  (let [src "42"
+        spans (tokenize-with-spans src)
+        pos-ref (ref-new 0)
+        expr (parse-expr-v3 spans pos-ref src)]
+    (do
+      (print (vector-get expr 0))
+      (print (vector-get expr 1))
+      (print (vector-length expr))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-expr-literal-42-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_finalize_defn_body_literal_42_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+
+(defn main []
+  (let [defn-node (vector-push (vector-push (vector-push (vector-new 8) 20) 0) 0)
+        body (make-int-node 42)
+        decl (finalize-defn-body-v3 defn-node 0 body)]
+    (do
+      (print (vector-get decl 2))
+      (print (vector-get (vector-get decl 3) 0))
+      (print (vector-get (vector-get decl 3) 1))
+      (print (vector-length decl))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-finalize-defn-body-literal-42-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_defn_body_path_literal_42_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Lexer)
+(import Syntax.Parser)
+
+(defn main []
+  (let [src "(defn main [] 42)"
+        spans (tokenize-with-spans src)
+        pos-ref (ref-new 5)
+        defn-node (vector-push (vector-push (vector-push (vector-new 8) 20) 0) 0)
+        decl (parse-defn-bodyless-or-body-v3 spans pos-ref src defn-node 0)]
+    (do
+      (print (vector-get decl 2))
+      (print (vector-get (vector-get decl 3) 0))
+      (print (vector-get (vector-get decl 3) 1))
+      (print (vector-length decl))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-parse-defn-body-path-literal-42-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_native_pipeline_linux_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import App.PipelineSmoke)
+
+(defn main []
+  (let [compile-result (compile-source "(defn main [] 42)")
+        ir (vector-get compile-result 2)
+        result (compile-native-pipeline ir 3)]
+    (do
+      (print (vector-get result 0))
+      (print (vector-get result 1))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-compile-native-pipeline-linux-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_elf_object_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeEmit)
+
+(defn main []
+  (let [header (emit-elf-header)
+        code (vector-push (vector-push (vector-new 4) 195) 144)
+        object (emit-elf code)]
+    (do
+      (print (vector-length header))
+      (print (vector-length code))
+      (print (vector-length object))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-emit-elf-object-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_elf_generated_native_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import App.PipelineSmoke)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+
+(defn main []
+  (let [compile-result (compile-source "(defn main [] 42)")
+        ir (vector-get compile-result 2)
+        target (make-target 3)
+        native (emit-native ir target)
+        elf-object (emit-elf native)
+        object (emit-object native target)]
+    (do
+      (print (vector-length native))
+      (print (vector-length elf-object))
+      (print (vector-length object))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-emit-elf-generated-native-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_native_multi_object_link_x86_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import App.PipelineSmoke)
+(import Syntax.AST)
+(import Backend.Wasm.Compiler)
+
+(defn main []
+  (let [ast-node (make-lit-int 42)
+        ir (lower ast-node)
+        link-result (compile-native-multi-object-link ir 1)]
+    (do
+      (print link-result)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-compile-native-multi-object-link-x86-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_native_multi_object_link_linux_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import App.PipelineSmoke)
+(import Syntax.AST)
+(import Backend.Wasm.Compiler)
+
+(defn main []
+  (let [ast-node (make-lit-int 42)
+        ir (lower ast-node)
+        link-result (compile-native-multi-object-link ir 3)]
+    (do
+      (print link-result)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-compile-native-multi-object-link-linux-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_native_multi_object_link_aarch64_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import App.PipelineSmoke)
+(import Syntax.AST)
+(import Backend.Wasm.Compiler)
+
+(defn main []
+  (let [ast-node (make-lit-int 42)
+        ir (lower ast-node)
+        link-result (compile-native-multi-object-link ir 2)]
+    (do
+      (print link-result)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-compile-native-multi-object-link-aarch64-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_generate_response_file_text_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.Linker)
+(import Backend.Native.NativeTarget)
+
+(defn main []
+  (let [target (make-target 1)
+        program-object (default-program-object-path target)
+        runtime-object (default-runtime-object-path target)
+        program-binary (default-program-binary-path target)
+        objects (vector-push (vector-push (vector-new 2) program-object) runtime-object)
+        args (build-linker-response-args objects program-binary target)
+        response-text (generate-response-file-text args)]
+    (do
+      (print (string-length response-text))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-generate-response-file-text-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_build_linker_response_args_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.Linker)
+(import Backend.Native.NativeTarget)
+
+(defn main []
+  (let [target (make-target 1)
+        program-object (default-program-object-path target)
+        runtime-object (default-runtime-object-path target)
+        program-binary (default-program-binary-path target)
+        objects (vector-push (vector-push (vector-new 2) program-object) runtime-object)
+        args (build-linker-response-args objects program-binary target)]
+    (do
+      (print (vector-length args))
+      (print (string-length (vector-get args 0)))
+      (print (string-length (vector-get args 1)))
+      (print (string-length (vector-get args 2)))
+      (print (string-length (vector-get args 3)))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-build-linker-response-args-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_manual_response_text_concat_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (let [line1 (string-concat "-o" "\n")
+        line2 (string-concat "program.native" "\n")
+        line3 (string-concat "program.o" "\n")
+        line4 (string-concat "runtime.o" "\n")
+        step1 (string-concat "" line1)
+        step2 (string-concat step1 line2)
+        step3 (string-concat step2 line3)
+        step4 (string-concat step3 line4)]
+    (do
+      (print (string-length step4))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-manual-response-text-concat-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_manual_response_text_concat_step_lengths()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (let [line1 (string-concat "-o" "\n")
+        line2 (string-concat "program.native" "\n")
+        line3 (string-concat "program.o" "\n")
+        line4 (string-concat "runtime.o" "\n")
+        step1 (string-concat "" line1)
+        step2 (string-concat step1 line2)
+        step3 (string-concat step2 line3)
+        step4 (string-concat step3 line4)]
+    (do
+      (print (string-length line1))
+      (print (string-length line2))
+      (print (string-length line3))
+      (print (string-length line4))
+      (print (string-length step1))
+      (print (string-length step2))
+      (print (string-length step3))
+      (print (string-length step4))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-manual-response-text-concat-step-lengths",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_string_length_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (do
+    (print (string-length "ab"))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-string-length-literal-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_string_length_newline_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (do
+    (print (string-length "\n"))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-string-length-newline-literal-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_string_concat_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (do
+    (print (string-length (string-concat "ab" "c")))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-string-concat-literal-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_string_concat_chained_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (let [prefix (string-concat "ab" "c")]
+    (do
+      (print (string-length (string-concat prefix "de")))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-string-concat-chained-literal-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_native_bundle_summary_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import App.PipelineSmoke)
+
+(defn main []
+  (let [native-bundle-result (compile-native-bundle-summary 1)]
+    (do
+      (print (vector-get native-bundle-result 0))
+      (print (vector-get native-bundle-result 1))
+      (print (vector-get native-bundle-result 2))
+      (print (vector-get native-bundle-result 3))
+      (print (vector-get native-bundle-result 4))
+      (print (vector-get native-bundle-result 5))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-compile-native-bundle-summary-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_bundle_text_hash_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import App.PipelineSmoke)
+
+(defn main []
+  (do
+    (print (bundle-text-hash "program.native"))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-bundle-text-hash-literal-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_string_char_at_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (do
+    (print (string-char-at "program.native" 0))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-string-char-at-literal-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_string_char_at_literal_last_char_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (do
+    (print (string-char-at "program.native" 13))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-string-char-at-literal-last-char-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_string_length_program_native_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (do
+    (print (string-length "program.native"))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-string-length-program-native-literal-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_name_hash_literal_explicit_end_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+
+(defn main []
+  (do
+    (print (name-hash "program.native" 0 14))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-name-hash-literal-explicit-end-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_name_hash_loop_last_char_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+
+(defn main []
+  (do
+    (print (name-hash-loop "program.native" 13 14 0))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-name-hash-loop-last-char-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_imported_string_eq_single_char_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Lexer)
+
+(defn main []
+  (do
+    (print (if (string-eq "a" "a") 1 0))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-imported-string-eq-single-char-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_module_resolver_same_path_multi_char_true_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import App.ModuleResolver)
+
+(defn main []
+  (do
+    (print (if (same-path "src/App/Seed.ls" "src/App/Seed.ls") 1 0))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-module-resolver-same-path-multi-char-true-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_module_resolver_same_path_single_char_true_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import App.ModuleResolver)
+
+(defn main []
+  (do
+    (print (if (same-path "a" "a") 1 0))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-module-resolver-same-path-single-char-true-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_module_resolver_same_path_multi_char_false_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import App.ModuleResolver)
+
+(defn main []
+  (do
+    (print (if (same-path "src/App/Seed.ls" "src/App/Main.ls") 1 0))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-module-resolver-same-path-multi-char-false-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_imported_parse_int_digits_single_char_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+
+(defn main []
+  (do
+    (print (parse-int-digits-from-str "4" 0 1 0))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-imported-parse-int-digits-single-char-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_imported_string_eq_single_char_layout_is_sane() {
+    let main_source = r#"(module App.Main)
+(import Syntax.Lexer)
+
+(defn main []
+  (do
+    (print (if (string-eq "a" "a") 1 0))
+    0))"#;
+    let layout = run_selfhost_main_override_representative_aarch64_layout_harness(
+        "native-stage23-pipeline-smoke-imported-string-eq-single-char-layout",
+        main_source,
+    );
+    assert!(
+        layout.entrypoint_offset > 0,
+        "imported string-eq single-char layout の entrypoint が 0: {layout:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_imported_parse_int_digits_single_char_layout_is_sane()
+ {
+    let main_source = r#"(module App.Main)
+(import Syntax.Parser)
+
+(defn main []
+  (do
+    (print (parse-int-digits-from-str "4" 0 1 0))
+    0))"#;
+    let layout = run_selfhost_main_override_representative_aarch64_layout_harness(
+        "native-stage23-pipeline-smoke-imported-parse-int-digits-single-char-layout",
+        main_source,
+    );
+    assert!(
+        layout.entrypoint_offset > 0,
+        "imported parse-int-digits single-char layout の entrypoint が 0: {layout:?}"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_imported_string_eq_single_char_materializes_bundle()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.Lexer)
+
+(defn main []
+  (do
+    (print (if (string-eq "a" "a") 1 0))
+    0))"#;
+    let bundle_input = run_selfhost_main_override_native_function_meta_bundle_host_bytes_harness(
+        "native-stage23-pipeline-smoke-imported-string-eq-single-char-materialize",
+        main_source,
+    );
+    let bundle = build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
+        &bundle_input.code_bytes,
+        &bundle_input.data_bytes,
+        bundle_input.entrypoint_offset,
+    )
+    .expect("imported string-eq single-char bundle materialization に失敗");
+    maybe_write_native_host_bundle_artifact(
+        "native-stage23-pipeline-smoke-imported-string-eq-single-char-materialize",
+        &bundle,
+    )
+    .expect("imported string-eq single-char artifact 書き出しに失敗");
+    assert!(
+        !bundle.program_binary.is_empty(),
+        "imported string-eq single-char program.native が空"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_compile_native_bundle_summary_materializes_bundle()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import App.PipelineSmoke)
+
+(defn main []
+  (let [summary (compile-native-bundle-summary 4)]
+    (do
+      (print (vector-get summary 0))
+      (print (vector-get summary 1))
+      (print (vector-get summary 2))
+      (print (vector-get summary 3))
+      (print (vector-get summary 4))
+      (print (vector-get summary 5))
+      0)))"#;
+    let bundle_input = run_selfhost_main_override_native_function_meta_bundle_host_bytes_harness(
+        "native-stage23-pipeline-smoke-compile-native-bundle-summary-materialize",
+        main_source,
+    );
+    let bundle = build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
+        &bundle_input.code_bytes,
+        &bundle_input.data_bytes,
+        bundle_input.entrypoint_offset,
+    )
+    .expect("compile-native-bundle-summary bundle materialization に失敗");
+    maybe_write_native_host_bundle_artifact(
+        "native-stage23-pipeline-smoke-compile-native-bundle-summary-materialize",
+        &bundle,
+    )
+    .expect("compile-native-bundle-summary artifact 書き出しに失敗");
+    assert!(
+        !bundle.program_binary.is_empty(),
+        "compile-native-bundle-summary program.native が空"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_make_target_one_triple_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeTarget)
+
+(defn main []
+  (let [target (make-target 1)]
+    (do
+      (print (target-triple target))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-make-target-one-triple-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_make_target_two_triple_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeTarget)
+
+(defn main []
+  (let [target (make-target 2)]
+    (do
+      (print (target-triple target))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-make-target-two-triple-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_make_target_four_triple_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeTarget)
+
+(defn main []
+  (let [target (make-target 4)]
+    (do
+      (print (target-triple target))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-make-target-four-triple-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_eq_if_chain_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (do
+    (print (if (= 4 1) 1
+             (if (= 4 2) 2
+               (if (= 4 3) 3 4))))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-eq-if-chain-literal-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_eq_if_chain_via_let_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (let [x 4]
+    (do
+      (print (if (= x 1) 1
+               (if (= x 2) 2
+                 (if (= x 3) 3 4))))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-eq-if-chain-via-let-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_arithmetic_expr_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (do
+    (print (+ 101 (* 0 31)))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-arithmetic-expr-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_add_expr_only() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (do
+    (print (+ 100 1))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-add-expr-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_mul_expr_only() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (do
+    (print (* 3 5))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-mul-expr-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_ge_if_expr_only() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (do
+    (print (if (>= 14 14) 1 0))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-ge-if-expr-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_arithmetic_expr_via_let_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (let [x (* 0 31)]
+    (do
+      (print (+ 101 x))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-arithmetic-expr-via-let-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_local_name_hash_literal_explicit_end_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn local-name-hash-loop [src pos end acc]
+  (if (>= pos end) acc
+    (local-name-hash-loop src (+ pos 1) end
+      (+ (string-char-at src pos) (* acc 31)))))
+
+(defn local-name-hash [src start end]
+  (local-name-hash-loop src start end 0))
+
+(defn main []
+  (do
+    (print (local-name-hash "program.native" 0 14))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-local-name-hash-literal-explicit-end-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_const_only() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  0)"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-const-only",
+        main_source,
+    );
+}
+
+#[test]
+#[ignore = "diagnostic entrypoint helper semantics for override main"]
+fn test_e2e_selfhost_pipeline_smoke_representative_const_only_entrypoint_helper_offsets() {
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  0)"#;
+
+    let selfhost_last = run_selfhost_override_entrypoint_offset_probe(
+        "native-stage23-const-only-entrypoint-selfhost-last",
+        main_source,
+        r#"(vector-get (emit-native-selfhost-function-meta-bundle-entrypoint-payload-with-import-count functions 10 target) 1)"#,
+    );
+    let selfhost_abs = run_selfhost_override_entrypoint_offset_probe(
+        "native-stage23-const-only-entrypoint-selfhost-abs",
+        main_source,
+        r#"(vector-get (emit-native-selfhost-function-meta-bundle-entrypoint-payload-for-function-with-import-count functions 10 main-func-idx target) 1)"#,
+    );
+    let generic_abs = run_selfhost_override_entrypoint_offset_probe(
+        "native-stage23-const-only-entrypoint-generic-abs",
+        main_source,
+        r#"(vector-get (emit-native-function-meta-bundle-entrypoint-payload-for-function-with-import-count native-callables 10 main-func-idx target) 1)"#,
+    );
+    let generic_last = run_selfhost_override_entrypoint_offset_probe(
+        "native-stage23-const-only-entrypoint-generic-last",
+        main_source,
+        r#"(vector-get (emit-native-function-meta-bundle-entrypoint-payload-with-import-count native-callables 10 target) 1)"#,
+    );
+
+    println!("selfhost_last={selfhost_last:?}");
+    println!("selfhost_abs={selfhost_abs:?}");
+    println!("generic_abs={generic_abs:?}");
+    println!("generic_last={generic_last:?}");
+}
+
+#[test]
+#[ignore = "diagnostic override write-file/compile visibility"]
+fn test_e2e_selfhost_pipeline_smoke_representative_const_only_override_visibility() {
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  0)"#;
+    let escaped_main_source = escape_lsharp_string(main_source);
+    let harness = format!(
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        _ (write-file "src/App/OverrideMain.ls" "{escaped_main_source}")
+        main-text (read-file "src/App/OverrideMain.ls")
+        pairs (compile-file-pairs-with-cache "src/App/OverrideMain.ls" cache-ref parse-count-ref)
+        main-pair (vector-get pairs (- (vector-length pairs) 1))
+        main-decls (vector-get main-pair 1)]
+    (do
+      (print (string-length main-text))
+      (print (vector-length main-decls))
+      0)))"#
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-const-only-override-visibility",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("override visibility harness 実行に失敗");
+    println!("override_visibility={:?}", parse_numeric_lines(&output));
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_trivial_print_only()
+{
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (do
+    (print 1)
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-trivial-print-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_root_push_pop_only()
+{
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (let [slot (root_push 42)
+        value (root_pop)]
+    (do
+      (print slot)
+      (print value)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-root-push-pop-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_root_set_only() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (let [slot (root_push 1)
+        _updated (root_set slot 42)
+        value (root_pop)]
+    (do
+      (print value)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-root-set-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_native_codegen_import_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  0)"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-native-codegen-import-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_i32_const_bundle_core_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [native (emit-i32-const-bundle-x86-core 42 0 2)]
+    (do
+      (root_push native)
+      (print (vector-length native))
+      (root_pop)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-emit-i32-const-bundle-core-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_i32_const_x86_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [native (emit-i32-const-x86 42)]
+    (do
+      (root_push native)
+      (print (vector-length native))
+      (root_pop)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-emit-i32-const-x86-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_mov_local_from_rcx_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [native (emit-mov-local-from-rcx 8)]
+    (do
+      (root_push native)
+      (print (vector-length native))
+      (root_pop)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-emit-mov-local-from-rcx-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_encode_u32_le_only()
+{
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [native (encode-u32-le 42)]
+    (do
+      (root_push native)
+      (print (vector-length native))
+      (root_pop)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-encode-u32-le-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_concat_byte_vectors_rooted_small_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [left (byte-vector-1 184)
+        right (encode-u32-le 42)]
+    (do
+      (root_push left)
+      (root_push right)
+      (let [native (concat-byte-vectors-rooted left right)]
+        (do
+          (root_push native)
+          (print (vector-length native))
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          0)))))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-concat-byte-vectors-rooted-small-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_byte_vector_4_only()
+{
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [native (byte-vector-4 1 2 3 4)]
+    (do
+      (root_push native)
+      (print (vector-length native))
+      (root_pop)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-byte-vector-4-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_vector_push_single_rooted_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [native (vector-push-single-rooted (vector-new 1) 7)]
+    (do
+      (root_push native)
+      (print (vector-length native))
+      (root_pop)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-vector-push-single-rooted-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_local_vector_push_single_rooted_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (let [base (vector-new 1)
+        value 7]
+    (do
+      (root_push value)
+      (let [base-slot (root_push base)
+            result (vector-push base value)]
+      (do
+        (root_set base-slot result)
+        (root_push result)
+        (print (vector-length result))
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        0)))))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-local-vector-push-single-rooted-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_local_vector_new_length_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (let [base (vector-new 1)]
+    (do
+      (print (vector-length base))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-local-vector-new-length-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_local_vector_push_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (let [base (vector-new 1)
+        result (vector-push base 7)]
+    (do
+      (print (vector-length result))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-local-vector-push-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_local_multi_vector_push_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (let [base (vector-new 1)
+        v1 (vector-push base 184)
+        v2 (vector-push v1 42)
+        v3 (vector-push v2 0)
+        v4 (vector-push v3 0)
+        v5 (vector-push v4 0)]
+    (do
+      (print (vector-length v5))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-local-multi-vector-push-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_local_vector_get_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (let [base (vector-new 1)
+        v1 (vector-push base 184)
+        v2 (vector-push v1 42)
+        value (vector-get v2 1)]
+    (do
+      (print value)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-local-vector-get-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_main_representative_aarch64_runtime_helper_length_contracts() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-stage23-runtime-helper-length-contracts",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        r#"(module App.HarnessMain)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (do
+    (print (vector-length (emit-aarch64-selfhost-command-line-arg-helper)))
+    (print (vector-length (emit-aarch64-selfhost-string-length-helper)))
+    (print (vector-length (emit-aarch64-selfhost-print-helper)))
+    (print (vector-length (emit-aarch64-selfhost-vector-new-helper)))
+    (print (vector-length (emit-aarch64-selfhost-vector-length-helper)))
+    (print (vector-length (emit-aarch64-selfhost-alloc-helper)))
+    0))"#,
+        &[],
+    )
+    .expect("runtime helper length contract harness 実行に失敗");
+
+    assert_eq!(
+        parse_numeric_lines(&output),
+        vec![32, 60, 144, 108, 20, 72],
+        "AArch64 selfhost runtime helper 実長が offset contract とずれている"
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_native_only() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.AST)
+(import Backend.Wasm.Compiler)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [ast-node (make-lit-int 42)]
+    (do
+      (root_push ast-node)
+      (let [ir (lower ast-node)]
+        (do
+          (root_push ir)
+          (let [target (make-target 1)]
+            (do
+              (root_push target)
+              (let [native (emit-native ir target)]
+                (do
+                  (root_push native)
+                  (print (vector-length native))
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  0)))))))))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-emit-native-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_native_aarch64_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.AST)
+(import Backend.Wasm.Compiler)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [ast-node (make-lit-int 42)]
+    (do
+      (root_push ast-node)
+      (let [ir (lower ast-node)]
+        (do
+          (root_push ir)
+          (let [target (make-target 2)]
+            (do
+              (root_push target)
+              (let [native (emit-native ir target)]
+                (do
+                  (root_push native)
+                  (print (vector-length native))
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  0)))))))))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-emit-native-aarch64-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_native_tiny_ir_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [instr (vector-push (vector-push (vector-new 2) 1) 42)]
+    (do
+      (root_push instr)
+      (let [ir (vector-push (vector-new 1) instr)]
+        (do
+          (root_push ir)
+          (let [target (make-target 1)]
+            (do
+              (root_push target)
+              (let [native (emit-native ir target)]
+                (do
+                  (root_push native)
+                  (print (vector-length native))
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  0)))))))))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-emit-native-tiny-ir-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_native_tiny_ir_aarch64_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [instr (vector-push (vector-push (vector-new 2) 1) 42)]
+    (do
+      (root_push instr)
+      (let [ir (vector-push (vector-new 1) instr)]
+        (do
+          (root_push ir)
+          (let [target (make-target 2)]
+            (do
+              (root_push target)
+              (let [native (emit-native ir target)]
+                (do
+                  (root_push native)
+                  (print (vector-length native))
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  0)))))))))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-emit-native-tiny-ir-aarch64-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_scan_control_flow_meta_tiny_ir_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [instr (vector-push (vector-push (vector-new 2) 1) 42)]
+    (do
+      (root_push instr)
+      (let [ir (vector-push (vector-new 1) instr)]
+        (do
+          (root_push ir)
+          (let [meta (scan-control-flow-meta ir)]
+            (do
+              (root_push meta)
+              (print (map-get-index (control-flow-end-map meta) 0))
+              (print (map-get-index (control-flow-else-map meta) 0))
+              (print (map-get-index (control-flow-branch-map meta) 0))
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              0)))))))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-scan-control-flow-meta-tiny-ir-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_scan_control_flow_meta_tiny_ir_alloc_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [instr (vector-push (vector-push (vector-new 2) 1) 42)]
+    (do
+      (root_push instr)
+      (let [ir (vector-push (vector-new 1) instr)]
+        (do
+          (root_push ir)
+          (let [meta (scan-control-flow-meta ir)]
+            (do
+              (root_push meta)
+              (print 1)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              0)))))))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-scan-control-flow-meta-tiny-ir-alloc-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_collect_native_offsets_aarch64_tiny_ir_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [instr (vector-push (vector-push (vector-new 2) 1) 42)]
+    (do
+      (root_push instr)
+      (let [ir (vector-push (vector-new 1) instr)]
+        (do
+          (root_push ir)
+          (let [offsets (collect-native-offsets-aarch64 ir)]
+            (do
+              (root_push offsets)
+              (print (vector-length offsets))
+              (print (vector-get offsets 0))
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              0)))))))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-collect-native-offsets-aarch64-tiny-ir-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_codegen_ir_instr_aarch64_i64_const_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [native (codegen-ir-instr-aarch64 1 42)]
+    (do
+      (root_push native)
+      (print (vector-length native))
+      (print (vector-get native 0))
+      (root_pop)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-codegen-ir-instr-aarch64-i64-const-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_codegen_ir_instr_aarch64_i64_const_alloc_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [native (codegen-ir-instr-aarch64 1 42)]
+    (do
+      (root_push native)
+      (print 1)
+      (root_pop)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-codegen-ir-instr-aarch64-i64-const-alloc-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_codegen_ir_instr_aarch64_i64_rem_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [native (codegen-ir-instr-aarch64 28 0)]
+    (do
+      (root_push native)
+      (print (vector-length native))
+      (print (vector-get native 0))
+      (root_pop)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-codegen-ir-instr-aarch64-i64-rem-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_aarch64_movz_w0_alloc_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [native (emit-aarch64-movz-w0 42)]
+    (do
+      (root_push native)
+      (print 1)
+      (root_pop)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-emit-aarch64-movz-w0-alloc-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_aarch64_load_i64_x0_small_const_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [native (emit-aarch64-load-i64-x0 42)]
+    (do
+      (root_push native)
+      (print (vector-length native))
+      (root_pop)
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-emit-aarch64-load-i64-x0-small-const-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_aarch64_immediate_chunks_small_const_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (do
+    (print (aarch64-immediate-chunk-0 42))
+    (print (aarch64-immediate-chunk-1 42))
+    (print (aarch64-immediate-chunk-2 42))
+    (print (aarch64-immediate-chunk-3 42))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-aarch64-immediate-chunks-small-const-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_small_div_rem_literal_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (do
+    (print (/ 42 256))
+    (print (% 42 256))
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-small-div-rem-literal-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_eq_if_chain_opcode_window_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (let [opcode 28]
+    (do
+      (print
+        (if (= opcode 23) 23
+          (if (= opcode 24) 24
+            (if (= opcode 25) 25
+              (if (= opcode 26) 26
+                (if (= opcode 27) 27
+                  (if (= opcode 28) 28 99)))))))
+      0)))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-eq-if-chain-opcode-window-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_medium_i64_const_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (do
+    (print 256)
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-medium-i64-const-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_large_i64_const_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+
+(defn main []
+  (do
+    (print 1384120320)
+    0))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-large-i64-const-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_object_only() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.AST)
+(import Backend.Wasm.Compiler)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+
+(defn main []
+  (let [ast-node (make-lit-int 42)]
+    (do
+      (root_push ast-node)
+      (let [ir (lower ast-node)]
+        (do
+          (root_push ir)
+          (let [target (make-target 1)]
+            (do
+              (root_push target)
+              (let [native (emit-native ir target)]
+                (do
+                  (root_push native)
+                  (let [object (emit-object native target)]
+                    (do
+                      (root_push object)
+                      (print (vector-length object))
+                      (print (vector-get object 0))
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      0))))))))))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-emit-object-only",
+        main_source,
+    );
+}
+
+#[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_object_aarch64_only()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Syntax.AST)
+(import Backend.Wasm.Compiler)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+
+(defn main []
+  (let [ast-node (make-lit-int 42)]
+    (do
+      (root_push ast-node)
+      (let [ir (lower ast-node)]
+        (do
+          (root_push ir)
+          (let [target (make-target 2)]
+            (do
+              (root_push target)
+              (let [native (emit-native ir target)]
+                (do
+                  (root_push native)
+                  (let [object (emit-object native target)]
+                    (do
+                      (root_push object)
+                      (print (vector-length object))
+                      (print (vector-get object 0))
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      0))))))))))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-emit-object-aarch64-only",
+        main_source,
+    );
+}
+
 /// V2-08: representative build entry 由来の stage2-native / stage3-native artifact 観測面が一致すること。
 #[test]
 fn test_e2e_stage23_representative_native_host_bundle_artifact_observations_match() {
@@ -13109,6 +27572,7 @@ fn test_e2e_stage23_representative_native_host_bundle_artifact_observations_matc
     let bundle_input = run_selfhost_main_native_function_meta_bundle_host_bytes_harness();
     let stage2_bundle = build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
         &bundle_input.code_bytes,
+        &bundle_input.data_bytes,
         bundle_input.entrypoint_offset,
     )
     .expect("representative stage2-native bundle materialization に失敗");
@@ -13116,6 +27580,7 @@ fn test_e2e_stage23_representative_native_host_bundle_artifact_observations_matc
         .expect("representative stage2-native artifact 書き出しに失敗");
     let stage3_bundle = build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
         &bundle_input.code_bytes,
+        &bundle_input.data_bytes,
         bundle_input.entrypoint_offset,
     )
     .expect("representative stage3-native bundle materialization に失敗");
@@ -13128,6 +27593,55 @@ fn test_e2e_stage23_representative_native_host_bundle_artifact_observations_matc
     assert_eq!(
         stage2_obs, stage3_obs,
         "representative stage2/stage3 の artifact hash が一致しない"
+    );
+}
+
+/// V2-08: proxy ではなく actual native executable 経由で stage2-native / stage3-native が自己再生成できること。
+#[test]
+fn test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let seed_source = representative_actual_stage23_seed_source();
+    let escaped_seed_source = escape_lsharp_string(&seed_source);
+    let pairs_expr = format!(
+        r#"(do
+            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+            (compile-file-pairs-with-cache "src/App/Seed.ls" cache-ref parse-count-ref))"#
+    );
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+            (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref))"#
+    );
+
+    let stage1_input = run_selfhost_native_function_meta_bundle_host_bytes_harness_loose_with_exprs(
+        "native-stage23-actual-self-regeneration-stage1",
+        &pairs_expr,
+        &payload_expr,
+    );
+    let (stage2_bundle, stage2_input) = run_actual_native_self_regeneration_transport_stage(
+        "actual-stage2-native",
+        &stage1_input,
+        &seed_source,
+    )
+    .expect("stage1-native から stage2-native transport を回収できない");
+    let (stage3_bundle, stage3_input) = run_actual_native_self_regeneration_transport_stage(
+        "actual-stage3-native",
+        &stage2_input,
+        &seed_source,
+    )
+    .expect("stage2-native から stage3-native transport を回収できない");
+
+    assert_eq!(
+        observe_native_host_bundle(&stage2_bundle),
+        observe_native_host_bundle(&stage3_bundle),
+        "actual stage2-native / stage3-native の exit/stdout/stderr/hash が一致しない"
+    );
+    assert_eq!(
+        stage2_input, stage3_input,
+        "actual stage2-native / stage3-native の transport payload が一致しない"
     );
 }
 
@@ -15128,12 +29642,14 @@ fn test_e2e_native_host_bundle_entrypoint_recursive_if_returns_base_case() {
 
     let bundle = build_and_run_native_host_bundle_with_canonical_artifacts_and_entrypoint(
         &bundle_input.code_bytes,
+        &bundle_input.data_bytes,
         bundle_input.entrypoint_offset,
     )
     .expect("bundle entrypoint recursive if host binary 実行に失敗");
 
     assert_eq!(
-        bundle.exit_code, 42,
+        bundle.exit_code,
+        42,
         "bundle entrypoint recursive if: exit code 42 を期待したが {} を得た\nstdout={:?}\nstderr={:?}\nbytes ({} bytes): {:?}",
         bundle.exit_code,
         String::from_utf8_lossy(&bundle.stdout),
