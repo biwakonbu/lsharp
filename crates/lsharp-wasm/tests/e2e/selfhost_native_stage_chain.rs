@@ -95,8 +95,11 @@ struct NativeEntrypointLayout {
 }
 
 fn actual_stage23_seed_source_with_payload(payload_expr: &str, main_body: &str) -> String {
-    selfhost_main_native_code_only_export_harness_with_payload(payload_expr, main_body)
-        .replacen("(module App.HarnessMain)", "(module App.Seed)", 1)
+    selfhost_main_native_code_only_export_harness_with_payload(payload_expr, main_body).replacen(
+        "(module App.HarnessMain)",
+        "(module App.Seed)",
+        1,
+    )
 }
 
 fn representative_actual_stage23_seed_source() -> String {
@@ -16514,16 +16517,16 @@ fn link_and_run_native_host_binary_capture_with_args(
                  mov x22, #0\n\
                  mov x9, #0\n\
                  mov x10, #0\n\
-                 sub sp, sp, #0x40000\n\
-                 mov x27, sp\n\
+                 adrp x27, _lsharp_root_stack@PAGE\n\
+                 add x27, x27, _lsharp_root_stack@PAGEOFF\n\
                  mov x28, x27\n\
                  bl _generated\n\
-                 add sp, sp, #0x40000\n\
                  ldp x27, x28, [sp, #48]\n\
                  ldp x21, x22, [sp, #32]\n\
                  ldp x19, x20, [sp, #16]\n\
                  ldp x29, x30, [sp], #80\n\
-                 ret\n",
+                 ret\n\
+             .zerofill __DATA,__bss,_lsharp_root_stack,0x800000,3\n",
             byte_strs.join(", ")
         );
         std::fs::write(dir.join("prog.s"), &asm_content)
@@ -16885,11 +16888,10 @@ fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
                   mov x7, #0\n\
                    mov x9, #0\n\
                    mov x10, #0\n\
-                   sub sp, sp, #0x40000\n\
-                    mov x27, sp\n\
-                    mov x28, x27\n\
+                   adrp x27, _lsharp_root_stack@PAGE\n\
+                   add x27, x27, _lsharp_root_stack@PAGEOFF\n\
+                   mov x28, x27\n\
                    bl _lsharp_entry\n\
-                   add sp, sp, #0x40000\n\
                     ldp x27, x28, [sp, #48]\n\
                    ldp x21, x22, [sp, #32]\n\
                    ldp x19, x20, [sp, #16]\n\
@@ -16920,7 +16922,8 @@ fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
              .section __DATA,__data\n\
              .p2align 3\n\
              _lsharp_data:\n\
-                 .byte {data_text}\n",
+                 .byte {data_text}\n\
+             .zerofill __DATA,__bss,_lsharp_root_stack,0x800000,3\n",
             alloc_size = alloc_size,
             data_base = data_base,
             data_frontier = data_frontier,
@@ -22679,7 +22682,8 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_act
 
 #[test]
 #[ignore = "diagnostic: inspect compile-file-functions native probe with actual seed"]
-fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_functions_actual_seed_probe() {
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_functions_actual_seed_probe()
+{
     if !host_native_exec_supported() {
         return;
     }
@@ -22735,8 +22739,8 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_payload_a
 
 #[test]
 #[ignore = "diagnostic: inspect compile-file-functions fixed-path native probe with actual seed"]
-fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_functions_actual_seed_fixed_path_probe(
-) {
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_functions_actual_seed_fixed_path_probe()
+ {
     if !host_native_exec_supported() {
         return;
     }
@@ -22779,8 +22783,8 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_functions
 
 #[test]
 #[ignore = "diagnostic: inspect compile-file-pairs fixed-path native probe with actual seed"]
-fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_actual_seed_fixed_path_probe(
-) {
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_actual_seed_fixed_path_probe()
+ {
     if !host_native_exec_supported() {
         return;
     }
@@ -22819,8 +22823,8 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_pairs_act
 
 #[test]
 #[ignore = "diagnostic: inspect parse-program fixed-path native probe with actual seed"]
-fn test_e2e_selfhost_pipeline_smoke_representative_native_parse_program_actual_seed_fixed_path_probe(
-) {
+fn test_e2e_selfhost_pipeline_smoke_representative_native_parse_program_actual_seed_fixed_path_probe()
+ {
     if !host_native_exec_supported() {
         return;
     }
@@ -22853,7 +22857,8 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_parse_program_actual_s
 
 #[test]
 #[ignore = "diagnostic: inspect first import substring with actual seed argv path"]
-fn test_e2e_selfhost_pipeline_smoke_representative_native_actual_seed_first_import_substring_probe() {
+fn test_e2e_selfhost_pipeline_smoke_representative_native_actual_seed_first_import_substring_probe()
+{
     if !host_native_exec_supported() {
         return;
     }
@@ -22914,8 +22919,8 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_actual_seed_first_impo
 
 #[test]
 #[ignore = "diagnostic: inspect compile-file-payload fixed-path native probe with actual seed"]
-fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_payload_actual_seed_fixed_path_probe(
-) {
+fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_payload_actual_seed_fixed_path_probe()
+ {
     if !host_native_exec_supported() {
         return;
     }
@@ -22960,7 +22965,8 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_compile_file_payload_a
 
 #[test]
 #[ignore = "diagnostic: inspect load-src-decl-pair argv probe with actual seed"]
-fn test_e2e_selfhost_pipeline_smoke_representative_native_load_src_decl_pair_actual_seed_argv_probe() {
+fn test_e2e_selfhost_pipeline_smoke_representative_native_load_src_decl_pair_actual_seed_argv_probe()
+ {
     if !host_native_exec_supported() {
         return;
     }
@@ -23050,12 +23056,21 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_load_imports_actual_se
         String::from_utf8_lossy(&bundle.stdout),
         String::from_utf8_lossy(&bundle.stderr)
     );
+    assert_eq!(
+        bundle.exit_code, 0,
+        "actual seed import loader should complete without crashing"
+    );
+    let stdout = String::from_utf8_lossy(&bundle.stdout);
+    assert!(
+        stdout.contains("94\n72\n95\n"),
+        "actual seed import loader should print pre/post markers, stdout={stdout:?}"
+    );
 }
 
 #[test]
 #[ignore = "diagnostic: inspect load-imports stepwise argv probe with actual seed"]
-fn test_e2e_selfhost_pipeline_smoke_representative_native_load_imports_actual_seed_argv_stepwise_probe(
-) {
+fn test_e2e_selfhost_pipeline_smoke_representative_native_load_imports_actual_seed_argv_stepwise_probe()
+ {
     if !host_native_exec_supported() {
         return;
     }
