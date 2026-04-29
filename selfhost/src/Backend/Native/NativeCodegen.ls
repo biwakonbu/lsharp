@@ -11288,6 +11288,9 @@
     (+ op-size (* 8 (- current-depth 1)))
     (if (= current-depth 1) (+ op-size 4) op-size)))
 
+(defn native-produce-one-prefix-size-aarch64 [op-size current-depth]
+  (- (native-produce-one-size-aarch64 op-size current-depth) op-size))
+
 (defn emit-aarch64-load-u32-w0 [value]
   (let [uvalue (normalize-u32-immediate value)
     part0 (emit-aarch64-movz-w0-shift (aarch64-immediate-chunk-0 uvalue) 0)
@@ -14495,9 +14498,9 @@
                         (native-consume-produce-one-size-aarch64 16 current-depth 3)
                         (if (= target-param-count 2)
                           (native-consume-produce-one-size-aarch64 12 current-depth 2)
-                          (if (= target-param-count 1)
-                            12
-                            4))))))))))))
+                           (if (= target-param-count 1)
+                             12
+                             (native-produce-one-size-aarch64 4 current-depth)))))))))))))
     (if (= opcode 1)
       (native-produce-one-size-aarch64 (aarch64-load-i64-x0-size operand) current-depth)
       (if (= opcode 3)
@@ -15362,7 +15365,10 @@
                         call-bl (emit-aarch64-bl disp)
                         restore-prev (emit-aarch64-mov-x9-x10)]
                         (concat-three-byte-vectors-rooted save-prev call-bl restore-prev))
-                       (emit-aarch64-bl disp)))))))))))
+                       (emit-produce-one-bundle-aarch64
+                         (emit-aarch64-bl disp)
+                         frame-base-slot-count
+                         current-depth)))))))))))
 
 (defn emit-aarch64-helper-call-preserving-prev-and-lr [disp]
   (let [save-frame (emit-aarch64-save-x9-x30)
@@ -15557,9 +15563,9 @@
                             (- target-offset (+ current-offset 12))
                             (if (= target-param-count 2)
                               (- target-offset (+ current-offset 8))
-                               (if (= target-param-count 1)
-                                 (- target-offset (+ current-offset 4))
-                                 (- target-offset current-offset))))))))))))
+                                (if (= target-param-count 1)
+                                  (- target-offset (+ current-offset 4))
+                                  (- target-offset (+ current-offset (native-produce-one-prefix-size-aarch64 4 current-depth))))))))))))))
       call-bytes (if (>= target-param-count 20)
                  (emit-call-bundle-aarch64-twenty-to-sixty target-param-count disp frame-base-slot-count)
                   (if (>= target-param-count 10)

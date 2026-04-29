@@ -10124,6 +10124,36 @@ fn host_target_direct_call_bundle_code_bytes() -> Vec<u8> {
     )
 }
 
+fn host_target_direct_call_zero_arg_preserves_previous_value_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [caller-ir (vector-push
+                    (vector-push
+                      (vector-push (vector-new 3) (make-instr 3 6))
+                      (make-call 1))
+                    (make-instr 30 0))
+        callee-ir (vector-push (vector-new 1) (make-instr 3 6))
+        functions (vector-push (vector-push (vector-new 2) caller-ir) callee-ir)
+        target (host-target)
+        code (emit-native-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 fn host_target_direct_call_arg_bundle_code_bytes() -> Vec<u8> {
     run_native_codegen_host_bytes_harness(
         r#"(module Main)
@@ -19019,6 +19049,34 @@ fn test_e2e_native_host_binary_direct_call_bundle_link_and_execute() {
         exit_code,
         42,
         "host binary direct call bundle: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01f2: 0 引数 direct call が既存 stack value を保持して後続比較できること。
+#[test]
+fn test_e2e_native_host_binary_direct_call_zero_arg_preserves_previous_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_direct_call_zero_arg_preserves_previous_value_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: zero-arg direct call preserve bundle host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("zero-arg direct call preserve host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        1,
+        "host binary zero-arg direct call preserve: exit code 1 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),
