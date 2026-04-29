@@ -29,8 +29,50 @@
                   joined)))))))))
 (defn find-src-ancestor [dir] (if (= (string-length dir) 0) "" (if (is-src-dir-name (path-basename dir)) dir (let [parent (path-parent dir)] (if (same-path parent dir) "" (find-src-ancestor parent))))))
 (defn find-manifest-root [dir] (if (= (string-length dir) 0) "" (if (file-exists? (path-join dir "lsharp.toml")) dir (let [parent (path-parent dir)] (if (same-path parent dir) "" (find-manifest-root parent))))))
-(defn resolve-source-root [entry-path] (let [entry-dir (path-parent entry-path) manifest-root (find-manifest-root entry-dir) src-root (find-src-ancestor entry-dir)] (if (> (string-length src-root) 0) src-root (if (> (string-length manifest-root) 0) (path-join manifest-root "src") entry-dir))))
-(defn resolve-package-root [entry-path] (let [entry-dir (path-parent entry-path) manifest-root (find-manifest-root entry-dir) src-root (find-src-ancestor entry-dir)] (if (> (string-length src-root) 0) (path-parent src-root) (if (> (string-length manifest-root) 0) manifest-root entry-dir))))
+(defn resolve-source-root [entry-path]
+  (let [entry-dir (path-parent entry-path)]
+    (do
+      (root_push entry-dir)
+      (let [manifest-root (find-manifest-root entry-dir)]
+        (do
+          (root_push manifest-root)
+          (let [src-root (find-src-ancestor entry-dir)]
+            (do
+              (root_push src-root)
+              (let [result
+                (if (> (string-length src-root) 0)
+                  src-root
+                  (if (> (string-length manifest-root) 0)
+                    (path-join manifest-root "src")
+                    entry-dir))]
+                (do
+                  (root_push result)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+(defn resolve-package-root [entry-path]
+  (let [entry-dir (path-parent entry-path)]
+    (do
+      (root_push entry-dir)
+      (let [manifest-root (find-manifest-root entry-dir)]
+        (do
+          (root_push manifest-root)
+          (let [src-root (find-src-ancestor entry-dir)]
+            (do
+              (root_push src-root)
+              (let [result
+                (if (> (string-length src-root) 0)
+                  (path-parent src-root)
+                  (if (> (string-length manifest-root) 0) manifest-root entry-dir))]
+                (do
+                  (root_push result)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 (defn text-hash-loop [src pos end acc] (if (>= pos end) acc (text-hash-loop src (+ pos 1) end (+ (string-char-at src pos) (* acc 31)))))
 (defn text-hash [src] (text-hash-loop src 0 (string-length src) 0))
 (defn module-name-to-relative-loop [name idx len out] (if (>= idx len) (string-concat out ".ls") (let [piece (if (= (path-char name idx) 46) "/" (substring name idx (+ idx 1)))] (module-name-to-relative-loop name (+ idx 1) len (string-concat out piece)))))
@@ -110,5 +152,28 @@
             (ref-set cache-ref (ref-map-insert-object-safe cache-ref cache-key entry))
             (root_pop)
             (make-module-path-cache-result 1 resolved-path)))))))
-(defn resolve-module-path-with-cache-counted [module-name source-root package-root cache-ref resolve-count-ref] (let [result (resolve-module-path-with-cache-result module-name source-root package-root cache-ref)] (do (if (= (module-path-cache-result-did-resolve result) 1) (do (ref-set resolve-count-ref (+ (ref-get resolve-count-ref) 1)) 0) 0) (module-path-cache-result-path result))))
-(defn resolve-module-path-with-cache [module-name source-root package-root cache-ref] (module-path-cache-result-path (resolve-module-path-with-cache-result module-name source-root package-root cache-ref)))
+(defn resolve-module-path-with-cache-counted [module-name source-root package-root cache-ref resolve-count-ref]
+  (let [result (resolve-module-path-with-cache-result module-name source-root package-root cache-ref)]
+    (do
+      (root_push result)
+      (if (= (module-path-cache-result-did-resolve result) 1)
+        (do
+          (ref-set resolve-count-ref (+ (ref-get resolve-count-ref) 1))
+          0)
+        0)
+      (let [path (module-path-cache-result-path result)]
+        (do
+          (root_push path)
+          (root_pop)
+          (root_pop)
+          path)))))
+(defn resolve-module-path-with-cache [module-name source-root package-root cache-ref]
+  (let [result (resolve-module-path-with-cache-result module-name source-root package-root cache-ref)]
+    (do
+      (root_push result)
+      (let [path (module-path-cache-result-path result)]
+        (do
+          (root_push path)
+          (root_pop)
+          (root_pop)
+          path)))))

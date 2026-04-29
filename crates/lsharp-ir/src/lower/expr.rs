@@ -780,13 +780,13 @@ impl Lower {
 
                     // === HashMap ビルトイン ===
 
-                    // map-new: デフォルト容量 16 で空のハッシュマップを作成
+                    // map-new: representative selfhost の ftable/caches を収められる容量で空のハッシュマップを作成
                     // レイアウト: [tag=6: i32, capacity: i32, size: i32, padding: i32, entries...]
                     // エントリ: [key: i64, value: i64] (16バイト) — key=0 は空スロット
-                    // 合計: 16 + 16 * 16 = 272 bytes
+                    // 合計: 16 + 16 * 4096 = 65552 bytes
                     Expr::Var(_, name) if name == "map-new" => {
-                        let default_cap: i32 = 2048;
-                        let alloc_size: i64 = 16 + (default_cap as i64) * 16; // 32784
+                        let default_cap: i32 = 4096;
+                        let alloc_size: i64 = 16 + (default_cap as i64) * 16; // 65552
                         ctx.emit(Instruction::I64Const(alloc_size));
                         let alloc_idx = *self.func_indices.get("__alloc").ok_or_else(|| {
                             LowerError::UndefinedFunction {
@@ -817,7 +817,7 @@ impl Lower {
                         ctx.emit(Instruction::I32Const(16)); // ヘッダスキップ
                         ctx.emit(Instruction::I32Add);
                         ctx.emit(Instruction::I32Const(0)); // fill value = 0
-                        ctx.emit(Instruction::I32Const(default_cap * 16)); // 256 bytes
+                        ctx.emit(Instruction::I32Const(default_cap * 16)); // 65536 bytes
                         ctx.emit(Instruction::MemoryFill);
                         // タグ付きポインタを返す
                         ctx.emit(Instruction::LocalGet(addr_local));

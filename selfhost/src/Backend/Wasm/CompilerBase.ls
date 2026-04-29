@@ -17,14 +17,16 @@
 (defn op-i64-sub [] 21)
 (defn op-i64-mul [] 22)
 (defn op-i64-div [] 23)
-(defn op-i64-mod [] 24)
+(defn op-i64-mod [] 28)
 (defn op-i64-eq [] 30)
-(defn op-i64-gt [] 31)
+(defn op-i64-ne [] 31)
 (defn op-i64-lt [] 32)
-(defn op-i64-ge [] 33)
+(defn op-i64-gt [] 33)
 (defn op-i64-le [] 34)
+(defn op-i64-ge [] 35)
 (defn op-call [] 40)
 (defn op-if [] 41)
+(defn op-else [] 79)
 (defn op-end [] 43)
 (defn op-drop [] 44)
 (defn op-string-char-at [] 50)
@@ -92,7 +94,7 @@
         (if (= name-hash (builtin-div))
           (op-i64-div)
           (if (= name-hash (builtin-mod))
-            24
+            (op-i64-mod)
             (if (= name-hash (builtin-eq))
               (op-i64-eq)
               (if (= name-hash (builtin-gt))
@@ -606,6 +608,57 @@
             (root_pop)
             result))))))
 (defn write-i32-le [vec value] (push-int-vector (push-int-vector (push-int-vector (push-int-vector vec (% value 256)) (% (/ value 256) 256)) (% (/ value 65536) 256)) (% (/ value 16777216) 256)))
+
+(defn string-literal-unescape-consumed [src idx len]
+  (if (and (< (+ idx 1) len) (= (string-char-at src idx) 92))
+    2
+    1))
+
+(defn string-literal-unescape-piece [src idx len]
+  (if (and (< (+ idx 1) len) (= (string-char-at src idx) 92))
+    (let [escaped (string-char-at src (+ idx 1))]
+      (if (= escaped 110)
+        "\n"
+        (if (= escaped 116)
+          "\t"
+          (if (= escaped 114)
+            "\r"
+            (if (= escaped 34)
+              "\""
+              (if (= escaped 92)
+                "\\"
+                (substring src (+ idx 1) (+ idx 2))))))))
+    (substring src idx (+ idx 1))))
+
+(defn string-literal-unescape-loop [src idx len out]
+  (if (>= idx len)
+    out
+    (do
+      (root_push src)
+      (root_push out)
+      (let [piece (string-literal-unescape-piece src idx len)
+        next-idx (+ idx (string-literal-unescape-consumed src idx len))]
+        (do
+          (root_push piece)
+          (let [next-out (string-concat out piece)]
+            (do
+              (root_push next-out)
+              (let [result (string-literal-unescape-loop src next-idx len next-out)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+
+(defn string-literal-unescape [src]
+  (do
+    (root_push src)
+    (let [result (string-literal-unescape-loop src 0 (string-length src) "")]
+      (do
+        (root_pop)
+        result))))
+
 (defn compile-string-literal-with-source [node source instrs data-ref]
   (do
     (root_push source)
@@ -613,36 +666,40 @@
     (root_push data-ref)
     (let [start (vector-get node 1)
       end (vector-get node 2)]
-      (let [text (substring source start end)
-        text-len (string-length text)]
+      (let [raw-text (substring source start end)]
         (do
-          (root_push text)
-          (let [bytes (string-to-byte-vector text 0 text-len (vector-new 8))
-            offset (+ (string-literal-data-base) (vector-length (ref-get data-ref)))]
-            (let [header (write-i32-le (write-i32-le (vector-new 8) 1) text-len)]
-              (do
-                (root_push bytes)
-                (root_push header)
-                (let [data-with-header (append-byte-vector (ref-get data-ref) header 0 8)]
+          (root_push raw-text)
+          (let [text (string-literal-unescape raw-text)]
+            (do
+              (root_push text)
+              (let [text-len (string-length text)
+                bytes (string-to-byte-vector text 0 text-len (vector-new 8))
+                offset (+ (string-literal-data-base) (vector-length (ref-get data-ref)))]
+                (let [header (write-i32-le (write-i32-le (vector-new 8) 1) text-len)]
                   (do
-                    (root_push data-with-header)
-                    (let [updated-data (append-byte-vector data-with-header bytes 0 (vector-length bytes))]
+                    (root_push bytes)
+                    (root_push header)
+                    (let [data-with-header (append-byte-vector (ref-get data-ref) header 0 8)]
                       (do
-                        (root_push updated-data)
-                        (let [result (emit-to instrs 1 offset)]
+                        (root_push data-with-header)
+                        (let [updated-data (append-byte-vector data-with-header bytes 0 (vector-length bytes))]
                           (do
-                            (root_push result)
-                            (ref-set data-ref updated-data)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            result))))))))))))))
+                            (root_push updated-data)
+                            (let [result (emit-to instrs 1 offset)]
+                              (do
+                                (root_push result)
+                                (ref-set data-ref updated-data)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                result))))))))))))))))
 (defn string-key-hash-step [source pos end acc]
   (if (>= pos end)
     (make-loop-step-state 1 pos acc)
@@ -706,7 +763,21 @@
       (vector-get step 2)
       (string-key-hash-loop source (vector-get step 1) end (vector-get step 2)))))
 (defn normalize-map-key-hash [hash] (if (= hash 0) 2 (if (= hash -1) 1 hash)))
-(defn compile-string-key-hash-with-source [node source instrs] (let [start (vector-get node 1) end (vector-get node 2) hash (normalize-map-key-hash (string-key-hash-loop source start end 0))] (emit-to instrs (op-i64-const) hash)))
+(defn compile-string-key-hash-with-source [node source instrs]
+  (let [start (vector-get node 1)
+    end (vector-get node 2)
+    raw-text (substring source start end)]
+    (do
+      (root_push raw-text)
+      (let [text (string-literal-unescape raw-text)]
+        (do
+          (root_push text)
+          (let [hash (normalize-map-key-hash (string-key-hash-loop text 0 (string-length text) 0))
+            result (emit-to instrs (op-i64-const) hash)]
+            (do
+              (root_pop)
+              (root_pop)
+              result)))))))
 (defn immediate-builtin-op [bop]
   (or
     (or

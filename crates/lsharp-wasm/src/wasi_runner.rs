@@ -12,7 +12,7 @@ use wasmtime::*;
 use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
 
 const DEFAULT_MAX_WASM_STACK: usize = 64 * 1024 * 1024;
-const DEFAULT_STDOUT_CAPTURE_BYTES: usize = 16 * 1024 * 1024;
+const DEFAULT_STDOUT_CAPTURE_BYTES: usize = 64 * 1024 * 1024;
 
 fn configured_engine() -> Result<Engine, String> {
     let mut config = Config::new();
@@ -94,6 +94,12 @@ pub fn run_wasm_with_mode_and_args_inherit_stdin_capture(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecutionOutput {
     pub stdout: String,
+    pub exit_code: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawExecutionOutput {
+    pub stdout_bytes: Vec<u8>,
     pub exit_code: i32,
 }
 
@@ -181,7 +187,12 @@ pub fn run_wasm_wasi_with_dir_args_and_stdin_capture(
     args: &[&str],
     stdin: &str,
 ) -> Result<ExecutionOutput, String> {
-    run_wasm_wasi_capture(wasm_bytes, dir, args, StdinMode::Memory(stdin))
+    let output = run_wasm_wasi_capture_raw(wasm_bytes, dir, args, StdinMode::Memory(stdin))?;
+    let stdout = decode_stdout_bytes(&output.stdout_bytes)?;
+    Ok(ExecutionOutput {
+        stdout,
+        exit_code: output.exit_code,
+    })
 }
 
 /// Wasm バイナリを WASI 環境で実行し、親 stdin を継承した stdout/exit code を返す
@@ -190,15 +201,28 @@ pub fn run_wasm_wasi_with_dir_and_args_inherit_stdin_capture(
     dir: Option<&std::path::Path>,
     args: &[&str],
 ) -> Result<ExecutionOutput, String> {
-    run_wasm_wasi_capture(wasm_bytes, dir, args, StdinMode::Inherit)
+    let output = run_wasm_wasi_capture_raw(wasm_bytes, dir, args, StdinMode::Inherit)?;
+    let stdout = decode_stdout_bytes(&output.stdout_bytes)?;
+    Ok(ExecutionOutput {
+        stdout,
+        exit_code: output.exit_code,
+    })
 }
 
-fn run_wasm_wasi_capture(
+pub fn run_wasm_wasi_with_dir_and_args_capture_raw(
+    wasm_bytes: &[u8],
+    dir: Option<&std::path::Path>,
+    args: &[&str],
+) -> Result<RawExecutionOutput, String> {
+    run_wasm_wasi_capture_raw(wasm_bytes, dir, args, StdinMode::Memory(""))
+}
+
+fn run_wasm_wasi_capture_raw(
     wasm_bytes: &[u8],
     dir: Option<&std::path::Path>,
     args: &[&str],
     stdin_mode: StdinMode<'_>,
-) -> Result<ExecutionOutput, String> {
+) -> Result<RawExecutionOutput, String> {
     let engine = configured_engine()?;
     let mut linker = Linker::<WasiP1Ctx>::new(&engine);
     wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |t| t)
@@ -257,14 +281,19 @@ fn run_wasm_wasi_capture(
     let bytes = stdout
         .try_into_inner()
         .ok_or_else(|| "stdout の取得に失敗".to_string())?;
-    let stdout = decode_stdout_bytes(&bytes)?;
     if let Some(trap_error) = trap_error {
-        if stdout.is_empty() {
+        if bytes.is_empty() {
             return Err(trap_error);
         }
-        return Err(format!("{trap_error}; stdout={stdout:?}"));
+        return Err(format!(
+            "{trap_error}; stdout_lossy={:?}",
+            String::from_utf8_lossy(&bytes)
+        ));
     }
-    Ok(ExecutionOutput { stdout, exit_code })
+    Ok(RawExecutionOutput {
+        stdout_bytes: bytes.to_vec(),
+        exit_code,
+    })
 }
 
 // ---------------------------------------------------------------------------

@@ -81,20 +81,43 @@
   (if (>= idx len)
     (ref-get result)
     (do
-      (ref-set result (vector-push (ref-get result) (vector-get native-code idx)))
-      (append-native-object-bytes result native-code (+ idx 1) len))))
+      (root_push result)
+      (root_push native-code)
+      (let [current (ref-get result)
+        byte (vector-get native-code idx)]
+        (do
+          (root_push current)
+          (let [next (vector-push current byte)]
+            (do
+              (root_push next)
+              (ref-set result next)
+              (let [object (append-native-object-bytes result native-code (+ idx 1) len)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  object)))))))))
 
 ;; ネイティブ機械語からオブジェクトファイルを生成
 ;; native-code: 機械語バイト列
 ;; target: ターゲット記述子
 ;; 戻り値: オブジェクトファイルのバイト列
 (defn emit-object [native-code target]
-  (let [obj-format (target-obj-format target)]
-    (if (= obj-format 1)
-      ;; Mach-O
-      (emit-macho native-code target)
-      ;; ELF
-      (emit-elf native-code))))
+  (do
+    (root_push native-code)
+    (root_push target)
+    (let [obj-format (target-obj-format target)
+      object
+        (if (= obj-format 1)
+          ;; Mach-O
+          (emit-macho native-code target)
+          ;; ELF
+          (emit-elf native-code))]
+      (do
+        (root_pop)
+        (root_pop)
+        object))))
 
 ;; Mach-O オブジェクトファイルを生成
 ;; native-code: 機械語バイト列
@@ -110,10 +133,18 @@
 ;; native-code: 機械語バイト列
 ;; 戻り値: ELF バイト列 (ヘッダー + コード)
 (defn emit-elf [native-code]
-  (let [header (emit-elf-header)
-    result (ref-new header)
-    n (vector-length native-code)]
-    (append-native-object-bytes result native-code 0 n)))
+  (do
+    (root_push native-code)
+    (let [header (emit-elf-header)]
+      (do
+        (root_push header)
+        (let [result (ref-new header)
+          n (vector-length native-code)
+          object (append-native-object-bytes result native-code 0 n)]
+          (do
+            (root_pop)
+            (root_pop)
+            object))))))
 
 ;; === エントリポイント (テスト用) ===
 

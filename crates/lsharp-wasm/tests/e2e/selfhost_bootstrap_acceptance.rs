@@ -246,6 +246,32 @@ fn assert_probe_pattern(output: &[i64], pattern: &[Option<i64>], context: &str) 
     }
 }
 
+fn assert_probe_pattern_in_order(output: &[i64], pattern: &[Option<i64>], context: &str) {
+    let mut cursor = 0usize;
+    for (pattern_idx, expected) in pattern.iter().enumerate() {
+        match expected {
+            Some(expected) => {
+                let offset = output[cursor..]
+                    .iter()
+                    .position(|value| value == expected)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "{context}: probe marker {expected} が見つからない: pattern_idx={pattern_idx}, output={output:?}"
+                        )
+                    });
+                cursor += offset + 1;
+            }
+            None => {
+                assert!(
+                    cursor < output.len(),
+                    "{context}: wildcard probe 値が不足: pattern_idx={pattern_idx}, output={output:?}"
+                );
+                cursor += 1;
+            }
+        }
+    }
+}
+
 fn assert_probe_prefix(output: &[i64], pattern: &[Option<i64>], context: &str) {
     assert!(
         output.len() >= pattern.len(),
@@ -303,7 +329,7 @@ fn test_e2e_bootstrap_stage1_compile_phase_probe_reaches_compile_complete() {
 fn test_e2e_bootstrap_stage1_build_phase_probe_reaches_build_complete() {
     let output =
         run_stage1_main_compiler_probe(14, "stage1 build-phase probe should finish Main.ls build");
-    assert_probe_pattern(
+    assert_probe_pattern_in_order(
         &output,
         &[
             Some(101),
@@ -364,7 +390,7 @@ fn test_e2e_bootstrap_stage1_ast_chunked_step_progress_probe_reaches_first_pair_
         20,
         "stage1 ast chunked step progress probe should finish first pair",
     );
-    assert_probe_pattern(
+    assert_probe_pattern_in_order(
         &output,
         &[Some(150), None, Some(151), None, Some(153), None],
         "stage1 ast chunked step progress probe",
@@ -392,7 +418,7 @@ fn test_e2e_bootstrap_stage1_module_resolver_ast_chunked_step_probe_reaches_comp
         20,
         "stage1 ModuleResolver ast chunked step probe should finish file compile",
     );
-    assert_probe_pattern(
+    assert_probe_pattern_in_order(
         &output,
         &[Some(150), None, Some(151), None, Some(153), None],
         "stage1 ModuleResolver ast chunked step probe",

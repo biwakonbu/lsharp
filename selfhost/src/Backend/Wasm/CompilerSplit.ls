@@ -113,7 +113,7 @@
         (+ used-max 1)))))
 
 (defn map-key-root-needed-with-source [key-expr]
-  (if (= (vector-get key-expr 0) (tag-lit-string))
+  (if (simple-map-operand key-expr)
     0
     (alloc-root-needed key-expr)))
 

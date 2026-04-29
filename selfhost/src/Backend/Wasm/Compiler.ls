@@ -735,7 +735,7 @@
     map-instrs (compile-expr-with-ftable map-expr env ftable (vector-new 8))
     key-instrs (compile-map-key-with-ftable key-expr env ftable)
     map-root (alloc-root-needed map-expr)
-    key-root (alloc-root-needed key-expr)
+    key-root (map-key-root-needed-with-source key-expr)
     simple-path (if (simple-map-operand map-expr) (simple-map-operand key-expr) false)]
     (do
       (root_push map-instrs)
@@ -2042,7 +2042,7 @@
     instrs1 (compile-expr-with-source cond-expr source env ftable instrs data-ref)
     instrs2 (emit-to instrs1 (op-if) 0)
     instrs3 (compile-expr-with-source then-expr source env ftable instrs2 data-ref)
-    instrs4 (emit-to instrs3 (op-end) 0)
+    instrs4 (emit-to instrs3 (op-else) 0)
     instrs5 (compile-expr-with-source else-expr source env ftable instrs4 data-ref)]
     (emit-to instrs5 (op-end) 0)))
 (defn compile-let-chain-with-source [node source env ftable instrs data-ref rooted-count]
@@ -2098,7 +2098,7 @@
     instrs1 (compile-expr-with-ftable cond-expr env ftable instrs)
     instrs2 (emit-to instrs1 41 0)
     instrs3 (compile-expr-with-ftable then-expr env ftable instrs2)
-    instrs4 (emit-to instrs3 43 0)
+    instrs4 (emit-to instrs3 (op-else) 0)
     instrs5 (compile-expr-with-ftable else-expr env ftable instrs4)]
     (emit-to instrs5 43 0)))
 

@@ -39,8 +39,38 @@
   (if (>= idx n)
     (ref-get args)
     (do
-      (ref-set args (vector-push (ref-get args) (vector-get objects idx)))
-      (append-linker-objects args objects (+ idx 1) n))))
+      (root_push args)
+      (root_push objects)
+      (let [object (vector-get objects idx)]
+        (do
+          (root_push object)
+          (let [next (push-linker-response-arg args object)]
+            (do
+              (root_push next)
+              (let [result (append-linker-objects args objects (+ idx 1) n)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
+
+(defn push-linker-response-arg [args value]
+  (do
+    (root_push args)
+    (root_push value)
+    (let [current (ref-get args)]
+      (do
+        (root_push current)
+        (let [next (vector-push current value)]
+          (do
+            (root_push next)
+            (ref-set args next)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            next))))))
 
 (defn build-linker-args [objects output target]
   (let [args (ref-new (vector-new 16))
@@ -58,9 +88,23 @@
 (defn build-linker-response-args [objects output target]
   (let [args (ref-new (vector-new 16))]
     (do
-      (ref-set args (vector-push (ref-get args) (linker-output-flag target)))
-      (ref-set args (vector-push (ref-get args) output))
-      (append-linker-objects args objects 0 (vector-length objects)))))
+      (root_push args)
+      (root_push objects)
+      (root_push output)
+      (root_push target)
+      (let [flag (linker-output-flag target)]
+        (do
+          (root_push flag)
+          (push-linker-response-arg args flag)
+          (push-linker-response-arg args output)
+          (let [result (append-linker-objects args objects 0 (vector-length objects))]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
 
 ;; === Response File 生成 ===
 
@@ -87,14 +131,31 @@
 (defn append-response-text-lines [result args idx n]
   (if (>= idx n)
     result
-    (append-response-text-lines
-      (string-concat result (string-concat (vector-get args idx) "\n"))
-      args
-      (+ idx 1)
-      n)))
+    (let [arg (vector-get args idx)]
+      (do
+        (root_push result)
+        (root_push arg)
+        (let [line (string-concat arg "\n")]
+          (do
+            (root_push line)
+            (let [next (string-concat result line)]
+              (do
+                (root_push next)
+                (let [final (append-response-text-lines next args (+ idx 1) n)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    final))))))))))
 
 (defn generate-response-file-text [args]
-  (append-response-text-lines "" args 0 (vector-length args)))
+  (do
+    (root_push args)
+    (let [result (append-response-text-lines "" args 0 (vector-length args))]
+      (do
+        (root_pop)
+        result))))
 
 ;; response file を書き出す (将来の実装: ファイル I/O)
 ;; 現在はバイト列を返すのみ

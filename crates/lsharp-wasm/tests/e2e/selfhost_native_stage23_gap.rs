@@ -334,29 +334,7 @@ fn parse_numeric_lines(output: &str) -> Vec<i64> {
 fn run_selfhost_main_function_payload_opcode_harness() -> (usize, BTreeMap<String, usize>) {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "native-stage23-selfhost-opcodes",
-        &[
-            "Main.ls",
-            "Token.ls",
-            "AST.ls",
-            "Lexer.ls",
-            "Parser.ls",
-            "IR.ls",
-            "Type.ls",
-            "TypeScheme.ls",
-            "TypeInferCore.ls",
-            "TypeInferFunctions.ls",
-            "TypeInferBuiltins.ls",
-            "TypeInfer.ls",
-            "TypeInferApply.ls",
-            "TypeInferBlock.ls",
-            "TypeInferPattern.ls",
-            "TypeInferRecord.ls",
-            "Compiler.ls",
-            "WasiBackend.ls",
-            "WasmEmit.ls",
-            "ModuleResolver.ls",
-            "CompilerMode.ls",
-        ],
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
         "src/App/HarnessMain.ls",
         r#"(module App.HarnessMain)
 (import App.CompilerMode)

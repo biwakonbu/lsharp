@@ -38,6 +38,38 @@ const SELFHOST_LSP_RUNTIME_MODULES: &[&str] = &[
     "LspServerNav.ls",
     "LspServer.ls",
 ];
+pub(crate) const SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES: &[&str] = &[
+    "Main.ls",
+    "PipelineSmoke.ls",
+    "ModuleResolver.ls",
+    "CompilerMode.ls",
+    "Token.ls",
+    "AST.ls",
+    "Lexer.ls",
+    "LexerCompat.ls",
+    "Parser.ls",
+    "MacroExpand.ls",
+    "IR.ls",
+    "Type.ls",
+    "TypeScheme.ls",
+    "TypeInferCore.ls",
+    "TypeInferFunctions.ls",
+    "TypeInferBuiltins.ls",
+    "TypeInfer.ls",
+    "TypeInferApply.ls",
+    "TypeInferBlock.ls",
+    "TypeInferPattern.ls",
+    "TypeInferRecord.ls",
+    "CompilerBase.ls",
+    "CompilerSplit.ls",
+    "Compiler.ls",
+    "WasiBackend.ls",
+    "WasmEmit.ls",
+    "NativeTarget.ls",
+    "NativeCodegen.ls",
+    "NativeEmit.ls",
+    "Linker.ls",
+];
 static SELFHOST_FIXTURE_COUNTER: AtomicUsize = AtomicUsize::new(0);
 static FIXTURE_RUN_ID: OnceLock<String> = OnceLock::new();
 const ROOT_STACK_BYTES: i32 = 32768 * 8;
@@ -1066,6 +1098,127 @@ pub(crate) fn try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
             })?;
         lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(&wasm, Some(&dir), args)
             .map_err(|e| format!("実行: {e:?}"))
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
+pub(crate) fn try_compile_and_run_selfhost_fixture_entry_keep_dir_with_args(
+    fixture_name: &str,
+    modules: &[&str],
+    entry_file: &str,
+    entry_source: &str,
+    args: &[&str],
+) -> Result<(std::path::PathBuf, String), String> {
+    let (dir, result) = try_compile_and_run_selfhost_fixture_entry_preserve_dir_with_args(
+        fixture_name,
+        modules,
+        entry_file,
+        entry_source,
+        args,
+    )?;
+    match result {
+        Ok(output) => Ok((dir, output)),
+        Err(err) => {
+            let _ = std::fs::remove_dir_all(&dir);
+            Err(err)
+        }
+    }
+}
+
+pub(crate) fn try_compile_and_run_selfhost_fixture_entry_keep_dir_with_args_raw(
+    fixture_name: &str,
+    modules: &[&str],
+    entry_file: &str,
+    entry_source: &str,
+    args: &[&str],
+) -> Result<(std::path::PathBuf, Vec<u8>), String> {
+    let dir = selfhost_fixture_dir(fixture_name);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let result = (|| {
+        write_selfhost_fixture_modules(&dir, modules)?;
+        let entry_path = dir.join(entry_file);
+        if let Some(parent) = entry_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        std::fs::write(&entry_path, entry_source)
+            .map_err(|e| format!("{}: {e}", entry_path.display()))?;
+        let wasm = try_compile_file_only(&entry_path)?;
+        wasmparser::Validator::new()
+            .validate_all(&wasm)
+            .map_err(|e| format!("Wasm validate: {e}"))?;
+        lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args_capture_raw(
+            &wasm,
+            Some(&dir),
+            args,
+        )
+        .map(|output| output.stdout_bytes)
+        .map_err(|e| format!("実行: {e:?}"))
+    })();
+    match result {
+        Ok(output) => Ok((dir, output)),
+        Err(err) => {
+            let _ = std::fs::remove_dir_all(&dir);
+            Err(err)
+        }
+    }
+}
+
+pub(crate) fn try_compile_and_run_selfhost_fixture_entry_preserve_dir_with_args(
+    fixture_name: &str,
+    modules: &[&str],
+    entry_file: &str,
+    entry_source: &str,
+    args: &[&str],
+) -> Result<(std::path::PathBuf, Result<String, String>), String> {
+    let dir = selfhost_fixture_dir(fixture_name);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let result = (|| {
+        write_selfhost_fixture_modules(&dir, modules)?;
+        let entry_path = dir.join(entry_file);
+        if let Some(parent) = entry_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        std::fs::write(&entry_path, entry_source)
+            .map_err(|e| format!("{}: {e}", entry_path.display()))?;
+        let wasm = try_compile_file_only(&entry_path)?;
+        wasmparser::Validator::new()
+            .validate_all(&wasm)
+            .map_err(|e| format!("Wasm validate: {e}"))?;
+        lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args(&wasm, Some(&dir), args)
+            .map_err(|e| format!("実行: {e:?}"))
+    })();
+    Ok((dir, result))
+}
+
+pub(crate) fn try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+    fixture_name: &str,
+    modules: &[&str],
+    entry_file: &str,
+    entry_source: &str,
+    args: &[&str],
+) -> Result<Vec<u8>, String> {
+    let dir = selfhost_fixture_dir(fixture_name);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let result = (|| {
+        write_selfhost_fixture_modules(&dir, modules)?;
+        let entry_path = dir.join(entry_file);
+        if let Some(parent) = entry_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        std::fs::write(&entry_path, entry_source)
+            .map_err(|e| format!("{}: {e}", entry_path.display()))?;
+        let wasm = try_compile_file_only(&entry_path)?;
+        wasmparser::Validator::new()
+            .validate_all(&wasm)
+            .map_err(|e| format!("Wasm validate: {e}"))?;
+        lsharp_wasm::wasi_runner::run_wasm_wasi_with_dir_and_args_capture_raw(
+            &wasm,
+            Some(&dir),
+            args,
+        )
+        .map(|output| output.stdout_bytes)
+        .map_err(|e| format!("実行: {e:?}"))
     })();
     let _ = std::fs::remove_dir_all(&dir);
     result

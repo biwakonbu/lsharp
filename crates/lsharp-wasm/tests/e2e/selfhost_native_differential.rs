@@ -2226,7 +2226,7 @@ fn test_native_codegen_emits_x86_direct_call_two_arg_bundle_bytes() {
                     (vector-push
                       (vector-push (vector-new 3) (make-local-get 0))
                       (make-local-get 1))
-                            (make-instr 24 0)))
+                      (make-instr 24 0))
         caller (make-function-meta 0 0 caller-ir)
         callee (make-function-meta 2 0 callee-ir)
         functions (vector-push (vector-push (vector-new 2) caller) callee)
@@ -2681,7 +2681,7 @@ fn test_native_codegen_emits_x86_direct_call_four_arg_bundle_bytes() {
                             (vector-push
                               (vector-push (vector-new 7) (make-local-get 0))
                               (make-local-get 1))
-                            (make-instr 24 0)))
+                            (make-instr 24 0))
                           (make-local-get 2))
                         (make-instr 24 0))
                       (make-local-get 3))
