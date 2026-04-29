@@ -19,6 +19,7 @@ editors/vscode/*.vsix
 # ビルド成果物 / 一時ファイル
 /dist/
 /selfhost/target/
+/crates/lsharp-wasm/target/
 /stage0/
 /stage1/
 /stage2/
@@ -32,6 +33,9 @@ ci-artifacts/native-proxy/
 crates/lsharp-wasm/ci-artifacts/
 selfhost/src/Backend/Native/NativeCodegen.prefix*.ls
 selfhost/src/Backend/Native/NativeCodegen.mini*.ls
+/fail.time
+/ok.time
+/lldb_script*.txt
 
 # ローカル調査・検証 artifacts
 /00_START_HERE.md
