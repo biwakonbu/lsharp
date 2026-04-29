@@ -11340,20 +11340,20 @@
                 (encode-u32-le 2852127723)
                 (encode-u32-le 2854159328)
                 (encode-u32-le 3019899275)
-                (encode-u32-le 3086483691))
+                (encode-u32-le 3086483723))
     part2 (concat-four-byte-vectors-rooted
-            (encode-u32-le 3053453515)
+            (encode-u32-le 3944087935)
+            (encode-u32-le 1409286371)
             (encode-u32-le 960495980)
-            (encode-u32-le 872415500)
-            (encode-u32-le 2432697707))
+            (encode-u32-le 872415468))
     part3 (concat-four-byte-vectors-rooted
+            (encode-u32-le 2432697707)
             (encode-u32-le 2432697344)
             (encode-u32-le 402653180)
-            (encode-u32-le 2453731691)
-            (encode-u32-le 2332754603))
+            (encode-u32-le 2453731691))
     tail (concat-three-byte-vectors-rooted
+           (encode-u32-le 2332754603)
            (encode-u32-le 3107980640)
-           (encode-u32-le 3573751839)
            (encode-u32-le 3596551104))]
     (concat-four-byte-vectors-rooted part1 part2 part3 tail)))
 
@@ -11797,25 +11797,25 @@
             (encode-u32-le 3103785060)
             (encode-u32-le 705102820))
     part8 (concat-four-byte-vectors-rooted
-            (encode-u32-le 3103786084)
-            (encode-u32-le 3086483713)
-            (encode-u32-le 916455521)
-            (encode-u32-le 2332622881))
+             (encode-u32-le 3103786084)
+             (encode-u32-le 3086483745)
+             (encode-u32-le 3944087615)
+             (encode-u32-le 1409286243))
     part9 (concat-four-byte-vectors-rooted
-            (encode-u32-le 335544330)
-            (encode-u32-le 2332099233)
-            (encode-u32-le 2432704545)
-            (encode-u32-le 2332622881))
-    part10 (concat-four-byte-vectors-rooted
-             (encode-u32-le 335544326)
-             (encode-u32-le 3538944002)
-             (encode-u32-le 2332099233)
-             (encode-u32-le 2332164129))
-    part11 (concat-four-byte-vectors-rooted
-             (encode-u32-le 2432704545)
              (encode-u32-le 2332622881)
-             (encode-u32-le 2432704612)
-             (encode-u32-le 2852586469))
+             (encode-u32-le 335544329)
+             (encode-u32-le 2332099233)
+             (encode-u32-le 2432704545))
+    part10 (concat-four-byte-vectors-rooted
+              (encode-u32-le 2332622881)
+              (encode-u32-le 335544325)
+              (encode-u32-le 2453731361)
+              (encode-u32-le 2332099233))
+    part11 (concat-four-byte-vectors-rooted
+              (encode-u32-le 2432704545)
+              (encode-u32-le 2332622881)
+              (encode-u32-le 2432704612)
+              (encode-u32-le 2852586469))
     part12 (concat-four-byte-vectors-rooted
              (encode-u32-le 3019899045)
              (encode-u32-le 943723558)
@@ -13482,11 +13482,7 @@
                      (emit-aarch64-mov-x1-x0)
                      (emit-aarch64-mov-x0-x9))
                    (emit-aarch64-bl disp))]
-    (if (>= current-depth 3)
-      (concat-byte-vectors
-        call-seq
-        (emit-aarch64-ldr-x9-sp (native-value-window-spill-offset frame-base-slot-count 0)))
-      call-seq)))
+    (emit-consume-produce-one-bundle-aarch64 call-seq frame-base-slot-count current-depth 2)))
 
 (defn emit-drop-window-spill-shifts-aarch64-step [frame-base-slot-count result shift-idx last-shift-idx]
   (if (> shift-idx last-shift-idx)
@@ -13684,6 +13680,82 @@
         (emit-aarch64-ldr-x9-sp (native-value-window-spill-offset frame-base-slot-count 0)))
       (emit-drop-window-spill-shifts-aarch64 frame-base-slot-count 1 (- current-depth 3)))
     op-bytes))
+
+(defn emit-consume-produce-window-spill-shifts-aarch64-step [frame-base-slot-count result shift-idx last-shift-idx shift-count]
+  (if (> shift-idx last-shift-idx)
+    (make-native-progress-state 1 shift-idx)
+    (do
+      (append-native-bytes-rooted result (emit-aarch64-ldr-x1-sp (native-value-window-spill-offset frame-base-slot-count shift-idx)) 4)
+      (append-native-bytes-rooted result (emit-aarch64-str-x1-sp (native-value-window-spill-offset frame-base-slot-count (- shift-idx shift-count))) 4)
+      (make-native-progress-state 0 (+ shift-idx 1)))))
+
+(defn emit-consume-produce-window-spill-shifts-aarch64-step-64-loop-bounded [frame-base-slot-count result shift-idx last-shift-idx shift-count remaining]
+  (do
+    (root_push result)
+    (let [state (emit-consume-produce-window-spill-shifts-aarch64-step frame-base-slot-count result shift-idx last-shift-idx shift-count)]
+      (do
+        (root_push state)
+        (let [final
+              (if (= (vector-get state 0) 1)
+                state
+                (if (<= remaining 1)
+                  state
+                  (emit-consume-produce-window-spill-shifts-aarch64-step-64-loop-bounded frame-base-slot-count result (vector-get state 1) last-shift-idx shift-count (- remaining 1))))]
+          (do
+            (root_pop)
+            (root_pop)
+            final))))))
+
+(defn emit-consume-produce-window-spill-shifts-aarch64-step-64 [frame-base-slot-count result shift-idx last-shift-idx shift-count]
+  (emit-consume-produce-window-spill-shifts-aarch64-step-64-loop-bounded frame-base-slot-count result shift-idx last-shift-idx shift-count 64))
+
+(defn continue-emit-consume-produce-window-spill-shifts-aarch64-step-64 [frame-base-slot-count result last-shift-idx shift-count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (do
+      (root_push result)
+      (root_push state)
+      (let [next-state (emit-consume-produce-window-spill-shifts-aarch64-step-64 frame-base-slot-count result (vector-get state 1) last-shift-idx shift-count)]
+        (do
+          (root_push next-state)
+          (let [final (continue-emit-consume-produce-window-spill-shifts-aarch64-step-64 frame-base-slot-count result last-shift-idx shift-count next-state)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn emit-consume-produce-window-spill-shifts-aarch64 [frame-base-slot-count shift-idx last-shift-idx shift-count]
+  (let [result (ref-new (vector-new 64))]
+    (do
+      (root_push result)
+      (continue-emit-consume-produce-window-spill-shifts-aarch64-step-64
+        frame-base-slot-count
+        result
+        last-shift-idx
+        shift-count
+        (emit-consume-produce-window-spill-shifts-aarch64-step-64 frame-base-slot-count result shift-idx last-shift-idx shift-count))
+      (let [final (ref-get result)]
+        (do
+          (root_pop)
+          final)))))
+
+(defn emit-consume-produce-one-bundle-aarch64 [op-bytes frame-base-slot-count current-depth consume-count]
+  (let [restore-spill-idx (- consume-count 2)
+    shift-count (- consume-count 1)
+    shift-start (- consume-count 1)
+    last-shift-idx (- current-depth 3)]
+    (if (>= current-depth (+ consume-count 2))
+      (concat-byte-vectors
+        (concat-byte-vectors
+          op-bytes
+          (emit-aarch64-ldr-x9-sp (native-value-window-spill-offset frame-base-slot-count restore-spill-idx)))
+        (emit-consume-produce-window-spill-shifts-aarch64 frame-base-slot-count shift-start last-shift-idx shift-count))
+      (if (= current-depth (+ consume-count 1))
+        (concat-byte-vectors
+          op-bytes
+          (emit-aarch64-ldr-x9-sp (native-value-window-spill-offset frame-base-slot-count restore-spill-idx)))
+        op-bytes))))
 
 (defn emit-i32-store-bundle-aarch64 [offset frame-base-slot-count current-depth]
   (emit-store-bundle-aarch64
@@ -14343,6 +14415,14 @@
         (- target-offset (+ current-offset 436))
         (native-call-bundle-disp-aarch64-twenty-to-fifty-eight target-param-count target-offset current-offset)))))
 
+(defn native-consume-produce-one-tail-size-aarch64 [current-depth consume-count]
+  (if (>= current-depth (+ consume-count 2))
+    (+ 4 (* (- (- current-depth consume-count) 1) 8))
+    (if (= current-depth (+ consume-count 1)) 4 0)))
+
+(defn native-consume-produce-one-size-aarch64 [base-size current-depth consume-count]
+  (+ base-size (native-consume-produce-one-tail-size-aarch64 current-depth consume-count)))
+
 (defn native-selfhost-runtime-helper-tail-size-aarch64 [opcode current-depth]
   (if (= opcode 62)
     (if (>= current-depth 5)
@@ -14400,23 +14480,21 @@
         (if (> target-param-count 9)
           (+ 52 (* (- target-param-count 10) 8))
           (if (= target-param-count 9)
-            48
+            (native-consume-produce-one-size-aarch64 48 current-depth 9)
             (if (= target-param-count 8)
-              36
+              (native-consume-produce-one-size-aarch64 36 current-depth 8)
               (if (= target-param-count 7)
-                32
+                (native-consume-produce-one-size-aarch64 32 current-depth 7)
                 (if (= target-param-count 6)
-                  28
+                  (native-consume-produce-one-size-aarch64 28 current-depth 6)
                   (if (= target-param-count 5)
-                    24
+                    (native-consume-produce-one-size-aarch64 24 current-depth 5)
                     (if (= target-param-count 4)
-                      (if (>= current-depth 6)
-                        (+ 24 (* (- current-depth 5) 8))
-                        (if (= current-depth 5) 24 20))
+                      (native-consume-produce-one-size-aarch64 20 current-depth 4)
                       (if (= target-param-count 3)
-                        16
+                        (native-consume-produce-one-size-aarch64 16 current-depth 3)
                         (if (= target-param-count 2)
-                          (if (>= current-depth 3) 16 12)
+                          (native-consume-produce-one-size-aarch64 12 current-depth 2)
                           (if (= target-param-count 1)
                             12
                             4))))))))))))
@@ -15236,24 +15314,49 @@
 
 (defn emit-call-bundle-aarch64-one-to-nine [target-param-count disp frame-base-slot-count current-depth]
   (if (= target-param-count 9)
-    (emit-nine-arg-call-aarch64 disp frame-base-slot-count)
+    (emit-consume-produce-one-bundle-aarch64
+      (emit-nine-arg-call-aarch64 disp frame-base-slot-count)
+      frame-base-slot-count
+      current-depth
+      9)
     (if (= target-param-count 8)
-      (emit-eight-arg-call-aarch64 disp frame-base-slot-count)
+      (emit-consume-produce-one-bundle-aarch64
+        (emit-eight-arg-call-aarch64 disp frame-base-slot-count)
+        frame-base-slot-count
+        current-depth
+        8)
       (if (= target-param-count 7)
-        (emit-seven-arg-call-aarch64 disp frame-base-slot-count)
+        (emit-consume-produce-one-bundle-aarch64
+          (emit-seven-arg-call-aarch64 disp frame-base-slot-count)
+          frame-base-slot-count
+          current-depth
+          7)
         (if (= target-param-count 6)
-          (emit-six-arg-call-aarch64 disp frame-base-slot-count)
+          (emit-consume-produce-one-bundle-aarch64
+            (emit-six-arg-call-aarch64 disp frame-base-slot-count)
+            frame-base-slot-count
+            current-depth
+            6)
           (if (= target-param-count 5)
-            (emit-five-arg-call-aarch64 disp frame-base-slot-count)
+            (emit-consume-produce-one-bundle-aarch64
+              (emit-five-arg-call-aarch64 disp frame-base-slot-count)
+              frame-base-slot-count
+              current-depth
+              5)
             (if (= target-param-count 4)
-              (emit-consume-four-produce-one-bundle-aarch64
+              (emit-consume-produce-one-bundle-aarch64
                 (emit-four-arg-call-aarch64 disp frame-base-slot-count)
                 frame-base-slot-count
-                current-depth)
+                current-depth
+                4)
               (if (= target-param-count 3)
-                 (emit-three-arg-call-aarch64 disp frame-base-slot-count)
-                   (if (= target-param-count 2)
-                    (emit-two-arg-call-aarch64 disp frame-base-slot-count current-depth)
+                 (emit-consume-produce-one-bundle-aarch64
+                   (emit-three-arg-call-aarch64 disp frame-base-slot-count)
+                   frame-base-slot-count
+                   current-depth
+                   3)
+                    (if (= target-param-count 2)
+                     (emit-two-arg-call-aarch64 disp frame-base-slot-count current-depth)
                     (if (= target-param-count 1)
                       (let [save-prev (emit-aarch64-mov-x10-x9)
                         call-bl (emit-aarch64-bl disp)
