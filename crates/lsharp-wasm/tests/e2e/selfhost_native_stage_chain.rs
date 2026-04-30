@@ -16997,13 +16997,16 @@ fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
             ".section __TEXT,__text\n\
              .extern _calloc\n\
              .extern _memcpy\n\
+             .extern _strlen\n\
              .globl _main\n\
              _main:\n\
-                 stp x29, x30, [sp, #-80]!\n\
+                 stp x29, x30, [sp, #-112]!\n\
                  mov x29, sp\n\
                  stp x19, x20, [sp, #16]\n\
                  stp x21, x22, [sp, #32]\n\
-             stp x27, x28, [sp, #48]\n\
+                 stp x23, x24, [sp, #48]\n\
+                 stp x25, x26, [sp, #64]\n\
+                 stp x27, x28, [sp, #80]\n\
                  mov x19, x0\n\
                  mov x20, x1\n\
                  mov x0, #1\n\
@@ -17016,12 +17019,49 @@ fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
                  ldr x22, [x8, _lsharp_heap_frontier@PAGEOFF]\n\
                  adrp x8, _lsharp_data_len@PAGE\n\
                  ldr x2, [x8, _lsharp_data_len@PAGEOFF]\n\
-                 cbz x2, _lsharp_call_entry\n\
-                 add x0, x21, #{data_base}\n\
-                 adrp x1, _lsharp_data@PAGE\n\
-                 add x1, x1, _lsharp_data@PAGEOFF\n\
-                 bl _memcpy\n\
-             _lsharp_call_entry:\n\
+                  cbz x2, _lsharp_copy_argv\n\
+                  add x0, x21, #{data_base}\n\
+                  adrp x1, _lsharp_data@PAGE\n\
+                  add x1, x1, _lsharp_data@PAGEOFF\n\
+                  bl _memcpy\n\
+              _lsharp_copy_argv:\n\
+                  mov x23, x20\n\
+                  add x25, x21, x22\n\
+                  lsl x8, x19, #3\n\
+                  add x8, x8, #7\n\
+                  lsr x8, x8, #3\n\
+                  lsl x8, x8, #3\n\
+                  add x22, x22, x8\n\
+                  mov x26, #0\n\
+              _lsharp_copy_argv_loop:\n\
+                  cmp x26, x19\n\
+                  b.ge _lsharp_copy_argv_done\n\
+                  ldr x24, [x23, x26, lsl #3]\n\
+                  mov x0, x24\n\
+                  bl _strlen\n\
+                  mov x27, x0\n\
+                  add x8, x27, #8\n\
+                  add x8, x8, #7\n\
+                  lsr x8, x8, #3\n\
+                  lsl x8, x8, #3\n\
+                  mov x28, x22\n\
+                  add x22, x22, x8\n\
+                  add x3, x21, x28\n\
+                  mov w4, #1\n\
+                  str w4, [x3]\n\
+                  str w27, [x3, #4]\n\
+                  add x0, x3, #8\n\
+                  mov x1, x24\n\
+                  mov x2, x27\n\
+                  bl _memcpy\n\
+                  mov x8, #-0x8000000000000000\n\
+                  orr x8, x28, x8\n\
+                  str x8, [x25, x26, lsl #3]\n\
+                  add x26, x26, #1\n\
+                  b _lsharp_copy_argv_loop\n\
+              _lsharp_copy_argv_done:\n\
+                  mov x20, x25\n\
+              _lsharp_call_entry:\n\
                   mov x0, x19\n\
                   mov x1, x20\n\
                   mov x2, #0\n\
@@ -17036,18 +17076,22 @@ fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
                    add x27, x27, _lsharp_root_stack@PAGEOFF\n\
                    mov x28, x27\n\
                    bl _lsharp_entry\n\
-                    ldp x27, x28, [sp, #48]\n\
+                    ldp x27, x28, [sp, #80]\n\
+                    ldp x25, x26, [sp, #64]\n\
+                    ldp x23, x24, [sp, #48]\n\
+                    ldp x21, x22, [sp, #32]\n\
+                    ldp x19, x20, [sp, #16]\n\
+                    ldp x29, x30, [sp], #112\n\
+                    ret\n\
+               _lsharp_alloc_fail:\n\
+                   mov w0, #1\n\
+                   ldp x27, x28, [sp, #80]\n\
+                   ldp x25, x26, [sp, #64]\n\
+                   ldp x23, x24, [sp, #48]\n\
                    ldp x21, x22, [sp, #32]\n\
                    ldp x19, x20, [sp, #16]\n\
-                   ldp x29, x30, [sp], #80\n\
+                   ldp x29, x30, [sp], #112\n\
                    ret\n\
-              _lsharp_alloc_fail:\n\
-                  mov w0, #1\n\
-                   ldp x27, x28, [sp, #48]\n\
-                  ldp x21, x22, [sp, #32]\n\
-                  ldp x19, x20, [sp, #16]\n\
-                  ldp x29, x30, [sp], #80\n\
-                  ret\n\
              .section __TEXT,__const\n\
              .p2align 3\n\
              _lsharp_alloc_size:\n\
@@ -18459,6 +18503,47 @@ fn test_e2e_native_host_binary_selfhost_read_file_raw_bundle_returns_length() {
         exit_code,
         5,
         "host binary selfhost read-file raw bundle: exit code 5 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2u2: selfhost read-file (opcode 64) が AArch64 bundle path で
+/// Seed.ls と同程度の raw path ファイル長を低 8bit まで保てること。
+#[test]
+fn test_e2e_native_host_binary_selfhost_read_file_raw_bundle_returns_large_length_low_byte() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let dir = target_fixture_dir(
+        "e2e-native-fixtures",
+        "native-selfhost-read-file-raw-large",
+        NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed),
+    );
+    std::fs::create_dir_all(&dir).expect("read-file raw large fixture dir 作成失敗");
+    let path = dir.join("fixture.txt");
+    let contents = "x".repeat(24_648);
+    std::fs::write(&path, contents).expect("read-file raw large fixture file 書き込み失敗");
+    let path_arg = path.to_string_lossy().into_owned();
+
+    let code_bytes = host_target_selfhost_read_file_raw_length_bundle_code_bytes();
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost read-file raw large bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary_with_args(&code_bytes, &[&path_arg])
+        .expect("selfhost read-file raw large host binary 実行に失敗");
+
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(
+        exit_code,
+        24_648 % 256,
+        "host binary selfhost read-file raw large bundle: file length low byte を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),
