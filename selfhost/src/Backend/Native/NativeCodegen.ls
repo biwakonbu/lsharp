@@ -11546,7 +11546,7 @@
 
 (defn emit-aarch64-selfhost-vector-get-helper []
   (let [part1 (concat-byte-vectors
-                (encode-u32-le 3019899113)
+                (encode-u32-le 3019899241)
                 (encode-u32-le 2852127723))
     part2 (concat-byte-vectors
             (encode-u32-le 3538944001)
@@ -11554,16 +11554,23 @@
               (encode-u32-le 2332098849)
               (encode-u32-le 2332099233)))
     part3 (concat-byte-vectors
-            (encode-u32-le 2332757024)
-            (encode-u32-le 4181723136))
+            (encode-u32-le 3107981346)
+            (encode-u32-le 3942777215))
     part4 (concat-byte-vectors
+            (encode-u32-le 1409286282)
+            (concat-byte-vectors
+              (encode-u32-le 2332757024)
+              (encode-u32-le 4181723136)))
+    part5 (concat-byte-vectors
             (encode-u32-le 3596551104)
             (concat-byte-vectors
               (encode-u32-le 2854159328)
               (encode-u32-le 3596551104)))]
     (concat-byte-vectors
-      (concat-byte-vectors part1 part2)
-      (concat-byte-vectors part3 part4))))
+      (concat-byte-vectors
+        (concat-byte-vectors part1 part2)
+        (concat-byte-vectors part3 part4))
+      part5)))
 
 (defn emit-aarch64-selfhost-vector-push-helper []
   (let [part1 (concat-byte-vectors
@@ -12559,43 +12566,43 @@
   (+ (aarch64-helper-base-offset import-stub-offset import-count) 488))
 
 (defn aarch64-selfhost-vector-push-helper-offset [import-stub-offset import-count]
-  (+ (aarch64-helper-base-offset import-stub-offset import-count) 528))
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 540))
 
 (defn aarch64-selfhost-ref-new-helper-offset [import-stub-offset import-count]
-  (+ (aarch64-helper-base-offset import-stub-offset import-count) 784))
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 796))
 
 (defn aarch64-selfhost-ref-get-helper-offset [import-stub-offset import-count]
-  (+ (aarch64-helper-base-offset import-stub-offset import-count) 880))
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 892))
 
 (defn aarch64-selfhost-ref-set-helper-offset [import-stub-offset import-count]
-  (+ (aarch64-helper-base-offset import-stub-offset import-count) 900))
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 912))
 
 (defn aarch64-selfhost-substring-helper-offset [import-stub-offset import-count]
-  (+ (aarch64-helper-base-offset import-stub-offset import-count) 924))
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 936))
 
 (defn aarch64-selfhost-string-concat-helper-offset [import-stub-offset import-count]
-  (+ (aarch64-helper-base-offset import-stub-offset import-count) 1132))
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 1144))
 
 (defn aarch64-selfhost-map-size-helper-offset [import-stub-offset import-count]
-  (+ (aarch64-helper-base-offset import-stub-offset import-count) 1440))
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 1452))
 
 (defn aarch64-selfhost-map-new-helper-offset [import-stub-offset import-count]
-  (+ (aarch64-helper-base-offset import-stub-offset import-count) 1460))
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 1472))
 
 (defn aarch64-selfhost-file-exists-helper-offset [import-stub-offset import-count]
-  (+ (aarch64-helper-base-offset import-stub-offset import-count) 1560))
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 1572))
 
 (defn aarch64-selfhost-read-file-helper-offset [import-stub-offset import-count]
-  (+ (aarch64-helper-base-offset import-stub-offset import-count) 1756))
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 1768))
 
 (defn aarch64-selfhost-map-insert-helper-offset [import-stub-offset import-count]
-  (+ (aarch64-helper-base-offset import-stub-offset import-count) 2220))
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 2232))
 
 (defn aarch64-selfhost-map-get-helper-offset [import-stub-offset import-count]
-  (+ (aarch64-helper-base-offset import-stub-offset import-count) 2316))
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 2328))
 
 (defn aarch64-selfhost-map-new-fixed-helper-offset [import-stub-offset import-count]
-  (+ (aarch64-helper-base-offset import-stub-offset import-count) 2376))
+  (+ (aarch64-helper-base-offset import-stub-offset import-count) 2388))
 
 ;; AArch64: stp x29, x30, [sp, #-16]!
 (defn emit-aarch64-save-fp-lr []
@@ -16923,7 +16930,7 @@
             (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-length-helper) 20)
             (append-native-bytes-rooted result (emit-aarch64-selfhost-alloc-helper) 72)
             (append-native-bytes-rooted result (emit-aarch64-selfhost-string-char-at-helper) 52)
-            (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 40)
+            (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-get-helper) 52)
             (append-native-bytes-rooted result (emit-aarch64-selfhost-vector-push-helper) 256)
             (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-new-helper) 96)
             (append-native-bytes-rooted result (emit-aarch64-selfhost-ref-get-helper) 20)

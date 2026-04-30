@@ -8703,6 +8703,7 @@ fn host_target_selfhost_vector_get_manual_seed_bundle_code_bytes(
     capacity: u32,
     length: u32,
     value: u32,
+    element_offset: u32,
     index: u32,
 ) -> Vec<u8> {
     run_native_codegen_host_bytes_harness(&format!(
@@ -8735,7 +8736,7 @@ fn host_target_selfhost_vector_get_manual_seed_bundle_code_bytes(
         instr6 (make-instr 46 8)
         instr7 (make-instr 10 0)
         instr8 (make-instr 38 0)
-        instr9 (make-instr 3 16)
+        instr9 (make-instr 3 {element_offset})
         instr10 (make-instr 24 0)
         instr11 (make-instr 3 {value})
         instr12 (make-instr 49 0)
@@ -8774,6 +8775,84 @@ fn host_target_selfhost_vector_get_manual_seed_bundle_code_bytes(
                instr14)
              instr15)
         func (make-function-meta 0 1 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    ))
+}
+
+fn host_target_selfhost_vector_get_hidden_slot_bundle_code_bytes(
+    capacity: u32,
+    pushed_value: u32,
+    hidden_value: u32,
+    element_offset: u32,
+    index: u32,
+) -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 {capacity})
+        instr1 (make-instr 54 0)
+        instr2 (make-instr 3 {pushed_value})
+        instr3 (make-instr 55 0)
+        instr4 (make-instr 11 0)
+        instr5 (make-instr 10 0)
+        instr6 (make-instr 38 0)
+        instr7 (make-instr 3 {element_offset})
+        instr8 (make-instr 24 0)
+        instr9 (make-instr 3 {hidden_value})
+        instr10 (make-instr 49 0)
+        instr11 (make-instr 10 0)
+        instr12 (make-instr 3 {index})
+        instr13 (make-instr 53 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push
+                           (vector-push
+                             (vector-push
+                               (vector-push
+                                 (vector-push
+                                   (vector-push (vector-new 14) instr0)
+                                   instr1)
+                                 instr2)
+                               instr3)
+                             instr4)
+                           instr5)
+                         instr6)
+                       instr7)
+                     instr8)
+                   instr9)
+                 instr10)
+               instr11)
+             instr12)
+        ir2 (vector-push ir instr13)
+        func (make-function-meta 0 1 ir2)
         functions (vector-push (vector-new 1) func)
         target (host-target)
         code (emit-native-function-meta-bundle functions target)]
@@ -18049,7 +18128,7 @@ fn test_e2e_native_host_binary_selfhost_vector_get_bundle_reads_manual_seeded_va
         return;
     }
 
-    let code_bytes = host_target_selfhost_vector_get_manual_seed_bundle_code_bytes(4, 1, 42, 0);
+    let code_bytes = host_target_selfhost_vector_get_manual_seed_bundle_code_bytes(4, 1, 42, 16, 0);
     assert!(
         !code_bytes.is_empty(),
         "stage1-native: selfhost vector-get manual-seed bundle 向けコードバイト列が空"
@@ -18062,6 +18141,34 @@ fn test_e2e_native_host_binary_selfhost_vector_get_bundle_reads_manual_seeded_va
         exit_code,
         42,
         "host binary selfhost vector-get manual-seed bundle: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d2kb: selfhost vector-get (opcode 53) が AArch64 bundle path で
+/// length 以上の index を 0 として扱い、capacity 内の未公開スロットを読まないこと。
+#[test]
+fn test_e2e_native_host_binary_selfhost_vector_get_bundle_bounds_checks_length() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_selfhost_vector_get_hidden_slot_bundle_code_bytes(2, 0, 77, 24, 1);
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: selfhost vector-get bounds bundle 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("selfhost vector-get bounds host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        0,
+        "host binary selfhost vector-get bounds bundle: exit code 0 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),
