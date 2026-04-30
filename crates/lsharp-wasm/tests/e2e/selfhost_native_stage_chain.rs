@@ -9484,6 +9484,46 @@ fn host_target_i64_add_code_bytes() -> Vec<u8> {
     )
 }
 
+fn host_target_i64_add_negative_const_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr1 (make-i64-const 2)
+        instr2 (make-i64-const (- 0 1))
+        instr3 (make-instr 20 0)
+        ir (vector-push
+             (vector-push
+               (vector-push (vector-new 3) instr1)
+               instr2)
+             instr3)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (host-target)
+        code (emit-native-function-meta-bundle functions target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+    )
+}
+
 fn host_target_i64_sub_code_bytes() -> Vec<u8> {
     run_native_codegen_host_bytes_harness(
         r#"(module Main)
@@ -18525,6 +18565,34 @@ fn test_e2e_native_host_binary_i64_add_link_and_execute() {
         exit_code,
         42,
         "host binary i64 add: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-HOST-01d3b: i64.const -1 を含む i64.add が符号付き値として実行できること。
+#[test]
+fn test_e2e_native_host_binary_i64_add_negative_const_link_and_execute() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_i64_add_negative_const_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: i64.const -1/i64.add を含む host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("i64 add negative const host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        1,
+        "host binary i64 add negative const: exit code 1 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),

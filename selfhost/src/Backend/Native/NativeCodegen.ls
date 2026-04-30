@@ -11263,14 +11263,18 @@
     (% (/ value 65536) 65536)))
 
 (defn aarch64-immediate-chunk-2 [value]
-  (if (< value 4294967296)
-    0
-    (% (/ value 4294967296) 65536)))
+  (if (< value 0)
+    65535
+    (if (< value 4294967296)
+      0
+      (% (/ value 4294967296) 65536))))
 
 (defn aarch64-immediate-chunk-3 [value]
-  (if (< value 4294967296)
-    0
-    (% (/ value 281474976710656) 65536)))
+  (if (< value 0)
+    65535
+    (if (< value 4294967296)
+      0
+      (% (/ value 281474976710656) 65536))))
 
 (defn aarch64-load-u32-w0-size [value]
   (let [uvalue (normalize-u32-immediate value)]
