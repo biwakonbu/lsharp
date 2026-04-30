@@ -1208,6 +1208,46 @@ fn test_e2e_selfhost_main_native_function_meta_bundle_with_import_count_emits_co
     );
 }
 
+#[test]
+fn test_e2e_native_function_size_aarch64_counts_local_zeroing_and_stack_frame() {
+    let output = run_native_pipeline_harness(
+        r#"(module Main)
+(import IR.IR)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [ir (vector-push (vector-new 1) (make-i64-const 42))
+        func-meta (make-function-meta 0 2 ir)
+        function-metas (vector-push (vector-new 1) func-meta)
+        function-starts (vector-push (vector-new 1) 0)
+        expected (native-function-size-aarch64 func-meta function-metas)
+        result (ref-new (vector-new 16))
+        _generated (generate-native-function-aarch64-bundle-with-import-count func-meta result function-starts function-metas 0 0 0)
+        actual (vector-length (ref-get result))]
+    (do
+      (print expected)
+      (print actual)
+      0)))"#,
+    );
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.len(),
+        2,
+        "native-function-size AArch64 harness 出力が不足: {lines:?}"
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "native-function-size-aarch64 が local zeroing / stack frame を含む実生成長と一致しない: {lines:?}"
+    );
+}
+
 fn run_native_pipeline_harness(entry_source: &str) -> String {
     let id = NATIVE_STAGE_CHAIN_COUNTER.fetch_add(1, Ordering::Relaxed);
     let dir = target_fixture_dir("e2e-native-fixtures", "native-stage-chain", id);

@@ -14639,8 +14639,12 @@
     ir-func (native-function-ir func-meta)
     stack-bytes (native-local-stack-bytes-with-window ir-func (+ param-count local-count) function-metas)
     min-slot-count (+ param-count local-count)
-    stack-frame-bytes (if (= (aarch64-bundle-stack-padding-needed ir-func min-slot-count function-metas) 1) 8 0)
-    call-frame-bytes (if (= (native-has-call ir-func) 1) 8 0)
+    has-call (native-has-call ir-func)
+    prologue-stack-bytes (if (if (= (aarch64-bundle-stack-padding-needed ir-func min-slot-count function-metas) 1) (> stack-bytes 0) false)
+                           (align-16 (+ stack-bytes 8))
+                           stack-bytes)
+    stack-frame-bytes (if (> prologue-stack-bytes 0) 8 0)
+    call-frame-bytes (if (= has-call 1) 8 0)
     param-spill-bytes (if (> param-count 8)
                         (+ 40 (* (- param-count 9) 8))
                         (if (= param-count 8)
@@ -14664,8 +14668,9 @@
                    function-metas
                    (vector-length ir-func)
                    (native-function-body-size-aarch64-step-64 ir-func function-metas 0 (vector-length ir-func) 0 0))
-                 2)]
-    (+ (+ (+ (+ 4 stack-frame-bytes) call-frame-bytes) param-spill-bytes) body-bytes)))
+                 2)
+    local-zero-bytes (* local-count 8)]
+    (+ (+ (+ (+ (+ 4 stack-frame-bytes) call-frame-bytes) param-spill-bytes) local-zero-bytes) body-bytes)))
 
 (defn make-callable-object-state [done next-idx next-values]
   (do
@@ -14820,7 +14825,7 @@
         function-start (vector-get rough-starts user-idx)]
         (do
           (root_push func-meta)
-          (let [function-length (measure-native-function-aarch64-bundle-with-import-count func-meta rough-starts functions import-count import-stub-offset function-start)
+          (let [function-length (native-function-size-aarch64 func-meta functions)
             next-lengths (vector-push lengths function-length)]
             (do
               (root_push next-lengths)
@@ -16774,9 +16779,9 @@
                       (if (= param-count 1)
                         (append-native-bytes-loop result (emit-aarch64-str-x0-sp (local-slot-offset 0)) 0 4)
                         0))))))))))))))))))))
-           (if (> local-count 0)
+            (if (> local-count 0)
              (zero-native-local-only-slots-aarch64-loop param-count local-count result 0)
-             0)
+              0)
             (let [control-meta (scan-control-flow-meta ir-func)
               offsets (collect-native-bundle-offsets-aarch64 ir-func function-metas body-offset)]
               (do
@@ -16793,13 +16798,13 @@
                     import-count
                     import-stub-offset
                     frame-base-slot-count
-                    0
-                    0
-                    n)]
-                  (do
-                    (root_pop)
-                    (root_pop)
-                    generated))))
+                     0
+                     0
+                     n)]
+                   (do
+                     (root_pop)
+                     (root_pop)
+                     generated))))
             (if (> prologue-stack-bytes 0)
               (append-native-bytes-loop result (emit-aarch64-add-sp prologue-stack-bytes) 0 4)
               0)
