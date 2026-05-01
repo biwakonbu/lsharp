@@ -1248,6 +1248,64 @@ fn test_e2e_native_function_size_aarch64_counts_local_zeroing_and_stack_frame() 
     );
 }
 
+#[test]
+fn test_e2e_native_aarch64_deep_direct_append_matches_static_size() {
+    let output = run_native_pipeline_harness(
+        r#"(module Main)
+(import IR.IR)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn append-consts [idx len result]
+  (if (>= idx len)
+    result
+    (do
+      (root_push result)
+      (let [next (vector-push result (make-i64-const idx))]
+        (do
+          (root_push next)
+          (let [final (append-consts (+ idx 1) len next)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn main []
+  (let [base (append-consts 0 40 (vector-new 48))
+        with-local-get (vector-push base (make-local-get 0))
+        with-root-pop (vector-push with-local-get (make-instr 75 0))
+        with-const (vector-push with-root-pop (make-i64-const 1))
+        ir (vector-push with-const (make-instr 20 0))
+        func-meta (make-function-meta 1 0 ir)
+        function-metas (vector-push (vector-new 1) func-meta)
+        function-starts (vector-push (vector-new 1) 0)
+        expected (native-function-size-aarch64 func-meta function-metas)
+        result (ref-new (vector-new expected))
+        _generated (generate-native-function-aarch64-bundle-with-import-count func-meta result function-starts function-metas 0 0 0)
+        actual (vector-length (ref-get result))]
+    (do
+      (print expected)
+      (print actual)
+      0)))"#,
+    );
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.len(),
+        2,
+        "deep direct append AArch64 harness 出力が不足: {lines:?}"
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "deep direct append AArch64 の実生成長が static size と一致しない: {lines:?}"
+    );
+}
+
 fn run_native_pipeline_harness(entry_source: &str) -> String {
     let id = NATIVE_STAGE_CHAIN_COUNTER.fetch_add(1, Ordering::Relaxed);
     let dir = target_fixture_dir("e2e-native-fixtures", "native-stage-chain", id);
