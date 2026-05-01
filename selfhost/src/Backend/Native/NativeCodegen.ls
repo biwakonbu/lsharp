@@ -9959,7 +9959,7 @@
               state)))))))
 
 (defn direct-append-aarch64-opcode [opcode current-depth]
-  (if (>= current-depth 32)
+  (if (>= current-depth 8)
     (if (= opcode 1)
       1
       (if (= opcode 3)
