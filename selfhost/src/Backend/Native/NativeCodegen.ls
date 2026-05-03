@@ -9959,19 +9959,19 @@
               state)))))))
 
 (defn direct-append-aarch64-opcode [opcode current-depth]
-  (if (>= current-depth 8)
-    (if (= opcode 1)
-      1
-      (if (= opcode 3)
-        1
-        (if (= opcode 10)
+  (if (if (= opcode 11) (>= current-depth 1) false)
+    3
+    (if (= opcode 10)
+      4
+      (if (>= current-depth 8)
+        (if (= opcode 1)
           1
-          (if (= opcode 75)
+          (if (= opcode 3)
             1
-            (if (= opcode 20)
-              2
-              (if (= opcode 11) 3 0))))))
-    0))
+            (if (= opcode 75)
+              1
+              (if (= opcode 20) 2 0))))
+        0))))
 
 (defn direct-append-produce-one-bytes-aarch64 [opcode operand]
   (if (= opcode 1)
@@ -10006,15 +10006,19 @@
             (do
               (append-local-set-bundle-aarch64 result (local-slot-offset operand) frame-base-slot-count current-depth)
               (make-native-control-bundle-loop-state 0 (+ idx 1) next-depth))
-            (let [native (if (= (is-control-opcode opcode) 1)
-                           (emit-control-instr-aarch64 ir-func meta offsets idx)
-                           (codegen-ir-instr-bundle-aarch64-with-import-count opcode operand current-offset function-starts function-metas import-count import-stub-offset frame-base-slot-count current-depth))
-              native-len (vector-length native)]
+            (if (= (direct-append-aarch64-opcode opcode current-depth) 4)
               (do
-                (root_push native)
-                (append-native-bytes-loop result native 0 native-len)
-                (root_pop)
-                (make-native-control-bundle-loop-state 0 (+ idx 1) next-depth)))))))))
+                (append-local-get-bundle-aarch64 result (local-slot-offset operand) frame-base-slot-count current-depth)
+                (make-native-control-bundle-loop-state 0 (+ idx 1) next-depth))
+              (let [native (if (= (is-control-opcode opcode) 1)
+                             (emit-control-instr-aarch64 ir-func meta offsets idx)
+                             (codegen-ir-instr-bundle-aarch64-with-import-count opcode operand current-offset function-starts function-metas import-count import-stub-offset frame-base-slot-count current-depth))
+                native-len (vector-length native)]
+                (do
+                  (root_push native)
+                  (append-native-bytes-loop result native 0 native-len)
+                  (root_pop)
+                  (make-native-control-bundle-loop-state 0 (+ idx 1) next-depth))))))))))
 
 (defn generate-native-control-instr-bundle-loop-aarch64-with-import-count-step-64-loop-bounded [ir-func result meta offsets function-starts function-metas import-count import-stub-offset frame-base-slot-count idx len current-depth remaining]
   (do
@@ -13258,6 +13262,19 @@
         0))
     (append-native-bytes-loop result op-bytes 0 (vector-length op-bytes))
     (root_pop)
+    0))
+
+(defn append-local-get-bundle-aarch64 [result offset frame-base-slot-count current-depth]
+  (do
+    (append-produce-one-spills-aarch64 result frame-base-slot-count current-depth)
+    (if (>= current-depth 2)
+      (do
+        (append-native-bytes-rooted result (emit-aarch64-str-x9-sp (native-value-window-spill-offset frame-base-slot-count 0)) 4)
+        (append-native-bytes-rooted result (emit-aarch64-mov-x9-x0) 4))
+      (if (= current-depth 1)
+        (append-native-bytes-rooted result (emit-aarch64-mov-x9-x0) 4)
+        0))
+    (append-native-bytes-rooted result (emit-aarch64-ldr-x0-sp offset) 4)
     0))
 
 (defn emit-i64-const-bundle-aarch64 [value frame-base-slot-count current-depth]

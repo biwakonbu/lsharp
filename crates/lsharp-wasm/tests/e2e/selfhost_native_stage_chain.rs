@@ -1277,7 +1277,10 @@ fn test_e2e_native_aarch64_deep_direct_append_matches_static_size() {
               final)))))))
 
 (defn main []
-  (let [base (append-consts 0 40 (vector-new 48))
+  (let [with-shallow-const (vector-push (vector-new 50) (make-i64-const 7))
+        with-shallow-local-set (vector-push with-shallow-const (make-instr 11 0))
+        with-shallow-local-get (vector-push with-shallow-local-set (make-local-get 0))
+        base (append-consts 0 40 with-shallow-local-get)
         with-local-get (vector-push base (make-local-get 0))
         with-root-pop (vector-push with-local-get (make-instr 75 0))
         with-const (vector-push with-root-pop (make-i64-const 1))
