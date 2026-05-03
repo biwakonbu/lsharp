@@ -17049,7 +17049,7 @@
   (do
     (root_push functions)
     (root_push function-starts)
-    (let [result (ref-new (vector-new 128))
+    (let [result (ref-new (vector-new (+ import-stub-offset 2048)))
       import-stub-count (aarch64-import-stub-count import-count)
       n (- (vector-length functions) import-count)]
       (do
