@@ -17350,15 +17350,27 @@
     (native-last-callable-function-idx-with-import-count functions)))
 
 (defn generate-native-aarch64-bundle-entrypoint-payload-for-function-with-import-count [functions import-count entrypoint-func-idx]
-  (let [layout (collect-callable-actual-layout-aarch64 functions import-count)
-    function-starts (callable-layout-function-starts-aarch64 layout)
-    bundle (generate-native-aarch64-bundle-with-layout
-             functions
-             import-count
-             function-starts
-             (callable-layout-import-stub-offset-aarch64 layout))
-    entrypoint-offset (native-bundle-entrypoint-offset-for-function-with-import-count function-starts import-count entrypoint-func-idx)]
-    (make-native-bundle-entrypoint-payload bundle entrypoint-offset)))
+  (do
+    (root_push functions)
+    (let [stable-functions (concat-byte-vectors-loop (vector-new (vector-length functions)) functions 0 (vector-length functions))]
+      (do
+        (root_push stable-functions)
+        (let [layout (collect-callable-actual-layout-aarch64 stable-functions import-count)
+          function-starts (callable-layout-function-starts-aarch64 layout)
+          bundle (generate-native-aarch64-bundle-with-layout
+                   stable-functions
+                   import-count
+                   function-starts
+                   (callable-layout-import-stub-offset-aarch64 layout))
+          entrypoint-offset (native-bundle-entrypoint-offset-for-function-with-import-count function-starts import-count entrypoint-func-idx)]
+          (do
+            (root_push bundle)
+            (let [payload (make-native-bundle-entrypoint-payload bundle entrypoint-offset)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                payload))))))))
 
 (defn generate-native-aarch64-bundle-entrypoint-payload-with-import-count [functions import-count]
   (generate-native-aarch64-bundle-entrypoint-payload-for-function-with-import-count

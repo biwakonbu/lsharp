@@ -94,6 +94,14 @@ struct NativeEntrypointLayout {
     entrypoint_offset: usize,
 }
 
+struct NativeCodeDataTransport {
+    declared_code_len: usize,
+    code_bytes: Vec<u8>,
+    declared_data_len: usize,
+    data_bytes: Vec<u8>,
+    layout: Option<NativeEntrypointLayout>,
+}
+
 fn actual_stage23_seed_source_with_payload(payload_expr: &str, main_body: &str) -> String {
     selfhost_main_native_code_only_export_harness_with_payload(payload_expr, main_body).replacen(
         "(module App.HarnessMain)",
@@ -102,20 +110,44 @@ fn actual_stage23_seed_source_with_payload(payload_expr: &str, main_body: &str) 
     )
 }
 
+fn actual_stage23_seed_source_with_payload_and_code_binding(
+    payload_expr: &str,
+    code_binding_expr: &str,
+    main_body: &str,
+) -> String {
+    selfhost_main_native_code_only_export_harness_with_payload_and_code_binding(
+        payload_expr,
+        code_binding_expr,
+        main_body,
+    )
+    .replacen("(module App.HarnessMain)", "(module App.Seed)", 1)
+}
+
 fn representative_actual_stage23_seed_source() -> String {
-    let main_body = r#"      (let [code-len (vector-length code)
+    let code_binding_expr = r#"entrypoint-func-idx (- (vector-length callables) 1)
+                    entrypoint-payload (emit-native-function-meta-bundle-entrypoint-payload-for-function-with-import-count native-callables 10 entrypoint-func-idx target)
+                    code (vector-get entrypoint-payload 0)
+                    entrypoint-offset (vector-get entrypoint-payload 1)"#;
+    let main_body = r#"      (let [main-func-idx entrypoint-func-idx
+          code-len (vector-length code)
           data-len (vector-length data)]
          (do
+             (print 9000000005)
+            (print (vector-length callables))
+            (print main-func-idx)
+            (print entrypoint-offset)
+            (print 9000000006)
              (print 9000000001)
             (print code-len)
-           (print 9000000002)
-           (print-code-bytes-loop code 0 code-len)
-            (print 9000000003)
-           (print data-len)
-           (print 9000000004)
-           (print-code-bytes-loop data 0 data-len)))"#;
-    actual_stage23_seed_source_with_payload(
+            (print 9000000002)
+           (print-packed-code-bytes-loop code 0 code-len)
+             (print 9000000003)
+            (print data-len)
+            (print 9000000004)
+           (print-packed-code-bytes-loop data 0 data-len)))"#;
+    actual_stage23_seed_source_with_payload_and_code_binding(
         r#"(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)"#,
+        code_binding_expr,
         main_body,
     )
 }
@@ -196,16 +228,27 @@ fn run_actual_native_self_regeneration_transport_stage(
                 String::from_utf8_lossy(&executed_bundle.stderr)
             ));
         }
-        let (declared_code_len, code_bytes, declared_data_len, data_bytes) =
-            extract_native_code_data_transport_output(&executed_bundle.stdout, label);
-        let next_bundle = NativeEntrypointBundle {
+        let transport = extract_native_code_data_transport_output_with_optional_layout(
+            &executed_bundle.stdout,
+            label,
+        );
+        let layout = transport.layout.unwrap_or(NativeEntrypointLayout {
             function_start_len: stage_input.function_start_len,
             main_func_idx: stage_input.main_func_idx,
-            declared_code_len,
-            declared_data_len,
             entrypoint_offset: stage_input.entrypoint_offset,
-            code_bytes,
-            data_bytes,
+        });
+        let entrypoint_offset = align_aarch64_entrypoint_to_function_start(
+            &transport.code_bytes,
+            layout.entrypoint_offset,
+        );
+        let next_bundle = NativeEntrypointBundle {
+            function_start_len: layout.function_start_len,
+            main_func_idx: layout.main_func_idx,
+            declared_code_len: transport.declared_code_len,
+            declared_data_len: transport.declared_data_len,
+            entrypoint_offset,
+            code_bytes: transport.code_bytes,
+            data_bytes: transport.data_bytes,
         };
         maybe_write_native_host_bundle_artifact(label, &executed_bundle)
             .map_err(|e| format!("{label} artifact 書き出し失敗: {e}"))?;
@@ -1385,6 +1428,18 @@ fn selfhost_main_native_code_only_export_harness_with_payload(
     payload_expr: &str,
     main_body: &str,
 ) -> String {
+    selfhost_main_native_code_only_export_harness_with_payload_and_code_binding(
+        payload_expr,
+        "code (emit-native-function-meta-bundle-with-import-count native-callables 10 target)",
+        main_body,
+    )
+}
+
+fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding(
+    payload_expr: &str,
+    code_binding_expr: &str,
+    main_body: &str,
+) -> String {
     format!(
         r#"(module App.HarnessMain)
 (import App.CompilerMode)
@@ -1428,6 +1483,16 @@ fn selfhost_main_native_code_only_export_harness_with_payload(
               (root_pop)
               final)))))))
 
+(defn find-defn-index-by-hash [decls idx len target-hash]
+  (if (>= idx len)
+    -1
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (if (= (vector-get decl 1) target-hash)
+          idx
+          (find-defn-index-by-hash decls (+ idx 1) len target-hash))
+        (find-defn-index-by-hash decls (+ idx 1) len target-hash)))))
+
 (defn byte-at-or-zero [bytes idx len]
   (if (>= idx len)
     0
@@ -1439,6 +1504,16 @@ fn selfhost_main_native_code_only_export_harness_with_payload(
 (defn pack-byte-chunk-2 [bytes idx len]
   (+ (byte-at-or-zero bytes idx len)
      (* (byte-at-or-zero bytes (+ idx 1) len) 256)))
+
+(defn pack-byte-chunk-8 [bytes idx len]
+  (+ (byte-at-or-zero bytes idx len)
+     (+ (* (byte-at-or-zero bytes (+ idx 1) len) 256)
+        (+ (* (byte-at-or-zero bytes (+ idx 2) len) 65536)
+           (+ (* (byte-at-or-zero bytes (+ idx 3) len) 16777216)
+              (+ (* (byte-at-or-zero bytes (+ idx 4) len) 4294967296)
+                 (+ (* (byte-at-or-zero bytes (+ idx 5) len) 1099511627776)
+                    (+ (* (byte-at-or-zero bytes (+ idx 6) len) 281474976710656)
+                       (* (byte-at-or-zero bytes (+ idx 7) len) 72057594037927936)))))))))
 
 (defn chunk-file-path [chunk-idx]
   (string-concat "bundle-bytes-" (string-concat (int-to-string chunk-idx) ".txt")))
@@ -1931,6 +2006,99 @@ fn selfhost_main_native_code_only_export_harness_with_payload(
       0
       (print-code-bytes-loop bytes (vector-get step 1) count))))
 
+(defn print-packed-code-bytes-step [bytes idx count]
+  (if (>= idx count)
+    (make-print-step-state 1 idx)
+    (do
+      (print (pack-byte-chunk-8 bytes idx count))
+      (make-print-step-state 0 (+ idx 8)))))
+
+(defn continue-print-packed-code-bytes-step [bytes count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-packed-code-bytes-step bytes (vector-get state 1) count)))
+
+(defn print-packed-code-bytes-step-8 [bytes idx count]
+  (let [step1 (print-packed-code-bytes-step bytes idx count)
+        step2 (continue-print-packed-code-bytes-step bytes count step1)
+        step3 (continue-print-packed-code-bytes-step bytes count step2)
+        step4 (continue-print-packed-code-bytes-step bytes count step3)
+        step5 (continue-print-packed-code-bytes-step bytes count step4)
+        step6 (continue-print-packed-code-bytes-step bytes count step5)
+        step7 (continue-print-packed-code-bytes-step bytes count step6)
+        step8 (continue-print-packed-code-bytes-step bytes count step7)]
+    step8))
+
+(defn continue-print-packed-code-bytes-step-8 [bytes count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-packed-code-bytes-step-8 bytes (vector-get state 1) count)))
+
+(defn print-packed-code-bytes-step-64 [bytes idx count]
+  (let [step1 (print-packed-code-bytes-step-8 bytes idx count)
+        step2 (continue-print-packed-code-bytes-step-8 bytes count step1)
+        step3 (continue-print-packed-code-bytes-step-8 bytes count step2)
+        step4 (continue-print-packed-code-bytes-step-8 bytes count step3)
+        step5 (continue-print-packed-code-bytes-step-8 bytes count step4)
+        step6 (continue-print-packed-code-bytes-step-8 bytes count step5)
+        step7 (continue-print-packed-code-bytes-step-8 bytes count step6)
+        step8 (continue-print-packed-code-bytes-step-8 bytes count step7)]
+    step8))
+
+(defn continue-print-packed-code-bytes-step-64 [bytes count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-packed-code-bytes-step-64 bytes (vector-get state 1) count)))
+
+(defn print-packed-code-bytes-step-512 [bytes idx count]
+  (let [step1 (print-packed-code-bytes-step-64 bytes idx count)
+        step2 (continue-print-packed-code-bytes-step-64 bytes count step1)
+        step3 (continue-print-packed-code-bytes-step-64 bytes count step2)
+        step4 (continue-print-packed-code-bytes-step-64 bytes count step3)
+        step5 (continue-print-packed-code-bytes-step-64 bytes count step4)
+        step6 (continue-print-packed-code-bytes-step-64 bytes count step5)
+        step7 (continue-print-packed-code-bytes-step-64 bytes count step6)
+        step8 (continue-print-packed-code-bytes-step-64 bytes count step7)]
+    step8))
+
+(defn continue-print-packed-code-bytes-step-512 [bytes count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-packed-code-bytes-step-512 bytes (vector-get state 1) count)))
+
+(defn print-packed-code-bytes-step-4096 [bytes idx count]
+  (let [step1 (print-packed-code-bytes-step-512 bytes idx count)
+        step2 (continue-print-packed-code-bytes-step-512 bytes count step1)
+        step3 (continue-print-packed-code-bytes-step-512 bytes count step2)
+        step4 (continue-print-packed-code-bytes-step-512 bytes count step3)
+        step5 (continue-print-packed-code-bytes-step-512 bytes count step4)
+        step6 (continue-print-packed-code-bytes-step-512 bytes count step5)
+        step7 (continue-print-packed-code-bytes-step-512 bytes count step6)
+        step8 (continue-print-packed-code-bytes-step-512 bytes count step7)]
+    step8))
+
+(defn continue-print-packed-code-bytes-step-4096 [bytes count state]
+  (if (= (vector-get state 0) 1)
+    state
+    (print-packed-code-bytes-step-4096 bytes (vector-get state 1) count)))
+
+(defn print-packed-code-bytes-step-32768 [bytes idx count]
+  (let [step1 (print-packed-code-bytes-step-4096 bytes idx count)
+        step2 (continue-print-packed-code-bytes-step-4096 bytes count step1)
+        step3 (continue-print-packed-code-bytes-step-4096 bytes count step2)
+        step4 (continue-print-packed-code-bytes-step-4096 bytes count step3)
+        step5 (continue-print-packed-code-bytes-step-4096 bytes count step4)
+        step6 (continue-print-packed-code-bytes-step-4096 bytes count step5)
+        step7 (continue-print-packed-code-bytes-step-4096 bytes count step6)
+        step8 (continue-print-packed-code-bytes-step-4096 bytes count step7)]
+    step8))
+
+(defn print-packed-code-bytes-loop [bytes idx count]
+  (let [step (print-packed-code-bytes-step-32768 bytes idx count)]
+    (if (= (vector-get step 0) 1)
+      0
+      (print-packed-code-bytes-loop bytes (vector-get step 1) count))))
+
 (defn remainder [value divisor]
   (- value (* (/ value divisor) divisor)))
 
@@ -2023,7 +2191,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload(
                 (do
                   (root_push native-callables)
                   (root_push target)
-                  (let [code (emit-native-function-meta-bundle-with-import-count native-callables 10 target)]
+                  (let [{code_binding_expr}]
                     (do
                       (root_push code)
   {main_body}
@@ -2036,6 +2204,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload(
                       (root_pop)
                       0)))))))))))"#,
         payload_expr = payload_expr,
+        code_binding_expr = code_binding_expr,
         main_body = main_body
     )
 }
@@ -2116,6 +2285,86 @@ fn extract_native_code_data_transport_output(
     output: &[u8],
     label: &str,
 ) -> (usize, Vec<u8>, usize, Vec<u8>) {
+    let transport = extract_native_code_data_transport_output_with_optional_layout(output, label);
+    (
+        transport.declared_code_len,
+        transport.code_bytes,
+        transport.declared_data_len,
+        transport.data_bytes,
+    )
+}
+
+fn extract_optional_native_entrypoint_layout(
+    output: &[u8],
+    label: &str,
+) -> Option<NativeEntrypointLayout> {
+    let mut offset = 0;
+    loop {
+        let (line, next_offset) = next_transport_line(output, offset)?;
+        offset = next_offset;
+        let Ok(text) = std::str::from_utf8(line) else {
+            continue;
+        };
+        if text == "9000000001" {
+            return None;
+        }
+        if text != "9000000005" {
+            if offset >= output.len() {
+                return None;
+            }
+            continue;
+        }
+
+        let (function_start_len_line, after_function_start_len) =
+            next_transport_line(output, offset)
+                .unwrap_or_else(|| panic!("{label} layout callable len 出力が不足"));
+        let function_start_len = parse_transport_ascii_line(
+            Some(function_start_len_line),
+            &format!("{label} layout callable len 出力が不足"),
+        )
+        .parse::<usize>()
+        .expect("actual native layout callable len parse 失敗");
+        let (main_func_idx_line, after_main_func_idx) =
+            next_transport_line(output, after_function_start_len)
+                .unwrap_or_else(|| panic!("{label} layout main func idx 出力が不足"));
+        let main_func_idx = parse_transport_ascii_line(
+            Some(main_func_idx_line),
+            &format!("{label} layout main func idx 出力が不足"),
+        )
+        .parse::<usize>()
+        .expect("actual native layout main func idx parse 失敗");
+        let (entrypoint_offset_line, after_entrypoint_offset) =
+            next_transport_line(output, after_main_func_idx)
+                .unwrap_or_else(|| panic!("{label} layout entrypoint 出力が不足"));
+        let entrypoint_offset = parse_transport_ascii_line(
+            Some(entrypoint_offset_line),
+            &format!("{label} layout entrypoint 出力が不足"),
+        )
+        .parse::<usize>()
+        .expect("actual native layout entrypoint parse 失敗");
+        let (layout_end_line, _) = next_transport_line(output, after_entrypoint_offset)
+            .unwrap_or_else(|| panic!("{label} layout end sentinel が無い"));
+        let layout_end = parse_transport_ascii_line(
+            Some(layout_end_line),
+            &format!("{label} layout end sentinel が無い"),
+        );
+        assert_eq!(
+            layout_end, "9000000006",
+            "{label} layout end sentinel が期待値と一致しない"
+        );
+        return Some(NativeEntrypointLayout {
+            function_start_len,
+            main_func_idx,
+            entrypoint_offset,
+        });
+    }
+}
+
+fn extract_native_code_data_transport_output_with_optional_layout(
+    output: &[u8],
+    label: &str,
+) -> NativeCodeDataTransport {
+    let layout = extract_optional_native_entrypoint_layout(output, label);
     let (sentinel_start, after_code_start) =
         extract_transport_start_from(output, label, "9000000001", 0);
     assert_eq!(sentinel_start, "9000000001");
@@ -2145,7 +2394,7 @@ fn extract_native_code_data_transport_output(
         }
     };
     let code_payload = &output[code_payload_start..code_payload_end];
-    let code_bytes = decode_printed_byte_values(code_payload, declared_code_len);
+    let code_bytes = decode_numeric_transport_payload(code_payload, declared_code_len);
 
     let (declared_data_len_line, after_declared_data_len) = next_transport_line(output, offset)
         .unwrap_or_else(|| panic!("{label} data len 出力が不足"));
@@ -2159,9 +2408,15 @@ fn extract_native_code_data_transport_output(
         extract_transport_start_from(output, label, "9000000004", after_declared_data_len);
     assert_eq!(data_start_sentinel, "9000000004");
     let data_payload = &output[data_payload_start..];
-    let data_bytes = decode_printed_byte_values(data_payload, declared_data_len);
+    let data_bytes = decode_numeric_transport_payload(data_payload, declared_data_len);
 
-    (declared_code_len, code_bytes, declared_data_len, data_bytes)
+    NativeCodeDataTransport {
+        declared_code_len,
+        code_bytes,
+        declared_data_len,
+        data_bytes,
+        layout,
+    }
 }
 
 fn write_representative_selfhost_modules_for_native_stage(
@@ -2395,6 +2650,41 @@ fn test_decode_packed_byte_lines_supports_negative_i16_text() {
     assert_eq!(decoded, vec![1, 255]);
 }
 
+#[test]
+fn test_decode_packed_byte_lines_width_supports_negative_i64_text() {
+    let decoded = decode_packed_byte_lines_with_width(b"-1\n", 8, 8);
+    assert_eq!(decoded, vec![255; 8]);
+}
+
+#[test]
+fn test_extract_native_code_data_transport_output_supports_packed_payloads() {
+    let output = b"9000000001\n4\n9000000002\n513\n784\n9000000003\n3\n9000000004\n2055\n9\n";
+    let (declared_code_len, code_bytes, declared_data_len, data_bytes) =
+        extract_native_code_data_transport_output(output, "packed transport test");
+    assert_eq!(declared_code_len, 4);
+    assert_eq!(code_bytes, vec![1, 2, 16, 3]);
+    assert_eq!(declared_data_len, 3);
+    assert_eq!(data_bytes, vec![7, 8, 9]);
+}
+
+#[test]
+fn test_extract_native_code_data_transport_output_reads_optional_layout() {
+    let output =
+        b"9000000005\n12\n11\n128\n9000000006\n9000000001\n1\n9000000002\n42\n9000000003\n0\n9000000004\n";
+    let transport = extract_native_code_data_transport_output_with_optional_layout(
+        output,
+        "layout transport test",
+    );
+    let layout = transport
+        .layout
+        .expect("layout transport が layout を復元できない");
+    assert_eq!(layout.function_start_len, 12);
+    assert_eq!(layout.main_func_idx, 11);
+    assert_eq!(layout.entrypoint_offset, 128);
+    assert_eq!(transport.code_bytes, vec![42]);
+    assert!(transport.data_bytes.is_empty());
+}
+
 fn next_transport_line(output: &[u8], start: usize) -> Option<(&[u8], usize)> {
     if start > output.len() {
         return None;
@@ -2456,6 +2746,14 @@ fn extract_transport_lines<'a>(
 }
 
 fn decode_packed_byte_lines(payload: &[u8], declared_code_len: usize) -> Vec<u8> {
+    decode_packed_byte_lines_with_width(payload, declared_code_len, 2)
+}
+
+fn decode_packed_byte_lines_with_width(
+    payload: &[u8],
+    declared_code_len: usize,
+    bytes_per_line: usize,
+) -> Vec<u8> {
     let mut decoded = Vec::with_capacity(declared_code_len);
     for (idx, line) in payload
         .split(|byte| is_transport_separator(*byte))
@@ -2465,12 +2763,14 @@ fn decode_packed_byte_lines(payload: &[u8], declared_code_len: usize) -> Vec<u8>
         let line_text = std::str::from_utf8(line)
             .unwrap_or_else(|_| panic!("packed byte line が UTF-8 でない: {:?}", line));
         let packed = line_text
-            .parse::<i32>()
-            .map(|value| if value < 0 { value + 65536 } else { value })
-            .unwrap_or_else(|_| panic!("packed byte line parse 失敗 at {idx}: {line_text}"));
-        decoded.push((packed & 0x00ff) as u8);
-        if decoded.len() < declared_code_len {
-            decoded.push((packed >> 8) as u8);
+            .parse::<i64>()
+            .unwrap_or_else(|_| panic!("packed byte line parse 失敗 at {idx}: {line_text}"))
+            as u64;
+        for byte_idx in 0..bytes_per_line {
+            if decoded.len() >= declared_code_len {
+                break;
+            }
+            decoded.push(((packed >> (byte_idx * 8)) & 0x00ff) as u8);
         }
         if decoded.len() >= declared_code_len {
             break;
@@ -2509,6 +2809,22 @@ fn decode_printed_byte_values(payload: &[u8], declared_code_len: usize) -> Vec<u
         decoded.len()
     );
     decoded
+}
+
+fn decode_numeric_transport_payload(payload: &[u8], declared_code_len: usize) -> Vec<u8> {
+    let line_count = payload
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .count();
+    if line_count == declared_code_len {
+        decode_printed_byte_values(payload, declared_code_len)
+    } else if line_count == declared_code_len.div_ceil(8) {
+        decode_packed_byte_lines_with_width(payload, declared_code_len, 8)
+    } else if line_count == declared_code_len.div_ceil(2) {
+        decode_packed_byte_lines(payload, declared_code_len)
+    } else {
+        decode_transport_payload(payload, declared_code_len)
+    }
 }
 
 fn decode_base64_value(byte: u8) -> Option<u8> {
