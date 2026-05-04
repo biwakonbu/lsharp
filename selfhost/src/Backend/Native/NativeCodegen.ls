@@ -17371,7 +17371,7 @@
     (if (= arch 2)
       (do
         (root_push functions)
-        (let [stable-functions (concat-byte-vectors-loop (vector-new 32) functions 0 (vector-length functions))]
+        (let [stable-functions (concat-byte-vectors-loop (vector-new (vector-length functions)) functions 0 (vector-length functions))]
           (do
             (root_push stable-functions)
             (let [result (generate-native-aarch64-bundle-with-import-count stable-functions import-count)]
