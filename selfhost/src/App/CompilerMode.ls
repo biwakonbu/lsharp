@@ -77,127 +77,67 @@
 (defn source-fingerprint-step [src pos end acc] (if (>= pos end) (make-source-fingerprint-state 1 pos acc) (make-source-fingerprint-state 0 (+ pos 1) (+ (* acc 31) (string-char-at src pos)))))
 (defn continue-source-fingerprint-step [src end state] (if (= (vector-get state 0) 1) state (source-fingerprint-step src (vector-get state 1) end (vector-get state 2))))
 (defn source-fingerprint-step-8-loop-bounded [src pos end acc remaining]
-  (do
-    (root_push src)
-    (let [step (source-fingerprint-step src pos end acc)]
-      (do
-        (root_push step)
-        (let [result
-          (if (= (vector-get step 0) 1)
-            step
-            (if (<= remaining 1)
-              step
-              (source-fingerprint-step-8-loop-bounded src (vector-get step 1) end (vector-get step 2) (- remaining 1))))]
-          (do
-            (root_pop)
-            (root_pop)
-            result))))))
+  (if (>= pos end)
+    (make-source-fingerprint-state 1 pos acc)
+    (let [next-pos (+ pos 1)
+      next-acc (+ (* acc 31) (string-char-at src pos))]
+      (if (>= next-pos end)
+        (make-source-fingerprint-state 1 next-pos next-acc)
+        (if (<= remaining 1)
+          (make-source-fingerprint-state 0 next-pos next-acc)
+          (source-fingerprint-step-8-loop-bounded src next-pos end next-acc (- remaining 1)))))))
 (defn source-fingerprint-step-8 [src pos end acc] (source-fingerprint-step-8-loop-bounded src pos end acc 8))
 (defn continue-source-fingerprint-step-8 [src end state] (if (= (vector-get state 0) 1) state (source-fingerprint-step-8 src (vector-get state 1) end (vector-get state 2))))
 (defn source-fingerprint-step-64-loop-bounded [src pos end acc remaining]
-  (do
-    (root_push src)
-    (let [step (source-fingerprint-step-8 src pos end acc)]
-      (do
-        (root_push step)
-        (let [result
-          (if (= (vector-get step 0) 1)
-            step
-            (if (<= remaining 1)
-              step
-              (source-fingerprint-step-64-loop-bounded src (vector-get step 1) end (vector-get step 2) (- remaining 1))))]
-          (do
-            (root_pop)
-            (root_pop)
-            result))))))
+  (let [step (source-fingerprint-step-8 src pos end acc)]
+    (if (= (vector-get step 0) 1)
+      step
+      (if (<= remaining 1)
+        step
+        (source-fingerprint-step-64-loop-bounded src (vector-get step 1) end (vector-get step 2) (- remaining 1))))))
 (defn source-fingerprint-step-64 [src pos end acc] (source-fingerprint-step-64-loop-bounded src pos end acc 8))
 (defn continue-source-fingerprint-step-64 [src end state] (if (= (vector-get state 0) 1) state (source-fingerprint-step-64 src (vector-get state 1) end (vector-get state 2))))
 (defn source-fingerprint-step-512-loop-bounded [src pos end acc remaining]
-  (do
-    (root_push src)
-    (let [step (source-fingerprint-step-64 src pos end acc)]
-      (do
-        (root_push step)
-        (let [result
-          (if (= (vector-get step 0) 1)
-            step
-            (if (<= remaining 1)
-              step
-              (source-fingerprint-step-512-loop-bounded src (vector-get step 1) end (vector-get step 2) (- remaining 1))))]
-          (do
-            (root_pop)
-            (root_pop)
-            result))))))
+  (let [step (source-fingerprint-step-64 src pos end acc)]
+    (if (= (vector-get step 0) 1)
+      step
+      (if (<= remaining 1)
+        step
+        (source-fingerprint-step-512-loop-bounded src (vector-get step 1) end (vector-get step 2) (- remaining 1))))))
 (defn source-fingerprint-step-512 [src pos end acc] (source-fingerprint-step-512-loop-bounded src pos end acc 8))
 (defn continue-source-fingerprint-step-512 [src end state] (if (= (vector-get state 0) 1) state (source-fingerprint-step-512 src (vector-get state 1) end (vector-get state 2))))
 (defn source-fingerprint-step-4096-loop-bounded [src pos end acc remaining]
-  (do
-    (root_push src)
-    (let [step (source-fingerprint-step-512 src pos end acc)]
-      (do
-        (root_push step)
-        (let [result
-          (if (= (vector-get step 0) 1)
-            step
-            (if (<= remaining 1)
-              step
-              (source-fingerprint-step-4096-loop-bounded src (vector-get step 1) end (vector-get step 2) (- remaining 1))))]
-          (do
-            (root_pop)
-            (root_pop)
-            result))))))
+  (let [step (source-fingerprint-step-512 src pos end acc)]
+    (if (= (vector-get step 0) 1)
+      step
+      (if (<= remaining 1)
+        step
+        (source-fingerprint-step-4096-loop-bounded src (vector-get step 1) end (vector-get step 2) (- remaining 1))))))
 (defn source-fingerprint-step-4096 [src pos end acc] (source-fingerprint-step-4096-loop-bounded src pos end acc 8))
 (defn continue-source-fingerprint-step-4096 [src end state] (if (= (vector-get state 0) 1) state (source-fingerprint-step-4096 src (vector-get state 1) end (vector-get state 2))))
 (defn source-fingerprint-step-32768-loop-bounded [src pos end acc remaining]
-  (do
-    (root_push src)
-    (let [step (source-fingerprint-step-4096 src pos end acc)]
-      (do
-        (root_push step)
-        (let [result
-          (if (= (vector-get step 0) 1)
-            step
-            (if (<= remaining 1)
-              step
-              (source-fingerprint-step-32768-loop-bounded src (vector-get step 1) end (vector-get step 2) (- remaining 1))))]
-          (do
-            (root_pop)
-            (root_pop)
-            result))))))
+  (let [step (source-fingerprint-step-4096 src pos end acc)]
+    (if (= (vector-get step 0) 1)
+      step
+      (if (<= remaining 1)
+        step
+        (source-fingerprint-step-32768-loop-bounded src (vector-get step 1) end (vector-get step 2) (- remaining 1))))))
 (defn source-fingerprint-step-32768 [src pos end acc] (source-fingerprint-step-32768-loop-bounded src pos end acc 8))
 (defn continue-source-fingerprint-step-32768 [src end state] (if (= (vector-get state 0) 1) state (source-fingerprint-step-32768 src (vector-get state 1) end (vector-get state 2))))
 (defn source-fingerprint-step-262144-loop-bounded [src pos end acc remaining]
-  (do
-    (root_push src)
-    (let [step (source-fingerprint-step-32768 src pos end acc)]
-      (do
-        (root_push step)
-        (let [result
-          (if (= (vector-get step 0) 1)
-            step
-            (if (<= remaining 1)
-              step
-              (source-fingerprint-step-262144-loop-bounded src (vector-get step 1) end (vector-get step 2) (- remaining 1))))]
-          (do
-            (root_pop)
-            (root_pop)
-            result))))))
+  (let [step (source-fingerprint-step-32768 src pos end acc)]
+    (if (= (vector-get step 0) 1)
+      step
+      (if (<= remaining 1)
+        step
+        (source-fingerprint-step-262144-loop-bounded src (vector-get step 1) end (vector-get step 2) (- remaining 1))))))
 (defn source-fingerprint-step-262144 [src pos end acc] (source-fingerprint-step-262144-loop-bounded src pos end acc 8))
 (defn source-fingerprint-loop [src pos end acc]
-  (do
-    (root_push src)
-    (let [step (source-fingerprint-step-262144 src pos end acc)]
-      (do
-        (root_push step)
-        (let [result
-          (if (= (vector-get step 0) 1)
-            (vector-get step 2)
-            (source-fingerprint-loop src (vector-get step 1) end (vector-get step 2)))]
-          (do
-            (root_pop)
-            (root_pop)
-            result))))))
-(defn source-fingerprint [src] (source-fingerprint-loop src 0 (string-length src) 0))
+  (let [step (source-fingerprint-step-262144 src pos end acc)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (source-fingerprint-loop src (vector-get step 1) end (vector-get step 2)))))
+(defn source-fingerprint [src] (do (root_push src) (let [result (source-fingerprint-loop src 0 (string-length src) 0)] (do (root_pop) result))))
 (defn src-decl-cache-key [path] (* (name-hash path 0 (string-length path)) 2))
 (defn make-src-decl-cache-entry [fingerprint pair]
   (do
