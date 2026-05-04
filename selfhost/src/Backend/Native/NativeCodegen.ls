@@ -12709,6 +12709,12 @@
 (defn aarch64-selfhost-map-new-fixed-helper-offset [import-stub-offset import-count]
   (+ (aarch64-helper-base-offset import-stub-offset import-count) 2388))
 
+(defn aarch64-selfhost-helper-trailer-size [import-count]
+  (+ (aarch64-selfhost-map-new-fixed-helper-offset 0 import-count) 92))
+
+(defn aarch64-bundle-initial-capacity [import-stub-offset import-count]
+  (+ import-stub-offset (aarch64-selfhost-helper-trailer-size import-count)))
+
 ;; AArch64: stp x29, x30, [sp, #-16]!
 (defn emit-aarch64-save-fp-lr []
   (let [bytes (vector-new 4)]
@@ -17121,7 +17127,7 @@
   (do
     (root_push functions)
     (root_push function-starts)
-    (let [result (ref-new (vector-new (+ import-stub-offset 2048)))
+    (let [result (ref-new (vector-new (aarch64-bundle-initial-capacity import-stub-offset import-count)))
       import-stub-count (aarch64-import-stub-count import-count)
       n (- (vector-length functions) import-count)]
       (do
@@ -17446,7 +17452,7 @@
                                 import-stub-offset
                                 static-entrypoint-offset)
                               0)
-          trailer-length (+ (aarch64-selfhost-map-new-fixed-helper-offset 0 import-count) 92)
+          trailer-length (aarch64-selfhost-helper-trailer-size import-count)
           actual-user-total (- (vector-length bundle) trailer-length)
           entrypoint-offset (if (= entrypoint-func-idx last-func-idx)
                               (- actual-user-total entrypoint-length)

@@ -8115,6 +8115,31 @@ fn test_e2e_native_aarch64_control_instr_size_matches_emitted_branch_at_high_dep
 }
 
 #[test]
+fn test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-aarch64-bundle-initial-capacity",
+        &["IR.ls", "NativeTarget.ls", "NativeCodegen.ls"],
+        "Main.ls",
+        r#"(module Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (do
+    (print (aarch64-selfhost-helper-trailer-size 10))
+    (print (aarch64-bundle-initial-capacity 1000 10))
+    0))"#,
+        &[],
+    )
+    .expect("AArch64 bundle initial capacity harness 実行に失敗");
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines,
+        vec![2520, 3520],
+        "AArch64 bundle result capacity は helper trailer 全体を含むべき: {lines:?}"
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: representative payload helper still traps before returning offset"]
 fn test_e2e_selfhost_main_representative_entrypoint_payload_offset_matches_layout() {
     let layout = run_selfhost_main_representative_aarch64_layout_harness();
@@ -17500,6 +17525,13 @@ fn build_and_run_native_host_bundle_with_canonical_artifacts(
     result
 }
 
+fn native_host_bundle_alloc_size(data_frontier: usize) -> usize {
+    data_frontier
+        .max(0x0001_0000)
+        .saturating_add(0x1_0000_0000)
+        .max(0x1_0000_0000)
+}
+
 fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
     code: &[u8],
     data: &[u8],
@@ -17537,12 +17569,7 @@ fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
         let suffix_bytes = &code[entrypoint_offset..];
         let data_base = 1024usize;
         let data_frontier = align_up(data_base.saturating_add(data.len()), 8);
-        // ネイティブバイナリは GC なし bump allocator のため、Seed.ls の代表
-        // native emit で 1GB を越える中間オブジェクトが発生する。2GB に拡大する。
-        let alloc_size = data_frontier
-            .max(0x0001_0000)
-            .saturating_add(0x8000_0000)
-            .max(0x8000_0000);
+        let alloc_size = native_host_bundle_alloc_size(data_frontier);
         let prefix_text = if prefix_bytes.is_empty() {
             "0x1f, 0x20, 0x03, 0xd5".to_string()
         } else {
@@ -21976,6 +22003,14 @@ fn test_e2e_native_host_bundle_uses_canonical_artifact_contract() {
     assert_eq!(
         bundle.exit_code, 42,
         "canonical artifact bundle から起動した program.native の exit code が 42 でない"
+    );
+}
+
+#[test]
+fn test_e2e_native_host_bundle_alloc_size_covers_actual_stage_heap_pressure() {
+    assert!(
+        native_host_bundle_alloc_size(0) >= 0x1_0000_0000,
+        "actual stage native self-regeneration は 2GB を越える一時 heap を使うため、host bundle は 4GB 以上を確保する"
     );
 }
 
