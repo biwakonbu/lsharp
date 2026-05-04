@@ -17145,13 +17145,12 @@ fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
         let suffix_bytes = &code[entrypoint_offset..];
         let data_base = 1024usize;
         let data_frontier = align_up(data_base.saturating_add(data.len()), 8);
-        // ネイティブバイナリは GC なし bump allocator のため、64MB (0x400_0000) では
-        // Seed.ls (1796 関数) のフルコンパイルに必要な中間オブジェクトを保持しきれず
-        // heap overflow (SIGSEGV) が発生する。1GB (0x4000_0000) に拡大する。
+        // ネイティブバイナリは GC なし bump allocator のため、Seed.ls の代表
+        // native emit で 1GB を越える中間オブジェクトが発生する。2GB に拡大する。
         let alloc_size = data_frontier
             .max(0x0001_0000)
-            .saturating_add(0x4000_0000)
-            .max(0x4000_0000);
+            .saturating_add(0x8000_0000)
+            .max(0x8000_0000);
         let prefix_text = if prefix_bytes.is_empty() {
             "0x1f, 0x20, 0x03, 0xd5".to_string()
         } else {
