@@ -132,11 +132,65 @@
         step
         (source-fingerprint-step-262144-loop-bounded src (vector-get step 1) end (vector-get step 2) (- remaining 1))))))
 (defn source-fingerprint-step-262144 [src pos end acc] (source-fingerprint-step-262144-loop-bounded src pos end acc 8))
+(defn source-fingerprint-min [a b] (if (< a b) a b))
+(defn source-fingerprint-range-8-loop-bounded [src pos end acc remaining]
+  (if (>= pos end)
+    acc
+    (if (<= remaining 0)
+      acc
+      (source-fingerprint-range-8-loop-bounded src (+ pos 1) end (+ (* acc 31) (string-char-at src pos)) (- remaining 1)))))
+(defn source-fingerprint-range-8 [src pos end acc] (source-fingerprint-range-8-loop-bounded src pos end acc 8))
+(defn source-fingerprint-range-64-loop-bounded [src pos end acc remaining]
+  (if (>= pos end)
+    acc
+    (if (<= remaining 0)
+      acc
+      (let [next-pos (source-fingerprint-min (+ pos 8) end)
+        next-acc (source-fingerprint-range-8 src pos next-pos acc)]
+        (source-fingerprint-range-64-loop-bounded src next-pos end next-acc (- remaining 1))))))
+(defn source-fingerprint-range-64 [src pos end acc] (source-fingerprint-range-64-loop-bounded src pos end acc 8))
+(defn source-fingerprint-range-512-loop-bounded [src pos end acc remaining]
+  (if (>= pos end)
+    acc
+    (if (<= remaining 0)
+      acc
+      (let [next-pos (source-fingerprint-min (+ pos 64) end)
+        next-acc (source-fingerprint-range-64 src pos next-pos acc)]
+        (source-fingerprint-range-512-loop-bounded src next-pos end next-acc (- remaining 1))))))
+(defn source-fingerprint-range-512 [src pos end acc] (source-fingerprint-range-512-loop-bounded src pos end acc 8))
+(defn source-fingerprint-range-4096-loop-bounded [src pos end acc remaining]
+  (if (>= pos end)
+    acc
+    (if (<= remaining 0)
+      acc
+      (let [next-pos (source-fingerprint-min (+ pos 512) end)
+        next-acc (source-fingerprint-range-512 src pos next-pos acc)]
+        (source-fingerprint-range-4096-loop-bounded src next-pos end next-acc (- remaining 1))))))
+(defn source-fingerprint-range-4096 [src pos end acc] (source-fingerprint-range-4096-loop-bounded src pos end acc 8))
+(defn source-fingerprint-range-32768-loop-bounded [src pos end acc remaining]
+  (if (>= pos end)
+    acc
+    (if (<= remaining 0)
+      acc
+      (let [next-pos (source-fingerprint-min (+ pos 4096) end)
+        next-acc (source-fingerprint-range-4096 src pos next-pos acc)]
+        (source-fingerprint-range-32768-loop-bounded src next-pos end next-acc (- remaining 1))))))
+(defn source-fingerprint-range-32768 [src pos end acc] (source-fingerprint-range-32768-loop-bounded src pos end acc 8))
+(defn source-fingerprint-range-262144-loop-bounded [src pos end acc remaining]
+  (if (>= pos end)
+    acc
+    (if (<= remaining 0)
+      acc
+      (let [next-pos (source-fingerprint-min (+ pos 32768) end)
+        next-acc (source-fingerprint-range-32768 src pos next-pos acc)]
+        (source-fingerprint-range-262144-loop-bounded src next-pos end next-acc (- remaining 1))))))
+(defn source-fingerprint-range-262144 [src pos end acc] (source-fingerprint-range-262144-loop-bounded src pos end acc 8))
 (defn source-fingerprint-loop [src pos end acc]
-  (let [step (source-fingerprint-step-262144 src pos end acc)]
-    (if (= (vector-get step 0) 1)
-      (vector-get step 2)
-      (source-fingerprint-loop src (vector-get step 1) end (vector-get step 2)))))
+  (if (>= pos end)
+    acc
+    (let [next-pos (source-fingerprint-min (+ pos 262144) end)
+      next-acc (source-fingerprint-range-262144 src pos next-pos acc)]
+      (source-fingerprint-loop src next-pos end next-acc))))
 (defn source-fingerprint [src] (do (root_push src) (let [result (source-fingerprint-loop src 0 (string-length src) 0)] (do (root_pop) result))))
 (defn src-decl-cache-key [path] (* (name-hash path 0 (string-length path)) 2))
 (defn make-src-decl-cache-entry [fingerprint pair]
