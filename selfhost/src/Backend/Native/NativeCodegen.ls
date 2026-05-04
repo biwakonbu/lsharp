@@ -17357,12 +17357,28 @@
         (root_push stable-functions)
         (let [layout (collect-callable-actual-layout-aarch64 stable-functions import-count)
           function-starts (callable-layout-function-starts-aarch64 layout)
+          import-stub-offset (callable-layout-import-stub-offset-aarch64 layout)
           bundle (generate-native-aarch64-bundle-with-layout
                    stable-functions
                    import-count
                    function-starts
-                   (callable-layout-import-stub-offset-aarch64 layout))
-          entrypoint-offset (native-bundle-entrypoint-offset-for-function-with-import-count function-starts import-count entrypoint-func-idx)]
+                   import-stub-offset)
+          static-entrypoint-offset (native-bundle-entrypoint-offset-for-function-with-import-count function-starts import-count entrypoint-func-idx)
+          last-func-idx (native-last-callable-function-idx-with-import-count stable-functions)
+          entrypoint-length (if (= entrypoint-func-idx last-func-idx)
+                              (measure-native-function-aarch64-bundle-with-import-count
+                                (vector-get stable-functions entrypoint-func-idx)
+                                function-starts
+                                stable-functions
+                                import-count
+                                import-stub-offset
+                                static-entrypoint-offset)
+                              0)
+          trailer-length (+ (aarch64-selfhost-map-new-fixed-helper-offset 0 import-count) 92)
+          actual-user-total (- (vector-length bundle) trailer-length)
+          entrypoint-offset (if (= entrypoint-func-idx last-func-idx)
+                              (- actual-user-total entrypoint-length)
+                              static-entrypoint-offset)]
           (do
             (root_push bundle)
             (let [payload (make-native-bundle-entrypoint-payload bundle entrypoint-offset)]
