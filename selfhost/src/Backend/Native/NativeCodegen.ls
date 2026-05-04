@@ -9474,6 +9474,14 @@
             4
             0))))))
 
+(defn native-drop-bundle-size-aarch64 [current-depth]
+  (if (>= current-depth 3)
+    (+ 8 (* (- current-depth 3) 8))
+    4))
+
+(defn native-conditional-control-instr-size-aarch64 [current-depth]
+  (+ (+ 4 (native-drop-bundle-size-aarch64 current-depth)) 4))
+
 (defn native-plain-instr-size-x86 [opcode operand]
   (if (= (is-control-opcode opcode) 1)
     (native-control-instr-size-x86 opcode)
@@ -9891,6 +9899,43 @@
               (emit-aarch64-cbz-x0 (- (control-if-false-target-offset meta offsets idx) current-offset))
               (vector-new 0))))))))
 
+(defn emit-aarch64-conditional-pop-branch [target-offset current-offset frame-base-slot-count current-depth branch-if-nonzero]
+  (let [drop-bytes (emit-drop-bundle-aarch64 frame-base-slot-count current-depth)
+    branch-offset (+ (+ current-offset 4) (vector-length drop-bytes))
+    branch-bytes (if (= branch-if-nonzero 1)
+                   (emit-aarch64-b-ne (- target-offset branch-offset))
+                   (emit-aarch64-b-eq (- target-offset branch-offset)))]
+    (concat-byte-vectors
+      (concat-byte-vectors (emit-aarch64-cmp-x0-zero) drop-bytes)
+      branch-bytes)))
+
+(defn emit-control-instr-bundle-aarch64 [ir-func meta offsets idx frame-base-slot-count current-depth]
+  (let [instr (vector-get ir-func idx)
+    opcode (vector-get instr 0)
+    current-offset (vector-get offsets idx)]
+    (if (= opcode 41)
+      (emit-aarch64-conditional-pop-branch
+        (control-if-false-target-offset meta offsets idx)
+        current-offset
+        frame-base-slot-count
+        current-depth
+        0)
+      (if (= opcode 81)
+        (emit-aarch64-conditional-pop-branch
+          (control-branch-target-offset ir-func meta offsets idx)
+          current-offset
+          frame-base-slot-count
+          current-depth
+          1)
+        (if (= opcode 83)
+          (emit-aarch64-conditional-pop-branch
+            (control-if-false-target-offset meta offsets idx)
+            current-offset
+            frame-base-slot-count
+            current-depth
+            0)
+          (emit-control-instr-aarch64 ir-func meta offsets idx))))))
+
 (defn generate-native-instr-loop-x86 [ir-func result meta offsets idx len]
   (if (>= idx len)
     0
@@ -10010,10 +10055,10 @@
               (do
                 (append-local-get-bundle-aarch64 result (local-slot-offset operand) frame-base-slot-count current-depth)
                 (make-native-control-bundle-loop-state 0 (+ idx 1) next-depth))
-              (let [native (if (= (is-control-opcode opcode) 1)
-                             (emit-control-instr-aarch64 ir-func meta offsets idx)
-                             (codegen-ir-instr-bundle-aarch64-with-import-count opcode operand current-offset function-starts function-metas import-count import-stub-offset frame-base-slot-count current-depth))
-                native-len (vector-length native)]
+               (let [native (if (= (is-control-opcode opcode) 1)
+                              (emit-control-instr-bundle-aarch64 ir-func meta offsets idx frame-base-slot-count current-depth)
+                              (codegen-ir-instr-bundle-aarch64-with-import-count opcode operand current-offset function-starts function-metas import-count import-stub-offset frame-base-slot-count current-depth))
+                 native-len (vector-length native)]
                 (do
                   (root_push native)
                   (append-native-bytes-loop result native 0 native-len)
@@ -12706,6 +12751,25 @@
             word-disp)]
     (encode-u32-le (+ 3036676096 (* imm19 32)))))
 
+;; AArch64 CMP x0, #0
+(defn emit-aarch64-cmp-x0-zero []
+  (let [bytes (vector-new 4)]
+    (vector-push (vector-push (vector-push (vector-push bytes 31) 0) 0) 241)))
+
+;; AArch64 B.cond imm19
+(defn emit-aarch64-b-cond [byte-disp cond]
+  (let [word-disp (/ byte-disp 4)
+    imm19 (if (< word-disp 0)
+            (+ 524288 word-disp)
+            word-disp)]
+    (encode-u32-le (+ (+ 1409286144 (* imm19 32)) cond))))
+
+(defn emit-aarch64-b-eq [byte-disp]
+  (emit-aarch64-b-cond byte-disp 0))
+
+(defn emit-aarch64-b-ne [byte-disp]
+  (emit-aarch64-b-cond byte-disp 1))
+
 ;; AArch64 NOP 命令
 ;; エンコーディング: 0xD503201F → [0x1F, 0x20, 0x03, 0xD5]
 (defn emit-aarch64-nop []
@@ -14616,7 +14680,15 @@
                     (native-selfhost-runtime-helper-tail-size-aarch64 opcode current-depth)))))))))))
 
 (defn native-instr-size-aarch64 [opcode operand function-metas current-depth]
-  (if (= opcode 40)
+  (if (= (is-control-opcode opcode) 1)
+    (if (= opcode 41)
+      (native-conditional-control-instr-size-aarch64 current-depth)
+      (if (= opcode 81)
+        (native-conditional-control-instr-size-aarch64 current-depth)
+        (if (= opcode 83)
+          (native-conditional-control-instr-size-aarch64 current-depth)
+          (native-control-instr-size-aarch64 opcode))))
+    (if (= opcode 40)
     (let [target-meta (vector-get function-metas operand)
       target-param-count (native-function-param-count target-meta)]
       (if (>= target-param-count 20)
@@ -14691,7 +14763,7 @@
                                          (if (>= current-depth 3)
                                          (+ (+ plain-size 4) (* (- current-depth 3) 8))
                                          plain-size)
-                                      plain-size))))))))))))))))))))
+                                       plain-size)))))))))))))))))))))
 
 (defn native-function-body-size-aarch64-loop [ir-func function-metas idx len total current-depth]
   (if (>= idx len)

@@ -8088,6 +8088,33 @@ fn test_e2e_selfhost_main_representative_source_order_follows_import_dfs() {
 }
 
 #[test]
+fn test_e2e_native_aarch64_control_instr_size_matches_emitted_branch_at_high_depth() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "native-aarch64-control-instr-size-high-depth",
+        &["IR.ls", "NativeTarget.ls", "NativeCodegen.ls"],
+        "Main.ls",
+        r#"(module Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (do
+    (print (native-instr-size-aarch64 41 0 (vector-new 0) 7))
+    (print (native-control-instr-size-aarch64 41))
+    (print (native-instr-size-aarch64 43 0 (vector-new 0) 7))
+    (print (native-control-instr-size-aarch64 43))
+    0))"#,
+        &[],
+    )
+    .expect("AArch64 control instr size harness 実行に失敗");
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines,
+        vec![48, 4, 0, 0],
+        "AArch64 bundle control opcode size は条件値 pop を含む実際の control emit 長と一致すべき: {lines:?}"
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: representative payload helper still traps before returning offset"]
 fn test_e2e_selfhost_main_representative_entrypoint_payload_offset_matches_layout() {
     let layout = run_selfhost_main_representative_aarch64_layout_harness();
@@ -8528,6 +8555,55 @@ fn host_target_if_empty_local_set_code_bytes(cond: i64) -> Vec<u8> {
         (43, 0),
         (10, 0),
     ])
+}
+
+fn host_target_bundle_if_empty_preserves_previous_code_bytes(cond: i64) -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [previous (make-instr 1 7)
+        condition (make-instr 3 {cond})
+        if-empty (make-instr 41 0)
+        then-value (make-instr 1 42)
+        drop-then (make-instr 44 0)
+        end (make-instr 43 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push (vector-new 6) previous)
+                     condition)
+                   if-empty)
+                 then-value)
+               drop-then)
+             end)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        code (emit-native-function-meta-bundle functions (host-target))]
+    (do
+      (print-bytes code 0 (vector-length code))
+      0)))"#,
+        cond = cond
+    ))
 }
 
 fn host_target_block_br_code_bytes() -> Vec<u8> {
@@ -18058,6 +18134,32 @@ fn test_e2e_native_host_binary_if_empty_false_branch_link_and_execute() {
         "host binary if-empty false branch: exit code 7 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+#[test]
+fn test_e2e_native_host_binary_bundle_if_empty_false_branch_preserves_previous_value() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = host_target_bundle_if_empty_preserves_previous_code_bytes(0);
+
+    assert!(
+        !code_bytes.is_empty(),
+        "bundle if-empty false branch の host target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_native_host_binary(&code_bytes)
+        .expect("bundle if-empty false branch host binary 実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        7,
+        "bundle if-empty false branch は条件値を pop して直前値 7 を保つべき: exit={exit_code}\n\
+         bytes ({} bytes): {:?}",
         code_bytes.len(),
         code_bytes
     );
