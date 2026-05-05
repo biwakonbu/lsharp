@@ -253,6 +253,47 @@ fn run_actual_native_self_regeneration_transport_stage(
     result
 }
 
+fn run_actual_native_self_regeneration_stage23_pair() -> Result<
+    (
+        NativeHostArtifactBundle,
+        NativeEntrypointBundle,
+        NativeHostArtifactBundle,
+        NativeEntrypointBundle,
+    ),
+    String,
+> {
+    let seed_source = representative_actual_stage23_seed_source();
+    let escaped_seed_source = escape_lsharp_string(&seed_source);
+    let pairs_expr = format!(
+        r#"(do
+            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+            (compile-file-pairs-with-cache "src/App/Seed.ls" cache-ref parse-count-ref))"#
+    );
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+            (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref))"#
+    );
+
+    let stage1_input = run_selfhost_main_native_function_meta_bundle_host_bytes_harness_with_exprs(
+        "native-stage23-actual-self-regeneration-stage1",
+        &pairs_expr,
+        &payload_expr,
+    );
+    let (stage2_bundle, stage2_input) = run_actual_native_self_regeneration_transport_stage(
+        "actual-stage2-native",
+        &stage1_input,
+        &seed_source,
+    )?;
+    let (stage3_bundle, stage3_input) = run_actual_native_self_regeneration_transport_stage(
+        "actual-stage3-native",
+        &stage2_input,
+        &seed_source,
+    )?;
+
+    Ok((stage2_bundle, stage2_input, stage3_bundle, stage3_input))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SelfhostRegistrationDefn {
     absolute_idx: usize,
@@ -29427,36 +29468,9 @@ fn test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match(
         return;
     }
 
-    let seed_source = representative_actual_stage23_seed_source();
-    let escaped_seed_source = escape_lsharp_string(&seed_source);
-    let pairs_expr = format!(
-        r#"(do
-            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
-            (compile-file-pairs-with-cache "src/App/Seed.ls" cache-ref parse-count-ref))"#
-    );
-    let payload_expr = format!(
-        r#"(do
-            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
-            (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref))"#
-    );
-
-    let stage1_input = run_selfhost_main_native_function_meta_bundle_host_bytes_harness_with_exprs(
-        "native-stage23-actual-self-regeneration-stage1",
-        &pairs_expr,
-        &payload_expr,
-    );
-    let (stage2_bundle, stage2_input) = run_actual_native_self_regeneration_transport_stage(
-        "actual-stage2-native",
-        &stage1_input,
-        &seed_source,
-    )
-    .expect("stage1-native から stage2-native transport を回収できない");
-    let (stage3_bundle, stage3_input) = run_actual_native_self_regeneration_transport_stage(
-        "actual-stage3-native",
-        &stage2_input,
-        &seed_source,
-    )
-    .expect("stage2-native から stage3-native transport を回収できない");
+    let (stage2_bundle, stage2_input, stage3_bundle, stage3_input) =
+        run_actual_native_self_regeneration_stage23_pair()
+            .expect("actual stage2/stage3 native self-regeneration transport を回収できない");
 
     assert_eq!(
         observe_native_host_bundle(&stage2_bundle),
@@ -29466,6 +29480,45 @@ fn test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match(
     assert_eq!(
         stage2_input, stage3_input,
         "actual stage2-native / stage3-native の transport payload が一致しない"
+    );
+}
+
+/// V2-09: actual self-regeneration で得た native stage 生成物を differential input として扱えること。
+#[test]
+fn test_e2e_wasm_native_differential_uses_actual_self_regenerated_stage_artifacts() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let (stage2_bundle, stage2_input, stage3_bundle, stage3_input) =
+        run_actual_native_self_regeneration_stage23_pair()
+            .expect("actual self-regenerated native stage artifact を回収できない");
+
+    let stage2_artifact = observe_native_host_artifact_bundle(&stage2_bundle);
+    let stage3_artifact = observe_native_host_artifact_bundle(&stage3_bundle);
+    assert_eq!(
+        stage2_artifact, stage3_artifact,
+        "V2-09 differential input: actual stage2/stage3 native artifact hash が一致しない"
+    );
+    assert_eq!(
+        stage2_input, stage3_input,
+        "V2-09 differential input: actual stage2/stage3 transport payload が一致しない"
+    );
+    assert!(
+        stage2_input.entrypoint_offset < stage2_input.code_bytes.len(),
+        "V2-09 differential input: stage2 entrypoint が code bytes 範囲外"
+    );
+    assert!(
+        !stage2_input.code_bytes.is_empty() && !stage2_input.data_bytes.is_empty(),
+        "V2-09 differential input: actual stage native code/data が空"
+    );
+    assert_eq!(
+        stage2_bundle.exit_code, 0,
+        "V2-09 differential input: stage2 native 実行が成功すること"
+    );
+    assert_eq!(
+        stage3_bundle.exit_code, 0,
+        "V2-09 differential input: stage3 native 実行が成功すること"
     );
 }
 

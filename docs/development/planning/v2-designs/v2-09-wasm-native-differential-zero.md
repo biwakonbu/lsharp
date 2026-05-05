@@ -22,6 +22,7 @@ Wasm と native backend の観測差分ゼロは、Component Model pivot 後は 
 - `test_e2e_zero_diff_const_100`
 - `test_e2e_zero_diff_sample_summary`
 - `test_e2e_zero_diff_const_extended_corpus`
+- `test_e2e_wasm_native_differential_uses_actual_self_regenerated_stage_artifacts`
 
 これらは differential harness と narrow zero-diff sample の partial evidence であり、tier1 artifact 全体の zero diff 完了証跡ではない。
 
