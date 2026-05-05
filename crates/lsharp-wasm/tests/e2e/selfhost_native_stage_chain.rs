@@ -31326,6 +31326,43 @@ fn test_e2e_zero_diff_sample_summary() {
     );
 }
 
+/// ZERO-DIFF-EXT: 既存 0/1/42/100 の先の const corpus でも Wasm stdout と native exit code が一致すること。
+#[test]
+fn test_e2e_zero_diff_const_extended_corpus() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let samples: &[u32] = &[2, 7, 31, 63, 127, 255];
+    let mut failed_cases: Vec<String> = Vec::new();
+
+    for &n in samples {
+        let wasm_output = compile_and_run(&format!("(defn main [] (do (print {n}) 0))", n = n));
+        let exit_code = native_exit_code_for_const(n);
+        let wasm_value = wasm_output.trim().parse::<i32>().ok();
+        let expected = n as i32;
+
+        if wasm_output.trim() != n.to_string()
+            || wasm_value != Some(exit_code)
+            || exit_code != expected
+        {
+            failed_cases.push(format!(
+                "const {n}: wasm={:?} parsed={:?} native_exit={exit_code}",
+                wasm_output.trim(),
+                wasm_value
+            ));
+        }
+    }
+
+    assert!(
+        failed_cases.is_empty(),
+        "ZERO-DIFF-EXT: {} / {} サンプルが不一致:\n{}",
+        failed_cases.len(),
+        samples.len(),
+        failed_cases.join("\n")
+    );
+}
+
 // =============================================================================
 // V2-08-CF: Control-Flow テスト (if/else/end, block/br, loop/brif)
 // =============================================================================
