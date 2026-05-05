@@ -14640,7 +14640,7 @@
 (defn native-selfhost-runtime-helper-tail-size-aarch64 [opcode current-depth]
   (if (= opcode 62)
     (if (>= current-depth 5)
-      (+ 20 (* (- current-depth 5) 8))
+      (+ 20 (* (- current-depth 4) 8))
       (if (= current-depth 4) 20 16))
     (if (= opcode 63)
       (if (>= current-depth 3) (+ 16 (* (- current-depth 3) 8)) 12)
