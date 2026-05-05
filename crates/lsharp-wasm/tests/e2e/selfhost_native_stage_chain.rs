@@ -22537,16 +22537,63 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_n
         return;
     }
 
-    let main_source = selfhost_main_native_code_only_export_harness_with_payload(
-        r#"(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)"#,
-        r#"      (let [code-len (vector-length code)
-         data-len (vector-length data)]
-         (do
-           (print code-len)
-           (print data-len)
-           0))"#,
-    )
-    .replacen("(module App.HarnessMain)", "(module App.OverrideMain)", 1);
+    let main_source = r#"(module App.OverrideMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (do
+      (root_push result)
+      (let [next-result (vector-push result (make-function-meta 0 0 (vector-new 0)))]
+        (do
+          (root_push next-result)
+          (let [final (push-import-placeholders (+ idx 1) count next-result)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (do
+      (root_push src)
+      (root_push dst)
+      (let [next-dst (vector-push dst (vector-get src idx))]
+        (do
+          (root_push next-dst)
+          (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn main []
+  (let [path (command-line-arg 1)
+        cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload (compile-file-functions-payload-with-cache path 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        data (vector-get payload 1)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        target (host-target)
+        code (emit-native-function-meta-bundle-with-import-count native-callables 10 target)]
+    (do
+      (print (vector-length code))
+      (print (vector-length data))
+      0)))"#;
     let seed_source = representative_actual_stage23_seed_source();
     let bundle = run_representative_override_main_native_with_args_and_files_loose(
         "native-stage23-pipeline-smoke-native-export-lengths-seed-path-arg-only",
@@ -22675,48 +22722,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_n
         return;
     }
 
-    let main_source = r#"(module App.OverrideMain)
-(import App.CompilerMode)
-(import Backend.Native.NativeTarget)
-(import Backend.Native.NativeCodegen)
-
-(defn make-function-meta [param-count local-count ir]
-  (vector-push
-    (vector-push
-      (vector-push (vector-new 3) param-count)
-      local-count)
-    ir))
-
-(defn push-import-placeholders [idx count result]
-  (if (>= idx count)
-    result
-    (push-import-placeholders
-      (+ idx 1)
-      count
-      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
-
-(defn append-vector-loop [dst src idx len]
-  (if (>= idx len)
-    dst
-    (append-vector-loop
-      (vector-push dst (vector-get src idx))
-      src
-      (+ idx 1)
-      len)))
-
-(defn main []
-  (let [path (command-line-arg 1)
-        cache-ref (ref-new (map-new))
-        parse-count-ref (ref-new 0)
-        payload (compile-file-functions-payload-with-cache path 10 cache-ref parse-count-ref)
-        functions (vector-get payload 0)
-        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
-        native-callables (normalize-selfhost-native-function-metas callables)
-        target (host-target)
-        _code (emit-native-function-meta-bundle-with-import-count native-callables 10 target)]
-    (do
-      (print 1)
-      0)))"#;
+    let main_source = native_export_emit_only_seed_cutoff_main_source(1_000_000);
     let seed_source = representative_actual_stage23_seed_source();
     let bundle = run_representative_override_main_native_with_args_and_files_loose(
         "native-stage23-pipeline-smoke-native-export-emit-only-seed-path-arg-only",
@@ -22737,14 +22743,17 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_n
         "native export emit-only seed path arg bundle が stderr を出力した: {:?}",
         String::from_utf8_lossy(&bundle.stderr)
     );
+    let output = String::from_utf8(bundle.stdout)
+        .unwrap_or_else(|e| panic!("native export emit-only stdout UTF-8 decode 失敗: {e}"));
+    let lines = parse_numeric_lines(&output);
     assert_eq!(
-        parse_numeric_lines(
-            &String::from_utf8(bundle.stdout).unwrap_or_else(|e| panic!(
-                "native export emit-only stdout UTF-8 decode 失敗: {e}"
-            )),
-        ),
-        vec![1],
-        "native export emit-only seed path arg bundle の出力が期待値と一致しない"
+        lines.len(),
+        2,
+        "native export emit-only seed path arg bundle の出力行数が期待値と一致しない: {lines:?}"
+    );
+    assert!(
+        lines[0] > 2400 && lines[1] > 0,
+        "native export emit-only seed path arg bundle の function/code length が不正: {lines:?}"
     );
 }
 
