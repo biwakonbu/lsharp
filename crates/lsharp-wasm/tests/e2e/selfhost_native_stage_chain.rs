@@ -22888,6 +22888,98 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_export_emit_only_seed_
 }
 
 #[test]
+#[ignore = "regression: representative AArch64 emit reaches cutoff 2392 after helper size fix"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_export_emit_only_seed_cutoff_2392_regression()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let seed_source = representative_actual_stage23_seed_source();
+    let main_source = native_export_emit_only_seed_cutoff_main_source(2392);
+    let bundle = run_representative_override_main_native_with_args_and_files_loose(
+        "native-stage23-pipeline-smoke-native-export-emit-only-seed-cutoff-2392-regression",
+        &main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", &seed_source)],
+    );
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "native export emit-only cutoff 2392 が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "native export emit-only cutoff 2392 が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+
+    let output = String::from_utf8(bundle.stdout).unwrap_or_else(|e| {
+        panic!("native export emit-only cutoff 2392 stdout UTF-8 decode 失敗: {e}")
+    });
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.len(),
+        2,
+        "native export emit-only cutoff 2392 の出力行数が期待値と一致しない: {lines:?}"
+    );
+    assert_eq!(lines[0], 2392);
+    assert!(
+        lines[1] > 0,
+        "native export emit-only cutoff 2392 の code size が 0: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore = "regression: representative AArch64 emit reaches cutoff 2400"]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_export_emit_only_seed_cutoff_2400_regression()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let seed_source = representative_actual_stage23_seed_source();
+    let main_source = native_export_emit_only_seed_cutoff_main_source(2400);
+    let bundle = run_representative_override_main_native_with_args_and_files_loose(
+        "native-stage23-pipeline-smoke-native-export-emit-only-seed-cutoff-2400-regression",
+        &main_source,
+        &[String::from("src/App/Seed.ls")],
+        &[("src/App/Seed.ls", &seed_source)],
+    );
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "native export emit-only cutoff 2400 が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "native export emit-only cutoff 2400 が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+
+    let output = String::from_utf8(bundle.stdout).unwrap_or_else(|e| {
+        panic!("native export emit-only cutoff 2400 stdout UTF-8 decode 失敗: {e}")
+    });
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.len(),
+        2,
+        "native export emit-only cutoff 2400 の出力行数が期待値と一致しない: {lines:?}"
+    );
+    assert_eq!(lines[0], 2400);
+    assert!(
+        lines[1] > 0,
+        "native export emit-only cutoff 2400 の code size が 0: {lines:?}"
+    );
+}
+
+#[test]
 #[ignore = "diagnostic: inspect first-function native export shape"]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_export_emit_only_seed_first_function_shape_diagnostic()
  {
