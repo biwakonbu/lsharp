@@ -102,14 +102,6 @@ struct NativeCodeDataTransport {
     layout: Option<NativeEntrypointLayout>,
 }
 
-fn actual_stage23_seed_source_with_payload(payload_expr: &str, main_body: &str) -> String {
-    selfhost_main_native_code_only_export_harness_with_payload(payload_expr, main_body).replacen(
-        "(module App.HarnessMain)",
-        "(module App.Seed)",
-        1,
-    )
-}
-
 fn actual_stage23_seed_source_with_payload_and_code_binding(
     payload_expr: &str,
     code_binding_expr: &str,
@@ -1191,14 +1183,18 @@ fn test_e2e_selfhost_main_native_function_meta_bundle_with_import_count_emits_co
     result
     (do
       (root_push result)
-      (let [next-result (vector-push result (make-function-meta 0 0 (vector-new 0)))]
-        (do
-          (root_push next-result)
-          (let [final (push-import-placeholders (+ idx 1) count next-result)]
-            (do
-              (root_pop)
-              (root_pop)
-              final)))))))
+        (let [placeholder (make-function-meta 0 0 (vector-new 0))]
+          (do
+            (root_push placeholder)
+            (let [next-result (vector-push result placeholder)]
+              (do
+                (root_push next-result)
+                (let [final (push-import-placeholders (+ idx 1) count next-result)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    final)))))))))
 
 (defn append-vector-loop [dst src idx len]
   (if (>= idx len)
@@ -1206,15 +1202,19 @@ fn test_e2e_selfhost_main_native_function_meta_bundle_with_import_count_emits_co
     (do
       (root_push src)
       (root_push dst)
-      (let [next-dst (vector-push dst (vector-get src idx))]
+      (let [value (vector-get src idx)]
         (do
-          (root_push next-dst)
-          (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+          (root_push value)
+          (let [next-dst (vector-push dst value)]
             (do
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              final)))))))
+              (root_push next-dst)
+              (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  final)))))))))
 
 (defn print-line [value]
   (print-string (string-concat (int-to-string value) "\n")))
@@ -1503,14 +1503,18 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding(
     result
     (do
       (root_push result)
-      (let [next-result (vector-push result (make-function-meta 0 0 (vector-new 0)))]
+      (let [placeholder (make-function-meta 0 0 (vector-new 0))]
         (do
-          (root_push next-result)
-          (let [final (push-import-placeholders (+ idx 1) count next-result)]
+          (root_push placeholder)
+          (let [next-result (vector-push result placeholder)]
             (do
-              (root_pop)
-              (root_pop)
-              final)))))))
+              (root_push next-result)
+              (let [final (push-import-placeholders (+ idx 1) count next-result)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  final)))))))))
 
 (defn append-vector-loop [dst src idx len]
   (if (>= idx len)
@@ -1518,15 +1522,19 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding(
     (do
       (root_push src)
       (root_push dst)
-      (let [next-dst (vector-push dst (vector-get src idx))]
+      (let [value (vector-get src idx)]
         (do
-          (root_push next-dst)
-          (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+          (root_push value)
+          (let [next-dst (vector-push dst value)]
             (do
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              final)))))))
+              (root_push next-dst)
+              (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  final)))))))))
 
 (defn find-defn-index-by-hash [decls idx len target-hash]
   (if (>= idx len)
@@ -25983,6 +25991,63 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_i
 }
 
 #[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_map_insert_after_large_fill() {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.OverrideMain)
+
+(defn fill-map [idx count result]
+  (if (>= idx count)
+    result
+    (do
+      (root_push result)
+      (let [next-result (map-insert result idx idx)]
+        (do
+          (root_push next-result)
+          (let [final (fill-map (+ idx 1) count next-result)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn main []
+  (let [filled (fill-map 0 2050 (map-new))
+        with-target (map-insert filled 999999 777)]
+    (do
+      (print (map-get with-target 999999))
+      0)))"#;
+    let bundle = run_representative_override_main_native_with_args_and_files_loose(
+        "native-stage23-pipeline-smoke-map-insert-after-large-fill",
+        main_source,
+        &[],
+        &[],
+    );
+
+    assert_eq!(
+        bundle.exit_code,
+        0,
+        "large map insert native bundle が exit 0 で完走しない: stdout={:?} stderr={:?}",
+        String::from_utf8_lossy(&bundle.stdout),
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert!(
+        bundle.stderr.is_empty(),
+        "large map insert native bundle が stderr を出力した: {:?}",
+        String::from_utf8_lossy(&bundle.stderr)
+    );
+    assert_eq!(
+        parse_numeric_lines(
+            &String::from_utf8(bundle.stdout)
+                .unwrap_or_else(|e| panic!("large map insert stdout UTF-8 decode 失敗: {e}")),
+        ),
+        vec![777],
+        "large map insert native bundle の出力が期待値と一致しない"
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_helper_before_main_trivial_print_only()
  {
     if !host_native_exec_supported() {
@@ -29402,49 +29467,6 @@ fn test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match(
         stage2_input, stage3_input,
         "actual stage2-native / stage3-native の transport payload が一致しない"
     );
-}
-
-#[test]
-#[ignore = "diagnostic: actual seed payload marker progression"]
-fn test_e2e_stage23_actual_native_self_regeneration_seed_payload_marker_diagnostic() {
-    if !host_native_exec_supported() {
-        return;
-    }
-
-    let seed_source = actual_stage23_seed_source_with_payload(
-        r#"(do
-            (print 9100000000)
-            (let [payload (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)]
-              (do
-                (root_push payload)
-                (print 9100000001)
-                (print (vector-length (vector-get payload 0)))
-                (root_pop)
-                payload)))"#,
-        r#"(print 9100000002)"#,
-    );
-    let escaped_seed_source = escape_lsharp_string(&seed_source);
-    let pairs_expr = format!(
-        r#"(do
-            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
-            (compile-file-pairs-with-cache "src/App/Seed.ls" cache-ref parse-count-ref))"#
-    );
-    let payload_expr = format!(
-        r#"(do
-            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
-            (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref))"#
-    );
-    let stage1_input = run_selfhost_main_native_function_meta_bundle_host_bytes_harness_with_exprs(
-        "native-stage23-actual-seed-payload-marker-stage1",
-        &pairs_expr,
-        &payload_expr,
-    );
-    let result = run_actual_native_self_regeneration_transport_stage(
-        "actual-stage2-native-seed-payload-marker-diagnostic",
-        &stage1_input,
-        &seed_source,
-    );
-    println!("actual_seed_payload_marker_diagnostic={result:?}");
 }
 
 // =============================================================================

@@ -12217,7 +12217,7 @@
               (encode-u32-le 2853569504)))
     part4 (concat-byte-vectors
             (concat-byte-vectors
-              (encode-u32-le 3532659202)
+              (encode-u32-le 3533701154)
               (encode-u32-le 2332164822))
             (concat-byte-vectors
               (encode-u32-le 2332033699)
@@ -12225,7 +12225,7 @@
     part5 (concat-byte-vectors
             (concat-byte-vectors
               (encode-u32-le 3103785060)
-              (encode-u32-le 1384181764))
+              (encode-u32-le 1384250884))
             (concat-byte-vectors
               (encode-u32-le 3103786084)
               (encode-u32-le 1384120324)))
@@ -12328,7 +12328,7 @@
 (defn emit-aarch64-selfhost-map-new-fixed-helper []
   (let [part1 (concat-byte-vectors
                 (concat-byte-vectors
-                  (encode-u32-le 3532653056)
+                  (encode-u32-le 3533701152)
                   (encode-u32-le 2854093806))
                 (concat-byte-vectors
                   (emit-aarch64-bl -2004)
@@ -12338,7 +12338,7 @@
               (encode-u32-le 1384120516)
               (encode-u32-le 3103785060))
             (concat-byte-vectors
-              (encode-u32-le 1384185860)
+              (encode-u32-le 1384250884)
               (encode-u32-le 3103786084)))
     part3 (concat-byte-vectors
             (concat-byte-vectors
@@ -12349,7 +12349,7 @@
               (encode-u32-le 2432712805)))
     part4 (concat-byte-vectors
             (concat-byte-vectors
-              (encode-u32-le 1384185862)
+              (encode-u32-le 1384250886)
               (encode-u32-le 872415430))
             (concat-byte-vectors
               (encode-u32-le 4177526975)
