@@ -127,6 +127,19 @@ Rollback anchor
 
 stable / nightly の扱い、署名順序、package manager 更新順は `release-distribution-signing.md` を参照。
 
+### 8. experimental native-only RC（公式配布外）
+
+native-only RC は stable / nightly の host launcher + embedded guest component 配布を置き換えない。Darwin arm64 の actual native self-regeneration artifact を調査用に固める experimental channel としてのみ扱う。
+
+```bash
+NATIVE_PROXY_ARTIFACT_ID=<version>-aarch64-apple-darwin bash scripts/ci/build-native.sh
+bash scripts/ci/native-only-rc-smoke.sh ci-artifacts/native-proxy/<version>-aarch64-apple-darwin
+tar -C ci-artifacts/native-proxy -czf dist/experimental-native-rc-<version>-aarch64-apple-darwin.tar.gz <version>-aarch64-apple-darwin
+bash scripts/checksum.sh dist > dist/checksums.txt
+```
+
+experimental archive には top-level `manifest.json` / `actual-stage23-gap.json` と、`stage1-native` / `stage2-native` / `stage3-native` の `program.o`, `runtime.o`, `linker-response.txt`, `program.native`, `stdout.txt`, `stderr.txt`, `summary.json` を含める。release notes には `experimental native-only RC`、`host launcher + embedded guest component distribution を置き換えない`、`scripts/ci/native-only-rc-smoke.sh` の結果を明記する。
+
 ## ロールバック
 
 リリース後に致命的問題が発見された場合:

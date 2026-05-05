@@ -2348,6 +2348,65 @@ fn test_e2e_native_ops01_proxy_artifact_contract() {
     );
 }
 
+/// TEST-NATIVE-OPS-02: native-only RC は experimental channel として layout / smoke / 手順を固定すること
+#[test]
+fn test_e2e_native_ops02_native_only_rc_contract() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let smoke = project_root.join("scripts/ci/native-only-rc-smoke.sh");
+    assert!(
+        smoke.is_file(),
+        "scripts/ci/native-only-rc-smoke.sh が存在しない"
+    );
+    let smoke_content =
+        std::fs::read_to_string(&smoke).expect("native-only-rc-smoke.sh の読み込みに失敗");
+    for expected in [
+        "manifest.json",
+        "stage2-native",
+        "stage3-native",
+        "program.native",
+        "summary.json",
+        "actual-stage23-gap.json",
+        "experimental native-only RC",
+    ] {
+        assert!(
+            smoke_content.contains(expected),
+            "native-only-rc-smoke.sh は `{}` を検証/説明すること",
+            expected
+        );
+    }
+
+    let design = project_root
+        .join("docs/development/planning/v2-designs/v2-10-native-only-rc-distribution.md");
+    assert!(design.is_file(), "V2-10 design doc が存在しない");
+    let design_content =
+        std::fs::read_to_string(&design).expect("V2-10 design doc の読み込みに失敗");
+    for expected in [
+        "experimental-native-rc-{version}-{target}.tar.gz",
+        "scripts/ci/build-native.sh",
+        "scripts/ci/native-only-rc-smoke.sh",
+        "stage2-native",
+        "stage3-native",
+        "actual self-regeneration",
+        "host launcher + embedded guest component",
+    ] {
+        assert!(
+            design_content.contains(expected),
+            "V2-10 design doc は `{}` を記述すること",
+            expected
+        );
+    }
+
+    let playbook = project_root.join("docs/development/operations/release-playbook.md");
+    let playbook_content =
+        std::fs::read_to_string(&playbook).expect("release-playbook.md の読み込みに失敗");
+    assert!(
+        playbook_content.contains("native-only RC")
+            && playbook_content.contains("scripts/ci/native-only-rc-smoke.sh"),
+        "release-playbook.md は experimental native-only RC smoke 手順を案内すること"
+    );
+}
+
 /// TEST-OPS-04: legacy-rust-bootstrap/ ディレクトリ構造
 #[test]
 fn test_e2e_ops04_legacy_isolation() {

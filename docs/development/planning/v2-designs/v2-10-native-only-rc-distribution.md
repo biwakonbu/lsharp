@@ -18,17 +18,23 @@ host launcher + embedded guest component が引き続き公式 distribution の�
 - experimental / opt-in の release channel を分離する
 - 公式 component distribution と同じ tag を共有しても、artifact 名と release notes で明確に区別する
 - stable 既定導線へは載せない
+- asset 名は `experimental-native-rc-{version}-{target}.tar.gz` を使い、公式 `lsharp-{version}-{target}.{ext}` とは別物として扱う
 
 ### artifact 契約
 
-- tier1 target のみ対象とする
-- checksum と signing を official archive と同水準で付与する
-- `program.native` 系 artifact が host launcher 配布を置き換えないことを明記する
+- 初期 target は actual self-regeneration が green になっている Darwin arm64 (`aarch64-apple-darwin`) のみ
+- `scripts/ci/build-native.sh` が生成する `ci-artifacts/native-proxy/{id}/` を source layout とし、top-level `manifest.json` / `actual-stage23-gap.json` と `stage1-native` / `stage2-native` / `stage3-native` を含める
+- 各 stage directory は `program.o`, `runtime.o`, `linker-response.txt`, `program.native`, `stdout.txt`, `stderr.txt`, `summary.json` を必須にする
+- `stage2-native` と `stage3-native` は actual self-regeneration 後の `summary.json` と transport payload が一致していることを smoke の前提にする
+- checksum と signing を official archive と同水準で付与する。ただし official host launcher + embedded guest component 配布を置き換えないことを release notes に明記する
+- `program.native` 系 artifact は host launcher + embedded guest component distribution の調査用 side artifact であり、stable 既定導線へ載せない
 
 ### release workflow
 
 - official release workflow とは別 job / 別 environment を使う
+- package 前に `bash scripts/ci/native-only-rc-smoke.sh ci-artifacts/native-proxy/{id}` を実行する
 - smoke / verify / signing の結果を experimental release notes に添付する
+- ローカル再現は `NATIVE_PROXY_ARTIFACT_ID=<id> bash scripts/ci/build-native.sh` の後、`bash scripts/ci/native-only-rc-smoke.sh ci-artifacts/native-proxy/<id>` を実行する
 
 ## 正本参照
 
@@ -39,4 +45,4 @@ host launcher + embedded guest component が引き続き公式 distribution の�
 
 ## ステータス
 
-Deferred。未着手。公式配布は引き続き host launcher + embedded guest component を正本とし、native-only RC は future experimental channel としてのみ扱う。
+Deferred。artifact layout / smoke test / 配布手順は actual native self-regeneration 成果物に合わせて固定済み。公式配布は引き続き host launcher + embedded guest component を正本とし、native-only RC は future experimental channel としてのみ扱う。
