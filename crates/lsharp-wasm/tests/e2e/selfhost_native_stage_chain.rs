@@ -28937,6 +28937,48 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_s
 }
 
 #[test]
+fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_scan_control_flow_meta_if_else_end()
+ {
+    if !host_native_exec_supported() {
+        return;
+    }
+
+    let main_source = r#"(module App.Main)
+(import Backend.Native.NativeCodegen)
+
+(defn main []
+  (let [if-instr (vector-push (vector-push (vector-new 2) 41) 0)
+        then-instr (vector-push (vector-push (vector-new 2) 3) 42)
+        else-instr (vector-push (vector-push (vector-new 2) 79) 0)
+        else-value (vector-push (vector-push (vector-new 2) 3) 7)
+        end-instr (vector-push (vector-push (vector-new 2) 43) 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push (vector-new 5) if-instr)
+                   then-instr)
+                 else-instr)
+               else-value)
+             end-instr)]
+    (do
+      (root_push ir)
+      (let [meta (scan-control-flow-meta ir)]
+        (do
+          (root_push meta)
+          (print (map-get-index (control-flow-end-map meta) 0))
+          (print (map-get-index (control-flow-end-map meta) 2))
+          (print (map-get-index (control-flow-else-map meta) 0))
+          (root_pop)
+          (root_pop)
+          0)))))"#;
+    assert_representative_override_main_matches_selfhost(
+        "native-stage23-pipeline-smoke-scan-control-flow-meta-if-else-end",
+        main_source,
+    );
+}
+
+#[test]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_collect_native_offsets_aarch64_tiny_ir_only()
  {
     if !host_native_exec_supported() {

@@ -9249,12 +9249,20 @@
 (defn scan-control-flow-meta-handle-end [ir-func idx len stack depth end-map else-map branch-map]
   (let [top-entry (vector-get stack (- depth 1))
     start-idx (control-stack-entry-start top-entry)
-    end-map1 (map-insert-index end-map start-idx idx)
     else-idx (map-get-index else-map start-idx)
-    end-map2 (if (< else-idx 0)
-               end-map1
-               (map-insert-index end-map1 else-idx idx))]
-    (scan-control-flow-meta-loop ir-func (+ idx 1) len stack (- depth 1) end-map2 else-map branch-map)))
+    end-map1 (map-insert-index end-map start-idx idx)]
+    (do
+      (root_push end-map1)
+      (let [end-map2 (if (< else-idx 0)
+                   end-map1
+                   (map-insert-index end-map1 else-idx idx))]
+        (do
+          (root_push end-map2)
+          (let [final (scan-control-flow-meta-loop ir-func (+ idx 1) len stack (- depth 1) end-map2 else-map branch-map)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
 
 (defn scan-control-flow-meta-handle-branch [ir-func idx len stack depth end-map else-map branch-map operand]
   (let [target-entry (vector-get stack (- depth (+ operand 1)))
@@ -9336,12 +9344,20 @@
           (if (= opcode 43)
             (let [top-entry (vector-get stack (- depth 1))
               start-idx (control-stack-entry-start top-entry)
-              end-map1 (map-insert-index end-map start-idx idx)
               else-idx (map-get-index else-map start-idx)
-              end-map2 (if (< else-idx 0)
-                         end-map1
-                         (map-insert-index end-map1 else-idx idx))]
-              (make-control-flow-scan-state 0 (+ idx 1) stack (- depth 1) end-map2 else-map branch-map))
+              end-map1 (map-insert-index end-map start-idx idx)]
+              (do
+                (root_push end-map1)
+                (let [end-map2 (if (< else-idx 0)
+                             end-map1
+                             (map-insert-index end-map1 else-idx idx))]
+                  (do
+                    (root_push end-map2)
+                    (let [state (make-control-flow-scan-state 0 (+ idx 1) stack (- depth 1) end-map2 else-map branch-map)]
+                      (do
+                        (root_pop)
+                        (root_pop)
+                        state))))))
             (if (= opcode 80)
               (let [target-entry (vector-get stack (- depth (+ operand 1)))
                 target-start (control-stack-entry-start target-entry)
