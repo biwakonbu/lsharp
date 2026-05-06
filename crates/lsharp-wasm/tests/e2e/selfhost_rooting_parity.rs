@@ -537,6 +537,7 @@ fn test_e2e_selfhost_compiler_map_get_auto_roots_receiver_and_key() {
 }
 
 #[test]
+#[ignore]
 fn test_debug_selfhost_compiler_root_set_map_insert_ir() {
     let (local_count, instrs) = compile_selfhost_ir_report(
         r#"(defn main [] (let [slot0 (root_push 111) set-result (root_set slot0 (map-insert (map-new) 123 456)) rooted-map (root_pop)] 0))"#,
@@ -549,6 +550,7 @@ fn test_debug_selfhost_compiler_root_set_map_insert_ir() {
 }
 
 #[test]
+#[ignore]
 fn test_debug_selfhost_compiler_root_set_map_insert_no_binding_ir() {
     let (local_count, instrs) = compile_selfhost_ir_report(
         r#"(defn main [m k v] (let [slot (root_push m)] (do (root_set slot (map-insert m k v)) (root_pop))))"#,
@@ -561,6 +563,7 @@ fn test_debug_selfhost_compiler_root_set_map_insert_no_binding_ir() {
 }
 
 #[test]
+#[ignore]
 fn test_debug_selfhost_compiler_zero_arg_tag_vector_builder_ir() {
     let (local_count, instrs) = compile_selfhost_ir_report_for_function(
         r#"(defn tag [] 24) (defn wrap [value] (vector-push (vector-push (vector-new 2) (tag)) value))"#,

@@ -2407,6 +2407,55 @@ fn test_e2e_native_ops02_native_only_rc_contract() {
     );
 }
 
+/// TEST-OPS-03b: 手動診断用 `test_debug_*` は full `cargo test` の通常 gate に入れないこと
+#[test]
+fn test_e2e_ops03b_debug_tests_are_ignored() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let test_files = [
+        "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer.rs",
+        "crates/lsharp-wasm/tests/e2e/selfhost_rooting_parity.rs",
+    ];
+
+    let mut offenders = Vec::new();
+    for rel_path in test_files {
+        let path = project_root.join(rel_path);
+        let content =
+            std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{rel_path} 読み込み失敗"));
+        let lines: Vec<&str> = content.lines().collect();
+        for (idx, line) in lines.iter().enumerate() {
+            if !line.trim_start().starts_with("fn test_debug_") {
+                continue;
+            }
+            let mut has_ignore = false;
+            let mut cursor = idx;
+            while cursor > 0 {
+                cursor -= 1;
+                let prev = lines[cursor].trim();
+                if prev.is_empty() {
+                    continue;
+                }
+                if prev == "#[ignore]" {
+                    has_ignore = true;
+                    continue;
+                }
+                if prev == "#[test]" {
+                    break;
+                }
+                break;
+            }
+            if !has_ignore {
+                offenders.push(format!("{}:{}", rel_path, idx + 1));
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "manual debug tests must be #[ignore] so full cargo test remains a gate:\n{}",
+        offenders.join("\n")
+    );
+}
+
 /// TEST-OPS-04: legacy-rust-bootstrap/ ディレクトリ構造
 #[test]
 fn test_e2e_ops04_legacy_isolation() {

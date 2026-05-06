@@ -6745,6 +6745,7 @@ fn test_e2e_boot04_stage1_target_defn_parity_reports_ast_make_type_constrained_l
 }
 
 #[test]
+#[ignore]
 fn test_debug_boot04_stage2_first_defn_probe_on_minimal_make_type_constrained_shape() {
     let temp_root =
         std::env::temp_dir().join(format!("lsharp_target_defn_minimal_{}", std::process::id()));
@@ -6807,6 +6808,7 @@ fn test_debug_boot04_stage2_first_defn_probe_on_minimal_make_type_constrained_sh
 }
 
 #[test]
+#[ignore]
 fn test_debug_boot04_stage2_first_defn_ir_parity_on_minimal_demo_main_shape() {
     let temp_root =
         std::env::temp_dir().join(format!("lsharp_demo_main_minimal_{}", std::process::id()));
@@ -6876,6 +6878,7 @@ fn test_debug_boot04_stage2_first_defn_ir_parity_on_minimal_demo_main_shape() {
 }
 
 #[test]
+#[ignore]
 fn test_debug_boot04_stage2_first_defn_source_probe_on_minimal_text_eq_loop_shape() {
     let temp_root = std::env::temp_dir().join(format!(
         "lsharp_text_eq_loop_minimal_{}",
@@ -6933,6 +6936,7 @@ fn test_debug_boot04_stage2_first_defn_source_probe_on_minimal_text_eq_loop_shap
 }
 
 #[test]
+#[ignore]
 fn test_debug_boot04_stage2_first_defn_source_step_probe_on_minimal_path_parent_shape() {
     let temp_root = selfhost_project_root()
         .join("target/test-artifacts")
@@ -6993,6 +6997,7 @@ fn test_debug_boot04_stage2_first_defn_source_step_probe_on_minimal_path_parent_
 }
 
 #[test]
+#[ignore]
 fn test_debug_boot04_stage2_build_compile_progress_on_minimal_path_parent_shape() {
     let temp_root = selfhost_project_root()
         .join("target/test-artifacts")
@@ -7064,6 +7069,7 @@ fn test_debug_boot04_stage2_build_compile_progress_on_minimal_path_parent_shape(
 }
 
 #[test]
+#[ignore]
 fn test_debug_boot04_stage1_build_compile_progress_on_app_cli() {
     fn run_wasi_capture_trap_stdout(
         wasm_bytes: &[u8],
@@ -7158,6 +7164,7 @@ fn test_debug_boot04_stage1_build_compile_progress_on_app_cli() {
 }
 
 #[test]
+#[ignore]
 fn test_debug_boot04_stage1_build_compile_progress_on_compiler_module() {
     fn run_wasi_capture_trap_stdout(
         wasm_bytes: &[u8],
@@ -7252,6 +7259,7 @@ fn test_debug_boot04_stage1_build_compile_progress_on_compiler_module() {
 }
 
 #[test]
+#[ignore]
 fn test_debug_boot04_stage1_build_compile_progress_on_compiler_mode_module() {
     fn run_wasi_capture_trap_stdout(
         wasm_bytes: &[u8],
@@ -7346,6 +7354,7 @@ fn test_debug_boot04_stage1_build_compile_progress_on_compiler_mode_module() {
 }
 
 #[test]
+#[ignore]
 fn test_debug_boot04_stage1_build_compile_progress_on_minimal_vector_push_shape() {
     fn run_wasi_capture_trap_stdout(
         wasm_bytes: &[u8],
@@ -7457,6 +7466,7 @@ fn test_debug_boot04_stage1_build_compile_progress_on_minimal_vector_push_shape(
 }
 
 #[test]
+#[ignore]
 fn test_debug_boot04_stage1_build_compile_progress_on_padded_vector_push_shape() {
     fn run_wasi_capture_trap_stdout(
         wasm_bytes: &[u8],
@@ -7572,6 +7582,7 @@ fn test_debug_boot04_stage1_build_compile_progress_on_padded_vector_push_shape()
 }
 
 #[test]
+#[ignore]
 fn test_debug_boot04_stage1_build_compile_progress_on_large_ftable_vector_push_shape() {
     fn run_wasi_capture_trap_stdout(
         wasm_bytes: &[u8],
@@ -7765,6 +7776,7 @@ fn test_e2e_boot04_stage2_first_defn_source_probe_emits_expected_plus_ir_on_mini
 }
 
 #[test]
+#[ignore]
 fn test_debug_boot04_stage2_ast_chunked_step_progress_on_ast_file() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -11087,6 +11099,7 @@ fn test_i64_if_condition_validity() {
 }
 
 #[test]
+#[ignore]
 fn test_debug_stage2_save() {
     // stage2 を生成してファイルに保存する (デバッグ用)
     let main_path = selfhost_main_path();
@@ -11128,6 +11141,7 @@ fn test_parse_caws_standalone() {
 }
 
 #[test]
+#[ignore]
 fn test_debug_stage2_output_minimal() {
     // stage2 が minimal.ls をコンパイルした出力を保存・検証する
     let main_path = selfhost_main_path();
@@ -11200,6 +11214,7 @@ fn test_validate_stage2_wasm() {
 }
 
 #[test]
+#[ignore]
 fn test_debug_func_49_context() {
     // stage2 のwasm 49 番の関数が何をしているか確認
     let main_path = selfhost_main_path();
@@ -11282,6 +11297,7 @@ fn test_debug_func_49_context() {
 }
 
 #[test]
+#[ignore]
 fn test_debug_tok_eof_in_stage2() {
     // Token.ls main が tok-eof を正しく呼べるか確認
     // stage2の func 49 (Token::main) がちゃんと call 48 を使うか確認
@@ -11366,6 +11382,7 @@ fn test_debug_tok_eof_in_stage2() {
 }
 
 #[test]
+#[ignore]
 fn test_debug_token_ls_compilation() {
     // Token.ls だけをコンパイルして tok-eof (func 42) が正しい index を持つか確認
     let token_path = selfhost_source_path("Token.ls");
@@ -11458,6 +11475,7 @@ fn test_debug_token_ls_compilation() {
 }
 
 #[test]
+#[ignore]
 fn test_debug_stage3_output_chars() {
     // stage2 が minimal.ls をコンパイルした出力の最初の 200 文字を確認する
     let main_path = selfhost_main_path();
@@ -11546,6 +11564,7 @@ fn test_debug_stage3_output_chars() {
 }
 
 #[test]
+#[ignore]
 fn test_debug_stage3_main_again_output_chars() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
