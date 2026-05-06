@@ -86,6 +86,7 @@ fn test_e2e_selfhost_lsp_diagnostic_ordering() {
 
 /// TEST-LSP-04: selfhost/src/Tools/Lsp/LspServer.ls の主要ハンドラが runtime で観測できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_runtime_handlers() {
     let source = selfhost_lsp_runtime_bundle();
     let output = compile_and_run(source);
@@ -104,6 +105,7 @@ fn test_e2e_selfhost_lsp_runtime_handlers() {
 
 /// TEST-LSP-05: selfhost/src/Tools/Lsp/LspServer.ls の sort-diagnostics が 2 要素を行番号順に並べること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_runtime_sort_diagnostics() {
     let source = selfhost_lsp_runtime_bundle();
     let output = compile_and_run(source);
@@ -121,6 +123,7 @@ fn test_e2e_selfhost_lsp_runtime_sort_diagnostics() {
 
 /// TEST-LSP-06: selfhost/src/Tools/Lsp/LspServer.ls の merge-duplicate-diagnostics が同一 span を 1 件へ潰すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_runtime_merge_duplicates() {
     let source = selfhost_lsp_runtime_bundle();
     let output = compile_and_run(source);
@@ -135,6 +138,7 @@ fn test_e2e_selfhost_lsp_runtime_merge_duplicates() {
 
 /// TEST-LSP-07: selfhost/src/Tools/Lsp/LspServer.ls の navigation handler shape が runtime で観測できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_runtime_navigation_shapes() {
     let source = selfhost_lsp_runtime_bundle();
     let output = compile_and_run(source);
@@ -154,6 +158,7 @@ fn test_e2e_selfhost_lsp_runtime_navigation_shapes() {
 
 /// TEST-LSP-08: selfhost/src/Tools/Lsp/LspServer.ls が JsonRpc method 定数で dispatch できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_runtime_jsonrpc_method_dispatch() {
     let source = selfhost_lsp_runtime_bundle();
     let harness = r#"
@@ -216,6 +221,7 @@ fn test_e2e_selfhost_lsp_runtime_jsonrpc_method_dispatch() {
 
 /// TEST-LSP-09: selfhost/src/Tools/Lsp/LspServer.ls の server-loop が 1 メッセージ dispatch を観測できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_runtime_server_loop_single_message() {
     let source = selfhost_lsp_runtime_bundle();
     let harness = r#"
@@ -258,6 +264,7 @@ fn test_e2e_selfhost_lsp_runtime_server_loop_single_message() {
 
 /// TEST-LSP-09b: server-loop-step が shared state 上で複数 request を順に dispatch できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_runtime_server_loop_stateful_sequence() {
     let source = selfhost_lsp_runtime_bundle();
     let open_src_literal = "(defn helper [] 1)\\n(defn main [] (helper 1))";
@@ -337,6 +344,7 @@ fn test_e2e_selfhost_lsp_runtime_server_loop_stateful_sequence() {
 
 /// TEST-LSP-09c: initialize / shutdown が server-state lifecycle flag を更新すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_runtime_lifecycle_flags() {
     let source = selfhost_lsp_runtime_bundle();
 
@@ -370,6 +378,7 @@ fn test_e2e_selfhost_lsp_runtime_lifecycle_flags() {
 
 /// TEST-LSP-09d: server-loop-sequence が shared state で request 群を順に処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_runtime_server_loop_sequence() {
     let source = selfhost_lsp_runtime_bundle();
     let open_src_literal = "(defn helper [] 1)\\n(defn main [] (helper 1))";
@@ -492,6 +501,7 @@ fn test_e2e_selfhost_lsp_sort_diagnostics_three() {
 
 /// TEST-LSP-09e: shared state が複数 URI の document source を保持できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_runtime_multi_document_state() {
     let source = selfhost_lsp_runtime_bundle();
     let src_a = "(defn alpha [] 1)";
@@ -1108,6 +1118,7 @@ fn test_e2e_selfhost_lsp_json_rpc_error_encode() {
 
 /// TEST-LSP-18: hover がソースとカーソル位置から実シンボル情報を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_real_shapes_hover_uses_source_symbol() {
     let harness = r#"
 (defn main []
@@ -1157,6 +1168,7 @@ fn test_e2e_selfhost_lsp_real_shapes_hover_uses_source_symbol() {
 
 /// TEST-LSP-19: definition / references がソース走査結果を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_real_shapes_definition_and_references_use_source() {
     let harness = r#"
 (defn main []
@@ -1213,6 +1225,7 @@ fn test_e2e_selfhost_lsp_real_shapes_definition_and_references_use_source() {
 
 /// TEST-LSP-19b: repeated symbol source では definition が直近の defn を安定して使うこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_real_shapes_definition_prefers_nearest_defn() {
     let harness = r#"
 (defn main []
@@ -1248,6 +1261,7 @@ fn test_e2e_selfhost_lsp_real_shapes_definition_prefers_nearest_defn() {
 
 /// TEST-LSP-19d: source param なしでも uri に対応する open document から definition を解決できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_real_shapes_definition_uses_uri_document() {
     let src_a = "(defn alpha [] 1)\n(defn main [] (alpha))";
     let src_b = "(defn beta [] 2)\n(defn main [] (beta))";
@@ -1279,6 +1293,7 @@ fn test_e2e_selfhost_lsp_real_shapes_definition_uses_uri_document() {
 
 /// TEST-LSP-19e: source param なしでも uri に対応する open document から hover contents を解決できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_real_shapes_hover_uses_uri_document() {
     let src_a = "(defn alphabet [x] x)\n(defn main [] (alphabet 1))";
     let src_b = "(defn b [x] x)\n(defn main [] (b 1))";
@@ -1306,6 +1321,7 @@ fn test_e2e_selfhost_lsp_real_shapes_hover_uses_uri_document() {
 
 /// TEST-LSP-19f: open 済み別 document の defn へ cross-document definition を返せること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_real_shapes_definition_resolves_open_document() {
     let helper_src = "(defn helper [x] x)";
     let main_src = "(import Helper)\n(defn main [] (helper 1))";
@@ -1386,6 +1402,7 @@ fn test_e2e_selfhost_lsp_hier_fixture_shape_cross_document_definition() {
 
 /// TEST-LSP-19g: open 済み別 document の defn へ cross-document hover contents を返せること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_real_shapes_hover_resolves_open_document() {
     let helper_src = "(defn helper [x] x)";
     let main_src = "(import Helper)\n(defn main [] (helper 1))";
@@ -1413,6 +1430,7 @@ fn test_e2e_selfhost_lsp_real_shapes_hover_resolves_open_document() {
 
 /// TEST-LSP-19c: repeated symbol source でも hover は選択した occurrence の range を保つこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_real_shapes_hover_keeps_selected_occurrence_with_repeated_defns() {
     let harness = r#"
 (defn main []
@@ -1468,6 +1486,7 @@ fn test_e2e_selfhost_lsp_real_shapes_hover_keeps_selected_occurrence_with_repeat
 
 /// TEST-LSP-20: completion が prefix とシンボル表から安定した item を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_real_shapes_rename_returns_workspace_edit() {
     let harness = r#"
 (defn main []
@@ -1569,6 +1588,7 @@ fn test_e2e_selfhost_lsp_real_shapes_rename_returns_workspace_edit() {
 
 /// TEST-LSP-20: completion が prefix とシンボル表から安定した item を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_real_shapes_completion_uses_prefix_and_symbols() {
     let harness = r#"
 (defn main []
@@ -1608,6 +1628,7 @@ fn test_e2e_selfhost_lsp_real_shapes_completion_uses_prefix_and_symbols() {
 
 /// TEST-LSP-21: formatting が実ソース長に基づく full-document edit を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_real_shapes_formatting_returns_document_edit() {
     let harness = r#"
 (defn main []
@@ -1644,6 +1665,7 @@ fn test_e2e_selfhost_lsp_real_shapes_formatting_returns_document_edit() {
 
 /// TEST-LSP-21b: formatting が string literal を source-aware formatter 経由で返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_real_shapes_formatting_preserves_string_literal() {
     let harness = r#"
 (defn main []
@@ -1667,6 +1689,7 @@ fn test_e2e_selfhost_lsp_real_shapes_formatting_preserves_string_literal() {
 
 /// TEST-LSP-21c: formatting が defn metadata を canonical 順で保持すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_lsp_real_shapes_formatting_preserves_defn_metadata() {
     let harness = r#"
 (defn main []
@@ -1694,6 +1717,7 @@ fn test_e2e_selfhost_lsp_real_shapes_formatting_preserves_defn_metadata() {
 /// T4c-1 AC-300: parse-format-parse roundtrip のための format-program / format-expr
 /// Red Phase: Formatter.ls に format-program / format-expr が未定義のため FAIL する。
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_roundtrip_v2() {
     let fmt_path = selfhost_source_path("Formatter.ls");
     assert!(
@@ -2415,7 +2439,6 @@ fn test_e2e_ops03b_debug_tests_are_ignored() {
         "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer.rs",
         "crates/lsharp-wasm/tests/e2e/selfhost_rooting_parity.rs",
     ];
-
     let mut offenders = Vec::new();
     for rel_path in test_files {
         let path = project_root.join(rel_path);
@@ -2434,7 +2457,7 @@ fn test_e2e_ops03b_debug_tests_are_ignored() {
                 if prev.is_empty() {
                     continue;
                 }
-                if prev == "#[ignore]" {
+                if prev.starts_with("#[ignore") {
                     has_ignore = true;
                     continue;
                 }
@@ -2453,6 +2476,399 @@ fn test_e2e_ops03b_debug_tests_are_ignored() {
         offenders.is_empty(),
         "manual debug tests must be #[ignore] so full cargo test remains a gate:\n{}",
         offenders.join("\n")
+    );
+}
+
+/// TEST-OPS-03c: heavyweight artifact/acceptance gates are explicit opt-in tests
+#[test]
+fn test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let heavy_tests = [
+        (
+            "crates/lsharp-wasm/tests/e2e/bootstrap_selfhost_lsp_integration.rs",
+            "test_e2e_selfhost_main_compile_if_let",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/bootstrap_selfhost_lsp_integration.rs",
+            "test_e2e_bootstrap_stage1_fixed_point_sections",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/bootstrap_selfhost_lsp_integration.rs",
+            "test_e2e_bootstrap_stage1_pipeline_verification",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/bootstrap_selfhost_lsp_integration.rs",
+            "test_e2e_bootstrap_stage1_binary_structure",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/bootstrap_selfhost_lsp_integration.rs",
+            "test_e2e_bootstrap_ci_all_modules_compile",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/bootstrap_selfhost_lsp_integration.rs",
+            "test_e2e_bootstrap_ci_stdlib_compile",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/bootstrap_selfhost_lsp_integration.rs",
+            "test_e2e_bootstrap_ci_examples_compile",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/bootstrap_selfhost_lsp_integration.rs",
+            "test_e2e_bootstrap_selfhost_modules_deterministic",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/bootstrap_selfhost_lsp_integration.rs",
+            "test_e2e_bootstrap_stage1_compile_and_run",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/bootstrap_selfhost_lsp_integration.rs",
+            "test_e2e_bootstrap_stage1_deterministic",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/bootstrap_selfhost_lsp_integration.rs",
+            "test_e2e_bootstrap_stage1_section_stability",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/bootstrap_selfhost_lsp_integration.rs",
+            "test_e2e_bootstrap_stage1_symbol_stability",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_fixed_point_stage2_stage3",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_fixed_point_minimal_build_progress_matches_stage2_stage3",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage2_self_feed_fixed_input_set",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_stage2_match",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_stage2_match_fib_runtime_layout",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage2_compiler_wasmemit_modules_deterministic",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_compile_phase_probe_reaches_compile_complete",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_build_phase_probe_reaches_build_complete",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_cache_probe_emits_cache_marker",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_ast_chunked_step_progress_probe_reaches_first_pair_complete",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_module_resolver_first_defn_source_probe_reaches_prefix",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_module_resolver_ast_chunked_step_probe_reaches_completion",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_backend_compiler_pair_progress_probe_reaches_final_markers",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_compiler_mode_pair_progress_probe_reaches_final_markers",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_compiler_mode_token_debug_emits_token_count",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_pipeline_smoke_pair_progress_probe_reaches_final_markers",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_native_codegen_pair_progress_probe_reaches_final_markers",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_native_codegen_cache_pairs_probe_emits_counts",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_native_codegen_cache_probe_emits_marker",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_native_codegen_ir_debug_emits_decl_count",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_native_codegen_token_debug_emits_token_count",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_section_stability",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_stage1_symbol_stability",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_fixed_input_set_stage_chain_match_cli_module",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_fixed_input_set_stage_chain_match_lsp_server_module",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_bootstrap_fixed_input_set_stage_chain_match",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_incremental_compile_matches_full_compile_fixed_input_set",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_acceptance.rs",
+            "test_e2e_wasi_start_signature",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_contracts.rs",
+            "test_e2e_selfhost_main_import_only_pipeline",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer.rs",
+            "test_validate_stage2_wasm",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/incremental_benchmark.rs",
+            "test_e2e_selfhost_incremental_bench_fixture_single_change_matches_full_compile",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/runtime_allocator_closures.rs",
+            "test_e2e_alloc_metrics_ci_artifact_payload",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_gc_stateful_soak.rs",
+            "test_e2e_gc_lsp_actual_stdio_repeated_sequence_soak",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_gc_stateful_soak.rs",
+            "test_e2e_gc_lsp_actual_stdio_repeated_sequence_in_session_collector_telemetry",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_gc_stateful_soak.rs",
+            "test_e2e_gc_lsp_actual_stdio_repeated_sequence_postsession_collector_telemetry",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_main_module_determinism.rs",
+            "test_e2e_bootstrap_selfhost_full_deterministic",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_main_module_determinism.rs",
+            "test_e2e_selfhost_main_full_compile",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_differential.rs",
+            "test_native_codegen_emits_full_const_instruction_bytes",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_differential.rs",
+            "test_native_codegen_emits_aarch64_direct_call_bundle_bytes",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_differential.rs",
+            "test_native_codegen_processes_multiple_ir_instructions",
+        ),
+    ];
+    let heavy_prefix_tests = [
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer.rs",
+            "fn test_e2e_boot04_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer.rs",
+            "fn test_e2e_bootstrap_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer.rs",
+            "fn test_v2_11_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_bootstrap_four_layer.rs",
+            "fn test_v2_12_self_hosted_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_cli_actual_main_args.rs",
+            "fn test_e2e_selfhost_cli_main_with_args_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs",
+            "fn test_e2e_selfhost_cli_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_cli_core.rs",
+            "fn test_e2e_selfhost_test_runner_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_doctools_cli_diagnostics.rs",
+            "fn test_e2e_selfhost_cli_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_doctools_cli_diagnostics.rs",
+            "fn test_e2e_selfhost_doctools_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_doctools_cli_diagnostics.rs",
+            "fn test_e2e_selfhost_htmldoc_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_gc_stateful_soak.rs",
+            "fn test_e2e_gc_repl_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs",
+            "fn test_e2e_selfhost_formatter_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs",
+            "fn test_e2e_selfhost_lsp_real_shapes_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_lsp_docs_ops.rs",
+            "fn test_e2e_selfhost_lsp_runtime_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_macro_compiler.rs",
+            "fn test_e2e_selfhost_typeinfer_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_differential.rs",
+            "fn test_native_codegen_emits_",
+        ),
+    ];
+
+    let mut offenders = Vec::new();
+    for (rel_path, test_name) in heavy_tests {
+        let path = project_root.join(rel_path);
+        let content =
+            std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{rel_path} 読み込み失敗"));
+        let lines: Vec<&str> = content.lines().collect();
+        let fn_idx = lines
+            .iter()
+            .position(|line| line.trim_start().starts_with(&format!("fn {test_name}(")))
+            .unwrap_or_else(|| panic!("{rel_path} に {test_name} が見つからない"));
+        let mut has_ignore = false;
+        let mut cursor = fn_idx;
+        while cursor > 0 {
+            cursor -= 1;
+            let prev = lines[cursor].trim();
+            if prev.is_empty() {
+                continue;
+            }
+            if prev.starts_with("#[ignore") {
+                has_ignore = true;
+                continue;
+            }
+            if prev == "#[test]" {
+                break;
+            }
+            break;
+        }
+        if !has_ignore {
+            offenders.push(format!("{rel_path}:{test_name}"));
+        }
+    }
+    for (rel_path, fn_prefix) in heavy_prefix_tests {
+        let path = project_root.join(rel_path);
+        let content =
+            std::fs::read_to_string(&path).unwrap_or_else(|_| panic!("{rel_path} 読み込み失敗"));
+        let lines: Vec<&str> = content.lines().collect();
+        for (idx, line) in lines.iter().enumerate() {
+            if !line.trim_start().starts_with(fn_prefix) {
+                continue;
+            }
+            let mut has_ignore = false;
+            let mut cursor = idx;
+            while cursor > 0 {
+                cursor -= 1;
+                let prev = lines[cursor].trim();
+                if prev.is_empty() {
+                    continue;
+                }
+                if prev.starts_with("#[ignore") {
+                    has_ignore = true;
+                    continue;
+                }
+                if prev == "#[test]" {
+                    break;
+                }
+                break;
+            }
+            if !has_ignore {
+                offenders.push(format!("{}:{}", rel_path, idx + 1));
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "heavy artifact/acceptance tests must be #[ignore] and run by explicit CI scripts:\n{}",
+        offenders.join("\n")
+    );
+
+    let phase11_script =
+        std::fs::read_to_string(project_root.join("scripts/ci/compile-phase11-inputs.sh"))
+            .expect("compile-phase11-inputs.sh の読み込みに失敗");
+    assert!(
+        phase11_script.contains("test_e2e_bootstrap_fixed_point_stage2_stage3 -- --exact --ignored --nocapture")
+            && phase11_script.contains("test_e2e_bootstrap_stage2_self_feed_fixed_input_set -- --exact --ignored --nocapture")
+            && phase11_script.contains("test_e2e_bootstrap_fixed_input_set_stage_chain_match -- --exact --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_bootstrap_four_layer::test_e2e_boot04_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_bootstrap_four_layer::test_e2e_bootstrap_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_bootstrap_four_layer::test_v2_11_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_bootstrap_four_layer::test_v2_12_self_hosted_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_cli_actual_main_args::test_e2e_selfhost_cli_main_with_args_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_cli_core::test_e2e_selfhost_cli_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_cli_core::test_e2e_selfhost_test_runner_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_doctools_cli_diagnostics::test_e2e_selfhost_cli_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_doctools_cli_diagnostics::test_e2e_selfhost_doctools_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_doctools_cli_diagnostics::test_e2e_selfhost_htmldoc_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_lsp_docs_ops::test_e2e_selfhost_formatter_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_lsp_docs_ops::test_e2e_selfhost_lsp_real_shapes_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_lsp_docs_ops::test_e2e_selfhost_lsp_runtime_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_macro_compiler::test_e2e_selfhost_typeinfer_ -- --ignored --nocapture")
+            && phase11_script.contains("test_e2e_bootstrap_selfhost_full_deterministic -- --exact --ignored --nocapture")
+            && phase11_script.contains("test_e2e_selfhost_main_full_compile -- --exact --ignored --nocapture")
+            && phase11_script.contains("test_native_codegen_emits_full_const_instruction_bytes -- --exact --ignored --nocapture")
+            && phase11_script.contains("test_native_codegen_emits_aarch64_direct_call_bundle_bytes -- --exact --ignored --nocapture")
+            && phase11_script.contains("test_native_codegen_processes_multiple_ir_instructions -- --exact --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_native_differential::test_native_codegen_emits_ -- --ignored --nocapture")
+            && phase11_script.contains("test_e2e_incremental_compile_matches_full_compile_fixed_input_set -- --exact --ignored --nocapture"),
+        "compile-phase11-inputs.sh は ignored heavyweight bootstrap gates を明示実行すること"
+    );
+
+    let gc_script = std::fs::read_to_string(project_root.join("scripts/ci/collect-gc-metrics.sh"))
+        .expect("collect-gc-metrics.sh の読み込みに失敗");
+    assert!(
+        gc_script.contains("test_e2e_alloc_metrics_ci_artifact_payload -- --ignored --nocapture")
+            && gc_script.contains("test_e2e_gc_lsp_actual_stdio_repeated_sequence_soak -- --ignored --nocapture")
+            && gc_script.contains("test_e2e_gc_lsp_actual_stdio_repeated_sequence_in_session_collector_telemetry -- --ignored --nocapture")
+            && gc_script.contains("test_e2e_gc_lsp_actual_stdio_repeated_sequence_postsession_collector_telemetry -- --ignored --nocapture")
+            && gc_script.contains("test_e2e_gc_repl_ -- --ignored --nocapture"),
+        "collect-gc-metrics.sh は ignored GC artifact/soak gates を明示実行すること"
     );
 }
 
@@ -3737,6 +4153,7 @@ fn selfhost_formatter_runtime_bundle() -> String {
 
 /// D-2: Formatter.ls の format-expr が lit-int AST ノードを実テキストへ整形すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_expr_lit_int() {
     let harness = r#"
 (defn main []
@@ -3760,6 +4177,7 @@ fn test_e2e_selfhost_formatter_format_expr_lit_int() {
 
 /// D-2: format-expr が apply AST ノードを実テキストへ整形すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_expr_apply() {
     let harness = r#"
 (defn main []
@@ -3786,6 +4204,7 @@ fn test_e2e_selfhost_formatter_format_expr_apply() {
 
 /// FMT-01: format-expr が let (tag=7) を実テキストへ整形すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_expr_let() {
     let harness = r#"
 (defn main []
@@ -3809,6 +4228,7 @@ fn test_e2e_selfhost_formatter_format_expr_let() {
 
 /// FMT-01: format-expr が if (tag=6) を実テキストへ整形すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_expr_if() {
     let harness = r#"
 (defn main []
@@ -3833,6 +4253,7 @@ fn test_e2e_selfhost_formatter_format_expr_if() {
 
 /// FMT-01: format-expr が lambda (tag=8) を実テキストへ整形すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_expr_lambda() {
     let harness = r#"
 (defn main []
@@ -3858,6 +4279,7 @@ fn test_e2e_selfhost_formatter_format_expr_lambda() {
 
 /// FMT-01: format-expr が do (tag=9) を実テキストへ整形すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_expr_do() {
     let harness = r#"
 (defn main []
@@ -3882,6 +4304,7 @@ fn test_e2e_selfhost_formatter_format_expr_do() {
 
 /// FMT-01: match が canonical な実テキストへ整形されること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_expr_match() {
     let harness = r#"
 (defn main []
@@ -3910,6 +4333,7 @@ fn test_e2e_selfhost_formatter_format_expr_match() {
 
 /// FMT-01: recordlit が canonical な実テキストへ整形されること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_expr_recordlit() {
     let harness = r#"
 (defn main []
@@ -3933,6 +4357,7 @@ fn test_e2e_selfhost_formatter_format_expr_recordlit() {
 
 /// FMT-01: fieldaccess が canonical な実テキストへ整形されること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_expr_fieldaccess() {
     let harness = r#"
 (defn main []
@@ -3955,6 +4380,7 @@ fn test_e2e_selfhost_formatter_format_expr_fieldaccess() {
 
 /// FMT-01: recordupdate が canonical な実テキストへ整形されること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_expr_recordupdate() {
     let harness = r#"
 (defn main []
@@ -3979,6 +4405,7 @@ fn test_e2e_selfhost_formatter_format_expr_recordupdate() {
 
 /// FMT-01: computation が canonical な実テキストへ整形されること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_expr_computation() {
     let harness = r#"
 (defn main []
@@ -4031,6 +4458,7 @@ fn test_e2e_selfhost_formatter_format_expr_computation() {
 
 /// FMT-01: source なしの string literal fallback が canonical text を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_expr_lit_string_fallback() {
     let harness = r#"
 (defn main []
@@ -4052,6 +4480,7 @@ fn test_e2e_selfhost_formatter_format_expr_lit_string_fallback() {
 
 /// FMT-01: source なしの float literal fallback が canonical text を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_expr_lit_float_fallback() {
     let harness = r#"
 (defn main []
@@ -4073,6 +4502,7 @@ fn test_e2e_selfhost_formatter_format_expr_lit_float_fallback() {
 
 /// FMT-01: format-decl が defn (tag=20) を実テキストへ整形すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_decl_defn() {
     let harness = r#"
 (defn main []
@@ -4095,6 +4525,7 @@ fn test_e2e_selfhost_formatter_format_decl_defn() {
 
 /// FMT-01: format-decl が body 付き module (tag=25) を実テキストへ整形すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_decl_module_with_body() {
     let harness = r#"
 (defn main []
@@ -4118,6 +4549,7 @@ fn test_e2e_selfhost_formatter_format_decl_module_with_body() {
 
 /// FMT-01: format-decl が computation-builder (tag=30) を実テキストへ整形すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_decl_computation_builder() {
     let harness = r#"
 (defn main []
@@ -4139,6 +4571,7 @@ fn test_e2e_selfhost_formatter_format_decl_computation_builder() {
 
 /// FMT-01: format-decl が impl (tag=28) を実テキストへ整形すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_decl_impl() {
     let harness = r#"
 (defn main []
@@ -4161,6 +4594,7 @@ fn test_e2e_selfhost_formatter_format_decl_impl() {
 
 /// FMT-01: format-program が supported subset を実テキストへ整形すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_program_text_simple_program() {
     let source = "  (defn a [b] (if b (let [c 1] c) (do b 0)))  ";
     let output = formatter_output_for_source(source);
@@ -4180,6 +4614,7 @@ fn test_e2e_selfhost_formatter_format_program_text_simple_program() {
 
 /// FMT-01: format-program が recordupdate を canonical text へ整形できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_program_recordupdate_expr() {
     let source = "  {p | x 10 y 20}  ";
     let output = formatter_output_for_source(source);
@@ -4192,6 +4627,7 @@ fn test_e2e_selfhost_formatter_format_program_recordupdate_expr() {
 
 /// FMT-01: format-program が computation を canonical text へ整形できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_program_computation_expr() {
     let source = "  (computation m (let! x f) (do! y) z (return x))  ";
     let output = formatter_output_for_source(source);
@@ -4204,6 +4640,7 @@ fn test_e2e_selfhost_formatter_format_program_computation_expr() {
 
 /// FMT-01: format-program が computation-builder 宣言を canonical text へ整形できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_program_computation_builder_decl() {
     let source = "  (computation-builder m b i)  ";
     let output = formatter_output_for_source(source);
@@ -4216,6 +4653,7 @@ fn test_e2e_selfhost_formatter_format_program_computation_builder_decl() {
 
 /// FMT-01: format-program が impl 宣言を canonical text へ整形できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_program_impl_decl() {
     let source = "  (impl (S I) (import a))  ";
     let output = formatter_output_for_source(source);
@@ -4228,6 +4666,7 @@ fn test_e2e_selfhost_formatter_format_program_impl_decl() {
 
 /// FMT-01: format-program が module body を canonical text へ整形できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_program_module_decl() {
     let source = "  (module Demo (import Core))  ";
     let output = formatter_output_for_source(source);
@@ -4240,6 +4679,7 @@ fn test_e2e_selfhost_formatter_format_program_module_decl() {
 
 /// FMT-01: format-program が簡易 decl payload の type 系宣言を canonical text へ整形できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_program_missing_type_family_decls() {
     let source = "  (type Point) (type Pair (record (: x Int) (: y Int))) (type-alias Str String) (type-constrained Natural Int :constraints [(>= 0)])  ";
     let output = formatter_output_for_source(source);
@@ -4253,6 +4693,7 @@ fn test_e2e_selfhost_formatter_format_program_missing_type_family_decls() {
 
 /// FMT-01: format-program が trait 宣言を canonical text へ整形できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_program_trait_decl() {
     let source = "  (trait (Show a) (defn show [self] self))  ";
     let output = formatter_output_for_source(source);
@@ -4265,6 +4706,7 @@ fn test_e2e_selfhost_formatter_format_program_trait_decl() {
 
 /// FMT-01: format-program が defmacro 宣言を canonical text へ整形できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_format_program_defmacro_decl() {
     let source = "  (defmacro double [x] '(+ ~x ~x))  ";
     let output = formatter_output_for_source(source);
@@ -4277,6 +4719,7 @@ fn test_e2e_selfhost_formatter_format_program_defmacro_decl() {
 
 /// FMT-01 AC-300: parse(format(src)) 後に再 format しても同じ実テキストになること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_roundtrip_deterministic() {
     let source = " (defn a [b] (if b (let [c 1] c) (do b 0))) ";
     let formatted = formatter_output_for_source(source);
@@ -4290,6 +4733,7 @@ fn test_e2e_selfhost_formatter_roundtrip_deterministic() {
 
 /// FMT-01 AC-301: supported subset の format-program は 2 回適用しても同じ出力になること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_formatter_idempotent() {
     let source = " (defn a [] 42)   (defn b [c] (do c 0)) ";
     let first = formatter_output_for_source(source);

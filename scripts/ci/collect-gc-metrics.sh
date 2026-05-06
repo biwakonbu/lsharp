@@ -8,6 +8,8 @@ ARTIFACT_FILE="${LSHARP_GC_METRICS_INPUT:-${ARTIFACT_DIR}/summary.json}"
 DEFAULT_PROOF_BUNDLE_FILE="$(dirname "${ARTIFACT_FILE}")/collector-proof.json"
 PROOF_BUNDLE_FILE="${LSHARP_GC_PROOF_BUNDLE_INPUT:-}"
 PROOF_BUNDLE_SOURCE="none"
+RUN_GC_LSP_SOAK="${RUN_GC_LSP_SOAK:-0}"
+RUN_GC_REPL_SOAK="${RUN_GC_REPL_SOAK:-0}"
 
 if [[ -n "${PROOF_BUNDLE_FILE}" ]]; then
     PROOF_BUNDLE_SOURCE="explicit"
@@ -23,7 +25,17 @@ if [[ -n "${LSHARP_GC_METRICS_INPUT:-}" ]]; then
 else
     mkdir -p "${ARTIFACT_DIR}"
     export LSHARP_GC_METRICS_OUT="${ARTIFACT_FILE}"
-    cargo test -p lsharp-wasm --test e2e test_e2e_alloc_metrics_ci_artifact_payload -- --nocapture
+    cargo test -p lsharp-wasm --test e2e test_e2e_alloc_metrics_ci_artifact_payload -- --ignored --nocapture
+fi
+
+if [[ "$RUN_GC_LSP_SOAK" == "1" ]]; then
+    cargo test -p lsharp-wasm --test e2e test_e2e_gc_lsp_actual_stdio_repeated_sequence_soak -- --ignored --nocapture
+    cargo test -p lsharp-wasm --test e2e test_e2e_gc_lsp_actual_stdio_repeated_sequence_in_session_collector_telemetry -- --ignored --nocapture
+    cargo test -p lsharp-wasm --test e2e test_e2e_gc_lsp_actual_stdio_repeated_sequence_postsession_collector_telemetry -- --ignored --nocapture
+fi
+
+if [[ "$RUN_GC_REPL_SOAK" == "1" ]]; then
+    cargo test -p lsharp-wasm --test e2e test_e2e_gc_repl_ -- --ignored --nocapture
 fi
 
 if [[ -n "${PROOF_BUNDLE_FILE}" ]]; then

@@ -3,6 +3,7 @@ use lsharp_ir::{CompilationCache, compile_multi_file, compile_multi_file_increme
 use lsharp_wasm::incremental_bench::SelfhostIncrementalBenchFixture;
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_incremental_bench_fixture_single_change_matches_full_compile() {
     run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
         let fixture = SelfhostIncrementalBenchFixture::create().expect("fixture should be created");

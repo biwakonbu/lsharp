@@ -670,6 +670,7 @@ fn test_e2e_selfhost_macro_nested_expansion() {
 
 /// selfhost TypeInfer.ls テスト: リテラル型推論
 #[test]
+#[ignore]
 fn test_e2e_selfhost_typeinfer_literal() {
     // selfhost compiler でリテラルの型推論が動作することを検証
     // 期待値: Int リテラルが正しく型付けされ実行可能
@@ -685,6 +686,7 @@ fn test_e2e_selfhost_typeinfer_literal() {
 
 /// selfhost TypeInfer.ls テスト: float / unit リテラル型推論
 #[test]
+#[ignore]
 fn test_e2e_selfhost_typeinfer_float_and_unit_literals() {
     let harness = r#"
 (defn main []

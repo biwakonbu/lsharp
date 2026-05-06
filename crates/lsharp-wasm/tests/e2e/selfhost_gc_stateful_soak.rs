@@ -31,6 +31,7 @@ fn repeat_rendered_frames(frames: &[String], iterations: usize) -> String {
 /// GC-05 honest slice: 現状は stdio 付き REPL ではなく、Cli.ls 内のセッション helper を
 /// 同一 Wasm プロセスで繰り返し呼び出して状態保持を検証する。
 #[test]
+#[ignore]
 fn test_e2e_gc_repl_stateful_single_session_metrics() {
     let repl_src_a = "(defn main [] 42)";
     let repl_src_b = "(defn main [] (if true 1 2))";
@@ -84,6 +85,7 @@ fn test_e2e_gc_repl_stateful_single_session_metrics() {
 
 /// GC-05 honest slice: REPL session helper が source 群をまとめて処理し、集計を返せること
 #[test]
+#[ignore]
 fn test_e2e_gc_repl_session_batch_metrics() {
     let src_a = "(defn main [] 42)";
     let src_b = "(defn main [] true)";
@@ -118,6 +120,7 @@ fn test_e2e_gc_repl_session_batch_metrics() {
 
 /// GC-05 honest slice: 単一 REPL session を長めに回しても集計が壊れないこと
 #[test]
+#[ignore]
 fn test_e2e_gc_repl_stateful_long_session_metrics() {
     let repl_src_a = "(defn main [] 42)";
     let repl_src_b = "(defn main [] (if true 1 2))";
@@ -173,6 +176,7 @@ fn test_e2e_gc_repl_stateful_long_session_metrics() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_gc_repl_stateful_long_session_in_session_collector_telemetry() {
     let repl_src_a = "(defn main [] 42)";
     let repl_src_b = "(defn main [] (if true 1 2))";
@@ -247,6 +251,7 @@ fn test_e2e_gc_repl_stateful_long_session_in_session_collector_telemetry() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_gc_repl_stateful_long_session_postsession_collector_telemetry() {
     let repl_src_a = "(defn main [] 42)";
     let repl_src_b = "(defn main [] (if true 1 2))";
@@ -487,6 +492,7 @@ fn test_e2e_gc_lsp_stateful_repeated_sequence_metrics() {
 /// GC-05 honest slice: actual `lsp --stdio` server を 1 session 内で繰り返し叩いても
 /// initialize 後の open -> hover -> change -> completion -> formatting が崩れないこと
 #[test]
+#[ignore]
 fn test_e2e_gc_lsp_actual_stdio_repeated_sequence_soak() {
     let open_source = "(defn helper [] 1) (helper 1)";
     let change_source = "(defn helper [] 1) (he)";
@@ -564,6 +570,7 @@ fn test_e2e_gc_lsp_actual_stdio_repeated_sequence_soak() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_gc_lsp_actual_stdio_repeated_sequence_in_session_collector_telemetry() {
     let open_source = "(defn helper [] 1) (helper 1)";
     let change_source = "(defn helper [] 1) (he)";
@@ -660,6 +667,7 @@ fn test_e2e_gc_lsp_actual_stdio_repeated_sequence_in_session_collector_telemetry
 }
 
 #[test]
+#[ignore]
 fn test_e2e_gc_lsp_actual_stdio_repeated_sequence_postsession_collector_telemetry() {
     let open_source = "(defn helper [] 1) (helper 1)";
     let change_source = "(defn helper [] 1) (he)";

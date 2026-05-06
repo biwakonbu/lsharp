@@ -63,7 +63,7 @@
                                   ;; call -> wasm call (0x10)
                                   (make-instr 16 operand)
                                   ;; 未知の命令: nop (0x01)
-                                  (make-instr 1 0)))))))))))))))
+                                  (make-instr 1 0)))))))))))))))))))
 
 ;; IR 関数を Wasm 関数に変換
 ;; ir-func: [name, params, body-instrs] の Vector

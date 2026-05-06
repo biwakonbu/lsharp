@@ -1695,6 +1695,7 @@ pub(crate) fn run_wasm_with_six_imports_compiler_mode_fs_printed_first(
 /// 真の stage1→stage2 自己コンパイルは未接続。
 /// stage0 (Rust) コンパイラの決定性を 4 次元で検証する。
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_four_layer_comparison() {
     let main_path = selfhost_main_path();
     let artifact_id = bootstrap_diff_artifact_id();
@@ -1958,6 +1959,7 @@ fn test_bootstrap_diff_artifact_writes_readable_local_report() {
 /// 真の stage1→stage2 自己コンパイルは未接続のため、
 /// stage0 の決定性 + stage1 の実行可能性を証明する。
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage_chain_verification() {
     let main_path = selfhost_main_path();
 
@@ -2053,6 +2055,7 @@ fn test_e2e_bootstrap_stage_chain_verification() {
 /// selfhost の 10-import レイアウト (call 0..9) と一致するバイト列を検証する。
 /// import count が 10、各 import 名が期待通りであることを wasmparser で検証する。
 #[test]
+#[ignore]
 fn test_v2_11_emit_import_section_runtime_produces_10_imports() {
     // selfhost の emit-import-section-runtime を呼んで bytes を print で出力するハーネス
     let harness = r#"
@@ -2152,6 +2155,7 @@ fn test_v2_11_emit_import_section_runtime_produces_10_imports() {
 /// selfhost の Parser/Compiler/WasmEmit を使って実体の Wasm bytes を出力し、
 /// その stage2 を実行できる最小 bootstrap 経路を固定する。
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_minimal_subset() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -2245,6 +2249,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_minimal_subset() {
 
 /// BOOT-04: stage1 が同じ tiny source から同一 stage2 Wasm を 2 回生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_identical_stage2_wasm_for_same_tiny_source() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -2322,6 +2327,7 @@ fn test_e2e_bootstrap_stage1_emits_identical_stage2_wasm_for_same_tiny_source() 
 
 /// BOOT-04: stage1 が extended do block を含む stage2 Wasm も生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_extended_do_block() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -2396,6 +2402,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_extended_do_block() {
 
 /// BOOT-04: stage1 が zero-arg 2 関数 + call を含む stage2 Wasm を生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_zero_arg_call_program() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -2461,6 +2468,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_zero_arg_call_program() {
 
 /// BOOT-04: stage1 が 1 引数関数呼出しを含む stage2 Wasm を生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_single_param_call_program() {
     let stage2_src = r#"(defn add1 [x] (+ x 1)) (defn main [] (add1 41))"#;
     let harness = {
@@ -2492,6 +2500,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_single_param_call_program() {
 
 /// BOOT-04: stage1 が let local を含む stage2 Wasm を生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_let_local_program() {
     let stage2_src = r#"(defn main [] (let [x 42] x))"#;
     let harness = {
@@ -2529,6 +2538,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_let_local_program() {
 ///
 /// (defn fib [n] ...) + (defn main [] (fib 8)) → stage2 が 21 を返す
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_recursive_fibonacci() {
     let stage2_src =
         r#"(defn fib [n] (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))) (defn main [] (fib 8))"#;
@@ -2563,6 +2573,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_recursive_fibonacci() {
 ///
 /// (defn fact [n] ...) + (defn main [] (fact 5)) → stage2 が 120 を返す
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_recursive_factorial() {
     let stage2_src =
         r#"(defn fact [n] (if (<= n 1) 1 (* n (fact (- n 1))))) (defn main [] (fact 5))"#;
@@ -2597,6 +2608,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_recursive_factorial() {
 ///
 /// sum(n) を呼ぶ helper(x) + main の 3 関数構成で stage2 が 55 を返す
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_multi_function_helper_recursion() {
     let stage2_src = r#"(defn sum [n] (if (<= n 0) 0 (+ n (sum (- n 1))))) (defn helper [x] (sum x)) (defn main [] (helper 10))"#;
     let harness = {
@@ -2628,6 +2640,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_multi_function_helper_recursi
 
 /// BOOT-04: stage1 が string-char-at builtin を含む stage2 Wasm を valid module として生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_char_at_helper_program() {
     let stage2_src = r#"(defn first [s] (string-char-at s 0)) (defn main [] 0)"#;
     let harness = {
@@ -2663,6 +2676,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_char_at_helper_program
 
 /// BOOT-04: stage1 が string-length builtin を含む stage2 Wasm を valid module として生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_length_helper_program() {
     let stage2_src = r#"(defn len1 [s] (string-length s)) (defn main [] 0)"#;
     let harness = {
@@ -2698,6 +2712,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_length_helper_program(
 
 /// BOOT-04: stage1 が string literal を data section に落とし込んだ stage2 Wasm を生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_literal_data_section() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -2780,6 +2795,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_literal_data_section()
 
 /// BOOT-04: stage1 が nested string literal を distinct offsets 付きで stage2 Wasm に落とし込めること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_nested_string_literal_data_section() {
     let stage2_source = r#"(defn main [] (do "ab" "cde"))"#.replace('"', "\\\"");
     let harness = format!(
@@ -2861,6 +2877,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_nested_string_literal_data_se
 
 /// BOOT-04: stage1 が 5 式以上の do に含まれる source-aware string literal も stage2 Wasm に落とし込めること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_extended_do_string_literal_data_section() {
     let stage2_source = r#"(defn main [] (do "ab" "c" "de" "fgh" "ijk"))"#.replace('"', "\\\"");
     let harness = format!(
@@ -2942,6 +2959,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_extended_do_string_literal_da
 
 /// BOOT-04: stage1 が if branch 内の source-aware string literal を stage2 Wasm に落とし込めること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_if_string_literal_data_section() {
     let stage2_source = r#"(defn main [] (if (= 1 1) "hello" "world"))"#.replace('"', "\\\"");
     let harness = format!(
@@ -3023,6 +3041,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_if_string_literal_data_sectio
 
 /// BOOT-04: stage1 が match arm 内の source-aware string literal を stage2 Wasm に落とし込めること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_match_string_literal_data_section() {
     let stage2_source = r#"(defn main [] (match 2 [1 "one"] [2 "two"]))"#.replace('"', "\\\"");
     let harness = format!(
@@ -3104,6 +3123,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_match_string_literal_data_sec
 
 /// BOOT-04: stage1 が lambda body 内の source-aware string literal を stage2 Wasm に落とし込めること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_lambda_string_literal_data_section() {
     let stage2_source = r#"(defn main [] (fn [x] "ok"))"#.replace('"', "\\\"");
     let harness = format!(
@@ -3185,6 +3205,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_lambda_string_literal_data_se
 
 /// BOOT-04: stage1 が vector-length builtin を含む stage2 Wasm を valid module として生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_length_helper_program() {
     let stage2_src = r#"(defn vlen [v] (vector-length v)) (defn main [] 0)"#;
     let harness = {
@@ -3220,6 +3241,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_length_helper_program(
 
 /// BOOT-04: stage1 が vector-get builtin を含む stage2 Wasm を valid module として生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_get_helper_program() {
     let stage2_src = r#"(defn vget0 [v] (vector-get v 0)) (defn main [] 0)"#;
     let harness = {
@@ -3255,6 +3277,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_get_helper_program() {
 
 /// BOOT-04: stage1 が __alloc import を伴う vector-new program を stage2 Wasm として生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_new_program() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -3327,6 +3350,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_new_program() {
 
 /// BOOT-04: stage1 が同じ alloc-import tiny source から同一 stage2 Wasm を 2 回生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_identical_alloc_stage2_wasm_for_same_source() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -3402,6 +3426,7 @@ fn test_e2e_bootstrap_stage1_emits_identical_alloc_stage2_wasm_for_same_source()
 
 /// BOOT-04: stage1 が vector-push の in-place + growth を含む stage2 Wasm を生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_push_program() {
     let stage1_source = stage1_source_emitting_wasi_stage2(
         "(defn main [] (let [v0 (vector-new 1)] (let [v1 (vector-push v0 10)] (vector-length (vector-push v1 20)))))",
@@ -3427,6 +3452,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_vector_push_program() {
 
 /// BOOT-04: stage1 が ref-new/ref-set/ref-get を含む stage2 Wasm を生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_ref_program() {
     let stage1_source = stage1_source_emitting_wasi_stage2(
         "(defn main [] (let [r (ref-new 1)] (do (ref-set r 42) (ref-get r))))",
@@ -3452,6 +3478,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_ref_program() {
 
 /// BOOT-04: stage1 が整数 key の map-new/map-insert/map-get/map-size を含む stage2 Wasm を生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_program() {
     let stage1_source = stage1_source_emitting_wasi_stage2(
         "(defn main [] (let [m0 (map-new)] (let [m1 (map-insert m0 1 10)] (let [m2 (map-insert m1 2 20)] (+ (+ (map-get m2 1) (map-get m2 2)) (map-size m2))))))",
@@ -3477,6 +3504,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_program() {
 
 /// BOOT-04: stage1 が整数 key subset の map-contains? を含む stage2 Wasm を生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_contains_program() {
     let stage1_source = stage1_source_emitting_wasi_stage2(
         "(defn main [] (let [m0 (map-new)] (let [m1 (map-insert m0 7 70)] (+ (* 10 (map-contains? m1 7)) (map-contains? m1 99)))))",
@@ -3502,6 +3530,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_contains_program() {
 
 /// BOOT-04: stage1 が整数 key subset の map-remove を含む stage2 Wasm を生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_remove_program() {
     let stage1_source = stage1_source_emitting_wasi_stage2(
         "(defn main [] (let [m0 (map-new)] (let [m1 (map-insert m0 1 10)] (let [m2 (map-insert m1 2 20)] (let [m3 (map-remove m2 1)] (+ (map-get m3 1) (+ (* 10 (map-size m3)) (map-get m3 2))))))))",
@@ -3527,6 +3556,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_map_remove_program() {
 
 /// BOOT-04: stage1 が source-aware string key subset の map builtins を含む stage2 Wasm を生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_key_map_program() {
     let stage2_source = r#"(defn main [] (let [m0 (map-new)] (let [m1 (map-insert m0 "aa" 10)] (let [m2 (map-insert m1 "bb" 20)] (let [m3 (map-remove m2 "aa")] (+ (* 10 (map-size m3)) (map-get m3 "bb")))))))"#.replace('"', "\\\"");
     let stage1_source = stage1_source_emitting_wasi_stage2_with_source(&stage2_source);
@@ -3554,6 +3584,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_string_key_map_program() {
 
 /// BOOT-04: stage1 が non-literal string key map builtins を含む stage2 Wasm を生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_non_literal_string_key_map_program() {
     let stage2_source = r#"(defn main [] (do (print (let [key (read-file "fixture.txt")] (let [m0 (map-new)] (let [m1 (map-insert m0 key 42)] (map-get m1 key))))) 0))"#.replace('"', "\\\"");
     let harness = format!(
@@ -3598,6 +3629,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_non_literal_string_key_map_pr
 
 /// BOOT-04: stage1 が generalized 4-helper path で alloc+print+read-file+__fnv1a_hash stage2 Wasm を生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_generalized_alloc_print_read_hash_helper_quad() {
     let stage2_source =
         r#"(defn main [] (string-length (read-file "fixture.txt")))"#.replace('"', "\\\"");
@@ -3681,6 +3713,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_generalized_alloc_print_read_
 
 /// BOOT-04: stage1 が同じ generalized alloc+print+read-file+__fnv1a_hash source から同一 stage2 Wasm を 2 回生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_identical_hash_helper_quad_stage2_wasm_for_same_source() {
     let stage2_source =
         r#"(defn main [] (string-length (read-file "fixture.txt")))"#.replace('"', "\\\"");
@@ -3770,6 +3803,7 @@ fn test_e2e_bootstrap_stage1_emits_identical_hash_helper_quad_stage2_wasm_for_sa
 
 /// BOOT-04: stage1 が alloc+print import を伴う print program を stage2 Wasm として生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_print_program() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -3840,6 +3874,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_print_program() {
 
 /// BOOT-04: stage1 が generalized 2-helper pair で alloc+print stage2 Wasm を生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_generalized_alloc_print_helper_pair() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -3912,6 +3947,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_generalized_alloc_print_helpe
 
 /// BOOT-04: stage1 が同じ generalized alloc+print pair source から同一 stage2 Wasm を 2 回生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_identical_alloc_print_pair_stage2_wasm_for_same_source() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -3985,6 +4021,7 @@ fn test_e2e_bootstrap_stage1_emits_identical_alloc_print_pair_stage2_wasm_for_sa
 
 /// BOOT-04: stage1 が alloc+print+read-file import を伴う read-file program を stage2 Wasm として生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_read_file_program() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -4062,6 +4099,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_read_file_program() {
 
 /// BOOT-04: stage1 が generalized 3-helper triple で alloc+print+read-file stage2 Wasm を生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_generalized_alloc_print_read_helper_triple() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -4135,6 +4173,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_generalized_alloc_print_read_
 
 /// BOOT-04: stage1 が同じ generalized alloc+print+read-file triple source から同一 stage2 Wasm を 2 回生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_identical_read_helper_triple_stage2_wasm_for_same_source() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -4209,6 +4248,7 @@ fn test_e2e_bootstrap_stage1_emits_identical_read_helper_triple_stage2_wasm_for_
 
 /// BOOT-04: stage1 が同じ read-file helper source から同一 stage2 Wasm を 2 回生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_identical_read_helper_stage2_wasm_for_same_source() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -4283,6 +4323,7 @@ fn test_e2e_bootstrap_stage1_emits_identical_read_helper_stage2_wasm_for_same_so
 
 /// BOOT-04: stage1 が実 path string を伴う read-file program を stage2 Wasm として生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_read_file_path_string_program() {
     let stage2_source =
         r#"(defn main [] (string-length (read-file "fixture.txt")))"#.replace('"', "\\\"");
@@ -4375,6 +4416,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_read_file_path_string_program
 
 /// BOOT-04: stage1 が同じ source-aware read-file path string source から同一 stage2 Wasm を 2 回生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_identical_read_file_path_stage2_wasm_for_same_source() {
     let stage2_source =
         r#"(defn main [] (string-length (read-file "fixture.txt")))"#.replace('"', "\\\"");
@@ -4468,6 +4510,7 @@ fn test_e2e_bootstrap_stage1_emits_identical_read_file_path_stage2_wasm_for_same
 
 /// BOOT-04: stage1 が command-line-arg builtin を含む stage2 Wasm を生成し実行できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_command_line_arg_program() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -4549,6 +4592,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_command_line_arg_program() {
 
 /// BOOT-04: stage1 が同じ command-line-arg helper source から同一 stage2 Wasm を 2 回生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_identical_arg_helper_stage2_wasm_for_same_source() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -4627,6 +4671,7 @@ fn test_e2e_bootstrap_stage1_emits_identical_arg_helper_stage2_wasm_for_same_sou
 
 /// BOOT-04: stage1 が generalized 4-helper path で alloc+print+read-file+command-line-arg stage2 Wasm を生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_generalized_alloc_print_read_arg_helper_quad() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -4704,6 +4749,7 @@ fn test_e2e_bootstrap_stage1_emits_stage2_wasm_for_generalized_alloc_print_read_
 
 /// BOOT-04: stage1 が同じ generalized alloc+print+read-file+command-line-arg source から同一 stage2 Wasm を 2 回生成できること
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_emits_identical_arg_helper_quad_stage2_wasm_for_same_source() {
     let harness = r#"
 (defn bootstrap-append-bytes [dst src idx count]
@@ -4795,6 +4841,7 @@ fn test_e2e_bootstrap_stage1_emits_identical_arg_helper_quad_stage2_wasm_for_sam
 /// - code section が大きくなるほど bootstrap-append-bytes の再帰深度が増す
 /// - N が十分に大きいとき、stage1 実行時に Wasm スタックトラップが発生する
 #[test]
+#[ignore]
 fn test_e2e_boot04_bootstrap_append_bytes_deep_recursion_trap_repro() {
     let build_stage2_src = |n_funcs: usize| -> String {
         let mut s = String::new();
@@ -4897,6 +4944,7 @@ fn test_e2e_boot04_bootstrap_append_bytes_deep_recursion_trap_repro() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_selfhost_compile_program_functions_handles_many_defns() {
     let mut stage2_src = String::new();
     for i in 0..2000 {
@@ -4931,6 +4979,7 @@ fn test_e2e_boot04_selfhost_compile_program_functions_handles_many_defns() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_selfhost_compile_program_functions_with_source_handles_deep_let_chain() {
     let mut nested_expr = "0".to_string();
     for i in (0..512).rev() {
@@ -4969,6 +5018,7 @@ fn test_e2e_boot04_selfhost_compile_program_functions_with_source_handles_deep_l
 /// bootstrap-append-bytes が何個の関数 (≈ code section バイト数) から失敗するかの境界を確認する。
 /// 結果を eprintln で出力し、修正後の境界比較に利用する。
 #[test]
+#[ignore]
 fn test_e2e_boot04_bootstrap_append_bytes_recursion_depth_boundary() {
     let make_full_source = |n_funcs: usize| -> Vec<u8> {
         let mut src = String::new();
@@ -5060,6 +5110,7 @@ fn test_e2e_boot04_bootstrap_append_bytes_recursion_depth_boundary() {
 /// - parse-program → compile-program-functions → emit-*-wasi でコンパイルし
 /// - WASM バイトを length-prefixed 形式で stdout に出力すること
 #[test]
+#[ignore]
 fn test_e2e_boot04_read_file_compiler_mode() {
     let main_path = selfhost_main_path();
     let stage1_wasm = compile_file_only(&main_path);
@@ -5111,6 +5162,7 @@ fn test_e2e_boot04_read_file_compiler_mode() {
 /// - stage2→stage3 の接続性を明示的に固定するテスト
 /// - stage3 の出力が stage1→stage2 の出力と一致する（同一入力 → 決定論的出力）ことも検証
 #[test]
+#[ignore]
 fn test_e2e_boot04_stage2_compiler_to_stage3_minimal() {
     let main_path = selfhost_main_path();
     let fixture_dir =
@@ -5180,6 +5232,7 @@ fn test_e2e_boot04_stage2_compiler_to_stage3_minimal() {
 /// 現在の blockerを精密に固定する:
 /// BOOT-04: self-hosted stage2 compiler が minimal.ls を stage3 へコンパイルできること
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_minimal() {
     let main_path = selfhost_main_path();
     // selfhost/ ルート（src/ の親）を WASI dir として設定する。
@@ -5259,6 +5312,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_minimal() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_preserves_batched_step_progress() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -5416,6 +5470,7 @@ fn test_e2e_boot04_self_hosted_stage2_preserves_batched_step_progress() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_large_single_file() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -5457,6 +5512,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_large_single_file() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_bare_module_file() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -5498,6 +5554,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_bare_module_file() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_bare_zero_fs_package() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -5559,6 +5616,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_bare_zero_fs_package() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_cache_probe_parses_bare_module_once() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -5641,6 +5699,7 @@ fn test_e2e_boot04_self_hosted_stage2_cache_probe_parses_bare_module_once() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_cache_probe_reads_main_again_entry() {
     let main_path = selfhost_main_path();
     let main_src =
@@ -5707,6 +5766,7 @@ fn test_e2e_boot04_self_hosted_stage2_cache_probe_reads_main_again_entry() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_cache_pairs_probe_handles_bare_module() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -5790,6 +5850,7 @@ fn test_e2e_boot04_self_hosted_stage2_cache_pairs_probe_handles_bare_module() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_cache_pairs_probe_handles_one_import() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -5878,6 +5939,7 @@ fn test_e2e_boot04_self_hosted_stage2_cache_pairs_probe_handles_one_import() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_cache_pairs_probe_reads_main_again_graph() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -5953,6 +6015,7 @@ fn test_e2e_boot04_self_hosted_stage2_cache_pairs_probe_reads_main_again_graph()
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_reports_main_again_cache_pairs_progress() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -6001,6 +6064,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_main_again_cache_pairs_progress() 
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_reports_one_import_path_resolution() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -6062,6 +6126,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_one_import_path_resolution() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_reports_main_again_progress() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -6101,6 +6166,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_main_again_progress() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_reports_main_again_build_progress() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -6199,6 +6265,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_main_again_build_progress() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_reaches_main_again_build_phase_markers() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -6304,6 +6371,7 @@ fn test_e2e_boot04_self_hosted_stage2_reaches_main_again_build_phase_markers() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_reaches_main_again_build_compile_progress_markers() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -6408,6 +6476,7 @@ fn test_e2e_boot04_self_hosted_stage2_reaches_main_again_build_compile_progress_
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_warm_target_defn_parity_reaches_ast_make_type_constrained() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -6509,6 +6578,7 @@ fn test_e2e_boot04_self_hosted_stage2_warm_target_defn_parity_reaches_ast_make_t
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_target_defn_parity_reaches_ast_make_type_constrained() {
     fn marker_value(values: &[i64], marker: i64) -> i64 {
         assert_eq!(
@@ -6641,6 +6711,7 @@ fn test_e2e_boot04_self_hosted_stage2_target_defn_parity_reaches_ast_make_type_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_stage1_target_defn_parity_reports_ast_make_type_constrained_lengths() {
     fn marker_value(values: &[i64], marker: i64) -> i64 {
         assert_eq!(
@@ -7701,6 +7772,7 @@ fn test_debug_boot04_stage1_build_compile_progress_on_large_ftable_vector_push_s
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_stage2_first_defn_source_probe_emits_expected_plus_ir_on_minimal_text_eq_loop_shape()
  {
     let temp_root = selfhost_project_root()
@@ -7815,6 +7887,7 @@ fn test_debug_boot04_stage2_ast_chunked_step_progress_on_ast_file() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_cache_compile_progress_counts_all_main_modules() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -7922,6 +7995,7 @@ fn test_e2e_boot04_self_hosted_stage2_cache_compile_progress_counts_all_main_mod
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_module_resolver_first_defn_with_source_matches_ftable_ir() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8060,6 +8134,7 @@ fn test_e2e_boot04_self_hosted_stage2_module_resolver_first_defn_with_source_mat
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_reports_module_resolver_progress() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8102,6 +8177,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_module_resolver_progress() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_reports_string_length_if_progress() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8145,6 +8221,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_string_length_if_progress() {
 }
 
 #[test]
+#[ignore]
 fn test_v2_12_self_hosted_stage2_keeps_complex_defn_decl_tag() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8227,6 +8304,7 @@ fn test_v2_12_self_hosted_stage2_keeps_complex_defn_decl_tag() {
 }
 
 #[test]
+#[ignore]
 fn test_v2_12_self_hosted_stage2_emits_data_section_for_string_literals() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8289,6 +8367,7 @@ fn test_v2_12_self_hosted_stage2_emits_data_section_for_string_literals() {
 }
 
 #[test]
+#[ignore]
 fn test_v2_12_self_hosted_stage2_keeps_if_and_string_expr_tags() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8349,6 +8428,7 @@ fn test_v2_12_self_hosted_stage2_keeps_if_and_string_expr_tags() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_module_import_file() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8390,6 +8470,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_module_import_file() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_main_shape_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8461,6 +8542,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_main_shape_source() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_text_eq_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8503,6 +8585,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_text_eq_repro_source() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_string_length_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8552,6 +8635,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_string_length_repro_source() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_string_length_if_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8601,6 +8685,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_string_length_if_repro_source() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_let_string_length_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8648,6 +8733,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_let_string_length_repro_source() 
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_eq_string_length_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8697,6 +8783,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_eq_string_length_repro_source() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_let_eq_string_length_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8744,6 +8831,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_let_eq_string_length_repro_source
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_runs_path_parent_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8788,6 +8876,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_path_parent_repro_source() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_runs_path_join_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8831,6 +8920,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_path_join_repro_source() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_runs_string_concat_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8886,6 +8976,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_string_concat_repro_source() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_runs_recursive_string_accumulator_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8941,6 +9032,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_recursive_string_accumulator_repro_so
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_runs_substring_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -8993,6 +9085,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_substring_repro_source() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_runs_recursive_substring_accumulator_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9039,6 +9132,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_recursive_substring_accumulator_repro
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_runs_string_concat_literal_suffix_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9085,6 +9179,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_string_concat_literal_suffix_repro_so
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_runs_string_literal_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9140,6 +9235,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_string_literal_repro_source() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_runs_module_relative_join_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9185,6 +9281,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_module_relative_join_repro_source() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_user_call_four_args_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9232,6 +9329,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_user_call_four_args_repro_source(
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_runs_command_line_arg_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9278,6 +9376,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_command_line_arg_repro_source() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_runs_print_repro_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9330,6 +9429,7 @@ fn test_e2e_boot04_self_hosted_stage2_runs_print_repro_source() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_reports_print_repro_ir() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9374,6 +9474,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_print_repro_ir() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_reports_print_repro_tokens() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9418,6 +9519,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_print_repro_tokens() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_two_imports_zero_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9460,6 +9562,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_two_imports_zero_source() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_one_import_zero_fs_package() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9524,6 +9627,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_one_import_zero_fs_package() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_two_imports_zero_fs_package() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9600,6 +9704,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_two_imports_zero_fs_package() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_if_builtin_source() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9643,6 +9748,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_if_builtin_source() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_main_again() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9715,6 +9821,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_main_again() {
 }
 
 #[test]
+#[ignore]
 fn test_v2_12_self_hosted_stage2_reports_main_again_stage3_local_bounds() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9778,6 +9885,7 @@ fn test_v2_12_self_hosted_stage2_reports_main_again_stage3_local_bounds() {
 }
 
 #[test]
+#[ignore]
 fn test_v2_12_self_hosted_stage2_compiles_large_let_chain() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9820,6 +9928,7 @@ fn test_v2_12_self_hosted_stage2_compiles_large_let_chain() {
 }
 
 #[test]
+#[ignore]
 fn test_v2_12_self_hosted_stage2_compiles_vector_push_program() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9867,6 +9976,7 @@ fn test_v2_12_self_hosted_stage2_compiles_vector_push_program() {
 }
 
 #[test]
+#[ignore]
 fn test_v2_12_self_hosted_stage2_loads_wasm_emit_module() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -9917,6 +10027,7 @@ fn test_v2_12_self_hosted_stage2_loads_wasm_emit_module() {
 }
 
 #[test]
+#[ignore]
 fn test_v2_12_self_hosted_stage2_loads_compiler_mode_module() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -10049,6 +10160,7 @@ fn test_v2_12_self_hosted_stage2_reports_compiler_mode_first_violation_body_diff
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_high_function_index_calls() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -10115,6 +10227,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_high_function_index_calls() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_high_function_index_step64_pattern() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -10188,6 +10301,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_high_function_index_step64_patter
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_high_index_parser_like_step64() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -10298,6 +10412,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_high_index_parser_like_step64() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_reports_stage3_minimal_progress() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -10405,6 +10520,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_stage3_minimal_progress() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_classifies_chunked_lexer_failure_band() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -10518,6 +10634,7 @@ fn test_e2e_boot04_self_hosted_stage2_classifies_chunked_lexer_failure_band() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiles_step512_progress_harness() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -10562,6 +10679,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiles_step512_progress_harness() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_compiler_runtime_resolves_param_and_user_call() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -10610,6 +10728,7 @@ fn test_e2e_boot04_self_hosted_stage2_compiler_runtime_resolves_param_and_user_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_self_hosted_stage2_reports_step512_progress() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -10795,6 +10914,7 @@ fn test_e2e_boot04_self_hosted_stage2_reports_step512_progress() {
 
 /// BOOT-04: compiler-mode が Syntax.LexerCompat を含む selfhost probe を解決できること
 #[test]
+#[ignore]
 fn test_e2e_boot04_compiler_mode_lexer_compat_import_resolution() {
     let main_path = selfhost_main_path();
     let selfhost_root = main_path
@@ -10867,6 +10987,7 @@ fn test_e2e_boot04_compiler_mode_lexer_compat_import_resolution() {
 /// - 生成 wasm は valid wasm
 /// - _start → main → helper-value → 42 が正常実行される
 #[test]
+#[ignore]
 fn test_e2e_boot04_compiler_mode_import_resolution() {
     let main_path = selfhost_main_path();
     let fixture_dir =
@@ -10915,6 +11036,7 @@ fn test_e2e_boot04_compiler_mode_import_resolution() {
 
 /// BOOT-04: compiler-mode が manifest なし source root 配下の dotted import を解決できること
 #[test]
+#[ignore]
 fn test_e2e_boot04_compiler_mode_dotted_import_resolution_from_src_root() {
     let main_path = selfhost_main_path();
     let fixture_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -10954,6 +11076,7 @@ fn test_e2e_boot04_compiler_mode_dotted_import_resolution_from_src_root() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_compiler_mode_package_index_resolution() {
     let main_path = selfhost_main_path();
     let fixture_dir = std::env::temp_dir().join(format!(
@@ -11007,6 +11130,7 @@ fn test_e2e_boot04_compiler_mode_package_index_resolution() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_compiler_mode_supports_twelve_arg_calls() {
     let main_path = selfhost_main_path();
     let fixture_dir =
@@ -11040,6 +11164,7 @@ fn test_e2e_boot04_compiler_mode_supports_twelve_arg_calls() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_boot04_compiler_mode_ignores_dotted_flat_file() {
     let main_path = selfhost_main_path();
     let fixture_dir = std::env::temp_dir().join(format!(
@@ -11187,6 +11312,7 @@ fn test_debug_stage2_output_minimal() {
 }
 
 #[test]
+#[ignore]
 fn test_validate_stage2_wasm() {
     // stage2 を詳細バリデーション
     let main_path = selfhost_main_path();

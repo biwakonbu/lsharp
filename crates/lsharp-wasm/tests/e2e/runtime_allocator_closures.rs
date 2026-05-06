@@ -1141,6 +1141,7 @@ fn test_e2e_alloc_metrics_leak_suspect_detection() {
 
 /// GC-06: CI artifact 用の JSON payload を生成できること
 #[test]
+#[ignore]
 fn test_e2e_alloc_metrics_ci_artifact_payload() {
     let metrics_result = compile_and_run(
         r#"

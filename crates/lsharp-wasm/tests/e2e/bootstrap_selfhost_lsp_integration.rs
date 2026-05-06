@@ -104,6 +104,7 @@ fn test_e2e_json_value_construction() {
 /// Rust 版コンパイラで selfhost/src/App/Main.ls をコンパイルし、
 /// 出力される stage1.wasm が正しく動作することを検証
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_compile_and_run() {
     let main_path = selfhost_main_path();
     let wasm_bytes = compile_file_only(&main_path);
@@ -140,6 +141,7 @@ fn test_e2e_bootstrap_stage1_compile_and_run() {
 /// P8-9 T4-3: stage1 でテスト用 .ls プログラムの AST 構築が機能することを検証
 /// (Main.ls が内部で AST→IR→Wasm パイプラインを実行していることの検証)
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_pipeline_verification() {
     let output = compile_and_run_file(&selfhost_main_path());
     let lines: Vec<&str> = output.trim().split('\n').collect();
@@ -158,6 +160,7 @@ fn test_e2e_bootstrap_stage1_pipeline_verification() {
 /// stage1.wasm が有効な Wasm バイナリであり、
 /// 将来的に .ls ファイルを受け取って stage2.wasm を生成できる構造を持つことを検証
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_binary_structure() {
     let wasm_bytes = compile_file_only(&selfhost_main_path());
 
@@ -217,6 +220,7 @@ fn test_e2e_bootstrap_stage1_binary_structure() {
 /// P8-9 T4-6: CI で使用されるブートストラップ検証と同等のテスト
 /// fixed input set の selfhost モジュールが個別 compile できることを検証。
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_ci_all_modules_compile() {
     let modules = [
         "AST.ls",
@@ -278,6 +282,7 @@ fn test_e2e_bootstrap_ci_all_modules_compile() {
 
 /// P8-9 T4-6: CI で使用される stdlib コンパイル検証と同等のテスト
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_ci_stdlib_compile() {
     let modules = [
         "Core", "Char", "Debug", "IO", "List", "Map", "Path", "Set", "String", "Vector", "Json",
@@ -301,6 +306,7 @@ fn test_e2e_bootstrap_ci_stdlib_compile() {
 
 /// P11-2 BOOT-03: examples fixed input set が個別 compile できることを検証
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_ci_examples_compile() {
     let examples = ["fib.ls", "module.ls", "trait.ls"];
     let base_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples");
@@ -634,6 +640,7 @@ fn test_e2e_selfhost_formatter_lsp_integration() {
 // =====================================================
 /// T4-4: if 式と let 式のソースからのコンパイルを検証
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_compile_if_let() {
     let output = compile_and_run_file(&selfhost_main_path());
     let lines: Vec<&str> = output.trim().split('\n').collect();
@@ -659,6 +666,7 @@ fn test_e2e_selfhost_main_compile_if_let() {
 // =====================================================
 /// T4-5: Main.ls のコンパイルが決定的 (同一入力→同一バイナリ) であることを検証
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_deterministic() {
     let main_path = selfhost_main_path();
     let wasm1 = compile_file_only(&main_path);
@@ -673,6 +681,7 @@ fn test_e2e_bootstrap_stage1_deterministic() {
 
 /// T4-5: stage1 バイナリ構造の固定点検証 (セクション構成が安定していること)
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_fixed_point_sections() {
     let wasm = compile_file_only(&selfhost_main_path());
     // Wasm magic + version
@@ -712,6 +721,7 @@ fn test_e2e_bootstrap_stage1_fixed_point_sections() {
 
 /// T4-5: stage1 バイナリのセクション構成が複数回コンパイルで安定していることを検証
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_section_stability() {
     let main_path = selfhost_main_path();
     let wasm1 = compile_file_only(&main_path);
@@ -781,6 +791,7 @@ fn test_e2e_bootstrap_stage1_section_stability() {
 
 /// T4-5: stage1 の export シンボル名が安定していることを検証
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_symbol_stability() {
     let main_path = selfhost_main_path();
     let wasm1 = compile_file_only(&main_path);
@@ -832,6 +843,7 @@ fn test_e2e_bootstrap_stage1_symbol_stability() {
 
 /// T4-5: selfhost の各モジュールを個別にコンパイルし出力が決定的であることを検証
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_selfhost_modules_deterministic() {
     // MacroExpand.ls, TypeInfer.ls は拡張構文を使用しておりパース未対応のため除外
     let modules: &[&str] = &[

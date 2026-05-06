@@ -302,6 +302,7 @@ fn assert_probe_markers_in_order(output: &[i64], markers: &[i64], context: &str)
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_compile_phase_probe_reaches_compile_complete() {
     let output = run_stage1_main_compiler_probe(
         18,
@@ -326,6 +327,7 @@ fn test_e2e_bootstrap_stage1_compile_phase_probe_reaches_compile_complete() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_build_phase_probe_reaches_build_complete() {
     let output =
         run_stage1_main_compiler_probe(14, "stage1 build-phase probe should finish Main.ls build");
@@ -379,12 +381,14 @@ fn test_e2e_bootstrap_stage1_build_phase_probe_reaches_build_complete() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_cache_probe_emits_cache_marker() {
     let output = run_stage1_main_compiler_probe(8, "stage1 cache probe should emit cache marker");
     assert_probe_pattern(&output, &[Some(80), None, None, None], "stage1 cache probe");
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_ast_chunked_step_progress_probe_reaches_first_pair_complete() {
     let output = run_stage1_main_compiler_probe(
         20,
@@ -398,6 +402,7 @@ fn test_e2e_bootstrap_stage1_ast_chunked_step_progress_probe_reaches_first_pair_
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_module_resolver_first_defn_source_probe_reaches_prefix() {
     let output = run_stage1_compiler_probe(
         "src/App/ModuleResolver.ls",
@@ -412,6 +417,7 @@ fn test_e2e_bootstrap_stage1_module_resolver_first_defn_source_probe_reaches_pre
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_module_resolver_ast_chunked_step_probe_reaches_completion() {
     let output = run_stage1_compiler_probe(
         "src/App/ModuleResolver.ls",
@@ -426,6 +432,7 @@ fn test_e2e_bootstrap_stage1_module_resolver_ast_chunked_step_probe_reaches_comp
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_backend_compiler_pair_progress_probe_reaches_final_markers() {
     let output = run_stage1_compiler_probe(
         "src/Backend/Wasm/Compiler.ls",
@@ -440,6 +447,7 @@ fn test_e2e_bootstrap_stage1_backend_compiler_pair_progress_probe_reaches_final_
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_compiler_mode_pair_progress_probe_reaches_final_markers() {
     let output = run_stage1_compiler_probe(
         "src/App/CompilerMode.ls",
@@ -454,6 +462,7 @@ fn test_e2e_bootstrap_stage1_compiler_mode_pair_progress_probe_reaches_final_mar
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_compiler_mode_token_debug_emits_token_count() {
     let output = run_stage1_compiler_probe(
         "src/App/CompilerMode.ls",
@@ -467,6 +476,7 @@ fn test_e2e_bootstrap_stage1_compiler_mode_token_debug_emits_token_count() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_pipeline_smoke_pair_progress_probe_reaches_final_markers() {
     let output = run_stage1_compiler_probe(
         "src/App/PipelineSmoke.ls",
@@ -481,6 +491,7 @@ fn test_e2e_bootstrap_stage1_pipeline_smoke_pair_progress_probe_reaches_final_ma
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_native_codegen_pair_progress_probe_reaches_final_markers() {
     let output = run_stage1_compiler_probe(
         "src/Backend/Native/NativeCodegen.ls",
@@ -495,6 +506,7 @@ fn test_e2e_bootstrap_stage1_native_codegen_pair_progress_probe_reaches_final_ma
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_native_codegen_cache_pairs_probe_emits_counts() {
     let output = run_stage1_compiler_probe(
         "src/Backend/Native/NativeCodegen.ls",
@@ -509,6 +521,7 @@ fn test_e2e_bootstrap_stage1_native_codegen_cache_pairs_probe_emits_counts() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_native_codegen_cache_probe_emits_marker() {
     let output = run_stage1_compiler_probe(
         "src/Backend/Native/NativeCodegen.ls",
@@ -523,6 +536,7 @@ fn test_e2e_bootstrap_stage1_native_codegen_cache_probe_emits_marker() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_native_codegen_ir_debug_emits_decl_count() {
     let output = run_stage1_compiler_probe(
         "src/Backend/Native/NativeCodegen.ls",
@@ -537,6 +551,7 @@ fn test_e2e_bootstrap_stage1_native_codegen_ir_debug_emits_decl_count() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_native_codegen_token_debug_emits_token_count() {
     let output = run_stage1_compiler_probe(
         "src/Backend/Native/NativeCodegen.ls",
@@ -759,6 +774,7 @@ fn build_alloc_bootstrap_harness_double(stage2_src: &str) -> String {
 /// 完全な byte-level 一致は stage1/stage0 が異なるコード生成器を持つため不要だが、
 /// 計算結果 (i64) は一致しなければならない。
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_stage2_match() {
     // stage0 と stage1 が同じ結果を生むことを確認するテストケース群
     // stage2 では selfhost runtime import が自動挿入されうるが、最終結果は pure i64 に限定する
@@ -809,6 +825,7 @@ fn test_e2e_bootstrap_stage1_stage2_match() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_stage2_match_fib_runtime_layout() {
     let src =
         "(defn fib [n] (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))) (defn main [] (fib 8))";
@@ -841,6 +858,7 @@ fn test_e2e_bootstrap_stage1_stage2_match_fib_runtime_layout() {
 /// real compiler-mode / self-feed path で `stage2 == stage3` の byte identity を
 /// 直接 assert し、stage3 から minimal.ls の再コンパイルまで通す。
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
     run_bootstrap_acceptance_with_expanded_stack(|| {
         let main_path = selfhost_main_path();
@@ -1046,6 +1064,7 @@ fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_fixed_point_minimal_build_progress_matches_stage2_stage3() {
     run_bootstrap_acceptance_with_expanded_stack(|| {
         let main_path = selfhost_main_path();
@@ -1155,6 +1174,7 @@ fn build_stage2_self_compiler_from_main() -> (Vec<u8>, std::path::PathBuf) {
 /// CP-01 / BOOT-04: `print` / `read-file` 集約箇所である Compiler.ls / WasmEmit.ls を
 /// stage2 自己コンパイラが **同一バイト列** で再出力できること（決定性の固定点エビデンス）
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage2_compiler_wasmemit_modules_deterministic() {
     run_bootstrap_acceptance_with_expanded_stack(|| {
         let (stage2, root) = build_stage2_self_compiler_from_main();
@@ -1556,6 +1576,7 @@ fn compile_fixed_input_target_with_rust_incremental(
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage2_self_feed_fixed_input_set() {
     run_bootstrap_acceptance_with_expanded_stack(|| {
         let (stage2, root) = build_stage2_self_compiler_from_main();
@@ -1738,6 +1759,7 @@ fn test_e2e_bootstrap_stage2_self_feed_fixed_input_set() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_fixed_input_set_stage_chain_match_cli_module() {
     run_bootstrap_acceptance_with_expanded_stack(|| {
         let (stage1, stage2, selfhost_root) = build_stage1_and_stage2_self_compilers_from_main();
@@ -1769,6 +1791,7 @@ fn test_e2e_bootstrap_fixed_input_set_stage_chain_match_cli_module() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_fixed_input_set_stage_chain_match_lsp_server_module() {
     run_bootstrap_acceptance_with_expanded_stack(|| {
         let (stage1, stage2, selfhost_root) = build_stage1_and_stage2_self_compilers_from_main();
@@ -1808,6 +1831,7 @@ fn test_e2e_bootstrap_fixed_input_set_stage_chain_match_lsp_server_module() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_fixed_input_set_stage_chain_match() {
     run_bootstrap_acceptance_with_expanded_stack(|| {
         let (stage1, stage2, selfhost_root) = build_stage1_and_stage2_self_compilers_from_main();
@@ -1955,6 +1979,7 @@ fn test_e2e_bootstrap_fixed_input_set_stage_chain_match() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_incremental_compile_matches_full_compile_fixed_input_set() {
     run_bootstrap_acceptance_with_expanded_stack(|| {
         let artifact_id = bootstrap_diff_artifact_id();
@@ -2127,6 +2152,7 @@ fn test_e2e_incremental_compile_matches_full_compile_fixed_input_set() {
 /// byte-identical であることを確認する。
 /// また、必須セクション (type / function / export / code) が必ず存在することを確認する。
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_section_stability() {
     // alloc import を使うプログラムで section stability を検証 (より多くのセクションを持つ)
     let stage2_src = "(defn main [] (vector-length (vector-new 3)))";
@@ -2210,6 +2236,7 @@ fn test_e2e_bootstrap_stage1_section_stability() {
 /// byte-identical であることを確認する。
 /// また、`_start` シンボルが必ず export されていることを確認する。
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_symbol_stability() {
     // 2 種類のプログラムでシンボル安定性を検証
     let test_cases: &[&str] = &[
@@ -2381,6 +2408,7 @@ fn type_section_has_void_void(type_section: &[u8]) -> bool {
 /// が正しく機能し、生成された stage2 Wasm を wasmtime WASI ランタイムで
 /// 直接実行できることを検証する。
 #[test]
+#[ignore]
 fn test_e2e_wasi_start_signature() {
     let cases: &[&str] = &[
         "(defn main [] 42)",

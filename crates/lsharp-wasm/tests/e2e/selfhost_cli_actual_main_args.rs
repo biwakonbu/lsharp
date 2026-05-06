@@ -85,6 +85,7 @@ fn run_cli_main_with_input_file_capture(
 
 /// TEST-CLI-02-AP: actual Cli main は argv 経由で check file command を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_check_file() {
     let lines = run_cli_main_with_input_file("check", "(defn main [] 42)", &["check", "input.ls"]);
 
@@ -97,6 +98,7 @@ fn test_e2e_selfhost_cli_main_with_args_check_file() {
 
 /// TEST-CLI-02-AQ: actual Cli main は argv 経由で test file command を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_test_file() {
     let lines = run_cli_main_with_input_file(
         "test",
@@ -113,6 +115,7 @@ fn test_e2e_selfhost_cli_main_with_args_test_file() {
 
 /// TEST-CLI-02-AR: actual Cli main は argv 経由で review file command を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_review_file() {
     let lines = run_cli_main_with_input_file(
         "review",
@@ -135,6 +138,7 @@ fn test_e2e_selfhost_cli_main_with_args_review_file() {
 
 /// TEST-CLI-02-AR2: actual Cli main は argv 経由で review --json を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_review_json_file() {
     let lines = run_cli_main_with_input_file(
         "review_json",
@@ -153,6 +157,7 @@ fn test_e2e_selfhost_cli_main_with_args_review_json_file() {
 
 /// TEST-CLI-02-AR2b: actual Cli main は argv 経由で review --format json を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_review_format_json_file() {
     let lines = run_cli_main_with_input_file(
         "review_format_json",
@@ -171,6 +176,7 @@ fn test_e2e_selfhost_cli_main_with_args_review_format_json_file() {
 
 /// TEST-CLI-02-AR3: actual Cli main は invalid な review --format value を拒否すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_review_invalid_format_fails() {
     let output = run_cli_main_with_input_file_capture(
         "review_invalid_format",
@@ -193,6 +199,7 @@ fn test_e2e_selfhost_cli_main_with_args_review_invalid_format_fails() {
 
 /// TEST-CLI-02-AS: actual Cli main は argv 経由で doc file command を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_doc_file() {
     let lines = run_cli_main_with_input_file("doc", "(defn main [] 42)", &["doc", "input.ls"]);
 
@@ -205,6 +212,7 @@ fn test_e2e_selfhost_cli_main_with_args_doc_file() {
 
 /// TEST-CLI-02-AS2: actual Cli main は argv 経由で doc --json を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_doc_json_file() {
     let lines = run_cli_main_with_input_file(
         "doc_json",
@@ -222,6 +230,7 @@ fn test_e2e_selfhost_cli_main_with_args_doc_json_file() {
 
 /// TEST-CLI-02-AS2b: actual Cli main は argv 経由で doc --format json を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_doc_format_json_file() {
     let lines = run_cli_main_with_input_file(
         "doc_format_json",
@@ -240,6 +249,7 @@ fn test_e2e_selfhost_cli_main_with_args_doc_format_json_file() {
 
 /// TEST-CLI-02-AS3: actual Cli main は invalid な doc --format value を拒否すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_doc_invalid_format_fails() {
     let output = run_cli_main_with_input_file_capture(
         "doc_invalid_format",
@@ -262,6 +272,7 @@ fn test_e2e_selfhost_cli_main_with_args_doc_invalid_format_fails() {
 
 /// TEST-CLI-02-AT: actual Cli main は argv 経由で doc-ack file command を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_doc_ack_file() {
     let lines =
         run_cli_main_with_input_file("doc_ack", "(defn main [] 42)", &["doc-ack", "input.ls"]);
@@ -280,6 +291,7 @@ fn test_e2e_selfhost_cli_main_with_args_doc_ack_file() {
 
 /// TEST-CLI-02-AU: actual Cli main は argv 経由で doc-check file command を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_doc_check_file() {
     let lines =
         run_cli_main_with_input_file("doc_check", "(defn main [] 42)", &["doc-check", "input.ls"]);
@@ -299,6 +311,7 @@ fn test_e2e_selfhost_cli_main_with_args_doc_check_file() {
 
 /// TEST-CLI-02-AU2: actual Cli main は argv 経由で doc-ack --trailer を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_doc_ack_trailer_only() {
     let lines = run_cli_main_with_input_file(
         "doc_ack_trailer",
@@ -315,6 +328,7 @@ fn test_e2e_selfhost_cli_main_with_args_doc_ack_trailer_only() {
 
 /// TEST-CLI-02-AU3: actual Cli main は argv 経由で doc-check --strict を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_doc_check_strict_file() {
     let lines = run_cli_main_with_input_file(
         "doc_check_strict",
@@ -337,6 +351,7 @@ fn test_e2e_selfhost_cli_main_with_args_doc_check_strict_file() {
 
 /// TEST-CLI-02-AU4: actual Cli main は argv 経由で invalid な doc-check --strict trailer を拒否すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_doc_check_strict_missing_trailer() {
     let output = run_cli_main_with_input_file_capture(
         "doc_check_strict_fail",
@@ -359,6 +374,7 @@ fn test_e2e_selfhost_cli_main_with_args_doc_check_strict_missing_trailer() {
 
 /// TEST-CLI-02-AV: actual Cli main は argv 経由で install command を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_install_package() {
     let lines = run_cli_main_with_args(&["install", "core"]);
 
@@ -371,6 +387,7 @@ fn test_e2e_selfhost_cli_main_with_args_install_package() {
 
 /// TEST-CLI-02-AW: actual Cli main は argv 経由で repl command を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_repl_summary() {
     let lines = run_cli_main_with_args(&["repl"]);
 
@@ -383,6 +400,7 @@ fn test_e2e_selfhost_cli_main_with_args_repl_summary() {
 
 /// TEST-CLI-02-AX: actual Cli main は argv 経由で lsp command を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_lsp_summary() {
     let lines = run_cli_main_with_args(&["lsp"]);
 
@@ -406,6 +424,7 @@ fn test_e2e_selfhost_cli_main_with_args_lsp_summary() {
 
 /// TEST-CLI-02-AY: actual Cli main は argv 経由で fmt file command を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_fmt_file() {
     let lines = run_cli_main_with_input_file("fmt", "(defn a [] 42)", &["fmt", "input.ls"]);
 

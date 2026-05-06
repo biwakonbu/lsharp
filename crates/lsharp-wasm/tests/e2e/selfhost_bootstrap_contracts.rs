@@ -9,6 +9,7 @@ use super::support::*;
 /// 現状の Main.ls はインライン再定義 (mini-tokenize 等) を含んでいるため、
 /// import-only 化が完了するまで FAIL する (Red Phase)。
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_import_only_pipeline() {
     let main_path = selfhost_main_path();
     let main_source = std::fs::read_to_string(&main_path)

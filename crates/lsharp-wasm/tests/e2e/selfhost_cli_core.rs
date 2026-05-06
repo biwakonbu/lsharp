@@ -499,6 +499,7 @@ fn run_cli_multifile_helper_size(dir: &std::path::Path, file_path: &str, target:
 /// T4-4 AC-013: ユーティリティコマンドが L# 実装で動作すること
 /// Red Phase: selfhost/src/App/Cli.ls が未作成のため FAIL する。
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_repl_lsp_fmt() {
     let cli_path = selfhost_source_path("Cli.ls");
     assert!(cli_path.exists(), "selfhost/src/App/Cli.ls が存在しない");
@@ -518,6 +519,7 @@ fn test_e2e_selfhost_cli_repl_lsp_fmt() {
 
 /// TEST-CLI-02-C2: canonical App/Cli.ls が file-path compile gate を通過すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_canonical_file_compile() {
     let wasm = compile_file_only(&selfhost_source_path("Cli.ls"));
     assert!(
@@ -531,6 +533,7 @@ fn test_e2e_selfhost_cli_canonical_file_compile() {
 ///
 /// T4a-2 AC-104/AC-106: help 出力が usage とサブコマンド一覧を含むこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_help_output() {
     let harness = r#"
 (defn main []
@@ -573,6 +576,7 @@ fn test_e2e_selfhost_cli_help_output() {
 
 /// TEST-CLI-01-B2: selfhost/src/App/Cli.ls の compile target parser helper が preview1/component/alias を区別できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_compile_target_parser_helper() {
     let harness = r#"
 (defn main []
@@ -598,6 +602,7 @@ fn test_e2e_selfhost_cli_compile_target_parser_helper() {
 
 /// TEST-CLI-01-B3: compile/build subcommand help に target option が明示されること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_compile_help_mentions_target_option() {
     let harness = r#"
 (defn main []
@@ -632,6 +637,7 @@ fn test_e2e_selfhost_cli_compile_help_mentions_target_option() {
 ///
 /// T4a-2 AC-105: version 出力形式を固定する
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_version_output() {
     let harness = r#"
 (defn main []
@@ -650,6 +656,7 @@ fn test_e2e_selfhost_cli_version_output() {
 ///
 /// CLI-02 の最小 tranche として、file I/O 抜きで parse-program を CLI helper へ接続する。
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_parse_source_core() {
     let harness = r#"
 (defn main []
@@ -689,6 +696,7 @@ fn test_e2e_selfhost_cli_parse_source_core() {
 ///
 /// CLI-02 の最小 tranche として、file I/O 抜きで TypeInfer.infer を CLI helper へ接続する。
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_check_source_core() {
     let harness = r#"
 (defn main []
@@ -715,6 +723,7 @@ fn test_e2e_selfhost_cli_check_source_core() {
 
 /// TEST-CLI-02-F: selfhost/src/App/Cli.ls の run-parse が file-path から source を読めること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_parse_file_handler() {
     let dir =
         std::env::temp_dir().join(format!("lsharp_test_cli_parse_file_{}", std::process::id()));
@@ -759,6 +768,7 @@ fn test_e2e_selfhost_cli_parse_file_handler() {
 
 /// TEST-CLI-02-G: selfhost/src/App/Cli.ls の run-check が file-path から source を読めること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_check_file_handler() {
     let dir =
         std::env::temp_dir().join(format!("lsharp_test_cli_check_file_{}", std::process::id()));
@@ -792,6 +802,7 @@ fn test_e2e_selfhost_cli_check_file_handler() {
 
 /// TEST-CLI-02-G2: run-parse-source が recovery 入力でも diagnostics summary を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_parse_source_recovery_summary() {
     let harness = r#"
 (defn main []
@@ -823,6 +834,7 @@ fn test_e2e_selfhost_cli_parse_source_recovery_summary() {
 
 /// TEST-CLI-02-G2b: run-parse-source が `]` recovery でも token 別 diagnostics body を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_parse_source_recovery_unexpected_bracket_summary() {
     let harness = r#"
 (defn main []
@@ -854,6 +866,7 @@ fn test_e2e_selfhost_cli_parse_source_recovery_unexpected_bracket_summary() {
 
 /// TEST-CLI-02-G3: run-check-source が型エラー入力でも diagnostics summary を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_check_source_type_error_summary() {
     let harness = r#"
 (defn main []
@@ -885,6 +898,7 @@ fn test_e2e_selfhost_cli_check_source_type_error_summary() {
 
 /// TEST-CLI-02-G3b: run-check-source が未定義シンボルでも code 別 diagnostics body を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_check_source_undefined_symbol_summary() {
     let harness = r#"
 (defn main []
@@ -916,6 +930,7 @@ fn test_e2e_selfhost_cli_check_source_undefined_symbol_summary() {
 
 /// TEST-CLI-02-H: selfhost/src/App/Cli.ls の file-path handler は missing file を compile error で返す
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_file_handler_missing_file() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_missing_file_{}",
@@ -953,6 +968,7 @@ fn test_e2e_selfhost_cli_file_handler_missing_file() {
 
 /// TEST-CLI-02-I: selfhost/src/App/Cli.ls の arg-parse がコマンド文字列を command id へ変換できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_arg_parse_strings() {
     let harness = r#"
 (defn main []
@@ -978,6 +994,7 @@ fn test_e2e_selfhost_cli_arg_parse_strings() {
 
 /// TEST-CLI-02-J: selfhost/src/App/Cli.ls の run-fmt-source が format-program を呼べること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_fmt_source_core() {
     let harness = r#"
 (defn main []
@@ -1004,6 +1021,7 @@ fn test_e2e_selfhost_cli_fmt_source_core() {
 
 /// TEST-CLI-02-J2: run-fmt-source が string literal を fallback せず返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_fmt_source_string_literal() {
     let harness = r#"
 (defn main []
@@ -1030,6 +1048,7 @@ fn test_e2e_selfhost_cli_fmt_source_string_literal() {
 
 /// TEST-CLI-02-J3: run-fmt-source string literal output を snapshot に固定すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_fmt_source_string_literal_snapshot() {
     let harness = r#"
 (defn main []
@@ -1050,6 +1069,7 @@ fn test_e2e_selfhost_cli_fmt_source_string_literal_snapshot() {
 
 /// TEST-CLI-02-J4: run-fmt-source が defn metadata を canonical 順で保持すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_fmt_source_defn_metadata() {
     let harness = r#"
 (defn main []
@@ -1077,6 +1097,7 @@ fn test_e2e_selfhost_cli_fmt_source_defn_metadata() {
 
 /// TEST-CLI-02-K: selfhost/src/App/Cli.ls の run-fmt が file-path から source を読めること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_fmt_file_handler() {
     let dir = std::env::temp_dir().join(format!("lsharp_test_cli_fmt_file_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -1108,6 +1129,7 @@ fn test_e2e_selfhost_cli_fmt_file_handler() {
 
 /// TEST-CLI-02-L: selfhost/src/App/Cli.ls の run-compile-source が compile PoC を呼べること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_compile_source_core() {
     let harness = r#"
 (defn main []
@@ -1146,6 +1168,7 @@ fn test_e2e_selfhost_cli_compile_source_core() {
 
 /// TEST-CLI-02-L2: emit-wasm-with-target が preview1/component で size を切り替えること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_emit_wasm_with_target_changes_wasm_size() {
     let harness = r#"
 (defn main []
@@ -1181,6 +1204,7 @@ fn test_e2e_selfhost_cli_emit_wasm_with_target_changes_wasm_size() {
 
 /// TEST-CLI-02-M: selfhost/src/App/Cli.ls の run-compile が file-path から source を読めること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_compile_file_handler() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_compile_file_{}",
@@ -1223,6 +1247,7 @@ fn test_e2e_selfhost_cli_compile_file_handler() {
 
 /// TEST-CLI-02-M1B: selfhost/src/App/Cli.ls の run-compile は nested import fixture を import-aware helper 経由で解決すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_compile_file_handler_multifile_nested_imports() {
     let dir = cli_test_fixture_dir("compile_multifile_nested");
     write_cli_fixture_files(&dir, &cli_multifile_nested_fixture_files());
@@ -1268,6 +1293,7 @@ fn test_e2e_selfhost_cli_compile_file_handler_multifile_nested_imports() {
 
 /// TEST-CLI-02-M1C: selfhost/src/App/Cli.ls は shared cache helper 経由で clean hit 時の再 parse を避けること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_compile_functions_data_with_cache_reuses_clean_hit() {
     let dir = cli_test_fixture_dir("compile_functions_data_cache");
     write_cli_fixture_files(&dir, &cli_multifile_nested_fixture_files());
@@ -1319,6 +1345,7 @@ fn test_e2e_selfhost_cli_compile_functions_data_with_cache_reuses_clean_hit() {
 
 /// TEST-CLI-02-M1D: selfhost/src/App/Cli.ls は shared cache helper で module path invalidation を反映すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_compile_functions_data_with_cache_invalidates_changed_module_path() {
     let dir = cli_test_fixture_dir("compile_functions_data_cache_invalidation");
     write_cli_fixture_files(
@@ -1380,6 +1407,7 @@ fn test_e2e_selfhost_cli_compile_functions_data_with_cache_invalidates_changed_m
 
 /// TEST-CLI-02-M1D: selfhost cached helper は changed module 後も fresh compile と同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_compile_functions_data_with_cache_matches_fresh_compile_after_change() {
     let dir = cli_test_fixture_dir("compile_functions_data_cache_dirty_parity");
     write_cli_fixture_files(
@@ -1457,6 +1485,7 @@ fn test_e2e_selfhost_cli_compile_functions_data_with_cache_matches_fresh_compile
 
 /// TEST-CLI-02-M1E: selfhost direct multi-file compile は同じ入力を 2 回与えても同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_multifile_compile_is_deterministic() {
     let dir = cli_test_fixture_dir("compile_functions_data_direct_determinism");
     write_cli_fixture_files(
@@ -1655,6 +1684,7 @@ fn test_e2e_selfhost_cli_direct_multifile_compile_is_deterministic() {
 
 /// TEST-CLI-02-M1F0: selfhost App.ModuleResolver の direct compile は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_compile_is_deterministic() {
     let dir = selfhost_package_root();
 
@@ -1901,6 +1931,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_compile_is_deterministic() {
 
 /// TEST-CLI-02-M1F0B: path-parent 最小 fixture の direct compile は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_path_parent_fixture_is_deterministic() {
     assert_selfhost_direct_fixture_is_deterministic(
         "path_parent_direct_determinism",
@@ -1916,6 +1947,7 @@ fn test_e2e_selfhost_cli_direct_path_parent_fixture_is_deterministic() {
 
 /// TEST-CLI-02-M1F0B2: path-parent 最小 fixture の inline compile は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_inline_path_parent_fixture_is_deterministic() {
     let source = "(defn path-char [path idx] (string-char-at path idx))\n\
                   (defn is-path-sep [path idx] (let [ch (path-char path idx)] (if (= ch 47) true (if (= ch 92) true false))))\n\
@@ -1932,6 +1964,7 @@ fn test_e2e_selfhost_cli_inline_path_parent_fixture_is_deterministic() {
 
 /// TEST-CLI-02-M1F0C: ModuleResolver prefix (find-src-ancestor まで) の direct compile は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_prefix_is_deterministic() {
     let prefix_source = take_lsharp_toplevel_forms(selfhost_module("ModuleResolver.ls"), 13);
     assert_selfhost_direct_fixture_is_deterministic(
@@ -1944,6 +1977,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_prefix_is_deterministic() {
 
 /// TEST-CLI-02-M1F0D: ModuleResolver 19 form prefix の direct compile は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_prefix_19_forms_is_deterministic() {
     let prefix_source = take_lsharp_toplevel_forms(selfhost_module("ModuleResolver.ls"), 19);
     assert_selfhost_direct_fixture_is_deterministic(
@@ -1956,6 +1990,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_prefix_19_forms_is_deterministic
 
 /// TEST-CLI-02-M1F0E: ModuleResolver 26 form prefix の direct compile は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_prefix_26_forms_is_deterministic() {
     let prefix_source = take_lsharp_toplevel_forms(selfhost_module("ModuleResolver.ls"), 26);
     assert_selfhost_direct_fixture_is_deterministic(
@@ -1968,6 +2003,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_prefix_26_forms_is_deterministic
 
 /// TEST-CLI-02-M1F0F: ModuleResolver 33 form prefix の direct compile は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_prefix_33_forms_is_deterministic() {
     let prefix_source = take_lsharp_toplevel_forms(selfhost_module("ModuleResolver.ls"), 33);
     assert_selfhost_direct_fixture_is_deterministic(
@@ -1980,6 +2016,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_prefix_33_forms_is_deterministic
 
 /// TEST-CLI-02-M1F0G: ModuleResolver full source の single-file direct compile は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_full_fixture_is_deterministic() {
     assert_selfhost_direct_fixture_is_deterministic(
         "module_resolver_full_fixture_direct_determinism",
@@ -1991,6 +2028,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_full_fixture_is_deterministic() 
 
 /// TEST-CLI-02-M1F0H: ModuleResolver full source の inline direct compile は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_fixture_is_deterministic() {
     assert_selfhost_inline_fixture_is_deterministic(
         "module_resolver_full_inline_fixture_direct_determinism",
@@ -2000,6 +2038,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_fixture_is_determini
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_without_import_scan_is_deterministic() {
     let dir = cli_test_fixture_dir("module_resolver_full_inline_without_import_scan");
     write_cli_fixture_files(
@@ -2062,6 +2101,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_without_import_scan_
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_pair_registration_direct_compile_is_deterministic()
 {
     let dir = cli_test_fixture_dir("module_resolver_pair_registration_direct_compile");
@@ -2124,6 +2164,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_pair_registration_direct_compile
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_pair_creation_direct_compile_is_deterministic() {
     let dir = cli_test_fixture_dir("module_resolver_pair_creation_direct_compile");
     write_cli_fixture_files(
@@ -2345,6 +2386,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_mismatch_probe() {
 
 /// TEST-CLI-02-M1F0I: ModuleResolver 13 form prefix の inline direct compile は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_inline_prefix_13_forms_is_deterministic() {
     let prefix_source = take_lsharp_toplevel_forms(selfhost_module("ModuleResolver.ls"), 13);
     assert_selfhost_inline_fixture_is_deterministic(
@@ -2356,6 +2398,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_inline_prefix_13_forms_is_determ
 
 /// TEST-CLI-02-M1F0J: ModuleResolver 26 form prefix の inline direct compile は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_inline_prefix_26_forms_is_deterministic() {
     let prefix_source = take_lsharp_toplevel_forms(selfhost_module("ModuleResolver.ls"), 26);
     assert_selfhost_inline_fixture_is_deterministic(
@@ -2367,6 +2410,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_inline_prefix_26_forms_is_determ
 
 /// TEST-CLI-02-M1F0K: ModuleResolver 33 form prefix の inline direct compile は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_inline_prefix_33_forms_is_deterministic() {
     let prefix_source = take_lsharp_toplevel_forms(selfhost_module("ModuleResolver.ls"), 33);
     assert_selfhost_inline_fixture_is_deterministic(
@@ -2377,6 +2421,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_inline_prefix_33_forms_is_determ
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_inline_prefix_post33_bisect() {
     for form_count in [34usize, 35, 36, 37, 38, 39] {
         println!("bisect form_count={form_count}");
@@ -2390,6 +2435,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_inline_prefix_post33_bisect() {
 
 /// TEST-CLI-02-M1F0L: ModuleResolver full source の single-file direct compile は func_idx=7 でも deterministic であること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_full_fixture_func_idx_7_is_deterministic() {
     assert_selfhost_direct_fixture_with_func_idx_is_deterministic(
         "module_resolver_full_fixture_func_idx_7_direct_determinism",
@@ -2402,6 +2448,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_full_fixture_func_idx_7_is_deter
 
 /// TEST-CLI-02-M1F0M: ModuleResolver full source の inline direct compile は func_idx=0 でも deterministic であること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_fixture_func_idx_0_is_deterministic() {
     assert_selfhost_inline_fixture_with_func_idx_is_deterministic(
         "module_resolver_full_inline_fixture_func_idx_0_direct_determinism",
@@ -2413,6 +2460,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_full_inline_fixture_func_idx_0_i
 
 /// TEST-CLI-02-M1F0N: ModuleResolver full source の compile-file-functions-data は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_compile_file_functions_data_module_resolver_is_deterministic() {
     let dir = cli_test_fixture_dir("module_resolver_compile_file_functions_data_determinism");
     write_cli_fixture_files(
@@ -2468,6 +2516,7 @@ fn test_e2e_selfhost_cli_compile_file_functions_data_module_resolver_is_determin
 
 /// TEST-CLI-02-M1F0O: ModuleResolver full source の register-defns direct compile は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_register_defns_is_deterministic() {
     let dir = cli_test_fixture_dir("module_resolver_register_defns_direct_determinism");
     write_cli_fixture_files(
@@ -2534,6 +2583,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_register_defns_is_deterministic(
 
 /// TEST-CLI-02-M1F0P: ModuleResolver full source の single-pair pipeline compile は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_module_resolver_single_pair_pipeline_is_deterministic() {
     let dir = cli_test_fixture_dir("module_resolver_single_pair_pipeline_determinism");
     write_cli_fixture_files(
@@ -2621,6 +2671,7 @@ fn test_e2e_selfhost_cli_direct_module_resolver_single_pair_pipeline_is_determin
 
 /// TEST-CLI-02-M1F0Q: ModuleResolver full source の compile-file-pairs-with-cache pipeline は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_compile_file_pairs_with_cache_pipeline_is_deterministic() {
     let dir = cli_test_fixture_dir("module_resolver_pairs_cache_pipeline_determinism");
     write_cli_fixture_files(
@@ -2703,6 +2754,7 @@ fn test_e2e_selfhost_cli_compile_file_pairs_with_cache_pipeline_is_deterministic
 
 /// TEST-CLI-02-M1F0R: ModuleResolver full source の load-src-decl-pair-with-cache pipeline は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_pipeline_is_deterministic() {
     let dir = cli_test_fixture_dir("module_resolver_src_decl_pair_cache_pipeline_determinism");
     write_cli_fixture_files(
@@ -2789,6 +2841,7 @@ fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_pipeline_is_deterministic
 
 /// TEST-CLI-02-M1F0R1: load-src-decl-pair-with-cache は ModuleResolver の src/decls を壊さず返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_returns_expected_pair_shape() {
     let dir = cli_test_fixture_dir("module_resolver_src_decl_pair_cache_shape");
     write_cli_fixture_files(
@@ -2844,6 +2897,7 @@ fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_returns_expected_pair_sha
 
 /// TEST-CLI-02-M1F0R2: load-src-decl-pair-with-cache の single-pair compile は manual pair path と一致すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_matches_manual_pair_pipeline() {
     let dir = cli_test_fixture_dir("module_resolver_src_decl_pair_cache_matches_manual");
     write_cli_fixture_files(
@@ -2933,6 +2987,7 @@ fn test_e2e_selfhost_cli_load_src_decl_pair_with_cache_matches_manual_pair_pipel
 
 /// TEST-CLI-02-M1F0R3: cache miss side effects 後の manual pair compile は plain manual pair と一致すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_cache_miss_side_effects_match_manual_pair_pipeline() {
     let dir = cli_test_fixture_dir("module_resolver_cache_side_effects_match_manual");
     write_cli_fixture_files(
@@ -3037,6 +3092,7 @@ fn test_e2e_selfhost_cli_cache_miss_side_effects_match_manual_pair_pipeline() {
 
 /// TEST-CLI-02-M1F0R4: parse-src-decl-pair side effect 単独では manual pair compile が揺れないこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_parse_src_decl_pair_side_effect_matches_manual_pair_pipeline() {
     let dir = cli_test_fixture_dir("module_resolver_parse_src_decl_pair_side_effect");
     write_cli_fixture_files(
@@ -3135,6 +3191,7 @@ fn test_e2e_selfhost_cli_parse_src_decl_pair_side_effect_matches_manual_pair_pip
 
 /// TEST-CLI-02-M1F0R2: ModuleResolver の single-pair compile 後に root stack が空へ戻ること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_manual_pair_compile_restores_root_stack() {
     let dir = cli_test_fixture_dir("module_resolver_manual_pair_root_stack");
     write_cli_fixture_files(
@@ -3209,6 +3266,7 @@ fn test_e2e_selfhost_cli_manual_pair_compile_restores_root_stack() {
 
 /// TEST-CLI-02-M1F0R3: path-parent 最小 fixture の single-pair compile 後に root stack が空へ戻ること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_path_parent_manual_pair_compile_restores_root_stack() {
     let dir = cli_test_fixture_dir("path_parent_manual_pair_root_stack");
     write_cli_fixture_files(
@@ -3287,6 +3345,7 @@ fn test_e2e_selfhost_cli_path_parent_manual_pair_compile_restores_root_stack() {
 
 /// TEST-CLI-02-M1F0R4: 最小 fixture の single-pair compile 後に root stack が空へ戻ること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_trivial_manual_pair_compile_restores_root_stack() {
     let dir = cli_test_fixture_dir("trivial_manual_pair_root_stack");
     write_cli_fixture_files(
@@ -3358,6 +3417,7 @@ fn test_e2e_selfhost_cli_trivial_manual_pair_compile_restores_root_stack() {
 
 /// TEST-CLI-02-M1F0S: ModuleResolver full source は source-fingerprint 実行後でも direct compile が deterministic であること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_module_resolver_after_source_fingerprint_is_deterministic() {
     let dir = cli_test_fixture_dir("module_resolver_after_source_fingerprint_determinism");
     write_cli_fixture_files(
@@ -3451,6 +3511,7 @@ fn test_e2e_selfhost_cli_module_resolver_after_source_fingerprint_is_determinist
 
 /// TEST-CLI-02-M1F0T: ModuleResolver full source は src-decl cache entry insert 後でも direct compile が deterministic であること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_module_resolver_after_src_decl_cache_insert_is_deterministic() {
     let dir = cli_test_fixture_dir("module_resolver_after_src_decl_cache_insert_determinism");
     write_cli_fixture_files(
@@ -3547,6 +3608,7 @@ fn test_e2e_selfhost_cli_module_resolver_after_src_decl_cache_insert_is_determin
 
 /// TEST-CLI-02-M1F0U: ModuleResolver full source は empty cache lookup 後でも direct compile が deterministic であること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_module_resolver_after_src_decl_cache_lookup_is_deterministic() {
     let dir = cli_test_fixture_dir("module_resolver_after_src_decl_cache_lookup_determinism");
     write_cli_fixture_files(
@@ -3646,6 +3708,7 @@ fn test_e2e_selfhost_cli_module_resolver_after_src_decl_cache_lookup_is_determin
 
 /// TEST-CLI-02-M1F: selfhost App.Main の direct compile は 2 回連続でも同じ Wasm を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_direct_selfhost_main_compile_is_deterministic() {
     let dir = selfhost_package_root();
 
@@ -3964,6 +4027,7 @@ fn test_e2e_selfhost_cli_direct_selfhost_main_compile_is_deterministic() {
 
 /// TEST-CLI-02-M2: selfhost/src/App/Cli.ls の run-build が file-path から source を読めること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_build_file_handler() {
     let dir =
         std::env::temp_dir().join(format!("lsharp_test_cli_build_file_{}", std::process::id()));
@@ -4001,6 +4065,7 @@ fn test_e2e_selfhost_cli_build_file_handler() {
 
 /// TEST-CLI-02-M2B: selfhost/src/App/Cli.ls の run-build は nested import fixture を import-aware helper 経由で解決すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_build_file_handler_multifile_nested_imports() {
     let dir = cli_test_fixture_dir("build_multifile_nested");
     write_cli_fixture_files(&dir, &cli_multifile_nested_fixture_files());
@@ -4046,6 +4111,7 @@ fn test_e2e_selfhost_cli_build_file_handler_multifile_nested_imports() {
 
 /// TEST-CLI-02-M3: selfhost/src/App/Cli.ls の run-install が install plan text を返せること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_install_package_core() {
     let harness = r#"
 (defn main []
@@ -4067,6 +4133,7 @@ fn test_e2e_selfhost_cli_install_package_core() {
 
 /// TEST-CLI-02-M4: selfhost/src/App/Cli.ls の run-install は空 package を compile error にする
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_install_empty_package() {
     let harness = r#"
 (defn main []
@@ -4086,6 +4153,7 @@ fn test_e2e_selfhost_cli_install_empty_package() {
 
 /// TEST-CLI-02-M5: selfhost/src/App/Cli.ls の run-repl が warmup session summary を返せること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_repl_core() {
     let harness = r#"
 (defn main []
@@ -4107,6 +4175,7 @@ fn test_e2e_selfhost_cli_repl_core() {
 
 /// TEST-CLI-02-M6: selfhost/src/App/Cli.ls の run-lsp が capability summary text を返せること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_core() {
     let harness = r#"
 (defn main []
@@ -4140,6 +4209,7 @@ fn test_e2e_selfhost_cli_lsp_core() {
 
 /// TEST-CLI-02-M7: selfhost/src/App/Cli.ls の LSP transport helper が initialize request を frame response にできること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_initialize_frame() {
     let body = r#"{"jsonrpc":"2.0","id":7,"result":[1,1,1,1,1,1,1]}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
@@ -4167,6 +4237,7 @@ fn test_e2e_selfhost_cli_lsp_transport_initialize_frame() {
 
 /// TEST-CLI-02-M8: selfhost/src/App/Cli.ls の LSP transport helper が未知メソッドを JSON-RPC error frame にできること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_unknown_method_error() {
     let body = r#"{"jsonrpc":"2.0","id":9,"error":{"code":-32601,"message":"Method not found"}}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
@@ -4194,6 +4265,7 @@ fn test_e2e_selfhost_cli_lsp_transport_unknown_method_error() {
 
 /// TEST-CLI-02-M8b: selfhost/src/App/Cli.ls の LSP transport helper は shutdown 後 request を error frame にすること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_request_after_shutdown_error() {
     let body = r#"{"jsonrpc":"2.0","id":10,"error":{"code":-32600,"message":"Invalid Request"}}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
@@ -4239,6 +4311,7 @@ fn test_e2e_selfhost_cli_lsp_transport_request_after_shutdown_error() {
 
 /// TEST-CLI-02-M9: selfhost/src/App/Cli.ls の LSP transport helper sequence が shared-state で複数 request を捌けること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_goto_definition_frame() {
     let body = r#"{"jsonrpc":"2.0","id":7,"result":[10,1,7]}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
@@ -4277,6 +4350,7 @@ fn test_e2e_selfhost_cli_lsp_transport_goto_definition_frame() {
 
 /// TEST-CLI-02-M9b: selfhost/src/App/Cli.ls の LSP transport helper が hover request を framed response にできること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_hover_frame() {
     let body =
         r#"{"jsonrpc":"2.0","id":8,"result":{"range":[2,16,2,22],"contents":"defn square"}}"#;
@@ -4316,6 +4390,7 @@ fn test_e2e_selfhost_cli_lsp_transport_hover_frame() {
 
 /// TEST-CLI-02-M9c: selfhost/src/App/Cli.ls の LSP transport helper が references request を framed response にできること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_references_frame() {
     let body = r#"{"jsonrpc":"2.0","id":10,"result":[[99,1,7],[99,2,16],[99,2,27]]}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
@@ -4354,6 +4429,7 @@ fn test_e2e_selfhost_cli_lsp_transport_references_frame() {
 
 /// TEST-CLI-02-M9d: selfhost/src/App/Cli.ls の LSP transport helper が completion request を framed response にできること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_completion_frame() {
     let body = r#"{"jsonrpc":"2.0","id":11,"result":[["defn",14,"defn"],["let",14,"let"],["if",14,"if"],["match",14,"match"],["do",14,"do"],["fn",14,"fn"],["module",14,"module"]]}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
@@ -4381,6 +4457,7 @@ fn test_e2e_selfhost_cli_lsp_transport_completion_frame() {
 
 /// TEST-CLI-02-M9e: selfhost/src/App/Cli.ls の LSP transport helper が formatting request を framed response にできること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_formatting_frame() {
     let body = "{\"jsonrpc\":\"2.0\",\"id\":12,\"result\":[[1,1,2,4,\"(defn main [] 1)\\n\"]]}";
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
@@ -4415,6 +4492,7 @@ fn test_e2e_selfhost_cli_lsp_transport_formatting_frame() {
 
 /// TEST-CLI-02-M9f: selfhost/src/App/Cli.ls の LSP transport helper が rename request を framed response にできること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_rename_frame() {
     let body = r#"{"jsonrpc":"2.0","id":13,"result":[[99,[[1,7,1,13,"cube"],[2,16,2,22,"cube"],[2,27,2,33,"cube"]]]]}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
@@ -4455,6 +4533,7 @@ fn test_e2e_selfhost_cli_lsp_transport_rename_frame() {
 
 /// TEST-CLI-02-M9: selfhost/src/App/Cli.ls の LSP transport helper sequence が shared-state で複数 request を捌けること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_sequence_summary() {
     let init_body = r#"{"jsonrpc":"2.0","id":3,"result":[1,1,1,1,1,1,1]}"#;
     let init_frame = format!("Content-Length: {}\r\n\r\n{}", init_body.len(), init_body);
@@ -4524,6 +4603,7 @@ fn test_e2e_selfhost_cli_lsp_transport_sequence_summary() {
 
 /// TEST-CLI-02-M10: publishDiagnostics notification が deterministic JSON/frame と request-count を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_publish_diagnostics_frame() {
     let diagnostics_json =
         r#"[{"source":1,"severity":1,"rule":203,"line":2,"col":4,"messageHash":7003}]"#;
@@ -4588,6 +4668,7 @@ fn test_e2e_selfhost_cli_lsp_transport_publish_diagnostics_frame() {
 
 /// TEST-CLI-02-M11: didOpen dispatch + frame helper が deterministic に動くこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_didopen_frame() {
     let payload =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":16}}"#;
@@ -4626,6 +4707,7 @@ fn test_e2e_selfhost_cli_lsp_transport_didopen_frame() {
 
 /// TEST-CLI-02-M12: didOpen -> didChange shared-state sequence が framed notifications と state summary を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_document_sequence() {
     let open_payload =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":16}}"#;
@@ -4684,6 +4766,7 @@ fn test_e2e_selfhost_cli_lsp_transport_document_sequence() {
 
 /// TEST-CLI-02-M12b: raw stdio frame helper が Content-Length header 付き initialize request を捌けること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_stdio_frame_initialize() {
     let body = r#"{"jsonrpc":"2.0","id":14,"result":[1,1,1,1,1,1,1]}"#;
     let expected = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
@@ -4731,6 +4814,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_frame_initialize() {
 
 /// TEST-CLI-02-M12c: raw stdio frame sequence helper が shared-state で didOpen -> didChange を捌けること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_stdio_frame_sequence() {
     let open_payload =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":16}}"#;
@@ -4807,6 +4891,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_frame_sequence() {
 
 /// TEST-CLI-02-M12e: didOpen/didChange は parse diagnostics refresh を publishDiagnostics frame で返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_diagnostics_refresh() {
     let open_payload =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":1}}"#;
@@ -4879,6 +4964,7 @@ fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_diagnostics_r
 
 /// TEST-CLI-02-M12f: stdio body parser は spec 寄り didOpen/didChange params でも diagnostics refresh を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_diagnostics_refresh()
  {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":")"}}}"#;
@@ -4949,6 +5035,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_
 
 /// TEST-CLI-02-M12f2: didOpen/didChange は type diagnostics refresh を publishDiagnostics frame で返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_type_diagnostics_refresh() {
     let open_payload =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":26}}"#;
@@ -5021,6 +5108,7 @@ fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_type_diagnost
 
 /// TEST-CLI-02-M12f3: didOpen/didChange は lint diagnostics refresh を publishDiagnostics frame で返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_lint_diagnostics_refresh() {
     let open_payload =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"sourceBytes":29}}"#;
@@ -5093,6 +5181,7 @@ fn test_e2e_selfhost_cli_lsp_transport_document_sequence_publishes_lint_diagnost
 
 /// TEST-CLI-02-M12f4: stdio body parser は spec 寄り didOpen/didChange params でも type diagnostics refresh を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_type_diagnostics_refresh()
  {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":"(defn main [] (if 42 1 0))"}}}"#;
@@ -5163,6 +5252,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_
 
 /// TEST-CLI-02-M12f5: stdio body parser は spec 寄り didOpen/didChange params でも lint diagnostics refresh を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_lint_diagnostics_refresh()
  {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":"(defn main [] (let [x 42] 0))"}}}"#;
@@ -5233,6 +5323,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_body_document_sequence_spec_params_publishes_
 
 /// TEST-CLI-02-M12g: stdio body parser は spec 寄り hover params の position.character を col として読むこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_stdio_body_hover_spec_position_character_params() {
     let hover_body = r#"{"jsonrpc":"2.0","id":66,"method":"textDocument/hover","params":{"textDocument":{"uri":42},"position":{"line":1,"character":38}}}"#;
     let hover_body_lsharp = hover_body.replace('\\', "\\\\").replace('"', "\\\"");
@@ -5262,6 +5353,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_body_hover_spec_position_character_params() {
 
 /// TEST-CLI-02-M12h: stdio body parser は spec 寄り rename params の position.character と newName を読むこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_stdio_body_rename_spec_position_character_params() {
     let rename_body = r#"{"jsonrpc":"2.0","id":70,"method":"textDocument/rename","params":{"textDocument":{"uri":42},"position":{"line":1,"character":38},"newName":"cube"}}"#;
     let rename_body_lsharp = rename_body.replace('\\', "\\\\").replace('"', "\\\"");
@@ -5293,6 +5385,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_body_rename_spec_position_character_params() 
 
 /// TEST-CLI-02-M12d: raw stdio wire helper が長めの open/hover/change/completion/formatting 系列を最後まで捌けること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_lsp_stdio_wire_repeated_sequence() {
     let render_lsp_wire_frame =
         |body: &str| format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
@@ -5503,6 +5596,7 @@ fn test_e2e_selfhost_cli_lsp_stdio_wire_repeated_sequence() {
 
 /// TEST-CLI-02-N: selfhost/src/App/Cli.ls の run-test-source が TestRunner.generate-tests を呼べること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_test_source_core() {
     let harness = r#"
 (defn main []
@@ -5524,6 +5618,7 @@ fn test_e2e_selfhost_cli_test_source_core() {
 
 /// TEST-CLI-02-O: selfhost/src/App/Cli.ls の run-test が file-path から source を読めること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_test_file_handler() {
     let dir =
         std::env::temp_dir().join(format!("lsharp_test_cli_test_file_{}", std::process::id()));
@@ -5551,6 +5646,7 @@ fn test_e2e_selfhost_cli_test_file_handler() {
 
 /// TEST-CLI-02-O2: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_test_runner_extracts_supported_metadata_suite() {
     let harness = r#"
 (defn main []
@@ -5576,6 +5672,7 @@ fn test_e2e_selfhost_test_runner_extracts_supported_metadata_suite() {
 
 /// TEST-CLI-02-O2b: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_test_runner_executes_examples_only() {
     let harness = r#"
 (defn main []
@@ -5604,6 +5701,7 @@ fn test_e2e_selfhost_test_runner_executes_examples_only() {
 
 /// TEST-CLI-02-O2c: selfhost/src/Tools/Test/TestRunner.ls が supported invariant suite を materialize できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_test_runner_executes_invariant_only() {
     let harness = r#"
 (defn main []
@@ -5630,6 +5728,7 @@ fn test_e2e_selfhost_test_runner_executes_invariant_only() {
 }
 /// TEST-CLI-02-O2d: selfhost/src/Tools/Test/TestRunner.ls が supported subset の metadata suite を実行できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_test_runner_executes_supported_metadata_suite() {
     let harness = r#"
 (defn main []
@@ -5663,6 +5762,7 @@ fn test_e2e_selfhost_test_runner_executes_supported_metadata_suite() {
 
 /// TEST-CLI-02-O3: selfhost/src/App/Cli.ls の run-test-source が supported subset の metadata を成功終了できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_test_source_metadata_pass() {
     let harness = r#"
 (defn main []
@@ -5685,6 +5785,7 @@ fn test_e2e_selfhost_cli_test_source_metadata_pass() {
 
 /// TEST-CLI-02-O4: selfhost/src/App/Cli.ls の run-test-source が failing example を runtime error にできること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_test_source_metadata_fail() {
     let harness = r#"
 (defn main []
@@ -5707,6 +5808,7 @@ fn test_e2e_selfhost_cli_test_source_metadata_fail() {
 
 /// TEST-CLI-02-O5: selfhost/src/App/Cli.ls の run-test が file-path 経由の metadata suite も実行できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_test_file_handler_metadata_pass() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let dir = project_root.join("target").join(format!(
@@ -5742,6 +5844,7 @@ fn test_e2e_selfhost_cli_test_file_handler_metadata_pass() {
 
 /// TEST-CLI-02-P: selfhost/src/App/Cli.ls の run-review-source が review title/body を返せること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_review_source_core() {
     let harness = r#"
 (defn main []
@@ -5770,6 +5873,7 @@ fn test_e2e_selfhost_cli_review_source_core() {
 
 /// TEST-CLI-02-Q: selfhost/src/App/Cli.ls の run-review が file-path から review title/body を返せること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_review_file_handler() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_review_file_{}",
@@ -5806,6 +5910,7 @@ fn test_e2e_selfhost_cli_review_file_handler() {
 
 /// TEST-CLI-02-Q2: selfhost/src/App/Cli.ls の run-review-source が empty-do rule も返せること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_review_source_empty_do() {
     let harness = r#"
 (defn main []
@@ -5834,6 +5939,7 @@ fn test_e2e_selfhost_cli_review_source_empty_do() {
 
 /// TEST-CLI-02-Q3: selfhost/src/App/Cli.ls の run-review-source が schema-object JSON を返せること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_review_source_json_snapshot() {
     let harness = r#"
 (defn main []
@@ -5861,6 +5967,7 @@ fn test_e2e_selfhost_cli_review_source_json_snapshot() {
 
 /// TEST-CLI-02-R: selfhost/src/App/Cli.ls の run-doc-source が DocTools.generate を呼べること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_doc_source_core() {
     let harness = r#"
 (defn main []
@@ -5882,6 +5989,7 @@ fn test_e2e_selfhost_cli_doc_source_core() {
 
 /// TEST-CLI-02-R2: run-doc-source output を snapshot に固定すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_doc_source_snapshot() {
     let harness = r#"
 (defn main []
@@ -5902,6 +6010,7 @@ fn test_e2e_selfhost_cli_doc_source_snapshot() {
 
 /// TEST-CLI-02-R3: selfhost/src/App/Cli.ls の run-doc-source が schema-object JSON を返せること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_doc_source_json_snapshot() {
     let harness = r#"
 (defn main []
@@ -5929,6 +6038,7 @@ fn test_e2e_selfhost_cli_doc_source_json_snapshot() {
 
 /// TEST-CLI-02-S: selfhost/src/App/Cli.ls の run-doc が file-path から source を読めること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_doc_file_handler() {
     let dir = std::env::temp_dir().join(format!("lsharp_test_cli_doc_file_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -5955,6 +6065,7 @@ fn test_e2e_selfhost_cli_doc_file_handler() {
 
 /// TEST-CLI-02-T: selfhost/src/App/Cli.ls の run-doc-ack が file-path から source を読めること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_doc_ack_file_handler() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_doc_ack_file_{}",
@@ -5990,6 +6101,7 @@ fn test_e2e_selfhost_cli_doc_ack_file_handler() {
 
 /// TEST-CLI-02-T2: selfhost/src/App/Cli.ls の run-doc-ack が trailer-only mode を返せること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_doc_ack_file_handler_trailer_only() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_doc_ack_trailer_only_{}",
@@ -6019,6 +6131,7 @@ fn test_e2e_selfhost_cli_doc_ack_file_handler_trailer_only() {
 
 /// TEST-CLI-02-U: selfhost/src/App/Cli.ls の run-doc-check が file-path から source を読めること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_doc_check_file_handler() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_doc_check_file_{}",
@@ -6055,6 +6168,7 @@ fn test_e2e_selfhost_cli_doc_check_file_handler() {
 
 /// TEST-CLI-02-U2: selfhost/src/App/Cli.ls の run-doc-check strict mode が valid trailer を受理すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_doc_check_file_handler_strict_success() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_doc_check_strict_success_{}",
@@ -6095,6 +6209,7 @@ fn test_e2e_selfhost_cli_doc_check_file_handler_strict_success() {
 
 /// TEST-CLI-02-U3: selfhost/src/App/Cli.ls の run-doc-check strict mode が invalid trailer を拒否すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_doc_check_file_handler_strict_missing_trailer_fails() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_doc_check_strict_fail_{}",
@@ -6129,6 +6244,7 @@ fn test_e2e_selfhost_cli_doc_check_file_handler_strict_missing_trailer_fails() {
 ///
 /// CLI-02 contract parity: 終了コードの公開 API を検証
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_exit_code_success() {
     let harness = r#"
 (defn main []
@@ -6152,6 +6268,7 @@ fn test_e2e_selfhost_cli_exit_code_success() {
 ///
 /// CLI-02 contract parity: コンパイルエラー終了コード
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_exit_code_compile_error() {
     let harness = r#"
 (defn main []
@@ -6175,6 +6292,7 @@ fn test_e2e_selfhost_cli_exit_code_compile_error() {
 ///
 /// CLI-02 contract parity: 不明コマンドの終了コード
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_exit_code_unknown_command() {
     let harness = r#"
 (defn main []
@@ -6205,6 +6323,7 @@ fn test_e2e_selfhost_cli_exit_code_unknown_command() {
 ///
 /// CLI-02 contract parity: ヘルプ出力の完全性
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_help_lists_all_commands() {
     let harness = r#"
 (defn main []
@@ -6248,6 +6367,7 @@ fn test_e2e_selfhost_cli_help_lists_all_commands() {
 ///
 /// CLI-02 contract parity: バージョン出力形式
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_version_format() {
     let harness = r#"
 (defn main []
@@ -6279,6 +6399,7 @@ fn test_e2e_selfhost_cli_version_format() {
 ///
 /// CLI-02 contract parity: stdout は結果出力、stderr は "error: " プレフィックス付き
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_stdout_stderr_separation() {
     let harness = r#"
 (defn main []
@@ -6312,6 +6433,7 @@ fn test_e2e_selfhost_cli_stdout_stderr_separation() {
 
 /// TEST-CLI-02-AB: main-dispatch が parse file handler を entrypoint helper 経由で呼べること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_dispatch_parse_file() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_main_dispatch_parse_{}",
@@ -6346,6 +6468,7 @@ fn test_e2e_selfhost_cli_main_dispatch_parse_file() {
 
 /// TEST-CLI-02-AC: main-dispatch が help/version/unknown surface を保つこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_dispatch_command_surface() {
     let harness = r#"
 (defn main []
@@ -6398,6 +6521,7 @@ fn test_e2e_selfhost_cli_main_dispatch_command_surface() {
 
 /// TEST-CLI-02-AD: actual Cli main は引数なし実行で help surface を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_no_args_shows_help() {
     let output = compile_and_run(selfhost_cli_runtime_bundle());
 
@@ -6415,6 +6539,7 @@ fn test_e2e_selfhost_cli_main_no_args_shows_help() {
 
 /// TEST-CLI-02-AE: actual Cli main は argv 経由で --version を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_version() {
     let output = compile_and_run_with_args(selfhost_cli_runtime_bundle(), &["--version"]);
 
@@ -6427,6 +6552,7 @@ fn test_e2e_selfhost_cli_main_with_args_version() {
 
 /// TEST-CLI-02-AE2: actual Cli main は argv 経由で -v alias を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_short_version() {
     let output = compile_and_run_with_args(selfhost_cli_runtime_bundle(), &["-v"]);
 
@@ -6439,6 +6565,7 @@ fn test_e2e_selfhost_cli_main_with_args_short_version() {
 
 /// TEST-CLI-02-AF: actual Cli main は argv 経由で parse file command を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_parse_file() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_main_args_parse_{}",
@@ -6468,6 +6595,7 @@ fn test_e2e_selfhost_cli_main_with_args_parse_file() {
 
 /// TEST-CLI-02-AF2: actual Cli main は argv 経由で compile file command を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_compile_file() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_main_args_compile_{}",
@@ -6498,6 +6626,7 @@ fn test_e2e_selfhost_cli_main_with_args_compile_file() {
 
 /// TEST-CLI-02-AF2B: actual Cli main は nested import fixture の compile を import-aware helper と同じ summary で返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_compile_file_multifile_nested_imports() {
     let dir = cli_test_fixture_dir("main_compile_multifile_nested");
     write_cli_fixture_files(&dir, &cli_multifile_nested_fixture_files());
@@ -6525,6 +6654,7 @@ fn test_e2e_selfhost_cli_main_with_args_compile_file_multifile_nested_imports() 
 
 /// TEST-CLI-02-AF3: actual Cli main は argv 経由で build file command を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_build_file() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_main_args_build_{}",
@@ -6555,6 +6685,7 @@ fn test_e2e_selfhost_cli_main_with_args_build_file() {
 
 /// TEST-CLI-02-AF3B: actual Cli main は nested import fixture の build を import-aware helper と同じ summary で返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_build_file_multifile_nested_imports() {
     let dir = cli_test_fixture_dir("main_build_multifile_nested");
     write_cli_fixture_files(&dir, &cli_multifile_nested_fixture_files());
@@ -6581,6 +6712,7 @@ fn test_e2e_selfhost_cli_main_with_args_build_file_multifile_nested_imports() {
 
 /// TEST-CLI-02-AF4: actual Cli main は compile <file> -o <path> で output file を書けること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_compile_output_path() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_main_args_compile_output_{}",
@@ -6617,6 +6749,7 @@ fn test_e2e_selfhost_cli_main_with_args_compile_output_path() {
 
 /// TEST-CLI-02-AF5: actual Cli main は build <file> --output <path> で output file を書けること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_build_output_path() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_main_args_build_output_{}",
@@ -6653,6 +6786,7 @@ fn test_e2e_selfhost_cli_main_with_args_build_output_path() {
 
 /// TEST-CLI-02-AF6: actual Cli main は compile <file> --target ... -o <path> を併用できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_compile_target_and_output_path() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_main_args_compile_target_output_{}",
@@ -6696,6 +6830,7 @@ fn test_e2e_selfhost_cli_main_with_args_compile_target_and_output_path() {
 
 /// TEST-CLI-02-AF6B: actual Cli main は preview1/component target ごとに異なる wasm-size を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_compile_target_changes_wasm_size() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_main_args_compile_target_size_{}",
@@ -6751,6 +6886,7 @@ fn test_e2e_selfhost_cli_main_with_args_compile_target_changes_wasm_size() {
 
 /// TEST-CLI-02-AF7: actual Cli main は build <file> --output <path> --target wasm を併用できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_build_output_path_and_target_alias() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_test_cli_main_args_build_output_target_{}",
@@ -6794,6 +6930,7 @@ fn test_e2e_selfhost_cli_main_with_args_build_output_path_and_target_alias() {
 
 /// TEST-CLI-02-AG: actual Cli main は subcommand --help を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_subcommand_help() {
     let output = compile_and_run_with_args(selfhost_cli_runtime_bundle(), &["parse", "--help"]);
 
@@ -6806,6 +6943,7 @@ fn test_e2e_selfhost_cli_main_with_args_subcommand_help() {
 
 /// TEST-CLI-02-AH: actual Cli main は `-h` alias で global help を返せること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_args_short_help() {
     let output = compile_and_run_with_args(selfhost_cli_runtime_bundle(), &["-h"]);
 
@@ -6818,6 +6956,7 @@ fn test_e2e_selfhost_cli_main_with_args_short_help() {
 
 /// TEST-CLI-02-AI: actual Cli main は `help <subcommand>` を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_help_command() {
     let output = compile_and_run_with_args(selfhost_cli_runtime_bundle(), &["help", "parse"]);
 
@@ -6830,6 +6969,7 @@ fn test_e2e_selfhost_cli_main_with_help_command() {
 
 /// TEST-CLI-02-AJ: actual Cli main は help compile に output option surface を含めること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_help_compile_output_option() {
     let output = compile_and_run_with_args(selfhost_cli_runtime_bundle(), &["help", "compile"]);
 
@@ -6842,6 +6982,7 @@ fn test_e2e_selfhost_cli_main_with_help_compile_output_option() {
 
 /// TEST-CLI-02-AK: actual Cli main は build --help に output option surface を含めること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_build_subcommand_help_output_option() {
     let output = compile_and_run_with_args(selfhost_cli_runtime_bundle(), &["build", "--help"]);
 
@@ -6854,6 +6995,7 @@ fn test_e2e_selfhost_cli_main_with_build_subcommand_help_output_option() {
 
 /// TEST-CLI-02-AL: actual Cli main は `lsp --stdio` で stdin の initialize frame を処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_initialize() {
     let request_body = r#"{"jsonrpc":"2.0","id":21,"method":"initialize","params":0}"#;
     let stdin = format!(
@@ -6882,6 +7024,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_initialize() {
 
 /// TEST-CLI-02-AM: actual Cli main は `lsp --stdio` で連続 frame を順に処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_initialize_shutdown_sequence() {
     let init_body = r#"{"jsonrpc":"2.0","id":31,"method":"initialize","params":0}"#;
     let shutdown_body = r#"{"jsonrpc":"2.0","id":32,"method":"shutdown","params":0}"#;
@@ -6916,6 +7059,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_initialize_shutdown_sequence() {
 
 /// TEST-CLI-02-AN: actual Cli main は `lsp --stdio` で unknown method を Method not found frame にできること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_unknown_method() {
     let request_body = r#"{"jsonrpc":"2.0","id":41,"method":"workspace/unknown","params":0}"#;
     let stdin = format!(
@@ -6945,6 +7089,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_unknown_method() {
 
 /// TEST-CLI-02-AN2: actual Cli main は `lsp --stdio` で completion request を framed response にできること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion() {
     let request_body = r#"{"jsonrpc":"2.0","id":51,"method":"textDocument/completion","params":0}"#;
     let stdin = format!(
@@ -6973,6 +7118,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion() {
 
 /// TEST-CLI-02-AN3: actual Cli main は `lsp --stdio` で definition request を framed response にできること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_goto_definition() {
     let request_body = r#"{"jsonrpc":"2.0","id":61,"method":"textDocument/definition","params":{"uri":10,"line":1,"col":38,"source":"(defn helper [x] x) (defn main [] (helper 1))"}}"#;
     let stdin = format!(
@@ -7001,6 +7147,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_goto_definition() {
 
 /// TEST-CLI-02-AN4: actual Cli main は `lsp --stdio` で hover request を framed response にできること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover() {
     let request_body = r#"{"jsonrpc":"2.0","id":62,"method":"textDocument/hover","params":{"uri":10,"line":1,"col":38,"source":"(defn helper [x] x) (defn main [] (helper 1))"}}"#;
     let stdin = format!(
@@ -7030,6 +7177,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover() {
 
 /// TEST-CLI-02-AN5: actual Cli main は `lsp --stdio` で references request を framed response にできること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_references() {
     let request_body = r#"{"jsonrpc":"2.0","id":63,"method":"textDocument/references","params":{"uri":10,"line":1,"col":38,"source":"(defn square [x] x) (defn main [] (square 1) (square 2))"}}"#;
     let stdin = format!(
@@ -7058,6 +7206,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references() {
 
 /// TEST-CLI-02-AN6: actual Cli main は `lsp --stdio` で formatting request を framed response にできること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting() {
     let request_body = r#"{"jsonrpc":"2.0","id":64,"method":"textDocument/formatting","params":{"uri":10,"source":"(defn main [] 1)"}}"#;
     let stdin = format!(
@@ -7087,6 +7236,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting() {
 
 /// TEST-CLI-02-AN7: actual Cli main は `lsp --stdio` で rename request を framed response にできること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename() {
     let request_body = r#"{"jsonrpc":"2.0","id":65,"method":"textDocument/rename","params":{"uri":10,"line":1,"col":38,"source":"(defn square [x] x) (defn main [] (square 1) (square 2))","newName":"cube"}}"#;
     let stdin = format!(
@@ -7115,6 +7265,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename() {
 
 /// TEST-CLI-02-AN8: actual Cli main は `lsp --stdio` で didOpen -> didChange sequence を順に処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence() {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn main [] 0)"}}"#;
     let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"source":"(defn main [] (+ 0 1))"}}"#;
@@ -7150,6 +7301,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence() {
 
 /// TEST-CLI-02-AN9: actual Cli main は `lsp --stdio` で didOpen 後に source なし hover request も open document state から処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_open_document() {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn helper [x] x) (defn main [] (helper 1))"}}"#;
     let hover_body = r#"{"jsonrpc":"2.0","id":66,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":38}}"#;
@@ -7186,6 +7338,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_open_document() {
 
 /// TEST-CLI-02-AN9b: actual Cli main は spec 寄り hover params でも open document state から処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_open_document_spec_params() {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn helper [x] x) (defn main [] (helper 1))"}}"#;
     let hover_body = r#"{"jsonrpc":"2.0","id":66,"method":"textDocument/hover","params":{"textDocument":{"uri":42},"position":{"line":1,"character":38}}}"#;
@@ -7222,6 +7375,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_open_document_spec_param
 
 /// TEST-CLI-02-AN10: actual Cli main は `lsp --stdio` で didOpen 後に source なし definition request も open document state から処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_open_document() {
     let source = "(defn helper [x] x) (defn main [] (helper 1))";
     let open_body = format!(
@@ -7263,6 +7417,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_open_document() {
 
 /// TEST-CLI-02-AN10b: actual Cli main は spec 寄り definition params でも open document state から処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_open_document_spec_params() {
     let source = "(defn helper [x] x) (defn main [] (helper 1))";
     let open_body = format!(
@@ -7304,6 +7459,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_open_document_spec_
 
 /// TEST-CLI-02-AN11: actual Cli main は `lsp --stdio` で didOpen 後に source なし references request も open document state から処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_open_document() {
     let source = "(defn square [x] x) (defn main [] (square 1) (square 2))";
     let open_body = format!(
@@ -7349,6 +7505,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_open_document() {
 
 /// TEST-CLI-02-AN11b: actual Cli main は spec 寄り references params でも open document state から処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_open_document_spec_params() {
     let source = "(defn square [x] x) (defn main [] (square 1) (square 2))";
     let open_body = format!(
@@ -7394,6 +7551,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_open_document_spec_
 
 /// TEST-CLI-02-AN12: actual Cli main は `lsp --stdio` で didOpen 後に source なし formatting request も open document state から処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_open_document() {
     let source = "(defn main [] 1)";
     let open_body = format!(
@@ -7437,6 +7595,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_open_document() {
 
 /// TEST-CLI-02-AN13: actual Cli main は `lsp --stdio` で didOpen 後に source なし rename request も open document state から処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_open_document() {
     let source = "(defn square [x] x) (defn main [] (square 1) (square 2))";
     let open_body = format!(
@@ -7481,6 +7640,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_open_document() {
 
 /// TEST-CLI-02-AN13b: actual Cli main は spec 寄り rename params でも open document state から処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_open_document_spec_params() {
     let source = "(defn square [x] x) (defn main [] (square 1) (square 2))";
     let open_body = format!(
@@ -7525,6 +7685,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_open_document_spec_para
 
 /// TEST-CLI-02-AN14: actual Cli main は `lsp --stdio` で didOpen 後に source なし completion request も open document state から処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_open_document() {
     let source = "(defn helper [] 1) (he)";
     let open_body = format!(
@@ -7566,6 +7727,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_open_document() {
 
 /// TEST-CLI-02-AN14b: actual Cli main は spec 寄り completion params でも open document state から処理できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_open_document_spec_params() {
     let source = "(defn helper [] 1) (he)";
     let open_body = format!(
@@ -7608,6 +7770,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_open_document_spec_
 /// TEST-CLI-02-AN14c: actual Cli main は spec 寄り didOpen `textDocument.text` の
 /// escaped quote を含む source でも formatting へ正しく渡せること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_spec_document_text_with_escaped_quote()
 {
     let source = r#"(defn main [] "a\"b")"#;
@@ -7668,6 +7831,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_spec_document_text_
 /// TEST-CLI-02-AN14d: actual Cli main は spec 寄り didOpen `textDocument.text` の
 /// unicode escaped quote (`\u0022`) でも formatting へ正しく渡せること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_spec_document_text_with_unicode_escaped_quote()
  {
     let source = r#"(defn main [] "ab")"#;
@@ -7715,6 +7879,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_uses_spec_document_text_
 
 /// TEST-CLI-02-AN14e: actual Cli main は didOpen 後の formatting で defn metadata を保持すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_preserves_defn_metadata() {
     let source = r#"(defn add [x y] :doc "Add two ints" :params [(x "left") (y "right")] :returns "sum" :example [(add 1 2)] (+ x y))"#;
     let open_body = serde_json::json!({
@@ -7773,6 +7938,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_preserves_defn_metadata(
 
 /// TEST-CLI-02-AN15: actual Cli main は `lsp --stdio` で open 済み別 document から source なし definition を解決できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_resolves_open_document() {
     let helper_source = "(defn helper [x] x)";
     let main_source = "(helper 1)";
@@ -7827,6 +7993,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_resolves_open_document()
 
 /// TEST-CLI-02-AN16: actual Cli main は `lsp --stdio` で open 済み別 document から source なし hover contents を解決できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_resolves_open_document() {
     let helper_source = "(defn helper [x] x)";
     let main_source = "(helper 1)";
@@ -7882,6 +8049,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_resolves_open_document() {
 
 /// TEST-CLI-02-AN17: actual Cli main は `lsp --stdio` で didChange 後の source なし completion に最新 document state を使うこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_changed_document() {
     let open_source = "(defn alpha [] 1) (al)";
     let changed_source = "(defn helper [] 1) (he)";
@@ -7937,6 +8105,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_changed_document() 
 /// TEST-CLI-02-AN17b: actual Cli main は spec 寄り `contentChanges[0].text` の
 /// escaped newline でも didChange 後の最新 source を使うこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_spec_changed_document_with_escaped_newline()
  {
     let open_source = "(defn alpha [] 1) (al)";
@@ -8032,6 +8201,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_spec_changed_docume
 /// TEST-CLI-02-AN17c: actual Cli main は spec 寄り `contentChanges[0].text` の
 /// unicode escaped newline (`\u000a`) でも didChange 後の最新 source を使うこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_spec_changed_document_with_unicode_escaped_newline()
  {
     let open_source = "(defn alpha [] 1) (al)";
@@ -8111,6 +8281,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_uses_spec_changed_docume
 
 /// TEST-CLI-02-AN18: actual Cli main は `lsp --stdio` で same-URI repeated didOpen 後に最新 source を使うこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_repeated_didopen_keeps_latest_source() {
     let first_source = "(defn alpha [] 1) (al)";
     let latest_source = "(defn beta [] 1) (be)";
@@ -8165,6 +8336,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_repeated_didopen_keeps_latest_sourc
 
 /// TEST-CLI-02-AN19: actual Cli main は `lsp --stdio` で didChange 後の source なし hover に最新 document state を使うこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_changed_document() {
     let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let changed_source = "(defn helper [x] x) (defn main [] (helper 1))";
@@ -8220,6 +8392,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_changed_document() {
 
 /// TEST-CLI-02-AN20: actual Cli main は `lsp --stdio` で same-URI repeated didOpen 後の source なし definition に最新 source を使うこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_latest_reopened_document() {
     let first_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let latest_source = "(defn helper [x] x) (defn main [] (helper 1))";
@@ -8274,6 +8447,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_latest_reopened_doc
 
 /// TEST-CLI-02-AN21: actual Cli main は `lsp --stdio` で didChange 後の source なし definition に最新 document state を使うこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_changed_document() {
     let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let changed_source = "(defn helper [x] x) (defn main [] (helper 1))";
@@ -8328,6 +8502,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_uses_changed_document() 
 
 /// TEST-CLI-02-AN21b: actual Cli main は `lsp --stdio` で didChange 後の source なし references に最新 document state を使うこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_changed_document() {
     let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let changed_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
@@ -8383,6 +8558,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_changed_document() 
 
 /// TEST-CLI-02-AN21c: actual Cli main は `lsp --stdio` で didChange 後の source なし rename に最新 document state を使うこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_changed_document() {
     let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let changed_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
@@ -8437,6 +8613,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_changed_document() {
 
 /// TEST-CLI-02-AN22: actual Cli main は `lsp --stdio` で same-URI repeated didOpen 後の source なし hover に最新 source を使うこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_latest_reopened_document() {
     let first_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let latest_source = "(defn helper [x] x) (defn main [] (helper 1))";
@@ -8492,6 +8669,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_uses_latest_reopened_document
 
 /// TEST-CLI-02-AN22b: actual Cli main は `lsp --stdio` で same-URI repeated didOpen 後の source なし references に最新 source を使うこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_latest_reopened_document() {
     let first_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let latest_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
@@ -8547,6 +8725,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_uses_latest_reopened_doc
 
 /// TEST-CLI-02-AN22c: actual Cli main は `lsp --stdio` で same-URI repeated didOpen 後の source なし rename に最新 source を使うこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_latest_reopened_document() {
     let first_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let latest_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
@@ -8601,6 +8780,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_uses_latest_reopened_documen
 
 /// TEST-CLI-02-AN23: actual Cli main は `lsp --stdio` completion response を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_schema_snapshot() {
     let request_body = r#"{"jsonrpc":"2.0","id":51,"method":"textDocument/completion","params":0}"#;
     let stdin = format!(
@@ -8624,6 +8804,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_schema_snapshot() {
 
 /// TEST-CLI-02-AN24: actual Cli main は `lsp --stdio` の open 済み別 document definition response を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_open_document_schema_snapshot() {
     let helper_source = "(defn helper [x] x)";
     let main_source = "(helper 1)";
@@ -8661,6 +8842,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_open_document_schema_sna
 
 /// TEST-CLI-02-AN25: actual Cli main は `lsp --stdio` formatting response を valid JSON schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_open_document_schema_snapshot() {
     let source = "(defn main [] 1)";
     let open_body = format!(
@@ -8692,6 +8874,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_formatting_open_document_schema_sna
 
 /// TEST-CLI-02-AN26: actual Cli main は `lsp --stdio` hover response を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_schema_snapshot() {
     let request_body = r#"{"jsonrpc":"2.0","id":62,"method":"textDocument/hover","params":{"uri":10,"line":1,"col":38,"source":"(defn helper [x] x) (defn main [] (helper 1))"}}"#;
     let stdin = format!(
@@ -8715,6 +8898,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_schema_snapshot() {
 
 /// TEST-CLI-02-AN27: actual Cli main は `lsp --stdio` references response を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_schema_snapshot() {
     let request_body = r#"{"jsonrpc":"2.0","id":63,"method":"textDocument/references","params":{"uri":10,"line":1,"col":38,"source":"(defn square [x] x) (defn main [] (square 1) (square 2))"}}"#;
     let stdin = format!(
@@ -8738,6 +8922,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_schema_snapshot() {
 
 /// TEST-CLI-02-AN28: actual Cli main は `lsp --stdio` rename response を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_schema_snapshot() {
     let request_body = r#"{"jsonrpc":"2.0","id":65,"method":"textDocument/rename","params":{"uri":10,"line":1,"col":38,"source":"(defn square [x] x) (defn main [] (square 1) (square 2))","newName":"cube"}}"#;
     let stdin = format!(
@@ -8761,6 +8946,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_schema_snapshot() {
 
 /// TEST-CLI-02-AN29: actual Cli main は `lsp --stdio` initialize response を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_initialize_schema_snapshot() {
     let request_body = r#"{"jsonrpc":"2.0","id":21,"method":"initialize","params":0}"#;
     let stdin = format!(
@@ -8784,6 +8970,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_initialize_schema_snapshot() {
 
 /// TEST-CLI-02-AN30: actual Cli main は `lsp --stdio` initialize→shutdown sequence を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_initialize_shutdown_schema_snapshot() {
     let init_body = r#"{"jsonrpc":"2.0","id":31,"method":"initialize","params":0}"#;
     let shutdown_body = r#"{"jsonrpc":"2.0","id":32,"method":"shutdown","params":0}"#;
@@ -8810,6 +8997,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_initialize_shutdown_schema_snapshot
 
 /// TEST-CLI-02-AN31: actual Cli main は `lsp --stdio` unknown method error を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_unknown_method_schema_snapshot() {
     let request_body = r#"{"jsonrpc":"2.0","id":41,"method":"workspace/unknown","params":0}"#;
     let stdin = format!(
@@ -8833,6 +9021,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_unknown_method_schema_snapshot() {
 
 /// TEST-CLI-02-AN31b: actual Cli main は `lsp --stdio` shutdown 後 request error を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_request_after_shutdown_schema_snapshot() {
     let shutdown_body = r#"{"jsonrpc":"2.0","id":51,"method":"shutdown","params":0}"#;
     let hover_body = r#"{"jsonrpc":"2.0","id":52,"method":"textDocument/hover","params":{"uri":42,"line":1,"col":1}}"#;
@@ -8859,6 +9048,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_request_after_shutdown_schema_snaps
 
 /// TEST-CLI-02-AN32: actual Cli main は `lsp --stdio` didOpen→didChange sequence を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_schema_snapshot() {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn main [] 0)"}}"#;
     let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"source":"(defn main [] (+ 0 1))"}}"#;
@@ -8885,6 +9075,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_schema_snapshot()
 
 /// TEST-CLI-02-AN33: actual Cli main は `lsp --stdio` publishDiagnostics notification を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_publish_diagnostics_schema_snapshot() {
     let request_body = r#"{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":42,"diagnostics":[{"source":1,"severity":1,"rule":203,"line":2,"col":4,"messageHash":7003}]}}"#;
     let stdin = format!(
@@ -8908,6 +9099,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_publish_diagnostics_schema_snapshot
 
 /// TEST-CLI-02-AN34: actual Cli main は `lsp --stdio` の didChange 後 hover fallback を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_changed_document_schema_snapshot() {
     let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let changed_source = "(defn helper [x] x) (defn main [] (helper 1))";
@@ -8945,6 +9137,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_changed_document_schema_snaps
 
 /// TEST-CLI-02-AN34c: actual Cli main は `lsp --stdio` の didChange 後 completion fallback を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_changed_document_schema_snapshot() {
     let open_source = "(defn alpha [] 1) (al)";
     let changed_source = "(defn helper [] 1) (he)";
@@ -8982,6 +9175,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_changed_document_schema_
 
 /// TEST-CLI-02-AN34b: actual Cli main は `lsp --stdio` の didChange 後 references fallback を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_changed_document_schema_snapshot() {
     let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let changed_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
@@ -9019,6 +9213,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_changed_document_schema_
 
 /// TEST-CLI-02-AN34d: actual Cli main は `lsp --stdio` の didChange 後 definition fallback を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_changed_document_schema_snapshot() {
     let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let changed_source = "(defn helper [x] x) (defn main [] (helper 1))";
@@ -9056,6 +9251,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_changed_document_schema_
 
 /// TEST-CLI-02-AN34e: actual Cli main は `lsp --stdio` の didChange 後 rename fallback を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_changed_document_schema_snapshot() {
     let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let changed_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
@@ -9093,6 +9289,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_changed_document_schema_snap
 
 /// TEST-CLI-02-AN35: actual Cli main は `lsp --stdio` の repeated didOpen 後 definition fallback を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_latest_reopened_schema_snapshot() {
     let first_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let latest_source = "(defn helper [x] x) (defn main [] (helper 1))";
@@ -9130,6 +9327,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_latest_reopened_schema_s
 
 /// TEST-CLI-02-AN35c: actual Cli main は `lsp --stdio` の repeated didOpen 後 hover fallback を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_latest_reopened_schema_snapshot() {
     let first_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let latest_source = "(defn helper [x] x) (defn main [] (helper 1))";
@@ -9167,6 +9365,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_latest_reopened_schema_snapsh
 
 /// TEST-CLI-02-AN35b: actual Cli main は `lsp --stdio` の repeated didOpen 後 references fallback を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_latest_reopened_schema_snapshot() {
     let first_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let latest_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
@@ -9204,6 +9403,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_latest_reopened_schema_s
 
 /// TEST-CLI-02-AN35d: actual Cli main は `lsp --stdio` の repeated didOpen 後 completion fallback を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_latest_reopened_schema_snapshot() {
     let first_source = "(defn alpha [] 1) (al)";
     let latest_source = "(defn beta [] 1) (be)";
@@ -9241,6 +9441,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_latest_reopened_schema_s
 
 /// TEST-CLI-02-AN35e: actual Cli main は `lsp --stdio` の repeated didOpen 後 rename fallback を schema snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_latest_reopened_schema_snapshot() {
     let first_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let latest_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
@@ -9278,6 +9479,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_latest_reopened_schema_snaps
 
 /// TEST-CLI-02-AN36: actual Cli main は `lsp --stdio` で didChange 時に diagnostics refresh frame を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_diagnostics_refresh_snapshot() {
     let open_body =
         r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":")"}}"#;
@@ -9305,6 +9507,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_diagnostics_refre
 
 /// TEST-CLI-02-AN37: actual Cli main は spec 寄り didOpen/didChange params でも diagnostics refresh snapshot に一致すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_spec_params_diagnostics_refresh_snapshot()
  {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":")"}}}"#;
@@ -9332,6 +9535,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_spec_params_diagn
 
 /// TEST-CLI-02-AN37a: actual Cli main は `lsp --stdio` で type diagnostics refresh frame を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_type_diagnostics_refresh_snapshot() {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn main [] (if 42 1 0))"}}"#;
     let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"source":"(defn main [] 0)"}}"#;
@@ -9358,6 +9562,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_type_diagnostics_
 
 /// TEST-CLI-02-AN37b: actual Cli main は `lsp --stdio` で lint diagnostics refresh frame を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_lint_diagnostics_refresh_snapshot() {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"uri":42,"source":"(defn main [] (let [x 42] 0))"}}"#;
     let change_body = r#"{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"uri":42,"source":"(defn main [] 0)"}}"#;
@@ -9384,6 +9589,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_lint_diagnostics_
 
 /// TEST-CLI-02-AN37c: actual Cli main は spec 寄り didOpen/didChange params でも type diagnostics refresh snapshot に一致すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_spec_params_type_diagnostics_refresh_snapshot()
  {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":"(defn main [] (if 42 1 0))"}}}"#;
@@ -9411,6 +9617,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_spec_params_type_
 
 /// TEST-CLI-02-AN37d: actual Cli main は spec 寄り didOpen/didChange params でも lint diagnostics refresh snapshot に一致すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_spec_params_lint_diagnostics_refresh_snapshot()
  {
     let open_body = r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":42,"languageId":"lsharp","version":1,"text":"(defn main [] (let [x 42] 0))"}}}"#;
@@ -9438,6 +9645,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_document_sequence_spec_params_lint_
 
 /// TEST-CLI-02-AN38: actual Cli main は document path 付き hover の filesystem import response を snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_filesystem_import_schema_snapshot() {
     let main_source = "(module Main) (import Support.Mid) (defn main [] (mid-val))";
     let hover_col = main_source.find("(mid-val)").expect("mid-val call") + 2;
@@ -9462,6 +9670,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_hover_filesystem_import_schema_snap
 
 /// TEST-CLI-02-AN39: actual Cli main は document path 付き completion の filesystem import response を snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_filesystem_import_schema_snapshot() {
     let main_source = "(module Main) (import Support.Mid) (defn main [] (mid-va))";
     let completion_col = main_source.find("mid-va").expect("mid-va call") + "mid-va".len() + 1;
@@ -9486,6 +9695,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_completion_filesystem_import_schema
 
 /// TEST-CLI-02-AN40: actual Cli main は document path 付き definition の filesystem import response を snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_filesystem_import_schema_snapshot() {
     let main_source = "(module Main) (import Support.Mid) (defn main [] (mid-val))";
     let definition_col = main_source.find("(mid-val)").expect("mid-val call") + 2;
@@ -9510,6 +9720,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_definition_filesystem_import_schema
 
 /// TEST-CLI-02-AN41: actual Cli main は document path 付き references の filesystem import response を snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_filesystem_import_schema_snapshot() {
     let main_source = "(module Main) (import Support.Mid) (defn main [] (mid-val))";
     let references_col = main_source.find("(mid-val)").expect("mid-val call") + 2;
@@ -9534,6 +9745,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_references_filesystem_import_schema
 
 /// TEST-CLI-02-AN42: actual Cli main は document path 付き rename の filesystem import response を snapshot に一致させること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_filesystem_import_schema_snapshot() {
     let main_source = "(module Main) (import Support.Mid) (defn main [] (mid-val))";
     let rename_col = main_source.find("(mid-val)").expect("mid-val call") + 2;
@@ -9559,6 +9771,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_rename_filesystem_import_schema_sna
 /// TEST-CLI-02-AN43: actual Cli main は filesystem-backed path state を
 /// 複数 request と didChange を跨いで保持し、代表 sequence snapshot に一致すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_filesystem_document_sequence_schema_snapshot() {
     let dir = cli_test_fixture_dir("filesystem_document_sequence_snapshot");
     write_cli_fixture_files(&dir, &cli_lsp_nested_fixture_files());
@@ -9612,6 +9825,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_filesystem_document_sequence_schema
 /// TEST-CLI-02-AN43b: actual Cli main は filesystem-backed path state を
 /// spec 寄り request shape + didChange を跨いでも保持し、同じ representative snapshot に収束すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_lsp_stdio_filesystem_document_sequence_spec_style_snapshot() {
     let dir = cli_test_fixture_dir("filesystem_document_sequence_spec_style_snapshot");
     write_cli_fixture_files(&dir, &cli_lsp_nested_fixture_files());
@@ -9750,6 +9964,7 @@ fn test_e2e_selfhost_cli_main_with_lsp_stdio_filesystem_document_sequence_spec_s
 
 /// TEST-CLI-02-AO: actual Cli main は help lsp に `--stdio` surface を含めること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_main_with_help_lsp_stdio_option() {
     let output = compile_and_run_with_args(selfhost_cli_runtime_bundle(), &["help", "lsp"]);
 

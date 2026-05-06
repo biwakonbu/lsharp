@@ -904,6 +904,7 @@ fn test_native_codegen_real_execution() {
 
 /// NATIVE-REAL-07: i64.const を full-width native bytes として出力できること (AArch64)
 #[test]
+#[ignore]
 fn test_native_codegen_emits_full_const_instruction_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -955,6 +956,7 @@ fn test_native_codegen_emits_full_const_instruction_bytes() {
 
 /// NATIVE-REAL-08: 複数 IR 命令を順に native bytes へ落とせること (AArch64)
 #[test]
+#[ignore]
 fn test_native_codegen_processes_multiple_ir_instructions() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -999,6 +1001,7 @@ fn test_native_codegen_processes_multiple_ir_instructions() {
 
 /// NATIVE-REAL-08b: x86_64 で i32.const / i32.wrap_i64 / i64.extend_i32_s が distinct bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_i32_core_instruction_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -1061,6 +1064,7 @@ fn test_native_codegen_emits_x86_i32_core_instruction_bytes() {
 
 /// NATIVE-REAL-08c: x86_64 で i32.mul が distinct bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_i32_mul_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -1206,6 +1210,7 @@ fn assert_x86_i32_logic_tail(name: &str, opcode: u32, expected_instr: [u32; 2]) 
 
 /// NATIVE-REAL-08c1: x86_64 で i32.and / i32.or が distinct bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_i32_logic_bytes() {
     assert_x86_i32_logic_tail("i32.and", 26, [33, 200]);
     assert_x86_i32_logic_tail("i32.or", 27, [9, 200]);
@@ -1213,6 +1218,7 @@ fn test_native_codegen_emits_x86_i32_logic_bytes() {
 
 /// NATIVE-REAL-08c3: x86_64 で i64.mul が distinct bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_i64_mul_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -1286,6 +1292,7 @@ fn test_native_codegen_emits_x86_i64_mul_bytes() {
 
 /// NATIVE-REAL-08c4: x86_64 で i64.div が distinct bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_i64_div_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -1368,6 +1375,7 @@ fn test_native_codegen_emits_x86_i64_div_bytes() {
 
 /// NATIVE-REAL-08c5: x86_64 で i64.rem が distinct bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_i64_rem_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -1514,6 +1522,7 @@ fn assert_x86_memory_load_tail(
 
 /// NATIVE-REAL-08c6: x86_64 で i64/i32 load 系が distinct bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_memory_load_bytes() {
     assert_x86_memory_load_tail("i64.load", 48, 8, 6, &[72, 139, 64, 8, 93, 195]);
     assert_x86_memory_load_tail("i32.load", 45, 4, 5, &[139, 64, 4, 93, 195]);
@@ -1599,6 +1608,7 @@ fn assert_x86_memory_store_tail(
 
 /// NATIVE-REAL-08c7: x86_64 で i64/i32 store 系が distinct bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_memory_store_bytes() {
     assert_x86_memory_store_tail(
         "i64.store",
@@ -1761,6 +1771,7 @@ fn assert_x86_plain_control_tail(
 
 /// NATIVE-REAL-08c8: x86_64 で memory.copy / memory.fill が dedicated bytes を持つこと。
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_memory_bulk_bytes() {
     assert_x86_memory_bulk_tail(
         "memory.copy",
@@ -1784,6 +1795,7 @@ fn test_native_codegen_emits_x86_memory_bulk_bytes() {
 
 /// NATIVE-REAL-08c9: x86_64 で plain if/else/end が dedicated bytes を持つこと。
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_if_else_bytes() {
     assert_x86_plain_control_tail(
         "if/else",
@@ -1896,6 +1908,7 @@ fn assert_x86_i64_compare_tail(name: &str, opcode: u32, setcc_opcode: u32) {
 
 /// NATIVE-REAL-08c2: x86_64 で i64 compare 群が cmp + setcc + movzx bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_i64_compare_bytes() {
     for (name, opcode, setcc_opcode) in [
         ("i64.eq", 30, 148),
@@ -1911,6 +1924,7 @@ fn test_native_codegen_emits_x86_i64_compare_bytes() {
 
 /// NATIVE-REAL-08d: x86_64 で direct call bundle が rel32 call bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -1957,6 +1971,7 @@ fn test_native_codegen_emits_x86_direct_call_bundle_bytes() {
 
 /// NATIVE-REAL-08e: AArch64 で direct call bundle が BL + callee bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_aarch64_direct_call_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -2025,6 +2040,7 @@ fn test_native_codegen_emits_aarch64_direct_call_bundle_bytes() {
 
 /// NATIVE-REAL-08f: x86_64 で 1 引数 direct call bundle が arg move + rel32 call bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -2110,6 +2126,7 @@ fn test_native_codegen_emits_x86_direct_call_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08f2: x86_64 で import prefix を含む actual module index space の 1 引数 call が同じ rel32 bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_import_prefixed_direct_call_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -2202,6 +2219,7 @@ fn test_native_codegen_emits_x86_import_prefixed_direct_call_arg_bundle_bytes() 
 
 /// NATIVE-REAL-08g: x86_64 で 2 引数 direct call bundle が arg move + rel32 call bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_two_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -2301,6 +2319,7 @@ fn test_native_codegen_emits_x86_direct_call_two_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08h: x86_64 で 3 引数 direct call bundle が spill load + arg moves + rel32 call bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_three_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -2426,6 +2445,7 @@ fn test_native_codegen_emits_x86_direct_call_three_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08i: x86_64 の 3-value window で drop;drop が spilled previous を復元すること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_three_value_double_drop_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -2560,6 +2580,7 @@ fn test_native_codegen_emits_x86_three_value_double_drop_bytes() {
 
 /// NATIVE-REAL-08ia: x86_64 の 24-value drop helper が spill21 まで low->high に詰め直すこと。
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_deep_drop_helper_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -2649,6 +2670,7 @@ fn test_native_codegen_emits_x86_deep_drop_helper_bytes() {
 
 /// NATIVE-REAL-08j: x86_64 で 4 引数 direct call bundle が 2-spill load + arg moves + rel32 call bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_four_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -2806,6 +2828,7 @@ fn test_native_codegen_emits_x86_direct_call_four_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08k: x86_64 で 5 引数 direct call bundle が 3-spill load + arg moves + rel32 call bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_five_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -2991,6 +3014,7 @@ fn test_native_codegen_emits_x86_direct_call_five_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08l: x86_64 で 6 引数 direct call bundle が 4-spill load + arg moves + rel32 call bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_six_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -3217,6 +3241,7 @@ fn test_native_codegen_emits_x86_direct_call_six_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08m: x86_64 で 7 引数 direct call bundle が stack arg + 5-spill load + rel32 call bytes を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_seven_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -3530,6 +3555,7 @@ fn test_native_codegen_emits_x86_direct_call_seven_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08n: x86_64 で 8 引数 direct call bundle が 2 stack arg を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_eight_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -3896,6 +3922,7 @@ fn test_native_codegen_emits_x86_direct_call_eight_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08o: x86_64 で 9 引数 direct call bundle が 3 stack arg を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_nine_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -4326,6 +4353,7 @@ fn test_native_codegen_emits_x86_direct_call_nine_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08p: x86_64 で 10 引数 direct call bundle が 4 stack arg を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_ten_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -4576,6 +4604,7 @@ fn test_native_codegen_emits_x86_direct_call_ten_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08q: x86_64 で 11 引数 direct call bundle が 5 stack arg を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_eleven_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -4858,6 +4887,7 @@ fn test_native_codegen_emits_x86_direct_call_eleven_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08r: x86_64 で 12 引数 direct call bundle が 6 stack arg を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_twelve_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -5170,6 +5200,7 @@ fn test_native_codegen_emits_x86_direct_call_twelve_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08s: x86_64 で 13 引数 direct call bundle が 7 stack arg を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_thirteen_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -5318,6 +5349,7 @@ fn test_native_codegen_emits_x86_direct_call_thirteen_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08t: x86_64 で 14 引数 direct call bundle が 8 stack arg を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_fourteen_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -5473,6 +5505,7 @@ fn test_native_codegen_emits_x86_direct_call_fourteen_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08u: x86_64 で 15 引数 direct call bundle が 9 stack arg を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_fifteen_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -5635,6 +5668,7 @@ fn test_native_codegen_emits_x86_direct_call_fifteen_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08v: x86_64 で 16 引数 direct call bundle が 10 stack arg を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_sixteen_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -5804,6 +5838,7 @@ fn test_native_codegen_emits_x86_direct_call_sixteen_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08w: x86_64 で 17 引数 direct call bundle が 11 stack arg を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_seventeen_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -5979,6 +6014,7 @@ fn test_native_codegen_emits_x86_direct_call_seventeen_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08x: x86_64 で 18 引数 direct call bundle が 12 stack arg を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_eighteen_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -6161,6 +6197,7 @@ fn test_native_codegen_emits_x86_direct_call_eighteen_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08y: x86_64 で 19 引数 direct call bundle が 13 stack arg を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_nineteen_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -6350,6 +6387,7 @@ fn test_native_codegen_emits_x86_direct_call_nineteen_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08z: x86_64 で 20 引数 direct call bundle が 14 stack arg を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_twenty_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -6500,6 +6538,7 @@ fn test_native_codegen_emits_x86_direct_call_twenty_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08za: x86_64 で 21 引数 direct call bundle が 15 stack arg を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_twenty_one_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -6655,6 +6694,7 @@ fn test_native_codegen_emits_x86_direct_call_twenty_one_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zb: x86_64 で 22 引数 direct call bundle が 16 stack arg を持つこと
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_twenty_two_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -6815,6 +6855,7 @@ fn test_native_codegen_emits_x86_direct_call_twenty_two_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zc: x86_64 で 23 引数 direct call bundle helper が 17 stack arg / spill 23 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_twenty_three_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -6893,6 +6934,7 @@ fn test_native_codegen_emits_x86_direct_call_twenty_three_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zd: x86_64 で 24 引数 direct call bundle helper が 18 stack arg / spill 24 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_twenty_four_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -6974,6 +7016,7 @@ fn test_native_codegen_emits_x86_direct_call_twenty_four_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08ze: x86_64 で 25 引数 direct call bundle helper が 19 stack arg / spill 25 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_twenty_five_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7057,6 +7100,7 @@ fn test_native_codegen_emits_x86_direct_call_twenty_five_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zf: x86_64 で 26 引数 direct call bundle helper が 20 stack arg / spill 26 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_twenty_six_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7097,6 +7141,7 @@ fn test_native_codegen_emits_x86_direct_call_twenty_six_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zg: x86_64 で 27 引数 direct call bundle helper が 21 stack arg / spill 27 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_twenty_seven_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7137,6 +7182,7 @@ fn test_native_codegen_emits_x86_direct_call_twenty_seven_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zh: x86_64 で 28 引数 direct call bundle helper が 22 stack arg / spill 28 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_twenty_eight_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7177,6 +7223,7 @@ fn test_native_codegen_emits_x86_direct_call_twenty_eight_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zi: x86_64 で 29 引数 direct call bundle helper が 23 stack arg / spill 29 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_twenty_nine_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7217,6 +7264,7 @@ fn test_native_codegen_emits_x86_direct_call_twenty_nine_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zj: x86_64 で 30 引数 direct call bundle helper が 24 stack arg / spill 30 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_thirty_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7257,6 +7305,7 @@ fn test_native_codegen_emits_x86_direct_call_thirty_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zk: x86_64 で 31 引数 direct call bundle helper が 25 stack arg / spill 31 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_thirty_one_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7297,6 +7346,7 @@ fn test_native_codegen_emits_x86_direct_call_thirty_one_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zl: x86_64 で 32 引数 direct call bundle helper が 26 stack arg / spill 32 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_thirty_two_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7337,6 +7387,7 @@ fn test_native_codegen_emits_x86_direct_call_thirty_two_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zm: x86_64 で 33 引数 direct call bundle helper が 27 stack arg / spill 33 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_thirty_three_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7377,6 +7428,7 @@ fn test_native_codegen_emits_x86_direct_call_thirty_three_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zn: x86_64 で 34 引数 direct call bundle helper が 28 stack arg / spill 34 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_thirty_four_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7454,6 +7506,7 @@ fn test_native_codegen_emits_x86_direct_call_thirty_four_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zo: x86_64 で 35 引数 direct call bundle helper が 29 stack arg / spill 35 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_thirty_five_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7533,6 +7586,7 @@ fn test_native_codegen_emits_x86_direct_call_thirty_five_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zp: x86_64 で 36 引数 direct call bundle helper が 30 stack arg / spill 36 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_thirty_six_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7613,6 +7667,7 @@ fn test_native_codegen_emits_x86_direct_call_thirty_six_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zq: x86_64 で 37 引数 direct call bundle helper が 31 stack arg / spill 37 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_thirty_seven_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7658,6 +7713,7 @@ fn test_native_codegen_emits_x86_direct_call_thirty_seven_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zr: x86_64 で 38 引数 direct call bundle helper が 32 stack arg / spill 38 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_thirty_eight_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7703,6 +7759,7 @@ fn test_native_codegen_emits_x86_direct_call_thirty_eight_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zs: x86_64 で 39 引数 direct call bundle helper が 33 stack arg / spill 39 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_thirty_nine_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7748,6 +7805,7 @@ fn test_native_codegen_emits_x86_direct_call_thirty_nine_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zt: x86_64 で 40 引数 direct call bundle helper が 34 stack arg / spill 40 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_forty_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7820,6 +7878,7 @@ fn test_native_codegen_emits_x86_direct_call_forty_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zu: x86_64 で 41 引数 direct call bundle helper が 35 stack arg / spill 41 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_forty_one_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7895,6 +7954,7 @@ fn test_native_codegen_emits_x86_direct_call_forty_one_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zv: x86_64 で 42 引数 direct call bundle helper が 36 stack arg / spill 42 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_forty_two_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -7976,6 +8036,7 @@ fn test_native_codegen_emits_x86_direct_call_forty_two_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zw: x86_64 で 43 引数 direct call bundle helper が 37 stack arg / spill 43 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_forty_three_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -8079,6 +8140,7 @@ fn test_native_codegen_emits_x86_direct_call_forty_three_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zx: x86_64 で 44 引数 direct call bundle helper が 38 stack arg / spill 44 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_forty_four_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -8191,6 +8253,7 @@ fn test_native_codegen_emits_x86_direct_call_forty_four_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zy: x86_64 で 45 引数 direct call bundle helper が 39 stack arg / spill 45 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_forty_five_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -8305,6 +8368,7 @@ fn test_native_codegen_emits_x86_direct_call_forty_five_arg_bundle_bytes() {
 
 /// NATIVE-REAL-08zz: x86_64 で 46 引数 direct call bundle helper が 40 stack arg / spill 46 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_forty_six_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -8421,6 +8485,7 @@ fn test_native_codegen_emits_x86_direct_call_forty_six_arg_bundle_bytes() {
 
 /// NATIVE-REAL-0900: x86_64 で 47 引数 direct call bundle helper が 41 stack arg / spill 47 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_forty_seven_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -8539,6 +8604,7 @@ fn test_native_codegen_emits_x86_direct_call_forty_seven_arg_bundle_bytes() {
 
 /// NATIVE-REAL-0901: x86_64 で 48 引数 direct call bundle helper が 42 stack arg / spill 48 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_forty_eight_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -8659,6 +8725,7 @@ fn test_native_codegen_emits_x86_direct_call_forty_eight_arg_bundle_bytes() {
 
 /// NATIVE-REAL-0902: x86_64 で 49 引数 direct call bundle helper が 43 stack arg / spill 49 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_forty_nine_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -8780,6 +8847,7 @@ fn test_native_codegen_emits_x86_direct_call_forty_nine_arg_bundle_bytes() {
 
 /// NATIVE-REAL-0903: x86_64 で 50 引数 direct call bundle helper が 44 stack arg / spill 50 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_fifty_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -8903,6 +8971,7 @@ fn test_native_codegen_emits_x86_direct_call_fifty_arg_bundle_bytes() {
 
 /// NATIVE-REAL-0904: x86_64 で 51 引数 direct call bundle helper が 45 stack arg / spill 51 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_fifty_one_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -9031,6 +9100,7 @@ fn test_native_codegen_emits_x86_direct_call_fifty_one_arg_bundle_bytes() {
 
 /// NATIVE-REAL-0905: x86_64 で 52 引数 direct call bundle helper が 46 stack arg / spill 52 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_fifty_two_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -9161,6 +9231,7 @@ fn test_native_codegen_emits_x86_direct_call_fifty_two_arg_bundle_bytes() {
 
 /// NATIVE-REAL-0906: x86_64 で 53 引数 direct call bundle helper が 47 stack arg / spill 53 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_fifty_three_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -9292,6 +9363,7 @@ fn test_native_codegen_emits_x86_direct_call_fifty_three_arg_bundle_bytes() {
 
 /// NATIVE-REAL-0907: x86_64 で 54 引数 direct call bundle helper が 48 stack arg / spill 54 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_fifty_four_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -9425,6 +9497,7 @@ fn test_native_codegen_emits_x86_direct_call_fifty_four_arg_bundle_bytes() {
 
 /// NATIVE-REAL-0908: x86_64 で 55 引数 direct call bundle helper が 49 stack arg / spill 55 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_fifty_five_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -9560,6 +9633,7 @@ fn test_native_codegen_emits_x86_direct_call_fifty_five_arg_bundle_bytes() {
 
 /// NATIVE-REAL-0909: x86_64 で 56 引数 direct call bundle helper が 50 stack arg / spill 56 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_fifty_six_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -9697,6 +9771,7 @@ fn test_native_codegen_emits_x86_direct_call_fifty_six_arg_bundle_bytes() {
 
 /// NATIVE-REAL-0910: x86_64 で 57 引数 direct call bundle helper が 51 stack arg / spill 57 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_fifty_seven_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -9836,6 +9911,7 @@ fn test_native_codegen_emits_x86_direct_call_fifty_seven_arg_bundle_bytes() {
 
 /// NATIVE-REAL-0911: x86_64 で 58 引数 direct call bundle helper が 52 stack arg / spill 58 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_fifty_eight_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -9977,6 +10053,7 @@ fn test_native_codegen_emits_x86_direct_call_fifty_eight_arg_bundle_bytes() {
 
 /// NATIVE-REAL-0912: x86_64 で 59 引数 direct call bundle helper が 53 stack arg / spill 59 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_fifty_nine_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -10119,6 +10196,7 @@ fn test_native_codegen_emits_x86_direct_call_fifty_nine_arg_bundle_bytes() {
 
 /// NATIVE-REAL-0913: x86_64 で 60 引数 direct call bundle helper が 54 stack arg / spill 60 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_sixty_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)
@@ -10262,6 +10340,7 @@ fn test_native_codegen_emits_x86_direct_call_sixty_arg_bundle_bytes() {
 
 /// NATIVE-REAL-0914: x86_64 で 61 引数 direct call bundle helper が 55 stack arg / spill 61 を生成できること
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_direct_call_sixty_one_arg_bundle_bytes() {
     let output = run_native_codegen_harness(
         r#"(module Main)

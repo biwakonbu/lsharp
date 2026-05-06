@@ -295,6 +295,7 @@ fn selfhost_cli_html_runtime_bundle() -> String {
 
 /// D-3: DocTools.ls の generate-html が title/body と entry list を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_generate_html_basic() {
     let harness = r#"
 (defn main []
@@ -332,6 +333,7 @@ fn test_e2e_selfhost_doctools_generate_html_basic() {
 
 /// D-3: DocTools.ls の generate-html が 2 回実行しても同一 payload を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_generate_html_idempotent() {
     let harness = r#"
 (defn main []
@@ -367,6 +369,7 @@ fn test_e2e_selfhost_doctools_generate_html_idempotent() {
 
 /// DOC-01: generate が title/body/function/type payload を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_generate_structured_doc_payload() {
     let harness = r#"
 (defn main []
@@ -392,6 +395,7 @@ fn test_e2e_selfhost_doctools_generate_structured_doc_payload() {
 
 /// DOC-01: module decl がある場合は title に module 名を反映すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_module_title_uses_name() {
     let harness = r#"
 (defn main []
@@ -411,6 +415,7 @@ fn test_e2e_selfhost_doctools_module_title_uses_name() {
 
 /// DOC-01: generate-knowledge の出力が module + function entries + type entries を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_schema_knowledge() {
     let harness = r#"
 (defn main []
@@ -482,6 +487,7 @@ fn test_e2e_selfhost_doctools_schema_knowledge() {
 
 /// DOC-01: DocTools entry list が source 順ではなく deterministic な hash 昇順で並ぶこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_sorts_entries_by_hash() {
     let harness = r#"
 (defn main []
@@ -524,6 +530,7 @@ fn test_e2e_selfhost_doctools_sorts_entries_by_hash() {
 
 /// DOC-01: generate-review が unused-let を deterministic diagnostic として返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_schema_review() {
     let harness = r#"
 (defn main []
@@ -574,6 +581,7 @@ fn test_e2e_selfhost_doctools_schema_review() {
 
 /// DOC-01: generate-review が empty-do を deterministic diagnostic として返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_schema_review_empty_do() {
     let harness = r#"
 (defn main []
@@ -622,6 +630,7 @@ fn test_e2e_selfhost_doctools_schema_review_empty_do() {
 
 /// DOC-01: generate-doc-ack が status/title/body と trailer を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_doc_ack_trailer_payload() {
     let harness = r#"
 (defn main []
@@ -661,6 +670,7 @@ fn test_e2e_selfhost_doctools_doc_ack_trailer_payload() {
 
 /// DOC-01: generate-doc-check が status/title/body と trailer を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_doc_check_trailer_payload() {
     let harness = r#"
 (defn main []
@@ -703,6 +713,7 @@ fn test_e2e_selfhost_doctools_doc_check_trailer_payload() {
 
 /// DOC-02: doc-check trailer validation は末尾 comment trailer を受理すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_doc_check_trailer_validation_accepts_comment_form() {
     let harness = r#"
 (defn main []
@@ -721,6 +732,7 @@ fn test_e2e_selfhost_doctools_doc_check_trailer_validation_accepts_comment_form(
 
 /// DOC-02: doc-check trailer validation は status trailer 欠落を拒否すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_doc_check_trailer_validation_rejects_missing_status() {
     let harness = r#"
 (defn main []
@@ -739,6 +751,7 @@ fn test_e2e_selfhost_doctools_doc_check_trailer_validation_rejects_missing_statu
 
 /// DOC-02: doc-check trailer validation は reviewer 値欠落を拒否すること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_doc_check_trailer_validation_rejects_empty_reviewer() {
     let harness = r#"
 (defn main []
@@ -757,6 +770,7 @@ fn test_e2e_selfhost_doctools_doc_check_trailer_validation_rejects_empty_reviewe
 
 /// DOC-01: generate-doc-output の出力が function/type entries と title を含むこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_schema_doc_output() {
     let harness = r#"
 (defn main []
@@ -791,6 +805,7 @@ fn test_e2e_selfhost_doctools_schema_doc_output() {
 
 /// DOC-01: generate-doc-output も module decl がある場合は module 名 title を使うこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_schema_doc_output_module_title_name() {
     let harness = r#"
 (defn main []
@@ -815,6 +830,7 @@ fn test_e2e_selfhost_doctools_schema_doc_output_module_title_name() {
 
 /// DOC-01: generate-doc-output の function entry が doc/example metadata を含むこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_schema_doc_output_function_metadata() {
     let harness = r#"
 (defn main []
@@ -879,6 +895,7 @@ fn test_e2e_selfhost_doctools_schema_doc_output_function_metadata() {
 
 /// DOC-01: ドキュメント文字列がタイムスタンプ・ホスト名・絶対パスを含まないこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_no_timestamp() {
     let harness = r#"
 (defn string-contains-loop [haystack needle i hlen nlen]
@@ -920,6 +937,7 @@ fn test_e2e_selfhost_doctools_no_timestamp() {
 
 /// DOC-01: 同一入力に対し doc/html/schema 出力が deterministic であること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_deterministic() {
     let harness = r#"
 (defn main []
@@ -974,6 +992,7 @@ fn test_e2e_selfhost_doctools_deterministic() {
 
 /// D-3: HtmlDoc.ls が supported subset の実 HTML を決定的に描画できること
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_html_doc_render_html_supported_subset() {
     let harness = r#"
 (defn string-contains-loop [haystack needle i hlen nlen]
@@ -1015,6 +1034,7 @@ fn test_e2e_selfhost_doctools_html_doc_render_html_supported_subset() {
 
 /// D-4: Cli.ls の parse-diagnostics-count が正常ソースで 0 を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_parse_diagnostics() {
     let harness = r#"
 (defn main []
@@ -1037,6 +1057,7 @@ fn test_e2e_selfhost_cli_parse_diagnostics() {
 
 /// D-4: Cli.ls の parse-diagnostics-count が recovery 対象入力で 1 を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_parse_diagnostics_recovery_error() {
     let harness = r#"
 (defn main []
@@ -1059,6 +1080,7 @@ fn test_e2e_selfhost_cli_parse_diagnostics_recovery_error() {
 
 /// D-4: Cli.ls の check-diagnostics-count が正常ソースで 0 を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_check_diagnostics() {
     let harness = r#"
 (defn main []
@@ -1081,6 +1103,7 @@ fn test_e2e_selfhost_cli_check_diagnostics() {
 
 /// D-4: Cli.ls の check-diagnostics-count が型エラー入力で 1 を返すこと
 #[test]
+#[ignore]
 fn test_e2e_selfhost_cli_check_diagnostics_type_error() {
     let harness = r#"
 (defn main []
@@ -1105,6 +1128,7 @@ fn test_e2e_selfhost_cli_check_diagnostics_type_error() {
 
 /// DOC-02: DocTools.generate-html → HtmlDoc.render-html パイプラインが実 HTML を返す
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_html_template_pipeline() {
     let harness = r#"
 (defn string-contains-loop [haystack needle i hlen nlen]
@@ -1152,6 +1176,7 @@ fn test_e2e_selfhost_doctools_html_template_pipeline() {
 
 /// DOC-02: render-html の出力が deterministic
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_html_template_deterministic() {
     let harness = r#"
 (defn main []
@@ -1174,6 +1199,7 @@ fn test_e2e_selfhost_doctools_html_template_deterministic() {
 
 /// DOC-02: render-html の出力にタイムスタンプ・ホスト名・絶対パスが含まれない
 #[test]
+#[ignore]
 fn test_e2e_selfhost_doctools_html_template_no_timestamp() {
     let harness = r#"
 (defn string-contains-loop [haystack needle i hlen nlen]
@@ -1218,6 +1244,7 @@ fn test_e2e_selfhost_doctools_html_template_no_timestamp() {
 
 /// HtmlDoc.render-function-signature が "<li>fn-{id}/{arity}</li>" 形式を返す
 #[test]
+#[ignore]
 fn test_e2e_selfhost_htmldoc_render_function_signature() {
     let harness = r#"
 (defn main []
@@ -1234,6 +1261,7 @@ fn test_e2e_selfhost_htmldoc_render_function_signature() {
 
 /// HtmlDoc.render-function-signature は関数名を HTML エスケープする
 #[test]
+#[ignore]
 fn test_e2e_selfhost_htmldoc_render_function_signature_escapes_html() {
     let harness = r#"
 (defn main []
@@ -1250,6 +1278,7 @@ fn test_e2e_selfhost_htmldoc_render_function_signature_escapes_html() {
 
 /// HtmlDoc.render-type-definition が "<li>{kind} {name}</li>" 形式を返す
 #[test]
+#[ignore]
 fn test_e2e_selfhost_htmldoc_render_type_definition() {
     let harness = r#"
 (defn main []
@@ -1266,6 +1295,7 @@ fn test_e2e_selfhost_htmldoc_render_type_definition() {
 
 /// HtmlDoc.render-type-definition は型名を HTML エスケープする
 #[test]
+#[ignore]
 fn test_e2e_selfhost_htmldoc_render_type_definition_escapes_html() {
     let harness = r#"
 (defn main []
@@ -1282,6 +1312,7 @@ fn test_e2e_selfhost_htmldoc_render_type_definition_escapes_html() {
 
 /// HtmlDoc.render-module-page が <main><h1>...</h1>... 構造を持つ
 #[test]
+#[ignore]
 fn test_e2e_selfhost_htmldoc_render_module_page_structure() {
     let harness = r#"
 (defn string-contains-loop [haystack needle i hlen nlen]
@@ -1328,6 +1359,7 @@ fn test_e2e_selfhost_htmldoc_render_module_page_structure() {
 
 /// HtmlDoc.render-module-page が function doc/example metadata を描画し HTML escape する
 #[test]
+#[ignore]
 fn test_e2e_selfhost_htmldoc_render_module_page_function_metadata() {
     let harness = r#"
 (defn string-contains-loop [haystack needle i hlen nlen]
@@ -1369,6 +1401,7 @@ fn test_e2e_selfhost_htmldoc_render_module_page_function_metadata() {
 
 /// HtmlDoc.render-html が完全な HTML ドキュメントを返し、title がエスケープされる
 #[test]
+#[ignore]
 fn test_e2e_selfhost_htmldoc_render_html_full_document() {
     let harness = r#"
 (defn string-contains-loop [haystack needle i hlen nlen]
@@ -1415,6 +1448,7 @@ fn test_e2e_selfhost_htmldoc_render_html_full_document() {
 
 /// HtmlDoc.render-index がモジュール一覧ページを生成する
 #[test]
+#[ignore]
 fn test_e2e_selfhost_htmldoc_render_index() {
     let harness = r#"
 (defn string-contains-loop [haystack needle i hlen nlen]
@@ -1455,6 +1489,7 @@ fn test_e2e_selfhost_htmldoc_render_index() {
 
 /// HtmlDoc: 関数も型もない場合の render-module-page
 #[test]
+#[ignore]
 fn test_e2e_selfhost_htmldoc_render_module_page_empty() {
     let harness = r#"
 (defn string-contains-loop [haystack needle i hlen nlen]
@@ -1494,6 +1529,7 @@ fn test_e2e_selfhost_htmldoc_render_module_page_empty() {
 
 /// HtmlDoc.render-module-page は title を HTML エスケープする
 #[test]
+#[ignore]
 fn test_e2e_selfhost_htmldoc_render_module_page_escapes_title() {
     let harness = r#"
 (defn string-contains-loop [haystack needle i hlen nlen]
@@ -1536,6 +1572,7 @@ fn test_e2e_selfhost_htmldoc_render_module_page_escapes_title() {
 
 /// HtmlDoc.render-guide-page が guide 本文を含む完全な HTML を返す
 #[test]
+#[ignore]
 fn test_e2e_selfhost_htmldoc_render_guide_page() {
     let harness = r#"
 (defn string-contains-loop [haystack needle i hlen nlen]
@@ -1572,6 +1609,7 @@ fn test_e2e_selfhost_htmldoc_render_guide_page() {
 
 /// HtmlDoc.render-doc-site-index が guides と modules を並べた index を返す
 #[test]
+#[ignore]
 fn test_e2e_selfhost_htmldoc_render_doc_site_index() {
     let harness = r#"
 (defn string-contains-loop [haystack needle i hlen nlen]
