@@ -257,7 +257,47 @@ if [[ "$RUN_BOOTSTRAP_LEGACY_STAGE1" == "1" ]]; then
   cargo test -p lsharp-wasm --test e2e \
     test_native_codegen_processes_multiple_ir_instructions -- --exact --ignored --nocapture
   cargo test -p lsharp-wasm --test e2e \
+    test_native_emit_elf_object_keeps_full_native_payload -- --exact --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    test_native_emit_object_keeps_full_native_payload -- --exact --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
     e2e::selfhost_native_differential::test_native_codegen_emits_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    e2e::selfhost_native_differential::test_native_emit_object_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    test_e2e_native_actual_stage23_gap_report_for_representative_entry -- --exact --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    test_e2e_native_actual_stage23_gap_report_includes_selfhost_runtime_blockers -- --exact --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    e2e::selfhost_native_stage_chain::test_e2e_native_aarch64_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    e2e::selfhost_native_stage_chain::test_e2e_native_chunk_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    e2e::selfhost_native_stage_chain::test_e2e_native_function_size_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    e2e::selfhost_native_stage_chain::test_e2e_native_host_binary_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    e2e::selfhost_native_stage_chain::test_e2e_native_host_bundle_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    e2e::selfhost_native_stage_chain::test_e2e_selfhost_main_native_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    e2e::selfhost_native_stage_chain::test_e2e_selfhost_main_representative_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    e2e::selfhost_native_stage_chain::test_e2e_selfhost_native_aarch64_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    e2e::selfhost_native_stage_chain::test_e2e_selfhost_pipeline_smoke_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    e2e::selfhost_native_stage_chain::test_e2e_stage1_native_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    e2e::selfhost_native_stage_chain::test_e2e_stage23_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    e2e::selfhost_native_stage_chain::test_e2e_zero_diff_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    e2e::selfhost_native_stage_chain::test_native_codegen_emits_x86_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    test_e2e_wasm_native_differential_uses_actual_self_regenerated_stage_artifacts -- --exact --ignored --nocapture
+  cargo test -p lsharp-wasm --test e2e \
+    e2e::selfhost_typeinfer_pipeline_bootstrap::test_e2e_bootstrap_ -- --ignored --nocapture
 fi
 
 if [[ "$RUN_INCREMENTAL_COMPARE" == "1" ]]; then

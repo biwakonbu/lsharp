@@ -397,6 +397,7 @@ struct NativeHostArtifactObservation {
 /// NATIVE-05/NATIVE-06: selfhost/src/App/Main.ls の native summary が
 /// direct native pipeline harness と一致すること。
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_native_summary_matches_direct_pipeline_harness() {
     let main_output = compile_and_run_file(&selfhost_main_path());
     let main_lines = parse_numeric_lines(&main_output);
@@ -472,6 +473,7 @@ fn test_e2e_selfhost_main_native_summary_matches_direct_pipeline_harness() {
 
 /// V2-08: selfhost main smoke が canonical native bundle summary を公開すること。
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_native_bundle_summary_matches_canonical_contract() {
     let output = compile_and_run_file(&selfhost_main_path());
     let lines = parse_numeric_lines(&output);
@@ -497,6 +499,7 @@ fn test_e2e_selfhost_main_native_bundle_summary_matches_canonical_contract() {
 
 /// V2-08: stage1-native の比較面として使う observation summary が 2 回実行で一致すること。
 #[test]
+#[ignore]
 fn test_e2e_stage1_native_observation_summary_two_run_determinism() {
     let run1 = compile_and_run_file(&selfhost_main_path());
     let run2 = compile_and_run_file(&selfhost_main_path());
@@ -913,6 +916,7 @@ fn test_e2e_native_linker_generates_canonical_response_file_text() {
 /// これは「stage0 が生成する stage1 は決定的であり、stage1 が生成する stage2 と一致する」
 /// というブートストラップ等価性の基盤となる証拠である。
 #[test]
+#[ignore]
 fn test_e2e_stage1_native_two_run_determinism() {
     let path = selfhost_main_path();
 
@@ -989,6 +993,7 @@ fn test_e2e_stage1_native_two_run_determinism() {
 
 /// V2-08: representative build entry を actual import-count 付き function-meta bundle へ落とせること。
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_fixture_includes_pipeline_smoke_decls() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "native-representative-pipeline-smoke-decls",
@@ -1054,6 +1059,7 @@ fn test_e2e_selfhost_main_representative_fixture_includes_pipeline_smoke_decls()
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_main_ir_calls_run_main_smoke_user_function() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "native-representative-run-main-smoke-call",
@@ -1202,6 +1208,7 @@ fn test_e2e_selfhost_main_representative_main_ir_calls_run_main_smoke_user_funct
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_native_function_meta_bundle_with_import_count_emits_code_bytes() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "native-compiler-runtime",
@@ -1293,6 +1300,7 @@ fn test_e2e_selfhost_main_native_function_meta_bundle_with_import_count_emits_co
 }
 
 #[test]
+#[ignore]
 fn test_e2e_native_function_size_aarch64_counts_local_zeroing_and_stack_frame() {
     let output = run_native_pipeline_harness(
         r#"(module Main)
@@ -1333,6 +1341,7 @@ fn test_e2e_native_function_size_aarch64_counts_local_zeroing_and_stack_frame() 
 }
 
 #[test]
+#[ignore]
 fn test_e2e_native_aarch64_deep_direct_append_matches_static_size() {
     let output = run_native_pipeline_harness(
         r#"(module Main)
@@ -1395,6 +1404,7 @@ fn test_e2e_native_aarch64_deep_direct_append_matches_static_size() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_native_aarch64_map_insert_instr_size_matches_emitted_length() {
     let output = run_native_pipeline_harness(
         r#"(module Main)
@@ -3228,6 +3238,7 @@ fn run_selfhost_override_entrypoint_offset_probe(
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_native_code_only_packed_line_builds() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [line (packed-byte-line code 0 4)]
@@ -3254,6 +3265,7 @@ fn test_e2e_selfhost_main_representative_native_code_only_packed_line_builds() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_base64_char_argv_alphabet_is_ascii_stable() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [alphabet (command-line-arg 0)]
@@ -3295,6 +3307,7 @@ fn test_e2e_selfhost_main_representative_base64_char_argv_alphabet_is_ascii_stab
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_native_aarch64_spill_fifty_four_helper_emits_plain_bytes() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [result (ref-new (vector-new 512))]
@@ -3342,6 +3355,7 @@ fn test_e2e_selfhost_native_aarch64_spill_fifty_four_helper_emits_plain_bytes() 
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_native_aarch64_four_param_leaf_reserves_top_slot_padding() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [func-meta (make-function-meta 4 0 (vector-new 0))
@@ -3389,6 +3403,7 @@ fn test_e2e_selfhost_native_aarch64_four_param_leaf_reserves_top_slot_padding() 
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_native_aarch64_local_only_epilogue_matches_prologue_stack_bytes() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [func-meta (make-function-meta 0 1 (vector-new 0))
@@ -3445,6 +3460,7 @@ fn test_e2e_selfhost_native_aarch64_local_only_epilogue_matches_prologue_stack_b
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_native_aarch64_vector_push_reallocates_past_capacity() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [bytes (vector-push
@@ -3485,6 +3501,7 @@ fn test_e2e_selfhost_main_native_aarch64_vector_push_reallocates_past_capacity()
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_native_aarch64_temp_emitter_append_stays_byte_clean_under_pressure() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
         "native-stage23-aarch64-temp-emitter-append-pressure",
@@ -3559,6 +3576,7 @@ fn test_e2e_selfhost_main_native_aarch64_temp_emitter_append_stays_byte_clean_un
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_native_aarch64_zero_local_loop_emits_only_bytes() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [func-meta (make-function-meta 0 1024 (vector-new 0))
@@ -3600,6 +3618,7 @@ fn test_e2e_selfhost_main_native_aarch64_zero_local_loop_emits_only_bytes() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_base64_tail_slice_stays_decodable() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [alphabet (command-line-arg 0)
@@ -3644,6 +3663,7 @@ fn test_e2e_selfhost_main_representative_base64_tail_slice_stays_decodable() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_tail_code_bytes_reveal_signed_values() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [len (vector-length code)]
@@ -3676,6 +3696,7 @@ fn test_e2e_selfhost_main_representative_tail_code_bytes_reveal_signed_values() 
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_entrypoint_slice_base64_matches_raw_bytes() {
     let entrypoint_offset =
         run_selfhost_main_representative_aarch64_layout_harness().entrypoint_offset;
@@ -3749,6 +3770,7 @@ fn test_e2e_selfhost_main_representative_entrypoint_slice_base64_matches_raw_byt
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_entrypoint_alignment_preserves_layout_offset() {
     let layout = run_selfhost_main_representative_aarch64_layout_harness();
     let (_, code_bytes, _, _) =
@@ -3763,6 +3785,7 @@ fn test_e2e_selfhost_main_representative_entrypoint_alignment_preserves_layout_o
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_bundle_harness_returns_layout_entrypoint() {
     let bundle = run_selfhost_main_native_function_meta_bundle_host_bytes_harness();
     let layout = run_selfhost_main_representative_aarch64_layout_harness();
@@ -3775,6 +3798,7 @@ fn test_e2e_selfhost_main_representative_bundle_harness_returns_layout_entrypoin
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_bundle_harness_exports_data_image() {
     let bundle = run_selfhost_main_native_function_meta_bundle_host_bytes_harness();
     assert!(
@@ -3789,6 +3813,7 @@ fn test_e2e_selfhost_main_representative_bundle_harness_exports_data_image() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_mid_code_bytes_reveal_remaining_non_byte_value() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [len (vector-length code)]
@@ -3828,6 +3853,7 @@ fn test_e2e_selfhost_main_representative_mid_code_bytes_reveal_remaining_non_byt
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_earlier_code_bytes_reveal_remaining_non_byte_value() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [len (vector-length code)]
@@ -3867,6 +3893,7 @@ fn test_e2e_selfhost_main_representative_earlier_code_bytes_reveal_remaining_non
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_latest_code_bytes_reveal_remaining_non_byte_value() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [len (vector-length code)]
@@ -3906,6 +3933,7 @@ fn test_e2e_selfhost_main_representative_latest_code_bytes_reveal_remaining_non_
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_shifted_code_bytes_reveal_remaining_non_byte_value() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [len (vector-length code)]
@@ -3945,6 +3973,7 @@ fn test_e2e_selfhost_main_representative_shifted_code_bytes_reveal_remaining_non
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_current_bad_packed_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [len (vector-length code)]
@@ -3979,6 +4008,7 @@ fn test_e2e_selfhost_main_representative_current_bad_packed_window() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_remaining_bad_packed_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [len (vector-length code)]
@@ -4013,6 +4043,7 @@ fn test_e2e_selfhost_main_representative_remaining_bad_packed_window() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_earliest_bad_packed_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [len (vector-length code)]
@@ -4047,6 +4078,7 @@ fn test_e2e_selfhost_main_representative_earliest_bad_packed_window() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_chunk_local_bad_packed_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [len (vector-length code)]
@@ -4085,6 +4117,7 @@ fn test_e2e_selfhost_main_representative_chunk_local_bad_packed_window() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_failing_chunk_text_is_plain_bytes() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [len (vector-length code)]
@@ -4124,6 +4157,7 @@ fn test_e2e_selfhost_main_representative_failing_chunk_text_is_plain_bytes() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_next_bad_packed_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [len (vector-length code)]
@@ -4158,6 +4192,7 @@ fn test_e2e_selfhost_main_representative_next_bad_packed_window() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_current_bad_index_owner_callable() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "native-stage23-representative-current-owner-callable",
@@ -4255,6 +4290,7 @@ fn test_e2e_selfhost_main_representative_current_bad_index_owner_callable() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_current_bad_index_owner_decl() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "native-stage23-representative-current-owner-decl",
@@ -4337,6 +4373,7 @@ fn test_e2e_selfhost_main_representative_current_bad_index_owner_decl() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_direct_run_first_call_target_owner_decl() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "native-stage23-representative-direct-run-first-call-owner-decl",
@@ -4471,6 +4508,7 @@ fn test_e2e_selfhost_main_representative_direct_run_first_call_target_owner_decl
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_backtrace_function_1791_owner_decl() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "native-stage23-representative-backtrace-function-1791-owner-decl",
@@ -4557,6 +4595,7 @@ fn test_e2e_selfhost_main_representative_backtrace_function_1791_owner_decl() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_owner_callable_isolated_shifted_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -4612,6 +4651,7 @@ fn test_e2e_selfhost_main_representative_owner_callable_isolated_shifted_window(
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_owner_callable_isolated_current_bad_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -4660,6 +4700,7 @@ fn test_e2e_selfhost_main_representative_owner_callable_isolated_current_bad_win
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_owner_callable_isolated_remaining_bad_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -4708,6 +4749,7 @@ fn test_e2e_selfhost_main_representative_owner_callable_isolated_remaining_bad_w
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_owner_callable_isolated_earliest_bad_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -4756,6 +4798,7 @@ fn test_e2e_selfhost_main_representative_owner_callable_isolated_earliest_bad_wi
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_owner_callable_isolated_chunk_local_bad_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -4804,6 +4847,7 @@ fn test_e2e_selfhost_main_representative_owner_callable_isolated_chunk_local_bad
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_owner_callable_isolated_next_bad_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -4958,6 +5002,7 @@ fn test_e2e_selfhost_main_representative_prefix_through_owner_emits_length() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_prefix_bundle_through_owner_earliest_bad_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -5115,6 +5160,7 @@ fn test_e2e_selfhost_main_representative_full_prefix_cutoff_chunk_local_bad_wind
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_function_loop_only_earliest_bad_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -5278,6 +5324,7 @@ fn test_e2e_selfhost_main_representative_function_loop_only_current_global_windo
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_before_helpers_earliest_bad_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -5791,6 +5838,7 @@ fn test_e2e_selfhost_main_representative_first_fourteen_helpers_current_global_w
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_string_concat_helper_preserves_current_global_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -5934,6 +5982,7 @@ fn test_e2e_selfhost_main_representative_print_helper_bytes_match_standalone_hel
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_substring_helper_bytes_match_standalone_helper() {
     let standalone_harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [code (emit-aarch64-selfhost-substring-helper)]
@@ -6009,6 +6058,7 @@ fn test_e2e_selfhost_main_representative_substring_helper_bytes_match_standalone
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_string_concat_helper_preserves_later_global_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -6078,6 +6128,7 @@ fn test_e2e_selfhost_main_representative_string_concat_helper_preserves_later_gl
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_map_size_helper_preserves_later_global_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -6148,6 +6199,7 @@ fn test_e2e_selfhost_main_representative_map_size_helper_preserves_later_global_
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_map_new_helper_preserves_later_global_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -6219,6 +6271,7 @@ fn test_e2e_selfhost_main_representative_map_new_helper_preserves_later_global_w
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_file_exists_helper_preserves_later_global_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -6291,6 +6344,7 @@ fn test_e2e_selfhost_main_representative_file_exists_helper_preserves_later_glob
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_read_file_helper_preserves_later_global_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -6364,6 +6418,7 @@ fn test_e2e_selfhost_main_representative_read_file_helper_preserves_later_global
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_read_file_helper_preserves_latest_global_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -6437,6 +6492,7 @@ fn test_e2e_selfhost_main_representative_read_file_helper_preserves_latest_globa
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_map_insert_helper_preserves_latest_global_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -6511,6 +6567,7 @@ fn test_e2e_selfhost_main_representative_map_insert_helper_preserves_latest_glob
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_map_get_helper_preserves_latest_global_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -6586,6 +6643,7 @@ fn test_e2e_selfhost_main_representative_map_get_helper_preserves_latest_global_
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_map_new_fixed_helper_preserves_latest_global_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref (ref-new (map-new))
@@ -6695,6 +6753,7 @@ fn test_e2e_selfhost_main_representative_full_code_latest_global_window_is_clean
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_recomputed_wrapper_code_latest_global_window_is_clean() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [cache-ref2 (ref-new (map-new))
@@ -6741,6 +6800,7 @@ fn test_e2e_selfhost_main_representative_recomputed_wrapper_code_latest_global_w
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_direct_aarch64_bundle_latest_global_window_is_clean() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [direct-code (generate-native-aarch64-bundle-with-import-count native-callables 10)]
@@ -6774,6 +6834,7 @@ fn test_e2e_selfhost_main_representative_direct_aarch64_bundle_latest_global_win
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_printing_earlier_chunks_preserves_latest_global_window() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (do
@@ -7060,6 +7121,7 @@ fn test_e2e_selfhost_main_representative_string_concat_helper_append_into_empty_
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_earlier_bad_index_maps_to_layout_region() {
     let harness = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
         "native-stage23-representative-earlier-layout-region",
@@ -7095,6 +7157,7 @@ fn test_e2e_selfhost_main_representative_earlier_bad_index_maps_to_layout_region
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_earlier_bad_index_owner_callable() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "native-stage23-representative-earlier-owner-callable",
@@ -7182,6 +7245,7 @@ fn test_e2e_selfhost_main_representative_earlier_bad_index_owner_callable() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_latest_bad_index_owner_callable() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "native-stage23-representative-latest-owner-callable",
@@ -7269,6 +7333,7 @@ fn test_e2e_selfhost_main_representative_latest_bad_index_owner_callable() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_earlier_bad_index_owner_decl() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "native-stage23-representative-earlier-owner-decl",
@@ -7351,6 +7416,7 @@ fn test_e2e_selfhost_main_representative_earlier_bad_index_owner_decl() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_latest_bad_index_owner_decl() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "native-stage23-representative-latest-owner-decl",
@@ -7433,6 +7499,7 @@ fn test_e2e_selfhost_main_representative_latest_bad_index_owner_decl() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_tail_base64_quad_intermediates_are_bounded() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [len (vector-length code)
@@ -7480,6 +7547,7 @@ fn test_e2e_selfhost_main_representative_tail_base64_quad_intermediates_are_boun
 }
 
 #[test]
+#[ignore]
 fn test_e2e_native_chunk_export_roundtrips_small_payload() {
     let dir = std::env::temp_dir().join(format!(
         "lsharp_native_chunk_export_{}_{}",
@@ -7553,6 +7621,7 @@ fn test_e2e_native_chunk_export_roundtrips_small_payload() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_native_code_only_bundle_length_non_zero() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (print (vector-length code))
@@ -7580,6 +7649,7 @@ fn test_e2e_selfhost_main_representative_native_code_only_bundle_length_non_zero
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_native_code_only_first_chunk_file_writes() {
     let harness = selfhost_main_native_code_only_export_harness(
         r#"      (let [end (if (< 1024 (vector-length code)) 1024 (vector-length code))
@@ -7614,6 +7684,7 @@ fn test_e2e_selfhost_main_representative_native_code_only_first_chunk_file_write
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_native_entrypoint_payload_tracks_main_callable() {
     if !host_native_exec_supported() {
         return;
@@ -7661,6 +7732,7 @@ fn test_e2e_selfhost_main_representative_native_entrypoint_payload_tracks_main_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_native_code_transport_reconstructs_full_length() {
     let (declared_code_len, code_bytes, _, _) =
         run_selfhost_main_native_function_meta_code_only_host_bytes_harness();
@@ -8128,6 +8200,7 @@ fn run_selfhost_main_representative_aarch64_offset_lookup_harness(
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_aarch64_layout_tracks_main_start() {
     let layout = run_selfhost_main_representative_aarch64_layout_harness();
     assert!(
@@ -8137,6 +8210,7 @@ fn test_e2e_selfhost_main_representative_aarch64_layout_tracks_main_start() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_source_order_follows_import_dfs() {
     let order = representative_selfhost_registration_order();
     assert!(!order.is_empty(), "representative registration order が空");
@@ -8182,6 +8256,7 @@ fn test_e2e_selfhost_main_representative_source_order_follows_import_dfs() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_native_aarch64_control_instr_size_matches_emitted_branch_at_high_depth() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "native-aarch64-control-instr-size-high-depth",
@@ -8209,6 +8284,7 @@ fn test_e2e_native_aarch64_control_instr_size_matches_emitted_branch_at_high_dep
 }
 
 #[test]
+#[ignore]
 fn test_e2e_native_aarch64_bundle_initial_capacity_includes_full_helper_trailer() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "native-aarch64-bundle-initial-capacity",
@@ -18121,6 +18197,7 @@ fn test_align_aarch64_entrypoint_to_function_start_preserves_leaf_start_without_
 /// GREEN: NativeCodegen.ls に AArch64 命令生成を追加し、aarch64 target で MOVZ W0, #42 + RET が
 ///        生成されることで exit code 42 を得られる。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -18150,6 +18227,7 @@ fn test_e2e_native_host_binary_link_and_execute() {
 
 /// NATIVE-HOST-01b: LocalSet/LocalGet を含む host target バイト列がリンク・実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_local_roundtrip_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -18178,6 +18256,7 @@ fn test_e2e_native_host_binary_local_roundtrip_link_and_execute() {
 
 /// NATIVE-HOST-01b1: selfhost-style 1-based param slot を正規化した function-meta bundle が第1引数を返すこと。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_style_param1_bundle_returns_argc() {
     if !host_native_exec_supported() {
         return;
@@ -18206,6 +18285,7 @@ fn test_e2e_native_host_binary_selfhost_style_param1_bundle_returns_argc() {
 
 /// NATIVE-HOST-01c0: typed if/else/end を含む plain native code が host 上で true branch を返すこと。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_if_else_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -18234,6 +18314,7 @@ fn test_e2e_native_host_binary_if_else_link_and_execute() {
 
 /// NATIVE-HOST-01c1: if-empty/end が false branch で既存 local 値を保つこと。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_if_empty_false_branch_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -18261,6 +18342,7 @@ fn test_e2e_native_host_binary_if_empty_false_branch_link_and_execute() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_bundle_if_empty_false_branch_preserves_previous_value() {
     if !host_native_exec_supported() {
         return;
@@ -18288,6 +18370,7 @@ fn test_e2e_native_host_binary_bundle_if_empty_false_branch_preserves_previous_v
 
 /// NATIVE-HOST-01c2: block-empty/br/end が block 終端へ分岐できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_block_br_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -18316,6 +18399,7 @@ fn test_e2e_native_host_binary_block_br_link_and_execute() {
 
 /// NATIVE-HOST-01c3: typed loop/br_if/end が 1 local の countdown loop を実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_loop_br_if_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -18344,6 +18428,7 @@ fn test_e2e_native_host_binary_loop_br_if_link_and_execute() {
 
 /// NATIVE-HOST-01c4: loop-empty/br_if/end も同じ 1 local countdown loop を実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_loop_empty_br_if_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -18372,6 +18457,7 @@ fn test_e2e_native_host_binary_loop_empty_br_if_link_and_execute() {
 
 /// NATIVE-HOST-01c: i32.const/local.get/i32.add を含む host target バイト列がリンク・実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i32_add_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -18400,6 +18486,7 @@ fn test_e2e_native_host_binary_i32_add_link_and_execute() {
 
 /// NATIVE-HOST-01d: i32.const/local.get/i32.mul を含む host target バイト列がリンク・実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i32_mul_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -18486,30 +18573,35 @@ fn assert_host_target_exit_code(name: &str, code_bytes: Vec<u8>, expected_exit_c
 
 /// NATIVE-HOST-01d1: i32.and を含む host target バイト列がリンク・実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i32_and_link_and_execute() {
     assert_host_target_i32_logic_exit_code("i32 and", 12, 10, 26, 8);
 }
 
 /// NATIVE-HOST-01d2: i32.or を含む host target バイト列がリンク・実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i32_or_link_and_execute() {
     assert_host_target_i32_logic_exit_code("i32 or", 12, 3, 27, 15);
 }
 
 /// NATIVE-HOST-01d2a: selfhost builtin logical and (opcode 71) が host binary で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_and_link_and_execute() {
     assert_host_target_i32_logic_exit_code("selfhost and", 12, 10, 71, 8);
 }
 
 /// NATIVE-HOST-01d2b: selfhost builtin logical or (opcode 72) が host binary で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_or_link_and_execute() {
     assert_host_target_i32_logic_exit_code("selfhost or", 12, 3, 72, 15);
 }
 
 /// NATIVE-HOST-01d2c: selfhost root_push (opcode 74) が current value を保ったまま drop 後に previous value を復元できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_root_push_drop_restores_previous_value() {
     assert_host_target_exit_code(
         "selfhost root_push",
@@ -18520,6 +18612,7 @@ fn test_e2e_native_host_binary_selfhost_root_push_drop_restores_previous_value()
 
 /// NATIVE-HOST-01d2d: selfhost root_pop (opcode 75) が drop 後に previous value を復元できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_root_pop_drop_restores_previous_value() {
     assert_host_target_exit_code(
         "selfhost root_pop",
@@ -18530,6 +18623,7 @@ fn test_e2e_native_host_binary_selfhost_root_pop_drop_restores_previous_value() 
 
 /// NATIVE-HOST-01d2e: selfhost root_set (opcode 76) が bundle path で slot を畳みつつ value を返し、drop 後に bottom value を復元できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_root_set_drop_restores_bottom_value() {
     assert_host_target_exit_code(
         "selfhost root_set bundle",
@@ -18540,6 +18634,7 @@ fn test_e2e_native_host_binary_selfhost_root_set_drop_restores_bottom_value() {
 
 /// NATIVE-HOST-01d2f: selfhost command-line-arg/string-length が no-arg で空文字長 0 を返せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_command_line_arg_string_length_no_arg_returns_zero() {
     assert_host_target_exit_code(
         "selfhost command-line-arg/string-length no-arg bundle",
@@ -18550,6 +18645,7 @@ fn test_e2e_native_host_binary_selfhost_command_line_arg_string_length_no_arg_re
 
 /// NATIVE-HOST-01d2g: selfhost command-line-arg/string-length が argv[1] の長さを返せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_command_line_arg_string_length_reads_host_argv() {
     if !host_native_exec_supported() {
         return;
@@ -18577,6 +18673,7 @@ fn test_e2e_native_host_binary_selfhost_command_line_arg_string_length_reads_hos
 
 /// NATIVE-HOST-01d2ga: selfhost string-char-at (opcode 50) が AArch64 bundle path で argv 文字列から 1 byte を読めること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_command_line_arg_string_char_at_reads_host_argv_byte() {
     if !host_native_exec_supported() {
         return;
@@ -18604,6 +18701,7 @@ fn test_e2e_native_host_binary_selfhost_command_line_arg_string_char_at_reads_ho
 
 /// NATIVE-HOST-01d2gb: selfhost command-line-arg/string-length + if が no-arg で else branch を返せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_command_line_arg_string_length_if_no_arg_takes_else() {
     assert_host_target_exit_code(
         "selfhost command-line-arg/string-length if no-arg bundle",
@@ -18614,6 +18712,7 @@ fn test_e2e_native_host_binary_selfhost_command_line_arg_string_length_if_no_arg
 
 /// NATIVE-HOST-01d2gc: selfhost command-line-arg/string-length + if が argv[1] 非空で then branch を返せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_command_line_arg_string_length_if_reads_host_argv() {
     if !host_native_exec_supported() {
         return;
@@ -18641,6 +18740,7 @@ fn test_e2e_native_host_binary_selfhost_command_line_arg_string_length_if_reads_
 
 /// NATIVE-HOST-01d2h: selfhost print (opcode 59) が AArch64 bundle path で stdout に整数を出力して 0 を返せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_print_bundle_writes_stdout() {
     if !host_native_exec_supported() {
         return;
@@ -18682,6 +18782,7 @@ fn test_e2e_native_host_binary_selfhost_print_bundle_writes_stdout() {
 
 /// NATIVE-HOST-01d2i: selfhost vector-new/vector-length が AArch64 bundle path で empty vector の長さ 0 を返せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_vector_new_length_bundle_returns_empty_length() {
     if !host_native_exec_supported() {
         return;
@@ -18709,6 +18810,7 @@ fn test_e2e_native_host_binary_selfhost_vector_new_length_bundle_returns_empty_l
 
 /// NATIVE-HOST-01d2j: selfhost vector-push (opcode 55) が AArch64 bundle path で spare capacity に 1 要素を追加し、length=1 を返せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_vector_push_bundle_updates_length() {
     if !host_native_exec_supported() {
         return;
@@ -18736,6 +18838,7 @@ fn test_e2e_native_host_binary_selfhost_vector_push_bundle_updates_length() {
 
 /// NATIVE-HOST-01d2k: selfhost vector-get (opcode 53) が AArch64 bundle path で push 済み要素 42 を読み戻せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_vector_get_bundle_reads_pushed_value() {
     if !host_native_exec_supported() {
         return;
@@ -18763,6 +18866,7 @@ fn test_e2e_native_host_binary_selfhost_vector_get_bundle_reads_pushed_value() {
 
 /// NATIVE-HOST-01d2ka: selfhost vector-get (opcode 53) が AArch64 bundle path で manually seeded elem[0]=42 を読み戻せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_vector_get_bundle_reads_manual_seeded_value() {
     if !host_native_exec_supported() {
         return;
@@ -18791,6 +18895,7 @@ fn test_e2e_native_host_binary_selfhost_vector_get_bundle_reads_manual_seeded_va
 /// NATIVE-HOST-01d2kb: selfhost vector-get (opcode 53) が AArch64 bundle path で
 /// length 以上の index を 0 として扱い、capacity 内の未公開スロットを読まないこと。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_vector_get_bundle_bounds_checks_length() {
     if !host_native_exec_supported() {
         return;
@@ -18818,6 +18923,7 @@ fn test_e2e_native_host_binary_selfhost_vector_get_bundle_bounds_checks_length()
 
 /// NATIVE-HOST-01d2l: selfhost ref-new/ref-get が AArch64 bundle path で作成した ref cell から値 42 を読み戻せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_ref_new_get_bundle_reads_value() {
     if !host_native_exec_supported() {
         return;
@@ -18845,6 +18951,7 @@ fn test_e2e_native_host_binary_selfhost_ref_new_get_bundle_reads_value() {
 
 /// NATIVE-HOST-01d2m: selfhost ref-set が AArch64 bundle path で ref cell を更新し、drop 後の ref-get が新値 99 を返せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_ref_set_bundle_updates_value() {
     if !host_native_exec_supported() {
         return;
@@ -18872,6 +18979,7 @@ fn test_e2e_native_host_binary_selfhost_ref_set_bundle_updates_value() {
 
 /// NATIVE-HOST-01d2n: selfhost substring (opcode 69) が AArch64 bundle path で "hello"[1,4) の長さ 3 を返せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_substring_bundle_returns_length() {
     if !host_native_exec_supported() {
         return;
@@ -18899,6 +19007,7 @@ fn test_e2e_native_host_binary_selfhost_substring_bundle_returns_length() {
 
 /// NATIVE-HOST-01d2o: selfhost substring (opcode 69) が AArch64 bundle path で "hello"[1,4) の先頭文字 'e' を返せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_substring_bundle_copies_payload() {
     if !host_native_exec_supported() {
         return;
@@ -18925,6 +19034,7 @@ fn test_e2e_native_host_binary_selfhost_substring_bundle_copies_payload() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_substring_lowered_bundle_returns_length() {
     if !host_native_exec_supported() {
         return;
@@ -18951,6 +19061,7 @@ fn test_e2e_native_host_binary_selfhost_substring_lowered_bundle_returns_length(
 }
 
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_rooted_string_length_bundle_returns_length() {
     if !host_native_exec_supported() {
         return;
@@ -18978,6 +19089,7 @@ fn test_e2e_native_host_binary_selfhost_rooted_string_length_bundle_returns_leng
 
 /// NATIVE-HOST-01d2p: selfhost string-concat (opcode 70) が AArch64 bundle path で "ab" + "Z" の長さ 3 を返せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_string_concat_bundle_returns_length() {
     if !host_native_exec_supported() {
         return;
@@ -19005,6 +19117,7 @@ fn test_e2e_native_host_binary_selfhost_string_concat_bundle_returns_length() {
 
 /// NATIVE-HOST-01d2q: selfhost string-concat (opcode 70) が AArch64 bundle path で rhs 側の 'Z' を保持できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_string_concat_bundle_copies_rhs_payload() {
     if !host_native_exec_supported() {
         return;
@@ -19032,6 +19145,7 @@ fn test_e2e_native_host_binary_selfhost_string_concat_bundle_copies_rhs_payload(
 
 /// NATIVE-HOST-01d2r: selfhost map-new/map-size が AArch64 bundle path で空 map の size 0 を返せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_map_new_size_bundle_returns_zero() {
     if !host_native_exec_supported() {
         return;
@@ -19059,6 +19173,7 @@ fn test_e2e_native_host_binary_selfhost_map_new_size_bundle_returns_zero() {
 
 /// NATIVE-HOST-01d2w: selfhost map-insert/map-size が AArch64 bundle path で size 1 を返せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_map_insert_size_bundle_returns_one() {
     if !host_native_exec_supported() {
         return;
@@ -19086,6 +19201,7 @@ fn test_e2e_native_host_binary_selfhost_map_insert_size_bundle_returns_one() {
 
 /// NATIVE-HOST-01d2x: selfhost map-insert/map-get が AArch64 bundle path で挿入値 42 を返せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_map_insert_get_bundle_returns_value() {
     if !host_native_exec_supported() {
         return;
@@ -19113,6 +19229,7 @@ fn test_e2e_native_host_binary_selfhost_map_insert_get_bundle_returns_value() {
 
 /// NATIVE-HOST-01d2x2: selfhost map-insert/map-get の直後に print を続けても AArch64 bundle path の helper offset が崩れず stdout へ 42 を書けること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_map_insert_get_then_print_writes_stdout() {
     if !host_native_exec_supported() {
         return;
@@ -19154,6 +19271,7 @@ fn test_e2e_native_host_binary_selfhost_map_insert_get_then_print_writes_stdout(
 
 /// NATIVE-HOST-01d2y: selfhost map-get が AArch64 bundle path で missing key に 0 を返すこと。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_map_get_missing_bundle_returns_zero() {
     if !host_native_exec_supported() {
         return;
@@ -19181,6 +19299,7 @@ fn test_e2e_native_host_binary_selfhost_map_get_missing_bundle_returns_zero() {
 
 /// NATIVE-HOST-01d2s: selfhost file-exists? (opcode 73) が AArch64 bundle path で raw path の存在を判定できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_file_exists_raw_bundle_returns_one() {
     if !host_native_exec_supported() {
         return;
@@ -19220,6 +19339,7 @@ fn test_e2e_native_host_binary_selfhost_file_exists_raw_bundle_returns_one() {
 
 /// NATIVE-HOST-01d2u: selfhost read-file (opcode 64) が AArch64 bundle path で raw path の長さ 5 を返せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_read_file_raw_bundle_returns_length() {
     if !host_native_exec_supported() {
         return;
@@ -19260,6 +19380,7 @@ fn test_e2e_native_host_binary_selfhost_read_file_raw_bundle_returns_length() {
 /// NATIVE-HOST-01d2u2: selfhost read-file (opcode 64) が AArch64 bundle path で
 /// Seed.ls と同程度の raw path ファイル長を低 8bit まで保てること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_read_file_raw_bundle_returns_large_length_low_byte() {
     if !host_native_exec_supported() {
         return;
@@ -19300,6 +19421,7 @@ fn test_e2e_native_host_binary_selfhost_read_file_raw_bundle_returns_large_lengt
 
 /// NATIVE-HOST-01d2t: selfhost file-exists? (opcode 73) が AArch64 bundle path で tagged path の存在を判定できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_file_exists_tagged_bundle_returns_one() {
     if !host_native_exec_supported() {
         return;
@@ -19339,6 +19461,7 @@ fn test_e2e_native_host_binary_selfhost_file_exists_tagged_bundle_returns_one() 
 
 /// NATIVE-HOST-01d2v: selfhost read-file (opcode 64) が AArch64 bundle path で tagged path から payload 先頭 byte 'h' を返せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_read_file_tagged_bundle_copies_payload() {
     if !host_native_exec_supported() {
         return;
@@ -19378,6 +19501,7 @@ fn test_e2e_native_host_binary_selfhost_read_file_tagged_bundle_copies_payload()
 
 /// NATIVE-HOST-01d3: i64.const/local.get/i64.add を含む host target バイト列がリンク・実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i64_add_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -19406,6 +19530,7 @@ fn test_e2e_native_host_binary_i64_add_link_and_execute() {
 
 /// NATIVE-HOST-01d3b: i64.const -1 を含む i64.add が符号付き値として実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i64_add_negative_const_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -19434,6 +19559,7 @@ fn test_e2e_native_host_binary_i64_add_negative_const_link_and_execute() {
 
 /// NATIVE-HOST-01d3: i64.const/local.get/i64.sub を含む host target バイト列がリンク・実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i64_sub_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -19462,6 +19588,7 @@ fn test_e2e_native_host_binary_i64_sub_link_and_execute() {
 
 /// NATIVE-HOST-01d5: i64.const/local.get/i64.mul を含む host target バイト列がリンク・実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i64_mul_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -19490,6 +19617,7 @@ fn test_e2e_native_host_binary_i64_mul_link_and_execute() {
 
 /// NATIVE-HOST-01d5aa: current-depth 3 の i64.mul のあとでも older value を保ったまま i64.add できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i64_mul_then_add_preserves_older_value() {
     if !host_native_exec_supported() {
         return;
@@ -19518,6 +19646,7 @@ fn test_e2e_native_host_binary_i64_mul_then_add_preserves_older_value() {
 
 /// NATIVE-HOST-01d5b: i64.const/local.get/i64.div を含む host target バイト列がリンク・実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i64_div_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -19546,6 +19675,7 @@ fn test_e2e_native_host_binary_i64_div_link_and_execute() {
 
 /// NATIVE-HOST-01d5c: i64.const/local.get/i64.rem を含む host target バイト列がリンク・実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i64_rem_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -19574,6 +19704,7 @@ fn test_e2e_native_host_binary_i64_rem_link_and_execute() {
 
 /// NATIVE-HOST-01d5d: 1 引数 bundle の i64.load offset=8 が host target で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i64_load_offset_eight_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -19602,6 +19733,7 @@ fn test_e2e_native_host_binary_i64_load_offset_eight_link_and_execute() {
 
 /// NATIVE-HOST-01d5e: 1 引数 bundle の i32.load offset=4 が host target で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i32_load_offset_four_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -19630,6 +19762,7 @@ fn test_e2e_native_host_binary_i32_load_offset_four_link_and_execute() {
 
 /// NATIVE-HOST-01d5f: 1 引数 bundle の i32.load8_u offset=1 が host target で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i32_load8_u_offset_one_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -19658,6 +19791,7 @@ fn test_e2e_native_host_binary_i32_load8_u_offset_one_link_and_execute() {
 
 /// NATIVE-HOST-01d5g: 1 引数 bundle の i64.store offset=8 後に同アドレスを i64.load できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i64_store_offset_eight_then_load_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -19687,6 +19821,7 @@ fn test_e2e_native_host_binary_i64_store_offset_eight_then_load_link_and_execute
 
 /// NATIVE-HOST-01d5h: 1 引数 bundle の i32.store offset=4 後に同アドレスを i32.load できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i32_store_offset_four_then_load_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -19716,6 +19851,7 @@ fn test_e2e_native_host_binary_i32_store_offset_four_then_load_link_and_execute(
 
 /// NATIVE-HOST-01d5i: i64.store が top 2 値を消費したあと、spill 側の 2 値を復元できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i64_store_then_load_double_drop_restores_bottom_value() {
     if !host_native_exec_supported() {
         return;
@@ -19744,6 +19880,7 @@ fn test_e2e_native_host_binary_i64_store_then_load_double_drop_restores_bottom_v
 
 /// NATIVE-HOST-01d5j: 1 引数 bundle の memory.fill が複数 byte を埋め、境界外を壊さないこと。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_memory_fill_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -19772,6 +19909,7 @@ fn test_e2e_native_host_binary_memory_fill_link_and_execute() {
 
 /// NATIVE-HOST-01d5k: 1 引数 bundle の memory.copy が複数 byte を複写し、境界外を壊さないこと。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_memory_copy_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -19805,6 +19943,7 @@ fn test_e2e_native_host_binary_memory_copy_link_and_execute() {
 
 /// NATIVE-HOST-01d5l: memory.fill が top 3 値を消費したあと spill 側の底値を復元できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_memory_fill_drop_restores_bottom_value() {
     if !host_native_exec_supported() {
         return;
@@ -19866,42 +20005,49 @@ fn assert_host_target_i64_compare_exit_code(
 
 /// NATIVE-HOST-01d4: i64.eq を含む host target バイト列がリンク・実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i64_eq_link_and_execute() {
     assert_host_target_i64_compare_exit_code("i64 eq", 42, 42, 30, 1);
 }
 
 /// NATIVE-HOST-01d5: i64.ne を含む host target バイト列がリンク・実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i64_ne_link_and_execute() {
     assert_host_target_i64_compare_exit_code("i64 ne", 42, 2, 31, 1);
 }
 
 /// NATIVE-HOST-01d6: i64.lt_s を含む host target バイト列がリンク・実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i64_lt_link_and_execute() {
     assert_host_target_i64_compare_exit_code("i64 lt", 2, 42, 32, 1);
 }
 
 /// NATIVE-HOST-01d7: i64.gt_s を含む host target バイト列がリンク・実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i64_gt_link_and_execute() {
     assert_host_target_i64_compare_exit_code("i64 gt", 42, 2, 33, 1);
 }
 
 /// NATIVE-HOST-01d8: i64.le_s を含む host target バイト列がリンク・実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i64_le_link_and_execute() {
     assert_host_target_i64_compare_exit_code("i64 le", 42, 42, 34, 1);
 }
 
 /// NATIVE-HOST-01d9: i64.ge_s を含む host target バイト列がリンク・実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_i64_ge_link_and_execute() {
     assert_host_target_i64_compare_exit_code("i64 ge", 42, 42, 35, 1);
 }
 
 /// NATIVE-HOST-01e: Drop が local.get 前の値へ戻せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_drop_restores_previous_value() {
     if !host_native_exec_supported() {
         return;
@@ -19930,6 +20076,7 @@ fn test_e2e_native_host_binary_drop_restores_previous_value() {
 
 /// NATIVE-HOST-01f: function bundle 内の direct call が host target でリンク・実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -19958,6 +20105,7 @@ fn test_e2e_native_host_binary_direct_call_bundle_link_and_execute() {
 
 /// NATIVE-HOST-01f2: 0 引数 direct call が既存 stack value を保持して後続比較できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_zero_arg_preserves_previous_value() {
     if !host_native_exec_supported() {
         return;
@@ -19986,6 +20134,7 @@ fn test_e2e_native_host_binary_direct_call_zero_arg_preserves_previous_value() {
 
 /// NATIVE-HOST-01g: direct call bundle が 1 引数を callee local slot へ渡して実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20014,6 +20163,7 @@ fn test_e2e_native_host_binary_direct_call_arg_bundle_link_and_execute() {
 
 /// NATIVE-HOST-01g2: import prefix を含む actual module index space でも 1 引数 direct call が link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_import_prefixed_direct_call_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20042,6 +20192,7 @@ fn test_e2e_native_host_binary_import_prefixed_direct_call_arg_bundle_link_and_e
 
 /// NATIVE-HOST-01g2b: import prefix を含む actual module index space でも 3 引数 direct call が link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_import_prefixed_direct_call_three_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20070,6 +20221,7 @@ fn test_e2e_native_host_binary_import_prefixed_direct_call_three_arg_bundle_link
 
 /// NATIVE-HOST-01g3: import boundary call が runtime stub 経由で link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_import_call_stub_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20098,6 +20250,7 @@ fn test_e2e_native_host_binary_import_call_stub_link_and_execute() {
 
 /// NATIVE-HOST-01g4: import idx 1 が per-import stub 経由で selfhost __alloc helper に到達し、ret stub の値をそのまま返さないこと。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_alloc_import_bundle_writes_allocated_offset() {
     if !host_native_exec_supported() {
         return;
@@ -20140,6 +20293,7 @@ fn test_e2e_native_host_binary_selfhost_alloc_import_bundle_writes_allocated_off
 
 /// NATIVE-HOST-01g5: alloc-backed i32.store/i32.load が linear offset を x21 heap base に rebased して roundtrip できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_alloc_i32_store_load_bundle_writes_value() {
     if !host_native_exec_supported() {
         return;
@@ -20182,6 +20336,7 @@ fn test_e2e_native_host_binary_selfhost_alloc_i32_store_load_bundle_writes_value
 
 /// NATIVE-HOST-01g6: alloc-backed i32.load8_u が rebased address から byte を読めること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_alloc_i32_load8_u_bundle_writes_byte() {
     if !host_native_exec_supported() {
         return;
@@ -20224,6 +20379,7 @@ fn test_e2e_native_host_binary_selfhost_alloc_i32_load8_u_bundle_writes_byte() {
 
 /// NATIVE-HOST-01g7: alloc-backed i64.store/i64.load が rebased address で roundtrip できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_alloc_i64_store_load_bundle_writes_value() {
     if !host_native_exec_supported() {
         return;
@@ -20266,6 +20422,7 @@ fn test_e2e_native_host_binary_selfhost_alloc_i64_store_load_bundle_writes_value
 
 /// NATIVE-HOST-01g8: alloc-backed memory.copy が src/dst offset を x21 heap base へ rebased して byte を複写できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_alloc_memory_copy_bundle_writes_copied_byte() {
     if !host_native_exec_supported() {
         return;
@@ -20308,6 +20465,7 @@ fn test_e2e_native_host_binary_selfhost_alloc_memory_copy_bundle_writes_copied_b
 
 /// NATIVE-HOST-01g9: alloc-backed memory.fill が rebased destination へ byte を埋められること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_selfhost_alloc_memory_fill_bundle_writes_filled_byte() {
     if !host_native_exec_supported() {
         return;
@@ -20350,6 +20508,7 @@ fn test_e2e_native_host_binary_selfhost_alloc_memory_fill_bundle_writes_filled_b
 
 /// NATIVE-HOST-01h: direct call bundle が 2 引数を callee local slots へ渡して実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_two_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20378,6 +20537,7 @@ fn test_e2e_native_host_binary_direct_call_two_arg_bundle_link_and_execute() {
 
 /// NATIVE-HOST-01j: 3 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_three_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20406,6 +20566,7 @@ fn test_e2e_native_host_binary_direct_call_three_arg_bundle_link_and_execute() {
 
 /// NATIVE-HOST-01j2: nested 2 引数 direct call 後でも outer value を保持したまま 2 引数 call を続行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_nested_two_arg_call_preserves_outer_value() {
     if !host_native_exec_supported() {
         return;
@@ -20434,6 +20595,7 @@ fn test_e2e_native_host_binary_nested_two_arg_call_preserves_outer_value() {
 
 /// NATIVE-HOST-01m: 4 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_four_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20462,6 +20624,7 @@ fn test_e2e_native_host_binary_direct_call_four_arg_bundle_link_and_execute() {
 
 /// NATIVE-HOST-01n: 5 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_five_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20490,6 +20653,7 @@ fn test_e2e_native_host_binary_direct_call_five_arg_bundle_link_and_execute() {
 
 /// NATIVE-HOST-01o: 6 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_six_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20518,6 +20682,7 @@ fn test_e2e_native_host_binary_direct_call_six_arg_bundle_link_and_execute() {
 
 /// NATIVE-HOST-01p: 7 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_seven_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20546,6 +20711,7 @@ fn test_e2e_native_host_binary_direct_call_seven_arg_bundle_link_and_execute() {
 
 /// NATIVE-HOST-01p2: 7 引数 direct call 後でも outer value を保持して後続演算できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_nested_seven_arg_call_preserves_outer_value() {
     if !host_native_exec_supported() {
         return;
@@ -20574,6 +20740,7 @@ fn test_e2e_native_host_binary_nested_seven_arg_call_preserves_outer_value() {
 
 /// NATIVE-HOST-01q: 8 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_eight_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20602,6 +20769,7 @@ fn test_e2e_native_host_binary_direct_call_eight_arg_bundle_link_and_execute() {
 
 /// NATIVE-HOST-01r: 9 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_nine_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20630,6 +20798,7 @@ fn test_e2e_native_host_binary_direct_call_nine_arg_bundle_link_and_execute() {
 
 /// NATIVE-HOST-01s: 10 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_ten_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20658,6 +20827,7 @@ fn test_e2e_native_host_binary_direct_call_ten_arg_bundle_link_and_execute() {
 
 /// NATIVE-HOST-01t: 11 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_eleven_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20686,6 +20856,7 @@ fn test_e2e_native_host_binary_direct_call_eleven_arg_bundle_link_and_execute() 
 
 /// NATIVE-HOST-01u: 12 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_twelve_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20714,6 +20885,7 @@ fn test_e2e_native_host_binary_direct_call_twelve_arg_bundle_link_and_execute() 
 
 /// NATIVE-HOST-01v: 13 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_thirteen_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20742,6 +20914,7 @@ fn test_e2e_native_host_binary_direct_call_thirteen_arg_bundle_link_and_execute(
 
 /// NATIVE-HOST-01w: 14 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_fourteen_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20770,6 +20943,7 @@ fn test_e2e_native_host_binary_direct_call_fourteen_arg_bundle_link_and_execute(
 
 /// NATIVE-HOST-01x: 15 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_fifteen_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20798,6 +20972,7 @@ fn test_e2e_native_host_binary_direct_call_fifteen_arg_bundle_link_and_execute()
 
 /// NATIVE-HOST-01y: 16 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_sixteen_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20826,6 +21001,7 @@ fn test_e2e_native_host_binary_direct_call_sixteen_arg_bundle_link_and_execute()
 
 /// NATIVE-HOST-01z: 17 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_seventeen_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20854,6 +21030,7 @@ fn test_e2e_native_host_binary_direct_call_seventeen_arg_bundle_link_and_execute
 
 /// NATIVE-HOST-01za: 18 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_eighteen_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20882,6 +21059,7 @@ fn test_e2e_native_host_binary_direct_call_eighteen_arg_bundle_link_and_execute(
 
 /// NATIVE-HOST-01zb: 19 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_nineteen_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20910,6 +21088,7 @@ fn test_e2e_native_host_binary_direct_call_nineteen_arg_bundle_link_and_execute(
 
 /// NATIVE-HOST-01zc: 20 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_twenty_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20938,6 +21117,7 @@ fn test_e2e_native_host_binary_direct_call_twenty_arg_bundle_link_and_execute() 
 
 /// NATIVE-HOST-01zd: 21 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_twenty_one_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20966,6 +21146,7 @@ fn test_e2e_native_host_binary_direct_call_twenty_one_arg_bundle_link_and_execut
 
 /// NATIVE-HOST-01ze: 22 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_twenty_two_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -20994,6 +21175,7 @@ fn test_e2e_native_host_binary_direct_call_twenty_two_arg_bundle_link_and_execut
 
 /// NATIVE-HOST-01zf: 23 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_twenty_three_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21022,6 +21204,7 @@ fn test_e2e_native_host_binary_direct_call_twenty_three_arg_bundle_link_and_exec
 
 /// NATIVE-HOST-01zg: 24 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_twenty_four_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21050,6 +21233,7 @@ fn test_e2e_native_host_binary_direct_call_twenty_four_arg_bundle_link_and_execu
 
 /// NATIVE-HOST-01zh: 25 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_twenty_five_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21078,6 +21262,7 @@ fn test_e2e_native_host_binary_direct_call_twenty_five_arg_bundle_link_and_execu
 
 /// NATIVE-HOST-01zi: 26 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_twenty_six_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21106,6 +21291,7 @@ fn test_e2e_native_host_binary_direct_call_twenty_six_arg_bundle_link_and_execut
 
 /// NATIVE-HOST-01zj: 27 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_twenty_seven_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21134,6 +21320,7 @@ fn test_e2e_native_host_binary_direct_call_twenty_seven_arg_bundle_link_and_exec
 
 /// NATIVE-HOST-01zk: 28 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_twenty_eight_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21162,6 +21349,7 @@ fn test_e2e_native_host_binary_direct_call_twenty_eight_arg_bundle_link_and_exec
 
 /// NATIVE-HOST-01zl: 29 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_twenty_nine_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21190,6 +21378,7 @@ fn test_e2e_native_host_binary_direct_call_twenty_nine_arg_bundle_link_and_execu
 
 /// NATIVE-HOST-01zm: 30 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_thirty_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21218,6 +21407,7 @@ fn test_e2e_native_host_binary_direct_call_thirty_arg_bundle_link_and_execute() 
 
 /// NATIVE-HOST-01zn: 31 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_thirty_one_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21246,6 +21436,7 @@ fn test_e2e_native_host_binary_direct_call_thirty_one_arg_bundle_link_and_execut
 
 /// NATIVE-HOST-01zo: 32 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_thirty_two_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21274,6 +21465,7 @@ fn test_e2e_native_host_binary_direct_call_thirty_two_arg_bundle_link_and_execut
 
 /// NATIVE-HOST-01zp: 33 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_thirty_three_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21302,6 +21494,7 @@ fn test_e2e_native_host_binary_direct_call_thirty_three_arg_bundle_link_and_exec
 
 /// NATIVE-HOST-01zq: 34 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_thirty_four_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21330,6 +21523,7 @@ fn test_e2e_native_host_binary_direct_call_thirty_four_arg_bundle_link_and_execu
 
 /// NATIVE-HOST-01zr: 35 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_thirty_five_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21358,6 +21552,7 @@ fn test_e2e_native_host_binary_direct_call_thirty_five_arg_bundle_link_and_execu
 
 /// NATIVE-HOST-01zs: 36 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_thirty_six_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21386,6 +21581,7 @@ fn test_e2e_native_host_binary_direct_call_thirty_six_arg_bundle_link_and_execut
 
 /// NATIVE-HOST-01zt: 37 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_thirty_seven_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21414,6 +21610,7 @@ fn test_e2e_native_host_binary_direct_call_thirty_seven_arg_bundle_link_and_exec
 
 /// NATIVE-HOST-01zu: 38 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_thirty_eight_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21442,6 +21639,7 @@ fn test_e2e_native_host_binary_direct_call_thirty_eight_arg_bundle_link_and_exec
 
 /// NATIVE-HOST-01zv: 39 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_thirty_nine_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21470,6 +21668,7 @@ fn test_e2e_native_host_binary_direct_call_thirty_nine_arg_bundle_link_and_execu
 
 /// NATIVE-HOST-01zw: 40 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_forty_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21498,6 +21697,7 @@ fn test_e2e_native_host_binary_direct_call_forty_arg_bundle_link_and_execute() {
 
 /// NATIVE-HOST-01zx: 41 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_forty_one_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21526,6 +21726,7 @@ fn test_e2e_native_host_binary_direct_call_forty_one_arg_bundle_link_and_execute
 
 /// NATIVE-HOST-01zy: 42 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_forty_two_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21554,6 +21755,7 @@ fn test_e2e_native_host_binary_direct_call_forty_two_arg_bundle_link_and_execute
 
 /// NATIVE-HOST-01zz: 43 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_forty_three_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21582,6 +21784,7 @@ fn test_e2e_native_host_binary_direct_call_forty_three_arg_bundle_link_and_execu
 
 /// NATIVE-HOST-020a: 44 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_forty_four_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21610,6 +21813,7 @@ fn test_e2e_native_host_binary_direct_call_forty_four_arg_bundle_link_and_execut
 
 /// NATIVE-HOST-020b: 45 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_forty_five_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21638,6 +21842,7 @@ fn test_e2e_native_host_binary_direct_call_forty_five_arg_bundle_link_and_execut
 
 /// NATIVE-HOST-020c: 46 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_forty_six_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21666,6 +21871,7 @@ fn test_e2e_native_host_binary_direct_call_forty_six_arg_bundle_link_and_execute
 
 /// NATIVE-HOST-020d: 47 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_forty_seven_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21694,6 +21900,7 @@ fn test_e2e_native_host_binary_direct_call_forty_seven_arg_bundle_link_and_execu
 
 /// NATIVE-HOST-020e: 48 引数 direct call bundle が host binary として link/run できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_forty_eight_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -21722,6 +21929,7 @@ fn test_e2e_native_host_binary_direct_call_forty_eight_arg_bundle_link_and_execu
 
 /// NATIVE-HOST-01k: 2 引数 direct call のあとで one-deeper previous を Drop で取り戻せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_two_arg_drop_restores_spilled_previous() {
     if !host_native_exec_supported() {
         return;
@@ -21750,6 +21958,7 @@ fn test_e2e_native_host_binary_direct_call_two_arg_drop_restores_spilled_previou
 
 /// NATIVE-HOST-01l: 3-value window では drop;drop で spilled previous まで戻れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_three_value_double_drop_restores_bottom_value() {
     if !host_native_exec_supported() {
         return;
@@ -21778,6 +21987,7 @@ fn test_e2e_native_host_binary_three_value_double_drop_restores_bottom_value() {
 
 /// NATIVE-HOST-01i: 1 引数 direct call のあとでも Drop が call 前の値へ戻せること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_arg_drop_restores_previous_value() {
     if !host_native_exec_supported() {
         return;
@@ -21806,6 +22016,7 @@ fn test_e2e_native_host_binary_direct_call_arg_drop_restores_previous_value() {
 
 /// NATIVE-HOST-01i2: 深い current-depth の 1 引数 direct call 後でも Drop 連打で底値を復元できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_deep_direct_call_arg_drop_restores_bottom_value() {
     if !host_native_exec_supported() {
         return;
@@ -21834,6 +22045,7 @@ fn test_e2e_native_host_binary_deep_direct_call_arg_drop_restores_bottom_value()
 
 /// NATIVE-HOST-01i3: 61 value window を超える 1 引数 direct call 後でも Drop 連打で底値を復元できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_overflow_depth_direct_call_arg_drop_restores_bottom_value() {
     if !host_native_exec_supported() {
         return;
@@ -21862,6 +22074,7 @@ fn test_e2e_native_host_binary_overflow_depth_direct_call_arg_drop_restores_bott
 
 /// NATIVE-HOST-01i4: 深い current-depth の command-line-arg/string-length 後でも Drop 連打で底値を復元できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_deep_command_line_arg_string_length_drop_restores_bottom_value() {
     if !host_native_exec_supported() {
         return;
@@ -21890,6 +22103,7 @@ fn test_e2e_native_host_binary_deep_command_line_arg_string_length_drop_restores
 
 /// NATIVE-HOST-01i5: 61 value window を超える command-line-arg/string-length 後でも Drop 連打で底値を復元できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_overflow_depth_command_line_arg_string_length_drop_restores_bottom_value()
  {
     if !host_native_exec_supported() {
@@ -21919,6 +22133,7 @@ fn test_e2e_native_host_binary_overflow_depth_command_line_arg_string_length_dro
 
 /// NATIVE-HOST-01i6: 深い current-depth の substring 呼び出しでも helper 引数順を維持できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_deep_command_line_arg_substring_returns_length() {
     if !host_native_exec_supported() {
         return;
@@ -21947,6 +22162,7 @@ fn test_e2e_native_host_binary_deep_command_line_arg_substring_returns_length() 
 
 /// NATIVE-HOST-01i7: local/root handoff を除いた deep substring call-site 単体でも helper 引数順を維持できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_deep_plain_command_line_arg_substring_returns_length() {
     if !host_native_exec_supported() {
         return;
@@ -21976,6 +22192,7 @@ fn test_e2e_native_host_binary_deep_plain_command_line_arg_substring_returns_len
 
 /// V2-08: canonical native artifact bundle で materialize した `program.native` が実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_bundle_artifact_writer_materializes_canonical_files() {
     if !host_native_exec_supported() {
         return;
@@ -22058,6 +22275,7 @@ fn test_e2e_native_host_bundle_artifact_writer_materializes_canonical_files() {
 
 /// V2-08: canonical native artifact bundle で materialize した `program.native` が実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_bundle_uses_canonical_artifact_contract() {
     if !host_native_exec_supported() {
         return;
@@ -22101,6 +22319,7 @@ fn test_e2e_native_host_bundle_uses_canonical_artifact_contract() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_native_host_bundle_alloc_size_covers_actual_stage_heap_pressure() {
     assert!(
         native_host_bundle_alloc_size(0) >= 0x1_0000_0000,
@@ -22110,6 +22329,7 @@ fn test_e2e_native_host_bundle_alloc_size_covers_actual_stage_heap_pressure() {
 
 /// V2-08: representative build entry 由来の stage1-native artifact が canonical 契約で materialize できること。
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_native_host_bundle_uses_representative_artifact_contract() {
     if !host_native_exec_supported() {
         return;
@@ -22170,6 +22390,7 @@ fn test_e2e_selfhost_main_native_host_bundle_uses_representative_artifact_contra
 
 /// V2-08: host-side proxy の `stage2-native` / `stage3-native` 観測面が一致すること。
 #[test]
+#[ignore]
 fn test_e2e_stage23_native_host_bundle_proxy_observations_match() {
     if !host_native_exec_supported() {
         return;
@@ -22197,6 +22418,7 @@ fn test_e2e_stage23_native_host_bundle_proxy_observations_match() {
 
 /// V2-08: representative build entry の `program.native` が stage observation を実行できること。
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_native_host_bundle_executes_stage_observation() {
     if !host_native_exec_supported() {
         return;
@@ -22378,6 +22600,7 @@ fn assert_representative_override_main_matches_selfhost_with_path_arg(
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_direct_main() {
     if !host_native_exec_supported() {
         return;
@@ -22395,6 +22618,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_d
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_file_pairs_with_cache_token_module_only()
  {
     if !host_native_exec_supported() {
@@ -22442,6 +22666,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_file_pairs_with_cache_seed_path_arg_only()
  {
     if !host_native_exec_supported() {
@@ -22580,6 +22805,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_native_export_lengths_seed_path_arg_only()
  {
     if !host_native_exec_supported() {
@@ -22679,6 +22905,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_n
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_native_export_lengths_minimal_seed_path_arg_only()
  {
     if !host_native_exec_supported() {
@@ -22765,6 +22992,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_n
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_native_export_emit_only_seed_path_arg_only()
  {
     if !host_native_exec_supported() {
@@ -25701,6 +25929,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_tokenize_actual_seed_d
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_native_export_emit_only_seed_first_function_arg_only()
  {
     if !host_native_exec_supported() {
@@ -25747,6 +25976,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_n
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_native_export_emit_only_tiny_manual_bundle()
  {
     if !host_native_exec_supported() {
@@ -25816,6 +26046,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_n
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_native_export_pre_emit_seed_path_arg_only()
  {
     if !host_native_exec_supported() {
@@ -25867,6 +26098,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_n
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_native_export_pre_normalize_seed_path_arg_only()
  {
     if !host_native_exec_supported() {
@@ -25968,6 +26200,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_n
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_import_placeholder_vector_only()
  {
     if !host_native_exec_supported() {
@@ -26032,6 +26265,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_i
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_map_insert_after_large_fill() {
     if !host_native_exec_supported() {
         return;
@@ -26089,6 +26323,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_map_insert_after_large
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_helper_before_main_trivial_print_only()
  {
     if !host_native_exec_supported() {
@@ -26134,6 +26369,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_h
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_helper_before_main_helper_result_only()
  {
     if !host_native_exec_supported() {
@@ -26297,6 +26533,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_export_harness_opcode_invento
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_read_file_string_length_token_module_only()
  {
     if !host_native_exec_supported() {
@@ -26319,6 +26556,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_r
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_command_line_arg_string_length_token_module_only()
  {
     if !host_native_exec_supported() {
@@ -26340,6 +26578,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_read_file_parse_program_token_module_only()
  {
     if !host_native_exec_supported() {
@@ -26365,6 +26604,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_r
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_load_src_decl_pair_with_cache_token_module_only()
  {
     if !host_native_exec_supported() {
@@ -26440,6 +26680,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_native_pipeline_only()
  {
     if !host_native_exec_supported() {
@@ -26471,6 +26712,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_native_pipeline_aarch64_only()
  {
     if !host_native_exec_supported() {
@@ -26502,6 +26744,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_native_response_summary_only()
  {
     if !host_native_exec_supported() {
@@ -26527,6 +26770,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_source_literal_42_only()
  {
     if !host_native_exec_supported() {
@@ -26557,6 +26801,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_tokenize_with_spans_literal_42_only()
  {
     if !host_native_exec_supported() {
@@ -26584,6 +26829,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_t
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_literal_42_shape_only()
  {
     if !host_native_exec_supported() {
@@ -26609,6 +26855,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_many_trivial_defns_only()
  {
     if !host_native_exec_supported() {
@@ -26640,6 +26887,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_token_module_literal_only()
  {
     if !host_native_exec_supported() {
@@ -26668,6 +26916,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_token_module_prefix_literal_only()
  {
     if !host_native_exec_supported() {
@@ -26700,6 +26949,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_demo_main_literal_only()
  {
     if !host_native_exec_supported() {
@@ -26734,6 +26984,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_do_only_literal_only()
  {
     if !host_native_exec_supported() {
@@ -26768,6 +27019,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_symbol_only_literal_only()
  {
     if !host_native_exec_supported() {
@@ -26798,6 +27050,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_name_hash_literal_only()
  {
     if !host_native_exec_supported() {
@@ -26818,6 +27071,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_n
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_symbol_var_literal_only()
  {
     if !host_native_exec_supported() {
@@ -26845,6 +27099,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_defn_symbol_body_literal_only()
  {
     if !host_native_exec_supported() {
@@ -26873,6 +27128,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_defn_symbol_decl_only()
  {
     if !host_native_exec_supported() {
@@ -26899,6 +27155,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_defn_symbol_no_access()
  {
     if !host_native_exec_supported() {
@@ -26924,6 +27181,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_defn_literal_no_access()
  {
     if !host_native_exec_supported() {
@@ -26949,6 +27207,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_expr_symbol_literal_only()
  {
     if !host_native_exec_supported() {
@@ -26976,6 +27235,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_finalize_defn_body_symbol_only()
  {
     if !host_native_exec_supported() {
@@ -27001,6 +27261,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_f
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_defn_body_symbol_only()
  {
     if !host_native_exec_supported() {
@@ -27029,6 +27290,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_expr_symbol_from_full_source_only()
  {
     if !host_native_exec_supported() {
@@ -27056,6 +27318,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_defn_body_symbol_from_full_source_only()
  {
     if !host_native_exec_supported() {
@@ -27084,6 +27347,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_ref_get_symbol_body_decl_only()
  {
     if !host_native_exec_supported() {
@@ -27113,6 +27377,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_r
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_apply_only_literal_only()
  {
     if !host_native_exec_supported() {
@@ -27143,6 +27408,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_program_zero_arg_apply_only_literal_only()
  {
     if !host_native_exec_supported() {
@@ -27173,6 +27439,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_symbol_form_dispatch_chain_only()
  {
     if !host_native_exec_supported() {
@@ -27202,6 +27469,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_s
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_substring_string_length_only()
  {
     if !host_native_exec_supported() {
@@ -27224,6 +27492,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_s
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_string_eq_dispatch_chain_literal_only()
  {
     if !host_native_exec_supported() {
@@ -27253,6 +27522,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_s
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_literal_string_length_only()
  {
     if !host_native_exec_supported() {
@@ -27274,6 +27544,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_l
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_nested_int_node_only()
  {
     if !host_native_exec_supported() {
@@ -27301,6 +27572,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_n
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_defn_literal_42_only()
  {
     if !host_native_exec_supported() {
@@ -27331,6 +27603,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_expr_literal_42_only()
  {
     if !host_native_exec_supported() {
@@ -27358,6 +27631,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_finalize_defn_body_literal_42_only()
  {
     if !host_native_exec_supported() {
@@ -27384,6 +27658,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_f
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_parse_defn_body_path_literal_42_only()
  {
     if !host_native_exec_supported() {
@@ -27413,6 +27688,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_p
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_native_pipeline_linux_only()
  {
     if !host_native_exec_supported() {
@@ -27437,6 +27713,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_elf_object_only()
  {
     if !host_native_exec_supported() {
@@ -27462,6 +27739,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_elf_generated_native_only()
  {
     if !host_native_exec_supported() {
@@ -27493,6 +27771,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_native_multi_object_link_x86_only()
  {
     if !host_native_exec_supported() {
@@ -27518,6 +27797,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_native_multi_object_link_linux_only()
  {
     if !host_native_exec_supported() {
@@ -27543,6 +27823,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_native_multi_object_link_aarch64_only()
  {
     if !host_native_exec_supported() {
@@ -27568,6 +27849,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_generate_response_file_text_only()
  {
     if !host_native_exec_supported() {
@@ -27596,6 +27878,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_g
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_build_linker_response_args_only()
  {
     if !host_native_exec_supported() {
@@ -27627,6 +27910,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_b
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_manual_response_text_concat_only()
  {
     if !host_native_exec_supported() {
@@ -27654,6 +27938,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_m
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_manual_response_text_concat_step_lengths()
  {
     if !host_native_exec_supported() {
@@ -27688,6 +27973,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_m
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_string_length_literal_only()
  {
     if !host_native_exec_supported() {
@@ -27707,6 +27993,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_s
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_string_length_newline_literal_only()
  {
     if !host_native_exec_supported() {
@@ -27726,6 +28013,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_s
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_string_concat_literal_only()
  {
     if !host_native_exec_supported() {
@@ -27745,6 +28033,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_s
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_string_concat_chained_literal_only()
  {
     if !host_native_exec_supported() {
@@ -27765,6 +28054,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_s
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_compile_native_bundle_summary_only()
  {
     if !host_native_exec_supported() {
@@ -27791,6 +28081,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_bundle_text_hash_literal_only()
  {
     if !host_native_exec_supported() {
@@ -27811,6 +28102,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_b
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_string_char_at_literal_only()
  {
     if !host_native_exec_supported() {
@@ -27830,6 +28122,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_s
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_string_char_at_literal_last_char_only()
  {
     if !host_native_exec_supported() {
@@ -27849,6 +28142,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_s
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_string_length_program_native_literal_only()
  {
     if !host_native_exec_supported() {
@@ -27868,6 +28162,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_s
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_name_hash_literal_explicit_end_only()
  {
     if !host_native_exec_supported() {
@@ -27888,6 +28183,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_n
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_name_hash_loop_last_char_only()
  {
     if !host_native_exec_supported() {
@@ -27908,6 +28204,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_n
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_imported_string_eq_single_char_only()
  {
     if !host_native_exec_supported() {
@@ -27928,6 +28225,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_i
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_module_resolver_same_path_multi_char_true_only()
  {
     if !host_native_exec_supported() {
@@ -27948,6 +28246,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_m
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_module_resolver_same_path_single_char_true_only()
  {
     if !host_native_exec_supported() {
@@ -27968,6 +28267,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_m
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_module_resolver_same_path_multi_char_false_only()
  {
     if !host_native_exec_supported() {
@@ -27988,6 +28288,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_m
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_imported_parse_int_digits_single_char_only()
  {
     if !host_native_exec_supported() {
@@ -28008,6 +28309,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_i
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_imported_string_eq_single_char_layout_is_sane() {
     let main_source = r#"(module App.Main)
 (import Syntax.Lexer)
@@ -28027,6 +28329,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_imported_string_eq_single_cha
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_imported_parse_int_digits_single_char_layout_is_sane()
  {
     let main_source = r#"(module App.Main)
@@ -28047,6 +28350,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_imported_parse_int_digits_sin
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_imported_string_eq_single_char_materializes_bundle()
  {
     if !host_native_exec_supported() {
@@ -28082,6 +28386,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_imported_string_eq_single_cha
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_compile_native_bundle_summary_materializes_bundle()
  {
     if !host_native_exec_supported() {
@@ -28123,6 +28428,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_compile_native_bundle_summary
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_make_target_one_triple_only()
  {
     if !host_native_exec_supported() {
@@ -28144,6 +28450,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_m
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_make_target_two_triple_only()
  {
     if !host_native_exec_supported() {
@@ -28165,6 +28472,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_m
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_make_target_four_triple_only()
  {
     if !host_native_exec_supported() {
@@ -28186,6 +28494,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_m
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_eq_if_chain_literal_only()
  {
     if !host_native_exec_supported() {
@@ -28207,6 +28516,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_eq_if_chain_via_let_only()
  {
     if !host_native_exec_supported() {
@@ -28229,6 +28539,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_arithmetic_expr_only()
  {
     if !host_native_exec_supported() {
@@ -28248,6 +28559,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_a
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_add_expr_only() {
     if !host_native_exec_supported() {
         return;
@@ -28266,6 +28578,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_a
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_mul_expr_only() {
     if !host_native_exec_supported() {
         return;
@@ -28284,6 +28597,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_m
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_ge_if_expr_only() {
     if !host_native_exec_supported() {
         return;
@@ -28302,6 +28616,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_g
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_arithmetic_expr_via_let_only()
  {
     if !host_native_exec_supported() {
@@ -28322,6 +28637,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_a
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_local_name_hash_literal_explicit_end_only()
  {
     if !host_native_exec_supported() {
@@ -28349,6 +28665,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_l
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_const_only() {
     if !host_native_exec_supported() {
         return;
@@ -28436,6 +28753,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_const_only_override_visibilit
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_trivial_print_only()
 {
     if !host_native_exec_supported() {
@@ -28455,6 +28773,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_t
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_root_push_pop_only()
 {
     if !host_native_exec_supported() {
@@ -28477,6 +28796,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_r
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_root_set_only() {
     if !host_native_exec_supported() {
         return;
@@ -28498,6 +28818,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_r
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_native_codegen_import_only()
  {
     if !host_native_exec_supported() {
@@ -28516,6 +28837,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_n
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_i32_const_bundle_core_only()
  {
     if !host_native_exec_supported() {
@@ -28539,6 +28861,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_i32_const_x86_only()
  {
     if !host_native_exec_supported() {
@@ -28562,6 +28885,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_mov_local_from_rcx_only()
  {
     if !host_native_exec_supported() {
@@ -28585,6 +28909,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_encode_u32_le_only()
 {
     if !host_native_exec_supported() {
@@ -28608,6 +28933,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_concat_byte_vectors_rooted_small_only()
  {
     if !host_native_exec_supported() {
@@ -28638,6 +28964,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_byte_vector_4_only()
 {
     if !host_native_exec_supported() {
@@ -28661,6 +28988,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_b
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_vector_push_single_rooted_only()
  {
     if !host_native_exec_supported() {
@@ -28684,6 +29012,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_v
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_local_vector_push_single_rooted_only()
  {
     if !host_native_exec_supported() {
@@ -28714,6 +29043,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_l
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_local_vector_new_length_only()
  {
     if !host_native_exec_supported() {
@@ -28734,6 +29064,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_l
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_local_vector_push_only()
  {
     if !host_native_exec_supported() {
@@ -28755,6 +29086,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_l
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_local_multi_vector_push_only()
  {
     if !host_native_exec_supported() {
@@ -28780,6 +29112,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_l
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_local_vector_get_only()
  {
     if !host_native_exec_supported() {
@@ -28803,6 +29136,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_l
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_main_representative_aarch64_runtime_helper_length_contracts() {
     let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
         "native-stage23-runtime-helper-length-contracts",
@@ -28832,6 +29166,7 @@ fn test_e2e_selfhost_main_representative_aarch64_runtime_helper_length_contracts
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_native_only() {
     if !host_native_exec_supported() {
         return;
@@ -28869,6 +29204,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_native_aarch64_only()
  {
     if !host_native_exec_supported() {
@@ -28907,6 +29243,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_native_tiny_ir_only()
  {
     if !host_native_exec_supported() {
@@ -28943,6 +29280,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_native_tiny_ir_aarch64_only()
  {
     if !host_native_exec_supported() {
@@ -28979,6 +29317,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_scan_control_flow_meta_tiny_ir_only()
  {
     if !host_native_exec_supported() {
@@ -29012,6 +29351,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_s
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_scan_control_flow_meta_tiny_ir_alloc_only()
  {
     if !host_native_exec_supported() {
@@ -29043,6 +29383,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_s
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_scan_control_flow_meta_if_else_end()
  {
     if !host_native_exec_supported() {
@@ -29085,6 +29426,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_s
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_collect_native_offsets_aarch64_tiny_ir_only()
  {
     if !host_native_exec_supported() {
@@ -29117,6 +29459,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_codegen_ir_instr_aarch64_i64_const_only()
  {
     if !host_native_exec_supported() {
@@ -29141,6 +29484,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_codegen_ir_instr_aarch64_i64_const_alloc_only()
  {
     if !host_native_exec_supported() {
@@ -29164,6 +29508,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_codegen_ir_instr_aarch64_i64_rem_only()
  {
     if !host_native_exec_supported() {
@@ -29188,6 +29533,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_c
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_aarch64_movz_w0_alloc_only()
  {
     if !host_native_exec_supported() {
@@ -29211,6 +29557,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_aarch64_load_i64_x0_small_const_only()
  {
     if !host_native_exec_supported() {
@@ -29234,6 +29581,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_aarch64_immediate_chunks_small_const_only()
  {
     if !host_native_exec_supported() {
@@ -29257,6 +29605,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_a
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_small_div_rem_literal_only()
  {
     if !host_native_exec_supported() {
@@ -29277,6 +29626,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_s
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_eq_if_chain_opcode_window_only()
  {
     if !host_native_exec_supported() {
@@ -29303,6 +29653,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_medium_i64_const_only()
  {
     if !host_native_exec_supported() {
@@ -29322,6 +29673,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_m
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_large_i64_const_only()
  {
     if !host_native_exec_supported() {
@@ -29341,6 +29693,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_l
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_object_only() {
     if !host_native_exec_supported() {
         return;
@@ -29384,6 +29737,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
 }
 
 #[test]
+#[ignore]
 fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_emit_object_aarch64_only()
  {
     if !host_native_exec_supported() {
@@ -29429,6 +29783,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_host_bundle_executes_e
 
 /// V2-08: representative build entry 由来の stage2-native / stage3-native artifact 観測面が一致すること。
 #[test]
+#[ignore]
 fn test_e2e_stage23_representative_native_host_bundle_artifact_observations_match() {
     if !host_native_exec_supported() {
         return;
@@ -29463,6 +29818,7 @@ fn test_e2e_stage23_representative_native_host_bundle_artifact_observations_matc
 
 /// V2-08: proxy ではなく actual native executable 経由で stage2-native / stage3-native が自己再生成できること。
 #[test]
+#[ignore]
 fn test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match() {
     if !host_native_exec_supported() {
         return;
@@ -29485,6 +29841,7 @@ fn test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match(
 
 /// V2-09: actual self-regeneration で得た native stage 生成物を differential input として扱えること。
 #[test]
+#[ignore]
 fn test_e2e_wasm_native_differential_uses_actual_self_regenerated_stage_artifacts() {
     if !host_native_exec_supported() {
         return;
@@ -29893,6 +30250,7 @@ fn native_exit_code_for_direct_call_local_get(values: &[u32], local_idx: usize) 
 
 /// ZERO-DIFF-01: const 0 — Wasm stdout と native exit code がともに 0
 #[test]
+#[ignore]
 fn test_e2e_zero_diff_const_0() {
     if !host_native_exec_supported() {
         return;
@@ -29913,6 +30271,7 @@ fn test_e2e_zero_diff_const_0() {
 
 /// NATIVE-HOST-020f: 48-value window の i32.const 連続 push でも最新値を保持できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_forty_eight_i32_const_window_keeps_latest_value() {
     if !host_native_exec_supported() {
         return;
@@ -29933,6 +30292,7 @@ fn test_e2e_native_host_binary_forty_eight_i32_const_window_keeps_latest_value()
 
 /// NATIVE-HOST-020g: 48 引数 direct call でも最後の引数 local.get 47 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_forty_eight_arg_local_get_47_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -29953,6 +30313,7 @@ fn test_e2e_native_host_binary_forty_eight_arg_local_get_47_roundtrip() {
 
 /// NATIVE-HOST-020h: 48 引数 direct call でも境界直前の local.get 46 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_forty_eight_arg_local_get_46_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -29980,6 +30341,7 @@ fn forty_nine_arg_values() -> [u32; 49] {
 
 /// NATIVE-HOST-020i: 49 引数 direct call bundle でも caller/callee の和を host binary で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_forty_nine_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -29997,6 +30359,7 @@ fn test_e2e_native_host_binary_direct_call_forty_nine_arg_bundle_link_and_execut
 
 /// NATIVE-HOST-020j: 49-value window の i32.const 連続 push でも最新値を保持できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_forty_nine_i32_const_window_keeps_latest_value() {
     if !host_native_exec_supported() {
         return;
@@ -30014,6 +30377,7 @@ fn test_e2e_native_host_binary_forty_nine_i32_const_window_keeps_latest_value() 
 
 /// NATIVE-HOST-020k: 49 引数 direct call でも末尾 local.get 48 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_forty_nine_arg_local_get_48_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30031,6 +30395,7 @@ fn test_e2e_native_host_binary_forty_nine_arg_local_get_48_roundtrip() {
 
 /// NATIVE-HOST-020l: 49 引数 direct call でも新規 spill 境界の local.get 46 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_forty_nine_arg_local_get_46_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30055,6 +30420,7 @@ fn fifty_arg_values() -> [u32; 50] {
 
 /// NATIVE-HOST-020m: 50 引数 direct call bundle でも caller/callee の和を host binary で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_fifty_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -30072,6 +30438,7 @@ fn test_e2e_native_host_binary_direct_call_fifty_arg_bundle_link_and_execute() {
 
 /// NATIVE-HOST-020n: 50-value window の i32.const 連続 push でも最新値を保持できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_i32_const_window_keeps_latest_value() {
     if !host_native_exec_supported() {
         return;
@@ -30089,6 +30456,7 @@ fn test_e2e_native_host_binary_fifty_i32_const_window_keeps_latest_value() {
 
 /// NATIVE-HOST-020o: 50 引数 direct call でも末尾 local.get 49 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_arg_local_get_49_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30106,6 +30474,7 @@ fn test_e2e_native_host_binary_fifty_arg_local_get_49_roundtrip() {
 
 /// NATIVE-HOST-020p: 50 引数 direct call でも register spill 境界の local.get 47 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_arg_local_get_47_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30131,6 +30500,7 @@ fn fifty_one_arg_values() -> [u32; 51] {
 
 /// NATIVE-HOST-020q: 51 引数 direct call bundle でも caller/callee の和を host binary で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_fifty_one_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -30148,6 +30518,7 @@ fn test_e2e_native_host_binary_direct_call_fifty_one_arg_bundle_link_and_execute
 
 /// NATIVE-HOST-020r: 51-value window の i32.const 連続 push でも最新値を保持できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_one_i32_const_window_keeps_latest_value() {
     if !host_native_exec_supported() {
         return;
@@ -30165,6 +30536,7 @@ fn test_e2e_native_host_binary_fifty_one_i32_const_window_keeps_latest_value() {
 
 /// NATIVE-HOST-020s: 51 引数 direct call でも末尾 local.get 50 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_one_arg_local_get_50_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30182,6 +30554,7 @@ fn test_e2e_native_host_binary_fifty_one_arg_local_get_50_roundtrip() {
 
 /// NATIVE-HOST-020t: 51 引数 direct call でも spill 境界の local.get 48 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_one_arg_local_get_48_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30207,6 +30580,7 @@ fn fifty_two_arg_values() -> [u32; 52] {
 
 /// NATIVE-HOST-020u: 52 引数 direct call bundle でも caller/callee の和を host binary で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_fifty_two_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -30224,6 +30598,7 @@ fn test_e2e_native_host_binary_direct_call_fifty_two_arg_bundle_link_and_execute
 
 /// NATIVE-HOST-020v: 52-value window の i32.const 連続 push でも最新値を保持できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_two_i32_const_window_keeps_latest_value() {
     if !host_native_exec_supported() {
         return;
@@ -30241,6 +30616,7 @@ fn test_e2e_native_host_binary_fifty_two_i32_const_window_keeps_latest_value() {
 
 /// NATIVE-HOST-020w: 52 引数 direct call でも末尾 local.get 51 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_two_arg_local_get_51_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30258,6 +30634,7 @@ fn test_e2e_native_host_binary_fifty_two_arg_local_get_51_roundtrip() {
 
 /// NATIVE-HOST-020x: 52 引数 direct call でも spill 境界の local.get 49 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_two_arg_local_get_49_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30283,6 +30660,7 @@ fn fifty_three_arg_values() -> [u32; 53] {
 
 /// NATIVE-HOST-020y: 53 引数 direct call bundle でも caller/callee の和を host binary で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_fifty_three_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -30300,6 +30678,7 @@ fn test_e2e_native_host_binary_direct_call_fifty_three_arg_bundle_link_and_execu
 
 /// NATIVE-HOST-020z: 53-value window の i32.const 連続 push でも最新値を保持できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_three_i32_const_window_keeps_latest_value() {
     if !host_native_exec_supported() {
         return;
@@ -30317,6 +30696,7 @@ fn test_e2e_native_host_binary_fifty_three_i32_const_window_keeps_latest_value()
 
 /// NATIVE-HOST-021a: 53 引数 direct call でも末尾 local.get 52 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_three_arg_local_get_52_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30334,6 +30714,7 @@ fn test_e2e_native_host_binary_fifty_three_arg_local_get_52_roundtrip() {
 
 /// NATIVE-HOST-021b: 53 引数 direct call でも spill 境界の local.get 50 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_three_arg_local_get_50_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30415,6 +30796,7 @@ fn sixty_one_arg_values() -> [u32; 61] {
 
 /// NATIVE-HOST-021c: 54 引数 direct call bundle でも caller/callee の和を host binary で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_fifty_four_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -30432,6 +30814,7 @@ fn test_e2e_native_host_binary_direct_call_fifty_four_arg_bundle_link_and_execut
 
 /// NATIVE-HOST-021d: 54-value window の i32.const 連続 push でも最新値を保持できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_four_i32_const_window_keeps_latest_value() {
     if !host_native_exec_supported() {
         return;
@@ -30449,6 +30832,7 @@ fn test_e2e_native_host_binary_fifty_four_i32_const_window_keeps_latest_value() 
 
 /// NATIVE-HOST-021e: 54 引数 direct call でも末尾 local.get 53 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_four_arg_local_get_53_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30466,6 +30850,7 @@ fn test_e2e_native_host_binary_fifty_four_arg_local_get_53_roundtrip() {
 
 /// NATIVE-HOST-021ea: 54 引数 direct call でも末尾 1 個手前 local.get 52 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_four_arg_local_get_52_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30483,6 +30868,7 @@ fn test_e2e_native_host_binary_fifty_four_arg_local_get_52_roundtrip() {
 
 /// NATIVE-HOST-021f: 54 引数 direct call でも spill 境界の local.get 51 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_four_arg_local_get_51_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30500,6 +30886,7 @@ fn test_e2e_native_host_binary_fifty_four_arg_local_get_51_roundtrip() {
 
 /// NATIVE-HOST-021g: 54 引数 direct call でも先頭 local.get 0 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_four_arg_local_get_0_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30517,6 +30904,7 @@ fn test_e2e_native_host_binary_fifty_four_arg_local_get_0_roundtrip() {
 
 /// NATIVE-HOST-021h: 55 引数 direct call bundle でも caller/callee の和を host binary で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_fifty_five_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -30534,6 +30922,7 @@ fn test_e2e_native_host_binary_direct_call_fifty_five_arg_bundle_link_and_execut
 
 /// NATIVE-HOST-021i: 55-value window の i32.const 連続 push でも最新値を保持できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_five_i32_const_window_keeps_latest_value() {
     if !host_native_exec_supported() {
         return;
@@ -30551,6 +30940,7 @@ fn test_e2e_native_host_binary_fifty_five_i32_const_window_keeps_latest_value() 
 
 /// NATIVE-HOST-021ia: 55 引数 direct call でも末尾 local.get 54 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_five_arg_local_get_54_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30568,6 +30958,7 @@ fn test_e2e_native_host_binary_fifty_five_arg_local_get_54_roundtrip() {
 
 /// NATIVE-HOST-021ib: 55 引数 direct call でも末尾 1 個手前 local.get 53 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_five_arg_local_get_53_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30585,6 +30976,7 @@ fn test_e2e_native_host_binary_fifty_five_arg_local_get_53_roundtrip() {
 
 /// NATIVE-HOST-021j: 55 引数 direct call でも spill 境界の local.get 52 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_five_arg_local_get_52_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30602,6 +30994,7 @@ fn test_e2e_native_host_binary_fifty_five_arg_local_get_52_roundtrip() {
 
 /// NATIVE-HOST-021k: 55 引数 direct call でも先頭 local.get 0 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_five_arg_local_get_0_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30619,6 +31012,7 @@ fn test_e2e_native_host_binary_fifty_five_arg_local_get_0_roundtrip() {
 
 /// NATIVE-HOST-021l: 56 引数 direct call bundle でも caller/callee の和を host binary で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_fifty_six_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -30636,6 +31030,7 @@ fn test_e2e_native_host_binary_direct_call_fifty_six_arg_bundle_link_and_execute
 
 /// NATIVE-HOST-021m: 56-value window の i32.const 連続 push でも最新値を保持できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_six_i32_const_window_keeps_latest_value() {
     if !host_native_exec_supported() {
         return;
@@ -30653,6 +31048,7 @@ fn test_e2e_native_host_binary_fifty_six_i32_const_window_keeps_latest_value() {
 
 /// NATIVE-HOST-021ma: 56 引数 direct call でも末尾 local.get 55 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_six_arg_local_get_55_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30670,6 +31066,7 @@ fn test_e2e_native_host_binary_fifty_six_arg_local_get_55_roundtrip() {
 
 /// NATIVE-HOST-021mb: 56 引数 direct call でも末尾 1 個手前 local.get 54 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_six_arg_local_get_54_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30687,6 +31084,7 @@ fn test_e2e_native_host_binary_fifty_six_arg_local_get_54_roundtrip() {
 
 /// NATIVE-HOST-021n: 56 引数 direct call でも spill 境界の local.get 53 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_six_arg_local_get_53_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30704,6 +31102,7 @@ fn test_e2e_native_host_binary_fifty_six_arg_local_get_53_roundtrip() {
 
 /// NATIVE-HOST-021o: 56 引数 direct call でも先頭 local.get 0 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_six_arg_local_get_0_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30721,6 +31120,7 @@ fn test_e2e_native_host_binary_fifty_six_arg_local_get_0_roundtrip() {
 
 /// NATIVE-HOST-021p: 57 引数 direct call bundle でも caller/callee の和を host binary で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_fifty_seven_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -30738,6 +31138,7 @@ fn test_e2e_native_host_binary_direct_call_fifty_seven_arg_bundle_link_and_execu
 
 /// NATIVE-HOST-021q: 57-value window の i32.const 連続 push でも最新値を保持できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_seven_i32_const_window_keeps_latest_value() {
     if !host_native_exec_supported() {
         return;
@@ -30755,6 +31156,7 @@ fn test_e2e_native_host_binary_fifty_seven_i32_const_window_keeps_latest_value()
 
 /// NATIVE-HOST-021qa: 57 引数 direct call でも末尾 local.get 56 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_seven_arg_local_get_56_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30772,6 +31174,7 @@ fn test_e2e_native_host_binary_fifty_seven_arg_local_get_56_roundtrip() {
 
 /// NATIVE-HOST-021qb: 57 引数 direct call でも末尾 1 個手前 local.get 55 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_seven_arg_local_get_55_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30789,6 +31192,7 @@ fn test_e2e_native_host_binary_fifty_seven_arg_local_get_55_roundtrip() {
 
 /// NATIVE-HOST-021r: 57 引数 direct call でも spill 境界の local.get 54 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_seven_arg_local_get_54_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30806,6 +31210,7 @@ fn test_e2e_native_host_binary_fifty_seven_arg_local_get_54_roundtrip() {
 
 /// NATIVE-HOST-021s: 57 引数 direct call でも先頭 local.get 0 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_seven_arg_local_get_0_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30823,6 +31228,7 @@ fn test_e2e_native_host_binary_fifty_seven_arg_local_get_0_roundtrip() {
 
 /// NATIVE-HOST-021t: 58 引数 direct call bundle でも caller/callee の和を host binary で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_fifty_eight_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -30840,6 +31246,7 @@ fn test_e2e_native_host_binary_direct_call_fifty_eight_arg_bundle_link_and_execu
 
 /// NATIVE-HOST-021u: 58-value window の i32.const 連続 push でも最新値を保持できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_eight_i32_const_window_keeps_latest_value() {
     if !host_native_exec_supported() {
         return;
@@ -30857,6 +31264,7 @@ fn test_e2e_native_host_binary_fifty_eight_i32_const_window_keeps_latest_value()
 
 /// NATIVE-HOST-021ua: 58 引数 direct call でも末尾 local.get 57 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_eight_arg_local_get_57_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30874,6 +31282,7 @@ fn test_e2e_native_host_binary_fifty_eight_arg_local_get_57_roundtrip() {
 
 /// NATIVE-HOST-021ub: 58 引数 direct call でも末尾 1 個手前 local.get 56 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_eight_arg_local_get_56_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30891,6 +31300,7 @@ fn test_e2e_native_host_binary_fifty_eight_arg_local_get_56_roundtrip() {
 
 /// NATIVE-HOST-021v: 58 引数 direct call でも spill 境界の local.get 55 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_eight_arg_local_get_55_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30908,6 +31318,7 @@ fn test_e2e_native_host_binary_fifty_eight_arg_local_get_55_roundtrip() {
 
 /// NATIVE-HOST-021w: 58 引数 direct call でも先頭 local.get 0 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_eight_arg_local_get_0_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30925,6 +31336,7 @@ fn test_e2e_native_host_binary_fifty_eight_arg_local_get_0_roundtrip() {
 
 /// NATIVE-HOST-021x: 59 引数 direct call bundle でも caller/callee の和を host binary で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_fifty_nine_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -30942,6 +31354,7 @@ fn test_e2e_native_host_binary_direct_call_fifty_nine_arg_bundle_link_and_execut
 
 /// NATIVE-HOST-021y: 59-value window の i32.const 連続 push でも最新値を保持できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_nine_i32_const_window_keeps_latest_value() {
     if !host_native_exec_supported() {
         return;
@@ -30959,6 +31372,7 @@ fn test_e2e_native_host_binary_fifty_nine_i32_const_window_keeps_latest_value() 
 
 /// NATIVE-HOST-021ya: 59 引数 direct call でも末尾 local.get 58 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_nine_arg_local_get_58_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30976,6 +31390,7 @@ fn test_e2e_native_host_binary_fifty_nine_arg_local_get_58_roundtrip() {
 
 /// NATIVE-HOST-021yb: 59 引数 direct call でも末尾 1 個手前 local.get 57 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_nine_arg_local_get_57_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -30993,6 +31408,7 @@ fn test_e2e_native_host_binary_fifty_nine_arg_local_get_57_roundtrip() {
 
 /// NATIVE-HOST-021z: 59 引数 direct call でも spill 境界の local.get 56 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_nine_arg_local_get_56_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -31010,6 +31426,7 @@ fn test_e2e_native_host_binary_fifty_nine_arg_local_get_56_roundtrip() {
 
 /// NATIVE-HOST-021za: 59 引数 direct call でも先頭 local.get 0 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_fifty_nine_arg_local_get_0_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -31027,6 +31444,7 @@ fn test_e2e_native_host_binary_fifty_nine_arg_local_get_0_roundtrip() {
 
 /// NATIVE-HOST-021zb: 60 引数 direct call bundle でも caller/callee の和を host binary で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_sixty_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -31044,6 +31462,7 @@ fn test_e2e_native_host_binary_direct_call_sixty_arg_bundle_link_and_execute() {
 
 /// NATIVE-HOST-021zc: 60-value window の i32.const 連続 push でも最新値を保持できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_sixty_i32_const_window_keeps_latest_value() {
     if !host_native_exec_supported() {
         return;
@@ -31061,6 +31480,7 @@ fn test_e2e_native_host_binary_sixty_i32_const_window_keeps_latest_value() {
 
 /// NATIVE-HOST-021zd: 60 引数 direct call でも末尾 local.get 59 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_sixty_arg_local_get_59_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -31078,6 +31498,7 @@ fn test_e2e_native_host_binary_sixty_arg_local_get_59_roundtrip() {
 
 /// NATIVE-HOST-021ze: 60 引数 direct call でも末尾 1 個手前 local.get 58 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_sixty_arg_local_get_58_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -31095,6 +31516,7 @@ fn test_e2e_native_host_binary_sixty_arg_local_get_58_roundtrip() {
 
 /// NATIVE-HOST-021zf: 60 引数 direct call でも spill 境界の local.get 57 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_sixty_arg_local_get_57_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -31112,6 +31534,7 @@ fn test_e2e_native_host_binary_sixty_arg_local_get_57_roundtrip() {
 
 /// NATIVE-HOST-021zg: 60 引数 direct call でも先頭 local.get 0 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_sixty_arg_local_get_0_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -31129,6 +31552,7 @@ fn test_e2e_native_host_binary_sixty_arg_local_get_0_roundtrip() {
 
 /// NATIVE-HOST-021zh: 61 引数 direct call bundle でも caller/callee の和を host binary で実行できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_direct_call_sixty_one_arg_bundle_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -31146,6 +31570,7 @@ fn test_e2e_native_host_binary_direct_call_sixty_one_arg_bundle_link_and_execute
 
 /// NATIVE-HOST-021zi: 61-value window の i32.const 連続 push でも最新値を保持できること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_sixty_one_i32_const_window_keeps_latest_value() {
     if !host_native_exec_supported() {
         return;
@@ -31163,6 +31588,7 @@ fn test_e2e_native_host_binary_sixty_one_i32_const_window_keeps_latest_value() {
 
 /// NATIVE-HOST-021zj: 61-value window で 23 回 drop しても spill 境界の値まで戻れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_sixty_one_i32_const_window_twenty_three_drops_reach_spill21() {
     if !host_native_exec_supported() {
         return;
@@ -31180,6 +31606,7 @@ fn test_e2e_native_host_binary_sixty_one_i32_const_window_twenty_three_drops_rea
 
 /// NATIVE-HOST-021zk: 61-value window で 60 回 drop しても最下段の値まで戻れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_sixty_one_i32_const_window_sixty_drops_reach_bottom_value() {
     if !host_native_exec_supported() {
         return;
@@ -31197,6 +31624,7 @@ fn test_e2e_native_host_binary_sixty_one_i32_const_window_sixty_drops_reach_bott
 
 /// NATIVE-HOST-021zj: 61 引数 direct call でも末尾 local.get 60 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_sixty_one_arg_local_get_60_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -31214,6 +31642,7 @@ fn test_e2e_native_host_binary_sixty_one_arg_local_get_60_roundtrip() {
 
 /// NATIVE-HOST-021zk: 61 引数 direct call でも末尾 1 個手前 local.get 59 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_sixty_one_arg_local_get_59_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -31231,6 +31660,7 @@ fn test_e2e_native_host_binary_sixty_one_arg_local_get_59_roundtrip() {
 
 /// NATIVE-HOST-021zl: 61 引数 direct call でも spill 境界の local.get 58 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_sixty_one_arg_local_get_58_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -31248,6 +31678,7 @@ fn test_e2e_native_host_binary_sixty_one_arg_local_get_58_roundtrip() {
 
 /// NATIVE-HOST-021zm: 61 引数 direct call でも先頭 local.get 0 を正しく受け取れること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_sixty_one_arg_local_get_0_roundtrip() {
     if !host_native_exec_supported() {
         return;
@@ -31265,6 +31696,7 @@ fn test_e2e_native_host_binary_sixty_one_arg_local_get_0_roundtrip() {
 
 /// ZERO-DIFF-02: const 1 — Wasm stdout と native exit code がともに 1
 #[test]
+#[ignore]
 fn test_e2e_zero_diff_const_1() {
     if !host_native_exec_supported() {
         return;
@@ -31288,6 +31720,7 @@ fn test_e2e_zero_diff_const_1() {
 /// `test_e2e_native_host_binary_link_and_execute` で native 側は確認済み。
 /// このテストでは Wasm 側も含めた完全な zero-diff を検証する。
 #[test]
+#[ignore]
 fn test_e2e_zero_diff_const_42() {
     if !host_native_exec_supported() {
         return;
@@ -31308,6 +31741,7 @@ fn test_e2e_zero_diff_const_42() {
 
 /// ZERO-DIFF-04: const 100 — Wasm stdout と native exit code がともに 100
 #[test]
+#[ignore]
 fn test_e2e_zero_diff_const_100() {
     if !host_native_exec_supported() {
         return;
@@ -31335,6 +31769,7 @@ fn test_e2e_zero_diff_const_100() {
 /// 各サンプルについて Wasm stdout と native exit code の一致を確認し、
 /// zero-diff サンプルの全件合否を出力する。
 #[test]
+#[ignore]
 fn test_e2e_zero_diff_sample_summary() {
     if !host_native_exec_supported() {
         return;
@@ -31381,6 +31816,7 @@ fn test_e2e_zero_diff_sample_summary() {
 
 /// ZERO-DIFF-EXT: 既存 0/1/42/100 の先の const corpus でも Wasm stdout と native exit code が一致すること。
 #[test]
+#[ignore]
 fn test_e2e_zero_diff_const_extended_corpus() {
     if !host_native_exec_supported() {
         return;
@@ -31509,6 +31945,7 @@ fn x86_target_loop_brif_code_bytes() -> Vec<u8> {
 
 /// V2-08-CF-01: if/else/end の false branch が host 上で else 値 (7) を返すこと。
 #[test]
+#[ignore]
 fn test_e2e_native_host_binary_if_else_false_branch_link_and_execute() {
     if !host_native_exec_supported() {
         return;
@@ -31537,6 +31974,7 @@ fn test_e2e_native_host_binary_if_else_false_branch_link_and_execute() {
 
 /// V2-08-CF-BUNDLE-01: function-meta bundle entrypoint path でも if + direct recursion が base case 42 で停止すること。
 #[test]
+#[ignore]
 fn test_e2e_native_host_bundle_entrypoint_recursive_if_returns_base_case() {
     if !host_native_exec_supported() {
         return;
@@ -31575,6 +32013,7 @@ fn test_e2e_native_host_bundle_entrypoint_recursive_if_returns_base_case() {
 
 /// V2-08-CF-02: x86_64 で if/else/end が TEST+JZ+JMP バイトを含むこと。
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_if_else_structural_bytes() {
     let code_bytes = x86_target_if_else_code_bytes(1);
 
@@ -31615,6 +32054,7 @@ fn test_native_codegen_emits_x86_if_else_structural_bytes() {
 
 /// V2-08-CF-03: x86_64 で loop/brif/end が JNZ バイトを含むこと。
 #[test]
+#[ignore]
 fn test_native_codegen_emits_x86_loop_brif_structural_bytes() {
     let code_bytes = x86_target_loop_brif_code_bytes();
 

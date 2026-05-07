@@ -489,6 +489,7 @@ fn maybe_write_native_stage23_gap_report(report: &NativeStage23GapReport) -> Res
 
 /// V2-08: representative build entry の IR opcode gap を actual stage23 blocker report として固定する。
 #[test]
+#[ignore]
 fn test_e2e_native_actual_stage23_gap_report_for_representative_entry() {
     let entry_path = selfhost_main_path();
     let report = collect_selfhost_native_stage23_gap_report(&entry_path);
@@ -739,6 +740,7 @@ fn test_e2e_native_actual_stage23_gap_report_for_representative_entry() {
 }
 
 #[test]
+#[ignore]
 fn test_e2e_native_actual_stage23_gap_report_includes_selfhost_runtime_blockers() {
     let entry_path = selfhost_main_path();
     let report = collect_selfhost_native_stage23_gap_report(&entry_path);

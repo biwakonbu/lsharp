@@ -261,6 +261,7 @@ fn test_e2e_selfhost_pipeline_hello() {
 
 /// bootstrap proxy 検証: stage1 == stage2 バイト列比較
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_stage2_match() {
     // 真の stage1→stage2 自己コンパイル経路は未接続。
     // 現時点では bootstrap 入力集合に対する再コンパイルのバイト一致を proxy として使う。
@@ -275,6 +276,7 @@ fn test_e2e_bootstrap_stage1_stage2_match() {
 
 /// bootstrap proxy 検証: stage2 == stage3
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
     // 真の stage2→stage3 は未接続のため、proxy としてセクション列の固定点を検証する。
     fn extract_sections(wasm: &[u8]) -> Vec<(u8, usize)> {
@@ -315,6 +317,7 @@ fn test_e2e_bootstrap_fixed_point_stage2_stage3() {
 
 /// bootstrap 決定性検証: 同一入力で複数回コンパイルして一致
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_deterministic_output() {
     // 同じ selfhost ソースを2回コンパイルし、
     // 生成されたバイト列が一致することを確認（非決定性排除）
@@ -327,6 +330,7 @@ fn test_e2e_bootstrap_deterministic_output() {
 /// WASM-03 / BOOT-04 進捗: マルチファイル Main を連続 4 回 compile し全バイト一致（Rust stage0 oracle）。
 /// 真の stage1.wasm→stage2.wasm 自己コンパイルは未接続。退行検知を強化する。
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage0_oracle_chain_four_way_identity() {
     let main_path = selfhost_main_path();
     let a = compile_file_only(&main_path);
@@ -734,6 +738,7 @@ fn test_e2e_selfhost_all_modules_deterministic() {
 /// コンパイルし、Wasm バイナリのセクション構造が安定していることを検証。
 /// CI 全モジュールテスト (test_e2e_bootstrap_ci_all_modules_compile) の拡張版。
 #[test]
+#[ignore]
 fn test_e2e_bootstrap_stage1_compile_selfhost_sources() {
     let modules = [
         "Token",

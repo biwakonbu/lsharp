@@ -2692,6 +2692,26 @@ fn test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted() {
             "crates/lsharp-wasm/tests/e2e/selfhost_native_differential.rs",
             "test_native_codegen_processes_multiple_ir_instructions",
         ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_differential.rs",
+            "test_native_emit_elf_object_keeps_full_native_payload",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_differential.rs",
+            "test_native_emit_object_keeps_full_native_payload",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_stage23_gap.rs",
+            "test_e2e_native_actual_stage23_gap_report_for_representative_entry",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_stage23_gap.rs",
+            "test_e2e_native_actual_stage23_gap_report_includes_selfhost_runtime_blockers",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs",
+            "test_e2e_wasm_native_differential_uses_actual_self_regenerated_stage_artifacts",
+        ),
     ];
     let heavy_prefix_tests = [
         (
@@ -2757,6 +2777,66 @@ fn test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted() {
         (
             "crates/lsharp-wasm/tests/e2e/selfhost_native_differential.rs",
             "fn test_native_codegen_emits_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_differential.rs",
+            "fn test_native_emit_object_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs",
+            "fn test_e2e_native_aarch64_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs",
+            "fn test_e2e_native_chunk_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs",
+            "fn test_e2e_native_function_size_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs",
+            "fn test_e2e_native_host_binary_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs",
+            "fn test_e2e_native_host_bundle_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs",
+            "fn test_e2e_selfhost_main_native_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs",
+            "fn test_e2e_selfhost_main_representative_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs",
+            "fn test_e2e_selfhost_native_aarch64_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs",
+            "fn test_e2e_selfhost_pipeline_smoke_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs",
+            "fn test_e2e_stage1_native_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs",
+            "fn test_e2e_stage23_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs",
+            "fn test_e2e_zero_diff_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_native_stage_chain.rs",
+            "fn test_native_codegen_emits_x86_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/e2e/selfhost_typeinfer_pipeline_bootstrap.rs",
+            "fn test_e2e_bootstrap_",
         ),
     ];
 
@@ -2855,7 +2935,27 @@ fn test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted() {
             && phase11_script.contains("test_native_codegen_emits_full_const_instruction_bytes -- --exact --ignored --nocapture")
             && phase11_script.contains("test_native_codegen_emits_aarch64_direct_call_bundle_bytes -- --exact --ignored --nocapture")
             && phase11_script.contains("test_native_codegen_processes_multiple_ir_instructions -- --exact --ignored --nocapture")
+            && phase11_script.contains("test_native_emit_elf_object_keeps_full_native_payload -- --exact --ignored --nocapture")
+            && phase11_script.contains("test_native_emit_object_keeps_full_native_payload -- --exact --ignored --nocapture")
             && phase11_script.contains("e2e::selfhost_native_differential::test_native_codegen_emits_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_native_differential::test_native_emit_object_ -- --ignored --nocapture")
+            && phase11_script.contains("test_e2e_native_actual_stage23_gap_report_for_representative_entry -- --exact --ignored --nocapture")
+            && phase11_script.contains("test_e2e_native_actual_stage23_gap_report_includes_selfhost_runtime_blockers -- --exact --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_native_stage_chain::test_e2e_native_aarch64_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_native_stage_chain::test_e2e_native_chunk_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_native_stage_chain::test_e2e_native_function_size_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_native_stage_chain::test_e2e_native_host_binary_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_native_stage_chain::test_e2e_native_host_bundle_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_native_stage_chain::test_e2e_selfhost_main_native_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_native_stage_chain::test_e2e_selfhost_main_representative_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_native_stage_chain::test_e2e_selfhost_native_aarch64_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_native_stage_chain::test_e2e_selfhost_pipeline_smoke_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_native_stage_chain::test_e2e_stage1_native_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_native_stage_chain::test_e2e_stage23_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_native_stage_chain::test_e2e_zero_diff_ -- --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_native_stage_chain::test_native_codegen_emits_x86_ -- --ignored --nocapture")
+            && phase11_script.contains("test_e2e_wasm_native_differential_uses_actual_self_regenerated_stage_artifacts -- --exact --ignored --nocapture")
+            && phase11_script.contains("e2e::selfhost_typeinfer_pipeline_bootstrap::test_e2e_bootstrap_ -- --ignored --nocapture")
             && phase11_script.contains("test_e2e_incremental_compile_matches_full_compile_fixed_input_set -- --exact --ignored --nocapture"),
         "compile-phase11-inputs.sh は ignored heavyweight bootstrap gates を明示実行すること"
     );
