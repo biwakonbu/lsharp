@@ -813,7 +813,7 @@ fn test_native_codegen_emit_standalone_execution() {
 /// このテストでは:
 /// 1. Wasm側: double(21) = 42 を実行
 /// 2. NativeCodegen.ls を Wasm で実行して、ネイティブコード生成が実行できること
-/// を確認する
+///    を確認する
 #[test]
 fn test_wasm_native_execution_parity_double() {
     // テスト対象ソース

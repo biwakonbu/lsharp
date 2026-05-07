@@ -6450,12 +6450,12 @@ fn test_e2e_boot04_self_hosted_stage2_reaches_main_again_build_compile_progress_
         values
     );
     assert!(
-        values.iter().any(|value| *value == 29),
+        values.contains(&29),
         "BOOT-04 main-build-compile-progress: pair progress marker 29 が必要: {:?}",
         values
     );
     assert!(
-        values.iter().any(|value| *value == 40),
+        values.contains(&40),
         "BOOT-04 main-build-compile-progress: defn progress marker 40 が必要: {:?}",
         values
     );

@@ -986,7 +986,7 @@ fn expand_selfhost_fixture_modules<'a>(modules: &'a [&'a str]) -> Vec<&'a str> {
             "CompilerSplit.ls" | "Compiler.ls" | "CompilerMode.ls"
         )
     });
-    if needs_compiler_base && !expanded.iter().any(|name| *name == "CompilerBase.ls") {
+    if needs_compiler_base && !expanded.contains(&"CompilerBase.ls") {
         let insert_at = expanded
             .iter()
             .position(|name| {
@@ -1001,7 +1001,7 @@ fn expand_selfhost_fixture_modules<'a>(modules: &'a [&'a str]) -> Vec<&'a str> {
     let needs_compiler_split = expanded
         .iter()
         .any(|name| matches!(*name, "Compiler.ls" | "CompilerMode.ls"));
-    if needs_compiler_split && !expanded.iter().any(|name| *name == "CompilerSplit.ls") {
+    if needs_compiler_split && !expanded.contains(&"CompilerSplit.ls") {
         let insert_at = expanded
             .iter()
             .position(|name| matches!(*name, "Compiler.ls" | "CompilerMode.ls"))

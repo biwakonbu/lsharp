@@ -32039,7 +32039,7 @@ fn test_native_codegen_emits_x86_if_else_structural_bytes() {
     );
 
     // JMP rel32 (E9) が含まれることを確認 (else → end)
-    let has_jmp = code_bytes.iter().any(|&b| b == 0xE9);
+    let has_jmp = code_bytes.contains(&0xE9);
     assert!(
         has_jmp,
         "V2-08-CF: x86_64 if/else コードに JMP rel32 (E9) が含まれない\nbytes: {:?}",
