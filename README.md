@@ -157,9 +157,9 @@ L# source (.ls)
 - **公開ターゲット**: Wasm/WASI
 - **安定寄りのコア**: HM 型推論、ADT、record、module、static trait dispatch、metadata-driven docs/tests
 - **現在の配布モデル**: Rust host launcher + embedded guest component による single-binary distribution
-- **bootstrap の読み方**: `stage0 -> stage1 -> stage2 -> stage3` のうち、fixed-point の意味は `stage2.wasm == stage3.wasm`。最小 subset の `stage1 -> stage2` 実生成は確認済みだが、full input set の fixed-point は引き続き追跡中
+- **bootstrap の読み方**: `stage0 -> stage1 -> stage2 -> stage3` のうち、fixed-point の意味は `stage2.wasm == stage3.wasm`。最小 subset では `stage1 -> stage2` 実生成を確認済みで、full fixed input set でも stage2 self-feed と `stage1 -> stage2` / `stage2 -> stage3` の bit-identical chain evidence をテストと artifact で固定済み。native-only / pure selfhosting 配布の主張はまだ実験的・後続トラック扱い
 - **移行中**: selfhost cutover の残タスク、AI / package ecosystem、高度な型機能の parity
-- **deferred**: native backend の常用配布経路は Phase 13+ の探求項目として保持
+- **deferred**: native backend の常用配布経路と native-only RC distribution は Phase 13+ / v2 の探求項目として保持
 - **注意点**: 高カインド型、GADT、computation expressions は README で方向性として触れていますが、全面的に runtime-ready と断定しない段階です
 
 ## Learn More

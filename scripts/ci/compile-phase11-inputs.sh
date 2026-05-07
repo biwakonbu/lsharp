@@ -6,6 +6,7 @@ ROOT_DIR=$(cd "$(dirname "$0")/../.." && pwd)
 OUT_DIR="${OUT_DIR:-$ROOT_DIR/target/ci/phase11-compile}"
 LSHARP_BIN="${LSHARP_BIN:-$ROOT_DIR/target/debug/lsharp}"
 RUN_BOOTSTRAP_FIXED_POINT="${RUN_BOOTSTRAP_FIXED_POINT:-0}"
+RUN_LSP_PARITY_GATES="${RUN_LSP_PARITY_GATES:-0}"
 RUN_BOOTSTRAP_LEGACY_STAGE1="${RUN_BOOTSTRAP_LEGACY_STAGE1:-0}"
 RUN_INCREMENTAL_COMPARE="${RUN_INCREMENTAL_COMPARE:-0}"
 RUN_INCREMENTAL_BENCHMARK="${RUN_INCREMENTAL_BENCHMARK:-0}"
@@ -151,6 +152,17 @@ if [[ "$RUN_BOOTSTRAP_FIXED_POINT" == "1" ]]; then
      e2e::selfhost_bootstrap_acceptance::test_e2e_bootstrap_fixed_input_set_stage_chain_match -- --exact --ignored --nocapture
 fi
 
+if [[ "$RUN_LSP_PARITY_GATES" == "1" ]]; then
+  echo ""
+  echo "=== LSP parity ignored gates ==="
+  cargo test -p lsharp-wasm --test lsp_stateful_parity \
+    test_e2e_lsp_actual_stdio_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test lsp_stateful_parity \
+    test_e2e_lsp_stateful_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test lsp_edge_case_parity \
+    test_e2e_lsp_edge_ -- --ignored --nocapture
+fi
+
 if [[ "$RUN_BOOTSTRAP_LEGACY_STAGE1" == "1" ]]; then
   echo ""
   echo "=== Legacy stage1 bootstrap verification ==="
@@ -244,12 +256,6 @@ if [[ "$RUN_BOOTSTRAP_LEGACY_STAGE1" == "1" ]]; then
     e2e::selfhost_lsp_docs_ops::test_e2e_selfhost_lsp_real_shapes_ -- --ignored --nocapture
   cargo test -p lsharp-wasm --test e2e \
     e2e::selfhost_lsp_docs_ops::test_e2e_selfhost_lsp_runtime_ -- --ignored --nocapture
-  cargo test -p lsharp-wasm --test lsp_stateful_parity \
-    test_e2e_lsp_actual_stdio_ -- --ignored --nocapture
-  cargo test -p lsharp-wasm --test lsp_stateful_parity \
-    test_e2e_lsp_stateful_ -- --ignored --nocapture
-  cargo test -p lsharp-wasm --test lsp_edge_case_parity \
-    test_e2e_lsp_edge_ -- --ignored --nocapture
   cargo test -p lsharp-wasm --test e2e \
     e2e::selfhost_macro_compiler::test_e2e_selfhost_typeinfer_ -- --ignored --nocapture
   cargo test -p lsharp-wasm --test e2e \
@@ -321,4 +327,4 @@ if [[ "$RUN_INCREMENTAL_BENCHMARK" == "1" ]]; then
 fi
 
 echo ""
-echo "Phase 11 fixed input set compile gate complete (no known compile blockers)."
+echo "Phase 11 representative fixed input compile gate evidence collected; deferred LSP/legacy gates remain controlled by explicit RUN_* opt-ins."

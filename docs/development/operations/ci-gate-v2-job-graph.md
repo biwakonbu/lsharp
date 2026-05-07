@@ -55,6 +55,20 @@ if: always()
 # 11 ジョブすべてが success でなければ exit 1
 ```
 
+## ignored gate 実行契約
+
+`test` ジョブの `cargo test` は Rust の標準挙動どおり `#[ignore]` テストを実行しない。required CI の full cargo test は、通常の unit / E2E 回帰を広く確認するための bounded gate として維持し、長時間 bootstrap / LSP parity / legacy native 検証を `-- --ignored` 付きで混ぜない。これにより PR ごとの wall time・artifact 生成量・host resource 消費を予測可能に保ち、重い検証は明示 opt-in の証跡として分離する。
+
+`bootstrap` ジョブは `scripts/ci/compile-phase11-inputs.sh` を正本にし、push / pull_request / manual dispatch の通常経路では以下の契約で実行する。
+
+| gate | 既定 | 実行する ignored suite | 起動条件 |
+|------|------|-------------------------|----------|
+| Phase 11 fixed input fixed-point | CI で有効 | `test_e2e_bootstrap_fixed_point_stage2_stage3`, `test_e2e_bootstrap_stage2_self_feed_fixed_input_set`, `test_e2e_bootstrap_fixed_input_set_stage_chain_match_*` | `.github/workflows/ci.yml` の `bootstrap` job が `RUN_BOOTSTRAP_FIXED_POINT=1` を渡す |
+| LSP parity ignored gates | 既定スキップ | `lsp_stateful_parity` の `test_e2e_lsp_actual_stdio_` / `test_e2e_lsp_stateful_`、`lsp_edge_case_parity` の `test_e2e_lsp_edge_` | `workflow_dispatch` input `run_lsp_parity_gates=true` → `RUN_LSP_PARITY_GATES=1`、またはローカルで同 env を明示 |
+| legacy stage1 / bootstrap gates | 既定スキップ | stage1 pipeline / binary / section / module compile / stdlib / examples / determinism probe、selfhost CLI / DocTools / formatter / LSP runtime / macro compiler、legacy native differential / native stage-chain / typeinfer pipeline の `--ignored` suite 群 | `workflow_dispatch` input `run_legacy_stage1_gates=true` → `RUN_BOOTSTRAP_LEGACY_STAGE1=1`、またはローカルで同 env を明示 |
+
+`RUN_LSP_PARITY_GATES` と `RUN_BOOTSTRAP_LEGACY_STAGE1` は script 内でも既定 `0` のため、push / pull_request の required gate では default-skipped のままにする。manual dispatch は同じ `bootstrap` job と artifact 経路を使うが、実行者が input を選んだ場合だけ該当 ignored suite を追加で実行する。
+
 ## オプショナルジョブ (ci-gate-v2)
 
 | ジョブ | 説明 | ブロッキング |

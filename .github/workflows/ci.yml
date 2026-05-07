@@ -5,6 +5,18 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_lsp_parity_gates:
+        description: 'Run ignored LSP parity suites from the Phase 11 manual gate'
+        required: false
+        default: false
+        type: boolean
+      run_legacy_stage1_gates:
+        description: 'Run ignored legacy stage1/bootstrap gates from the Phase 11 manual gate'
+        required: false
+        default: false
+        type: boolean
 
 # 同一ブランチ/PR の重複実行をキャンセル
 concurrency:
@@ -58,6 +70,8 @@ jobs:
       - name: Phase 11 fixed input set のコンパイル検証
         env:
           RUN_BOOTSTRAP_FIXED_POINT: 1
+          RUN_LSP_PARITY_GATES: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_lsp_parity_gates == 'true' && '1' || '0' }}
+          RUN_BOOTSTRAP_LEGACY_STAGE1: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_legacy_stage1_gates == 'true' && '1' || '0' }}
           BOOTSTRAP_DIFF_ARTIFACT_ID: ${{ github.sha }}
         run: bash scripts/ci/compile-phase11-inputs.sh
       - name: Bootstrap diff artifact 保存

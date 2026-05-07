@@ -22,6 +22,7 @@ fi
 
 echo "=== experimental native-only RC smoke ==="
 echo "artifact dir: ${ARTIFACT_DIR}"
+echo "scope: experimental evidence; does not replace host launcher + embedded guest component distribution."
 
 for required in manifest.json actual-stage23-gap.json; do
   if [[ ! -s "${ARTIFACT_DIR}/${required}" ]]; then
@@ -76,4 +77,4 @@ if stages.get("stage2-native") != stages.get("stage3-native"):
     raise SystemExit("ERROR: stage2-native and stage3-native summaries differ")
 PY
 
-echo "experimental native-only RC smoke complete."
+echo "experimental native-only RC smoke evidence collected."

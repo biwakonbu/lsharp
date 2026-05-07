@@ -2332,6 +2332,11 @@ fn test_e2e_native_ops01_proxy_artifact_contract() {
             && script_content.contains("actual-stage23-gap.json"),
         "build-native.sh は native proxy artifact 契約を保持すること"
     );
+    assert!(
+        script_content.contains("representative")
+            && script_content.contains("not native completion proof"),
+        "build-native.sh は representative evidence であり native 完了証明ではないことを明記すること"
+    );
 
     let ci = project_root.join(".github/workflows/ci.yml");
     assert!(ci.is_file(), "ci.yml が存在しない");
@@ -2392,6 +2397,7 @@ fn test_e2e_native_ops02_native_only_rc_contract() {
         "summary.json",
         "actual-stage23-gap.json",
         "experimental native-only RC",
+        "does not replace host launcher + embedded guest component distribution",
     ] {
         assert!(
             smoke_content.contains(expected),
@@ -2986,6 +2992,55 @@ fn test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted() {
             && gc_script.contains("test_e2e_gc_lsp_actual_stdio_repeated_sequence_postsession_collector_telemetry -- --ignored --nocapture")
             && gc_script.contains("test_e2e_gc_repl_ -- --ignored --nocapture"),
         "collect-gc-metrics.sh は ignored GC artifact/soak gates を明示実行すること"
+    );
+}
+
+/// TEST-OPS-03d: ignored LSP parity / legacy stage1 gates は workflow_dispatch で明示実行できること
+#[test]
+fn test_e2e_ops03d_ignored_lsp_and_legacy_gates_have_manual_ci_contract() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let ci_content = std::fs::read_to_string(project_root.join(".github/workflows/ci.yml"))
+        .expect("ci.yml の読み込みに失敗");
+    for expected in [
+        "workflow_dispatch:",
+        "run_lsp_parity_gates:",
+        "run_legacy_stage1_gates:",
+        "RUN_LSP_PARITY_GATES:",
+        "RUN_BOOTSTRAP_LEGACY_STAGE1:",
+        "inputs.run_lsp_parity_gates",
+        "inputs.run_legacy_stage1_gates",
+    ] {
+        assert!(
+            ci_content.contains(expected),
+            "ci.yml は ignored gate manual wiring `{}` を含むこと",
+            expected
+        );
+    }
+
+    let phase11_script =
+        std::fs::read_to_string(project_root.join("scripts/ci/compile-phase11-inputs.sh"))
+            .expect("compile-phase11-inputs.sh の読み込みに失敗");
+    for expected in [
+        "RUN_LSP_PARITY_GATES=\"${RUN_LSP_PARITY_GATES:-0}\"",
+        "=== LSP parity ignored gates ===",
+        "if [[ \"$RUN_LSP_PARITY_GATES\" == \"1\" ]]; then",
+        "if [[ \"$RUN_BOOTSTRAP_LEGACY_STAGE1\" == \"1\" ]]; then",
+        "test_e2e_lsp_actual_stdio_ -- --ignored --nocapture",
+        "test_e2e_lsp_stateful_ -- --ignored --nocapture",
+        "test_e2e_lsp_edge_ -- --ignored --nocapture",
+    ] {
+        assert!(
+            phase11_script.contains(expected),
+            "compile-phase11-inputs.sh は ignored gate opt-in contract `{}` を含むこと",
+            expected
+        );
+    }
+    assert!(
+        phase11_script.contains("representative fixed input compile gate evidence")
+            && phase11_script.contains("deferred")
+            && !phase11_script.contains("no known compile blockers"),
+        "compile-phase11-inputs.sh は Phase 11 gate を完了証明ではなく representative/deferred evidence として表現すること"
     );
 }
 

@@ -32,6 +32,7 @@ export LSHARP_NATIVE_STAGE23_GAP_REPORT="${ARTIFACT_DIR}/actual-stage23-gap.json
 
 echo "=== native representative artifact gate ==="
 echo "artifact dir: ${ARTIFACT_DIR}"
+echo "scope: representative evidence; not native completion proof."
 
 cargo test -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_host_bundle_uses_canonical_artifact_contract \
@@ -73,4 +74,4 @@ for label in labels:
 (root / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 PY
 
-echo "native representative artifact gate complete."
+echo "native representative artifact gate evidence collected."
