@@ -3,7 +3,7 @@
 ## 概要
 
 Wasmtime embedding + Component Model を正式配布モデルに据える方針転換により、native backend self-regeneration は Phase 11 の completion gate から外れた。  
-ただし `selfhost/src/Backend/Native/` 配下の backend 実装と既存 E2E evidence は維持しており、このページでは Deferred/v2 として再開する際の正本条件を定義する。
+ただし `selfhost/src/Backend/Native/` 配下の backend 実装と既存 E2E evidence は維持しており、このページでは Deferred/v2 で閉じた代表入力の self-regeneration 証跡と、後続へ残す境界を定義する。
 
 ## 前提条件
 
@@ -60,15 +60,19 @@ Wasmtime embedding + Component Model を正式配布モデルに据える方針�
 - `test_native_codegen_emits_x86_direct_call_thirteen_arg_bundle_bytes`
 - `test_e2e_native_host_bundle_uses_canonical_artifact_contract`
 - `test_e2e_stage23_native_host_bundle_proxy_observations_match`
+- `test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match`
+- `test_native_codegen_x86_command_line_arg_and_read_file_call_sites_resolve_helper_offsets`
+- `test_native_codegen_x86_runtime_helper_emitters_return_executable_byte_vectors`
+- `test_native_stage23_gap_report_covers_targeted_call_drop_memory_control_corpus`
 
-これらは native module skeleton / execution slice / structural parity に加えて、representative build entry における canonical artifact 名 / response file text / bundle summary 契約、tiny host-target program に対する canonical bundle materialization、および representative build entry 由来 code bytes を使う `stage1-native` / `stage2-native` / `stage3-native` artifact compare loop を示す partial evidence である。
+これらは native module skeleton / execution slice / structural parity に加えて、representative build entry における canonical artifact 名 / response file text / bundle summary 契約、tiny host-target program に対する canonical bundle materialization、および representative build entry 由来 code bytes を使う `stage1-native` / `stage2-native` / `stage3-native` artifact compare loop を示す evidence である。
 加えて `scripts/ci/build-native.sh` により、Darwin arm64 ホストでは tiny host-target 実行 smoke を維持しつつ、representative build entry 由来の `stage1-native` / `stage2-native` / `stage3-native` artifact を `ci-artifacts/native-proxy/<id>/` に materialize でき、representative build entry の IR opcode gap を `actual-stage23-gap.json` として出力できる。
 また `selfhost/src/Backend/Native/NativeCodegen.ls` は x86_64 / aarch64 ともに `LocalGet` / `LocalSet` を stack slot として emit できるようになり、host-target の local roundtrip は `test_e2e_native_host_binary_local_roundtrip_link_and_execute` で固定済みである。
 加えて i32 arithmetic/logic core (`I32Const`, `I32Add`, `I32Mul`, `I32And`, `I32Or`, `I32WrapI64`, `I64ExtendI32S`, `I64ExtendI32U`) も両 arch の backend に追加され、AArch64 host execution と x86_64 byte invariant で固定された。`Drop` も `local.get` 前段値への limited restore に加え、1-arg direct call 後の previous value、2-arg direct call 後の one-deeper spilled previous、さらに one-spill 3-value window 上の `drop; drop` で bottom value まで戻る path までは host test で固定済みだが、representative stage23 全面からはまだ blocker を外していない。
 さらに `emit-native-bundle` による direct intra-bundle call の最小 slice を追加し、x86_64 では rel32 call bytes、AArch64 では `fp/lr` save/restore を伴う direct call bundle host execution を固定した。加えて `emit-native-function-meta-bundle` により function-meta (`[param-count, local-count, ir]`) を受ける 1-arg〜61-arg direct call まで追加され、callee parameter を local slots へ spill して host execution できるようになった。1-arg call では x86_64 `push/pop rcx`、AArch64 `x10` 退避で single previous-value preservation を入れ、続く 3-value〜61-value window 用 spill slot を導入して 3-arg〜61-arg marshaling と deeper previous restore の limited path を固定した。加えて 20+ arg helper は size / dispatch / callee spill を generic 化し、61 境界を越える helper path を持つ。61-arg top の証跡として `test_e2e_native_host_binary_direct_call_sixty_one_arg_bundle_link_and_execute`、`test_native_codegen_emits_x86_direct_call_sixty_one_arg_bundle_bytes`、`test_e2e_native_host_binary_sixty_one_i32_const_window_keeps_latest_value`、`test_e2e_native_host_binary_sixty_one_arg_local_get_60_roundtrip`、`test_e2e_native_host_binary_sixty_one_arg_local_get_59_roundtrip`、`test_e2e_native_host_binary_sixty_one_arg_local_get_58_roundtrip`、`test_e2e_native_host_binary_sixty_one_arg_local_get_0_roundtrip` を追加した。さらに `emit-native-function-meta-bundle-with-import-count` により actual module index space を意識した import-prefix user call remap と shared import stub を追加し、`test_e2e_native_host_binary_import_prefixed_direct_call_arg_bundle_link_and_execute`、`test_e2e_native_host_binary_import_call_stub_link_and_execute`、`test_native_codegen_emits_x86_import_prefixed_direct_call_arg_bundle_bytes` で partial evidence を固定した。
-これは no-arg / 1-arg〜61-arg / generic 20+-arg helper path / intra-bundle の call-frame discipline に加え、actual module index space 上の user-call remap と import boundary stub を示す partial evidence であり、representative stage23 の `Call` をまだ全面的には置き換えていない。
-その結果 `actual-stage23-gap.json` の先頭 blocker は引き続き representative stage23 全面の `Call`（real import/runtime semantics と representative stage23 integration）、`Drop`、integer data ops（`I32Load(8U)/Store`, `I64Load/Store`, `I64Div/Rem`）、および control-flow / memory ops（`BlockEmpty`, `Br`, `BrIf`, `Else`, `End`, `If`, `IfEmpty`, `Loop`, `LoopEmpty`, `MemoryCopy`, `MemoryFill`）である。主要 i64 compare (`I64Eq`, `I64Ne`, `I64LtS`, `I64GtS`, `I64LeS`, `I64GeS`)、`I32And` / `I32Or`、`I64Mul` は x86_64 / aarch64 の host exact と x86 exact bytes で固定し、representative gap report からも外れた。
-ただし `stage1-native -> stage2-native -> stage3-native` の true self-regeneration 完了証跡ではない。
+この時点では no-arg / 1-arg〜61-arg / generic 20+-arg helper path / intra-bundle の call-frame discipline に加え、actual module index space 上の user-call remap と import boundary stub を示す partial evidence であり、representative stage23 の `Call` をまだ全面的には置き換えていなかった。
+その後 `actual-stage23-gap.json` の代表入力 blocker は selfhost runtime helper と targeted corpus 側で縮小し、x86_64 の `CommandLineArg` / `ReadFile` helper call-site と helper byte vector は direct tests で固定した。さらに `test_native_stage23_gap_report_covers_targeted_call_drop_memory_control_corpus` は targeted `Call` / memory / control-flow corpus の x86_64 / aarch64 gap が空であることを確認する。
+代表入力の true self-regeneration は `test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match` により、actual native executable 経由で `stage1-native` 由来 stage2 と `stage2-native` 由来 stage3 を実行し、artifact observation と transport payload が一致することを固定済みである。現時点の actual execution は `host_native_exec_supported()` により Darwin arm64 に限定する。
 
 ## 設計
 
@@ -77,17 +81,16 @@ Wasmtime embedding + Component Model を正式配布モデルに据える方針�
 - `selfhost/src/App/Main.ls` compile を representative entry に固定する
 - `program.o`, `runtime.o`, `linker-response.txt`, `program.native` の artifact 契約を target ごとに固定する
 - `selfhost/src/App/PipelineSmoke.ls` から canonical artifact 名と response-file text を hash/length summary として観測できるようにする
-- `scripts/ci/build-native.sh` は現時点では true native compiler build ではなく、tiny executable smoke + representative artifact compare を artifact 化する build entry として扱う
-- `actual-stage23-gap.json` は representative build entry を actual stage23 へ進めるための blocker report として扱う
+- `scripts/ci/build-native.sh` は代表証跡 artifact gate であり、native-only completion proof ではない
+- `actual-stage23-gap.json` は representative build entry の opcode/helper coverage report として扱う
 
 ### stage chain
 
 - `stage1-native` で selfhost compiler を生成する
 - `stage2-native` を `stage1-native` で再生成する
 - `stage3-native` を `stage2-native` で再生成する
-- 現時点では `selfhost/src/App/Main.ls` smoke 出力から `native summary + bundle summary` をまとめた observation surface を比較面として使う
-- さらに現時点では tiny host-target program に限り、canonical artifact bundle を host で materialize して `stage2-native` / `stage3-native` compare の proxy とする
 - representative input set に対して exit code / stdout / stderr / artifact hash を比較する
+- actual native executable 経由では `stage2-native` / `stage3-native` の artifact observation と transport payload を比較する
 
 ### tier1 target matrix
 
@@ -103,4 +106,4 @@ Wasmtime embedding + Component Model を正式配布モデルに据える方針�
 
 ## ステータス
 
-Deferred。Phase 11 完了判定には含めない。既存テスト群は partial evidence として維持し、true self-regeneration が成立するまでは `[x]` に上げない。
+V2-08 の代表入力 self-regeneration 証跡は完了。Phase 11 完了判定には含めず、公式配布は host launcher + embedded guest component のまま維持する。native-only RC 化や cross-platform direct native execution は V2-10 / 後続トラックで扱う。

@@ -8489,7 +8489,11 @@
             (if (>= current-depth 3) (+ 10 (* (- current-depth 3) 14)) 3)
             (if (= opcode 76)
               (if (>= current-depth 3) (+ 7 (* (- current-depth 3) 14)) 0)
-              (native-plain-instr-size-x86 opcode operand))))))))
+              (if (= opcode 64)
+                7
+                (if (= opcode 67)
+                  7
+                  (native-plain-instr-size-x86 opcode operand))))))))))
 
 (defn native-function-body-size-x86-loop [ir-func function-metas idx len total current-depth]
   (if (>= idx len)
@@ -9002,6 +9006,139 @@
                       b10)
                     (emit-call-rel32 rel)))))))))))
 
+(defn emit-x86-selfhost-command-line-arg-helper []
+  (let [part1 (concat-byte-vectors-rooted
+                (byte-vector-4 72 133 192 124)
+                (byte-vector-4 10 76 57 240))
+    part2 (concat-byte-vectors-rooted
+            (byte-vector-4 125 5 73 139)
+            (concat-byte-vectors-rooted
+              (byte-vector-4 4 199 195 49)
+              (byte-vector-2 192 195)))]
+    (concat-byte-vectors-rooted part1 part2)))
+
+;; x86_64 ReadFile helper: raw C string / tagged L# string path を受け取り、
+;; Darwin syscall で最大 64KiB を mmap した tagged string として返す。
+(defn emit-x86-selfhost-read-file-helper []
+  (let [
+    part1 (byte-vector-4 83 65 84 65)
+    part2 (byte-vector-4 85 69 49 237)
+    part3 (byte-vector-4 72 137 199 121)
+    part4 (byte-vector-4 40 72 15 186)
+    part5 (byte-vector-4 240 63 73 137)
+    part6 (byte-vector-4 229 139 72 4)
+    part7 (byte-vector-4 72 141 112 8)
+    part8 (byte-vector-4 72 137 202 72)
+    part9 (byte-vector-4 131 194 16 72)
+    part10 (byte-vector-4 131 226 240 72)
+    part11 (byte-vector-4 41 212 72 137)
+    part12 (byte-vector-4 231 243 164 198)
+    part13 (byte-vector-4 7 0 72 137)
+    part14 (byte-vector-4 231 184 5 0)
+    part15 (byte-vector-4 0 2 49 246)
+    part16 (byte-vector-4 49 210 15 5)
+    part17 (byte-vector-4 77 133 237 116)
+    part18 (byte-vector-4 3 76 137 236)
+    part19 (byte-vector-4 114 122 72 133)
+    part20 (byte-vector-4 192 120 117 137)
+    part21 (byte-vector-4 195 49 255 190)
+    part22 (byte-vector-4 16 0 1 0)
+    part23 (byte-vector-4 186 3 0 0)
+    part24 (byte-vector-4 0 65 186 2)
+    part25 (byte-vector-4 16 0 0 65)
+    part26 (byte-vector-4 184 255 255 255)
+    part27 (byte-vector-4 255 69 49 201)
+    part28 (byte-vector-4 184 197 0 0)
+    part29 (byte-vector-4 2 15 5 114)
+    part30 (byte-vector-4 70 72 133 192)
+    part31 (byte-vector-4 120 65 73 137)
+    part32 (byte-vector-4 196 137 223 73)
+    part33 (byte-vector-4 141 116 36 8)
+    part34 (byte-vector-4 186 0 0 1)
+    part35 (byte-vector-4 0 184 3 0)
+    part36 (byte-vector-4 0 2 15 5)
+    part37 (byte-vector-4 114 41 72 133)
+    part38 (byte-vector-4 192 120 36 65)
+    part39 (byte-vector-4 199 4 36 5)
+    part40 (byte-vector-4 0 0 0 65)
+    part41 (byte-vector-4 137 68 36 4)
+    part42 (byte-vector-4 137 223 184 6)
+    part43 (byte-vector-4 0 0 2 15)
+    part44 (byte-vector-4 5 76 137 224)
+    part45 (byte-vector-4 72 15 186 232)
+    part46 (byte-vector-4 63 65 93 65)
+    part47 (byte-vector-4 92 91 195 137)
+    part48 (byte-vector-4 223 184 6 0)
+    part49 (byte-vector-4 0 2 15 5)
+    part50 (byte-vector-4 49 192 65 93)
+    part51 (byte-vector-4 65 92 91 195)
+    group1 (concat-five-byte-vectors-rooted part1 part2 part3 part4 part5)
+    group2 (concat-five-byte-vectors-rooted part6 part7 part8 part9 part10)
+    group3 (concat-five-byte-vectors-rooted part11 part12 part13 part14 part15)
+    group4 (concat-five-byte-vectors-rooted part16 part17 part18 part19 part20)
+    group5 (concat-five-byte-vectors-rooted part21 part22 part23 part24 part25)
+    group6 (concat-five-byte-vectors-rooted part26 part27 part28 part29 part30)
+    group7 (concat-five-byte-vectors-rooted part31 part32 part33 part34 part35)
+    group8 (concat-five-byte-vectors-rooted part36 part37 part38 part39 part40)
+    group9 (concat-five-byte-vectors-rooted part41 part42 part43 part44 part45)
+    group10 (concat-five-byte-vectors-rooted part46 part47 part48 part49 part50)
+    group11 part51
+    head (concat-five-byte-vectors-rooted group1 group2 group3 group4 group5)
+    tail (concat-five-byte-vectors-rooted group6 group7 group8 group9 group10)]
+    (concat-three-byte-vectors-rooted head tail group11)))
+
+(defn append-x86-selfhost-read-file-helper-rooted [result]
+  (do
+    (root_push result)
+    (let [native (emit-x86-selfhost-read-file-helper)]
+      (do
+        (root_push native)
+        (append-native-bytes-rooted result native 204)
+        (root_pop)
+        (root_pop)
+        0))))
+
+(defn emit-x86-helper-call-preserving-rcx [rel]
+  (concat-three-byte-vectors-rooted
+    (emit-push-rcx)
+    (emit-call-rel32 rel)
+    (emit-pop-rcx)))
+
+(defn x86-import-stub-size [import-count]
+  (if (> import-count 0) 1 0))
+
+(defn x86-selfhost-command-line-arg-helper-size []
+  18)
+
+(defn x86-selfhost-read-file-helper-size []
+  204)
+
+(defn x86-selfhost-helper-trailer-size [import-count]
+  (+ (x86-import-stub-size import-count)
+     (+ (x86-selfhost-command-line-arg-helper-size)
+        (x86-selfhost-read-file-helper-size))))
+
+(defn x86-helper-base-offset [import-stub-offset import-count]
+  (+ import-stub-offset (x86-import-stub-size import-count)))
+
+(defn x86-selfhost-command-line-arg-helper-offset [import-stub-offset import-count]
+  (x86-helper-base-offset import-stub-offset import-count))
+
+(defn x86-selfhost-read-file-helper-offset [import-stub-offset import-count]
+  (+ (x86-helper-base-offset import-stub-offset import-count)
+     (x86-selfhost-command-line-arg-helper-size)))
+
+(defn codegen-selfhost-runtime-bundle-x86 [opcode current-offset import-stub-offset import-count]
+  (if (= opcode 64)
+    (emit-x86-helper-call-preserving-rcx
+      (- (x86-selfhost-read-file-helper-offset import-stub-offset import-count)
+         (+ current-offset 6)))
+    (if (= opcode 67)
+      (emit-x86-helper-call-preserving-rcx
+        (- (x86-selfhost-command-line-arg-helper-offset import-stub-offset import-count)
+           (+ current-offset 6)))
+      (vector-new 0))))
+
 (defn codegen-ir-instr-bundle-x86-with-import-count [opcode operand current-offset function-starts function-metas import-count import-stub-offset frame-base-slot-count current-depth]
   (if (= opcode 40)
     (let [target-meta (vector-get function-metas operand)
@@ -9109,23 +9246,27 @@
       (emit-i32-const-bundle-x86 operand frame-base-slot-count current-depth)
       (if (= opcode 75)
         (emit-i32-const-bundle-x86 0 frame-base-slot-count current-depth)
-        (if (= opcode 10)
-          (emit-local-get-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)
-          (if (= opcode 11)
-            (emit-local-set-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)
-          (if (= opcode 44)
-            (emit-drop-bundle-x86 frame-base-slot-count current-depth)
-            (if (= opcode 76)
-              (emit-root-set-bundle-x86 frame-base-slot-count current-depth)
-              (if (= opcode 46)
-                (emit-i32-store-bundle-x86 operand frame-base-slot-count current-depth)
-                (if (= opcode 49)
-                  (emit-i64-store-bundle-x86 operand frame-base-slot-count current-depth)
-                  (if (= opcode 77)
-                    (emit-memory-copy-bundle-x86 frame-base-slot-count current-depth)
-                    (if (= opcode 78)
-                      (emit-memory-fill-bundle-x86 frame-base-slot-count current-depth)
-                      (codegen-ir-instr opcode operand)))))))))))))
+        (if (= opcode 64)
+          (codegen-selfhost-runtime-bundle-x86 opcode current-offset import-stub-offset import-count)
+          (if (= opcode 67)
+            (codegen-selfhost-runtime-bundle-x86 opcode current-offset import-stub-offset import-count)
+            (if (= opcode 10)
+              (emit-local-get-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)
+              (if (= opcode 11)
+                (emit-local-set-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)
+              (if (= opcode 44)
+                (emit-drop-bundle-x86 frame-base-slot-count current-depth)
+                (if (= opcode 76)
+                  (emit-root-set-bundle-x86 frame-base-slot-count current-depth)
+                  (if (= opcode 46)
+                    (emit-i32-store-bundle-x86 operand frame-base-slot-count current-depth)
+                    (if (= opcode 49)
+                      (emit-i64-store-bundle-x86 operand frame-base-slot-count current-depth)
+                      (if (= opcode 77)
+                        (emit-memory-copy-bundle-x86 frame-base-slot-count current-depth)
+                        (if (= opcode 78)
+                          (emit-memory-fill-bundle-x86 frame-base-slot-count current-depth)
+                          (codegen-ir-instr opcode operand)))))))))))))))
 
 (defn codegen-ir-instr-bundle-x86 [opcode operand current-offset function-starts function-metas frame-base-slot-count current-depth]
   (codegen-ir-instr-bundle-x86-with-import-count opcode operand current-offset function-starts function-metas 0 0 frame-base-slot-count current-depth))
@@ -11338,6 +11479,8 @@
       (if (> import-count 0)
         (append-native-bytes-loop result (emit-ret) 0 1)
         0)
+      (append-native-bytes-rooted result (emit-x86-selfhost-command-line-arg-helper) 18)
+      (append-x86-selfhost-read-file-helper-rooted result)
       (ref-get result))))
 
 (defn generate-native-x86-64-bundle [functions]

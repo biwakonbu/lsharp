@@ -239,10 +239,200 @@ fn supported_selfhost_native_opcodes_x86_64() -> BTreeSet<&'static str> {
         "If",
         "Block",
         "Loop",
+        "CommandLineArg",
+        "ReadFile",
         "RootPush",
         "RootPop",
         "RootSet",
     ])
+}
+
+fn run_x86_selfhost_runtime_helper_harness(fixture_name: &str, main_body: &str) -> Vec<i64> {
+    let entry_source = format!(
+        r#"(module Main)
+(import Backend.Native.NativeCodegen)
+
+(defn print-bytes-loop [bytes idx len]
+  (if (>= idx len)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes-loop bytes (+ idx 1) len))))
+
+(defn main []
+{main_body})"#
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        fixture_name,
+        &["IR.ls", "NativeTarget.ls", "NativeCodegen.ls"],
+        "Main.ls",
+        &entry_source,
+        &[],
+    )
+    .expect("x86 selfhost runtime helper harness 実行に失敗");
+    parse_numeric_lines(&output)
+}
+
+#[test]
+fn test_native_codegen_x86_command_line_arg_and_read_file_call_sites_resolve_helper_offsets() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-x86-runtime-helper-call-sites",
+        r#"  (let [import-stub-offset 4096
+        import-count 10
+        current-offset 1024
+        command-bytes (codegen-ir-instr-bundle-x86-with-import-count 67 0 current-offset (vector-new 0) (vector-new 0) import-count import-stub-offset 0 0)
+        read-bytes (codegen-ir-instr-bundle-x86-with-import-count 64 0 current-offset (vector-new 0) (vector-new 0) import-count import-stub-offset 0 0)]
+    (do
+      (print (x86-selfhost-command-line-arg-helper-offset import-stub-offset import-count))
+      (print (x86-selfhost-read-file-helper-offset import-stub-offset import-count))
+      (print (vector-length command-bytes))
+      (print-bytes-loop command-bytes 0 (vector-length command-bytes))
+      (print (vector-length read-bytes))
+      (print-bytes-loop read-bytes 0 (vector-length read-bytes))
+      0))"#,
+    );
+
+    assert_eq!(
+        lines,
+        vec![
+            4097, 4115, 7, 81, 232, 251, 11, 0, 0, 89, 7, 81, 232, 13, 12, 0, 0, 89,
+        ],
+        "x86_64 CommandLineArg/ReadFile call site は push rcx + call helper + pop rcx を実バイトで出す必要がある"
+    );
+    assert!(
+        supported_selfhost_native_opcodes_x86_64().contains("CommandLineArg"),
+        "selfhost x86_64 gap supported set から CommandLineArg を外したまま"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_runtime_helper_emitters_return_executable_byte_vectors() {
+    let lines = run_x86_selfhost_runtime_helper_harness(
+        "native-stage23-x86-runtime-helper-bytes",
+        r#"  (let [command-helper (emit-x86-selfhost-command-line-arg-helper)
+        read-helper (emit-x86-selfhost-read-file-helper)]
+    (do
+      (print (vector-length command-helper))
+      (print-bytes-loop command-helper 0 (vector-length command-helper))
+      (print (vector-length read-helper))
+      (print-bytes-loop read-helper 0 8)
+      (print-bytes-loop read-helper (- (vector-length read-helper) 8) (vector-length read-helper))
+      0))"#,
+    );
+
+    assert_eq!(
+        lines,
+        vec![
+            18, 72, 133, 192, 124, 10, 76, 57, 240, 125, 5, 73, 139, 4, 199, 195, 49, 192, 195,
+            204, 83, 65, 84, 65, 85, 69, 49, 237, 49, 192, 65, 93, 65, 92, 91, 195,
+        ],
+        "x86_64 runtime helper emitters は実行可能な prologue/epilogue を持つ byte vector を返す必要がある"
+    );
+    assert!(
+        supported_selfhost_native_opcodes_x86_64().contains("ReadFile"),
+        "selfhost x86_64 gap supported set から ReadFile を外したまま"
+    );
+}
+
+#[test]
+fn test_native_stage23_gap_report_covers_targeted_call_drop_memory_control_corpus() {
+    use lsharp_ir::{Function, Instruction, IrType, Module};
+
+    let module = Module {
+        functions: vec![Function {
+            name: "targeted_stage23_corpus".to_string(),
+            params: vec![],
+            result: IrType::I64,
+            locals: vec![IrType::I64, IrType::I32],
+            body: vec![
+                Instruction::I64Const(1),
+                Instruction::Call(0),
+                Instruction::Drop,
+                Instruction::I32Const(0),
+                Instruction::I32Load { offset: 0 },
+                Instruction::Drop,
+                Instruction::I32Const(0),
+                Instruction::I32Const(1),
+                Instruction::I32Store { offset: 4 },
+                Instruction::I32Const(0),
+                Instruction::I32Load8U { offset: 8 },
+                Instruction::Drop,
+                Instruction::I32Const(0),
+                Instruction::I64Load { offset: 16 },
+                Instruction::Drop,
+                Instruction::I32Const(0),
+                Instruction::I64Const(2),
+                Instruction::I64Store { offset: 24 },
+                Instruction::I32Const(0),
+                Instruction::I32Const(8),
+                Instruction::I32Const(4),
+                Instruction::MemoryCopy,
+                Instruction::I32Const(0),
+                Instruction::I32Const(0),
+                Instruction::I32Const(16),
+                Instruction::MemoryFill,
+                Instruction::BlockEmpty,
+                Instruction::LoopEmpty,
+                Instruction::I32Const(1),
+                Instruction::BrIf(0),
+                Instruction::Br(1),
+                Instruction::End,
+                Instruction::IfEmpty,
+                Instruction::I64Const(3),
+                Instruction::Drop,
+                Instruction::Else,
+                Instruction::I64Const(4),
+                Instruction::Drop,
+                Instruction::End,
+                Instruction::I64Const(0),
+            ],
+            is_export: true,
+        }],
+        gc_types: vec![],
+        imports: vec![],
+        globals: vec![],
+        string_data: vec![],
+    };
+    let report = collect_native_stage23_gap_report(
+        std::path::Path::new("stage23-targeted-call-drop-memory-control-corpus.ls"),
+        &module,
+    );
+    let required = [
+        "Call",
+        "Drop",
+        "I32Load",
+        "I32Store",
+        "I32Load8U",
+        "I64Load",
+        "I64Store",
+        "MemoryCopy",
+        "MemoryFill",
+        "BlockEmpty",
+        "LoopEmpty",
+        "BrIf",
+        "Br",
+        "IfEmpty",
+        "Else",
+        "End",
+    ];
+
+    for opcode in required {
+        assert!(
+            report.opcode_histogram.contains_key(opcode),
+            "targeted stage23 corpus に {opcode} が含まれていない: {:?}",
+            report.opcode_histogram
+        );
+    }
+    assert!(
+        report.unsupported_x86_64.is_empty(),
+        "targeted stage23 corpus の x86_64 gap は空であるべき: {:?}",
+        report.unsupported_x86_64
+    );
+    assert!(
+        report.unsupported_aarch64.is_empty(),
+        "targeted stage23 corpus の aarch64 gap は空であるべき: {:?}",
+        report.unsupported_aarch64
+    );
 }
 
 fn supported_selfhost_native_opcodes_aarch64() -> BTreeSet<&'static str> {
@@ -705,9 +895,9 @@ fn test_e2e_native_actual_stage23_gap_report_for_representative_entry() {
             .iter()
             .any(|name| matches!(
                 name.as_str(),
-                "CommandLineArg" | "StringCharAt" | "StringLength"
+                "CommandLineArg" | "ReadFile" | "StringCharAt" | "StringLength"
             )),
-        "selfhost aarch64 gap report から command-line-arg/string-char-at/string-length は消えているべき: {:?}",
+        "selfhost aarch64 gap report から command-line-arg/read-file/string-char-at/string-length は消えているべき: {:?}",
         report.selfhost_unsupported_aarch64
     );
     assert!(
@@ -746,19 +936,27 @@ fn test_e2e_native_actual_stage23_gap_report_includes_selfhost_runtime_blockers(
     let report = collect_selfhost_native_stage23_gap_report(&entry_path);
 
     assert!(
-        report
+        !report
             .selfhost_unsupported_x86_64
             .iter()
             .any(|name| name == "CommandLineArg"),
-        "selfhost x86_64 gap report に CommandLineArg blocker が見えていない: {:?}",
+        "selfhost x86_64 gap report から CommandLineArg は消えているべき: {:?}",
         report.selfhost_unsupported_x86_64
     );
     assert!(
         report
+            .selfhost_unsupported_x86_64
+            .iter()
+            .all(|name| name != "ReadFile"),
+        "selfhost x86_64 gap report から ReadFile は消えているべき: {:?}",
+        report.selfhost_unsupported_x86_64
+    );
+    assert!(
+        !report
             .selfhost_unsupported_aarch64
             .iter()
-            .any(|name| name == "ReadFile"),
-        "selfhost aarch64 gap report に ReadFile blocker が見えていない: {:?}",
+            .any(|name| matches!(name.as_str(), "CommandLineArg" | "ReadFile")),
+        "selfhost aarch64 gap report から CommandLineArg/ReadFile は消えているべき: {:?}",
         report.selfhost_unsupported_aarch64
     );
 }
