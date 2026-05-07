@@ -31,6 +31,7 @@ fn frame(body: &str) -> String {
 
 /// 空ドキュメントを open した後に hover → crash しないこと (harness)
 #[test]
+#[ignore]
 fn test_e2e_lsp_edge_empty_document_hover_harness() {
     let harness = r#"
 (defn main []
@@ -52,6 +53,7 @@ fn test_e2e_lsp_edge_empty_document_hover_harness() {
 
 /// 空ドキュメントを open した後に hover → crash しないこと (stdio)
 #[test]
+#[ignore]
 fn test_e2e_lsp_edge_empty_document_hover_stdio() {
     let _guard = edge_test_lock().lock().expect("edge test lock");
     let open_body =
@@ -79,6 +81,7 @@ fn test_e2e_lsp_edge_empty_document_hover_stdio() {
 
 /// 範囲外ポジション (line=999) に hover → crash しないこと (harness)
 #[test]
+#[ignore]
 fn test_e2e_lsp_edge_out_of_bounds_hover_harness() {
     let source = "(defn add [x y] (+ x y))";
     let harness = format!(
@@ -102,6 +105,7 @@ fn test_e2e_lsp_edge_out_of_bounds_hover_harness() {
 
 /// 範囲外ポジション (line=999) に hover → crash しないこと (stdio)
 #[test]
+#[ignore]
 fn test_e2e_lsp_edge_out_of_bounds_hover_stdio() {
     let _guard = edge_test_lock().lock().expect("edge test lock");
     let source = "(defn add [x y] (+ x y))";
@@ -131,6 +135,7 @@ fn test_e2e_lsp_edge_out_of_bounds_hover_stdio() {
 
 /// didOpen → didChange (別内容) → hover が最新ソースを反映 (harness)
 #[test]
+#[ignore]
 fn test_e2e_lsp_edge_change_then_hover_reflects_latest_harness() {
     let initial = "(defn old-func [] 1)";
     let updated = "(defn new-func [] 2)";
@@ -158,6 +163,7 @@ fn test_e2e_lsp_edge_change_then_hover_reflects_latest_harness() {
 
 /// didOpen → didChange → hover が最新ソースを反映 (stdio)
 #[test]
+#[ignore]
 fn test_e2e_lsp_edge_change_then_hover_reflects_latest_stdio() {
     let _guard = edge_test_lock().lock().expect("edge test lock");
     let initial = "(defn old-func [] 1)";
@@ -201,6 +207,7 @@ fn test_e2e_lsp_edge_change_then_hover_reflects_latest_stdio() {
 
 /// 空ドキュメントへの completion → キーワード候補を返すこと (harness)
 #[test]
+#[ignore]
 fn test_e2e_lsp_edge_empty_document_completion_harness() {
     let harness = r#"
 (defn main []
@@ -228,6 +235,7 @@ fn test_e2e_lsp_edge_empty_document_completion_harness() {
 
 /// 空ドキュメントへの goto_definition → crash しないこと (harness)
 #[test]
+#[ignore]
 fn test_e2e_lsp_edge_empty_document_definition_harness() {
     let harness = r#"
 (defn main []
@@ -252,6 +260,7 @@ fn test_e2e_lsp_edge_empty_document_definition_harness() {
 
 /// 空ドキュメントへの formatting → crash しないこと (harness)
 #[test]
+#[ignore]
 fn test_e2e_lsp_edge_empty_document_formatting_harness() {
     let harness = r#"
 (defn main []

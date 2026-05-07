@@ -244,6 +244,12 @@ if [[ "$RUN_BOOTSTRAP_LEGACY_STAGE1" == "1" ]]; then
     e2e::selfhost_lsp_docs_ops::test_e2e_selfhost_lsp_real_shapes_ -- --ignored --nocapture
   cargo test -p lsharp-wasm --test e2e \
     e2e::selfhost_lsp_docs_ops::test_e2e_selfhost_lsp_runtime_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test lsp_stateful_parity \
+    test_e2e_lsp_actual_stdio_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test lsp_stateful_parity \
+    test_e2e_lsp_stateful_ -- --ignored --nocapture
+  cargo test -p lsharp-wasm --test lsp_edge_case_parity \
+    test_e2e_lsp_edge_ -- --ignored --nocapture
   cargo test -p lsharp-wasm --test e2e \
     e2e::selfhost_macro_compiler::test_e2e_selfhost_typeinfer_ -- --ignored --nocapture
   cargo test -p lsharp-wasm --test e2e \

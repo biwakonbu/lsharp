@@ -180,6 +180,7 @@ fn parity_test_guard() -> std::sync::MutexGuard<'static, ()> {
 /// CP-04: stateful session 上で hier fixture 同形の dotted import を
 /// open 済み別 document から completion 候補に引けること
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_completion_resolves_hier_fixture_shape_open_document() {
     let helper_source = "(module Syntax.SimpleHelper) (defn helper-value [] 42)";
     let main_source = "(module App.Main) (import Syntax.SimpleHelper) (defn main [] (helper-val))";
@@ -281,6 +282,7 @@ fn harness_open_prefix() -> String {
 /// CP-04: stateful harness 上で cross-document hover が
 /// helper document の defn 名を contents に返すこと
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_hover_resolves_cross_document() {
     // main source 内の "helper-value" の位置を計算
     let col = MAIN_SOURCE
@@ -312,6 +314,7 @@ fn test_e2e_lsp_stateful_hover_resolves_cross_document() {
 /// CP-04: actual `lsp --stdio` でも cross-document hover が
 /// helper document の defn 名を contents に返すこと
 #[test]
+#[ignore]
 fn test_e2e_lsp_actual_stdio_hover_resolves_cross_document() {
     let _guard = parity_test_guard();
     let col = MAIN_SOURCE
@@ -351,6 +354,7 @@ fn test_e2e_lsp_actual_stdio_hover_resolves_cross_document() {
 /// CP-04: stateful harness 上で cross-document goto_definition が
 /// helper document の URI と定義位置を返すこと
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_goto_definition_resolves_cross_document() {
     let col = MAIN_SOURCE
         .find("(helper-value)")
@@ -381,6 +385,7 @@ fn test_e2e_lsp_stateful_goto_definition_resolves_cross_document() {
 /// CP-04: actual `lsp --stdio` でも cross-document goto_definition が
 /// helper document の定義位置を返すこと
 #[test]
+#[ignore]
 fn test_e2e_lsp_actual_stdio_goto_definition_resolves_cross_document() {
     let _guard = parity_test_guard();
     let col = MAIN_SOURCE
@@ -420,6 +425,7 @@ fn test_e2e_lsp_actual_stdio_goto_definition_resolves_cross_document() {
 /// CP-04: stateful harness 上で references が
 /// 現在ドキュメント内のシンボル出現箇所を返すこと
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_references_finds_occurrences() {
     let col = MAIN_SOURCE
         .find("(helper-value)")
@@ -450,6 +456,7 @@ fn test_e2e_lsp_stateful_references_finds_occurrences() {
 
 /// CP-04: actual `lsp --stdio` でも references が出現箇所を返すこと
 #[test]
+#[ignore]
 fn test_e2e_lsp_actual_stdio_references_finds_occurrences() {
     let _guard = parity_test_guard();
     let col = MAIN_SOURCE
@@ -487,6 +494,7 @@ fn test_e2e_lsp_actual_stdio_references_finds_occurrences() {
 
 /// CP-04: stateful harness 上で rename が workspace edit を返すこと
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_rename_returns_workspace_edit() {
     let col = MAIN_SOURCE
         .find("(helper-value)")
@@ -514,6 +522,7 @@ fn test_e2e_lsp_stateful_rename_returns_workspace_edit() {
 
 /// CP-04: actual `lsp --stdio` でも rename が workspace edit を返すこと
 #[test]
+#[ignore]
 fn test_e2e_lsp_actual_stdio_rename_returns_workspace_edit() {
     let _guard = parity_test_guard();
     let col = MAIN_SOURCE
@@ -551,6 +560,7 @@ fn test_e2e_lsp_actual_stdio_rename_returns_workspace_edit() {
 
 /// CP-04: stateful harness 上で formatting が TextEdit を返すこと
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_formatting_returns_text_edit() {
     let harness = format!(
         r#"
@@ -576,6 +586,7 @@ fn test_e2e_lsp_stateful_formatting_returns_text_edit() {
 
 /// CP-04: actual `lsp --stdio` でも formatting が TextEdit を返すこと
 #[test]
+#[ignore]
 fn test_e2e_lsp_actual_stdio_formatting_returns_text_edit() {
     let _guard = parity_test_guard();
     let (stdin_prefix, expected_prefix) = stdio_open_prefix();
@@ -609,6 +620,7 @@ fn test_e2e_lsp_actual_stdio_formatting_returns_text_edit() {
 /// CP-04: actual `lsp --stdio` でも hier fixture 同形の dotted import を
 /// open 済み別 document から completion 候補に引けること
 #[test]
+#[ignore]
 fn test_e2e_lsp_actual_stdio_completion_resolves_hier_fixture_shape_open_document() {
     let _guard = parity_test_guard();
     let helper_source = "(module Syntax.SimpleHelper) (defn helper-value [] 42)";
@@ -673,6 +685,7 @@ fn test_e2e_lsp_actual_stdio_completion_resolves_hier_fixture_shape_open_documen
 /// CP-04: stateful harness 上で open 済み document の path を起点に
 /// filesystem import 先の hover を解決できること
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_hover_resolves_filesystem_import_from_document_path() {
     let dir = filesystem_lsp_fixture_dir("hover_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
@@ -706,6 +719,7 @@ fn test_e2e_lsp_stateful_hover_resolves_filesystem_import_from_document_path() {
 /// CP-04: stateful harness 上で nested import も document path を起点に
 /// filesystem から辿って hover を解決できること
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_hover_resolves_nested_filesystem_import_from_document_path() {
     let dir = filesystem_lsp_fixture_dir("hover_nested_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
@@ -739,6 +753,7 @@ fn test_e2e_lsp_stateful_hover_resolves_nested_filesystem_import_from_document_p
 /// CP-04: actual `lsp --stdio` でも document path を起点に
 /// filesystem import 先の hover を解決できること
 #[test]
+#[ignore]
 fn test_e2e_lsp_actual_stdio_hover_resolves_filesystem_import_from_document_path() {
     let dir = filesystem_lsp_fixture_dir("stdio_hover_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
@@ -771,6 +786,7 @@ fn test_e2e_lsp_actual_stdio_hover_resolves_filesystem_import_from_document_path
 /// CP-04: actual `lsp --stdio` でも nested import を document path から
 /// filesystem で辿って hover を解決できること
 #[test]
+#[ignore]
 fn test_e2e_lsp_actual_stdio_hover_resolves_nested_filesystem_import_from_document_path() {
     let dir = filesystem_lsp_fixture_dir("stdio_hover_nested_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
@@ -803,6 +819,7 @@ fn test_e2e_lsp_actual_stdio_hover_resolves_nested_filesystem_import_from_docume
 /// CP-04: stateful harness 上で open 済み document の path を起点に
 /// filesystem import 先の goto_definition を解決できること
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_goto_definition_resolves_filesystem_import_from_document_path() {
     let dir = filesystem_lsp_fixture_dir("definition_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
@@ -837,6 +854,7 @@ fn test_e2e_lsp_stateful_goto_definition_resolves_filesystem_import_from_documen
 /// CP-04: stateful harness 上で nested import も document path を起点に
 /// filesystem から辿って goto_definition を解決できること
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_goto_definition_resolves_nested_filesystem_import_from_document_path() {
     let dir = filesystem_lsp_fixture_dir("definition_nested_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
@@ -871,6 +889,7 @@ fn test_e2e_lsp_stateful_goto_definition_resolves_nested_filesystem_import_from_
 /// CP-04: actual `lsp --stdio` でも document path を起点に
 /// filesystem import 先の goto_definition を解決できること
 #[test]
+#[ignore]
 fn test_e2e_lsp_actual_stdio_goto_definition_resolves_filesystem_import_from_document_path() {
     let dir = filesystem_lsp_fixture_dir("stdio_definition_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
@@ -903,6 +922,7 @@ fn test_e2e_lsp_actual_stdio_goto_definition_resolves_filesystem_import_from_doc
 /// CP-04: actual `lsp --stdio` でも nested import を document path から
 /// filesystem で辿って goto_definition を解決できること
 #[test]
+#[ignore]
 fn test_e2e_lsp_actual_stdio_goto_definition_resolves_nested_filesystem_import_from_document_path()
 {
     let dir = filesystem_lsp_fixture_dir("stdio_definition_nested_filesystem_import");
@@ -936,6 +956,7 @@ fn test_e2e_lsp_actual_stdio_goto_definition_resolves_nested_filesystem_import_f
 /// CP-04: stateful harness 上で open 済み document の path を起点に
 /// filesystem import 先の references を解決できること
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_references_find_filesystem_import_occurrences_from_document_path() {
     let dir = filesystem_lsp_fixture_dir("references_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
@@ -975,6 +996,7 @@ fn test_e2e_lsp_stateful_references_find_filesystem_import_occurrences_from_docu
 /// CP-04: stateful harness 上で nested import も document path を起点に
 /// filesystem から辿って references を解決できること
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_references_find_nested_filesystem_import_occurrences_from_document_path() {
     let dir = filesystem_lsp_fixture_dir("references_nested_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
@@ -1014,6 +1036,7 @@ fn test_e2e_lsp_stateful_references_find_nested_filesystem_import_occurrences_fr
 /// CP-04: actual `lsp --stdio` でも document path を起点に
 /// filesystem import 先の references を解決できること
 #[test]
+#[ignore]
 fn test_e2e_lsp_actual_stdio_references_find_filesystem_import_occurrences_from_document_path() {
     let dir = filesystem_lsp_fixture_dir("stdio_references_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
@@ -1046,6 +1069,7 @@ fn test_e2e_lsp_actual_stdio_references_find_filesystem_import_occurrences_from_
 /// CP-04: actual `lsp --stdio` でも nested import を document path から
 /// filesystem で辿って references を解決できること
 #[test]
+#[ignore]
 fn test_e2e_lsp_actual_stdio_references_find_nested_filesystem_import_occurrences_from_document_path()
  {
     let dir = filesystem_lsp_fixture_dir("stdio_references_nested_filesystem_import");
@@ -1079,6 +1103,7 @@ fn test_e2e_lsp_actual_stdio_references_find_nested_filesystem_import_occurrence
 /// CP-04: stateful harness 上で open 済み document の path を起点に
 /// filesystem import 先を含む rename workspace edit を返せること
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_rename_returns_filesystem_import_workspace_edit_from_document_path() {
     let dir = filesystem_lsp_fixture_dir("rename_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
@@ -1118,6 +1143,7 @@ fn test_e2e_lsp_stateful_rename_returns_filesystem_import_workspace_edit_from_do
 /// CP-04: stateful harness 上で nested import も document path を起点に
 /// filesystem から辿って rename workspace edit を返せること
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_rename_returns_nested_filesystem_import_workspace_edit_from_document_path()
 {
     let dir = filesystem_lsp_fixture_dir("rename_nested_filesystem_import");
@@ -1158,6 +1184,7 @@ fn test_e2e_lsp_stateful_rename_returns_nested_filesystem_import_workspace_edit_
 /// CP-04: actual `lsp --stdio` でも document path を起点に
 /// filesystem import 先を含む rename workspace edit を返せること
 #[test]
+#[ignore]
 fn test_e2e_lsp_actual_stdio_rename_returns_filesystem_import_workspace_edit_from_document_path() {
     let dir = filesystem_lsp_fixture_dir("stdio_rename_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
@@ -1190,6 +1217,7 @@ fn test_e2e_lsp_actual_stdio_rename_returns_filesystem_import_workspace_edit_fro
 /// CP-04: actual `lsp --stdio` でも nested import を document path から
 /// filesystem で辿って rename workspace edit を返せること
 #[test]
+#[ignore]
 fn test_e2e_lsp_actual_stdio_rename_returns_nested_filesystem_import_workspace_edit_from_document_path()
  {
     let dir = filesystem_lsp_fixture_dir("stdio_rename_nested_filesystem_import");
@@ -1223,6 +1251,7 @@ fn test_e2e_lsp_actual_stdio_rename_returns_nested_filesystem_import_workspace_e
 /// CP-04: stateful harness 上で open 済み document の path を起点に
 /// filesystem import 先の completion 候補を解決できること
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_completion_resolves_filesystem_import_from_document_path() {
     let dir = filesystem_lsp_fixture_dir("completion_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
@@ -1263,6 +1292,7 @@ fn test_e2e_lsp_stateful_completion_resolves_filesystem_import_from_document_pat
 /// CP-04: stateful harness 上で nested import も document path を起点に
 /// filesystem から辿って completion 候補を解決できること
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_completion_resolves_nested_filesystem_import_from_document_path() {
     let dir = filesystem_lsp_fixture_dir("completion_nested_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
@@ -1303,6 +1333,7 @@ fn test_e2e_lsp_stateful_completion_resolves_nested_filesystem_import_from_docum
 /// CP-04: actual `lsp --stdio` でも document path を起点に
 /// filesystem import 先の completion 候補を解決できること
 #[test]
+#[ignore]
 fn test_e2e_lsp_actual_stdio_completion_resolves_filesystem_import_from_document_path() {
     let dir = filesystem_lsp_fixture_dir("stdio_completion_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
@@ -1335,6 +1366,7 @@ fn test_e2e_lsp_actual_stdio_completion_resolves_filesystem_import_from_document
 /// CP-04: actual `lsp --stdio` でも nested import を document path から
 /// filesystem で辿って completion 候補を解決できること
 #[test]
+#[ignore]
 fn test_e2e_lsp_actual_stdio_completion_resolves_nested_filesystem_import_from_document_path() {
     let dir = filesystem_lsp_fixture_dir("stdio_completion_nested_filesystem_import");
     write_filesystem_lsp_fixture_files(&dir, &filesystem_nested_fixture_files());
@@ -1370,6 +1402,7 @@ fn test_e2e_lsp_actual_stdio_completion_resolves_nested_filesystem_import_from_d
 
 /// CP-04: stateful harness 上で didChange 後の completion が最新 source を使うこと
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_completion_uses_changed_document() {
     let open_source = "(defn alpha [] 1) (al)";
     let changed_source = "(defn helper [] 1) (he)";
@@ -1404,6 +1437,7 @@ fn test_e2e_lsp_stateful_completion_uses_changed_document() {
 
 /// CP-04: stateful harness 上で didChange 後の hover が最新 source を使うこと
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_hover_uses_changed_document() {
     let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let changed_source = "(defn helper [x] x) (defn main [] (helper 1))";
@@ -1431,6 +1465,7 @@ fn test_e2e_lsp_stateful_hover_uses_changed_document() {
 
 /// CP-04: stateful harness 上で didChange 後の definition が最新 source を使うこと
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_definition_uses_changed_document() {
     let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let changed_source = "(defn helper [x] x) (defn main [] (helper 1))";
@@ -1468,6 +1503,7 @@ fn test_e2e_lsp_stateful_definition_uses_changed_document() {
 
 /// CP-04: stateful harness 上で didChange 後の references が最新 source を使うこと
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_references_uses_changed_document() {
     let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let changed_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
@@ -1510,6 +1546,7 @@ fn test_e2e_lsp_stateful_references_uses_changed_document() {
 
 /// CP-04: stateful harness 上で didChange 後の rename が最新 source を使うこと
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_rename_uses_changed_document() {
     let open_source = "(defn alpha [x] x) (defn main [] (alpha 1))";
     let changed_source = "(defn helper [x] x) (defn main [] (do (helper 1) (helper 2)))";
@@ -1547,6 +1584,7 @@ fn test_e2e_lsp_stateful_rename_uses_changed_document() {
 
 /// CP-04: stateful harness 上で same-URI repeated didOpen 後に最新 source を保持すること
 #[test]
+#[ignore]
 fn test_e2e_lsp_stateful_repeated_didopen_keeps_latest_source() {
     let first_source = "(defn alpha [] 1) (al)";
     let latest_source = "(defn beta [] 1) (be)";

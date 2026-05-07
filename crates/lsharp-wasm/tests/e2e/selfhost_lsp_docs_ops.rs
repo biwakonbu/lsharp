@@ -2771,6 +2771,18 @@ fn test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted() {
             "fn test_e2e_selfhost_lsp_runtime_",
         ),
         (
+            "crates/lsharp-wasm/tests/lsp_stateful_parity.rs",
+            "fn test_e2e_lsp_actual_stdio_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/lsp_stateful_parity.rs",
+            "fn test_e2e_lsp_stateful_",
+        ),
+        (
+            "crates/lsharp-wasm/tests/lsp_edge_case_parity.rs",
+            "fn test_e2e_lsp_edge_",
+        ),
+        (
             "crates/lsharp-wasm/tests/e2e/selfhost_macro_compiler.rs",
             "fn test_e2e_selfhost_typeinfer_",
         ),
@@ -2929,6 +2941,11 @@ fn test_e2e_ops03c_heavy_ci_gates_are_ignored_and_scripted() {
             && phase11_script.contains("e2e::selfhost_lsp_docs_ops::test_e2e_selfhost_formatter_ -- --ignored --nocapture")
             && phase11_script.contains("e2e::selfhost_lsp_docs_ops::test_e2e_selfhost_lsp_real_shapes_ -- --ignored --nocapture")
             && phase11_script.contains("e2e::selfhost_lsp_docs_ops::test_e2e_selfhost_lsp_runtime_ -- --ignored --nocapture")
+            && phase11_script.contains("cargo test -p lsharp-wasm --test lsp_stateful_parity")
+            && phase11_script.contains("test_e2e_lsp_actual_stdio_ -- --ignored --nocapture")
+            && phase11_script.contains("test_e2e_lsp_stateful_ -- --ignored --nocapture")
+            && phase11_script.contains("cargo test -p lsharp-wasm --test lsp_edge_case_parity")
+            && phase11_script.contains("test_e2e_lsp_edge_ -- --ignored --nocapture")
             && phase11_script.contains("e2e::selfhost_macro_compiler::test_e2e_selfhost_typeinfer_ -- --ignored --nocapture")
             && phase11_script.contains("test_e2e_bootstrap_selfhost_full_deterministic -- --exact --ignored --nocapture")
             && phase11_script.contains("test_e2e_selfhost_main_full_compile -- --exact --ignored --nocapture")
