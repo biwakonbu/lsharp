@@ -517,6 +517,32 @@ impl FuncCtx {
         self.next_local += 1;
         idx
     }
+
+    pub(crate) fn alloc_scoped_local(&mut self, name: String) -> u32 {
+        let idx = self.next_local;
+        self.locals_map.insert(name, idx);
+        self.next_local += 1;
+        idx
+    }
+
+    pub(crate) fn restore_local_binding(
+        &mut self,
+        name: String,
+        previous_local: Option<u32>,
+        previous_type: Option<String>,
+    ) {
+        if let Some(idx) = previous_local {
+            self.locals_map.insert(name.clone(), idx);
+        } else {
+            self.locals_map.remove(&name);
+        }
+
+        if let Some(type_name) = previous_type {
+            self.local_type_names.insert(name, type_name);
+        } else {
+            self.local_type_names.remove(&name);
+        }
+    }
 }
 
 /// 組み込み二項演算子か判定

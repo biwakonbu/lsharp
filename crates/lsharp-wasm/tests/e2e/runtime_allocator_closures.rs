@@ -2229,6 +2229,59 @@ fn test_e2e_runtime_collector_preserves_let_heap_local_across_alloc() {
 }
 
 #[test]
+fn test_e2e_runtime_collector_preserves_outer_heap_local_after_nested_let_shadowing_churn() {
+    // CP-05 G3-b regression: inner let が同名で shadow しても、outer heap local は
+    // inner init/body の churn と GC を跨いで outer scope 復帰後に使えるべき。
+    let (stdout, series) = compile_and_capture_runtime_telemetry_series(
+        r#"
+        (defn churn [n]
+          (if (<= n 0)
+            0
+            (let [s (string-concat "left" "right")]
+              (do
+                (string-length s)
+                (churn (- n 1))))))
+        (defn main []
+          (let [x (string-concat "keep" "!")]
+            (do
+              (let [x (do (churn 256) (string-concat "shadow" "!"))]
+                (do
+                  (print-string (int-to-string (string-length x)))
+                  (print-string "\n")
+                  0))
+              (do (print-string (int-to-string (string-length x))) 0))))
+    "#,
+        1,
+    );
+    let telemetry = *series
+        .last()
+        .expect("collector telemetry series は 1 件以上必要");
+    let lines: Vec<&str> = stdout.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["7", "5"],
+        "inner shadow x は 'shadow!'、outer x は GC churn 後も 'keep!' として読めるべき: telemetry={:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.gc_collection_count > 0,
+        "inner shadow init の churn 中に collector が走るべき: {:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.gc_freed_count > 0,
+        "inner shadow init の churn は garbage を回収するべき: {:?}",
+        telemetry
+    );
+    assert_eq!(
+        telemetry.root_stack_top, 0,
+        "nested let shadowing の自動 root は scope 終了後に解放されるべき: {:?}",
+        telemetry
+    );
+}
+
+#[test]
 fn test_e2e_runtime_collector_preserves_first_arg_across_second_arg_alloc() {
     // CP-05 G3-c RED: 多引数 user call で先に評価された heap arg が、
     // 後続 arg の評価中に走る GC を生き延びることを検証する。caller-side
@@ -2265,6 +2318,247 @@ fn test_e2e_runtime_collector_preserves_first_arg_across_second_arg_alloc() {
         telemetry.gc_collection_count > 0,
         "second-arg の churn 中に collector が走るべき: {:?}",
         telemetry
+    );
+}
+
+#[test]
+fn test_e2e_runtime_collector_trait_dispatch_roots_first_arg_across_second_arg_churn() {
+    // trait dispatch でも通常の user call と同じく、先に評価した heap arg が
+    // 後続 arg の churn/GC を跨いで root されることを実行時に検証する。
+    let (stdout, series) = compile_and_capture_runtime_telemetry_series(
+        r#"
+        (trait (Measure a)
+          (defn measure [x n] 0))
+        (impl (Measure String)
+          (defn measure [x n] (string-length x)))
+
+        (defn direct-measure [x n]
+          (string-length x))
+        (defn churn [n]
+          (if (<= n 0)
+            0
+            (let [s (string-concat "left" "right")]
+              (do
+                (string-length s)
+                (churn (- n 1))))))
+        (defn second-arg []
+          (do (churn 256) 7))
+        (defn main []
+          (let [trait-len (measure (string-concat "keep" "!") (second-arg))
+                direct-len (direct-measure (string-concat "safe" "!") (second-arg))]
+            (do
+              (print-string (int-to-string trait-len))
+              (print-string "\n")
+              (print-string (int-to-string direct-len))
+              0)))
+    "#,
+        1,
+    );
+    let telemetry = *series
+        .last()
+        .expect("collector telemetry series は 1 件以上必要");
+    let lines: Vec<&str> = stdout.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["5", "5"],
+        "trait dispatch と直接呼び出しの heap arg は churn 後も同じ長さを返すべき: telemetry={:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.gc_collection_count > 0,
+        "trait dispatch の second arg churn 中に collector が走るべき: {:?}",
+        telemetry
+    );
+    assert!(
+        telemetry.gc_freed_count > 0,
+        "trait dispatch の second arg churn は garbage を回収するべき: {:?}",
+        telemetry
+    );
+    assert_eq!(
+        telemetry.root_stack_top, 0,
+        "trait dispatch の caller-side root は call 後に解放されるべき: {:?}",
+        telemetry
+    );
+}
+
+fn compile_and_run_collecting_on_fd_write(source: &str) -> (String, usize) {
+    fn memory<T>(caller: &mut wasmtime::Caller<'_, T>) -> wasmtime::Memory {
+        caller
+            .get_export("memory")
+            .and_then(|export| export.into_memory())
+            .expect("memory export が必要")
+    }
+
+    fn read_i32<T>(memory: wasmtime::Memory, caller: &wasmtime::Caller<'_, T>, addr: i32) -> i32 {
+        let start = addr as usize;
+        let end = start + 4;
+        let bytes: [u8; 4] = memory.data(caller)[start..end]
+            .try_into()
+            .expect("i32 を読めるべき");
+        i32::from_le_bytes(bytes)
+    }
+
+    fn write_i32<T>(
+        memory: wasmtime::Memory,
+        caller: &mut wasmtime::Caller<'_, T>,
+        addr: i32,
+        value: i32,
+    ) {
+        let start = addr as usize;
+        let end = start + 4;
+        memory.data_mut(caller)[start..end].copy_from_slice(&value.to_le_bytes());
+    }
+
+    let program = parse_for_pipeline(source);
+    let mut infer = lsharp_types::infer::Infer::new();
+    let type_results = infer.infer_program(&program).unwrap();
+    let mut lower = lsharp_ir::lower::Lower::new();
+    let module = lower.lower_program(&program, &type_results).unwrap();
+    let wasm_bytes = lsharp_wasm::wasi::emit_wasm_wasi(&module).unwrap();
+
+    let engine = wasmtime::Engine::default();
+    let stdout = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let gc_trigger_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut store = wasmtime::Store::new(&engine, wasmtime_wasi::WasiCtxBuilder::new().build_p1());
+    let mut linker = wasmtime::Linker::new(&engine);
+    wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |ctx| ctx)
+        .expect("WASI linker 構築に失敗");
+    linker.allow_shadowing(true);
+
+    let fd_write_stdout = stdout.clone();
+    let fd_write_gc_trigger_count = gc_trigger_count.clone();
+
+    linker
+        .func_wrap(
+            "wasi_snapshot_preview1",
+            "fd_write",
+            move |mut caller: wasmtime::Caller<'_, wasmtime_wasi::preview1::WasiP1Ctx>,
+                  _fd: i32,
+                  iovs: i32,
+                  iovs_len: i32,
+                  nwritten: i32|
+                  -> i32 {
+                let memory = memory(&mut caller);
+                let mut output = Vec::new();
+                for index in 0..iovs_len {
+                    let base = iovs + (index * 8);
+                    let ptr = read_i32(memory, &caller, base);
+                    let len = read_i32(memory, &caller, base + 4);
+                    let start = ptr as usize;
+                    let end = start + len as usize;
+                    output.extend_from_slice(&memory.data(&caller)[start..end]);
+                }
+                let written = output.len() as i32;
+                fd_write_stdout.lock().expect("stdout lock").extend(output);
+                write_i32(memory, &mut caller, nwritten, written);
+
+                let gc_collect = caller
+                    .get_export("__lsharp_gc_collect")
+                    .and_then(|export| export.into_func())
+                    .expect("__lsharp_gc_collect export が必要");
+                gc_collect
+                    .typed::<(), i64>(&caller)
+                    .expect("__lsharp_gc_collect type")
+                    .call(&mut caller, ())
+                    .expect("fd_write 中の GC 実行に失敗");
+                fd_write_gc_trigger_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                0
+            },
+        )
+        .unwrap();
+
+    let wasm_module = wasmtime::Module::new(&engine, &wasm_bytes).expect("Wasm module 構築に失敗");
+    let instance = linker
+        .instantiate(&mut store, &wasm_module)
+        .expect("WASI instance 化に失敗");
+    let start = instance
+        .get_typed_func::<(), ()>(&mut store, "_start")
+        .expect("_start export が必要");
+    start.call(&mut store, ()).expect("_start 実行に失敗");
+
+    (
+        String::from_utf8(stdout.lock().expect("stdout lock").clone())
+            .expect("stdout UTF-8 変換に失敗"),
+        gc_trigger_count.load(std::sync::atomic::Ordering::SeqCst),
+    )
+}
+
+#[test]
+fn test_e2e_runtime_collector_preserves_opaque_nested_call_result_across_forced_gc() {
+    // generic closure から返った inner result が outer call の first arg として
+    // 再利用される前に、second arg の fd_write host hook で GC を強制する。
+    let (stdout, gc_trigger_count) = compile_and_run_collecting_on_fd_write(
+        r#"
+        (defn churn [n]
+          (if (<= n 0)
+            0
+            (let [s (string-concat "x" "y")]
+              (do
+                (string-length s)
+                (churn (- n 1))))))
+        (defn force-gc-second-arg []
+          (do
+            (print 0)
+            (do (churn 256) 7)))
+        (defn pick-first [s n]
+          (string-length s))
+        (defn forward [id]
+          (pick-first (id (string-concat "keep" "!")) (force-gc-second-arg)))
+        (defn main []
+          (let [len (forward (fn [x] x))]
+            (do (print len) 0)))
+    "#,
+    );
+    let lines: Vec<&str> = stdout.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["0", "5"],
+        "inner generic call result の 'keep!' は forced GC と churn 後も outer call に渡るべき"
+    );
+    assert!(
+        gc_trigger_count > 0,
+        "fd_write hook は少なくとも 1 回 GC を強制するべき"
+    );
+}
+
+#[test]
+fn test_e2e_runtime_collector_preserves_opaque_closure_receiver_across_forced_gc() {
+    // generic identity の戻り値として得た closure receiver が、引数評価中に
+    // fd_write hook 経由で強制された GC と churn を跨いで呼び出せることを検証する。
+    let (stdout, gc_trigger_count) = compile_and_run_collecting_on_fd_write(
+        r#"
+        (defn id [x] x)
+        (defn churn [n]
+          (if (<= n 0)
+            0
+            (let [s (string-concat "x" "y")]
+              (do
+                (string-length s)
+                (churn (- n 1))))))
+        (defn force-gc-string-arg []
+          (do
+            (print 0)
+            (do (churn 256) (string-concat "keep" "!"))))
+        (defn make-prefixed-len [prefix]
+          (fn [s] (+ (string-length prefix) (string-length s))))
+        (defn main []
+          (let [f (id (make-prefixed-len (string-concat "pre" "!")))
+                len (f (force-gc-string-arg))]
+            (do (print len) 0)))
+    "#,
+    );
+    let lines: Vec<&str> = stdout.trim().lines().collect();
+
+    assert_eq!(
+        lines,
+        vec!["0", "9"],
+        "opaque result 由来の closure receiver と capture は forced GC/churn 後も生存すべき"
+    );
+    assert!(
+        gc_trigger_count > 0,
+        "fd_write hook は少なくとも 1 回 GC を強制するべき"
     );
 }
 

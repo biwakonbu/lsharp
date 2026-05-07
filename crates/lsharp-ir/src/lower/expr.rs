@@ -101,28 +101,40 @@ impl Lower {
             }
 
             Expr::Let(_, bindings, body) => {
-                for (pat, val) in bindings {
-                    let inferred_type_name = self.infer_expr_type_name_with_ctx(ctx, val);
-                    self.lower_expr(ctx, val)?;
-                    match pat {
-                        Pattern::Var(_, name) => {
-                            let idx = ctx.alloc_local(name.clone());
-                            if let Some(type_name) = inferred_type_name {
-                                ctx.local_type_names.insert(name.clone(), type_name);
+                let mut scoped_bindings = Vec::new();
+                let result = (|| -> Result<(), LowerError> {
+                    for (pat, val) in bindings {
+                        let inferred_type_name = self.infer_expr_type_name_with_ctx(ctx, val);
+                        self.lower_expr(ctx, val)?;
+                        match pat {
+                            Pattern::Var(_, name) => {
+                                let previous_local = ctx.locals_map.get(name).copied();
+                                let previous_type = ctx.local_type_names.get(name).cloned();
+                                let idx = ctx.alloc_scoped_local(name.clone());
+                                if let Some(type_name) = inferred_type_name {
+                                    ctx.local_type_names.insert(name.clone(), type_name);
+                                } else {
+                                    ctx.local_type_names.remove(name);
+                                }
+                                scoped_bindings.push((name.clone(), previous_local, previous_type));
+                                ctx.emit(Instruction::LocalSet(idx));
                             }
-                            ctx.emit(Instruction::LocalSet(idx));
-                        }
-                        Pattern::Wildcard(_) => {
-                            ctx.emit(Instruction::Drop);
-                        }
-                        _ => {
-                            // MVP: 複雑なパターンは未サポート
-                            let idx = ctx.alloc_local("_pat".to_string());
-                            ctx.emit(Instruction::LocalSet(idx));
+                            Pattern::Wildcard(_) => {
+                                ctx.emit(Instruction::Drop);
+                            }
+                            _ => {
+                                // MVP: 複雑なパターンは未サポート
+                                let idx = ctx.alloc_local("_pat".to_string());
+                                ctx.emit(Instruction::LocalSet(idx));
+                            }
                         }
                     }
+                    self.lower_expr(ctx, body)
+                })();
+                for (name, previous_local, previous_type) in scoped_bindings.into_iter().rev() {
+                    ctx.restore_local_binding(name, previous_local, previous_type);
                 }
-                self.lower_expr(ctx, body)?;
+                result?;
             }
 
             Expr::App(_, func, args) => {

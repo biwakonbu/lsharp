@@ -307,6 +307,242 @@ fn assert_selfhost_direct_fixture_is_deterministic(
     );
 }
 
+fn assert_selfhost_direct_fixture_code_section_is_deterministic(
+    fixture_prefix: &str,
+    file_name: &str,
+    source: &str,
+    label: &str,
+) {
+    let dir = cli_test_fixture_dir(fixture_prefix);
+    write_cli_fixture_files(&dir, &[(file_name, source)]);
+    let fixture_path = dir.join(file_name).to_string_lossy().replace('\\', "\\\\");
+    let wasm_bytes_eq_helpers = stack_safe_wasm_bytes_eq_helpers();
+
+    let harness = format!(
+        r#"
+{wasm_bytes_eq_helpers}
+(defn make-byte-fingerprint-state [done next-pos next-acc]
+  (push-int-vector-local
+    (push-int-vector-local
+      (push-int-vector-local (vector-new 3) done)
+      next-pos)
+    next-acc))
+(defn wasm-bytes-fingerprint-step [bytes pos end acc]
+  (if (>= pos end)
+    (make-byte-fingerprint-state 1 pos acc)
+    (make-byte-fingerprint-state 0 (+ pos 1) (+ (* acc 31) (vector-get bytes pos)))))
+(defn continue-wasm-bytes-fingerprint-step [bytes end state]
+  (if (= (vector-get state 0) 1)
+    state
+    (wasm-bytes-fingerprint-step bytes (vector-get state 1) end (vector-get state 2))))
+(defn wasm-bytes-fingerprint-step-8 [bytes pos end acc]
+  (let [step1 (wasm-bytes-fingerprint-step bytes pos end acc)
+        step2 (continue-wasm-bytes-fingerprint-step bytes end step1)
+        step3 (continue-wasm-bytes-fingerprint-step bytes end step2)
+        step4 (continue-wasm-bytes-fingerprint-step bytes end step3)
+        step5 (continue-wasm-bytes-fingerprint-step bytes end step4)
+        step6 (continue-wasm-bytes-fingerprint-step bytes end step5)
+        step7 (continue-wasm-bytes-fingerprint-step bytes end step6)
+        step8 (continue-wasm-bytes-fingerprint-step bytes end step7)]
+    step8))
+(defn continue-wasm-bytes-fingerprint-step-8 [bytes end state]
+  (if (= (vector-get state 0) 1)
+    state
+    (wasm-bytes-fingerprint-step-8 bytes (vector-get state 1) end (vector-get state 2))))
+(defn wasm-bytes-fingerprint-step-64 [bytes pos end acc]
+  (let [step1 (wasm-bytes-fingerprint-step-8 bytes pos end acc)
+        step2 (continue-wasm-bytes-fingerprint-step-8 bytes end step1)
+        step3 (continue-wasm-bytes-fingerprint-step-8 bytes end step2)
+        step4 (continue-wasm-bytes-fingerprint-step-8 bytes end step3)
+        step5 (continue-wasm-bytes-fingerprint-step-8 bytes end step4)
+        step6 (continue-wasm-bytes-fingerprint-step-8 bytes end step5)
+        step7 (continue-wasm-bytes-fingerprint-step-8 bytes end step6)
+        step8 (continue-wasm-bytes-fingerprint-step-8 bytes end step7)]
+    step8))
+(defn wasm-bytes-fingerprint-loop [bytes pos end acc]
+  (let [step (wasm-bytes-fingerprint-step-64 bytes pos end acc)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (wasm-bytes-fingerprint-loop bytes (vector-get step 1) end (vector-get step 2)))))
+(defn wasm-bytes-fingerprint [bytes]
+  (wasm-bytes-fingerprint-loop bytes 0 (vector-length bytes) 0))
+(defn compile-file-code-section [path]
+  (let [src (read-file path)
+        program (parse-program src)
+        n (vector-length program)
+        reg-result (register-defns-chunked program 0 n (ftable-new) 0)
+        ftable (vector-get reg-result 2)
+        data-ref (ref-new (vector-new 8))
+        functions (compile-defn-functions-with-source program 0 n src ftable data-ref (vector-new 8))]
+    (emit-code-section-wasi-quad-functions functions)))
+(defn main []
+  (let [code1 (compile-file-code-section "{fixture_path}")
+        code2 (compile-file-code-section "{fixture_path}")]
+    (do
+      (print (vector-length code1))
+      (print (vector-length code2))
+      (print (wasm-bytes-fingerprint code1))
+      (print (wasm-bytes-fingerprint code2))
+      (print (wasm-bytes-eq code1 code2))
+      0)))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 5,
+        "{} code section determinism 出力が不足: {:?}",
+        label,
+        lines
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "2回の {} direct compile で code section 長は一致するべき",
+        label
+    );
+    assert_eq!(
+        lines[2], lines[3],
+        "2回の {} direct compile で code section fingerprint は一致するべき: {:?}",
+        label, lines
+    );
+    assert_eq!(
+        lines[4], "1",
+        "2回の {} direct compile で code section bytes は一致するべき: {:?}",
+        label, lines
+    );
+}
+
+fn assert_selfhost_direct_fixture_code_section_survives_allocation_history(
+    fixture_prefix: &str,
+    file_name: &str,
+    source: &str,
+    label: &str,
+) {
+    let dir = cli_test_fixture_dir(fixture_prefix);
+    write_cli_fixture_files(&dir, &[(file_name, source)]);
+    let fixture_path = dir.join(file_name).to_string_lossy().replace('\\', "\\\\");
+    let wasm_bytes_eq_helpers = stack_safe_wasm_bytes_eq_helpers();
+
+    let harness = format!(
+        r#"
+{wasm_bytes_eq_helpers}
+(defn make-byte-fingerprint-state [done next-pos next-acc]
+  (push-int-vector-local
+    (push-int-vector-local
+      (push-int-vector-local (vector-new 3) done)
+      next-pos)
+    next-acc))
+(defn wasm-bytes-fingerprint-step [bytes pos end acc]
+  (if (>= pos end)
+    (make-byte-fingerprint-state 1 pos acc)
+    (make-byte-fingerprint-state 0 (+ pos 1) (+ (* acc 31) (vector-get bytes pos)))))
+(defn continue-wasm-bytes-fingerprint-step [bytes end state]
+  (if (= (vector-get state 0) 1)
+    state
+    (wasm-bytes-fingerprint-step bytes (vector-get state 1) end (vector-get state 2))))
+(defn wasm-bytes-fingerprint-step-8 [bytes pos end acc]
+  (let [step1 (wasm-bytes-fingerprint-step bytes pos end acc)
+        step2 (continue-wasm-bytes-fingerprint-step bytes end step1)
+        step3 (continue-wasm-bytes-fingerprint-step bytes end step2)
+        step4 (continue-wasm-bytes-fingerprint-step bytes end step3)
+        step5 (continue-wasm-bytes-fingerprint-step bytes end step4)
+        step6 (continue-wasm-bytes-fingerprint-step bytes end step5)
+        step7 (continue-wasm-bytes-fingerprint-step bytes end step6)
+        step8 (continue-wasm-bytes-fingerprint-step bytes end step7)]
+    step8))
+(defn continue-wasm-bytes-fingerprint-step-8 [bytes end state]
+  (if (= (vector-get state 0) 1)
+    state
+    (wasm-bytes-fingerprint-step-8 bytes (vector-get state 1) end (vector-get state 2))))
+(defn wasm-bytes-fingerprint-step-64 [bytes pos end acc]
+  (let [step1 (wasm-bytes-fingerprint-step-8 bytes pos end acc)
+        step2 (continue-wasm-bytes-fingerprint-step-8 bytes end step1)
+        step3 (continue-wasm-bytes-fingerprint-step-8 bytes end step2)
+        step4 (continue-wasm-bytes-fingerprint-step-8 bytes end step3)
+        step5 (continue-wasm-bytes-fingerprint-step-8 bytes end step4)
+        step6 (continue-wasm-bytes-fingerprint-step-8 bytes end step5)
+        step7 (continue-wasm-bytes-fingerprint-step-8 bytes end step6)
+        step8 (continue-wasm-bytes-fingerprint-step-8 bytes end step7)]
+    step8))
+(defn wasm-bytes-fingerprint-loop [bytes pos end acc]
+  (let [step (wasm-bytes-fingerprint-step-64 bytes pos end acc)]
+    (if (= (vector-get step 0) 1)
+      (vector-get step 2)
+      (wasm-bytes-fingerprint-loop bytes (vector-get step 1) end (vector-get step 2)))))
+(defn wasm-bytes-fingerprint [bytes]
+  (wasm-bytes-fingerprint-loop bytes 0 (vector-length bytes) 0))
+(defn allocation-history-warmup-step [seed]
+  (let [items (push-int-vector-local
+                (push-int-vector-local
+                  (push-int-vector-local (vector-new 3) seed)
+                  (+ seed 1))
+                (+ seed 2))]
+    (+ (+ (vector-get items 0) (vector-get items 1)) (vector-get items 2))))
+(defn allocation-history-warmup-loop [idx limit acc]
+  (if (>= idx limit)
+    acc
+    (allocation-history-warmup-loop (+ idx 1) limit (+ acc (allocation-history-warmup-step idx)))))
+(defn compile-file-code-section [path]
+  (let [src (read-file path)
+        program (parse-program src)
+        n (vector-length program)
+        reg-result (register-defns-chunked program 0 n (ftable-new) 0)
+        ftable (vector-get reg-result 2)
+        data-ref (ref-new (vector-new 8))
+        functions (compile-defn-functions-with-source program 0 n src ftable data-ref (vector-new 8))]
+    (emit-code-section-wasi-quad-functions functions)))
+(defn main []
+  (let [code1 (compile-file-code-section "{fixture_path}")
+        warmup (allocation-history-warmup-loop 0 128 0)
+        code2 (compile-file-code-section "{fixture_path}")]
+    (do
+      (print warmup)
+      (print (vector-length code1))
+      (print (vector-length code2))
+      (print (wasm-bytes-fingerprint code1))
+      (print (wasm-bytes-fingerprint code2))
+      (print (wasm-bytes-eq code1 code2))
+      0)))
+"#
+    );
+
+    let combined = format!("{}\n{}", selfhost_cli_runtime_bundle(), harness);
+    let output = compile_and_run(&combined);
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 6,
+        "{} allocation-history code section 出力が不足: {:?}",
+        label,
+        lines
+    );
+    assert_ne!(
+        lines[0], "0",
+        "{} allocation warmup は fixture の割当履歴を変更するべき: {:?}",
+        label, lines
+    );
+    assert_eq!(
+        lines[1], lines[2],
+        "allocation warmup 後も {} direct compile の code section 長は一致するべき: {:?}",
+        label, lines
+    );
+    assert_eq!(
+        lines[3], lines[4],
+        "allocation warmup 後も {} direct compile の code section fingerprint は一致するべき: {:?}",
+        label, lines
+    );
+    assert_eq!(
+        lines[5], "1",
+        "allocation warmup 後も {} direct compile の code section bytes は一致するべき: {:?}",
+        label, lines
+    );
+}
+
 fn assert_selfhost_inline_fixture_with_func_idx_is_deterministic(
     fixture_prefix: &str,
     source: &str,
@@ -1942,6 +2178,38 @@ fn test_e2e_selfhost_cli_direct_path_parent_fixture_is_deterministic() {
          (defn find-last-path-sep [path idx len last] (if (>= idx len) last (find-last-path-sep path (+ idx 1) len (if (is-path-sep path idx) idx last))))\n\
          (defn path-parent [path] (let [len (string-length path)] (if (= len 0) \"\" (if (has-path-sep path 0 len) (let [last (find-last-path-sep path 0 len -1)] (if (< last 0) \"\" (if (= last 0) \"/\" (substring path 0 last)))) \".\"))))",
         "path-parent fixture",
+    );
+}
+
+/// TEST-CLI-02-M1F0B1: path-parent 最小 fixture の direct compile は code section も 2 回連続で同じ bytes を返すこと
+#[test]
+#[ignore]
+fn test_e2e_selfhost_cli_direct_path_parent_code_section_is_deterministic() {
+    assert_selfhost_direct_fixture_code_section_is_deterministic(
+        "path_parent_direct_code_section_determinism",
+        "PathParentMini.ls",
+        "(defn path-char [path idx] (string-char-at path idx))\n\
+         (defn is-path-sep [path idx] (let [ch (path-char path idx)] (if (= ch 47) true (if (= ch 92) true false))))\n\
+         (defn has-path-sep [path idx len] (if (>= idx len) false (if (is-path-sep path idx) true (has-path-sep path (+ idx 1) len))))\n\
+         (defn find-last-path-sep [path idx len last] (if (>= idx len) last (find-last-path-sep path (+ idx 1) len (if (is-path-sep path idx) idx last))))\n\
+         (defn path-parent [path] (let [len (string-length path)] (if (= len 0) \"\" (if (has-path-sep path 0 len) (let [last (find-last-path-sep path 0 len -1)] (if (< last 0) \"\" (if (= last 0) \"/\" (substring path 0 last)))) \".\"))))",
+        "path-parent code section fixture",
+    );
+}
+
+/// TEST-CLI-02-M1F0B1A: path-parent 最小 fixture の direct compile code section は allocation warmup 後も同じ bytes を返すこと
+#[test]
+#[ignore]
+fn test_e2e_selfhost_cli_direct_path_parent_code_section_survives_allocation_history() {
+    assert_selfhost_direct_fixture_code_section_survives_allocation_history(
+        "path_parent_direct_code_section_allocation_history",
+        "PathParentMini.ls",
+        "(defn path-char [path idx] (string-char-at path idx))\n\
+         (defn is-path-sep [path idx] (let [ch (path-char path idx)] (if (= ch 47) true (if (= ch 92) true false))))\n\
+         (defn has-path-sep [path idx len] (if (>= idx len) false (if (is-path-sep path idx) true (has-path-sep path (+ idx 1) len))))\n\
+         (defn find-last-path-sep [path idx len last] (if (>= idx len) last (find-last-path-sep path (+ idx 1) len (if (is-path-sep path idx) idx last))))\n\
+         (defn path-parent [path] (let [len (string-length path)] (if (= len 0) \"\" (if (has-path-sep path 0 len) (let [last (find-last-path-sep path 0 len -1)] (if (< last 0) \"\" (if (= last 0) \"/\" (substring path 0 last)))) \".\"))))",
+        "path-parent allocation-history code section fixture",
     );
 }
 

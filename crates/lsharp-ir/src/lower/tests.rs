@@ -42,6 +42,69 @@ fn call_positions(body: &[Instruction], idx: u32) -> Vec<usize> {
         .collect()
 }
 
+const ALLOC_IDX: u32 = 1;
+const ROOT_PUSH_IDX: u32 = 14;
+const ROOT_POP_IDX: u32 = 15;
+const ROOT_SET_IDX: u32 = 16;
+const USER_FUNC_BASE_IDX: u32 = 17;
+
+fn function_index(module: &Module, name: &str) -> u32 {
+    USER_FUNC_BASE_IDX
+        + module
+            .functions
+            .iter()
+            .position(|func| func.name == name)
+            .unwrap_or_else(|| panic!("function not found: {name}")) as u32
+}
+
+fn call_position(body: &[Instruction], idx: u32) -> usize {
+    body.iter()
+        .position(|instr| matches!(instr, Instruction::Call(call_idx) if *call_idx == idx))
+        .unwrap_or_else(|| panic!("call {idx} not found in body: {body:?}"))
+}
+
+fn call_indirect_positions(body: &[Instruction]) -> Vec<usize> {
+    body.iter()
+        .enumerate()
+        .filter_map(|(idx, instr)| matches!(instr, Instruction::CallIndirect(_)).then_some(idx))
+        .collect()
+}
+
+fn assert_roots_balanced(body: &[Instruction], context: &str) {
+    assert_eq!(
+        count_call_instr(body, ROOT_PUSH_IDX),
+        count_call_instr(body, ROOT_POP_IDX),
+        "{context}: root_push/root_pop が釣り合っていない: {body:?}"
+    );
+}
+
+fn assert_rooted_safe_point(body: &[Instruction], safe_point_pos: usize, context: &str) {
+    let has_push_before = body[..safe_point_pos]
+        .iter()
+        .any(|instr| matches!(instr, Instruction::Call(ROOT_PUSH_IDX)));
+    let has_pop_after = body[safe_point_pos + 1..]
+        .iter()
+        .any(|instr| matches!(instr, Instruction::Call(ROOT_POP_IDX)));
+
+    assert!(
+        has_push_before,
+        "{context}: safe point 前に root_push が必要: {body:?}"
+    );
+    assert!(
+        has_pop_after,
+        "{context}: safe point 後に root_pop が必要: {body:?}"
+    );
+}
+
+fn assert_root_push_between(body: &[Instruction], after: usize, before: usize, context: &str) {
+    assert!(
+        body[after + 1..before]
+            .iter()
+            .any(|instr| matches!(instr, Instruction::Call(ROOT_PUSH_IDX))),
+        "{context}: safe point 間の値を再 root_push するべき: {body:?}"
+    );
+}
+
 #[test]
 fn test_lower_integer_literal() {
     assert_ir("(defn main [] 42)", "lower_integer_literal");
@@ -961,6 +1024,251 @@ fn test_lower_self_recursive_int_params_do_not_emit_root_updates() {
         0,
         "Int param だけの self-TCO loop は root_set を使わないべき: {:?}",
         countdown.body
+    );
+}
+
+#[test]
+fn test_gc_spill_completeness_call_site_matrix_roots_heap_values() {
+    let direct_module = lower(
+        r#"
+        (defn consume-string [s] (string-length s))
+        (defn main []
+          (let [s "hello"]
+            (consume-string s)))
+        "#,
+    );
+    let direct_main = direct_module
+        .functions
+        .iter()
+        .find(|func| func.name == "main")
+        .unwrap();
+    let direct_call = call_position(
+        &direct_main.body,
+        function_index(&direct_module, "consume-string"),
+    );
+    assert_rooted_safe_point(
+        &direct_main.body,
+        direct_call,
+        "let heap local を渡す direct call",
+    );
+    assert_roots_balanced(&direct_main.body, "let heap local を渡す direct call");
+
+    let trait_module = lower(
+        r#"
+        (trait (Measure a)
+          (defn measure [x] 0))
+        (impl (Measure String)
+          (defn measure [x] (string-length x)))
+        (defn main []
+          (let [s "hello"]
+            (measure s)))
+        "#,
+    );
+    let trait_main = trait_module
+        .functions
+        .iter()
+        .find(|func| func.name == "main")
+        .unwrap();
+    let trait_call = call_position(
+        &trait_main.body,
+        function_index(&trait_module, "Measure_String_measure"),
+    );
+    assert_rooted_safe_point(
+        &trait_main.body,
+        trait_call,
+        "let heap local を渡す trait dispatch",
+    );
+    assert_roots_balanced(&trait_main.body, "let heap local を渡す trait dispatch");
+
+    let closure_module = lower(
+        r#"
+        (defn make-measure [] (fn [s] (string-length s)))
+        (defn main []
+          (let [f (make-measure)
+                s "hello"]
+            (f s)))
+        "#,
+    );
+    let closure_main = closure_module
+        .functions
+        .iter()
+        .find(|func| func.name == "main")
+        .unwrap();
+    let closure_call = call_indirect_positions(&closure_main.body)[0];
+    assert_rooted_safe_point(
+        &closure_main.body,
+        closure_call,
+        "let heap local を渡す closure call",
+    );
+    assert_eq!(
+        count_call_instr(&closure_main.body, ROOT_PUSH_IDX),
+        2,
+        "closure call は receiver と let heap local の両方を root_push するべき: {:?}",
+        closure_main.body
+    );
+    assert_roots_balanced(&closure_main.body, "let heap local を渡す closure call");
+}
+
+#[test]
+fn test_gc_spill_completeness_nested_call_results_are_rerooted() {
+    let direct_module = lower(
+        r#"
+        (defn id [x] x)
+        (defn consume-string [s] (string-length s))
+        (defn main [] (consume-string (id "hello")))
+        "#,
+    );
+    let direct_main = direct_module
+        .functions
+        .iter()
+        .find(|func| func.name == "main")
+        .unwrap();
+    let inner_direct = call_position(&direct_main.body, function_index(&direct_module, "id"));
+    let outer_direct = call_position(
+        &direct_main.body,
+        function_index(&direct_module, "consume-string"),
+    );
+    assert_root_push_between(
+        &direct_main.body,
+        inner_direct,
+        outer_direct,
+        "opaque/generic direct call result",
+    );
+    assert_roots_balanced(&direct_main.body, "opaque/generic direct call result");
+
+    let closure_module = lower(
+        r#"
+        (defn make-show [] (fn [s] (string-length s)))
+        (defn main []
+          (let [id (fn [x] x)
+                f (make-show)]
+            (f (id "hello"))))
+        "#,
+    );
+    let closure_main = closure_module
+        .functions
+        .iter()
+        .find(|func| func.name == "main")
+        .unwrap();
+    let indirect_calls = call_indirect_positions(&closure_main.body);
+    assert!(
+        indirect_calls.len() >= 2,
+        "inner/outer closure call の 2 safe point が必要: {:?}",
+        closure_main.body
+    );
+    assert_root_push_between(
+        &closure_main.body,
+        indirect_calls[0],
+        indirect_calls[1],
+        "opaque/generic closure call result",
+    );
+    assert_roots_balanced(&closure_main.body, "opaque/generic closure call result");
+}
+
+#[test]
+fn test_gc_spill_completeness_self_tco_updates_all_heap_roots_before_backedge() {
+    let module = lower(
+        r#"
+        (defn swap-loop [(: a String) (: b String) n]
+          (if (<= n 0)
+            a
+            (swap-loop b a (- n 1))))
+        (defn main [] 0)
+        "#,
+    );
+    let swap_loop = module
+        .functions
+        .iter()
+        .find(|func| func.name == "swap-loop")
+        .unwrap();
+    let loop_pos = swap_loop
+        .body
+        .iter()
+        .position(|instr| matches!(instr, Instruction::Loop(_) | Instruction::LoopEmpty))
+        .unwrap();
+    let backedge_pos = swap_loop
+        .body
+        .iter()
+        .rposition(|instr| matches!(instr, Instruction::Br(_)))
+        .unwrap();
+    let root_push_positions = call_positions(&swap_loop.body, ROOT_PUSH_IDX);
+    let root_set_positions = call_positions(&swap_loop.body, ROOT_SET_IDX);
+
+    assert_eq!(
+        root_push_positions.len(),
+        2,
+        "2 つの heap param は loop entry 前に root_push されるべき: {:?}",
+        swap_loop.body
+    );
+    assert!(
+        root_push_positions.iter().all(|pos| *pos < loop_pos),
+        "heap param の root_push は loop entry 前に必要: {:?}",
+        swap_loop.body
+    );
+    assert_eq!(
+        root_set_positions.len(),
+        2,
+        "更新された 2 つの heap param は backedge 前に root_set されるべき: {:?}",
+        swap_loop.body
+    );
+    assert!(
+        root_set_positions.iter().all(|pos| *pos < backedge_pos),
+        "heap param の root_set は loop backedge 前に必要: {:?}",
+        swap_loop.body
+    );
+    assert_roots_balanced(&swap_loop.body, "self-TCO heap params");
+}
+
+#[test]
+fn test_gc_spill_completeness_runtime_alloc_roots_let_and_pattern_values() {
+    let let_module = lower(
+        r#"
+        (defn main []
+          (let [s "hello"]
+            (ref-new s)))
+        "#,
+    );
+    let let_main = let_module
+        .functions
+        .iter()
+        .find(|func| func.name == "main")
+        .unwrap();
+    let alloc_positions = call_positions(&let_main.body, ALLOC_IDX);
+    assert!(
+        alloc_positions.len() >= 2,
+        "文字列 literal と ref-new の allocation が必要: {:?}",
+        let_main.body
+    );
+    assert_rooted_safe_point(
+        &let_main.body,
+        alloc_positions[1],
+        "let heap local を包む ref-new allocation",
+    );
+    assert_roots_balanced(&let_main.body, "let heap local を包む ref-new allocation");
+
+    let pattern_module = lower(
+        r#"
+        (type (Box a) (Box a))
+        (defn box-ref [b]
+          (match b
+            [(Box s) (ref-new s)]))
+        (defn main [] 0)
+        "#,
+    );
+    let box_ref = pattern_module
+        .functions
+        .iter()
+        .find(|func| func.name == "box-ref")
+        .unwrap();
+    let ref_alloc = call_position(&box_ref.body, ALLOC_IDX);
+    assert_rooted_safe_point(
+        &box_ref.body,
+        ref_alloc,
+        "pattern-bound heap field を包む ref-new allocation",
+    );
+    assert_roots_balanced(
+        &box_ref.body,
+        "pattern-bound heap field を包む ref-new allocation",
     );
 }
 

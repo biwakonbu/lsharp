@@ -368,6 +368,41 @@ fn test_e2e_selfhost_gc_collect_preserves_rooted_allocations_and_reuses_freed_bl
     );
 }
 
+#[test]
+fn test_e2e_selfhost_gc_collect_ignores_legacy_zero_root_slot_sentinel() {
+    let output = run_selfhost_gc_fixture_entry(
+        "gc-runtime-zero-root-sentinel",
+        r#"
+(module App.Main)
+(import Runtime.GC)
+
+(defn main []
+  (let [state (make-gc-state 1024 256)
+        legacy-zero (add-root state 0)
+        dead (alloc state 24)
+        freed (collect state)
+        after (heap-used state)
+        stats (gc-stats state)]
+    (do
+      (print legacy-zero)
+      (print dead)
+      (print freed)
+      (print after)
+      (print (vector-get stats 0))
+      (print (vector-get stats 1))
+      (print (vector-get stats 2))
+      (print (vector-get stats 3))
+      0)))
+"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert_eq!(
+        lines,
+        vec!["0", "1024", "1", "0", "1", "1", "1", "0"],
+        "selfhost GC harness でも legacy `0` root-slot sentinel は live object として扱わない"
+    );
+}
+
 // =============================================================================
 // Phase 6 Group G: Native Backend テスト (TDD Red Phase)
 // =============================================================================
