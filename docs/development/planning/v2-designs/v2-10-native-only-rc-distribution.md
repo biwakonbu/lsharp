@@ -2,8 +2,8 @@
 
 ## 概要
 
-native-only RC distribution は、Component Model pivot 後は公式配布の置き換えではなく experimental channel としてのみ検討する。  
-host launcher + embedded guest component が引き続き公式 distribution の正本であり、このページは将来 native backend が十分成熟した後の RC 導線だけを定義する。
+native-only RC distribution は、Component Model pivot 後も公式配布の置き換えではなく experimental channel としてのみ提供する。
+host launcher + embedded guest component が引き続き公式 distribution の正本であり、このページは actual native self-regeneration 成果物を調査用 RC として固める導線を定義する。
 
 ## 前提条件
 
@@ -31,9 +31,11 @@ host launcher + embedded guest component が引き続き公式 distribution の�
 
 ### release workflow
 
-- official release workflow とは別 job / 別 environment を使う
+- official release workflow 内の `experimental-native-rc` job として、公式 `build` matrix とは別 artifact 名で扱う
+- job は `macos-14` 上で Darwin arm64 actual native artifact を生成する
 - package 前に `bash scripts/ci/native-only-rc-smoke.sh ci-artifacts/native-proxy/{id}` を実行する
-- smoke / verify / signing の結果を experimental release notes に添付する
+- `experimental-native-rc-{version}-aarch64-apple-darwin.tar.gz` と `checksums.txt` を release asset として添付する
+- smoke / verify の結果を experimental release notes に添付する
 - ローカル再現は `NATIVE_PROXY_ARTIFACT_ID=<id> bash scripts/ci/build-native.sh` の後、`bash scripts/ci/native-only-rc-smoke.sh ci-artifacts/native-proxy/<id>` を実行する
 
 ## 正本参照
@@ -45,4 +47,4 @@ host launcher + embedded guest component が引き続き公式 distribution の�
 
 ## ステータス
 
-Deferred。artifact layout / smoke test / 配布手順は actual native self-regeneration 成果物に合わせて固定済み。公式配布は引き続き host launcher + embedded guest component を正本とし、native-only RC は future experimental channel としてのみ扱う。
+完了。artifact layout / smoke test / 配布手順 / release workflow は actual native self-regeneration 成果物に合わせて固定済み。公式配布は引き続き host launcher + embedded guest component を正本とし、native-only RC は experimental channel としてのみ扱う。

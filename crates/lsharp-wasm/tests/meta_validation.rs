@@ -246,16 +246,15 @@ fn test_meta_05_branch_protection_required_check_contract() {
     );
 }
 
-/// TEST-META-06: Deferred / v2 native 項目の正本同期
+/// TEST-META-06: selfhosting completion track の正本同期
 ///
 /// 以下を検証:
-/// 1. `TODO.md` の「現在の残タスク一覧（正本）」に Deferred / v2 項目を混ぜない
-/// 2. `TODO.md` の Deferred / v2 節が V2-08 / V2-09 / V2-10 を保持する
-/// 3. `TODO.md` の Deferred / v2 注記が V2-01〜V2-10 と `v2-designs/` を参照している
-/// 4. `phase11-implementation-plan.md` に V2-08 / V2-09 / V2-10 節が存在する
-/// 5. V2-08 / V2-09 / V2-10 の設計 docs が存在し、Deferred 方針を説明している
+/// 1. `TODO.md` の「現在の残タスク一覧（正本）」が V2-08 / V2-09 / V2-10 の完了状態を持つ
+/// 2. `TODO.md` の Deferred / v2 節が V2-09 / V2-10 を完了済み selfhosting completion evidence として保持する
+/// 3. `phase11-implementation-plan.md` に V2-08 / V2-09 / V2-10 節が存在する
+/// 4. V2-08 / V2-09 / V2-10 の設計 docs が完了 evidence と実行 gate を説明している
 #[test]
-fn test_meta_06_deferred_v2_native_docs_are_synced() {
+fn test_meta_06_selfhosting_completion_docs_are_synced() {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
@@ -272,37 +271,31 @@ fn test_meta_06_deferred_v2_native_docs_are_synced() {
         .split("### Deferred / v2")
         .nth(1)
         .expect("TODO.md の Deferred / v2 section が見つからない");
+    for expected in [
+        "- [x] `V2-08` Native backend self-regeneration",
+        "- [x] `V2-09` Wasm/native differential zero",
+        "- [x] `V2-10` Native-only RC distribution",
+    ] {
+        assert!(
+            current_remaining_section.contains(expected),
+            "TODO.md の現在の残タスク一覧に完了済み selfhosting task `{expected}` が必要"
+        );
+    }
+    for unexpected in [
+        "[DEFERRED] `V2-09`",
+        "[DEFERRED] `V2-10`",
+        "[DEFERRED] V2-09",
+        "[DEFERRED] V2-10",
+    ] {
+        assert!(
+            !todo_content.contains(unexpected),
+            "V2-09/V2-10 は selfhosting completion track に昇格したため Deferred 表記を残さないこと: {unexpected}"
+        );
+    }
     assert!(
-        !current_remaining_section
-            .contains("- [~] `V2-08` Native backend self-regeneration（Deferred）"),
-        "TODO.md の残タスク一覧に Deferred の V2-08 を混ぜないこと"
-    );
-    assert!(
-        !current_remaining_section
-            .contains("- [~] `V2-09` Wasm/native differential zero（Deferred）"),
-        "TODO.md の残タスク一覧に Deferred の V2-09 を混ぜないこと"
-    );
-    assert!(
-        !current_remaining_section
-            .contains("- [ ] `V2-10` Native-only RC distribution（Deferred）"),
-        "TODO.md の残タスク一覧に Deferred の V2-10 を混ぜないこと"
-    );
-    assert!(
-        todo_content.contains("V2-01〜V2-10")
-            && todo_content.contains("docs/development/planning/v2-designs/"),
-        "TODO.md の Deferred / v2 注記は plan 節と v2-designs 配下の両方を参照すること"
-    );
-    assert!(
-        deferred_section.contains("- [DEFERRED] V2-08 Native backend self-regeneration"),
-        "TODO.md の Deferred / v2 節で V2-08 の詳細が存在すること"
-    );
-    assert!(
-        deferred_section.contains("- [DEFERRED] V2-09 Wasm/native differential zero"),
-        "TODO.md の Deferred / v2 節で V2-09 の詳細が存在すること"
-    );
-    assert!(
-        deferred_section.contains("- [DEFERRED] V2-10 Native-only RC distribution"),
-        "TODO.md では V2-10 は Deferred 項目として [DEFERRED] を維持すること"
+        deferred_section.contains("- [x] V2-09 Wasm/native differential zero")
+            && deferred_section.contains("- [x] V2-10 Native-only RC distribution"),
+        "TODO.md の Deferred / v2 節は V2-09/V2-10 を完了済み evidence として保持すること"
     );
 
     let plan_path = project_root.join("docs/development/planning/phase11-implementation-plan.md");
@@ -330,10 +323,8 @@ fn test_meta_06_deferred_v2_native_docs_are_synced() {
         let content = std::fs::read_to_string(doc)
             .unwrap_or_else(|e| panic!("{} の読み込みに失敗: {}", doc.display(), e));
         assert!(
-            content.contains("Deferred")
-                || content.contains("Phase 11 後")
-                || content.contains("Component Model pivot"),
-            "{} は Deferred / post-Phase11 方針を説明すること",
+            content.contains("ステータス") && content.contains("完了"),
+            "{} は selfhosting completion evidence と完了状態を説明すること",
             doc.display()
         );
     }

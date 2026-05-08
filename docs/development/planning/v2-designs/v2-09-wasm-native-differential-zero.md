@@ -2,8 +2,8 @@
 
 ## 概要
 
-Wasm と native backend の観測差分ゼロは、Component Model pivot 後は Phase 11 の completion gate ではなく Deferred/v2 の研究課題として扱う。  
-このページでは、既存の differential harness / allowlist / sample parity を future tier1 parity へ繋ぐための正本条件を整理する。
+Wasm と native backend の観測差分ゼロは、Component Model pivot 後は Phase 11 の completion gate ではなく Deferred/v2 の研究課題として扱っていた。
+現在は selfhosting completion track として、actual self-regenerated stage artifacts と aarch64 selfhost native gap 0 を完了 evidence に昇格している。
 
 ## 前提条件
 
@@ -11,7 +11,7 @@ Wasm と native backend の観測差分ゼロは、Component Model pivot 後は 
 - `tests/differential-allowlist.yaml` の `allowlist: []` を維持する
 - 公式配布が host launcher + embedded guest component であることを維持する
 
-## 現状 evidence
+## 完了 evidence
 
 - `test_e2e_wasm_native_differential_five_observation_points`
 - `test_e2e_differential_allowlist_empty`
@@ -23,8 +23,9 @@ Wasm と native backend の観測差分ゼロは、Component Model pivot 後は 
 - `test_e2e_zero_diff_sample_summary`
 - `test_e2e_zero_diff_const_extended_corpus`
 - `test_e2e_wasm_native_differential_uses_actual_self_regenerated_stage_artifacts`
+- `test_e2e_native_actual_stage23_gap_report_has_zero_aarch64_selfhost_blockers`
 
-これらは differential harness と narrow zero-diff sample の partial evidence であり、tier1 artifact 全体の zero diff 完了証跡ではない。
+これらにより、5 観測点 harness、empty allowlist、extended const corpus、actual self-regenerated stage artifacts、Darwin arm64 selfhost function-meta の native unsupported gap 0 を完了証跡として固定する。x86_64 selfhost runtime helper の full native execution は native-only RC の初期 target 外であり、今後の cross-platform native execution track で扱う。
 
 ## 設計
 
@@ -62,4 +63,4 @@ Wasm と native backend の観測差分ゼロは、Component Model pivot 後は 
 
 ## ステータス
 
-Deferred。Phase 11 完了判定には含めない。現状の empty allowlist と sample parity は regression guard であり、tier1 differential zero の完了証跡ではない。
+完了。Phase 11 完了判定には含めないが、selfhosting completion track として actual self-regenerated stage artifacts の differential input 化と aarch64 selfhost opcode gap 0 を固定済み。

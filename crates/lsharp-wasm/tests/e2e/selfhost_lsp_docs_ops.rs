@@ -2442,6 +2442,24 @@ fn test_e2e_native_ops02_native_only_rc_contract() {
             && playbook_content.contains("scripts/ci/native-only-rc-smoke.sh"),
         "release-playbook.md は experimental native-only RC smoke 手順を案内すること"
     );
+
+    let release_workflow = project_root.join(".github/workflows/release.yml");
+    let release_workflow_content =
+        std::fs::read_to_string(&release_workflow).expect("release.yml の読み込みに失敗");
+    for expected in [
+        "experimental-native-rc",
+        "macos-14",
+        "scripts/ci/build-native.sh",
+        "scripts/ci/native-only-rc-smoke.sh",
+        "experimental-native-rc-${{ needs.verify.outputs.version }}-aarch64-apple-darwin.tar.gz",
+        "checksums.txt",
+    ] {
+        assert!(
+            release_workflow_content.contains(expected),
+            "release.yml は native-only RC workflow 契約 `{}` を含むこと",
+            expected
+        );
+    }
 }
 
 /// TEST-OPS-03b: 手動診断用 `test_debug_*` は full `cargo test` の通常 gate に入れないこと

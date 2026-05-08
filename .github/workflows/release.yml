@@ -14,8 +14,13 @@ jobs:
   verify:
     name: Verify (test + lint + format)
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+      - id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -151,6 +156,45 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
+  # experimental native-only RC。公式 host launcher + embedded guest component 配布は置き換えない。
+  experimental-native-rc:
+    name: Experimental native-only RC (aarch64-apple-darwin)
+    runs-on: macos-14
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: experimental native-only RC artifact の生成
+        shell: bash
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          TARGET: aarch64-apple-darwin
+        run: |
+          artifact_id="${VERSION}-${TARGET}"
+          archive_name="experimental-native-rc-${VERSION}-${TARGET}.tar.gz"
+          NATIVE_PROXY_ARTIFACT_ID="${artifact_id}" bash scripts/ci/build-native.sh
+          bash scripts/ci/native-only-rc-smoke.sh "ci-artifacts/native-proxy/${artifact_id}"
+          mkdir -p dist
+          tar -C ci-artifacts/native-proxy -czf "dist/${archive_name}" "${artifact_id}"
+          cat > dist/experimental-native-rc-notes.txt <<'EOF'
+          experimental native-only RC
+
+          This artifact does not replace host launcher + embedded guest component distribution.
+          Verified with scripts/ci/native-only-rc-smoke.sh before packaging.
+          EOF
+          bash scripts/checksum.sh dist > dist/checksums.txt
+      - name: experimental native-only RC artifact のアップロード
+        uses: actions/upload-artifact@v4
+        with:
+          name: experimental-native-rc-${{ needs.verify.outputs.version }}-aarch64-apple-darwin
+          path: |
+            dist/experimental-native-rc-${{ needs.verify.outputs.version }}-aarch64-apple-darwin.tar.gz
+            dist/checksums.txt
+            dist/experimental-native-rc-notes.txt
+          retention-days: 30
+          if-no-files-found: error
+
   # build 済み archive を download し、Rust toolchain 無しで release smoke を再実行
   release-smoke:
     name: Release smoke (downloaded artifacts)
@@ -178,7 +222,9 @@ jobs:
   release:
     name: GitHub Release 作成
     runs-on: ubuntu-latest
-    needs: release-smoke
+    needs:
+      - release-smoke
+      - experimental-native-rc
     permissions:
       contents: write
     steps:

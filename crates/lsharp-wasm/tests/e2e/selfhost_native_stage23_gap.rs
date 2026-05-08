@@ -920,12 +920,41 @@ fn test_e2e_native_actual_stage23_gap_report_for_representative_entry() {
         report.selfhost_unsupported_aarch64
     );
     assert!(
+        report.unsupported_aarch64.is_empty(),
+        "aarch64 lowered IR の native unsupported blocker は 0 であるべき: {:?}",
+        report.unsupported_aarch64
+    );
+    assert!(
+        report.selfhost_unsupported_aarch64.is_empty(),
+        "aarch64 selfhost function-meta の native unsupported blocker は 0 であるべき: {:?}",
+        report.selfhost_unsupported_aarch64
+    );
+    assert!(
         !report
             .selfhost_unsupported_x86_64
             .iter()
             .any(|name| matches!(name.as_str(), "RootPush" | "RootPop" | "RootSet")),
         "selfhost x86_64 gap report から root ops は消えているべき: {:?}",
         report.selfhost_unsupported_x86_64
+    );
+}
+
+/// V2-09: representative actual stage23 gap report は aarch64 selfhost parity の残 blocker を 0 にする。
+#[test]
+#[ignore]
+fn test_e2e_native_actual_stage23_gap_report_has_zero_aarch64_selfhost_blockers() {
+    let entry_path = selfhost_main_path();
+    let report = collect_selfhost_native_stage23_gap_report(&entry_path);
+
+    assert!(
+        report.unsupported_aarch64.is_empty(),
+        "aarch64 lowered IR の native unsupported blocker が残っている: {:?}",
+        report.unsupported_aarch64
+    );
+    assert!(
+        report.selfhost_unsupported_aarch64.is_empty(),
+        "aarch64 selfhost function-meta の native unsupported blocker が残っている: {:?}",
+        report.selfhost_unsupported_aarch64
     );
 }
 
