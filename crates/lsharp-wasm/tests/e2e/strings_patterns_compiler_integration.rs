@@ -1456,6 +1456,123 @@ fn test_e2e_selfhost_wasmemit_file_exists_instr() {
     assert_eq!(lines[10], "11", "body は end で終わること");
 }
 
+/// selfhost WasmEmit.ls: i64.ge_s opcode を比較命令として emit できること
+#[test]
+fn test_e2e_selfhost_wasmemit_i64_ge_instr() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (>= 3 2))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        code-sec (emit-code-section-functions functions)]
+    (do
+      (print (vector-length code-sec))
+      (print (vector-get code-sec 0))
+      (print (vector-get code-sec 1))
+      (print (vector-get code-sec 2))
+      (print (vector-get code-sec 3))
+      (print (vector-get code-sec 4))
+      (print (vector-get code-sec 5))
+      (print (vector-get code-sec 6))
+      (print (vector-get code-sec 7))
+      (print (vector-get code-sec 8))
+      (print (vector-get code-sec 9))
+      (print (vector-get code-sec 10))
+      (print (vector-get code-sec 11))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(
+        lines.len() >= 13,
+        "i64.ge_s code section 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "12", "code section byte 長は 12 であること");
+    assert_eq!(lines[1], "10", "section id は code=10");
+    assert_eq!(lines[2], "10", "section size は 10");
+    assert_eq!(lines[3], "1", "function count は 1");
+    assert_eq!(lines[4], "8", "function body size は 8");
+    assert_eq!(lines[5], "0", "local decl count は 0");
+    assert_eq!(lines[6], "66", "左辺 i64.const");
+    assert_eq!(lines[7], "3", "左辺 const operand");
+    assert_eq!(lines[8], "66", "右辺 i64.const");
+    assert_eq!(lines[9], "2", "右辺 const operand");
+    assert_eq!(lines[10], "89", ">= は i64.ge_s (0x59) を emit すること");
+    assert_eq!(
+        lines[11], "172",
+        "比較結果は i64.extend_i32_s で i64 に戻すこと"
+    );
+    assert_eq!(lines[12], "11", "body は end で終わること");
+}
+
+/// selfhost WasmEmit.ls: IR opcode 28 を i64.rem_s として emit できること
+#[test]
+fn test_e2e_selfhost_wasmemit_i64_mod_instr() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (% 3 2))")
+        pair (compile-program-functions program)
+        functions (vector-get pair 1)
+        code-sec (emit-code-section-functions functions)]
+    (do
+      (print (vector-length code-sec))
+      (print (vector-get code-sec 0))
+      (print (vector-get code-sec 1))
+      (print (vector-get code-sec 2))
+      (print (vector-get code-sec 3))
+      (print (vector-get code-sec 4))
+      (print (vector-get code-sec 5))
+      (print (vector-get code-sec 6))
+      (print (vector-get code-sec 7))
+      (print (vector-get code-sec 8))
+      (print (vector-get code-sec 9))
+      0)))
+"#;
+    let combined = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}",
+        selfhost_module("Token.ls"),
+        selfhost_module("AST.ls"),
+        selfhost_module("Lexer.ls"),
+        selfhost_module("Parser.ls"),
+        selfhost_module("IR.ls"),
+        selfhost_module("Compiler.ls"),
+        selfhost_module("WasiBackend.ls"),
+        selfhost_module("WasmEmit.ls"),
+        harness
+    );
+    let output = compile_and_run(&combined);
+    let lines: Vec<&str> = output.trim().lines().collect();
+    assert!(
+        lines.len() >= 11,
+        "i64.rem_s code section 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "11", "code section byte 長は 11 であること");
+    assert_eq!(lines[1], "10", "section id は code=10");
+    assert_eq!(lines[2], "9", "section size は 9");
+    assert_eq!(lines[3], "1", "function count は 1");
+    assert_eq!(lines[4], "7", "function body size は 7");
+    assert_eq!(lines[5], "0", "local decl count は 0");
+    assert_eq!(lines[6], "66", "左辺 i64.const");
+    assert_eq!(lines[7], "3", "左辺 const operand");
+    assert_eq!(lines[8], "66", "右辺 i64.const");
+    assert_eq!(lines[9], "2", "右辺 const operand");
+    assert_eq!(lines[10], "129", "% は i64.rem_s (0x81) を emit すること");
+}
+
 /// selfhost Compiler.ls: root_push を builtin として lowering できること
 #[test]
 fn test_e2e_selfhost_compiler_root_push_builtin_lowering() {

@@ -2337,6 +2337,13 @@ fn test_e2e_native_ops01_proxy_artifact_contract() {
             && script_content.contains("not native completion proof"),
         "build-native.sh は representative evidence であり native 完了証明ではないことを明記すること"
     );
+    assert!(
+        script_content.contains("test_e2e_native_host_bundle_uses_canonical_artifact_contract \\\n  -- --exact --ignored --nocapture")
+            && script_content.contains("test_e2e_selfhost_main_native_host_bundle_uses_representative_artifact_contract \\\n  -- --exact --ignored --nocapture")
+            && script_content.contains("test_e2e_stage23_representative_native_host_bundle_artifact_observations_match \\\n  -- --exact --ignored --nocapture")
+            && script_content.contains("test_e2e_native_actual_stage23_gap_report_for_representative_entry \\\n  -- --exact --ignored --nocapture"),
+        "build-native.sh は ignored native proxy gates を --ignored 付きで実行すること"
+    );
 
     let ci = project_root.join(".github/workflows/ci.yml");
     assert!(ci.is_file(), "ci.yml が存在しない");
@@ -4246,6 +4253,10 @@ fn test_fresh_clone_smoke_ci_job() {
     assert!(
         script_content.contains("default-path-smoke.sh"),
         "test-fresh-clone.sh は既存の default-path-smoke.sh を再利用すること"
+    );
+    assert!(
+        script_content.contains("OUT_DIR=\"$clone_dir/target/ci/default-path-smoke\""),
+        "clean checkout から default-path-smoke.sh を呼ぶときは checkout 内の OUT_DIR を使うこと"
     );
     assert!(
         script_content.contains("resolve_selfhost_source")

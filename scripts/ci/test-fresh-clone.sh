@@ -129,11 +129,11 @@ run_clean_checkout_smoke() {
   fi
 
   echo "=== fresh-clone-smoke: reuse default-path smoke ==="
-  OUT_DIR="$WORK_DIR/default-path-smoke" \
+  OUT_DIR="$clone_dir/target/ci/default-path-smoke" \
   LSHARP_BIN="$lsharp_bin" \
     bash scripts/ci/default-path-smoke.sh
 
-  compile_representative_slices "$clone_dir" "$lsharp_bin" "$smoke_out_dir"
+  compile_representative_slices "$clone_dir" "$lsharp_bin" "$clone_dir/target/ci/compile"
   echo "fresh-clone-smoke: OK"
 }
 

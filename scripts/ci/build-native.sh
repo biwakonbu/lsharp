@@ -36,16 +36,16 @@ echo "scope: representative evidence; not native completion proof."
 
 cargo test -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_native_host_bundle_uses_canonical_artifact_contract \
-  -- --exact --nocapture
+  -- --exact --ignored --nocapture
 cargo test -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_selfhost_main_native_host_bundle_uses_representative_artifact_contract \
-  -- --exact --nocapture
+  -- --exact --ignored --nocapture
 cargo test -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage_chain::test_e2e_stage23_representative_native_host_bundle_artifact_observations_match \
-  -- --exact --nocapture
+  -- --exact --ignored --nocapture
 cargo test -p lsharp-wasm --test e2e \
   e2e::selfhost_native_stage23_gap::test_e2e_native_actual_stage23_gap_report_for_representative_entry \
-  -- --exact --nocapture
+  -- --exact --ignored --nocapture
 
 for stage in stage1-native stage2-native stage3-native; do
   if [[ ! -s "${ARTIFACT_DIR}/${stage}/summary.json" ]]; then
