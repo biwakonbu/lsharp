@@ -156,7 +156,11 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
-  # experimental native-only RC。公式 host launcher + embedded guest component 配布は置き換えない。
+  # native-only replacement blocker:
+  # - official Tier1 replacement is tracked by TODO.md V2-13/V2-14/V2-15.
+  # - until x86_64 macOS/Linux and Windows native artifacts are covered, this remains an experimental RC.
+  # - host launcher + embedded guest component stays as rollback compatibility / current stable distribution.
+  # experimental native-only RC。公式 host launcher + embedded guest component 配布はまだ置き換えない。
   experimental-native-rc:
     name: Experimental native-only RC (aarch64-apple-darwin)
     runs-on: macos-14

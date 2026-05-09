@@ -2462,6 +2462,75 @@ fn test_e2e_native_ops02_native_only_rc_contract() {
     }
 }
 
+/// TEST-NATIVE-OPS-03: native-only 完全置換は official replacement track として未完了 blocker を正本化すること
+#[test]
+fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let todo = project_root.join("TODO.md");
+    let todo_content = std::fs::read_to_string(&todo).expect("TODO.md の読み込みに失敗");
+    let current_remaining_section = todo_content
+        .split("## 現在の残タスク一覧（正本）")
+        .nth(1)
+        .and_then(|rest| rest.split("## Phase 11: Rust 完全撤去").next())
+        .expect("TODO.md の現在の残タスク一覧 section が見つからない");
+    for expected in [
+        "- [ ] `V2-13` Native-only official replacement target matrix",
+        "- [ ] `V2-14` Native-only official release artifact layout",
+        "- [ ] `V2-15` Native-only official release smoke and rollback",
+    ] {
+        assert!(
+            current_remaining_section.contains(expected),
+            "TODO.md の正本に native-only 完全置換 task `{}` が必要",
+            expected
+        );
+    }
+
+    let native_spec = project_root.join("docs/language/native-backend-spec.md");
+    let native_spec_content =
+        std::fs::read_to_string(&native_spec).expect("native-backend-spec.md の読み込みに失敗");
+    for expected in [
+        "Native-only official replacement track",
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+        "x86_64-pc-windows-msvc",
+        "BLOCKED",
+    ] {
+        assert!(
+            native_spec_content.contains(expected),
+            "native-backend-spec.md は native-only 完全置換 blocker `{}` を明記すること",
+            expected
+        );
+    }
+
+    let release_policy =
+        project_root.join("docs/development/operations/release-distribution-signing.md");
+    let release_policy_content = std::fs::read_to_string(&release_policy)
+        .expect("release-distribution-signing.md の読み込みに失敗");
+    for expected in [
+        "Native-only official replacement track",
+        "host launcher + embedded guest component",
+        "rollback compatibility",
+        "native-only replacement blocker",
+    ] {
+        assert!(
+            release_policy_content.contains(expected),
+            "release-distribution-signing.md は native-only 置換方針 `{}` を記述すること",
+            expected
+        );
+    }
+
+    let release_workflow = project_root.join(".github/workflows/release.yml");
+    let release_workflow_content =
+        std::fs::read_to_string(&release_workflow).expect("release.yml の読み込みに失敗");
+    assert!(
+        release_workflow_content.contains("native-only replacement blocker")
+            && release_workflow_content.contains("experimental-native-rc"),
+        "release.yml は native-only 完全置換の blocker と現行 experimental RC の境界を明記すること"
+    );
+}
+
 /// TEST-OPS-03b: 手動診断用 `test_debug_*` は full `cargo test` の通常 gate に入れないこと
 #[test]
 fn test_e2e_ops03b_debug_tests_are_ignored() {

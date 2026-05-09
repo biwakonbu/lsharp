@@ -140,6 +140,18 @@ bash scripts/checksum.sh dist > dist/checksums.txt
 
 experimental archive には top-level `manifest.json` / `actual-stage23-gap.json` と、`stage1-native` / `stage2-native` / `stage3-native` の `program.o`, `runtime.o`, `linker-response.txt`, `program.native`, `stdout.txt`, `stderr.txt`, `summary.json` を含める。release notes には `experimental native-only RC`、`host launcher + embedded guest component distribution を置き換えない`、`scripts/ci/native-only-rc-smoke.sh` の結果を明記する。
 
+### 9. Native-only official replacement track
+
+native-only を公式配布へ完全置換する作業は V2-13〜V2-15 の active backlog として扱う。完了後は native-only archive を stable / nightly の正本にし、host launcher + embedded guest component は rollback compatibility 用の互換成果物へ降格する。
+
+現時点では以下が native-only replacement blocker である。
+
+1. actual native self-regeneration は `aarch64-apple-darwin` のみ完了しており、`x86_64-apple-darwin` / `x86_64-unknown-linux-gnu` / `x86_64-pc-windows-msvc` の Tier1 official gate が未完了。
+2. `x86_64-pc-windows-msvc` は native backend spec 上 BLOCKED で、COFF/PE runtime/link/smoke と Authenticode gate が必要。
+3. `scripts/release.sh` / `scripts/ci/release-smoke.sh` / `.github/workflows/release.yml` は現行 stable 配布として host launcher + embedded guest component を前提にしている。
+
+この track を再開する場合は、まず `docs/language/native-backend-spec.md` の target matrix を更新し、次に native-only official archive layout / release smoke / rollback anchor を `release-distribution-signing.md` と workflow に同期する。
+
 ## ロールバック
 
 リリース後に致命的問題が発見された場合:

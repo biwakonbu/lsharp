@@ -1,11 +1,11 @@
 # Native Backend 仕様
 
-> **Status: Deferred (2026-03-30)**
+> **Status: Native-only official replacement track active (2026-05-09)**
 >
-> Wasmtime embedding + Component Model を正式配布モデルに据える方針転換により、native backend は Phase 11 の completion gate から外れ Deferred/v2 (V2-08, V2-09) へ移動した。
-> 主配布モデルは Component Model embedding であり、native backend は将来の探求用に保持する。
-> コードは `selfhost/src/Backend/Native/` に残存し、既存 50+ E2E tests も維持される。
-> 詳細は `TODO.md` の Deferred/v2 セクション、`docs/development/planning/phase11-implementation-plan.md#v2-08-native-backend-self-regeneration`、`docs/development/planning/v2-designs/v2-08-native-backend-self-regeneration.md`、`docs/development/planning/v2-designs/v2-09-wasm-native-differential-zero.md` および `backend-boundary.md` を参照。
+> V2-08〜V2-10 で Darwin arm64 の actual native self-regeneration と experimental native-only RC は完了した。
+> 次の目標は native-only official replacement track として、host launcher + embedded guest component 配布を rollback compatibility へ降格し、native-only を公式配布へ完全置換すること。
+> ただし Tier1 target matrix には未完了 blocker が残るため、V2-13〜V2-15 を TODO.md の正本に積む。
+> 詳細は `TODO.md` の現在の残タスク一覧、`docs/development/planning/v2-designs/v2-08-native-backend-self-regeneration.md`、`docs/development/planning/v2-designs/v2-09-wasm-native-differential-zero.md`、`docs/development/planning/v2-designs/v2-10-native-only-rc-distribution.md` および `backend-boundary.md` を参照。
 
 ## 目的
 
@@ -22,13 +22,13 @@ native backend は既存の `LoweredModule` を入力として受け取り、tar
 - object emitter と linker 連携
 - 決定的コード生成の要件
 
-以下は v1 の対象外とする。
+以下は v1 の対象外だったが、Native-only official replacement track では Tier1 完全置換 blocker として扱う。
 
 - tail call 最適化
 - デバッグ情報の完全サポート
 - C ABI を越えた汎用 FFI 面の拡張
 - JIT や動的ロード
-- Windows 向けネイティブ成果物
+- Windows 向けネイティブ成果物 (**BLOCKED**: `x86_64-pc-windows-msvc` の object/link/runtime 契約が未実装)
 
 ## パイプライン上の位置づけ
 
@@ -50,6 +50,15 @@ v1 で対象とするターゲットは次のとおりである。
 - `x86_64-apple-darwin`
 - `aarch64-apple-darwin`
 - `x86_64-unknown-linux-gnu`
+
+Native-only official replacement track で公式 Tier1 置換に必要な target matrix は次のとおりである。
+
+| target | 現状 | 置換 blocker |
+|---|---|---|
+| `aarch64-apple-darwin` | actual native self-regeneration / experimental RC 完了 | stable 公式導線への昇格 |
+| `x86_64-apple-darwin` | spec 対象、実行 artifact coverage は未完了 | actual native self-regeneration と release smoke |
+| `x86_64-unknown-linux-gnu` | spec 対象、実行 artifact coverage は未完了 | ELF runtime/link/smoke の official gate |
+| `x86_64-pc-windows-msvc` | **BLOCKED** | COFF/PE runtime/link/smoke と Authenticode gate |
 
 追加ターゲットを導入する場合でも、`LoweredModule` や runtime 契約の共有を前提にしなければならない。
 
