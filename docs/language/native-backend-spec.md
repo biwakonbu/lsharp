@@ -57,8 +57,14 @@ Native-only official replacement track で公式 Tier1 置換に必要な target
 |---|---|---|
 | `aarch64-apple-darwin` | actual native self-regeneration / experimental RC 完了 | stable 公式導線への昇格 |
 | `x86_64-apple-darwin` | spec 対象、実行 artifact coverage は未完了 | actual native self-regeneration と release smoke |
-| `x86_64-unknown-linux-gnu` | spec 対象、実行 artifact coverage は未完了 | ELF runtime/link/smoke の official gate |
+| `x86_64-unknown-linux-gnu` | active priority: Linux x86_64 server priority track で先行検証中 | actual Linux native self-regeneration / runtime-link smoke |
 | `x86_64-pc-windows-msvc` | **BLOCKED** | COFF/PE runtime/link/smoke と Authenticode gate |
+
+### Linux x86_64 server priority track
+
+サーバー用途を優先するため、`x86_64-unknown-linux-gnu` は full Tier1 公式置換より先に V2-13a として切り出す。Ubuntu x86_64 VM / GitHub Actions `ubuntu-latest` runner を正本の実行環境とし、まず `NativeTarget` descriptor、ELF object emitter、x86_64 codegen exact-byte smoke を `native-linux-x86-smoke` で required CI に固定する。
+
+この track の受理は Linux VM 上の証跡を必須にする。macOS arm64 ローカルだけでは Linux ELF runtime/link smoke と actual native self-regeneration を完了扱いにしない。
 
 追加ターゲットを導入する場合でも、`LoweredModule` や runtime 契約の共有を前提にしなければならない。
 

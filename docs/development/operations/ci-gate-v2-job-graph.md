@@ -15,6 +15,7 @@ test-fresh-clone ─────┤
 fresh-clone-smoke ────┤──→ ci-gate ──→ ci-gate-v2
 gc-metrics-artifact ──┤
 native-proxy-artifact ┤
+native-linux-x86-smoke ┤
 editor-extension-build ┤
 shadow-oracle ─────────┘────────────→ ci-gate-v2 (non-blocking)
 ```
@@ -27,10 +28,11 @@ shadow-oracle ─────────┘────────────
 - `fresh-clone-smoke` は `test` 完了後に開始する（`needs: [test]`）
 - `gc-metrics-artifact` は `test` 完了後に開始し、targeted GC metrics JSON を回収する（`needs: [test]`）
 - `native-proxy-artifact` は `test` 完了後に開始し、Darwin arm64 host で `build-native.sh` を実行して native proxy bundle artifact を回収する（`needs: [test]`）
+- `native-linux-x86-smoke` は `test` 完了後に開始し、Ubuntu x86_64 上で Linux x86_64 native server target の descriptor / ELF emitter / x86_64 codegen smoke を回収する（`needs: [test]`）
 - `editor-extension-build` は VS Code 拡張 compile と Claude Code plugin JSON を検証する
 - `shadow-oracle` は `test` 完了後に開始する（`needs: [test]`、`continue-on-error: true`）
-- `ci-gate` は上記 11 ジョブの全成功を要求する
-- `ci-gate-v2` は `ci-gate` の required 11 ジョブ + `shadow-oracle` を集約する
+- `ci-gate` は上記 12 ジョブの全成功を要求する
+- `ci-gate-v2` は `ci-gate` の required 12 ジョブ + `shadow-oracle` を集約する
 
 ## 必須ジョブ (ci-gate)
 
@@ -46,13 +48,14 @@ shadow-oracle ─────────┘────────────
 | 8 | **fresh-clone-smoke** | `bash scripts/ci/test-fresh-clone.sh` | clean checkout 相当での再ビルド / smoke |
 | 9 | **gc-metrics-artifact** | `bash scripts/ci/collect-gc-metrics.sh` | runtime stability 用の GC metrics JSON を生成 |
 | 10 | **native-proxy-artifact** | `bash scripts/ci/build-native.sh` | Darwin arm64 host で `stage1-native` / `stage2-native` / `stage3-native` proxy bundle artifact を生成 |
-| 11 | **editor-extension-build** | `npm install && npm run compile` + `python3 -c ...plugin.json` | VS Code / Claude Code 拡張の配布面を検証 |
+| 11 | **native-linux-x86-smoke** | `bash scripts/ci/native-linux-x86-smoke.sh` | Linux x86_64 native server target の descriptor / ELF emitter / x86_64 codegen smoke を生成 |
+| 12 | **editor-extension-build** | `npm install && npm run compile` + `python3 -c ...plugin.json` | VS Code / Claude Code 拡張の配布面を検証 |
 
 ### ci-gate の判定ロジック
 
 ```yaml
 if: always()
-# 11 ジョブすべてが success でなければ exit 1
+# 12 ジョブすべてが success でなければ exit 1
 ```
 
 ## ignored gate 実行契約
@@ -77,7 +80,7 @@ if: always()
 
 ### ci-gate-v2 の判定ロジック
 
-1. 必須 11 ジョブのいずれかが失敗 → **exit 1**
+1. 必須 12 ジョブのいずれかが失敗 → **exit 1**
 2. `shadow-oracle` が失敗 → **WARNING ログのみ**（非ブロッキング）
 3. 全ジョブ成功 → **pass**
 
@@ -85,14 +88,14 @@ if: always()
 
 | ブランチ | 必須ジョブ | 説明 |
 |----------|-----------|------|
-| `main` | `ci-gate-v2` | required 11 ジョブ + non-blocking `shadow-oracle` の集約 |
-| PRs | `ci-gate` | 必須 11 ジョブの成功 |
+| `main` | `ci-gate-v2` | required 12 ジョブ + non-blocking `shadow-oracle` の集約 |
+| PRs | `ci-gate` | 必須 12 ジョブの成功 |
 
 GitHub の branch protection UI では required check として Actions 表示名 `CI Gate v2` を選択し、workflow source / docs 正本では job id `ci-gate-v2` を使う。
 
 ## アーティファクト
 
-`ci-gate-v2` はジョブ結果サマリーを `ci-gate-v2-results` として保存する（`retention-days: 30`）。`gc-metrics-artifact` は `gc-metrics-{sha}` として `ci-artifacts/gc-metrics/{commit_sha}/` directory を保存し、`collect-gc-metrics.sh` が正規化した `summary.json` と `collector-proof.json` を同梱する。`native-proxy-artifact` は `native-proxy-{sha}` として `ci-artifacts/native-proxy/{commit_sha}/` directory を保存し、`build-native.sh` が `manifest.json`、`stage1-native` / `stage2-native` / `stage3-native` canonical bundle、`actual-stage23-gap.json` blocker report を同梱する。`test-fresh-clone` は upstream の `fresh-clone-artifact` が `fresh-clone-archive-${sha}` を publish し、それを download して binary-only smoke を行う。
+`ci-gate-v2` はジョブ結果サマリーを `ci-gate-v2-results` として保存する（`retention-days: 30`）。`gc-metrics-artifact` は `gc-metrics-{sha}` として `ci-artifacts/gc-metrics/{commit_sha}/` directory を保存し、`collect-gc-metrics.sh` が正規化した `summary.json` と `collector-proof.json` を同梱する。`native-proxy-artifact` は `native-proxy-{sha}` として `ci-artifacts/native-proxy/{commit_sha}/` directory を保存し、`build-native.sh` が `manifest.json`、`stage1-native` / `stage2-native` / `stage3-native` canonical bundle、`actual-stage23-gap.json` blocker report を同梱する。`native-linux-x86-smoke` は `native-linux-x86-{commit_sha}` として `ci-artifacts/native-linux-x86/{commit_sha}/summary.json` を保存し、`x86_64-unknown-linux-gnu` の target smoke 証跡を同梱する。`test-fresh-clone` は upstream の `fresh-clone-artifact` が `fresh-clone-archive-${sha}` を publish し、それを download して binary-only smoke を行う。
 
 ## 同時実行制御
 

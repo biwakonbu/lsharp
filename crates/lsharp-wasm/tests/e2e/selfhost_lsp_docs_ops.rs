@@ -2531,6 +2531,67 @@ fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
     );
 }
 
+/// TEST-OPS-04: Linux x86_64 server target を native-only replacement の優先 slice として固定する。
+#[test]
+fn test_e2e_native_ops04_linux_x86_server_target_contract() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+
+    let todo = project_root.join("TODO.md");
+    let todo_content = std::fs::read_to_string(&todo).expect("TODO.md の読み込みに失敗");
+    let current_remaining_section = todo_content
+        .split("## 現在の残タスク一覧（正本）")
+        .nth(1)
+        .and_then(|rest| rest.split("## Phase 11: Rust 完全撤去").next())
+        .expect("TODO.md の現在の残タスク一覧 section が見つからない");
+    assert!(
+        current_remaining_section.contains("- [ ] `V2-13a` Linux x86_64 native server target"),
+        "TODO.md の正本に Linux x86_64 server target の優先 task が必要"
+    );
+
+    let native_spec = project_root.join("docs/language/native-backend-spec.md");
+    let native_spec_content =
+        std::fs::read_to_string(&native_spec).expect("native-backend-spec.md の読み込みに失敗");
+    for expected in [
+        "Linux x86_64 server priority track",
+        "`x86_64-unknown-linux-gnu` | active priority",
+        "Ubuntu x86_64 VM",
+    ] {
+        assert!(
+            native_spec_content.contains(expected),
+            "native-backend-spec.md は Linux x86_64 優先 track `{}` を明記すること",
+            expected
+        );
+    }
+
+    let ci_workflow = project_root.join(".github/workflows/ci.yml");
+    let ci_workflow_content =
+        std::fs::read_to_string(&ci_workflow).expect("ci.yml の読み込みに失敗");
+    assert!(
+        ci_workflow_content.contains("native-linux-x86-smoke")
+            && ci_workflow_content.contains("ubuntu-latest")
+            && ci_workflow_content.contains("scripts/ci/native-linux-x86-smoke.sh"),
+        "ci.yml は Ubuntu 上の native-linux-x86-smoke job を持つこと"
+    );
+
+    let ci_graph = project_root.join("docs/development/operations/ci-gate-v2-job-graph.md");
+    let ci_graph_content =
+        std::fs::read_to_string(&ci_graph).expect("ci-gate-v2-job-graph.md の読み込みに失敗");
+    assert!(
+        ci_graph_content.contains("native-linux-x86-smoke")
+            && ci_graph_content.contains("Linux x86_64 native server target"),
+        "ci-gate-v2-job-graph.md は Linux x86_64 native smoke を記述すること"
+    );
+
+    let artifact_policy = project_root.join("docs/development/operations/artifact-policy.md");
+    let artifact_policy_content =
+        std::fs::read_to_string(&artifact_policy).expect("artifact-policy.md の読み込みに失敗");
+    assert!(
+        artifact_policy_content.contains("native-linux-x86-{commit_sha}")
+            && artifact_policy_content.contains("x86_64-unknown-linux-gnu"),
+        "artifact-policy.md は Linux x86_64 native smoke artifact を定義すること"
+    );
+}
+
 /// TEST-OPS-03b: 手動診断用 `test_debug_*` は full `cargo test` の通常 gate に入れないこと
 #[test]
 fn test_e2e_ops03b_debug_tests_are_ignored() {
