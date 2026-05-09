@@ -708,6 +708,10 @@ fn host_native_exec_supported() -> bool {
     cfg!(all(target_os = "macos", target_arch = "aarch64"))
 }
 
+fn linux_x86_native_exec_supported() -> bool {
+    cfg!(all(target_os = "linux", target_arch = "x86_64"))
+}
+
 fn write_native_host_bundle_artifact(
     root_dir: &std::path::Path,
     label: &str,
@@ -8664,6 +8668,10 @@ fn host_target_const_42_code_bytes() -> Vec<u8> {
       (print-bytes code 0 (vector-length code))
        0)))"#,
     )
+}
+
+fn linux_x86_const_42_code_bytes() -> Vec<u8> {
+    vec![72, 137, 193, 184, 42, 0, 0, 0, 195]
 }
 
 fn host_target_plain_program_code_bytes(instrs: &[(u32, i64)]) -> Vec<u8> {
@@ -17391,6 +17399,60 @@ fn link_and_run_native_host_binary(code: &[u8]) -> Result<i32, String> {
     link_and_run_native_host_binary_with_args(code, &[])
 }
 
+fn link_and_run_linux_x86_native_binary(code: &[u8]) -> Result<i32, String> {
+    if !linux_x86_native_exec_supported() {
+        return Err("Linux x86_64 native execution は Linux x86_64 でのみサポート".to_string());
+    }
+
+    let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = target_fixture_dir("e2e-native-fixtures", "native-linux-x86-exec", id);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let result = (|| {
+        let byte_strs: Vec<String> = code.iter().map(|b| format!("0x{b:02x}")).collect();
+        let asm_content = format!(
+            ".text\n\
+             .globl generated\n\
+             generated:\n\
+                 .byte {}\n\
+             .globl main\n\
+             main:\n\
+                 push %rbp\n\
+                 mov %rsp, %rbp\n\
+                 call generated\n\
+                 pop %rbp\n\
+                 ret\n\
+             .section .note.GNU-stack,\"\",@progbits\n",
+            byte_strs.join(", ")
+        );
+        std::fs::write(dir.join("prog.s"), &asm_content)
+            .map_err(|e| format!("prog.s 書き込み失敗: {e}"))?;
+
+        let link_result = std::process::Command::new("cc")
+            .args(["prog.s", "-o", "prog"])
+            .current_dir(&dir)
+            .output()
+            .map_err(|e| format!("cc 実行失敗: {e}"))?;
+
+        if !link_result.status.success() {
+            return Err(format!(
+                "Linux x86_64 link 失敗:\nstdout: {}\nstderr: {}",
+                String::from_utf8_lossy(&link_result.stdout),
+                String::from_utf8_lossy(&link_result.stderr),
+            ));
+        }
+
+        let run_result = std::process::Command::new(dir.join("prog"))
+            .output()
+            .map_err(|e| format!("実行失敗: {e}"))?;
+
+        Ok(run_result.status.code().unwrap_or(-1))
+    })();
+
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
 fn link_and_run_native_host_binary_with_args(code: &[u8], args: &[&str]) -> Result<i32, String> {
     Ok(link_and_run_native_host_binary_capture_with_args(code, args)?.exit_code)
 }
@@ -18218,6 +18280,35 @@ fn test_e2e_native_host_binary_link_and_execute() {
         exit_code,
         42,
         "host binary: exit code 42 を期待したが {} を得た\n\
+         bytes ({} bytes): {:?}",
+        exit_code,
+        code_bytes.len(),
+        code_bytes
+    );
+}
+
+/// NATIVE-LINUX-X86-01: Linux x86_64 VM 上で x86_64 backend の const-42 contract bytes をリンク・実行する。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_const_42_link_and_execute() {
+    if !linux_x86_native_exec_supported() {
+        return;
+    }
+
+    let code_bytes = linux_x86_const_42_code_bytes();
+
+    assert!(
+        !code_bytes.is_empty(),
+        "stage1-native: Linux x86_64 target 向けコードバイト列が空"
+    );
+
+    let exit_code = link_and_run_linux_x86_native_binary(&code_bytes)
+        .expect("Linux x86_64 native binary リンク・実行に失敗");
+
+    assert_eq!(
+        exit_code,
+        42,
+        "Linux x86_64 native binary: exit code 42 を期待したが {} を得た\n\
          bytes ({} bytes): {:?}",
         exit_code,
         code_bytes.len(),

@@ -2555,6 +2555,7 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "Linux x86_64 server priority track",
         "`x86_64-unknown-linux-gnu` | active priority",
         "Ubuntu x86_64 VM",
+        "scripts/ci/native-linux-x86-local-vm-smoke.sh",
     ] {
         assert!(
             native_spec_content.contains(expected),
@@ -2590,6 +2591,25 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
             && artifact_policy_content.contains("x86_64-unknown-linux-gnu"),
         "artifact-policy.md は Linux x86_64 native smoke artifact を定義すること"
     );
+
+    let local_vm_smoke = project_root.join("scripts/ci/native-linux-x86-local-vm-smoke.sh");
+    let local_vm_smoke_content = std::fs::read_to_string(&local_vm_smoke)
+        .expect("native-linux-x86-local-vm-smoke.sh の読み込みに失敗");
+    for expected in [
+        "requires Linux/x86_64",
+        "program.o",
+        "runtime.o",
+        "linker-response.txt",
+        "program.native",
+        "test_e2e_native_linux_x86_const_42_link_and_execute",
+        "expected_exit_code",
+    ] {
+        assert!(
+            local_vm_smoke_content.contains(expected),
+            "local VM smoke は Linux runtime/link contract `{}` を固定すること",
+            expected
+        );
+    }
 }
 
 /// TEST-OPS-03b: 手動診断用 `test_debug_*` は full `cargo test` の通常 gate に入れないこと
