@@ -8674,6 +8674,35 @@ fn linux_x86_const_42_code_bytes() -> Vec<u8> {
     vec![72, 137, 193, 184, 42, 0, 0, 0, 195]
 }
 
+fn linux_x86_selfhost_const_42_expected_code_bytes() -> Vec<u8> {
+    vec![85, 72, 137, 229, 72, 184, 42, 0, 0, 0, 0, 0, 0, 0, 93, 195]
+}
+
+fn linux_x86_selfhost_const_42_code_bytes() -> Vec<u8> {
+    run_native_codegen_host_bytes_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [instr (vector-push (vector-push (vector-new 2) 1) 42)
+        ir (vector-push (vector-new 1) instr)
+        target (make-target 3)
+        code (emit-native ir target)]
+    (do
+      (print-bytes code 0 (vector-length code))
+       0)))"#,
+    )
+}
+
 fn host_target_plain_program_code_bytes(instrs: &[(u32, i64)]) -> Vec<u8> {
     let instr_bindings = instrs
         .iter()
@@ -18328,7 +18357,7 @@ fn test_e2e_native_linux_x86_host_generates_const_42_code_artifact() {
         std::fs::create_dir_all(parent).expect("Linux x86_64 code artifact dir 作成に失敗");
     }
 
-    let code_bytes = linux_x86_const_42_code_bytes();
+    let code_bytes = linux_x86_selfhost_const_42_code_bytes();
     assert!(
         !code_bytes.is_empty(),
         "Linux x86_64 target 向け code artifact が空"
@@ -18339,6 +18368,18 @@ fn test_e2e_native_linux_x86_host_generates_const_42_code_artifact() {
     assert_eq!(
         written, code_bytes,
         "Linux x86_64 code artifact は生成バイト列をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-03: hostgen artifact は Linux target descriptor を指定した selfhost emit-native 由来であること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_selfhost_generates_const_42_code_bytes() {
+    let code_bytes = linux_x86_selfhost_const_42_code_bytes();
+    assert_eq!(
+        code_bytes,
+        linux_x86_selfhost_const_42_expected_code_bytes(),
+        "Linux x86_64 selfhost emit-native bytes は const-42 prologue付き contract bytes と一致すること"
     );
 }
 

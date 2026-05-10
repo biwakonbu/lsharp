@@ -66,7 +66,7 @@ Native-only official replacement track で公式 Tier1 置換に必要な target
 
 開発中の inner loop は GitHub Actions ではなくローカル VM で回す。`scripts/ci/native-linux-x86-local-vm-smoke.sh` は Linux x86_64 VM 上で descriptor / ELF emitter と canonical `program.o` / `runtime.o` / `linker-response.txt` / `program.native` runtime-link smoke を短時間で確認する。QEMU x86_64 VM では selfhost exact-byte suite が重いため、local smoke には含めず、actual native self-regeneration の調査へ進む前の fast gate として扱う。
 
-host 側で生成した Linux x86_64 code artifact を VM 内でリンク・実行する split smoke は `scripts/ci/native-linux-x86-hostgen-vm-exec.sh` で固定する。このスクリプトは `LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT` を指定して host-side artifact generation test を実行し、`limactl` 経由で Ubuntu x86_64 VM に `code.bin` を渡し、VM 内で `program.native` の `actual_exit_code` を確認する。
+host 側の selfhost `emit-native` で生成した Linux x86_64 code artifact を VM 内でリンク・実行する split smoke は `scripts/ci/native-linux-x86-hostgen-vm-exec.sh` で固定する。このスクリプトは `LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT` を指定して host-side selfhost artifact generation test を実行し、`limactl` 経由で Ubuntu x86_64 VM に `code.bin` を渡し、VM 内で `program.native` の `actual_exit_code` を確認する。
 
 この track の受理は Linux VM 上の証跡を必須にする。macOS arm64 ローカルだけでは Linux ELF runtime/link smoke と actual native self-regeneration を完了扱いにしない。
 

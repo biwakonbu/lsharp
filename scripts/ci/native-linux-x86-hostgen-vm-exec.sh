@@ -32,7 +32,7 @@ CODE_ARTIFACT="${ARTIFACT_DIR}/code.bin"
 echo "=== native Linux x86_64 hostgen -> VM exec smoke ==="
 echo "artifact dir: ${ARTIFACT_DIR}"
 echo "VM: ${VM_NAME}"
-echo "scope: host-generated Linux x86_64 code artifact linked and executed inside local VM."
+echo "scope: host-side selfhost-generated Linux x86_64 code artifact linked and executed inside local VM."
 
 LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT="${CODE_ARTIFACT}" \
   cargo test -q -p lsharp-wasm --test e2e \
@@ -121,7 +121,7 @@ cat >summary.json <<JSON
   "host_os": "${HOST_OS}",
   "host_arch": "${HOST_ARCH}",
   "status": "pass",
-  "scope": "host-generated code artifact linked and executed in local Linux x86_64 VM",
+  "scope": "host-side selfhost-generated code artifact linked and executed in local Linux x86_64 VM",
   "expected_exit_code": ${expected_exit_code},
   "actual_exit_code": ${actual_exit_code},
   "canonical_files": [
