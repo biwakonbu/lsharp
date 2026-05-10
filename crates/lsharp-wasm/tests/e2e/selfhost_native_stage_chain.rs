@@ -18316,6 +18316,32 @@ fn test_e2e_native_linux_x86_const_42_link_and_execute() {
     );
 }
 
+/// NATIVE-LINUX-X86-02: ホストで生成した Linux x86_64 native code artifact を VM 実行 smoke へ渡せること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_const_42_code_artifact() {
+    let artifact_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT").expect(
+        "LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT に Linux x86_64 code artifact path を指定すること",
+    );
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent).expect("Linux x86_64 code artifact dir 作成に失敗");
+    }
+
+    let code_bytes = linux_x86_const_42_code_bytes();
+    assert!(
+        !code_bytes.is_empty(),
+        "Linux x86_64 target 向け code artifact が空"
+    );
+
+    std::fs::write(&artifact_path, &code_bytes).expect("Linux x86_64 code artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path).expect("Linux x86_64 code artifact 読み戻しに失敗");
+    assert_eq!(
+        written, code_bytes,
+        "Linux x86_64 code artifact は生成バイト列をそのまま保存すること"
+    );
+}
+
 /// NATIVE-HOST-01b: LocalSet/LocalGet を含む host target バイト列がリンク・実行できること。
 #[test]
 #[ignore]

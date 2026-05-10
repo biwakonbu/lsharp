@@ -2556,6 +2556,7 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "`x86_64-unknown-linux-gnu` | active priority",
         "Ubuntu x86_64 VM",
         "scripts/ci/native-linux-x86-local-vm-smoke.sh",
+        "scripts/ci/native-linux-x86-hostgen-vm-exec.sh",
     ] {
         assert!(
             native_spec_content.contains(expected),
@@ -2607,6 +2608,23 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         assert!(
             local_vm_smoke_content.contains(expected),
             "local VM smoke は Linux runtime/link contract `{}` を固定すること",
+            expected
+        );
+    }
+
+    let hostgen_vm_exec = project_root.join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let hostgen_vm_exec_content = std::fs::read_to_string(&hostgen_vm_exec)
+        .expect("native-linux-x86-hostgen-vm-exec.sh の読み込みに失敗");
+    for expected in [
+        "limactl",
+        "LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT",
+        "test_e2e_native_linux_x86_host_generates_const_42_code_artifact",
+        "program.native",
+        "actual_exit_code",
+    ] {
+        assert!(
+            hostgen_vm_exec_content.contains(expected),
+            "hostgen->VM exec smoke は split execution contract `{}` を固定すること",
             expected
         );
     }
