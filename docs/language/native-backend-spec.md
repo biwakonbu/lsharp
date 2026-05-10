@@ -68,6 +68,8 @@ Native-only official replacement track で公式 Tier1 置換に必要な target
 
 host 側の selfhost `emit-native` で生成した Linux x86_64 code artifact を VM 内でリンク・実行する split smoke は `scripts/ci/native-linux-x86-hostgen-vm-exec.sh` で固定する。このスクリプトは `LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT` を指定して host-side selfhost artifact generation test を実行し、`limactl` 経由で Ubuntu x86_64 VM に `code.bin` を渡し、VM 内で `program.native` の `actual_exit_code` を確認する。
 
+full actual Linux native self-regeneration の未完了 blocker は、AArch64 actual stage23 と同等の **x86 selfhost runtime helper parity**、argc/argv と linear memory/data image を seed する **Linux runtime trampoline**、および release artifact として link 可能な **real ELF object/link artifact** の 3 点に分けて管理する。const-42 VM link/run は x86 codegen と Linux 実行環境の接続確認であり、この 3 点を完了扱いにはしない。
+
 この track の受理は Linux VM 上の証跡を必須にする。macOS arm64 ローカルだけでは Linux ELF runtime/link smoke と actual native self-regeneration を完了扱いにしない。
 
 追加ターゲットを導入する場合でも、`LoweredModule` や runtime 契約の共有を前提にしなければならない。

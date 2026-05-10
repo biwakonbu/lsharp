@@ -2547,6 +2547,17 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         current_remaining_section.contains("- [ ] `V2-13a` Linux x86_64 native server target"),
         "TODO.md の正本に Linux x86_64 server target の優先 task が必要"
     );
+    for expected in [
+        "x86 selfhost runtime helper parity",
+        "Linux runtime trampoline",
+        "real ELF object/link artifact",
+    ] {
+        assert!(
+            current_remaining_section.contains(expected),
+            "TODO.md の V2-13a は Linux x86_64 blocker `{}` を明記すること",
+            expected
+        );
+    }
 
     let native_spec = project_root.join("docs/language/native-backend-spec.md");
     let native_spec_content =
@@ -2557,6 +2568,9 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
         "Ubuntu x86_64 VM",
         "scripts/ci/native-linux-x86-local-vm-smoke.sh",
         "scripts/ci/native-linux-x86-hostgen-vm-exec.sh",
+        "x86 selfhost runtime helper parity",
+        "Linux runtime trampoline",
+        "real ELF object/link artifact",
     ] {
         assert!(
             native_spec_content.contains(expected),
