@@ -102,20 +102,30 @@ struct NativeCodeDataTransport {
     layout: Option<NativeEntrypointLayout>,
 }
 
-fn actual_stage23_seed_source_with_payload_and_code_binding(
+fn actual_stage23_seed_source_with_payload_and_code_binding_and_target(
     payload_expr: &str,
     code_binding_expr: &str,
+    target_expr: &str,
     main_body: &str,
 ) -> String {
-    selfhost_main_native_code_only_export_harness_with_payload_and_code_binding(
+    selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_and_target(
         payload_expr,
         code_binding_expr,
+        target_expr,
         main_body,
     )
     .replacen("(module App.HarnessMain)", "(module App.Seed)", 1)
 }
 
 fn representative_actual_stage23_seed_source() -> String {
+    representative_actual_stage23_seed_source_for_target("(host-target)")
+}
+
+fn linux_x86_representative_actual_stage23_seed_source() -> String {
+    representative_actual_stage23_seed_source_for_target("(make-target 3)")
+}
+
+fn representative_actual_stage23_seed_source_for_target(target_expr: &str) -> String {
     let code_binding_expr = r#"entrypoint-func-idx (- (vector-length callables) 1)
                     entrypoint-payload (emit-native-function-meta-bundle-entrypoint-payload-for-function-with-import-count native-callables 10 entrypoint-func-idx target)
                     code (vector-get entrypoint-payload 0)
@@ -137,9 +147,10 @@ fn representative_actual_stage23_seed_source() -> String {
             (print data-len)
             (print 9000000004)
            (print-packed-code-bytes-loop data 0 data-len)))"#;
-    actual_stage23_seed_source_with_payload_and_code_binding(
+    actual_stage23_seed_source_with_payload_and_code_binding_and_target(
         r#"(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)"#,
         code_binding_expr,
+        target_expr,
         main_body,
     )
 }
@@ -290,6 +301,161 @@ fn run_actual_native_self_regeneration_stage23_pair() -> Result<
         &stage2_input,
         &seed_source,
     )?;
+
+    Ok((stage2_bundle, stage2_input, stage3_bundle, stage3_input))
+}
+
+fn run_linux_x86_actual_native_self_regeneration_transport_stage(
+    label: &str,
+    stage_input: &NativeEntrypointBundle,
+    seed_source: &str,
+) -> Result<(NativeHostArtifactBundle, NativeEntrypointBundle), String> {
+    if !linux_x86_native_exec_supported() {
+        return Err(
+            "Linux x86_64 actual native self-regeneration は Linux/x86_64 でのみサポート"
+                .to_string(),
+        );
+    }
+
+    let bundle = build_linux_x86_host_bundle_with_canonical_artifacts_and_entrypoint(
+        &stage_input.code_bytes,
+        stage_input.entrypoint_offset,
+    )?;
+
+    let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = target_fixture_dir(
+        "e2e-native-fixtures",
+        "linux-x86-native-self-regeneration-actual",
+        id,
+    );
+    let stage_dir = dir.join(label);
+    std::fs::create_dir_all(&stage_dir)
+        .map_err(|e| format!("Linux x86 actual self-regeneration dir 作成失敗: {e}"))?;
+
+    let result = (|| {
+        std::fs::write(stage_dir.join("program.o"), &bundle.program_object)
+            .map_err(|e| format!("program.o 書き込み失敗: {e}"))?;
+        std::fs::write(stage_dir.join("runtime.o"), &bundle.runtime_object)
+            .map_err(|e| format!("runtime.o 書き込み失敗: {e}"))?;
+        std::fs::write(stage_dir.join("linker-response.txt"), &bundle.response_text)
+            .map_err(|e| format!("linker-response.txt 書き込み失敗: {e}"))?;
+        let program_binary_path = stage_dir.join("program.native");
+        std::fs::write(&program_binary_path, &bundle.program_binary)
+            .map_err(|e| format!("program.native 書き込み失敗: {e}"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let permissions = std::fs::Permissions::from_mode(0o755);
+            std::fs::set_permissions(&program_binary_path, permissions)
+                .map_err(|e| format!("program.native の execute bit 設定失敗: {e}"))?;
+        }
+
+        write_representative_selfhost_modules_for_native_stage(&stage_dir)?;
+        let seed_path = stage_dir.join("src/App/Seed.ls");
+        if let Some(parent) = seed_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        }
+        std::fs::write(&seed_path, seed_source)
+            .map_err(|e| format!("{}: {e}", seed_path.display()))?;
+
+        let run_result = std::process::Command::new(&program_binary_path)
+            .current_dir(&stage_dir)
+            .arg("src/App/Seed.ls")
+            .output()
+            .map_err(|e| format!("program.native 実行失敗: {e}"))?;
+        let executed_bundle = NativeHostArtifactBundle {
+            program_object: bundle.program_object.clone(),
+            runtime_object: bundle.runtime_object.clone(),
+            response_text: bundle.response_text.clone(),
+            program_binary: bundle.program_binary.clone(),
+            stdout: run_result.stdout,
+            stderr: run_result.stderr,
+            exit_code: run_result.status.code().unwrap_or(-1),
+        };
+        if executed_bundle.exit_code != 0 {
+            return Err(format!(
+                "{label} exit code が 0 でない: stdout={:?} stderr={:?} exit={}",
+                String::from_utf8_lossy(&executed_bundle.stdout),
+                String::from_utf8_lossy(&executed_bundle.stderr),
+                executed_bundle.exit_code
+            ));
+        }
+        if !executed_bundle.stderr.is_empty() {
+            return Err(format!(
+                "{label} stderr が空でない: {:?}",
+                String::from_utf8_lossy(&executed_bundle.stderr)
+            ));
+        }
+        let transport = extract_native_code_data_transport_output_with_optional_layout(
+            &executed_bundle.stdout,
+            label,
+        );
+        let layout = transport.layout.unwrap_or(NativeEntrypointLayout {
+            function_start_len: stage_input.function_start_len,
+            main_func_idx: stage_input.main_func_idx,
+            entrypoint_offset: stage_input.entrypoint_offset,
+        });
+        let next_bundle = NativeEntrypointBundle {
+            function_start_len: layout.function_start_len,
+            main_func_idx: layout.main_func_idx,
+            declared_code_len: transport.declared_code_len,
+            declared_data_len: transport.declared_data_len,
+            entrypoint_offset: layout.entrypoint_offset,
+            code_bytes: transport.code_bytes,
+            data_bytes: transport.data_bytes,
+        };
+        maybe_write_native_host_bundle_artifact(label, &executed_bundle)
+            .map_err(|e| format!("{label} artifact 書き出し失敗: {e}"))?;
+        Ok((executed_bundle, next_bundle))
+    })();
+
+    if std::env::var_os("LSHARP_NATIVE_PROXY_KEEP_FAILED_DIR").is_none() {
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    result
+}
+
+fn run_linux_x86_actual_native_self_regeneration_stage23_pair() -> Result<
+    (
+        NativeHostArtifactBundle,
+        NativeEntrypointBundle,
+        NativeHostArtifactBundle,
+        NativeEntrypointBundle,
+    ),
+    String,
+> {
+    let seed_source = linux_x86_representative_actual_stage23_seed_source();
+    let escaped_seed_source = escape_lsharp_string(&seed_source);
+    let pairs_expr = format!(
+        r#"(do
+            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+            (compile-file-pairs-with-cache "src/App/Seed.ls" cache-ref parse-count-ref))"#
+    );
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+            (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref))"#
+    );
+
+    let stage1_input =
+        run_selfhost_main_native_x86_function_meta_bundle_host_bytes_harness_with_exprs(
+            "linux-x86-native-stage23-actual-self-regeneration-stage1",
+            &pairs_expr,
+            &payload_expr,
+        );
+    let (stage2_bundle, stage2_input) =
+        run_linux_x86_actual_native_self_regeneration_transport_stage(
+            "linux-x86-actual-stage2-native",
+            &stage1_input,
+            &seed_source,
+        )?;
+    let (stage3_bundle, stage3_input) =
+        run_linux_x86_actual_native_self_regeneration_transport_stage(
+            "linux-x86-actual-stage3-native",
+            &stage2_input,
+            &seed_source,
+        )?;
 
     Ok((stage2_bundle, stage2_input, stage3_bundle, stage3_input))
 }
@@ -1540,6 +1706,20 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding(
     code_binding_expr: &str,
     main_body: &str,
 ) -> String {
+    selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_and_target(
+        payload_expr,
+        code_binding_expr,
+        "(host-target)",
+        main_body,
+    )
+}
+
+fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_and_target(
+    payload_expr: &str,
+    code_binding_expr: &str,
+    target_expr: &str,
+    main_body: &str,
+) -> String {
     format!(
         r#"(module App.HarnessMain)
 (import App.CompilerMode)
@@ -2295,7 +2475,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding(
             (do
               (root_push callables)
               (let [native-callables (normalize-selfhost-native-function-metas callables)
-                    target (host-target)]
+                    target {target_expr}]
                 (do
                   (root_push native-callables)
                   (root_push target)
@@ -2313,6 +2493,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding(
                       0)))))))))))"#,
         payload_expr = payload_expr,
         code_binding_expr = code_binding_expr,
+        target_expr = target_expr,
         main_body = main_body
     )
 }
@@ -2585,6 +2766,41 @@ fn run_selfhost_main_native_function_meta_code_only_host_bytes_harness_with_payl
     extract_native_code_data_transport_output(&output, label)
 }
 
+fn run_selfhost_main_native_x86_function_meta_code_only_host_bytes_harness_with_payload_and_args(
+    label: &str,
+    payload_expr: &str,
+    args: &[&str],
+) -> (usize, Vec<u8>, usize, Vec<u8>) {
+    let main_body = r#"      (let [code-len (vector-length code)
+         data-len (vector-length data)]
+         (do
+           (print 9000000001)
+           (print code-len)
+           (print 9000000002)
+           (print-code-bytes-loop code 0 code-len)
+           (print 9000000003)
+           (print data-len)
+           (print 9000000004)
+           (print-code-bytes-loop data 0 data-len)))"#
+        .to_string();
+    let harness =
+        selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_and_target(
+            payload_expr,
+            "code (emit-native-function-meta-bundle-with-import-count native-callables 10 target)",
+            "(make-target 3)",
+            &main_body,
+        );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        label,
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        args,
+    )
+    .unwrap_or_else(|e| panic!("{label} x86 code-only transport harness 実行に失敗: {e}"));
+    extract_native_code_data_transport_output(&output, label)
+}
+
 fn run_selfhost_main_native_function_meta_code_only_host_bytes_harness()
 -> (usize, Vec<u8>, usize, Vec<u8>) {
     run_selfhost_main_native_function_meta_code_only_host_bytes_harness_with_payload(
@@ -2677,6 +2893,200 @@ fn run_selfhost_main_native_function_meta_bundle_host_bytes_harness_with_exprs_a
         code_bytes,
         data_bytes,
     }
+}
+
+fn selfhost_main_representative_x86_layout_harness_source(
+    pairs_expr: &str,
+    payload_expr: &str,
+) -> String {
+    format!(
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn find-defn-index-by-hash [decls idx len target-hash]
+  (if (>= idx len)
+    -1
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (if (= (vector-get decl 1) target-hash)
+          idx
+          (find-defn-index-by-hash decls (+ idx 1) len target-hash))
+        (find-defn-index-by-hash decls (+ idx 1) len target-hash)))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        pairs {pairs_expr}
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        ftable (vector-get reg-result 0)
+        main-pair (vector-get pairs (- (vector-length pairs) 1))
+        main-decls (vector-get main-pair 1)
+        main-defn-idx (find-defn-index-by-hash main-decls 0 (vector-length main-decls) 3343801)
+        main-hash (vector-get (vector-get main-decls main-defn-idx) 1)
+        main-func-idx (map-get ftable main-hash)
+        payload {payload_expr}
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        starts (collect-callable-function-starts-x86 native-callables 10)
+        callable-idx (- main-func-idx 10)]
+    (do
+      (print (vector-length callables))
+      (print main-func-idx)
+      (print (vector-length starts))
+      (print callable-idx)
+      (print (vector-get starts callable-idx))
+      (print (vector-get starts 0))
+      (print (vector-get starts (- (vector-length starts) 1)))
+      0)))"#,
+        pairs_expr = pairs_expr,
+        payload_expr = payload_expr
+    )
+}
+
+fn run_selfhost_main_representative_x86_layout_harness_with_exprs_and_args(
+    label: &str,
+    pairs_expr: &str,
+    payload_expr: &str,
+    args: &[&str],
+) -> NativeEntrypointLayout {
+    let harness = selfhost_main_representative_x86_layout_harness_source(pairs_expr, payload_expr);
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        label,
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        args,
+    )
+    .unwrap_or_else(|e| panic!("{label} x86 layout harness 実行に失敗: {e}"));
+
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.len(),
+        7,
+        "representative x86 layout 出力が不足: {lines:?}"
+    );
+    assert_eq!(
+        lines[2],
+        lines[0] - 10,
+        "function-starts 数が user callable 数と一致しない: {lines:?}"
+    );
+    assert_eq!(
+        lines[3],
+        lines[1] - 10,
+        "main callable idx が import prefix と整合しない: {lines:?}"
+    );
+    if lines[2] > 1 {
+        assert!(
+            lines[4] > 0,
+            "x86 layout の main function start が 0 に落ちている: {lines:?}"
+        );
+    }
+    assert_eq!(
+        lines[4], lines[6],
+        "main が末尾 callable なのに last start と一致しない: {lines:?}"
+    );
+    NativeEntrypointLayout {
+        function_start_len: lines[0] as usize,
+        main_func_idx: lines[1] as usize,
+        entrypoint_offset: lines[4] as usize,
+    }
+}
+
+fn run_selfhost_main_native_x86_function_meta_bundle_host_bytes_harness_with_exprs(
+    label: &str,
+    pairs_expr: &str,
+    payload_expr: &str,
+) -> NativeEntrypointBundle {
+    let layout = run_selfhost_main_representative_x86_layout_harness_with_exprs_and_args(
+        &format!("{label}-layout"),
+        pairs_expr,
+        payload_expr,
+        &[],
+    );
+    let (declared_code_len, code_bytes, declared_data_len, data_bytes) =
+        run_selfhost_main_native_x86_function_meta_code_only_host_bytes_harness_with_payload_and_args(
+            &format!("{label}-code-only"),
+            payload_expr,
+            &[],
+        );
+
+    NativeEntrypointBundle {
+        function_start_len: layout.function_start_len,
+        main_func_idx: layout.main_func_idx,
+        declared_code_len,
+        declared_data_len,
+        entrypoint_offset: layout.entrypoint_offset,
+        code_bytes,
+        data_bytes,
+    }
+}
+
+#[test]
+#[ignore = "linux-x86 actual stage2 regression: entrypoint call rel32 must not escape the bundle"]
+fn test_e2e_selfhost_main_representative_x86_entrypoint_first_call_stays_in_bundle() {
+    let bundle = run_selfhost_main_native_x86_function_meta_bundle_host_bytes_harness_with_exprs(
+        "native-stage23-representative-x86-entrypoint-call-range",
+        r#"(compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)"#,
+        r#"(compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)"#,
+    );
+
+    let entry = bundle.entrypoint_offset;
+    assert!(
+        entry + 16 <= bundle.code_bytes.len(),
+        "entrypoint window が code 範囲外: entry={} len={}",
+        entry,
+        bundle.code_bytes.len()
+    );
+    assert_eq!(
+        &bundle.code_bytes[entry..entry + 4],
+        &[0x55, 0x48, 0x89, 0xe5],
+        "x86 entrypoint は push rbp; mov rbp,rsp で始まるべき"
+    );
+    let call_offset = (entry..(entry + 128).min(bundle.code_bytes.len().saturating_sub(5)))
+        .find(|offset| bundle.code_bytes[*offset] == 0xe8)
+        .unwrap_or_else(|| panic!("entrypoint 近傍に rel32 call が無い: entry={entry}"));
+    let rel = i32::from_le_bytes([
+        bundle.code_bytes[call_offset + 1],
+        bundle.code_bytes[call_offset + 2],
+        bundle.code_bytes[call_offset + 3],
+        bundle.code_bytes[call_offset + 4],
+    ]);
+    let target = call_offset as isize + 5 + rel as isize;
+    assert!(
+        (0..bundle.code_bytes.len() as isize).contains(&target),
+        "entrypoint first call target が bundle 外: entry={} call_offset={} rel={} target={} len={}",
+        entry,
+        call_offset,
+        rel,
+        target,
+        bundle.code_bytes.len()
+    );
 }
 
 #[allow(dead_code)]
@@ -8701,6 +9111,305 @@ fn linux_x86_selfhost_const_42_code_bytes() -> Vec<u8> {
       (print-bytes code 0 (vector-length code))
        0)))"#,
     )
+}
+
+fn linux_x86_selfhost_const_42_object_bytes() -> Vec<u8> {
+    let output = run_native_pipeline_harness(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [instr (vector-push (vector-push (vector-new 2) 1) 42)
+        ir (vector-push (vector-new 1) instr)
+        target (make-target 3)
+        code (emit-native ir target)
+        object (emit-object code target)]
+    (do
+      (print-bytes object 0 (vector-length object))
+      0)))"#,
+    );
+    output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u8>()
+                .unwrap_or_else(|_| panic!("ELF object byte parse 失敗: {line}"))
+        })
+        .collect::<Vec<u8>>()
+}
+
+fn linux_x86_selfhost_command_line_arg_string_length_object_bytes(arg_index: u32) -> Vec<u8> {
+    let output = run_native_pipeline_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 {arg_index})
+        instr1 (make-instr 67 0)
+        instr2 (make-instr 51 0)
+        ir (vector-push
+             (vector-push
+               (vector-push (vector-new 3) instr0)
+               instr1)
+             instr2)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (make-target 3)
+        native (emit-native-function-meta-bundle functions target)
+        object (emit-object native target)]
+    (do
+      (print-bytes object 0 (vector-length object))
+      0)))"#
+    ));
+    output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u8>()
+                .unwrap_or_else(|_| panic!("Linux x86_64 argv ELF object byte parse 失敗: {line}"))
+        })
+        .collect::<Vec<u8>>()
+}
+
+fn linux_x86_selfhost_command_line_arg_string_char_at_object_bytes(
+    arg_index: u32,
+    char_index: u32,
+) -> Vec<u8> {
+    let output = run_native_pipeline_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 {arg_index})
+        instr1 (make-instr 67 0)
+        instr2 (make-instr 3 {char_index})
+        instr3 (make-instr 50 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push (vector-new 4) instr0)
+                 instr1)
+               instr2)
+             instr3)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (make-target 3)
+        native (emit-native-function-meta-bundle functions target)
+        object (emit-object native target)]
+    (do
+      (print-bytes object 0 (vector-length object))
+      0)))"#
+    ));
+    output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u8>().unwrap_or_else(|_| {
+                panic!("Linux x86_64 argv char-at ELF object byte parse 失敗: {line}")
+            })
+        })
+        .collect::<Vec<u8>>()
+}
+
+fn linux_x86_selfhost_print_object_bytes(value: u32) -> Vec<u8> {
+    let output = run_native_pipeline_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [instr0 (make-instr 3 {value})
+        instr1 (make-instr 59 0)
+        ir (vector-push
+             (vector-push (vector-new 2) instr0)
+             instr1)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (make-target 3)
+        native (emit-native-function-meta-bundle functions target)
+        object (emit-object native target)]
+    (do
+      (print-bytes object 0 (vector-length object))
+      0)))"#
+    ));
+    output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u8>()
+                .unwrap_or_else(|_| panic!("Linux x86_64 print ELF object byte parse 失敗: {line}"))
+        })
+        .collect::<Vec<u8>>()
+}
+
+fn linux_x86_selfhost_function_meta_object_bytes(
+    instrs: &[(u32, i64)],
+    local_count: u32,
+) -> Vec<u8> {
+    let instr_bindings = instrs
+        .iter()
+        .enumerate()
+        .map(|(idx, (opcode, operand))| format!("instr{idx} (make-instr {opcode} {operand})"))
+        .collect::<Vec<_>>()
+        .join("\n        ");
+    let ir_expr = (0..instrs.len()).fold(format!("(vector-new {})", instrs.len()), |expr, idx| {
+        format!("(vector-push {expr} instr{idx})")
+    });
+    let output = run_native_pipeline_harness(&format!(
+        r#"(module Main)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import Backend.Native.NativeEmit)
+(import IR.IR)
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn main []
+  (let [{instr_bindings}
+        ir {ir_expr}
+        func (make-function-meta 0 {local_count} ir)
+        functions (vector-push (vector-new 1) func)
+        target (make-target 3)
+        native (emit-native-function-meta-bundle functions target)
+        object (emit-object native target)]
+    (do
+      (print-bytes object 0 (vector-length object))
+      0)))"#
+    ));
+    output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u8>().unwrap_or_else(|_| {
+                panic!("Linux x86_64 function-meta ELF object byte parse 失敗: {line}")
+            })
+        })
+        .collect::<Vec<u8>>()
+}
+
+fn linux_x86_selfhost_vector_push_get_object_bytes() -> Vec<u8> {
+    linux_x86_selfhost_function_meta_object_bytes(
+        &[(3, 4), (54, 0), (3, 42), (55, 0), (3, 0), (53, 0)],
+        0,
+    )
+}
+
+fn linux_x86_selfhost_ref_set_get_object_bytes() -> Vec<u8> {
+    linux_x86_selfhost_function_meta_object_bytes(
+        &[
+            (3, 10),
+            (56, 0),
+            (11, 0),
+            (10, 0),
+            (3, 99),
+            (58, 0),
+            (44, 0),
+            (10, 0),
+            (57, 0),
+        ],
+        1,
+    )
+}
+
+fn linux_x86_selfhost_substring_length_object_bytes() -> Vec<u8> {
+    linux_x86_selfhost_function_meta_object_bytes(
+        &[(3, 1), (67, 0), (3, 1), (3, 4), (69, 0), (51, 0)],
+        0,
+    )
+}
+
+fn linux_x86_selfhost_string_concat_length_object_bytes() -> Vec<u8> {
+    linux_x86_selfhost_function_meta_object_bytes(
+        &[(3, 1), (67, 0), (3, 2), (67, 0), (70, 0), (51, 0)],
+        0,
+    )
+}
+
+fn linux_x86_selfhost_map_insert_get_object_bytes() -> Vec<u8> {
+    linux_x86_selfhost_function_meta_object_bytes(
+        &[(60, 0), (3, 7), (3, 42), (62, 0), (3, 7), (63, 0)],
+        0,
+    )
+}
+
+fn linux_x86_selfhost_map_insert_size_object_bytes() -> Vec<u8> {
+    linux_x86_selfhost_function_meta_object_bytes(&[(60, 0), (3, 7), (3, 42), (62, 0), (61, 0)], 0)
+}
+
+fn linux_x86_selfhost_file_exists_object_bytes() -> Vec<u8> {
+    linux_x86_selfhost_function_meta_object_bytes(&[(3, 1), (67, 0), (73, 0)], 0)
 }
 
 fn host_target_plain_program_code_bytes(instrs: &[(u32, i64)]) -> Vec<u8> {
@@ -17482,6 +18191,70 @@ fn link_and_run_linux_x86_native_binary(code: &[u8]) -> Result<i32, String> {
     result
 }
 
+fn link_and_run_linux_x86_generated_object(program_object: &[u8]) -> Result<i32, String> {
+    if !linux_x86_native_exec_supported() {
+        return Err("Linux x86_64 native execution は Linux x86_64 でのみサポート".to_string());
+    }
+
+    let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = target_fixture_dir("e2e-native-fixtures", "native-linux-x86-object-exec", id);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let result = (|| {
+        std::fs::write(dir.join("program.o"), program_object)
+            .map_err(|e| format!("program.o 書き込み失敗: {e}"))?;
+        std::fs::write(
+            dir.join("runtime.s"),
+            ".text\n\
+             .extern generated\n\
+             .globl main\n\
+             main:\n\
+                 call generated\n\
+                 ret\n\
+             .section .note.GNU-stack,\"\",@progbits\n",
+        )
+        .map_err(|e| format!("runtime.s 書き込み失敗: {e}"))?;
+
+        let runtime_result = std::process::Command::new("cc")
+            .args(["-c", "runtime.s", "-o", "runtime.o"])
+            .current_dir(&dir)
+            .output()
+            .map_err(|e| format!("runtime.o 生成失敗: {e}"))?;
+        if !runtime_result.status.success() {
+            return Err(format!(
+                "runtime.o 生成失敗:\nstdout: {}\nstderr: {}",
+                String::from_utf8_lossy(&runtime_result.stdout),
+                String::from_utf8_lossy(&runtime_result.stderr),
+            ));
+        }
+
+        let response_text = "-o\nprogram.native\nprogram.o\nruntime.o\n";
+        std::fs::write(dir.join("linker-response.txt"), response_text)
+            .map_err(|e| format!("linker-response.txt 書き込み失敗: {e}"))?;
+        let link_result = std::process::Command::new("cc")
+            .arg("@linker-response.txt")
+            .current_dir(&dir)
+            .output()
+            .map_err(|e| format!("cc 実行失敗: {e}"))?;
+        if !link_result.status.success() {
+            return Err(format!(
+                "Linux x86_64 object link 失敗:\nstdout: {}\nstderr: {}",
+                String::from_utf8_lossy(&link_result.stdout),
+                String::from_utf8_lossy(&link_result.stderr),
+            ));
+        }
+
+        let run_result = std::process::Command::new(dir.join("program.native"))
+            .output()
+            .map_err(|e| format!("program.native 実行失敗: {e}"))?;
+
+        Ok(run_result.status.code().unwrap_or(-1))
+    })();
+
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
 fn link_and_run_native_host_binary_with_args(code: &[u8], args: &[&str]) -> Result<i32, String> {
     Ok(link_and_run_native_host_binary_capture_with_args(code, args)?.exit_code)
 }
@@ -18051,6 +18824,182 @@ fn build_native_host_bundle_with_canonical_artifacts_and_entrypoint(
     result
 }
 
+fn build_linux_x86_host_bundle_with_canonical_artifacts_and_entrypoint(
+    code: &[u8],
+    entrypoint_offset: usize,
+) -> Result<NativeHostArtifactBundle, String> {
+    if !linux_x86_native_exec_supported() {
+        return Err(
+            "Linux x86_64 host bundle materialization は Linux/x86_64 でのみサポート".to_string(),
+        );
+    }
+    if entrypoint_offset > code.len() {
+        return Err(format!(
+            "entrypoint offset が code bytes 範囲外: offset={} len={}",
+            entrypoint_offset,
+            code.len()
+        ));
+    }
+
+    let id = NATIVE_HOST_EXEC_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let dir = target_fixture_dir(
+        "e2e-native-fixtures",
+        "linux-x86-host-bundle-artifact-entrypoint",
+        id,
+    );
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let result = (|| {
+        let prefix_bytes = &code[..entrypoint_offset];
+        let suffix_bytes = &code[entrypoint_offset..];
+        let prefix_text = if prefix_bytes.is_empty() {
+            "0x90".to_string()
+        } else {
+            prefix_bytes
+                .iter()
+                .map(|b| format!("0x{b:02x}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let suffix_text = if suffix_bytes.is_empty() {
+            "0xc3".to_string()
+        } else {
+            suffix_bytes
+                .iter()
+                .map(|b| format!("0x{b:02x}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let program_asm = format!(
+            ".text\n\
+             .extern calloc\n\
+             .extern malloc\n\
+             .extern memcpy\n\
+             .extern strlen\n\
+             .globl main\n\
+             main:\n\
+                 push %rbp\n\
+                 mov %rsp, %rbp\n\
+                 push %rbx\n\
+                 push %r12\n\
+                 push %r13\n\
+                 push %r14\n\
+                 push %r15\n\
+                 sub $24, %rsp\n\
+                 mov %rdi, %r14\n\
+                 mov %rsi, %r12\n\
+                 mov %r14, %rdi\n\
+                 mov $8, %rsi\n\
+                 call calloc@PLT\n\
+                 test %rax, %rax\n\
+                 je .Lalloc_fail\n\
+                 mov %rax, %r15\n\
+                 xor %r13d, %r13d\n\
+             .Largv_loop:\n\
+                 cmp %r14, %r13\n\
+                 jge .Largv_done\n\
+                 mov (%r12,%r13,8), %rbx\n\
+                 mov %rbx, %rdi\n\
+                 call strlen@PLT\n\
+                 mov %rax, -48(%rbp)\n\
+                 lea 8(%rax), %rdi\n\
+                 call malloc@PLT\n\
+                 test %rax, %rax\n\
+                 je .Lalloc_fail\n\
+                 mov %rax, -56(%rbp)\n\
+                 movl $1, (%rax)\n\
+                 mov -48(%rbp), %rcx\n\
+                 mov %ecx, 4(%rax)\n\
+                 lea 8(%rax), %rdi\n\
+                 mov %rbx, %rsi\n\
+                 mov %rcx, %rdx\n\
+                 call memcpy@PLT\n\
+                 mov -56(%rbp), %rax\n\
+                 movabs $0x8000000000000000, %rcx\n\
+                 or %rcx, %rax\n\
+                 mov %rax, (%r15,%r13,8)\n\
+                 inc %r13\n\
+                 jmp .Largv_loop\n\
+             .Largv_done:\n\
+                 call generated\n\
+                 jmp .Ldone\n\
+             .Lalloc_fail:\n\
+                 mov $1, %eax\n\
+             .Ldone:\n\
+                 add $24, %rsp\n\
+                 pop %r15\n\
+                 pop %r14\n\
+                 pop %r13\n\
+                 pop %r12\n\
+                 pop %rbx\n\
+                 pop %rbp\n\
+                 ret\n\
+             .globl lsharp_bundle\n\
+             lsharp_bundle:\n\
+                 .byte {prefix_text}\n\
+             .globl generated\n\
+             generated:\n\
+                 .byte {suffix_text}\n\
+             .section .note.GNU-stack,\"\",@progbits\n",
+            prefix_text = prefix_text,
+            suffix_text = suffix_text,
+        );
+        std::fs::write(dir.join("program.s"), program_asm)
+            .map_err(|e| format!("program.s 書き込み失敗: {e}"))?;
+
+        let runtime_asm = ".text\n.globl lsharp_runtime_stub\nlsharp_runtime_stub:\n    ret\n.section .note.GNU-stack,\"\",@progbits\n";
+        std::fs::write(dir.join("runtime.s"), runtime_asm)
+            .map_err(|e| format!("runtime.s 書き込み失敗: {e}"))?;
+
+        let compile_program = std::process::Command::new("cc")
+            .args(["-c", "program.s", "-o", "program.o"])
+            .current_dir(&dir)
+            .output()
+            .map_err(|e| format!("program.o 生成失敗: {e}"))?;
+        if !compile_program.status.success() {
+            return Err(format!(
+                "program.o 生成失敗:\nstdout: {}\nstderr: {}",
+                String::from_utf8_lossy(&compile_program.stdout),
+                String::from_utf8_lossy(&compile_program.stderr),
+            ));
+        }
+
+        let compile_runtime = std::process::Command::new("cc")
+            .args(["-c", "runtime.s", "-o", "runtime.o"])
+            .current_dir(&dir)
+            .output()
+            .map_err(|e| format!("runtime.o 生成失敗: {e}"))?;
+        if !compile_runtime.status.success() {
+            return Err(format!(
+                "runtime.o 生成失敗:\nstdout: {}\nstderr: {}",
+                String::from_utf8_lossy(&compile_runtime.stdout),
+                String::from_utf8_lossy(&compile_runtime.stderr),
+            ));
+        }
+
+        let response_text = "-o\nprogram.native\nprogram.o\nruntime.o\n".to_string();
+        std::fs::write(dir.join("linker-response.txt"), &response_text)
+            .map_err(|e| format!("linker-response.txt 書き込み失敗: {e}"))?;
+        let link_result = std::process::Command::new("cc")
+            .arg("@linker-response.txt")
+            .current_dir(&dir)
+            .output()
+            .map_err(|e| format!("cc response-file 実行失敗: {e}"))?;
+        if !link_result.status.success() {
+            return Err(format!(
+                "Linux x86 response-file link 失敗:\nstdout: {}\nstderr: {}",
+                String::from_utf8_lossy(&link_result.stdout),
+                String::from_utf8_lossy(&link_result.stderr),
+            ));
+        }
+
+        read_native_host_bundle_from_dir(&dir, response_text, Vec::new(), Vec::new(), 0)
+    })();
+
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
 fn build_and_run_native_host_bundle_with_canonical_artifacts_and_entrypoint(
     code: &[u8],
     data: &[u8],
@@ -18371,6 +19320,954 @@ fn test_e2e_native_linux_x86_host_generates_const_42_code_artifact() {
     );
 }
 
+/// NATIVE-LINUX-X86-02b: host 側 selfhost emit-object が linkable Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_selfhost_elf_object_artifact() {
+    let artifact_path =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_OBJECT_ARTIFACT").expect(
+            "LSHARP_NATIVE_LINUX_X86_OBJECT_ARTIFACT に Linux x86_64 object artifact path を指定すること",
+        );
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent).expect("Linux x86_64 object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_const_42_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 object artifact 書き込みに失敗");
+    let written =
+        std::fs::read(&artifact_path).expect("Linux x86_64 object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02c: host 側 selfhost が argv/string-length helper を含む Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_argv_string_length_elf_object_artifact() {
+    let artifact_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_ARGV_OBJECT_ARTIFACT")
+        .expect("LSHARP_NATIVE_LINUX_X86_ARGV_OBJECT_ARTIFACT に Linux x86_64 argv object artifact path を指定すること");
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent).expect("Linux x86_64 argv object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_command_line_arg_string_length_object_bytes(1);
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 argv ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 argv ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 argv object artifact 書き込みに失敗");
+    let written =
+        std::fs::read(&artifact_path).expect("Linux x86_64 argv object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 argv object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02d: host 側 selfhost が argv/string-char-at helper を含む Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_argv_string_char_at_elf_object_artifact() {
+    let artifact_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_ARGV_CHAR_OBJECT_ARTIFACT")
+        .expect("LSHARP_NATIVE_LINUX_X86_ARGV_CHAR_OBJECT_ARTIFACT に Linux x86_64 argv char object artifact path を指定すること");
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 argv char object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_command_line_arg_string_char_at_object_bytes(1, 1);
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 argv char ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 argv char ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 argv char object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 argv char object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 argv char object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02e: host 側 selfhost が print helper を含む Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_print_elf_object_artifact() {
+    let artifact_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_PRINT_OBJECT_ARTIFACT")
+        .expect("LSHARP_NATIVE_LINUX_X86_PRINT_OBJECT_ARTIFACT に Linux x86_64 print object artifact path を指定すること");
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent).expect("Linux x86_64 print object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_print_object_bytes(42);
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 print ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 print ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 print object artifact 書き込みに失敗");
+    let written =
+        std::fs::read(&artifact_path).expect("Linux x86_64 print object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 print object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02f: host 側 selfhost が vector helper を含む Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_vector_elf_object_artifact() {
+    let artifact_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_VECTOR_OBJECT_ARTIFACT")
+        .expect("LSHARP_NATIVE_LINUX_X86_VECTOR_OBJECT_ARTIFACT に Linux x86_64 vector object artifact path を指定すること");
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 vector object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_vector_push_get_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 vector ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 vector ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 vector object artifact 書き込みに失敗");
+    let written =
+        std::fs::read(&artifact_path).expect("Linux x86_64 vector object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 vector object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02g: host 側 selfhost が ref helper を含む Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_ref_elf_object_artifact() {
+    let artifact_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_REF_OBJECT_ARTIFACT")
+        .expect("LSHARP_NATIVE_LINUX_X86_REF_OBJECT_ARTIFACT に Linux x86_64 ref object artifact path を指定すること");
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent).expect("Linux x86_64 ref object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_ref_set_get_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 ref ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 ref ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 ref object artifact 書き込みに失敗");
+    let written =
+        std::fs::read(&artifact_path).expect("Linux x86_64 ref object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 ref object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02h: host 側 selfhost が substring helper を含む Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_substring_elf_object_artifact() {
+    let artifact_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_SUBSTRING_OBJECT_ARTIFACT")
+        .expect("LSHARP_NATIVE_LINUX_X86_SUBSTRING_OBJECT_ARTIFACT に Linux x86_64 substring object artifact path を指定すること");
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 substring object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_substring_length_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 substring ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 substring ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 substring object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 substring object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 substring object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02i: host 側 selfhost が string-concat helper を含む Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_string_concat_elf_object_artifact() {
+    let artifact_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STRING_CONCAT_OBJECT_ARTIFACT")
+        .expect("LSHARP_NATIVE_LINUX_X86_STRING_CONCAT_OBJECT_ARTIFACT に Linux x86_64 string-concat object artifact path を指定すること");
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 string-concat object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_string_concat_length_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 string-concat ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 string-concat ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 string-concat object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 string-concat object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 string-concat object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02j: host 側 selfhost が map helper を含む Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_map_insert_get_elf_object_artifact() {
+    let artifact_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_MAP_OBJECT_ARTIFACT")
+        .expect("LSHARP_NATIVE_LINUX_X86_MAP_OBJECT_ARTIFACT に Linux x86_64 map object artifact path を指定すること");
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent).expect("Linux x86_64 map object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_map_insert_get_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 map ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 map ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 map object artifact 書き込みに失敗");
+    let written =
+        std::fs::read(&artifact_path).expect("Linux x86_64 map object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 map object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02k: host 側 selfhost が map-size helper を含む Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_map_size_elf_object_artifact() {
+    let artifact_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_MAP_SIZE_OBJECT_ARTIFACT")
+        .expect("LSHARP_NATIVE_LINUX_X86_MAP_SIZE_OBJECT_ARTIFACT に Linux x86_64 map-size object artifact path を指定すること");
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 map-size object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_map_insert_size_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 map-size ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 map-size ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 map-size object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 map-size object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 map-size object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02l: host 側 selfhost が file-exists helper を含む Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_file_exists_elf_object_artifact() {
+    let artifact_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_FILE_EXISTS_OBJECT_ARTIFACT")
+        .expect("LSHARP_NATIVE_LINUX_X86_FILE_EXISTS_OBJECT_ARTIFACT に Linux x86_64 file-exists object artifact path を指定すること");
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 file-exists object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_file_exists_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 file-exists ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 file-exists ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 file-exists object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 file-exists object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 file-exists object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02m: host 側 selfhost が actual self-regeneration 用 stage1 x86 payload を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artifact() {
+    let artifact_dir =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_ACTUAL_STAGE1_ARTIFACT_DIR").expect(
+            "LSHARP_NATIVE_LINUX_X86_ACTUAL_STAGE1_ARTIFACT_DIR に stage1 artifact dir を指定すること",
+        );
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    let _ = std::fs::remove_dir_all(&artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 actual stage1 artifact dir 作成に失敗");
+
+    let seed_source = linux_x86_representative_actual_stage23_seed_source();
+    let escaped_seed_source = escape_lsharp_string(&seed_source);
+    let pairs_expr = format!(
+        r#"(do
+            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+            (compile-file-pairs-with-cache "src/App/Seed.ls" cache-ref parse-count-ref))"#
+    );
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+            (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let stage1_input =
+        run_selfhost_main_native_x86_function_meta_bundle_host_bytes_harness_with_exprs(
+            "linux-x86-hostgen-actual-stage1-selfregen",
+            &pairs_expr,
+            &payload_expr,
+        );
+
+    assert!(
+        !stage1_input.code_bytes.is_empty(),
+        "Linux x86_64 actual stage1 code artifact が空"
+    );
+    assert!(
+        stage1_input.entrypoint_offset < stage1_input.code_bytes.len(),
+        "Linux x86_64 actual stage1 entrypoint が code 範囲外: offset={} len={}",
+        stage1_input.entrypoint_offset,
+        stage1_input.code_bytes.len()
+    );
+    assert_eq!(
+        stage1_input.declared_code_len,
+        stage1_input.code_bytes.len(),
+        "Linux x86_64 actual stage1 declared code length が実バイト長と一致しない"
+    );
+    assert_eq!(
+        stage1_input.declared_data_len,
+        stage1_input.data_bytes.len(),
+        "Linux x86_64 actual stage1 declared data length が実バイト長と一致しない"
+    );
+
+    std::fs::write(
+        artifact_dir.join("stage1-code.bin"),
+        &stage1_input.code_bytes,
+    )
+    .expect("stage1-code.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("stage1-data.bin"),
+        &stage1_input.data_bytes,
+    )
+    .expect("stage1-data.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", stage1_input.entrypoint_offset),
+    )
+    .expect("entrypoint-offset.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", stage1_input.function_start_len),
+    )
+    .expect("function-start-len.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", stage1_input.main_func_idx),
+    )
+    .expect("main-func-idx.txt 書き込みに失敗");
+    std::fs::write(artifact_dir.join("seed.ls"), seed_source).expect("seed.ls 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("manifest.json"),
+        format!(
+            "{{\n  \"target\": \"x86_64-unknown-linux-gnu\",\n  \"code_len\": {},\n  \"data_len\": {},\n  \"entrypoint_offset\": {},\n  \"function_start_len\": {},\n  \"main_func_idx\": {}\n}}\n",
+            stage1_input.code_bytes.len(),
+            stage1_input.data_bytes.len(),
+            stage1_input.entrypoint_offset,
+            stage1_input.function_start_len,
+            stage1_input.main_func_idx
+        ),
+    )
+    .expect("manifest.json 書き込みに失敗");
+
+    let written = std::fs::read(artifact_dir.join("stage1-code.bin"))
+        .expect("stage1-code.bin 読み戻しに失敗");
+    assert_eq!(
+        written, stage1_input.code_bytes,
+        "Linux x86_64 actual stage1 code artifact は生成バイト列をそのまま保存すること"
+    );
+}
+
+fn linux_x86_actual_stage1_diagnostic_seed_source() -> String {
+    r#"(module App.Seed)
+(import App.CompilerMode)
+
+(defn print-span-probe [spans idx limit]
+  (if (>= idx limit)
+    0
+    (do
+      (print idx)
+      (print (span-kind-or-minus-one spans idx))
+      (print (span-start-or-minus-one spans idx))
+      (print (span-end-or-minus-one spans idx))
+      (print-span-probe spans (+ idx 1) limit))))
+
+(defn print-decl-probe [decls idx limit]
+  (if (>= idx limit)
+    0
+    (if (>= idx (vector-length decls))
+      0
+      (let [decl (vector-get decls idx)]
+        (do
+          (print idx)
+          (print (vector-get decl 0))
+          (print (vector-length decl))
+          (print-decl-probe decls (+ idx 1) limit))))))
+
+(defn print-pair-probe [pairs idx limit]
+  (if (>= idx limit)
+    0
+    (if (>= idx (vector-length pairs))
+      0
+      (let [pair (vector-get pairs idx)]
+        (do
+          (print idx)
+          (print (string-length (vector-get pair 0)))
+          (print (vector-length (vector-get pair 1)))
+          (print-pair-probe pairs (+ idx 1) limit))))))
+
+(defn print-path-probe [module-name source-root package-root]
+  (let [relative (module-name-to-relative module-name)
+        local-nested (path-join source-root relative)
+        resolved (resolve-module-path module-name source-root package-root)]
+    (do
+      (print (string-length module-name))
+      (print (string-length relative))
+      (print (string-char-at relative 0))
+      (print (string-char-at relative 3))
+      (print (string-length local-nested))
+      (print (file-exists? local-nested))
+      (print (string-length resolved))
+      (print (file-exists? resolved))
+      (print (string-length (read-file resolved)))
+      (print (string-char-at resolved 0))
+      (print (string-char-at resolved 1)))))
+
+(defn main []
+  (let [path (command-line-arg 1)
+        cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)]
+    (do
+      (print (string-length path))
+      (let [src (read-file path)]
+        (do
+          (print (string-length src))
+          (print (string-char-at src 0))
+          (print (string-char-at src 1))
+          (print (string-char-at src 7))
+          (print (string-char-at src 8))
+          (print (lex-one src 0 (string-length src)))
+          (let [lex0 (lex-one src 0 (string-length src))]
+            (let [kind0 (/ lex0 1000000)]
+              (let [base0 (* kind0 1000000)]
+                (let [end0 (- lex0 base0)]
+                  (do
+                    (print kind0)
+                    (print base0)
+                    (print (- 1 0))
+                    (print lex0)
+                    (print (- lex0 base0))
+                    (print end0))))))
+          (let [probe (vector-push (vector-push (vector-push (vector-new 4) 0) 1) 2)]
+            (do
+              (print (vector-length probe))
+              (print (vector-get probe 0))
+              (print (vector-get probe 1))
+              (print (vector-get probe 2))))
+          (let [manual-tokens (vector-new 32)]
+            (let [manual-token (append-span-token manual-tokens 0 0 1)]
+            (do
+              (print (vector-length manual-token))
+              (print (vector-get manual-token 0))
+              (print (vector-get manual-token 1))
+              (print (vector-get manual-token 2)))))
+           (let [manual-state (make-tokenize-state 0 1 (vector-new 32))]
+             (do
+               (print (vector-get manual-state 0))
+               (print (vector-get manual-state 1))
+               (print (vector-length (vector-get manual-state 2)))))
+           (let [pos-probe (ref-new 0)]
+             (do
+               (print (ref-get pos-probe))
+               (print (p-current (tokenize-with-spans src) pos-probe))
+               (p-advance pos-probe)
+               (print (ref-get pos-probe))
+               (print (p-current (tokenize-with-spans src) pos-probe))))
+           (let [manual-helper-state (append-span-token-state (vector-new 32) 0 1 0 0 1)]
+             (do
+               (print (vector-get manual-helper-state 0))
+              (print (vector-get manual-helper-state 1))
+              (print (vector-length (vector-get manual-helper-state 2)))
+              (print (vector-get (vector-get manual-helper-state 2) 0))
+              (print (vector-get (vector-get manual-helper-state 2) 1))
+              (print (vector-get (vector-get manual-helper-state 2) 2))))
+          (let [manual-lex-state (append-lex-result-state (vector-new 32) 1 0)]
+            (do
+              (print (vector-get manual-lex-state 0))
+              (print (vector-get manual-lex-state 1))
+              (print (vector-length (vector-get manual-lex-state 2)))
+              (print (vector-get (vector-get manual-lex-state 2) 0))
+              (print (vector-get (vector-get manual-lex-state 2) 1))
+              (print (vector-get (vector-get manual-lex-state 2) 2))))
+          (let [manual-ws (skip-ws-loop src 0 (string-length src))]
+            (let [manual-result (lex-one src manual-ws (string-length src))]
+              (let [manual-kind (/ manual-result 1000000)]
+                (let [manual-end (- manual-result (* manual-kind 1000000))]
+                  (let [manual-next (append-span-token (vector-new 32) manual-kind manual-ws manual-end)]
+                    (let [manual-step (make-tokenize-state 0 manual-end manual-next)]
+                      (do
+                        (print manual-ws)
+                        (print manual-result)
+                        (print manual-kind)
+                        (print manual-end)
+                        (print (vector-get manual-step 0))
+                        (print (vector-get manual-step 1))
+                        (print (vector-length (vector-get manual-step 2)))
+                        (print (vector-get (vector-get manual-step 2) 0))
+                        (print (vector-get (vector-get manual-step 2) 1))
+                        (print (vector-get (vector-get manual-step 2) 2))))))))
+          (let [tokens (vector-new 32)]
+            (let [step1 (tokenize-spans-step src 0 (string-length src) tokens)]
+              (do
+                (print (vector-get step1 0))
+                (print (vector-get step1 1))
+                (print (vector-length (vector-get step1 2)))
+                (print (span-kind-or-minus-one (vector-get step1 2) 0))
+                (print (span-start-or-minus-one (vector-get step1 2) 0))
+                (print (span-end-or-minus-one (vector-get step1 2) 0))
+                (let [step8 (tokenize-spans-step-2 src 0 (string-length src) (vector-new 32))]
+                (do
+                  (print (vector-get step8 0))
+                  (print (vector-get step8 1))
+                  (print (vector-length (vector-get step8 2)))
+                  (let [step512 (tokenize-spans-step-512 src 0 (string-length src) (vector-new 32))]
+                    (do
+                      (print (vector-get step512 0))
+                      (print (vector-get step512 1))
+                      (print (vector-length (vector-get step512 2)))
+                      (print-span-probe (vector-get step512 2) 0 24)
+                      (let [spans (vector-get step512 2)]
+                        (let [last-idx (- (/ (vector-length spans) 3) 1)]
+                          (do
+                            (print last-idx)
+                            (print (span-kind-or-minus-one spans (- last-idx 1)))
+                            (print (span-start-or-minus-one spans (- last-idx 1)))
+                            (print (span-end-or-minus-one spans (- last-idx 1)))
+                            (print (span-kind-or-minus-one spans last-idx))
+                            (print (span-start-or-minus-one spans last-idx))
+                            (print (span-end-or-minus-one spans last-idx)))))
+                        (let [program (parse-program src)]
+                          (do
+                            (print (vector-length program))
+                            (print-decl-probe program 0 32)
+                            (let [source-root (resolve-source-root path)
+                                  package-root (resolve-package-root path)]
+                              (do
+                                (print (string-length source-root))
+                                (print (string-length package-root))
+                                (print-path-probe "App.CompilerMode" source-root package-root)
+                                (print-path-probe "Backend.Native.NativeTarget" source-root package-root)
+                                (print-path-probe "Backend.Native.NativeCodegen" source-root package-root)))
+                            (let [pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)]
+                              (do
+                                (root_push pairs)
+                                (print (vector-length pairs))
+                                (print-pair-probe pairs 0 8)
+                                 (let [pair0 (vector-get pairs 0)]
+                                   (do
+                                     (print (vector-length (vector-get pair0 1)))
+                                    (print-decl-probe (vector-get pair0 1) 0 32)))
+                                (let [pair0 (vector-get pairs 0)]
+                                  (do
+                                    (root_push pair0)
+                                    (let [src0 (vector-get pair0 0)
+                                          decls0 (vector-get pair0 1)]
+                                      (do
+                                        (root_push src0)
+                                        (root_push decls0)
+                                        (let [data-ref (ref-new (vector-new 8))]
+                                          (do
+                                            (root_push data-ref)
+                                            (let [n (vector-length pairs)
+                                                  reg-result (register-all-pairs pairs 0 n (ftable-new) 10)
+                                                  ftable (vector-get reg-result 0)]
+                                              (do
+                                                (root_push reg-result)
+                                                (print 150)
+                                                (print n)
+                                                (print 151)
+                                                (print (- (vector-get reg-result 1) 10))
+                                                (print 155)
+                                                (print (vector-length decls0))
+                                                (print-decl-probe decls0 0 4)
+                                                (let [pair0b (vector-get pairs 0)]
+                                                  (do
+                                                    (root_push pair0b)
+                                                    (let [src0b (vector-get pair0b 0)
+                                                          decls0b (vector-get pair0b 1)]
+                                                      (do
+                                                        (root_push src0b)
+                                                        (root_push decls0b)
+                                                        (print 156)
+                                                        (print (vector-length decls0b))
+                                                        (print-decl-probe decls0b 0 4)
+                                                        (let [functions (compile-defn-functions-chunked-step-progress-debug decls0b 0 3 src0b ftable data-ref (vector-new 8))]
+                                                          (do
+                                                            (root_push functions)
+                                                            (print 152)
+                                                            (print (vector-length functions))
+                                                            (print 153)
+                                                            (print (vector-length (ref-get data-ref)))
+                                                            0)))))))
+                                                (let [unused 0]
+                                                  (do
+                                                    unused))))))))))))))))))"#
+        .to_string()
+}
+
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_actual_stage1_diagnostic_bundle_artifact() {
+    let artifact_dir =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_DIAGNOSTIC_STAGE1_ARTIFACT_DIR").expect(
+            "LSHARP_NATIVE_LINUX_X86_DIAGNOSTIC_STAGE1_ARTIFACT_DIR に diagnostic stage1 artifact dir を指定すること",
+        );
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    let _ = std::fs::remove_dir_all(&artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 diagnostic stage1 artifact dir 作成に失敗");
+
+    let seed_source = linux_x86_actual_stage1_diagnostic_seed_source();
+    let escaped_seed_source = escape_lsharp_string(&seed_source);
+    let pairs_expr = format!(
+        r#"(do
+            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+            (compile-file-pairs-with-cache "src/App/Seed.ls" cache-ref parse-count-ref))"#
+    );
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+            (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let stage1_input =
+        run_selfhost_main_native_x86_function_meta_bundle_host_bytes_harness_with_exprs(
+            "linux-x86-hostgen-actual-stage1-diagnostic",
+            &pairs_expr,
+            &payload_expr,
+        );
+
+    assert!(
+        !stage1_input.code_bytes.is_empty(),
+        "Linux x86_64 diagnostic stage1 code artifact が空"
+    );
+    assert!(
+        stage1_input.entrypoint_offset < stage1_input.code_bytes.len(),
+        "Linux x86_64 diagnostic stage1 entrypoint が code 範囲外: offset={} len={}",
+        stage1_input.entrypoint_offset,
+        stage1_input.code_bytes.len()
+    );
+
+    std::fs::write(
+        artifact_dir.join("stage1-code.bin"),
+        &stage1_input.code_bytes,
+    )
+    .expect("diagnostic stage1-code.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("stage1-data.bin"),
+        &stage1_input.data_bytes,
+    )
+    .expect("diagnostic stage1-data.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", stage1_input.entrypoint_offset),
+    )
+    .expect("diagnostic entrypoint-offset.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", stage1_input.function_start_len),
+    )
+    .expect("diagnostic function-start-len.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", stage1_input.main_func_idx),
+    )
+    .expect("diagnostic main-func-idx.txt 書き込みに失敗");
+    std::fs::write(artifact_dir.join("seed.ls"), seed_source)
+        .expect("diagnostic seed.ls 書き込みに失敗");
+}
+
+#[test]
+#[ignore]
+fn test_e2e_selfhost_main_representative_x86_function_size_matches_generated_length_diagnostic() {
+    let seed_source = representative_actual_stage23_seed_source();
+    let escaped_seed_source = escape_lsharp_string(&seed_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+            (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let harness = format!(
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn check-instr-sizes [ir functions starts import-count import-stub-offset frame-base-slot-count meta offsets idx len depth]
+  (if (>= idx len)
+    0
+    (let [instr (vector-get ir idx)
+          opcode (vector-get instr 0)
+          operand (vector-get instr 1)
+          expected (native-instr-size-x86 opcode operand functions depth)
+          native (if (= (is-control-opcode opcode) 1)
+                   (emit-control-instr-x86 ir meta offsets idx)
+                   (codegen-ir-instr-bundle-x86-with-import-count opcode operand (vector-get offsets idx) starts functions import-count import-stub-offset frame-base-slot-count depth))
+          actual (vector-length native)]
+      (if (!= expected actual)
+        (do
+          (print 777000)
+          (print idx)
+          (print opcode)
+          (print operand)
+          (print depth)
+          (print expected)
+          (print actual)
+          0)
+        (check-instr-sizes ir functions starts import-count import-stub-offset frame-base-slot-count meta offsets (+ idx 1) len (apply-stack-delta depth (opcode-stack-delta opcode operand functions)))))))
+
+(defn check-function-sizes [functions starts result import-count import-stub-offset idx len]
+  (if (>= idx len)
+    (do
+      (print -1)
+      (print (vector-length (ref-get result)))
+      0)
+    (let [func-idx (+ idx import-count)
+          func (vector-get functions func-idx)
+          expected-start (vector-get starts idx)
+          actual-start (vector-length (ref-get result))
+          expected-size (native-function-size-x86 func functions)]
+      (do
+        (generate-native-function-x86-64-bundle-with-import-count
+          func
+          result
+          starts
+          functions
+          import-count
+          import-stub-offset
+          expected-start)
+        (let [actual-after (vector-length (ref-get result))
+              actual-size (- actual-after actual-start)]
+          (if (or (!= expected-start actual-start) (!= expected-size actual-size))
+            (do
+              (check-instr-sizes
+                (native-function-ir func)
+                functions
+                starts
+                import-count
+                import-stub-offset
+                (native-frame-base-slot-count
+                  (native-function-ir func)
+                  (+ (native-function-param-count func) (native-function-local-count func)))
+                (scan-control-flow-meta (native-function-ir func))
+                (collect-native-bundle-offsets-x86
+                  (native-function-ir func)
+                  functions
+                  (+ (+ expected-start 4)
+                    (+ (if (> (native-local-stack-bytes-with-window
+                                  (native-function-ir func)
+                                  (+ (native-function-param-count func) (native-function-local-count func))
+                                  functions)
+                               0)
+                         7
+                         0)
+                       (if (>= (native-function-param-count func) 20)
+                         (native-param-spill-bytes-x86-twenty-plus (native-function-param-count func))
+                         (if (> (native-function-param-count func) 6)
+                           (+ 53 (* (- (native-function-param-count func) 7) 11))
+                           (if (= (native-function-param-count func) 6)
+                             42
+                             (if (= (native-function-param-count func) 5)
+                               35
+                               (if (= (native-function-param-count func) 4)
+                                 28
+                                 (if (= (native-function-param-count func) 3)
+                                   21
+                                   (if (= (native-function-param-count func) 2)
+                                     14
+                                     (if (= (native-function-param-count func) 1) 7 0)))))))))))
+                0
+                (vector-length (native-function-ir func))
+                0)
+              (print func-idx)
+              (print expected-start)
+              (print actual-start)
+              (print expected-size)
+              (print actual-size)
+              (print (native-function-param-count func))
+              (print (native-function-local-count func))
+              (print (vector-length (native-function-ir func)))
+              (print (native-local-stack-bytes-with-window
+                (native-function-ir func)
+                (+ (native-function-param-count func) (native-function-local-count func))
+                functions))
+              0)
+            (check-function-sizes functions starts result import-count import-stub-offset (+ idx 1) len)))))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload {payload_expr}
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        starts (collect-callable-function-starts-x86 native-callables 10)
+        import-stub-offset (callable-user-total-size-x86 native-callables 10)
+        result (ref-new (vector-new 128))]
+    (check-function-sizes native-callables starts result 10 import-stub-offset 0 (vector-length starts))))"#,
+        payload_expr = payload_expr
+    );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "representative-x86-function-size-diagnostic",
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        &[],
+    )
+    .expect("representative x86 function size diagnostic 実行に失敗");
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.first().copied(),
+        Some(-1),
+        "x86 function size mismatch diagnostic: {lines:?}"
+    );
+}
+
 /// NATIVE-LINUX-X86-03: hostgen artifact は Linux target descriptor を指定した selfhost emit-native 由来であること。
 #[test]
 #[ignore]
@@ -18380,6 +20277,59 @@ fn test_e2e_native_linux_x86_host_selfhost_generates_const_42_code_bytes() {
         code_bytes,
         linux_x86_selfhost_const_42_expected_code_bytes(),
         "Linux x86_64 selfhost emit-native bytes は const-42 prologue付き contract bytes と一致すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-04: selfhost ELF object が Linux x86_64 VM 上で実リンク・実行できること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_selfhost_elf_object_links_and_executes() {
+    if !linux_x86_native_exec_supported() {
+        return;
+    }
+
+    let object_bytes = linux_x86_selfhost_const_42_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 ELF object は ELF64 header と section table を持つこと: len={}",
+        object_bytes.len()
+    );
+    assert_eq!(
+        &object_bytes[0..4],
+        &[0x7f, b'E', b'L', b'F'],
+        "Linux x86_64 object は ELF magic を持つこと"
+    );
+
+    let exit_code = link_and_run_linux_x86_generated_object(&object_bytes)
+        .expect("Linux x86_64 selfhost ELF object の link/run に失敗");
+    assert_eq!(
+        exit_code, 42,
+        "Linux x86_64 selfhost ELF object 実行は exit code 42 を返すこと"
+    );
+}
+
+/// NATIVE-LINUX-X86-04a: Linux ELF object は linkable section/symbol table を持つこと。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_selfhost_elf_object_has_linkable_sections() {
+    let object_bytes = linux_x86_selfhost_const_42_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 ELF object は ELF64 header と section table を持つこと: len={}",
+        object_bytes.len()
+    );
+    assert_eq!(&object_bytes[0..4], &[0x7f, b'E', b'L', b'F']);
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 ELF object は generated symbol を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows(".symtab".len())
+            .any(|window| window == b".symtab"),
+        "Linux x86_64 ELF object は .symtab section を持つこと"
     );
 }
 
@@ -29994,6 +31944,30 @@ fn test_e2e_stage23_actual_native_self_regeneration_harness_stage2_stage3_match(
     assert_eq!(
         stage2_input, stage3_input,
         "actual stage2-native / stage3-native の transport payload が一致しない"
+    );
+}
+
+/// V2-13a: Linux x86_64 の actual native executable 経由で stage2-native / stage3-native が自己再生成できること。
+#[test]
+#[ignore]
+fn test_e2e_linux_x86_actual_native_self_regeneration_harness_stage2_stage3_match() {
+    if !linux_x86_native_exec_supported() {
+        return;
+    }
+
+    let (stage2_bundle, stage2_input, stage3_bundle, stage3_input) =
+        run_linux_x86_actual_native_self_regeneration_stage23_pair().expect(
+            "Linux x86 actual stage2/stage3 native self-regeneration transport を回収できない",
+        );
+
+    assert_eq!(
+        observe_native_host_bundle(&stage2_bundle),
+        observe_native_host_bundle(&stage3_bundle),
+        "Linux x86 actual stage2-native / stage3-native の exit/stdout/stderr/hash が一致しない"
+    );
+    assert_eq!(
+        stage2_input, stage3_input,
+        "Linux x86 actual stage2-native / stage3-native の transport payload が一致しない"
     );
 }
 

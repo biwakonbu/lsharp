@@ -2462,6 +2462,61 @@ fn test_e2e_native_ops02_native_only_rc_contract() {
     }
 }
 
+#[test]
+#[cfg(unix)]
+fn test_e2e_native_ops02_native_only_rc_smoke_accepts_empty_output_files() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let fixture_root = target_fixture_dir("e2e-native-fixtures", "native-only-rc-empty-output", 0);
+    let _ = std::fs::remove_dir_all(&fixture_root);
+    std::fs::create_dir_all(&fixture_root).expect("fixture root 作成失敗");
+    std::fs::write(fixture_root.join("actual-stage23-gap.json"), "{}\n")
+        .expect("actual-stage23-gap.json 書き込み失敗");
+
+    let stage_summary = |label: &str| {
+        format!(
+            r#"{{"label":"{label}","exit_code":0,"program_object_hash":1,"runtime_object_hash":2,"response_text_hash":3,"program_binary_hash":4,"stdout_hash":5,"stderr_hash":5}}"#
+        )
+    };
+
+    for label in ["stage1-native", "stage2-native", "stage3-native"] {
+        let stage_dir = fixture_root.join(label);
+        std::fs::create_dir_all(&stage_dir).expect("stage dir 作成失敗");
+        for required in ["program.o", "runtime.o", "linker-response.txt"] {
+            std::fs::write(stage_dir.join(required), b"x").expect("required file 書き込み失敗");
+        }
+        let program_native = stage_dir.join("program.native");
+        std::fs::write(&program_native, b"x").expect("program.native 書き込み失敗");
+        std::fs::set_permissions(&program_native, std::fs::Permissions::from_mode(0o755))
+            .expect("program.native execute bit 設定失敗");
+        std::fs::write(stage_dir.join("stdout.txt"), b"").expect("stdout.txt 書き込み失敗");
+        std::fs::write(stage_dir.join("stderr.txt"), b"").expect("stderr.txt 書き込み失敗");
+        std::fs::write(stage_dir.join("summary.json"), stage_summary(label))
+            .expect("summary.json 書き込み失敗");
+    }
+
+    let manifest = format!(
+        r#"{{"stages":{{"stage1-native":{},"stage2-native":{},"stage3-native":{}}}}}"#,
+        stage_summary("stage1-native"),
+        stage_summary("stage2-native"),
+        stage_summary("stage3-native")
+    );
+    std::fs::write(fixture_root.join("manifest.json"), manifest)
+        .expect("manifest.json 書き込み失敗");
+
+    let status = std::process::Command::new("bash")
+        .current_dir(&project_root)
+        .arg("scripts/ci/native-only-rc-smoke.sh")
+        .arg(&fixture_root)
+        .status()
+        .expect("native-only-rc-smoke.sh 実行失敗");
+    assert!(
+        status.success(),
+        "native-only-rc-smoke.sh は空の stdout/stderr artifact と stage label 差分を許容すること"
+    );
+}
+
 /// TEST-NATIVE-OPS-03: native-only 完全置換は official replacement track として未完了 blocker を正本化すること
 #[test]
 fn test_e2e_native_ops03_official_native_only_replacement_backlog_contract() {
@@ -2632,9 +2687,56 @@ fn test_e2e_native_ops04_linux_x86_server_target_contract() {
     for expected in [
         "limactl",
         "LSHARP_NATIVE_LINUX_X86_CODE_ARTIFACT",
+        "LSHARP_NATIVE_LINUX_X86_OBJECT_ARTIFACT",
+        "LSHARP_NATIVE_LINUX_X86_ARGV_OBJECT_ARTIFACT",
+        "LSHARP_NATIVE_LINUX_X86_ARGV_CHAR_OBJECT_ARTIFACT",
+        "LSHARP_NATIVE_LINUX_X86_PRINT_OBJECT_ARTIFACT",
+        "LSHARP_NATIVE_LINUX_X86_VECTOR_OBJECT_ARTIFACT",
+        "LSHARP_NATIVE_LINUX_X86_REF_OBJECT_ARTIFACT",
+        "LSHARP_NATIVE_LINUX_X86_SUBSTRING_OBJECT_ARTIFACT",
+        "LSHARP_NATIVE_LINUX_X86_STRING_CONCAT_OBJECT_ARTIFACT",
+        "LSHARP_NATIVE_LINUX_X86_MAP_OBJECT_ARTIFACT",
+        "LSHARP_NATIVE_LINUX_X86_MAP_SIZE_OBJECT_ARTIFACT",
+        "LSHARP_NATIVE_LINUX_X86_FILE_EXISTS_OBJECT_ARTIFACT",
         "test_e2e_native_linux_x86_host_generates_const_42_code_artifact",
+        "test_e2e_native_linux_x86_host_generates_selfhost_elf_object_artifact",
+        "test_e2e_native_linux_x86_host_generates_argv_string_length_elf_object_artifact",
+        "test_e2e_native_linux_x86_host_generates_argv_string_char_at_elf_object_artifact",
+        "test_e2e_native_linux_x86_host_generates_print_elf_object_artifact",
+        "test_e2e_native_linux_x86_host_generates_vector_elf_object_artifact",
+        "test_e2e_native_linux_x86_host_generates_ref_elf_object_artifact",
+        "test_e2e_native_linux_x86_host_generates_substring_elf_object_artifact",
+        "test_e2e_native_linux_x86_host_generates_string_concat_elf_object_artifact",
+        "test_e2e_native_linux_x86_host_generates_map_insert_get_elf_object_artifact",
+        "test_e2e_native_linux_x86_host_generates_map_size_elf_object_artifact",
+        "test_e2e_native_linux_x86_host_generates_file_exists_elf_object_artifact",
         "program.native",
+        "object-program.native",
+        "argv-object-program.native",
+        "argv-char-object-program.native",
+        "print-object-program.native",
+        "vector-object-program.native",
+        "ref-object-program.native",
+        "substring-object-program.native",
+        "string-concat-object-program.native",
+        "map-object-program.native",
+        "map-size-object-program.native",
+        "file-exists-object-program.native",
+        "string-length helper",
+        "string-char-at helper",
+        "substring helper",
+        "string-concat helper",
+        "print helper",
+        "vector-new/vector-push/vector-get helpers",
+        "ref-new/ref-set/ref-get helpers",
+        "map-new/map-insert/map-get helpers",
+        "map-size helper",
+        "file-exists helper",
+        "actual_stdout",
         "actual_exit_code",
+        "calloc",
+        "%r14",
+        "%r15",
     ] {
         assert!(
             hostgen_vm_exec_content.contains(expected),

@@ -1352,24 +1352,28 @@
     (do
       (p-advance pos-ref) ;; ] を消費
       (parse-let-body-v3 spans pos-ref src)) ;; body をパース
-    ;; さらにバインディングがある
-    (do
-      (let [ns (p-start spans pos-ref)
-        ne (p-end spans pos-ref)
-        nh (name-hash src ns ne)]
+    (if (== (p-current spans pos-ref) 99)
+      (make-int-node 0)
+      (if (== (p-current spans pos-ref) 1)
+        (make-int-node 0)
+        ;; さらにバインディングがある
         (do
-          (p-advance pos-ref) ;; name を消費
-          (let [init (parse-expr-v3 spans pos-ref src)]
+          (let [ns (p-start spans pos-ref)
+            ne (p-end spans pos-ref)
+            nh (name-hash src ns ne)]
             (do
-              (root_push init)
-              (let [rest (parse-let-rest-rooted-v3 spans pos-ref src)]
+              (p-advance pos-ref) ;; name を消費
+              (let [init (parse-expr-v3 spans pos-ref src)]
                 (do
-                  (root_push rest)
-                  (let [result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init rest)]
+                  (root_push init)
+                  (let [rest (parse-let-rest-rooted-v3 spans pos-ref src)]
                     (do
-                      (root_pop)
-                      (root_pop)
-                      result)))))))))))
+                      (root_push rest)
+                      (let [result (vector-push-quad-rooted-v3 (vector-new 8) 7 nh init rest)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          result)))))))))))))
 
 (defn parse-let-rest-v3 [spans pos-ref src]
   (do
@@ -1405,20 +1409,22 @@
       (p-advance pos-ref) ;; ) を消費
       ;; count を更新 (index 1)
       result)
-    (do
-      (root_push result)
-      (let [expr (parse-expr-v3 spans pos-ref src)]
-        (do
-          (root_push expr)
-          (let [next-result (vector-push result expr)]
-            (do
-              (root_push next-result)
-              (let [parsed (parse-do-exprs-rooted-v3 spans pos-ref src next-result (+ count 1))]
-                (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  parsed)))))))))
+    (if (== (p-current spans pos-ref) 99)
+      result
+      (do
+        (root_push result)
+        (let [expr (parse-expr-v3 spans pos-ref src)]
+          (do
+            (root_push expr)
+            (let [next-result (vector-push result expr)]
+              (do
+                (root_push next-result)
+                (let [parsed (parse-do-exprs-rooted-v3 spans pos-ref src next-result (+ count 1))]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    parsed))))))))))
 
 (defn parse-do-exprs-v3 [spans pos-ref src result count]
   (do

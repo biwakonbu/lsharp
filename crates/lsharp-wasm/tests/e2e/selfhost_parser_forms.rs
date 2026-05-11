@@ -38,6 +38,44 @@ fn test_e2e_selfhost_parser_deep_let_chain() {
     assert_eq!(output.trim(), "1", "深い let 連鎖でも 1 decl を返すべき");
 }
 
+/// TEST-SYNTAX-02q: `let` binding list が EOF に達しても parser が無限再帰しない
+#[test]
+fn test_e2e_selfhost_parser_malformed_let_binding_list_reaches_eof() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (let [x 1 y 2")]
+    (do
+      (print (vector-length program))
+      0)))
+"#;
+
+    let output = run_parser_runtime(harness);
+    assert_eq!(
+        output.trim(),
+        "1",
+        "malformed let binding list でも EOF で停止して decl を返すべき"
+    );
+}
+
+/// TEST-SYNTAX-02r: `do` body が EOF に達しても parser が無限再帰しない
+#[test]
+fn test_e2e_selfhost_parser_malformed_do_body_reaches_eof() {
+    let harness = r#"
+(defn main []
+  (let [program (parse-program "(defn main [] (do 1 2")]
+    (do
+      (print (vector-length program))
+      0)))
+"#;
+
+    let output = run_parser_runtime(harness);
+    assert_eq!(
+        output.trim(),
+        "1",
+        "malformed do body でも EOF で停止して decl を返すべき"
+    );
+}
+
 /// TEST-SYNTAX-02g: defmacro が canonical tag でパースされ collect-macros に拾われる
 ///
 /// selfhost Parser が `(defmacro ...)` を ast-defmacro として返し、

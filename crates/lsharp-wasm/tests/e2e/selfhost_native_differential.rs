@@ -1062,6 +1062,145 @@ fn test_native_codegen_emits_x86_i32_core_instruction_bytes() {
     assert_eq!(lines[13], "195", "epilogue 末尾は ret");
 }
 
+/// NATIVE-REAL-08b1: x86_64 vector-length helper の non-tagged guard が zero-return 分岐へ着地すること。
+#[test]
+#[ignore]
+fn test_native_codegen_emits_x86_vector_length_guard_targets_zero_return() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn main []
+  (let [native (emit-x86-selfhost-vector-length-helper)]
+    (do
+      (print (vector-length native))
+      (print (vector-get native 0))
+      (print (vector-get native 1))
+      (print (vector-get native 2))
+      (print (vector-get native 3))
+      (print (vector-get native 4))
+      (print (vector-get native 14))
+      (print (vector-get native 15))
+      (print (vector-get native 16))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 9,
+        "x86 vector-length helper bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "17", "x86_64 vector-length helper は 17 bytes であるべき");
+    assert_eq!(lines[1], "72", "guard は test rax,rax の REX prefix で始まる");
+    assert_eq!(lines[2], "133", "guard は test rax,rax opcode を持つ");
+    assert_eq!(lines[3], "192", "guard は test rax,rax ModRM を持つ");
+    assert_eq!(lines[4], "121", "non-tagged guard は jns rel8 を使う");
+    assert_eq!(
+        lines[5], "9",
+        "jns は xor eax,eax の先頭へ分岐し、命令の途中へ着地してはいけない"
+    );
+    assert_eq!(lines[6], "49", "zero-return path は xor eax,eax の先頭であること");
+    assert_eq!(lines[7], "192", "zero-return path は xor eax,eax の 2 byte 目であること");
+    assert_eq!(lines[8], "195", "zero-return path は ret で終わること");
+}
+
+/// NATIVE-REAL-08b2: x86_64 map-size helper の non-tagged guard が zero-return 分岐へ着地すること。
+#[test]
+#[ignore]
+fn test_native_codegen_emits_x86_map_size_guard_targets_zero_return() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn main []
+  (let [native (emit-x86-selfhost-map-size-helper)]
+    (do
+      (print (vector-length native))
+      (print (vector-get native 0))
+      (print (vector-get native 1))
+      (print (vector-get native 2))
+      (print (vector-get native 3))
+      (print (vector-get native 4))
+      (print (vector-get native 14))
+      (print (vector-get native 15))
+      (print (vector-get native 16))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 9,
+        "x86 map-size helper bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "17", "x86_64 map-size helper は 17 bytes であるべき");
+    assert_eq!(lines[1], "72", "guard は test rax,rax の REX prefix で始まる");
+    assert_eq!(lines[2], "133", "guard は test rax,rax opcode を持つ");
+    assert_eq!(lines[3], "192", "guard は test rax,rax ModRM を持つ");
+    assert_eq!(lines[4], "121", "non-tagged guard は jns rel8 を使う");
+    assert_eq!(
+        lines[5], "9",
+        "jns は xor eax,eax の先頭へ分岐し、命令の途中へ着地してはいけない"
+    );
+    assert_eq!(lines[6], "49", "zero-return path は xor eax,eax の先頭であること");
+    assert_eq!(lines[7], "192", "zero-return path は xor eax,eax の 2 byte 目であること");
+    assert_eq!(lines[8], "195", "zero-return path は ret で終わること");
+}
+
+/// NATIVE-REAL-08b3: x86_64 i64.const が 32bit を超える即値の上位 word を保持すること。
+#[test]
+#[ignore]
+fn test_native_codegen_emits_x86_i64_const_high32_bytes() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn make-instr [opcode operand]
+  (vector-push (vector-push (vector-new 2) opcode) operand))
+
+(defn main []
+  (let [instr (make-instr 1 4294967296)
+        ir (vector-push (vector-new 1) instr)
+        target (make-target 1)
+        native (emit-native ir target)]
+    (do
+      (print (vector-length native))
+      (print (vector-get native 4))
+      (print (vector-get native 5))
+      (print (vector-get native 6))
+      (print (vector-get native 7))
+      (print (vector-get native 8))
+      (print (vector-get native 9))
+      (print (vector-get native 10))
+      (print (vector-get native 11))
+      (print (vector-get native 12))
+      (print (vector-get native 13))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 11,
+        "x86 i64.const high32 bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(lines[0], "16", "x86_64 i64.const payload は 16 bytes であるべき");
+    assert_eq!(lines[1], "72", "i64.const は REX.W で始まる");
+    assert_eq!(lines[2], "184", "i64.const は mov rax, imm64 を使う");
+    assert_eq!(lines[3], "0", "imm64 byte0 は 0");
+    assert_eq!(lines[4], "0", "imm64 byte1 は 0");
+    assert_eq!(lines[5], "0", "imm64 byte2 は 0");
+    assert_eq!(lines[6], "0", "imm64 byte3 は 0");
+    assert_eq!(lines[7], "1", "imm64 byte4 は 2^32 の high word を保持する");
+    assert_eq!(lines[8], "0", "imm64 byte5 は 0");
+    assert_eq!(lines[9], "0", "imm64 byte6 は 0");
+    assert_eq!(lines[10], "0", "imm64 byte7 は 0");
+}
+
 /// NATIVE-REAL-08c: x86_64 で i32.mul が distinct bytes を持つこと
 #[test]
 #[ignore]
@@ -1287,6 +1426,84 @@ fn test_native_codegen_emits_x86_i64_mul_bytes() {
         &values[1..14],
         &[72, 15, 175, 193, 72, 129, 196, 16, 0, 0, 0, 93, 195],
         "x86 i64.mul tail は imul + add rsp,16 + epilogue であるべき"
+    );
+}
+
+/// NATIVE-REAL-08c3b: x86_64 で i64.sub が lhs - rhs の順序を保つ byte列を持つこと
+#[test]
+#[ignore]
+fn test_native_codegen_emits_x86_i64_sub_order_bytes() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn make-instr [opcode operand]
+  (vector-push (vector-push (vector-new 2) opcode) operand))
+
+(defn main []
+  (let [instr1 (make-instr 1 47)
+        instr2 (make-instr 11 0)
+        instr3 (make-instr 1 5)
+        instr4 (make-instr 11 1)
+        instr5 (make-instr 10 0)
+        instr6 (make-instr 10 1)
+        instr7 (make-instr 21 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push (vector-new 7) instr1)
+                       instr2)
+                     instr3)
+                   instr4)
+                 instr5)
+               instr6)
+             instr7)
+        target (make-target 1)
+        native (emit-native ir target)
+        n (vector-length native)]
+    (do
+      (print n)
+      (print (vector-get native (- n 15)))
+      (print (vector-get native (- n 14)))
+      (print (vector-get native (- n 13)))
+      (print (vector-get native (- n 12)))
+      (print (vector-get native (- n 11)))
+      (print (vector-get native (- n 10)))
+      (print (vector-get native (- n 9)))
+      (print (vector-get native (- n 8)))
+      (print (vector-get native (- n 7)))
+      (print (vector-get native (- n 6)))
+      (print (vector-get native (- n 5)))
+      (print (vector-get native (- n 4)))
+      (print (vector-get native (- n 3)))
+      (print (vector-get native (- n 2)))
+      (print (vector-get native (- n 1)))
+      0)))"#,
+    );
+    let values: Vec<u32> = output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u32>()
+                .unwrap_or_else(|_| panic!("i64.sub: 数値出力であるべきだが `{line}` を得た"))
+        })
+        .collect();
+
+    assert!(values.len() >= 16, "i64.sub tail 出力が不足: {values:?}");
+    assert!(
+        values[0] >= 15,
+        "i64.sub payload 長が短すぎるため tail を検査できない: {values:?}"
+    );
+    assert_eq!(
+        &values[1..16],
+        &[
+            72, 41, 193, 72, 137, 200, 72, 129, 196, 16, 0, 0, 0, 93, 195
+        ],
+        "x86 i64.sub tail は sub rcx, rax; mov rax, rcx + epilogue であるべき"
     );
 }
 
@@ -3918,6 +4135,111 @@ fn test_native_codegen_emits_x86_direct_call_eight_arg_bundle_bytes() {
     );
     assert_eq!(lines[103], "93", "payload 末尾手前は pop rbp");
     assert_eq!(lines[104], "195", "payload 末尾は ret");
+}
+
+/// NATIVE-REAL-08n2: x86_64 で 8 引数 direct call 後も outer value を rcx に復元すること
+#[test]
+#[ignore]
+fn test_native_codegen_emits_x86_nested_eight_arg_call_restores_outer_value() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-range [bytes idx end]
+  (if (>= idx end)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-range bytes (+ idx 1) end))))
+
+(defn call-depth-loop [ir funcs idx end depth]
+  (if (>= idx end)
+    -1
+    (let [instr (vector-get ir idx)
+      opcode (vector-get instr 0)
+      operand (vector-get instr 1)]
+      (if (= opcode 40)
+        depth
+        (call-depth-loop ir funcs (+ idx 1) end (apply-stack-delta depth (opcode-stack-delta opcode operand funcs)))))))
+
+(defn main []
+  (let [caller-ir (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push
+                            (vector-push
+                              (vector-push
+                                (vector-push
+                                  (vector-push
+                                    (vector-push
+                                      (vector-push (vector-new 11) (make-instr 3 100))
+                                      (make-instr 3 2))
+                                    (make-instr 3 5))
+                                  (make-instr 3 7))
+                                (make-instr 3 11))
+                              (make-instr 3 14))
+                            (make-instr 3 17))
+                          (make-instr 3 19))
+                        (make-instr 3 23))
+                      (make-call 1))
+                    (make-instr 24 0))
+        callee-ir (vector-push (vector-new 1) (make-local-get 0))
+        caller (make-function-meta 0 0 caller-ir)
+        callee (make-function-meta 8 0 callee-ir)
+        functions (vector-push (vector-push (vector-new 2) caller) callee)
+        starts (collect-function-starts-x86 functions)
+        caller-end (vector-get starts 1)
+        call-depth (call-depth-loop caller-ir functions 0 (vector-length caller-ir) 0)
+        target (make-target 1)
+        native (emit-native-function-meta-bundle functions target)]
+    (do
+      (print call-depth)
+      (print caller-end)
+      (print-range native 0 caller-end)
+      0)))"#,
+    );
+    let values: Vec<u32> = output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u32>().unwrap_or_else(|_| {
+                panic!("x86 nested eight-arg restore: 数値出力であるべきだが `{line}` を得た")
+            })
+        })
+        .collect();
+    assert!(
+        values.len() > 2,
+        "x86 nested eight-arg restore: caller bytes 出力が不足: {values:?}"
+    );
+    assert_eq!(values[0], 9, "x86 nested eight-arg restore: call 時 depth は outer+8 args の 9");
+    let caller_bytes = &values[2..];
+    let call_idx = caller_bytes
+        .windows(12)
+        .position(|window| {
+            window[0] == 232 && window[5..12] == [72, 129, 196, 16, 0, 0, 0]
+        })
+        .expect("x86 nested eight-arg restore: stack restore 付き call rel32 opcode が見つからない");
+    let after_call = call_idx + 5;
+    assert_eq!(
+        &caller_bytes[after_call..after_call + 7],
+        &[72, 129, 196, 16, 0, 0, 0],
+        "x86 nested eight-arg restore: call 後はまず stack arg を解放する"
+    );
+    assert_eq!(
+        &caller_bytes[after_call + 7..after_call + 10],
+        &[72, 139, 141],
+        "x86 nested eight-arg restore: Drop 前に outer value を rcx へ復元する"
+    );
 }
 
 /// NATIVE-REAL-08o: x86_64 で 9 引数 direct call bundle が 3 stack arg を持つこと
@@ -10567,10 +10889,10 @@ fn test_native_emit_elf_object_keeps_full_native_payload() {
       (print (vector-get obj 1))
       (print (vector-get obj 2))
       (print (vector-get obj 3))
-      (print (vector-get obj 8))
-      (print (vector-get obj 9))
-      (print (vector-get obj 22))
-      (print (vector-get obj 23))
+      (print (vector-get obj 64))
+      (print (vector-get obj 65))
+      (print (vector-get obj 78))
+      (print (vector-get obj 79))
       0)))"#,
     );
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -10585,8 +10907,8 @@ fn test_native_emit_elf_object_keeps_full_native_payload() {
         "const native payload は 16 bytes であるべき"
     );
     assert_eq!(
-        lines[1], "24",
-        "ELF header 8 + native payload 16 = 24 bytes であるべき"
+        lines[1], "600",
+        "ELF64 linkable object は 600 bytes であるべき"
     );
     assert_eq!(lines[2], "127", "ELF 先頭は 0x7F");
     assert_eq!(lines[3], "69", "ELF 2 byte 目は 'E'");
@@ -10617,8 +10939,8 @@ fn test_native_emit_object_headers_cover_all_three_targets() {
         target (make-target triple-id)
         native (emit-native ir target)
         obj (emit-object native target)
-        tail-idx (if (= triple-id 1) 30 22)
-        last-idx (if (= triple-id 1) 31 23)]
+        tail-idx (if (= triple-id 1) 30 (if (= triple-id 3) 78 22))
+        last-idx (if (= triple-id 1) 31 (if (= triple-id 3) 79 23))]
     (do
       (print (vector-length obj))
       (print (vector-get obj 0))
@@ -10659,7 +10981,7 @@ fn test_native_emit_object_headers_cover_all_three_targets() {
         "target 2 payload 末尾 2 byte 手前は RET byte 2 (0x5F)"
     );
     assert_eq!(lines[9], "214", "target 2 payload 末尾は RET byte 3 (0xD6)");
-    assert_eq!(lines[10], "24", "target 3 ELF object は 24 bytes");
+    assert_eq!(lines[10], "600", "target 3 ELF object は 600 bytes");
     assert_eq!(lines[11], "127", "target 3 先頭 byte は ELF magic 0x7F");
     assert_eq!(lines[12], "2", "target 3 header byte 4 は ELFCLASS64=2");
     assert_eq!(
@@ -10804,7 +11126,7 @@ fn test_native_linker_multi_object_response_consistency_across_three_targets() {
   (do
     (emit-summary 1 32)
     (emit-summary 2 32)
-    (emit-summary 3 24)
+    (emit-summary 3 600)
     0))"#,
     );
     let lines: Vec<&str> = output.trim().lines().collect();
@@ -10834,12 +11156,12 @@ fn test_native_linker_multi_object_response_consistency_across_three_targets() {
     );
     assert_eq!(lines[6], "8", "target 3 multi response len も 8 bytes");
     assert_eq!(
-        lines[7], "24",
-        "target 3 multi response は object 1 size=24 を含む"
+        lines[7], "600",
+        "target 3 multi response は object 1 size=600 を含む"
     );
     assert_eq!(
-        lines[8], "24",
-        "target 3 multi response は object 2 size=24 を含む"
+        lines[8], "600",
+        "target 3 multi response は object 2 size=600 を含む"
     );
 }
 
@@ -10862,8 +11184,8 @@ fn test_native_emit_object_is_deterministic_across_three_targets() {
         target (make-target triple-id)
         obj-a (emit-object (emit-native ir target) target)
         obj-b (emit-object (emit-native ir target) target)
-        tail-idx (if (= triple-id 1) 30 22)
-        last-idx (if (= triple-id 1) 31 23)]
+        tail-idx (if (= triple-id 1) 30 (if (= triple-id 3) 78 22))
+        last-idx (if (= triple-id 1) 31 (if (= triple-id 3) 79 23))]
     (do
       (print (vector-length obj-a))
       (print (vector-length obj-b))
@@ -10914,7 +11236,7 @@ fn test_native_emit_object_is_deterministic_across_three_targets() {
     }
     assert_eq!(lines[0], "32", "target 1 object len は 32 bytes");
     assert_eq!(lines[10], "24", "target 2 object len は 24 bytes (AArch64)");
-    assert_eq!(lines[20], "24", "target 3 object len は 24 bytes");
+    assert_eq!(lines[20], "600", "target 3 object len は 600 bytes");
 }
 
 /// NATIVE-REAL-11d: 同一 object list からの linker response が 3 target で決定的であること

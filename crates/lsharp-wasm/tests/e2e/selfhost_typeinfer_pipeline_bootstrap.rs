@@ -524,8 +524,8 @@ fn test_e2e_selfhost_main_native_pipeline_summary() {
         "tiny Linux native payload も 16 bytes であるべき"
     );
     assert_eq!(
-        linux_object_len, 24,
-        "tiny ELF object は 24 bytes であるべき"
+        linux_object_len, 600,
+        "tiny ELF object は linkable ELF64 として 600 bytes であるべき"
     );
     assert_eq!(
         linux_link_response_len, 6,
@@ -612,8 +612,8 @@ fn test_e2e_selfhost_main_native_pipeline_summary() {
         "Linux response file も output id=99 を含む"
     );
     assert_eq!(
-        linux_response_object_byte, 24,
-        "Linux response file は ELF object size=24 を含む"
+        linux_response_object_byte, 600,
+        "Linux response file は ELF object size=600 を含む"
     );
     assert_eq!(
         aarch64_response_output_byte, 99,
@@ -628,8 +628,8 @@ fn test_e2e_selfhost_main_native_pipeline_summary() {
         "Darwin multi-object response は 2 個目の Mach-O size=32 を含む"
     );
     assert_eq!(
-        linux_multi_response_object2_byte, 24,
-        "Linux multi-object response は 2 個目の ELF size=24 を含む"
+        linux_multi_response_object2_byte, 600,
+        "Linux multi-object response は 2 個目の ELF size=600 を含む"
     );
     assert_eq!(
         aarch64_multi_response_object2_byte, 24,

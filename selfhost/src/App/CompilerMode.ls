@@ -1655,6 +1655,9 @@
                         result))))))))))))
 (defn compile-if-with-source-probe [node source env ftable instrs data-ref rooted-count]
   (do
+    (print 186)
+    (print rooted-count)
+    (print (vector-get node 0))
     (root_push node)
     (root_push source)
     (root_push env)
@@ -1760,20 +1763,26 @@
         (root_pop)
         (print-instr-vector-probe instrs (+ idx 1) count)))))
 (defn compile-user-call-with-source-probe [node source env ftable instrs data-ref func-hash arg-count]
+  (do
+  (print 210)
+  (print arg-count)
   (let [node-slot (root_push node)
     source-slot (root_push source)
     env-slot (root_push env)
     ftable-slot (root_push ftable)
     instrs-slot (root_push instrs)
     data-slot (root_push data-ref)
-    func-idx (ftable-lookup ftable func-hash)
+    func-idx (ftable-lookup ftable func-hash)]
+    (do
+    (print 211)
+    (print func-idx)
+    (let [
     arg-instrs-list (compile-user-call-arg-instrs-with-source node source env ftable 0 arg-count (vector-new 8) data-ref)]
     (do
-      (root_push arg-instrs-list)
-      (print 198)
-      (print arg-count)
+      (print 212)
       (print (vector-length arg-instrs-list))
-      (print-user-call-arg-instrs-lengths arg-instrs-list 0 arg-count)
+      (root_push arg-instrs-list)
+      0
       (let [temp-base (max-root-temp-base-list env arg-instrs-list arg-count)]
         (do
           (print 204)
@@ -1808,6 +1817,7 @@
                           (root_pop)
                           (root_pop)
                           result)))))))))))))
+    )))
 (defn compile-apply-with-source-probe [node source env ftable instrs data-ref rooted-count]
   (let [func-node (vector-get node 1)
     arg-count (vector-get node 2)]
@@ -1846,26 +1856,43 @@
         (compile-apply-with-source-probe node source env ftable instrs data-ref rooted-count)
         (compile-expr-with-source node source env ftable instrs data-ref)))))
 (defn compile-expr-with-source-probe [node source env ftable instrs data-ref rooted-count]
-  (compile-expr-with-source-probe-dispatch node source env ftable instrs data-ref rooted-count))
+  (do
+    (print 185)
+    (print rooted-count)
+    (print (vector-get node 0))
+    (compile-expr-with-source-probe-dispatch node source env ftable instrs data-ref rooted-count)))
 (defn compile-defn-with-source-probe [node source ftable data-ref]
   (do
+    (print 180)
     (root_push node)
     (root_push source)
     (root_push ftable)
     (root_push data-ref)
+    (print 181)
     (let [param-count (vector-get node 2)
-      env (bind-node-params node 3 0 param-count (env-new) 1)
-      body-idx (+ 3 param-count)]
+      body-idx (+ 3 param-count)
+      body-expr (vector-get node body-idx)]
       (do
+        (print 182)
+        (print param-count)
+        (print body-idx)
+        (root_push body-expr)
+        (let [env (bind-node-params node 3 0 param-count (env-new) 1)]
+        (do
         (root_push env)
-        (let [result (compile-expr-with-source-probe (vector-get node body-idx) source env ftable (vector-new 8) data-ref 0)]
+        (print 183)
+        (let [instrs0 (vector-new 8)
+          result (compile-expr-with-source-probe body-expr source env ftable instrs0 data-ref 0)]
           (do
+            (print 184)
+            (print (vector-length result))
             (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)
-            result))))))
+            (root_pop)
+            result))))))))
 (defn compile-defn-functions-chunked-step-progress-debug [decls idx n src ftable data-ref functions]
   (if (>= idx n)
     functions

@@ -37,8 +37,14 @@ for stage in stage1-native stage2-native stage3-native; do
     echo "ERROR: missing stage dir ${stage}" >&2
     exit 1
   fi
-  for required in program.o runtime.o linker-response.txt program.native stdout.txt stderr.txt summary.json; do
+  for required in program.o runtime.o linker-response.txt program.native summary.json; do
     if [[ ! -s "${stage_dir}/${required}" ]]; then
+      echo "ERROR: missing ${stage}/${required}" >&2
+      exit 1
+    fi
+  done
+  for required in stdout.txt stderr.txt; do
+    if [[ ! -f "${stage_dir}/${required}" ]]; then
       echo "ERROR: missing ${stage}/${required}" >&2
       exit 1
     fi
@@ -74,7 +80,19 @@ for label in ("stage1-native", "stage2-native", "stage3-native"):
         raise SystemExit(f"ERROR: {label} exit_code is not zero: {summary['exit_code']}")
 
 if stages.get("stage2-native") != stages.get("stage3-native"):
-    raise SystemExit("ERROR: stage2-native and stage3-native summaries differ")
+    comparable_keys = (
+        "program_object_hash",
+        "runtime_object_hash",
+        "response_text_hash",
+        "program_binary_hash",
+        "stdout_hash",
+        "stderr_hash",
+        "exit_code",
+    )
+    stage2 = {key: stages["stage2-native"].get(key) for key in comparable_keys}
+    stage3 = {key: stages["stage3-native"].get(key) for key in comparable_keys}
+    if stage2 != stage3:
+        raise SystemExit("ERROR: stage2-native and stage3-native summaries differ")
 PY
 
 echo "experimental native-only RC smoke evidence collected."

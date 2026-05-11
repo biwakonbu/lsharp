@@ -27,8 +27,58 @@
                   (root_pop)
                   (root_pop)
                   joined)))))))))
-(defn find-src-ancestor [dir] (if (= (string-length dir) 0) "" (if (is-src-dir-name (path-basename dir)) dir (let [parent (path-parent dir)] (if (same-path parent dir) "" (find-src-ancestor parent))))))
-(defn find-manifest-root [dir] (if (= (string-length dir) 0) "" (if (file-exists? (path-join dir "lsharp.toml")) dir (let [parent (path-parent dir)] (if (same-path parent dir) "" (find-manifest-root parent))))))
+(defn find-src-ancestor [dir]
+  (if (= (string-length dir) 0)
+    ""
+    (do
+      (root_push dir)
+      (let [base (path-basename dir)]
+        (do
+          (root_push base)
+          (let [result
+            (if (is-src-dir-name base)
+              dir
+              (let [parent (path-parent dir)]
+                (do
+                  (root_push parent)
+                  (let [next (if (same-path parent dir) "" (find-src-ancestor parent))]
+                    (do
+                      (root_push next)
+                      (root_pop)
+                      (root_pop)
+                      next)))))]
+            (do
+              (root_push result)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
+(defn find-manifest-root [dir]
+  (if (= (string-length dir) 0)
+    ""
+    (do
+      (root_push dir)
+      (let [manifest-path (path-join dir "lsharp.toml")]
+        (do
+          (root_push manifest-path)
+          (let [result
+            (if (file-exists? manifest-path)
+              dir
+              (let [parent (path-parent dir)]
+                (do
+                  (root_push parent)
+                  (let [next (if (same-path parent dir) "" (find-manifest-root parent))]
+                    (do
+                      (root_push next)
+                      (root_pop)
+                      (root_pop)
+                      next)))))]
+            (do
+              (root_push result)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
 (defn resolve-source-root [entry-path]
   (let [entry-dir (path-parent entry-path)]
     (do

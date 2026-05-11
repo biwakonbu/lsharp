@@ -783,8 +783,11 @@ fn fixture_run_id() -> &'static str {
 }
 
 pub(crate) fn target_fixture_dir(category: &str, prefix: &str, id: usize) -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../target")
+    std::env::var_os("LSHARP_E2E_FIXTURE_ROOT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target")
+        })
         .join(category)
         .join(format!("{prefix}-{}-{id}", fixture_run_id()))
 }
@@ -1550,7 +1553,15 @@ mod tests {
 
         let first = first.to_string_lossy();
         let second = second.to_string_lossy();
-        assert!(first.contains("target/e2e-native-fixtures/"));
+        let expected_root = std::env::var_os("LSHARP_E2E_FIXTURE_ROOT")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target")
+            });
+        assert!(
+            first.contains(&format!("{}/e2e-native-fixtures/", expected_root.display())),
+            "fixture dir は default target または LSHARP_E2E_FIXTURE_ROOT 配下に作るべき: {first}"
+        );
         assert!(first.contains("/native-host-bytes-"));
         assert!(first.ends_with("-0"));
         assert!(second.ends_with("-1"));

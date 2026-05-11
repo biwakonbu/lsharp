@@ -1233,18 +1233,23 @@
     (root_push ftable)
     (root_push data-ref)
     (let [param-count (vector-get node 2)
-      env (bind-node-params node 3 0 param-count (env-new) 1)
-      body-idx (+ 3 param-count)]
+      body-idx (+ 3 param-count)
+      body-expr (vector-get node body-idx)]
       (do
+        (root_push body-expr)
+        (let [env (bind-node-params node 3 0 param-count (env-new) 1)]
+        (do
         (root_push env)
-        (let [result (compile-expr-with-source (vector-get node body-idx) source env ftable (vector-new 8) data-ref)]
+        (let [instrs0 (vector-new 8)
+          result (compile-expr-with-source body-expr source env ftable instrs0 data-ref)]
           (do
             (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)
-            result))))))
+            (root_pop)
+            result))))))))
 (defn compile-defn-function-with-source [node source ftable data-ref]
   (do
     (root_push node)

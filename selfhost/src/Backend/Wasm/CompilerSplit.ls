@@ -94,14 +94,28 @@
       (vector-get step 2)
       (max-local-slot-list instrs-list (vector-get step 1) count (vector-get step 2)))))
 
+(defn max-local-slot-direct [instrs idx count current-max]
+  (if (>= idx count)
+    current-max
+    (let [instr (vector-get instrs idx)
+      opcode (vector-get instr 0)
+      operand (vector-get instr 1)
+      next-max (max-local-slot-op opcode operand current-max)]
+      (max-local-slot-direct instrs (+ idx 1) count next-max))))
+
+(defn max-local-slot-list-direct [instrs-list idx count current-max]
+  (if (>= idx count)
+    current-max
+    (let [instrs (vector-get instrs-list idx)
+      instrs-max (max-local-slot-direct instrs 0 (vector-length instrs) 0)
+      next-max (if (> instrs-max current-max) instrs-max current-max)]
+      (max-local-slot-list-direct instrs-list (+ idx 1) count next-max))))
+
 (defn max-root-temp-base-list [env instrs-list count]
-  (do
-    (root_push instrs-list)
-    (let [instrs-max (max-local-slot-list instrs-list 0 count 0)
-      used-max (if (> (map-size env) instrs-max) (map-size env) instrs-max)]
-      (do
-        (root_pop)
-        (+ used-max 1)))))
+  (let [env-size (map-size env)
+    instrs-max (max-local-slot-list-direct instrs-list 0 count 0)
+    used-max (if (> env-size instrs-max) env-size instrs-max)]
+    (+ used-max 1)))
 
 (defn max-root-temp-base1 [env instrs]
   (do
