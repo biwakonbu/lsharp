@@ -30,6 +30,21 @@ L# は「Lisp + F#」で終わらず、型の表現力そのものを広げる�
 
 ## Quick Start
 
+curl installer で release archive を `~/.local/bin` に展開できます。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/biwakonbu/lsharp/main/scripts/install.sh | sh
+
+# pre-release / RC を明示する場合
+curl -fsSL https://raw.githubusercontent.com/biwakonbu/lsharp/main/scripts/install.sh \
+  | LSHARP_VERSION=v0.1.0-native-rc1 sh
+
+export PATH="$HOME/.local/bin:$PATH"
+lsharp --version
+```
+
+既定の install 先は `~/.local/bin` です。変更する場合は `LSHARP_INSTALL_DIR=/path/to/bin` を指定します。
+
 ```bash
 # 展開した release archive へ移動
 cd lsharp-<version>-<target>

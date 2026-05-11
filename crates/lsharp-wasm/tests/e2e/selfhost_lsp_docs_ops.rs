@@ -3624,6 +3624,45 @@ fn test_e2e_ops06_release_smoke_contract() {
     );
 }
 
+/// TEST-OPS-06e: curl で ~/.local/bin に release archive を install できること
+#[test]
+fn test_e2e_ops06_release_curl_installer_contract() {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let install_script = project_root.join("scripts/install.sh");
+    assert!(
+        install_script.is_file(),
+        "scripts/install.sh が存在しない -- curl installer が未実装"
+    );
+    let install_content =
+        std::fs::read_to_string(&install_script).expect("install.sh の読み込みに失敗");
+    for expected in [
+        "LSHARP_INSTALL_DIR",
+        "$HOME/.local/bin",
+        "https://github.com/${REPO}/releases/download",
+        "lsharp-${VERSION}-${TARGET}",
+        "lsharp.component.wasm",
+        "curl -fsSL",
+        "shasum -a 256",
+        "sha256sum",
+    ] {
+        assert!(
+            install_content.contains(expected),
+            "install.sh は `{}` を含む release installer contract であること",
+            expected
+        );
+    }
+
+    let readme = project_root.join("README.md");
+    let readme_content = std::fs::read_to_string(&readme).expect("README.md の読み込みに失敗");
+    assert!(
+        readme_content.contains("curl -fsSL")
+            && readme_content.contains("scripts/install.sh")
+            && readme_content.contains("~/.local/bin")
+            && readme_content.contains("LSHARP_VERSION"),
+        "README.md は curl installer と ~/.local/bin install を案内すること"
+    );
+}
+
 /// TEST-OPS-06d: release workflow に macOS / Windows signing hook が存在すること
 #[test]
 fn test_e2e_ops06_release_signing_workflow_hook() {
