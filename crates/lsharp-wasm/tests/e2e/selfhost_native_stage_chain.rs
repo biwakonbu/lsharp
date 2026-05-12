@@ -2522,12 +2522,6 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
             (root_pop)
             final))))))
 
-(defn x86-segment-local-import-stub-offset [functions starts import-count function-start]
-  (let [last-idx (- (vector-length starts) 1)
-        last-meta (vector-get functions (+ last-idx import-count))
-        user-total (+ (vector-get starts last-idx) (native-function-size-x86 last-meta functions))]
-    (- user-total function-start)))
-
 (defn print-x86-function-code-segments-loop [functions starts import-count import-stub-offset idx len]
   (if (>= idx len)
     0
@@ -2543,7 +2537,9 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                 result (ref-new (vector-new function-size))]
             (do
               (root_push result)
-              (let [local-import-stub-offset (x86-segment-local-import-stub-offset functions starts import-count function-start)
+              (let [last-idx (- (vector-length starts) 1)
+                    last-meta (vector-get functions (+ last-idx import-count))
+                    local-import-stub-offset (- (+ (vector-get starts last-idx) (native-function-size-x86 last-meta functions)) function-start)
                     local-starts (shift-x86-function-starts starts function-start)]
                 (do
                   (root_push local-starts)
@@ -2647,7 +2643,9 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                 result (ref-new (vector-new function-size))]
             (do
               (root_push result)
-              (let [local-import-stub-offset (x86-segment-local-import-stub-offset functions starts import-count function-start)
+              (let [last-idx (- (vector-length starts) 1)
+                    last-meta (vector-get functions (+ last-idx import-count))
+                    local-import-stub-offset (- (+ (vector-get starts last-idx) (native-function-size-x86 last-meta functions)) function-start)
                     local-starts (shift-x86-function-starts starts function-start)]
                 (do
                   (root_push local-starts)
@@ -2687,7 +2685,9 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                 result (ref-new (vector-new function-size))]
             (do
               (root_push result)
-              (let [local-import-stub-offset (x86-segment-local-import-stub-offset functions starts import-count function-start)
+              (let [last-idx (- (vector-length starts) 1)
+                    last-meta (vector-get functions (+ last-idx import-count))
+                    local-import-stub-offset (- (+ (vector-get starts last-idx) (native-function-size-x86 last-meta functions)) function-start)
                     local-starts (shift-x86-function-starts starts function-start)]
                 (do
                   (root_push local-starts)
