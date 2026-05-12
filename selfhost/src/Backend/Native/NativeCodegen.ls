@@ -9894,6 +9894,9 @@
 (defn x86-import-stub-size [import-count]
   (if (> import-count 0) 1 0))
 
+(defn x86-import-ret-stub-offset [import-stub-offset import-count import-idx]
+  import-stub-offset)
+
 (defn x86-bundle-initial-capacity [import-stub-offset import-count]
   (+ import-stub-offset (+ (x86-import-stub-size import-count) 2048)))
 
@@ -10163,11 +10166,14 @@
                                          (vector-new 0)))))))))))))))))))))
 
 (defn codegen-ir-instr-bundle-x86-with-import-count [opcode operand current-offset function-starts function-metas import-count import-stub-offset frame-base-slot-count current-depth]
+  (let [offset-layout import-stub-offset
+    function-start-base (if (>= offset-layout 100000000) (% offset-layout 100000000) 0)
+    import-stub-offset (if (>= offset-layout 100000000) (/ offset-layout 100000000) offset-layout)]
   (if (= opcode 40)
     (let [target-meta (vector-get function-metas operand)
       target-offset (if (< operand import-count)
-                      (aarch64-import-ret-stub-offset import-stub-offset import-count operand)
-                      (vector-get function-starts (- operand import-count)))
+                       (x86-import-ret-stub-offset import-stub-offset import-count operand)
+                       (- (vector-get function-starts (- operand import-count)) function-start-base))
       target-param-count (native-function-param-count target-meta)
       rel (if (>= target-param-count 20)
               (- target-offset
@@ -10336,7 +10342,7 @@
                                     (codegen-ir-instr opcode operand)
                                     frame-base-slot-count
                                     current-depth)
-                                  (codegen-ir-instr opcode operand))))))))))))))))))))))))))))))))))
+                                  (codegen-ir-instr opcode operand)))))))))))))))))))))))))))))))))))
 
 (defn codegen-ir-instr-bundle-x86 [opcode operand current-offset function-starts function-metas frame-base-slot-count current-depth]
   (codegen-ir-instr-bundle-x86-with-import-count opcode operand current-offset function-starts function-metas 0 0 frame-base-slot-count current-depth))
@@ -10364,14 +10370,38 @@
       opcode (vector-get instr 0)
       operand (vector-get instr 1)
       current-offset (vector-get offsets idx)
-      native (if (= (is-control-opcode opcode) 1)
-               (emit-control-instr-x86 ir-func meta offsets idx)
-               (codegen-ir-instr-bundle-x86-with-import-count opcode operand current-offset function-starts function-metas import-count import-stub-offset frame-base-slot-count current-depth))
-      native-len (vector-length native)
       next-depth (apply-stack-delta current-depth (opcode-stack-delta opcode operand function-metas))]
-      (do
-        (append-native-bytes-loop result native 0 native-len)
-        (generate-native-control-instr-bundle-loop-x86-with-import-count ir-func result meta offsets function-starts function-metas import-count import-stub-offset frame-base-slot-count next-depth (+ idx 1) len)))))
+      (if (= (direct-append-x86-opcode opcode) 6)
+        (do
+          (append-i64-const-bundle-x86 result operand frame-base-slot-count current-depth)
+          (generate-native-control-instr-bundle-loop-x86-with-import-count ir-func result meta offsets function-starts function-metas import-count import-stub-offset frame-base-slot-count next-depth (+ idx 1) len))
+      (if (= (direct-append-x86-opcode opcode) 1)
+        (do
+          (append-produce-one-bundle-x86 result (direct-append-produce-one-bytes-x86 opcode operand) frame-base-slot-count current-depth)
+          (generate-native-control-instr-bundle-loop-x86-with-import-count ir-func result meta offsets function-starts function-metas import-count import-stub-offset frame-base-slot-count next-depth (+ idx 1) len))
+        (if (= (direct-append-x86-opcode opcode) 2)
+          (do
+            (append-consume-two-bundle-x86 result (codegen-ir-instr opcode operand) frame-base-slot-count current-depth)
+            (generate-native-control-instr-bundle-loop-x86-with-import-count ir-func result meta offsets function-starts function-metas import-count import-stub-offset frame-base-slot-count next-depth (+ idx 1) len))
+          (if (= (direct-append-x86-opcode opcode) 3)
+            (do
+              (append-local-set-bundle-x86 result (local-slot-offset operand) frame-base-slot-count current-depth)
+              (generate-native-control-instr-bundle-loop-x86-with-import-count ir-func result meta offsets function-starts function-metas import-count import-stub-offset frame-base-slot-count next-depth (+ idx 1) len))
+            (if (= (direct-append-x86-opcode opcode) 4)
+              (do
+                (append-local-get-bundle-x86 result (local-slot-offset operand) frame-base-slot-count current-depth)
+                (generate-native-control-instr-bundle-loop-x86-with-import-count ir-func result meta offsets function-starts function-metas import-count import-stub-offset frame-base-slot-count next-depth (+ idx 1) len))
+              (if (= (direct-append-x86-opcode opcode) 5)
+                (do
+                  (append-drop-bundle-x86 result frame-base-slot-count current-depth)
+                  (generate-native-control-instr-bundle-loop-x86-with-import-count ir-func result meta offsets function-starts function-metas import-count import-stub-offset frame-base-slot-count next-depth (+ idx 1) len))
+                (let [native (if (= (is-control-opcode opcode) 1)
+                               (emit-control-instr-x86 ir-func meta offsets idx)
+                               (codegen-ir-instr-bundle-x86-with-import-count opcode operand current-offset function-starts function-metas import-count import-stub-offset frame-base-slot-count current-depth))
+                  native-len (vector-length native)]
+                  (do
+                    (append-native-bytes-loop result native 0 native-len)
+                    (generate-native-control-instr-bundle-loop-x86-with-import-count ir-func result meta offsets function-starts function-metas import-count import-stub-offset frame-base-slot-count next-depth (+ idx 1) len))))))))))))
 
 (defn generate-native-control-instr-bundle-loop-x86 [ir-func result meta offsets function-starts function-metas frame-base-slot-count current-depth idx len]
   (generate-native-control-instr-bundle-loop-x86-with-import-count ir-func result meta offsets function-starts function-metas 0 0 frame-base-slot-count current-depth idx len))
@@ -10419,6 +10449,130 @@
       (do
         (root_pop)
         final))))
+
+(defn append-native-value-window-spill-one-step-x86 [result frame-base-slot-count current-depth]
+  (do
+    (append-native-bytes-rooted result (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count (- current-depth 3))) 7)
+    (append-native-bytes-rooted result (emit-mov-local-from-rdx (native-value-window-spill-offset frame-base-slot-count (- current-depth 2))) 7)
+    0))
+
+(defn append-native-value-window-overflow-spills-x86 [result frame-base-slot-count current-depth]
+  (if (>= current-depth 55)
+    (do
+      (append-native-value-window-spill-one-step-x86 result frame-base-slot-count current-depth)
+      (append-native-value-window-overflow-spills-x86 result frame-base-slot-count (- current-depth 1)))
+    current-depth))
+
+(defn append-shift-native-value-window-x86-loop [result frame-base-slot-count idx]
+  (if (< idx 0)
+    0
+    (do
+      (append-native-bytes-rooted result (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count idx)) 7)
+      (append-native-bytes-rooted result (emit-mov-local-from-rdx (native-value-window-spill-offset frame-base-slot-count (+ idx 1))) 7)
+      (append-shift-native-value-window-x86-loop result frame-base-slot-count (- idx 1)))))
+
+(defn append-produce-one-bundle-x86-core [result op-bytes frame-base-slot-count current-depth]
+  (do
+    (root_push op-bytes)
+    (if (>= current-depth 2)
+      (do
+        (append-shift-native-value-window-x86-loop result frame-base-slot-count (- current-depth 3))
+        (append-native-bytes-rooted result (emit-mov-local-from-rcx (native-value-window-spill-offset frame-base-slot-count 0)) 7))
+      0)
+    (append-native-bytes-loop result op-bytes 0 (vector-length op-bytes))
+    (root_pop)
+    0))
+
+(defn append-produce-one-bundle-x86 [result op-bytes frame-base-slot-count current-depth]
+  (let [core-depth (append-native-value-window-overflow-spills-x86 result frame-base-slot-count current-depth)]
+    (append-produce-one-bundle-x86-core result op-bytes frame-base-slot-count core-depth)))
+
+(defn append-i64-const-bundle-x86 [result value frame-base-slot-count current-depth]
+  (let [core-depth (append-native-value-window-overflow-spills-x86 result frame-base-slot-count current-depth)]
+    (if (>= core-depth 2)
+      (do
+        (append-shift-native-value-window-x86-loop result frame-base-slot-count (- core-depth 3))
+        (append-native-bytes-rooted result (emit-mov-local-from-rcx (native-value-window-spill-offset frame-base-slot-count 0)) 7)
+        (append-native-bytes-rooted result (emit-i64-const-preserve-x86 value) 13))
+      (if (= core-depth 1)
+        (append-native-bytes-rooted result (emit-i64-const-preserve-x86 value) 13)
+        (append-native-bytes-rooted result (emit-mov-imm64 (reg-rax) value) 10)))))
+
+(defn append-local-get-bundle-x86-core [result offset frame-base-slot-count current-depth]
+  (do
+    (if (>= current-depth 2)
+      (do
+        (append-shift-native-value-window-x86-loop result frame-base-slot-count (- current-depth 3))
+        (append-native-bytes-rooted result (emit-mov-local-from-rcx (native-value-window-spill-offset frame-base-slot-count 0)) 7)
+        (append-native-bytes-rooted result (emit-mov-rcx-rax) 3))
+      0)
+    (append-native-bytes-rooted result (emit-local-get-x86 offset) 10)
+    0))
+
+(defn append-local-get-bundle-x86 [result offset frame-base-slot-count current-depth]
+  (let [core-depth (append-native-value-window-overflow-spills-x86 result frame-base-slot-count current-depth)]
+    (append-local-get-bundle-x86-core result offset frame-base-slot-count core-depth)))
+
+(defn append-drop-window-spill-shifts-x86 [result frame-base-slot-count shift-idx last-shift-idx]
+  (if (> shift-idx last-shift-idx)
+    0
+    (do
+      (append-native-bytes-rooted result (emit-mov-rsi-from-local (native-value-window-spill-offset frame-base-slot-count shift-idx)) 7)
+      (append-native-bytes-rooted result (emit-mov-local-from-rsi (native-value-window-spill-offset frame-base-slot-count (- shift-idx 1))) 7)
+      (append-drop-window-spill-shifts-x86 result frame-base-slot-count (+ shift-idx 1) last-shift-idx))))
+
+(defn append-drop-bundle-x86 [result frame-base-slot-count current-depth]
+  (do
+    (append-native-bytes-rooted result (emit-mov-rax-rcx) 3)
+    (if (>= current-depth 3)
+      (do
+        (append-native-bytes-rooted result (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 0)) 7)
+        (append-drop-window-spill-shifts-x86 result frame-base-slot-count 1 (- current-depth 3)))
+      0)))
+
+(defn append-local-set-bundle-x86 [result offset frame-base-slot-count current-depth]
+  (do
+    (append-native-bytes-rooted result (emit-mov-local-from-rax offset) 7)
+    (if (>= current-depth 2)
+      (append-native-bytes-rooted result (emit-mov-rax-rcx) 3)
+      0)
+    (if (>= current-depth 3)
+      (do
+        (append-native-bytes-rooted result (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 0)) 7)
+        (append-drop-window-spill-shifts-x86 result frame-base-slot-count 1 (- current-depth 3)))
+      0)))
+
+(defn append-consume-two-bundle-x86 [result op-bytes frame-base-slot-count current-depth]
+  (do
+    (root_push op-bytes)
+    (append-native-bytes-loop result op-bytes 0 (vector-length op-bytes))
+    (if (>= current-depth 3)
+      (do
+        (append-native-bytes-rooted result (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 0)) 7)
+        (append-drop-window-spill-shifts-x86 result frame-base-slot-count 1 (- current-depth 3)))
+      0)
+    (root_pop)
+    0))
+
+(defn direct-append-x86-opcode [opcode]
+  (if (= opcode 1)
+    6
+    (if (= opcode 3)
+      1
+      (if (= opcode 75)
+        1
+        (if (= opcode 10)
+          4
+          (if (= opcode 11)
+            3
+            (if (= opcode 44)
+              5
+              (if (= opcode 20) 2 0))))))))
+
+(defn direct-append-produce-one-bytes-x86 [opcode operand]
+  (if (= opcode 1)
+    (emit-mov-imm64 (reg-rax) operand)
+    (emit-i32-const-x86 (if (= opcode 75) 0 operand))))
 
 (defn append-encoded-u32-rooted [result value]
   (do
@@ -12145,12 +12299,13 @@
     (spill-native-function-params-x86-twenty-plus param-count result)
     (spill-native-function-params-x86-twenty-to-sixty param-count result)))
 
-(defn generate-native-function-x86-64-bundle-with-import-count [func-meta result function-starts function-metas import-count import-stub-offset function-start]
+(defn generate-native-function-x86-64-bundle-with-import-count [func-meta result function-starts function-metas import-count import-stub-offset]
   (let [param-count (native-function-param-count func-meta)
     local-count (native-function-local-count func-meta)
     ir-func (native-function-ir func-meta)
     frame-base-slot-count (native-frame-base-slot-count ir-func (+ param-count local-count))
     stack-bytes (native-local-stack-bytes-with-window ir-func (+ param-count local-count) function-metas)
+    function-start (vector-length (ref-get result))
     prologue-push (emit-push-rbp)
     prologue-mov (emit-mov-rbp-rsp)
     base-offset (+ function-start 4)
@@ -12524,10 +12679,10 @@
         (do
           (ref-set result (vector-push (ref-get result) (vector-get epilogue-pop 0)))
           (ref-set result (vector-push (ref-get result) (vector-get epilogue-ret 0)))
-          0)))))
+            0)))))
 
 (defn generate-native-function-x86-64-bundle [func-meta result function-starts function-metas function-start]
-  (generate-native-function-x86-64-bundle-with-import-count func-meta result function-starts function-metas 0 0 function-start))
+  (generate-native-function-x86-64-bundle-with-import-count func-meta result function-starts function-metas 0 0))
 
 (defn make-native-x86-bundle-loop-state [done next-idx]
   (vector-push (vector-push (vector-new 2) done) next-idx))
@@ -12540,11 +12695,10 @@
       (root_push result)
       (root_push function-starts)
       (let [actual-idx (+ idx import-count)
-        func-meta (vector-get functions actual-idx)
-        function-start (vector-get function-starts idx)]
+        func-meta (vector-get functions actual-idx)]
         (do
           (root_push func-meta)
-          (generate-native-function-x86-64-bundle-with-import-count func-meta result function-starts functions import-count import-stub-offset function-start)
+          (generate-native-function-x86-64-bundle-with-import-count func-meta result function-starts functions import-count import-stub-offset)
           (root_pop)
           (root_pop)
           (root_pop)

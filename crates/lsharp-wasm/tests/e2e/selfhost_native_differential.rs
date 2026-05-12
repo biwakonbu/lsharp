@@ -1092,8 +1092,14 @@ fn test_native_codegen_emits_x86_vector_length_guard_targets_zero_return() {
         "x86 vector-length helper bytes 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "17", "x86_64 vector-length helper は 17 bytes であるべき");
-    assert_eq!(lines[1], "72", "guard は test rax,rax の REX prefix で始まる");
+    assert_eq!(
+        lines[0], "17",
+        "x86_64 vector-length helper は 17 bytes であるべき"
+    );
+    assert_eq!(
+        lines[1], "72",
+        "guard は test rax,rax の REX prefix で始まる"
+    );
     assert_eq!(lines[2], "133", "guard は test rax,rax opcode を持つ");
     assert_eq!(lines[3], "192", "guard は test rax,rax ModRM を持つ");
     assert_eq!(lines[4], "121", "non-tagged guard は jns rel8 を使う");
@@ -1101,8 +1107,14 @@ fn test_native_codegen_emits_x86_vector_length_guard_targets_zero_return() {
         lines[5], "9",
         "jns は xor eax,eax の先頭へ分岐し、命令の途中へ着地してはいけない"
     );
-    assert_eq!(lines[6], "49", "zero-return path は xor eax,eax の先頭であること");
-    assert_eq!(lines[7], "192", "zero-return path は xor eax,eax の 2 byte 目であること");
+    assert_eq!(
+        lines[6], "49",
+        "zero-return path は xor eax,eax の先頭であること"
+    );
+    assert_eq!(
+        lines[7], "192",
+        "zero-return path は xor eax,eax の 2 byte 目であること"
+    );
     assert_eq!(lines[8], "195", "zero-return path は ret で終わること");
 }
 
@@ -1136,8 +1148,14 @@ fn test_native_codegen_emits_x86_map_size_guard_targets_zero_return() {
         "x86 map-size helper bytes 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "17", "x86_64 map-size helper は 17 bytes であるべき");
-    assert_eq!(lines[1], "72", "guard は test rax,rax の REX prefix で始まる");
+    assert_eq!(
+        lines[0], "17",
+        "x86_64 map-size helper は 17 bytes であるべき"
+    );
+    assert_eq!(
+        lines[1], "72",
+        "guard は test rax,rax の REX prefix で始まる"
+    );
     assert_eq!(lines[2], "133", "guard は test rax,rax opcode を持つ");
     assert_eq!(lines[3], "192", "guard は test rax,rax ModRM を持つ");
     assert_eq!(lines[4], "121", "non-tagged guard は jns rel8 を使う");
@@ -1145,8 +1163,14 @@ fn test_native_codegen_emits_x86_map_size_guard_targets_zero_return() {
         lines[5], "9",
         "jns は xor eax,eax の先頭へ分岐し、命令の途中へ着地してはいけない"
     );
-    assert_eq!(lines[6], "49", "zero-return path は xor eax,eax の先頭であること");
-    assert_eq!(lines[7], "192", "zero-return path は xor eax,eax の 2 byte 目であること");
+    assert_eq!(
+        lines[6], "49",
+        "zero-return path は xor eax,eax の先頭であること"
+    );
+    assert_eq!(
+        lines[7], "192",
+        "zero-return path は xor eax,eax の 2 byte 目であること"
+    );
     assert_eq!(lines[8], "195", "zero-return path は ret で終わること");
 }
 
@@ -1188,7 +1212,10 @@ fn test_native_codegen_emits_x86_i64_const_high32_bytes() {
         "x86 i64.const high32 bytes 出力が不足: {:?}",
         lines
     );
-    assert_eq!(lines[0], "16", "x86_64 i64.const payload は 16 bytes であるべき");
+    assert_eq!(
+        lines[0], "16",
+        "x86_64 i64.const payload は 16 bytes であるべき"
+    );
     assert_eq!(lines[1], "72", "i64.const は REX.W で始まる");
     assert_eq!(lines[2], "184", "i64.const は mov rax, imm64 を使う");
     assert_eq!(lines[3], "0", "imm64 byte0 は 0");
@@ -2432,6 +2459,237 @@ fn test_native_codegen_emits_x86_import_prefixed_direct_call_arg_bundle_bytes() 
     assert_eq!(lines[14], "93", "callee epilogue 手前は pop rbp");
     assert_eq!(lines[15], "195", "callee epilogue 末尾は ret");
     assert_eq!(lines[16], "195", "import stub 末尾は ret");
+}
+
+/// NATIVE-REAL-08f3: x86_64 の import call は import index に関係なく user code 直後の shared ret stub を指すこと
+#[test]
+#[ignore]
+fn test_native_codegen_emits_x86_import_call_targets_trailing_ret_stub() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+   (let [import-meta (make-function-meta 0 0 (vector-new 0))
+         imports (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push
+                           (vector-push (vector-new 6) import-meta)
+                           import-meta)
+                         import-meta)
+                       import-meta)
+                     import-meta)
+                   import-meta)
+         caller-ir (vector-push
+                     (vector-push (vector-new 2) (make-instr 1 42))
+                     (make-call 5))
+         caller (make-function-meta 0 0 caller-ir)
+         functions (vector-push imports caller)
+         target (make-target 1)
+         native (emit-native-function-meta-bundle-with-import-count functions 6 target)]
+    (do
+      (print-bytes native 0 (vector-length native))
+      0)))"#,
+    );
+    let bytes = output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u8>()
+                .unwrap_or_else(|_| panic!("x86 import call byte parse 失敗: {line}"))
+        })
+        .collect::<Vec<_>>();
+
+    let call_offset = bytes
+        .iter()
+        .position(|byte| *byte == 0xe8)
+        .unwrap_or_else(|| panic!("x86 import call に rel32 call opcode が無い: {bytes:?}"));
+    let rel = i32::from_le_bytes([
+        bytes[call_offset + 1],
+        bytes[call_offset + 2],
+        bytes[call_offset + 3],
+        bytes[call_offset + 4],
+    ]);
+    let target = call_offset as isize + 5 + rel as isize;
+
+    assert_eq!(
+        bytes.get(target as usize).copied(),
+        Some(0xc3),
+        "x86 import call target は user code 直後の ret stub を指すべき: call_offset={call_offset} rel={rel} target={target} len={} bytes={bytes:?}",
+        bytes.len()
+    );
+}
+
+/// NATIVE-REAL-08f4: x86_64 の per-function emit は 5-arg import layout で local stub へ import call を向けること
+#[test]
+#[ignore]
+fn test_native_codegen_x86_function_emit_uses_import_layout_stub_offset() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-imports [idx count result import-meta]
+  (if (>= idx count)
+    result
+    (push-imports (+ idx 1) count (vector-push result import-meta) import-meta)))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [import-meta (make-function-meta 0 0 (vector-new 0))
+        imports (push-imports 0 6 (vector-new 8) import-meta)
+        caller-ir (vector-push
+                    (vector-push
+                      (vector-push (vector-new 3) (make-instr 1 42))
+                      (make-instr 11 0))
+                    (make-call 5))
+        caller (make-function-meta 0 1 caller-ir)
+        functions (vector-push imports caller)
+        starts (vector-push (vector-new 1) 0)
+        result (ref-new (vector-new 128))
+        import-offset-layout (* (native-function-size-x86 caller functions) 100000000)]
+    (do
+      (generate-native-function-x86-64-bundle-with-import-count caller result starts functions 6 import-offset-layout)
+      (print-bytes (ref-get result) 0 (vector-length (ref-get result)))
+      0)))"#,
+    );
+    let bytes = output
+        .trim()
+        .lines()
+        .map(|line| {
+            line.parse::<u8>()
+                .unwrap_or_else(|_| panic!("x86 per-function import call byte parse 失敗: {line}"))
+        })
+        .collect::<Vec<_>>();
+    let call_offset = bytes
+        .iter()
+        .position(|byte| *byte == 0xe8)
+        .unwrap_or_else(|| {
+            panic!("x86 per-function import call に rel32 call opcode が無い: {bytes:?}")
+        });
+    let rel = i32::from_le_bytes([
+        bytes[call_offset + 1],
+        bytes[call_offset + 2],
+        bytes[call_offset + 3],
+        bytes[call_offset + 4],
+    ]);
+    let target = call_offset as isize + 5 + rel as isize;
+
+    assert_eq!(
+        target as usize,
+        bytes.len(),
+        "x86 per-function import call target は派生 local stub offset を指すべき: call_offset={call_offset} rel={rel} target={target} len={} bytes={bytes:?}",
+        bytes.len()
+    );
+}
+
+/// NATIVE-REAL-08f5: x86_64 の per-function emit は backward user call を関数先頭基準へ補正すること
+#[test]
+#[ignore]
+fn test_native_codegen_x86_function_emit_uses_relative_start_for_backward_user_call() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn print-bytes [bytes idx n]
+  (if (>= idx n)
+    0
+    (do
+      (print (vector-get bytes idx))
+      (print-bytes bytes (+ idx 1) n))))
+
+(defn main []
+  (let [target-ir (vector-push (vector-new 1) (make-instr 1 7))
+        target (make-function-meta 2 0 target-ir)
+        caller-ir (vector-push
+                    (vector-push
+                      (vector-push (vector-new 3) (make-instr 1 1))
+                      (make-instr 1 2))
+                    (make-call 0))
+        caller (make-function-meta 0 0 caller-ir)
+        functions (vector-push (vector-push (vector-new 2) target) caller)
+        target-size (native-function-size-x86 target functions)
+        starts (vector-push (vector-push (vector-new 2) 0) target-size)
+        result (ref-new (vector-new 128))
+        offset-layout (+ (* (native-function-size-x86 caller functions) 100000000) target-size)]
+    (do
+      (generate-native-function-x86-64-bundle-with-import-count caller result starts functions 0 offset-layout)
+      (print target-size)
+      (print-bytes (ref-get result) 0 (vector-length (ref-get result)))
+      0)))"#,
+    );
+    let mut lines = output.trim().lines();
+    let target_size = lines
+        .next()
+        .expect("target size output")
+        .parse::<isize>()
+        .expect("target size parse");
+    let bytes = lines
+        .map(|line| {
+            line.parse::<u8>().unwrap_or_else(|_| {
+                panic!("x86 per-function backward call byte parse 失敗: {line}")
+            })
+        })
+        .collect::<Vec<_>>();
+    let call_offset = bytes
+        .iter()
+        .position(|byte| *byte == 0xe8)
+        .unwrap_or_else(|| {
+            panic!("x86 per-function backward call に rel32 call opcode が無い: {bytes:?}")
+        });
+    let rel = i32::from_le_bytes([
+        bytes[call_offset + 1],
+        bytes[call_offset + 2],
+        bytes[call_offset + 3],
+        bytes[call_offset + 4],
+    ]);
+    let target = call_offset as isize + 5 + rel as isize;
+
+    assert_eq!(
+        target, -target_size,
+        "x86 per-function backward user call target は関数先頭基準の負 offset を指すべき: call_offset={call_offset} rel={rel} target={target} target_size={target_size} bytes={bytes:?}"
+    );
 }
 
 /// NATIVE-REAL-08g: x86_64 で 2 引数 direct call bundle が arg move + rel32 call bytes を持つこと
@@ -4221,14 +4479,17 @@ fn test_native_codegen_emits_x86_nested_eight_arg_call_restores_outer_value() {
         values.len() > 2,
         "x86 nested eight-arg restore: caller bytes 出力が不足: {values:?}"
     );
-    assert_eq!(values[0], 9, "x86 nested eight-arg restore: call 時 depth は outer+8 args の 9");
+    assert_eq!(
+        values[0], 9,
+        "x86 nested eight-arg restore: call 時 depth は outer+8 args の 9"
+    );
     let caller_bytes = &values[2..];
     let call_idx = caller_bytes
         .windows(12)
-        .position(|window| {
-            window[0] == 232 && window[5..12] == [72, 129, 196, 16, 0, 0, 0]
-        })
-        .expect("x86 nested eight-arg restore: stack restore 付き call rel32 opcode が見つからない");
+        .position(|window| window[0] == 232 && window[5..12] == [72, 129, 196, 16, 0, 0, 0])
+        .expect(
+            "x86 nested eight-arg restore: stack restore 付き call rel32 opcode が見つからない",
+        );
     let after_call = call_idx + 5;
     assert_eq!(
         &caller_bytes[after_call..after_call + 7],

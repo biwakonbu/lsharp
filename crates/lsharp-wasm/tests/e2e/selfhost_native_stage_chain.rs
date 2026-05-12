@@ -108,13 +108,26 @@ fn actual_stage23_seed_source_with_payload_and_code_binding_and_target(
     target_expr: &str,
     main_body: &str,
 ) -> String {
-    selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_and_target(
-        payload_expr,
-        code_binding_expr,
-        target_expr,
-        main_body,
-    )
-    .replacen("(module App.HarnessMain)", "(module App.Seed)", 1)
+    let source =
+        selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_and_target(
+            payload_expr,
+            code_binding_expr,
+            target_expr,
+            main_body,
+        )
+        .replacen("(module App.HarnessMain)", "(module App.Seed)", 1);
+    strip_host_only_x86_file_segment_helpers(source)
+}
+
+fn strip_host_only_x86_file_segment_helpers(source: String) -> String {
+    let Some(start) = source.find("(defn prefixed-chunk-file-path") else {
+        return source;
+    };
+    let Some(relative_end) = source[start..].find("(defn remainder") else {
+        return source;
+    };
+    let end = start + relative_end;
+    format!("{}{}", &source[..start], &source[end..])
 }
 
 fn representative_actual_stage23_seed_source() -> String {
@@ -122,7 +135,34 @@ fn representative_actual_stage23_seed_source() -> String {
 }
 
 fn linux_x86_representative_actual_stage23_seed_source() -> String {
-    representative_actual_stage23_seed_source_for_target("(make-target 3)")
+    let code_binding_expr = r#"entrypoint-func-idx (- (vector-length callables) 1)
+                    starts (collect-callable-function-starts-x86 native-callables 10)
+                    user-total (callable-user-total-size-x86 native-callables 10)
+                    code-len (+ user-total (x86-selfhost-helper-trailer-size 10))
+                    code (vector-new 0)
+                    entrypoint-offset (vector-get starts (- entrypoint-func-idx 10))"#;
+    let main_body = r#"      (let [main-func-idx entrypoint-func-idx
+          data-len (vector-length data)]
+         (do
+             (print 9000000005)
+            (print (vector-length starts))
+            (print main-func-idx)
+            (print entrypoint-offset)
+            (print 9000000006)
+             (print 9000000001)
+            (print code-len)
+            (print 9000000002)
+           (print-x86-code-segments native-callables starts 10 user-total)
+             (print 9000000003)
+            (print data-len)
+            (print 9000000004)
+           (print-packed-code-bytes-loop data 0 data-len)))"#;
+    actual_stage23_seed_source_with_payload_and_code_binding_and_target(
+        r#"(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)"#,
+        code_binding_expr,
+        "(make-target 3)",
+        main_body,
+    )
 }
 
 fn representative_actual_stage23_seed_source_for_target(target_expr: &str) -> String {
@@ -1575,6 +1615,70 @@ fn test_e2e_native_aarch64_deep_direct_append_matches_static_size() {
 
 #[test]
 #[ignore]
+fn test_e2e_native_x86_deep_direct_append_matches_static_size() {
+    let output = run_native_pipeline_harness(
+        r#"(module Main)
+(import IR.IR)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn append-consts [idx len result]
+  (if (>= idx len)
+    result
+    (do
+      (root_push result)
+      (let [next (vector-push result (make-i64-const idx))]
+        (do
+          (root_push next)
+          (let [final (append-consts (+ idx 1) len next)]
+            (do
+              (root_pop)
+              (root_pop)
+              final)))))))
+
+(defn main []
+  (let [with-shallow-const (vector-push (vector-new 50) (make-i64-const 7))
+        with-i32-const (vector-push with-shallow-const (make-i32-const 3))
+        with-shallow-local-set (vector-push with-i32-const (make-instr 11 0))
+        with-shallow-local-get (vector-push with-shallow-local-set (make-local-get 0))
+        base (append-consts 0 40 with-shallow-local-get)
+        with-local-get (vector-push base (make-local-get 0))
+        with-root-pop (vector-push with-local-get (make-instr 75 0))
+        with-const (vector-push with-root-pop (make-i64-const 1))
+        with-add (vector-push with-const (make-instr 20 0))
+        ir (vector-push with-add (make-instr 11 0))
+        func-meta (make-function-meta 1 0 ir)
+        function-metas (vector-push (vector-new 1) func-meta)
+        function-starts (vector-push (vector-new 1) 0)
+        expected (native-function-size-x86 func-meta function-metas)
+        result (ref-new (vector-new expected))
+        _generated (generate-native-function-x86-64-bundle-with-import-count func-meta result function-starts function-metas 0 0)
+        actual (vector-length (ref-get result))]
+    (do
+      (print expected)
+      (print actual)
+      0)))"#,
+    );
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.len(),
+        2,
+        "deep direct append x86 harness 出力が不足: {lines:?}"
+    );
+    assert_eq!(
+        lines[0], lines[1],
+        "deep direct append x86 の実生成長が static size と一致しない: {lines:?}"
+    );
+}
+
+#[test]
+#[ignore]
 fn test_e2e_native_aarch64_map_insert_instr_size_matches_emitted_length() {
     let output = run_native_pipeline_harness(
         r#"(module Main)
@@ -1869,7 +1973,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
     0
     (do
       (root_push bytes)
-      (let [end (if (< (+ idx 1024) len) (+ idx 1024) len)
+      (let [end (if (< (+ idx 8192) len) (+ idx 8192) len)
             path (chunk-file-path chunk-idx)]
         (do
           (root_push path)
@@ -2387,6 +2491,320 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
       0
       (print-packed-code-bytes-loop bytes (vector-get step 1) count))))
 
+(defn print-packed-code-segment [bytes]
+  (do
+    (root_push bytes)
+    (let [len (vector-length bytes)]
+      (do
+        (print 9000000010)
+        (print len)
+        (print-packed-code-bytes-loop bytes 0 len)
+        (root_pop)
+        0))))
+
+(defn shift-x86-function-starts-loop [starts base idx len result result-slot]
+  (if (>= idx len)
+    result
+    (let [next (vector-push result (- (vector-get starts idx) base))]
+      (do
+        (root_set result-slot next)
+        (shift-x86-function-starts-loop starts base (+ idx 1) len next result-slot)))))
+
+(defn shift-x86-function-starts [starts base]
+  (do
+    (root_push starts)
+    (let [result (vector-new (vector-length starts))]
+      (do
+        (let [result-slot (root_push result)
+              final (shift-x86-function-starts-loop starts base 0 (vector-length starts) result result-slot)]
+          (do
+            (root_pop)
+            (root_pop)
+            final))))))
+
+(defn x86-segment-local-import-stub-offset [functions starts import-count function-start]
+  (let [last-idx (- (vector-length starts) 1)
+        last-meta (vector-get functions (+ last-idx import-count))
+        user-total (+ (vector-get starts last-idx) (native-function-size-x86 last-meta functions))]
+    (- user-total function-start)))
+
+(defn print-x86-function-code-segments-loop [functions starts import-count import-stub-offset idx len]
+  (if (>= idx len)
+    0
+    (do
+      (root_push functions)
+      (root_push starts)
+      (let [actual-idx (+ idx import-count)
+            func-meta (vector-get functions actual-idx)
+            function-start (vector-get starts idx)]
+        (do
+          (root_push func-meta)
+          (let [function-size (native-function-size-x86 func-meta functions)
+                result (ref-new (vector-new function-size))]
+            (do
+              (root_push result)
+              (let [local-import-stub-offset (x86-segment-local-import-stub-offset functions starts import-count function-start)
+                    local-starts (shift-x86-function-starts starts function-start)]
+                (do
+                  (root_push local-starts)
+                  (generate-native-function-x86-64-bundle-with-import-count func-meta result local-starts functions import-count local-import-stub-offset)
+                  (root_pop)
+                  (let [segment (ref-get result)]
+                    (do
+                      (root_push segment)
+                      (print-packed-code-segment segment)
+                      (let [final (print-x86-function-code-segments-loop functions starts import-count import-stub-offset (+ idx 1) len)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          final)))))))))))))
+
+(defn print-x86-code-segments [functions starts import-count import-stub-offset]
+  (do
+    (root_push functions)
+    (root_push starts)
+    (print-x86-function-code-segments-loop functions starts import-count import-stub-offset 0 (vector-length starts))
+    (print-x86-code-trailer-segments import-count)
+    (root_pop)
+    (root_pop)
+    0))
+
+(defn print-x86-code-trailer-segments [import-count]
+  (do
+    (if (> import-count 0)
+      (print-packed-code-segment (emit-ret))
+      0)
+    (print-packed-code-segment (emit-x86-selfhost-command-line-arg-helper))
+    (print-packed-code-segment (emit-x86-selfhost-read-file-helper))
+    (print-packed-code-segment (emit-x86-selfhost-string-length-helper))
+    (print-packed-code-segment (emit-x86-selfhost-string-char-at-helper))
+    (print-packed-code-segment (emit-x86-selfhost-print-helper))
+    (print-packed-code-segment (emit-x86-selfhost-vector-new-helper))
+    (print-packed-code-segment (emit-x86-selfhost-vector-length-helper))
+    (print-packed-code-segment (emit-x86-selfhost-vector-get-helper))
+    (print-packed-code-segment (emit-x86-selfhost-vector-push-helper))
+    (print-packed-code-segment (emit-x86-selfhost-ref-new-helper))
+    (print-packed-code-segment (emit-x86-selfhost-ref-get-helper))
+    (print-packed-code-segment (emit-x86-selfhost-ref-set-helper))
+    (print-packed-code-segment (emit-x86-selfhost-substring-helper))
+    (print-packed-code-segment (emit-x86-selfhost-string-concat-helper))
+    (print-packed-code-segment (emit-x86-selfhost-map-new-helper))
+    (print-packed-code-segment (emit-x86-selfhost-map-size-helper))
+    (print-packed-code-segment (emit-x86-selfhost-map-insert-helper))
+    (print-packed-code-segment (emit-x86-selfhost-map-get-helper))
+    (print-packed-code-segment (emit-x86-selfhost-file-exists-helper))
+    0))
+
+(defn prefixed-chunk-file-path [prefix chunk-idx]
+  (string-concat prefix (string-concat (int-to-string chunk-idx) ".txt")))
+
+(defn write-packed-byte-chunks [prefix bytes idx len chunk-idx]
+  (if (>= idx len)
+    chunk-idx
+    (do
+      (root_push prefix)
+      (root_push bytes)
+      (let [end (if (< (+ idx 8192) len) (+ idx 8192) len)
+            path (prefixed-chunk-file-path prefix chunk-idx)]
+        (do
+          (root_push path)
+          (let [chunk-len (- end idx)
+                body (build-byte-chunk-text bytes idx end)]
+            (do
+              (root_push body)
+              (let [content (string-concat (int-to-string chunk-len) (string-concat "\n" body))]
+              (do
+              (root_push content)
+              (write-file path content)
+              (let [final (write-packed-byte-chunks prefix bytes end len (+ chunk-idx 1))]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  final)))))))))))
+
+(defn write-packed-code-segment [prefix bytes chunk-idx]
+  (write-packed-byte-chunks prefix bytes 0 (vector-length bytes) chunk-idx))
+
+(defn write-x86-function-code-segments-loop [prefix functions starts import-count import-stub-offset idx len chunk-idx]
+  (if (>= idx len)
+    chunk-idx
+    (do
+      (root_push prefix)
+      (root_push functions)
+      (root_push starts)
+      (let [actual-idx (+ idx import-count)
+            func-meta (vector-get functions actual-idx)
+            function-start (vector-get starts idx)]
+        (do
+          (root_push func-meta)
+          (let [function-size (native-function-size-x86 func-meta functions)
+                result (ref-new (vector-new function-size))]
+            (do
+              (root_push result)
+              (let [local-import-stub-offset (x86-segment-local-import-stub-offset functions starts import-count function-start)
+                    local-starts (shift-x86-function-starts starts function-start)]
+                (do
+                  (root_push local-starts)
+                  (generate-native-function-x86-64-bundle-with-import-count func-meta result local-starts functions import-count local-import-stub-offset)
+                  (root_pop)
+                  (let [segment (ref-get result)]
+                    (do
+                      (root_push segment)
+                      (let [next-chunk (write-packed-code-segment prefix segment chunk-idx)]
+                        (do
+                          (let [final (write-x86-function-code-segments-loop prefix functions starts import-count import-stub-offset (+ idx 1) len next-chunk)]
+                            (do
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              final)))))))))))))))
+
+(defn make-x86-code-segment-state [done next-idx next-chunk]
+  (vector-push (vector-push (vector-push (vector-new 3) done) next-idx) next-chunk))
+
+(defn write-x86-function-code-segment-step [prefix functions starts import-count import-stub-offset idx len chunk-idx]
+  (if (>= idx len)
+    (make-x86-code-segment-state 1 idx chunk-idx)
+    (do
+      (root_push prefix)
+      (root_push functions)
+      (root_push starts)
+      (let [actual-idx (+ idx import-count)
+            func-meta (vector-get functions actual-idx)
+            function-start (vector-get starts idx)]
+        (do
+          (root_push func-meta)
+          (let [function-size (native-function-size-x86 func-meta functions)
+                result (ref-new (vector-new function-size))]
+            (do
+              (root_push result)
+              (let [local-import-stub-offset (x86-segment-local-import-stub-offset functions starts import-count function-start)
+                    local-starts (shift-x86-function-starts starts function-start)]
+                (do
+                  (root_push local-starts)
+                  (generate-native-function-x86-64-bundle-with-import-count func-meta result local-starts functions import-count local-import-stub-offset)
+                  (root_pop)
+                  (let [segment (ref-get result)]
+                    (do
+                      (root_push segment)
+                      (let [next-chunk (write-packed-code-segment prefix segment chunk-idx)]
+                        (do
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (make-x86-code-segment-state 0 (+ idx 1) next-chunk))))))))))))))
+
+(defn continue-write-x86-function-code-segment-step [prefix functions starts import-count import-stub-offset len state]
+  (if (= (vector-get state 0) 1)
+    state
+    (write-x86-function-code-segment-step prefix functions starts import-count import-stub-offset (vector-get state 1) len (vector-get state 2))))
+
+(defn continue-write-x86-function-code-segment-step-times [prefix functions starts import-count import-stub-offset len remaining state]
+  (if (= remaining 0)
+    state
+    (if (= (vector-get state 0) 1)
+      state
+      (do
+        (root_push prefix)
+        (root_push functions)
+        (root_push starts)
+        (root_push state)
+        (let [next-state (continue-write-x86-function-code-segment-step prefix functions starts import-count import-stub-offset len state)]
+          (do
+            (root_push next-state)
+            (let [result (continue-write-x86-function-code-segment-step-times prefix functions starts import-count import-stub-offset len (- remaining 1) next-state)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
+(defn write-x86-function-code-segments-step-64 [prefix functions starts import-count import-stub-offset idx len chunk-idx]
+  (do
+    (root_push prefix)
+    (root_push functions)
+    (root_push starts)
+    (let [state (write-x86-function-code-segment-step prefix functions starts import-count import-stub-offset idx len chunk-idx)]
+      (do
+        (root_push state)
+        (let [result (continue-write-x86-function-code-segment-step-times prefix functions starts import-count import-stub-offset len 63 state)]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn write-x86-function-code-segments-loop-bounded [prefix functions starts import-count import-stub-offset idx len chunk-idx]
+  (do
+    (root_push prefix)
+    (root_push functions)
+    (root_push starts)
+    (let [state (write-x86-function-code-segments-step-64 prefix functions starts import-count import-stub-offset idx len chunk-idx)]
+      (do
+        (root_push state)
+        (let [result
+              (if (= (vector-get state 0) 1)
+                (vector-get state 2)
+                (write-x86-function-code-segments-loop-bounded prefix functions starts import-count import-stub-offset (vector-get state 1) len (vector-get state 2)))]
+          (do
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            (root_pop)
+            result))))))
+
+(defn write-x86-code-trailer-segments [prefix import-count chunk-idx]
+  (let [c0 (if (> import-count 0)
+             (write-packed-code-segment prefix (emit-ret) chunk-idx)
+             chunk-idx)
+        c1 (write-packed-code-segment prefix (emit-x86-selfhost-command-line-arg-helper) c0)
+        c2 (write-packed-code-segment prefix (emit-x86-selfhost-read-file-helper) c1)
+        c3 (write-packed-code-segment prefix (emit-x86-selfhost-string-length-helper) c2)
+        c4 (write-packed-code-segment prefix (emit-x86-selfhost-string-char-at-helper) c3)
+        c5 (write-packed-code-segment prefix (emit-x86-selfhost-print-helper) c4)
+        c6 (write-packed-code-segment prefix (emit-x86-selfhost-vector-new-helper) c5)
+        c7 (write-packed-code-segment prefix (emit-x86-selfhost-vector-length-helper) c6)
+        c8 (write-packed-code-segment prefix (emit-x86-selfhost-vector-get-helper) c7)
+        c9 (write-packed-code-segment prefix (emit-x86-selfhost-vector-push-helper) c8)
+        c10 (write-packed-code-segment prefix (emit-x86-selfhost-ref-new-helper) c9)
+        c11 (write-packed-code-segment prefix (emit-x86-selfhost-ref-get-helper) c10)
+        c12 (write-packed-code-segment prefix (emit-x86-selfhost-ref-set-helper) c11)
+        c13 (write-packed-code-segment prefix (emit-x86-selfhost-substring-helper) c12)
+        c14 (write-packed-code-segment prefix (emit-x86-selfhost-string-concat-helper) c13)
+        c15 (write-packed-code-segment prefix (emit-x86-selfhost-map-new-helper) c14)
+        c16 (write-packed-code-segment prefix (emit-x86-selfhost-map-size-helper) c15)
+        c17 (write-packed-code-segment prefix (emit-x86-selfhost-map-insert-helper) c16)
+        c18 (write-packed-code-segment prefix (emit-x86-selfhost-map-get-helper) c17)]
+    (write-packed-code-segment prefix (emit-x86-selfhost-file-exists-helper) c18)))
+
+(defn write-x86-code-segments [prefix functions starts import-count import-stub-offset]
+  (do
+    (root_push prefix)
+    (root_push functions)
+    (root_push starts)
+    (let [after-functions (write-x86-function-code-segments-loop-bounded prefix functions starts import-count import-stub-offset 0 (vector-length starts) 0)
+          final (write-x86-code-trailer-segments prefix import-count after-functions)]
+      (do
+        (root_pop)
+        (root_pop)
+        (root_pop)
+        final))))
+
 (defn remainder [value divisor]
   (- value (* (/ value divisor) divisor)))
 
@@ -2801,6 +3219,389 @@ fn run_selfhost_main_native_x86_function_meta_code_only_host_bytes_harness_with_
     extract_native_code_data_transport_output(&output, label)
 }
 
+#[allow(dead_code)]
+fn run_selfhost_main_native_x86_segmented_host_bytes_harness_with_payload_and_args(
+    label: &str,
+    payload_expr: &str,
+    args: &[&str],
+) -> NativeEntrypointBundle {
+    let code_binding_expr = r#"entrypoint-func-idx (- (vector-length callables) 1)
+                    starts (collect-callable-function-starts-x86 native-callables 10)
+                    user-total (callable-user-total-size-x86 native-callables 10)
+                    code-len (+ user-total (x86-selfhost-helper-trailer-size 10))
+                    code (vector-new 0)
+                    entrypoint-offset (vector-get starts (- entrypoint-func-idx 10))"#;
+    let main_body = r#"      (let [main-func-idx entrypoint-func-idx
+          data-len (vector-length data)]
+         (do
+             (print 9000000005)
+            (print (vector-length callables))
+            (print main-func-idx)
+            (print entrypoint-offset)
+            (print 9000000006)
+             (print 9000000001)
+            (print code-len)
+            (print 9000000002)
+           (print-x86-code-segments native-callables starts 10 user-total)
+             (print 9000000003)
+            (print data-len)
+            (print 9000000004)
+           (print-packed-code-bytes-loop data 0 data-len)))"#;
+    let harness =
+        selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_and_target(
+            payload_expr,
+            code_binding_expr,
+            "(make-target 3)",
+            main_body,
+        );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        label,
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        args,
+    )
+    .unwrap_or_else(|e| panic!("{label} x86 segmented transport harness 実行に失敗: {e}"));
+    let transport = extract_native_code_data_transport_output_with_optional_layout(&output, label);
+    let layout = transport
+        .layout
+        .unwrap_or_else(|| panic!("{label} segmented layout が出力されていない"));
+    NativeEntrypointBundle {
+        function_start_len: layout.function_start_len,
+        main_func_idx: layout.main_func_idx,
+        declared_code_len: transport.declared_code_len,
+        declared_data_len: transport.declared_data_len,
+        entrypoint_offset: layout.entrypoint_offset,
+        code_bytes: transport.code_bytes,
+        data_bytes: transport.data_bytes,
+    }
+}
+
+fn read_packed_chunk_files(
+    dir: &std::path::Path,
+    prefix: &str,
+    chunk_count: usize,
+    declared_len: usize,
+) -> Vec<u8> {
+    let mut payload = Vec::new();
+    for idx in 0..chunk_count {
+        let path = dir.join(format!("{prefix}{idx}.txt"));
+        let chunk = std::fs::read(&path).unwrap_or_else(|err| {
+            panic!("packed chunk file 読み込みに失敗 {}: {err}", path.display())
+        });
+        let (len_line, payload_start) = next_transport_line(&chunk, 0)
+            .unwrap_or_else(|| panic!("packed chunk file length が不足: {}", path.display()));
+        let chunk_len = parse_transport_ascii_line(
+            Some(len_line),
+            &format!("packed chunk file length が不足: {}", path.display()),
+        )
+        .parse::<usize>()
+        .unwrap_or_else(|_| panic!("packed chunk file length parse 失敗: {}", path.display()));
+        let decoded = decode_packed_byte_lines(&chunk[payload_start..], chunk_len);
+        payload.extend_from_slice(&decoded);
+    }
+    assert_eq!(
+        payload.len(),
+        declared_len,
+        "packed chunk files の復元長が一致しない: prefix={prefix} declared_len={declared_len} decoded_len={}",
+        payload.len()
+    );
+    payload
+}
+
+#[allow(dead_code)]
+fn run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+    label: &str,
+    payload_expr: &str,
+    args: &[&str],
+) -> NativeEntrypointBundle {
+    let code_binding_expr = r#"entrypoint-func-idx (- (vector-length callables) 1)
+                    starts (collect-callable-function-starts-x86 native-callables 10)
+                    user-total (callable-user-total-size-x86 native-callables 10)
+                    code-len (+ user-total (x86-selfhost-helper-trailer-size 10))
+                    code (vector-new 0)
+                    entrypoint-offset (vector-get starts (- entrypoint-func-idx 10))"#;
+    let main_body = r#"      (let [main-func-idx entrypoint-func-idx
+          data-len (vector-length data)
+          code-chunk-count (write-x86-code-segments "code-bytes-" native-callables starts 10 user-total)
+          data-chunk-count (write-packed-byte-chunks "data-bytes-" data 0 data-len 0)]
+         (do
+            (print (vector-length callables))
+            (print main-func-idx)
+            (print entrypoint-offset)
+            (print code-len)
+            (print code-chunk-count)
+            (print data-len)
+            (print data-chunk-count)))"#;
+    let harness =
+        selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_and_target(
+            payload_expr,
+            code_binding_expr,
+            "(make-target 3)",
+            main_body,
+        );
+    let (dir, output) = try_compile_and_run_selfhost_fixture_entry_preserve_dir_with_args(
+        label,
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        args,
+    )
+    .unwrap_or_else(|e| panic!("{label} x86 file segmented harness setup に失敗: {e}"));
+    let output =
+        output.unwrap_or_else(|e| panic!("{label} x86 file segmented harness 実行に失敗: {e}"));
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.len(),
+        7,
+        "{label} x86 file segmented manifest 出力が不足: {lines:?}"
+    );
+    let function_start_len = lines[0] as usize;
+    let main_func_idx = lines[1] as usize;
+    let entrypoint_offset = lines[2] as usize;
+    let declared_code_len = lines[3] as usize;
+    let code_chunk_count = lines[4] as usize;
+    let declared_data_len = lines[5] as usize;
+    let data_chunk_count = lines[6] as usize;
+    let code_bytes =
+        read_packed_chunk_files(&dir, "code-bytes-", code_chunk_count, declared_code_len);
+    let data_bytes =
+        read_packed_chunk_files(&dir, "data-bytes-", data_chunk_count, declared_data_len);
+    let _ = std::fs::remove_dir_all(&dir);
+    NativeEntrypointBundle {
+        function_start_len,
+        main_func_idx,
+        declared_code_len,
+        declared_data_len,
+        entrypoint_offset,
+        code_bytes,
+        data_bytes,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_selfhost_main_native_x86_file_segmented_code_range_harness_with_payload_and_args(
+    label: &str,
+    payload_expr: &str,
+    range_start: usize,
+    range_end: usize,
+    include_trailer: bool,
+    include_data: bool,
+    args: &[&str],
+) -> (usize, Vec<u8>, usize, Vec<u8>) {
+    let include_trailer_flag = if include_trailer { 1 } else { 0 };
+    let include_data_flag = if include_data { 1 } else { 0 };
+    let code_binding_expr = format!(
+        r#"starts (collect-callable-function-starts-x86 native-callables 10)
+                    user-total (callable-user-total-size-x86 native-callables 10)
+                    range-start {range_start}
+                    range-end {range_end}
+                    range-start-offset (if (= range-start 0) 0 (vector-get starts range-start))
+                    range-end-offset (if (>= range-end (vector-length starts)) user-total (vector-get starts range-end))
+                    range-code-len (+ (- range-end-offset range-start-offset) (if (= {include_trailer_flag} 1) (x86-selfhost-helper-trailer-size 10) 0))
+                    code (vector-new 0)"#
+    );
+    let main_body = format!(
+        r#"      (let [data-len (if (= {include_data_flag} 1) (vector-length data) 0)
+          code-chunk-after-functions (write-x86-function-code-segments-loop-bounded "code-bytes-" native-callables starts 10 user-total range-start range-end 0)
+          code-chunk-count (if (= {include_trailer_flag} 1)
+                             (write-x86-code-trailer-segments "code-bytes-" 10 code-chunk-after-functions)
+                             code-chunk-after-functions)
+          data-chunk-count (if (= {include_data_flag} 1)
+                             (write-packed-byte-chunks "data-bytes-" data 0 data-len 0)
+                             0)]
+         (do
+            (print range-code-len)
+            (print code-chunk-count)
+            (print data-len)
+            (print data-chunk-count)))"#
+    );
+    let harness =
+        selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_and_target(
+            payload_expr,
+            &code_binding_expr,
+            "(make-target 3)",
+            &main_body,
+        );
+    let (dir, output) = try_compile_and_run_selfhost_fixture_entry_preserve_dir_with_args(
+        label,
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        args,
+    )
+    .unwrap_or_else(|e| panic!("{label} x86 file segmented range harness setup に失敗: {e}"));
+    let output = output
+        .unwrap_or_else(|e| panic!("{label} x86 file segmented range harness 実行に失敗: {e}"));
+    let lines = parse_numeric_lines(&output);
+    assert_eq!(
+        lines.len(),
+        4,
+        "{label} x86 file segmented range manifest 出力が不足: {lines:?}"
+    );
+    let declared_code_len = lines[0] as usize;
+    let code_chunk_count = lines[1] as usize;
+    let declared_data_len = lines[2] as usize;
+    let data_chunk_count = lines[3] as usize;
+    let code_bytes =
+        read_packed_chunk_files(&dir, "code-bytes-", code_chunk_count, declared_code_len);
+    let data_bytes =
+        read_packed_chunk_files(&dir, "data-bytes-", data_chunk_count, declared_data_len);
+    let _ = std::fs::remove_dir_all(&dir);
+    (declared_code_len, code_bytes, declared_data_len, data_bytes)
+}
+
+fn run_selfhost_main_native_x86_segmented_code_range_harness_with_payload_and_args(
+    label: &str,
+    payload_expr: &str,
+    range_start: usize,
+    range_end: usize,
+    include_trailer: bool,
+    include_data: bool,
+    args: &[&str],
+) -> (usize, Vec<u8>, usize, Vec<u8>) {
+    try_run_selfhost_main_native_x86_segmented_code_range_harness_with_payload_and_args(
+        label,
+        payload_expr,
+        range_start,
+        range_end,
+        include_trailer,
+        include_data,
+        args,
+    )
+    .unwrap_or_else(|e| panic!("{label} x86 segmented range transport harness 実行に失敗: {e}"))
+}
+
+fn try_run_selfhost_main_native_x86_segmented_code_range_harness_with_payload_and_args(
+    label: &str,
+    payload_expr: &str,
+    range_start: usize,
+    range_end: usize,
+    include_trailer: bool,
+    include_data: bool,
+    args: &[&str],
+) -> Result<(usize, Vec<u8>, usize, Vec<u8>), String> {
+    let include_trailer_flag = if include_trailer { 1 } else { 0 };
+    let include_data_flag = if include_data { 1 } else { 0 };
+    let code_binding_expr = format!(
+        r#"starts (collect-callable-function-starts-x86 native-callables 10)
+                    user-total (callable-user-total-size-x86 native-callables 10)
+                    range-start {range_start}
+                    range-end {range_end}
+                    range-start-offset (if (= range-start 0) 0 (vector-get starts range-start))
+                    range-end-offset (if (>= range-end (vector-length starts)) user-total (vector-get starts range-end))
+                    range-code-len (+ (- range-end-offset range-start-offset) (if (= {include_trailer_flag} 1) (x86-selfhost-helper-trailer-size 10) 0))
+                    code (vector-new 0)"#
+    );
+    let main_body = format!(
+        r#"      (let [data-len (if (= {include_data_flag} 1) (vector-length data) 0)]
+         (do
+             (print 9000000001)
+            (print range-code-len)
+            (print 9000000002)
+           (print-x86-function-code-segments-loop native-callables starts 10 user-total range-start range-end)
+           (if (= {include_trailer_flag} 1)
+             (print-x86-code-trailer-segments 10)
+             0)
+             (print 9000000003)
+            (print data-len)
+            (print 9000000004)
+           (if (= {include_data_flag} 1)
+             (print-packed-code-bytes-loop data 0 data-len)
+             0)))"#
+    );
+    let harness =
+        selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_and_target(
+            payload_expr,
+            &code_binding_expr,
+            "(make-target 3)",
+            &main_body,
+        );
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args_raw(
+        label,
+        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+        "src/App/HarnessMain.ls",
+        &harness,
+        args,
+    )?;
+    Ok(extract_native_code_data_transport_output(&output, label))
+}
+
+#[allow(dead_code, clippy::too_many_arguments)]
+fn append_linux_x86_segmented_code_range_adaptive(
+    label: &str,
+    payload_expr: &str,
+    range_start: usize,
+    range_end: usize,
+    include_trailer: bool,
+    include_data: bool,
+    code_bytes: &mut Vec<u8>,
+    declared_code_len: &mut usize,
+    data_bytes: &mut Vec<u8>,
+    declared_data_len: &mut usize,
+) {
+    let result = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, {
+        let payload_expr = payload_expr.to_string();
+        let label = label.to_string();
+        move || {
+            try_run_selfhost_main_native_x86_segmented_code_range_harness_with_payload_and_args(
+                &label,
+                &payload_expr,
+                range_start,
+                range_end,
+                include_trailer,
+                include_data,
+                &[],
+            )
+        }
+    });
+    match result {
+        Ok((
+            chunk_declared_code_len,
+            chunk_code_bytes,
+            chunk_declared_data_len,
+            chunk_data_bytes,
+        )) => {
+            *declared_code_len += chunk_declared_code_len;
+            code_bytes.extend_from_slice(&chunk_code_bytes);
+            if include_data {
+                *declared_data_len = chunk_declared_data_len;
+                *data_bytes = chunk_data_bytes;
+            }
+        }
+        Err(err) if range_end.saturating_sub(range_start) > 1 => {
+            let mid = range_start + (range_end - range_start) / 2;
+            append_linux_x86_segmented_code_range_adaptive(
+                &format!("{label}-left"),
+                payload_expr,
+                range_start,
+                mid,
+                false,
+                include_data,
+                code_bytes,
+                declared_code_len,
+                data_bytes,
+                declared_data_len,
+            );
+            append_linux_x86_segmented_code_range_adaptive(
+                &format!("{label}-right"),
+                payload_expr,
+                mid,
+                range_end,
+                include_trailer,
+                false,
+                code_bytes,
+                declared_code_len,
+                data_bytes,
+                declared_data_len,
+            );
+        }
+        Err(err) => {
+            panic!("{label} x86 segmented single-function transport harness 実行に失敗: {err}");
+        }
+    }
+}
+
 fn run_selfhost_main_native_function_meta_code_only_host_bytes_harness()
 -> (usize, Vec<u8>, usize, Vec<u8>) {
     run_selfhost_main_native_function_meta_code_only_host_bytes_harness_with_payload(
@@ -3012,7 +3813,7 @@ fn run_selfhost_main_representative_x86_layout_harness_with_exprs_and_args(
         "main が末尾 callable なのに last start と一致しない: {lines:?}"
     );
     NativeEntrypointLayout {
-        function_start_len: lines[0] as usize,
+        function_start_len: lines[2] as usize,
         main_func_idx: lines[1] as usize,
         entrypoint_offset: lines[4] as usize,
     }
@@ -3050,11 +3851,13 @@ fn run_selfhost_main_native_x86_function_meta_bundle_host_bytes_harness_with_exp
 #[test]
 #[ignore = "linux-x86 actual stage2 regression: entrypoint call rel32 must not escape the bundle"]
 fn test_e2e_selfhost_main_representative_x86_entrypoint_first_call_stays_in_bundle() {
-    let bundle = run_selfhost_main_native_x86_function_meta_bundle_host_bytes_harness_with_exprs(
-        "native-stage23-representative-x86-entrypoint-call-range",
-        r#"(compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)"#,
-        r#"(compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)"#,
-    );
+    let bundle = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        run_selfhost_main_native_x86_function_meta_bundle_host_bytes_harness_with_exprs(
+            "native-stage23-representative-x86-entrypoint-call-range",
+            r#"(compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)"#,
+            r#"(compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)"#,
+        )
+    });
 
     let entry = bundle.entrypoint_offset;
     assert!(
@@ -3086,6 +3889,16 @@ fn test_e2e_selfhost_main_representative_x86_entrypoint_first_call_stays_in_bund
         rel,
         target,
         bundle.code_bytes.len()
+    );
+    let target_byte = bundle.code_bytes[target as usize];
+    assert!(
+        target_byte != 0xff,
+        "entrypoint first call target が命令途中の 0xff byte に着地している: entry={} call_offset={} rel={} target={} target_window={:?}",
+        entry,
+        call_offset,
+        rel,
+        target,
+        &bundle.code_bytes[target as usize..(target as usize + 16).min(bundle.code_bytes.len())]
     );
 }
 
@@ -3183,6 +3996,17 @@ fn test_extract_native_code_data_transport_output_supports_packed_payloads() {
     assert_eq!(code_bytes, vec![1, 2, 16, 3]);
     assert_eq!(declared_data_len, 3);
     assert_eq!(data_bytes, vec![7, 8, 9]);
+}
+
+#[test]
+fn test_extract_native_code_data_transport_output_supports_segmented_packed_payloads() {
+    let output = b"9000000001\n5\n9000000002\n9000000010\n2\n513\n9000000010\n3\n197121\n9000000003\n0\n9000000004\n";
+    let (declared_code_len, code_bytes, declared_data_len, data_bytes) =
+        extract_native_code_data_transport_output(output, "segmented packed transport test");
+    assert_eq!(declared_code_len, 5);
+    assert_eq!(code_bytes, vec![1, 2, 1, 2, 3]);
+    assert_eq!(declared_data_len, 0);
+    assert!(data_bytes.is_empty());
 }
 
 #[test]
@@ -3330,6 +4154,13 @@ fn decode_printed_byte_values(payload: &[u8], declared_code_len: usize) -> Vec<u
 }
 
 fn decode_numeric_transport_payload(payload: &[u8], declared_code_len: usize) -> Vec<u8> {
+    let lines = payload
+        .split(|byte| is_transport_separator(*byte))
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    if lines.first().copied() == Some(b"9000000010".as_slice()) {
+        return decode_segmented_packed_transport_payload(&lines, declared_code_len);
+    }
     let line_count = payload
         .split(|byte| is_transport_separator(*byte))
         .filter(|line| !line.is_empty())
@@ -3343,6 +4174,60 @@ fn decode_numeric_transport_payload(payload: &[u8], declared_code_len: usize) ->
     } else {
         decode_transport_payload(payload, declared_code_len)
     }
+}
+
+fn decode_segmented_packed_transport_payload(lines: &[&[u8]], declared_code_len: usize) -> Vec<u8> {
+    let mut decoded = Vec::with_capacity(declared_code_len);
+    let mut idx = 0;
+    while idx < lines.len() {
+        let marker = std::str::from_utf8(lines[idx]).unwrap_or_else(|_| {
+            panic!("segmented packed marker が UTF-8 でない: {:?}", lines[idx])
+        });
+        assert_eq!(
+            marker, "9000000010",
+            "segmented packed marker が期待値と一致しない at {idx}: {marker}"
+        );
+        idx += 1;
+        let len_text = std::str::from_utf8(
+            lines
+                .get(idx)
+                .copied()
+                .unwrap_or_else(|| panic!("segmented packed length が不足 at {idx}")),
+        )
+        .unwrap_or_else(|_| panic!("segmented packed length が UTF-8 でない at {idx}"));
+        let segment_len = len_text
+            .parse::<usize>()
+            .unwrap_or_else(|_| panic!("segmented packed length parse 失敗 at {idx}: {len_text}"));
+        idx += 1;
+        let packed_len = segment_len.div_ceil(8);
+        let end = idx + packed_len;
+        assert!(
+            end <= lines.len(),
+            "segmented packed payload が不足: segment_len={segment_len} idx={idx} lines={}",
+            lines.len()
+        );
+        let mut segment_payload = Vec::new();
+        for line in &lines[idx..end] {
+            if !segment_payload.is_empty() {
+                segment_payload.push(b'\n');
+            }
+            segment_payload.extend_from_slice(line);
+        }
+        decoded.extend(decode_packed_byte_lines_with_width(
+            &segment_payload,
+            segment_len,
+            8,
+        ));
+        idx = end;
+    }
+    assert_eq!(
+        decoded.len(),
+        declared_code_len,
+        "segmented packed payload の復元長が一致しない: declared_len={} decoded_len={}",
+        declared_code_len,
+        decoded.len()
+    );
+    decoded
 }
 
 fn decode_base64_value(byte: u8) -> Option<u8> {
@@ -19706,22 +20591,72 @@ fn test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artif
 
     let seed_source = linux_x86_representative_actual_stage23_seed_source();
     let escaped_seed_source = escape_lsharp_string(&seed_source);
-    let pairs_expr = format!(
-        r#"(do
-            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
-            (compile-file-pairs-with-cache "src/App/Seed.ls" cache-ref parse-count-ref))"#
-    );
     let payload_expr = format!(
         r#"(do
             (write-file "src/App/Seed.ls" "{escaped_seed_source}")
             (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref))"#
     );
-    let stage1_input =
-        run_selfhost_main_native_x86_function_meta_bundle_host_bytes_harness_with_exprs(
-            "linux-x86-hostgen-actual-stage1-selfregen",
-            &pairs_expr,
-            &payload_expr,
-        );
+    let pairs_expr = format!(
+        r#"(do
+            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+            (compile-file-pairs-with-cache "src/App/Seed.ls" cache-ref parse-count-ref))"#
+    );
+    let layout = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, {
+        let pairs_expr = pairs_expr.clone();
+        let payload_expr = payload_expr.clone();
+        move || {
+            run_selfhost_main_representative_x86_layout_harness_with_exprs_and_args(
+                "linux-x86-hostgen-actual-stage1-selfregen-layout",
+                &pairs_expr,
+                &payload_expr,
+                &[],
+            )
+        }
+    });
+    let split = 2035usize.min(layout.function_start_len);
+    let (prefix_declared_code_len, prefix_code_bytes, prefix_declared_data_len, prefix_data_bytes) =
+        run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, {
+            let payload_expr = payload_expr.clone();
+            move || {
+                run_selfhost_main_native_x86_file_segmented_code_range_harness_with_payload_and_args(
+                    "linux-x86-hostgen-actual-stage1-selfregen-code-prefix",
+                    &payload_expr,
+                    0,
+                    split,
+                    false,
+                    true,
+                    &[],
+                )
+            }
+        });
+    let (suffix_declared_code_len, suffix_code_bytes, suffix_declared_data_len, suffix_data_bytes) =
+        run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, {
+            let payload_expr = payload_expr.clone();
+            move || {
+                run_selfhost_main_native_x86_file_segmented_code_range_harness_with_payload_and_args(
+                    "linux-x86-hostgen-actual-stage1-selfregen-code-suffix",
+                    &payload_expr,
+                    split,
+                    layout.function_start_len,
+                    true,
+                    false,
+                    &[],
+                )
+            }
+        });
+    assert_eq!(suffix_declared_data_len, 0);
+    assert!(suffix_data_bytes.is_empty());
+    let mut code_bytes = prefix_code_bytes;
+    code_bytes.extend_from_slice(&suffix_code_bytes);
+    let stage1_input = NativeEntrypointBundle {
+        function_start_len: layout.function_start_len,
+        main_func_idx: layout.main_func_idx,
+        declared_code_len: prefix_declared_code_len + suffix_declared_code_len,
+        declared_data_len: prefix_declared_data_len,
+        entrypoint_offset: layout.entrypoint_offset,
+        code_bytes,
+        data_bytes: prefix_data_bytes,
+    };
 
     assert!(
         !stage1_input.code_bytes.is_empty(),
@@ -19789,6 +20724,33 @@ fn test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artif
         written, stage1_input.code_bytes,
         "Linux x86_64 actual stage1 code artifact は生成バイト列をそのまま保存すること"
     );
+}
+
+#[test]
+#[ignore = "diagnostic: isolate Linux x86 actual stage1 segmented range failure"]
+fn test_e2e_native_linux_x86_actual_stage1_function_2035_segment_diagnostic() {
+    let seed_source = linux_x86_representative_actual_stage23_seed_source();
+    let escaped_seed_source = escape_lsharp_string(&seed_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+            (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let (declared_len, code_bytes, declared_data_len, data_bytes) =
+        run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+            run_selfhost_main_native_x86_segmented_code_range_harness_with_payload_and_args(
+                "linux-x86-actual-stage1-function-2035-segment",
+                &payload_expr,
+                2035,
+                2036,
+                false,
+                false,
+                &[],
+            )
+        });
+    assert_eq!(declared_len, code_bytes.len());
+    assert_eq!(declared_data_len, data_bytes.len());
+    assert!(!code_bytes.is_empty());
 }
 
 fn linux_x86_actual_stage1_diagnostic_seed_source() -> String {
@@ -20102,8 +21064,232 @@ fn test_e2e_native_linux_x86_host_generates_actual_stage1_diagnostic_bundle_arti
 #[test]
 #[ignore]
 fn test_e2e_selfhost_main_representative_x86_function_size_matches_generated_length_diagnostic() {
-    let seed_source = representative_actual_stage23_seed_source();
+    assert_x86_function_size_matches_generated_length_for_seed(
+        "representative-x86-function-size-diagnostic",
+        representative_actual_stage23_seed_source(),
+        false,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_e2e_selfhost_main_linux_x86_actual_seed_function_size_matches_generated_length_diagnostic()
+{
+    assert_x86_function_size_matches_generated_length_for_seed(
+        "linux-x86-actual-seed-function-size-diagnostic",
+        linux_x86_representative_actual_stage23_seed_source(),
+        false,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_e2e_selfhost_main_linux_x86_actual_seed_segmented_function_size_matches_generated_length_diagnostic()
+ {
+    assert_x86_function_size_matches_generated_length_for_seed(
+        "linux-x86-actual-seed-segmented-function-size-diagnostic",
+        linux_x86_representative_actual_stage23_seed_source(),
+        true,
+    );
+}
+
+#[test]
+#[ignore]
+fn test_e2e_selfhost_main_linux_x86_actual_seed_start_window_diagnostic() {
+    let seed_source = linux_x86_representative_actual_stage23_seed_source();
     let escaped_seed_source = escape_lsharp_string(&seed_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+            (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let harness = format!(
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn print-start-window [functions starts idx len]
+  (if (>= idx len)
+    0
+    (let [start (vector-get starts idx)]
+      (if (and (>= start 931000) (< start 933500))
+        (let [func (vector-get functions (+ idx 10))]
+          (do
+            (print idx)
+            (print (+ idx 10))
+            (print start)
+            (print (native-function-size-x86 func functions))
+            (print (native-function-param-count func))
+            (print (native-function-local-count func))
+            (print (vector-length (native-function-ir func)))
+            (print-start-window functions starts (+ idx 1) len)))
+        (print-start-window functions starts (+ idx 1) len)))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload {payload_expr}
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        starts (collect-callable-function-starts-x86 native-callables 10)]
+    (print-start-window native-callables starts 0 (vector-length starts))))"#,
+        payload_expr = payload_expr
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+            "linux-x86-actual-seed-start-window-diagnostic",
+            SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+            "src/App/HarnessMain.ls",
+            &harness,
+            &[],
+        )
+    })
+    .expect("Linux x86 actual seed start window diagnostic 実行に失敗");
+    let lines = parse_numeric_lines(&output);
+    println!("Linux x86 actual seed start window lines: {lines:?}");
+    assert!(
+        !lines.is_empty(),
+        "Linux x86 actual seed start window diagnostic 出力が空"
+    );
+}
+
+#[test]
+#[ignore]
+fn test_e2e_selfhost_main_linux_x86_actual_seed_function_1222_offsets_diagnostic() {
+    let seed_source = linux_x86_representative_actual_stage23_seed_source();
+    let escaped_seed_source = escape_lsharp_string(&seed_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+            (compile-file-functions-payload-with-cache "src/App/Seed.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let harness = format!(
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn print-instr-offsets [ir functions offsets idx len depth]
+  (if (>= idx len)
+    0
+    (let [instr (vector-get ir idx)
+          opcode (vector-get instr 0)
+          operand (vector-get instr 1)
+          size (native-instr-size-x86 opcode operand functions depth)]
+      (do
+        (print idx)
+        (print opcode)
+        (print operand)
+        (print depth)
+        (print (vector-get offsets idx))
+        (print size)
+        (print-instr-offsets ir functions offsets (+ idx 1) len (apply-stack-delta depth (opcode-stack-delta opcode operand functions)))))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        payload {payload_expr}
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        native-callables (normalize-selfhost-native-function-metas callables)
+        starts (collect-callable-function-starts-x86 native-callables 10)
+        func (vector-get native-callables 1222)
+        ir (native-function-ir func)
+        frame-base-slot-count
+          (native-frame-base-slot-count
+            ir
+            (+ (native-function-param-count func) (native-function-local-count func)))
+        body-offset (+ (+ (vector-get starts 1212) 4)
+          (+ (if (> (native-local-stack-bytes-with-window
+                       ir
+                       (+ (native-function-param-count func) (native-function-local-count func))
+                       native-callables)
+                    0)
+               7
+               0)
+             (if (= (native-function-param-count func) 1) 7 0)))
+        offsets (collect-native-bundle-offsets-x86 ir native-callables body-offset)]
+    (do
+      (print (vector-get starts 1212))
+      (print (native-function-size-x86 func native-callables))
+      (print frame-base-slot-count)
+      (print body-offset)
+      (print-instr-offsets ir native-callables offsets 0 (vector-length ir) 0))))"#,
+        payload_expr = payload_expr
+    );
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+            "linux-x86-actual-seed-function-1222-offsets-diagnostic",
+            SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+            "src/App/HarnessMain.ls",
+            &harness,
+            &[],
+        )
+    })
+    .expect("Linux x86 actual seed function 1222 offsets diagnostic 実行に失敗");
+    let lines = parse_numeric_lines(&output);
+    println!("Linux x86 actual seed function 1222 offset lines: {lines:?}");
+    assert!(
+        !lines.is_empty(),
+        "Linux x86 actual seed function 1222 offsets diagnostic 出力が空"
+    );
+}
+
+fn assert_x86_function_size_matches_generated_length_for_seed(
+    label: &str,
+    seed_source: String,
+    segmented_layout: bool,
+) {
+    let escaped_seed_source = escape_lsharp_string(&seed_source);
+    let segmented_layout_flag = if segmented_layout { 1 } else { 0 };
     let payload_expr = format!(
         r#"(do
             (write-file "src/App/Seed.ls" "{escaped_seed_source}")
@@ -20171,7 +21357,11 @@ fn test_e2e_selfhost_main_representative_x86_function_size_matches_generated_len
           func (vector-get functions func-idx)
           expected-start (vector-get starts idx)
           actual-start (vector-length (ref-get result))
-          expected-size (native-function-size-x86 func functions)]
+          expected-size (native-function-size-x86 func functions)
+          emit-import-offset
+            (if (= {segmented_layout_flag} 1)
+              (+ (* expected-size 100000000) expected-start)
+              import-stub-offset)]
       (do
         (generate-native-function-x86-64-bundle-with-import-count
           func
@@ -20179,8 +21369,7 @@ fn test_e2e_selfhost_main_representative_x86_function_size_matches_generated_len
           starts
           functions
           import-count
-          import-stub-offset
-          expected-start)
+          emit-import-offset)
         (let [actual-after (vector-length (ref-get result))
               actual-size (- actual-after actual-start)]
           (if (or (!= expected-start actual-start) (!= expected-size actual-size))
@@ -20190,7 +21379,7 @@ fn test_e2e_selfhost_main_representative_x86_function_size_matches_generated_len
                 functions
                 starts
                 import-count
-                import-stub-offset
+                emit-import-offset
                 (native-frame-base-slot-count
                   (native-function-ir func)
                   (+ (native-function-param-count func) (native-function-local-count func)))
@@ -20250,15 +21439,19 @@ fn test_e2e_selfhost_main_representative_x86_function_size_matches_generated_len
         import-stub-offset (callable-user-total-size-x86 native-callables 10)
         result (ref-new (vector-new 128))]
     (check-function-sizes native-callables starts result 10 import-stub-offset 0 (vector-length starts))))"#,
-        payload_expr = payload_expr
+        payload_expr = payload_expr,
+        segmented_layout_flag = segmented_layout_flag
     );
-    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
-        "representative-x86-function-size-diagnostic",
-        SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
-        "src/App/HarnessMain.ls",
-        &harness,
-        &[],
-    )
+    let label = label.to_string();
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+            &label,
+            SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+            "src/App/HarnessMain.ls",
+            &harness,
+            &[],
+        )
+    })
     .expect("representative x86 function size diagnostic 実行に失敗");
     let lines = parse_numeric_lines(&output);
     assert_eq!(
