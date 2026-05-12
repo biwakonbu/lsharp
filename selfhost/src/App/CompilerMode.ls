@@ -2359,7 +2359,7 @@
               (print 145)
               (print (env-lookup direct-env 12345))
               (print 146)
-              (print (map-size direct-ftable))
+              (print (ftable-size direct-ftable))
               (print 147)
               (print (map-size direct-env))
               (let [ftable-ir (compile-defn-with-ftable decl ftable)]

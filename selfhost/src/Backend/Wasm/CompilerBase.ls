@@ -350,13 +350,38 @@
       (do
         (root_pop)
         value))))
-(defn ftable-new [] (map-new))
+(defn ftable-new [] (vector-new 8))
 (defn ftable-register [ftable name-hash func-idx]
+  (do
+    (root_push ftable)
+    (let [with-name (vector-push ftable name-hash)]
+      (do
+        (root_push with-name)
+        (let [result (vector-push with-name func-idx)]
+          (do
+            (root_pop)
+            (root_pop)
+            result))))))
+(defn ftable-lookup-loop [ftable idx name-hash]
+  (if (< idx 0)
+    0
+    (if (= (vector-get ftable idx) name-hash)
+      (vector-get ftable (+ idx 1))
+      (ftable-lookup-loop ftable (- idx 2) name-hash))))
+(defn ftable-lookup [ftable name-hash]
+  (do
+    (root_push ftable)
+    (let [value (ftable-lookup-loop ftable (- (vector-length ftable) 2) name-hash)]
+      (do
+        (root_pop)
+        value))))
+(defn ftable-size [ftable] (/ (vector-length ftable) 2))
+(defn ftable-register-map-legacy [ftable name-hash func-idx]
   (let [ftable-slot (root_push ftable)]
     (do
       (root_set ftable-slot (map-insert ftable name-hash func-idx))
       (root_pop))))
-(defn ftable-lookup [ftable name-hash]
+(defn ftable-lookup-map-legacy [ftable name-hash]
   (do
     (root_push ftable)
     (let [value (map-get ftable name-hash)]

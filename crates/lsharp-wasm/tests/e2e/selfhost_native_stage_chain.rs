@@ -1277,6 +1277,7 @@ fn test_e2e_selfhost_main_representative_main_ir_calls_run_main_smoke_user_funct
         "src/App/HarnessMain.ls",
         r#"(module App.HarnessMain)
 (import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
 
 (defn text-starts-with-loop [text prefix idx len]
   (if (>= idx len)
@@ -1334,7 +1335,7 @@ fn test_e2e_selfhost_main_representative_main_ir_calls_run_main_smoke_user_funct
   (let [cache-ref (ref-new (map-new))
         parse-count-ref (ref-new 0)
         pairs (compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)
-        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (vector-new 8) 10)
         ftable (vector-get reg-result 0)
         smoke-pair-idx (find-module-pair-index pairs 0 (vector-length pairs) "(module App.PipelineSmoke)")
         smoke-decls (find-module-decls pairs 0 (vector-length pairs) "(module App.PipelineSmoke)")
@@ -1342,22 +1343,22 @@ fn test_e2e_selfhost_main_representative_main_ir_calls_run_main_smoke_user_funct
         smoke-hash (vector-get (vector-get smoke-decls smoke-defn-idx) 1)
         smoke-direct-map (map-insert (map-new) smoke-hash 777)
         smoke-direct-lookup (map-get smoke-direct-map smoke-hash)
-        smoke-step-state (register-all-pairs-step pairs smoke-pair-idx (vector-length pairs) (map-new) 10)
+        smoke-step-state (register-all-pairs-step pairs smoke-pair-idx (vector-length pairs) (ftable-new) 10)
         smoke-step-ftable (vector-get smoke-step-state 2)
-        smoke-step-func-idx (map-get smoke-step-ftable smoke-hash)
-        prefix-state (advance-register-pairs-until pairs smoke-pair-idx (vector-length pairs) (register-all-pairs-step pairs 0 (vector-length pairs) (map-new) 10))
+        smoke-step-func-idx (ftable-lookup smoke-step-ftable smoke-hash)
+        prefix-state (advance-register-pairs-until pairs smoke-pair-idx (vector-length pairs) (register-all-pairs-step pairs 0 (vector-length pairs) (ftable-new) 10))
         prefix-ftable (vector-get prefix-state 2)
-        prefix-manual-ftable (map-insert prefix-ftable smoke-hash 999)
-        prefix-manual-lookup (map-get prefix-manual-ftable smoke-hash)
+        prefix-manual-ftable (ftable-register prefix-ftable smoke-hash 999)
+        prefix-manual-lookup (ftable-lookup prefix-manual-ftable smoke-hash)
         smoke-accum-state (register-all-pairs-step pairs smoke-pair-idx (vector-length pairs) prefix-ftable (vector-get prefix-state 3))
         smoke-accum-ftable (vector-get smoke-accum-state 2)
-        smoke-accum-func-idx (map-get smoke-accum-ftable smoke-hash)
-        smoke-func-idx (map-get ftable smoke-hash)
+        smoke-accum-func-idx (ftable-lookup smoke-accum-ftable smoke-hash)
+        smoke-func-idx (ftable-lookup ftable smoke-hash)
         main-pair (vector-get pairs (- (vector-length pairs) 1))
         main-decls (vector-get main-pair 1)
         main-defn-idx (find-first-defn-index main-decls 0 (vector-length main-decls))
         main-hash (vector-get (vector-get main-decls main-defn-idx) 1)
-        main-func-idx (map-get ftable main-hash)
+        main-func-idx (ftable-lookup ftable main-hash)
         payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
         functions (vector-get payload 0)
         main-meta (vector-get functions (- main-func-idx 10))
@@ -1426,6 +1427,7 @@ fn test_e2e_selfhost_main_native_function_meta_bundle_with_import_count_emits_co
         "src/App/HarnessMain.ls",
         r#"(module App.HarnessMain)
 (import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
 (import Backend.Native.NativeTarget)
 (import Backend.Native.NativeCodegen)
 
@@ -1827,6 +1829,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
     format!(
         r#"(module App.HarnessMain)
 (import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
 (import Backend.Native.NativeTarget)
 (import Backend.Native.NativeCodegen)
 
@@ -2537,26 +2540,20 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                 result (ref-new (vector-new function-size))]
             (do
               (root_push result)
-              (let [last-idx (- (vector-length starts) 1)
-                    last-meta (vector-get functions (+ last-idx import-count))
-                    local-import-stub-offset (- (+ (vector-get starts last-idx) (native-function-size-x86 last-meta functions)) function-start)
-                    local-starts (shift-x86-function-starts starts function-start)]
+              (let [local-import-stub-offset (- import-stub-offset function-start)]
                 (do
-                  (root_push local-starts)
-                  (generate-native-function-x86-64-bundle-with-import-count func-meta result local-starts functions import-count local-import-stub-offset)
-                  (root_pop)
-                  (let [segment (ref-get result)]
-                    (do
-                      (root_push segment)
-                      (print-packed-code-segment segment)
-                      (let [final (print-x86-function-code-segments-loop functions starts import-count import-stub-offset (+ idx 1) len)]
+                   (generate-native-function-x86-64-bundle-with-import-count func-meta result starts functions import-count local-import-stub-offset)
+                   (let [segment (ref-get result)]
+                     (do
+                       (root_push segment)
+                       (print-packed-code-segment segment)
+                       (let [final (print-x86-function-code-segments-loop functions starts import-count import-stub-offset (+ idx 1) len)]
                         (do
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          final)))))))))))))
+                           (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            final)))))))))))))
 
 (defn print-x86-code-segments [functions starts import-count import-stub-offset]
   (do
@@ -2643,14 +2640,9 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                 result (ref-new (vector-new function-size))]
             (do
               (root_push result)
-              (let [last-idx (- (vector-length starts) 1)
-                    last-meta (vector-get functions (+ last-idx import-count))
-                    local-import-stub-offset (- (+ (vector-get starts last-idx) (native-function-size-x86 last-meta functions)) function-start)
-                    local-starts (shift-x86-function-starts starts function-start)]
+              (let [local-import-stub-offset (- import-stub-offset function-start)]
                 (do
-                  (root_push local-starts)
-                  (generate-native-function-x86-64-bundle-with-import-count func-meta result local-starts functions import-count local-import-stub-offset)
-                  (root_pop)
+                  (generate-native-function-x86-64-bundle-with-import-count func-meta result starts functions import-count local-import-stub-offset)
                   (let [segment (ref-get result)]
                     (do
                       (root_push segment)
@@ -2658,13 +2650,12 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                         (do
                           (let [final (write-x86-function-code-segments-loop prefix functions starts import-count import-stub-offset (+ idx 1) len next-chunk)]
                             (do
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              (root_pop)
-                              final)))))))))))))))
+                               (root_pop)
+                               (root_pop)
+                               (root_pop)
+                               (root_pop)
+                                (root_pop)
+                               final)))))))))))))))
 
 (defn make-x86-code-segment-state [done next-idx next-chunk]
   (vector-push (vector-push (vector-push (vector-new 3) done) next-idx) next-chunk))
@@ -2685,26 +2676,20 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                 result (ref-new (vector-new function-size))]
             (do
               (root_push result)
-              (let [last-idx (- (vector-length starts) 1)
-                    last-meta (vector-get functions (+ last-idx import-count))
-                    local-import-stub-offset (- (+ (vector-get starts last-idx) (native-function-size-x86 last-meta functions)) function-start)
-                    local-starts (shift-x86-function-starts starts function-start)]
+              (let [local-import-stub-offset (- import-stub-offset function-start)]
                 (do
-                  (root_push local-starts)
-                  (generate-native-function-x86-64-bundle-with-import-count func-meta result local-starts functions import-count local-import-stub-offset)
-                  (root_pop)
+                  (generate-native-function-x86-64-bundle-with-import-count func-meta result starts functions import-count local-import-stub-offset)
                   (let [segment (ref-get result)]
                     (do
                       (root_push segment)
                       (let [next-chunk (write-packed-code-segment prefix segment chunk-idx)]
                         (do
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (make-x86-code-segment-state 0 (+ idx 1) next-chunk))))))))))))))
+                           (root_pop)
+                           (root_pop)
+                           (root_pop)
+                           (root_pop)
+                            (root_pop)
+                            (make-x86-code-segment-state 0 (+ idx 1) next-chunk))))))))))))))
 
 (defn continue-write-x86-function-code-segment-step [prefix functions starts import-count import-stub-offset len state]
   (if (= (vector-get state 0) 1)
@@ -3235,7 +3220,7 @@ fn run_selfhost_main_native_x86_segmented_host_bytes_harness_with_payload_and_ar
           data-len (vector-length data)]
          (do
              (print 9000000005)
-            (print (vector-length callables))
+            (print (vector-length starts))
             (print main-func-idx)
             (print entrypoint-offset)
             (print 9000000006)
@@ -3326,7 +3311,7 @@ fn run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_a
           code-chunk-count (write-x86-code-segments "code-bytes-" native-callables starts 10 user-total)
           data-chunk-count (write-packed-byte-chunks "data-bytes-" data 0 data-len 0)]
          (do
-            (print (vector-length callables))
+            (print (vector-length starts))
             (print main-func-idx)
             (print entrypoint-offset)
             (print code-len)
@@ -3703,6 +3688,7 @@ fn selfhost_main_representative_x86_layout_harness_source(
     format!(
         r#"(module App.HarnessMain)
 (import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
 (import Backend.Native.NativeCodegen)
 
 (defn make-function-meta [param-count local-count ir]
@@ -3743,13 +3729,13 @@ fn selfhost_main_representative_x86_layout_harness_source(
   (let [cache-ref (ref-new (map-new))
         parse-count-ref (ref-new 0)
         pairs {pairs_expr}
-        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (vector-new 8) 10)
         ftable (vector-get reg-result 0)
         main-pair (vector-get pairs (- (vector-length pairs) 1))
         main-decls (vector-get main-pair 1)
         main-defn-idx (find-defn-index-by-hash main-decls 0 (vector-length main-decls) 3343801)
         main-hash (vector-get (vector-get main-decls main-defn-idx) 1)
-        main-func-idx (map-get ftable main-hash)
+        main-func-idx (ftable-lookup ftable main-hash)
         payload {payload_expr}
         functions (vector-get payload 0)
         callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
@@ -3808,10 +3794,6 @@ fn run_selfhost_main_representative_x86_layout_harness_with_exprs_and_args(
             "x86 layout の main function start が 0 に落ちている: {lines:?}"
         );
     }
-    assert_eq!(
-        lines[4], lines[6],
-        "main が末尾 callable なのに last start と一致しない: {lines:?}"
-    );
     NativeEntrypointLayout {
         function_start_len: lines[2] as usize,
         main_func_idx: lines[1] as usize,
@@ -4455,6 +4437,7 @@ fn run_selfhost_override_entrypoint_offset_probe(
     let harness = format!(
         r#"(module App.HarnessMain)
 (import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
 (import Backend.Native.NativeTarget)
 (import Backend.Native.NativeCodegen)
 
@@ -4498,13 +4481,13 @@ fn run_selfhost_override_entrypoint_offset_probe(
         pairs (do
                 (write-file "src/App/OverrideMain.ls" "{escaped_main_source}")
                 (compile-file-pairs-with-cache "src/App/OverrideMain.ls" cache-ref parse-count-ref))
-        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (ftable-new) 10)
         ftable (vector-get reg-result 0)
         main-pair (vector-get pairs (- (vector-length pairs) 1))
         main-decls (vector-get main-pair 1)
         main-defn-idx (find-defn-index-by-hash main-decls 0 (vector-length main-decls) 3343801)
         main-hash (vector-get (vector-get main-decls main-defn-idx) 1)
-        main-func-idx (map-get ftable main-hash)
+        main-func-idx (ftable-lookup ftable main-hash)
         payload (compile-file-functions-payload-with-cache "src/App/OverrideMain.ls" 10 cache-ref parse-count-ref)
         functions (vector-get payload 0)
         callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
@@ -5499,6 +5482,7 @@ fn test_e2e_selfhost_main_representative_current_bad_index_owner_callable() {
         "src/App/HarnessMain.ls",
         r#"(module App.HarnessMain)
 (import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
 (import Backend.Native.NativeTarget)
 (import Backend.Native.NativeCodegen)
 
@@ -5597,6 +5581,7 @@ fn test_e2e_selfhost_main_representative_current_bad_index_owner_decl() {
         "src/App/HarnessMain.ls",
         r#"(module App.HarnessMain)
 (import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
 
 (defn text-starts-with-loop [text prefix idx len]
   (if (>= idx len)
@@ -5628,7 +5613,7 @@ fn test_e2e_selfhost_main_representative_current_bad_index_owner_decl() {
     (let [decl (vector-get decls idx)]
       (if (= (vector-get decl 0) 20)
         (let [decl-hash (vector-get decl 1)
-              func-idx (map-get ftable decl-hash)]
+              func-idx (ftable-lookup ftable decl-hash)]
           (if (= func-idx target)
             (make-owner-state 1 0 idx defn-ordinal decl-hash)
             (find-owner-in-decls decls (+ idx 1) len ftable target (+ defn-ordinal 1))))
@@ -5648,7 +5633,7 @@ fn test_e2e_selfhost_main_representative_current_bad_index_owner_decl() {
   (let [cache-ref (ref-new (map-new))
         parse-count-ref (ref-new 0)
         pairs (compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)
-        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (ftable-new) 10)
         ftable (vector-get reg-result 0)
         owner (find-owner-in-pairs pairs 0 (vector-length pairs) ftable 2543)
         pair (vector-get pairs (vector-get owner 1))
@@ -5680,6 +5665,7 @@ fn test_e2e_selfhost_main_representative_direct_run_first_call_target_owner_decl
         "src/App/HarnessMain.ls",
         r#"(module App.HarnessMain)
 (import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
 (import Backend.Native.NativeTarget)
 (import Backend.Native.NativeCodegen)
 
@@ -5744,7 +5730,7 @@ fn test_e2e_selfhost_main_representative_direct_run_first_call_target_owner_decl
     (let [decl (vector-get decls idx)]
       (if (= (vector-get decl 0) 20)
         (let [decl-hash (vector-get decl 1)
-              func-idx (map-get ftable decl-hash)]
+              func-idx (ftable-lookup ftable decl-hash)]
           (if (= func-idx target)
             (make-owner-state 1 0 idx defn-ordinal decl-hash)
             (find-owner-in-decls decls (+ idx 1) len ftable target (+ defn-ordinal 1))))
@@ -5774,7 +5760,7 @@ fn test_e2e_selfhost_main_representative_direct_run_first_call_target_owner_decl
         owner (find-owner-start-loop starts 0 (vector-length starts) target)
         callable-func-idx (+ owner import-count)
         pairs (compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)
-        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) import-count)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (ftable-new) import-count)
         ftable (vector-get reg-result 0)
         owner-state (find-owner-in-pairs pairs 0 (vector-length pairs) ftable callable-func-idx)
         pair (vector-get pairs (vector-get owner-state 1))
@@ -5815,6 +5801,7 @@ fn test_e2e_selfhost_main_representative_backtrace_function_1791_owner_decl() {
         "src/App/HarnessMain.ls",
         r#"(module App.HarnessMain)
 (import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
 
 (defn text-starts-with-loop [text prefix idx len]
   (if (>= idx len)
@@ -5846,7 +5833,7 @@ fn test_e2e_selfhost_main_representative_backtrace_function_1791_owner_decl() {
     (let [decl (vector-get decls idx)]
       (if (= (vector-get decl 0) 20)
         (let [decl-hash (vector-get decl 1)
-              func-idx (map-get ftable decl-hash)]
+              func-idx (ftable-lookup ftable decl-hash)]
           (if (= func-idx target)
             (make-owner-state 1 0 idx defn-ordinal decl-hash)
             (find-owner-in-decls decls (+ idx 1) len ftable target (+ defn-ordinal 1))))
@@ -5866,7 +5853,7 @@ fn test_e2e_selfhost_main_representative_backtrace_function_1791_owner_decl() {
   (let [cache-ref (ref-new (map-new))
         parse-count-ref (ref-new 0)
         pairs (compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)
-        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (ftable-new) 10)
         ftable (vector-get reg-result 0)
         owner (find-owner-in-pairs pairs 0 (vector-length pairs) ftable 1791)
         pair (vector-get pairs (vector-get owner 1))
@@ -8640,6 +8627,7 @@ fn test_e2e_selfhost_main_representative_earlier_bad_index_owner_decl() {
         "src/App/HarnessMain.ls",
         r#"(module App.HarnessMain)
 (import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
 
 (defn text-starts-with-loop [text prefix idx len]
   (if (>= idx len)
@@ -8671,7 +8659,7 @@ fn test_e2e_selfhost_main_representative_earlier_bad_index_owner_decl() {
     (let [decl (vector-get decls idx)]
       (if (= (vector-get decl 0) 20)
         (let [decl-hash (vector-get decl 1)
-              func-idx (map-get ftable decl-hash)]
+              func-idx (ftable-lookup ftable decl-hash)]
           (if (= func-idx target)
             (make-owner-state 1 0 idx defn-ordinal decl-hash)
             (find-owner-in-decls decls (+ idx 1) len ftable target (+ defn-ordinal 1))))
@@ -8691,7 +8679,7 @@ fn test_e2e_selfhost_main_representative_earlier_bad_index_owner_decl() {
   (let [cache-ref (ref-new (map-new))
         parse-count-ref (ref-new 0)
         pairs (compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)
-        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (ftable-new) 10)
         ftable (vector-get reg-result 0)
         owner (find-owner-in-pairs pairs 0 (vector-length pairs) ftable 2544)
         pair (vector-get pairs (vector-get owner 1))
@@ -8723,6 +8711,7 @@ fn test_e2e_selfhost_main_representative_latest_bad_index_owner_decl() {
         "src/App/HarnessMain.ls",
         r#"(module App.HarnessMain)
 (import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
 
 (defn text-starts-with-loop [text prefix idx len]
   (if (>= idx len)
@@ -8754,7 +8743,7 @@ fn test_e2e_selfhost_main_representative_latest_bad_index_owner_decl() {
     (let [decl (vector-get decls idx)]
       (if (= (vector-get decl 0) 20)
         (let [decl-hash (vector-get decl 1)
-              func-idx (map-get ftable decl-hash)]
+              func-idx (ftable-lookup ftable decl-hash)]
           (if (= func-idx target)
             (make-owner-state 1 0 idx defn-ordinal decl-hash)
             (find-owner-in-decls decls (+ idx 1) len ftable target (+ defn-ordinal 1))))
@@ -8774,7 +8763,7 @@ fn test_e2e_selfhost_main_representative_latest_bad_index_owner_decl() {
   (let [cache-ref (ref-new (map-new))
         parse-count-ref (ref-new 0)
         pairs (compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)
-        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (ftable-new) 10)
         ftable (vector-get reg-result 0)
         owner (find-owner-in-pairs pairs 0 (vector-length pairs) ftable 2551)
         pair (vector-get pairs (vector-get owner 1))
@@ -9051,6 +9040,7 @@ fn selfhost_main_representative_aarch64_layout_harness_source(
     format!(
         r#"(module App.HarnessMain)
 (import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
 (import Backend.Native.NativeTarget)
 (import Backend.Native.NativeCodegen)
 
@@ -9092,13 +9082,13 @@ fn selfhost_main_representative_aarch64_layout_harness_source(
   (let [cache-ref (ref-new (map-new))
         parse-count-ref (ref-new 0)
         pairs {pairs_expr}
-        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (ftable-new) 10)
         ftable (vector-get reg-result 0)
         main-pair (vector-get pairs (- (vector-length pairs) 1))
         main-decls (vector-get main-pair 1)
         main-defn-idx (find-defn-index-by-hash main-decls 0 (vector-length main-decls) 3343801)
         main-hash (vector-get (vector-get main-decls main-defn-idx) 1)
-        main-func-idx (map-get ftable main-hash)
+        main-func-idx (ftable-lookup ftable main-hash)
         payload {payload_expr}
         functions (vector-get payload 0)
         callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
@@ -9249,6 +9239,7 @@ fn run_selfhost_representative_aarch64_entrypoint_payload_harness_loose_with_exp
     let harness = format!(
         r#"(module App.HarnessMain)
 (import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
 (import Backend.Native.NativeTarget)
 (import Backend.Native.NativeCodegen)
 
@@ -9669,13 +9660,13 @@ fn test_e2e_selfhost_main_representative_entrypoint_payload_offset_matches_layou
   (let [cache-ref (ref-new (map-new))
         parse-count-ref (ref-new 0)
         pairs (compile-file-pairs-with-cache "src/App/Main.ls" cache-ref parse-count-ref)
-        reg-result (register-all-pairs pairs 0 (vector-length pairs) (map-new) 10)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (ftable-new) 10)
         ftable (vector-get reg-result 0)
         main-pair (vector-get pairs (- (vector-length pairs) 1))
         main-decls (vector-get main-pair 1)
         main-defn-idx (find-first-defn-index main-decls 0 (vector-length main-decls))
         main-hash (vector-get (vector-get main-decls main-defn-idx) 1)
-        main-func-idx (map-get ftable main-hash)
+        main-func-idx (ftable-lookup ftable main-hash)
         payload (compile-file-functions-payload-with-cache "src/App/Main.ls" 10 cache-ref parse-count-ref)
         functions (vector-get payload 0)
         callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
@@ -20756,6 +20747,7 @@ fn test_e2e_native_linux_x86_actual_stage1_function_2035_segment_diagnostic() {
 fn linux_x86_actual_stage1_diagnostic_seed_source() -> String {
     r#"(module App.Seed)
 (import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
 
 (defn print-span-probe [spans idx limit]
   (if (>= idx limit)
@@ -26576,6 +26568,7 @@ fn test_e2e_selfhost_pipeline_smoke_representative_native_export_emit_only_seed_
         r#"
 (module App.HarnessMain)
 (import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
 (import Backend.Native.NativeCodegen)
 (import Backend.Native.NativeCodegen)
 

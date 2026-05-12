@@ -1174,6 +1174,52 @@ fn test_native_codegen_emits_x86_map_size_guard_targets_zero_return() {
     assert_eq!(lines[8], "195", "zero-return path は ret で終わること");
 }
 
+/// NATIVE-REAL-08b3-map: x86_64 map-new helper は env/cache 向けの小さい容量を維持すること。
+#[test]
+#[ignore]
+fn test_native_codegen_keeps_x86_map_new_small_capacity_bytes() {
+    let output = run_native_codegen_harness(
+        r#"(module Main)
+(import NativeTarget)
+(import NativeCodegen)
+
+(defn main []
+  (let [native (emit-x86-selfhost-map-new-helper)]
+    (do
+      (print (vector-length native))
+      (print (vector-get native 4))
+      (print (vector-get native 5))
+      (print (vector-get native 6))
+      (print (vector-get native 7))
+      (print (vector-get native 50))
+      (print (vector-get native 51))
+      (print (vector-get native 52))
+      (print (vector-get native 53))
+      0)))"#,
+    );
+    let lines: Vec<&str> = output.trim().lines().collect();
+
+    assert!(
+        lines.len() >= 9,
+        "x86 map-new helper bytes 出力が不足: {:?}",
+        lines
+    );
+    assert_eq!(
+        lines[0], "72",
+        "x86_64 map-new helper は既存 offset と互換な 72 bytes であるべき"
+    );
+    assert_eq!(
+        &lines[1..5],
+        ["16", "16", "0", "0"],
+        "mmap size は env/cache 向けの 0x1010 bytes を維持すること"
+    );
+    assert_eq!(
+        &lines[5..9],
+        ["0", "1", "0", "0"],
+        "map header capacity は 0x0100 entries を維持すること"
+    );
+}
+
 /// NATIVE-REAL-08b3: x86_64 i64.const が 32bit を超える即値の上位 word を保持すること。
 #[test]
 #[ignore]

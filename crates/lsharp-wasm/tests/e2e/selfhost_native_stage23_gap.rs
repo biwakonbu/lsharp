@@ -291,6 +291,41 @@ fn run_x86_selfhost_runtime_helper_harness(fixture_name: &str, main_body: &str) 
 }
 
 #[test]
+fn test_selfhost_ftable_uses_flat_vector_storage_for_large_tables() {
+    let output = try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+        "selfhost-ftable-flat-vector-large-table",
+        &["CompilerBase.ls"],
+        "Main.ls",
+        r#"(module Main)
+(import Backend.Wasm.CompilerBase)
+
+(defn register-loop [idx limit table]
+  (if (>= idx limit)
+    table
+    (register-loop (+ idx 1) limit (ftable-register table (+ 1000 idx) (+ 2000 idx)))))
+
+(defn main []
+  (let [table (register-loop 0 300 (ftable-new))
+        overridden (ftable-register table 1299 7777)]
+    (do
+      (print (vector-length table))
+      (print (ftable-lookup table 1299))
+      (print (vector-length overridden))
+      (print (ftable-lookup overridden 1299))
+      (print (ftable-lookup table 9999))
+      0)))"#,
+        &[],
+    )
+    .expect("flat vector ftable harness 実行に失敗");
+
+    assert_eq!(
+        parse_numeric_lines(&output),
+        vec![602, 7777, 602, 7777, 0],
+        "ftable は map helper 容量に依存せず、key/value の flat vector として大きい表と後勝ち更新を保持する必要がある"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_command_line_arg_and_read_file_call_sites_resolve_helper_offsets() {
     let lines = run_x86_selfhost_runtime_helper_harness(
         "native-stage23-x86-runtime-helper-call-sites",
@@ -571,10 +606,10 @@ fn test_native_codegen_x86_map_and_file_helper_emitters_return_executable_byte_v
         lines,
         vec![
             72, 81, 49, 255, 190, 16, 16, 0, 0, 232, 63, 89, 195, 49, 192, 89, 195, 17, 72, 133,
-            192, 121, 10, 72, 15, 186, 240, 63, 139, 64, 8, 195, 49, 192, 195, 61, 83, 72, 137,
-            211, 72, 133, 219, 121, 232, 63, 91, 195, 49, 192, 91, 195, 62, 83, 65, 84, 72, 133,
-            201, 121, 48, 91, 195, 49, 192, 65, 92, 91, 195, 84, 83, 65, 84, 72, 137, 227, 72, 133,
-            192, 72, 137, 220, 65, 92, 91, 195,
+            192, 121, 9, 72, 15, 186, 240, 63, 139, 64, 8, 195, 49, 192, 195, 61, 83, 72, 137, 211,
+            72, 133, 219, 121, 232, 63, 91, 195, 49, 192, 91, 195, 62, 83, 65, 84, 72, 133, 201,
+            121, 48, 91, 195, 49, 192, 65, 92, 91, 195, 84, 83, 65, 84, 72, 137, 227, 72, 133, 192,
+            72, 137, 220, 65, 92, 91, 195,
         ],
         "x86_64 map/file helper emitters は実行可能な prologue/epilogue を持つ byte vector を返す必要がある"
     );
