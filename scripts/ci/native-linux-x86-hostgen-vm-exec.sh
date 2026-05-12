@@ -203,6 +203,7 @@ limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/seed.ls" "${VM_NAME}:${VM_WORK_DIR}/
 tar -C "${ROOT_DIR}/selfhost" --exclude '._*' -cf - src | limactl shell "${VM_NAME}" -- tar -C "${VM_WORK_DIR}/actual-stage1" -xf -
 limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/seed.ls" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/src/App/Seed.ls"
 
+set +e
 limactl shell "${VM_NAME}" -- bash -s -- "${VM_WORK_DIR}" <<'VM_SCRIPT'
 set -euo pipefail
 
@@ -998,6 +999,31 @@ def decode_packed_payload(packed_lines, declared_len: int) -> bytes:
         raise SystemExit(f"decoded segmented length mismatch: declared={declared_len} actual={len(decoded)}")
     return bytes(decoded)
 
+def decode_packed_payload_at(index: int, declared_len: int, end_sentinel):
+    if index < len(lines) and parse_int(lines[index]) == 9000000010:
+        decoded = bytearray()
+        while index < len(lines) and len(decoded) < declared_len:
+            if parse_int(lines[index]) != 9000000010:
+                raise SystemExit(f"missing segment marker at line {index}")
+            index += 1
+            if index >= len(lines):
+                raise SystemExit("missing segment length after segment marker")
+            segment_len = parse_int(lines[index])
+            index += 1
+            count = packed_line_count(segment_len)
+            segment = decode_packed_flat(lines[index:index + count], segment_len)
+            decoded.extend(segment)
+            index += count
+        if len(decoded) != declared_len:
+            raise SystemExit(f"decoded segmented length mismatch: declared={declared_len} actual={len(decoded)}")
+        return bytes(decoded), index
+    if end_sentinel is None:
+        return decode_packed_flat(lines[index:], declared_len), len(lines)
+    start = index
+    while index < len(lines) and parse_int(lines[index]) != end_sentinel:
+        index += 1
+    return decode_packed_flat(lines[start:index], declared_len), index
+
 idx = 0
 while idx < len(lines) and parse_int(lines[idx]) != 9000000005:
     idx += 1
@@ -1009,14 +1035,11 @@ idx = expect(idx, 9000000006)
 idx = expect(idx, 9000000001)
 code_len = parse_int(lines[idx]); idx += 1
 idx = expect(idx, 9000000002)
-code_start = idx
-while idx < len(lines) and parse_int(lines[idx]) != 9000000003:
-    idx += 1
-code = decode_packed_payload(lines[code_start:idx], code_len)
+code, idx = decode_packed_payload_at(idx, code_len, 9000000003)
 idx = expect(idx, 9000000003)
 data_len = parse_int(lines[idx]); idx += 1
 idx = expect(idx, 9000000004)
-data = decode_packed_payload(lines[idx:], data_len)
+data, idx = decode_packed_payload_at(idx, data_len, None)
 
 (out_dir / "stage-code.bin").write_bytes(code)
 (out_dir / "stage-data.bin").write_bytes(data)
@@ -1040,14 +1063,69 @@ mkdir -p actual-stage2 actual-stage3
 cp -a actual-stage1/src actual-stage2/src
 cp -a actual-stage1/src actual-stage3/src
 
+write_actual_selfregen_failure_summary() {
+  phase="$1"
+  exit_code="$2"
+  stdout_file="$3"
+  stderr_file="$4"
+  stdout_bytes=0
+  stderr_bytes=0
+  if [[ -e "${stdout_file}" ]]; then
+    stdout_bytes="$(wc -c <"${stdout_file}")"
+  fi
+  if [[ -e "${stderr_file}" ]]; then
+    stderr_bytes="$(wc -c <"${stderr_file}")"
+  fi
+  cat >actual-selfregen-summary.json <<JSON
+{
+  "target": "x86_64-unknown-linux-gnu",
+  "host_os": "${HOST_OS}",
+  "host_arch": "${HOST_ARCH}",
+  "status": "fail",
+  "phase": "${phase}",
+  "exit_code": ${exit_code},
+  "stdout_bytes": ${stdout_bytes},
+  "stderr_bytes": ${stderr_bytes}
+}
+JSON
+}
+
 python3 materialize-actual-bundle.py actual-stage1 stage1-code.bin entrypoint-offset.txt
+set +e
 (cd actual-stage1 && timeout "${ACTUAL_TIMEOUT}" ./program.native src/App/Seed.ls >../actual-stage2-stdout.txt 2>../actual-stage2-stderr.txt)
+actual_stage2_exit_code=$?
+set -e
+if [[ "${actual_stage2_exit_code}" -ne 0 ]]; then
+  write_actual_selfregen_failure_summary "stage2-run" "${actual_stage2_exit_code}" actual-stage2-stdout.txt actual-stage2-stderr.txt
+  exit "${actual_stage2_exit_code}"
+fi
+set +e
 python3 decode-actual-transport.py actual-stage2-stdout.txt actual-stage2
+actual_stage2_decode_exit_code=$?
+set -e
+if [[ "${actual_stage2_decode_exit_code}" -ne 0 ]]; then
+  write_actual_selfregen_failure_summary "stage2-decode" "${actual_stage2_decode_exit_code}" actual-stage2-stdout.txt actual-stage2-stderr.txt
+  exit "${actual_stage2_decode_exit_code}"
+fi
 cp actual-stage2/stage-code.bin actual-stage2/stage2-code.bin
 cp actual-stage2/stage-data.bin actual-stage2/stage2-data.bin
 python3 materialize-actual-bundle.py actual-stage2 stage-code.bin entrypoint-offset.txt
+set +e
 (cd actual-stage2 && timeout "${ACTUAL_TIMEOUT}" ./program.native src/App/Seed.ls >../actual-stage3-stdout.txt 2>../actual-stage3-stderr.txt)
+actual_stage3_exit_code=$?
+set -e
+if [[ "${actual_stage3_exit_code}" -ne 0 ]]; then
+  write_actual_selfregen_failure_summary "stage3-run" "${actual_stage3_exit_code}" actual-stage3-stdout.txt actual-stage3-stderr.txt
+  exit "${actual_stage3_exit_code}"
+fi
+set +e
 python3 decode-actual-transport.py actual-stage3-stdout.txt actual-stage3
+actual_stage3_decode_exit_code=$?
+set -e
+if [[ "${actual_stage3_decode_exit_code}" -ne 0 ]]; then
+  write_actual_selfregen_failure_summary "stage3-decode" "${actual_stage3_decode_exit_code}" actual-stage3-stdout.txt actual-stage3-stderr.txt
+  exit "${actual_stage3_decode_exit_code}"
+fi
 
 if [[ -s actual-stage2-stderr.txt || -s actual-stage3-stderr.txt ]]; then
   echo "ERROR: actual self-regeneration stderr is not empty" >&2
@@ -1074,9 +1152,18 @@ cat >actual-selfregen-summary.json <<JSON
 }
 JSON
 VM_SCRIPT
+vm_exec_status=$?
+set -e
 
 for file in program.s runtime.s program.o argv-program.o argv-char-program.o print-program.o vector-program.o ref-program.o substring-program.o string-concat-program.o map-program.o map-size-program.o file-exists-program.o code-program.o runtime.o linker-response.txt program.native stdout.txt stderr.txt summary.json object-runtime.s object-runtime.o object-linker-response.txt object-program.native object-stdout.txt object-stderr.txt object-summary.json argv-object-linker-response.txt argv-object-program.native argv-object-stdout.txt argv-object-stderr.txt argv-object-summary.json argv-char-object-linker-response.txt argv-char-object-program.native argv-char-object-stdout.txt argv-char-object-stderr.txt argv-char-object-summary.json print-object-linker-response.txt print-object-program.native print-object-stdout.txt print-object-stderr.txt print-object-summary.json vector-object-linker-response.txt vector-object-program.native vector-object-stdout.txt vector-object-stderr.txt vector-object-summary.json ref-object-linker-response.txt ref-object-program.native ref-object-stdout.txt ref-object-stderr.txt ref-object-summary.json substring-object-linker-response.txt substring-object-program.native substring-object-stdout.txt substring-object-stderr.txt substring-object-summary.json string-concat-object-linker-response.txt string-concat-object-program.native string-concat-object-stdout.txt string-concat-object-stderr.txt string-concat-object-summary.json map-object-linker-response.txt map-object-program.native map-object-stdout.txt map-object-stderr.txt map-object-summary.json map-size-object-linker-response.txt map-size-object-program.native map-size-object-stdout.txt map-size-object-stderr.txt map-size-object-summary.json file-exists-target.txt file-exists-object-linker-response.txt file-exists-object-program.native file-exists-object-stdout.txt file-exists-object-stderr.txt file-exists-object-summary.json actual-stage2-stdout.txt actual-stage2-stderr.txt actual-stage3-stdout.txt actual-stage3-stderr.txt actual-selfregen-summary.json; do
-  limactl copy "${VM_NAME}:${VM_WORK_DIR}/${file}" "${ARTIFACT_DIR}/${file}"
+  if limactl shell "${VM_NAME}" -- test -e "${VM_WORK_DIR}/${file}"; then
+    limactl copy "${VM_NAME}:${VM_WORK_DIR}/${file}" "${ARTIFACT_DIR}/${file}"
+  fi
 done
+
+if [[ "${vm_exec_status}" -ne 0 ]]; then
+  echo "ERROR: native Linux x86_64 hostgen -> VM exec smoke failed with status ${vm_exec_status}" >&2
+  exit "${vm_exec_status}"
+fi
 
 echo "native Linux x86_64 hostgen -> VM exec evidence collected."
