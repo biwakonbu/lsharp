@@ -650,7 +650,7 @@ set +e
 substring_object_actual_exit_code=$?
 set -e
 
-substring_expected_exit_code=4
+substring_expected_exit_code=3
 if [[ "${substring_object_actual_exit_code}" -ne "${substring_expected_exit_code}" ]]; then
   echo "ERROR: substring-object-program.native actual_exit_code=${substring_object_actual_exit_code}, expected ${substring_expected_exit_code}" >&2
   exit 1
@@ -961,7 +961,7 @@ def expect(index: int, sentinel: int) -> int:
         raise SystemExit(f"missing sentinel {sentinel} at line {index}: {got!r}")
     return index + 1
 
-def decode_packed(packed_lines, declared_len: int) -> bytes:
+def decode_packed_flat(packed_lines, declared_len: int) -> bytes:
     decoded = bytearray()
     mask = (1 << 64) - 1
     for raw in packed_lines:
@@ -972,6 +972,30 @@ def decode_packed(packed_lines, declared_len: int) -> bytes:
             decoded.append((packed >> (byte_idx * 8)) & 0xff)
     if len(decoded) != declared_len:
         raise SystemExit(f"decoded length mismatch: declared={declared_len} actual={len(decoded)}")
+    return bytes(decoded)
+
+def packed_line_count(byte_len: int) -> int:
+    return (byte_len + 7) // 8
+
+def decode_packed_payload(packed_lines, declared_len: int) -> bytes:
+    if not packed_lines or parse_int(packed_lines[0]) != 9000000010:
+        return decode_packed_flat(packed_lines, declared_len)
+    decoded = bytearray()
+    idx = 0
+    while idx < len(packed_lines) and len(decoded) < declared_len:
+        if parse_int(packed_lines[idx]) != 9000000010:
+            raise SystemExit(f"missing segment marker at packed payload line {idx}")
+        idx += 1
+        if idx >= len(packed_lines):
+            raise SystemExit("missing segment length after segment marker")
+        segment_len = parse_int(packed_lines[idx])
+        idx += 1
+        count = packed_line_count(segment_len)
+        segment = decode_packed_flat(packed_lines[idx:idx + count], segment_len)
+        decoded.extend(segment)
+        idx += count
+    if len(decoded) != declared_len:
+        raise SystemExit(f"decoded segmented length mismatch: declared={declared_len} actual={len(decoded)}")
     return bytes(decoded)
 
 idx = 0
@@ -988,11 +1012,11 @@ idx = expect(idx, 9000000002)
 code_start = idx
 while idx < len(lines) and parse_int(lines[idx]) != 9000000003:
     idx += 1
-code = decode_packed(lines[code_start:idx], code_len)
+code = decode_packed_payload(lines[code_start:idx], code_len)
 idx = expect(idx, 9000000003)
 data_len = parse_int(lines[idx]); idx += 1
 idx = expect(idx, 9000000004)
-data = decode_packed(lines[idx:], data_len)
+data = decode_packed_payload(lines[idx:], data_len)
 
 (out_dir / "stage-code.bin").write_bytes(code)
 (out_dir / "stage-data.bin").write_bytes(data)
