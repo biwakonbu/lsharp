@@ -264,6 +264,37 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
 }
 
 #[test]
+fn test_linux_x86_file_segmented_harness_writes_segments_from_append_emit_vector() {
+    let source = selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_and_target(
+        r#"(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)"#,
+        r#"entrypoint-func-idx (- (vector-length callables) 1)
+                    starts (collect-callable-function-starts-x86 native-callables 10)
+                    user-total (callable-user-total-size-x86 native-callables 10)
+                    code-len (+ user-total (x86-selfhost-helper-trailer-size 10))
+                    code (vector-new 0)
+                    entrypoint-offset (vector-get starts (- entrypoint-func-idx 10))"#,
+        "(make-target 3)",
+        r#"      (let [main-func-idx entrypoint-func-idx
+          data-len (vector-length data)
+          code-chunk-count (write-x86-code-segments "code-bytes-" native-callables starts 10 user-total)
+          data-chunk-count (write-packed-byte-chunks "data-bytes-" data 0 data-len 0)]
+         (print code-chunk-count))"#,
+    );
+
+    assert!(
+        source.contains("(defn write-x86-function-code-segments-loop")
+            && source.contains("(defn write-x86-function-code-segment-step")
+            && source.contains("result (ref-new (vector-new 0))")
+            && source.contains("layout (make-x86-function-emit-layout import-count import-stub-offset function-start 0)")
+            && source.contains("generate-native-function-x86-64-bundle-with-layout func-meta result starts functions layout")
+            && source.contains("segment (ref-get result)")
+            && !source.contains("segment (trim-preallocated-x86-segment raw-segment function-size)")
+            && !source.contains("result (ref-new (vector-new function-size))"),
+        "Linux x86 file-segment writer は preallocated vector へ append せず、print path と同じ空 vector emit + declared slot padding を使うべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_representative_seed_copy_slice_uses_bounded_steps() {
     let source = linux_x86_representative_actual_stage23_seed_source();
 
@@ -4543,31 +4574,26 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
              function-start (vector-get starts idx)]
         (do
           (root_push func-meta)
-	          (let [function-size (x86-function-slot-size-from-starts starts import-stub-offset idx function-start)
-	                local-starts (shift-x86-function-starts starts function-start)
-	                local-import-stub-offset (- import-stub-offset function-start)
-	                result (ref-new (vector-new function-size))]
-	            (do
-	              (root_push local-starts)
-	              (root_push result)
-	              (let [layout (make-x86-function-emit-layout import-count local-import-stub-offset 0 0)]
-	                (do
-	                  (root_push layout)
-	                  (generate-native-function-x86-64-bundle-with-layout func-meta result local-starts functions layout)
-	                  (let [raw-segment (ref-get result)
-	                        segment (trim-preallocated-x86-segment raw-segment function-size)
-	                        padded-segment (pad-byte-vector-to-length segment function-size)]
-	                    (do
-	                      (root_push segment)
+		          (let [function-size (x86-function-slot-size-from-starts starts import-stub-offset idx function-start)
+		                result (ref-new (vector-new 0))]
+		            (do
+		              (root_push result)
+		              (let [layout (make-x86-function-emit-layout import-count import-stub-offset function-start 0)]
+		                (do
+		                  (root_push layout)
+		                  (generate-native-function-x86-64-bundle-with-layout func-meta result starts functions layout)
+		                  (let [segment (ref-get result)
+		                        padded-segment (pad-byte-vector-to-length segment function-size)]
+		                    (do
+		                      (root_push segment)
 	                      (root_push padded-segment)
 	                      (let [next-chunk (write-packed-code-segment prefix padded-segment chunk-idx)]
 	                        (do
 	                            (let [final (write-x86-function-code-segments-loop prefix functions starts import-count import-stub-offset (+ idx 1) len next-chunk)]
 	                             (do
-		                               (root_pop)
-		                               (root_pop)
 	                               (root_pop)
 	                               (root_pop)
+	                                 (root_pop)
 	                               (root_pop)
 	                                 (root_pop)
                                (root_pop)
@@ -4590,22 +4616,18 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
              function-start (vector-get starts idx)]
         (do
           (root_push func-meta)
-	          (let [function-size (x86-function-slot-size-from-starts starts import-stub-offset idx function-start)
-	                local-starts (shift-x86-function-starts starts function-start)
-	                local-import-stub-offset (- import-stub-offset function-start)
-	                result (ref-new (vector-new function-size))]
-	            (do
-	              (root_push local-starts)
-	              (root_push result)
-	              (let [layout (make-x86-function-emit-layout import-count local-import-stub-offset 0 0)]
-	                (do
-	                  (root_push layout)
-	                  (generate-native-function-x86-64-bundle-with-layout func-meta result local-starts functions layout)
-                  (let [raw-segment (ref-get result)
-                        segment (trim-preallocated-x86-segment raw-segment function-size)
-                        padded-segment (pad-byte-vector-to-length segment function-size)]
-                    (do
-                      (root_push segment)
+		          (let [function-size (x86-function-slot-size-from-starts starts import-stub-offset idx function-start)
+		                result (ref-new (vector-new 0))]
+		            (do
+		              (root_push result)
+		              (let [layout (make-x86-function-emit-layout import-count import-stub-offset function-start 0)]
+		                (do
+		                  (root_push layout)
+		                  (generate-native-function-x86-64-bundle-with-layout func-meta result starts functions layout)
+	                  (let [segment (ref-get result)
+	                        padded-segment (pad-byte-vector-to-length segment function-size)]
+	                    (do
+	                      (root_push segment)
                       (root_push padded-segment)
                       (let [next-chunk (write-packed-code-segment prefix padded-segment chunk-idx)]
                         (do
@@ -4616,9 +4638,8 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 	                             (root_pop)
                            (root_pop)
                            (root_pop)
-                           (root_pop)
-                             (root_pop)
-                            (make-x86-code-segment-state 0 (+ idx 1) next-chunk))))))))))))))
+	                             (root_pop)
+	                            (make-x86-code-segment-state 0 (+ idx 1) next-chunk))))))))))))))
 
 (defn continue-write-x86-function-code-segment-step [prefix functions starts import-count import-stub-offset len state]
   (if (= (vector-get state 0) 1)
