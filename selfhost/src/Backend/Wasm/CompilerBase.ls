@@ -85,85 +85,85 @@
 (defn builtin-root-pop [] 3238238822772)
 (defn builtin-root-set [] 3238238825349)
 (defn builtin-basic-opcode [name-hash]
-  (if (= name-hash (builtin-add))
-    (op-i64-add)
-    (if (= name-hash (builtin-sub))
-      (op-i64-sub)
-      (if (= name-hash (builtin-mul))
-        (op-i64-mul)
-        (if (= name-hash (builtin-div))
-          (op-i64-div)
-          (if (= name-hash (builtin-mod))
-            (op-i64-mod)
-            (if (= name-hash (builtin-eq))
-              (op-i64-eq)
-              (if (= name-hash (builtin-gt))
-                (op-i64-gt)
-                (if (= name-hash (builtin-lt))
-                  (op-i64-lt)
+  (if (= name-hash 43)
+    20
+    (if (= name-hash 45)
+      21
+      (if (= name-hash 42)
+        22
+        (if (= name-hash 47)
+          23
+          (if (= name-hash 37)
+            28
+            (if (= name-hash 61)
+              30
+              (if (= name-hash 62)
+                33
+                (if (= name-hash 60)
+                  32
                   (if (= name-hash 1983)
-                    (op-i64-ge)
+                    35
                     (if (= name-hash 1921)
-                      (op-i64-le)
+                      34
                       (if (= name-hash 1952)
-                        (op-i64-eq)
+                        30
                         0))))))))))))
 
 (defn builtin-string-opcode [name-hash]
-  (if (= name-hash (builtin-string-char-at))
-    (op-string-char-at)
-    (if (= name-hash (builtin-string-length))
-      (op-string-length)
-      (if (= name-hash (builtin-print))
-        (op-print)
+  (if (= name-hash 6233512424790686798)
+    50
+    (if (= name-hash 1391193567100747810)
+      51
+      (if (= name-hash 106934957)
+        59
         (if (= name-hash 1391193566852316240)
-          (op-string-concat)
+          70
           (if (= name-hash 101391823498833)
-            (op-substring)
+            69
             0))))))
 
 (defn builtin-vector-ref-opcode [name-hash]
-  (if (= name-hash (builtin-vector-length))
-    (op-vector-length)
-    (if (= name-hash (builtin-vector-get))
-      (op-vector-get)
-      (if (= name-hash (builtin-vector-new))
-        (op-vector-new)
-        (if (= name-hash (builtin-vector-push))
-          (op-vector-push)
-          (if (= name-hash (builtin-ref-new))
-            (op-ref-new)
-            (if (= name-hash (builtin-ref-get))
-              (op-ref-get)
-              (if (= name-hash (builtin-ref-set))
-                (op-ref-set)
+  (if (= name-hash 3361052332089172656)
+    52
+    (if (= name-hash 3208847393524684)
+      53
+      (if (= name-hash 3208847393531414)
+        54
+        (if (= name-hash 99474269199548772)
+          55
+          (if (= name-hash 104162612582)
+            56
+            (if (= name-hash 104162605852)
+              57
+              (if (= name-hash 104162617384)
+                58
                 0))))))))
 
 (defn builtin-map-core-opcode [name-hash]
-  (if (= name-hash (builtin-map-new))
-    (op-map-new)
-    (if (= name-hash (builtin-map-size))
-      (op-map-size)
-      (if (= name-hash (builtin-map-get))
-        (op-map-get)
-        (if (= name-hash (builtin-map-insert))
-          (op-map-insert)
+  (if (= name-hash 99619812783)
+    60
+    (if (= name-hash 3088214349266)
+      61
+      (if (= name-hash 99619806053)
+        63
+        (if (= name-hash 2967773707765834)
+          62
           0)))))
 
 (defn builtin-io-opcode [name-hash]
-  (if (= name-hash (builtin-read-file))
-    (op-read-file)
-    (if (= name-hash (builtin-command-line-arg))
-      (op-command-line-arg)
-      (if (= name-hash (builtin-file-exists))
-        (op-file-exists)
+  (if (= name-hash 100097347767123)
+    64
+    (if (= name-hash 4333701572691766591)
+      67
+      (if (= name-hash 2680668565995926546)
+        73
         0))))
 
 (defn builtin-map-extra-opcode [name-hash]
-  (if (= name-hash (builtin-map-contains))
-    (op-map-contains)
-    (if (= name-hash (builtin-map-remove))
-      (op-map-remove)
+  (if (= name-hash (- 0 3820778934353407281))
+    65
+    (if (= name-hash 2967773956947477)
+      66
       0)))
 
 (defn builtin-map-runtime-opcode [name-hash]
@@ -183,12 +183,12 @@
       0)))
 
 (defn builtin-root-opcode [name-hash]
-  (if (= name-hash (builtin-root-push))
-    (op-root-push)
-    (if (= name-hash (builtin-root-pop))
-      (op-root-pop)
-      (if (= name-hash (builtin-root-set))
-        (op-root-set)
+  (if (= name-hash 100385403511895)
+    74
+    (if (= name-hash 3238238822772)
+      75
+      (if (= name-hash 3238238825349)
+        76
         0))))
 
 (defn builtin-runtime-opcode [name-hash]
@@ -246,7 +246,7 @@
       (push-int-vector (vector-new 3) done)
       next-idx)
     next-value))
-(defn max-local-slot-op [opcode operand current-max] (if (or (or (= opcode 10) (= opcode 11)) (or (= opcode 50) (= opcode 53))) (if (> operand current-max) operand current-max) (if (= opcode 54) (if (> (+ operand 1) current-max) (+ operand 1) current-max) (if (= opcode 55) (if (> (+ operand 5) current-max) (+ operand 5) current-max) (if (= opcode 56) (if (> (+ operand 1) current-max) (+ operand 1) current-max) (if (= opcode 58) (if (> operand current-max) operand current-max) (if (= opcode 60) (if (> operand current-max) operand current-max) (if (= opcode 62) (if (> (+ operand 5) current-max) (+ operand 5) current-max) (if (= opcode 63) (if (> (+ operand 5) current-max) (+ operand 5) current-max) (if (= opcode 65) (if (> (+ operand 5) current-max) (+ operand 5) current-max) (if (= opcode 66) (if (> (+ operand 5) current-max) (+ operand 5) current-max) current-max)))))))))))
+(defn max-local-slot-op [opcode operand current-max] (if (if (= opcode 10) true (if (= opcode 11) true (if (= opcode 50) true (= opcode 53)))) (if (> operand current-max) operand current-max) (if (= opcode 54) (if (> (+ operand 1) current-max) (+ operand 1) current-max) (if (= opcode 55) (if (> (+ operand 5) current-max) (+ operand 5) current-max) (if (= opcode 56) (if (> (+ operand 1) current-max) (+ operand 1) current-max) (if (= opcode 58) (if (> operand current-max) operand current-max) (if (= opcode 60) (if (> operand current-max) operand current-max) (if (= opcode 62) (if (> (+ operand 5) current-max) (+ operand 5) current-max) (if (= opcode 63) (if (> (+ operand 5) current-max) (+ operand 5) current-max) (if (= opcode 65) (if (> (+ operand 5) current-max) (+ operand 5) current-max) (if (= opcode 66) (if (> (+ operand 5) current-max) (+ operand 5) current-max) current-max)))))))))))
 (defn max-local-slot-step [instrs idx count current-max]
   (if (>= idx count)
     (make-max-local-slot-state 1 idx current-max)
@@ -341,8 +341,11 @@
 (defn env-bind [env name-hash idx]
   (let [env-slot (root_push env)]
     (do
-      (root_set env-slot (map-insert env name-hash idx))
-      (root_pop))))
+      (let [updated (map-insert env name-hash idx)]
+        (do
+          (root_set env-slot updated)
+          (root_pop)
+          updated)))))
 (defn env-lookup [env name-hash]
   (do
     (root_push env)
@@ -379,8 +382,11 @@
 (defn ftable-register-map-legacy [ftable name-hash func-idx]
   (let [ftable-slot (root_push ftable)]
     (do
-      (root_set ftable-slot (map-insert ftable name-hash func-idx))
-      (root_pop))))
+      (let [updated (map-insert ftable name-hash func-idx)]
+        (do
+          (root_set ftable-slot updated)
+          (root_pop)
+          updated)))))
 (defn ftable-lookup-map-legacy [ftable name-hash]
   (do
     (root_push ftable)
@@ -635,12 +641,12 @@
 (defn write-i32-le [vec value] (push-int-vector (push-int-vector (push-int-vector (push-int-vector vec (% value 256)) (% (/ value 256) 256)) (% (/ value 65536) 256)) (% (/ value 16777216) 256)))
 
 (defn string-literal-unescape-consumed [src idx len]
-  (if (and (< (+ idx 1) len) (= (string-char-at src idx) 92))
+  (if (if (< (+ idx 1) len) (= (string-char-at src idx) 92) false)
     2
     1))
 
 (defn string-literal-unescape-piece [src idx len]
-  (if (and (< (+ idx 1) len) (= (string-char-at src idx) 92))
+  (if (if (< (+ idx 1) len) (= (string-char-at src idx) 92) false)
     (let [escaped (string-char-at src (+ idx 1))]
       (if (= escaped 110)
         "\n"
@@ -798,64 +804,86 @@
         (do
           (root_push text)
           (let [hash (normalize-map-key-hash (string-key-hash-loop text 0 (string-length text) 0))
-            result (emit-to instrs (op-i64-const) hash)]
+            result (emit-to instrs 1 hash)]
             (do
               (root_pop)
               (root_pop)
               result)))))))
 (defn immediate-builtin-op [bop]
-  (or
-    (or
-      (or
-        (or (= bop (op-i64-add)) (= bop (op-i64-sub)))
-        (or (= bop (op-i64-mul)) (= bop (op-i64-div))))
-      (or
-        (or (= bop (op-i64-mod)) (= bop (op-i64-eq)))
-        (or (= bop (op-i64-gt)) (= bop (op-i64-lt)))))
-    (or
-      (or
-        (or (= bop (op-i64-ge)) (= bop (op-i64-le)))
-        (or (= bop (op-string-char-at)) (= bop (op-string-length))))
-      (or
-        (or (= bop (op-vector-length)) (= bop (op-map-size)))
-        (or
-          (or (= bop (op-map-contains)) (= bop (op-file-exists)))
-          (or
-            (or (= bop (op-print)) (= bop (op-root-push)))
-            (or
-              (or (= bop (op-root-pop)) (= bop (op-root-set)))
-              (or (= bop 71) (= bop 72)))))))))
+  (if (= bop 20)
+    true
+    (if (= bop 21)
+      true
+      (if (= bop 22)
+        true
+        (if (= bop 23)
+          true
+          (if (= bop 28)
+            true
+            (if (= bop 30)
+              true
+              (if (= bop 33)
+                true
+                (if (= bop 32)
+                  true
+                  (if (= bop 35)
+                    true
+                    (if (= bop 34)
+                      true
+                      (if (= bop 50)
+                        true
+                        (if (= bop 51)
+                          true
+                          (if (= bop 52)
+                            true
+                            (if (= bop 61)
+                              true
+                              (if (= bop 65)
+                                true
+                                (if (= bop 73)
+                                  true
+                                  (if (= bop 59)
+                                    true
+                                    (if (= bop 74)
+                                      true
+                                      (if (= bop 75)
+                                        true
+                                        (if (= bop 76)
+                                          true
+                                          (if (= bop 71)
+                                            true
+                                            (= bop 72)))))))))))))))))))))))
 (defn alloc-root-needed [expr]
   (let [tag (vector-get expr 0)]
-    (if (= tag (tag-lit-int))
+    (if (= tag 1)
       0
-      (if (= tag (tag-lit-bool))
+      (if (= tag 2)
         0
-        (if (= tag (tag-apply))
+        (if (= tag 5)
           (let [func-node (vector-get expr 1)
             func-tag (vector-get func-node 0)
-            func-hash (if (= func-tag (tag-var)) (vector-get func-node 1) 0)
+            func-hash (if (= func-tag 4) (vector-get func-node 1) 0)
             bop (builtin-opcode func-hash)]
             (if (immediate-builtin-op bop) 0 1))
           1)))))
-(defn simple-map-operand [expr] (let [tag (vector-get expr 0)] (if (= tag (tag-var)) true (if (= tag (tag-lit-int)) true (if (= tag (tag-lit-bool)) true (= tag (tag-lit-string)))))))
+(defn simple-map-operand [expr] (let [tag (vector-get expr 0)] (if (= tag 4) true (if (= tag 1) true (if (= tag 2) true (= tag 3))))))
 (defn emit-root-push-drop [instrs local-idx]
-  (let [instrs1 (emit-to instrs (op-local-get) local-idx)]
+  (let [instrs1 (emit-to instrs 10 local-idx)]
     (do
       (root_push instrs1)
-      (let [instrs2 (emit-to instrs1 (op-root-push) 0)]
+      (let [instrs2 (emit-to instrs1 74 0)]
         (do
           (root_push instrs2)
-          (let [result (emit-to instrs2 (op-drop) 0)]
+          (let [result (emit-to instrs2 44 0)]
             (do
               (root_pop)
               (root_pop)
               result)))))))
 (defn emit-root-pop-drop [instrs]
-  (let [instrs1 (emit-to instrs (op-root-pop) 0)]
+  (let [instrs1 (emit-to instrs 75 0)]
     (do
       (root_push instrs1)
-      (let [result (emit-to instrs1 (op-drop) 0)]
+      (let [result (emit-to instrs1 44 0)]
         (do
           (root_pop)
           result)))))
@@ -921,7 +949,7 @@
   (do
     (root_push init-instrs)
     (let [new-idx (+ 1 (map-size env))
-      next-instrs1 (emit-to init-instrs (op-local-set) new-idx)]
+      next-instrs1 (emit-to init-instrs 11 new-idx)]
       (do
         (root_push next-instrs1)
         (let [next-instrs2 (maybe-root-push-drop next-instrs1 init-root new-idx)]
@@ -932,7 +960,7 @@
                 (root_push next-env)
                 (let [next-value (make-let-chain-next-value body-expr next-env next-instrs2)
                   result (make-compile-step-state
-                    (if (= (vector-get body-expr 0) (tag-let)) 0 1)
+                    (if (= (vector-get body-expr 0) 7) 0 1)
                     (+ rooted-count init-root)
                     next-value)]
                   (do
@@ -953,7 +981,7 @@
   (do
     (root_push init-instrs)
     (let [new-idx (+ 1 (map-size env))
-      instrs1 (emit-to init-instrs (op-local-set) new-idx)]
+      instrs1 (emit-to init-instrs 11 new-idx)]
       (do
         (root_push instrs1)
         (let [instrs2 (maybe-root-push-drop instrs1 init-root new-idx)]

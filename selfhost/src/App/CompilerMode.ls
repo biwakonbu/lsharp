@@ -1490,7 +1490,7 @@
           (root_push pair)
           (let [src (vector-get pair 0)
             decls (vector-get pair 1)
-            updated-functions (compile-defn-functions-chunked-with-source decls 0 (vector-length decls) src ftable data-ref functions)]
+            updated-functions (compile-source-defn-functions-chunked decls 0 (vector-length decls) src ftable data-ref functions)]
             (do
               (root_push updated-functions)
               (let [next-state (make-pairs-step-state 0 (+ idx 1) updated-functions)]
@@ -1585,7 +1585,7 @@
               (print 160)
               (print idx)
               (print (vector-length decls))
-              (let [updated-functions (compile-defn-functions-chunked-with-source decls 0 (vector-length decls) src ftable data-ref functions)]
+              (let [updated-functions (compile-source-defn-functions-chunked decls 0 (vector-length decls) src ftable data-ref functions)]
                 (do
                   (print 161)
                   (print idx)

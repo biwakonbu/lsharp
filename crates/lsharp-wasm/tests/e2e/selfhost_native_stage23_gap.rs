@@ -412,9 +412,9 @@ fn test_native_codegen_x86_vector_and_ref_helper_call_sites_resolve_offsets() {
     assert_eq!(
         lines,
         vec![
-            4547, 4629, 4646, 4679, 4884, 4957, 4975, 7, 81, 232, 189, 9, 0, 0, 89, 7, 81, 232, 15,
-            10, 0, 0, 89, 5, 232, 33, 10, 0, 0, 5, 232, 66, 10, 0, 0, 7, 81, 232, 14, 11, 0, 0, 89,
-            7, 81, 232, 87, 11, 0, 0, 89, 5, 232, 106, 11, 0, 0,
+            4547, 4666, 4683, 4716, 4921, 4994, 5012, 7, 81, 232, 189, 9, 0, 0, 89, 7, 81, 232, 52,
+            10, 0, 0, 89, 5, 232, 70, 10, 0, 0, 5, 232, 103, 10, 0, 0, 7, 81, 232, 51, 11, 0, 0,
+            89, 7, 81, 232, 124, 11, 0, 0, 89, 5, 232, 143, 11, 0, 0,
         ],
         "x86_64 vector/ref helper call sites は trailer offset を指す call を出す必要がある"
     );
@@ -605,7 +605,7 @@ fn test_native_codegen_x86_map_and_file_helper_emitters_return_executable_byte_v
     assert_eq!(
         lines,
         vec![
-            72, 81, 49, 255, 190, 16, 16, 0, 0, 232, 63, 89, 195, 49, 192, 89, 195, 17, 72, 133,
+            72, 81, 49, 255, 190, 16, 255, 0, 0, 232, 63, 89, 195, 49, 192, 89, 195, 17, 72, 133,
             192, 121, 9, 72, 15, 186, 240, 63, 139, 64, 8, 195, 49, 192, 195, 61, 83, 72, 137, 211,
             72, 133, 219, 121, 232, 63, 91, 195, 49, 192, 91, 195, 62, 83, 65, 84, 72, 133, 201,
             121, 48, 91, 195, 49, 192, 65, 92, 91, 195, 84, 83, 65, 84, 72, 137, 227, 72, 133, 192,
@@ -675,15 +675,17 @@ fn test_native_codegen_x86_string_char_at_oob_jumps_to_return_zero() {
     (do
       (print (vector-get helper 23))
       (print (vector-get helper 24))
-      (print (vector-get helper 45))
-      (print (vector-get helper 46))
-      (print (vector-get helper 47))
+      (let [target (+ 25 (vector-get helper 24))]
+        (do
+          (print (vector-get helper target))
+          (print (vector-get helper (+ target 1)))
+          (print (vector-get helper (+ target 2)))))
       0))"#,
     );
 
     assert_eq!(
         lines,
-        vec![115, 20, 49, 192, 195],
+        vec![115, 43, 49, 192, 195],
         "x86_64 string-char-at の tagged out-of-bounds 分岐は return-zero へ飛ぶ必要がある"
     );
 }
@@ -775,7 +777,7 @@ fn test_native_codegen_x86_vector_and_ref_helper_emitters_return_executable_byte
     assert_eq!(
         lines,
         vec![
-            82, 81, 80, 72, 141, 52, 197, 16, 0, 63, 89, 195, 88, 49, 192, 89, 195, 17, 72, 133,
+            119, 81, 80, 72, 141, 52, 197, 16, 0, 63, 89, 195, 88, 49, 192, 89, 195, 17, 72, 133,
             192, 121, 9, 72, 15, 186, 240, 63, 139, 64, 8, 195, 49, 192, 195, 33, 72, 133, 201,
             121, 25, 72, 129, 249, 0, 240, 255, 255, 127, 16, 72, 15, 186, 241, 63, 59, 65, 8, 115,
             6, 72, 139, 68, 193, 16, 195, 49, 192, 195, 205, 65, 84, 65, 85, 72, 133, 201, 15, 137,
@@ -874,15 +876,16 @@ fn test_native_codegen_x86_vector_new_preserves_capacity_across_syscall() {
       (print (vector-get helper 50))
       (print (vector-get helper 51))
       (print (vector-get helper 52))
-      (print (vector-get helper 74))
-      (print (vector-get helper 75))
-      (print (vector-get helper 76))
+      (print (vector-get helper 96))
+      (print (vector-get helper 97))
+      (print (vector-get helper 98))
+      (print (vector-get helper 99))
       0))"#,
     );
 
     assert_eq!(
         lines,
-        vec![82, 81, 80, 72, 120, 26, 65, 91, 63, 89, 195],
+        vec![119, 81, 80, 72, 120, 63, 65, 91, 68, 137, 88, 4],
         "x86_64 vector-new helper は syscall が r11 を壊しても capacity を vector header に保存する必要がある"
     );
 }

@@ -832,6 +832,7 @@ cat >file-exists-object-summary.json <<JSON
 JSON
 
 cat >materialize-actual-bundle.py <<'PY'
+import os
 import pathlib
 import subprocess
 import sys
@@ -839,6 +840,7 @@ import sys
 stage_dir = pathlib.Path(sys.argv[1])
 code_name = sys.argv[2]
 entrypoint = int((stage_dir / sys.argv[3]).read_text().strip())
+actual_heap_bytes = int(os.environ.get("LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES", "4294967296"))
 code_path = stage_dir / code_name
 code_len = code_path.stat().st_size
 data_name = "stage1-data.bin" if (stage_dir / "stage1-data.bin").exists() else "stage-data.bin"
@@ -902,7 +904,7 @@ main:
     jmp .Largv_loop
 .Largv_done:
     mov %r14, %r12
-    mov $67108864, %rdi
+    movabs ${actual_heap_bytes}, %rdi
     mov $1, %rsi
     call calloc@PLT
     test %rax, %rax
@@ -1059,6 +1061,8 @@ data, idx = decode_packed_payload_at(idx, data_len, None)
 PY
 
 ACTUAL_TIMEOUT="${LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT:-900}"
+ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-8}"
+ACTUAL_CHUNK_RETRIES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES:-1}"
 mkdir -p actual-stage2 actual-stage3
 cp -a actual-stage1/src actual-stage2/src
 cp -a actual-stage1/src actual-stage3/src
@@ -1090,9 +1094,107 @@ write_actual_selfregen_failure_summary() {
 JSON
 }
 
+run_actual_stage_range() {
+  stage_dir="$1"
+  stdout_file="$2"
+  stderr_file="$3"
+  chunk_start="$4"
+  chunk_end="$5"
+  include_header="$6"
+  include_tail="$7"
+
+  if [[ "${chunk_end}" -le "${chunk_start}" ]]; then
+    return 0
+  fi
+
+  chunk_attempt=0
+  while :; do
+    chunk_stdout="$(mktemp "${stage_dir}.chunk.${chunk_start}.XXXXXX.stdout")"
+    chunk_stderr="$(mktemp "${stage_dir}.chunk.${chunk_start}.XXXXXX.stderr")"
+    set +e
+    (cd "${stage_dir}" && timeout "${ACTUAL_TIMEOUT}" ./program.native src/App/Seed.ls "${chunk_start}" "${chunk_end}" "${include_header}" "${include_tail}" >"../${chunk_stdout}" 2>"../${chunk_stderr}")
+    chunk_exit_code=$?
+    set -e
+    if [[ "${chunk_exit_code}" -eq 0 ]]; then
+      cat "${chunk_stdout}" >>"${stdout_file}"
+      cat "${chunk_stderr}" >>"${stderr_file}"
+      rm -f "${chunk_stdout}" "${chunk_stderr}"
+      return 0
+    fi
+    if [[ "${chunk_attempt}" -lt "${ACTUAL_CHUNK_RETRIES}" ]]; then
+      echo "WARN: retrying chunked native run for ${stage_dir} ${chunk_start}-${chunk_end} after exit ${chunk_exit_code}" >&2
+      rm -f "${chunk_stdout}" "${chunk_stderr}"
+      chunk_attempt=$((chunk_attempt + 1))
+      continue
+    fi
+    rm -f "${chunk_stdout}" "${chunk_stderr}"
+    break
+  done
+
+  if [[ $((chunk_end - chunk_start)) -gt 1 ]]; then
+    split_mid=$(((chunk_start + chunk_end) / 2))
+    echo "WARN: splitting chunked native run for ${stage_dir} ${chunk_start}-${chunk_end} at ${split_mid} after exit ${chunk_exit_code}" >&2
+    run_actual_stage_range "${stage_dir}" "${stdout_file}" "${stderr_file}" "${chunk_start}" "${split_mid}" "${include_header}" 0
+    run_actual_stage_range "${stage_dir}" "${stdout_file}" "${stderr_file}" "${split_mid}" "${chunk_end}" 0 "${include_tail}"
+    return 0
+  fi
+
+  cat "${chunk_stdout}" >>"${stdout_file}" 2>/dev/null || true
+  cat "${chunk_stderr}" >>"${stderr_file}" 2>/dev/null || true
+  rm -f "${chunk_stdout}" "${chunk_stderr}" 2>/dev/null || true
+  return "${chunk_exit_code}"
+}
+
+run_actual_stage_chunked() {
+  stage_dir="$1"
+  stdout_file="$2"
+  stderr_file="$3"
+  : >"${stdout_file}"
+  : >"${stderr_file}"
+
+  chunk_start=0
+  function_start_len=""
+  while :; do
+    if [[ -n "${function_start_len}" && "${chunk_start}" -ge "${function_start_len}" ]]; then
+      break
+    fi
+    chunk_end=$((chunk_start + ACTUAL_CHUNK_SIZE))
+    include_header=0
+    include_tail=0
+    if [[ "${chunk_start}" -eq 0 ]]; then
+      include_header=1
+    fi
+    if [[ -n "${function_start_len}" && "${chunk_end}" -ge "${function_start_len}" ]]; then
+      chunk_end="${function_start_len}"
+      include_tail=1
+    fi
+
+    run_actual_stage_range "${stage_dir}" "${stdout_file}" "${stderr_file}" "${chunk_start}" "${chunk_end}" "${include_header}" "${include_tail}"
+
+    if [[ -z "${function_start_len}" ]]; then
+      function_start_len="$(awk 'NR == 2 { print; exit }' "${stdout_file}")"
+      if [[ -z "${function_start_len}" ]]; then
+        echo "ERROR: ${stage_dir} chunked run did not emit function_start_len" >&2
+        return 1
+      fi
+      if [[ "${chunk_end}" -ge "${function_start_len}" ]]; then
+        chunk_start="${chunk_end}"
+      else
+        chunk_start="${chunk_end}"
+      fi
+    else
+      chunk_start="${chunk_end}"
+    fi
+
+    if [[ "${include_tail}" -eq 1 ]]; then
+      break
+    fi
+  done
+}
+
 python3 materialize-actual-bundle.py actual-stage1 stage1-code.bin entrypoint-offset.txt
 set +e
-(cd actual-stage1 && timeout "${ACTUAL_TIMEOUT}" ./program.native src/App/Seed.ls >../actual-stage2-stdout.txt 2>../actual-stage2-stderr.txt)
+run_actual_stage_chunked actual-stage1 actual-stage2-stdout.txt actual-stage2-stderr.txt
 actual_stage2_exit_code=$?
 set -e
 if [[ "${actual_stage2_exit_code}" -ne 0 ]]; then
@@ -1111,7 +1213,7 @@ cp actual-stage2/stage-code.bin actual-stage2/stage2-code.bin
 cp actual-stage2/stage-data.bin actual-stage2/stage2-data.bin
 python3 materialize-actual-bundle.py actual-stage2 stage-code.bin entrypoint-offset.txt
 set +e
-(cd actual-stage2 && timeout "${ACTUAL_TIMEOUT}" ./program.native src/App/Seed.ls >../actual-stage3-stdout.txt 2>../actual-stage3-stderr.txt)
+run_actual_stage_chunked actual-stage2 actual-stage3-stdout.txt actual-stage3-stderr.txt
 actual_stage3_exit_code=$?
 set -e
 if [[ "${actual_stage3_exit_code}" -ne 0 ]]; then
@@ -1160,6 +1262,25 @@ for file in program.s runtime.s program.o argv-program.o argv-char-program.o pri
     limactl copy "${VM_NAME}:${VM_WORK_DIR}/${file}" "${ARTIFACT_DIR}/${file}"
   fi
 done
+
+copy_actual_stage_debug_artifact() {
+  stage_dir="$1"
+  debug_dir="$2"
+  if ! limactl shell "${VM_NAME}" -- test -d "${VM_WORK_DIR}/${stage_dir}"; then
+    return 0
+  fi
+  rm -rf "${ARTIFACT_DIR}/${debug_dir}"
+  mkdir -p "${ARTIFACT_DIR}/${debug_dir}"
+  for file in manifest.json stage-code.bin stage-data.bin stage1-code.bin stage2-code.bin stage2-data.bin entrypoint-offset.txt function-start-len.txt main-func-idx.txt program.s runtime.s program.o runtime.o linker-response.txt program.native; do
+    if limactl shell "${VM_NAME}" -- test -e "${VM_WORK_DIR}/${stage_dir}/${file}"; then
+      limactl copy "${VM_NAME}:${VM_WORK_DIR}/${stage_dir}/${file}" "${ARTIFACT_DIR}/${debug_dir}/${file}"
+    fi
+  done
+}
+
+copy_actual_stage_debug_artifact actual-stage1 stage1-debug
+copy_actual_stage_debug_artifact actual-stage2 stage2-debug
+copy_actual_stage_debug_artifact actual-stage3 stage3-debug
 
 if [[ "${vm_exec_status}" -ne 0 ]]; then
   echo "ERROR: native Linux x86_64 hostgen -> VM exec smoke failed with status ${vm_exec_status}" >&2
