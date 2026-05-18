@@ -1548,7 +1548,7 @@ fn test_native_codegen_x86_control_loop_dispatches_calls_without_ten_arg_wrapper
         .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
 
     let call_dispatch =
-        "(append-x86-opcode-call-bundle result (ref-get operand-ref) (ref-get actual-current-offset-ref) function-starts call-context)";
+        "(codegen-x86-opcode-call-bundle (ref-get operand-ref) (ref-get actual-current-offset-ref) function-starts call-context)";
     let before_call_dispatch = body
         .split("(if (= opcode 40)")
         .next()
@@ -1558,7 +1558,7 @@ fn test_native_codegen_x86_control_loop_dispatches_calls_without_ten_arg_wrapper
             && body.contains("(root_push function-starts)")
             && body.contains("(vector-new 6)")
             && body.contains(call_dispatch),
-        "x86 control loop は Linux x86 native の call byte 欠落を避けるため opcode 40 call を vector 化せず直接 append するべき"
+        "x86 control loop は Linux x86 native の stack arg 破壊を避けるため opcode 40 call も 10 引数 wrapper 経由にしない"
     );
     assert!(
         !before_call_dispatch.contains("opcode-stack-delta"),
@@ -1595,7 +1595,7 @@ fn test_native_codegen_x86_control_loop_uses_actual_offset_for_rel32_calls() {
     );
     assert!(
         body.contains(
-            "append-x86-opcode-call-bundle result (ref-get operand-ref) (ref-get actual-current-offset-ref) function-starts call-context",
+            "codegen-x86-opcode-call-bundle (ref-get operand-ref) (ref-get actual-current-offset-ref) function-starts call-context",
         ) && body.contains(
             "codegen-selfhost-runtime-bundle-x86 opcode (ref-get actual-current-offset-ref) (ref-get import-stub-offset-ref) import-count frame-base-slot-count current-depth",
         ),
@@ -1632,29 +1632,10 @@ fn test_native_codegen_x86_control_loop_stabilizes_segmented_offsets_before_call
             && call_branch.contains("(ref-get import-stub-offset-ref)")
             && call_branch.contains("(ref-get function-start-base-ref)")
             && call_branch.contains(
-                "append-x86-opcode-call-bundle result (ref-get operand-ref) (ref-get actual-current-offset-ref) function-starts call-context",
+                "codegen-x86-opcode-call-bundle (ref-get operand-ref) (ref-get actual-current-offset-ref) function-starts call-context",
             )
-            && !call_branch.contains("codegen-x86-opcode-call-bundle"),
-        "x86 opcode 40 branch は call-context allocation の前後で current/base/import offsets を ref 経由で使い、call bytes を vector 化せず直接 append するべき"
-    );
-}
-
-#[test]
-fn test_native_codegen_x86_append_call_helper_handles_stage2_missing_call_shapes() {
-    let source = selfhost_module("NativeCodegen.ls");
-    let body = source
-        .split("(defn append-x86-opcode-call-bundle")
-        .nth(1)
-        .and_then(|tail| tail.split("\n(defn ").next())
-        .expect("NativeCodegen.ls に append-x86-opcode-call-bundle が存在すること");
-
-    assert!(
-        body.contains("(append-zero-arg-call-bundle-x86 result call-rel frame-base-slot-count current-depth)")
-            && body.contains("(append-one-arg-call-bundle-x86 result call-rel)")
-            && body.contains("(append-four-arg-call-bundle-x86 result call-rel frame-base-slot-count current-depth)")
-            && !body.contains("emit-call-rel32")
-            && !body.contains("codegen-x86-opcode-call-bundle"),
-        "stage2 entry で欠落していた 0/1/4 引数 call は call-rel byte vector を作らず append-only で emit するべき"
+            && call_branch.contains("(append-native-bytes-loop result native 0 native-len)"),
+        "x86 opcode 40 branch は call-context allocation の前後で current/base/import offsets を ref 経由で使うべき"
     );
 }
 
