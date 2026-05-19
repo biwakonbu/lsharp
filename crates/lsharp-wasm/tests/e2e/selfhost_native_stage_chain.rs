@@ -35585,6 +35585,345 @@ fn test_e2e_linux_x86_actual_native_self_regeneration_harness_stage2_stage3_matc
     );
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct X86Rel32CallSite {
+    call_offset: usize,
+    rel32: i32,
+    target_offset: i64,
+    bytes: [u8; 5],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct X86IrCallTraceRow {
+    instr_idx: i64,
+    opcode: i64,
+    operand: i64,
+    depth: i64,
+    offset: i64,
+    size: i64,
+    param_count: i64,
+    target_offset: i64,
+}
+
+fn read_usize_artifact(path: &std::path::Path, name: &str) -> usize {
+    std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("{name} 読み込み失敗 ({}): {e}", path.display()))
+        .trim()
+        .parse::<usize>()
+        .unwrap_or_else(|e| panic!("{name} が usize でない ({}): {e}", path.display()))
+}
+
+fn workspace_root_relative_path(path: std::path::PathBuf) -> std::path::PathBuf {
+    if path.is_absolute() {
+        return path;
+    }
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|path| path.parent())
+        .expect("lsharp-wasm crate は workspace/crates/lsharp-wasm 配下にあること")
+        .join(path)
+}
+
+fn read_optional_usize_artifact(dir: &std::path::Path, file_name: &str) -> usize {
+    let path = dir.join(file_name);
+    if path.exists() {
+        read_usize_artifact(&path, file_name)
+    } else {
+        0
+    }
+}
+
+fn first_existing_artifact_path(
+    dir: &std::path::Path,
+    candidates: &[&str],
+    label: &str,
+) -> std::path::PathBuf {
+    candidates
+        .iter()
+        .map(|candidate| dir.join(candidate))
+        .find(|path| path.exists())
+        .unwrap_or_else(|| {
+            panic!(
+                "{label} が見つからない: dir={} candidates={candidates:?}",
+                dir.display()
+            )
+        })
+}
+
+fn read_linux_x86_stage_code_artifact_bundle(
+    dir: &std::path::Path,
+    code_candidates: &[&str],
+    data_candidates: &[&str],
+) -> NativeEntrypointBundle {
+    let code_path = first_existing_artifact_path(dir, code_candidates, "stage code artifact");
+    let code_bytes = std::fs::read(&code_path)
+        .unwrap_or_else(|e| panic!("stage code 読み込み失敗 ({}): {e}", code_path.display()));
+    let data_bytes = data_candidates
+        .iter()
+        .map(|candidate| dir.join(candidate))
+        .find(|path| path.exists())
+        .map(|path| {
+            std::fs::read(&path)
+                .unwrap_or_else(|e| panic!("stage data 読み込み失敗 ({}): {e}", path.display()))
+        })
+        .unwrap_or_default();
+    let entrypoint_offset =
+        read_usize_artifact(&dir.join("entrypoint-offset.txt"), "entrypoint-offset.txt");
+
+    NativeEntrypointBundle {
+        function_start_len: read_optional_usize_artifact(dir, "function-start-len.txt"),
+        main_func_idx: read_optional_usize_artifact(dir, "main-func-idx.txt"),
+        declared_code_len: code_bytes.len(),
+        declared_data_len: data_bytes.len(),
+        entrypoint_offset,
+        code_bytes,
+        data_bytes,
+    }
+}
+
+fn decode_x86_rel32_call_at(code: &[u8], call_offset: usize) -> X86Rel32CallSite {
+    assert!(
+        call_offset + 5 <= code.len(),
+        "rel32 call が code 範囲外: call_offset={} len={}",
+        call_offset,
+        code.len()
+    );
+    assert_eq!(
+        code[call_offset], 0xe8,
+        "rel32 call opcode ではない: call_offset={} byte={:02x}",
+        call_offset, code[call_offset]
+    );
+    let bytes = [
+        code[call_offset],
+        code[call_offset + 1],
+        code[call_offset + 2],
+        code[call_offset + 3],
+        code[call_offset + 4],
+    ];
+    let rel32 = i32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
+    X86Rel32CallSite {
+        call_offset,
+        rel32,
+        target_offset: call_offset as i64 + 5 + rel32 as i64,
+        bytes,
+    }
+}
+
+fn byte_window_hex(bytes: &[u8], center: usize, before: usize, after: usize) -> String {
+    let center = center.min(bytes.len());
+    let start = center.saturating_sub(before);
+    let end = (center + after).min(bytes.len());
+    let hex = bytes[start..end]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("{start}..{end}: {hex}")
+}
+
+fn assert_x86_entrypoint_call_window(
+    bundle: &NativeEntrypointBundle,
+    label: &str,
+    relative_range: std::ops::Range<usize>,
+    target_range: std::ops::Range<usize>,
+) -> X86Rel32CallSite {
+    let entry = bundle.entrypoint_offset;
+    assert!(
+        entry + 4 <= bundle.code_bytes.len(),
+        "{label}: entrypoint が code 範囲外: entry={} len={}",
+        entry,
+        bundle.code_bytes.len()
+    );
+    assert_eq!(
+        &bundle.code_bytes[entry..entry + 4],
+        &[0x55, 0x48, 0x89, 0xe5],
+        "{label}: x86 entrypoint は push rbp; mov rbp,rsp で始まるべき"
+    );
+    assert!(
+        entry + relative_range.end <= bundle.code_bytes.len(),
+        "{label}: call window が code 範囲外: entry={} window={relative_range:?} len={}",
+        entry,
+        bundle.code_bytes.len()
+    );
+    let start = entry + relative_range.start;
+    let end = entry + relative_range.end;
+    let call_offsets = (start..end)
+        .filter(|offset| bundle.code_bytes[*offset] == 0xe8)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        call_offsets.len(),
+        1,
+        "{label}: window 内の rel32 call opcode 数が 1 でない: entry={} window={relative_range:?} offsets={call_offsets:?} bytes={}",
+        entry,
+        byte_window_hex(&bundle.code_bytes, start, 0, relative_range.len())
+    );
+
+    let call_site = decode_x86_rel32_call_at(&bundle.code_bytes, call_offsets[0]);
+    assert!(
+        call_site.target_offset >= target_range.start as i64
+            && call_site.target_offset < target_range.end as i64,
+        "{label}: rel32 target が期待範囲外: entry={} call={:?} target_range={target_range:?} call_window={} target_window={}",
+        entry,
+        call_site,
+        byte_window_hex(&bundle.code_bytes, call_site.call_offset, 8, 16),
+        if call_site.target_offset >= 0 {
+            byte_window_hex(&bundle.code_bytes, call_site.target_offset as usize, 8, 16)
+        } else {
+            "<negative target>".to_string()
+        }
+    );
+    call_site
+}
+
+fn collect_x86_entry_rel32_calls(
+    bundle: &NativeEntrypointBundle,
+    relative_range: std::ops::Range<usize>,
+) -> Vec<X86Rel32CallSite> {
+    let entry = bundle.entrypoint_offset;
+    let start = entry + relative_range.start;
+    let end = (entry + relative_range.end).min(bundle.code_bytes.len().saturating_sub(4));
+    if start >= end {
+        return Vec::new();
+    }
+    (start..end)
+        .filter(|offset| bundle.code_bytes[*offset] == 0xe8)
+        .map(|offset| decode_x86_rel32_call_at(&bundle.code_bytes, offset))
+        .filter(|site| {
+            site.target_offset >= 0 && site.target_offset < bundle.code_bytes.len() as i64
+        })
+        .collect()
+}
+
+fn read_x86_ir_call_trace_rows(path: &std::path::Path) -> Vec<X86IrCallTraceRow> {
+    let output = std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("x86 IR trace 読み込み失敗 ({}): {e}", path.display()));
+    let lines = parse_numeric_lines(&output);
+    let rows = if lines.len() % 8 == 0 {
+        &lines[..]
+    } else if lines.len() >= 3 && (lines.len() - 3) % 8 == 0 {
+        &lines[3..]
+    } else {
+        panic!(
+            "x86 IR trace は 8 値単位の rows であるべき: path={} count={} lines={lines:?}",
+            path.display(),
+            lines.len()
+        );
+    };
+    rows.chunks_exact(8)
+        .map(|row| X86IrCallTraceRow {
+            instr_idx: row[0],
+            opcode: row[1],
+            operand: row[2],
+            depth: row[3],
+            offset: row[4],
+            size: row[5],
+            param_count: row[6],
+            target_offset: row[7],
+        })
+        .collect()
+}
+
+fn assert_x86_ir_call_trace_matches_entry_calls(
+    bundle: &NativeEntrypointBundle,
+    rows: &[X86IrCallTraceRow],
+) {
+    let call_rows = rows
+        .iter()
+        .filter(|row| row.opcode == 40)
+        .collect::<Vec<_>>();
+    assert!(
+        !call_rows.is_empty(),
+        "x86 IR trace に opcode 40 call row が無い"
+    );
+    for row in call_rows {
+        assert!(row.offset >= 0, "x86 IR call offset が負: row={row:?}");
+        let call_offset = bundle.entrypoint_offset + row.offset as usize;
+        assert!(
+            call_offset + 5 <= bundle.code_bytes.len(),
+            "x86 IR call row が code 範囲外: row={row:?} entry={} len={}",
+            bundle.entrypoint_offset,
+            bundle.code_bytes.len()
+        );
+        let call_site = decode_x86_rel32_call_at(&bundle.code_bytes, call_offset);
+        let expected_target = bundle.entrypoint_offset as i64 + row.target_offset;
+        assert_eq!(
+            call_site.target_offset,
+            expected_target,
+            "x86 IR opcode/bytes/rel32 target が一致しない: row={row:?} call={call_site:?} call_window={} target_window={}",
+            byte_window_hex(&bundle.code_bytes, call_offset, 8, 16),
+            if call_site.target_offset >= 0 {
+                byte_window_hex(&bundle.code_bytes, call_site.target_offset as usize, 8, 16)
+            } else {
+                "<negative target>".to_string()
+            }
+        );
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: V2-13a-5 Linux x86 stage2 entrypoint call windows/rel32 targets"]
+fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
+    let stage2_dir = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STAGE2_ARTIFACT_DIR").expect(
+        "LSHARP_NATIVE_LINUX_X86_STAGE2_ARTIFACT_DIR に stage2 artifact dir を指定すること",
+    );
+    let stage2_dir = workspace_root_relative_path(std::path::PathBuf::from(stage2_dir));
+    let stage2_bundle = read_linux_x86_stage_code_artifact_bundle(
+        &stage2_dir,
+        &["stage-code.bin", "stage2-code.bin"],
+        &["stage-data.bin", "stage2-data.bin"],
+    );
+    let target_range = 0..stage2_bundle.code_bytes.len();
+    let bootstrap_call = assert_x86_entrypoint_call_window(
+        &stage2_bundle,
+        "Linux x86 stage2 entry bootstrap helper call",
+        8..16,
+        target_range,
+    );
+    let stage2_prefix_calls = collect_x86_entry_rel32_calls(&stage2_bundle, 0..128);
+    println!(
+        "Linux x86 stage2 entrypoint diagnostic: dir={} entry={} code_len={} main_func_idx={} function_start_len={} bootstrap={bootstrap_call:?} prefix_calls={stage2_prefix_calls:?}",
+        stage2_dir.display(),
+        stage2_bundle.entrypoint_offset,
+        stage2_bundle.code_bytes.len(),
+        stage2_bundle.main_func_idx,
+        stage2_bundle.function_start_len
+    );
+
+    if let Some(stage1_dir) = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STAGE1_ARTIFACT_DIR") {
+        let stage1_dir = workspace_root_relative_path(std::path::PathBuf::from(stage1_dir));
+        let stage1_bundle = read_linux_x86_stage_code_artifact_bundle(
+            &stage1_dir,
+            &["stage1-code.bin", "stage-code.bin"],
+            &["stage1-data.bin", "stage-data.bin"],
+        );
+        let stage1_prefix_calls = collect_x86_entry_rel32_calls(&stage1_bundle, 0..128);
+        println!(
+            "Linux x86 stage1/stage2 entrypoint comparison: stage1_dir={} stage1_entry={} stage1_code_len={} stage1_calls={stage1_prefix_calls:?} stage2_calls={stage2_prefix_calls:?}",
+            stage1_dir.display(),
+            stage1_bundle.entrypoint_offset,
+            stage1_bundle.code_bytes.len()
+        );
+        assert!(
+            stage2_prefix_calls.len() <= stage1_prefix_calls.len(),
+            "stage2 entrypoint prefix call count が stage1 より増えている: stage1={stage1_prefix_calls:?} stage2={stage2_prefix_calls:?}"
+        );
+    }
+
+    if let Some(trace_path) = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STAGE2_ENTRY_IR_TRACE") {
+        let trace_path = workspace_root_relative_path(std::path::PathBuf::from(trace_path));
+        let trace_rows = read_x86_ir_call_trace_rows(&trace_path);
+        assert_x86_ir_call_trace_matches_entry_calls(&stage2_bundle, &trace_rows);
+        println!(
+            "Linux x86 stage2 IR opcode/bytes/rel32 trace correlated: path={} rows={trace_rows:?}",
+            trace_path.display()
+        );
+    } else {
+        println!(
+            "Linux x86 stage2 IR trace 未指定: LSHARP_NATIVE_LINUX_X86_STAGE2_ENTRY_IR_TRACE を指定すると opcode 40 / emitted bytes / rel32 target を同一 window で照合する"
+        );
+    }
+}
+
 /// V2-09: actual self-regeneration で得た native stage 生成物を differential input として扱えること。
 #[test]
 #[ignore]
