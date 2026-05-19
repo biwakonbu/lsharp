@@ -7184,6 +7184,26 @@
           (root_pop)
           result)))))
 
+(defn emit-four-arg-call-x86-core-with-rel-ref [call-rel-ref frame-base-slot-count]
+  (do
+    (root_push call-rel-ref)
+    (let [setup (concat-four-byte-vectors-rooted
+                   (emit-mov-rdx-rcx)
+                   (emit-mov-rsi-from-local (native-value-window-spill-offset frame-base-slot-count 0))
+                   (emit-mov-rdi-from-local (native-value-window-spill-offset frame-base-slot-count 1))
+                   (emit-mov-rcx-rax))]
+      (do
+        (root_push setup)
+        (let [call-rel-bytes (emit-call-rel32 (ref-get call-rel-ref))]
+          (do
+            (root_push call-rel-bytes)
+            (let [result (concat-byte-vectors-rooted setup call-rel-bytes)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
+
 (defn emit-four-arg-call-x86 [rel frame-base-slot-count current-depth]
   (emit-consume-four-produce-one-bundle-x86
     (emit-four-arg-call-x86-core rel frame-base-slot-count)
@@ -10542,10 +10562,10 @@
                              current-depth)
                            (if (= target-param-count 4)
                              (emit-consume-four-produce-one-bundle-x86
-                               (let [call-rel-bytes call-rel-bytes]
+                               (let [call-rel-ref (ref-new call-rel)]
                                  (do
-                                  (root_push call-rel-bytes)
-                                  (let [result (emit-four-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+                                  (root_push call-rel-ref)
+                                  (let [result (emit-four-arg-call-x86-core-with-rel-ref call-rel-ref frame-base-slot-count)]
                                    (do
                                      (root_pop)
                                      result))))

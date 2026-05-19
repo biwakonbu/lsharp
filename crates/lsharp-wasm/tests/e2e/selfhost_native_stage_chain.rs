@@ -1482,12 +1482,14 @@ fn test_native_codegen_x86_four_arg_user_call_avoids_rel_wrapper_call() {
         .expect("x86 opcode 40 branch に four-arg user call 専用分岐が存在すること");
 
     assert!(
-        four_arg_branch.contains("call-rel-bytes")
-            && four_arg_branch.contains("call-rel-bytes")
-            && four_arg_branch.contains("(root_push call-rel-bytes)")
+        four_arg_branch.contains("call-rel-ref (ref-new call-rel)")
+            && four_arg_branch.contains("(root_push call-rel-ref)")
+            && four_arg_branch.contains(
+                "emit-four-arg-call-x86-core-with-rel-ref call-rel-ref frame-base-slot-count",
+            )
             && !four_arg_branch.contains("target-offset")
             && !four_arg_branch.contains("emit-call-bundle-x86-one-to-nine"),
-        "x86 four-arg user call は operand/rel local 破壊を避けるため branch 先頭で rel32 bytes を root するべき"
+        "x86 four-arg user call は setup 構築中に rel32 bytes を落とさないよう call-rel を ref に固定して helper 内で call bytes を生成するべき"
     );
     assert!(
         !before_call_bytes.contains("rel (if"),
@@ -23059,6 +23061,108 @@ fn test_e2e_native_linux_x86_host_generates_codegen_append_depth_one_probe_bundl
         format!("{}\n", bundle.function_start_len),
     )
     .expect("Linux x86_64 codegen append depth-one probe function-start-len.txt 書き込みに失敗");
+}
+
+/// NATIVE-LINUX-X86-02gb4: host 側 selfhost が four-arg call codegen probe の Linux native bundle を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_codegen_four_arg_call_probe_bundle_artifact() {
+    let artifact_dir =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_CODEGEN_FOUR_ARG_CALL_PROBE_ARTIFACT_DIR")
+            .expect(
+                "LSHARP_NATIVE_LINUX_X86_CODEGEN_FOUR_ARG_CALL_PROBE_ARTIFACT_DIR に Linux x86_64 codegen four-arg call probe artifact dir を指定すること",
+            );
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 codegen four-arg call probe artifact dir 作成に失敗");
+
+    let probe_source = r#"(module App.Probe)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn byte-at [bytes idx]
+  (let [value (vector-get bytes idx)]
+    (if (< value 0) (+ value 256) value)))
+
+(defn main []
+  (let [function-metas
+          (vector-push
+            (push-import-placeholders 0 10 (vector-new 12))
+            (make-function-meta 4 0 (vector-new 0)))
+        function-starts (vector-push (vector-new 1) 0)
+        context
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push (vector-new 6) function-metas)
+                    10)
+                  2048)
+                0)
+              16)
+            4)
+        bundle (codegen-x86-opcode-call-bundle 10 0 function-starts context)]
+    (if (= (vector-length bundle) 25)
+      (byte-at bundle 20)
+      (vector-length bundle))))"#;
+    let escaped_probe_source = escape_lsharp_string(probe_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Probe.ls" "{escaped_probe_source}")
+            (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle =
+        run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+            "linux-x86-codegen-four-arg-call-probe-bundle",
+            &payload_expr,
+            &[],
+        );
+
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86_64 codegen four-arg call probe entrypoint は code 範囲内にあること: entry={} len={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len()
+    );
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86_64 codegen four-arg call probe code artifact は空でないこと"
+    );
+
+    std::fs::write(artifact_dir.join("stage-code.bin"), &bundle.code_bytes)
+        .expect("Linux x86_64 codegen four-arg call probe stage-code.bin 書き込みに失敗");
+    std::fs::write(artifact_dir.join("stage-data.bin"), &bundle.data_bytes)
+        .expect("Linux x86_64 codegen four-arg call probe stage-data.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", bundle.entrypoint_offset),
+    )
+    .expect("Linux x86_64 codegen four-arg call probe entrypoint-offset.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", bundle.main_func_idx),
+    )
+    .expect("Linux x86_64 codegen four-arg call probe main-func-idx.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", bundle.function_start_len),
+    )
+    .expect("Linux x86_64 codegen four-arg call probe function-start-len.txt 書き込みに失敗");
 }
 
 /// NATIVE-LINUX-X86-02gb3: host 側 selfhost が padded depth=1 direct append probe の Linux native bundle を生成すること。
