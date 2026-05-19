@@ -1129,7 +1129,13 @@ fn test_linux_x86_seed_entry_ir_segment_probe_reports_expected_rel32_targets() {
             && test_body.contains("(defn x86-param-spill-prefix-size")
             && test_body.contains("stack-bytes (native-local-stack-bytes-with-window-x86")
             && test_body.contains("body-offset (+ (+ 4")
+            && test_body.contains("(defn print-control-cursor-loop")
+            && test_body.contains("(generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)")
+            && test_body.contains("(print (- after before))")
             && test_body.contains("(print-ir-row-loop ir depths offsets native-callables")
+            && test_body.contains("(defn print-ir-row-lite-loop")
+            && test_body.contains("(print-ir-row-lite-loop ir depths offsets native-callables starts encoded-import-stub-offset 10 function-start (ref-get result) 38 45)")
+            && test_body.contains("(print-byte-window (ref-get result) 312 348)")
             && test_body.contains("(print-byte-window (ref-get result) 424 446)")
             && test_body.contains("artifact_dir.join(\"seed.ls\")"),
         "Seed entry IR/segment probe は row/opcode/bytes だけでなく expected rel32 target と広い byte window を同時に出力するべき"
@@ -23659,6 +23665,52 @@ fn test_e2e_native_linux_x86_host_generates_seed_entry_ir_segment_window_probe_b
 	      (print-ir-row ir depths offsets native-callables starts import-stub-offset import-count function-start frame-base-slot-count bytes idx)
 	      (print-ir-row-loop ir depths offsets native-callables starts import-stub-offset import-count function-start frame-base-slot-count bytes (+ idx 1) end))))
 
+	(defn first-rel32-offset-in-window [bytes offset idx end]
+	  (if (>= idx end)
+	    -1
+	    (let [current (+ offset idx)]
+	      (if (= (byte-at bytes current) 232)
+	        current
+	        (first-rel32-offset-in-window bytes offset (+ idx 1) end)))))
+
+	(defn print-actual-byte-window [bytes offset idx end]
+	  (if (>= idx end)
+	    0
+	    (do
+	      (print (byte-at bytes (+ offset idx)))
+	      (print-actual-byte-window bytes offset (+ idx 1) end))))
+
+	(defn print-ir-row-lite [ir depths offsets native-callables starts import-stub-offset import-count function-start bytes idx]
+	  (let [instr (vector-get ir idx)]
+	    (let [opcode (vector-get instr 0)
+	          operand (vector-get instr 1)
+	          depth (vector-get depths idx)
+	          offset (vector-get offsets idx)
+	          size (native-instr-size-x86 opcode operand native-callables depth)
+	          expected-target (expected-rel32-target-offset opcode operand starts import-count import-stub-offset function-start)
+	          actual-call-offset (first-rel32-offset-in-window bytes offset 0 size)
+	          actual-target (if (>= actual-call-offset 0)
+	                          (+ actual-call-offset (+ 5 (rel32-at bytes actual-call-offset)))
+	                          -1)]
+	      (do
+	        (print idx)
+	        (print opcode)
+	        (print operand)
+	        (print depth)
+	        (print offset)
+	        (print size)
+	        (print expected-target)
+	        (print actual-call-offset)
+	        (print actual-target)
+	        (print-actual-byte-window bytes offset 0 32)))))
+
+	(defn print-ir-row-lite-loop [ir depths offsets native-callables starts import-stub-offset import-count function-start bytes idx end]
+	  (if (>= idx end)
+	    0
+	    (do
+	      (print-ir-row-lite ir depths offsets native-callables starts import-stub-offset import-count function-start bytes idx)
+	      (print-ir-row-lite-loop ir depths offsets native-callables starts import-stub-offset import-count function-start bytes (+ idx 1) end))))
+
 	(defn x86-param-spill-prefix-size [param-count]
 	  (if (>= param-count 20)
 	    (native-param-spill-bytes-x86-twenty-plus param-count)
@@ -23675,6 +23727,40 @@ fn test_e2e_native_linux_x86_host_generates_seed_entry_ir_segment_window_probe_b
 	              (if (= param-count 2)
 	                14
 	                (if (= param-count 1) 7 0)))))))))
+
+	(defn append-function-prefix-x86 [result ir param-count local-count native-callables]
+	  (let [stack-bytes (native-local-stack-bytes-with-window-x86 ir (+ (+ param-count local-count) 1) native-callables)]
+	    (do
+	      (append-native-bytes-loop result (emit-push-rbp) 0 1)
+	      (append-native-bytes-loop result (emit-mov-rbp-rsp) 0 3)
+	      (if (> stack-bytes 0)
+	        (append-native-bytes-loop result (emit-sub-rsp-imm32 stack-bytes) 0 7)
+	        0)
+	      (spill-native-function-params-x86-loop 0 param-count result)
+	      (vector-length (ref-get result)))))
+
+	(defn print-control-cursor-loop [ctx result offsets depths ir native-callables idx end]
+	  (if (>= idx end)
+	    0
+	    (let [instr (vector-get ir idx)]
+	      (let [opcode (vector-get instr 0)
+	            operand (vector-get instr 1)
+	            depth (vector-get depths idx)
+	            declared (vector-get offsets idx)
+	            size (native-instr-size-x86 opcode operand native-callables depth)
+	            before (vector-length (ref-get result))
+	            row-state (make-x86-control-loop-state idx 1)]
+	        (do
+	          (generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)
+	          (let [after (vector-length (ref-get result))]
+	            (do
+	              (print idx)
+	              (print opcode)
+	              (print declared)
+	              (print before)
+	              (print size)
+	              (print (- after before))
+	              (print-control-cursor-loop ctx result offsets depths ir native-callables (+ idx 1) end)))))))
 
 (defn print-byte-window [bytes idx end]
   (if (>= idx end)
@@ -23711,6 +23797,7 @@ fn test_e2e_native_linux_x86_host_generates_seed_entry_ir_segment_window_probe_b
 	        offsets (collect-native-bundle-offsets-x86 ir native-callables body-offset)
 	        result (ref-new (vector-new 0))
 	        encoded-import-stub-offset (- import-stub-offset function-start)
+	        cursor-result (ref-new (vector-new 0))
 	        layout (make-x86-function-emit-layout 10 import-stub-offset function-start 0)]
 	    (do
 	      (print (vector-length functions))
@@ -23718,7 +23805,23 @@ fn test_e2e_native_linux_x86_host_generates_seed_entry_ir_segment_window_probe_b
 	      (generate-native-function-x86-64-bundle-with-layout func-meta result starts native-callables layout)
 	      (print (vector-length ir))
 	      (print (vector-length (ref-get result)))
+	      (print (append-function-prefix-x86 cursor-result ir param-count local-count native-callables))
+	      (let [cursor-meta (scan-control-flow-meta ir)]
+	        (do
+	          (root_push cursor-meta)
+	          (let [cursor-layout (make-x86-function-emit-layout 10 encoded-import-stub-offset function-start 0)]
+	            (do
+	              (root_push cursor-layout)
+	              (let [cursor-ctx (make-x86-control-bundle-context ir cursor-result cursor-meta offsets depths starts native-callables cursor-layout frame-base-slot-count)]
+	                (do
+	                  (root_push cursor-ctx)
+                  (print-control-cursor-loop cursor-ctx cursor-result offsets depths ir native-callables 0 64)
+	                  (root_pop)
+	                  (root_pop)
+	                  (root_pop))))))
+	      (print-ir-row-lite-loop ir depths offsets native-callables starts encoded-import-stub-offset 10 function-start (ref-get result) 38 45)
 	      (print-ir-row-loop ir depths offsets native-callables starts encoded-import-stub-offset 10 function-start frame-base-slot-count (ref-get result) 52 64)
+	      (print-byte-window (ref-get result) 312 348)
 	      (print-byte-window (ref-get result) 424 446))))"#;
     let escaped_probe_source = escape_lsharp_string(probe_source);
     let payload_expr = format!(
