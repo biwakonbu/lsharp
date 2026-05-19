@@ -1009,6 +1009,29 @@ fn test_native_codegen_x86_root_opcodes_emit_real_bytes_and_sizes() {
 }
 
 #[test]
+fn test_linux_x86_function_offsets_diagnostic_is_env_driven() {
+    let source = include_str!("selfhost_native_stage_chain.rs");
+    let diagnostic_body = source
+        .split("\nfn test_e2e_selfhost_main_linux_x86_actual_seed_function_offsets_diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("#[test]").next())
+        .expect("Linux x86 function offsets diagnostic が存在すること");
+
+    assert!(
+        diagnostic_body.contains("LSHARP_NATIVE_LINUX_X86_FUNCTION_INDEX")
+            && diagnostic_body.contains("LSHARP_NATIVE_LINUX_X86_OFFSET_START")
+            && diagnostic_body.contains("LSHARP_NATIVE_LINUX_X86_OFFSET_END")
+            && diagnostic_body.contains("{func_idx}")
+            && diagnostic_body.contains("{start_idx}")
+            && diagnostic_body.contains("{offset_start}")
+            && diagnostic_body.contains("{offset_end}")
+            && diagnostic_body.contains("collect-callable-function-slot-starts-x86")
+            && diagnostic_body.contains("callable-user-total-slot-size-x86"),
+        "stage2 entrypoint 調査用の function offsets diagnostic は function index と offset window を env で指定できるべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_one_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
     let opcode_call_branch = source
@@ -23584,7 +23607,28 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_start_window_diagnostic() {
 
 #[test]
 #[ignore]
-fn test_e2e_selfhost_main_linux_x86_actual_seed_function_1222_offsets_diagnostic() {
+fn test_e2e_selfhost_main_linux_x86_actual_seed_function_offsets_diagnostic() {
+    let func_idx: i64 = std::env::var("LSHARP_NATIVE_LINUX_X86_FUNCTION_INDEX")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(1222);
+    assert!(
+        func_idx >= 10,
+        "LSHARP_NATIVE_LINUX_X86_FUNCTION_INDEX は import prefix 10 以上であるべき: {func_idx}"
+    );
+    let start_idx = func_idx - 10;
+    let offset_start: i64 = std::env::var("LSHARP_NATIVE_LINUX_X86_OFFSET_START")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
+    let offset_end: i64 = std::env::var("LSHARP_NATIVE_LINUX_X86_OFFSET_END")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(9_999_999_999);
+    assert!(
+        offset_start < offset_end,
+        "LSHARP_NATIVE_LINUX_X86_OFFSET_START は OFFSET_END より小さい必要がある: {offset_start}..{offset_end}"
+    );
     let seed_source = linux_x86_representative_actual_stage23_seed_source();
     let escaped_seed_source = escape_lsharp_string(&seed_source);
     let payload_expr = format!(
@@ -23622,21 +23666,94 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_function_1222_offsets_diagnostic
       (+ idx 1)
       len)))
 
-(defn print-instr-offsets [ir functions offsets idx len depth]
+(defn call-target-offset [operand starts import-count import-stub-offset function-start-base]
+  (if (< operand import-count)
+    (- (x86-import-ret-stub-offset import-stub-offset import-count operand) function-start-base)
+    (- (vector-get starts (- operand import-count)) function-start-base)))
+
+(defn runtime-target-offset [opcode import-count import-stub-offset function-start-base]
+  (if (= opcode 60)
+    (- (x86-selfhost-map-new-helper-offset import-stub-offset import-count) function-start-base)
+    (if (= opcode 56)
+      (- (x86-selfhost-ref-new-helper-offset import-stub-offset import-count) function-start-base)
+      (if (= opcode 67)
+        (- (x86-selfhost-command-line-arg-helper-offset import-stub-offset import-count) function-start-base)
+        -1))))
+
+(defn diagnostic-target-offset [opcode operand starts functions import-count import-stub-offset function-start-base]
+  (if (= opcode 40)
+    (call-target-offset operand starts import-count import-stub-offset function-start-base)
+    (runtime-target-offset opcode import-count import-stub-offset function-start-base)))
+
+(defn diagnostic-param-count [opcode operand functions]
+  (if (= opcode 40)
+    (native-function-param-count (vector-get functions operand))
+    -1))
+
+(defn x86-param-spill-prefix-size [param-count]
+  (if (>= param-count 20)
+    (native-param-spill-bytes-x86-twenty-plus param-count)
+    (if (> param-count 6)
+      (+ 53 (* (- param-count 7) 11))
+      (if (= param-count 6)
+        42
+        (if (= param-count 5)
+          35
+          (if (= param-count 4)
+            28
+            (if (= param-count 3)
+              21
+              (if (= param-count 2)
+                14
+                (if (= param-count 1) 7 0)))))))))
+
+(defn x86-function-slot-size [func-meta functions]
+  (+ (native-function-size-x86 func-meta functions) 2048))
+
+(defn collect-callable-function-slot-starts-x86-loop [functions idx len starts offset]
+  (if (>= idx len)
+    starts
+    (let [func-meta (vector-get functions idx)
+          next-starts (vector-push starts offset)
+          next-offset (+ offset (x86-function-slot-size func-meta functions))]
+      (collect-callable-function-slot-starts-x86-loop functions (+ idx 1) len next-starts next-offset))))
+
+(defn collect-callable-function-slot-starts-x86 [functions import-count]
+  (collect-callable-function-slot-starts-x86-loop functions import-count (vector-length functions) (vector-new 8) 0))
+
+(defn callable-user-total-slot-size-x86-loop [functions idx len total]
+  (if (>= idx len)
+    total
+    (let [func-meta (vector-get functions idx)
+          next-total (+ total (x86-function-slot-size func-meta functions))]
+      (callable-user-total-slot-size-x86-loop functions (+ idx 1) len next-total))))
+
+(defn callable-user-total-slot-size-x86 [functions import-count]
+  (callable-user-total-slot-size-x86-loop functions import-count (vector-length functions) 0))
+
+(defn print-instr-offsets [ir functions starts import-count import-stub-offset function-start-base offsets idx len depth]
   (if (>= idx len)
     0
     (let [instr (vector-get ir idx)
           opcode (vector-get instr 0)
           operand (vector-get instr 1)
+          current-offset (vector-get offsets idx)
+          relative-offset (- current-offset function-start-base)
           size (native-instr-size-x86 opcode operand functions depth)]
-      (do
-        (print idx)
-        (print opcode)
-        (print operand)
-        (print depth)
-        (print (vector-get offsets idx))
-        (print size)
-        (print-instr-offsets ir functions offsets (+ idx 1) len (apply-stack-delta depth (opcode-stack-delta opcode operand functions)))))))
+      (if (or
+            (and (>= current-offset {offset_start}) (< current-offset {offset_end}))
+            (and (>= relative-offset {offset_start}) (< relative-offset {offset_end})))
+        (do
+          (print idx)
+          (print opcode)
+          (print operand)
+          (print depth)
+          (print current-offset)
+          (print size)
+          (print (diagnostic-param-count opcode operand functions))
+          (print (diagnostic-target-offset opcode operand starts functions import-count import-stub-offset function-start-base))
+          (print-instr-offsets ir functions starts import-count import-stub-offset function-start-base offsets (+ idx 1) len (apply-stack-delta depth (opcode-stack-delta opcode operand functions))))
+        (print-instr-offsets ir functions starts import-count import-stub-offset function-start-base offsets (+ idx 1) len (apply-stack-delta depth (opcode-stack-delta opcode operand functions)))))))
 
 (defn main []
   (let [cache-ref (ref-new (map-new))
@@ -23646,14 +23763,16 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_function_1222_offsets_diagnostic
 	        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
 	        target (make-target 3)
 	        native-callables (normalize-selfhost-native-function-metas-for-target callables target)
-        starts (collect-callable-function-starts-x86 native-callables 10)
-        func (vector-get native-callables 1222)
+        starts (collect-callable-function-slot-starts-x86 native-callables 10)
+        import-stub-offset (callable-user-total-slot-size-x86 native-callables 10)
+        function-start-base (vector-get starts {start_idx})
+        func (vector-get native-callables {func_idx})
         ir (native-function-ir func)
         frame-base-slot-count
           (native-frame-base-slot-count
             ir
             (+ (+ (native-function-param-count func) (native-function-local-count func)) 1))
-        body-offset (+ (+ (vector-get starts 1212) 4)
+        body-offset (+ (+ function-start-base 4)
           (+ (if (> (native-local-stack-bytes-with-window
                        ir
                        (+ (+ (native-function-param-count func) (native-function-local-count func)) 1)
@@ -23661,32 +23780,104 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_function_1222_offsets_diagnostic
                     0)
                7
                0)
-             (if (= (native-function-param-count func) 1) 7 0)))
+             (x86-param-spill-prefix-size (native-function-param-count func))))
         offsets (collect-native-bundle-offsets-x86 ir native-callables body-offset)]
     (do
-      (print (vector-get starts 1212))
+      (print {func_idx})
+      (print {start_idx})
+      (print function-start-base)
       (print (native-function-size-x86 func native-callables))
       (print frame-base-slot-count)
       (print body-offset)
-      (print-instr-offsets ir native-callables offsets 0 (vector-length ir) 0))))"#,
-        payload_expr = payload_expr
+      (print-instr-offsets ir native-callables starts 10 import-stub-offset function-start-base offsets 0 (vector-length ir) 0))))"#,
+        payload_expr = payload_expr,
+        func_idx = func_idx,
+        start_idx = start_idx,
+        offset_start = offset_start,
+        offset_end = offset_end
     );
+    let label = format!("linux-x86-actual-seed-function-{func_idx}-offsets-diagnostic");
     let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
         try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
-            "linux-x86-actual-seed-function-1222-offsets-diagnostic",
+            &label,
             SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
             "src/App/HarnessMain.ls",
             &harness,
             &[],
         )
     })
-    .expect("Linux x86 actual seed function 1222 offsets diagnostic 実行に失敗");
+    .expect("Linux x86 actual seed function offsets diagnostic 実行に失敗");
     let lines = parse_numeric_lines(&output);
-    println!("Linux x86 actual seed function 1222 offset lines: {lines:?}");
+    println!("Linux x86 actual seed function {func_idx} offset lines: {lines:?}");
     assert!(
-        !lines.is_empty(),
-        "Linux x86 actual seed function 1222 offsets diagnostic 出力が空"
+        lines.len() >= 6,
+        "Linux x86 actual seed function offsets diagnostic header が不足: {lines:?}"
     );
+    assert_eq!(
+        lines[0], func_idx,
+        "diagnostic が指定 function index を出力していない: {lines:?}"
+    );
+    assert_eq!(
+        lines[1], start_idx,
+        "diagnostic が指定 start index を出力していない: {lines:?}"
+    );
+    assert!(
+        (lines.len() - 6) % 8 == 0,
+        "Linux x86 actual seed function offsets diagnostic row は 8 値単位であるべき: {lines:?}"
+    );
+    let rows = lines[6..]
+        .chunks_exact(8)
+        .map(|row| X86IrCallTraceRow {
+            instr_idx: row[0],
+            opcode: row[1],
+            operand: row[2],
+            depth: row[3],
+            offset: row[4],
+            size: row[5],
+            param_count: row[6],
+            target_offset: row[7],
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        !rows.is_empty(),
+        "指定 offset window に IR row が無い: function={func_idx} offset_window={offset_start}..{offset_end} absolute-or-relative header={:?}",
+        &lines[..6]
+    );
+    if let Some(stage2_dir) = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STAGE2_ARTIFACT_DIR") {
+        let stage2_dir = workspace_root_relative_path(std::path::PathBuf::from(stage2_dir));
+        let stage2_bundle = read_linux_x86_stage_code_artifact_bundle(
+            &stage2_dir,
+            &["stage-code.bin", "stage2-code.bin"],
+            &["stage-data.bin", "stage2-data.bin"],
+        );
+        let function_start_base = lines[2];
+        for row in &rows {
+            if row.offset < 0 {
+                continue;
+            }
+            let relative_offset = row.offset - function_start_base;
+            assert!(
+                relative_offset >= 0,
+                "diagnostic row offset が function start より前: row={row:?} function_start={function_start_base}"
+            );
+            let offset = stage2_bundle.entrypoint_offset + relative_offset as usize;
+            assert!(
+                offset < stage2_bundle.code_bytes.len(),
+                "diagnostic row offset が stage2 code 範囲外: row={row:?} relative_offset={relative_offset} mapped_offset={offset} len={}",
+                stage2_bundle.code_bytes.len()
+            );
+            let row_end = (offset + row.size.max(1) as usize)
+                .min(stage2_bundle.code_bytes.len());
+            let call_sites = (offset..row_end.saturating_sub(4))
+                .filter(|candidate| stage2_bundle.code_bytes[*candidate] == 0xe8)
+                .map(|candidate| decode_x86_rel32_call_at(&stage2_bundle.code_bytes, candidate))
+                .collect::<Vec<_>>();
+            println!(
+                "Linux x86 function {func_idx} row bytes: row={row:?} relative_offset={relative_offset} mapped_offset={offset} bytes={} calls={call_sites:?}",
+                byte_window_hex(&stage2_bundle.code_bytes, offset, 0, row.size.max(1) as usize)
+            );
+        }
+    }
 }
 
 #[test]
