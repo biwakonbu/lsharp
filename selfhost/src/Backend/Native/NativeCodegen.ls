@@ -10855,7 +10855,9 @@
               (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
         (if (= (direct-append-x86-opcode opcode) 6)
           (do
+            (root_push result)
             (append-i64-const-bundle-x86 result operand frame-base-slot-count current-depth)
+            (root_pop)
             (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
               (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
         (if (= (direct-append-x86-opcode opcode) 9)
