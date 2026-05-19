@@ -12618,6 +12618,38 @@ fn linux_x86_selfhost_file_exists_object_bytes() -> Vec<u8> {
     linux_x86_selfhost_function_meta_object_bytes(&[(3, 1), (67, 0), (73, 0)], 0)
 }
 
+fn linux_x86_selfhost_ref_vector_append_after_i64_zero_object_bytes() -> Vec<u8> {
+    linux_x86_selfhost_function_meta_object_bytes(
+        &[
+            (1, 0),
+            (44, 0),
+            (3, 0),
+            (54, 0),
+            (56, 0),
+            (11, 0),
+            (10, 0),
+            (10, 0),
+            (57, 0),
+            (3, 49),
+            (55, 0),
+            (58, 0),
+            (44, 0),
+            (10, 0),
+            (10, 0),
+            (57, 0),
+            (3, 192),
+            (55, 0),
+            (58, 0),
+            (44, 0),
+            (10, 0),
+            (57, 0),
+            (3, 1),
+            (53, 0),
+        ],
+        1,
+    )
+}
+
 fn host_target_plain_program_code_bytes(instrs: &[(u32, i64)]) -> Vec<u8> {
     let instr_bindings = instrs
         .iter()
@@ -22725,6 +22757,42 @@ fn test_e2e_native_linux_x86_host_generates_ref_elf_object_artifact() {
     assert_eq!(
         written, object_bytes,
         "Linux x86_64 ref object artifact は生成 ELF object をそのまま保存すること"
+    );
+}
+
+/// NATIVE-LINUX-X86-02ga: host 側 selfhost が i64.const 0 後の ref/vector helper を含む Linux ELF artifact を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_ref_vector_after_i64_zero_elf_object_artifact() {
+    let artifact_path =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_REF_VECTOR_ZERO_OBJECT_ARTIFACT").expect(
+            "LSHARP_NATIVE_LINUX_X86_REF_VECTOR_ZERO_OBJECT_ARTIFACT に Linux x86_64 ref/vector object artifact path を指定すること",
+        );
+    let artifact_path = std::path::PathBuf::from(artifact_path);
+    if let Some(parent) = artifact_path.parent() {
+        std::fs::create_dir_all(parent)
+            .expect("Linux x86_64 ref/vector object artifact dir 作成に失敗");
+    }
+
+    let object_bytes = linux_x86_selfhost_ref_vector_append_after_i64_zero_object_bytes();
+    assert!(
+        object_bytes.len() > 64,
+        "Linux x86_64 ref/vector ELF object は ELF64 section table を持つこと"
+    );
+    assert!(
+        object_bytes
+            .windows("generated".len())
+            .any(|window| window == b"generated"),
+        "Linux x86_64 ref/vector ELF object は generated symbol を持つこと"
+    );
+
+    std::fs::write(&artifact_path, &object_bytes)
+        .expect("Linux x86_64 ref/vector object artifact 書き込みに失敗");
+    let written = std::fs::read(&artifact_path)
+        .expect("Linux x86_64 ref/vector object artifact 読み戻しに失敗");
+    assert_eq!(
+        written, object_bytes,
+        "Linux x86_64 ref/vector object artifact は生成 ELF object をそのまま保存すること"
     );
 }
 
