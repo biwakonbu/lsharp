@@ -236,7 +236,8 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
     assert!(
         source.contains("result (ref-new (vector-new 0))")
             && source.contains("segment (ref-get result)")
-            && !source.contains("segment (trim-preallocated-x86-segment raw-segment function-size)")
+            && !source
+                .contains("segment (trim-preallocated-x86-segment raw-segment function-size)")
             && !source.contains("result (ref-new (vector-new function-size))"),
         "Linux x86 segmented seed は巨大 function-size prealloc を避け、空 vector へ emit してから declared slot size まで padding するべき"
     );
@@ -248,7 +249,8 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
     );
     assert!(
         source.contains("(defn print-packed-code-segment-with-length [bytes segment-len]")
-            && source.contains("(print-packed-code-segment-with-length padded-segment function-size)"),
+            && source
+                .contains("(print-packed-code-segment-with-length padded-segment function-size)"),
         "Linux x86 segmented seed は native vector length drift を避けるため function segment を declared size で出力するべき"
     );
     assert!(
@@ -371,21 +373,22 @@ fn shell_function_declares_local(body: &str, var: &str) -> bool {
 
 #[test]
 fn test_linux_x86_file_segmented_harness_writes_segments_from_append_emit_vector() {
-    let source = selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_and_target(
-        r#"(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)"#,
-        r#"entrypoint-func-idx (- (vector-length callables) 1)
+    let source =
+        selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_and_target(
+            r#"(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)"#,
+            r#"entrypoint-func-idx (- (vector-length callables) 1)
                     starts (collect-callable-function-starts-x86 native-callables 10)
                     user-total (callable-user-total-size-x86 native-callables 10)
                     code-len (+ user-total (x86-selfhost-helper-trailer-size 10))
                     code (vector-new 0)
                     entrypoint-offset (vector-get starts (- entrypoint-func-idx 10))"#,
-        "(make-target 3)",
-        r#"      (let [main-func-idx entrypoint-func-idx
+            "(make-target 3)",
+            r#"      (let [main-func-idx entrypoint-func-idx
           data-len (vector-length data)
           code-chunk-count (write-x86-code-segments "code-bytes-" native-callables starts 10 user-total)
           data-chunk-count (write-packed-byte-chunks "data-bytes-" data 0 data-len 0)]
          (print code-chunk-count))"#,
-    );
+        );
 
     assert!(
         source.contains("(defn write-x86-function-code-segments-loop")
@@ -449,7 +452,10 @@ fn test_linux_x86_representative_seed_roots_code_segment_context_inputs() {
     let body = source
         .split("(defn make-x86-code-segment-context")
         .nth(1)
-        .and_then(|tail| tail.split("(defn x86-code-segment-context-functions").next())
+        .and_then(|tail| {
+            tail.split("(defn x86-code-segment-context-functions")
+                .next()
+        })
         .expect("Linux x86 segmented seed に make-x86-code-segment-context が存在すること");
 
     assert!(
@@ -536,7 +542,12 @@ fn test_native_codegen_x86_map_new_depth_zero_avoids_wrapper_call() {
     let control_loop = source
         .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
         .nth(1)
-        .and_then(|tail| tail.split("(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base").next())
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
         .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
     assert!(
         control_loop.contains("(if (= opcode 60)")
@@ -553,7 +564,12 @@ fn test_native_codegen_x86_ref_new_runtime_call_direct_appends_in_stage1() {
     let control_loop = source
         .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
         .nth(1)
-        .and_then(|tail| tail.split("(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base").next())
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
         .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
 
     assert!(
@@ -607,7 +623,6 @@ fn test_native_codegen_x86_zero_arg_user_call_avoids_rel_wrapper_call() {
             && !zero_arg_branch.contains("emit-call-bundle-x86-one-to-nine"),
         "x86 zero-arg user call は native 実行時の rel 引数破壊を避けるため call wrapper に rel を渡さない"
     );
-
 }
 
 #[test]
@@ -645,7 +660,12 @@ fn test_native_codegen_x86_command_line_arg_runtime_call_direct_appends_in_stage
     let control_loop = source
         .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
         .nth(1)
-        .and_then(|tail| tail.split("(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base").next())
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
         .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
     let command_line_arg_branch = control_loop
         .split("(if (= opcode 67)")
@@ -656,7 +676,8 @@ fn test_native_codegen_x86_command_line_arg_runtime_call_direct_appends_in_stage
     assert!(
         command_line_arg_branch.contains("(append-x86-helper-call-preserving-rcx")
             && command_line_arg_branch.contains("(x86-selfhost-command-line-arg-helper-offset")
-            && command_line_arg_branch.contains("(x86-current-emitted-offset result emit-start-base)"),
+            && command_line_arg_branch
+                .contains("(x86-current-emitted-offset result emit-start-base)"),
         "stage1 が stage2 を生成するとき、command-line-arg runtime helper call は bundle vector 経由に戻さず direct append するべき"
     );
 }
@@ -703,17 +724,28 @@ fn test_native_codegen_x86_vector_new_helper_nop_fills_capacity_for_code_vectors
     let helper_body = source
         .split("(defn emit-x86-selfhost-vector-new-helper")
         .nth(1)
-        .and_then(|tail| tail.split("(defn emit-x86-selfhost-vector-length-helper").next())
+        .and_then(|tail| {
+            tail.split("(defn emit-x86-selfhost-vector-length-helper")
+                .next()
+        })
         .expect("NativeCodegen.ls に x86 vector-new helper が存在すること");
     let sizes_body = source
         .split("(defn x86-selfhost-vector-new-helper-size")
         .nth(1)
-        .and_then(|tail| tail.split("(defn x86-selfhost-vector-length-helper-size").next())
+        .and_then(|tail| {
+            tail.split("(defn x86-selfhost-vector-length-helper-size")
+                .next()
+        })
         .expect("NativeCodegen.ls に x86 vector-new helper size が存在すること");
     let append_body = source
         .split("(append-native-bytes-rooted result (emit-x86-selfhost-vector-new-helper)")
         .nth(1)
-        .and_then(|tail| tail.split("(append-native-bytes-rooted result (emit-x86-selfhost-vector-length-helper)").next())
+        .and_then(|tail| {
+            tail.split(
+                "(append-native-bytes-rooted result (emit-x86-selfhost-vector-length-helper)",
+            )
+            .next()
+        })
         .expect("x86 bundle trailer に vector-new helper append が存在すること");
 
     assert!(
@@ -798,14 +830,38 @@ fn test_native_codegen_x86_rel32_and_arg_local_emitters_use_rooted_byte_vectors(
     }
 
     for (name, bytes) in [
-        ("emit-mov-local-from-rdi", "emit-x86-rbp-disp32 72 137 189 offset"),
-        ("emit-mov-local-from-rsi", "emit-x86-rbp-disp32 72 137 181 offset"),
-        ("emit-mov-local-from-r8", "emit-x86-rbp-disp32 76 137 133 offset"),
-        ("emit-mov-local-from-r9", "emit-x86-rbp-disp32 76 137 141 offset"),
-        ("emit-mov-rdi-from-local", "emit-x86-rbp-disp32 72 139 189 offset"),
-        ("emit-mov-rsi-from-local", "emit-x86-rbp-disp32 72 139 181 offset"),
-        ("emit-mov-r8-from-local", "emit-x86-rbp-disp32 76 139 133 offset"),
-        ("emit-mov-r9-from-local", "emit-x86-rbp-disp32 76 139 141 offset"),
+        (
+            "emit-mov-local-from-rdi",
+            "emit-x86-rbp-disp32 72 137 189 offset",
+        ),
+        (
+            "emit-mov-local-from-rsi",
+            "emit-x86-rbp-disp32 72 137 181 offset",
+        ),
+        (
+            "emit-mov-local-from-r8",
+            "emit-x86-rbp-disp32 76 137 133 offset",
+        ),
+        (
+            "emit-mov-local-from-r9",
+            "emit-x86-rbp-disp32 76 137 141 offset",
+        ),
+        (
+            "emit-mov-rdi-from-local",
+            "emit-x86-rbp-disp32 72 139 189 offset",
+        ),
+        (
+            "emit-mov-rsi-from-local",
+            "emit-x86-rbp-disp32 72 139 181 offset",
+        ),
+        (
+            "emit-mov-r8-from-local",
+            "emit-x86-rbp-disp32 76 139 133 offset",
+        ),
+        (
+            "emit-mov-r9-from-local",
+            "emit-x86-rbp-disp32 76 139 141 offset",
+        ),
     ] {
         let body = source
             .split(&format!("(defn {name}"))
@@ -852,7 +908,8 @@ fn test_native_codegen_x86_plain_arithmetic_emitters_use_rooted_byte_vectors() {
     assert!(
         codegen_body.contains("(byte-vector-3 72 1 200)")
             && codegen_body.contains("(byte-vector-1 144)")
-            && !codegen_body.contains("(vector-push (vector-push (vector-push (vector-new 3) 72) 1) 200)")
+            && !codegen_body
+                .contains("(vector-push (vector-push (vector-push (vector-new 3) 72) 1) 200)")
             && !codegen_body.contains("(vector-push (vector-new 1) 144)"),
         "codegen-ir-instr の inline i64.add/NOP も rooted byte-vector helper で構築するべき"
     );
@@ -864,7 +921,10 @@ fn test_native_codegen_x86_local_set_direct_append_avoids_zero_byte_vector() {
     let direct_append_body = source
         .split("(defn direct-append-x86-opcode")
         .nth(1)
-        .and_then(|tail| tail.split("(defn direct-append-produce-one-bytes-x86").next())
+        .and_then(|tail| {
+            tail.split("(defn direct-append-produce-one-bytes-x86")
+                .next()
+        })
         .expect("NativeCodegen.ls に direct-append-x86-opcode が存在すること");
     let append_local_set_body = source
         .split("(defn append-local-set-bundle-x86")
@@ -873,8 +933,7 @@ fn test_native_codegen_x86_local_set_direct_append_avoids_zero_byte_vector() {
         .expect("NativeCodegen.ls に append-local-set-bundle-x86 が存在すること");
 
     assert!(
-        direct_append_body.contains("(if (= opcode 11)")
-            && direct_append_body.contains("3"),
+        direct_append_body.contains("(if (= opcode 11)") && direct_append_body.contains("3"),
         "x86 local.set は helper emitter の let 保存で 0 byte vector を実行しないよう direct append path を使うべき"
     );
     assert!(
@@ -884,7 +943,8 @@ fn test_native_codegen_x86_local_set_direct_append_avoids_zero_byte_vector() {
             && append_local_set_body.contains("(append-x86-byte result 137)")
             && append_local_set_body.contains("(append-x86-byte result 200)")
             && append_local_set_body.contains("(append-x86-rbp-disp32 result 72 139 141")
-            && !append_local_set_body.contains("(append-native-bytes-rooted result (emit-mov-local-from-rax offset) 7)"),
+            && !append_local_set_body
+                .contains("(append-native-bytes-rooted result (emit-mov-local-from-rax offset) 7)"),
         "append-local-set-bundle-x86 は local.set bundle 内の store/restore を byte vector 経由ではなく result に直接書くべき"
     );
 }
@@ -900,18 +960,21 @@ fn test_native_codegen_x86_local_get_direct_append_avoids_zero_byte_vector() {
     let direct_append_body = source
         .split("(defn direct-append-x86-opcode")
         .nth(1)
-        .and_then(|tail| tail.split("(defn direct-append-produce-one-bytes-x86").next())
+        .and_then(|tail| {
+            tail.split("(defn direct-append-produce-one-bytes-x86")
+                .next()
+        })
         .expect("NativeCodegen.ls に direct-append-x86-opcode が存在すること");
 
     assert!(
         append_local_get_body.contains("(append-mov-rcx-rax-x86 result)")
             && append_local_get_body.contains("(append-x86-rbp-disp32 result 72 139 133 offset)")
-            && !append_local_get_body.contains("(append-native-bytes-rooted result (emit-local-get-x86 offset) 10)"),
+            && !append_local_get_body
+                .contains("(append-native-bytes-rooted result (emit-local-get-x86 offset) 10)"),
         "append-local-get-bundle-x86-core は local.get 本体を byte vector 経由ではなく result に直接書くべき"
     );
     assert!(
-        direct_append_body.contains("(if (= opcode 10)")
-            && direct_append_body.contains("4"),
+        direct_append_body.contains("(if (= opcode 10)") && direct_append_body.contains("4"),
         "stage1 が stage2 を生成するとき、local.get は direct append selector に載せるべき"
     );
 }
@@ -959,17 +1022,26 @@ fn test_native_codegen_x86_root_opcodes_emit_real_bytes_and_sizes() {
     let bundle_body = source
         .split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
         .nth(1)
-        .and_then(|tail| tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count").next())
+        .and_then(|tail| {
+            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count")
+                .next()
+        })
         .expect("NativeCodegen.ls に x86 bundle codegen が存在すること");
     let size_body = source
         .split("(defn native-instr-size-x86")
         .nth(1)
-        .and_then(|tail| tail.split("(defn native-function-body-size-x86-loop-with-context").next())
+        .and_then(|tail| {
+            tail.split("(defn native-function-body-size-x86-loop-with-context")
+                .next()
+        })
         .expect("NativeCodegen.ls に x86 size calculator が存在すること");
     let root_set_body = source
         .split("(defn emit-root-set-bundle-x86")
         .nth(1)
-        .and_then(|tail| tail.split("(defn emit-store-window-spill-shifts-x86").next())
+        .and_then(|tail| {
+            tail.split("(defn emit-store-window-spill-shifts-x86")
+                .next()
+        })
         .expect("NativeCodegen.ls に emit-root-set-bundle-x86 が存在すること");
 
     assert!(
@@ -986,7 +1058,10 @@ fn test_native_codegen_x86_root_opcodes_emit_real_bytes_and_sizes() {
     let direct_append_body = source
         .split("(defn direct-append-x86-opcode")
         .nth(1)
-        .and_then(|tail| tail.split("(defn direct-append-produce-one-bytes-x86").next())
+        .and_then(|tail| {
+            tail.split("(defn direct-append-produce-one-bytes-x86")
+                .next()
+        })
         .expect("NativeCodegen.ls に direct-append-x86-opcode が存在すること");
     assert!(
         direct_append_body.contains("(if (= opcode 74)")
@@ -1028,6 +1103,36 @@ fn test_linux_x86_function_offsets_diagnostic_is_env_driven() {
             && diagnostic_body.contains("collect-callable-function-slot-starts-x86")
             && diagnostic_body.contains("callable-user-total-slot-size-x86"),
         "stage2 entrypoint 調査用の function offsets diagnostic は function index と offset window を env で指定できるべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_seed_entry_ir_segment_probe_reports_expected_rel32_targets() {
+    let source = include_str!("selfhost_native_stage_chain.rs");
+    let test_body = source
+        .split("\nfn test_e2e_native_linux_x86_host_generates_seed_entry_ir_segment_window_probe_bundle_artifact")
+        .nth(1)
+        .and_then(|tail| tail.split("/// NATIVE-LINUX-X86-02ge").next())
+        .expect("Seed entry IR/segment window probe が存在すること");
+
+    assert!(
+        test_body.contains("(defn runtime-target-offset")
+            && test_body.contains("(x86-selfhost-vector-get-helper-offset")
+            && test_body.contains(
+                "expected-bundle (codegen-ir-instr-bundle-x86-with-import-count-and-base"
+            )
+            && test_body.contains("(print expected-len)")
+            && test_body.contains(
+                "(print-actual-and-expected-byte-window bytes expected-bundle offset 0 5)"
+            )
+            && test_body.contains("(print expected-target)")
+            && test_body.contains("(defn x86-param-spill-prefix-size")
+            && test_body.contains("stack-bytes (native-local-stack-bytes-with-window-x86")
+            && test_body.contains("body-offset (+ (+ 4")
+            && test_body.contains("(print-ir-row-loop ir depths offsets native-callables")
+            && test_body.contains("(print-byte-window (ref-get result) 424 446)")
+            && test_body.contains("artifact_dir.join(\"seed.ls\")"),
+        "Seed entry IR/segment probe は row/opcode/bytes だけでなく expected rel32 target と広い byte window を同時に出力するべき"
     );
 }
 
@@ -1508,7 +1613,10 @@ fn test_native_codegen_selfhost_normalization_is_target_specific_for_x86_slots()
     let normalizer_body = source
         .split("(defn normalize-selfhost-native-function-metas-for-target")
         .nth(1)
-        .and_then(|tail| tail.split("(defn generate-native-function-meta-bundle").next())
+        .and_then(|tail| {
+            tail.split("(defn generate-native-function-meta-bundle")
+                .next()
+        })
         .expect("NativeCodegen.ls に target-aware selfhost normalizer が存在すること");
     let selfhost_emit_body = source
         .split("(defn emit-native-selfhost-function-meta-bundle-with-import-count")
@@ -1523,7 +1631,8 @@ fn test_native_codegen_selfhost_normalization_is_target_specific_for_x86_slots()
         "x86 は scratch slot 0 を予約して param0 を slot1 に退避するため、selfhost local operand の -1 正規化を適用してはいけない"
     );
     assert!(
-        selfhost_emit_body.contains("(normalize-selfhost-native-function-metas-for-target functions target)")
+        selfhost_emit_body
+            .contains("(normalize-selfhost-native-function-metas-for-target functions target)")
             && !selfhost_emit_body.contains("(normalize-selfhost-native-function-metas functions)"),
         "selfhost native emit wrapper は target-aware normalizer 経由で x86/aarch64 の slot 規約を分岐するべき"
     );
@@ -1675,8 +1784,7 @@ fn test_native_codegen_x86_control_loop_dispatches_runtime_helpers_without_ten_a
 
     let helper_dispatch = "(codegen-selfhost-runtime-bundle-x86 opcode (ref-get actual-current-offset-ref) (ref-get import-stub-offset-ref) import-count frame-base-slot-count current-depth)";
     assert!(
-        body.contains("(is-selfhost-runtime-opcode-x86 opcode)")
-            && body.contains(helper_dispatch),
+        body.contains("(is-selfhost-runtime-opcode-x86 opcode)") && body.contains(helper_dispatch),
         "x86 control loop は Linux x86 native の stack arg 破壊を避けるため selfhost runtime helper を 10 引数 wrapper 経由にしない"
     );
     if let Some(wrapper_pos) = body.find("codegen-ir-instr-bundle-x86-with-import-count-and-base") {
@@ -1697,8 +1805,7 @@ fn test_native_codegen_x86_control_loop_dispatches_calls_without_ten_arg_wrapper
         .and_then(|tail| tail.split("\n(defn ").next())
         .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
 
-    let call_dispatch =
-        "(codegen-x86-opcode-call-bundle (ref-get operand-ref) (ref-get actual-current-offset-ref) function-starts call-context)";
+    let call_dispatch = "(codegen-x86-opcode-call-bundle (ref-get operand-ref) (ref-get actual-current-offset-ref) function-starts call-context)";
     let before_call_dispatch = body
         .split("(if (= opcode 40)")
         .next()
@@ -1765,7 +1872,10 @@ fn test_native_codegen_x86_control_loop_stabilizes_segmented_offsets_before_call
     let call_branch = body
         .split("(if (= opcode 40)")
         .nth(1)
-        .and_then(|tail| tail.split("(if (= (is-selfhost-runtime-opcode-x86 opcode) 1)").next())
+        .and_then(|tail| {
+            tail.split("(if (= (is-selfhost-runtime-opcode-x86 opcode) 1)")
+                .next()
+        })
         .expect("x86 control loop に opcode 40 branch が存在すること");
 
     assert!(
@@ -1799,8 +1909,9 @@ fn test_native_codegen_x86_zero_arg_depth_one_call_roots_call_bytes_for_selfhost
         .expect("NativeCodegen.ls に codegen-x86-opcode-call-bundle が存在すること");
 
     assert!(
-        body.contains("call-rel (- target-offset (+ (ref-get current-offset-ref) call-next-offset))]")
-            && body.contains("(let [call-rel-bytes (emit-call-rel32 call-rel)]")
+        body.contains(
+            "call-rel (- target-offset (+ (ref-get current-offset-ref) call-next-offset))]"
+        ) && body.contains("(let [call-rel-bytes (emit-call-rel32 call-rel)]")
             && body.contains("(root_push call-rel-bytes)")
             && body.contains("(if (= current-depth 0)")
             && body.contains("(concat-byte-vectors-rooted call-rel-bytes (vector-new 0))")
@@ -1919,7 +2030,8 @@ fn test_native_codegen_x86_body_size_loop_keeps_arity_stable() {
         .expect("NativeCodegen.ls に native-function-size-x86 が存在すること");
     assert!(
         wrapper_body.contains("body-size-ctx (make-x86-body-size-context ir-func function-metas")
-            && wrapper_body.contains("(native-function-body-size-x86-loop-with-context body-size-ctx 0 0 0)"),
+            && wrapper_body
+                .contains("(native-function-body-size-x86-loop-with-context body-size-ctx 0 0 0)"),
         "native-function-size-x86 は actual native stage の function-size drift を避けるため context 化 body size loop を使うべき"
     );
 }
@@ -22824,11 +22936,12 @@ fn test_e2e_native_linux_x86_host_generates_codegen_append_probe_bundle_artifact
             (write-file "src/App/Probe.ls" "{escaped_probe_source}")
             (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
     );
-    let bundle = run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
-        "linux-x86-codegen-append-probe-bundle",
-        &payload_expr,
-        &[],
-    );
+    let bundle =
+        run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+            "linux-x86-codegen-append-probe-bundle",
+            &payload_expr,
+            &[],
+        );
 
     assert!(
         bundle.entrypoint_offset < bundle.code_bytes.len(),
@@ -22903,11 +23016,12 @@ fn test_e2e_native_linux_x86_host_generates_codegen_append_depth_one_probe_bundl
             (write-file "src/App/Probe.ls" "{escaped_probe_source}")
             (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
     );
-    let bundle = run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
-        "linux-x86-codegen-append-depth-one-probe-bundle",
-        &payload_expr,
-        &[],
-    );
+    let bundle =
+        run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+            "linux-x86-codegen-append-depth-one-probe-bundle",
+            &payload_expr,
+            &[],
+        );
 
     assert!(
         bundle.entrypoint_offset < bundle.code_bytes.len(),
@@ -22992,11 +23106,12 @@ fn test_e2e_native_linux_x86_host_generates_codegen_append_padded_depth_one_prob
             (write-file "src/App/Probe.ls" "{escaped_probe_source}")
             (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
     );
-    let bundle = run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
-        "linux-x86-codegen-append-padded-depth-one-probe-bundle",
-        &payload_expr,
-        &[],
-    );
+    let bundle =
+        run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+            "linux-x86-codegen-append-padded-depth-one-probe-bundle",
+            &payload_expr,
+            &[],
+        );
 
     assert!(
         bundle.entrypoint_offset < bundle.code_bytes.len(),
@@ -23017,7 +23132,9 @@ fn test_e2e_native_linux_x86_host_generates_codegen_append_padded_depth_one_prob
         artifact_dir.join("entrypoint-offset.txt"),
         format!("{}\n", bundle.entrypoint_offset),
     )
-    .expect("Linux x86_64 codegen append padded depth-one probe entrypoint-offset.txt 書き込みに失敗");
+    .expect(
+        "Linux x86_64 codegen append padded depth-one probe entrypoint-offset.txt 書き込みに失敗",
+    );
     std::fs::write(
         artifact_dir.join("main-func-idx.txt"),
         format!("{}\n", bundle.main_func_idx),
@@ -23109,11 +23226,12 @@ fn test_e2e_native_linux_x86_host_generates_codegen_loop_probe_bundle_artifact()
             (write-file "src/App/Probe.ls" "{escaped_probe_source}")
             (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
     );
-    let bundle = run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
-        "linux-x86-codegen-loop-probe-bundle",
-        &payload_expr,
-        &[],
-    );
+    let bundle =
+        run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+            "linux-x86-codegen-loop-probe-bundle",
+            &payload_expr,
+            &[],
+        );
 
     assert!(
         bundle.entrypoint_offset < bundle.code_bytes.len(),
@@ -23206,11 +23324,12 @@ fn test_e2e_native_linux_x86_host_generates_codegen_vector_get_probe_bundle_arti
             (write-file "src/App/Probe.ls" "{escaped_probe_source}")
             (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
     );
-    let bundle = run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
-        "linux-x86-codegen-vector-get-probe-bundle",
-        &payload_expr,
-        &[],
-    );
+    let bundle =
+        run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+            "linux-x86-codegen-vector-get-probe-bundle",
+            &payload_expr,
+            &[],
+        );
 
     assert!(
         bundle.entrypoint_offset < bundle.code_bytes.len(),
@@ -23344,11 +23463,12 @@ fn test_e2e_native_linux_x86_host_generates_seed_entry_segment_probe_bundle_arti
             (write-file "src/App/Probe.ls" "{escaped_probe_source}")
             (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
     );
-    let bundle = run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
-        "linux-x86-seed-entry-segment-probe-bundle",
-        &payload_expr,
-        &[],
-    );
+    let bundle =
+        run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+            "linux-x86-seed-entry-segment-probe-bundle",
+            &payload_expr,
+            &[],
+        );
 
     assert!(
         bundle.entrypoint_offset < bundle.code_bytes.len(),
@@ -23449,33 +23569,112 @@ fn test_e2e_native_linux_x86_host_generates_seed_entry_ir_segment_window_probe_b
   (let [value (vector-get bytes idx)]
     (if (< value 0) (+ value 256) value)))
 
-(defn rel32-at [bytes offset]
-  (let [b0 (byte-at bytes (+ offset 1))
-        b1 (byte-at bytes (+ offset 2))
-        b2 (byte-at bytes (+ offset 3))
-        b3 (byte-at bytes (+ offset 4))
-        value (+ b0 (+ (* b1 256) (+ (* b2 65536) (* b3 16777216))))]
-    (if (>= value 2147483648) (- value 4294967296) value)))
+	(defn rel32-at [bytes offset]
+	  (let [b0 (byte-at bytes (+ offset 1))
+	        b1 (byte-at bytes (+ offset 2))
+	        b2 (byte-at bytes (+ offset 3))
+	        b3 (byte-at bytes (+ offset 4))
+	        value (+ b0 (+ (* b1 256) (+ (* b2 65536) (* b3 16777216))))]
+	    (if (>= value 2147483648) (- value 4294967296) value)))
 
-(defn print-ir-row [ir depths offsets native-callables bytes idx]
-  (let [instr (vector-get ir idx)]
-    (let [opcode (vector-get instr 0)
-          operand (vector-get instr 1)
-          depth (vector-get depths idx)
-          offset (vector-get offsets idx)
-          size (native-instr-size-x86 opcode operand native-callables depth)
-          byte0 (byte-at bytes offset)]
-      (do
-        (print idx)
-        (print opcode)
-        (print operand)
-        (print depth)
-        (print offset)
-        (print size)
-        (print byte0)
-        (if (= byte0 232)
-          (print (+ offset (+ 5 (rel32-at bytes offset))))
-          (print -1))))))
+	(defn runtime-target-offset [opcode import-stub-offset import-count]
+	  (if (= opcode 50)
+	    (x86-selfhost-string-char-at-helper-offset import-stub-offset import-count)
+	    (if (= opcode 53)
+	      (x86-selfhost-vector-get-helper-offset import-stub-offset import-count)
+	      (if (= opcode 55)
+	        (x86-selfhost-vector-push-helper-offset import-stub-offset import-count)
+	        (if (= opcode 58)
+	          (x86-selfhost-ref-set-helper-offset import-stub-offset import-count)
+	          (if (= opcode 63)
+	            (x86-selfhost-map-get-helper-offset import-stub-offset import-count)
+	            (if (= opcode 70)
+	              (x86-selfhost-string-concat-helper-offset import-stub-offset import-count)
+	              -1)))))))
+
+	(defn call-target-offset-local [operand starts import-count import-stub-offset function-start]
+	  (if (< operand import-count)
+	    (x86-import-ret-stub-offset import-stub-offset import-count operand)
+	    (- (vector-get starts (- operand import-count)) function-start)))
+
+	(defn expected-rel32-target-offset [opcode operand starts import-count import-stub-offset function-start]
+	  (if (= opcode 40)
+	    (call-target-offset-local operand starts import-count import-stub-offset function-start)
+	    (runtime-target-offset opcode import-stub-offset import-count)))
+
+	(defn byte-at-or-minus-one [bytes idx len]
+	  (if (>= idx len)
+	    -1
+	    (byte-at bytes idx)))
+
+	(defn print-actual-and-expected-byte-window [bytes expected-bundle offset idx end]
+	  (if (>= idx end)
+	    0
+	    (let [expected-len (vector-length expected-bundle)]
+	      (do
+	        (print (byte-at bytes (+ offset idx)))
+	        (print (byte-at-or-minus-one expected-bundle idx expected-len))
+	        (print-actual-and-expected-byte-window bytes expected-bundle offset (+ idx 1) end)))))
+
+	(defn print-ir-row [ir depths offsets native-callables starts import-stub-offset import-count function-start frame-base-slot-count bytes idx]
+	  (let [instr (vector-get ir idx)]
+	    (let [opcode (vector-get instr 0)
+	          operand (vector-get instr 1)
+	          depth (vector-get depths idx)
+	          offset (vector-get offsets idx)
+	          size (native-instr-size-x86 opcode operand native-callables depth)
+	          byte0 (byte-at bytes offset)
+	          expected-target (expected-rel32-target-offset opcode operand starts import-count import-stub-offset function-start)
+	          actual-target (if (= byte0 232)
+	                          (+ offset (+ 5 (rel32-at bytes offset)))
+	                          -1)
+	          expected-bundle (codegen-ir-instr-bundle-x86-with-import-count-and-base
+	                            opcode
+	                            operand
+	                            offset
+	                            starts
+	                            native-callables
+	                            import-count
+	                            import-stub-offset
+	                            function-start
+	                            frame-base-slot-count
+	                            depth)
+	          expected-len (vector-length expected-bundle)]
+	      (do
+	        (print idx)
+	        (print opcode)
+	        (print operand)
+	        (print depth)
+	        (print offset)
+	        (print size)
+	        (print expected-len)
+	        (print expected-target)
+	        (print actual-target)
+	        (print-actual-and-expected-byte-window bytes expected-bundle offset 0 5)))))
+
+	(defn print-ir-row-loop [ir depths offsets native-callables starts import-stub-offset import-count function-start frame-base-slot-count bytes idx end]
+	  (if (>= idx end)
+	    0
+	    (do
+	      (print-ir-row ir depths offsets native-callables starts import-stub-offset import-count function-start frame-base-slot-count bytes idx)
+	      (print-ir-row-loop ir depths offsets native-callables starts import-stub-offset import-count function-start frame-base-slot-count bytes (+ idx 1) end))))
+
+	(defn x86-param-spill-prefix-size [param-count]
+	  (if (>= param-count 20)
+	    (native-param-spill-bytes-x86-twenty-plus param-count)
+	    (if (> param-count 6)
+	      (+ 53 (* (- param-count 7) 11))
+	      (if (= param-count 6)
+	        42
+	        (if (= param-count 5)
+	          35
+	          (if (= param-count 4)
+	            28
+	            (if (= param-count 3)
+	              21
+	              (if (= param-count 2)
+	                14
+	                (if (= param-count 1) 7 0)))))))))
 
 (defn print-byte-window [bytes idx end]
   (if (>= idx end)
@@ -23497,35 +23696,42 @@ fn test_e2e_native_linux_x86_host_generates_seed_entry_ir_segment_window_probe_b
         entrypoint-func-idx (- (vector-length callables) 1)
         starts (collect-callable-function-slot-starts-x86 native-callables 10)
         import-stub-offset (callable-user-total-slot-size-x86 native-callables 10)
-        function-start (vector-get starts (- entrypoint-func-idx 10))
-        func-meta (vector-get native-callables entrypoint-func-idx)
-        ir (native-function-ir func-meta)
-        depths (collect-native-bundle-depths-x86 ir native-callables)
-        body-offset 0
-        offsets (collect-native-bundle-offsets-x86 ir native-callables body-offset)
-        result (ref-new (vector-new 0))
-        layout (make-x86-function-emit-layout 10 import-stub-offset function-start 0)]
-    (do
-      (print (vector-length functions))
-      (print entrypoint-func-idx)
-      (generate-native-function-x86-64-bundle-with-layout func-meta result starts native-callables layout)
-      (print (vector-length ir))
-      (print (vector-length (ref-get result)))
-      (print-ir-row ir depths offsets native-callables (ref-get result) 56)
-      (print-ir-row ir depths offsets native-callables (ref-get result) 57)
-      (print-ir-row ir depths offsets native-callables (ref-get result) 58)
-      (print-byte-window (ref-get result) 424 434))))"#;
+	        function-start (vector-get starts (- entrypoint-func-idx 10))
+	        func-meta (vector-get native-callables entrypoint-func-idx)
+	        param-count (native-function-param-count func-meta)
+	        local-count (native-function-local-count func-meta)
+	        ir (native-function-ir func-meta)
+	        depths (collect-native-bundle-depths-x86 ir native-callables)
+	        frame-base-slot-count
+	          (native-frame-base-slot-count
+	            ir
+	            (+ (+ param-count local-count) 1))
+	        stack-bytes (native-local-stack-bytes-with-window-x86 ir (+ (+ param-count local-count) 1) native-callables)
+	        body-offset (+ (+ 4 (if (> stack-bytes 0) 7 0)) (x86-param-spill-prefix-size param-count))
+	        offsets (collect-native-bundle-offsets-x86 ir native-callables body-offset)
+	        result (ref-new (vector-new 0))
+	        encoded-import-stub-offset (- import-stub-offset function-start)
+	        layout (make-x86-function-emit-layout 10 import-stub-offset function-start 0)]
+	    (do
+	      (print (vector-length functions))
+	      (print entrypoint-func-idx)
+	      (generate-native-function-x86-64-bundle-with-layout func-meta result starts native-callables layout)
+	      (print (vector-length ir))
+	      (print (vector-length (ref-get result)))
+	      (print-ir-row-loop ir depths offsets native-callables starts encoded-import-stub-offset 10 function-start frame-base-slot-count (ref-get result) 52 64)
+	      (print-byte-window (ref-get result) 424 446))))"#;
     let escaped_probe_source = escape_lsharp_string(probe_source);
     let payload_expr = format!(
         r#"(do
             (write-file "src/App/Probe.ls" "{escaped_probe_source}")
             (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
     );
-    let bundle = run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
-        "linux-x86-seed-entry-ir-segment-window-probe-bundle",
-        &payload_expr,
-        &[],
-    );
+    let bundle =
+        run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+            "linux-x86-seed-entry-ir-segment-window-probe-bundle",
+            &payload_expr,
+            &[],
+        );
 
     assert!(
         bundle.entrypoint_offset < bundle.code_bytes.len(),
@@ -23557,6 +23763,11 @@ fn test_e2e_native_linux_x86_host_generates_seed_entry_ir_segment_window_probe_b
         format!("{}\n", bundle.function_start_len),
     )
     .expect("Linux x86_64 Seed entry IR/segment probe function-start-len.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("seed.ls"),
+        linux_x86_representative_actual_stage23_seed_source(),
+    )
+    .expect("Linux x86_64 Seed entry IR/segment probe seed.ls 書き込みに失敗");
 }
 
 /// NATIVE-LINUX-X86-02ge: host 側 selfhost が 7 引数 user call probe の Linux native bundle を生成すること。
@@ -23586,11 +23797,12 @@ fn test_e2e_native_linux_x86_host_generates_source_seven_arg_call_probe_bundle_a
             (write-file "src/App/Probe.ls" "{escaped_probe_source}")
             (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
     );
-    let bundle = run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
-        "linux-x86-source-seven-arg-call-probe-bundle",
-        &payload_expr,
-        &[],
-    );
+    let bundle =
+        run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+            "linux-x86-source-seven-arg-call-probe-bundle",
+            &payload_expr,
+            &[],
+        );
 
     assert!(
         bundle.entrypoint_offset < bundle.code_bytes.len(),
@@ -24762,15 +24974,19 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_function_offsets_diagnostic() {
                 "diagnostic row offset が stage2 code 範囲外: row={row:?} relative_offset={relative_offset} mapped_offset={offset} len={}",
                 stage2_bundle.code_bytes.len()
             );
-            let row_end = (offset + row.size.max(1) as usize)
-                .min(stage2_bundle.code_bytes.len());
+            let row_end = (offset + row.size.max(1) as usize).min(stage2_bundle.code_bytes.len());
             let call_sites = (offset..row_end.saturating_sub(4))
                 .filter(|candidate| stage2_bundle.code_bytes[*candidate] == 0xe8)
                 .map(|candidate| decode_x86_rel32_call_at(&stage2_bundle.code_bytes, candidate))
                 .collect::<Vec<_>>();
             println!(
                 "Linux x86 function {func_idx} row bytes: row={row:?} relative_offset={relative_offset} mapped_offset={offset} bytes={} calls={call_sites:?}",
-                byte_window_hex(&stage2_bundle.code_bytes, offset, 0, row.size.max(1) as usize)
+                byte_window_hex(
+                    &stage2_bundle.code_bytes,
+                    offset,
+                    0,
+                    row.size.max(1) as usize
+                )
             );
         }
     }
@@ -37209,18 +37425,15 @@ fn assert_linux_x86_entry_map_ref_ref_prefix(
         byte_window_hex(&bundle.code_bytes, bundle.entrypoint_offset, 0, 192)
     );
     assert_eq!(
-        suffix_distances[0],
-        296,
+        suffix_distances[0], 296,
         "{label}: first helper call は map-new helper を指すべき: calls={calls:?} suffix_distances={suffix_distances:?}"
     );
     assert_eq!(
-        suffix_distances[1],
-        747,
+        suffix_distances[1], 747,
         "{label}: second helper call は ref-new helper を指すべき: calls={calls:?} suffix_distances={suffix_distances:?}"
     );
     assert_eq!(
-        suffix_distances[2],
-        747,
+        suffix_distances[2], 747,
         "{label}: third helper call は ref-new helper を指すべき: calls={calls:?} suffix_distances={suffix_distances:?}"
     );
     calls
@@ -37286,7 +37499,7 @@ fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
                 .as_ref()
                 .map(|dir| dir.join("stage-entry-ir-trace.txt"))
                 .filter(|path| path.exists())
-    });
+        });
     if let Some(trace_path) = trace_path {
         let trace_rows = read_x86_ir_call_trace_rows(&trace_path);
         assert_x86_ir_call_trace_matches_entry_calls(&stage2_bundle, &trace_rows);
