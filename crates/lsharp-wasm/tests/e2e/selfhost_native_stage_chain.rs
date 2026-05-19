@@ -22862,6 +22862,121 @@ fn test_e2e_native_linux_x86_host_generates_codegen_append_probe_bundle_artifact
     .expect("Linux x86_64 codegen append probe function-start-len.txt 書き込みに失敗");
 }
 
+/// NATIVE-LINUX-X86-02gc: host 側 selfhost が x86 function-meta codegen loop probe の Linux native bundle を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_codegen_loop_probe_bundle_artifact() {
+    let artifact_dir =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_CODEGEN_LOOP_PROBE_ARTIFACT_DIR").expect(
+            "LSHARP_NATIVE_LINUX_X86_CODEGEN_LOOP_PROBE_ARTIFACT_DIR に Linux x86_64 codegen loop probe artifact dir を指定すること",
+        );
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 codegen loop probe artifact dir 作成に失敗");
+
+    let probe_source = r#"(module App.Probe)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn byte-at [bytes idx]
+  (let [value (vector-get bytes idx)]
+    (if (< value 0) (+ value 256) value)))
+
+(defn find-root-push-drop-window [bytes idx len]
+  (if (>= (+ idx 4) len)
+    0
+    (if (and (= (byte-at bytes idx) 49)
+             (and (= (byte-at bytes (+ idx 1)) 192)
+                  (and (= (byte-at bytes (+ idx 2)) 72)
+                       (and (= (byte-at bytes (+ idx 3)) 137)
+                            (= (byte-at bytes (+ idx 4)) 200)))))
+      49
+      (find-root-push-drop-window bytes (+ idx 1) len))))
+
+(defn main []
+  (let [instr0 (make-instr 1 0)
+        instr1 (make-instr 44 0)
+        instr2 (make-instr 3 0)
+        instr3 (make-instr 11 8)
+        instr4 (make-instr 10 8)
+        instr5 (make-instr 74 0)
+        instr6 (make-instr 44 0)
+        instr7 (make-instr 10 8)
+        instr8 (make-instr 1 1)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push
+                   (vector-push
+                     (vector-push
+                       (vector-push
+                         (vector-push
+                           (vector-push (vector-new 9) instr0)
+                           instr1)
+                         instr2)
+                       instr3)
+                     instr4)
+                   instr5)
+                 instr6)
+               instr7)
+             instr8)
+        func (make-function-meta 0 9 ir)
+        functions (vector-push (vector-new 1) func)
+        target (make-target 3)
+        code (emit-native-function-meta-bundle functions target)]
+    (find-root-push-drop-window code 0 (vector-length code))))"#;
+    let escaped_probe_source = escape_lsharp_string(probe_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Probe.ls" "{escaped_probe_source}")
+            (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle = run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+        "linux-x86-codegen-loop-probe-bundle",
+        &payload_expr,
+        &[],
+    );
+
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86_64 codegen loop probe entrypoint は code 範囲内にあること: entry={} len={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len()
+    );
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86_64 codegen loop probe code artifact は空でないこと"
+    );
+
+    std::fs::write(artifact_dir.join("stage-code.bin"), &bundle.code_bytes)
+        .expect("Linux x86_64 codegen loop probe stage-code.bin 書き込みに失敗");
+    std::fs::write(artifact_dir.join("stage-data.bin"), &bundle.data_bytes)
+        .expect("Linux x86_64 codegen loop probe stage-data.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", bundle.entrypoint_offset),
+    )
+    .expect("Linux x86_64 codegen loop probe entrypoint-offset.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", bundle.main_func_idx),
+    )
+    .expect("Linux x86_64 codegen loop probe main-func-idx.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", bundle.function_start_len),
+    )
+    .expect("Linux x86_64 codegen loop probe function-start-len.txt 書き込みに失敗");
+}
+
 /// NATIVE-LINUX-X86-02h: host 側 selfhost が substring helper を含む Linux ELF artifact を生成すること。
 #[test]
 #[ignore]
