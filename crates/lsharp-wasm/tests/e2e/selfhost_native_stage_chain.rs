@@ -35863,11 +35863,11 @@ fn assert_x86_ir_call_trace_matches_entry_calls(
 ) {
     let call_rows = rows
         .iter()
-        .filter(|row| row.opcode == 40)
+        .filter(|row| row.target_offset >= 0)
         .collect::<Vec<_>>();
     assert!(
         !call_rows.is_empty(),
-        "x86 IR trace に opcode 40 call row が無い"
+        "x86 IR trace に rel32 target 付き call row が無い"
     );
     for row in call_rows {
         assert!(row.offset >= 0, "x86 IR call offset が負: row={row:?}");
@@ -35892,6 +35892,38 @@ fn assert_x86_ir_call_trace_matches_entry_calls(
             }
         );
     }
+}
+
+#[test]
+#[should_panic(expected = "x86 IR opcode/bytes/rel32 target が一致しない")]
+fn test_x86_ir_trace_rejects_runtime_helper_rel32_target_mismatch() {
+    let mut code_bytes = vec![0x90; 128];
+    code_bytes[0..4].copy_from_slice(&[0x55, 0x48, 0x89, 0xe5]);
+    code_bytes[11] = 0xe8;
+    let target_offset = 96i32;
+    let rel32 = target_offset - 11 - 5;
+    code_bytes[12..16].copy_from_slice(&rel32.to_le_bytes());
+    let bundle = NativeEntrypointBundle {
+        function_start_len: 1,
+        main_func_idx: 10,
+        declared_code_len: code_bytes.len(),
+        declared_data_len: 0,
+        entrypoint_offset: 0,
+        code_bytes,
+        data_bytes: Vec::new(),
+    };
+    let rows = vec![X86IrCallTraceRow {
+        instr_idx: 0,
+        opcode: 60,
+        operand: 0,
+        depth: 0,
+        offset: 11,
+        size: 5,
+        param_count: -1,
+        target_offset: 95,
+    }];
+
+    assert_x86_ir_call_trace_matches_entry_calls(&bundle, &rows);
 }
 
 fn assert_linux_x86_entry_map_ref_ref_prefix(
@@ -35987,7 +36019,7 @@ fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
         );
     } else {
         println!(
-            "Linux x86 stage2 IR trace 未指定: LSHARP_NATIVE_LINUX_X86_STAGE2_ENTRY_IR_TRACE を指定すると opcode 40 / emitted bytes / rel32 target を同一 window で照合する"
+            "Linux x86 stage2 IR trace 未指定: LSHARP_NATIVE_LINUX_X86_STAGE2_ENTRY_IR_TRACE を指定すると opcode 40/60/56 などの rel32 row / emitted bytes / rel32 target を同一 window で照合する"
         );
     }
 }
