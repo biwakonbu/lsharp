@@ -1068,12 +1068,12 @@ cp -a actual-stage1/src actual-stage2/src
 cp -a actual-stage1/src actual-stage3/src
 
 write_actual_selfregen_failure_summary() {
-  phase="$1"
-  exit_code="$2"
-  stdout_file="$3"
-  stderr_file="$4"
-  stdout_bytes=0
-  stderr_bytes=0
+  local phase="$1"
+  local exit_code="$2"
+  local stdout_file="$3"
+  local stderr_file="$4"
+  local stdout_bytes=0
+  local stderr_bytes=0
   if [[ -e "${stdout_file}" ]]; then
     stdout_bytes="$(wc -c <"${stdout_file}")"
   fi
@@ -1095,19 +1095,23 @@ JSON
 }
 
 run_actual_stage_range() {
-  stage_dir="$1"
-  stdout_file="$2"
-  stderr_file="$3"
-  chunk_start="$4"
-  chunk_end="$5"
-  include_header="$6"
-  include_tail="$7"
+  local stage_dir="$1"
+  local stdout_file="$2"
+  local stderr_file="$3"
+  local chunk_start="$4"
+  local chunk_end="$5"
+  local include_header="$6"
+  local include_tail="$7"
+  local chunk_attempt=0
+  local chunk_stdout=""
+  local chunk_stderr=""
+  local chunk_exit_code=0
+  local split_mid=0
 
   if [[ "${chunk_end}" -le "${chunk_start}" ]]; then
     return 0
   fi
 
-  chunk_attempt=0
   while :; do
     chunk_stdout="$(mktemp "${stage_dir}.chunk.${chunk_start}.XXXXXX.stdout")"
     chunk_stderr="$(mktemp "${stage_dir}.chunk.${chunk_start}.XXXXXX.stderr")"
@@ -1146,14 +1150,17 @@ run_actual_stage_range() {
 }
 
 run_actual_stage_chunked() {
-  stage_dir="$1"
-  stdout_file="$2"
-  stderr_file="$3"
+  local stage_dir="$1"
+  local stdout_file="$2"
+  local stderr_file="$3"
+  local chunk_start=0
+  local function_start_len=""
+  local chunk_end=0
+  local include_header=0
+  local include_tail=0
   : >"${stdout_file}"
   : >"${stderr_file}"
 
-  chunk_start=0
-  function_start_len=""
   while :; do
     if [[ -n "${function_start_len}" && "${chunk_start}" -ge "${function_start_len}" ]]; then
       break
@@ -1264,8 +1271,8 @@ for file in program.s runtime.s program.o argv-program.o argv-char-program.o pri
 done
 
 copy_actual_stage_debug_artifact() {
-  stage_dir="$1"
-  debug_dir="$2"
+  local stage_dir="$1"
+  local debug_dir="$2"
   if ! limactl shell "${VM_NAME}" -- test -d "${VM_WORK_DIR}/${stage_dir}"; then
     return 0
   fi

@@ -264,6 +264,87 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_keeps_chunk_split_state_local() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    assert_shell_function_declares_locals(
+        &script,
+        "write_actual_selfregen_failure_summary",
+        &[
+            "phase",
+            "exit_code",
+            "stdout_file",
+            "stderr_file",
+            "stdout_bytes",
+            "stderr_bytes",
+        ],
+    );
+    assert_shell_function_declares_locals(
+        &script,
+        "run_actual_stage_range",
+        &[
+            "stage_dir",
+            "stdout_file",
+            "stderr_file",
+            "chunk_start",
+            "chunk_end",
+            "include_header",
+            "include_tail",
+            "chunk_attempt",
+            "chunk_stdout",
+            "chunk_stderr",
+            "chunk_exit_code",
+            "split_mid",
+        ],
+    );
+    assert_shell_function_declares_locals(
+        &script,
+        "run_actual_stage_chunked",
+        &[
+            "stage_dir",
+            "stdout_file",
+            "stderr_file",
+            "chunk_start",
+            "function_start_len",
+            "chunk_end",
+            "include_header",
+            "include_tail",
+        ],
+    );
+}
+
+fn assert_shell_function_declares_locals(script: &str, function_name: &str, vars: &[&str]) {
+    let body = shell_function_body(script, function_name);
+    for var in vars {
+        assert!(
+            shell_function_declares_local(body, var),
+            "{function_name} は再帰/chunk 実行の状態破壊を避けるため {var} を local 宣言するべき"
+        );
+    }
+}
+
+fn shell_function_body<'a>(script: &'a str, function_name: &str) -> &'a str {
+    let marker = format!("{function_name}() {{");
+    script
+        .split(&marker)
+        .nth(1)
+        .and_then(|tail| tail.split("\n}\n").next())
+        .unwrap_or_else(|| panic!("shell function {function_name} が見つからない"))
+}
+
+fn shell_function_declares_local(body: &str, var: &str) -> bool {
+    body.lines().any(|line| {
+        let trimmed = line.trim_start();
+        trimmed == format!("local {var}")
+            || trimmed.starts_with(&format!("local {var}="))
+            || trimmed.starts_with(&format!("local {var} "))
+    })
+}
+
+#[test]
 fn test_linux_x86_file_segmented_harness_writes_segments_from_append_emit_vector() {
     let source = selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_and_target(
         r#"(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)"#,
