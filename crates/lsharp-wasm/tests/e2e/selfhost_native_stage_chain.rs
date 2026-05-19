@@ -316,6 +316,31 @@ fn test_native_linux_x86_hostgen_vm_script_keeps_chunk_split_state_local() {
     );
 }
 
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_forwards_actual_chunk_env_to_guest() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で actual chunk 設定を渡すべき");
+
+    for assignment in [
+        r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT="${LSHARP_NATIVE_LINUX_X86_ACTUAL_TIMEOUT:-900}""#,
+        r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-8}""#,
+        r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES:-1}""#,
+        r#"LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES:-4294967296}""#,
+    ] {
+        assert!(
+            vm_exec.contains(assignment),
+            "hostgen VM script は host 側の actual 実行設定を guest heredoc に渡すべき: {assignment}"
+        );
+    }
+}
+
 fn assert_shell_function_declares_locals(script: &str, function_name: &str, vars: &[&str]) {
     let body = shell_function_body(script, function_name);
     for var in vars {
