@@ -35894,6 +35894,38 @@ fn assert_x86_ir_call_trace_matches_entry_calls(
     }
 }
 
+fn assert_x86_call_targets_do_not_skip_rex_stack_restore_prefix(
+    label: &str,
+    bundle: &NativeEntrypointBundle,
+    calls: &[X86Rel32CallSite],
+    rows: &[X86IrCallTraceRow],
+) {
+    for call in calls {
+        if call.target_offset <= 0 || call.target_offset as usize >= bundle.code_bytes.len() {
+            continue;
+        }
+        let target = call.target_offset as usize;
+        let previous = bundle.code_bytes[target - 1];
+        let target_bytes = &bundle.code_bytes[target..bundle.code_bytes.len().min(target + 2)];
+        if previous == 0x48
+            && target_bytes.len() == 2
+            && (target_bytes[0] == 0x83 || target_bytes[0] == 0x81)
+            && target_bytes[1] == 0xc4
+        {
+            let relative_call_offset = call.call_offset as i64 - bundle.entrypoint_offset as i64;
+            let matching_rows = rows
+                .iter()
+                .filter(|row| row.offset == relative_call_offset)
+                .collect::<Vec<_>>();
+            panic!(
+                "{label}: x86 rel32 target が REX prefix を飛ばしている: call={call:?} matching_ir_rows={matching_rows:?} call_window={} target_window={}",
+                byte_window_hex(&bundle.code_bytes, call.call_offset, 8, 16),
+                byte_window_hex(&bundle.code_bytes, target, 8, 16)
+            );
+        }
+    }
+}
+
 #[test]
 #[should_panic(expected = "x86 IR opcode/bytes/rel32 target が一致しない")]
 fn test_x86_ir_trace_rejects_runtime_helper_rel32_target_mismatch() {
@@ -35924,6 +35956,47 @@ fn test_x86_ir_trace_rejects_runtime_helper_rel32_target_mismatch() {
     }];
 
     assert_x86_ir_call_trace_matches_entry_calls(&bundle, &rows);
+}
+
+#[test]
+#[should_panic(expected = "x86 rel32 target が REX prefix を飛ばしている")]
+fn test_x86_call_target_diagnostic_rejects_rex_prefix_skip() {
+    let mut code_bytes = vec![0x90; 128];
+    code_bytes[0..4].copy_from_slice(&[0x55, 0x48, 0x89, 0xe5]);
+    code_bytes[16] = 0xe8;
+    code_bytes[96..100].copy_from_slice(&[0x48, 0x83, 0xc4, 0x20]);
+    code_bytes[100] = 0x5b;
+    code_bytes[101] = 0xc3;
+    let target_offset = 97i32;
+    let rel32 = target_offset - 16 - 5;
+    code_bytes[17..21].copy_from_slice(&rel32.to_le_bytes());
+    let bundle = NativeEntrypointBundle {
+        function_start_len: 1,
+        main_func_idx: 10,
+        declared_code_len: code_bytes.len(),
+        declared_data_len: 0,
+        entrypoint_offset: 0,
+        code_bytes,
+        data_bytes: Vec::new(),
+    };
+    let calls = collect_x86_entry_rel32_calls(&bundle, 0..32);
+    let rows = vec![X86IrCallTraceRow {
+        instr_idx: 7,
+        opcode: 59,
+        operand: 0,
+        depth: 1,
+        offset: 16,
+        size: 7,
+        param_count: -1,
+        target_offset: 97,
+    }];
+
+    assert_x86_call_targets_do_not_skip_rex_stack_restore_prefix(
+        "synthetic x86 rex skip",
+        &bundle,
+        &calls,
+        &rows,
+    );
 }
 
 fn assert_linux_x86_entry_map_ref_ref_prefix(
@@ -35980,6 +36053,7 @@ fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
         target_range,
     );
     let stage2_prefix_calls = collect_x86_entry_rel32_calls(&stage2_bundle, 0..128);
+    let stage2_entry_calls = collect_x86_entry_rel32_calls(&stage2_bundle, 0..1024);
     let stage1_dir_for_trace = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STAGE1_ARTIFACT_DIR")
         .map(std::path::PathBuf::from)
         .map(workspace_root_relative_path);
@@ -36019,15 +36093,27 @@ fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
                 .as_ref()
                 .map(|dir| dir.join("stage-entry-ir-trace.txt"))
                 .filter(|path| path.exists())
-        });
+    });
     if let Some(trace_path) = trace_path {
         let trace_rows = read_x86_ir_call_trace_rows(&trace_path);
         assert_x86_ir_call_trace_matches_entry_calls(&stage2_bundle, &trace_rows);
+        assert_x86_call_targets_do_not_skip_rex_stack_restore_prefix(
+            "Linux x86 stage2 entrypoint rel32 target diagnostic",
+            &stage2_bundle,
+            &stage2_entry_calls,
+            &trace_rows,
+        );
         println!(
             "Linux x86 stage2 IR opcode/bytes/rel32 trace correlated: path={} rows={trace_rows:?}",
             trace_path.display()
         );
     } else {
+        assert_x86_call_targets_do_not_skip_rex_stack_restore_prefix(
+            "Linux x86 stage2 entrypoint rel32 target diagnostic",
+            &stage2_bundle,
+            &stage2_entry_calls,
+            &[],
+        );
         println!(
             "Linux x86 stage2 IR trace 未指定: LSHARP_NATIVE_LINUX_X86_STAGE2_ENTRY_IR_TRACE を指定すると opcode 40/60/56 などの rel32 row / emitted bytes / rel32 target を同一 window で照合する"
         );
