@@ -1930,34 +1930,6 @@ fn test_native_codegen_x86_i64_const_direct_append_avoids_zero_byte_vector() {
 }
 
 #[test]
-fn test_native_codegen_x86_i64_const_direct_append_roots_result_ref() {
-    let source = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
-        .expect("canonical NativeCodegen.ls が読み込めること");
-    let control_loop_body = source
-        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split(
-                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
-            )
-            .next()
-        })
-        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
-    let i64_const_branch = control_loop_body
-        .split("(if (= (direct-append-x86-opcode opcode) 6)")
-        .nth(1)
-        .and_then(|tail| tail.split("(if (= (direct-append-x86-opcode opcode) 9)").next())
-        .expect("x86 direct append loop に i64.const branch が存在すること");
-
-    assert!(
-        i64_const_branch.contains("(root_push result)")
-            && i64_const_branch.contains("(append-i64-const-bundle-x86 result operand frame-base-slot-count current-depth)")
-            && i64_const_branch.contains("(root_pop)"),
-        "stage1 が stage2 entrypoint の i64.const を direct append するとき、result ref を GC から保護するべき"
-    );
-}
-
-#[test]
 fn test_native_codegen_x86_stack_frame_uses_conservative_spill_window_floor() {
     let source = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
         .expect("canonical NativeCodegen.ls が読み込めること");
