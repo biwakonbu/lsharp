@@ -23147,6 +23147,103 @@ fn test_e2e_native_linux_x86_host_generates_codegen_loop_probe_bundle_artifact()
     .expect("Linux x86_64 codegen loop probe function-start-len.txt 書き込みに失敗");
 }
 
+/// NATIVE-LINUX-X86-02gc2: host 側 selfhost が x86 runtime vector-get codegen probe の Linux native bundle を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_codegen_vector_get_probe_bundle_artifact() {
+    let artifact_dir =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_CODEGEN_VECTOR_GET_PROBE_ARTIFACT_DIR")
+            .expect(
+                "LSHARP_NATIVE_LINUX_X86_CODEGEN_VECTOR_GET_PROBE_ARTIFACT_DIR に Linux x86_64 codegen vector-get probe artifact dir を指定すること",
+            );
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 codegen vector-get probe artifact dir 作成に失敗");
+
+    let probe_source = r#"(module App.Probe)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn byte-at [bytes idx]
+  (let [value (vector-get bytes idx)]
+    (if (< value 0) (+ value 256) value)))
+
+(defn find-call-opcode [bytes idx len]
+  (if (>= idx len)
+    0
+    (if (= (byte-at bytes idx) 232)
+      232
+      (find-call-opcode bytes (+ idx 1) len))))
+
+(defn main []
+  (let [instr0 (make-instr 3 4)
+        instr1 (make-instr 54 0)
+        instr2 (make-instr 3 0)
+        instr3 (make-instr 53 0)
+        ir (vector-push
+             (vector-push
+               (vector-push
+                 (vector-push (vector-new 4) instr0)
+                 instr1)
+               instr2)
+             instr3)
+        func (make-function-meta 0 0 ir)
+        functions (vector-push (vector-new 1) func)
+        target (make-target 3)
+        code (emit-native-function-meta-bundle functions target)]
+    (find-call-opcode code 0 (vector-length code))))"#;
+    let escaped_probe_source = escape_lsharp_string(probe_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Probe.ls" "{escaped_probe_source}")
+            (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle = run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+        "linux-x86-codegen-vector-get-probe-bundle",
+        &payload_expr,
+        &[],
+    );
+
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86_64 codegen vector-get probe entrypoint は code 範囲内にあること: entry={} len={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len()
+    );
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86_64 codegen vector-get probe code artifact は空でないこと"
+    );
+
+    std::fs::write(artifact_dir.join("stage-code.bin"), &bundle.code_bytes)
+        .expect("Linux x86_64 codegen vector-get probe stage-code.bin 書き込みに失敗");
+    std::fs::write(artifact_dir.join("stage-data.bin"), &bundle.data_bytes)
+        .expect("Linux x86_64 codegen vector-get probe stage-data.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", bundle.entrypoint_offset),
+    )
+    .expect("Linux x86_64 codegen vector-get probe entrypoint-offset.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", bundle.main_func_idx),
+    )
+    .expect("Linux x86_64 codegen vector-get probe main-func-idx.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", bundle.function_start_len),
+    )
+    .expect("Linux x86_64 codegen vector-get probe function-start-len.txt 書き込みに失敗");
+}
+
 /// NATIVE-LINUX-X86-02gd: host 側 selfhost が Seed entry segment byte probe の Linux native bundle を生成すること。
 #[test]
 #[ignore]
@@ -23283,6 +23380,183 @@ fn test_e2e_native_linux_x86_host_generates_seed_entry_segment_probe_bundle_arti
         format!("{}\n", bundle.function_start_len),
     )
     .expect("Linux x86_64 Seed entry segment probe function-start-len.txt 書き込みに失敗");
+}
+
+/// NATIVE-LINUX-X86-02gd2: host 側 selfhost が Seed entry IR/segment window probe の Linux native bundle を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_seed_entry_ir_segment_window_probe_bundle_artifact() {
+    let artifact_dir =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_SEED_ENTRY_IR_SEGMENT_PROBE_ARTIFACT_DIR")
+            .expect(
+                "LSHARP_NATIVE_LINUX_X86_SEED_ENTRY_IR_SEGMENT_PROBE_ARTIFACT_DIR に Linux x86_64 Seed entry IR/segment probe artifact dir を指定すること",
+            );
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 Seed entry IR/segment probe artifact dir 作成に失敗");
+
+    let probe_source = r#"(module App.Probe)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (do
+      (root_push result)
+      (let [placeholder (make-function-meta 0 0 (vector-new 0))]
+        (do
+          (root_push placeholder)
+          (let [next-result (vector-push result placeholder)]
+            (do
+              (root_push next-result)
+              (let [final (push-import-placeholders (+ idx 1) count next-result)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  final)))))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (do
+      (root_push src)
+      (root_push dst)
+      (let [value (vector-get src idx)]
+        (do
+          (root_push value)
+          (let [next-dst (vector-push dst value)]
+            (do
+              (root_push next-dst)
+              (let [final (append-vector-loop next-dst src (+ idx 1) len)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  final)))))))))
+
+(defn byte-at [bytes idx]
+  (let [value (vector-get bytes idx)]
+    (if (< value 0) (+ value 256) value)))
+
+(defn rel32-at [bytes offset]
+  (let [b0 (byte-at bytes (+ offset 1))
+        b1 (byte-at bytes (+ offset 2))
+        b2 (byte-at bytes (+ offset 3))
+        b3 (byte-at bytes (+ offset 4))
+        value (+ b0 (+ (* b1 256) (+ (* b2 65536) (* b3 16777216))))]
+    (if (>= value 2147483648) (- value 4294967296) value)))
+
+(defn print-ir-row [ir depths offsets native-callables bytes idx]
+  (let [instr (vector-get ir idx)]
+    (let [opcode (vector-get instr 0)
+          operand (vector-get instr 1)
+          depth (vector-get depths idx)
+          offset (vector-get offsets idx)
+          size (native-instr-size-x86 opcode operand native-callables depth)
+          byte0 (byte-at bytes offset)]
+      (do
+        (print idx)
+        (print opcode)
+        (print operand)
+        (print depth)
+        (print offset)
+        (print size)
+        (print byte0)
+        (if (= byte0 232)
+          (print (+ offset (+ 5 (rel32-at bytes offset))))
+          (print -1))))))
+
+(defn print-byte-window [bytes idx end]
+  (if (>= idx end)
+    0
+    (do
+      (print idx)
+      (print (byte-at bytes idx))
+      (print-byte-window bytes (+ idx 1) end))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        source-path (command-line-arg 1)
+        payload (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        target (make-target 3)
+        native-callables (normalize-selfhost-native-function-metas-for-target callables target)
+        entrypoint-func-idx (- (vector-length callables) 1)
+        starts (collect-callable-function-slot-starts-x86 native-callables 10)
+        import-stub-offset (callable-user-total-slot-size-x86 native-callables 10)
+        function-start (vector-get starts (- entrypoint-func-idx 10))
+        func-meta (vector-get native-callables entrypoint-func-idx)
+        ir (native-function-ir func-meta)
+        depths (collect-native-bundle-depths-x86 ir native-callables)
+        body-offset 0
+        offsets (collect-native-bundle-offsets-x86 ir native-callables body-offset)
+        result (ref-new (vector-new 0))
+        layout (make-x86-function-emit-layout 10 import-stub-offset function-start 0)]
+    (do
+      (print (vector-length functions))
+      (print entrypoint-func-idx)
+      (generate-native-function-x86-64-bundle-with-layout func-meta result starts native-callables layout)
+      (print (vector-length ir))
+      (print (vector-length (ref-get result)))
+      (print-ir-row ir depths offsets native-callables (ref-get result) 56)
+      (print-ir-row ir depths offsets native-callables (ref-get result) 57)
+      (print-ir-row ir depths offsets native-callables (ref-get result) 58)
+      (print-byte-window (ref-get result) 424 434))))"#;
+    let escaped_probe_source = escape_lsharp_string(probe_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Probe.ls" "{escaped_probe_source}")
+            (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle = run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+        "linux-x86-seed-entry-ir-segment-window-probe-bundle",
+        &payload_expr,
+        &[],
+    );
+
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86_64 Seed entry IR/segment probe entrypoint は code 範囲内にあること: entry={} len={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len()
+    );
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86_64 Seed entry IR/segment probe code artifact は空でないこと"
+    );
+
+    std::fs::write(artifact_dir.join("stage-code.bin"), &bundle.code_bytes)
+        .expect("Linux x86_64 Seed entry IR/segment probe stage-code.bin 書き込みに失敗");
+    std::fs::write(artifact_dir.join("stage-data.bin"), &bundle.data_bytes)
+        .expect("Linux x86_64 Seed entry IR/segment probe stage-data.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", bundle.entrypoint_offset),
+    )
+    .expect("Linux x86_64 Seed entry IR/segment probe entrypoint-offset.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", bundle.main_func_idx),
+    )
+    .expect("Linux x86_64 Seed entry IR/segment probe main-func-idx.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", bundle.function_start_len),
+    )
+    .expect("Linux x86_64 Seed entry IR/segment probe function-start-len.txt 書き込みに失敗");
 }
 
 /// NATIVE-LINUX-X86-02ge: host 側 selfhost が 7 引数 user call probe の Linux native bundle を生成すること。
