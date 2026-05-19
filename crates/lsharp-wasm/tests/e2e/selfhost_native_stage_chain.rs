@@ -338,6 +338,27 @@ fn test_linux_x86_representative_seed_releases_function_segment_before_next_segm
 }
 
 #[test]
+fn test_linux_x86_representative_seed_roots_code_segment_context_inputs() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let body = source
+        .split("(defn make-x86-code-segment-context")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn x86-code-segment-context-functions").next())
+        .expect("Linux x86 segmented seed に make-x86-code-segment-context が存在すること");
+
+    assert!(
+        body.contains("(root_push functions)")
+            && body.contains("(root_push starts)")
+            && body.contains("(root_push base0)")
+            && body.contains("(root_push base1)")
+            && body.contains("(root_push base2)")
+            && body.contains("(let [ctx (vector-push base2 import-stub-offset)]")
+            && body.matches("(root_pop)").count() >= 5,
+        "Linux x86 segmented seed の segment context は stage1 native 実行中の vector-push GC で functions/starts を壊さないよう root-safe に構築するべき"
+    );
+}
+
+#[test]
 fn test_parser_computation_builder_is_split_for_linux_x86_actual_codegen() {
     let source = std::fs::read_to_string(selfhost_source_path("Parser.ls"))
         .expect("canonical Parser.ls が読み込めること");
@@ -4433,13 +4454,26 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
     (- import-stub-offset function-start)))
 
 (defn make-x86-code-segment-context [functions starts import-count import-stub-offset]
-  (vector-push
-    (vector-push
-      (vector-push
-        (vector-push (vector-new 4) functions)
-        starts)
-      import-count)
-    import-stub-offset))
+  (do
+    (root_push functions)
+    (root_push starts)
+    (let [base0 (vector-push (vector-new 4) functions)]
+      (do
+        (root_push base0)
+        (let [base1 (vector-push base0 starts)]
+          (do
+            (root_push base1)
+            (let [base2 (vector-push base1 import-count)]
+              (do
+                (root_push base2)
+                (let [ctx (vector-push base2 import-stub-offset)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    ctx))))))))))
 
 (defn x86-code-segment-context-functions [ctx] (vector-get ctx 0))
 (defn x86-code-segment-context-starts [ctx] (vector-get ctx 1))
@@ -35860,6 +35894,40 @@ fn assert_x86_ir_call_trace_matches_entry_calls(
     }
 }
 
+fn assert_linux_x86_entry_map_ref_ref_prefix(
+    bundle: &NativeEntrypointBundle,
+    label: &str,
+) -> Vec<X86Rel32CallSite> {
+    let calls = collect_x86_entry_rel32_calls(bundle, 0..160);
+    let suffix_distances = calls
+        .iter()
+        .map(|call| bundle.code_bytes.len() as i64 - call.target_offset)
+        .collect::<Vec<_>>();
+    assert!(
+        calls.len() >= 3,
+        "{label}: entry prefix に map-new/ref-new/ref-new helper calls が不足: entry={} code_len={} calls={calls:?} suffix_distances={suffix_distances:?} entry_window={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len(),
+        byte_window_hex(&bundle.code_bytes, bundle.entrypoint_offset, 0, 192)
+    );
+    assert_eq!(
+        suffix_distances[0],
+        296,
+        "{label}: first helper call は map-new helper を指すべき: calls={calls:?} suffix_distances={suffix_distances:?}"
+    );
+    assert_eq!(
+        suffix_distances[1],
+        747,
+        "{label}: second helper call は ref-new helper を指すべき: calls={calls:?} suffix_distances={suffix_distances:?}"
+    );
+    assert_eq!(
+        suffix_distances[2],
+        747,
+        "{label}: third helper call は ref-new helper を指すべき: calls={calls:?} suffix_distances={suffix_distances:?}"
+    );
+    calls
+}
+
 #[test]
 #[ignore = "diagnostic: V2-13a-5 Linux x86 stage2 entrypoint call windows/rel32 targets"]
 fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
@@ -35922,6 +35990,42 @@ fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
             "Linux x86 stage2 IR trace 未指定: LSHARP_NATIVE_LINUX_X86_STAGE2_ENTRY_IR_TRACE を指定すると opcode 40 / emitted bytes / rel32 target を同一 window で照合する"
         );
     }
+}
+
+#[test]
+#[ignore = "regression: V2-13a-5 Linux x86 stage2 entrypoint map-new/ref-new prefix"]
+fn test_e2e_linux_x86_actual_stage2_entrypoint_map_new_ref_new_prefix_regression() {
+    let stage2_dir = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STAGE2_ARTIFACT_DIR").expect(
+        "LSHARP_NATIVE_LINUX_X86_STAGE2_ARTIFACT_DIR に stage2 artifact dir を指定すること",
+    );
+    let stage2_dir = workspace_root_relative_path(std::path::PathBuf::from(stage2_dir));
+    let stage2_bundle = read_linux_x86_stage_code_artifact_bundle(
+        &stage2_dir,
+        &["stage-code.bin", "stage2-code.bin"],
+        &["stage-data.bin", "stage2-data.bin"],
+    );
+
+    if let Some(stage1_dir) = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STAGE1_ARTIFACT_DIR") {
+        let stage1_dir = workspace_root_relative_path(std::path::PathBuf::from(stage1_dir));
+        let stage1_bundle = read_linux_x86_stage_code_artifact_bundle(
+            &stage1_dir,
+            &["stage1-code.bin", "stage-code.bin"],
+            &["stage1-data.bin", "stage-data.bin"],
+        );
+        let stage1_calls =
+            assert_linux_x86_entry_map_ref_ref_prefix(&stage1_bundle, "Linux x86 stage1");
+        println!(
+            "Linux x86 stage1 entry map/ref/ref prefix: dir={} calls={stage1_calls:?}",
+            stage1_dir.display()
+        );
+    }
+
+    let stage2_calls =
+        assert_linux_x86_entry_map_ref_ref_prefix(&stage2_bundle, "Linux x86 stage2");
+    println!(
+        "Linux x86 stage2 entry map/ref/ref prefix: dir={} calls={stage2_calls:?}",
+        stage2_dir.display()
+    );
 }
 
 /// V2-09: actual self-regeneration で得た native stage 生成物を differential input として扱えること。
