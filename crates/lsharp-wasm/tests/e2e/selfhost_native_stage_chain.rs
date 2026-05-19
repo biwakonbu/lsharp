@@ -22862,6 +22862,176 @@ fn test_e2e_native_linux_x86_host_generates_codegen_append_probe_bundle_artifact
     .expect("Linux x86_64 codegen append probe function-start-len.txt 書き込みに失敗");
 }
 
+/// NATIVE-LINUX-X86-02gb2: host 側 selfhost が depth=1 direct append probe の Linux native bundle を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_codegen_append_depth_one_probe_bundle_artifact() {
+    let artifact_dir =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_CODEGEN_APPEND_DEPTH_ONE_PROBE_ARTIFACT_DIR")
+            .expect(
+                "LSHARP_NATIVE_LINUX_X86_CODEGEN_APPEND_DEPTH_ONE_PROBE_ARTIFACT_DIR に Linux x86_64 codegen append depth-one probe artifact dir を指定すること",
+            );
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 codegen append depth-one probe artifact dir 作成に失敗");
+
+    let probe_source = r#"(module App.Probe)
+(import Backend.Native.NativeCodegen)
+
+(defn byte-at [bytes idx]
+  (let [value (vector-get bytes idx)]
+    (if (< value 0) (+ value 256) value)))
+
+(defn main []
+  (let [result (ref-new (vector-new 0))]
+    (do
+      (append-i64-const-bundle-x86 result 0 16 1)
+      (append-root-push-bundle-x86 result)
+      (append-drop-bundle-x86 result 16 1)
+      (if (= (byte-at (ref-get result) 13) 49)
+        (if (= (byte-at (ref-get result) 14) 192)
+          (if (= (byte-at (ref-get result) 15) 72)
+            (if (= (byte-at (ref-get result) 16) 137)
+              (byte-at (ref-get result) 17)
+              0)
+            0)
+          0)
+        0))))"#;
+    let escaped_probe_source = escape_lsharp_string(probe_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Probe.ls" "{escaped_probe_source}")
+            (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle = run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+        "linux-x86-codegen-append-depth-one-probe-bundle",
+        &payload_expr,
+        &[],
+    );
+
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86_64 codegen append depth-one probe entrypoint は code 範囲内にあること: entry={} len={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len()
+    );
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86_64 codegen append depth-one probe code artifact は空でないこと"
+    );
+
+    std::fs::write(artifact_dir.join("stage-code.bin"), &bundle.code_bytes)
+        .expect("Linux x86_64 codegen append depth-one probe stage-code.bin 書き込みに失敗");
+    std::fs::write(artifact_dir.join("stage-data.bin"), &bundle.data_bytes)
+        .expect("Linux x86_64 codegen append depth-one probe stage-data.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", bundle.entrypoint_offset),
+    )
+    .expect("Linux x86_64 codegen append depth-one probe entrypoint-offset.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", bundle.main_func_idx),
+    )
+    .expect("Linux x86_64 codegen append depth-one probe main-func-idx.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", bundle.function_start_len),
+    )
+    .expect("Linux x86_64 codegen append depth-one probe function-start-len.txt 書き込みに失敗");
+}
+
+/// NATIVE-LINUX-X86-02gb3: host 側 selfhost が padded depth=1 direct append probe の Linux native bundle を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_codegen_append_padded_depth_one_probe_bundle_artifact()
+{
+    let artifact_dir = std::env::var_os(
+        "LSHARP_NATIVE_LINUX_X86_CODEGEN_APPEND_PADDED_DEPTH_ONE_PROBE_ARTIFACT_DIR",
+    )
+    .expect(
+        "LSHARP_NATIVE_LINUX_X86_CODEGEN_APPEND_PADDED_DEPTH_ONE_PROBE_ARTIFACT_DIR に Linux x86_64 codegen append padded depth-one probe artifact dir を指定すること",
+    );
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 codegen append padded depth-one probe artifact dir 作成に失敗");
+
+    let probe_source = r#"(module App.Probe)
+(import Backend.Native.NativeCodegen)
+
+(defn pad-result [result idx end]
+  (if (>= idx end)
+    0
+    (do
+      (append-x86-byte result 144)
+      (pad-result result (+ idx 1) end))))
+
+(defn byte-at [bytes idx]
+  (let [value (vector-get bytes idx)]
+    (if (< value 0) (+ value 256) value)))
+
+(defn main []
+  (let [result (ref-new (vector-new 0))]
+    (do
+      (pad-result result 0 424)
+      (append-i64-const-bundle-x86 result 0 16 1)
+      (append-root-push-bundle-x86 result)
+      (append-drop-bundle-x86 result 16 1)
+      (if (= (byte-at (ref-get result) 437) 49)
+        (if (= (byte-at (ref-get result) 438) 192)
+          (if (= (byte-at (ref-get result) 439) 72)
+            (if (= (byte-at (ref-get result) 440) 137)
+              (byte-at (ref-get result) 441)
+              0)
+            0)
+          0)
+        0))))"#;
+    let escaped_probe_source = escape_lsharp_string(probe_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Probe.ls" "{escaped_probe_source}")
+            (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle = run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+        "linux-x86-codegen-append-padded-depth-one-probe-bundle",
+        &payload_expr,
+        &[],
+    );
+
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86_64 codegen append padded depth-one probe entrypoint は code 範囲内にあること: entry={} len={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len()
+    );
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86_64 codegen append padded depth-one probe code artifact は空でないこと"
+    );
+
+    std::fs::write(artifact_dir.join("stage-code.bin"), &bundle.code_bytes)
+        .expect("Linux x86_64 codegen append padded depth-one probe stage-code.bin 書き込みに失敗");
+    std::fs::write(artifact_dir.join("stage-data.bin"), &bundle.data_bytes)
+        .expect("Linux x86_64 codegen append padded depth-one probe stage-data.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", bundle.entrypoint_offset),
+    )
+    .expect("Linux x86_64 codegen append padded depth-one probe entrypoint-offset.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", bundle.main_func_idx),
+    )
+    .expect("Linux x86_64 codegen append padded depth-one probe main-func-idx.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", bundle.function_start_len),
+    )
+    .expect(
+        "Linux x86_64 codegen append padded depth-one probe function-start-len.txt 書き込みに失敗",
+    );
+}
+
 /// NATIVE-LINUX-X86-02gc: host 側 selfhost が x86 function-meta codegen loop probe の Linux native bundle を生成すること。
 #[test]
 #[ignore]
@@ -23113,6 +23283,71 @@ fn test_e2e_native_linux_x86_host_generates_seed_entry_segment_probe_bundle_arti
         format!("{}\n", bundle.function_start_len),
     )
     .expect("Linux x86_64 Seed entry segment probe function-start-len.txt 書き込みに失敗");
+}
+
+/// NATIVE-LINUX-X86-02ge: host 側 selfhost が 7 引数 user call probe の Linux native bundle を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_source_seven_arg_call_probe_bundle_artifact() {
+    let artifact_dir =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_SOURCE_SEVEN_ARG_PROBE_ARTIFACT_DIR").expect(
+            "LSHARP_NATIVE_LINUX_X86_SOURCE_SEVEN_ARG_PROBE_ARTIFACT_DIR に Linux x86_64 source seven-arg call probe artifact dir を指定すること",
+        );
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 source seven-arg call probe artifact dir 作成に失敗");
+
+    let probe_source = r#"(module App.Probe)
+
+(defn sum7 [a b c d e f g]
+  (+ (+ (+ (+ (+ (+ a b) c) d) e) f) g))
+
+(defn main []
+  (do
+    (print (sum7 1 2 3 4 5 6 7))
+    0))"#;
+    let escaped_probe_source = escape_lsharp_string(probe_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Probe.ls" "{escaped_probe_source}")
+            (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle = run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+        "linux-x86-source-seven-arg-call-probe-bundle",
+        &payload_expr,
+        &[],
+    );
+
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86_64 source seven-arg call probe entrypoint は code 範囲内にあること: entry={} len={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len()
+    );
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86_64 source seven-arg call probe code artifact は空でないこと"
+    );
+
+    std::fs::write(artifact_dir.join("stage-code.bin"), &bundle.code_bytes)
+        .expect("Linux x86_64 source seven-arg call probe stage-code.bin 書き込みに失敗");
+    std::fs::write(artifact_dir.join("stage-data.bin"), &bundle.data_bytes)
+        .expect("Linux x86_64 source seven-arg call probe stage-data.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", bundle.entrypoint_offset),
+    )
+    .expect("Linux x86_64 source seven-arg call probe entrypoint-offset.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", bundle.main_func_idx),
+    )
+    .expect("Linux x86_64 source seven-arg call probe main-func-idx.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", bundle.function_start_len),
+    )
+    .expect("Linux x86_64 source seven-arg call probe function-start-len.txt 書き込みに失敗");
 }
 
 /// NATIVE-LINUX-X86-02h: host 側 selfhost が substring helper を含む Linux ELF artifact を生成すること。
