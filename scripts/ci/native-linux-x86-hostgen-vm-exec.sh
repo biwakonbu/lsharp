@@ -1271,7 +1271,7 @@ copy_actual_stage_debug_artifact() {
   fi
   rm -rf "${ARTIFACT_DIR}/${debug_dir}"
   mkdir -p "${ARTIFACT_DIR}/${debug_dir}"
-  for file in manifest.json stage-code.bin stage-data.bin stage1-code.bin stage2-code.bin stage2-data.bin entrypoint-offset.txt function-start-len.txt main-func-idx.txt program.s runtime.s program.o runtime.o linker-response.txt program.native; do
+  for file in manifest.json stage-code.bin stage-data.bin stage1-code.bin stage2-code.bin stage2-data.bin entrypoint-offset.txt function-start-len.txt main-func-idx.txt stage-entry-ir-trace.txt program.s runtime.s program.o runtime.o linker-response.txt program.native; do
     if limactl shell "${VM_NAME}" -- test -e "${VM_WORK_DIR}/${stage_dir}/${file}"; then
       limactl copy "${VM_NAME}:${VM_WORK_DIR}/${stage_dir}/${file}" "${ARTIFACT_DIR}/${debug_dir}/${file}"
     fi

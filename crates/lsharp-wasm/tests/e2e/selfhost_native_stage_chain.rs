@@ -35980,6 +35980,9 @@ fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
         target_range,
     );
     let stage2_prefix_calls = collect_x86_entry_rel32_calls(&stage2_bundle, 0..128);
+    let stage1_dir_for_trace = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STAGE1_ARTIFACT_DIR")
+        .map(std::path::PathBuf::from)
+        .map(workspace_root_relative_path);
     println!(
         "Linux x86 stage2 entrypoint diagnostic: dir={} entry={} code_len={} main_func_idx={} function_start_len={} bootstrap={bootstrap_call:?} prefix_calls={stage2_prefix_calls:?}",
         stage2_dir.display(),
@@ -35989,10 +35992,9 @@ fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
         stage2_bundle.function_start_len
     );
 
-    if let Some(stage1_dir) = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STAGE1_ARTIFACT_DIR") {
-        let stage1_dir = workspace_root_relative_path(std::path::PathBuf::from(stage1_dir));
+    if let Some(stage1_dir) = stage1_dir_for_trace.as_ref() {
         let stage1_bundle = read_linux_x86_stage_code_artifact_bundle(
-            &stage1_dir,
+            stage1_dir,
             &["stage1-code.bin", "stage-code.bin"],
             &["stage1-data.bin", "stage-data.bin"],
         );
@@ -36009,8 +36011,16 @@ fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
         );
     }
 
-    if let Some(trace_path) = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STAGE2_ENTRY_IR_TRACE") {
-        let trace_path = workspace_root_relative_path(std::path::PathBuf::from(trace_path));
+    let trace_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STAGE2_ENTRY_IR_TRACE")
+        .map(std::path::PathBuf::from)
+        .map(workspace_root_relative_path)
+        .or_else(|| {
+            stage1_dir_for_trace
+                .as_ref()
+                .map(|dir| dir.join("stage-entry-ir-trace.txt"))
+                .filter(|path| path.exists())
+        });
+    if let Some(trace_path) = trace_path {
         let trace_rows = read_x86_ir_call_trace_rows(&trace_path);
         assert_x86_ir_call_trace_matches_entry_calls(&stage2_bundle, &trace_rows);
         println!(
