@@ -148,29 +148,33 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
           include-header (if (= range-end-arg 0) 1 (parse-positive-int (command-line-arg 4)))
           include-tail (if (= range-end-arg 0) 1 (parse-positive-int (command-line-arg 5)))
           range-end (if (= range-end-arg 0) (vector-length starts) range-end-arg)
-          segment-ctx (make-x86-code-segment-context native-callables starts 10 user-total)]
+          segment-ctx (make-x86-code-segment-context native-callables starts 10 user-total)
+          metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)]
          (do
            (root_push segment-ctx)
-           (if (= include-header 1)
+           (if (= metadata-mode 1)
+             (print-x86-function-segment-metadata-loop segment-ctx range-start range-end)
              (do
-             (print 9000000005)
-            (print (vector-length starts))
-            (print main-func-idx)
-            (print entrypoint-offset)
-            (print 9000000006)
-             (print 9000000001)
-            (print code-len)
-              (print 9000000002))
-             0)
-           (print-x86-function-code-segments-loop segment-ctx range-start range-end)
-           (if (= include-tail 1)
-             (do
-               (print-x86-code-trailer-segments 10)
-             (print 9000000003)
-            (print data-len)
-            (print 9000000004)
-               (print-packed-code-bytes-loop data 0 data-len))
-             0)
+               (if (= include-header 1)
+                 (do
+                 (print 9000000005)
+                (print (vector-length starts))
+                (print main-func-idx)
+                (print entrypoint-offset)
+                (print 9000000006)
+                 (print 9000000001)
+                (print code-len)
+                  (print 9000000002))
+                 0)
+               (print-x86-function-code-segments-loop segment-ctx range-start range-end)
+               (if (= include-tail 1)
+                 (do
+                   (print-x86-code-trailer-segments 10)
+                 (print 9000000003)
+                (print data-len)
+                (print 9000000004)
+                   (print-packed-code-bytes-loop data 0 data-len))
+                 0)))
            (root_pop)))"#;
     actual_stage23_seed_source_with_payload_and_code_binding_and_target(
         r#"(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)"#,
@@ -360,6 +364,58 @@ fn test_native_linux_x86_hostgen_vm_decoder_writes_stage_code_segment_table() {
     );
 }
 
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_can_collect_stage2_metadata_range() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    assert!(
+        script.contains("LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START")
+            && script.contains("LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END")
+            && script.contains("actual-stage2-metadata.txt")
+            && script.contains(r#"./program.native src/App/Seed.ls "${metadata_start}" "${metadata_end}" 0 0 metadata"#)
+            && script.contains("actual-stage2-metadata-stderr.txt"),
+        "hostgen VM script は env 指定時だけ actual-stage1 native compiler の function metadata range を artifact 化できるべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_cleans_vm_work_dir_before_run() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    let clean_pos = script
+        .find(r#"limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}""#)
+        .expect("hostgen VM script は stale stage artifacts を残さないよう VM work dir を消すこと");
+    let mkdir_pos = script
+        .find(r#"limactl shell "${VM_NAME}" -- mkdir -p "${VM_WORK_DIR}""#)
+        .expect("hostgen VM script は VM work dir を作成すること");
+
+    assert!(
+        clean_pos < mkdir_pos,
+        "hostgen VM script は stale metadata/debug artifact を拾わないよう、VM work dir を作成前に掃除するべき"
+    );
+}
+
+#[test]
+fn test_native_linux_x86_hostgen_vm_script_propagates_split_chunk_failures() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let body = shell_function_body(&script, "run_actual_stage_range");
+
+    assert!(
+        body.contains(r#"run_actual_stage_range "${stage_dir}" "${stdout_file}" "${stderr_file}" "${chunk_start}" "${split_mid}" "${include_header}" 0 || return $?"#)
+            && body.contains(r#"run_actual_stage_range "${stage_dir}" "${stdout_file}" "${stderr_file}" "${split_mid}" "${chunk_end}" 0 "${include_tail}" || return $?"#),
+        "chunk split 後の最小 range 失敗は親 range で握りつぶさず、stage summary に伝播させるべき"
+    );
+}
+
 fn assert_shell_function_declares_locals(script: &str, function_name: &str, vars: &[&str]) {
     let body = shell_function_body(script, function_name);
     for var in vars {
@@ -460,6 +516,28 @@ fn test_linux_x86_representative_seed_releases_function_segment_before_next_segm
     assert!(
         print_pos < release_pos && release_pos < recur_pos,
         "Linux x86 segmented seed は OOM を避けるため、segment 出力後に padded segment/result/layout 等を解放してから次 segment を生成するべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_can_print_function_segment_metadata() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    lsharp_syntax::parse(&source)
+        .expect("Linux x86 segmented seed source は metadata helper 追加後も parse できること");
+    assert!(
+        source.contains("(defn print-x86-function-segment-metadata-loop [ctx idx len]")
+            && source.contains("metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)")
+            && source.contains(
+                "(print-x86-function-segment-metadata-loop segment-ctx range-start range-end)"
+            )
+            && source.contains("(print (native-function-param-count func-meta))")
+            && source.contains("(print (native-function-local-count func-meta))")
+            && source.contains("(print body-offset)")
+            && source.contains("(print (vector-length ir-func))")
+            && source.contains(
+                "(let [final (print-x86-function-segment-metadata-loop ctx (+ idx 1) len)]"
+            ),
+        "Linux x86 segmented seed は通常 transport を変えず、任意 range の function metadata を native stage1 実行から出せるべき"
     );
 }
 
@@ -4967,6 +5045,77 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 	                        (do
 	                           (root_pop)
                             final)))))))))))))))
+
+(defn x86-param-spill-prefix-size [param-count]
+  (if (>= param-count 20)
+    (native-param-spill-bytes-x86-twenty-plus param-count)
+    (if (> param-count 6)
+      (+ 53 (* (- param-count 7) 11))
+      (if (= param-count 6)
+        42
+        (if (= param-count 5)
+          35
+          (if (= param-count 4)
+            28
+            (if (= param-count 3)
+              21
+              (if (= param-count 2)
+                14
+                (if (= param-count 1) 7 0)))))))))
+
+(defn print-x86-function-segment-metadata-loop [ctx idx len]
+  (if (>= idx len)
+    0
+    (let [functions (x86-code-segment-context-functions ctx)
+          starts (x86-code-segment-context-starts ctx)
+          import-count (x86-code-segment-context-import-count ctx)
+          import-stub-offset (x86-code-segment-context-import-stub-offset ctx)]
+      (do
+        (root_push ctx)
+        (root_push functions)
+        (root_push starts)
+        (let [actual-idx (+ idx import-count)
+              func-meta (vector-get functions actual-idx)
+              function-start (vector-get starts idx)]
+          (do
+            (root_push func-meta)
+            (let [ir-func (native-function-ir func-meta)
+                  param-count (native-function-param-count func-meta)
+                  local-count (native-function-local-count func-meta)]
+              (do
+                (root_push ir-func)
+                (let [frame-base-slot-count
+                        (native-frame-base-slot-count ir-func (+ (+ param-count local-count) 1))
+                      stack-bytes
+                        (native-local-stack-bytes-with-window-x86
+                          ir-func
+                          (+ (+ param-count local-count) 1)
+                          functions)
+                      function-size (x86-function-slot-size-from-starts starts import-stub-offset idx function-start)
+                      after-stack-offset (if (> stack-bytes 0) 11 4)
+                      param-spill-bytes (x86-param-spill-prefix-size param-count)
+                      body-offset (+ after-stack-offset param-spill-bytes)]
+                  (do
+                    (print 9000000020)
+                    (print idx)
+                    (print actual-idx)
+                    (print function-start)
+                    (print function-size)
+                    (print (native-function-param-count func-meta))
+                    (print (native-function-local-count func-meta))
+                    (print frame-base-slot-count)
+                    (print stack-bytes)
+                    (print param-spill-bytes)
+                    (print body-offset)
+                    (print (vector-length ir-func))
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (let [final (print-x86-function-segment-metadata-loop ctx (+ idx 1) len)]
+                      (do
+                        (root_pop)
+                        final))))))))))))
 
 (defn print-x86-code-segments [functions starts import-count import-stub-offset]
   (do
