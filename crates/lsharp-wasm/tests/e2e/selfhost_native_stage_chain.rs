@@ -680,6 +680,29 @@ fn test_native_codegen_x86_ref_new_runtime_call_direct_appends_in_stage1() {
 }
 
 #[test]
+fn test_native_codegen_x86_vector_new_runtime_call_direct_appends_in_stage1() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let control_loop = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
+        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+
+    assert!(
+        control_loop.contains("(if (= opcode 54)")
+            && control_loop.contains("(append-x86-helper-call-preserving-rcx")
+            && control_loop.contains("(x86-selfhost-vector-new-helper-offset")
+            && control_loop.contains("(+ (x86-current-emitted-offset result emit-start-base) 6)"),
+        "stage1 が stage2 を生成するとき、vector-new runtime helper call は byte-vector 経由に戻さず direct append するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_map_new_stack_delta_is_explicit_for_stage2_depth_stability() {
     let source = selfhost_module("NativeCodegen.ls");
     let stack_delta = source
