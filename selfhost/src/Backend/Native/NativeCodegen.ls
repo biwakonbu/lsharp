@@ -10925,77 +10925,77 @@
                     (append-drop-bundle-x86 result frame-base-slot-count current-depth)
                     (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
                       (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
-                  (let [native (if (= (is-control-opcode opcode) 1)
-                                 (emit-control-instr-x86 ir-func meta offsets idx)
-                                 (if (= opcode 40)
-                                   (do
-                                     (root_push function-starts)
-                                     (let [call-context (vector-push
-                                                          (vector-push
+                  (if (= (x86-plain-two-to-one-needs-window-restore opcode) 1)
+                    (do
+                      (append-plain-two-to-one-codegen-bundle-x86 result opcode operand frame-base-slot-count current-depth)
+                      (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
+                        (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+                    (let [native (if (= (is-control-opcode opcode) 1)
+                                   (emit-control-instr-x86 ir-func meta offsets idx)
+                                   (if (= opcode 40)
+                                     (do
+                                       (root_push function-starts)
+                                       (let [call-context (vector-push
                                                             (vector-push
                                                               (vector-push
                                                                 (vector-push
-                                                                  (vector-push (vector-new 6) function-metas)
-                                                                  import-count)
-                                                                import-stub-offset)
-                                                              function-start-base)
-                                                            frame-base-slot-count)
-                                                          current-depth)]
-                                       (do
-                                         (root_push call-context)
-                                         (let [call-result (codegen-x86-opcode-call-bundle operand (x86-current-emitted-offset result emit-start-base) function-starts call-context)]
-                                           (do
-                                             (root_pop)
-                                             (root_pop)
-                                             call-result)))))
-                                   (if (= (is-selfhost-runtime-opcode-x86 opcode) 1)
-                                     (do
-                                       (let [actual-current-offset-ref (ref-new (x86-current-emitted-offset result emit-start-base))]
+                                                                  (vector-push
+                                                                    (vector-push (vector-new 6) function-metas)
+                                                                    import-count)
+                                                                  import-stub-offset)
+                                                                function-start-base)
+                                                              frame-base-slot-count)
+                                                            current-depth)]
                                          (do
-                                           (root_push actual-current-offset-ref)
-                                           (let [import-stub-offset-ref (ref-new import-stub-offset)]
+                                           (root_push call-context)
+                                           (let [call-result (codegen-x86-opcode-call-bundle operand (x86-current-emitted-offset result emit-start-base) function-starts call-context)]
                                              (do
-                                               (root_push import-stub-offset-ref)
-                                               (let [runtime-result (codegen-selfhost-runtime-bundle-x86 opcode (ref-get actual-current-offset-ref) (ref-get import-stub-offset-ref) import-count frame-base-slot-count current-depth)]
-                                                 (do
-                                                   (root_pop)
-                                                   (root_pop)
-                                                   runtime-result)))))))
-                                     (if (= opcode 1)
-                                       (emit-i64-const-bundle-x86 operand frame-base-slot-count current-depth)
-                                       (if (= opcode 3)
-                                         (emit-i32-const-bundle-x86 operand frame-base-slot-count current-depth)
-                                         (if (= opcode 74)
-                                           (emit-root-push-x86)
-                                         (if (= opcode 75)
-                                           (emit-i32-const-bundle-x86 0 frame-base-slot-count current-depth)
-                                           (if (= opcode 10)
-                                             (emit-local-get-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)
-                                             (if (= opcode 11)
-                                               (emit-local-set-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)
-                                               (if (= opcode 44)
-                                                 (emit-drop-bundle-x86 frame-base-slot-count current-depth)
-                                                 (if (= opcode 76)
-                                                   (emit-root-set-bundle-x86 frame-base-slot-count current-depth)
-                                                   (if (= opcode 46)
-                                                     (emit-i32-store-bundle-x86 operand frame-base-slot-count current-depth)
-                                                     (if (= opcode 49)
-                                                       (emit-i64-store-bundle-x86 operand frame-base-slot-count current-depth)
-                                                       (if (= opcode 77)
-                                                         (emit-memory-copy-bundle-x86 frame-base-slot-count current-depth)
-                                                         (if (= opcode 78)
-                                                           (emit-memory-fill-bundle-x86 frame-base-slot-count current-depth)
-                                                           (if (= (x86-plain-two-to-one-needs-window-restore opcode) 1)
-                                                             (emit-consume-two-bundle-x86
-                                                               (codegen-ir-instr opcode operand)
-                                                               frame-base-slot-count
-                                                               current-depth)
-                                                             (codegen-ir-instr opcode operand)))))))))))))))))
-                    native-len (vector-length native)]
-                    (do
-                      (append-native-bytes-loop result native 0 native-len)
-                      (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-                        (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))))))))))))))))))))))))))
+                                               (root_pop)
+                                               (root_pop)
+                                               call-result)))))
+                                     (if (= (is-selfhost-runtime-opcode-x86 opcode) 1)
+                                       (do
+                                         (let [actual-current-offset-ref (ref-new (x86-current-emitted-offset result emit-start-base))]
+                                           (do
+                                             (root_push actual-current-offset-ref)
+                                             (let [import-stub-offset-ref (ref-new import-stub-offset)]
+                                               (do
+                                                 (root_push import-stub-offset-ref)
+                                                 (let [runtime-result (codegen-selfhost-runtime-bundle-x86 opcode (ref-get actual-current-offset-ref) (ref-get import-stub-offset-ref) import-count frame-base-slot-count current-depth)]
+                                                   (do
+                                                     (root_pop)
+                                                     (root_pop)
+                                                     runtime-result)))))))
+                                       (if (= opcode 1)
+                                         (emit-i64-const-bundle-x86 operand frame-base-slot-count current-depth)
+                                         (if (= opcode 3)
+                                           (emit-i32-const-bundle-x86 operand frame-base-slot-count current-depth)
+                                           (if (= opcode 74)
+                                             (emit-root-push-x86)
+                                           (if (= opcode 75)
+                                             (emit-i32-const-bundle-x86 0 frame-base-slot-count current-depth)
+                                             (if (= opcode 10)
+                                               (emit-local-get-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)
+                                               (if (= opcode 11)
+                                                 (emit-local-set-bundle-x86 (local-slot-offset operand) frame-base-slot-count current-depth)
+                                                 (if (= opcode 44)
+                                                   (emit-drop-bundle-x86 frame-base-slot-count current-depth)
+                                                   (if (= opcode 76)
+                                                     (emit-root-set-bundle-x86 frame-base-slot-count current-depth)
+                                                     (if (= opcode 46)
+                                                       (emit-i32-store-bundle-x86 operand frame-base-slot-count current-depth)
+                                                       (if (= opcode 49)
+                                                         (emit-i64-store-bundle-x86 operand frame-base-slot-count current-depth)
+                                                         (if (= opcode 77)
+                                                           (emit-memory-copy-bundle-x86 frame-base-slot-count current-depth)
+                                                           (if (= opcode 78)
+                                                             (emit-memory-fill-bundle-x86 frame-base-slot-count current-depth)
+                                                             (codegen-ir-instr opcode operand))))))))))))))))
+                      native-len (vector-length native)]
+                      (do
+                        (append-native-bytes-loop result native 0 native-len)
+                        (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
+                          (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state))))))))))))))))))))))))))))
 (defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base [ir-func result meta offsets function-starts function-metas import-count import-stub-offset function-start-base frame-base-slot-count current-depth idx len]
   (let [emit-start-base (vector-length (ref-get result))
     layout (make-x86-function-emit-layout import-count import-stub-offset function-start-base emit-start-base)]
@@ -11263,6 +11263,10 @@
       0)
     (root_pop)
     0))
+
+(defn append-plain-two-to-one-codegen-bundle-x86 [result opcode operand frame-base-slot-count current-depth]
+  (let [op-bytes (codegen-ir-instr opcode operand)]
+    (append-consume-two-bundle-x86 result op-bytes frame-base-slot-count current-depth)))
 
 (defn direct-append-x86-opcode [opcode]
     (if (= opcode 1)

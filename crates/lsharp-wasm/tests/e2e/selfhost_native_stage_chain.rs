@@ -1181,6 +1181,27 @@ fn test_native_codegen_x86_local_get_direct_append_avoids_zero_byte_vector() {
 }
 
 #[test]
+fn test_native_codegen_x86_plain_two_to_one_fallback_appends_in_helper() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let control_loop_body = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base")
+                .next()
+        })
+        .expect("NativeCodegen.ls に generate-native-control-instr-bundle-loop-x86-with-context が存在すること");
+
+    assert!(
+        source.contains("(defn append-plain-two-to-one-codegen-bundle-x86 [result opcode operand frame-base-slot-count current-depth]")
+            && control_loop_body.contains("(if (= (x86-plain-two-to-one-needs-window-restore opcode) 1)")
+            && control_loop_body.contains("(append-plain-two-to-one-codegen-bundle-x86 result opcode operand frame-base-slot-count current-depth)")
+            && !control_loop_body.contains("(emit-consume-two-bundle-x86\n                                                               (codegen-ir-instr opcode operand)"),
+        "x86 plain two-to-one fallback は巨大 control-loop let の native vector 生成に戻さず、小さい helper 内で生成+append するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_local_slot_direct_append_avoids_multi_arg_disp_helper() {
     let source = selfhost_module("NativeCodegen.ls");
     let append_local_get_body = source
