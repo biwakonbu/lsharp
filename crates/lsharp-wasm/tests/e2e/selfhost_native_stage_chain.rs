@@ -1281,10 +1281,31 @@ fn test_native_codegen_x86_one_arg_user_call_avoids_rel_wrapper_call() {
     assert!(
         one_arg_branch.contains("call-rel-bytes")
             && one_arg_branch.contains("call-rel-bytes")
-            && one_arg_branch.contains("(root_push call-rel-bytes)")
             && !one_arg_branch.contains("target-offset")
             && !one_arg_branch.contains("emit-call-bundle-x86-one-to-nine"),
-        "x86 one-arg user call は operand/rel local 破壊を避けるため branch 先頭で rel32 bytes を root するべき"
+        "x86 one-arg user call は outer root 済み rel32 bytes を使い、operand/rel local wrapper を避けるべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_low_arity_call_branches_do_not_shadow_call_rel_bytes() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let opcode_call_branch = source
+        .split("(defn codegen-x86-opcode-call-bundle")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let call_bytes_branch = opcode_call_branch
+        .split("(if (= target-param-count 0)")
+        .nth(1)
+        .expect("x86 opcode 40 branch に call-bytes 分岐が存在すること");
+
+    assert!(
+        !call_bytes_branch.contains("(let [call-rel-bytes call-rel-bytes]"),
+        "x86 low-arity call branch は outer root 済み call-rel-bytes を same-name shadow せず、非実行 branch が後続 arity の call bytes を壊さない形にするべき"
     );
 }
 
@@ -1399,10 +1420,9 @@ fn test_native_codegen_x86_two_arg_user_call_avoids_rel_wrapper_call() {
     assert!(
         two_arg_branch.contains("call-rel-bytes")
             && two_arg_branch.contains("call-rel-bytes")
-            && two_arg_branch.contains("(root_push call-rel-bytes)")
             && !two_arg_branch.contains("target-offset")
             && !two_arg_branch.contains("emit-call-bundle-x86-one-to-nine"),
-        "x86 two-arg user call は operand/rel local 破壊を避けるため branch 先頭で rel32 bytes を root するべき"
+        "x86 two-arg user call は outer root 済み rel32 bytes を使い、operand/rel local wrapper を避けるべき"
     );
 }
 
@@ -1430,11 +1450,10 @@ fn test_native_codegen_x86_six_arg_user_call_avoids_rel_wrapper_call() {
     assert!(
         six_arg_branch.contains("call-rel-bytes")
             && six_arg_branch.contains("call-rel-bytes")
-            && six_arg_branch.contains("(root_push call-rel-bytes)")
             && six_arg_branch.contains("emit-six-arg-call-x86-core-with-call-bytes")
             && !six_arg_branch.contains("target-offset")
             && !six_arg_branch.contains("emit-call-bundle-x86-one-to-nine"),
-        "x86 six-arg user call は operand/rel local 破壊を避けるため branch 先頭で rel32 bytes を root するべき"
+        "x86 six-arg user call は outer root 済み rel32 bytes を使い、operand/rel local wrapper を避けるべき"
     );
 }
 
@@ -1466,9 +1485,8 @@ fn test_native_codegen_x86_seven_arg_user_call_avoids_rel_wrapper_call() {
     assert!(
         seven_arg_branch.contains("call-rel-bytes")
             && seven_arg_branch.contains("call-rel-bytes")
-            && seven_arg_branch.contains("(root_push call-rel-bytes)")
             && !seven_arg_branch.contains("target-offset"),
-        "x86 seven-arg user call は stage1 native 実行時の operand/rel local 破壊を避けるため branch 先頭で rel32 bytes を root するべき"
+        "x86 seven-arg user call は stage1 native 実行時の operand/rel local 破壊を避けるため outer root 済み rel32 bytes を使うべき"
     );
     assert!(
         !before_call_bytes.contains("rel (if"),
@@ -1503,11 +1521,10 @@ fn test_native_codegen_x86_eight_arg_user_call_avoids_rel_wrapper_call() {
     assert!(
         eight_arg_branch.contains("call-rel-bytes")
             && eight_arg_branch.contains("call-rel-bytes")
-            && eight_arg_branch.contains("(root_push call-rel-bytes)")
             && eight_arg_branch.contains("emit-eight-arg-call-x86-core-with-call-bytes")
             && !eight_arg_branch.contains("target-offset")
             && !eight_arg_branch.contains("emit-call-bundle-x86-one-to-nine"),
-        "x86 eight-arg user call は operand/rel local 破壊を避けるため branch 先頭で rel32 bytes を root するべき"
+        "x86 eight-arg user call は outer root 済み rel32 bytes を使い、operand/rel local wrapper を避けるべき"
     );
 }
 
@@ -1562,11 +1579,10 @@ fn test_native_codegen_x86_nine_arg_user_call_avoids_rel_wrapper_call() {
     assert!(
         nine_arg_branch.contains("call-rel-bytes")
             && nine_arg_branch.contains("call-rel-bytes")
-            && nine_arg_branch.contains("(root_push call-rel-bytes)")
             && nine_arg_branch.contains("emit-nine-arg-call-x86-core-with-call-bytes")
             && !nine_arg_branch.contains("target-offset")
             && !nine_arg_branch.contains("emit-call-bundle-x86-one-to-nine"),
-        "x86 nine-arg user call は operand/rel local 破壊を避けるため branch 先頭で rel32 bytes を root するべき"
+        "x86 nine-arg user call は outer root 済み rel32 bytes を使い、operand/rel local wrapper を避けるべき"
     );
 }
 
@@ -1635,10 +1651,9 @@ fn test_native_codegen_x86_three_arg_user_call_avoids_rel_wrapper_call() {
     assert!(
         three_arg_branch.contains("call-rel-bytes")
             && three_arg_branch.contains("call-rel-bytes")
-            && three_arg_branch.contains("(root_push call-rel-bytes)")
             && !three_arg_branch.contains("target-offset")
             && !three_arg_branch.contains("emit-call-bundle-x86-one-to-nine"),
-        "x86 three-arg user call は operand/rel local 破壊を避けるため branch 先頭で rel32 bytes を root するべき"
+        "x86 three-arg user call は outer root 済み rel32 bytes を使い、operand/rel local wrapper を避けるべき"
     );
 }
 
@@ -1670,10 +1685,9 @@ fn test_native_codegen_x86_five_arg_user_call_avoids_rel_wrapper_call() {
     assert!(
         five_arg_branch.contains("call-rel-bytes")
             && five_arg_branch.contains("call-rel-bytes")
-            && five_arg_branch.contains("(root_push call-rel-bytes)")
             && !five_arg_branch.contains("target-offset")
             && !five_arg_branch.contains("emit-call-bundle-x86-one-to-nine"),
-        "x86 five-arg user call は operand/rel local 破壊を避けるため branch 先頭で rel32 bytes を root するべき"
+        "x86 five-arg user call は outer root 済み rel32 bytes を使い、operand/rel local wrapper を避けるべき"
     );
     assert!(
         !before_call_bytes.contains("rel (if"),
@@ -24660,15 +24674,7 @@ fn low_arity_prefix_one_arg_branch_body(one_arg_shape: &str) -> &'static str {
   call-rel-bytes)"#
         }
         "shadow-only" => "(let [call-rel-bytes call-rel-bytes] call-rel-bytes)",
-        "full" => {
-            r#"(let [call-rel-bytes call-rel-bytes]
-  (do
-    (root_push call-rel-bytes)
-    (let [result (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)]
-      (do
-        (root_pop)
-        result))))"#
-        }
+        "full" => "(emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)",
         _ => unreachable!("unsupported one-arg branch shape"),
     }
 }
@@ -24678,23 +24684,9 @@ fn low_arity_prefix_branch_body(branch: usize, one_arg_shape: &str) -> &'static 
         0 => "call-rel-bytes",
         1 => low_arity_prefix_one_arg_branch_body(one_arg_shape),
         2 => {
-            r#"(let [call-rel-bytes call-rel-bytes]
-  (do
-    (root_push call-rel-bytes)
-    (let [result (emit-two-arg-call-x86-with-call-bytes call-rel-bytes frame-base-slot-count current-depth)]
-      (do
-        (root_pop)
-        result))))"#
+            "(emit-two-arg-call-x86-with-call-bytes call-rel-bytes frame-base-slot-count current-depth)"
         }
-        3 => {
-            r#"(let [call-rel-bytes call-rel-bytes]
-  (do
-    (root_push call-rel-bytes)
-    (let [result (emit-three-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
-      (do
-        (root_pop)
-        result))))"#
-        }
+        3 => "(emit-three-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)",
         4 => {
             r#"(let [call-rel-ref (ref-new call-rel)]
   (do
@@ -24704,46 +24696,16 @@ fn low_arity_prefix_branch_body(branch: usize, one_arg_shape: &str) -> &'static 
         (root_pop)
         result))))"#
         }
-        5 => {
-            r#"(let [call-rel-bytes call-rel-bytes]
-  (do
-    (root_push call-rel-bytes)
-    (let [result (emit-five-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
-      (do
-        (root_pop)
-        result))))"#
-        }
-        6 => {
-            r#"(let [call-rel-bytes call-rel-bytes]
-  (do
-    (root_push call-rel-bytes)
-    (let [result (emit-six-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
-      (do
-        (root_pop)
-        result))))"#
-        }
-        7 => {
-            r#"(let [call-rel-bytes call-rel-bytes]
-  (do
-    (root_push call-rel-bytes)
-    (let [result (emit-seven-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
-      (do
-        (root_pop)
-        result))))"#
-        }
+        5 => "(emit-five-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)",
+        6 => "(emit-six-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)",
+        7 => "(emit-seven-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)",
         _ => unreachable!("unsupported low arity branch"),
     }
 }
 
 fn eight_arg_prefix_branch_body() -> &'static str {
     r#"(emit-consume-eight-produce-one-bundle-x86
-  (let [call-rel-bytes call-rel-bytes]
-    (do
-      (root_push call-rel-bytes)
-      (let [result (emit-eight-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
-        (do
-          (root_pop)
-          result))))
+  (emit-eight-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
   frame-base-slot-count
   current-depth)"#
 }

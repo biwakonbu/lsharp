@@ -442,7 +442,7 @@ fn test_native_codegen_x86_string_slice_concat_helper_call_sites_resolve_offsets
     assert_eq!(
         lines,
         vec![
-            4995, 5140, 12, 72, 139, 149, 248, 255, 255, 255, 232, 119, 7, 0, 0, 5, 232, 15, 8, 0,
+            5032, 5177, 12, 72, 139, 149, 248, 255, 255, 255, 232, 156, 7, 0, 0, 5, 232, 52, 8, 0,
             0,
         ],
         "x86_64 substring/string-concat helper call sites は trailer offset を指す call を出す必要がある"
@@ -483,9 +483,9 @@ fn test_native_codegen_x86_map_and_file_helper_call_sites_resolve_offsets() {
     assert_eq!(
         lines,
         vec![
-            5335, 5407, 5424, 5485, 5547, 5, 232, 210, 4, 0, 0, 7, 81, 232, 25, 5, 0, 0, 89, 12,
-            72, 139, 149, 248, 255, 255, 255, 232, 36, 5, 0, 0, 5, 232, 104, 5, 0, 0, 7, 81, 232,
-            165, 5, 0, 0, 89,
+            5372, 5444, 5461, 5522, 5584, 5, 232, 247, 4, 0, 0, 7, 81, 232, 62, 5, 0, 0, 89, 12,
+            72, 139, 149, 248, 255, 255, 255, 232, 73, 5, 0, 0, 5, 232, 141, 5, 0, 0, 7, 81, 232,
+            202, 5, 0, 0, 89,
         ],
         "x86_64 map/file helper call sites は trailer offset を指す call を出す必要がある"
     );

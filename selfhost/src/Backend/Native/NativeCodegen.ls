@@ -10534,30 +10534,12 @@
                              call-rel-bytes
                              (emit-pop-rcx)))))
                      (if (= target-param-count 1)
-                       (let [call-rel-bytes call-rel-bytes]
-                         (do
-                           (root_push call-rel-bytes)
-                           (let [result (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)]
-                             (do
-                               (root_pop)
-                               result))))
+                       (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)
                        (if (= target-param-count 2)
-                         (let [call-rel-bytes call-rel-bytes]
-                           (do
-                             (root_push call-rel-bytes)
-                             (let [result (emit-two-arg-call-x86-with-call-bytes call-rel-bytes frame-base-slot-count current-depth)]
-                               (do
-                                 (root_pop)
-                                 result))))
+                         (emit-two-arg-call-x86-with-call-bytes call-rel-bytes frame-base-slot-count current-depth)
                          (if (= target-param-count 3)
                            (emit-consume-three-produce-one-bundle-x86
-                             (let [call-rel-bytes call-rel-bytes]
-                               (do
-                                 (root_push call-rel-bytes)
-                                 (let [result (emit-three-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
-                                   (do
-                                     (root_pop)
-                                     result))))
+                             (emit-three-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
                              frame-base-slot-count
                              current-depth)
                            (if (= target-param-count 4)
@@ -10573,57 +10555,27 @@
                                current-depth)
                              (if (= target-param-count 5)
                                (emit-consume-five-produce-one-bundle-x86
-                                 (let [call-rel-bytes call-rel-bytes]
-                                   (do
-                                     (root_push call-rel-bytes)
-                                     (let [result (emit-five-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
-                                      (do
-                                        (root_pop)
-                                        result))))
+                                 (emit-five-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
                                  frame-base-slot-count
                                  current-depth)
                                (if (= target-param-count 6)
                                  (emit-consume-six-produce-one-bundle-x86
-                                   (let [call-rel-bytes call-rel-bytes]
-                                     (do
-                                       (root_push call-rel-bytes)
-                                       (let [result (emit-six-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
-                                        (do
-                                          (root_pop)
-                                          result))))
+                                   (emit-six-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
                                    frame-base-slot-count
                                    current-depth)
                                  (if (= target-param-count 7)
                                    (emit-consume-seven-produce-one-bundle-x86
-                                     (let [call-rel-bytes call-rel-bytes]
-                                       (do
-                                        (root_push call-rel-bytes)
-                                        (let [result (emit-seven-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
-                                         (do
-                                           (root_pop)
-                                           result))))
+                                     (emit-seven-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
                                      frame-base-slot-count
                                      current-depth)
                                    (if (= target-param-count 8)
                                      (emit-consume-eight-produce-one-bundle-x86
-                                       (let [call-rel-bytes call-rel-bytes]
-                                         (do
-                                           (root_push call-rel-bytes)
-                                           (let [result (emit-eight-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
-                                            (do
-                                              (root_pop)
-                                              result))))
+                                       (emit-eight-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
                                        frame-base-slot-count
                                        current-depth)
                                      (if (= target-param-count 9)
                                        (emit-consume-nine-produce-one-bundle-x86
-                                         (let [call-rel-bytes call-rel-bytes]
-                                           (do
-                                             (root_push call-rel-bytes)
-                                             (let [result (emit-nine-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
-                                              (do
-                                                (root_pop)
-                                                result))))
+                                         (emit-nine-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
                                          frame-base-slot-count
                                          current-depth)
                                          (if (>= target-param-count 20)
