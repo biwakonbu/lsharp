@@ -1211,6 +1211,29 @@ fn test_linux_x86_control_loop_eight_arg_call_probe_reports_opcode40_bytes_and_t
 }
 
 #[test]
+fn test_linux_x86_eight_arg_dispatch_matrix_probe_compares_branch_pressure() {
+    let source = include_str!("selfhost_native_stage_chain.rs");
+    let test_body = source
+        .split("\nfn test_e2e_native_linux_x86_host_generates_eight_arg_dispatch_matrix_probe_bundle_artifact")
+        .nth(1)
+        .and_then(|tail| tail.split("/// NATIVE-LINUX-X86-02gb3").next())
+        .expect("Linux x86 eight-arg dispatch matrix probe が存在すること");
+
+    assert!(
+        test_body.contains("(defn emit-matrix-row")
+            && test_body.contains("(defn context-empty-eight-branch")
+            && test_body.contains("(defn context-real-low-eight-branch")
+            && test_body.contains("(defn context-real-low-no-consume-eight-branch")
+            && test_body.contains("(emit-matrix-row 1 empty-bundle)")
+            && test_body.contains("(emit-matrix-row 2 real-low-bundle)")
+            && test_body.contains("(emit-matrix-row 3 real-low-no-consume-bundle)")
+            && test_body.contains("(print-byte-window real-low-bundle 50 (vector-length real-low-bundle))")
+            && test_body.contains("(print-byte-window real-low-no-consume-bundle 50 (vector-length real-low-no-consume-bundle))"),
+        "Linux x86 eight-arg dispatch matrix probe は context + branch pressure の差分を同一出力で比較するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_one_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
     let opcode_call_branch = source
@@ -24161,6 +24184,446 @@ fn test_e2e_native_linux_x86_host_generates_control_loop_eight_arg_call_probe_bu
         format!("{}\n", bundle.function_start_len),
     )
     .expect("Linux x86_64 control-loop eight-arg call probe function-start-len.txt 書き込みに失敗");
+}
+
+/// NATIVE-LINUX-X86-02gbf: host 側 selfhost が eight-arg dispatch matrix probe の Linux native bundle を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_eight_arg_dispatch_matrix_probe_bundle_artifact() {
+    let artifact_dir = std::env::var_os(
+        "LSHARP_NATIVE_LINUX_X86_EIGHT_ARG_DISPATCH_MATRIX_PROBE_ARTIFACT_DIR",
+    )
+    .expect(
+        "LSHARP_NATIVE_LINUX_X86_EIGHT_ARG_DISPATCH_MATRIX_PROBE_ARTIFACT_DIR に Linux x86_64 eight-arg dispatch matrix probe artifact dir を指定すること",
+    );
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 eight-arg dispatch matrix probe artifact dir 作成に失敗");
+
+    let probe_source = r#"(module App.Probe)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn byte-at [bytes idx]
+  (let [value (vector-get bytes idx)]
+    (if (< value 0) (+ value 256) value)))
+
+(defn byte-at-or-minus-one [bytes idx len]
+  (if (>= idx len)
+    -1
+    (byte-at bytes idx)))
+
+(defn rel32-at [bytes offset]
+  (let [b0 (byte-at bytes (+ offset 1))
+        b1 (byte-at bytes (+ offset 2))
+        b2 (byte-at bytes (+ offset 3))
+        b3 (byte-at bytes (+ offset 4))
+        value (+ b0 (+ (* b1 256) (+ (* b2 65536) (* b3 16777216))))]
+    (if (>= value 2147483648) (- value 4294967296) value)))
+
+(defn first-rel32-offset-in-window [bytes offset idx end]
+  (if (>= idx end)
+    -1
+    (let [current (+ offset idx)]
+      (if (= (byte-at-or-minus-one bytes current (vector-length bytes)) 232)
+        current
+        (first-rel32-offset-in-window bytes offset (+ idx 1) end)))))
+
+(defn print-byte-window [bytes idx end]
+  (if (>= idx end)
+    0
+    (do
+      (print idx)
+      (print (byte-at-or-minus-one bytes idx (vector-length bytes)))
+      (print-byte-window bytes (+ idx 1) end))))
+
+(defn emit-matrix-row [label bytes]
+  (let [len (vector-length bytes)
+        call-offset (first-rel32-offset-in-window bytes 0 0 len)
+        target (if (>= call-offset 0)
+                 (+ call-offset (+ 5 (rel32-at bytes call-offset)))
+                 -1)]
+    (do
+      (print label)
+      (print len)
+      (print call-offset)
+      (print target)
+      call-offset)))
+
+(defn context-empty-eight-branch [operand current-offset function-starts context]
+  (let [function-metas (vector-get context 0)
+        import-count (vector-get context 1)
+        import-stub-offset (vector-get context 2)
+        function-start-base (vector-get context 3)
+        frame-base-slot-count (vector-get context 4)
+        current-depth (vector-get context 5)
+        operand-ref (ref-new operand)
+        current-offset-ref (ref-new current-offset)
+        function-starts-ref (ref-new function-starts)]
+    (do
+      (root_push operand-ref)
+      (root_push current-offset-ref)
+      (root_push function-starts-ref)
+      (let [target-meta (vector-get function-metas (ref-get operand-ref))
+            target-param-count (native-function-param-count target-meta)
+            call-next-offset (native-call-rel-next-offset-x86 target-param-count current-depth)
+            target-offset (if (< (ref-get operand-ref) import-count)
+                            (x86-import-ret-stub-offset import-stub-offset import-count (ref-get operand-ref))
+                            (- (vector-get (ref-get function-starts-ref) (- (ref-get operand-ref) import-count)) function-start-base))
+            call-rel (- target-offset (+ (ref-get current-offset-ref) call-next-offset))]
+        (let [call-rel-bytes (emit-call-rel32 call-rel)]
+          (do
+            (root_push call-rel-bytes)
+            (let [result
+                    (if (= target-param-count 0)
+                      (vector-new 0)
+                      (if (= target-param-count 1)
+                        (vector-new 0)
+                        (if (= target-param-count 2)
+                          (vector-new 0)
+                          (if (= target-param-count 3)
+                            (vector-new 0)
+                            (if (= target-param-count 4)
+                              (vector-new 0)
+                              (if (= target-param-count 5)
+                                (vector-new 0)
+                                (if (= target-param-count 6)
+                                  (vector-new 0)
+                                  (if (= target-param-count 7)
+                                    (vector-new 0)
+                                    (if (= target-param-count 8)
+                                      (emit-consume-eight-produce-one-bundle-x86
+                                        (let [call-rel-bytes call-rel-bytes]
+                                          (do
+                                            (root_push call-rel-bytes)
+                                            (let [result (emit-eight-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+                                              (do
+                                                (root_pop)
+                                                result))))
+                                        frame-base-slot-count
+                                        current-depth)
+                                      (vector-new 0))))))))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result)))))))
+
+(defn context-real-low-no-consume-eight-branch [operand current-offset function-starts context]
+  (let [function-metas (vector-get context 0)
+        import-count (vector-get context 1)
+        import-stub-offset (vector-get context 2)
+        function-start-base (vector-get context 3)
+        frame-base-slot-count (vector-get context 4)
+        current-depth (vector-get context 5)
+        operand-ref (ref-new operand)
+        current-offset-ref (ref-new current-offset)
+        function-starts-ref (ref-new function-starts)]
+    (do
+      (root_push operand-ref)
+      (root_push current-offset-ref)
+      (root_push function-starts-ref)
+      (let [target-meta (vector-get function-metas (ref-get operand-ref))
+            target-param-count (native-function-param-count target-meta)
+            call-next-offset (native-call-rel-next-offset-x86 target-param-count current-depth)
+            target-offset (if (< (ref-get operand-ref) import-count)
+                            (x86-import-ret-stub-offset import-stub-offset import-count (ref-get operand-ref))
+                            (- (vector-get (ref-get function-starts-ref) (- (ref-get operand-ref) import-count)) function-start-base))
+            call-rel (- target-offset (+ (ref-get current-offset-ref) call-next-offset))]
+        (let [call-rel-bytes (emit-call-rel32 call-rel)]
+          (do
+            (root_push call-rel-bytes)
+            (let [result
+                    (if (= target-param-count 0)
+                      call-rel-bytes
+                      (if (= target-param-count 1)
+                        (let [call-rel-bytes call-rel-bytes]
+                          (do
+                            (root_push call-rel-bytes)
+                            (let [result (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)]
+                              (do
+                                (root_pop)
+                                result))))
+                        (if (= target-param-count 2)
+                          (let [call-rel-bytes call-rel-bytes]
+                            (do
+                              (root_push call-rel-bytes)
+                              (let [result (emit-two-arg-call-x86-with-call-bytes call-rel-bytes frame-base-slot-count current-depth)]
+                                (do
+                                  (root_pop)
+                                  result))))
+                          (if (= target-param-count 3)
+                            (let [call-rel-bytes call-rel-bytes]
+                              (do
+                                (root_push call-rel-bytes)
+                                (let [result (emit-three-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+                                  (do
+                                    (root_pop)
+                                    result))))
+                            (if (= target-param-count 4)
+                              (let [call-rel-ref (ref-new call-rel)]
+                                (do
+                                  (root_push call-rel-ref)
+                                  (let [result (emit-four-arg-call-x86-core-with-rel-ref call-rel-ref frame-base-slot-count)]
+                                    (do
+                                      (root_pop)
+                                      result))))
+                              (if (= target-param-count 5)
+                                (let [call-rel-bytes call-rel-bytes]
+                                  (do
+                                    (root_push call-rel-bytes)
+                                    (let [result (emit-five-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+                                      (do
+                                        (root_pop)
+                                        result))))
+                                (if (= target-param-count 6)
+                                  (let [call-rel-bytes call-rel-bytes]
+                                    (do
+                                      (root_push call-rel-bytes)
+                                      (let [result (emit-six-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+                                        (do
+                                          (root_pop)
+                                          result))))
+                                  (if (= target-param-count 7)
+                                    (let [call-rel-bytes call-rel-bytes]
+                                      (do
+                                        (root_push call-rel-bytes)
+                                        (let [result (emit-seven-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+                                          (do
+                                            (root_pop)
+                                            result))))
+                                    (if (= target-param-count 8)
+                                      (emit-consume-eight-produce-one-bundle-x86
+                                        (let [call-rel-bytes call-rel-bytes]
+                                          (do
+                                            (root_push call-rel-bytes)
+                                            (let [result (emit-eight-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+                                              (do
+                                                (root_pop)
+                                                result))))
+                                        frame-base-slot-count
+                                        current-depth)
+                                      (vector-new 0))))))))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result)))))))
+
+(defn context-real-low-eight-branch [operand current-offset function-starts context]
+  (let [function-metas (vector-get context 0)
+        import-count (vector-get context 1)
+        import-stub-offset (vector-get context 2)
+        function-start-base (vector-get context 3)
+        frame-base-slot-count (vector-get context 4)
+        current-depth (vector-get context 5)
+        operand-ref (ref-new operand)
+        current-offset-ref (ref-new current-offset)
+        function-starts-ref (ref-new function-starts)]
+    (do
+      (root_push operand-ref)
+      (root_push current-offset-ref)
+      (root_push function-starts-ref)
+      (let [target-meta (vector-get function-metas (ref-get operand-ref))
+            target-param-count (native-function-param-count target-meta)
+            call-next-offset (native-call-rel-next-offset-x86 target-param-count current-depth)
+            target-offset (if (< (ref-get operand-ref) import-count)
+                            (x86-import-ret-stub-offset import-stub-offset import-count (ref-get operand-ref))
+                            (- (vector-get (ref-get function-starts-ref) (- (ref-get operand-ref) import-count)) function-start-base))
+            call-rel (- target-offset (+ (ref-get current-offset-ref) call-next-offset))]
+        (let [call-rel-bytes (emit-call-rel32 call-rel)]
+          (do
+            (root_push call-rel-bytes)
+            (let [result
+                    (if (= target-param-count 0)
+                      call-rel-bytes
+                      (if (= target-param-count 1)
+                        (let [call-rel-bytes call-rel-bytes]
+                          (do
+                            (root_push call-rel-bytes)
+                            (let [result (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)]
+                              (do
+                                (root_pop)
+                                result))))
+                        (if (= target-param-count 2)
+                          (let [call-rel-bytes call-rel-bytes]
+                            (do
+                              (root_push call-rel-bytes)
+                              (let [result (emit-two-arg-call-x86-with-call-bytes call-rel-bytes frame-base-slot-count current-depth)]
+                                (do
+                                  (root_pop)
+                                  result))))
+                          (if (= target-param-count 3)
+                            (emit-consume-three-produce-one-bundle-x86
+                              (let [call-rel-bytes call-rel-bytes]
+                                (do
+                                  (root_push call-rel-bytes)
+                                  (let [result (emit-three-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+                                    (do
+                                      (root_pop)
+                                      result))))
+                              frame-base-slot-count
+                              current-depth)
+                            (if (= target-param-count 4)
+                              (emit-consume-four-produce-one-bundle-x86
+                                (let [call-rel-ref (ref-new call-rel)]
+                                  (do
+                                    (root_push call-rel-ref)
+                                    (let [result (emit-four-arg-call-x86-core-with-rel-ref call-rel-ref frame-base-slot-count)]
+                                      (do
+                                        (root_pop)
+                                        result))))
+                                frame-base-slot-count
+                                current-depth)
+                              (if (= target-param-count 5)
+                                (emit-consume-five-produce-one-bundle-x86
+                                  (let [call-rel-bytes call-rel-bytes]
+                                    (do
+                                      (root_push call-rel-bytes)
+                                      (let [result (emit-five-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+                                        (do
+                                          (root_pop)
+                                          result))))
+                                  frame-base-slot-count
+                                  current-depth)
+                                (if (= target-param-count 6)
+                                  (emit-consume-six-produce-one-bundle-x86
+                                    (let [call-rel-bytes call-rel-bytes]
+                                      (do
+                                        (root_push call-rel-bytes)
+                                        (let [result (emit-six-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+                                          (do
+                                            (root_pop)
+                                            result))))
+                                    frame-base-slot-count
+                                    current-depth)
+                                  (if (= target-param-count 7)
+                                    (emit-consume-seven-produce-one-bundle-x86
+                                      (let [call-rel-bytes call-rel-bytes]
+                                        (do
+                                          (root_push call-rel-bytes)
+                                          (let [result (emit-seven-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+                                            (do
+                                              (root_pop)
+                                              result))))
+                                      frame-base-slot-count
+                                      current-depth)
+                                    (if (= target-param-count 8)
+                                      (emit-consume-eight-produce-one-bundle-x86
+                                        (let [call-rel-bytes call-rel-bytes]
+                                          (do
+                                            (root_push call-rel-bytes)
+                                            (let [result (emit-eight-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+                                              (do
+                                                (root_pop)
+                                                result))))
+                                        frame-base-slot-count
+                                        current-depth)
+                                      (vector-new 0))))))))))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result)))))))
+
+(defn main []
+  (let [function-metas
+          (vector-push
+            (push-import-placeholders 0 10 (vector-new 12))
+            (make-function-meta 8 0 (vector-new 0)))
+        starts (vector-push (vector-new 1) 0)
+        context
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push (vector-new 6) function-metas)
+                    10)
+                  2048)
+                0)
+              16)
+            8)
+        empty-bundle (context-empty-eight-branch 10 0 starts context)
+        real-low-bundle (context-real-low-eight-branch 10 0 starts context)
+        real-low-no-consume-bundle (context-real-low-no-consume-eight-branch 10 0 starts context)]
+    (do
+      (root_push empty-bundle)
+      (root_push real-low-bundle)
+      (root_push real-low-no-consume-bundle)
+      (emit-matrix-row 1 empty-bundle)
+      (emit-matrix-row 2 real-low-bundle)
+      (emit-matrix-row 3 real-low-no-consume-bundle)
+      (print-byte-window real-low-bundle 50 (vector-length real-low-bundle))
+      (print-byte-window real-low-no-consume-bundle 50 (vector-length real-low-no-consume-bundle))
+      (let [call-offset (first-rel32-offset-in-window real-low-bundle 0 0 (vector-length real-low-bundle))]
+        (do
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (if (>= call-offset 0)
+            (byte-at real-low-bundle call-offset)
+            (vector-length real-low-bundle)))))))"#;
+    let escaped_probe_source = escape_lsharp_string(probe_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Probe.ls" "{escaped_probe_source}")
+            (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle =
+        run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+            "linux-x86-eight-arg-dispatch-matrix-probe-bundle",
+            &payload_expr,
+            &[],
+        );
+
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86_64 eight-arg dispatch matrix probe entrypoint は code 範囲内にあること: entry={} len={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len()
+    );
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86_64 eight-arg dispatch matrix probe code artifact は空でないこと"
+    );
+
+    std::fs::write(artifact_dir.join("stage-code.bin"), &bundle.code_bytes)
+        .expect("Linux x86_64 eight-arg dispatch matrix probe stage-code.bin 書き込みに失敗");
+    std::fs::write(artifact_dir.join("stage-data.bin"), &bundle.data_bytes)
+        .expect("Linux x86_64 eight-arg dispatch matrix probe stage-data.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", bundle.entrypoint_offset),
+    )
+    .expect("Linux x86_64 eight-arg dispatch matrix probe entrypoint-offset.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", bundle.main_func_idx),
+    )
+    .expect("Linux x86_64 eight-arg dispatch matrix probe main-func-idx.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", bundle.function_start_len),
+    )
+    .expect("Linux x86_64 eight-arg dispatch matrix probe function-start-len.txt 書き込みに失敗");
 }
 
 /// NATIVE-LINUX-X86-02gb3: host 側 selfhost が padded depth=1 direct append probe の Linux native bundle を生成すること。
