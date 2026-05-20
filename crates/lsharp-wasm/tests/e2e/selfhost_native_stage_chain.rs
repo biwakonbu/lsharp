@@ -1246,9 +1246,11 @@ fn test_linux_x86_low_arity_prefix_probe_is_env_driven() {
 
     assert!(
         test_body.contains("LSHARP_NATIVE_LINUX_X86_LOW_ARITY_PREFIX_PROBE_MAX")
+            && test_body.contains("LSHARP_NATIVE_LINUX_X86_LOW_ARITY_PREFIX_PROBE_ONE_ARG_SHAPE")
             && test_body.contains("build_low_arity_prefix_probe_source")
             && test_body.contains("context-low-prefix-probe")
             && test_body.contains("(print prefix-max)")
+            && test_body.contains("(print one-arg-shape-id)")
             && test_body.contains("(print call-offset)")
             && test_body.contains("(print-byte-window bundle 50 (vector-length bundle))"),
         "Linux x86 low-arity prefix probe は env で 0..N の low-arity body を切り替え、call-offset と byte window を出力するべき"
@@ -24648,10 +24650,17 @@ fn test_e2e_native_linux_x86_host_generates_eight_arg_dispatch_matrix_probe_bund
     .expect("Linux x86_64 eight-arg dispatch matrix probe function-start-len.txt 書き込みに失敗");
 }
 
-fn low_arity_prefix_branch_body(branch: usize) -> &'static str {
-    match branch {
-        0 => "call-rel-bytes",
-        1 => {
+fn low_arity_prefix_one_arg_branch_body(one_arg_shape: &str) -> &'static str {
+    match one_arg_shape {
+        "call-only" => "(emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)",
+        "root-only" => {
+            r#"(do
+  (root_push call-rel-bytes)
+  (root_pop)
+  call-rel-bytes)"#
+        }
+        "shadow-only" => "(let [call-rel-bytes call-rel-bytes] call-rel-bytes)",
+        "full" => {
             r#"(let [call-rel-bytes call-rel-bytes]
   (do
     (root_push call-rel-bytes)
@@ -24660,6 +24669,14 @@ fn low_arity_prefix_branch_body(branch: usize) -> &'static str {
         (root_pop)
         result))))"#
         }
+        _ => unreachable!("unsupported one-arg branch shape"),
+    }
+}
+
+fn low_arity_prefix_branch_body(branch: usize, one_arg_shape: &str) -> &'static str {
+    match branch {
+        0 => "call-rel-bytes",
+        1 => low_arity_prefix_one_arg_branch_body(one_arg_shape),
         2 => {
             r#"(let [call-rel-bytes call-rel-bytes]
   (do
@@ -24731,22 +24748,30 @@ fn eight_arg_prefix_branch_body() -> &'static str {
   current-depth)"#
 }
 
-fn build_low_arity_prefix_branch_expr(branch: usize, max_real_branch: usize) -> String {
+fn build_low_arity_prefix_branch_expr(
+    branch: usize,
+    max_real_branch: usize,
+    one_arg_shape: &str,
+) -> String {
     if branch == 8 {
         return eight_arg_prefix_branch_body().to_string();
     }
 
     let branch_body = if branch <= max_real_branch {
-        low_arity_prefix_branch_body(branch)
+        low_arity_prefix_branch_body(branch, one_arg_shape)
     } else {
         "(vector-new 0)"
     };
-    let next = build_low_arity_prefix_branch_expr(branch + 1, max_real_branch);
+    let next = build_low_arity_prefix_branch_expr(branch + 1, max_real_branch, one_arg_shape);
     format!("(if (= target-param-count {branch})\n  {branch_body}\n  {next})")
 }
 
-fn build_low_arity_prefix_probe_source(max_real_branch: usize) -> String {
-    let branch_expr = build_low_arity_prefix_branch_expr(0, max_real_branch);
+fn build_low_arity_prefix_probe_source(
+    max_real_branch: usize,
+    one_arg_shape: &str,
+    one_arg_shape_id: usize,
+) -> String {
+    let branch_expr = build_low_arity_prefix_branch_expr(0, max_real_branch, one_arg_shape);
     format!(
         r#"(module App.Probe)
 (import Backend.Native.NativeCodegen)
@@ -24851,6 +24876,7 @@ fn build_low_arity_prefix_probe_source(max_real_branch: usize) -> String {
               16)
             8)
         prefix-max {max_real_branch}
+        one-arg-shape-id {one_arg_shape_id}
         bundle (context-low-prefix-probe 10 0 starts context)]
     (do
       (root_push bundle)
@@ -24861,6 +24887,7 @@ fn build_low_arity_prefix_probe_source(max_real_branch: usize) -> String {
                      -1)]
         (do
           (print prefix-max)
+          (print one-arg-shape-id)
           (print len)
           (print call-offset)
           (print target)
@@ -24870,7 +24897,8 @@ fn build_low_arity_prefix_probe_source(max_real_branch: usize) -> String {
             (byte-at bundle call-offset)
             len))))))"#,
         branch_expr = branch_expr,
-        max_real_branch = max_real_branch
+        max_real_branch = max_real_branch,
+        one_arg_shape_id = one_arg_shape_id
     )
 }
 
@@ -24887,6 +24915,18 @@ fn test_e2e_native_linux_x86_host_generates_low_arity_prefix_probe_bundle_artifa
         max_real_branch <= 7,
         "LSHARP_NATIVE_LINUX_X86_LOW_ARITY_PREFIX_PROBE_MAX は 0..7 の範囲であること"
     );
+    let one_arg_shape =
+        std::env::var("LSHARP_NATIVE_LINUX_X86_LOW_ARITY_PREFIX_PROBE_ONE_ARG_SHAPE")
+            .unwrap_or_else(|_| "full".to_string());
+    let one_arg_shape_id = match one_arg_shape.as_str() {
+        "full" => 0,
+        "call-only" => 1,
+        "root-only" => 2,
+        "shadow-only" => 3,
+        _ => panic!(
+            "LSHARP_NATIVE_LINUX_X86_LOW_ARITY_PREFIX_PROBE_ONE_ARG_SHAPE は full/call-only/root-only/shadow-only のいずれかであること"
+        ),
+    };
 
     let artifact_dir = std::env::var_os(
         "LSHARP_NATIVE_LINUX_X86_LOW_ARITY_PREFIX_PROBE_ARTIFACT_DIR",
@@ -24898,9 +24938,11 @@ fn test_e2e_native_linux_x86_host_generates_low_arity_prefix_probe_bundle_artifa
     std::fs::create_dir_all(&artifact_dir)
         .expect("Linux x86_64 low-arity prefix probe artifact dir 作成に失敗");
 
-    let probe_source = build_low_arity_prefix_probe_source(max_real_branch);
+    let probe_source =
+        build_low_arity_prefix_probe_source(max_real_branch, &one_arg_shape, one_arg_shape_id);
     assert!(probe_source.contains("context-low-prefix-probe"));
     assert!(probe_source.contains("(print prefix-max)"));
+    assert!(probe_source.contains("(print one-arg-shape-id)"));
     assert!(probe_source.contains("(print call-offset)"));
     assert!(probe_source.contains("(print-byte-window bundle 50 (vector-length bundle))"));
     let escaped_probe_source = escape_lsharp_string(&probe_source);
