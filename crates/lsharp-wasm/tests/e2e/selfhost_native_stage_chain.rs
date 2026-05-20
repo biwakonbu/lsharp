@@ -1107,6 +1107,42 @@ fn test_linux_x86_function_offsets_diagnostic_is_env_driven() {
 }
 
 #[test]
+fn test_linux_x86_start_window_diagnostic_is_env_driven() {
+    let source = include_str!("selfhost_native_stage_chain.rs");
+    let diagnostic_body = source
+        .split("\nfn test_e2e_selfhost_main_linux_x86_actual_seed_start_window_diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("#[test]").next())
+        .expect("Linux x86 start window diagnostic が存在すること");
+
+    assert!(
+        diagnostic_body.contains("LSHARP_NATIVE_LINUX_X86_START_OFFSET_START")
+            && diagnostic_body.contains("LSHARP_NATIVE_LINUX_X86_START_OFFSET_END")
+            && diagnostic_body.contains("{start_offset}")
+            && diagnostic_body.contains("{end_offset}"),
+        "Linux x86 start window diagnostic は code offset window を env で指定できるべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_owner_decl_diagnostic_is_env_driven() {
+    let source = include_str!("selfhost_native_stage_chain.rs");
+    let diagnostic_body = source
+        .split("\nfn test_e2e_selfhost_main_linux_x86_actual_seed_owner_decl_diagnostic")
+        .nth(1)
+        .and_then(|tail| tail.split("#[test]").next())
+        .expect("Linux x86 owner decl diagnostic が存在すること");
+
+    assert!(
+        diagnostic_body.contains("LSHARP_NATIVE_LINUX_X86_OWNER_FUNCTION_INDEX")
+            && diagnostic_body.contains("{target_idx}")
+            && diagnostic_body.contains("register-all-pairs")
+            && diagnostic_body.contains("(compile-file-pairs-with-cache \"src/App/Seed.ls\""),
+        "Linux x86 owner decl diagnostic は function index を env で指定して actual Seed graph を調べられるべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_seed_entry_ir_segment_probe_reports_expected_rel32_targets() {
     let source = include_str!("selfhost_native_stage_chain.rs");
     let test_body = source
@@ -23165,6 +23201,114 @@ fn test_e2e_native_linux_x86_host_generates_codegen_four_arg_call_probe_bundle_a
     .expect("Linux x86_64 codegen four-arg call probe function-start-len.txt 書き込みに失敗");
 }
 
+/// NATIVE-LINUX-X86-02gb8: host 側 selfhost が eight-arg call codegen probe の Linux native bundle を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_codegen_eight_arg_call_probe_bundle_artifact() {
+    let artifact_dir =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_CODEGEN_EIGHT_ARG_CALL_PROBE_ARTIFACT_DIR")
+            .expect(
+                "LSHARP_NATIVE_LINUX_X86_CODEGEN_EIGHT_ARG_CALL_PROBE_ARTIFACT_DIR に Linux x86_64 codegen eight-arg call probe artifact dir を指定すること",
+            );
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 codegen eight-arg call probe artifact dir 作成に失敗");
+
+    let probe_source = r#"(module App.Probe)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn byte-at [bytes idx]
+  (let [value (vector-get bytes idx)]
+    (if (< value 0) (+ value 256) value)))
+
+(defn first-call-byte [bytes idx len]
+  (if (>= idx len)
+    0
+    (let [byte (byte-at bytes idx)]
+      (if (= byte 232)
+        byte
+        (first-call-byte bytes (+ idx 1) len)))))
+
+(defn main []
+  (let [function-metas
+          (vector-push
+            (push-import-placeholders 0 10 (vector-new 12))
+            (make-function-meta 8 0 (vector-new 0)))
+        function-starts (vector-push (vector-new 1) 0)
+        context
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push (vector-new 6) function-metas)
+                    10)
+                  2048)
+                0)
+              16)
+            8)
+        bundle (codegen-x86-opcode-call-bundle 10 0 function-starts context)]
+    (first-call-byte bundle 0 (vector-length bundle))))"#;
+    let escaped_probe_source = escape_lsharp_string(probe_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Probe.ls" "{escaped_probe_source}")
+            (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle =
+        run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+            "linux-x86-codegen-eight-arg-call-probe-bundle",
+            &payload_expr,
+            &[],
+        );
+
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86_64 codegen eight-arg call probe entrypoint は code 範囲内にあること: entry={} len={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len()
+    );
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86_64 codegen eight-arg call probe code artifact は空でないこと"
+    );
+
+    std::fs::write(artifact_dir.join("stage-code.bin"), &bundle.code_bytes)
+        .expect("Linux x86_64 codegen eight-arg call probe stage-code.bin 書き込みに失敗");
+    std::fs::write(artifact_dir.join("stage-data.bin"), &bundle.data_bytes)
+        .expect("Linux x86_64 codegen eight-arg call probe stage-data.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", bundle.entrypoint_offset),
+    )
+    .expect("Linux x86_64 codegen eight-arg call probe entrypoint-offset.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", bundle.main_func_idx),
+    )
+    .expect("Linux x86_64 codegen eight-arg call probe main-func-idx.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", bundle.function_start_len),
+    )
+    .expect("Linux x86_64 codegen eight-arg call probe function-start-len.txt 書き込みに失敗");
+}
+
 /// NATIVE-LINUX-X86-02gb3: host 側 selfhost が padded depth=1 direct append probe の Linux native bundle を生成すること。
 #[test]
 #[ignore]
@@ -24837,6 +24981,18 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_segmented_function_size_matches_
 #[test]
 #[ignore]
 fn test_e2e_selfhost_main_linux_x86_actual_seed_start_window_diagnostic() {
+    let start_offset: i64 = std::env::var("LSHARP_NATIVE_LINUX_X86_START_OFFSET_START")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(931000);
+    let end_offset: i64 = std::env::var("LSHARP_NATIVE_LINUX_X86_START_OFFSET_END")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(933500);
+    assert!(
+        start_offset < end_offset,
+        "LSHARP_NATIVE_LINUX_X86_START_OFFSET_START は START_OFFSET_END より小さい必要がある: {start_offset}..{end_offset}"
+    );
     let seed_source = linux_x86_representative_actual_stage23_seed_source();
     let escaped_seed_source = escape_lsharp_string(&seed_source);
     let payload_expr = format!(
@@ -24878,7 +25034,7 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_start_window_diagnostic() {
   (if (>= idx len)
     0
     (let [start (vector-get starts idx)]
-      (if (and (>= start 931000) (< start 933500))
+      (if (and (>= start {start_offset}) (< start {end_offset}))
         (let [func (vector-get functions (+ idx 10))]
           (do
             (print idx)
@@ -24900,7 +25056,9 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_start_window_diagnostic() {
         native-callables (normalize-selfhost-native-function-metas callables)
         starts (collect-callable-function-starts-x86 native-callables 10)]
     (print-start-window native-callables starts 0 (vector-length starts))))"#,
-        payload_expr = payload_expr
+        payload_expr = payload_expr,
+        start_offset = start_offset,
+        end_offset = end_offset
     );
     let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
         try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
@@ -25197,6 +25355,112 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_function_offsets_diagnostic() {
             );
         }
     }
+}
+
+#[test]
+#[ignore]
+fn test_e2e_selfhost_main_linux_x86_actual_seed_owner_decl_diagnostic() {
+    let target_idx: i64 = std::env::var("LSHARP_NATIVE_LINUX_X86_OWNER_FUNCTION_INDEX")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(1472);
+    let seed_source = linux_x86_representative_actual_stage23_seed_source();
+    let escaped_seed_source = escape_lsharp_string(&seed_source);
+    let harness = format!(
+        r#"(module App.HarnessMain)
+(import App.CompilerMode)
+(import Backend.Wasm.CompilerBase)
+
+(defn text-starts-with-loop [text prefix idx len]
+  (if (>= idx len)
+    true
+    (if (= (string-char-at text idx) (string-char-at prefix idx))
+      (text-starts-with-loop text prefix (+ idx 1) len)
+      false)))
+
+(defn text-starts-with [text prefix]
+  (let [len (string-length prefix)]
+    (if (< (string-length text) len)
+      false
+      (text-starts-with-loop text prefix 0 len))))
+
+(defn make-owner-state [found pair-idx decl-idx defn-ordinal decl-hash]
+  (vector-push
+    (vector-push
+      (vector-push
+        (vector-push
+          (vector-push (vector-new 5) found)
+          pair-idx)
+        decl-idx)
+      defn-ordinal)
+    decl-hash))
+
+(defn find-owner-in-decls [decls idx len ftable target defn-ordinal]
+  (if (>= idx len)
+    (make-owner-state 0 -1 -1 defn-ordinal 0)
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (let [decl-hash (vector-get decl 1)
+              func-idx (ftable-lookup ftable decl-hash)]
+          (if (= func-idx target)
+            (make-owner-state 1 0 idx defn-ordinal decl-hash)
+            (find-owner-in-decls decls (+ idx 1) len ftable target (+ defn-ordinal 1))))
+        (find-owner-in-decls decls (+ idx 1) len ftable target defn-ordinal)))))
+
+(defn find-owner-in-pairs [pairs pair-idx len ftable target]
+  (if (>= pair-idx len)
+    (make-owner-state 0 -1 -1 -1 0)
+    (let [pair (vector-get pairs pair-idx)
+          decls (vector-get pair 1)
+          state (find-owner-in-decls decls 0 (vector-length decls) ftable target 0)]
+      (if (= (vector-get state 0) 1)
+        (make-owner-state 1 pair-idx (vector-get state 2) (vector-get state 3) (vector-get state 4))
+        (find-owner-in-pairs pairs (+ pair-idx 1) len ftable target)))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        _ (write-file "src/App/Seed.ls" "{escaped_seed_source}")
+        pairs (compile-file-pairs-with-cache "src/App/Seed.ls" cache-ref parse-count-ref)
+        reg-result (register-all-pairs pairs 0 (vector-length pairs) (ftable-new) 10)
+        ftable (vector-get reg-result 0)
+        owner (find-owner-in-pairs pairs 0 (vector-length pairs) ftable {target_idx})
+        pair (vector-get pairs (vector-get owner 1))
+        src (vector-get pair 0)]
+    (do
+      (print (vector-get owner 0))
+      (print (vector-get owner 1))
+      (print (vector-get owner 2))
+      (print (vector-get owner 3))
+      (print (vector-get owner 4))
+      (print (if (text-starts-with src "(module Backend.Native.NativeCodegen)") 1 0))
+      (print (if (text-starts-with src "(module Backend.Wasm.Compiler)") 1 0))
+      (print (if (text-starts-with src "(module Backend.Wasm.CompilerBase)") 1 0))
+      (print (if (text-starts-with src "(module Syntax.Parser)") 1 0))
+      (print (if (text-starts-with src "(module App.Seed)") 1 0))
+      (print (string-length src))
+      0)))"#,
+        escaped_seed_source = escaped_seed_source,
+        target_idx = target_idx
+    );
+    let label = format!("linux-x86-actual-seed-owner-{target_idx}-diagnostic");
+    let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
+        try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
+            &label,
+            SELFHOST_APP_MAIN_REPRESENTATIVE_MODULES,
+            "src/App/HarnessMain.ls",
+            &harness,
+            &[],
+        )
+    })
+    .expect("Linux x86 actual seed owner decl diagnostic 実行に失敗");
+    let lines = parse_numeric_lines(&output);
+    println!("Linux x86 actual seed owner {target_idx} lines: {lines:?}");
+    assert_eq!(
+        lines.first().copied(),
+        Some(1),
+        "指定 function index の owner decl が見つからない: target={target_idx} lines={lines:?}"
+    );
 }
 
 #[test]
