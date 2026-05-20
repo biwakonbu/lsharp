@@ -23742,6 +23742,179 @@ fn test_e2e_native_linux_x86_host_generates_inline_eight_arg_branch_call_bytes_p
     );
 }
 
+/// NATIVE-LINUX-X86-02gbd: host 側 selfhost が context/direct eight-arg call-bytes probe の Linux native bundle を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_context_direct_eight_arg_call_bytes_probe_bundle_artifact()
+ {
+    let artifact_dir = std::env::var_os(
+        "LSHARP_NATIVE_LINUX_X86_CONTEXT_DIRECT_EIGHT_ARG_CALL_BYTES_PROBE_ARTIFACT_DIR",
+    )
+    .expect(
+        "LSHARP_NATIVE_LINUX_X86_CONTEXT_DIRECT_EIGHT_ARG_CALL_BYTES_PROBE_ARTIFACT_DIR に Linux x86_64 context direct eight-arg call-bytes probe artifact dir を指定すること",
+    );
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 context direct eight-arg call-bytes probe artifact dir 作成に失敗");
+
+    let probe_source = r#"(module App.Probe)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn byte-at [bytes idx]
+  (let [value (vector-get bytes idx)]
+    (if (< value 0) (+ value 256) value)))
+
+(defn first-call-byte [bytes idx len]
+  (if (>= idx len)
+    0
+    (let [byte (byte-at bytes idx)]
+      (if (= byte 232)
+        byte
+        (first-call-byte bytes (+ idx 1) len)))))
+
+(defn print-byte-window [bytes idx end]
+  (if (>= idx end)
+    0
+    (do
+      (print idx)
+      (print (byte-at bytes idx))
+      (print-byte-window bytes (+ idx 1) end))))
+
+(defn context-direct-eight [operand current-offset function-starts context]
+  (let [function-metas (vector-get context 0)
+        import-count (vector-get context 1)
+        import-stub-offset (vector-get context 2)
+        function-start-base (vector-get context 3)
+        frame-base-slot-count (vector-get context 4)
+        current-depth (vector-get context 5)
+        operand-ref (ref-new operand)
+        current-offset-ref (ref-new current-offset)
+        function-starts-ref (ref-new function-starts)]
+    (do
+      (root_push operand-ref)
+      (root_push current-offset-ref)
+      (root_push function-starts-ref)
+      (let [target-meta (vector-get function-metas (ref-get operand-ref))
+            target-param-count (native-function-param-count target-meta)
+            call-next-offset (native-call-rel-next-offset-x86 target-param-count current-depth)
+            target-offset (if (< (ref-get operand-ref) import-count)
+                            (x86-import-ret-stub-offset import-stub-offset import-count (ref-get operand-ref))
+                            (- (vector-get (ref-get function-starts-ref) (- (ref-get operand-ref) import-count)) function-start-base))
+            call-rel (- target-offset (+ (ref-get current-offset-ref) call-next-offset))]
+        (let [call-rel-bytes (emit-call-rel32 call-rel)]
+          (do
+            (root_push call-rel-bytes)
+            (let [result
+                    (if (= target-param-count 8)
+                      (emit-consume-eight-produce-one-bundle-x86
+                        (let [call-rel-bytes call-rel-bytes]
+                          (do
+                            (root_push call-rel-bytes)
+                            (let [result (emit-eight-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+                              (do
+                                (root_pop)
+                                result))))
+                        frame-base-slot-count
+                        current-depth)
+                      (vector-new 0))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result)))))))
+
+(defn main []
+  (let [function-metas
+          (vector-push
+            (push-import-placeholders 0 10 (vector-new 12))
+            (make-function-meta 8 0 (vector-new 0)))
+        function-starts (vector-push (vector-new 1) 0)
+        context
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push (vector-new 6) function-metas)
+                    10)
+                  2048)
+                0)
+              16)
+            8)
+        bundle (context-direct-eight 10 0 function-starts context)]
+    (do
+      (print (vector-length bundle))
+      (print-byte-window bundle 0 (vector-length bundle))
+      (first-call-byte bundle 0 (vector-length bundle)))))"#;
+    let escaped_probe_source = escape_lsharp_string(probe_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Probe.ls" "{escaped_probe_source}")
+            (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle =
+        run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+            "linux-x86-context-direct-eight-arg-call-bytes-probe-bundle",
+            &payload_expr,
+            &[],
+        );
+
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86_64 context direct eight-arg call-bytes probe entrypoint は code 範囲内にあること: entry={} len={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len()
+    );
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86_64 context direct eight-arg call-bytes probe code artifact は空でないこと"
+    );
+
+    std::fs::write(artifact_dir.join("stage-code.bin"), &bundle.code_bytes).expect(
+        "Linux x86_64 context direct eight-arg call-bytes probe stage-code.bin 書き込みに失敗",
+    );
+    std::fs::write(artifact_dir.join("stage-data.bin"), &bundle.data_bytes).expect(
+        "Linux x86_64 context direct eight-arg call-bytes probe stage-data.bin 書き込みに失敗",
+    );
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", bundle.entrypoint_offset),
+    )
+    .expect(
+        "Linux x86_64 context direct eight-arg call-bytes probe entrypoint-offset.txt 書き込みに失敗",
+    );
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", bundle.main_func_idx),
+    )
+    .expect(
+        "Linux x86_64 context direct eight-arg call-bytes probe main-func-idx.txt 書き込みに失敗",
+    );
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", bundle.function_start_len),
+    )
+    .expect(
+        "Linux x86_64 context direct eight-arg call-bytes probe function-start-len.txt 書き込みに失敗",
+    );
+}
+
 /// NATIVE-LINUX-X86-02gb3: host 側 selfhost が padded depth=1 direct append probe の Linux native bundle を生成すること。
 #[test]
 #[ignore]
