@@ -534,7 +534,7 @@ fn test_linux_x86_representative_seed_can_print_function_segment_metadata() {
             && source.contains("(print (native-function-local-count func-meta))")
             && source.contains("(print body-offset)")
             && source.contains("(print (vector-length ir-func))")
-            && source.contains("(defn print-x86-function-ir-prefix-loop [segment ir offsets functions idx len depth]")
+            && source.contains("(defn print-x86-function-ir-prefix-loop [segment ir offsets functions control-ctx idx len depth]")
             && source.contains("(print 9000000021)")
             && source.contains(
                 "(let [final (print-x86-function-segment-metadata-loop ctx (+ idx 1) len)]"
@@ -555,6 +555,26 @@ fn test_linux_x86_metadata_correlates_i64_ge_expected_emitted_bytes() {
             && source
                 .contains("(print-x86-i64-ge-emitted-byte-diagnostic idx opcode operand depth)"),
         "Linux x86 metadata mode は opcode35 の segment bytes と codegen-ir-instr expected bytes を同一 prefix 診断で相関できるべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_metadata_replays_i64_ge_control_loop_single_row() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    assert!(
+        source.contains("(defn print-x86-i64-ge-control-replay-diagnostic")
+            && source.contains("(print 9000000024)")
+            && source.contains("(print 9000000025)")
+            && source.contains("(print 9000000026)")
+            && source.contains("(emit-consume-two-bundle-x86")
+            && source.contains("(make-x86-control-loop-state idx 1)")
+            && source.contains(
+                "(generate-native-control-instr-bundle-loop-x86-with-context fresh-ctx row-state)"
+            )
+            && source.contains(
+                "(print-x86-i64-ge-control-replay-diagnostic control-ctx idx opcode operand offset size)"
+            ),
+        "Linux x86 metadata mode は opcode35 を同一 control-loop ctx の single-row replay で相関できるべき"
     );
 }
 
@@ -5195,7 +5215,131 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         (root_pop)))
     0))
 
-(defn print-x86-function-ir-prefix-loop [segment ir offsets functions idx len depth]
+(defn print-x86-i64-ge-control-replay-diagnostic [control-ctx idx opcode operand offset size]
+  (if (= opcode 35)
+    (do
+      (root_push control-ctx)
+      (let [depths (vector-get control-ctx 4)
+            frame-base-slot-count (vector-get control-ctx 8)
+            current-depth (vector-get depths idx)
+            exact (emit-consume-two-bundle-x86
+                    (codegen-ir-instr opcode operand)
+                    frame-base-slot-count
+                    current-depth)
+            exact-len (vector-length exact)]
+        (do
+          (root_push exact)
+          (let [scratch-ref (ref-new (vector-new 0))]
+            (do
+              (root_push scratch-ref)
+              (let [replay-ref (ref-new (vector-new 0))]
+                (do
+                  (root_push replay-ref)
+                  (print 9000000024)
+                  (print idx)
+                  (print opcode)
+                  (print operand)
+                  (print current-depth)
+                  (print offset)
+                  (print size)
+                  (print exact-len)
+                  (print (byte-at-or-zero exact 0 exact-len))
+                  (print (byte-at-or-zero exact 1 exact-len))
+                  (print (byte-at-or-zero exact 2 exact-len))
+                  (print (byte-at-or-zero exact 3 exact-len))
+                  (print (byte-at-or-zero exact 4 exact-len))
+                  (print (byte-at-or-zero exact 5 exact-len))
+                  (print (byte-at-or-zero exact 6 exact-len))
+                  (print (byte-at-or-zero exact 7 exact-len))
+                  (append-native-bytes-loop scratch-ref exact 0 exact-len)
+                  (let [scratch (ref-get scratch-ref)
+                        scratch-len (vector-length scratch)
+                        ir-func (vector-get control-ctx 0)
+                        meta (vector-get control-ctx 2)
+                        offsets (vector-get control-ctx 3)
+                        function-starts (vector-get control-ctx 5)
+                        function-metas (vector-get control-ctx 6)
+                        layout (vector-get control-ctx 7)]
+                    (do
+                      (root_push scratch)
+                      (root_push ir-func)
+                      (root_push meta)
+                      (root_push offsets)
+                      (root_push function-starts)
+                      (root_push function-metas)
+                      (root_push layout)
+                      (print 9000000025)
+                      (print idx)
+                      (print opcode)
+                      (print operand)
+                      (print current-depth)
+                      (print offset)
+                      (print size)
+                      (print scratch-len)
+                      (print (byte-at-or-zero scratch 0 scratch-len))
+                      (print (byte-at-or-zero scratch 1 scratch-len))
+                      (print (byte-at-or-zero scratch 2 scratch-len))
+                      (print (byte-at-or-zero scratch 3 scratch-len))
+                      (print (byte-at-or-zero scratch 4 scratch-len))
+                      (print (byte-at-or-zero scratch 5 scratch-len))
+                      (print (byte-at-or-zero scratch 6 scratch-len))
+                      (print (byte-at-or-zero scratch 7 scratch-len))
+                      (let [fresh-ctx
+                              (make-x86-control-bundle-context
+                                ir-func
+                                replay-ref
+                                meta
+                                offsets
+                                depths
+                                function-starts
+                                function-metas
+                                layout
+                                frame-base-slot-count)]
+                        (do
+                          (root_push fresh-ctx)
+                          (let [before-len (vector-length (ref-get replay-ref))
+                                row-state (make-x86-control-loop-state idx 1)]
+                            (do
+                              (root_push row-state)
+                              (generate-native-control-instr-bundle-loop-x86-with-context fresh-ctx row-state)
+                              (let [replay (ref-get replay-ref)
+                                    after-len (vector-length replay)]
+                                (do
+                                  (root_push replay)
+                                  (print 9000000026)
+                                  (print idx)
+                                  (print opcode)
+                                  (print operand)
+                                  (print current-depth)
+                                  (print offset)
+                                  (print size)
+                                  (print before-len)
+                                  (print after-len)
+                                  (print (byte-at-or-zero replay before-len after-len))
+                                  (print (byte-at-or-zero replay (+ before-len 1) after-len))
+                                  (print (byte-at-or-zero replay (+ before-len 2) after-len))
+                                  (print (byte-at-or-zero replay (+ before-len 3) after-len))
+                                  (print (byte-at-or-zero replay (+ before-len 4) after-len))
+                                  (print (byte-at-or-zero replay (+ before-len 5) after-len))
+                                  (print (byte-at-or-zero replay (+ before-len 6) after-len))
+                                  (print (byte-at-or-zero replay (+ before-len 7) after-len))
+                                  (root_pop)))
+                              (root_pop)))
+                          (root_pop)))
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)
+                      (root_pop)))
+                  (root_pop)))
+              (root_pop)))
+          (root_pop)
+          (root_pop))))
+    0))
+
+(defn print-x86-function-ir-prefix-loop [segment ir offsets functions control-ctx idx len depth]
   (if (>= idx len)
     0
     (let [instr (vector-get ir idx)
@@ -5221,11 +5365,13 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         (print (byte-at-or-zero segment (+ offset 6) segment-len))
         (print (byte-at-or-zero segment (+ offset 7) segment-len))
         (print-x86-i64-ge-emitted-byte-diagnostic idx opcode operand depth)
+        (print-x86-i64-ge-control-replay-diagnostic control-ctx idx opcode operand offset size)
         (print-x86-function-ir-prefix-loop
           segment
           ir
           offsets
           functions
+          control-ctx
           (+ idx 1)
           len
           (apply-stack-delta depth (opcode-stack-delta opcode operand functions)))))))
@@ -5282,12 +5428,34 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                         (root_push layout)
                         (generate-native-function-x86-64-bundle-with-layout func-meta result starts functions layout)
                         (let [segment (ref-get result)
-                              offsets (collect-native-bundle-offsets-x86 ir-func functions body-offset)
-                              prefix-len (if (< (vector-length ir-func) 8) (vector-length ir-func) 8)]
+                              offsets (collect-native-bundle-offsets-x86 ir-func functions body-offset)]
                           (do
                             (root_push segment)
                             (root_push offsets)
-                            (print-x86-function-ir-prefix-loop segment ir-func offsets functions 0 prefix-len 0)
+                            (let [depths (collect-native-bundle-depths-x86 ir-func functions)]
+                              (do
+                                (root_push depths)
+                                (let [control-meta (scan-control-flow-meta ir-func)]
+                                  (do
+                                    (root_push control-meta)
+                                    (let [control-ctx
+                                            (make-x86-control-bundle-context
+                                              ir-func
+                                              result
+                                              control-meta
+                                              offsets
+                                              depths
+                                              starts
+                                              functions
+                                              layout
+                                              frame-base-slot-count)
+                                          prefix-len (if (< (vector-length ir-func) 8) (vector-length ir-func) 8)]
+                                      (do
+                                        (root_push control-ctx)
+                                        (print-x86-function-ir-prefix-loop segment ir-func offsets functions control-ctx 0 prefix-len 0)
+                                        (root_pop)))
+                                    (root_pop)))
+                                (root_pop)))
                             (root_pop)
                             (root_pop)
                             (root_pop)))))
