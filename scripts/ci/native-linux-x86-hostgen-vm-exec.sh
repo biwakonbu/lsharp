@@ -1009,6 +1009,8 @@ def decode_packed_payload(packed_lines, declared_len: int) -> bytes:
 def decode_packed_payload_at(index: int, declared_len: int, end_sentinel):
     if index < len(lines) and parse_int(lines[index]) == 9000000010:
         decoded = bytearray()
+        segments = []
+        segment_index = 0
         while index < len(lines) and len(decoded) < declared_len:
             if parse_int(lines[index]) != 9000000010:
                 raise SystemExit(f"missing segment marker at line {index}")
@@ -1019,17 +1021,32 @@ def decode_packed_payload_at(index: int, declared_len: int, end_sentinel):
             index += 1
             count = packed_line_count(segment_len)
             segment = decode_packed_flat(lines[index:index + count], segment_len)
+            segments.append((segment_index, len(decoded), segment_len, bytes(segment[:32])))
             decoded.extend(segment)
             index += count
+            segment_index += 1
         if len(decoded) != declared_len:
             raise SystemExit(f"decoded segmented length mismatch: declared={declared_len} actual={len(decoded)}")
-        return bytes(decoded), index
+        return bytes(decoded), index, segments
     if end_sentinel is None:
-        return decode_packed_flat(lines[index:], declared_len), len(lines)
+        payload = decode_packed_flat(lines[index:], declared_len)
+        return payload, len(lines), [(0, 0, declared_len, payload[:32])]
     start = index
     while index < len(lines) and parse_int(lines[index]) != end_sentinel:
         index += 1
-    return decode_packed_flat(lines[start:index], declared_len), index
+    payload = decode_packed_flat(lines[start:index], declared_len)
+    return payload, index, [(0, 0, declared_len, payload[:32])]
+
+def write_code_segment_table(out_path: pathlib.Path, segments, function_start_len: int) -> None:
+    rows = ["segment_index\tfunction_idx\tkind\tstart\tlen\tend\tfirst_32_bytes"]
+    for segment_index, start, segment_len, first_bytes in segments:
+        function_idx = segment_index + 10 if segment_index < function_start_len else -1
+        kind = "function" if segment_index < function_start_len else "trailer"
+        first_32_bytes = " ".join(f"{byte:02x}" for byte in first_bytes)
+        rows.append(
+            f"{segment_index}\t{function_idx}\t{kind}\t{start}\t{segment_len}\t{start + segment_len}\t{first_32_bytes}"
+        )
+    out_path.write_text("\n".join(rows) + "\n")
 
 idx = 0
 while idx < len(lines) and parse_int(lines[idx]) != 9000000005:
@@ -1042,17 +1059,18 @@ idx = expect(idx, 9000000006)
 idx = expect(idx, 9000000001)
 code_len = parse_int(lines[idx]); idx += 1
 idx = expect(idx, 9000000002)
-code, idx = decode_packed_payload_at(idx, code_len, 9000000003)
+code, idx, code_segments = decode_packed_payload_at(idx, code_len, 9000000003)
 idx = expect(idx, 9000000003)
 data_len = parse_int(lines[idx]); idx += 1
 idx = expect(idx, 9000000004)
-data, idx = decode_packed_payload_at(idx, data_len, None)
+data, idx, _data_segments = decode_packed_payload_at(idx, data_len, None)
 
 (out_dir / "stage-code.bin").write_bytes(code)
 (out_dir / "stage-data.bin").write_bytes(data)
 (out_dir / "entrypoint-offset.txt").write_text(f"{entrypoint_offset}\n")
 (out_dir / "function-start-len.txt").write_text(f"{function_start_len}\n")
 (out_dir / "main-func-idx.txt").write_text(f"{main_func_idx}\n")
+write_code_segment_table(out_dir / "stage-code-segments.tsv", code_segments, function_start_len)
 (out_dir / "manifest.json").write_text(
     "{\n"
     '  "target": "x86_64-unknown-linux-gnu",\n'
@@ -1283,7 +1301,7 @@ copy_actual_stage_debug_artifact() {
   fi
   rm -rf "${ARTIFACT_DIR}/${debug_dir}"
   mkdir -p "${ARTIFACT_DIR}/${debug_dir}"
-  for file in manifest.json stage-code.bin stage-data.bin stage1-code.bin stage2-code.bin stage2-data.bin entrypoint-offset.txt function-start-len.txt main-func-idx.txt stage-entry-ir-trace.txt program.s runtime.s program.o runtime.o linker-response.txt program.native; do
+  for file in manifest.json stage-code.bin stage-data.bin stage-code-segments.tsv stage1-code.bin stage2-code.bin stage2-data.bin entrypoint-offset.txt function-start-len.txt main-func-idx.txt stage-entry-ir-trace.txt program.s runtime.s program.o runtime.o linker-response.txt program.native; do
     if limactl shell "${VM_NAME}" -- test -e "${VM_WORK_DIR}/${stage_dir}/${file}"; then
       limactl copy "${VM_NAME}:${VM_WORK_DIR}/${stage_dir}/${file}" "${ARTIFACT_DIR}/${debug_dir}/${file}"
     fi

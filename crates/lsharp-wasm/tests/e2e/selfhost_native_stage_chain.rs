@@ -343,6 +343,23 @@ fn test_native_linux_x86_hostgen_vm_script_forwards_actual_chunk_env_to_guest() 
     }
 }
 
+#[test]
+fn test_native_linux_x86_hostgen_vm_decoder_writes_stage_code_segment_table() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    assert!(
+        script.contains("stage-code-segments.tsv")
+            && script.contains("code_segments")
+            && script.contains("function_idx")
+            && script.contains("first_32_bytes")
+            && script.contains("copy_actual_stage_debug_artifact actual-stage2 stage2-debug"),
+        "Linux x86 actual transport decoder は stage2 生成 byte offset と segment/function index を直接対応できる segment table を artifact 化するべき"
+    );
+}
+
 fn assert_shell_function_declares_locals(script: &str, function_name: &str, vars: &[&str]) {
     let body = shell_function_body(script, function_name);
     for var in vars {
@@ -39537,6 +39554,21 @@ struct X86IrCallTraceRow {
     target_offset: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LinuxX86TransportCodeSegment {
+    segment_index: usize,
+    function_idx: Option<usize>,
+    start: usize,
+    len: usize,
+    first_32_bytes: Vec<u8>,
+}
+
+impl LinuxX86TransportCodeSegment {
+    fn end(&self) -> usize {
+        self.start + self.len
+    }
+}
+
 fn read_usize_artifact(path: &std::path::Path, name: &str) -> usize {
     std::fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("{name} 読み込み失敗 ({}): {e}", path.display()))
@@ -39611,6 +39643,156 @@ fn read_linux_x86_stage_code_artifact_bundle(
         code_bytes,
         data_bytes,
     }
+}
+
+fn parse_transport_i128_lines(output: &[u8]) -> Vec<i128> {
+    output
+        .split(|byte| *byte == b'\n' || *byte == 0)
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            std::str::from_utf8(line)
+                .expect("transport line が UTF-8 でない")
+                .parse::<i128>()
+                .expect("transport line が整数でない")
+        })
+        .collect()
+}
+
+fn transport_usize(value: i128, label: &str) -> usize {
+    assert!(value >= 0, "{label} が負: {value}");
+    usize::try_from(value).unwrap_or_else(|_| panic!("{label} が usize 範囲外: {value}"))
+}
+
+fn expect_transport_i128(lines: &[i128], idx: &mut usize, expected: i128, label: &str) {
+    assert!(
+        *idx < lines.len(),
+        "{label}: sentinel {expected} の前に transport が終端した"
+    );
+    assert_eq!(
+        lines[*idx], expected,
+        "{label}: sentinel が期待値と一致しない at line {}",
+        *idx
+    );
+    *idx += 1;
+}
+
+fn packed_line_count_usize(byte_len: usize) -> usize {
+    (byte_len + 7) / 8
+}
+
+fn decode_packed_transport_prefix(
+    lines: &[i128],
+    declared_len: usize,
+    max_bytes: usize,
+) -> Vec<u8> {
+    let mut decoded = Vec::new();
+    for raw in lines {
+        let packed = *raw as u64;
+        for byte_idx in 0..8 {
+            if decoded.len() >= declared_len || decoded.len() >= max_bytes {
+                return decoded;
+            }
+            decoded.push(((packed >> (byte_idx * 8)) & 0xff) as u8);
+        }
+    }
+    decoded
+}
+
+fn decode_linux_x86_actual_transport_code_segments(
+    output: &[u8],
+) -> (
+    NativeEntrypointLayout,
+    usize,
+    Vec<LinuxX86TransportCodeSegment>,
+) {
+    let lines = parse_transport_i128_lines(output);
+    let mut idx = lines
+        .iter()
+        .position(|line| *line == 9000000005)
+        .expect("actual transport layout sentinel 9000000005 が無い");
+    expect_transport_i128(&lines, &mut idx, 9000000005, "layout start");
+    let function_start_len = transport_usize(lines[idx], "function_start_len");
+    idx += 1;
+    let main_func_idx = transport_usize(lines[idx], "main_func_idx");
+    idx += 1;
+    let entrypoint_offset = transport_usize(lines[idx], "entrypoint_offset");
+    idx += 1;
+    expect_transport_i128(&lines, &mut idx, 9000000006, "layout end");
+    expect_transport_i128(&lines, &mut idx, 9000000001, "code start");
+    let code_len = transport_usize(lines[idx], "code_len");
+    idx += 1;
+    expect_transport_i128(&lines, &mut idx, 9000000002, "code payload start");
+
+    let mut segments = Vec::new();
+    if idx < lines.len() && lines[idx] == 9000000010 {
+        let mut start = 0usize;
+        while start < code_len {
+            expect_transport_i128(&lines, &mut idx, 9000000010, "code segment marker");
+            let segment_len = transport_usize(lines[idx], "code segment len");
+            idx += 1;
+            let count = packed_line_count_usize(segment_len);
+            let packed_end = idx + count;
+            assert!(
+                packed_end <= lines.len(),
+                "code segment packed payload が不足: segment={} len={} line={}",
+                segments.len(),
+                segment_len,
+                idx
+            );
+            let first_32_bytes =
+                decode_packed_transport_prefix(&lines[idx..packed_end], segment_len, 32);
+            segments.push(LinuxX86TransportCodeSegment {
+                segment_index: segments.len(),
+                function_idx: (segments.len() < function_start_len).then_some(segments.len() + 10),
+                start,
+                len: segment_len,
+                first_32_bytes,
+            });
+            start += segment_len;
+            idx = packed_end;
+        }
+        assert_eq!(
+            start, code_len,
+            "segmented code payload の合計長が declared code_len と一致しない"
+        );
+    } else {
+        let count = packed_line_count_usize(code_len);
+        let packed_end = idx + count;
+        assert!(
+            packed_end <= lines.len(),
+            "flat code packed payload が不足: len={} line={}",
+            code_len,
+            idx
+        );
+        segments.push(LinuxX86TransportCodeSegment {
+            segment_index: 0,
+            function_idx: Some(10),
+            start: 0,
+            len: code_len,
+            first_32_bytes: decode_packed_transport_prefix(&lines[idx..packed_end], code_len, 32),
+        });
+        idx = packed_end;
+    }
+    expect_transport_i128(&lines, &mut idx, 9000000003, "code payload end");
+
+    (
+        NativeEntrypointLayout {
+            function_start_len,
+            main_func_idx,
+            entrypoint_offset,
+        },
+        code_len,
+        segments,
+    )
+}
+
+fn find_linux_x86_transport_segment_for_offset(
+    segments: &[LinuxX86TransportCodeSegment],
+    offset: usize,
+) -> Option<&LinuxX86TransportCodeSegment> {
+    segments
+        .iter()
+        .find(|segment| segment.start <= offset && offset < segment.end())
 }
 
 fn decode_x86_rel32_call_at(code: &[u8], call_offset: usize) -> X86Rel32CallSite {
@@ -39934,6 +40116,41 @@ fn test_x86_call_target_diagnostic_rejects_rex_prefix_skip() {
     );
 }
 
+#[test]
+fn test_linux_x86_actual_transport_segment_table_maps_absolute_offsets() {
+    let stdout = b"9000000005\n2\n11\n8\n9000000006\n9000000001\n5\n9000000002\n9000000010\n3\n513\n9000000010\n2\n1027\n9000000003\n0\n9000000004\n";
+    let (layout, code_len, segments) = decode_linux_x86_actual_transport_code_segments(stdout);
+
+    assert_eq!(layout.function_start_len, 2);
+    assert_eq!(layout.main_func_idx, 11);
+    assert_eq!(layout.entrypoint_offset, 8);
+    assert_eq!(code_len, 5);
+    assert_eq!(
+        segments,
+        vec![
+            LinuxX86TransportCodeSegment {
+                segment_index: 0,
+                function_idx: Some(10),
+                start: 0,
+                len: 3,
+                first_32_bytes: vec![1, 2, 0],
+            },
+            LinuxX86TransportCodeSegment {
+                segment_index: 1,
+                function_idx: Some(11),
+                start: 3,
+                len: 2,
+                first_32_bytes: vec![3, 4],
+            },
+        ]
+    );
+    let hit = find_linux_x86_transport_segment_for_offset(&segments, 4)
+        .expect("offset 4 は second segment に対応するべき");
+    assert_eq!(hit.segment_index, 1);
+    assert_eq!(hit.function_idx, Some(11));
+    assert_eq!(4 - hit.start, 1);
+}
+
 fn assert_linux_x86_entry_map_ref_ref_prefix(
     bundle: &NativeEntrypointBundle,
     label: &str,
@@ -40048,6 +40265,55 @@ fn test_e2e_linux_x86_actual_stage2_entrypoint_call_windows_diagnostic() {
         );
         println!(
             "Linux x86 stage2 IR trace 未指定: LSHARP_NATIVE_LINUX_X86_STAGE2_ENTRY_IR_TRACE を指定すると opcode 40/60/56 などの rel32 row / emitted bytes / rel32 target を同一 window で照合する"
+        );
+    }
+}
+
+#[test]
+#[ignore = "diagnostic: V2-13a-5 Linux x86 actual stage2 transport segment table"]
+fn test_e2e_linux_x86_actual_stage2_transport_segment_table_diagnostic() {
+    let stdout_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STAGE2_STDOUT")
+        .expect("LSHARP_NATIVE_LINUX_X86_STAGE2_STDOUT に actual-stage2-stdout.txt を指定すること");
+    let stdout_path = workspace_root_relative_path(std::path::PathBuf::from(stdout_path));
+    let target_offset: usize = std::env::var("LSHARP_NATIVE_LINUX_X86_TARGET_OFFSET")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(3_321_766);
+    let stdout = std::fs::read(&stdout_path).unwrap_or_else(|e| {
+        panic!(
+            "actual-stage2 stdout 読み込み失敗 ({}): {e}",
+            stdout_path.display()
+        )
+    });
+    let (layout, code_len, segments) = decode_linux_x86_actual_transport_code_segments(&stdout);
+    let hit = find_linux_x86_transport_segment_for_offset(&segments, target_offset)
+        .unwrap_or_else(|| panic!("target offset {target_offset} に対応する segment が無い"));
+    println!(
+        "Linux x86 actual stage2 transport segment: stdout={} target_offset={} layout={layout:?} code_len={} segment={hit:?} relative_offset={}",
+        stdout_path.display(),
+        target_offset,
+        code_len,
+        target_offset - hit.start
+    );
+
+    if let Some(stage2_dir) = std::env::var_os("LSHARP_NATIVE_LINUX_X86_STAGE2_ARTIFACT_DIR") {
+        let stage2_dir = workspace_root_relative_path(std::path::PathBuf::from(stage2_dir));
+        let stage2_bundle = read_linux_x86_stage_code_artifact_bundle(
+            &stage2_dir,
+            &["stage-code.bin", "stage2-code.bin"],
+            &["stage-data.bin", "stage2-data.bin"],
+        );
+        assert_eq!(
+            stage2_bundle.code_bytes.len(),
+            code_len,
+            "decoded stdout code_len と stage2-debug code bytes 長が一致しない"
+        );
+        println!(
+            "Linux x86 actual stage2 transport byte windows: segment_start={} target={} segment_window={} target_window={}",
+            hit.start,
+            target_offset,
+            byte_window_hex(&stage2_bundle.code_bytes, hit.start, 0, 96),
+            byte_window_hex(&stage2_bundle.code_bytes, target_offset, 32, 64)
         );
     }
 }
