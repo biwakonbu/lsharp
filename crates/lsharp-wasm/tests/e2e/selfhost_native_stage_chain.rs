@@ -1179,6 +1179,33 @@ fn test_linux_x86_seed_entry_ir_segment_probe_reports_expected_rel32_targets() {
 }
 
 #[test]
+fn test_linux_x86_control_loop_eight_arg_call_probe_reports_opcode40_bytes_and_targets() {
+    let source = include_str!("selfhost_native_stage_chain.rs");
+    let test_body = source
+        .split("\nfn test_e2e_native_linux_x86_host_generates_control_loop_eight_arg_call_probe_bundle_artifact")
+        .nth(1)
+        .and_then(|tail| tail.split("/// NATIVE-LINUX-X86-02gb3").next())
+        .expect("Linux x86 control-loop eight-arg call probe が存在すること");
+
+    assert!(
+        test_body
+            .contains("(generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)")
+            && test_body.contains("(print opcode)")
+            && test_body.contains("(print depth)")
+            && test_body.contains("(print size)")
+            && test_body.contains("(print (- after before))")
+            && test_body.contains("(print expected-target)")
+            && test_body.contains("(print actual-call-offset)")
+            && test_body.contains("(print actual-target)")
+            && test_body.contains("(print-byte-window (ref-get result) before (+ before 70))")
+            && test_body.contains("(byte-at-or-minus-one")
+            && test_body.contains("(make-x86-control-loop-state 8 1)")
+            && test_body.contains("(make-instr 40 10)"),
+        "Linux x86 control-loop eight-arg call probe は opcode 40 の IR row、emitted bytes、rel32 target を同一 window で出力するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_one_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
     let opcode_call_branch = source
@@ -23913,6 +23940,195 @@ fn test_e2e_native_linux_x86_host_generates_context_direct_eight_arg_call_bytes_
     .expect(
         "Linux x86_64 context direct eight-arg call-bytes probe function-start-len.txt 書き込みに失敗",
     );
+}
+
+/// NATIVE-LINUX-X86-02gbe: host 側 selfhost が control-loop eight-arg call probe の Linux native bundle を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_control_loop_eight_arg_call_probe_bundle_artifact() {
+    let artifact_dir = std::env::var_os(
+        "LSHARP_NATIVE_LINUX_X86_CONTROL_LOOP_EIGHT_ARG_CALL_PROBE_ARTIFACT_DIR",
+    )
+    .expect(
+        "LSHARP_NATIVE_LINUX_X86_CONTROL_LOOP_EIGHT_ARG_CALL_PROBE_ARTIFACT_DIR に Linux x86_64 control-loop eight-arg call probe artifact dir を指定すること",
+    );
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 control-loop eight-arg call probe artifact dir 作成に失敗");
+
+    let probe_source = r#"(module App.Probe)
+(import Backend.Native.NativeCodegen)
+(import IR.IR)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn byte-at [bytes idx]
+  (let [value (vector-get bytes idx)]
+    (if (< value 0) (+ value 256) value)))
+
+(defn byte-at-or-minus-one [bytes idx len]
+  (if (>= idx len)
+    -1
+    (byte-at bytes idx)))
+
+(defn rel32-at [bytes offset]
+  (let [b0 (byte-at bytes (+ offset 1))
+        b1 (byte-at bytes (+ offset 2))
+        b2 (byte-at bytes (+ offset 3))
+        b3 (byte-at bytes (+ offset 4))
+        value (+ b0 (+ (* b1 256) (+ (* b2 65536) (* b3 16777216))))]
+    (if (>= value 2147483648) (- value 4294967296) value)))
+
+(defn first-rel32-offset-in-window [bytes offset idx end]
+  (if (>= idx end)
+    -1
+    (let [current (+ offset idx)]
+      (if (= (byte-at-or-minus-one bytes current (vector-length bytes)) 232)
+        current
+        (first-rel32-offset-in-window bytes offset (+ idx 1) end)))))
+
+(defn call-target-offset-local [operand starts import-count import-stub-offset function-start]
+  (if (< operand import-count)
+    (x86-import-ret-stub-offset import-stub-offset import-count operand)
+    (- (vector-get starts (- operand import-count)) function-start)))
+
+(defn print-byte-window [bytes idx end]
+  (if (>= idx end)
+    0
+    (do
+      (print idx)
+      (print (byte-at-or-minus-one bytes idx (vector-length bytes)))
+      (print-byte-window bytes (+ idx 1) end))))
+
+(defn main []
+  (let [instr0 (make-instr 3 0)
+        instr1 (make-instr 3 1)
+        instr2 (make-instr 3 2)
+        instr3 (make-instr 3 3)
+        instr4 (make-instr 3 4)
+        instr5 (make-instr 3 5)
+        instr6 (make-instr 3 6)
+        instr7 (make-instr 3 7)
+        instr8 (make-instr 40 10)
+        ir
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push
+                      (vector-push
+                        (vector-push
+                          (vector-push (vector-new 9) instr0)
+                          instr1)
+                        instr2)
+                      instr3)
+                    instr4)
+                  instr5)
+                instr6)
+              instr7)
+            instr8)
+        function-metas
+          (vector-push
+            (push-import-placeholders 0 10 (vector-new 12))
+            (make-function-meta 8 0 (vector-new 0)))
+        starts (vector-push (vector-new 1) 0)
+        meta (scan-control-flow-meta ir)
+        depths (collect-native-bundle-depths-x86 ir function-metas)
+        offsets (collect-native-bundle-offsets-x86 ir function-metas 0)
+        result (ref-new (vector-new 0))
+        layout (make-x86-function-emit-layout 10 2048 0 0)
+        frame-base-slot-count 16
+        ctx (make-x86-control-bundle-context ir result meta offsets depths starts function-metas layout frame-base-slot-count)
+        idx 8
+        instr (vector-get ir idx)
+        opcode (vector-get instr 0)
+        operand (vector-get instr 1)
+        depth (vector-get depths idx)
+        declared (vector-get offsets idx)
+        size (native-instr-size-x86 opcode operand function-metas depth)
+        before (vector-length (ref-get result))
+        row-state (make-x86-control-loop-state 8 1)]
+    (do
+      (generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)
+      (let [after (vector-length (ref-get result))
+            expected-target (call-target-offset-local operand starts 10 2048 0)
+            actual-call-offset (first-rel32-offset-in-window (ref-get result) before 0 size)
+            actual-target (if (>= actual-call-offset 0)
+                            (+ actual-call-offset (+ 5 (rel32-at (ref-get result) actual-call-offset)))
+                            -1)]
+        (do
+          (print idx)
+          (print opcode)
+          (print operand)
+          (print depth)
+          (print declared)
+          (print size)
+          (print before)
+          (print (- after before))
+          (print expected-target)
+          (print actual-call-offset)
+          (print actual-target)
+          (print-byte-window (ref-get result) before (+ before 70))
+          (if (= actual-call-offset (+ before 58))
+            (byte-at (ref-get result) (+ before 58))
+            (- after before))))))"#;
+    let escaped_probe_source = escape_lsharp_string(probe_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Probe.ls" "{escaped_probe_source}")
+            (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle =
+        run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+            "linux-x86-control-loop-eight-arg-call-probe-bundle",
+            &payload_expr,
+            &[],
+        );
+
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86_64 control-loop eight-arg call probe entrypoint は code 範囲内にあること: entry={} len={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len()
+    );
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86_64 control-loop eight-arg call probe code artifact は空でないこと"
+    );
+
+    std::fs::write(artifact_dir.join("stage-code.bin"), &bundle.code_bytes)
+        .expect("Linux x86_64 control-loop eight-arg call probe stage-code.bin 書き込みに失敗");
+    std::fs::write(artifact_dir.join("stage-data.bin"), &bundle.data_bytes)
+        .expect("Linux x86_64 control-loop eight-arg call probe stage-data.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", bundle.entrypoint_offset),
+    )
+    .expect("Linux x86_64 control-loop eight-arg call probe entrypoint-offset.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", bundle.main_func_idx),
+    )
+    .expect("Linux x86_64 control-loop eight-arg call probe main-func-idx.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", bundle.function_start_len),
+    )
+    .expect("Linux x86_64 control-loop eight-arg call probe function-start-len.txt 書き込みに失敗");
 }
 
 /// NATIVE-LINUX-X86-02gb3: host 側 selfhost が padded depth=1 direct append probe の Linux native bundle を生成すること。
