@@ -549,7 +549,9 @@ fn test_linux_x86_metadata_correlates_i64_ge_expected_emitted_bytes() {
     assert!(
         source.contains("(defn print-x86-i64-ge-emitted-byte-diagnostic")
             && source.contains("(print 9000000022)")
+            && source.contains("(print 9000000023)")
             && source.contains("(codegen-ir-instr opcode operand)")
+            && source.contains("(append-native-bytes-loop probe-ref native 0 native-len)")
             && source
                 .contains("(print-x86-i64-ge-emitted-byte-diagnostic idx opcode operand depth)"),
         "Linux x86 metadata mode は opcode35 の segment bytes と codegen-ir-instr expected bytes を同一 prefix 診断で相関できるべき"
@@ -5150,9 +5152,11 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 (defn print-x86-i64-ge-emitted-byte-diagnostic [idx opcode operand depth]
   (if (= opcode 35)
     (let [native (codegen-ir-instr opcode operand)
-          native-len (vector-length native)]
+          native-len (vector-length native)
+          probe-ref (ref-new (vector-new 0))]
       (do
         (root_push native)
+        (root_push probe-ref)
         (print 9000000022)
         (print idx)
         (print opcode)
@@ -5167,6 +5171,27 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         (print (byte-at-or-zero native 5 native-len))
         (print (byte-at-or-zero native 6 native-len))
         (print (byte-at-or-zero native 7 native-len))
+        (append-native-bytes-loop probe-ref native 0 native-len)
+        (let [probe (ref-get probe-ref)
+              probe-len (vector-length probe)]
+          (do
+            (root_push probe)
+            (print 9000000023)
+            (print idx)
+            (print opcode)
+            (print operand)
+            (print depth)
+            (print probe-len)
+            (print (byte-at-or-zero probe 0 probe-len))
+            (print (byte-at-or-zero probe 1 probe-len))
+            (print (byte-at-or-zero probe 2 probe-len))
+            (print (byte-at-or-zero probe 3 probe-len))
+            (print (byte-at-or-zero probe 4 probe-len))
+            (print (byte-at-or-zero probe 5 probe-len))
+            (print (byte-at-or-zero probe 6 probe-len))
+            (print (byte-at-or-zero probe 7 probe-len))
+            (root_pop)))
+        (root_pop)
         (root_pop)))
     0))
 
