@@ -534,6 +534,8 @@ fn test_linux_x86_representative_seed_can_print_function_segment_metadata() {
             && source.contains("(print (native-function-local-count func-meta))")
             && source.contains("(print body-offset)")
             && source.contains("(print (vector-length ir-func))")
+            && source.contains("(defn print-x86-function-ir-prefix-loop [segment ir offsets functions idx len depth]")
+            && source.contains("(print 9000000021)")
             && source.contains(
                 "(let [final (print-x86-function-segment-metadata-loop ctx (+ idx 1) len)]"
             ),
@@ -5063,6 +5065,40 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                 14
                 (if (= param-count 1) 7 0)))))))))
 
+(defn print-x86-function-ir-prefix-loop [segment ir offsets functions idx len depth]
+  (if (>= idx len)
+    0
+    (let [instr (vector-get ir idx)
+          opcode (vector-get instr 0)
+          operand (vector-get instr 1)
+          offset (vector-get offsets idx)
+          size (native-instr-size-x86 opcode operand functions depth)
+          segment-len (vector-length segment)]
+      (do
+        (print 9000000021)
+        (print idx)
+        (print opcode)
+        (print operand)
+        (print depth)
+        (print offset)
+        (print size)
+        (print (byte-at-or-zero segment offset segment-len))
+        (print (byte-at-or-zero segment (+ offset 1) segment-len))
+        (print (byte-at-or-zero segment (+ offset 2) segment-len))
+        (print (byte-at-or-zero segment (+ offset 3) segment-len))
+        (print (byte-at-or-zero segment (+ offset 4) segment-len))
+        (print (byte-at-or-zero segment (+ offset 5) segment-len))
+        (print (byte-at-or-zero segment (+ offset 6) segment-len))
+        (print (byte-at-or-zero segment (+ offset 7) segment-len))
+        (print-x86-function-ir-prefix-loop
+          segment
+          ir
+          offsets
+          functions
+          (+ idx 1)
+          len
+          (apply-stack-delta depth (opcode-stack-delta opcode operand functions)))))))
+
 (defn print-x86-function-segment-metadata-loop [ctx idx len]
   (if (>= idx len)
     0
@@ -5094,8 +5130,10 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                       function-size (x86-function-slot-size-from-starts starts import-stub-offset idx function-start)
                       after-stack-offset (if (> stack-bytes 0) 11 4)
                       param-spill-bytes (x86-param-spill-prefix-size param-count)
-                      body-offset (+ after-stack-offset param-spill-bytes)]
+                      body-offset (+ after-stack-offset param-spill-bytes)
+                      result (ref-new (vector-new function-size))]
                   (do
+                    (root_push result)
                     (print 9000000020)
                     (print idx)
                     (print actual-idx)
@@ -5108,6 +5146,21 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                     (print param-spill-bytes)
                     (print body-offset)
                     (print (vector-length ir-func))
+                    (let [layout (make-x86-function-emit-layout import-count import-stub-offset function-start function-start)]
+                      (do
+                        (root_push layout)
+                        (generate-native-function-x86-64-bundle-with-layout func-meta result starts functions layout)
+                        (let [segment (ref-get result)
+                              offsets (collect-native-bundle-offsets-x86 ir-func functions body-offset)
+                              prefix-len (if (< (vector-length ir-func) 8) (vector-length ir-func) 8)]
+                          (do
+                            (root_push segment)
+                            (root_push offsets)
+                            (print-x86-function-ir-prefix-loop segment ir-func offsets functions 0 prefix-len 0)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)))))
+                    (root_pop)
                     (root_pop)
                     (root_pop)
                     (root_pop)
