@@ -1101,7 +1101,12 @@ fn test_linux_x86_function_offsets_diagnostic_is_env_driven() {
             && diagnostic_body.contains("{offset_start}")
             && diagnostic_body.contains("{offset_end}")
             && diagnostic_body.contains("collect-callable-function-slot-starts-x86")
-            && diagnostic_body.contains("callable-user-total-slot-size-x86"),
+            && diagnostic_body.contains("callable-user-total-slot-size-x86")
+            && diagnostic_body.contains("let offset = row.offset as usize")
+            && diagnostic_body.contains("nearest_x86_prologue_start")
+            && diagnostic_body.contains("function prologue window")
+            && !diagnostic_body
+                .contains("stage2_bundle.entrypoint_offset + relative_offset as usize"),
         "stage2 entrypoint 調査用の function offsets diagnostic は function index と offset window を env で指定できるべき"
     );
 }
@@ -1118,9 +1123,14 @@ fn test_linux_x86_start_window_diagnostic_is_env_driven() {
     assert!(
         diagnostic_body.contains("LSHARP_NATIVE_LINUX_X86_START_OFFSET_START")
             && diagnostic_body.contains("LSHARP_NATIVE_LINUX_X86_START_OFFSET_END")
+            && diagnostic_body.contains("LSHARP_NATIVE_LINUX_X86_START_NEAREST_OFFSET")
             && diagnostic_body.contains("{start_offset}")
-            && diagnostic_body.contains("{end_offset}"),
-        "Linux x86 start window diagnostic は code offset window を env で指定できるべき"
+            && diagnostic_body.contains("{end_offset}")
+            && diagnostic_body.contains("{nearest_offset}")
+            && diagnostic_body.contains("collect-callable-function-slot-starts-x86")
+            && diagnostic_body.contains("normalize-selfhost-native-function-metas-for-target")
+            && diagnostic_body.contains("print-nearest-start-owner"),
+        "Linux x86 start window diagnostic は code offset window と absolute offset owner を env で指定できるべき"
     );
 }
 
@@ -26632,6 +26642,10 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_start_window_diagnostic() {
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(933500);
+    let nearest_offset: i64 = std::env::var("LSHARP_NATIVE_LINUX_X86_START_NEAREST_OFFSET")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(-1);
     assert!(
         start_offset < end_offset,
         "LSHARP_NATIVE_LINUX_X86_START_OFFSET_START は START_OFFSET_END より小さい必要がある: {start_offset}..{end_offset}"
@@ -26673,6 +26687,60 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_start_window_diagnostic() {
       (+ idx 1)
       len)))
 
+(defn x86-function-slot-size [func-meta functions]
+  (+ (native-function-size-x86 func-meta functions) 2048))
+
+(defn collect-callable-function-slot-starts-x86-loop [functions idx len starts offset]
+  (if (>= idx len)
+    starts
+    (let [func-meta (vector-get functions idx)
+          next-starts (vector-push starts offset)
+          next-offset (+ offset (x86-function-slot-size func-meta functions))]
+      (collect-callable-function-slot-starts-x86-loop functions (+ idx 1) len next-starts next-offset))))
+
+(defn collect-callable-function-slot-starts-x86 [functions import-count]
+  (collect-callable-function-slot-starts-x86-loop functions import-count (vector-length functions) (vector-new 8) 0))
+
+(defn start-at-or-minus-one [starts idx len]
+  (if (>= idx len)
+    -1
+    (vector-get starts idx)))
+
+(defn print-nearest-start-owner [functions starts idx len nearest best-idx best-start]
+  (if (>= idx len)
+    (if (< best-idx 0)
+      (do
+        (print -9001)
+        (print -1)
+        (print -1)
+        (print -1)
+        (print -1)
+        (print -1)
+        (print -1)
+        (print -1)
+        (print -1)
+        (print -1)
+        0)
+      (let [func (vector-get functions (+ best-idx 10))
+            next-start (start-at-or-minus-one starts (+ best-idx 1) len)]
+        (do
+          (print -9001)
+          (print best-idx)
+          (print (+ best-idx 10))
+          (print best-start)
+          (print next-start)
+          (print (- nearest best-start))
+          (print (native-function-size-x86 func functions))
+          (print (native-function-param-count func))
+          (print (native-function-local-count func))
+          (print (vector-length (native-function-ir func)))
+          0)))
+    (let [start (vector-get starts idx)
+          use-current (and (<= start nearest) (> start best-start))
+          next-best-idx (if use-current idx best-idx)
+          next-best-start (if use-current start best-start)]
+      (print-nearest-start-owner functions starts (+ idx 1) len nearest next-best-idx next-best-start))))
+
 (defn print-start-window [functions starts idx len]
   (if (>= idx len)
     0
@@ -26696,12 +26764,17 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_start_window_diagnostic() {
         payload {payload_expr}
         functions (vector-get payload 0)
         callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
-        native-callables (normalize-selfhost-native-function-metas callables)
-        starts (collect-callable-function-starts-x86 native-callables 10)]
-    (print-start-window native-callables starts 0 (vector-length starts))))"#,
+        target (make-target 3)
+        native-callables (normalize-selfhost-native-function-metas-for-target callables target)
+        starts (collect-callable-function-slot-starts-x86 native-callables 10)]
+    (let [window-result (print-start-window native-callables starts 0 (vector-length starts))]
+      (if (>= {nearest_offset} 0)
+        (print-nearest-start-owner native-callables starts 0 (vector-length starts) {nearest_offset} -1 -1)
+        window-result))))"#,
         payload_expr = payload_expr,
         start_offset = start_offset,
-        end_offset = end_offset
+        end_offset = end_offset,
+        nearest_offset = nearest_offset
     );
     let output = run_with_expanded_stack(NATIVE_HARNESS_STACK_BYTES, move || {
         try_compile_and_run_selfhost_fixture_entry_with_dir_and_args(
@@ -26967,6 +27040,23 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_function_offsets_diagnostic() {
             &["stage-data.bin", "stage2-data.bin"],
         );
         let function_start_base = lines[2];
+        let declared_start = function_start_base as usize;
+        let declared_body_start = lines[5] as usize;
+        if let Some(actual_prologue_start) =
+            nearest_x86_prologue_start(&stage2_bundle.code_bytes, declared_start, 96, 96)
+        {
+            let prologue_drift = actual_prologue_start as i64 - declared_start as i64;
+            println!(
+                "Linux x86 function prologue window: function={func_idx} declared_start={declared_start} actual_prologue_start={actual_prologue_start} prologue_drift={prologue_drift} declared_body_start={declared_body_start} declared_window={} actual_window={}",
+                byte_window_hex(&stage2_bundle.code_bytes, declared_start, 32, 96),
+                byte_window_hex(&stage2_bundle.code_bytes, actual_prologue_start, 0, 128)
+            );
+        } else {
+            println!(
+                "Linux x86 function prologue window: function={func_idx} declared_start={declared_start} actual_prologue_start=-1 prologue_drift=unavailable declared_body_start={declared_body_start} declared_window={}",
+                byte_window_hex(&stage2_bundle.code_bytes, declared_start, 96, 128)
+            );
+        }
         for row in &rows {
             if row.offset < 0 {
                 continue;
@@ -26976,7 +27066,7 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_function_offsets_diagnostic() {
                 relative_offset >= 0,
                 "diagnostic row offset が function start より前: row={row:?} function_start={function_start_base}"
             );
-            let offset = stage2_bundle.entrypoint_offset + relative_offset as usize;
+            let offset = row.offset as usize;
             assert!(
                 offset < stage2_bundle.code_bytes.len(),
                 "diagnostic row offset が stage2 code 範囲外: row={row:?} relative_offset={relative_offset} mapped_offset={offset} len={}",
@@ -39278,6 +39368,26 @@ fn byte_window_hex(bytes: &[u8], center: usize, before: usize, after: usize) -> 
     format!("{start}..{end}: {hex}")
 }
 
+fn is_x86_prologue_at(code: &[u8], offset: usize) -> bool {
+    offset + 4 <= code.len() && code[offset..offset + 4] == [0x55, 0x48, 0x89, 0xe5]
+}
+
+fn nearest_x86_prologue_start(
+    code: &[u8],
+    declared_start: usize,
+    search_before: usize,
+    search_after: usize,
+) -> Option<usize> {
+    if code.len() < 4 {
+        return None;
+    }
+    let start = declared_start.saturating_sub(search_before);
+    let end = (declared_start + search_after).min(code.len().saturating_sub(4));
+    (start..=end)
+        .filter(|candidate| is_x86_prologue_at(code, *candidate))
+        .min_by_key(|candidate| candidate.abs_diff(declared_start))
+}
+
 fn assert_x86_entrypoint_call_window(
     bundle: &NativeEntrypointBundle,
     label: &str,
@@ -39479,6 +39589,23 @@ fn test_x86_ir_trace_rejects_runtime_helper_rel32_target_mismatch() {
     }];
 
     assert_x86_ir_call_trace_matches_entry_calls(&bundle, &rows);
+}
+
+#[test]
+fn test_nearest_x86_prologue_start_prefers_declared_window_candidate() {
+    let mut code_bytes = vec![0x90; 128];
+    code_bytes[44..48].copy_from_slice(&[0x55, 0x48, 0x89, 0xe5]);
+    code_bytes[88..92].copy_from_slice(&[0x55, 0x48, 0x89, 0xe5]);
+
+    assert_eq!(
+        nearest_x86_prologue_start(&code_bytes, 60, 32, 32),
+        Some(44)
+    );
+    assert_eq!(
+        nearest_x86_prologue_start(&code_bytes, 84, 32, 32),
+        Some(88)
+    );
+    assert_eq!(nearest_x86_prologue_start(&code_bytes, 10, 8, 8), None);
 }
 
 #[test]
