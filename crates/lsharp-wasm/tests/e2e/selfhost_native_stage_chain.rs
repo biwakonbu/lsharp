@@ -1421,7 +1421,6 @@ fn test_native_codegen_x86_eight_arg_user_call_avoids_rel_wrapper_call() {
         .nth(1)
         .and_then(|tail| tail.split("(if (= target-param-count 9)").next())
         .expect("x86 opcode 40 branch に eight-arg user call 専用分岐が存在すること");
-
     assert!(
         eight_arg_branch.contains("call-rel-bytes")
             && eight_arg_branch.contains("call-rel-bytes")
@@ -23244,6 +23243,14 @@ fn test_e2e_native_linux_x86_host_generates_codegen_eight_arg_call_probe_bundle_
         byte
         (first-call-byte bytes (+ idx 1) len)))))
 
+(defn print-byte-window [bytes idx end]
+  (if (>= idx end)
+    0
+    (do
+      (print idx)
+      (print (byte-at bytes idx))
+      (print-byte-window bytes (+ idx 1) end))))
+
 (defn main []
   (let [function-metas
           (vector-push
@@ -23263,7 +23270,10 @@ fn test_e2e_native_linux_x86_host_generates_codegen_eight_arg_call_probe_bundle_
               16)
             8)
         bundle (codegen-x86-opcode-call-bundle 10 0 function-starts context)]
-    (first-call-byte bundle 0 (vector-length bundle))))"#;
+    (do
+      (print (vector-length bundle))
+      (print-byte-window bundle 0 (vector-length bundle))
+      (first-call-byte bundle 0 (vector-length bundle)))))"#;
     let escaped_probe_source = escape_lsharp_string(probe_source);
     let payload_expr = format!(
         r#"(do
