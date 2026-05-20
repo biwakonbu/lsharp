@@ -1197,6 +1197,10 @@ fn test_linux_x86_control_loop_eight_arg_call_probe_reports_opcode40_bytes_and_t
             && test_body.contains("(print expected-target)")
             && test_body.contains("(print actual-call-offset)")
             && test_body.contains("(print actual-target)")
+            && test_body.contains("direct-bundle (codegen-x86-opcode-call-bundle")
+            && test_body.contains("(print direct-len)")
+            && test_body.contains("(print direct-call-offset)")
+            && test_body.contains("(print direct-target)")
             && test_body.contains("(print-byte-window (ref-get result) before (+ before 70))")
             && test_body.contains("(byte-at-or-minus-one")
             && test_body.contains("(make-x86-control-loop-state 8 1)")
@@ -24061,31 +24065,57 @@ fn test_e2e_native_linux_x86_host_generates_control_loop_eight_arg_call_probe_bu
         declared (vector-get offsets idx)
         size (native-instr-size-x86 opcode operand function-metas depth)
         before (vector-length (ref-get result))
-        row-state (make-x86-control-loop-state 8 1)]
+        row-state (make-x86-control-loop-state 8 1)
+        direct-context
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push (vector-new 6) function-metas)
+                    10)
+                  2048)
+                0)
+              16)
+            depth)
+        direct-bundle (codegen-x86-opcode-call-bundle operand before starts direct-context)]
     (do
-      (generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)
-      (let [after (vector-length (ref-get result))
-            expected-target (call-target-offset-local operand starts 10 2048 0)
-            actual-call-offset (first-rel32-offset-in-window (ref-get result) before 0 size)
-            actual-target (if (>= actual-call-offset 0)
-                            (+ actual-call-offset (+ 5 (rel32-at (ref-get result) actual-call-offset)))
+      (root_push direct-bundle)
+      (let [direct-len (vector-length direct-bundle)
+            direct-call-offset (first-rel32-offset-in-window direct-bundle 0 0 direct-len)
+            direct-target (if (>= direct-call-offset 0)
+                            (+ direct-call-offset (+ 5 (rel32-at direct-bundle direct-call-offset)))
                             -1)]
         (do
-          (print idx)
-          (print opcode)
-          (print operand)
-          (print depth)
-          (print declared)
-          (print size)
-          (print before)
-          (print (- after before))
-          (print expected-target)
-          (print actual-call-offset)
-          (print actual-target)
-          (print-byte-window (ref-get result) before (+ before 70))
-          (if (= actual-call-offset (+ before 58))
-            (byte-at (ref-get result) (+ before 58))
-            (- after before))))))"#;
+          (generate-native-control-instr-bundle-loop-x86-with-context ctx row-state)
+          (let [after (vector-length (ref-get result))
+                expected-target (call-target-offset-local operand starts 10 2048 0)
+                actual-call-offset (first-rel32-offset-in-window (ref-get result) before 0 size)
+                actual-target (if (>= actual-call-offset 0)
+                                (+ actual-call-offset (+ 5 (rel32-at (ref-get result) actual-call-offset)))
+                                -1)]
+            (do
+              (print idx)
+              (print opcode)
+              (print operand)
+              (print depth)
+              (print declared)
+              (print size)
+              (print direct-len)
+              (print direct-call-offset)
+              (print direct-target)
+              (print before)
+              (print (- after before))
+              (print expected-target)
+              (print actual-call-offset)
+              (print actual-target)
+              (print-byte-window (ref-get result) before (+ before 70))
+              (let [final (if (= actual-call-offset (+ before 58))
+                            (byte-at (ref-get result) (+ before 58))
+                            (- after before))]
+                (do
+                  (root_pop)
+                  final))))))))"#;
     let escaped_probe_source = escape_lsharp_string(probe_source);
     let payload_expr = format!(
         r#"(do
