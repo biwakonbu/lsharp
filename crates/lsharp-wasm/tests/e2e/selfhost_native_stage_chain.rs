@@ -1234,6 +1234,28 @@ fn test_linux_x86_eight_arg_dispatch_matrix_probe_compares_branch_pressure() {
 }
 
 #[test]
+fn test_linux_x86_low_arity_prefix_probe_is_env_driven() {
+    let source = include_str!("selfhost_native_stage_chain.rs");
+    let test_body = source
+        .split(
+            "\nfn test_e2e_native_linux_x86_host_generates_low_arity_prefix_probe_bundle_artifact",
+        )
+        .nth(1)
+        .and_then(|tail| tail.split("/// NATIVE-LINUX-X86-02gb3").next())
+        .expect("Linux x86 low-arity prefix probe が存在すること");
+
+    assert!(
+        test_body.contains("LSHARP_NATIVE_LINUX_X86_LOW_ARITY_PREFIX_PROBE_MAX")
+            && test_body.contains("build_low_arity_prefix_probe_source")
+            && test_body.contains("context-low-prefix-probe")
+            && test_body.contains("(print prefix-max)")
+            && test_body.contains("(print call-offset)")
+            && test_body.contains("(print-byte-window bundle 50 (vector-length bundle))"),
+        "Linux x86 low-arity prefix probe は env で 0..N の low-arity body を切り替え、call-offset と byte window を出力するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_one_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
     let opcode_call_branch = source
@@ -24624,6 +24646,306 @@ fn test_e2e_native_linux_x86_host_generates_eight_arg_dispatch_matrix_probe_bund
         format!("{}\n", bundle.function_start_len),
     )
     .expect("Linux x86_64 eight-arg dispatch matrix probe function-start-len.txt 書き込みに失敗");
+}
+
+fn low_arity_prefix_branch_body(branch: usize) -> &'static str {
+    match branch {
+        0 => "call-rel-bytes",
+        1 => {
+            r#"(let [call-rel-bytes call-rel-bytes]
+  (do
+    (root_push call-rel-bytes)
+    (let [result (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)]
+      (do
+        (root_pop)
+        result))))"#
+        }
+        2 => {
+            r#"(let [call-rel-bytes call-rel-bytes]
+  (do
+    (root_push call-rel-bytes)
+    (let [result (emit-two-arg-call-x86-with-call-bytes call-rel-bytes frame-base-slot-count current-depth)]
+      (do
+        (root_pop)
+        result))))"#
+        }
+        3 => {
+            r#"(let [call-rel-bytes call-rel-bytes]
+  (do
+    (root_push call-rel-bytes)
+    (let [result (emit-three-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+      (do
+        (root_pop)
+        result))))"#
+        }
+        4 => {
+            r#"(let [call-rel-ref (ref-new call-rel)]
+  (do
+    (root_push call-rel-ref)
+    (let [result (emit-four-arg-call-x86-core-with-rel-ref call-rel-ref frame-base-slot-count)]
+      (do
+        (root_pop)
+        result))))"#
+        }
+        5 => {
+            r#"(let [call-rel-bytes call-rel-bytes]
+  (do
+    (root_push call-rel-bytes)
+    (let [result (emit-five-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+      (do
+        (root_pop)
+        result))))"#
+        }
+        6 => {
+            r#"(let [call-rel-bytes call-rel-bytes]
+  (do
+    (root_push call-rel-bytes)
+    (let [result (emit-six-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+      (do
+        (root_pop)
+        result))))"#
+        }
+        7 => {
+            r#"(let [call-rel-bytes call-rel-bytes]
+  (do
+    (root_push call-rel-bytes)
+    (let [result (emit-seven-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+      (do
+        (root_pop)
+        result))))"#
+        }
+        _ => unreachable!("unsupported low arity branch"),
+    }
+}
+
+fn eight_arg_prefix_branch_body() -> &'static str {
+    r#"(emit-consume-eight-produce-one-bundle-x86
+  (let [call-rel-bytes call-rel-bytes]
+    (do
+      (root_push call-rel-bytes)
+      (let [result (emit-eight-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)]
+        (do
+          (root_pop)
+          result))))
+  frame-base-slot-count
+  current-depth)"#
+}
+
+fn build_low_arity_prefix_branch_expr(branch: usize, max_real_branch: usize) -> String {
+    if branch == 8 {
+        return eight_arg_prefix_branch_body().to_string();
+    }
+
+    let branch_body = if branch <= max_real_branch {
+        low_arity_prefix_branch_body(branch)
+    } else {
+        "(vector-new 0)"
+    };
+    let next = build_low_arity_prefix_branch_expr(branch + 1, max_real_branch);
+    format!("(if (= target-param-count {branch})\n  {branch_body}\n  {next})")
+}
+
+fn build_low_arity_prefix_probe_source(max_real_branch: usize) -> String {
+    let branch_expr = build_low_arity_prefix_branch_expr(0, max_real_branch);
+    format!(
+        r#"(module App.Probe)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn byte-at [bytes idx]
+  (let [value (vector-get bytes idx)]
+    (if (< value 0) (+ value 256) value)))
+
+(defn byte-at-or-minus-one [bytes idx len]
+  (if (>= idx len)
+    -1
+    (byte-at bytes idx)))
+
+(defn rel32-at [bytes offset]
+  (let [b0 (byte-at bytes (+ offset 1))
+        b1 (byte-at bytes (+ offset 2))
+        b2 (byte-at bytes (+ offset 3))
+        b3 (byte-at bytes (+ offset 4))
+        value (+ b0 (+ (* b1 256) (+ (* b2 65536) (* b3 16777216))))]
+    (if (>= value 2147483648) (- value 4294967296) value)))
+
+(defn first-rel32-offset-in-window [bytes offset idx end]
+  (if (>= idx end)
+    -1
+    (let [current (+ offset idx)]
+      (if (= (byte-at-or-minus-one bytes current (vector-length bytes)) 232)
+        current
+        (first-rel32-offset-in-window bytes offset (+ idx 1) end)))))
+
+(defn print-byte-window [bytes idx end]
+  (if (>= idx end)
+    0
+    (do
+      (print idx)
+      (print (byte-at-or-minus-one bytes idx (vector-length bytes)))
+      (print-byte-window bytes (+ idx 1) end))))
+
+(defn context-low-prefix-probe [operand current-offset function-starts context]
+  (let [function-metas (vector-get context 0)
+        import-count (vector-get context 1)
+        import-stub-offset (vector-get context 2)
+        function-start-base (vector-get context 3)
+        frame-base-slot-count (vector-get context 4)
+        current-depth (vector-get context 5)
+        operand-ref (ref-new operand)
+        current-offset-ref (ref-new current-offset)
+        function-starts-ref (ref-new function-starts)]
+    (do
+      (root_push operand-ref)
+      (root_push current-offset-ref)
+      (root_push function-starts-ref)
+      (let [target-meta (vector-get function-metas (ref-get operand-ref))
+            target-param-count (native-function-param-count target-meta)
+            call-next-offset (native-call-rel-next-offset-x86 target-param-count current-depth)
+            target-offset (if (< (ref-get operand-ref) import-count)
+                            (x86-import-ret-stub-offset import-stub-offset import-count (ref-get operand-ref))
+                            (- (vector-get (ref-get function-starts-ref) (- (ref-get operand-ref) import-count)) function-start-base))
+            call-rel (- target-offset (+ (ref-get current-offset-ref) call-next-offset))]
+        (let [call-rel-bytes (emit-call-rel32 call-rel)]
+          (do
+            (root_push call-rel-bytes)
+            (let [result
+                    {branch_expr}]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result)))))))
+
+(defn main []
+  (let [function-metas
+          (vector-push
+            (push-import-placeholders 0 10 (vector-new 12))
+            (make-function-meta 8 0 (vector-new 0)))
+        starts (vector-push (vector-new 1) 0)
+        context
+          (vector-push
+            (vector-push
+              (vector-push
+                (vector-push
+                  (vector-push
+                    (vector-push (vector-new 6) function-metas)
+                    10)
+                  2048)
+                0)
+              16)
+            8)
+        prefix-max {max_real_branch}
+        bundle (context-low-prefix-probe 10 0 starts context)]
+    (do
+      (root_push bundle)
+      (let [len (vector-length bundle)
+            call-offset (first-rel32-offset-in-window bundle 0 0 len)
+            target (if (>= call-offset 0)
+                     (+ call-offset (+ 5 (rel32-at bundle call-offset)))
+                     -1)]
+        (do
+          (print prefix-max)
+          (print len)
+          (print call-offset)
+          (print target)
+          (print-byte-window bundle 50 (vector-length bundle))
+          (root_pop)
+          (if (>= call-offset 0)
+            (byte-at bundle call-offset)
+            len))))))"#,
+        branch_expr = branch_expr,
+        max_real_branch = max_real_branch
+    )
+}
+
+/// NATIVE-LINUX-X86-02gbg: host 側 selfhost が low-arity prefix probe の Linux native bundle を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_low_arity_prefix_probe_bundle_artifact() {
+    let max_real_branch: usize =
+        std::env::var("LSHARP_NATIVE_LINUX_X86_LOW_ARITY_PREFIX_PROBE_MAX")
+            .unwrap_or_else(|_| "0".to_string())
+            .parse()
+            .expect("LSHARP_NATIVE_LINUX_X86_LOW_ARITY_PREFIX_PROBE_MAX は usize であること");
+    assert!(
+        max_real_branch <= 7,
+        "LSHARP_NATIVE_LINUX_X86_LOW_ARITY_PREFIX_PROBE_MAX は 0..7 の範囲であること"
+    );
+
+    let artifact_dir = std::env::var_os(
+        "LSHARP_NATIVE_LINUX_X86_LOW_ARITY_PREFIX_PROBE_ARTIFACT_DIR",
+    )
+    .expect(
+        "LSHARP_NATIVE_LINUX_X86_LOW_ARITY_PREFIX_PROBE_ARTIFACT_DIR に Linux x86_64 low-arity prefix probe artifact dir を指定すること",
+    );
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 low-arity prefix probe artifact dir 作成に失敗");
+
+    let probe_source = build_low_arity_prefix_probe_source(max_real_branch);
+    assert!(probe_source.contains("context-low-prefix-probe"));
+    assert!(probe_source.contains("(print prefix-max)"));
+    assert!(probe_source.contains("(print call-offset)"));
+    assert!(probe_source.contains("(print-byte-window bundle 50 (vector-length bundle))"));
+    let escaped_probe_source = escape_lsharp_string(&probe_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Probe.ls" "{escaped_probe_source}")
+            (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle =
+        run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+            "linux-x86-low-arity-prefix-probe-bundle",
+            &payload_expr,
+            &[],
+        );
+
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86_64 low-arity prefix probe entrypoint は code 範囲内にあること: entry={} len={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len()
+    );
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86_64 low-arity prefix probe code artifact は空でないこと"
+    );
+
+    std::fs::write(artifact_dir.join("stage-code.bin"), &bundle.code_bytes)
+        .expect("Linux x86_64 low-arity prefix probe stage-code.bin 書き込みに失敗");
+    std::fs::write(artifact_dir.join("stage-data.bin"), &bundle.data_bytes)
+        .expect("Linux x86_64 low-arity prefix probe stage-data.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", bundle.entrypoint_offset),
+    )
+    .expect("Linux x86_64 low-arity prefix probe entrypoint-offset.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", bundle.main_func_idx),
+    )
+    .expect("Linux x86_64 low-arity prefix probe main-func-idx.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", bundle.function_start_len),
+    )
+    .expect("Linux x86_64 low-arity prefix probe function-start-len.txt 書き込みに失敗");
 }
 
 /// NATIVE-LINUX-X86-02gb3: host 側 selfhost が padded depth=1 direct append probe の Linux native bundle を生成すること。
