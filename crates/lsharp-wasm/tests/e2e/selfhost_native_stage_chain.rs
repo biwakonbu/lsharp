@@ -1209,6 +1209,27 @@ fn test_linux_x86_param_spill_probe_reports_high_register_bytes() {
 }
 
 #[test]
+fn test_linux_x86_seed_function_segment_probe_reports_prologue_bytes() {
+    let source = include_str!("selfhost_native_stage_chain.rs");
+    let test_body = source
+        .split("\nfn test_e2e_native_linux_x86_host_generates_seed_function_segment_probe_bundle_artifact")
+        .nth(1)
+        .and_then(|tail| tail.split("/// NATIVE-LINUX-X86-02gb3p").next())
+        .expect("Linux x86 Seed function segment probe が存在すること");
+
+    assert!(
+        test_body.contains("LSHARP_NATIVE_LINUX_X86_SEED_FUNCTION_SEGMENT_PROBE_ARTIFACT_DIR")
+            && test_body.contains("LSHARP_NATIVE_LINUX_X86_SEED_FUNCTION_SEGMENT_PROBE_INDEX")
+            && test_body.contains("target-func-idx {target_func_idx}")
+            && test_body.contains("generate-native-function-x86-64-bundle-with-layout")
+            && test_body.contains("(print-byte-window (ref-get result) 0 96)")
+            && test_body.contains("(byte-at (ref-get result) 39)")
+            && test_body.contains("seed.ls"),
+        "Linux x86 Seed function segment probe は指定 function の prologue byte window を Linux native 実行で確認できるべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_control_loop_eight_arg_call_probe_reports_opcode40_bytes_and_targets() {
     let source = include_str!("selfhost_native_stage_chain.rs");
     let test_body = source
@@ -23219,6 +23240,168 @@ fn test_e2e_native_linux_x86_host_generates_codegen_append_depth_one_probe_bundl
         format!("{}\n", bundle.function_start_len),
     )
     .expect("Linux x86_64 codegen append depth-one probe function-start-len.txt 書き込みに失敗");
+}
+
+/// NATIVE-LINUX-X86-02gb3s: host 側 selfhost が Seed function segment probe の Linux native bundle を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_seed_function_segment_probe_bundle_artifact() {
+    let artifact_dir =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_SEED_FUNCTION_SEGMENT_PROBE_ARTIFACT_DIR")
+            .expect(
+                "LSHARP_NATIVE_LINUX_X86_SEED_FUNCTION_SEGMENT_PROBE_ARTIFACT_DIR に Linux x86_64 Seed function segment probe artifact dir を指定すること",
+            );
+    let target_func_idx: i64 =
+        std::env::var("LSHARP_NATIVE_LINUX_X86_SEED_FUNCTION_SEGMENT_PROBE_INDEX")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(1102);
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 Seed function segment probe artifact dir 作成に失敗");
+
+    let probe_source = format!(
+        r#"(module App.Probe)
+(import App.CompilerMode)
+(import Backend.Native.NativeTarget)
+(import Backend.Native.NativeCodegen)
+
+(defn make-function-meta [param-count local-count ir]
+  (vector-push
+    (vector-push
+      (vector-push (vector-new 3) param-count)
+      local-count)
+    ir))
+
+(defn push-import-placeholders [idx count result]
+  (if (>= idx count)
+    result
+    (push-import-placeholders
+      (+ idx 1)
+      count
+      (vector-push result (make-function-meta 0 0 (vector-new 0))))))
+
+(defn append-vector-loop [dst src idx len]
+  (if (>= idx len)
+    dst
+    (append-vector-loop
+      (vector-push dst (vector-get src idx))
+      src
+      (+ idx 1)
+      len)))
+
+(defn byte-at [bytes idx]
+  (let [value (vector-get bytes idx)]
+    (if (< value 0) (+ value 256) value)))
+
+(defn print-byte-window [bytes idx end]
+  (if (>= idx end)
+    0
+    (do
+      (print idx)
+      (print (byte-at bytes idx))
+      (print-byte-window bytes (+ idx 1) end))))
+
+(defn x86-param-spill-prefix-size [param-count]
+  (if (>= param-count 20)
+    (native-param-spill-bytes-x86-twenty-plus param-count)
+    (if (> param-count 6)
+      (+ 53 (* (- param-count 7) 11))
+      (if (= param-count 6)
+        42
+        (if (= param-count 5)
+          35
+          (if (= param-count 4)
+            28
+            (if (= param-count 3)
+              21
+              (if (= param-count 2)
+                14
+                (if (= param-count 1) 7 0)))))))))
+
+(defn main []
+  (let [cache-ref (ref-new (map-new))
+        parse-count-ref (ref-new 0)
+        source-path (command-line-arg 1)
+        payload (compile-file-functions-payload-with-cache source-path 10 cache-ref parse-count-ref)
+        functions (vector-get payload 0)
+        callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))
+        target (make-target 3)
+        native-callables (normalize-selfhost-native-function-metas-for-target callables target)
+        target-func-idx {target_func_idx}
+        starts (collect-callable-function-slot-starts-x86 native-callables 10)
+        import-stub-offset (callable-user-total-slot-size-x86 native-callables 10)
+        function-start (vector-get starts (- target-func-idx 10))
+        func-meta (vector-get native-callables target-func-idx)
+        param-count (native-function-param-count func-meta)
+        local-count (native-function-local-count func-meta)
+        ir (native-function-ir func-meta)
+        stack-bytes (native-local-stack-bytes-with-window-x86 ir (+ (+ param-count local-count) 1) native-callables)
+        body-offset (+ (+ 4 (if (> stack-bytes 0) 7 0)) (x86-param-spill-prefix-size param-count))
+        result (ref-new (vector-new 0))
+        layout (make-x86-function-emit-layout 10 import-stub-offset function-start 0)]
+    (do
+      (generate-native-function-x86-64-bundle-with-layout func-meta result starts native-callables layout)
+      (print target-func-idx)
+      (print function-start)
+      (print param-count)
+      (print local-count)
+      (print stack-bytes)
+      (print body-offset)
+      (print (vector-length (ref-get result)))
+      (print (byte-at (ref-get result) 39))
+      (print-byte-window (ref-get result) 0 96)
+      (byte-at (ref-get result) 39))))"#,
+        target_func_idx = target_func_idx
+    );
+    let escaped_probe_source = escape_lsharp_string(&probe_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Probe.ls" "{escaped_probe_source}")
+            (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle =
+        run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+            "linux-x86-seed-function-segment-probe-bundle",
+            &payload_expr,
+            &[],
+        );
+
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86_64 Seed function segment probe entrypoint は code 範囲内にあること: entry={} len={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len()
+    );
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86_64 Seed function segment probe code artifact は空でないこと"
+    );
+
+    std::fs::write(artifact_dir.join("stage-code.bin"), &bundle.code_bytes)
+        .expect("Linux x86_64 Seed function segment probe stage-code.bin 書き込みに失敗");
+    std::fs::write(artifact_dir.join("stage-data.bin"), &bundle.data_bytes)
+        .expect("Linux x86_64 Seed function segment probe stage-data.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", bundle.entrypoint_offset),
+    )
+    .expect("Linux x86_64 Seed function segment probe entrypoint-offset.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", bundle.main_func_idx),
+    )
+    .expect("Linux x86_64 Seed function segment probe main-func-idx.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", bundle.function_start_len),
+    )
+    .expect("Linux x86_64 Seed function segment probe function-start-len.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("seed.ls"),
+        linux_x86_representative_actual_stage23_seed_source(),
+    )
+    .expect("Linux x86_64 Seed function segment probe seed.ls 書き込みに失敗");
 }
 
 /// NATIVE-LINUX-X86-02gb3p: host 側 selfhost が x86 param spill probe の Linux native bundle を生成すること。
