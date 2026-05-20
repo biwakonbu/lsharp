@@ -579,6 +579,26 @@ fn test_linux_x86_metadata_replays_i64_ge_control_loop_single_row() {
 }
 
 #[test]
+fn test_linux_x86_metadata_replays_control_if_control_loop_single_row() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    assert!(
+        source.contains("(defn print-x86-control-if-control-replay-diagnostic")
+            && source.contains("(print 9000000027)")
+            && source.contains("(print 9000000028)")
+            && source.contains("(print 9000000029)")
+            && source.contains("(emit-control-instr-x86 ir-func meta offsets idx)")
+            && source.contains("(make-x86-control-loop-state idx 1)")
+            && source.contains(
+                "(generate-native-control-instr-bundle-loop-x86-with-context fresh-ctx row-state)"
+            )
+            && source.contains(
+                "(print-x86-control-if-control-replay-diagnostic control-ctx idx opcode operand offset size)"
+            ),
+        "Linux x86 metadata mode は opcode41 if を同一 control-loop ctx の single-row replay で相関できるべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_representative_seed_roots_code_segment_context_inputs() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     let body = source
@@ -1198,6 +1218,84 @@ fn test_native_codegen_x86_plain_two_to_one_fallback_appends_in_helper() {
             && control_loop_body.contains("(append-plain-two-to-one-codegen-bundle-x86 result opcode operand frame-base-slot-count current-depth)")
             && !control_loop_body.contains("(emit-consume-two-bundle-x86\n                                                               (codegen-ir-instr opcode operand)"),
         "x86 plain two-to-one fallback は巨大 control-loop let の native vector 生成に戻さず、小さい helper 内で生成+append するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_control_loop_omits_unreachable_opcode40_fallback() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let fallback_native_body = source
+        .split("(let [native (if (= (is-control-opcode opcode) 1)")
+        .nth(1)
+        .and_then(|tail| tail.split("native-len (vector-length native)").next())
+        .expect("NativeCodegen.ls に control-loop fallback native let が存在すること");
+
+    assert!(
+        source.contains("(if (= opcode 40)") && !fallback_native_body.contains("(if (= opcode 40)"),
+        "opcode40 は control-loop 上部の専用 branch で処理済みなので fallback native let に再配置しない"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_control_loop_fallback_native_uses_helper() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let control_loop_body = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base")
+                .next()
+        })
+        .expect("NativeCodegen.ls に generate-native-control-instr-bundle-loop-x86-with-context が存在すること");
+
+    assert!(
+        source.contains("(defn codegen-x86-control-loop-fallback-native [ctx idx opcode operand actual-current-offset]")
+            && control_loop_body.contains("(codegen-x86-control-loop-fallback-native ctx idx opcode operand (x86-current-emitted-offset result emit-start-base))")
+            && !control_loop_body.contains("(let [native (if (= (is-control-opcode opcode) 1)"),
+        "x86 control-loop fallback の native vector 生成は巨大 loop 本体から helper へ出すべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_control_if_fallback_appends_in_helper() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let control_loop_body = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base")
+                .next()
+        })
+        .expect("NativeCodegen.ls に generate-native-control-instr-bundle-loop-x86-with-context が存在すること");
+
+    assert!(
+        source.contains("(defn append-control-if-instr-x86 [result meta offsets idx]")
+            && control_loop_body.contains("(if (= opcode 41)")
+            && control_loop_body.contains("(append-control-if-instr-x86 result meta offsets idx)")
+            && !control_loop_body.contains("(if (= (direct-append-x86-opcode opcode) 12)"),
+        "x86 if control fallback は direct selector を増やさず、小さい helper 内で生成+append するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_control_else_fallback_appends_in_helper() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let control_loop_body = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base")
+                .next()
+        })
+        .expect("NativeCodegen.ls に generate-native-control-instr-bundle-loop-x86-with-context が存在すること");
+
+    assert!(
+        source.contains("(defn append-control-else-instr-x86 [result meta offsets idx]")
+            && control_loop_body.contains("(if (= opcode 79)")
+            && control_loop_body
+                .contains("(append-control-else-instr-x86 result meta offsets idx)")
+            && !control_loop_body.contains("(if (= (direct-append-x86-opcode opcode) 13)"),
+        "x86 else control fallback は direct selector を増やさず、小さい helper 内で生成+append するべき"
     );
 }
 
@@ -2190,15 +2288,27 @@ fn test_native_codegen_x86_control_loop_dispatches_runtime_helpers_without_ten_a
         .nth(1)
         .and_then(|tail| tail.split("\n(defn ").next())
         .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+    let fallback_body = source
+        .split("(defn codegen-x86-control-loop-fallback-native")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 control-loop fallback helper が存在すること");
 
     let helper_dispatch = "(codegen-selfhost-runtime-bundle-x86 opcode (ref-get actual-current-offset-ref) (ref-get import-stub-offset-ref) import-count frame-base-slot-count current-depth)";
     assert!(
-        body.contains("(is-selfhost-runtime-opcode-x86 opcode)") && body.contains(helper_dispatch),
+        body.contains("(codegen-x86-control-loop-fallback-native ctx idx opcode operand")
+            && fallback_body.contains("(is-selfhost-runtime-opcode-x86 opcode)")
+            && fallback_body.contains(helper_dispatch),
         "x86 control loop は Linux x86 native の stack arg 破壊を避けるため selfhost runtime helper を 10 引数 wrapper 経由にしない"
     );
-    if let Some(wrapper_pos) = body.find("codegen-ir-instr-bundle-x86-with-import-count-and-base") {
+    if let Some(wrapper_pos) =
+        fallback_body.find("codegen-ir-instr-bundle-x86-with-import-count-and-base")
+    {
         assert!(
-            body.find(helper_dispatch).unwrap_or(usize::MAX) < wrapper_pos,
+            fallback_body.find(helper_dispatch).unwrap_or(usize::MAX) < wrapper_pos,
             "x86 helper 専用 dispatch は汎用 10 引数 codegen wrapper より先に評価するべき"
         );
     }
@@ -2247,6 +2357,14 @@ fn test_native_codegen_x86_control_loop_uses_actual_offset_for_rel32_calls() {
         .nth(1)
         .and_then(|tail| tail.split("\n(defn ").next())
         .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+    let fallback_body = source
+        .split("(defn codegen-x86-control-loop-fallback-native")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 control-loop fallback helper が存在すること");
 
     assert!(
         source.contains("(defn x86-current-emitted-offset [result emit-start-base]")
@@ -2263,6 +2381,8 @@ fn test_native_codegen_x86_control_loop_uses_actual_offset_for_rel32_calls() {
         body.contains(
             "codegen-x86-opcode-call-bundle (ref-get operand-ref) (ref-get actual-current-offset-ref) function-starts call-context",
         ) && body.contains(
+            "codegen-x86-control-loop-fallback-native ctx idx opcode operand (x86-current-emitted-offset result emit-start-base)",
+        ) && fallback_body.contains(
             "codegen-selfhost-runtime-bundle-x86 opcode (ref-get actual-current-offset-ref) (ref-get import-stub-offset-ref) import-count frame-base-slot-count current-depth",
         ),
         "x86 opcode 40 と selfhost runtime helper は precomputed offsets ではなく actual-current-offset で rel32 を計算するべき"
@@ -5360,6 +5480,129 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
           (root_pop))))
     0))
 
+(defn print-x86-control-if-control-replay-diagnostic [control-ctx idx opcode operand offset size]
+  (if (= opcode 41)
+    (do
+      (root_push control-ctx)
+      (let [ir-func (vector-get control-ctx 0)
+            meta (vector-get control-ctx 2)
+            offsets (vector-get control-ctx 3)
+            depths (vector-get control-ctx 4)
+            function-starts (vector-get control-ctx 5)
+            function-metas (vector-get control-ctx 6)
+            layout (vector-get control-ctx 7)
+            frame-base-slot-count (vector-get control-ctx 8)
+            current-depth (vector-get depths idx)
+            exact (emit-control-instr-x86 ir-func meta offsets idx)
+            exact-len (vector-length exact)]
+        (do
+          (root_push ir-func)
+          (root_push meta)
+          (root_push offsets)
+          (root_push depths)
+          (root_push function-starts)
+          (root_push function-metas)
+          (root_push layout)
+          (root_push exact)
+          (let [scratch-ref (ref-new (vector-new 0))]
+            (do
+              (root_push scratch-ref)
+              (let [replay-ref (ref-new (vector-new 0))]
+                (do
+                  (root_push replay-ref)
+                  (print 9000000027)
+                  (print idx)
+                  (print opcode)
+                  (print operand)
+                  (print current-depth)
+                  (print offset)
+                  (print size)
+                  (print exact-len)
+                  (print (byte-at-or-zero exact 0 exact-len))
+                  (print (byte-at-or-zero exact 1 exact-len))
+                  (print (byte-at-or-zero exact 2 exact-len))
+                  (print (byte-at-or-zero exact 3 exact-len))
+                  (print (byte-at-or-zero exact 4 exact-len))
+                  (print (byte-at-or-zero exact 5 exact-len))
+                  (print (byte-at-or-zero exact 6 exact-len))
+                  (print (byte-at-or-zero exact 7 exact-len))
+                  (append-native-bytes-loop scratch-ref exact 0 exact-len)
+                  (let [scratch (ref-get scratch-ref)
+                        scratch-len (vector-length scratch)]
+                    (do
+                      (root_push scratch)
+                      (print 9000000028)
+                      (print idx)
+                      (print opcode)
+                      (print operand)
+                      (print current-depth)
+                      (print offset)
+                      (print size)
+                      (print scratch-len)
+                      (print (byte-at-or-zero scratch 0 scratch-len))
+                      (print (byte-at-or-zero scratch 1 scratch-len))
+                      (print (byte-at-or-zero scratch 2 scratch-len))
+                      (print (byte-at-or-zero scratch 3 scratch-len))
+                      (print (byte-at-or-zero scratch 4 scratch-len))
+                      (print (byte-at-or-zero scratch 5 scratch-len))
+                      (print (byte-at-or-zero scratch 6 scratch-len))
+                      (print (byte-at-or-zero scratch 7 scratch-len))
+                      (let [fresh-ctx
+                              (make-x86-control-bundle-context
+                                ir-func
+                                replay-ref
+                                meta
+                                offsets
+                                depths
+                                function-starts
+                                function-metas
+                                layout
+                                frame-base-slot-count)]
+                        (do
+                          (root_push fresh-ctx)
+                          (let [before-len (vector-length (ref-get replay-ref))
+                                row-state (make-x86-control-loop-state idx 1)]
+                            (do
+                              (root_push row-state)
+                              (generate-native-control-instr-bundle-loop-x86-with-context fresh-ctx row-state)
+                              (let [replay (ref-get replay-ref)
+                                    after-len (vector-length replay)]
+                                (do
+                                  (root_push replay)
+                                  (print 9000000029)
+                                  (print idx)
+                                  (print opcode)
+                                  (print operand)
+                                  (print current-depth)
+                                  (print offset)
+                                  (print size)
+                                  (print before-len)
+                                  (print after-len)
+                                  (print (byte-at-or-zero replay before-len after-len))
+                                  (print (byte-at-or-zero replay (+ before-len 1) after-len))
+                                  (print (byte-at-or-zero replay (+ before-len 2) after-len))
+                                  (print (byte-at-or-zero replay (+ before-len 3) after-len))
+                                  (print (byte-at-or-zero replay (+ before-len 4) after-len))
+                                  (print (byte-at-or-zero replay (+ before-len 5) after-len))
+                                  (print (byte-at-or-zero replay (+ before-len 6) after-len))
+                                  (print (byte-at-or-zero replay (+ before-len 7) after-len))
+                                  (root_pop)))
+                              (root_pop)))
+                          (root_pop)))
+                      (root_pop)))
+                  (root_pop)))
+              (root_pop)))
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop))))
+    0))
+
 (defn print-x86-function-ir-prefix-loop [segment ir offsets functions control-ctx idx len depth]
   (if (>= idx len)
     0
@@ -5387,6 +5630,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         (print (byte-at-or-zero segment (+ offset 7) segment-len))
         (print-x86-i64-ge-emitted-byte-diagnostic idx opcode operand depth)
         (print-x86-i64-ge-control-replay-diagnostic control-ctx idx opcode operand offset size)
+        (print-x86-control-if-control-replay-diagnostic control-ctx idx opcode operand offset size)
         (print-x86-function-ir-prefix-loop
           segment
           ir
