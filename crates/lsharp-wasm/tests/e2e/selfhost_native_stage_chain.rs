@@ -23319,6 +23319,93 @@ fn test_e2e_native_linux_x86_host_generates_codegen_eight_arg_call_probe_bundle_
     .expect("Linux x86_64 codegen eight-arg call probe function-start-len.txt 書き込みに失敗");
 }
 
+/// NATIVE-LINUX-X86-02gb9: host 側 selfhost が concat-five fourth-arg probe の Linux native bundle を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_concat_five_fourth_arg_probe_bundle_artifact() {
+    let artifact_dir =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_CONCAT_FIVE_FOURTH_ARG_PROBE_ARTIFACT_DIR")
+            .expect(
+                "LSHARP_NATIVE_LINUX_X86_CONCAT_FIVE_FOURTH_ARG_PROBE_ARTIFACT_DIR に Linux x86_64 concat-five fourth-arg probe artifact dir を指定すること",
+            );
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 concat-five fourth-arg probe artifact dir 作成に失敗");
+
+    let probe_source = r#"(module App.Probe)
+(import Backend.Native.NativeCodegen)
+
+(defn byte-at [bytes idx]
+  (let [value (vector-get bytes idx)]
+    (if (< value 0) (+ value 256) value)))
+
+(defn print-byte-window [bytes idx end]
+  (if (>= idx end)
+    0
+    (do
+      (print idx)
+      (print (byte-at bytes idx))
+      (print-byte-window bytes (+ idx 1) end))))
+
+(defn main []
+  (let [result
+          (concat-five-byte-vectors-rooted
+            (byte-vector-3 1 2 3)
+            (byte-vector-2 4 5)
+            (byte-vector-2 6 7)
+            (emit-call-rel32 0)
+            (byte-vector-2 8 9))]
+    (do
+      (print (vector-length result))
+      (print-byte-window result 0 (vector-length result))
+      (if (= (vector-length result) 14)
+        (byte-at result 7)
+        (vector-length result)))))"#;
+    let escaped_probe_source = escape_lsharp_string(probe_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Probe.ls" "{escaped_probe_source}")
+            (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle =
+        run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+            "linux-x86-concat-five-fourth-arg-probe-bundle",
+            &payload_expr,
+            &[],
+        );
+
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86_64 concat-five fourth-arg probe entrypoint は code 範囲内にあること: entry={} len={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len()
+    );
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86_64 concat-five fourth-arg probe code artifact は空でないこと"
+    );
+
+    std::fs::write(artifact_dir.join("stage-code.bin"), &bundle.code_bytes)
+        .expect("Linux x86_64 concat-five fourth-arg probe stage-code.bin 書き込みに失敗");
+    std::fs::write(artifact_dir.join("stage-data.bin"), &bundle.data_bytes)
+        .expect("Linux x86_64 concat-five fourth-arg probe stage-data.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", bundle.entrypoint_offset),
+    )
+    .expect("Linux x86_64 concat-five fourth-arg probe entrypoint-offset.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", bundle.main_func_idx),
+    )
+    .expect("Linux x86_64 concat-five fourth-arg probe main-func-idx.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", bundle.function_start_len),
+    )
+    .expect("Linux x86_64 concat-five fourth-arg probe function-start-len.txt 書き込みに失敗");
+}
+
 /// NATIVE-LINUX-X86-02gb3: host 側 selfhost が padded depth=1 direct append probe の Linux native bundle を生成すること。
 #[test]
 #[ignore]
