@@ -544,6 +544,19 @@ fn test_linux_x86_representative_seed_can_print_function_segment_metadata() {
 }
 
 #[test]
+fn test_linux_x86_metadata_correlates_i64_ge_expected_emitted_bytes() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    assert!(
+        source.contains("(defn print-x86-i64-ge-emitted-byte-diagnostic")
+            && source.contains("(print 9000000022)")
+            && source.contains("(codegen-ir-instr opcode operand)")
+            && source
+                .contains("(print-x86-i64-ge-emitted-byte-diagnostic idx opcode operand depth)"),
+        "Linux x86 metadata mode は opcode35 の segment bytes と codegen-ir-instr expected bytes を同一 prefix 診断で相関できるべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_representative_seed_roots_code_segment_context_inputs() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     let body = source
@@ -5134,6 +5147,29 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                 14
                 (if (= param-count 1) 7 0)))))))))
 
+(defn print-x86-i64-ge-emitted-byte-diagnostic [idx opcode operand depth]
+  (if (= opcode 35)
+    (let [native (codegen-ir-instr opcode operand)
+          native-len (vector-length native)]
+      (do
+        (root_push native)
+        (print 9000000022)
+        (print idx)
+        (print opcode)
+        (print operand)
+        (print depth)
+        (print native-len)
+        (print (byte-at-or-zero native 0 native-len))
+        (print (byte-at-or-zero native 1 native-len))
+        (print (byte-at-or-zero native 2 native-len))
+        (print (byte-at-or-zero native 3 native-len))
+        (print (byte-at-or-zero native 4 native-len))
+        (print (byte-at-or-zero native 5 native-len))
+        (print (byte-at-or-zero native 6 native-len))
+        (print (byte-at-or-zero native 7 native-len))
+        (root_pop)))
+    0))
+
 (defn print-x86-function-ir-prefix-loop [segment ir offsets functions idx len depth]
   (if (>= idx len)
     0
@@ -5159,6 +5195,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         (print (byte-at-or-zero segment (+ offset 5) segment-len))
         (print (byte-at-or-zero segment (+ offset 6) segment-len))
         (print (byte-at-or-zero segment (+ offset 7) segment-len))
+        (print-x86-i64-ge-emitted-byte-diagnostic idx opcode operand depth)
         (print-x86-function-ir-prefix-loop
           segment
           ir
