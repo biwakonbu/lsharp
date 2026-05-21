@@ -385,6 +385,22 @@ fn test_native_linux_x86_hostgen_vm_script_can_collect_stage2_metadata_range() {
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_copies_stage_debug_source_tree() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let body = shell_function_body(&script, "copy_actual_stage_debug_artifact");
+
+    assert!(
+        body.contains(r#"${stage_dir}/src"#)
+            && body.contains(r#"${ARTIFACT_DIR}/${debug_dir}/src"#)
+            && body.contains(r#"limactl copy "${VM_NAME}:${VM_WORK_DIR}/${stage_dir}/src""#),
+        "stage debug artifact は metadata 再実行が縮退しないよう full selfhost src tree も回収するべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_cleans_vm_work_dir_before_run() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
@@ -759,6 +775,30 @@ fn test_native_codegen_x86_vector_new_runtime_call_direct_appends_in_stage1() {
             && control_loop.contains("(x86-selfhost-vector-new-helper-offset")
             && control_loop.contains("(+ (x86-current-emitted-offset result emit-start-base) 6)"),
         "stage1 が stage2 を生成するとき、vector-new runtime helper call は byte-vector 経由に戻さず direct append するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_vector_length_runtime_call_direct_appends_in_stage1() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let control_loop = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
+        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+
+    assert!(
+        control_loop.contains("(if (if (= opcode 51) true (= opcode 52))")
+            && control_loop.contains("(append-x86-helper-call-preserving-rcx")
+            && control_loop.contains("(x86-selfhost-string-length-helper-offset")
+            && control_loop.contains("(x86-selfhost-vector-length-helper-offset")
+            && control_loop.contains("(+ (x86-current-emitted-offset result emit-start-base) 6)"),
+        "stage1 が stage2 を生成するとき、vector-length runtime helper call は byte-vector 経由に戻さず string-length と同じ preserving-RCX direct append 分岐へ合流させるべき"
     );
 }
 
@@ -40981,6 +41021,7 @@ fn find_zeroed_x86_runtime_helper_call_rows(
             (matches!(row.opcode, 50 | 53 | 55 | 58 | 60 | 63 | 70)
                 && row.size == 5
                 && row.bytes[..5] == [0, 0, 0, 0, 0])
+                || (row.opcode == 52 && row.size == 7 && row.bytes[..7] == [0; 7])
                 || (matches!(row.opcode, 62 | 69) && row.size == 12 && row.bytes == [0; 8])
                 || (row.opcode == 73 && row.size == 7 && row.bytes[..7] == [0; 7])
         })
@@ -41493,6 +41534,47 @@ fn test_linux_x86_function_segment_metadata_detects_zeroed_file_exists_runtime_c
     assert_eq!(zeroed_rows[0].instr_idx, 35);
     assert_eq!(zeroed_rows[0].opcode, 73);
     assert_eq!(zeroed_rows[0].offset, 259);
+    assert_eq!(zeroed_rows[0].bytes[..7], [0, 0, 0, 0, 0, 0, 0]);
+}
+
+#[test]
+fn test_linux_x86_function_segment_metadata_detects_zeroed_vector_length_runtime_call() {
+    let metadata = "\
+9000000020
+1090
+1100
+3314073
+4216
+3
+17
+21
+1200
+21
+32
+283
+9000000021
+168
+52
+0
+1
+1182
+7
+0
+0
+0
+0
+0
+0
+0
+72
+";
+    let rows = parse_linux_x86_function_segment_metadata_rows(metadata);
+    let zeroed_rows = find_zeroed_x86_runtime_helper_call_rows(&rows);
+
+    assert_eq!(zeroed_rows.len(), 1);
+    assert_eq!(zeroed_rows[0].instr_idx, 168);
+    assert_eq!(zeroed_rows[0].opcode, 52);
+    assert_eq!(zeroed_rows[0].offset, 1182);
     assert_eq!(zeroed_rows[0].bytes[..7], [0, 0, 0, 0, 0, 0, 0]);
 }
 
