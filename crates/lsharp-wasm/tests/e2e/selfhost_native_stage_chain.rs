@@ -40452,6 +40452,17 @@ struct X86IrCallTraceRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct LinuxX86FunctionSegmentMetadataRow {
+    instr_idx: i64,
+    opcode: i64,
+    operand: i64,
+    depth: i64,
+    offset: i64,
+    size: i64,
+    bytes: [u8; 8],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct LinuxX86TransportCodeSegment {
     segment_index: usize,
     function_idx: Option<usize>,
@@ -40750,6 +40761,83 @@ fn read_linux_x86_stage_code_segments_tsv(
         )
     });
     parse_linux_x86_stage_code_segments_tsv(&output)
+}
+
+fn parse_linux_x86_function_segment_metadata_rows(
+    output: &str,
+) -> Vec<LinuxX86FunctionSegmentMetadataRow> {
+    let lines = parse_numeric_lines(output);
+    let mut idx = 0;
+    let mut rows = Vec::new();
+    while idx < lines.len() {
+        match lines[idx] {
+            9_000_000_020 => {
+                assert!(
+                    idx + 12 <= lines.len(),
+                    "x86 function metadata header が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 12;
+            }
+            9_000_000_021 => {
+                assert!(
+                    idx + 15 <= lines.len(),
+                    "x86 function metadata row が不足: idx={idx} lines={lines:?}"
+                );
+                let bytes = [
+                    lines[idx + 7] as u8,
+                    lines[idx + 8] as u8,
+                    lines[idx + 9] as u8,
+                    lines[idx + 10] as u8,
+                    lines[idx + 11] as u8,
+                    lines[idx + 12] as u8,
+                    lines[idx + 13] as u8,
+                    lines[idx + 14] as u8,
+                ];
+                rows.push(LinuxX86FunctionSegmentMetadataRow {
+                    instr_idx: lines[idx + 1],
+                    opcode: lines[idx + 2],
+                    operand: lines[idx + 3],
+                    depth: lines[idx + 4],
+                    offset: lines[idx + 5],
+                    size: lines[idx + 6],
+                    bytes,
+                });
+                idx += 15;
+            }
+            9_000_000_027 | 9_000_000_028 => {
+                assert!(
+                    idx + 16 <= lines.len(),
+                    "x86 function metadata replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 16;
+            }
+            9_000_000_029 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata replay output row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            marker => {
+                panic!(
+                    "未知の x86 function metadata marker: marker={marker} idx={idx} lines={lines:?}"
+                );
+            }
+        }
+    }
+    rows
+}
+
+fn find_zeroed_x86_runtime_helper_call_rows(
+    rows: &[LinuxX86FunctionSegmentMetadataRow],
+) -> Vec<&LinuxX86FunctionSegmentMetadataRow> {
+    rows.iter()
+        .filter(|row| {
+            matches!(row.opcode, 50 | 53 | 55 | 58 | 60 | 63 | 70)
+                && row.size == 5
+                && row.bytes[..5] == [0, 0, 0, 0, 0]
+        })
+        .collect()
 }
 
 fn find_linux_x86_transport_segment_for_function_idx(
@@ -41079,6 +41167,85 @@ fn test_x86_call_target_diagnostic_rejects_rex_prefix_skip() {
         &bundle,
         &calls,
         &rows,
+    );
+}
+
+#[test]
+fn test_linux_x86_function_segment_metadata_detects_zeroed_ref_set_runtime_call() {
+    let metadata = "\
+9000000020
+1046
+1056
+3162454
+4139
+3
+12
+16
+1152
+21
+32
+282
+9000000021
+102
+57
+0
+2
+706
+7
+81
+232
+204
+182
+26
+0
+89
+72
+9000000021
+105
+58
+10
+2
+743
+5
+0
+0
+0
+0
+0
+72
+137
+200
+";
+    let rows = parse_linux_x86_function_segment_metadata_rows(metadata);
+    let zeroed_rows = find_zeroed_x86_runtime_helper_call_rows(&rows);
+
+    assert_eq!(zeroed_rows.len(), 1);
+    assert_eq!(zeroed_rows[0].instr_idx, 105);
+    assert_eq!(zeroed_rows[0].opcode, 58);
+    assert_eq!(zeroed_rows[0].offset, 743);
+    assert_eq!(zeroed_rows[0].bytes[..5], [0, 0, 0, 0, 0]);
+}
+
+#[test]
+#[ignore = "diagnostic: V2-13a-5 Linux x86 function metadata zeroed runtime helper calls"]
+fn test_e2e_linux_x86_actual_function_segment_metadata_has_no_zeroed_runtime_helper_calls() {
+    let metadata_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_FUNCTION_METADATA").expect(
+        "LSHARP_NATIVE_LINUX_X86_FUNCTION_METADATA に stage1/stage2 metadata txt を指定すること",
+    );
+    let metadata_path = workspace_root_relative_path(std::path::PathBuf::from(metadata_path));
+    let metadata = std::fs::read_to_string(&metadata_path).unwrap_or_else(|e| {
+        panic!(
+            "Linux x86 function metadata 読み込み失敗 ({}): {e}",
+            metadata_path.display()
+        )
+    });
+    let rows = parse_linux_x86_function_segment_metadata_rows(&metadata);
+    let zeroed_rows = find_zeroed_x86_runtime_helper_call_rows(&rows);
+
+    assert!(
+        zeroed_rows.is_empty(),
+        "Linux x86 function metadata に zeroed runtime helper call rows が残っている: path={} rows={zeroed_rows:?}",
+        metadata_path.display()
     );
 }
 
