@@ -1340,7 +1340,7 @@ copy_actual_stage_debug_artifact() {
     fi
   done
   if limactl shell "${VM_NAME}" -- test -d "${VM_WORK_DIR}/${stage_dir}/src"; then
-    limactl copy "${VM_NAME}:${VM_WORK_DIR}/${stage_dir}/src" "${ARTIFACT_DIR}/${debug_dir}/src"
+    limactl copy "${VM_NAME}:${VM_WORK_DIR}/${stage_dir}/src" "${ARTIFACT_DIR}/${debug_dir}"
   fi
 }
 

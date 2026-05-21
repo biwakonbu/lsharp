@@ -394,9 +394,12 @@ fn test_native_linux_x86_hostgen_vm_script_copies_stage_debug_source_tree() {
 
     assert!(
         body.contains(r#"${stage_dir}/src"#)
-            && body.contains(r#"${ARTIFACT_DIR}/${debug_dir}/src"#)
+            && body.contains(
+                r#"limactl copy "${VM_NAME}:${VM_WORK_DIR}/${stage_dir}/src" "${ARTIFACT_DIR}/${debug_dir}""#
+            )
+            && !body.contains(r#"${ARTIFACT_DIR}/${debug_dir}/src"#)
             && body.contains(r#"limactl copy "${VM_NAME}:${VM_WORK_DIR}/${stage_dir}/src""#),
-        "stage debug artifact は metadata 再実行が縮退しないよう full selfhost src tree も回収するべき"
+        "stage debug artifact は metadata 再実行が縮退しないよう full selfhost src tree を src/src へネストせず回収するべき"
     );
 }
 
@@ -1270,6 +1273,52 @@ fn test_native_codegen_x86_vector_new_helper_nop_fills_capacity_for_code_vectors
         source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 569)")
             && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1487)"),
         "x86 vector-new helper の拡張後は後続 runtime helper offset も +37 へ同期するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_vector_get_helper_rejects_tagged_noncanonical_immediates() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let helper_body = source
+        .split("(defn emit-x86-selfhost-vector-get-helper")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn emit-x86-selfhost-vector-push-helper")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 vector-get helper が存在すること");
+    let sizes_body = source
+        .split("(defn x86-selfhost-vector-get-helper-size")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn x86-selfhost-vector-push-helper-size")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 vector-get helper size が存在すること");
+    let append_body = source
+        .split("(append-native-bytes-rooted result (emit-x86-selfhost-vector-get-helper)")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(append-native-bytes-rooted result (emit-x86-selfhost-vector-push-helper)")
+                .next()
+        })
+        .expect("x86 bundle trailer に vector-get helper append が存在すること");
+
+    assert!(
+        helper_body.contains("part4 (byte-vector-5 15 186 241 63 72)")
+            && helper_body.contains("part5 (byte-vector-5 186 0 0 0 0)")
+            && helper_body.contains("part6 (byte-vector-5 0 128 0 0 72)")
+            && helper_body.contains("part7 (byte-vector-5 57 209 115 11 59)"),
+        "x86 vector-get helper は high-bit tagged immediate を pointer として dereference しないよう btr 後に canonical lower-half pointer guard を入れるべき"
+    );
+    assert!(
+        sizes_body.contains("  48)") && append_body.trim_start().starts_with("48"),
+        "x86 vector-get helper の実バイト長更新に合わせて size helper と trailer append 長も 48 に同期するべき"
+    );
+    assert!(
+        source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 634)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1502)"),
+        "x86 vector-get helper の拡張後は後続 runtime helper offset も +15 へ同期するべき"
     );
 }
 
