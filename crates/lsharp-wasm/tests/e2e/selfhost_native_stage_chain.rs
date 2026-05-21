@@ -1667,7 +1667,10 @@ fn test_linux_x86_function_offsets_diagnostic_is_env_driven() {
             && diagnostic_body.contains("{offset_end}")
             && diagnostic_body.contains("collect-callable-function-slot-starts-x86")
             && diagnostic_body.contains("callable-user-total-slot-size-x86")
-            && diagnostic_body.contains("let offset = row.offset as usize")
+            && diagnostic_body.contains("native-local-stack-bytes-with-window-x86")
+            && !diagnostic_body.contains("native-local-stack-bytes-with-window\n")
+            && diagnostic_body.contains("let relative_offset = row.offset - function_start_base")
+            && diagnostic_body.contains("segment.start + relative_offset as usize")
             && diagnostic_body.contains("nearest_x86_prologue_start")
             && diagnostic_body.contains("function prologue window")
             && !diagnostic_body
@@ -28275,7 +28278,7 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_function_offsets_diagnostic() {
             ir
             (+ (+ (native-function-param-count func) (native-function-local-count func)) 1))
         body-offset (+ (+ function-start-base 4)
-          (+ (if (> (native-local-stack-bytes-with-window
+          (+ (if (> (native-local-stack-bytes-with-window-x86
                        ir
                        (+ (+ (native-function-param-count func) (native-function-local-count func)) 1)
                        native-callables)
