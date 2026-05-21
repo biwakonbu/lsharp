@@ -10383,13 +10383,15 @@
         (emit-x86-helper-call-preserving-rcx
           (- (x86-selfhost-string-length-helper-offset import-stub-offset import-count)
              (+ current-offset 6)))
-        (if (= opcode 50)
+        (if (if (= opcode 50) true (= opcode 63))
           (emit-consume-two-bundle-x86
             (emit-call-rel32
-              (- (x86-selfhost-string-char-at-helper-offset import-stub-offset import-count)
+              (- (if (= opcode 50)
+                   (x86-selfhost-string-char-at-helper-offset import-stub-offset import-count)
+                   (x86-selfhost-map-get-helper-offset import-stub-offset import-count))
                  (+ current-offset 5)))
-                          frame-base-slot-count
-                          current-depth)
+	                          frame-base-slot-count
+	                          current-depth)
           (if (= opcode 59)
             (emit-x86-helper-call-preserving-rcx
               (- (x86-selfhost-print-helper-offset import-stub-offset import-count)
@@ -10473,23 +10475,16 @@
                                     (- (x86-selfhost-map-size-helper-offset import-stub-offset import-count)
                                        (+ current-offset 6)))
                                   (if (= opcode 62)
-                                    (emit-map-insert-bundle-x86
-                                      (- (x86-selfhost-map-insert-helper-offset import-stub-offset import-count)
-                                         (+ current-offset 12))
-                                      frame-base-slot-count
-                                      current-depth)
-                                    (if (= opcode 63)
-                                      (emit-consume-two-bundle-x86
-                                        (emit-call-rel32
-                                          (- (x86-selfhost-map-get-helper-offset import-stub-offset import-count)
-                                             (+ current-offset 5)))
-                                        frame-base-slot-count
-                                        current-depth)
-                                      (if (= opcode 73)
-                                        (emit-x86-helper-call-preserving-rcx
-                                          (- (x86-selfhost-file-exists-helper-offset import-stub-offset import-count)
-                                             (+ current-offset 6)))
-                                         (vector-new 0)))))))))))))))))))))
+	                                    (emit-map-insert-bundle-x86
+	                                      (- (x86-selfhost-map-insert-helper-offset import-stub-offset import-count)
+	                                         (+ current-offset 12))
+	                                      frame-base-slot-count
+	                                      current-depth)
+	                                    (if (= opcode 73)
+	                                      (emit-x86-helper-call-preserving-rcx
+	                                        (- (x86-selfhost-file-exists-helper-offset import-stub-offset import-count)
+	                                           (+ current-offset 6)))
+	                                      (vector-new 0))))))))))))))))))))
 
 (defn codegen-x86-opcode-call-bundle [operand current-offset function-starts context]
   (let [function-metas (vector-get context 0)
@@ -10751,12 +10746,12 @@
               (root_push actual-current-offset-ref)
               (let [import-stub-offset-ref (ref-new import-stub-offset)]
                 (do
-                  (root_push import-stub-offset-ref)
-                  (let [runtime-result (codegen-selfhost-runtime-bundle-x86 opcode (ref-get actual-current-offset-ref) (ref-get import-stub-offset-ref) import-count frame-base-slot-count current-depth)]
-                    (do
-                      (root_pop)
-                      (root_pop)
-                      runtime-result)))))))
+	                  (root_push import-stub-offset-ref)
+	                  (let [runtime-result (codegen-selfhost-runtime-bundle-x86 opcode (ref-get actual-current-offset-ref) (ref-get import-stub-offset-ref) import-count frame-base-slot-count current-depth)]
+	                    (do
+	                      (root_pop)
+	                      (root_pop)
+	                      runtime-result)))))))
         (if (= opcode 1)
           (emit-i64-const-bundle-x86 operand frame-base-slot-count current-depth)
           (if (= opcode 3)
@@ -10946,11 +10941,13 @@
                  (+ (x86-current-emitted-offset result emit-start-base) 6)))
             (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
               (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
-        (if (= opcode 50)
+        (if (if (= opcode 50) true (= opcode 63))
           (do
             (append-consume-two-helper-call-x86
               result
-              (- (x86-selfhost-string-char-at-helper-offset import-stub-offset import-count)
+              (- (if (= opcode 50)
+                   (x86-selfhost-string-char-at-helper-offset import-stub-offset import-count)
+                   (x86-selfhost-map-get-helper-offset import-stub-offset import-count))
                  (+ (x86-current-emitted-offset result emit-start-base) 5))
               frame-base-slot-count
               current-depth)
