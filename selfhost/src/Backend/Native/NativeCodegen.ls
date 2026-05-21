@@ -10957,6 +10957,16 @@
               current-depth)
             (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
               (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
+        (if (= opcode 62)
+          (do
+            (append-map-insert-helper-call-x86
+              result
+              (- (x86-selfhost-map-insert-helper-offset import-stub-offset import-count)
+                 (+ (x86-current-emitted-offset result emit-start-base) 12))
+              frame-base-slot-count
+              current-depth)
+            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
+              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
         (if (= (direct-append-x86-opcode opcode) 1)
           (do
             (append-produce-one-bundle-x86 result (direct-append-produce-one-bytes-x86 opcode operand) frame-base-slot-count current-depth)
@@ -10992,7 +11002,7 @@
                       (do
                         (append-native-bytes-loop result native 0 native-len)
                         (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-                          (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))))))))))))))))))))))))))))))))
+                          (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state))))))))))))))))))))))))))))))))))
 (defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base [ir-func result meta offsets function-starts function-metas import-count import-stub-offset function-start-base frame-base-slot-count current-depth idx len]
   (let [emit-start-base (vector-length (ref-get result))
     layout (make-x86-function-emit-layout import-count import-stub-offset function-start-base emit-start-base)]
@@ -11225,6 +11235,14 @@
       (append-native-bytes-rooted result (emit-mov-local-from-rsi (native-value-window-spill-offset frame-base-slot-count (- shift-idx 1))) 7)
       (append-drop-window-spill-shifts-x86 result frame-base-slot-count (+ shift-idx 1) last-shift-idx))))
 
+(defn append-store-window-spill-shifts-x86 [result frame-base-slot-count shift-idx last-shift-idx]
+  (if (> shift-idx last-shift-idx)
+    0
+    (do
+      (append-native-bytes-rooted result (emit-mov-rsi-from-local (native-value-window-spill-offset frame-base-slot-count shift-idx)) 7)
+      (append-native-bytes-rooted result (emit-mov-local-from-rsi (native-value-window-spill-offset frame-base-slot-count (- shift-idx 2))) 7)
+      (append-store-window-spill-shifts-x86 result frame-base-slot-count (+ shift-idx 1) last-shift-idx))))
+
 (defn append-drop-bundle-x86 [result frame-base-slot-count current-depth]
   (do
     (append-mov-rax-rcx-x86 result)
@@ -11269,6 +11287,19 @@
         (append-native-bytes-rooted result (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 0)) 7)
         (append-drop-window-spill-shifts-x86 result frame-base-slot-count 1 (- current-depth 3)))
       0)
+    0))
+
+(defn append-map-insert-helper-call-x86 [result rel frame-base-slot-count current-depth]
+  (do
+    (append-native-bytes-rooted result (emit-mov-rdx-from-local (native-value-window-spill-offset frame-base-slot-count 0)) 7)
+    (append-call-rel32-x86 result rel)
+    (if (>= current-depth 5)
+      (do
+        (append-native-bytes-rooted result (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 1)) 7)
+        (append-store-window-spill-shifts-x86 result frame-base-slot-count 2 (- current-depth 3)))
+      (if (= current-depth 4)
+        (append-native-bytes-rooted result (emit-mov-rcx-from-local (native-value-window-spill-offset frame-base-slot-count 1)) 7)
+        0))
     0))
 
 (defn append-plain-two-to-one-codegen-bundle-x86 [result opcode operand frame-base-slot-count current-depth]
