@@ -1391,7 +1391,7 @@ fn test_native_codegen_x86_local_slot_direct_append_avoids_multi_arg_disp_helper
 }
 
 #[test]
-fn test_native_codegen_x86_shallow_drop_direct_appends_mov_rax_rcx() {
+fn test_native_codegen_x86_drop_direct_appends_before_late_selector() {
     let source = selfhost_module("NativeCodegen.ls");
     let control_loop_body = source
         .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
@@ -1400,11 +1400,13 @@ fn test_native_codegen_x86_shallow_drop_direct_appends_mov_rax_rcx() {
         .expect("NativeCodegen.ls に generate-native-control-instr-bundle-loop-x86-with-context が存在すること");
 
     assert!(
-        control_loop_body.contains("(if (if (= opcode 44) (<= current-depth 2) false)")
-            && control_loop_body.contains("(append-mov-rax-rcx-x86 result)")
+        control_loop_body.contains("(if (= opcode 44)")
+            && control_loop_body
+                .contains("(append-drop-bundle-x86 result frame-base-slot-count current-depth)")
+            && !control_loop_body.contains("(if (if (= opcode 44) (<= current-depth 2) false)")
             && control_loop_body.contains("(+ idx 1)")
             && control_loop_body.contains("(- remaining 1)"),
-        "stage1 が stage2 を生成するとき、浅い drop は byte-vector-3 に戻さず mov rax, rcx を直接 append するべき"
+        "stage1 が stage2 を生成するとき、drop は深さに関係なく遅い selector へ戻さず早い direct append 分岐で処理するべき"
     );
 }
 

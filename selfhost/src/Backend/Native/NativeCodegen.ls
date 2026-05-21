@@ -10867,9 +10867,9 @@
                                   (root_pop)
                                   (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
                                     (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state))))))))))))))
-        (if (if (= opcode 44) (<= current-depth 2) false)
+        (if (= opcode 44)
           (do
-            (append-mov-rax-rcx-x86 result)
+            (append-drop-bundle-x86 result frame-base-slot-count current-depth)
             (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
               (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
         (if (= opcode 41)
