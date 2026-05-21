@@ -978,6 +978,29 @@ fn test_native_codegen_x86_substring_runtime_call_direct_appends_in_stage1() {
 }
 
 #[test]
+fn test_native_codegen_x86_file_exists_runtime_call_direct_appends_in_stage1() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let control_loop = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
+        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+
+    assert!(
+        control_loop.contains("(if (if (= opcode 57) true (= opcode 73))")
+            && control_loop.contains("(append-x86-helper-call-preserving-rcx")
+            && control_loop.contains("(x86-selfhost-file-exists-helper-offset")
+            && control_loop.contains("(+ (x86-current-emitted-offset result emit-start-base) 6)"),
+        "stage1 が stage2 を生成するとき、file-exists runtime helper call は byte-vector 経由に戻さず direct append するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_read_file_runtime_call_direct_appends_in_stage1() {
     let source = selfhost_module("NativeCodegen.ls");
     let control_loop = source
@@ -40956,6 +40979,7 @@ fn find_zeroed_x86_runtime_helper_call_rows(
                 && row.size == 5
                 && row.bytes[..5] == [0, 0, 0, 0, 0])
                 || (matches!(row.opcode, 62 | 69) && row.size == 12 && row.bytes == [0; 8])
+                || (row.opcode == 73 && row.size == 7 && row.bytes[..7] == [0; 7])
         })
         .collect()
 }
@@ -41426,6 +41450,47 @@ fn test_linux_x86_function_segment_metadata_detects_zeroed_substring_runtime_cal
     assert_eq!(zeroed_rows[0].opcode, 69);
     assert_eq!(zeroed_rows[0].offset, 692);
     assert_eq!(zeroed_rows[0].bytes, [0, 0, 0, 0, 0, 0, 0, 0]);
+}
+
+#[test]
+fn test_linux_x86_function_segment_metadata_detects_zeroed_file_exists_runtime_call() {
+    let metadata = "\
+9000000020
+12
+22
+30324
+794
+2
+4
+121
+6
+30342
+0
+0
+9000000021
+35
+73
+0
+1
+259
+7
+0
+0
+0
+0
+0
+0
+0
+0
+";
+    let rows = parse_linux_x86_function_segment_metadata_rows(metadata);
+    let zeroed_rows = find_zeroed_x86_runtime_helper_call_rows(&rows);
+
+    assert_eq!(zeroed_rows.len(), 1);
+    assert_eq!(zeroed_rows[0].instr_idx, 35);
+    assert_eq!(zeroed_rows[0].opcode, 73);
+    assert_eq!(zeroed_rows[0].offset, 259);
+    assert_eq!(zeroed_rows[0].bytes[..7], [0, 0, 0, 0, 0, 0, 0]);
 }
 
 #[test]

@@ -10939,11 +10939,13 @@
                  (+ (x86-current-emitted-offset result emit-start-base) 6)))
             (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
               (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
-        (if (= opcode 57)
+        (if (if (= opcode 57) true (= opcode 73))
           (do
             (append-x86-helper-call-preserving-rcx
               result
-              (- (x86-selfhost-ref-get-helper-offset import-stub-offset import-count)
+              (- (if (= opcode 57)
+                   (x86-selfhost-ref-get-helper-offset import-stub-offset import-count)
+                   (x86-selfhost-file-exists-helper-offset import-stub-offset import-count))
                  (+ (x86-current-emitted-offset result emit-start-base) 6)))
             (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
               (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
