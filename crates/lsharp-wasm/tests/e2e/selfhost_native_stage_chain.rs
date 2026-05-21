@@ -1277,7 +1277,7 @@ fn test_native_codegen_x86_vector_new_helper_nop_fills_capacity_for_code_vectors
 }
 
 #[test]
-fn test_native_codegen_x86_vector_get_helper_rejects_tagged_noncanonical_immediates() {
+fn test_native_codegen_x86_vector_get_helper_rejects_non_vector_objects() {
     let source = selfhost_module("NativeCodegen.ls");
     let helper_body = source
         .split("(defn emit-x86-selfhost-vector-get-helper")
@@ -1305,20 +1305,23 @@ fn test_native_codegen_x86_vector_get_helper_rejects_tagged_noncanonical_immedia
         .expect("x86 bundle trailer に vector-get helper append が存在すること");
 
     assert!(
-        helper_body.contains("part4 (byte-vector-5 15 186 241 63 72)")
-            && helper_body.contains("part5 (byte-vector-5 186 0 0 0 0)")
-            && helper_body.contains("part6 (byte-vector-5 0 128 0 0 72)")
-            && helper_body.contains("part7 (byte-vector-5 57 209 115 11 59)"),
-        "x86 vector-get helper は high-bit tagged immediate を pointer として dereference しないよう btr 後に canonical lower-half pointer guard を入れるべき"
+        helper_body.contains("part1 (byte-vector-5 72 133 201 121 39)")
+            && helper_body.contains("part3 (byte-vector-5 255 255 127 30 72)")
+            && helper_body.contains("part4 (byte-vector-5 15 186 241 63 72)")
+            && helper_body.contains("part5 (byte-vector-5 137 202 72 193 234)")
+            && helper_body.contains("part6 (byte-vector-5 47 117 16 131 57)")
+            && helper_body.contains("part7 (byte-vector-5 2 117 11 59 65)")
+            && helper_body.contains("part10 (byte-vector-2 192 195)"),
+        "x86 vector-get helper は high-bit tagged immediate と string object を vector として dereference しないよう short canonical pointer guard と vector tag guard を入れるべき"
     );
     assert!(
-        sizes_body.contains("  48)") && append_body.trim_start().starts_with("48"),
-        "x86 vector-get helper の実バイト長更新に合わせて size helper と trailer append 長も 48 に同期するべき"
+        sizes_body.contains("  47)") && append_body.trim_start().starts_with("47"),
+        "x86 vector-get helper の実バイト長更新に合わせて size helper と trailer append 長も 47 に同期するべき"
     );
     assert!(
-        source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 634)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1502)"),
-        "x86 vector-get helper の拡張後は後続 runtime helper offset も +15 へ同期するべき"
+        source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 633)")
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1501)"),
+        "x86 vector-get helper の短縮 tag guard 後は後続 runtime helper offset も +14 へ同期するべき"
     );
 }
 

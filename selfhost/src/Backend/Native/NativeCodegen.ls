@@ -9609,16 +9609,16 @@
     (concat-five-byte-vectors-rooted part1 part2 part3 part4 part5)))
 
 (defn emit-x86-selfhost-vector-get-helper []
-  (let [part1 (byte-vector-5 72 133 201 121 40)
+  (let [part1 (byte-vector-5 72 133 201 121 39)
     part2 (byte-vector-5 72 129 249 0 240)
-    part3 (byte-vector-5 255 255 127 31 72)
+    part3 (byte-vector-5 255 255 127 30 72)
     part4 (byte-vector-5 15 186 241 63 72)
-    part5 (byte-vector-5 186 0 0 0 0)
-    part6 (byte-vector-5 0 128 0 0 72)
-    part7 (byte-vector-5 57 209 115 11 59)
-    part8 (byte-vector-5 65 8 115 6 72)
-    part9 (byte-vector-5 139 68 193 16 195)
-    part10 (byte-vector-3 49 192 195)]
+    part5 (byte-vector-5 137 202 72 193 234)
+    part6 (byte-vector-5 47 117 16 131 57)
+    part7 (byte-vector-5 2 117 11 59 65)
+    part8 (byte-vector-5 8 115 6 72 139)
+    part9 (byte-vector-5 68 193 16 195 49)
+    part10 (byte-vector-2 192 195)]
     (concat-byte-vectors-rooted
       (concat-five-byte-vectors-rooted part1 part2 part3 part4 part5)
       (concat-five-byte-vectors-rooted part6 part7 part8 part9 part10))))
@@ -10213,7 +10213,7 @@
   17)
 
 (defn x86-selfhost-vector-get-helper-size []
-  48)
+  47)
 
 (defn x86-selfhost-vector-push-helper-size []
   205)
@@ -10298,37 +10298,37 @@
   (+ (x86-helper-base-offset import-stub-offset import-count) 586))
 
 (defn x86-selfhost-vector-push-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 634))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 633))
 
 (defn x86-selfhost-ref-new-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 839))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 838))
 
 (defn x86-selfhost-ref-get-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 912))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 911))
 
 (defn x86-selfhost-ref-set-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 930))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 929))
 
 (defn x86-selfhost-substring-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 950))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 949))
 
 (defn x86-selfhost-string-concat-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1095))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1094))
 
 (defn x86-selfhost-map-new-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1290))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1289))
 
 (defn x86-selfhost-map-size-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1362))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1361))
 
 (defn x86-selfhost-map-insert-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1379))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1378))
 
 (defn x86-selfhost-map-get-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1440))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1439))
 
 (defn x86-selfhost-file-exists-helper-offset [import-stub-offset import-count]
-  (+ (x86-helper-base-offset import-stub-offset import-count) 1502))
+  (+ (x86-helper-base-offset import-stub-offset import-count) 1501))
 
 (defn is-selfhost-runtime-opcode-x86 [opcode]
   (if (= opcode 64)
@@ -13509,7 +13509,7 @@
           (append-native-bytes-rooted result (emit-x86-selfhost-print-helper) 102)
           (append-native-bytes-rooted result (emit-x86-selfhost-vector-new-helper) 119)
           (append-native-bytes-rooted result (emit-x86-selfhost-vector-length-helper) 17)
-          (append-native-bytes-rooted result (emit-x86-selfhost-vector-get-helper) 48)
+          (append-native-bytes-rooted result (emit-x86-selfhost-vector-get-helper) 47)
           (append-native-bytes-rooted result (emit-x86-selfhost-vector-push-helper) 205)
           (append-native-bytes-rooted result (emit-x86-selfhost-ref-new-helper) 73)
           (append-native-bytes-rooted result (emit-x86-selfhost-ref-get-helper) 18)
