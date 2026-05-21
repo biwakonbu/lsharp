@@ -954,6 +954,30 @@ fn test_native_codegen_x86_map_insert_runtime_call_direct_appends_in_stage1() {
 }
 
 #[test]
+fn test_native_codegen_x86_substring_runtime_call_direct_appends_in_stage1() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let control_loop = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
+        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+
+    assert!(
+        control_loop.contains("(if (= opcode 69)")
+            && control_loop.contains("(append-substring-helper-call-x86")
+            && control_loop.contains("(x86-selfhost-substring-helper-offset")
+            && control_loop.contains("(+ (x86-current-emitted-offset result emit-start-base) 12)")
+            && source.contains("(defn append-substring-helper-call-x86"),
+        "stage1 が stage2 を生成するとき、substring runtime helper call は byte-vector 経由に戻さず direct append するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_read_file_runtime_call_direct_appends_in_stage1() {
     let source = selfhost_module("NativeCodegen.ls");
     let control_loop = source
@@ -40931,7 +40955,7 @@ fn find_zeroed_x86_runtime_helper_call_rows(
             (matches!(row.opcode, 50 | 53 | 55 | 58 | 60 | 63 | 70)
                 && row.size == 5
                 && row.bytes[..5] == [0, 0, 0, 0, 0])
-                || (row.opcode == 62 && row.size == 12 && row.bytes == [0; 8])
+                || (matches!(row.opcode, 62 | 69) && row.size == 12 && row.bytes == [0; 8])
         })
         .collect()
 }
@@ -41360,6 +41384,47 @@ fn test_linux_x86_function_segment_metadata_detects_zeroed_map_insert_runtime_ca
     assert_eq!(zeroed_rows[0].instr_idx, 27);
     assert_eq!(zeroed_rows[0].opcode, 62);
     assert_eq!(zeroed_rows[0].offset, 222);
+    assert_eq!(zeroed_rows[0].bytes, [0, 0, 0, 0, 0, 0, 0, 0]);
+}
+
+#[test]
+fn test_linux_x86_function_segment_metadata_detects_zeroed_substring_runtime_call() {
+    let metadata = "\
+9000000020
+8
+18
+19144
+750
+1
+5
+88
+7
+19162
+0
+0
+9000000021
+77
+69
+0
+3
+692
+12
+0
+0
+0
+0
+0
+0
+0
+0
+";
+    let rows = parse_linux_x86_function_segment_metadata_rows(metadata);
+    let zeroed_rows = find_zeroed_x86_runtime_helper_call_rows(&rows);
+
+    assert_eq!(zeroed_rows.len(), 1);
+    assert_eq!(zeroed_rows[0].instr_idx, 77);
+    assert_eq!(zeroed_rows[0].opcode, 69);
+    assert_eq!(zeroed_rows[0].offset, 692);
     assert_eq!(zeroed_rows[0].bytes, [0, 0, 0, 0, 0, 0, 0, 0]);
 }
 
