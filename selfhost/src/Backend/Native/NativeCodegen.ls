@@ -10905,7 +10905,7 @@
                  (+ (x86-current-emitted-offset result emit-start-base) 6)))
             (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
               (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
-        (if (if (= opcode 50) true (if (= opcode 53) true (if (= opcode 55) true (= opcode 63))))
+        (if (if (= opcode 50) true (if (= opcode 53) true (if (= opcode 55) true (if (= opcode 63) true (= opcode 70)))))
           (do
             (append-consume-two-helper-call-x86
               result
@@ -10915,7 +10915,9 @@
                      (x86-selfhost-vector-get-helper-offset import-stub-offset import-count)
                      (if (= opcode 55)
                        (x86-selfhost-vector-push-helper-offset import-stub-offset import-count)
-                       (x86-selfhost-map-get-helper-offset import-stub-offset import-count))))
+                       (if (= opcode 63)
+                         (x86-selfhost-map-get-helper-offset import-stub-offset import-count)
+                         (x86-selfhost-string-concat-helper-offset import-stub-offset import-count)))))
                  (+ (x86-current-emitted-offset result emit-start-base) 5))
               frame-base-slot-count
               current-depth)
