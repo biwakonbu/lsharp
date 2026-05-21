@@ -135,10 +135,31 @@ fn representative_actual_stage23_seed_source() -> String {
 }
 
 fn linux_x86_representative_actual_stage23_seed_source() -> String {
-    let code_binding_expr = r#"entrypoint-func-idx (- (vector-length callables) 1)
+    let code_binding_expr = r#"progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
+                    progress-after-native-callables (if (= progress-mode 1)
+                                                    (do
+                                                      (print 9000000032)
+                                                      (print (vector-length native-callables)))
+                                                    0)
+                    entrypoint-func-idx (- (vector-length callables) 1)
                     starts (collect-callable-function-slot-starts-x86 native-callables 10)
+                    progress-after-starts (if (= progress-mode 1)
+                                           (do
+                                             (print 9000000033)
+                                             (print (vector-length starts)))
+                                           0)
                     user-total (callable-user-total-slot-size-x86 native-callables 10)
+                    progress-after-user-total (if (= progress-mode 1)
+                                               (do
+                                                 (print 9000000034)
+                                                 (print user-total))
+                                               0)
                     code-len (+ user-total (x86-selfhost-helper-trailer-size 10))
+                    progress-after-code-len (if (= progress-mode 1)
+                                             (do
+                                               (print 9000000035)
+                                               (print code-len))
+                                             0)
                     code (vector-new 0)
                     entrypoint-offset (vector-get starts (- entrypoint-func-idx 10))"#;
     let main_body = r#"      (let [main-func-idx entrypoint-func-idx
@@ -148,39 +169,74 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
           include-header (if (= range-end-arg 0) 1 (parse-positive-int (command-line-arg 4)))
           include-tail (if (= range-end-arg 0) 1 (parse-positive-int (command-line-arg 5)))
           range-end (if (= range-end-arg 0) (vector-length starts) range-end-arg)
-          segment-ctx (make-x86-code-segment-context native-callables starts 10 user-total)
+          progress-after-entrypoint (if (= progress-mode 1)
+                                     (do
+                                       (print 9000000036)
+                                       (print entrypoint-offset))
+                                     0)
           metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)
           metadata-prefix-limit (if (> (string-length (command-line-arg 7)) 0)
                                   (parse-positive-int (command-line-arg 7))
                                   8)]
          (do
-           (root_push segment-ctx)
-           (if (= metadata-mode 1)
-             (print-x86-function-segment-metadata-loop segment-ctx range-start range-end metadata-prefix-limit)
+           (if (= progress-mode 1)
              (do
-               (if (= include-header 1)
+               (print 9000000037)
+               (print (vector-length starts))
+               (print user-total)
+               (print code-len)
+               (print data-len)
+               (let [segment-ctx (make-x86-code-segment-context native-callables starts 10 user-total)]
                  (do
-                 (print 9000000005)
-                (print (vector-length starts))
-                (print main-func-idx)
-                (print entrypoint-offset)
-                (print 9000000006)
-                 (print 9000000001)
-                (print code-len)
-                  (print 9000000002))
-                 0)
-               (print-x86-function-code-segments-loop segment-ctx range-start range-end)
-               (if (= include-tail 1)
-                 (do
-                   (print-x86-code-trailer-segments 10)
-                 (print 9000000003)
-                (print data-len)
-                (print 9000000004)
-                   (print-packed-code-bytes-loop data 0 data-len))
-                 0)))
-           (root_pop)))"#;
+                   (root_push segment-ctx)
+                   (print 9000000038)
+                   (print main-func-idx)
+                   (print entrypoint-offset)
+                   (root_pop))))
+             (let [segment-ctx (make-x86-code-segment-context native-callables starts 10 user-total)]
+               (do
+                 (root_push segment-ctx)
+                 (if (= metadata-mode 1)
+                   (print-x86-function-segment-metadata-loop segment-ctx range-start range-end metadata-prefix-limit)
+                   (do
+                     (if (= include-header 1)
+                       (do
+                       (print 9000000005)
+                      (print (vector-length starts))
+                      (print main-func-idx)
+                      (print entrypoint-offset)
+                      (print 9000000006)
+                       (print 9000000001)
+                      (print code-len)
+                        (print 9000000002))
+                       0)
+                     (print-x86-function-code-segments-loop segment-ctx range-start range-end)
+                     (if (= include-tail 1)
+                       (do
+                         (print-x86-code-trailer-segments 10)
+                       (print 9000000003)
+                      (print data-len)
+                      (print 9000000004)
+                         (print-packed-code-bytes-loop data 0 data-len))
+                       0)))
+                 (root_pop))))))"#;
+    let payload_expr = r#"(let [payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)]
+      (do
+        (if (= payload-progress-mode 1)
+          (do
+            (print 9000000030)
+            (print (string-length (command-line-arg 1))))
+          0)
+        (let [payload (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
+              progress-after-payload (if (= payload-progress-mode 1)
+                                      (do
+                                        (print 9000000031)
+                                        (print (vector-length (vector-get payload 0)))
+                                        (print (vector-length (vector-get payload 1))))
+                                      0)]
+          payload)))"#;
     actual_stage23_seed_source_with_payload_and_code_binding_and_target(
-        r#"(compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)"#,
+        payload_expr,
         code_binding_expr,
         "(make-target 3)",
         main_body,
@@ -240,12 +296,17 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         source.contains("padded-segment (pad-byte-vector-to-length segment function-size)"),
         "Linux x86 segmented seed は function start table と実 byte stream を一致させるため各 function segment を declared size まで padding するべき"
     );
+    let segment_loop_body = source
+        .split("(defn print-x86-function-code-segments-loop")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn print-x86-function-ir-prefix-loop").next())
+        .expect("Linux x86 segmented seed に print-x86-function-code-segments-loop が存在すること");
     assert!(
-        source.contains("result (ref-new (vector-new 0))")
-            && source.contains("segment (ref-get result)")
-            && !source
+        segment_loop_body.contains("result (ref-new (vector-new 0))")
+            && segment_loop_body.contains("segment (ref-get result)")
+            && !segment_loop_body
                 .contains("segment (trim-preallocated-x86-segment raw-segment function-size)")
-            && !source.contains("result (ref-new (vector-new function-size))"),
+            && !segment_loop_body.contains("result (ref-new (vector-new function-size))"),
         "Linux x86 segmented seed は巨大 function-size prealloc を避け、空 vector へ emit してから declared slot size まで padding するべき"
     );
     assert!(
@@ -385,6 +446,24 @@ fn test_native_linux_x86_hostgen_vm_script_can_collect_stage2_metadata_range() {
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_progress_markers() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    assert!(
+        script.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS")
+            && script.contains("collect_stage3_progress_markers")
+            && script.contains("actual-stage3-progress.txt")
+            && script.contains("actual-stage3-progress-stderr.txt")
+            && script.contains(r#"./program.native src/App/Seed.ls 0 1 0 0 "" "" progress"#)
+            && script.contains("write_actual_selfregen_failure_summary \"stage3-progress\""),
+        "hostgen VM script は env 指定時だけ actual-stage2 native compiler の stage3 setup progress を artifact 化できるべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_script_copies_stage_debug_source_tree() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
@@ -485,15 +564,25 @@ fn test_linux_x86_file_segmented_harness_writes_segments_from_append_emit_vector
          (print code-chunk-count))"#,
         );
 
+    let writer_step_body = source
+        .split("(defn write-x86-function-code-segment-step")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn write-x86-function-code-segments-loop")
+                .next()
+        })
+        .expect(
+            "Linux x86 file segment seed に write-x86-function-code-segment-step が存在すること",
+        );
     assert!(
         source.contains("(defn write-x86-function-code-segments-loop")
             && source.contains("(defn write-x86-function-code-segment-step")
-            && source.contains("result (ref-new (vector-new 0))")
-            && source.contains("layout (make-x86-function-emit-layout import-count import-stub-offset function-start 0)")
-            && source.contains("generate-native-function-x86-64-bundle-with-layout func-meta result starts functions layout")
-            && source.contains("segment (ref-get result)")
-            && !source.contains("segment (trim-preallocated-x86-segment raw-segment function-size)")
-            && !source.contains("result (ref-new (vector-new function-size))"),
+            && writer_step_body.contains("result (ref-new (vector-new 0))")
+            && writer_step_body.contains("layout (make-x86-function-emit-layout import-count import-stub-offset function-start 0)")
+            && writer_step_body.contains("generate-native-function-x86-64-bundle-with-layout func-meta result starts functions layout")
+            && writer_step_body.contains("segment (ref-get result)")
+            && !writer_step_body.contains("segment (trim-preallocated-x86-segment raw-segment function-size)")
+            && !writer_step_body.contains("result (ref-new (vector-new function-size))"),
         "Linux x86 file-segment writer は preallocated vector へ append せず、print path と同じ空 vector emit + declared slot padding を使うべき"
     );
 }
@@ -521,7 +610,7 @@ fn test_linux_x86_representative_seed_releases_function_segment_before_next_segm
     let body = source
         .split("(defn print-x86-function-code-segments-loop")
         .nth(1)
-        .and_then(|tail| tail.split("(defn print-x86-code-segments").next())
+        .and_then(|tail| tail.split("(defn print-x86-function-ir-prefix-loop").next())
         .expect("Linux x86 segmented seed に print-x86-function-code-segments-loop が存在すること");
     let print_pos = body
         .find("(print-packed-code-segment-with-length padded-segment function-size)")
@@ -564,6 +653,50 @@ fn test_linux_x86_representative_seed_can_print_function_segment_metadata() {
                 "(let [final (print-x86-function-segment-metadata-loop ctx (+ idx 1) len prefix-limit)]"
             ),
         "Linux x86 segmented seed は通常 transport を変えず、任意 range の function metadata を native stage1 実行から出せるべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    lsharp_syntax::parse(&source)
+        .expect("Linux x86 segmented seed source は progress helper 追加後も parse できること");
+
+    for marker in [
+        "9000000030",
+        "9000000031",
+        "9000000032",
+        "9000000033",
+        "9000000034",
+        "9000000035",
+        "9000000036",
+        "9000000037",
+        "9000000038",
+    ] {
+        assert!(
+            source.contains(marker),
+            "Linux x86 segmented seed は stage3 setup progress marker {marker} を出せるべき"
+        );
+    }
+
+    assert!(
+        source.contains("progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)")
+            && source.contains(
+                "payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)"
+            )
+            && source.contains("progress-after-payload")
+            && source.contains("progress-after-native-callables")
+            && source.contains("progress-after-starts")
+            && source.contains("progress-after-user-total")
+            && source.contains("progress-after-code-len")
+            && source.contains("(if (= progress-mode 1)")
+            && source.contains("(print 9000000038)")
+            && source.contains("(print entrypoint-offset)")
+            && source.contains("(print user-total)")
+            && source.contains("(print code-len)")
+            && source.contains("(print data-len)")
+            && source.contains("metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)"),
+        "Linux x86 segmented seed は通常/metadata transport を残したまま、arg8 で setup progress だけを出せるべき"
     );
 }
 
