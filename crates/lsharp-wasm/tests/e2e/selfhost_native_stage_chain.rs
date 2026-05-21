@@ -149,11 +149,14 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
           include-tail (if (= range-end-arg 0) 1 (parse-positive-int (command-line-arg 5)))
           range-end (if (= range-end-arg 0) (vector-length starts) range-end-arg)
           segment-ctx (make-x86-code-segment-context native-callables starts 10 user-total)
-          metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)]
+          metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)
+          metadata-prefix-limit (if (> (string-length (command-line-arg 7)) 0)
+                                  (parse-positive-int (command-line-arg 7))
+                                  8)]
          (do
            (root_push segment-ctx)
            (if (= metadata-mode 1)
-             (print-x86-function-segment-metadata-loop segment-ctx range-start range-end)
+             (print-x86-function-segment-metadata-loop segment-ctx range-start range-end metadata-prefix-limit)
              (do
                (if (= include-header 1)
                  (do
@@ -525,19 +528,21 @@ fn test_linux_x86_representative_seed_can_print_function_segment_metadata() {
     lsharp_syntax::parse(&source)
         .expect("Linux x86 segmented seed source は metadata helper 追加後も parse できること");
     assert!(
-        source.contains("(defn print-x86-function-segment-metadata-loop [ctx idx len]")
+        source.contains("(defn print-x86-function-segment-metadata-loop [ctx idx len prefix-limit]")
             && source.contains("metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)")
             && source.contains(
-                "(print-x86-function-segment-metadata-loop segment-ctx range-start range-end)"
+                "(print-x86-function-segment-metadata-loop segment-ctx range-start range-end metadata-prefix-limit)"
             )
             && source.contains("(print (native-function-param-count func-meta))")
             && source.contains("(print (native-function-local-count func-meta))")
             && source.contains("(print body-offset)")
             && source.contains("(print (vector-length ir-func))")
             && source.contains("(defn print-x86-function-ir-prefix-loop [segment ir offsets functions control-ctx idx len depth]")
+            && source.contains("metadata-prefix-limit")
+            && source.contains("command-line-arg 7")
             && source.contains("(print 9000000021)")
             && source.contains(
-                "(let [final (print-x86-function-segment-metadata-loop ctx (+ idx 1) len)]"
+                "(let [final (print-x86-function-segment-metadata-loop ctx (+ idx 1) len prefix-limit)]"
             ),
         "Linux x86 segmented seed は通常 transport を変えず、任意 range の function metadata を native stage1 実行から出せるべき"
     );
@@ -754,6 +759,30 @@ fn test_native_codegen_x86_vector_new_runtime_call_direct_appends_in_stage1() {
             && control_loop.contains("(x86-selfhost-vector-new-helper-offset")
             && control_loop.contains("(+ (x86-current-emitted-offset result emit-start-base) 6)"),
         "stage1 が stage2 を生成するとき、vector-new runtime helper call は byte-vector 経由に戻さず direct append するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_string_char_at_runtime_call_direct_appends_in_stage1() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let control_loop = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
+        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+
+    assert!(
+        control_loop.contains("(if (= opcode 50)")
+            && control_loop.contains("(append-consume-two-helper-call-x86")
+            && control_loop.contains("(x86-selfhost-string-char-at-helper-offset")
+            && control_loop.contains("(+ (x86-current-emitted-offset result emit-start-base) 5)")
+            && source.contains("(defn append-consume-two-helper-call-x86"),
+        "stage1 が stage2 を生成するとき、string-char-at runtime helper call は byte-vector 経由に戻さず direct append するべき"
     );
 }
 
@@ -5641,7 +5670,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
           len
           (apply-stack-delta depth (opcode-stack-delta opcode operand functions)))))))
 
-(defn print-x86-function-segment-metadata-loop [ctx idx len]
+(defn print-x86-function-segment-metadata-loop [ctx idx len prefix-limit]
   (if (>= idx len)
     0
     (let [functions (x86-code-segment-context-functions ctx)
@@ -5714,7 +5743,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                                               functions
                                               layout
                                               frame-base-slot-count)
-                                          prefix-len (if (< (vector-length ir-func) 8) (vector-length ir-func) 8)]
+                                          prefix-len (if (< (vector-length ir-func) prefix-limit) (vector-length ir-func) prefix-limit)]
                                       (do
                                         (root_push control-ctx)
                                         (print-x86-function-ir-prefix-loop segment ir-func offsets functions control-ctx 0 prefix-len 0)
@@ -5729,7 +5758,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                     (root_pop)
                     (root_pop)
                     (root_pop)
-                    (let [final (print-x86-function-segment-metadata-loop ctx (+ idx 1) len)]
+                    (let [final (print-x86-function-segment-metadata-loop ctx (+ idx 1) len prefix-limit)]
                       (do
                         (root_pop)
                         final))))))))))))
@@ -28110,6 +28139,23 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_function_offsets_diagnostic() {
         let function_start_base = lines[2];
         let declared_start = function_start_base as usize;
         let declared_body_start = lines[5] as usize;
+        let actual_function_segment = {
+            let segments_path = stage2_dir.join("stage-code-segments.tsv");
+            if segments_path.exists() {
+                let segments = read_linux_x86_stage_code_segments_tsv(&segments_path);
+                find_linux_x86_transport_segment_for_function_idx(&segments, func_idx as usize)
+                    .cloned()
+            } else {
+                None
+            }
+        };
+        if let Some(segment) = actual_function_segment.as_ref() {
+            let segment_drift = segment.start as i64 - function_start_base;
+            println!(
+                "Linux x86 function actual segment mapping: function={func_idx} declared_start={declared_start} actual_segment={segment:?} segment_drift={segment_drift} declared_body_start={declared_body_start} actual_segment_window={}",
+                byte_window_hex(&stage2_bundle.code_bytes, segment.start, 0, 128)
+            );
+        }
         if let Some(actual_prologue_start) =
             nearest_x86_prologue_start(&stage2_bundle.code_bytes, declared_start, 96, 96)
         {
@@ -28134,7 +28180,10 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_function_offsets_diagnostic() {
                 relative_offset >= 0,
                 "diagnostic row offset が function start より前: row={row:?} function_start={function_start_base}"
             );
-            let offset = row.offset as usize;
+            let offset = actual_function_segment
+                .as_ref()
+                .map(|segment| segment.start + relative_offset as usize)
+                .unwrap_or(row.offset as usize);
             assert!(
                 offset < stage2_bundle.code_bytes.len(),
                 "diagnostic row offset が stage2 code 範囲外: row={row:?} relative_offset={relative_offset} mapped_offset={offset} len={}",
@@ -28146,7 +28195,15 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_function_offsets_diagnostic() {
                 .map(|candidate| decode_x86_rel32_call_at(&stage2_bundle.code_bytes, candidate))
                 .collect::<Vec<_>>();
             println!(
-                "Linux x86 function {func_idx} row bytes: row={row:?} relative_offset={relative_offset} mapped_offset={offset} bytes={} calls={call_sites:?}",
+                "Linux x86 function {func_idx} row bytes: row={row:?} relative_offset={relative_offset} mapped_offset={offset} target_mapped_offset={} bytes={} calls={call_sites:?}",
+                if row.target_offset >= 0 {
+                    actual_function_segment
+                        .as_ref()
+                        .map(|segment| segment.start as i64 + row.target_offset)
+                        .unwrap_or(row.target_offset)
+                } else {
+                    -1
+                },
                 byte_window_hex(
                     &stage2_bundle.code_bytes,
                     offset,
@@ -40561,6 +40618,75 @@ fn find_linux_x86_transport_segment_for_offset(
         .find(|segment| segment.start <= offset && offset < segment.end())
 }
 
+fn parse_linux_x86_stage_code_segments_tsv(output: &str) -> Vec<LinuxX86TransportCodeSegment> {
+    output
+        .lines()
+        .skip(1)
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            let columns = line.split('\t').collect::<Vec<_>>();
+            assert!(
+                columns.len() >= 7,
+                "stage-code-segments.tsv row は 7 columns 以上であるべき: {line}"
+            );
+            let segment_index = columns[0]
+                .parse::<usize>()
+                .unwrap_or_else(|e| panic!("segment_index が usize でない: {line}: {e}"));
+            let function_idx = columns[1].parse::<usize>().ok();
+            let start = columns[3]
+                .parse::<usize>()
+                .unwrap_or_else(|e| panic!("start が usize でない: {line}: {e}"));
+            let len = columns[4]
+                .parse::<usize>()
+                .unwrap_or_else(|e| panic!("len が usize でない: {line}: {e}"));
+            let end = columns[5]
+                .parse::<usize>()
+                .unwrap_or_else(|e| panic!("end が usize でない: {line}: {e}"));
+            assert_eq!(
+                start + len,
+                end,
+                "stage-code-segments.tsv row の start+len が end と一致しない: {line}"
+            );
+            let first_32_bytes = columns[6]
+                .split_whitespace()
+                .map(|byte| {
+                    u8::from_str_radix(byte, 16).unwrap_or_else(|e| {
+                        panic!("first_32_bytes が hex byte でない: {byte}: {e}")
+                    })
+                })
+                .collect::<Vec<_>>();
+            LinuxX86TransportCodeSegment {
+                segment_index,
+                function_idx,
+                start,
+                len,
+                first_32_bytes,
+            }
+        })
+        .collect()
+}
+
+fn read_linux_x86_stage_code_segments_tsv(
+    path: &std::path::Path,
+) -> Vec<LinuxX86TransportCodeSegment> {
+    let output = std::fs::read_to_string(path).unwrap_or_else(|e| {
+        panic!(
+            "stage-code-segments.tsv 読み込み失敗 ({}): {e}",
+            path.display()
+        )
+    });
+    parse_linux_x86_stage_code_segments_tsv(&output)
+}
+
+fn find_linux_x86_transport_segment_for_function_idx(
+    segments: &[LinuxX86TransportCodeSegment],
+    function_idx: usize,
+) -> Option<&LinuxX86TransportCodeSegment> {
+    segments
+        .iter()
+        .find(|segment| segment.function_idx == Some(function_idx))
+}
+
 fn decode_x86_rel32_call_at(code: &[u8], call_offset: usize) -> X86Rel32CallSite {
     assert!(
         call_offset + 5 <= code.len(),
@@ -40915,6 +41041,23 @@ fn test_linux_x86_actual_transport_segment_table_maps_absolute_offsets() {
     assert_eq!(hit.segment_index, 1);
     assert_eq!(hit.function_idx, Some(11));
     assert_eq!(4 - hit.start, 1);
+}
+
+#[test]
+fn test_linux_x86_stage_code_segments_tsv_maps_function_index_start() {
+    let tsv = "\
+segment_index\tfunction_idx\tkind\tstart\tlen\tend\tfirst_32_bytes\n\
+1022\t1032\tfunction\t3102363\t2595\t3104958\t55 48 89 e5\n\
+1023\t1033\tfunction\t3104958\t128\t3105086\t90 90\n";
+    let segments = parse_linux_x86_stage_code_segments_tsv(tsv);
+
+    let hit = find_linux_x86_transport_segment_for_function_idx(&segments, 1032)
+        .expect("function index 1032 は stage-code-segments.tsv から引けるべき");
+    assert_eq!(hit.segment_index, 1022);
+    assert_eq!(hit.function_idx, Some(1032));
+    assert_eq!(hit.start, 3_102_363);
+    assert_eq!(hit.len, 2_595);
+    assert_eq!(hit.first_32_bytes, vec![0x55, 0x48, 0x89, 0xe5]);
 }
 
 fn assert_linux_x86_entry_map_ref_ref_prefix(
