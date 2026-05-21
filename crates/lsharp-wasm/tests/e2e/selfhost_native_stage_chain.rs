@@ -454,10 +454,13 @@ fn test_native_linux_x86_hostgen_vm_script_can_collect_stage3_progress_markers()
 
     assert!(
         script.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS")
+            && script.contains("LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS_ONLY")
             && script.contains("collect_stage3_progress_markers")
             && script.contains("actual-stage3-progress.txt")
             && script.contains("actual-stage3-progress-stderr.txt")
             && script.contains(r#"./program.native src/App/Seed.ls 0 1 0 0 "" "" progress"#)
+            && script.contains(r#""status": "diagnostic""#)
+            && script.contains(r#""phase": "stage3-progress""#)
             && script.contains("write_actual_selfregen_failure_summary \"stage3-progress\""),
         "hostgen VM script は env 指定時だけ actual-stage2 native compiler の stage3 setup progress を artifact 化できるべき"
     );

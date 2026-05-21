@@ -213,6 +213,7 @@ limactl shell "${VM_NAME}" -- env \
   LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS="${LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS:-}" \
+  LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS_ONLY:-}" \
   bash -s -- "${VM_WORK_DIR}" <<'VM_SCRIPT'
 set -euo pipefail
 
@@ -1093,6 +1094,10 @@ ACTUAL_CHUNK_RETRIES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES:-1}"
 STAGE2_METADATA_START="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START:-}"
 STAGE2_METADATA_END="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END:-}"
 STAGE3_PROGRESS="${LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS:-}"
+STAGE3_PROGRESS_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS_ONLY:-}"
+if [[ -n "${STAGE3_PROGRESS_ONLY}" ]]; then
+  STAGE3_PROGRESS=1
+fi
 mkdir -p actual-stage2 actual-stage3
 cp -a actual-stage1/src actual-stage2/src
 cp -a actual-stage1/src actual-stage3/src
@@ -1299,6 +1304,20 @@ set -e
 if [[ "${actual_stage3_progress_exit_code}" -ne 0 ]]; then
   write_actual_selfregen_failure_summary "stage3-progress" "${actual_stage3_progress_exit_code}" actual-stage3-progress.txt actual-stage3-progress-stderr.txt
   exit "${actual_stage3_progress_exit_code}"
+fi
+if [[ -n "${STAGE3_PROGRESS_ONLY}" ]]; then
+  cat >actual-selfregen-summary.json <<JSON
+{
+  "target": "x86_64-unknown-linux-gnu",
+  "host_os": "${HOST_OS}",
+  "host_arch": "${HOST_ARCH}",
+  "status": "diagnostic",
+  "phase": "stage3-progress",
+  "progress_stdout_bytes": $(wc -c <actual-stage3-progress.txt),
+  "progress_stderr_bytes": $(wc -c <actual-stage3-progress-stderr.txt)
+}
+JSON
+  exit 0
 fi
 set +e
 run_actual_stage_chunked actual-stage2 actual-stage3-stdout.txt actual-stage3-stderr.txt
