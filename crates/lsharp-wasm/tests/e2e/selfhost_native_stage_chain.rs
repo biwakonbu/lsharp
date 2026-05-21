@@ -787,6 +787,29 @@ fn test_native_codegen_x86_string_char_at_runtime_call_direct_appends_in_stage1(
 }
 
 #[test]
+fn test_native_codegen_x86_ref_get_runtime_call_direct_appends_in_stage1() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let control_loop = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
+        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+
+    assert!(
+        control_loop.contains("(if (= opcode 57)")
+            && control_loop.contains("(append-x86-helper-call-preserving-rcx")
+            && control_loop.contains("(x86-selfhost-ref-get-helper-offset")
+            && control_loop.contains("(+ (x86-current-emitted-offset result emit-start-base) 6)"),
+        "stage1 が stage2 を生成するとき、ref-get runtime helper call は byte-vector 経由に戻さず direct append するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_read_file_runtime_call_direct_appends_in_stage1() {
     let source = selfhost_module("NativeCodegen.ls");
     let control_loop = source
