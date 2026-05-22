@@ -227,7 +227,19 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
             (print 9000000030)
             (print (string-length (command-line-arg 1))))
           0)
-        (let [payload (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
+        (let [progress-after-pairs-probe (if (= payload-progress-mode 1)
+                                         (do
+                                           (print 9000000039)
+                                           (compile-file-mode-cache-pairs-progress-probe)
+                                           (print 9000000040))
+                                         0)
+              progress-after-compile-probe (if (= payload-progress-mode 1)
+                                            (do
+                                              (print 9000000041)
+                                              (compile-file-mode-cache-compile-pair-progress-probe)
+                                              (print 9000000042))
+                                            0)
+              payload (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
               progress-after-payload (if (= payload-progress-mode 1)
                                       (do
                                         (print 9000000031)
@@ -668,6 +680,10 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
     for marker in [
         "9000000030",
         "9000000031",
+        "9000000039",
+        "9000000040",
+        "9000000041",
+        "9000000042",
         "9000000032",
         "9000000033",
         "9000000034",
@@ -687,6 +703,10 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
             && source.contains(
                 "payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)"
             )
+            && source.contains("progress-after-pairs-probe")
+            && source.contains("compile-file-mode-cache-pairs-progress-probe")
+            && source.contains("progress-after-compile-probe")
+            && source.contains("compile-file-mode-cache-compile-pair-progress-probe")
             && source.contains("progress-after-payload")
             && source.contains("progress-after-native-callables")
             && source.contains("progress-after-starts")
@@ -871,6 +891,34 @@ fn test_native_codegen_x86_map_new_depth_zero_avoids_wrapper_call() {
 }
 
 #[test]
+fn test_native_codegen_x86_map_new_runtime_call_direct_appends_all_depths_in_stage1() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let control_loop = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
+        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+    let map_new_branch = control_loop
+        .split("(if (= opcode 60)")
+        .nth(1)
+        .and_then(|tail| tail.split("(if (if (= opcode 64)").next())
+        .expect("x86 control loop に opcode 60 branch が存在すること");
+
+    assert!(
+        map_new_branch.contains("append-zero-arg-call-bundle-x86")
+            && map_new_branch.contains("(if (= current-depth 1)")
+            && map_new_branch.contains("(+ 13 (* (- current-depth 2) 14))")
+            && !map_new_branch.contains("codegen-selfhost-runtime-bundle-x86"),
+        "stage1 が stage2 を生成するとき、map-new depth>0 も byte-vector 経由に戻さず zero-arg call を direct append するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_ref_new_runtime_call_direct_appends_in_stage1() {
     let source = selfhost_module("NativeCodegen.ls");
     let control_loop = source
@@ -932,12 +980,35 @@ fn test_native_codegen_x86_vector_length_runtime_call_direct_appends_in_stage1()
         .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
 
     assert!(
-        control_loop.contains("(if (if (= opcode 51) true (= opcode 52))")
+        control_loop.contains("(if (if (= opcode 51) true (if (= opcode 52) true (= opcode 61)))")
             && control_loop.contains("(append-x86-helper-call-preserving-rcx")
             && control_loop.contains("(x86-selfhost-string-length-helper-offset")
             && control_loop.contains("(x86-selfhost-vector-length-helper-offset")
             && control_loop.contains("(+ (x86-current-emitted-offset result emit-start-base) 6)"),
         "stage1 が stage2 を生成するとき、vector-length runtime helper call は byte-vector 経由に戻さず string-length と同じ preserving-RCX direct append 分岐へ合流させるべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_map_size_runtime_call_direct_appends_in_stage1() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let control_loop = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
+        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+
+    assert!(
+        control_loop.contains("(if (if (= opcode 51) true (if (= opcode 52) true (= opcode 61)))")
+            && control_loop.contains("(append-x86-helper-call-preserving-rcx")
+            && control_loop.contains("(x86-selfhost-map-size-helper-offset")
+            && control_loop.contains("(+ (x86-current-emitted-offset result emit-start-base) 6)"),
+        "stage1 が stage2 を生成するとき、map-size runtime helper call は byte-vector 経由に戻さず length 系の preserving-RCX direct append 分岐へ合流させるべき"
     );
 }
 
@@ -41230,6 +41301,7 @@ fn find_zeroed_x86_runtime_helper_call_rows(
                 && row.bytes[..5] == [0, 0, 0, 0, 0])
                 || (row.opcode == 52 && row.size == 7 && row.bytes[..7] == [0; 7])
                 || (row.opcode == 59 && row.size == 7 && row.bytes[..7] == [0; 7])
+                || (row.opcode == 60 && row.size == 7 && row.bytes[..7] == [0; 7])
                 || (matches!(row.opcode, 62 | 69) && row.size == 12 && row.bytes == [0; 8])
                 || (row.opcode == 73 && row.size == 7 && row.bytes[..7] == [0; 7])
         })
@@ -41661,6 +41733,47 @@ fn test_linux_x86_function_segment_metadata_detects_zeroed_map_insert_runtime_ca
     assert_eq!(zeroed_rows[0].opcode, 62);
     assert_eq!(zeroed_rows[0].offset, 222);
     assert_eq!(zeroed_rows[0].bytes, [0, 0, 0, 0, 0, 0, 0, 0]);
+}
+
+#[test]
+fn test_linux_x86_function_segment_metadata_detects_zeroed_map_new_runtime_call() {
+    let metadata = "\
+9000000020
+1098
+1108
+3340574
+5792
+0
+21
+22
+1200
+0
+11
+358
+9000000021
+138
+60
+12
+1
+1110
+7
+0
+0
+0
+0
+0
+0
+0
+72
+";
+    let rows = parse_linux_x86_function_segment_metadata_rows(metadata);
+    let zeroed_rows = find_zeroed_x86_runtime_helper_call_rows(&rows);
+
+    assert_eq!(zeroed_rows.len(), 1);
+    assert_eq!(zeroed_rows[0].instr_idx, 138);
+    assert_eq!(zeroed_rows[0].opcode, 60);
+    assert_eq!(zeroed_rows[0].offset, 1110);
+    assert_eq!(zeroed_rows[0].bytes[..7], [0, 0, 0, 0, 0, 0, 0]);
 }
 
 #[test]
