@@ -41308,6 +41308,58 @@ fn find_zeroed_x86_runtime_helper_call_rows(
         .collect()
 }
 
+fn x86_metadata_row_rel32_call_offset(row: &LinuxX86FunctionSegmentMetadataRow) -> Option<usize> {
+    let size = (row.size.max(0) as usize).min(row.bytes.len());
+    if size < 5 {
+        return None;
+    }
+    (0..=size - 5).find(|offset| row.bytes[*offset] == 0xe8)
+}
+
+fn assert_x86_runtime_helper_rel32_targets_in_relative_range(
+    rows: &[LinuxX86FunctionSegmentMetadataRow],
+    helper_range: std::ops::Range<i64>,
+) {
+    for row in rows.iter().filter(|row| {
+        matches!(
+            row.opcode,
+            50 | 51
+                | 52
+                | 53
+                | 54
+                | 55
+                | 56
+                | 57
+                | 58
+                | 59
+                | 60
+                | 61
+                | 62
+                | 63
+                | 64
+                | 67
+                | 69
+                | 70
+                | 73
+        )
+    }) {
+        if let Some(call_offset) = x86_metadata_row_rel32_call_offset(row) {
+            let rel_start = call_offset + 1;
+            let rel32 = i32::from_le_bytes([
+                row.bytes[rel_start],
+                row.bytes[rel_start + 1],
+                row.bytes[rel_start + 2],
+                row.bytes[rel_start + 3],
+            ]);
+            let target = row.offset + call_offset as i64 + 5 + rel32 as i64;
+            assert!(
+                helper_range.contains(&target),
+                "x86 runtime helper rel32 target が helper trailer 範囲外: row={row:?} call_offset={call_offset} rel32={rel32} target={target} helper_range={helper_range:?}"
+            );
+        }
+    }
+}
+
 fn find_linux_x86_transport_segment_for_function_idx(
     segments: &[LinuxX86TransportCodeSegment],
     function_idx: usize,
@@ -41774,6 +41826,43 @@ fn test_linux_x86_function_segment_metadata_detects_zeroed_map_new_runtime_call(
     assert_eq!(zeroed_rows[0].opcode, 60);
     assert_eq!(zeroed_rows[0].offset, 1110);
     assert_eq!(zeroed_rows[0].bytes[..7], [0, 0, 0, 0, 0, 0, 0]);
+}
+
+#[test]
+#[should_panic(expected = "x86 runtime helper rel32 target が helper trailer 範囲外")]
+fn test_x86_runtime_helper_rel32_diagnostic_rejects_nonzero_map_new_target_inside_function() {
+    let metadata = "\
+9000000020
+1098
+1108
+3340574
+5792
+0
+21
+22
+1200
+0
+11
+358
+9000000021
+138
+60
+12
+1
+1110
+7
+80
+232
+79
+4
+0
+0
+89
+72
+";
+    let rows = parse_linux_x86_function_segment_metadata_rows(metadata);
+
+    assert_x86_runtime_helper_rel32_targets_in_relative_range(&rows, 4_900_000..5_000_000);
 }
 
 #[test]
