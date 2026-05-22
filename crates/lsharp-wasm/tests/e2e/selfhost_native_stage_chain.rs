@@ -1194,11 +1194,36 @@ fn test_native_codegen_x86_read_file_runtime_call_direct_appends_in_stage1() {
         .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
 
     assert!(
-        control_loop.contains("(if (= opcode 64)")
+        control_loop.contains("(if (if (= opcode 64) true (if (= opcode 67) true (= opcode 59)))")
             && control_loop.contains("(append-x86-helper-call-preserving-rcx")
             && control_loop.contains("(x86-selfhost-read-file-helper-offset")
             && control_loop.contains("(+ (x86-current-emitted-offset result emit-start-base) 6)"),
         "stage1 が stage2 を生成するとき、read-file runtime helper call は byte-vector 経由に戻さず direct append するべき"
+    );
+}
+
+#[test]
+fn test_native_codegen_x86_print_runtime_call_direct_appends_in_stage1() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let control_loop = source
+        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split(
+                "(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base",
+            )
+            .next()
+        })
+        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
+
+    assert!(
+        control_loop.contains("(if (if (= opcode 64) true (if (= opcode 67) true (= opcode 59)))")
+            && control_loop.contains("(append-x86-helper-call-preserving-rcx")
+            && control_loop.contains("(x86-selfhost-read-file-helper-offset")
+            && control_loop.contains("(x86-selfhost-command-line-arg-helper-offset")
+            && control_loop.contains("(x86-selfhost-print-helper-offset")
+            && control_loop.contains("(+ (x86-current-emitted-offset result emit-start-base) 6)"),
+        "stage1 が stage2 を生成するとき、print runtime helper call は byte-vector 経由に戻さず direct append するべき"
     );
 }
 
@@ -1276,11 +1301,6 @@ fn test_native_codegen_x86_command_line_arg_runtime_bundle_uses_rel32_helper() {
         .nth(1)
         .and_then(|tail| tail.split("(defn codegen-ir-instr-bundle-x86").next())
         .expect("NativeCodegen.ls に selfhost runtime bundle が存在すること");
-    let command_line_arg_branch = runtime_bundle
-        .split("(if (= opcode 67)")
-        .nth(1)
-        .and_then(|tail| tail.split("(if (= opcode 69)").next())
-        .expect("NativeCodegen.ls に command-line-arg opcode branch が存在すること");
     let emit_call_rel32_body = source
         .split("(defn emit-call-rel32")
         .nth(1)
@@ -1288,8 +1308,11 @@ fn test_native_codegen_x86_command_line_arg_runtime_bundle_uses_rel32_helper() {
         .expect("NativeCodegen.ls に emit-call-rel32 が存在すること");
 
     assert!(
-        command_line_arg_branch.contains("(emit-x86-helper-call-preserving-rcx")
-            && command_line_arg_branch.contains("(x86-selfhost-command-line-arg-helper-offset")
+        runtime_bundle
+            .contains("(if (if (= opcode 64) true (if (= opcode 67) true (= opcode 59)))")
+            && runtime_bundle.contains("(emit-x86-helper-call-preserving-rcx")
+            && runtime_bundle.contains("(x86-selfhost-command-line-arg-helper-offset")
+            && runtime_bundle.contains("(x86-selfhost-print-helper-offset")
             && emit_call_rel32_body.contains("(concat-byte-vectors-rooted")
             && emit_call_rel32_body.contains("(byte-vector-1 232)")
             && emit_call_rel32_body.contains("(encode-s32-le disp)"),
@@ -1310,17 +1333,13 @@ fn test_native_codegen_x86_command_line_arg_runtime_call_direct_appends_in_stage
             .next()
         })
         .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
-    let command_line_arg_branch = control_loop
-        .split("(if (= opcode 67)")
-        .nth(1)
-        .and_then(|tail| tail.split("(if (= opcode 56)").next())
-        .expect("NativeCodegen.ls に command-line-arg opcode branch が存在すること");
-
     assert!(
-        command_line_arg_branch.contains("(append-x86-helper-call-preserving-rcx")
-            && command_line_arg_branch.contains("(x86-selfhost-command-line-arg-helper-offset")
-            && command_line_arg_branch
-                .contains("(x86-current-emitted-offset result emit-start-base)"),
+        control_loop.contains("(if (if (= opcode 64) true (if (= opcode 67) true (= opcode 59)))")
+            && control_loop.contains("(append-x86-helper-call-preserving-rcx")
+            && control_loop.contains("(x86-selfhost-read-file-helper-offset")
+            && control_loop.contains("(x86-selfhost-command-line-arg-helper-offset")
+            && control_loop.contains("(x86-selfhost-print-helper-offset")
+            && control_loop.contains("(x86-current-emitted-offset result emit-start-base)"),
         "stage1 が stage2 を生成するとき、command-line-arg runtime helper call は bundle vector 経由に戻さず direct append するべき"
     );
 }
@@ -41210,6 +41229,7 @@ fn find_zeroed_x86_runtime_helper_call_rows(
                 && row.size == 5
                 && row.bytes[..5] == [0, 0, 0, 0, 0])
                 || (row.opcode == 52 && row.size == 7 && row.bytes[..7] == [0; 7])
+                || (row.opcode == 59 && row.size == 7 && row.bytes[..7] == [0; 7])
                 || (matches!(row.opcode, 62 | 69) && row.size == 12 && row.bytes == [0; 8])
                 || (row.opcode == 73 && row.size == 7 && row.bytes[..7] == [0; 7])
         })
@@ -41763,6 +41783,47 @@ fn test_linux_x86_function_segment_metadata_detects_zeroed_vector_length_runtime
     assert_eq!(zeroed_rows[0].instr_idx, 168);
     assert_eq!(zeroed_rows[0].opcode, 52);
     assert_eq!(zeroed_rows[0].offset, 1182);
+    assert_eq!(zeroed_rows[0].bytes[..7], [0, 0, 0, 0, 0, 0, 0]);
+}
+
+#[test]
+fn test_linux_x86_function_segment_metadata_detects_zeroed_print_runtime_call() {
+    let metadata = "\
+9000000020
+1514
+1524
+4897868
+19611
+0
+38
+39
+1344
+0
+11
+821
+9000000021
+38
+59
+0
+1
+278
+7
+0
+0
+0
+0
+0
+0
+0
+72
+";
+    let rows = parse_linux_x86_function_segment_metadata_rows(metadata);
+    let zeroed_rows = find_zeroed_x86_runtime_helper_call_rows(&rows);
+
+    assert_eq!(zeroed_rows.len(), 1);
+    assert_eq!(zeroed_rows[0].instr_idx, 38);
+    assert_eq!(zeroed_rows[0].opcode, 59);
+    assert_eq!(zeroed_rows[0].offset, 278);
     assert_eq!(zeroed_rows[0].bytes[..7], [0, 0, 0, 0, 0, 0, 0]);
 }
 

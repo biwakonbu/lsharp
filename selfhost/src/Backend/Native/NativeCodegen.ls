@@ -10372,14 +10372,14 @@
                                         0))))))))))))))))))))
 
 (defn codegen-selfhost-runtime-bundle-x86 [opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth]
-  (if (= opcode 64)
+  (if (if (= opcode 64) true (if (= opcode 67) true (= opcode 59)))
     (emit-x86-helper-call-preserving-rcx
-      (- (x86-selfhost-read-file-helper-offset import-stub-offset import-count)
+      (- (if (= opcode 64)
+           (x86-selfhost-read-file-helper-offset import-stub-offset import-count)
+           (if (= opcode 67)
+             (x86-selfhost-command-line-arg-helper-offset import-stub-offset import-count)
+             (x86-selfhost-print-helper-offset import-stub-offset import-count)))
          (+ current-offset 6)))
-    (if (= opcode 67)
-      (emit-x86-helper-call-preserving-rcx
-        (- (x86-selfhost-command-line-arg-helper-offset import-stub-offset import-count)
-           (+ current-offset 6)))
       (if (= opcode 51)
         (emit-x86-helper-call-preserving-rcx
           (- (x86-selfhost-string-length-helper-offset import-stub-offset import-count)
@@ -10393,11 +10393,7 @@
                  (+ current-offset 5)))
 	                          frame-base-slot-count
 	                          current-depth)
-          (if (= opcode 59)
-            (emit-x86-helper-call-preserving-rcx
-              (- (x86-selfhost-print-helper-offset import-stub-offset import-count)
-                 (+ current-offset 6)))
-            (if (= opcode 54)
+          (if (= opcode 54)
               (emit-x86-helper-call-preserving-rcx
                 (- (x86-selfhost-vector-new-helper-offset import-stub-offset import-count)
                    (+ current-offset 6)))
@@ -10485,7 +10481,7 @@
 	                                      (emit-x86-helper-call-preserving-rcx
 	                                        (- (x86-selfhost-file-exists-helper-offset import-stub-offset import-count)
 	                                           (+ current-offset 6)))
-	                                      (vector-new 0))))))))))))))))))))
+                                      (vector-new 0))))))))))))))))))
 
 (defn codegen-x86-opcode-call-bundle [operand current-offset function-starts context]
   (let [function-metas (vector-get context 0)
@@ -10882,19 +10878,15 @@
                 (append-native-bytes-loop result native 0 native-len)
                 (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
                   (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))))
-        (if (= opcode 64)
+        (if (if (= opcode 64) true (if (= opcode 67) true (= opcode 59)))
           (do
             (append-x86-helper-call-preserving-rcx
               result
-              (- (x86-selfhost-read-file-helper-offset import-stub-offset import-count)
-                 (+ (x86-current-emitted-offset result emit-start-base) 6)))
-            (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-              (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
-        (if (= opcode 67)
-          (do
-            (append-x86-helper-call-preserving-rcx
-              result
-              (- (x86-selfhost-command-line-arg-helper-offset import-stub-offset import-count)
+              (- (if (= opcode 64)
+                   (x86-selfhost-read-file-helper-offset import-stub-offset import-count)
+                   (if (= opcode 67)
+                     (x86-selfhost-command-line-arg-helper-offset import-stub-offset import-count)
+                     (x86-selfhost-print-helper-offset import-stub-offset import-count)))
                  (+ (x86-current-emitted-offset result emit-start-base) 6)))
             (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
               (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
@@ -11017,7 +11009,7 @@
                       (do
                         (append-native-bytes-loop result native 0 native-len)
                         (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
-                          (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))))))))))))))))))))))))))))))))))
+                          (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state))))))))))))))))))))))))))))))))))
 (defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base [ir-func result meta offsets function-starts function-metas import-count import-stub-offset function-start-base frame-base-slot-count current-depth idx len]
   (let [emit-start-base (vector-length (ref-get result))
     layout (make-x86-function-emit-layout import-count import-stub-offset function-start-base emit-start-base)]
