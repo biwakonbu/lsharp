@@ -139,9 +139,15 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                     progress-after-native-callables (if (= progress-mode 1)
                                                     (do
                                                       (print 9000000032)
-                                                      (print (vector-length native-callables)))
+                                                      (print (vector-length payload))
+                                                      (print (vector-length functions))
+                                                      (print (vector-length data))
+                                                      (print (vector-length callables))
+                                                      (print (vector-length native-callables))
+                                                      (print (+ 9 (vector-length functions))))
                                                     0)
-                    entrypoint-func-idx (- (vector-length callables) 1)
+                    main-func-idx (+ 9 (vector-length functions))
+                    entrypoint-func-idx (+ 9 (vector-length functions))
                     starts (collect-callable-function-slot-starts-x86 native-callables 10)
                     progress-after-starts (if (= progress-mode 1)
                                            (do
@@ -162,8 +168,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                              0)
                     code (vector-new 0)
                     entrypoint-offset (vector-get starts (- entrypoint-func-idx 10))"#;
-    let main_body = r#"      (let [main-func-idx entrypoint-func-idx
-          data-len (vector-length data)
+    let main_body = r#"      (let [data-len (vector-length data)
           range-start (parse-positive-int (command-line-arg 2))
           range-end-arg (parse-positive-int (command-line-arg 3))
           include-header (if (= range-end-arg 0) 1 (parse-positive-int (command-line-arg 4)))
@@ -190,7 +195,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                  (do
                    (root_push segment-ctx)
                    (print 9000000038)
-                   (print main-func-idx)
+                   (print entrypoint-func-idx)
                    (print entrypoint-offset)
                    (root_pop))))
              (let [segment-ctx (make-x86-code-segment-context native-callables starts 10 user-total)]
@@ -201,9 +206,9 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                    (do
                      (if (= include-header 1)
                        (do
-                       (print 9000000005)
+                      (print 9000000005)
                       (print (vector-length starts))
-                      (print main-func-idx)
+                      (print entrypoint-func-idx)
                       (print entrypoint-offset)
                       (print 9000000006)
                        (print 9000000001)
@@ -239,19 +244,204 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                               (compile-file-mode-cache-compile-pair-progress-probe)
                                               (print 9000000042))
                                             0)
-              payload (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
+              all-pairs (compile-file-pairs-with-cache (command-line-arg 1) cache-ref parse-count-ref)
+              main-pair-idx (- (vector-length all-pairs) 1)
+              main-pair (vector-get all-pairs main-pair-idx)
+              main-decls (vector-get main-pair 1)
+              main-defn-idx (find-last-defn-index main-decls 0 (vector-length main-decls) -1)
+              main-func-idx (emitted-main-func-idx all-pairs main-pair-idx main-defn-idx 10)
+              payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
+              functions (vector-get payload-base 0)
+              data (vector-get payload-base 1)
+              bounded-main-func-idx (if (< main-func-idx (+ 10 (vector-length functions))) main-func-idx (+ 9 (vector-length functions)))
+              payload-root (root_push payload-base)
               progress-after-payload (if (= payload-progress-mode 1)
                                       (do
                                         (print 9000000031)
-                                        (print (vector-length (vector-get payload 0)))
-                                        (print (vector-length (vector-get payload 1))))
+                                        (print (vector-length functions))
+                                        (print (vector-length data))
+                                        (print bounded-main-func-idx)
+                                        (print (vector-length payload-base))
+                                        (print (vector-length (vector-get payload-base 0)))
+                                        (print (vector-length (vector-get payload-base 1))))
                                       0)]
-          payload)))"#;
-    actual_stage23_seed_source_with_payload_and_code_binding_and_target(
+          payload-base)))"#;
+    let source = actual_stage23_seed_source_with_payload_and_code_binding_and_target(
         payload_expr,
         code_binding_expr,
         "(make-target 3)",
         main_body,
+    );
+    let payload_bindings = r#"payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
+         progress-after-payload-start (if (= payload-progress-mode 1)
+          (do
+            (print 9000000030)
+            (print (string-length (command-line-arg 1))))
+          0)
+         progress-after-pairs-probe (if (= payload-progress-mode 1)
+                                         (do
+                                           (print 9000000039)
+                                           (compile-file-mode-cache-pairs-progress-probe)
+                                           (print 9000000040))
+                                         0)
+         progress-after-compile-probe (if (= payload-progress-mode 1)
+                                            (do
+                                              (print 9000000041)
+                                              (compile-file-mode-cache-compile-pair-progress-probe)
+                                              (print 9000000042))
+                                            0)
+         all-pairs (compile-file-pairs-with-cache (command-line-arg 1) cache-ref parse-count-ref)
+         main-pair-idx (- (vector-length all-pairs) 1)
+         main-pair (vector-get all-pairs main-pair-idx)
+         main-decls (vector-get main-pair 1)
+         main-defn-idx (find-last-defn-index main-decls 0 (vector-length main-decls) -1)
+         emitted-main-func-idx-value (emitted-main-func-idx all-pairs main-pair-idx main-defn-idx 10)
+         payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
+         payload payload-base
+         functions (vector-get payload-base 0)
+         data (vector-get payload-base 1)
+         bounded-main-func-idx (if (< emitted-main-func-idx-value (+ 10 (vector-length functions))) emitted-main-func-idx-value (+ 9 (vector-length functions)))
+         payload-root (root_push payload-base)
+         functions-root (root_push functions)
+         data-root (root_push data)
+         progress-after-payload (if (= payload-progress-mode 1)
+                                      (do
+                                        (print 9000000031)
+                                        (print (vector-length functions))
+                                        (print (vector-length data))
+                                        (print bounded-main-func-idx)
+                                        (print (vector-length payload-base))
+                                        (print (vector-length (vector-get payload-base 0)))
+                                        (print (vector-length (vector-get payload-base 1))))
+                                      0)"#;
+    let main_index_helpers = r#"(defn count-defns-until-index [decls idx target acc]
+  (if (>= idx target)
+    acc
+    (let [decl (vector-get decls idx)]
+      (count-defns-until-index
+        decls
+        (+ idx 1)
+        target
+        (if (= (vector-get decl 0) 20) (+ acc 1) acc)))))
+
+(defn count-defns-in-decls [decls idx len acc]
+  (if (>= idx len)
+    acc
+    (let [decl (vector-get decls idx)]
+      (count-defns-in-decls
+        decls
+        (+ idx 1)
+        len
+        (if (= (vector-get decl 0) 20) (+ acc 1) acc)))))
+
+(defn count-defns-before-pair [pairs idx target acc]
+  (if (>= idx target)
+    acc
+    (let [pair (vector-get pairs idx)
+          decls (vector-get pair 1)
+          next-acc (count-defns-in-decls decls 0 (vector-length decls) acc)]
+      (count-defns-before-pair pairs (+ idx 1) target next-acc))))
+
+(defn find-last-defn-index [decls idx len best]
+  (if (>= idx len)
+    best
+    (let [decl (vector-get decls idx)]
+      (find-last-defn-index
+        decls
+        (+ idx 1)
+        len
+        (if (= (vector-get decl 0) 20) idx best)))))
+
+(defn emitted-main-func-idx [pairs main-pair-idx main-defn-idx import-count]
+  (let [main-pair (vector-get pairs main-pair-idx)
+        main-decls (vector-get main-pair 1)
+        prior-count (count-defns-before-pair pairs 0 main-pair-idx 0)
+        local-count (count-defns-until-index main-decls 0 main-defn-idx 0)]
+    (+ import-count (+ prior-count local-count))))
+
+(defn make-append-vector-state [done next-idx result]
+  (push-object-vector
+    (push-int-vector-local
+      (push-int-vector-local (vector-new 3) done)
+      next-idx)
+    result))
+
+(defn build-callables-with-imports-step [src import-count idx total result remaining]
+  (if (>= idx total)
+    (make-append-vector-state 1 idx result)
+    (if (= remaining 0)
+      (make-append-vector-state 0 idx result)
+      (do
+        (root_push src)
+        (root_push result)
+        (let [next-func (if (< idx import-count)
+                          (make-function-meta 0 0 (vector-new 0))
+                          (vector-get src (- idx import-count)))]
+          (do
+            (root_push next-func)
+            (let [next-result (vector-push result next-func)]
+              (do
+                (root_push next-result)
+                (let [state (build-callables-with-imports-step
+                              src
+                              import-count
+                              (+ idx 1)
+                              total
+                              next-result
+                              (- remaining 1))]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    state))))))))))
+
+(defn build-callables-with-imports-loop [src import-count idx total result]
+  (let [state (build-callables-with-imports-step src import-count idx total result 64)]
+    (if (= (vector-get state 0) 1)
+      (vector-get state 2)
+      (build-callables-with-imports-loop
+        src
+        import-count
+        (vector-get state 1)
+        total
+        (vector-get state 2)))))
+
+(defn build-callables-with-imports [src import-count]
+  (do
+    (root_push src)
+    (let [total (+ import-count (vector-length src))
+          result (vector-new total)]
+      (do
+        (root_push result)
+        (let [final (build-callables-with-imports-loop src import-count 0 total result)]
+          (do
+            (root_pop)
+            (root_pop)
+            final))))))
+
+"#;
+    let source = source.replacen(
+        "(defn main []",
+        &format!("{main_index_helpers}(defn main []"),
+        1,
+    );
+    let source = source.replace(&format!("payload {payload_expr}"), payload_bindings);
+    let source = source.replace(
+        "      (let [functions (vector-get payload 0)\n            data (vector-get payload 1)]",
+        "      (let [payload-observed payload]",
+    );
+    source.replace(
+        "callables (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions))",
+        r#"callables (let [pre-callable-progress (if (= (if (> (string-length (command-line-arg 8)) 0) 1 0) 1)
+                          (do
+                            (print 9000000043)
+                            (print (vector-length payload))
+                            (print (vector-length functions))
+                            (print (vector-length data))
+                            (print (+ 9 (vector-length functions))))
+                          0)]
+                    (build-callables-with-imports functions 10))"#,
     )
 }
 
@@ -342,6 +532,35 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
             && source.contains("(if (= include-tail 1)")
             && !source.contains("(print-x86-code-segments native-callables starts 10 user-total)"),
         "Linux x86 segmented seed は native heap OOM を避けるため function range を複数 process で出力できるべき"
+    );
+    let entrypoint_checks = [
+        source.contains(
+            "emitted-main-func-idx-value (emitted-main-func-idx all-pairs main-pair-idx main-defn-idx 10)",
+        ),
+        source.contains(
+            "payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)",
+        ),
+        source.contains("payload-root (root_push payload-base)"),
+        source.contains("functions-root (root_push functions)"),
+        source.contains("data-root (root_push data)"),
+        source.contains("functions (vector-get payload-base 0)"),
+        !source.contains("payload3 (push-int-vector-local payload2 bounded-main-func-idx)"),
+        source.contains("defn emitted-main-func-idx"),
+        source.contains("defn count-defns-before-pair"),
+        source.contains("defn build-callables-with-imports"),
+        source.contains("(defn build-callables-with-imports [src import-count]\n  (do\n    (root_push src)"),
+        source.contains("result (vector-new total)"),
+        source.contains("pre-callable-progress"),
+        source.contains("pre-callable-progress (if (= (if (> (string-length (command-line-arg 8)) 0) 1 0) 1)"),
+        source.contains("(build-callables-with-imports functions 10)"),
+        source.contains("main-func-idx (+ 9 (vector-length functions))"),
+        source.contains("entrypoint-func-idx (+ 9 (vector-length functions))"),
+        !source.contains("main-func-idx entrypoint-func-idx"),
+        !source.contains("entrypoint-func-idx (- (vector-length callables) 1)"),
+    ];
+    assert!(
+        entrypoint_checks.iter().all(|check| *check),
+        "Linux x86 segmented seed は stage2/stage3 artifact の entrypoint を最後の callable ではなく対象 source の main defn に固定するべき: checks={entrypoint_checks:?}"
     );
 }
 
@@ -684,6 +903,7 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
         "9000000040",
         "9000000041",
         "9000000042",
+        "9000000043",
         "9000000032",
         "9000000033",
         "9000000034",
@@ -709,6 +929,14 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
             && source.contains("compile-file-mode-cache-compile-pair-progress-probe")
             && source.contains("progress-after-payload")
             && source.contains("progress-after-native-callables")
+            && source.contains("(print (vector-length payload))")
+            && source.contains("(print (vector-length functions))")
+            && source.contains("(print (vector-length callables))")
+            && source.contains("(print (+ 9 (vector-length functions)))")
+            && source.contains("(print (+ 9 (vector-length functions)))")
+            && source.contains("pre-callable-progress")
+            && source.contains("(print 9000000043)")
+            && source.contains("(print (vector-length (vector-get payload-base 0)))")
             && source.contains("progress-after-starts")
             && source.contains("progress-after-user-total")
             && source.contains("progress-after-code-len")
