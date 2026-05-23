@@ -779,6 +779,25 @@ fn test_linux_x86_metadata_replays_control_if_control_loop_single_row() {
 }
 
 #[test]
+fn test_linux_x86_metadata_replays_map_new_direct_vs_fallback_paths() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    assert!(
+        source.contains("(defn print-x86-map-new-control-replay-diagnostic")
+            && source.contains("(print 9000000043)")
+            && source.contains("(print 9000000044)")
+            && source.contains("(print 9000000045)")
+            && source.contains("(x86-rel32-target-in-window-at-base direct 0 direct-len offset)")
+            && source.contains("(codegen-x86-control-loop-fallback-native control-ctx idx opcode operand offset)")
+            && source.contains("(make-x86-function-emit-layout import-count import-stub-offset function-start-base (- 0 offset))")
+            && source.contains("(generate-native-control-instr-bundle-loop-x86-with-context fresh-ctx row-state)")
+            && source.contains(
+                "(print-x86-map-new-control-replay-diagnostic control-ctx idx opcode operand offset size)"
+            ),
+        "Linux x86 metadata mode は opcode60 map-new の direct/fallback/replay bytes と rel32 target を同一 row で比較できるべき"
+    );
+}
+
+#[test]
 fn test_linux_x86_representative_seed_roots_code_segment_context_inputs() {
     let source = linux_x86_representative_actual_stage23_seed_source();
     let body = source
@@ -5073,6 +5092,37 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         (+ value 256)
         value))))
 
+(defn x86-rel32-at [bytes offset]
+  (let [len (vector-length bytes)
+        b0 (byte-at-or-zero bytes (+ offset 1) len)
+        b1 (byte-at-or-zero bytes (+ offset 2) len)
+        b2 (byte-at-or-zero bytes (+ offset 3) len)
+        b3 (byte-at-or-zero bytes (+ offset 4) len)
+        value (+ b0 (+ (* b1 256) (+ (* b2 65536) (* b3 16777216))))]
+    (if (>= value 2147483648)
+      (- value 4294967296)
+      value)))
+
+(defn x86-first-rel32-offset-in-window [bytes offset idx end]
+  (if (>= idx end)
+    -1
+    (let [current (+ offset idx)]
+      (if (= (byte-at-or-zero bytes current (vector-length bytes)) 232)
+        current
+        (x86-first-rel32-offset-in-window bytes offset (+ idx 1) end)))))
+
+(defn x86-rel32-target-in-window [bytes offset size]
+  (let [call-offset (x86-first-rel32-offset-in-window bytes offset 0 size)]
+    (if (>= call-offset 0)
+      (+ call-offset (+ 5 (x86-rel32-at bytes call-offset)))
+      -1)))
+
+(defn x86-rel32-target-in-window-at-base [bytes offset size base-offset]
+  (let [target (x86-rel32-target-in-window bytes offset size)]
+    (if (>= target 0)
+      (+ base-offset target)
+      -1)))
+
 (defn pack-byte-chunk-2 [bytes idx len]
   (+ (byte-at-or-zero bytes idx len)
      (* (byte-at-or-zero bytes (+ idx 1) len) 256)))
@@ -6169,6 +6219,159 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
           (root_pop))))
     0))
 
+(defn print-x86-map-new-control-replay-diagnostic [control-ctx idx opcode operand offset size]
+  (if (= opcode 60)
+    (do
+      (root_push control-ctx)
+      (let [ir-func (vector-get control-ctx 0)
+            meta (vector-get control-ctx 2)
+            offsets (vector-get control-ctx 3)
+            depths (vector-get control-ctx 4)
+            function-starts (vector-get control-ctx 5)
+            function-metas (vector-get control-ctx 6)
+            layout (vector-get control-ctx 7)
+            frame-base-slot-count (vector-get control-ctx 8)
+            import-count (vector-get layout 0)
+            import-stub-offset (vector-get layout 1)
+            function-start-base (vector-get layout 2)
+            emit-start-base (vector-get layout 3)
+            current-depth (vector-get depths idx)
+            helper-target (x86-selfhost-map-new-helper-offset import-stub-offset import-count)
+            direct-ref (ref-new (vector-new 0))]
+        (do
+          (root_push ir-func)
+          (root_push meta)
+          (root_push offsets)
+          (root_push depths)
+          (root_push function-starts)
+          (root_push function-metas)
+          (root_push layout)
+          (root_push direct-ref)
+          (if (= current-depth 0)
+            (append-call-rel32-x86
+              direct-ref
+              (- helper-target (+ offset 5)))
+            (append-zero-arg-call-bundle-x86
+              direct-ref
+              (- helper-target
+                 (+ offset
+                    (if (= current-depth 1)
+                      6
+                      (+ 13 (* (- current-depth 2) 14)))))
+              frame-base-slot-count
+              current-depth))
+          (let [direct (ref-get direct-ref)
+                direct-len (vector-length direct)
+                direct-target (x86-rel32-target-in-window-at-base direct 0 direct-len offset)]
+            (do
+              (root_push direct)
+              (print 9000000043)
+              (print idx)
+              (print opcode)
+              (print operand)
+              (print current-depth)
+              (print offset)
+              (print size)
+              (print emit-start-base)
+              (print helper-target)
+              (print direct-len)
+              (print direct-target)
+              (print (byte-at-or-zero direct 0 direct-len))
+              (print (byte-at-or-zero direct 1 direct-len))
+              (print (byte-at-or-zero direct 2 direct-len))
+              (print (byte-at-or-zero direct 3 direct-len))
+              (print (byte-at-or-zero direct 4 direct-len))
+              (print (byte-at-or-zero direct 5 direct-len))
+              (print (byte-at-or-zero direct 6 direct-len))
+              (print (byte-at-or-zero direct 7 direct-len))
+              (root_pop)))
+          (let [fallback-native (codegen-x86-control-loop-fallback-native control-ctx idx opcode operand offset)]
+            (do
+              (root_push fallback-native)
+              (let [fallback-len (vector-length fallback-native)
+                    fallback-target (x86-rel32-target-in-window-at-base fallback-native 0 fallback-len offset)]
+                (do
+                  (print 9000000044)
+                  (print idx)
+                  (print opcode)
+                  (print operand)
+                  (print current-depth)
+                  (print offset)
+                  (print size)
+                  (print fallback-len)
+                  (print fallback-target)
+                  (print (byte-at-or-zero fallback-native 0 fallback-len))
+                  (print (byte-at-or-zero fallback-native 1 fallback-len))
+                  (print (byte-at-or-zero fallback-native 2 fallback-len))
+                  (print (byte-at-or-zero fallback-native 3 fallback-len))
+                  (print (byte-at-or-zero fallback-native 4 fallback-len))
+                  (print (byte-at-or-zero fallback-native 5 fallback-len))
+                  (print (byte-at-or-zero fallback-native 6 fallback-len))
+                  (print (byte-at-or-zero fallback-native 7 fallback-len))))
+              (root_pop)))
+          (let [replay-ref (ref-new (vector-new 0))]
+            (do
+              (root_push replay-ref)
+              (let [fresh-layout (make-x86-function-emit-layout import-count import-stub-offset function-start-base (- 0 offset))]
+                (do
+                  (root_push fresh-layout)
+                  (let [fresh-ctx
+                      (make-x86-control-bundle-context
+                        ir-func
+                        replay-ref
+                        meta
+                        offsets
+                        depths
+                        function-starts
+                        function-metas
+                        fresh-layout
+                        frame-base-slot-count)]
+                (do
+                  (root_push fresh-ctx)
+                  (let [before-len (vector-length (ref-get replay-ref))
+                        row-state (make-x86-control-loop-state idx 1)]
+                    (do
+                      (root_push row-state)
+                      (generate-native-control-instr-bundle-loop-x86-with-context fresh-ctx row-state)
+                      (let [replay (ref-get replay-ref)
+                            after-len (vector-length replay)
+                            replay-target (x86-rel32-target-in-window-at-base replay 0 after-len offset)]
+                        (do
+                          (root_push replay)
+                          (print 9000000045)
+                          (print idx)
+                          (print opcode)
+                          (print operand)
+                          (print current-depth)
+                          (print offset)
+                          (print size)
+                          (print before-len)
+                          (print after-len)
+                          (print replay-target)
+                          (print (byte-at-or-zero replay 0 after-len))
+                          (print (byte-at-or-zero replay 1 after-len))
+                          (print (byte-at-or-zero replay 2 after-len))
+                          (print (byte-at-or-zero replay 3 after-len))
+                          (print (byte-at-or-zero replay 4 after-len))
+                          (print (byte-at-or-zero replay 5 after-len))
+                          (print (byte-at-or-zero replay 6 after-len))
+                          (print (byte-at-or-zero replay 7 after-len))
+                          (root_pop)))
+                      (root_pop)))
+                  (root_pop)))
+                  (root_pop)))
+              (root_pop)))
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop))))
+    0))
+
 (defn print-x86-function-ir-prefix-loop [segment ir offsets functions control-ctx idx len depth]
   (if (>= idx len)
     0
@@ -6197,6 +6400,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         (print-x86-i64-ge-emitted-byte-diagnostic idx opcode operand depth)
         (print-x86-i64-ge-control-replay-diagnostic control-ctx idx opcode operand offset size)
         (print-x86-control-if-control-replay-diagnostic control-ctx idx opcode operand offset size)
+        (print-x86-map-new-control-replay-diagnostic control-ctx idx opcode operand offset size)
         (print-x86-function-ir-prefix-loop
           segment
           ir
@@ -41280,6 +41484,27 @@ fn parse_linux_x86_function_segment_metadata_rows(
                     "x86 function metadata replay output row が不足: idx={idx} lines={lines:?}"
                 );
                 idx += 17;
+            }
+            9_000_000_043 => {
+                assert!(
+                    idx + 19 <= lines.len(),
+                    "x86 function metadata map-new direct replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 19;
+            }
+            9_000_000_044 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata map-new fallback replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_045 => {
+                assert!(
+                    idx + 18 <= lines.len(),
+                    "x86 function metadata map-new control replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 18;
             }
             marker => {
                 panic!(
