@@ -3058,6 +3058,7 @@ fn test_native_codegen_x86_control_loop_stabilizes_call_operand_before_depth_sca
         "x86 control loop は actual offset 計算中の selfhost local 破壊で call operand が main 自身に化けないよう、operand/current/base/import offsets を ref 化して使うべき"
     );
 }
+
 #[test]
 fn test_native_codegen_x86_control_loop_chunks_deep_instruction_streams() {
     let source = std::fs::read_to_string(selfhost_source_path("NativeCodegen.ls"))
