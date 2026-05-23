@@ -255,22 +255,10 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                               (compile-file-mode-cache-compile-pair-progress-probe)
                                               (print 9000000042))
                                             0)
-              target-src (read-file (command-line-arg 1))
-              target-src-root (root_push target-src)
-              target-decls (parse-program target-src)
-              target-decls-root (root_push target-decls)
-              target-module-hash (decls-module-hash-or-minus-one target-decls)
-              all-pairs (compile-file-pairs-with-cache (command-line-arg 1) cache-ref parse-count-ref)
-              main-pair-idx (find-module-pair-index all-pairs 0 (vector-length all-pairs) target-module-hash (- (vector-length all-pairs) 1))
-              main-pair (vector-get all-pairs main-pair-idx)
-              main-decls (vector-get main-pair 1)
-              main-name-defn-idx (find-defn-index-by-hash main-decls 0 (vector-length main-decls) (name-hash "main" 0 4))
-              main-defn-idx (if (>= main-name-defn-idx 0) main-name-defn-idx (find-last-defn-index main-decls 0 (vector-length main-decls) -1))
-              main-func-idx (emitted-main-func-idx all-pairs main-pair-idx main-defn-idx 10)
               payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
               functions (vector-get payload-base 0)
               data (vector-get payload-base 1)
-              bounded-main-func-idx (if (< main-func-idx (+ 10 (vector-length functions))) main-func-idx (+ 9 (vector-length functions)))
+              bounded-main-func-idx (+ 9 (vector-length functions))
               payload-root (root_push payload-base)
               progress-after-payload (if (= payload-progress-mode 1)
                                       (do
@@ -308,23 +296,11 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                               (compile-file-mode-cache-compile-pair-progress-probe)
                                               (print 9000000042))
                                             0)
-         target-src (read-file (command-line-arg 1))
-         target-src-root (root_push target-src)
-         target-decls (parse-program target-src)
-         target-decls-root (root_push target-decls)
-         target-module-hash (decls-module-hash-or-minus-one target-decls)
-         all-pairs (compile-file-pairs-with-cache (command-line-arg 1) cache-ref parse-count-ref)
-         main-pair-idx (find-module-pair-index all-pairs 0 (vector-length all-pairs) target-module-hash (- (vector-length all-pairs) 1))
-         main-pair (vector-get all-pairs main-pair-idx)
-         main-decls (vector-get main-pair 1)
-         main-name-defn-idx (find-defn-index-by-hash main-decls 0 (vector-length main-decls) (name-hash "main" 0 4))
-         main-defn-idx (if (>= main-name-defn-idx 0) main-name-defn-idx (find-last-defn-index main-decls 0 (vector-length main-decls) -1))
-         emitted-main-func-idx-value (emitted-main-func-idx all-pairs main-pair-idx main-defn-idx 10)
          payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
          payload payload-base
          functions (vector-get payload-base 0)
          data (vector-get payload-base 1)
-         bounded-main-func-idx (if (< emitted-main-func-idx-value (+ 10 (vector-length functions))) emitted-main-func-idx-value (+ 9 (vector-length functions)))
+         bounded-main-func-idx (+ 9 (vector-length functions))
          payload-root (root_push payload-base)
          functions-root (root_push functions)
          data-root (root_push data)
@@ -338,81 +314,6 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                         (print (vector-length (vector-get payload-base 0)))
                                         (print (vector-length (vector-get payload-base 1))))
                                       0)"#;
-    let main_index_helpers = r#"(defn count-defns-until-index [decls idx target acc]
-  (if (>= idx target)
-    acc
-    (let [decl (vector-get decls idx)]
-      (count-defns-until-index
-        decls
-        (+ idx 1)
-        target
-        (if (= (vector-get decl 0) 20) (+ acc 1) acc)))))
-
-(defn count-defns-in-decls [decls idx len acc]
-  (if (>= idx len)
-    acc
-    (let [decl (vector-get decls idx)]
-      (count-defns-in-decls
-        decls
-        (+ idx 1)
-        len
-        (if (= (vector-get decl 0) 20) (+ acc 1) acc)))))
-
-(defn count-defns-before-pair [pairs idx target acc]
-  (if (>= idx target)
-    acc
-    (let [pair (vector-get pairs idx)
-          decls (vector-get pair 1)
-          next-acc (count-defns-in-decls decls 0 (vector-length decls) acc)]
-      (count-defns-before-pair pairs (+ idx 1) target next-acc))))
-
-(defn find-last-defn-index [decls idx len best]
-  (if (>= idx len)
-    best
-    (let [decl (vector-get decls idx)]
-      (find-last-defn-index
-        decls
-        (+ idx 1)
-        len
-        (if (= (vector-get decl 0) 20) idx best)))))
-
-(defn emitted-main-func-idx [pairs main-pair-idx main-defn-idx import-count]
-  (let [main-pair (vector-get pairs main-pair-idx)
-        main-decls (vector-get main-pair 1)
-        prior-count (count-defns-before-pair pairs 0 main-pair-idx 0)
-        local-count (count-defns-until-index main-decls 0 main-defn-idx 0)]
-    (+ import-count (+ prior-count local-count))))
-
-(defn decls-module-hash-or-minus-one [decls]
-  (if (= (vector-length decls) 0)
-    -1
-    (let [decl (vector-get decls 0)]
-      (if (= (vector-get decl 0) 25)
-        (vector-get decl 1)
-        -1))))
-
-(defn find-module-pair-index [pairs idx len target-module-hash best]
-  (if (>= idx len)
-    best
-    (let [pair (vector-get pairs idx)
-          module-hash (decls-module-hash-or-minus-one (vector-get pair 1))
-          matches (if (>= target-module-hash 0)
-                    (= module-hash target-module-hash)
-                    false)
-          next-best (if matches idx best)]
-      (find-module-pair-index
-        pairs
-        (+ idx 1)
-        len
-        target-module-hash
-        next-best))))
-
-"#;
-    let source = source.replacen(
-        "(defn main []",
-        &format!("{main_index_helpers}(defn main []"),
-        1,
-    );
     let source = source.replace(&format!("payload {payload_expr}"), payload_bindings);
     let source = source.replace(
         "      (let [functions (vector-get payload 0)\n            data (vector-get payload 1)]",
@@ -521,9 +422,7 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         "Linux x86 segmented seed は native heap OOM を避けるため function range を複数 process で出力できるべき"
     );
     let entrypoint_checks = [
-        source.contains(
-            "emitted-main-func-idx-value (emitted-main-func-idx all-pairs main-pair-idx main-defn-idx 10)",
-        ),
+        !source.contains("emitted-main-func-idx"),
         source.contains(
             "payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)",
         ),
@@ -531,18 +430,20 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         source.contains("functions-root (root_push functions)"),
         source.contains("data-root (root_push data)"),
         source.contains("functions (vector-get payload-base 0)"),
+        source.contains("bounded-main-func-idx (+ 9 (vector-length functions))"),
+        !source.contains("main-name-defn-idx"),
         !source.contains("payload3 (push-int-vector-local payload2 bounded-main-func-idx)"),
-        source.contains("defn emitted-main-func-idx"),
-        source.contains("defn count-defns-before-pair"),
+        !source.contains("defn count-defns-before-pair"),
+        !source.contains("defn find-last-defn-index"),
         !source.contains("defn make-append-vector-state"),
         !source.contains("defn build-callables-with-imports"),
+        !source.contains("defn decls-module-hash-or-minus-one"),
+        !source.contains("defn find-module-pair-index"),
         source.contains("pre-callable-progress"),
         source.contains("pre-callable-progress (if (= (if (> (string-length (command-line-arg 8)) 0) 1 0) 1)"),
         source.contains("append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions)"),
         source.contains("main-func-idx bounded-main-func-idx"),
         source.contains("entrypoint-func-idx bounded-main-func-idx"),
-        !source.contains("main-func-idx (+ 9 (vector-length functions))"),
-        !source.contains("entrypoint-func-idx (+ 9 (vector-length functions))"),
         !source.contains("main-func-idx entrypoint-func-idx"),
         !source.contains("entrypoint-func-idx (- (vector-length callables) 1)"),
     ];
@@ -1014,34 +915,24 @@ fn test_linux_x86_metadata_replays_map_new_direct_vs_fallback_paths() {
 }
 
 #[test]
-fn test_linux_x86_representative_seed_selects_target_source_main_for_entrypoint() {
+fn test_linux_x86_representative_seed_keeps_main_as_last_parseable_defn() {
     let source = linux_x86_representative_actual_stage23_seed_source();
 
     assert!(
-        source.contains("(defn find-module-pair-index"),
-        "Linux x86 seed は module order の揺れに依存せず対象 source pair を探索するべき"
+        source.contains("bounded-main-func-idx (+ 9 (vector-length functions))"),
+        "Linux x86 seed は selfhost parser cutoff 手前の最後の parsed defn を main として entrypoint にするべき"
     );
     assert!(
-        source.contains("target-src (read-file (command-line-arg 1))")
-            && source.contains("target-decls (parse-program target-src)")
-            && source.contains("target-module-hash (decls-module-hash-or-minus-one target-decls)"),
-        "Linux x86 seed は command-line target module を entrypoint 選択に使うべき"
+        !source.contains("main-name-defn-idx")
+            && !source.contains("emitted-main-func-idx")
+            && !source.contains("(defn count-defns-before-pair"),
+        "Linux x86 seed は main より前に tail helper を増やして selfhost parser cutoff を main 手前に戻さない"
     );
     assert!(
-        source.contains(
-            "main-pair-idx (find-module-pair-index all-pairs 0 (vector-length all-pairs) target-module-hash (- (vector-length all-pairs) 1))"
-        ),
-        "Linux x86 seed は all-pairs の最後ではなく target module pair を main pair にするべき"
-    );
-    assert!(
-        source.contains(
-            "main-name-defn-idx (find-defn-index-by-hash main-decls 0 (vector-length main-decls) (name-hash \"main\" 0 4))"
-        ),
-        "Linux x86 seed は最後の defn ではなく main 名の defn を entrypoint にするべき"
-    );
-    assert!(
-        !source.contains("main-pair-idx (- (vector-length all-pairs) 1)"),
-        "Linux x86 seed が最後の pair を entrypoint とみなすと selfhost stage1 の module order で helper に飛ぶ"
+        !source.contains("(defn decls-module-hash-or-minus-one")
+            && !source.contains("(defn find-module-pair-index")
+            && !source.contains("target-module-hash"),
+        "Linux x86 seed は selfhost parser の tail cutoff 手前に main を残すため module-hash tail helper を追加しない"
     );
     assert!(
         !source.contains("(defn build-base64-chunk-lines")
@@ -1769,7 +1660,7 @@ fn test_native_codegen_x86_vector_new_helper_nop_fills_capacity_for_code_vectors
     );
     assert!(
         source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 569)")
-            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1487)"),
+            && source.contains("(+ (x86-helper-base-offset import-stub-offset import-count) 1501)"),
         "x86 vector-new helper の拡張後は後続 runtime helper offset も +37 へ同期するべき"
     );
 }
@@ -29123,7 +29014,7 @@ fn test_e2e_selfhost_main_linux_x86_actual_seed_function_offsets_diagnostic() {
         "diagnostic が指定 start index を出力していない: {lines:?}"
     );
     assert!(
-        (lines.len() - 6) % 8 == 0,
+        (lines.len() - 6).is_multiple_of(8),
         "Linux x86 actual seed function offsets diagnostic row は 8 値単位であるべき: {lines:?}"
     );
     let rows = lines[6..]
@@ -41535,7 +41426,7 @@ fn expect_transport_i128(lines: &[i128], idx: &mut usize, expected: i128, label:
 }
 
 fn packed_line_count_usize(byte_len: usize) -> usize {
-    (byte_len + 7) / 8
+    byte_len.div_ceil(8)
 }
 
 fn decode_packed_transport_prefix(
@@ -42059,9 +41950,9 @@ fn read_x86_ir_call_trace_rows(path: &std::path::Path) -> Vec<X86IrCallTraceRow>
     let output = std::fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("x86 IR trace 読み込み失敗 ({}): {e}", path.display()));
     let lines = parse_numeric_lines(&output);
-    let rows = if lines.len() % 8 == 0 {
+    let rows = if lines.len().is_multiple_of(8) {
         &lines[..]
-    } else if lines.len() >= 3 && (lines.len() - 3) % 8 == 0 {
+    } else if lines.len() >= 3 && (lines.len() - 3).is_multiple_of(8) {
         &lines[3..]
     } else {
         panic!(
