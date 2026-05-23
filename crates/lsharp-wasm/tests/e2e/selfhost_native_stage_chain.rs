@@ -41121,6 +41121,7 @@ struct X86IrCallTraceRow {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LinuxX86FunctionSegmentMetadataRow {
+    function_size: i64,
     instr_idx: i64,
     opcode: i64,
     operand: i64,
@@ -41128,6 +41129,14 @@ struct LinuxX86FunctionSegmentMetadataRow {
     offset: i64,
     size: i64,
     bytes: [u8; 8],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct X86RuntimeHelperRel32TargetDiagnostic {
+    row: LinuxX86FunctionSegmentMetadataRow,
+    call_offset: usize,
+    rel32: i32,
+    target: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41437,6 +41446,7 @@ fn parse_linux_x86_function_segment_metadata_rows(
     let lines = parse_numeric_lines(output);
     let mut idx = 0;
     let mut rows = Vec::new();
+    let mut current_function_size = 0;
     while idx < lines.len() {
         match lines[idx] {
             9_000_000_020 => {
@@ -41444,6 +41454,7 @@ fn parse_linux_x86_function_segment_metadata_rows(
                     idx + 12 <= lines.len(),
                     "x86 function metadata header が不足: idx={idx} lines={lines:?}"
                 );
+                current_function_size = lines[idx + 4];
                 idx += 12;
             }
             9_000_000_021 => {
@@ -41462,6 +41473,7 @@ fn parse_linux_x86_function_segment_metadata_rows(
                     lines[idx + 14] as u8,
                 ];
                 rows.push(LinuxX86FunctionSegmentMetadataRow {
+                    function_size: current_function_size,
                     instr_idx: lines[idx + 1],
                     opcode: lines[idx + 2],
                     operand: lines[idx + 3],
@@ -41542,34 +41554,36 @@ fn x86_metadata_row_rel32_call_offset(row: &LinuxX86FunctionSegmentMetadataRow) 
     (0..=size - 5).find(|offset| row.bytes[*offset] == 0xe8)
 }
 
-fn assert_x86_runtime_helper_rel32_targets_in_relative_range(
+fn find_x86_runtime_helper_rel32_targets_outside_relative_range(
     rows: &[LinuxX86FunctionSegmentMetadataRow],
     helper_range: std::ops::Range<i64>,
-) {
-    for row in rows.iter().filter(|row| {
-        matches!(
-            row.opcode,
-            50 | 51
-                | 52
-                | 53
-                | 54
-                | 55
-                | 56
-                | 57
-                | 58
-                | 59
-                | 60
-                | 61
-                | 62
-                | 63
-                | 64
-                | 67
-                | 69
-                | 70
-                | 73
-        )
-    }) {
-        if let Some(call_offset) = x86_metadata_row_rel32_call_offset(row) {
+) -> Vec<X86RuntimeHelperRel32TargetDiagnostic> {
+    rows.iter()
+        .filter(|row| {
+            matches!(
+                row.opcode,
+                50 | 51
+                    | 52
+                    | 53
+                    | 54
+                    | 55
+                    | 56
+                    | 57
+                    | 58
+                    | 59
+                    | 60
+                    | 61
+                    | 62
+                    | 63
+                    | 64
+                    | 67
+                    | 69
+                    | 70
+                    | 73
+            )
+        })
+        .filter_map(|row| {
+            let call_offset = x86_metadata_row_rel32_call_offset(row)?;
             let rel_start = call_offset + 1;
             let rel32 = i32::from_le_bytes([
                 row.bytes[rel_start],
@@ -41578,12 +41592,52 @@ fn assert_x86_runtime_helper_rel32_targets_in_relative_range(
                 row.bytes[rel_start + 3],
             ]);
             let target = row.offset + call_offset as i64 + 5 + rel32 as i64;
-            assert!(
-                helper_range.contains(&target),
-                "x86 runtime helper rel32 target が helper trailer 範囲外: row={row:?} call_offset={call_offset} rel32={rel32} target={target} helper_range={helper_range:?}"
-            );
-        }
-    }
+            (!helper_range.contains(&target)).then(|| X86RuntimeHelperRel32TargetDiagnostic {
+                row: row.clone(),
+                call_offset,
+                rel32,
+                target,
+            })
+        })
+        .collect()
+}
+
+fn find_x86_runtime_helper_rel32_targets_inside_function_body(
+    rows: &[LinuxX86FunctionSegmentMetadataRow],
+) -> Vec<X86RuntimeHelperRel32TargetDiagnostic> {
+    rows.iter()
+        .filter_map(|row| {
+            let call_offset = x86_metadata_row_rel32_call_offset(row)?;
+            let rel_start = call_offset + 1;
+            let rel32 = i32::from_le_bytes([
+                row.bytes[rel_start],
+                row.bytes[rel_start + 1],
+                row.bytes[rel_start + 2],
+                row.bytes[rel_start + 3],
+            ]);
+            let target = row.offset + call_offset as i64 + 5 + rel32 as i64;
+            (target >= 0 && target < row.function_size).then(|| {
+                X86RuntimeHelperRel32TargetDiagnostic {
+                    row: row.clone(),
+                    call_offset,
+                    rel32,
+                    target,
+                }
+            })
+        })
+        .collect()
+}
+
+fn assert_x86_runtime_helper_rel32_targets_in_relative_range(
+    rows: &[LinuxX86FunctionSegmentMetadataRow],
+    helper_range: std::ops::Range<i64>,
+) {
+    let bad_targets =
+        find_x86_runtime_helper_rel32_targets_outside_relative_range(rows, helper_range.clone());
+    assert!(
+        bad_targets.is_empty(),
+        "x86 runtime helper rel32 target が helper trailer 範囲外: bad_targets={bad_targets:?} helper_range={helper_range:?}"
+    );
 }
 
 fn find_linux_x86_transport_segment_for_function_idx(
@@ -42092,6 +42146,92 @@ fn test_x86_runtime_helper_rel32_diagnostic_rejects_nonzero_map_new_target_insid
 }
 
 #[test]
+fn test_linux_x86_function_segment_metadata_detects_bad_map_new_runtime_call_target() {
+    let metadata = "\
+9000000020
+1098
+1108
+3340574
+5792
+0
+21
+22
+1200
+0
+11
+358
+9000000021
+138
+60
+12
+1
+1110
+7
+80
+232
+79
+4
+0
+0
+89
+72
+";
+    let rows = parse_linux_x86_function_segment_metadata_rows(metadata);
+    let bad_targets =
+        find_x86_runtime_helper_rel32_targets_outside_relative_range(&rows, 4_900_000..5_000_000);
+
+    assert_eq!(bad_targets.len(), 1);
+    assert_eq!(bad_targets[0].row.function_size, 5792);
+    assert_eq!(bad_targets[0].row.instr_idx, 138);
+    assert_eq!(bad_targets[0].row.opcode, 60);
+    assert_eq!(bad_targets[0].row.depth, 1);
+    assert_eq!(bad_targets[0].call_offset, 1);
+    assert_eq!(bad_targets[0].rel32, 1103);
+    assert_eq!(bad_targets[0].target, 2219);
+}
+
+#[test]
+fn test_linux_x86_function_segment_metadata_detects_map_new_target_inside_function_body() {
+    let metadata = "\
+9000000020
+1098
+1108
+3340574
+5792
+0
+21
+22
+1200
+0
+11
+358
+9000000021
+138
+60
+12
+1
+1110
+7
+80
+232
+79
+4
+0
+0
+89
+72
+";
+    let rows = parse_linux_x86_function_segment_metadata_rows(metadata);
+    let bad_targets = find_x86_runtime_helper_rel32_targets_inside_function_body(&rows);
+
+    assert_eq!(bad_targets.len(), 1);
+    assert_eq!(bad_targets[0].row.function_size, 5792);
+    assert_eq!(bad_targets[0].row.instr_idx, 138);
+    assert_eq!(bad_targets[0].row.opcode, 60);
+    assert_eq!(bad_targets[0].target, 2219);
+}
+
+#[test]
 fn test_linux_x86_function_segment_metadata_detects_zeroed_substring_runtime_call() {
     let metadata = "\
 9000000020
@@ -42274,6 +42414,29 @@ fn test_e2e_linux_x86_actual_function_segment_metadata_has_no_zeroed_runtime_hel
     assert!(
         zeroed_rows.is_empty(),
         "Linux x86 function metadata に zeroed runtime helper call rows が残っている: path={} rows={zeroed_rows:?}",
+        metadata_path.display()
+    );
+}
+
+#[test]
+#[ignore = "diagnostic: V2-13a-5 Linux x86 function metadata runtime helper rel32 targets"]
+fn test_e2e_linux_x86_actual_function_metadata_helper_targets_avoid_body() {
+    let metadata_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_FUNCTION_METADATA").expect(
+        "LSHARP_NATIVE_LINUX_X86_FUNCTION_METADATA に stage1/stage2 metadata txt を指定すること",
+    );
+    let metadata_path = workspace_root_relative_path(std::path::PathBuf::from(metadata_path));
+    let metadata = std::fs::read_to_string(&metadata_path).unwrap_or_else(|e| {
+        panic!(
+            "Linux x86 function metadata 読み込み失敗 ({}): {e}",
+            metadata_path.display()
+        )
+    });
+    let rows = parse_linux_x86_function_segment_metadata_rows(&metadata);
+    let bad_targets = find_x86_runtime_helper_rel32_targets_inside_function_body(&rows);
+
+    assert!(
+        bad_targets.is_empty(),
+        "Linux x86 function metadata に現在の関数本体内へ着地する runtime helper rel32 が残っている: path={} bad_targets={bad_targets:?}",
         metadata_path.display()
     );
 }
