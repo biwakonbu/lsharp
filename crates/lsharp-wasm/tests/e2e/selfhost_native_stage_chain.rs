@@ -904,6 +904,7 @@ fn test_linux_x86_metadata_replays_map_new_direct_vs_fallback_paths() {
             && source.contains("(print 9000000044)")
             && source.contains("(print 9000000045)")
             && source.contains("(x86-rel32-target-in-window-at-base direct 0 direct-len offset)")
+            && source.contains("(print direct-call-rel)")
             && source.contains("(codegen-x86-control-loop-fallback-native control-ctx idx opcode operand offset)")
             && source.contains("(make-x86-function-emit-layout import-count import-stub-offset function-start-base (- 0 offset))")
             && source.contains("(generate-native-control-instr-bundle-loop-x86-with-context fresh-ctx row-state)")
@@ -6424,6 +6425,12 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
             emit-start-base (vector-get layout 3)
             current-depth (vector-get depths idx)
             helper-target (x86-selfhost-map-new-helper-offset import-stub-offset import-count)
+            direct-next-offset (if (= current-depth 0)
+                                 5
+                                 (if (= current-depth 1)
+                                   6
+                                   (+ 13 (* (- current-depth 2) 14))))
+            direct-call-rel (- helper-target (+ offset direct-next-offset))
             direct-ref (ref-new (vector-new 0))]
         (do
           (root_push ir-func)
@@ -6461,6 +6468,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
               (print size)
               (print emit-start-base)
               (print helper-target)
+              (print direct-call-rel)
               (print direct-len)
               (print direct-target)
               (print (byte-at-or-zero direct 0 direct-len))
@@ -41456,6 +41464,22 @@ struct X86IrCallTraceRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct X86MapNewDirectReplayRow {
+    instr_idx: i64,
+    opcode: i64,
+    operand: i64,
+    depth: i64,
+    offset: i64,
+    size: i64,
+    emit_start_base: i64,
+    helper_target: i64,
+    direct_call_rel: i64,
+    direct_len: i64,
+    direct_target: i64,
+    bytes: [u8; 8],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct LinuxX86FunctionSegmentMetadataRow {
     function_size: i64,
     instr_idx: i64,
@@ -41836,10 +41860,10 @@ fn parse_linux_x86_function_segment_metadata_rows(
             }
             9_000_000_043 => {
                 assert!(
-                    idx + 19 <= lines.len(),
+                    idx + 20 <= lines.len(),
                     "x86 function metadata map-new direct replay row が不足: idx={idx} lines={lines:?}"
                 );
-                idx += 19;
+                idx += 20;
             }
             9_000_000_044 => {
                 assert!(
@@ -41863,6 +41887,106 @@ fn parse_linux_x86_function_segment_metadata_rows(
         }
     }
     rows
+}
+
+fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectReplayRow> {
+    let lines = parse_numeric_lines(output);
+    let mut idx = 0;
+    let mut rows = Vec::new();
+    while idx < lines.len() {
+        match lines[idx] {
+            9_000_000_020 => {
+                assert!(
+                    idx + 12 <= lines.len(),
+                    "x86 function metadata header が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 12;
+            }
+            9_000_000_021 => {
+                assert!(
+                    idx + 15 <= lines.len(),
+                    "x86 function metadata row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 15;
+            }
+            9_000_000_027 | 9_000_000_028 => {
+                assert!(
+                    idx + 16 <= lines.len(),
+                    "x86 function metadata replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 16;
+            }
+            9_000_000_029 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata replay output row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_043 => {
+                assert!(
+                    idx + 20 <= lines.len(),
+                    "x86 function metadata map-new direct replay row が不足: idx={idx} lines={lines:?}"
+                );
+                rows.push(X86MapNewDirectReplayRow {
+                    instr_idx: lines[idx + 1],
+                    opcode: lines[idx + 2],
+                    operand: lines[idx + 3],
+                    depth: lines[idx + 4],
+                    offset: lines[idx + 5],
+                    size: lines[idx + 6],
+                    emit_start_base: lines[idx + 7],
+                    helper_target: lines[idx + 8],
+                    direct_call_rel: lines[idx + 9],
+                    direct_len: lines[idx + 10],
+                    direct_target: lines[idx + 11],
+                    bytes: [
+                        lines[idx + 12] as u8,
+                        lines[idx + 13] as u8,
+                        lines[idx + 14] as u8,
+                        lines[idx + 15] as u8,
+                        lines[idx + 16] as u8,
+                        lines[idx + 17] as u8,
+                        lines[idx + 18] as u8,
+                        lines[idx + 19] as u8,
+                    ],
+                });
+                idx += 20;
+            }
+            9_000_000_044 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata map-new fallback replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_045 => {
+                assert!(
+                    idx + 18 <= lines.len(),
+                    "x86 function metadata map-new control replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 18;
+            }
+            marker => {
+                panic!(
+                    "未知の x86 function metadata marker: marker={marker} idx={idx} lines={lines:?}"
+                );
+            }
+        }
+    }
+    rows
+}
+
+fn x86_metadata_row_rel32_target(row: &LinuxX86FunctionSegmentMetadataRow) -> Option<i64> {
+    let call_offset = x86_metadata_row_rel32_call_offset(row)?;
+    let rel_start = call_offset + 1;
+    let rel32 = i32::from_le_bytes([
+        row.bytes[rel_start],
+        row.bytes[rel_start + 1],
+        row.bytes[rel_start + 2],
+        row.bytes[rel_start + 3],
+    ]);
+    Some(row.offset + call_offset as i64 + 5 + rel32 as i64)
 }
 
 fn find_zeroed_x86_runtime_helper_call_rows(
@@ -42778,6 +42902,61 @@ fn test_e2e_linux_x86_actual_function_metadata_helper_targets_avoid_body() {
 }
 
 #[test]
+#[ignore = "diagnostic: V2-13a-5 Linux x86 entry metadata map-new rel32 correlation"]
+fn test_e2e_linux_x86_actual_function_metadata_map_new_rel32_correlation() {
+    let metadata_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_FUNCTION_METADATA").expect(
+        "LSHARP_NATIVE_LINUX_X86_FUNCTION_METADATA に stage1/stage2 metadata txt を指定すること",
+    );
+    let metadata_path = workspace_root_relative_path(std::path::PathBuf::from(metadata_path));
+    let metadata = std::fs::read_to_string(&metadata_path).unwrap_or_else(|e| {
+        panic!(
+            "Linux x86 function metadata 読み込み失敗 ({}): {e}",
+            metadata_path.display()
+        )
+    });
+    let metadata_rows = parse_linux_x86_function_segment_metadata_rows(&metadata);
+    let direct_rows = parse_x86_map_new_direct_replay_rows(&metadata);
+    let map_new_row = metadata_rows
+        .iter()
+        .find(|row| row.opcode == 60)
+        .expect("metadata に opcode60 map-new row が存在すること");
+    let direct_row = direct_rows
+        .iter()
+        .find(|row| {
+            row.instr_idx == map_new_row.instr_idx
+                && row.opcode == map_new_row.opcode
+                && row.depth == map_new_row.depth
+                && row.offset == map_new_row.offset
+                && row.size == map_new_row.size
+        })
+        .expect("metadata に map-new direct replay row が存在すること");
+    let emitted_relative_target = x86_metadata_row_rel32_target(map_new_row)
+        .expect("map-new emitted bytes は rel32 call を含むこと");
+    let emitted_absolute_target = direct_row.emit_start_base + emitted_relative_target;
+    let expected_direct_rel = direct_row.helper_target - (direct_row.offset + 5);
+
+    assert_eq!(
+        emitted_absolute_target, direct_row.helper_target,
+        "stage-generated map-new emitted bytes の rel32 target は helper target と一致するべき: metadata={} row={map_new_row:?} direct={direct_row:?}",
+        metadata_path.display()
+    );
+    assert_eq!(
+        direct_row.direct_call_rel, expected_direct_rel,
+        "map-new direct replay の rel32 計算が helper target と一致しない: metadata={} row={map_new_row:?} direct={direct_row:?}",
+        metadata_path.display()
+    );
+    println!(
+        "Linux x86 map-new rel32 correlation: metadata={} emitted_relative_target={} emitted_absolute_target={} helper_target={} direct_call_rel={} direct_target={} row={map_new_row:?} direct={direct_row:?}",
+        metadata_path.display(),
+        emitted_relative_target,
+        emitted_absolute_target,
+        direct_row.helper_target,
+        direct_row.direct_call_rel,
+        direct_row.direct_target
+    );
+}
+
+#[test]
 fn test_linux_x86_actual_transport_segment_table_maps_absolute_offsets() {
     let stdout = b"9000000005\n2\n11\n8\n9000000006\n9000000001\n5\n9000000002\n9000000010\n3\n513\n9000000010\n2\n1027\n9000000003\n0\n9000000004\n";
     let (layout, code_len, segments) = decode_linux_x86_actual_transport_code_segments(stdout);
@@ -42827,6 +43006,83 @@ segment_index\tfunction_idx\tkind\tstart\tlen\tend\tfirst_32_bytes\n\
     assert_eq!(hit.start, 3_102_363);
     assert_eq!(hit.len, 2_595);
     assert_eq!(hit.first_32_bytes, vec![0x55, 0x48, 0x89, 0xe5]);
+}
+
+#[test]
+fn test_linux_x86_function_metadata_parses_map_new_direct_rel32_row() {
+    let metadata = "\
+9000000020
+1514
+1524
+5088428
+2565
+0
+5
+6
+1072
+0
+11
+74
+9000000021
+0
+60
+1
+0
+11
+5
+232
+255
+14
+0
+0
+72
+137
+133
+9000000043
+0
+60
+1
+0
+11
+5
+5088428
+5092283
+5092267
+5
+5092288
+232
+171
+179
+77
+0
+0
+0
+0
+";
+
+    let metadata_rows = parse_linux_x86_function_segment_metadata_rows(metadata);
+    let direct_rows = parse_x86_map_new_direct_replay_rows(metadata);
+
+    assert_eq!(metadata_rows.len(), 1);
+    assert_eq!(metadata_rows[0].opcode, 60);
+    assert_eq!(x86_metadata_row_rel32_target(&metadata_rows[0]), Some(3855));
+    assert_eq!(
+        direct_rows,
+        vec![X86MapNewDirectReplayRow {
+            instr_idx: 0,
+            opcode: 60,
+            operand: 1,
+            depth: 0,
+            offset: 11,
+            size: 5,
+            emit_start_base: 5_088_428,
+            helper_target: 5_092_283,
+            direct_call_rel: 5_092_267,
+            direct_len: 5,
+            direct_target: 5_092_288,
+            bytes: [232, 171, 179, 77, 0, 0, 0, 0],
+        }]
+    );
 }
 
 fn assert_linux_x86_entry_map_ref_ref_prefix(
