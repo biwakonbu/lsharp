@@ -2584,6 +2584,26 @@ fn test_native_codegen_x86_four_arg_user_call_avoids_rel_wrapper_call() {
 }
 
 #[test]
+fn test_native_codegen_x86_four_arg_call_bundle_roots_rel_ref() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let four_arg_body = source
+        .split("(defn emit-four-arg-call-x86 [rel frame-base-slot-count current-depth]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn emit-five-arg-call-x86-core").next())
+        .expect("NativeCodegen.ls に emit-four-arg-call-x86 が存在すること");
+
+    assert!(
+        four_arg_body.contains("call-rel-ref (ref-new rel)")
+            && four_arg_body.contains("(root_push call-rel-ref)")
+            && four_arg_body.contains(
+                "emit-four-arg-call-x86-core-with-rel-ref call-rel-ref frame-base-slot-count",
+            )
+            && !four_arg_body.contains("emit-four-arg-call-x86-core rel frame-base-slot-count"),
+        "x86 generic four-arg call bundle は rel32 integer を直接 core に渡さず rel ref 経由で call bytes を生成するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_three_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
     let opcode_call_branch = source

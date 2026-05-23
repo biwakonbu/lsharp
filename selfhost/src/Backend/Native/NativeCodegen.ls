@@ -7206,7 +7206,13 @@
 
 (defn emit-four-arg-call-x86 [rel frame-base-slot-count current-depth]
   (emit-consume-four-produce-one-bundle-x86
-    (emit-four-arg-call-x86-core rel frame-base-slot-count)
+    (let [call-rel-ref (ref-new rel)]
+      (do
+        (root_push call-rel-ref)
+        (let [result (emit-four-arg-call-x86-core-with-rel-ref call-rel-ref frame-base-slot-count)]
+          (do
+            (root_pop)
+            result))))
                            frame-base-slot-count
                           current-depth))
 
