@@ -130,6 +130,17 @@ fn strip_host_only_x86_file_segment_helpers(source: String) -> String {
     format!("{}{}", &source[..start], &source[end..])
 }
 
+fn strip_linux_x86_unused_base64_helpers(source: String) -> String {
+    let Some(start) = source.find("\n(defn str4") else {
+        return source;
+    };
+    let Some(relative_end) = source[start..].find("\n(defn main []") else {
+        return source;
+    };
+    let end = start + relative_end;
+    format!("{}{}", &source[..start], &source[end..])
+}
+
 fn representative_actual_stage23_seed_source() -> String {
     representative_actual_stage23_seed_source_for_target("(host-target)")
 }
@@ -146,8 +157,8 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                                       (print (vector-length native-callables))
                                                       (print (+ 9 (vector-length functions))))
                                                     0)
-                    main-func-idx (+ 9 (vector-length functions))
-                    entrypoint-func-idx (+ 9 (vector-length functions))
+                    main-func-idx bounded-main-func-idx
+                    entrypoint-func-idx bounded-main-func-idx
                     starts (collect-callable-function-slot-starts-x86 native-callables 10)
                     progress-after-starts (if (= progress-mode 1)
                                            (do
@@ -244,11 +255,17 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                               (compile-file-mode-cache-compile-pair-progress-probe)
                                               (print 9000000042))
                                             0)
+              target-src (read-file (command-line-arg 1))
+              target-src-root (root_push target-src)
+              target-decls (parse-program target-src)
+              target-decls-root (root_push target-decls)
+              target-module-hash (decls-module-hash-or-minus-one target-decls)
               all-pairs (compile-file-pairs-with-cache (command-line-arg 1) cache-ref parse-count-ref)
-              main-pair-idx (- (vector-length all-pairs) 1)
+              main-pair-idx (find-module-pair-index all-pairs 0 (vector-length all-pairs) target-module-hash (- (vector-length all-pairs) 1))
               main-pair (vector-get all-pairs main-pair-idx)
               main-decls (vector-get main-pair 1)
-              main-defn-idx (find-last-defn-index main-decls 0 (vector-length main-decls) -1)
+              main-name-defn-idx (find-defn-index-by-hash main-decls 0 (vector-length main-decls) (name-hash "main" 0 4))
+              main-defn-idx (if (>= main-name-defn-idx 0) main-name-defn-idx (find-last-defn-index main-decls 0 (vector-length main-decls) -1))
               main-func-idx (emitted-main-func-idx all-pairs main-pair-idx main-defn-idx 10)
               payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
               functions (vector-get payload-base 0)
@@ -272,6 +289,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
         "(make-target 3)",
         main_body,
     );
+    let source = strip_linux_x86_unused_base64_helpers(source);
     let payload_bindings = r#"payload-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
          progress-after-payload-start (if (= payload-progress-mode 1)
           (do
@@ -290,11 +308,17 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                               (compile-file-mode-cache-compile-pair-progress-probe)
                                               (print 9000000042))
                                             0)
+         target-src (read-file (command-line-arg 1))
+         target-src-root (root_push target-src)
+         target-decls (parse-program target-src)
+         target-decls-root (root_push target-decls)
+         target-module-hash (decls-module-hash-or-minus-one target-decls)
          all-pairs (compile-file-pairs-with-cache (command-line-arg 1) cache-ref parse-count-ref)
-         main-pair-idx (- (vector-length all-pairs) 1)
+         main-pair-idx (find-module-pair-index all-pairs 0 (vector-length all-pairs) target-module-hash (- (vector-length all-pairs) 1))
          main-pair (vector-get all-pairs main-pair-idx)
          main-decls (vector-get main-pair 1)
-         main-defn-idx (find-last-defn-index main-decls 0 (vector-length main-decls) -1)
+         main-name-defn-idx (find-defn-index-by-hash main-decls 0 (vector-length main-decls) (name-hash "main" 0 4))
+         main-defn-idx (if (>= main-name-defn-idx 0) main-name-defn-idx (find-last-defn-index main-decls 0 (vector-length main-decls) -1))
          emitted-main-func-idx-value (emitted-main-func-idx all-pairs main-pair-idx main-defn-idx 10)
          payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
          payload payload-base
@@ -359,66 +383,29 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
         local-count (count-defns-until-index main-decls 0 main-defn-idx 0)]
     (+ import-count (+ prior-count local-count))))
 
-(defn make-append-vector-state [done next-idx result]
-  (push-object-vector
-    (push-int-vector-local
-      (push-int-vector-local (vector-new 3) done)
-      next-idx)
-    result))
+(defn decls-module-hash-or-minus-one [decls]
+  (if (= (vector-length decls) 0)
+    -1
+    (let [decl (vector-get decls 0)]
+      (if (= (vector-get decl 0) 25)
+        (vector-get decl 1)
+        -1))))
 
-(defn build-callables-with-imports-step [src import-count idx total result remaining]
-  (if (>= idx total)
-    (make-append-vector-state 1 idx result)
-    (if (= remaining 0)
-      (make-append-vector-state 0 idx result)
-      (do
-        (root_push src)
-        (root_push result)
-        (let [next-func (if (< idx import-count)
-                          (make-function-meta 0 0 (vector-new 0))
-                          (vector-get src (- idx import-count)))]
-          (do
-            (root_push next-func)
-            (let [next-result (vector-push result next-func)]
-              (do
-                (root_push next-result)
-                (let [state (build-callables-with-imports-step
-                              src
-                              import-count
-                              (+ idx 1)
-                              total
-                              next-result
-                              (- remaining 1))]
-                  (do
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    state))))))))))
-
-(defn build-callables-with-imports-loop [src import-count idx total result]
-  (let [state (build-callables-with-imports-step src import-count idx total result 64)]
-    (if (= (vector-get state 0) 1)
-      (vector-get state 2)
-      (build-callables-with-imports-loop
-        src
-        import-count
-        (vector-get state 1)
-        total
-        (vector-get state 2)))))
-
-(defn build-callables-with-imports [src import-count]
-  (do
-    (root_push src)
-    (let [total (+ import-count (vector-length src))
-          result (vector-new total)]
-      (do
-        (root_push result)
-        (let [final (build-callables-with-imports-loop src import-count 0 total result)]
-          (do
-            (root_pop)
-            (root_pop)
-            final))))))
+(defn find-module-pair-index [pairs idx len target-module-hash best]
+  (if (>= idx len)
+    best
+    (let [pair (vector-get pairs idx)
+          module-hash (decls-module-hash-or-minus-one (vector-get pair 1))
+          matches (if (>= target-module-hash 0)
+                    (= module-hash target-module-hash)
+                    false)
+          next-best (if matches idx best)]
+      (find-module-pair-index
+        pairs
+        (+ idx 1)
+        len
+        target-module-hash
+        next-best))))
 
 "#;
     let source = source.replacen(
@@ -441,7 +428,7 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                             (print (vector-length data))
                             (print (+ 9 (vector-length functions))))
                           0)]
-                    (build-callables-with-imports functions 10))"#,
+                    (append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions)))"#,
     )
 }
 
@@ -547,14 +534,15 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
         !source.contains("payload3 (push-int-vector-local payload2 bounded-main-func-idx)"),
         source.contains("defn emitted-main-func-idx"),
         source.contains("defn count-defns-before-pair"),
-        source.contains("defn build-callables-with-imports"),
-        source.contains("(defn build-callables-with-imports [src import-count]\n  (do\n    (root_push src)"),
-        source.contains("result (vector-new total)"),
+        !source.contains("defn make-append-vector-state"),
+        !source.contains("defn build-callables-with-imports"),
         source.contains("pre-callable-progress"),
         source.contains("pre-callable-progress (if (= (if (> (string-length (command-line-arg 8)) 0) 1 0) 1)"),
-        source.contains("(build-callables-with-imports functions 10)"),
-        source.contains("main-func-idx (+ 9 (vector-length functions))"),
-        source.contains("entrypoint-func-idx (+ 9 (vector-length functions))"),
+        source.contains("append-vector-loop (push-import-placeholders 0 10 (vector-new 32)) functions 0 (vector-length functions)"),
+        source.contains("main-func-idx bounded-main-func-idx"),
+        source.contains("entrypoint-func-idx bounded-main-func-idx"),
+        !source.contains("main-func-idx (+ 9 (vector-length functions))"),
+        !source.contains("entrypoint-func-idx (+ 9 (vector-length functions))"),
         !source.contains("main-func-idx entrypoint-func-idx"),
         !source.contains("entrypoint-func-idx (- (vector-length callables) 1)"),
     ];
@@ -1022,6 +1010,43 @@ fn test_linux_x86_metadata_replays_map_new_direct_vs_fallback_paths() {
                 "(print-x86-map-new-control-replay-diagnostic control-ctx idx opcode operand offset size)"
             ),
         "Linux x86 metadata mode は opcode60 map-new の direct/fallback/replay bytes と rel32 target を同一 row で比較できるべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_selects_target_source_main_for_entrypoint() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    assert!(
+        source.contains("(defn find-module-pair-index"),
+        "Linux x86 seed は module order の揺れに依存せず対象 source pair を探索するべき"
+    );
+    assert!(
+        source.contains("target-src (read-file (command-line-arg 1))")
+            && source.contains("target-decls (parse-program target-src)")
+            && source.contains("target-module-hash (decls-module-hash-or-minus-one target-decls)"),
+        "Linux x86 seed は command-line target module を entrypoint 選択に使うべき"
+    );
+    assert!(
+        source.contains(
+            "main-pair-idx (find-module-pair-index all-pairs 0 (vector-length all-pairs) target-module-hash (- (vector-length all-pairs) 1))"
+        ),
+        "Linux x86 seed は all-pairs の最後ではなく target module pair を main pair にするべき"
+    );
+    assert!(
+        source.contains(
+            "main-name-defn-idx (find-defn-index-by-hash main-decls 0 (vector-length main-decls) (name-hash \"main\" 0 4))"
+        ),
+        "Linux x86 seed は最後の defn ではなく main 名の defn を entrypoint にするべき"
+    );
+    assert!(
+        !source.contains("main-pair-idx (- (vector-length all-pairs) 1)"),
+        "Linux x86 seed が最後の pair を entrypoint とみなすと selfhost stage1 の module order で helper に飛ぶ"
+    );
+    assert!(
+        !source.contains("(defn build-base64-chunk-lines")
+            && !source.contains("(defn write-base64-chunks"),
+        "Linux x86 seed は packed transport を使うため、selfhost parser を途中停止させる base64 helper 群を含めない"
     );
 }
 
