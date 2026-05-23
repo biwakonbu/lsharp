@@ -2358,6 +2358,28 @@ fn test_linux_x86_low_arity_prefix_probe_is_env_driven() {
 }
 
 #[test]
+fn test_linux_x86_zero_arg_append_four_arg_call_probe_reports_rel32_target() {
+    let source = include_str!("selfhost_native_stage_chain.rs");
+    let test_body = source
+        .split(
+            "\nfn test_e2e_native_linux_x86_host_generates_zero_arg_append_four_arg_call_probe_bundle_artifact",
+        )
+        .nth(1)
+        .and_then(|tail| tail.split("/// NATIVE-LINUX-X86-02gb4").next())
+        .expect("Linux x86 zero-arg append four-arg call probe が存在すること");
+
+    assert!(
+        test_body.contains("LSHARP_NATIVE_LINUX_X86_ZERO_ARG_APPEND_FOUR_ARG_PROBE_ARTIFACT_DIR")
+            && test_body.contains("append-zero-arg-call-bundle-x86")
+            && test_body.contains("x86-rel32-target-in-window-at-base")
+            && test_body.contains("(print expected-target)")
+            && test_body.contains("(print actual-target)")
+            && test_body.contains("(print-byte-window bytes 0 bytes-len)"),
+        "Linux x86 zero-arg append four-arg call probe は helper を4引数 call し、emitted bytes と rel32 target を同時に出力するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_one_arg_user_call_avoids_rel_wrapper_call() {
     let source = selfhost_module("NativeCodegen.ls");
     let opcode_call_branch = source
@@ -25202,6 +25224,156 @@ fn test_e2e_native_linux_x86_host_generates_param_spill_probe_bundle_artifact() 
         format!("{}\n", bundle.function_start_len),
     )
     .expect("Linux x86_64 param spill probe function-start-len.txt 書き込みに失敗");
+}
+
+/// NATIVE-LINUX-X86-02gb3z: host 側 selfhost が zero-arg append helper 4 引数 call probe の Linux native bundle を生成すること。
+#[test]
+#[ignore]
+fn test_e2e_native_linux_x86_host_generates_zero_arg_append_four_arg_call_probe_bundle_artifact() {
+    let artifact_dir =
+        std::env::var_os("LSHARP_NATIVE_LINUX_X86_ZERO_ARG_APPEND_FOUR_ARG_PROBE_ARTIFACT_DIR")
+            .expect(
+                "LSHARP_NATIVE_LINUX_X86_ZERO_ARG_APPEND_FOUR_ARG_PROBE_ARTIFACT_DIR に Linux x86_64 zero-arg append four-arg probe artifact dir を指定すること",
+            );
+    let artifact_dir = std::path::PathBuf::from(artifact_dir);
+    std::fs::create_dir_all(&artifact_dir)
+        .expect("Linux x86_64 zero-arg append four-arg probe artifact dir 作成に失敗");
+
+    let probe_source = r#"(module App.Probe)
+(import Backend.Native.NativeCodegen)
+
+(defn byte-at-or-zero [bytes idx len]
+  (if (>= idx len)
+    0
+    (let [value (vector-get bytes idx)]
+      (if (< value 0)
+        (+ value 256)
+        value))))
+
+(defn x86-rel32-at [bytes offset]
+  (let [len (vector-length bytes)
+        b0 (byte-at-or-zero bytes (+ offset 1) len)
+        b1 (byte-at-or-zero bytes (+ offset 2) len)
+        b2 (byte-at-or-zero bytes (+ offset 3) len)
+        b3 (byte-at-or-zero bytes (+ offset 4) len)
+        value (+ b0 (+ (* b1 256) (+ (* b2 65536) (* b3 16777216))))]
+    (if (>= value 2147483648)
+      (- value 4294967296)
+      value)))
+
+(defn x86-first-rel32-offset-in-window [bytes offset idx end]
+  (if (>= idx end)
+    -1
+    (let [current (+ offset idx)]
+      (if (= (byte-at-or-zero bytes current (vector-length bytes)) 232)
+        current
+        (x86-first-rel32-offset-in-window bytes offset (+ idx 1) end)))))
+
+(defn x86-rel32-target-in-window [bytes offset size]
+  (let [call-offset (x86-first-rel32-offset-in-window bytes offset 0 size)]
+    (if (>= call-offset 0)
+      (+ call-offset (+ 5 (x86-rel32-at bytes call-offset)))
+      -1)))
+
+(defn x86-rel32-target-in-window-at-base [bytes offset size base-offset]
+  (let [target (x86-rel32-target-in-window bytes offset size)]
+    (if (>= target 0)
+      (+ base-offset target)
+      -1)))
+
+(defn print-byte-window [bytes idx end]
+  (if (>= idx end)
+    0
+    (do
+      (print idx)
+      (print (byte-at-or-zero bytes idx end))
+      (print-byte-window bytes (+ idx 1) end))))
+
+(defn fill-zero-bytes [result idx len]
+  (if (>= idx len)
+    0
+    (do
+      (append-x86-byte result 0)
+      (fill-zero-bytes result (+ idx 1) len))))
+
+(defn main []
+  (let [result (ref-new (vector-new 0))
+        inline-result (ref-new (vector-new 0))
+        base-offset 1110
+        expected-target 5090631
+        call-rel (- expected-target (+ base-offset 6))]
+    (do
+      (append-zero-arg-call-bundle-x86 result call-rel 16 1)
+      (let [bytes (ref-get result)
+            bytes-len (vector-length bytes)
+            actual-target (x86-rel32-target-in-window-at-base bytes 0 bytes-len base-offset)]
+        (do
+          (print expected-target)
+          (print actual-target)
+          (print bytes-len)
+          (print-byte-window bytes 0 bytes-len)
+          (fill-zero-bytes inline-result 0 base-offset)
+          (append-zero-arg-call-bundle-x86
+            inline-result
+            (- expected-target (+ (x86-current-emitted-offset inline-result 0) 6))
+            16
+            1)
+          (let [inline-bytes (ref-get inline-result)
+                inline-len (vector-length inline-bytes)
+                inline-target (x86-rel32-target-in-window-at-base inline-bytes base-offset 7 0)]
+            (do
+              (print expected-target)
+              (print inline-target)
+              (print inline-len)
+              (print-byte-window inline-bytes base-offset inline-len)
+              (if (= inline-target expected-target)
+                (if (= actual-target expected-target)
+                  42
+                  41)
+                13))))))))"#;
+    let escaped_probe_source = escape_lsharp_string(probe_source);
+    let payload_expr = format!(
+        r#"(do
+            (write-file "src/App/Probe.ls" "{escaped_probe_source}")
+            (compile-file-functions-payload-with-cache "src/App/Probe.ls" 10 cache-ref parse-count-ref))"#
+    );
+    let bundle =
+        run_selfhost_main_native_x86_file_segmented_host_bytes_harness_with_payload_and_args(
+            "linux-x86-zero-arg-append-four-arg-probe-bundle",
+            &payload_expr,
+            &[],
+        );
+
+    assert!(
+        bundle.entrypoint_offset < bundle.code_bytes.len(),
+        "Linux x86_64 zero-arg append four-arg probe entrypoint は code 範囲内にあること: entry={} len={}",
+        bundle.entrypoint_offset,
+        bundle.code_bytes.len()
+    );
+    assert!(
+        !bundle.code_bytes.is_empty(),
+        "Linux x86_64 zero-arg append four-arg probe code artifact は空でないこと"
+    );
+
+    std::fs::write(artifact_dir.join("stage-code.bin"), &bundle.code_bytes)
+        .expect("Linux x86_64 zero-arg append four-arg probe stage-code.bin 書き込みに失敗");
+    std::fs::write(artifact_dir.join("stage-data.bin"), &bundle.data_bytes)
+        .expect("Linux x86_64 zero-arg append four-arg probe stage-data.bin 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("entrypoint-offset.txt"),
+        format!("{}\n", bundle.entrypoint_offset),
+    )
+    .expect("Linux x86_64 zero-arg append four-arg probe entrypoint-offset.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("main-func-idx.txt"),
+        format!("{}\n", bundle.main_func_idx),
+    )
+    .expect("Linux x86_64 zero-arg append four-arg probe main-func-idx.txt 書き込みに失敗");
+    std::fs::write(
+        artifact_dir.join("function-start-len.txt"),
+        format!("{}\n", bundle.function_start_len),
+    )
+    .expect("Linux x86_64 zero-arg append four-arg probe function-start-len.txt 書き込みに失敗");
 }
 
 /// NATIVE-LINUX-X86-02gb4: host 側 selfhost が four-arg call codegen probe の Linux native bundle を生成すること。
