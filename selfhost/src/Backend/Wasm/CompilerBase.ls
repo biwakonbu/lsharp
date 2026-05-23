@@ -947,6 +947,7 @@
                 result))))))))
 (defn compile-let-chain-step-finish [name-hash body-expr init-instrs env rooted-count init-root]
   (do
+    (root_push env)
     (root_push init-instrs)
     (let [new-idx (+ 1 (map-size env))
       next-instrs1 (emit-to init-instrs 11 new-idx)]
@@ -968,6 +969,7 @@
                     (root_pop)
                     (root_pop)
                     (root_pop)
+                    (root_pop)
                     result))))))))))
 (defn compile-defn-functions-step-finish [functions compiled-fn idx]
   (let [updated-functions (push-object-vector functions compiled-fn)]
@@ -979,6 +981,7 @@
           next-state)))))
 (defn compile-let-with-ftable-prepare [name-hash init-root init-instrs env]
   (do
+    (root_push env)
     (root_push init-instrs)
     (let [new-idx (+ 1 (map-size env))
       instrs1 (emit-to init-instrs 11 new-idx)]
@@ -995,6 +998,7 @@
                     (root_push prep0)
                     (let [result (push-object-vector prep0 instrs2)]
                       (do
+                        (root_pop)
                         (root_pop)
                         (root_pop)
                         (root_pop)

@@ -1310,20 +1310,22 @@
 (defn parse-if-v3 [spans pos-ref src]
   (do
     (p-advance pos-ref) ;; if を消費
-    (let [cond-node (parse-expr-v3 spans pos-ref src)
-      then-node (parse-expr-v3 spans pos-ref src)
-      else-node (parse-expr-v3 spans pos-ref src)]
+    (let [cond-node (parse-expr-v3 spans pos-ref src)]
       (do
         (root_push cond-node)
-        (root_push then-node)
-        (root_push else-node)
-        (p-expect spans pos-ref 1) ;; ) を消費
-        (let [parsed (vector-push-quad-rooted-v3 (vector-new 8) 6 cond-node then-node else-node)]
+        (let [then-node (parse-expr-v3 spans pos-ref src)]
           (do
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            parsed))))))
+            (root_push then-node)
+            (let [else-node (parse-expr-v3 spans pos-ref src)]
+              (do
+                (root_push else-node)
+                (p-expect spans pos-ref 1) ;; ) を消費
+                (let [parsed (vector-push-quad-rooted-v3 (vector-new 8) 6 cond-node then-node else-node)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    parsed))))))))))
 
 ;; === let 式 (複数バインディング対応) ===
 (defn parse-let-body-starts-let-v3 [spans pos-ref]

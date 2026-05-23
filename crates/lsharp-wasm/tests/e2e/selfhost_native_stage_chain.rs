@@ -1616,6 +1616,247 @@ fn test_selfhost_parser_parse_let_v3_delegates_after_first_binding_for_native_si
 }
 
 #[test]
+fn test_selfhost_parser_parse_if_roots_condition_and_then_before_later_parse() {
+    let source = selfhost_module("Parser.ls");
+    let parse_if_body = source
+        .split("(defn parse-if-v3")
+        .nth(1)
+        .and_then(|tail| tail.split(";; === let 式").next())
+        .expect("Parser.ls に parse-if-v3 が存在すること");
+    let cond_parse_pos = parse_if_body
+        .find("cond-node (parse-expr-v3 spans pos-ref src)")
+        .expect("parse-if-v3 は condition を parse すること");
+    let cond_root_pos = parse_if_body[cond_parse_pos..]
+        .find("(root_push cond-node)")
+        .map(|pos| cond_parse_pos + pos)
+        .expect("parse-if-v3 は condition を root すること");
+    let then_parse_pos = parse_if_body
+        .find("then-node (parse-expr-v3 spans pos-ref src)")
+        .expect("parse-if-v3 は then branch を parse すること");
+    let then_root_pos = parse_if_body[then_parse_pos..]
+        .find("(root_push then-node)")
+        .map(|pos| then_parse_pos + pos)
+        .expect("parse-if-v3 は then branch を root すること");
+    let else_parse_pos = parse_if_body
+        .find("else-node (parse-expr-v3 spans pos-ref src)")
+        .expect("parse-if-v3 は else branch を parse すること");
+
+    assert!(
+        cond_parse_pos < cond_root_pos
+            && cond_root_pos < then_parse_pos
+            && then_parse_pos < then_root_pos
+            && then_root_pos < else_parse_pos,
+        "parse-if-v3 は後続 branch parse 中の GC で先に parse した AST を失わないよう逐次 root するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_let_step_reloads_body_after_init_compile() {
+    let source = selfhost_module("Compiler.ls");
+    let step_body = source
+        .split("(defn compile-let-chain-step-with-source-body-impl-3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-defn-functions-step-with-source-body-impl-3")
+                .next()
+        })
+        .expect("Compiler.ls に compile-let-chain-step-with-source-body-impl-3 が存在すること");
+    let init_compile_pos = step_body
+        .find("init-instrs (compile-expr-with-source init-expr")
+        .expect("let-chain step は init-expr を compile すること");
+    let body_reload_pos = step_body
+        .find("body-expr-after-init (vector-get node 3)")
+        .expect("let-chain step は init compile 後に body-expr を node から取り直すこと");
+    let finish_pos = step_body
+        .find("(compile-let-chain-step-finish name-hash body-expr-after-init init-instrs env rooted-count init-root)")
+        .expect("let-chain step は取り直した body-expr を finish へ渡すこと");
+
+    assert!(
+        init_compile_pos < body_reload_pos && body_reload_pos < finish_pos,
+        "let-chain step は init compile 中に stale になり得る body-expr を持ち越さず、root 済み node から後で取り直すべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_let_step_finish_uses_reloaded_body_without_extra_root() {
+    let source = selfhost_module("Compiler.ls");
+    let finish_body = source
+        .split("(defn compile-let-chain-step-finish")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-defn-functions-step-finish")
+                .next()
+        })
+        .expect("CompilerBase.ls に compile-let-chain-step-finish が存在すること");
+    let env_root_pos = finish_body
+        .find("(root_push env)")
+        .expect("let-chain finish は env を root すること");
+    let init_root_pos = finish_body
+        .find("(root_push init-instrs)")
+        .expect("let-chain finish は init-instrs を root すること");
+    let env_bind_pos = finish_body
+        .find("(env-bind env name-hash new-idx)")
+        .expect("let-chain finish は次の env を構築すること");
+    let next_value_pos = finish_body
+        .find("(make-let-chain-next-value body-expr next-env next-instrs2)")
+        .expect("let-chain finish は body-expr を次 state に保持すること");
+
+    assert!(
+        !finish_body.contains("(root_push body-expr)")
+            && env_root_pos < init_root_pos
+            && init_root_pos < env_bind_pos
+            && env_bind_pos < next_value_pos,
+        "let-chain finish は body-expr の追加 root は避けつつ、env-bind 中に env scalar が stale にならないよう env は root するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_let_ftable_reloads_body_after_init_compile() {
+    let source = selfhost_module("Compiler.ls");
+    let ftable_body = source
+        .split("(defn compile-let-with-ftable-impl-body-impl-3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-if-with-source-impl-body-impl")
+                .next()
+        })
+        .expect("Compiler.ls に compile-let-with-ftable-impl-body-impl-3 が存在すること");
+    let init_compile_pos = ftable_body
+        .find("init-instrs (compile-expr-with-ftable init-expr")
+        .expect("ftable let は init-expr を compile すること");
+    let body_reload_pos = ftable_body
+        .find("body-expr-after-init (vector-get node 3)")
+        .expect("ftable let は init compile 後に body-expr を node から取り直すこと");
+    let body_root_pos = ftable_body[body_reload_pos..]
+        .find("(root_push body-expr-after-init)")
+        .map(|pos| body_reload_pos + pos)
+        .expect("ftable let は prep 構築前に body-expr を root すること");
+    let prep_pos = ftable_body
+        .find("prep (compile-let-with-ftable-prepare")
+        .expect("ftable let は init 後に prep を構築すること");
+    let body_compile_pos = ftable_body
+        .find("body-instrs (compile-expr-with-ftable body-expr-after-init new-env ftable instrs2)")
+        .expect("ftable let は取り直した body-expr を compile すること");
+
+    assert!(
+        init_compile_pos < body_reload_pos
+            && body_reload_pos < body_root_pos
+            && body_root_pos < prep_pos
+            && prep_pos < body_compile_pos,
+        "ftable let は init/prep 構築中に stale になり得る body-expr を持ち越さず、root 済み node から後で取り直して root するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_let_prepare_roots_env_before_env_bind() {
+    let source = selfhost_module("Compiler.ls");
+    let prepare_body = source
+        .split("(defn compile-let-with-ftable-prepare")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn function-meta-param-count").next())
+        .expect("CompilerBase.ls に compile-let-with-ftable-prepare が存在すること");
+    let env_root_pos = prepare_body
+        .find("(root_push env)")
+        .expect("let prepare は env を root すること");
+    let init_root_pos = prepare_body
+        .find("(root_push init-instrs)")
+        .expect("let prepare は init-instrs を root すること");
+    let env_bind_pos = prepare_body
+        .find("(env-bind env name-hash new-idx)")
+        .expect("let prepare は env-bind すること");
+
+    assert!(
+        env_root_pos < init_root_pos && init_root_pos < env_bind_pos,
+        "let prepare は instr/env allocation 中に env scalar が stale にならないよう先に env を root するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_if_with_source_roots_branches_before_cond_compile() {
+    let source = selfhost_module("Compiler.ls");
+    let if_body = source
+        .split("(defn compile-if-with-source-impl-body-impl")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-let-chain-with-source").next())
+        .expect("Compiler.ls に compile-if-with-source-impl-body-impl が存在すること");
+    let cond_get_pos = if_body
+        .find("cond-expr (vector-get node 1)")
+        .expect("source if は condition node を読むこと");
+    let then_get_pos = if_body
+        .find("then-expr (vector-get node 2)")
+        .expect("source if は then branch node を読むこと");
+    let else_get_pos = if_body
+        .find("else-expr (vector-get node 3)")
+        .expect("source if は else branch node を読むこと");
+    let cond_root_pos = if_body
+        .find("(root_push cond-expr)")
+        .expect("source if は condition を root すること");
+    let then_root_pos = if_body
+        .find("(root_push then-expr)")
+        .expect("source if は then branch を root すること");
+    let else_root_pos = if_body
+        .find("(root_push else-expr)")
+        .expect("source if は else branch を root すること");
+    let cond_compile_pos = if_body
+        .find("instrs1 (compile-expr-with-source cond-expr")
+        .expect("source if は condition を compile すること");
+    let then_compile_pos = if_body
+        .find("instrs3 (compile-expr-with-source then-expr")
+        .expect("source if は then branch を compile すること");
+    let else_compile_pos = if_body
+        .find("instrs5 (compile-expr-with-source else-expr")
+        .expect("source if は else branch を compile すること");
+
+    assert!(
+        cond_get_pos < then_get_pos
+            && then_get_pos < else_get_pos
+            && else_get_pos < cond_root_pos
+            && cond_root_pos < then_root_pos
+            && then_root_pos < else_root_pos
+            && else_root_pos < cond_compile_pos
+            && cond_compile_pos < then_compile_pos
+            && then_compile_pos < else_compile_pos,
+        "compile-if-with-source は cond compile 中の GC で then/else scalar が stale にならないよう先に branches を root するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compile_if_with_ftable_roots_branches_before_cond_compile() {
+    let source = selfhost_module("Compiler.ls");
+    let if_body = source
+        .split("(defn compile-if-with-ftable")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-expr-with-ftable-dispatch-simple-3")
+                .next()
+        })
+        .expect("Compiler.ls に compile-if-with-ftable が存在すること");
+    let else_get_pos = if_body
+        .find("else-expr (vector-get node 3)")
+        .expect("ftable if は else branch node を読むこと");
+    let cond_root_pos = if_body
+        .find("(root_push cond-expr)")
+        .expect("ftable if は condition を root すること");
+    let then_root_pos = if_body
+        .find("(root_push then-expr)")
+        .expect("ftable if は then branch を root すること");
+    let else_root_pos = if_body
+        .find("(root_push else-expr)")
+        .expect("ftable if は else branch を root すること");
+    let cond_compile_pos = if_body
+        .find("instrs1 (compile-expr-with-ftable cond-expr")
+        .expect("ftable if は condition を compile すること");
+
+    assert!(
+        else_get_pos < cond_root_pos
+            && cond_root_pos < then_root_pos
+            && then_root_pos < else_root_pos
+            && else_root_pos < cond_compile_pos,
+        "compile-if-with-ftable は cond compile 中の GC で branches が stale にならないよう先に root するべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_vector_new_helper_nop_fills_capacity_for_code_vectors() {
     let source = selfhost_module("NativeCodegen.ls");
     let helper_body = source
@@ -42936,12 +43177,14 @@ fn test_e2e_linux_x86_actual_function_metadata_map_new_rel32_correlation() {
     let expected_direct_rel = direct_row.helper_target - (direct_row.offset + 5);
 
     assert_eq!(
-        emitted_absolute_target, direct_row.helper_target,
+        emitted_absolute_target,
+        direct_row.helper_target,
         "stage-generated map-new emitted bytes の rel32 target は helper target と一致するべき: metadata={} row={map_new_row:?} direct={direct_row:?}",
         metadata_path.display()
     );
     assert_eq!(
-        direct_row.direct_call_rel, expected_direct_rel,
+        direct_row.direct_call_rel,
+        expected_direct_rel,
         "map-new direct replay の rel32 計算が helper target と一致しない: metadata={} row={map_new_row:?} direct={direct_row:?}",
         metadata_path.display()
     );

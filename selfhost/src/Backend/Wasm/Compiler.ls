@@ -2020,10 +2020,10 @@
     data-slot (root_push data-ref)
     name-hash (vector-get node 1)
     init-expr (vector-get node 2)
-    body-expr (vector-get node 3)
     init-root (alloc-root-needed init-expr)
-    init-instrs (compile-expr-with-source init-expr source env ftable instrs data-ref)]
-    (let [result (compile-let-chain-step-finish name-hash body-expr init-instrs env rooted-count init-root)]
+    init-instrs (compile-expr-with-source init-expr source env ftable instrs data-ref)
+    body-expr-after-init (vector-get node 3)]
+    (let [result (compile-let-chain-step-finish name-hash body-expr-after-init init-instrs env rooted-count init-root)]
       (do
         (root_pop)
         (root_pop)
@@ -2067,25 +2067,39 @@
 (defn compile-let-with-ftable-impl-body-impl-3 [node env ftable instrs]
   (let [name-hash (vector-get node 1)
     init-expr (vector-get node 2)
-    body-expr (vector-get node 3)
     init-root (alloc-root-needed init-expr)
-    init-instrs (compile-expr-with-ftable init-expr env ftable instrs)]
-    (let [prep (compile-let-with-ftable-prepare name-hash init-root init-instrs env)
-      new-env (vector-get prep 0)
-      instrs2 (vector-get prep 1)
-      body-instrs (compile-expr-with-ftable body-expr new-env ftable instrs2)]
-      (maybe-root-pop-drop body-instrs init-root))))
+    init-instrs (compile-expr-with-ftable init-expr env ftable instrs)
+    body-expr-after-init (vector-get node 3)]
+    (do
+      (root_push body-expr-after-init)
+      (let [prep (compile-let-with-ftable-prepare name-hash init-root init-instrs env)
+        new-env (vector-get prep 0)
+        instrs2 (vector-get prep 1)
+        body-instrs (compile-expr-with-ftable body-expr-after-init new-env ftable instrs2)]
+        (let [result (maybe-root-pop-drop body-instrs init-root)]
+          (do
+            (root_pop)
+            result))))))
 
 (defn compile-if-with-source-impl-body-impl [node source env ftable instrs data-ref]
   (let [cond-expr (vector-get node 1)
     then-expr (vector-get node 2)
-    else-expr (vector-get node 3)
-    instrs1 (compile-expr-with-source cond-expr source env ftable instrs data-ref)
-    instrs2 (emit-to instrs1 41 0)
-    instrs3 (compile-expr-with-source then-expr source env ftable instrs2 data-ref)
-    instrs4 (emit-to instrs3 79 0)
-    instrs5 (compile-expr-with-source else-expr source env ftable instrs4 data-ref)]
-    (emit-to instrs5 43 0)))
+    else-expr (vector-get node 3)]
+    (do
+      (root_push cond-expr)
+      (root_push then-expr)
+      (root_push else-expr)
+      (let [instrs1 (compile-expr-with-source cond-expr source env ftable instrs data-ref)
+        instrs2 (emit-to instrs1 41 0)
+        instrs3 (compile-expr-with-source then-expr source env ftable instrs2 data-ref)
+        instrs4 (emit-to instrs3 79 0)
+        instrs5 (compile-expr-with-source else-expr source env ftable instrs4 data-ref)
+        result (emit-to instrs5 43 0)]
+        (do
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          result)))))
 (defn compile-let-chain-with-source [node source env ftable instrs data-ref rooted-count]
   (let [step (compile-let-chain-step-64-with-source node source env ftable instrs data-ref rooted-count)
     next-value (vector-get step 2)]
@@ -2135,13 +2149,22 @@
 (defn compile-if-with-ftable [node env ftable instrs]
   (let [cond-expr (vector-get node 1)
     then-expr (vector-get node 2)
-    else-expr (vector-get node 3)
-    instrs1 (compile-expr-with-ftable cond-expr env ftable instrs)
-    instrs2 (emit-to instrs1 41 0)
-    instrs3 (compile-expr-with-ftable then-expr env ftable instrs2)
-    instrs4 (emit-to instrs3 79 0)
-    instrs5 (compile-expr-with-ftable else-expr env ftable instrs4)]
-    (emit-to instrs5 43 0)))
+    else-expr (vector-get node 3)]
+    (do
+      (root_push cond-expr)
+      (root_push then-expr)
+      (root_push else-expr)
+      (let [instrs1 (compile-expr-with-ftable cond-expr env ftable instrs)
+        instrs2 (emit-to instrs1 41 0)
+        instrs3 (compile-expr-with-ftable then-expr env ftable instrs2)
+        instrs4 (emit-to instrs3 79 0)
+        instrs5 (compile-expr-with-ftable else-expr env ftable instrs4)
+        result (emit-to instrs5 43 0)]
+        (do
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          result)))))
 
 (defn compile-expr-with-ftable-dispatch-simple-3 [node env ftable instrs]
   (let [tag (vector-get node 0)]
