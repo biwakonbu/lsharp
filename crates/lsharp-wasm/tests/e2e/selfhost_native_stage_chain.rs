@@ -1773,6 +1773,20 @@ fn test_selfhost_lexer_tokenize_spans_step_512_roots_recursive_step() {
 }
 
 #[test]
+fn test_linux_x86_representative_seed_has_opcode40_call_replay_metadata_diagnostic() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    assert!(
+        source.contains("(defn print-x86-call-control-replay-diagnostic")
+            && source.contains("(print 9000000046)")
+            && source.contains("(if (= opcode 40)")
+            && source.contains("(codegen-x86-opcode-call-bundle operand offset starts direct-context)")
+            && source.contains("(print-x86-call-control-replay-diagnostic control-ctx idx opcode operand offset size)"),
+        "Linux x86 segmented seed は opcode 40 user call の IR row / direct bundle / emitted bytes / rel32 target を同一 metadata row で出せるべき"
+    );
+}
+
+#[test]
 fn test_selfhost_parser_parse_if_roots_condition_and_then_before_later_parse() {
     let source = selfhost_module("Parser.ls");
     let parse_if_body = source
@@ -6965,6 +6979,83 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
           (root_pop))))
     0))
 
+(defn print-x86-call-control-replay-diagnostic [control-ctx idx opcode operand offset size]
+  (if (= opcode 40)
+    (do
+      (root_push control-ctx)
+      (let [depths (vector-get control-ctx 4)
+            starts (vector-get control-ctx 5)
+            functions (vector-get control-ctx 6)
+            layout (vector-get control-ctx 7)
+            frame-base-slot-count (vector-get control-ctx 8)
+            import-count (vector-get layout 0)
+            import-stub-offset (vector-get layout 1)
+            function-start-base (vector-get layout 2)
+            current-depth (vector-get depths idx)]
+        (do
+          (root_push starts)
+          (root_push functions)
+          (root_push layout)
+          (let [target-meta (vector-get functions operand)]
+            (do
+              (root_push target-meta)
+              (let [target-param-count (native-function-param-count target-meta)
+                    call-next-offset (native-call-rel-next-offset-x86 target-param-count current-depth)
+                    target-offset (if (< operand import-count)
+                                    (x86-import-ret-stub-offset import-stub-offset import-count operand)
+                                    (- (vector-get starts (- operand import-count)) function-start-base))
+                    call-rel (- target-offset (+ offset call-next-offset))
+                    direct-context
+                      (vector-push
+                        (vector-push
+                          (vector-push
+                            (vector-push
+                              (vector-push
+                                (vector-push (vector-new 6) functions)
+                                import-count)
+                              import-stub-offset)
+                            function-start-base)
+                          frame-base-slot-count)
+                        current-depth)]
+                (do
+                  (root_push direct-context)
+                  (let [direct (codegen-x86-opcode-call-bundle operand offset starts direct-context)]
+                    (do
+                      (root_push direct)
+                      (let [direct-len (vector-length direct)
+                            direct-target (x86-rel32-target-in-window-at-base direct 0 direct-len offset)]
+                        (do
+                          (print 9000000046)
+                          (print idx)
+                          (print opcode)
+                          (print operand)
+                          (print current-depth)
+                          (print offset)
+                          (print size)
+                          (print target-param-count)
+                          (print call-next-offset)
+                          (print target-offset)
+                          (print call-rel)
+                          (print direct-len)
+                          (print direct-target)
+                          (print (byte-at-or-zero direct 0 direct-len))
+                          (print (byte-at-or-zero direct 1 direct-len))
+                          (print (byte-at-or-zero direct 2 direct-len))
+                          (print (byte-at-or-zero direct 3 direct-len))
+                          (print (byte-at-or-zero direct 4 direct-len))
+                          (print (byte-at-or-zero direct 5 direct-len))
+                          (print (byte-at-or-zero direct 6 direct-len))
+                          (print (byte-at-or-zero direct 7 direct-len))
+                          (root_pop)))
+                      (root_pop)))
+                  (root_pop)))
+              (root_pop)))
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          (root_pop))))
+    0))
+
 (defn print-x86-function-ir-prefix-loop [segment ir offsets functions control-ctx idx len depth]
   (if (>= idx len)
     0
@@ -6994,6 +7085,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
         (print-x86-i64-ge-control-replay-diagnostic control-ctx idx opcode operand offset size)
         (print-x86-control-if-control-replay-diagnostic control-ctx idx opcode operand offset size)
         (print-x86-map-new-control-replay-diagnostic control-ctx idx opcode operand offset size)
+        (print-x86-call-control-replay-diagnostic control-ctx idx opcode operand offset size)
         (print-x86-function-ir-prefix-loop
           segment
           ir
@@ -41878,6 +41970,23 @@ struct X86MapNewDirectReplayRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct X86UserCallDirectReplayRow {
+    instr_idx: i64,
+    opcode: i64,
+    operand: i64,
+    depth: i64,
+    offset: i64,
+    size: i64,
+    param_count: i64,
+    call_next_offset: i64,
+    target_offset: i64,
+    call_rel: i64,
+    direct_len: i64,
+    direct_target: i64,
+    bytes: [u8; 8],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct LinuxX86FunctionSegmentMetadataRow {
     function_size: i64,
     instr_idx: i64,
@@ -42277,6 +42386,13 @@ fn parse_linux_x86_function_segment_metadata_rows(
                 );
                 idx += 18;
             }
+            9_000_000_046 => {
+                assert!(
+                    idx + 21 <= lines.len(),
+                    "x86 function metadata user call direct replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 21;
+            }
             marker => {
                 panic!(
                     "未知の x86 function metadata marker: marker={marker} idx={idx} lines={lines:?}"
@@ -42364,6 +42480,109 @@ fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectRepl
                     "x86 function metadata map-new control replay row が不足: idx={idx} lines={lines:?}"
                 );
                 idx += 18;
+            }
+            9_000_000_046 => {
+                assert!(
+                    idx + 21 <= lines.len(),
+                    "x86 function metadata user call direct replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 21;
+            }
+            marker => {
+                panic!(
+                    "未知の x86 function metadata marker: marker={marker} idx={idx} lines={lines:?}"
+                );
+            }
+        }
+    }
+    rows
+}
+
+fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirectReplayRow> {
+    let lines = parse_numeric_lines(output);
+    let mut idx = 0;
+    let mut rows = Vec::new();
+    while idx < lines.len() {
+        match lines[idx] {
+            9_000_000_020 => {
+                assert!(
+                    idx + 12 <= lines.len(),
+                    "x86 function metadata header が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 12;
+            }
+            9_000_000_021 => {
+                assert!(
+                    idx + 15 <= lines.len(),
+                    "x86 function metadata row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 15;
+            }
+            9_000_000_027 | 9_000_000_028 => {
+                assert!(
+                    idx + 16 <= lines.len(),
+                    "x86 function metadata replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 16;
+            }
+            9_000_000_029 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata replay output row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_043 => {
+                assert!(
+                    idx + 20 <= lines.len(),
+                    "x86 function metadata map-new direct replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 20;
+            }
+            9_000_000_044 => {
+                assert!(
+                    idx + 17 <= lines.len(),
+                    "x86 function metadata map-new fallback replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 17;
+            }
+            9_000_000_045 => {
+                assert!(
+                    idx + 18 <= lines.len(),
+                    "x86 function metadata map-new control replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 18;
+            }
+            9_000_000_046 => {
+                assert!(
+                    idx + 21 <= lines.len(),
+                    "x86 function metadata user call direct replay row が不足: idx={idx} lines={lines:?}"
+                );
+                rows.push(X86UserCallDirectReplayRow {
+                    instr_idx: lines[idx + 1],
+                    opcode: lines[idx + 2],
+                    operand: lines[idx + 3],
+                    depth: lines[idx + 4],
+                    offset: lines[idx + 5],
+                    size: lines[idx + 6],
+                    param_count: lines[idx + 7],
+                    call_next_offset: lines[idx + 8],
+                    target_offset: lines[idx + 9],
+                    call_rel: lines[idx + 10],
+                    direct_len: lines[idx + 11],
+                    direct_target: lines[idx + 12],
+                    bytes: [
+                        lines[idx + 13] as u8,
+                        lines[idx + 14] as u8,
+                        lines[idx + 15] as u8,
+                        lines[idx + 16] as u8,
+                        lines[idx + 17] as u8,
+                        lines[idx + 18] as u8,
+                        lines[idx + 19] as u8,
+                        lines[idx + 20] as u8,
+                    ],
+                });
+                idx += 21;
             }
             marker => {
                 panic!(
@@ -43357,6 +43576,67 @@ fn test_e2e_linux_x86_actual_function_metadata_map_new_rel32_correlation() {
 }
 
 #[test]
+#[ignore = "diagnostic: V2-13a-5 Linux x86 function metadata user call rel32 correlation"]
+fn test_e2e_linux_x86_actual_function_metadata_user_call_rel32_correlation() {
+    let metadata_path = std::env::var_os("LSHARP_NATIVE_LINUX_X86_FUNCTION_METADATA").expect(
+        "LSHARP_NATIVE_LINUX_X86_FUNCTION_METADATA に stage1/stage2 metadata txt を指定すること",
+    );
+    let metadata_path = workspace_root_relative_path(std::path::PathBuf::from(metadata_path));
+    let metadata = std::fs::read_to_string(&metadata_path).unwrap_or_else(|e| {
+        panic!(
+            "Linux x86 function metadata 読み込み失敗 ({}): {e}",
+            metadata_path.display()
+        )
+    });
+    let metadata_rows = parse_linux_x86_function_segment_metadata_rows(&metadata);
+    let direct_rows = parse_x86_user_call_direct_replay_rows(&metadata);
+    assert!(
+        !direct_rows.is_empty(),
+        "Linux x86 function metadata に opcode 40 user call direct replay row が無い: path={}",
+        metadata_path.display()
+    );
+
+    let mut compared_rel32_rows = 0usize;
+    for direct_row in &direct_rows {
+        assert_eq!(direct_row.opcode, 40);
+        assert_eq!(
+            direct_row.call_rel,
+            direct_row.target_offset - (direct_row.offset + direct_row.call_next_offset),
+            "opcode 40 direct replay row の call-rel が target/current offset と一致しない: row={direct_row:?}"
+        );
+        assert_eq!(
+            direct_row.direct_target, direct_row.target_offset,
+            "opcode 40 direct replay row の rel32 target が target-offset と一致しない: row={direct_row:?}"
+        );
+        let metadata_row = metadata_rows
+            .iter()
+            .find(|row| {
+                row.instr_idx == direct_row.instr_idx
+                    && row.opcode == direct_row.opcode
+                    && row.operand == direct_row.operand
+                    && row.depth == direct_row.depth
+                    && row.offset == direct_row.offset
+                    && row.size == direct_row.size
+            })
+            .unwrap_or_else(|| {
+                panic!("opcode 40 direct replay row に対応する metadata row が無い: row={direct_row:?}")
+            });
+        if let Some(emitted_target) = x86_metadata_row_rel32_target(metadata_row) {
+            compared_rel32_rows += 1;
+            assert_eq!(
+                emitted_target, direct_row.direct_target,
+                "opcode 40 emitted bytes と direct replay の rel32 target が一致しない: metadata_row={metadata_row:?} direct_row={direct_row:?}"
+            );
+        }
+    }
+    assert!(
+        compared_rel32_rows > 0,
+        "Linux x86 function metadata の opcode 40 rows に first-8-byte rel32 call が無く、emitted/direct target を比較できなかった: path={} rows={direct_rows:?}",
+        metadata_path.display()
+    );
+}
+
+#[test]
 fn test_linux_x86_actual_transport_segment_table_maps_absolute_offsets() {
     let stdout = b"9000000005\n2\n11\n8\n9000000006\n9000000001\n5\n9000000002\n9000000010\n3\n513\n9000000010\n2\n1027\n9000000003\n0\n9000000004\n";
     let (layout, code_len, segments) = decode_linux_x86_actual_transport_code_segments(stdout);
@@ -43481,6 +43761,84 @@ fn test_linux_x86_function_metadata_parses_map_new_direct_rel32_row() {
             direct_len: 5,
             direct_target: 5_092_288,
             bytes: [232, 171, 179, 77, 0, 0, 0, 0],
+        }]
+    );
+}
+
+#[test]
+fn test_linux_x86_function_metadata_parses_user_call_direct_rel32_row() {
+    let metadata = "\
+9000000020
+10
+20
+1000
+100
+4
+2
+16
+0
+28
+32
+3
+9000000021
+0
+40
+17
+8
+32
+64
+85
+72
+137
+133
+0
+0
+0
+0
+9000000046
+0
+40
+17
+8
+32
+64
+4
+58
+900
+810
+64
+900
+232
+42
+3
+0
+0
+72
+139
+133
+";
+
+    let metadata_rows = parse_linux_x86_function_segment_metadata_rows(metadata);
+    let user_call_rows = parse_x86_user_call_direct_replay_rows(metadata);
+
+    assert_eq!(metadata_rows.len(), 1);
+    assert_eq!(metadata_rows[0].opcode, 40);
+    assert_eq!(
+        user_call_rows,
+        vec![X86UserCallDirectReplayRow {
+            instr_idx: 0,
+            opcode: 40,
+            operand: 17,
+            depth: 8,
+            offset: 32,
+            size: 64,
+            param_count: 4,
+            call_next_offset: 58,
+            target_offset: 900,
+            call_rel: 810,
+            direct_len: 64,
+            direct_target: 900,
+            bytes: [232, 42, 3, 0, 0, 72, 139, 133],
         }]
     );
 }
