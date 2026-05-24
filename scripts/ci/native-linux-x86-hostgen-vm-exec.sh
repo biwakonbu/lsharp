@@ -178,6 +178,19 @@ for file in stage1-code.bin entrypoint-offset.txt seed.ls manifest.json; do
   fi
 done
 
+reject_dirty_actual_stage1_seed() {
+  local seed_file="${ACTUAL_STAGE1_ARTIFACT_DIR}/seed.ls"
+  local marker
+  for marker in "payload-progress-mode" "pre-callable-progress" "command-line-arg 9" "9000000030"; do
+    if grep -Fq "${marker}" "${seed_file}"; then
+      echo "ERROR: actual stage1 seed contains diagnostic probe marker ${marker}: ${seed_file}" >&2
+      exit 1
+    fi
+  done
+}
+
+reject_dirty_actual_stage1_seed
+
 limactl shell "${VM_NAME}" -- rm -rf "${VM_WORK_DIR}"
 limactl shell "${VM_NAME}" -- mkdir -p "${VM_WORK_DIR}"
 limactl copy "${CODE_ARTIFACT}" "${VM_NAME}:${VM_WORK_DIR}/code.bin"

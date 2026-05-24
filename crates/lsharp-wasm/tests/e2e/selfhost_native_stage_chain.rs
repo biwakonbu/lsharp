@@ -589,6 +589,52 @@ fn test_native_linux_x86_hostgen_vm_script_guards_actual_replay_with_vm_side_loc
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_rejects_dirty_actual_stage1_seed_debug_probes() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let reject_body = shell_function_body(&script, "reject_dirty_actual_stage1_seed");
+
+    for marker in [
+        "payload-progress-mode",
+        "pre-callable-progress",
+        "command-line-arg 9",
+        "9000000030",
+    ] {
+        assert!(
+            reject_body.contains(&format!("\"{marker}\"")),
+            "hostgen VM script は actual stage1 seed の dirty diagnostic marker を拒否するべき: {marker}"
+        );
+    }
+
+    assert!(
+        reject_body.contains(r#"seed_file="${ACTUAL_STAGE1_ARTIFACT_DIR}/seed.ls""#)
+            && reject_body.contains(r#"grep -Fq "${marker}" "${seed_file}""#)
+            && reject_body.contains("ERROR: actual stage1 seed contains diagnostic probe marker")
+            && reject_body.contains("exit 1"),
+        "dirty seed rejection は actual stage1 seed を固定 marker で検査し、VM 転送前に失敗するべき"
+    );
+
+    let artifact_generation_pos = script
+        .find("test_e2e_native_linux_x86_host_generates_actual_selfregen_stage1_bundle_artifact")
+        .expect("actual stage1 artifact 生成 test が必要");
+    let reject_call_pos = script
+        .find("\nreject_dirty_actual_stage1_seed\n")
+        .expect("actual stage1 seed rejection 呼び出しが必要");
+    let seed_copy_pos = script
+        .find(
+            r#"limactl copy "${ACTUAL_STAGE1_ARTIFACT_DIR}/seed.ls" "${VM_NAME}:${VM_WORK_DIR}/actual-stage1/src/App/Seed.ls""#,
+        )
+        .expect("actual stage1 seed を VM へ転送する導線が必要");
+
+    assert!(
+        artifact_generation_pos < reject_call_pos && reject_call_pos < seed_copy_pos,
+        "actual stage1 seed は生成後、VM 転送前に diagnostic marker を拒否するべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_decoder_writes_stage_code_segment_table() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
