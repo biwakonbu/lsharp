@@ -635,6 +635,40 @@ fn test_native_linux_x86_hostgen_vm_script_rejects_dirty_actual_stage1_seed_debu
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_writes_summary_for_final_compare_failures() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+
+    assert!(
+        script.contains(
+            r#"write_actual_selfregen_failure_summary "stage2-stderr" 1 actual-stage2-stdout.txt actual-stage2-stderr.txt"#,
+        ) && script.contains(
+            r#"write_actual_selfregen_failure_summary "stage3-stderr" 1 actual-stage3-stdout.txt actual-stage3-stderr.txt"#,
+        ) && script.contains(
+            r#"write_actual_selfregen_failure_summary "stage2-stage3-compare" 1 actual-stage3-stdout.txt actual-stage3-stderr.txt"#,
+        ),
+        "hostgen VM script は final stderr / stage2-stage3 mismatch でも actual-selfregen-summary.json を残すべき"
+    );
+
+    let stderr_check_pos = script
+        .find(r#"write_actual_selfregen_failure_summary "stage2-stderr""#)
+        .expect("stage2 stderr failure summary が必要");
+    let compare_check_pos = script
+        .find(r#"write_actual_selfregen_failure_summary "stage2-stage3-compare""#)
+        .expect("stage2/stage3 compare failure summary が必要");
+    let pass_summary_pos = script
+        .find("actual_stage2_stdout_sha=")
+        .expect("actual selfregen pass summary の sha 計算が必要");
+
+    assert!(
+        stderr_check_pos < compare_check_pos && compare_check_pos < pass_summary_pos,
+        "final failure summary は pass summary を書く前に判定するべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_decoder_writes_stage_code_segment_table() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");

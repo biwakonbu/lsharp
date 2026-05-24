@@ -1386,11 +1386,18 @@ if [[ "${actual_stage3_decode_exit_code}" -ne 0 ]]; then
   exit "${actual_stage3_decode_exit_code}"
 fi
 
-if [[ -s actual-stage2-stderr.txt || -s actual-stage3-stderr.txt ]]; then
-  echo "ERROR: actual self-regeneration stderr is not empty" >&2
+if [[ -s actual-stage2-stderr.txt ]]; then
+  write_actual_selfregen_failure_summary "stage2-stderr" 1 actual-stage2-stdout.txt actual-stage2-stderr.txt
+  echo "ERROR: actual self-regeneration stage2 stderr is not empty" >&2
+  exit 1
+fi
+if [[ -s actual-stage3-stderr.txt ]]; then
+  write_actual_selfregen_failure_summary "stage3-stderr" 1 actual-stage3-stdout.txt actual-stage3-stderr.txt
+  echo "ERROR: actual self-regeneration stage3 stderr is not empty" >&2
   exit 1
 fi
 if ! cmp -s actual-stage2-stdout.txt actual-stage3-stdout.txt; then
+  write_actual_selfregen_failure_summary "stage2-stage3-compare" 1 actual-stage3-stdout.txt actual-stage3-stderr.txt
   echo "ERROR: actual stage2/stage3 transport payload mismatch" >&2
   exit 1
 fi
