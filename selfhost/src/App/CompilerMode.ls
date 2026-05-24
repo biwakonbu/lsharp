@@ -1258,6 +1258,55 @@
                   (root_pop)))
               (root_pop)))
           (root_pop)))
+      (let [manual-ws (skip-ws-loop src 0 src-len)]
+        (let [manual-result (lex-one src manual-ws src-len)]
+          (let [manual-kind2 (/ manual-result 1000000)]
+            (let [manual-end (- manual-result (* manual-kind2 1000000))]
+              (let [manual-next (append-span-token tokens0 manual-kind2 manual-ws manual-end)]
+                (do
+                  (root_push manual-next)
+                  (print 9000000065)
+                  (print manual-ws)
+                  (print manual-kind2)
+                  (print manual-end)
+                  (print (vector-length manual-next))
+                  (let [manual-step-state (make-tokenize-state-from-appended-tokens 0 manual-end manual-next)]
+                    (do
+                      (root_push manual-step-state)
+                      (let [manual-step-tokens (vector-get manual-step-state 2)]
+                        (do
+                          (root_push manual-step-tokens)
+                          (print 9000000066)
+                          (print (vector-get manual-step-state 0))
+                          (print (vector-get manual-step-state 1))
+                          (print (vector-length manual-step-tokens))
+                          (root_pop)))
+                      (root_pop)))
+                  (root_pop)))))))
+      (let [manual-helper-state (append-span-token-state tokens0 0 1 0 0 1)]
+        (do
+          (root_push manual-helper-state)
+          (let [manual-helper-tokens (vector-get manual-helper-state 2)]
+            (do
+              (root_push manual-helper-tokens)
+              (print 9000000067)
+              (print (vector-get manual-helper-state 0))
+              (print (vector-get manual-helper-state 1))
+              (print (vector-length manual-helper-tokens))
+              (root_pop)))
+          (root_pop)))
+      (let [manual-lex-state (append-lex-result-state tokens0 (lex-one src 0 src-len) 0)]
+        (do
+          (root_push manual-lex-state)
+          (let [manual-lex-tokens (vector-get manual-lex-state 2)]
+            (do
+              (root_push manual-lex-tokens)
+              (print 9000000068)
+              (print (vector-get manual-lex-state 0))
+              (print (vector-get manual-lex-state 1))
+              (print (vector-length manual-lex-tokens))
+              (root_pop)))
+          (root_pop)))
       (let [step1 (tokenize-spans-step src 0 src-len tokens0)]
         (do
           (root_push step1)

@@ -498,22 +498,30 @@
                 (root_pop)
                 updated))))))))
 
+(defn make-tokenize-state-from-appended-tokens [done next-pos next-tokens]
+  (do
+    (root_push next-tokens)
+    (let [state (make-tokenize-state done next-pos next-tokens)]
+      (do
+        (root_pop)
+        state))))
+
 (defn append-span-token-state [tokens done next-pos kind start end]
   (let [next-tokens (append-span-token tokens kind start end)]
-    (make-tokenize-state done next-pos next-tokens)))
+    (make-tokenize-state-from-appended-tokens done next-pos next-tokens)))
 
 (defn append-span-token-state-end [tokens done kind start end]
   (let [next-tokens (append-span-token tokens kind start end)]
-    (make-tokenize-state done end next-tokens)))
+    (make-tokenize-state-from-appended-tokens done end next-tokens)))
 
 (defn append-lex-result-state [tokens result start]
   (let [kind (/ result 1000000)]
     (let [end-pos (- result (* kind 1000000))]
       (if (== kind 99)
         (let [next-tokens (append-span-token tokens 99 start start)]
-          (make-tokenize-state 1 start next-tokens))
+          (make-tokenize-state-from-appended-tokens 1 start next-tokens))
         (let [next-tokens (append-span-token tokens kind start end-pos)]
-          (make-tokenize-state 0 end-pos next-tokens))))))
+          (make-tokenize-state-from-appended-tokens 0 end-pos next-tokens))))))
 
 (defn append-lex-result-state-rst [result start tokens]
   (append-lex-result-state tokens result start))
@@ -523,21 +531,26 @@
 ;; 全トークンを (kind, start, end) 3つ組の Vector に収集
 ;; 結果の Vector は [kind0, start0, end0, kind1, start1, end1, ...] のフラット構造
 (defn tokenize-spans-step [src pos len tokens]
-  (let [ws-pos (skip-ws-loop src pos len)]
+  (do
+    (root_push src)
+    (root_push tokens)
+    (let [ws-pos (skip-ws-loop src pos len)]
       (let [state
         (if (>= ws-pos len)
           ;; EOF トークン: (99, pos, pos)
-          (let [next-tokens (append-span-token tokens 99 ws-pos ws-pos)]
-            (make-tokenize-state 1 ws-pos next-tokens))
+          (append-span-token-state tokens 1 ws-pos 99 ws-pos ws-pos)
           (let [result (lex-one src ws-pos len)]
             (let [kind (/ result 1000000)]
               (let [end-pos (- result (* kind 1000000))]
                 (if (== kind 99)
-                  (let [next-tokens (append-span-token tokens 99 ws-pos ws-pos)]
-                    (make-tokenize-state 1 ws-pos next-tokens))
-                  (let [next-tokens (append-span-token tokens kind ws-pos end-pos)]
-                    (make-tokenize-state 0 end-pos next-tokens)))))))]
-        state)))
+                  (append-span-token-state tokens 1 ws-pos 99 ws-pos ws-pos)
+                  (append-span-token-state tokens 0 end-pos kind ws-pos end-pos))))))]
+        (do
+          (root_push state)
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          state)))))
 
 ;; 1 回の helper 呼び出しで複数トークンを進め、selfhost 実行時の再帰フレーム数をさらに抑える。
 (defn tokenize-spans-step-2 [src pos len tokens]
@@ -692,7 +705,7 @@
                 (root_pop)
                 (root_pop)
                 (root_pop)
-                result)))))))
+                result))))))))
 
 ;; ソース文字列をトークン化して (kind, start, end) 3つ組を返す
 (defn tokenize-with-spans [src]
