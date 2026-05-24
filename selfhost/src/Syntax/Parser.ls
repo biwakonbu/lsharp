@@ -1824,7 +1824,15 @@
                   defn-node (vector-set-at-rooted-v3 with-params 2 param-count)]
                   (do
                     (root_push defn-node)
-                    (let [parsed (parse-defn-tail-v3 spans pos-ref src defn-node param-count)]
+                    (skip-optional-type-sig-v3 spans pos-ref src)
+                    (skip-optional-where-v3 spans pos-ref src)
+                    (let [parsed
+                      (if (== (colon-directive-v3 spans pos-ref src) 1)
+                        (let [meta (parse-defn-metadata-v3 spans pos-ref src)]
+                          (parse-defn-bodyless-or-body-with-meta-v3
+                            spans pos-ref src defn-node param-count meta))
+                        (parse-defn-bodyless-or-body-v3
+                          spans pos-ref src defn-node param-count))]
                       (do
                         (root_set result-slot parsed)
                         (root_pop)

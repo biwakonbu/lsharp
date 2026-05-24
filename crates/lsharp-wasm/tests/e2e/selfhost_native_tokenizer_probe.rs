@@ -216,7 +216,7 @@ fn parser_defn_body_finalize_uses_small_rooted_helper() {
 }
 
 #[test]
-fn parser_parse_defn_delegates_tail_without_ref_roundtrip() {
+fn parser_parse_defn_uses_direct_tail_sequence_without_ref_roundtrip() {
     let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
         .expect("Parser.ls を読めること");
     let parse_defn = source
@@ -226,15 +226,18 @@ fn parser_parse_defn_delegates_tail_without_ref_roundtrip() {
         .expect("Parser.ls に parse-defn-v3 が存在すること");
 
     assert!(
-        source.contains("(defn parse-defn-tail-v3 [spans pos-ref src defn-node param-count]")
-            && parse_defn.contains("(parse-defn-tail-v3 spans pos-ref src defn-node param-count)")
+        parse_defn.contains("(skip-optional-type-sig-v3 spans pos-ref src)")
+            && parse_defn.contains("(skip-optional-where-v3 spans pos-ref src)")
+            && parse_defn.contains("(parse-defn-bodyless-or-body-with-meta-v3")
+            && parse_defn.contains("(parse-defn-bodyless-or-body-v3")
+            && !parse_defn.contains("(parse-defn-tail-v3 spans pos-ref src defn-node param-count)")
             && !parse_defn.contains("parsed-ref"),
-        "parse-defn-v3 は x86 stage2 の戻り値 local 崩れを避けるため tail helper へ委譲するべき"
+        "parse-defn-v3 は x86 stage2 の helper 境界崩れを避けるため direct tail sequence を持つべき"
     );
 }
 
 #[test]
-fn parser_parse_defn_returns_tail_result_from_root_slot_without_ref_roundtrip() {
+fn parser_parse_defn_returns_direct_tail_result_from_root_slot_without_ref_roundtrip() {
     let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
         .expect("Parser.ls を読めること");
     let parse_defn = source
@@ -248,6 +251,6 @@ fn parser_parse_defn_returns_tail_result_from_root_slot_without_ref_roundtrip() 
             && parse_defn.contains("(root_set result-slot parsed)")
             && parse_defn.contains("(root_pop)))))))))))")
             && !parse_defn.contains("parsed-ref"),
-        "parse-defn-v3 は tail helper の戻り値を root slot に退避し、ref roundtrip なしで返すべき"
+        "parse-defn-v3 は direct tail の戻り値を root slot に退避し、ref roundtrip なしで返すべき"
     );
 }
