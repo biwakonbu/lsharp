@@ -205,6 +205,32 @@ fn compiler_mode_register_all_pairs_roots_final_state_before_result_alloc() {
 }
 
 #[test]
+fn compiler_with_source_compile_step_roots_next_functions_before_state_alloc() {
+    let source =
+        std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))
+            .expect("Compiler.ls を読めること");
+    let body = source
+        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-let-with-ftable-impl-body-impl-3")
+                .next()
+        })
+        .expect(
+            "Compiler.ls に compile-defn-functions-step-with-source-body-impl-3 が存在すること",
+        );
+
+    assert!(
+        body.contains("functions-slot (root_push functions)")
+            && body.contains("next-functions (push-object-vector functions compiled-fn)")
+            && body.contains("(root_set functions-slot next-functions)")
+            && body.contains("(make-compile-step-state 0 (+ idx 1) next-functions)")
+            && !body.contains("compile-defn-functions-step-finish functions compiled-fn idx"),
+        "compile-defn-functions-step-with-source は stage2 x86 native の local 保持崩れを避けるため next-functions を state allocation 前に root slot へ戻すべき"
+    );
+}
+
+#[test]
 fn parser_program_step_delegates_expr_append_to_rooted_helper() {
     let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
         .expect("Parser.ls を読めること");

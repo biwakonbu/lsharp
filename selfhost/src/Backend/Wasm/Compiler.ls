@@ -2047,8 +2047,11 @@
           (let [compiled-fn (compile-defn-function-with-source decl source ftable data-ref)]
             (do
               (root_push compiled-fn)
-              (let [result (compile-defn-functions-step-finish functions compiled-fn idx)]
+              (let [next-functions (push-object-vector functions compiled-fn)]
                 (do
+                  (root_set functions-slot next-functions)
+                  (let [result (make-compile-step-state 0 (+ idx 1) next-functions)]
+                    (do
                   (root_pop)
                   (root_pop)
                   (root_pop)
@@ -2056,7 +2059,7 @@
                   (root_pop)
                   (root_pop)
                   (root_pop)
-                  result)))))
+                      result)))))))
         (do
           (root_pop)
           (root_pop)
