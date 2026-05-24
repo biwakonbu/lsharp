@@ -1398,7 +1398,12 @@
       (do
         (p-advance pos-ref) ;; name を消費
         (let [init (parse-expr-v3 spans pos-ref src)]
-          (parse-let-after-first-binding-v3 spans pos-ref src nh init))))))
+          (do
+            (root_push init)
+            (let [parsed (parse-let-after-first-binding-v3 spans pos-ref src nh init)]
+              (do
+                (root_pop)
+                parsed))))))))
 
 ;; let の残りバインディングを処理
 (defn parse-let-rest-rooted-v3 [spans pos-ref src]

@@ -9966,7 +9966,7 @@
     (concat-five-byte-vectors-rooted group1 group2 group3 group4 part21)))
 
 ;; x86_64 ReadFile helper: raw C string / tagged L# string path を受け取り、
-;; syscall で最大 64KiB を mmap した tagged string として返す。
+;; syscall で最大 128KiB を mmap した tagged string として返す。
 (defn emit-x86-selfhost-read-file-helper []
   (let [
     part1 (byte-vector-4 83 65 84 65)
@@ -9991,7 +9991,7 @@
     part20 (byte-vector-4 122 72 133 192)
     part21 (byte-vector-4 120 117 137 195)
     part22 (byte-vector-4 49 255 190 16)
-    part23 (byte-vector-4 0 1 0 186)
+    part23 (byte-vector-4 0 2 0 186)
     part24 (byte-vector-4 3 0 0 0)
     part25 (byte-vector-4 65 186 34 0)
     part26 (byte-vector-4 0 0 65 184)
@@ -10003,7 +10003,7 @@
     part32 (byte-vector-4 65 73 137 196)
     part33 (byte-vector-4 137 223 73 141)
     part34 (byte-vector-4 116 36 8 186)
-    part35 (byte-vector-4 0 0 1 0)
+    part35 (byte-vector-4 0 0 2 0)
     part36 (byte-vector-4 184 0 0 0)
     part37 (byte-vector-4 0 15 5 114)
     part38 (byte-vector-4 41 72 133 192)

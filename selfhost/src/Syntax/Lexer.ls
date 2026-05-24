@@ -616,14 +616,19 @@
     (let [done (vector-get state 0)]
       (do
         (let [result
-          (if (= done 1)
-            state
-            (if (<= remaining 1)
+            (if (= done 1)
               state
-              (let [next-pos (vector-get state 1)]
-                (let [next-tokens (vector-get state 2)]
-                  (let [step (tokenize-spans-step-2 src next-pos len next-tokens)]
-                    (tokenize-spans-step-512-state-loop src len step (- remaining 1)))))))]
+              (if (<= remaining 1)
+                state
+                (let [next-pos (vector-get state 1)]
+                  (let [next-tokens (vector-get state 2)]
+                    (let [step (tokenize-spans-step-2 src next-pos len next-tokens)]
+                      (do
+                        (root_push step)
+                        (let [next-state (tokenize-spans-step-512-state-loop src len step (- remaining 1))]
+                          (do
+                            (root_pop)
+                            next-state))))))))]
           (do
             (root_pop)
             (root_pop)
@@ -670,23 +675,24 @@
   (do
     (root_push src)
     (root_push tokens)
-    (let [batch (tokenize-spans-outer-loop-bounded src pos len tokens 256)
-      done (vector-get batch 0)
-      next-pos (vector-get batch 1)
-      next-tokens (vector-get batch 2)]
+    (let [batch (tokenize-spans-outer-loop-bounded src pos len tokens 256)]
       (do
         (root_push batch)
-        (root_push next-tokens)
-        (let [result
-          (if (= done 1)
-            next-tokens
-            (tokenize-spans-loop src next-pos len next-tokens))]
+        (let [done (vector-get batch 0)
+          next-pos (vector-get batch 1)
+          next-tokens (vector-get batch 2)]
           (do
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            (root_pop)
-            result))))))
+            (root_push next-tokens)
+            (let [result
+              (if (= done 1)
+                next-tokens
+                (tokenize-spans-loop src next-pos len next-tokens))]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result)))))))
 
 ;; ソース文字列をトークン化して (kind, start, end) 3つ組を返す
 (defn tokenize-with-spans [src]

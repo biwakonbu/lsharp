@@ -12,6 +12,15 @@
     (if (= (vector-get (vector-get decls idx) 0) 20)
       idx
       (find-first-defn-index decls (+ idx 1) n))))
+(defn find-defn-index-by-hash [decls idx len target-hash]
+  (if (>= idx len)
+    -1
+    (let [decl (vector-get decls idx)]
+      (if (= (vector-get decl 0) 20)
+        (if (= (vector-get decl 1) target-hash)
+          idx
+          (find-defn-index-by-hash decls (+ idx 1) len target-hash))
+        (find-defn-index-by-hash decls (+ idx 1) len target-hash)))))
 (defn decl-tag-or-minus-one [decls idx] (if (< idx (vector-length decls)) (vector-get (vector-get decls idx) 0) -1))
 (defn text-char-or-minus-one [text idx] (if (< idx (string-length text)) (string-char-at text idx) -1))
 (defn span-kind-or-minus-one [spans idx] (if (< (* idx 3) (vector-length spans)) (span-kind spans idx) -1))
@@ -1166,6 +1175,57 @@
                       (root_pop)
                       (root_pop)
                       0)))))))))))
+(defn print-let-shape-progress-probe [node depth limit]
+  (if (>= depth limit)
+    0
+    (do
+      (root_push node)
+      (let [tag (vector-get node 0)]
+        (do
+          (print 9000000051)
+          (print depth)
+          (print tag)
+          (if (= tag 7)
+            (let [init-expr (vector-get node 2)
+              body-expr (vector-get node 3)]
+              (do
+                (root_push init-expr)
+                (root_push body-expr)
+                (print (vector-get node 1))
+                (print (vector-get init-expr 0))
+                (print (vector-get body-expr 0))
+                (let [result (print-let-shape-progress-probe body-expr (+ depth 1) limit)]
+                  (do
+                    (root_pop)
+                    (root_pop)
+                    (root_pop)
+                    result))))
+            (do
+              (print -1)
+              (print -1)
+              (print -1)
+              (root_pop)
+              0)))))))
+(defn compile-file-mode-entry-shape-progress-probe []
+  (let [path (command-line-arg 1)]
+    (do
+      (print 9000000050)
+      (print (string-length path))
+      (root_push path)
+      (let [src (read-file path)]
+        (do
+          (root_push src)
+          (print 9000000054)
+          (print (string-length src))
+          (let [spans (tokenize-with-spans src)]
+            (do
+              (root_push spans)
+              (print 9000000058)
+              (print (vector-length spans))
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              0)))))))
 (defn compile-file-mode-cache-pairs-progress-probe []
   (let [path (command-line-arg 1)
     cache-ref (ref-new (map-new))
@@ -2650,12 +2710,14 @@
                                           (root_pop)
                                           (root_pop)
                                           (root_pop)
-                                          (root_pop)
-                                          (root_pop)
-                                          (root_pop)
-                                          (root_pop)
-                                          (root_pop)
-                                          0)))))))))))))))))))))
+                                            (root_pop)
+                                            (root_pop)
+                                            (root_pop)
+                                            (root_pop)
+                                            (root_pop)
+                                            (root_pop)
+                                            (root_pop)
+                                            0)))))))))))))))))))))
 (defn compile-file-mode-token-debug []
   (let [path (command-line-arg 1)
     src (read-file path)]

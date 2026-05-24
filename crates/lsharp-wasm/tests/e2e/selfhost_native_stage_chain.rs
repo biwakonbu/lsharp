@@ -241,7 +241,9 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
         (if (= payload-progress-mode 1)
           (do
             (print 9000000030)
-            (print (string-length (command-line-arg 1))))
+            (if (> (string-length (command-line-arg 9)) 0)
+              (compile-file-mode-entry-shape-progress-probe)
+              (print (string-length (command-line-arg 1)))))
           0)
         (let [progress-after-pairs-probe (if (= payload-progress-mode 1)
                                          (do
@@ -282,7 +284,9 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
          progress-after-payload-start (if (= payload-progress-mode 1)
           (do
             (print 9000000030)
-            (print (string-length (command-line-arg 1))))
+            (if (> (string-length (command-line-arg 9)) 0)
+              (compile-file-mode-entry-shape-progress-probe)
+              (print (string-length (command-line-arg 1)))))
           0)
          progress-after-pairs-probe (if (= payload-progress-mode 1)
                                          (do
@@ -837,6 +841,48 @@ fn test_linux_x86_representative_seed_can_print_stage_progress_markers() {
             && source.contains("(print data-len)")
             && source.contains("metadata-mode (if (> (string-length (command-line-arg 6)) 0) 1 0)"),
         "Linux x86 segmented seed は通常/metadata transport を残したまま、arg8 で setup progress だけを出せるべき"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_can_run_entry_shape_probe_from_first_binding() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+
+    let first_marker = source
+        .find("progress-after-payload-start")
+        .expect("Linux x86 seed に payload start progress binding が存在すること");
+    let pair_probe = source
+        .find("progress-after-pairs-probe")
+        .expect("Linux x86 seed に pairs progress binding が存在すること");
+    let shape_probe = source
+        .find("compile-file-mode-entry-shape-progress-probe")
+        .expect("Linux x86 seed は first binding 内から entry shape probe を起動できること");
+
+    assert!(
+        source.contains("(print 9000000030)\n            (if (> (string-length (command-line-arg 9)) 0)\n              (compile-file-mode-entry-shape-progress-probe)\n              (print (string-length (command-line-arg 1))))")
+            && first_marker < shape_probe
+            && shape_probe < pair_probe,
+        "stage2 main が first binding 初期化子で縮退しても AST/IR shape を切れるよう、arg9 gated probe は 9000000030 と同じ do 内にあるべき"
+    );
+}
+
+#[test]
+fn test_selfhost_compiler_mode_has_entry_shape_progress_probe() {
+    let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
+        "selfhost/src/App/CompilerMode.ls",
+    )))
+        .expect("CompilerMode.ls を読めること");
+
+    assert!(
+        source.contains("(defn find-defn-index-by-hash [decls idx len target-hash]")
+            && source.contains("(defn print-let-shape-progress-probe [node depth limit]")
+            && source.contains("(defn compile-file-mode-entry-shape-progress-probe []")
+            && source.contains("(print 9000000050)")
+            && source.contains("(print 9000000054)")
+            && source.contains("(print 9000000058)")
+            && source.contains("(let [src (read-file path)]")
+            && source.contains("(let [spans (tokenize-with-spans src)]"),
+        "CompilerMode は stage2 first binding から read-file/tokenize 境界を段階的に出せる診断を持つべき"
     );
 }
 
@@ -1438,6 +1484,29 @@ fn test_native_codegen_x86_read_file_runtime_call_direct_appends_in_stage1() {
 }
 
 #[test]
+fn test_native_codegen_x86_read_file_helper_uses_128k_cap_for_selfhost_seed() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let helper = source
+        .split("(defn emit-x86-selfhost-read-file-helper []")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn append-x86-selfhost-read-file-helper-rooted").next())
+        .expect("NativeCodegen.ls に x86 read-file helper が存在すること");
+    let helper_size = source
+        .split("(defn x86-selfhost-read-file-helper-size []")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn x86-selfhost-string-length-helper-size").next())
+        .expect("NativeCodegen.ls に x86 read-file helper size が存在すること");
+
+    assert!(
+        source.contains("最大 128KiB")
+            && helper.contains("part23 (byte-vector-4 0 2 0 186)")
+            && helper.contains("part35 (byte-vector-4 0 0 2 0)")
+            && helper_size.contains("207"),
+        "Linux x86 stage2 は 73,984 bytes の Seed.ls を read-file するため、x86 helper は 128KiB の mmap/read cap を同じ 207 bytes 内で持つべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_print_runtime_call_direct_appends_in_stage1() {
     let source = selfhost_module("NativeCodegen.ls");
     let control_loop = source
@@ -1612,6 +1681,78 @@ fn test_selfhost_parser_parse_let_v3_delegates_after_first_binding_for_native_si
             && source.contains("(defn parse-let-first-binding-v3")
             && parse_let_body.contains("(parse-let-first-binding-v3 spans pos-ref src)"),
         "parse-let-v3 は Linux x86 native stage1 の巨大 function segment を避けるため first binding 解析も helper に分割するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_parser_parse_let_first_binding_roots_init_before_delegate() {
+    let source = selfhost_module("Parser.ls");
+    let parse_first_body = source
+        .split("(defn parse-let-first-binding-v3")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-let-rest-rooted-v3").next())
+        .expect("Parser.ls に parse-let-first-binding-v3 が存在すること");
+
+    let init_parse_pos = parse_first_body
+        .find("init (parse-expr-v3 spans pos-ref src)")
+        .expect("parse-let-first-binding-v3 は init を parse すること");
+    let init_root_pos = parse_first_body[init_parse_pos..]
+        .find("(root_push init)")
+        .expect("parse-let-first-binding-v3 は delegate 前に init を root すること")
+        + init_parse_pos;
+    let delegate_pos = parse_first_body[init_parse_pos..]
+        .find("(parse-let-after-first-binding-v3 spans pos-ref src nh init)")
+        .expect("parse-let-first-binding-v3 は after-first helper へ delegate すること")
+        + init_parse_pos;
+
+    assert!(
+        init_parse_pos < init_root_pos && init_root_pos < delegate_pos,
+        "parse-let-first-binding-v3 は native call 境界で init が stale にならないよう delegate 前に root するべき"
+    );
+}
+
+#[test]
+fn test_selfhost_lexer_tokenize_spans_loop_roots_batch_before_field_reads() {
+    let source = selfhost_module("Lexer.ls");
+    let tokenize_loop = source
+        .split("(defn tokenize-spans-loop [src pos len tokens]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn tokenize-with-spans").next())
+        .expect("Lexer.ls に tokenize-spans-loop が存在すること");
+
+    assert!(
+        tokenize_loop.contains("(let [batch (tokenize-spans-outer-loop-bounded src pos len tokens 256)]")
+            && tokenize_loop.contains("(root_push batch)")
+            && tokenize_loop.contains("(let [done (vector-get batch 0)")
+            && tokenize_loop.contains("next-pos (vector-get batch 1)")
+            && tokenize_loop.contains("next-tokens (vector-get batch 2)"),
+        "stage2 native で大きい Seed.ls を tokenize するとき、batch state は done/next-pos/next-tokens を読む前に root されているべき"
+    );
+}
+
+#[test]
+fn test_selfhost_lexer_tokenize_spans_step_512_roots_recursive_step() {
+    let source = selfhost_module("Lexer.ls");
+    let step_loop = source
+        .split("(defn tokenize-spans-step-512-state-loop [src len state remaining]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn tokenize-spans-step-512-loop-bounded").next())
+        .expect("Lexer.ls に tokenize-spans-step-512-state-loop が存在すること");
+    let step_pos = step_loop
+        .find("step (tokenize-spans-step-2 src next-pos len next-tokens)")
+        .expect("tokenize-spans-step-512-state-loop は次 step を作ること");
+    let root_pos = step_loop[step_pos..]
+        .find("(root_push step)")
+        .expect("tokenize-spans-step-512-state-loop は recursive call 前に step を root すること")
+        + step_pos;
+    let recurse_pos = step_loop[step_pos..]
+        .find("(tokenize-spans-step-512-state-loop src len step (- remaining 1))")
+        .expect("tokenize-spans-step-512-state-loop は step を渡して再帰すること")
+        + step_pos;
+
+    assert!(
+        step_pos < root_pos && root_pos < recurse_pos,
+        "stage2 native tokenizer の 512-step 再帰では、次 state を recursive native call 前に root するべき"
     );
 }
 
