@@ -1413,6 +1413,54 @@
                                 (root_pop)
                                 (root_pop)
                                 0))))))))))))))))
+
+(defn print-direct-defn-return-cleanup-progress-probe [spans first-defn-span src]
+  (if (< first-defn-span 0)
+    0
+    (let [pos-ref (ref-new first-defn-span)]
+      (do
+        (root_push pos-ref)
+        (p-advance pos-ref)
+        (let [ns (p-start spans pos-ref)
+          ne (p-end spans pos-ref)
+          nh (name-hash src ns ne)]
+          (do
+            (p-advance pos-ref)
+            (p-expect spans pos-ref 2)
+            (let [result (vector-push-triple-rooted-v3 (vector-new 8) 20 nh 0)]
+              (do
+                (let [result-slot (root_push result)
+                  with-params (parse-params-v3 spans pos-ref src result 0)]
+                  (do
+                    (root_push with-params)
+                    (let [param-count (- (vector-length with-params) 3)
+                      defn-node (vector-set-at-rooted-v3 with-params 2 param-count)]
+                      (do
+                        (root_push defn-node)
+                        (skip-optional-type-sig-v3 spans pos-ref src)
+                        (skip-optional-where-v3 spans pos-ref src)
+                        (let [parsed
+                          (if (== (colon-directive-v3 spans pos-ref src) 1)
+                            (let [meta (parse-defn-metadata-v3 spans pos-ref src)]
+                              (parse-defn-bodyless-or-body-with-meta-v3
+                                spans pos-ref src defn-node param-count meta))
+                            (parse-defn-bodyless-or-body-v3
+                              spans pos-ref src defn-node param-count))]
+                          (do
+                            (print 190)
+                            (print (vector-get parsed 0))
+                            (print (vector-length parsed))
+                            (print (ref-get pos-ref))
+                            (root_set result-slot parsed)
+                            (root_pop)
+                            (root_pop)
+                            (root_pop)
+                            (print 191)
+                            (print (vector-get parsed 0))
+                            (print (vector-length parsed))
+                            (print (ref-get pos-ref))
+                            (root_pop)
+                            0)))))))))))))
 (defn compile-file-mode-entry-shape-progress-probe []
   (let [path (command-line-arg 1)]
     (do
@@ -1646,6 +1694,7 @@
                                     (root_pop)))))
                             0)
                           (print-direct-defn-build-progress-probe spans0 first-defn-span src0)
+                          (print-direct-defn-return-cleanup-progress-probe spans0 first-defn-span src0)
                           (root_pop)
                           (root_pop)))
                       (let [debug-functions (compile-defn-functions-chunked-step-progress-debug decls0 0 (vector-length decls0) src0 ftable debug-data-ref (vector-new 8))]

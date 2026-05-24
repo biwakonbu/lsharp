@@ -166,6 +166,13 @@ fn compiler_mode_compile_pair_probe_prints_first_pair_debug_compile() {
             && source.contains("(print 184)")
             && source.contains("(print 189)")
             && probe.contains("(print-direct-defn-build-progress-probe spans0 first-defn-span src0)")
+            && source.contains(
+                "(defn print-direct-defn-return-cleanup-progress-probe [spans first-defn-span src]"
+            )
+            && source.contains("(print 190)")
+            && source.contains("(print 191)")
+            && probe
+                .contains("(print-direct-defn-return-cleanup-progress-probe spans0 first-defn-span src0)")
             && probe.contains(
                 "(compile-defn-functions-chunked-step-progress-debug decls0 0 (vector-length decls0) src0 ftable debug-data-ref (vector-new 8))"
             )
