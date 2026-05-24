@@ -237,7 +237,7 @@ fn parser_parse_defn_uses_direct_tail_sequence_without_ref_roundtrip() {
 }
 
 #[test]
-fn parser_parse_defn_stores_direct_tail_result_before_pop_helper_without_ref_roundtrip() {
+fn parser_parse_defn_returns_explicit_parsed_after_root_pops_without_ref_roundtrip() {
     let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
         .expect("Parser.ls を読めること");
     let parse_defn = source
@@ -249,32 +249,8 @@ fn parser_parse_defn_stores_direct_tail_result_before_pop_helper_without_ref_rou
     assert!(
         parse_defn.contains("(let [result-slot (root_push result)")
             && parse_defn.contains("(root_set result-slot parsed)")
-            && parse_defn.contains("(return-after-three-root-pops-v3 parsed)")
+            && parse_defn.contains("(root_pop)\n                        parsed")
             && !parse_defn.contains("parsed-ref"),
-        "parse-defn-v3 は direct tail の戻り値を root slot に退避し、ref roundtrip なしで helper から返すべき"
-    );
-}
-
-#[test]
-fn parser_parse_defn_returns_via_small_pop_helper() {
-    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
-        .expect("Parser.ls を読めること");
-    let parse_defn = source
-        .split("(defn parse-defn-v3 [spans pos-ref src]")
-        .nth(1)
-        .and_then(|tail| tail.split("(defn parse-defmacro-v3").next())
-        .expect("Parser.ls に parse-defn-v3 が存在すること");
-    let helper = source
-        .split("(defn return-after-three-root-pops-v3 [parsed]")
-        .nth(1)
-        .and_then(|tail| tail.split("(defn parse-defn-v3").next())
-        .expect("Parser.ls に return-after-three-root-pops-v3 が存在すること");
-
-    assert!(
-        helper.contains("(root_pop)")
-            && helper.contains("parsed")
-            && parse_defn.contains("(return-after-three-root-pops-v3 parsed)")
-            && !parse_defn.contains("(root_pop)))))))))))"),
-        "parse-defn-v3 は x86 で深い local が崩れないよう、parsed を小さい pop helper の引数として返すべき"
+        "parse-defn-v3 は root_pop の戻り値に依存せず、root cleanup 後に explicit parsed を返すべき"
     );
 }

@@ -1805,13 +1805,6 @@
         (root_pop)
         parsed))))
 
-(defn return-after-three-root-pops-v3 [parsed]
-  (do
-    (root_pop)
-    (root_pop)
-    (root_pop)
-    parsed))
-
 (defn parse-defn-v3 [spans pos-ref src]
   (do
     (p-advance pos-ref) ;; defn を消費
@@ -1842,7 +1835,10 @@
                           spans pos-ref src defn-node param-count))]
                       (do
                         (root_set result-slot parsed)
-                        (return-after-three-root-pops-v3 parsed)))))))))))))
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        parsed))))))))))))
 
 ;; === defmacro 宣言 ===
 (defn parse-defmacro-v3 [spans pos-ref src]
