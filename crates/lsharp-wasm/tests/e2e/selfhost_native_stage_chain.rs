@@ -962,6 +962,25 @@ fn test_linux_x86_metadata_replays_map_new_direct_vs_fallback_paths() {
 }
 
 #[test]
+fn test_linux_x86_metadata_rel32_target_helper_preserves_negative_user_call_targets() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let helper = source
+        .split("(defn x86-rel32-target-in-window-at-base [bytes offset size base-offset]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn pack-byte-chunk-2").next())
+        .expect("Linux x86 seed に rel32 target helper が存在すること");
+
+    assert!(
+        helper.contains(
+            "(let [call-offset (x86-first-rel32-offset-in-window bytes offset 0 size)]"
+        ) && helper.contains(
+            "(+ base-offset (+ call-offset (+ 5 (x86-rel32-at bytes call-offset))))"
+        ) && !helper.contains("(if (>= target 0)"),
+        "opcode 40 user call は前方/後方どちらの関数にも飛ぶため、metadata helper は負の rel32 target を -1 sentinel と混同しないこと"
+    );
+}
+
+#[test]
 fn test_linux_x86_representative_seed_keeps_main_as_last_parseable_defn() {
     let source = linux_x86_representative_actual_stage23_seed_source();
 
@@ -4515,15 +4534,25 @@ fn test_e2e_stage1_native_observation_summary_two_run_determinism() {
     );
 }
 
+#[test]
+fn test_parse_numeric_lines_accepts_unsigned_i64_twos_complement_output() {
+    let lines = parse_numeric_lines(
+        "9223372036854775808\n18446744073709551614\n18446744073709551615\n",
+    );
+
+    assert_eq!(lines, vec![i64::MIN, -2, -1]);
+}
+
 fn parse_numeric_lines(output: &str) -> Vec<i64> {
     output
         .as_bytes()
         .split(|byte| is_transport_separator(*byte))
         .filter(|line| !line.is_empty())
         .map(|line| {
-            std::str::from_utf8(line)
-                .unwrap_or_else(|_| panic!("numeric line が UTF-8 でない: {line:?}"))
-                .parse::<i64>()
+            let text = std::str::from_utf8(line)
+                .unwrap_or_else(|_| panic!("numeric line が UTF-8 でない: {line:?}"));
+            text.parse::<i64>()
+                .or_else(|_| text.parse::<u64>().map(|value| value as i64))
                 .unwrap_or_else(|_| panic!("numeric line ではない出力を検出: {:?}", line))
         })
         .collect()
@@ -5718,9 +5747,9 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
       -1)))
 
 (defn x86-rel32-target-in-window-at-base [bytes offset size base-offset]
-  (let [target (x86-rel32-target-in-window bytes offset size)]
-    (if (>= target 0)
-      (+ base-offset target)
+  (let [call-offset (x86-first-rel32-offset-in-window bytes offset 0 size)]
+    (if (>= call-offset 0)
+      (+ base-offset (+ call-offset (+ 5 (x86-rel32-at bytes call-offset))))
       -1)))
 
 (defn pack-byte-chunk-2 [bytes idx len]
@@ -25774,9 +25803,9 @@ fn test_e2e_native_linux_x86_host_generates_zero_arg_append_four_arg_call_probe_
       -1)))
 
 (defn x86-rel32-target-in-window-at-base [bytes offset size base-offset]
-  (let [target (x86-rel32-target-in-window bytes offset size)]
-    (if (>= target 0)
-      (+ base-offset target)
+  (let [call-offset (x86-first-rel32-offset-in-window bytes offset 0 size)]
+    (if (>= call-offset 0)
+      (+ base-offset (+ call-offset (+ 5 (x86-rel32-at bytes call-offset))))
       -1)))
 
 (defn print-byte-window [bytes idx end]
@@ -42351,14 +42380,21 @@ fn parse_linux_x86_function_segment_metadata_rows(
                 });
                 idx += 15;
             }
-            9_000_000_027 | 9_000_000_028 => {
+            9_000_000_022 | 9_000_000_023 => {
+                assert!(
+                    idx + 14 <= lines.len(),
+                    "x86 function metadata i64-ge emitted replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 14;
+            }
+            9_000_000_024 | 9_000_000_025 | 9_000_000_027 | 9_000_000_028 => {
                 assert!(
                     idx + 16 <= lines.len(),
                     "x86 function metadata replay row が不足: idx={idx} lines={lines:?}"
                 );
                 idx += 16;
             }
-            9_000_000_029 => {
+            9_000_000_026 | 9_000_000_029 => {
                 assert!(
                     idx + 17 <= lines.len(),
                     "x86 function metadata replay output row が不足: idx={idx} lines={lines:?}"
@@ -42423,14 +42459,21 @@ fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectRepl
                 );
                 idx += 15;
             }
-            9_000_000_027 | 9_000_000_028 => {
+            9_000_000_022 | 9_000_000_023 => {
+                assert!(
+                    idx + 14 <= lines.len(),
+                    "x86 function metadata i64-ge emitted replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 14;
+            }
+            9_000_000_024 | 9_000_000_025 | 9_000_000_027 | 9_000_000_028 => {
                 assert!(
                     idx + 16 <= lines.len(),
                     "x86 function metadata replay row が不足: idx={idx} lines={lines:?}"
                 );
                 idx += 16;
             }
-            9_000_000_029 => {
+            9_000_000_026 | 9_000_000_029 => {
                 assert!(
                     idx + 17 <= lines.len(),
                     "x86 function metadata replay output row が不足: idx={idx} lines={lines:?}"
@@ -42518,14 +42561,21 @@ fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirect
                 );
                 idx += 15;
             }
-            9_000_000_027 | 9_000_000_028 => {
+            9_000_000_022 | 9_000_000_023 => {
+                assert!(
+                    idx + 14 <= lines.len(),
+                    "x86 function metadata i64-ge emitted replay row が不足: idx={idx} lines={lines:?}"
+                );
+                idx += 14;
+            }
+            9_000_000_024 | 9_000_000_025 | 9_000_000_027 | 9_000_000_028 => {
                 assert!(
                     idx + 16 <= lines.len(),
                     "x86 function metadata replay row が不足: idx={idx} lines={lines:?}"
                 );
                 idx += 16;
             }
-            9_000_000_029 => {
+            9_000_000_026 | 9_000_000_029 => {
                 assert!(
                     idx + 17 <= lines.len(),
                     "x86 function metadata replay output row が不足: idx={idx} lines={lines:?}"
