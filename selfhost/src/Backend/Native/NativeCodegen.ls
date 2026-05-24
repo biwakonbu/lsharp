@@ -8452,26 +8452,6 @@
       (emit-mov-rax-rcx)
       (vector-new 0))))
 
-(defn emit-x86-five-nops []
-  (byte-vector-5 144 144 144 144 144))
-
-(defn emit-root-pop-bundle-x86 [frame-base-slot-count current-depth]
-  (if (>= current-depth 55)
-    (concat-byte-vectors
-      (spill-native-value-window-one-step-x86 frame-base-slot-count current-depth)
-      (emit-root-pop-bundle-x86 frame-base-slot-count (- current-depth 1)))
-    (if (>= current-depth 1)
-      (concat-byte-vectors-rooted
-        (if (>= current-depth 2)
-          (concat-byte-vectors-rooted
-            (shift-native-value-window-x86-loop frame-base-slot-count (- current-depth 3))
-            (emit-mov-local-from-rcx (native-value-window-spill-offset frame-base-slot-count 0)))
-          (vector-new 0))
-        (concat-byte-vectors-rooted
-          (emit-mov-rcx-rax)
-          (emit-x86-five-nops)))
-      (emit-i32-const-bundle-x86 0 frame-base-slot-count current-depth))))
-
 (defn emit-root-push-x86 []
   (byte-vector-2 49 192))
 
@@ -10635,7 +10615,7 @@
         (if (= opcode 74)
           (emit-root-push-x86)
         (if (= opcode 75)
-          (emit-root-pop-bundle-x86 frame-base-slot-count current-depth)
+          (emit-i32-const-bundle-x86 0 frame-base-slot-count current-depth)
           (if (= (is-selfhost-runtime-opcode-x86 opcode) 1)
             (codegen-selfhost-runtime-bundle-x86 opcode current-offset import-stub-offset import-count frame-base-slot-count current-depth)
                 (if (= opcode 10)
