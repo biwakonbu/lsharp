@@ -228,8 +228,26 @@ fn parser_parse_defn_delegates_tail_without_ref_roundtrip() {
     assert!(
         source.contains("(defn parse-defn-tail-v3 [spans pos-ref src defn-node param-count]")
             && parse_defn.contains("(parse-defn-tail-v3 spans pos-ref src defn-node param-count)")
-            && !parse_defn.contains("parsed-ref")
-            && !parse_defn.contains("(root_set result-slot parsed)"),
+            && !parse_defn.contains("parsed-ref"),
         "parse-defn-v3 は x86 stage2 の戻り値 local 崩れを避けるため tail helper へ委譲するべき"
+    );
+}
+
+#[test]
+fn parser_parse_defn_returns_tail_result_from_root_slot_without_ref_roundtrip() {
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
+        .expect("Parser.ls を読めること");
+    let parse_defn = source
+        .split("(defn parse-defn-v3 [spans pos-ref src]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defmacro-v3").next())
+        .expect("Parser.ls に parse-defn-v3 が存在すること");
+
+    assert!(
+        parse_defn.contains("(let [result-slot (root_push result)")
+            && parse_defn.contains("(root_set result-slot parsed)")
+            && parse_defn.contains("(root_pop)))))))))))")
+            && !parse_defn.contains("parsed-ref"),
+        "parse-defn-v3 は tail helper の戻り値を root slot に退避し、ref roundtrip なしで返すべき"
     );
 }
