@@ -1826,19 +1826,39 @@
                     (root_push defn-node)
                     (skip-optional-type-sig-v3 spans pos-ref src)
                     (skip-optional-where-v3 spans pos-ref src)
-                    (let [parsed
-                      (if (== (colon-directive-v3 spans pos-ref src) 1)
-                        (let [meta (parse-defn-metadata-v3 spans pos-ref src)]
-                          (parse-defn-bodyless-or-body-with-meta-v3
-                            spans pos-ref src defn-node param-count meta))
-                        (parse-defn-bodyless-or-body-v3
-                          spans pos-ref src defn-node param-count))]
-                      (do
-                        (root_set result-slot parsed)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        parsed))))))))))))
+                    (if (== (colon-directive-v3 spans pos-ref src) 1)
+                      (let [meta (parse-defn-metadata-v3 spans pos-ref src)
+                        parsed (parse-defn-bodyless-or-body-with-meta-v3
+                          spans pos-ref src defn-node param-count meta)]
+                        (do
+                          (root_set result-slot parsed)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          parsed))
+                      (if (== (p-current spans pos-ref) 1)
+                        (let [body (make-int-node 0)]
+                          (do
+                            (root_push body)
+                            (let [parsed (finalize-defn-body-v3 defn-node param-count body)]
+                              (do
+                                (root_set result-slot parsed)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                parsed))))
+                        (let [body (parse-expr-v3 spans pos-ref src)]
+                          (do
+                            (root_push body)
+                            (let [parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)]
+                              (do
+                                (root_set result-slot parsed)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                parsed))))))))))))))))
 
 ;; === defmacro 宣言 ===
 (defn parse-defmacro-v3 [spans pos-ref src]

@@ -236,10 +236,13 @@ fn parser_parse_defn_uses_direct_tail_sequence_without_ref_roundtrip() {
         parse_defn.contains("(skip-optional-type-sig-v3 spans pos-ref src)")
             && parse_defn.contains("(skip-optional-where-v3 spans pos-ref src)")
             && parse_defn.contains("(parse-defn-bodyless-or-body-with-meta-v3")
-            && parse_defn.contains("(parse-defn-bodyless-or-body-v3")
+            && parse_defn.contains("(let [body (parse-expr-v3 spans pos-ref src)]")
+            && parse_defn
+                .contains("(finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)")
             && !parse_defn.contains("(parse-defn-tail-v3 spans pos-ref src defn-node param-count)")
+            && !parse_defn.contains("(parse-defn-bodyless-or-body-v3\n")
             && !parse_defn.contains("parsed-ref"),
-        "parse-defn-v3 は x86 stage2 の helper 境界崩れを避けるため direct tail sequence を持つべき"
+        "parse-defn-v3 は x86 stage2 の helper return 崩れを避けるため non-meta body parse を direct に持つべき"
     );
 }
 
@@ -256,7 +259,7 @@ fn parser_parse_defn_returns_explicit_parsed_after_root_pops_without_ref_roundtr
     assert!(
         parse_defn.contains("(let [result-slot (root_push result)")
             && parse_defn.contains("(root_set result-slot parsed)")
-            && parse_defn.contains("(root_pop)\n                        parsed")
+            && parse_defn.contains("(root_pop)\n                                parsed")
             && !parse_defn.contains("parsed-ref"),
         "parse-defn-v3 は root_pop の戻り値に依存せず、root cleanup 後に explicit parsed を返すべき"
     );
