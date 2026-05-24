@@ -950,6 +950,7 @@ fn test_linux_x86_metadata_replays_map_new_direct_vs_fallback_paths() {
             && source.contains("(print 9000000044)")
             && source.contains("(print 9000000045)")
             && source.contains("(x86-rel32-target-in-window-at-base direct 0 direct-len offset)")
+            && source.contains("(print function-start-base)")
             && source.contains("(print direct-call-rel)")
             && source.contains("(codegen-x86-control-loop-fallback-native control-ctx idx opcode operand offset)")
             && source.contains("(make-x86-function-emit-layout import-count import-stub-offset function-start-base (- 0 offset))")
@@ -1810,6 +1811,7 @@ fn test_linux_x86_representative_seed_has_opcode40_call_replay_metadata_diagnost
             && source.contains(
                 "(x86-rel32-target-in-window-at-base direct 0 direct-len (ref-get offset-ref))"
             )
+            && source.contains("(print function-start-base)")
             && source.contains("(print-x86-call-control-replay-diagnostic control-ctx idx opcode operand offset size)"),
         "Linux x86 segmented seed は opcode 40 user call の IR row / direct bundle / emitted bytes / rel32 target を同一 metadata row で出せるべき"
     );
@@ -6928,6 +6930,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
               (print current-depth)
               (print offset)
               (print size)
+              (print function-start-base)
               (print emit-start-base)
               (print helper-target)
               (print direct-call-rel)
@@ -7084,6 +7087,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 	                          (print current-depth)
 	                          (print (ref-get offset-ref))
 	                          (print size)
+	                          (print function-start-base)
 	                          (print target-param-count)
 	                          (print call-next-offset)
 	                          (print target-offset)
@@ -42014,6 +42018,7 @@ struct X86MapNewDirectReplayRow {
     depth: i64,
     offset: i64,
     size: i64,
+    function_start_base: i64,
     emit_start_base: i64,
     helper_target: i64,
     direct_call_rel: i64,
@@ -42030,6 +42035,7 @@ struct X86UserCallDirectReplayRow {
     depth: i64,
     offset: i64,
     size: i64,
+    function_start_base: i64,
     param_count: i64,
     call_next_offset: i64,
     target_offset: i64,
@@ -42041,6 +42047,7 @@ struct X86UserCallDirectReplayRow {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LinuxX86FunctionSegmentMetadataRow {
+    function_start: i64,
     function_size: i64,
     instr_idx: i64,
     opcode: i64,
@@ -42366,6 +42373,7 @@ fn parse_linux_x86_function_segment_metadata_rows(
     let lines = parse_numeric_lines(output);
     let mut idx = 0;
     let mut rows = Vec::new();
+    let mut current_function_start = 0;
     let mut current_function_size = 0;
     while idx < lines.len() {
         match lines[idx] {
@@ -42374,6 +42382,7 @@ fn parse_linux_x86_function_segment_metadata_rows(
                     idx + 12 <= lines.len(),
                     "x86 function metadata header が不足: idx={idx} lines={lines:?}"
                 );
+                current_function_start = lines[idx + 3];
                 current_function_size = lines[idx + 4];
                 idx += 12;
             }
@@ -42393,6 +42402,7 @@ fn parse_linux_x86_function_segment_metadata_rows(
                     lines[idx + 14] as u8,
                 ];
                 rows.push(LinuxX86FunctionSegmentMetadataRow {
+                    function_start: current_function_start,
                     function_size: current_function_size,
                     instr_idx: lines[idx + 1],
                     opcode: lines[idx + 2],
@@ -42427,10 +42437,10 @@ fn parse_linux_x86_function_segment_metadata_rows(
             }
             9_000_000_043 => {
                 assert!(
-                    idx + 20 <= lines.len(),
+                    idx + 21 <= lines.len(),
                     "x86 function metadata map-new direct replay row が不足: idx={idx} lines={lines:?}"
                 );
-                idx += 20;
+                idx += 21;
             }
             9_000_000_044 => {
                 assert!(
@@ -42448,10 +42458,10 @@ fn parse_linux_x86_function_segment_metadata_rows(
             }
             9_000_000_046 => {
                 assert!(
-                    idx + 21 <= lines.len(),
+                    idx + 22 <= lines.len(),
                     "x86 function metadata user call direct replay row が不足: idx={idx} lines={lines:?}"
                 );
-                idx += 21;
+                idx += 22;
             }
             marker => {
                 panic!(
@@ -42506,7 +42516,7 @@ fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectRepl
             }
             9_000_000_043 => {
                 assert!(
-                    idx + 20 <= lines.len(),
+                    idx + 21 <= lines.len(),
                     "x86 function metadata map-new direct replay row が不足: idx={idx} lines={lines:?}"
                 );
                 rows.push(X86MapNewDirectReplayRow {
@@ -42516,13 +42526,13 @@ fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectRepl
                     depth: lines[idx + 4],
                     offset: lines[idx + 5],
                     size: lines[idx + 6],
-                    emit_start_base: lines[idx + 7],
-                    helper_target: lines[idx + 8],
-                    direct_call_rel: lines[idx + 9],
-                    direct_len: lines[idx + 10],
-                    direct_target: lines[idx + 11],
+                    function_start_base: lines[idx + 7],
+                    emit_start_base: lines[idx + 8],
+                    helper_target: lines[idx + 9],
+                    direct_call_rel: lines[idx + 10],
+                    direct_len: lines[idx + 11],
+                    direct_target: lines[idx + 12],
                     bytes: [
-                        lines[idx + 12] as u8,
                         lines[idx + 13] as u8,
                         lines[idx + 14] as u8,
                         lines[idx + 15] as u8,
@@ -42530,9 +42540,10 @@ fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectRepl
                         lines[idx + 17] as u8,
                         lines[idx + 18] as u8,
                         lines[idx + 19] as u8,
+                        lines[idx + 20] as u8,
                     ],
                 });
-                idx += 20;
+                idx += 21;
             }
             9_000_000_044 => {
                 assert!(
@@ -42550,10 +42561,10 @@ fn parse_x86_map_new_direct_replay_rows(output: &str) -> Vec<X86MapNewDirectRepl
             }
             9_000_000_046 => {
                 assert!(
-                    idx + 21 <= lines.len(),
+                    idx + 22 <= lines.len(),
                     "x86 function metadata user call direct replay row が不足: idx={idx} lines={lines:?}"
                 );
-                idx += 21;
+                idx += 22;
             }
             marker => {
                 panic!(
@@ -42608,10 +42619,10 @@ fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirect
             }
             9_000_000_043 => {
                 assert!(
-                    idx + 20 <= lines.len(),
+                    idx + 21 <= lines.len(),
                     "x86 function metadata map-new direct replay row が不足: idx={idx} lines={lines:?}"
                 );
-                idx += 20;
+                idx += 21;
             }
             9_000_000_044 => {
                 assert!(
@@ -42629,7 +42640,7 @@ fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirect
             }
             9_000_000_046 => {
                 assert!(
-                    idx + 21 <= lines.len(),
+                    idx + 22 <= lines.len(),
                     "x86 function metadata user call direct replay row が不足: idx={idx} lines={lines:?}"
                 );
                 rows.push(X86UserCallDirectReplayRow {
@@ -42639,14 +42650,14 @@ fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirect
                     depth: lines[idx + 4],
                     offset: lines[idx + 5],
                     size: lines[idx + 6],
-                    param_count: lines[idx + 7],
-                    call_next_offset: lines[idx + 8],
-                    target_offset: lines[idx + 9],
-                    call_rel: lines[idx + 10],
-                    direct_len: lines[idx + 11],
-                    direct_target: lines[idx + 12],
+                    function_start_base: lines[idx + 7],
+                    param_count: lines[idx + 8],
+                    call_next_offset: lines[idx + 9],
+                    target_offset: lines[idx + 10],
+                    call_rel: lines[idx + 11],
+                    direct_len: lines[idx + 12],
+                    direct_target: lines[idx + 13],
                     bytes: [
-                        lines[idx + 13] as u8,
                         lines[idx + 14] as u8,
                         lines[idx + 15] as u8,
                         lines[idx + 16] as u8,
@@ -42654,9 +42665,10 @@ fn parse_x86_user_call_direct_replay_rows(output: &str) -> Vec<X86UserCallDirect
                         lines[idx + 18] as u8,
                         lines[idx + 19] as u8,
                         lines[idx + 20] as u8,
+                        lines[idx + 21] as u8,
                     ],
                 });
-                idx += 21;
+                idx += 22;
             }
             marker => {
                 panic!(
@@ -43615,6 +43627,7 @@ fn test_e2e_linux_x86_actual_function_metadata_map_new_rel32_correlation() {
         .iter()
         .find(|row| {
             row.instr_idx == map_new_row.instr_idx
+                && row.function_start_base == map_new_row.function_start
                 && row.opcode == map_new_row.opcode
                 && row.depth == map_new_row.depth
                 && row.offset == map_new_row.offset
@@ -43686,6 +43699,7 @@ fn test_e2e_linux_x86_actual_function_metadata_user_call_rel32_correlation() {
             .iter()
             .find(|row| {
                 row.instr_idx == direct_row.instr_idx
+                    && row.function_start == direct_row.function_start_base
                     && row.opcode == direct_row.opcode
                     && row.operand == direct_row.operand
                     && row.depth == direct_row.depth
@@ -43800,6 +43814,7 @@ fn test_linux_x86_function_metadata_parses_map_new_direct_rel32_row() {
 11
 5
 5088428
+5088428
 5092283
 5092267
 5
@@ -43819,6 +43834,7 @@ fn test_linux_x86_function_metadata_parses_map_new_direct_rel32_row() {
 
     assert_eq!(metadata_rows.len(), 1);
     assert_eq!(metadata_rows[0].opcode, 60);
+    assert_eq!(metadata_rows[0].function_start, 5_088_428);
     assert_eq!(x86_metadata_row_rel32_target(&metadata_rows[0]), Some(3855));
     assert_eq!(
         direct_rows,
@@ -43829,6 +43845,7 @@ fn test_linux_x86_function_metadata_parses_map_new_direct_rel32_row() {
             depth: 0,
             offset: 11,
             size: 5,
+            function_start_base: 5_088_428,
             emit_start_base: 5_088_428,
             helper_target: 5_092_283,
             direct_call_rel: 5_092_267,
@@ -43876,6 +43893,7 @@ fn test_linux_x86_function_metadata_parses_user_call_direct_rel32_row() {
 8
 32
 64
+1000
 4
 58
 900
@@ -43897,6 +43915,7 @@ fn test_linux_x86_function_metadata_parses_user_call_direct_rel32_row() {
 
     assert_eq!(metadata_rows.len(), 1);
     assert_eq!(metadata_rows[0].opcode, 40);
+    assert_eq!(metadata_rows[0].function_start, 1_000);
     assert_eq!(
         user_call_rows,
         vec![X86UserCallDirectReplayRow {
@@ -43906,6 +43925,7 @@ fn test_linux_x86_function_metadata_parses_user_call_direct_rel32_row() {
             depth: 8,
             offset: 32,
             size: 64,
+            function_start_base: 1_000,
             param_count: 4,
             call_next_offset: 58,
             target_offset: 900,
