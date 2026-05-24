@@ -287,12 +287,20 @@ fn native_codegen_x86_root_pop_bundle_preserves_existing_value_window() {
                 .next()
         })
         .expect("NativeCodegen.ls に x86 bundle codegen が存在すること");
+    let emit_root_pop = source
+        .split("(defn emit-root-pop-bundle-x86")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn emit-root-push-x86").next())
+        .expect("NativeCodegen.ls に emit-root-pop-bundle-x86 が存在すること");
 
     assert!(
         source.contains("(defn append-root-pop-bundle-x86")
             && source.contains("(defn emit-root-pop-bundle-x86")
             && direct_loop.contains("(append-root-pop-bundle-x86 result frame-base-slot-count current-depth)")
             && bundle_codegen.contains("(emit-root-pop-bundle-x86 frame-base-slot-count current-depth)")
+            && emit_root_pop.contains("(if (>= current-depth 55)")
+            && emit_root_pop.contains("(spill-native-value-window-one-step-x86 frame-base-slot-count current-depth)")
+            && emit_root_pop.contains("(emit-root-pop-bundle-x86 frame-base-slot-count (- current-depth 1))")
             && !direct_loop.contains("append-i32-const-bundle-x86 result (if (= opcode 75) 0 operand)")
             && !bundle_codegen.contains("(emit-i32-const-bundle-x86 0 frame-base-slot-count current-depth)"),
         "x86 root_pop bundle は tail value を 0 化せず、既存 value window を同じ byte size で保つ専用 path を使うべき"
