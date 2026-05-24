@@ -1889,7 +1889,21 @@
               result)))))))
 (defn register-all-pairs [pairs idx n ftable func-idx]
   (let [state (continue-register-all-pairs-step-64 pairs n (register-all-pairs-step-64 pairs idx n ftable func-idx))]
-    (vector-push (push-object-vector (vector-new 2) (vector-get state 2)) (vector-get state 3))))
+    (do
+      (root_push state)
+      (let [next-ftable (vector-get state 2)
+        next-func-idx (vector-get state 3)]
+        (do
+          (root_push next-ftable)
+          (let [with-ftable (push-object-vector (vector-new 2) next-ftable)]
+            (do
+              (root_push with-ftable)
+              (let [result (vector-push with-ftable next-func-idx)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 (defn compile-src-decl-pairs-step [pairs idx n ftable data-ref functions]
   (if (>= idx n)
     (make-pairs-step-state 1 idx functions)

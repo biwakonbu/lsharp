@@ -184,6 +184,27 @@ fn compiler_mode_compile_pair_probe_prints_first_pair_debug_compile() {
 }
 
 #[test]
+fn compiler_mode_register_all_pairs_roots_final_state_before_result_alloc() {
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/App/CompilerMode.ls"))
+        .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn register-all-pairs [pairs idx n ftable func-idx]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-src-decl-pairs-step").next())
+        .expect("CompilerMode.ls に register-all-pairs が存在すること");
+
+    assert!(
+        body.contains("(root_push state)")
+            && body.contains("next-ftable (vector-get state 2)")
+            && body.contains("next-func-idx (vector-get state 3)")
+            && body.contains("(push-object-vector (vector-new 2) next-ftable)")
+            && body.contains("(vector-push with-ftable next-func-idx)")
+            && body.contains("(root_pop)"),
+        "register-all-pairs は stage2 native の final state local を result vector allocation 前に root して func index を保持するべき"
+    );
+}
+
+#[test]
 fn parser_program_step_delegates_expr_append_to_rooted_helper() {
     let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
         .expect("Parser.ls を読めること");
