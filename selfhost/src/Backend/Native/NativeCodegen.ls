@@ -7159,7 +7159,7 @@
                     (root_pop)
                     (root_pop)
                     (root_pop)
-                    result)))))))))
+                    result))))))))))
 
 (defn emit-three-arg-call-x86-core [rel frame-base-slot-count]
   (concat-byte-vectors
