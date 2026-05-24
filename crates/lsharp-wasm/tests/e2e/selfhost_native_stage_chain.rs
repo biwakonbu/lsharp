@@ -2842,6 +2842,50 @@ fn test_native_codegen_x86_one_arg_user_call_avoids_rel_wrapper_call() {
 }
 
 #[test]
+fn test_native_codegen_x86_one_arg_user_call_materializes_rel32_after_setup() {
+    let source = selfhost_module("NativeCodegen.ls");
+    let helper_body = source
+        .split("(defn emit-one-arg-call-x86-core-with-rel-ref")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn emit-three-arg-call-x86-core").next())
+        .expect("NativeCodegen.ls に one-arg rel-ref helper が存在すること");
+    let opcode_call_branch = source
+        .split("(defn codegen-x86-opcode-call-bundle")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
+                .next()
+        })
+        .expect("NativeCodegen.ls に x86 opcode 40 call helper が存在すること");
+    let call_bytes_branch = opcode_call_branch
+        .split("(if (= target-param-count 0)")
+        .nth(1)
+        .expect("x86 opcode 40 branch に call-bytes 分岐が存在すること");
+    let one_arg_branch = call_bytes_branch
+        .split("(if (= target-param-count 1)")
+        .nth(1)
+        .and_then(|tail| tail.split("(if (= target-param-count 2)").next())
+        .expect("x86 opcode 40 branch に one-arg user call 専用分岐が存在すること");
+
+    assert!(
+        helper_body.contains("call-rel-ref")
+            && helper_body.contains("(emit-call-rel32 (ref-get call-rel-ref))")
+            && helper_body.contains("(emit-mov-rdi-rax)")
+            && helper_body.contains("(emit-push-rcx)")
+            && helper_body.contains("(emit-pop-rcx)"),
+        "x86 one-arg user call helper は setup 後に rel ref から call bytes を生成するべき"
+    );
+    assert!(
+        one_arg_branch.contains("call-rel-ref (ref-new call-rel)")
+            && one_arg_branch.contains("(root_push call-rel-ref)")
+            && one_arg_branch.contains(
+                "emit-one-arg-call-x86-core-with-rel-ref call-rel-ref",
+            ),
+        "x86 one-arg user call は current-offset 付き rel32 bytes を setup 中に壊さないよう rel ref 経由にするべき"
+    );
+}
+
+#[test]
 fn test_native_codegen_x86_low_arity_call_branches_do_not_shadow_call_rel_bytes() {
     let source = selfhost_module("NativeCodegen.ls");
     let opcode_call_branch = source
