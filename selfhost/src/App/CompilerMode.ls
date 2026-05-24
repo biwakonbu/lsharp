@@ -1486,6 +1486,36 @@
               (print n)
               (print 152)
               (print (- (vector-get reg-result 1) 10))
+              (let [first-pair-debug
+                (if (> n 0)
+                  (let [pair0 (vector-get all-pairs 0)
+                    src0 (vector-get pair0 0)
+                    decls0 (vector-get pair0 1)
+                    debug-data-ref (ref-new (vector-new 8))]
+                    (do
+                      (root_push pair0)
+                      (root_push src0)
+                      (root_push decls0)
+                      (root_push debug-data-ref)
+                      (print 155)
+                      (print (vector-length decls0))
+                      (print (decl-tag-or-minus-one decls0 0))
+                      (print (decl-tag-or-minus-one decls0 1))
+                      (print (decl-tag-or-minus-one decls0 2))
+                      (print (decl-tag-or-minus-one decls0 3))
+                      (let [debug-functions (compile-defn-functions-chunked-step-progress-debug decls0 0 (vector-length decls0) src0 ftable debug-data-ref (vector-new 8))]
+                        (do
+                          (root_push debug-functions)
+                          (print 156)
+                          (print (vector-length debug-functions))
+                          (print (vector-length (ref-get debug-data-ref)))
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          0))))
+                  0)]
               (let [functions0 (vector-new 8)]
                 (do
                   (root_push functions0)
@@ -1500,7 +1530,7 @@
                       (root_pop)
                       (root_pop)
                       (root_pop)
-                      0)))))))))))
+                      first-pair-debug))))))))))))
 (defn compile-file-mode-ast-chunked-step-progress-probe []
   (let [path (command-line-arg 1)
     cache-ref (ref-new (map-new))

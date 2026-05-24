@@ -134,3 +134,28 @@ fn lexer_tokenize_spans_step_delegates_append_state_to_small_helpers() {
         "tokenize-spans-step は stage2 x86 の local 保持崩れを避けるため append/state 化を小さい helper に委譲するべき"
     );
 }
+
+#[test]
+fn compiler_mode_compile_pair_probe_prints_first_pair_debug_compile() {
+    let source =
+        std::fs::read_to_string(workspace_root().join("selfhost/src/App/CompilerMode.ls"))
+            .expect("CompilerMode.ls を読めること");
+    let probe = source
+        .split("(defn compile-file-mode-cache-compile-pair-progress-probe []")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-file-mode-ast-chunked-step-progress-probe").next())
+        .expect("CompilerMode.ls に compile pair progress probe が存在すること");
+
+    assert!(
+        probe.contains("(print 155)")
+            && probe.contains("(decl-tag-or-minus-one decls0 0)")
+            && probe.contains("(decl-tag-or-minus-one decls0 3)")
+            && probe.contains(
+                "(compile-defn-functions-chunked-step-progress-debug decls0 0 (vector-length decls0) src0 ftable debug-data-ref (vector-new 8))"
+            )
+            && probe.contains("(print 156)")
+            && probe.contains("(print (vector-length debug-functions))")
+            && probe.contains("(print (vector-length (ref-get debug-data-ref)))"),
+        "compile pair probe は first pair の AST tag と debug compile の関数数を出すべき"
+    );
+}
