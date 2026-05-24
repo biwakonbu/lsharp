@@ -1668,6 +1668,22 @@ fn test_selfhost_parser_defn_params_metadata_loop_uses_chunked_steps() {
 }
 
 #[test]
+fn test_selfhost_parser_parse_defn_v3_avoids_root_set_slot_return_path() {
+    let source = selfhost_module("Parser.ls");
+    let parse_defn_body = source
+        .split("(defn parse-defn-v3")
+        .nth(1)
+        .and_then(|tail| tail.split(";; === defmacro 宣言 ===").next())
+        .expect("Parser.ls に parse-defn-v3 が存在すること");
+
+    assert!(
+        !parse_defn_body.contains("result-slot")
+            && !parse_defn_body.contains("(root_set result-slot"),
+        "parse-defn-v3 は Linux x86 stage2 native の defn return 退避を壊さないよう、root_set slot 経由ではなく parsed を直接返すべき"
+    );
+}
+
+#[test]
 fn test_selfhost_parser_parse_let_v3_delegates_after_first_binding_for_native_size() {
     let source = selfhost_module("Parser.ls");
     let parse_let_body = source

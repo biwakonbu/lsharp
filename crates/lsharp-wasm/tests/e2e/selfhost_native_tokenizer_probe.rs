@@ -257,10 +257,11 @@ fn parser_parse_defn_returns_explicit_parsed_after_root_pops_without_ref_roundtr
         .expect("Parser.ls に parse-defn-v3 が存在すること");
 
     assert!(
-        parse_defn.contains("(let [result-slot (root_push result)")
-            && parse_defn.contains("(root_set result-slot parsed)")
+        parse_defn.contains("(root_push result)")
             && parse_defn.contains("(root_pop)\n                                parsed")
+            && !parse_defn.contains("result-slot")
+            && !parse_defn.contains("(root_set result-slot")
             && !parse_defn.contains("parsed-ref"),
-        "parse-defn-v3 は root_pop の戻り値に依存せず、root cleanup 後に explicit parsed を返すべき"
+        "parse-defn-v3 は root_pop/root_set の戻り値に依存せず、root cleanup 後に explicit parsed を返すべき"
     );
 }
