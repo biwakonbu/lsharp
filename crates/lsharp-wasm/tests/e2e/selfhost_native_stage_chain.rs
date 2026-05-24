@@ -973,9 +973,13 @@ fn test_linux_x86_metadata_rel32_target_helper_preserves_negative_user_call_targ
     assert!(
         helper.contains(
             "(let [call-offset (x86-first-rel32-offset-in-window bytes offset 0 size)]"
-        ) && helper.contains(
-            "(+ base-offset (+ call-offset (+ 5 (x86-rel32-at bytes call-offset))))"
-        ) && !helper.contains("(if (>= target 0)"),
+        ) && helper.contains("base-offset-ref (ref-new base-offset)")
+            && helper.contains("call-offset-ref (ref-new call-offset)")
+            && helper.contains("(x86-rel32-at bytes (ref-get call-offset-ref))")
+            && helper.contains(
+                "(+ (ref-get base-offset-ref) (+ (ref-get call-offset-ref) (+ 5 rel32)))"
+            )
+            && !helper.contains("(if (>= target 0)"),
         "opcode 40 user call は前方/後方どちらの関数にも飛ぶため、metadata helper は負の rel32 target を -1 sentinel と混同しないこと"
     );
 }
@@ -5755,7 +5759,18 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 (defn x86-rel32-target-in-window-at-base [bytes offset size base-offset]
   (let [call-offset (x86-first-rel32-offset-in-window bytes offset 0 size)]
     (if (>= call-offset 0)
-      (+ base-offset (+ call-offset (+ 5 (x86-rel32-at bytes call-offset))))
+      (let [base-offset-ref (ref-new base-offset)
+            call-offset-ref (ref-new call-offset)]
+        (do
+          (root_push base-offset-ref)
+          (root_push call-offset-ref)
+          (let [rel32 (x86-rel32-at bytes (ref-get call-offset-ref))]
+            (do
+              (let [target (+ (ref-get base-offset-ref) (+ (ref-get call-offset-ref) (+ 5 rel32)))]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  target))))))
       -1)))
 
 (defn pack-byte-chunk-2 [bytes idx len]
