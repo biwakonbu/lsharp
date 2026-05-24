@@ -7139,28 +7139,6 @@
     call-rel-bytes
     (emit-pop-rcx)))
 
-(defn emit-one-arg-call-x86-core-with-rel-ref [call-rel-ref]
-  (do
-    (root_push call-rel-ref)
-    (let [setup (concat-byte-vectors-rooted
-                  (emit-mov-rdi-rax)
-                  (emit-push-rcx))]
-      (do
-        (root_push setup)
-        (let [call-rel-bytes (emit-call-rel32 (ref-get call-rel-ref))]
-          (do
-            (root_push call-rel-bytes)
-            (let [call-seq (concat-byte-vectors-rooted setup call-rel-bytes)]
-              (do
-                (root_push call-seq)
-                (let [result (concat-byte-vectors-rooted call-seq (emit-pop-rcx))]
-                  (do
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    (root_pop)
-                    result))))))))))
-
 (defn emit-three-arg-call-x86-core [rel frame-base-slot-count]
   (concat-byte-vectors
     (concat-byte-vectors
@@ -10553,16 +10531,10 @@
                            (concat-byte-vectors
                              call-rel-bytes
                              (emit-pop-rcx)))))
-	                       (if (= target-param-count 1)
-	                       (let [call-rel-ref (ref-new call-rel)]
-	                         (do
-	                           (root_push call-rel-ref)
-	                           (let [result (emit-one-arg-call-x86-core-with-rel-ref call-rel-ref)]
-	                             (do
-	                               (root_pop)
-	                               result))))
-	                       (if (= target-param-count 2)
-	                         (emit-two-arg-call-x86-with-call-bytes call-rel-bytes frame-base-slot-count current-depth)
+                     (if (= target-param-count 1)
+                       (emit-one-arg-call-x86-core-with-call-bytes call-rel-bytes)
+                       (if (= target-param-count 2)
+                         (emit-two-arg-call-x86-with-call-bytes call-rel-bytes frame-base-slot-count current-depth)
                          (if (= target-param-count 3)
                            (emit-consume-three-produce-one-bundle-x86
                              (emit-three-arg-call-x86-core-with-call-bytes call-rel-bytes frame-base-slot-count)
