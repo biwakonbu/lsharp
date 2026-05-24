@@ -1460,7 +1460,7 @@
                             (print (vector-length parsed))
                             (print (ref-get pos-ref))
                             (root_pop)
-                            0)))))))))))))
+                            0))))))))))))))
 (defn compile-file-mode-entry-shape-progress-probe []
   (let [path (command-line-arg 1)]
     (do
