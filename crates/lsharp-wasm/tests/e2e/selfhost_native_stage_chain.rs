@@ -1808,9 +1808,8 @@ fn test_linux_x86_representative_seed_has_opcode40_call_replay_metadata_diagnost
             && source.contains(
                 "(codegen-x86-opcode-call-bundle operand (ref-get offset-ref) starts direct-context)"
             )
-            && source.contains(
-                "(x86-rel32-target-in-window-at-base direct 0 direct-len (ref-get offset-ref))"
-            )
+            && source.contains("direct-call-offset (- call-next-offset 5)")
+            && source.contains("(x86-rel32-at direct direct-call-offset)")
             && source.contains("(print function-start-base)")
             && source.contains("(print-x86-call-control-replay-diagnostic control-ctx idx opcode operand offset size)"),
         "Linux x86 segmented seed は opcode 40 user call の IR row / direct bundle / emitted bytes / rel32 target を同一 metadata row で出せるべき"
@@ -7078,7 +7077,8 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 	                    (do
 	                      (root_push direct)
 	                      (let [direct-len (vector-length direct)
-	                            direct-target (x86-rel32-target-in-window-at-base direct 0 direct-len (ref-get offset-ref))]
+	                            direct-call-offset (- call-next-offset 5)
+	                            direct-target (+ (ref-get offset-ref) (+ direct-call-offset (+ 5 (x86-rel32-at direct direct-call-offset))))]
 	                        (do
 	                          (print 9000000046)
 	                          (print idx)
