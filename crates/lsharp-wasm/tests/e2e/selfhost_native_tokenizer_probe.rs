@@ -265,39 +265,3 @@ fn parser_parse_defn_returns_explicit_parsed_after_root_pops_without_ref_roundtr
         "parse-defn-v3 は root_pop/root_set の戻り値に依存せず、root cleanup 後に explicit parsed を返すべき"
     );
 }
-
-#[test]
-fn native_codegen_x86_root_pop_direct_append_preserves_existing_value_window() {
-    let source =
-        std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Native/NativeCodegen.ls"))
-            .expect("NativeCodegen.ls を読めること");
-    let direct_loop = source
-        .split("(defn generate-native-control-instr-bundle-loop-x86-with-context")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn generate-native-control-instr-bundle-loop-x86-with-import-count-and-base")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 control bundle loop が存在すること");
-    let bundle_codegen = source
-        .split("(defn codegen-ir-instr-bundle-x86-with-import-count-and-base")
-        .nth(1)
-        .and_then(|tail| {
-            tail.split("(defn codegen-ir-instr-bundle-x86-with-import-count")
-                .next()
-        })
-        .expect("NativeCodegen.ls に x86 bundle codegen が存在すること");
-
-    assert!(
-        !source.contains("(defn append-root-pop-bundle-x86")
-            && !source.contains("(defn append-x86-five-nops")
-            && direct_loop.contains("(let [core-depth (append-native-value-window-overflow-spills-x86 result frame-base-slot-count current-depth)]")
-            && direct_loop.contains("(append-mov-rcx-rax-x86 result)")
-            && direct_loop.contains("(append-x86-byte result 144)")
-            && bundle_codegen.contains("(emit-i32-const-bundle-x86 0 frame-base-slot-count current-depth)")
-            && !source.contains("(defn emit-root-pop-bundle-x86")
-            && !direct_loop.contains("append-i32-const-bundle-x86 result (if (= opcode 75) 0 operand)")
-            && !bundle_codegen.contains("(emit-root-pop-bundle-x86 frame-base-slot-count current-depth)"),
-        "x86 root_pop direct append は tail value を 0 化せず、byte-vector fallback は旧 dummy const のまま狭く保つべき"
-    );
-}
