@@ -975,6 +975,9 @@ fn test_linux_x86_metadata_rel32_target_helper_preserves_negative_user_call_targ
         helper.contains(
             "(let [call-offset (x86-first-rel32-offset-in-window bytes offset 0 size)]"
         ) && helper.contains("base-offset-ref (ref-new base-offset)")
+            && helper.contains(
+                "(defn x86-rel32-target-at-offset-base [bytes call-offset base-offset]"
+            )
             && helper.contains("call-offset-ref (ref-new call-offset)")
             && helper.contains("(x86-rel32-at bytes (ref-get call-offset-ref))")
             && helper.contains(
@@ -1809,7 +1812,9 @@ fn test_linux_x86_representative_seed_has_opcode40_call_replay_metadata_diagnost
                 "(codegen-x86-opcode-call-bundle operand (ref-get offset-ref) starts direct-context)"
             )
             && source.contains("direct-call-offset (- call-next-offset 5)")
-            && source.contains("(x86-rel32-at direct direct-call-offset)")
+            && source.contains(
+                "(x86-rel32-target-at-offset-base direct direct-call-offset (ref-get offset-ref))"
+            )
             && source.contains("(print function-start-base)")
             && source.contains("(print-x86-call-control-replay-diagnostic control-ctx idx opcode operand offset size)"),
         "Linux x86 segmented seed は opcode 40 user call の IR row / direct bundle / emitted bytes / rel32 target を同一 metadata row で出せるべき"
@@ -5774,6 +5779,20 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                   target))))))
       -1)))
 
+(defn x86-rel32-target-at-offset-base [bytes call-offset base-offset]
+  (let [base-offset-ref (ref-new base-offset)
+        call-offset-ref (ref-new call-offset)]
+    (do
+      (root_push base-offset-ref)
+      (root_push call-offset-ref)
+      (let [rel32 (x86-rel32-at bytes (ref-get call-offset-ref))]
+        (do
+          (let [target (+ (ref-get base-offset-ref) (+ (ref-get call-offset-ref) (+ 5 rel32)))]
+            (do
+              (root_pop)
+              (root_pop)
+              target)))))))
+
 (defn pack-byte-chunk-2 [bytes idx len]
   (+ (byte-at-or-zero bytes idx len)
      (* (byte-at-or-zero bytes (+ idx 1) len) 256)))
@@ -7078,7 +7097,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
 	                      (root_push direct)
 	                      (let [direct-len (vector-length direct)
 	                            direct-call-offset (- call-next-offset 5)
-	                            direct-target (+ (ref-get offset-ref) (+ direct-call-offset (+ 5 (x86-rel32-at direct direct-call-offset))))]
+	                            direct-target (x86-rel32-target-at-offset-base direct direct-call-offset (ref-get offset-ref))]
 	                        (do
 	                          (print 9000000046)
 	                          (print idx)
