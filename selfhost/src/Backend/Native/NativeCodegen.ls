@@ -10862,7 +10862,23 @@
         (if (= (direct-append-x86-opcode opcode) 8)
           (do
             (if (= opcode 75)
-              (append-root-pop-bundle-x86 result frame-base-slot-count current-depth)
+              (let [core-depth (append-native-value-window-overflow-spills-x86 result frame-base-slot-count current-depth)]
+                (do
+                  (if (>= core-depth 1)
+                    (do
+                      (if (>= core-depth 2)
+                        (do
+                          (append-shift-native-value-window-x86-loop result frame-base-slot-count (- core-depth 3))
+                          (append-x86-rbp-disp32 result 72 137 141 (native-value-window-spill-offset frame-base-slot-count 0)))
+                        0)
+                      (append-mov-rcx-rax-x86 result)
+                      (append-x86-byte result 144)
+                      (append-x86-byte result 144)
+                      (append-x86-byte result 144)
+                      (append-x86-byte result 144)
+                      (append-x86-byte result 144))
+                    (append-i32-const-bundle-x86 result 0 frame-base-slot-count current-depth))
+                  0))
               (append-i32-const-bundle-x86 result operand frame-base-slot-count current-depth))
             (let [next-state (make-x86-control-loop-state (+ idx 1) (- remaining 1))]
               (generate-native-control-instr-bundle-loop-x86-with-context ctx next-state)))
@@ -11218,29 +11234,6 @@
   (do
     (append-x86-byte result 49)
     (append-x86-byte result 192)))
-
-(defn append-x86-five-nops [result]
-  (do
-    (append-x86-byte result 144)
-    (append-x86-byte result 144)
-    (append-x86-byte result 144)
-    (append-x86-byte result 144)
-    (append-x86-byte result 144)))
-
-(defn append-root-pop-bundle-x86 [result frame-base-slot-count current-depth]
-  (let [core-depth (append-native-value-window-overflow-spills-x86 result frame-base-slot-count current-depth)]
-    (do
-      (if (>= core-depth 1)
-        (do
-          (if (>= core-depth 2)
-            (do
-              (append-shift-native-value-window-x86-loop result frame-base-slot-count (- core-depth 3))
-              (append-x86-rbp-disp32 result 72 137 141 (native-value-window-spill-offset frame-base-slot-count 0)))
-            0)
-          (append-mov-rcx-rax-x86 result)
-          (append-x86-five-nops result))
-        (append-i32-const-bundle-x86 result 0 frame-base-slot-count current-depth))
-      0)))
 
 (defn append-root-set-bundle-x86 [result frame-base-slot-count current-depth]
   (do

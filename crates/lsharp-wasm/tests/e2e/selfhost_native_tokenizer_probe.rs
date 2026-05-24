@@ -289,8 +289,11 @@ fn native_codegen_x86_root_pop_direct_append_preserves_existing_value_window() {
         .expect("NativeCodegen.ls に x86 bundle codegen が存在すること");
 
     assert!(
-        source.contains("(defn append-root-pop-bundle-x86")
-            && direct_loop.contains("(append-root-pop-bundle-x86 result frame-base-slot-count current-depth)")
+        !source.contains("(defn append-root-pop-bundle-x86")
+            && !source.contains("(defn append-x86-five-nops")
+            && direct_loop.contains("(let [core-depth (append-native-value-window-overflow-spills-x86 result frame-base-slot-count current-depth)]")
+            && direct_loop.contains("(append-mov-rcx-rax-x86 result)")
+            && direct_loop.contains("(append-x86-byte result 144)")
             && bundle_codegen.contains("(emit-i32-const-bundle-x86 0 frame-base-slot-count current-depth)")
             && !source.contains("(defn emit-root-pop-bundle-x86")
             && !direct_loop.contains("append-i32-const-bundle-x86 result (if (= opcode 75) 0 operand)")
