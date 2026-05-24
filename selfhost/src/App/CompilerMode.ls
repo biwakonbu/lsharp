@@ -1206,6 +1206,85 @@
               (print -1)
               (root_pop)
               0)))))))
+(defn print-tokenize-step-progress-probe [src]
+  (let [src-len (string-length src)
+    tokens0 (vector-new 32)]
+    (do
+      (root_push src)
+      (root_push tokens0)
+      (print 9000000059)
+      (print (string-char-at src 0))
+      (print (skip-ws-loop src 0 src-len))
+      (print (lex-one src 0 src-len))
+      (let [manual-base (vector-new 32)]
+        (do
+          (root_push manual-base)
+          (let [manual-kind (vector-push manual-base 0)]
+            (do
+              (root_push manual-kind)
+              (let [manual-start (vector-push manual-kind 0)]
+                (do
+                  (root_push manual-start)
+                  (let [manual-token (vector-push manual-start 1)]
+                    (do
+                      (root_push manual-token)
+                      (print 9000000062)
+                      (print (vector-length manual-kind))
+                      (print (vector-length manual-start))
+                      (print (vector-length manual-token))
+                      (root_pop)))
+                  (root_pop)))
+              (root_pop)))
+          (root_pop)))
+      (let [manual-append-base (vector-new 32)]
+        (do
+          (root_push manual-append-base)
+          (let [manual-appended (append-span-token manual-append-base 0 0 1)]
+            (do
+              (root_push manual-appended)
+              (print 9000000063)
+              (print (vector-length manual-appended))
+              (let [manual-state (make-tokenize-state 0 1 manual-appended)]
+                (do
+                  (root_push manual-state)
+                  (let [manual-state-tokens (vector-get manual-state 2)]
+                    (do
+                      (root_push manual-state-tokens)
+                      (print 9000000064)
+                      (print (vector-get manual-state 0))
+                      (print (vector-get manual-state 1))
+                      (print (vector-length manual-state-tokens))
+                      (root_pop)))
+                  (root_pop)))
+              (root_pop)))
+          (root_pop)))
+      (let [step1 (tokenize-spans-step src 0 src-len tokens0)]
+        (do
+          (root_push step1)
+          (let [tokens1 (vector-get step1 2)]
+            (do
+              (root_push tokens1)
+              (print 9000000060)
+              (print (vector-get step1 0))
+              (print (vector-get step1 1))
+              (print (vector-length tokens1))
+              (root_pop)))
+          (let [step512 (tokenize-spans-step-512 src 0 src-len tokens0)]
+            (do
+              (root_push step512)
+              (let [tokens512 (vector-get step512 2)]
+                (do
+                  (root_push tokens512)
+                  (print 9000000061)
+                  (print (vector-get step512 0))
+                  (print (vector-get step512 1))
+                  (print (vector-length tokens512))
+                  (root_pop)))
+              (root_pop)))
+          (root_pop)
+          (root_pop)
+          (root_pop)
+          0)))))
 (defn compile-file-mode-entry-shape-progress-probe []
   (let [path (command-line-arg 1)]
     (do
@@ -1217,6 +1296,7 @@
           (root_push src)
           (print 9000000054)
           (print (string-length src))
+          (print-tokenize-step-progress-probe src)
           (let [spans (tokenize-with-spans src)]
             (do
               (root_push spans)

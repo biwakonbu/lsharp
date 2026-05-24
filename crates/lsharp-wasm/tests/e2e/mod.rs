@@ -25,6 +25,7 @@ mod selfhost_module_resolver_cache;
 mod selfhost_native_differential;
 mod selfhost_native_stage23_gap;
 mod selfhost_native_stage_chain;
+mod selfhost_native_tokenizer_probe;
 mod selfhost_parser_forms;
 mod selfhost_parser_metadata_forms;
 mod selfhost_rooting_parity;
