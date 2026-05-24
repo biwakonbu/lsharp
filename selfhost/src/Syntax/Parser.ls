@@ -832,36 +832,17 @@
       (let [body (make-int-node 0)]
         (do
           (root_push body)
-          (let [parsed (vector-push defn-node body)]
+          (let [parsed (finalize-defn-body-v3 defn-node param-count body)]
             (do
               (root_pop)
               parsed)))))
     (let [body (parse-expr-v3 spans pos-ref src)]
       (do
-        (root_push defn-node)
         (root_push body)
-        (let [body-ref (ref-new body)]
+        (let [parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)]
           (do
-            (root_push body-ref)
-            (p-expect spans pos-ref 1) ;; ) を消費
-            (let [body-idx (+ 3 param-count)
-                  placeholder (make-int-node 0)
-                  body-node (ref-get body-ref)]
-              (do
-                (root_push placeholder)
-                (root_push body-node)
-                (let [node-with-placeholder (vector-push defn-node placeholder)]
-                  (do
-                    (root_push node-with-placeholder)
-                    (let [parsed (vector-set-at-rooted-v3 node-with-placeholder body-idx body-node)]
-                      (do
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        (root_pop)
-                        parsed))))))))))))
+            (root_pop)
+            parsed))))))
 
 (defn parse-defn-bodyless-or-body-with-meta-v3 [spans pos-ref src defn-node param-count meta]
   (maybe-append-defn-meta-v3
@@ -1808,6 +1789,22 @@
         parsed))))
 
 ;; === defn 式 ===
+(defn parse-defn-tail-v3 [spans pos-ref src defn-node param-count]
+  (do
+    (root_push defn-node)
+    (skip-optional-type-sig-v3 spans pos-ref src)
+    (skip-optional-where-v3 spans pos-ref src)
+    (let [parsed
+      (if (== (colon-directive-v3 spans pos-ref src) 1)
+        (let [meta (parse-defn-metadata-v3 spans pos-ref src)]
+          (parse-defn-bodyless-or-body-with-meta-v3
+            spans pos-ref src defn-node param-count meta))
+        (parse-defn-bodyless-or-body-v3
+          spans pos-ref src defn-node param-count))]
+      (do
+        (root_pop)
+        parsed))))
+
 (defn parse-defn-v3 [spans pos-ref src]
   (do
     (p-advance pos-ref) ;; defn を消費
@@ -1819,36 +1816,20 @@
         (p-expect spans pos-ref 2) ;; [ を消費
         (let [result (vector-push-triple-rooted-v3 (vector-new 8) 20 nh 0)]
           (do
-            (let [result-slot (root_push result)
-              with-params (parse-params-v3 spans pos-ref src result 0)]
+            (root_push result)
+            (let [with-params (parse-params-v3 spans pos-ref src result 0)]
               (do
                 (root_push with-params)
                 (let [param-count (- (vector-length with-params) 3)
                   defn-node (vector-set-at-rooted-v3 with-params 2 param-count)]
                   (do
-                    (root_set result-slot defn-node)
                     (root_push defn-node)
-                    (skip-optional-type-sig-v3 spans pos-ref src)
-                    (skip-optional-where-v3 spans pos-ref src)
-                    (let [parsed
-                      (if (== (colon-directive-v3 spans pos-ref src) 1)
-                        (let [meta (parse-defn-metadata-v3 spans pos-ref src)]
-                          (parse-defn-bodyless-or-body-with-meta-v3
-                            spans pos-ref src defn-node param-count meta))
-                        (parse-defn-bodyless-or-body-v3
-                          spans pos-ref src defn-node param-count))]
+                    (let [parsed (parse-defn-tail-v3 spans pos-ref src defn-node param-count)]
                       (do
-                        (root_set result-slot parsed)
-                        (let [parsed-ref (ref-new parsed)]
-                          (do
-                            (root_push parsed-ref)
-                            (root_pop)
-                            (root_pop)
-                            (root_pop)
-                            (let [final (ref-get parsed-ref)]
-                              (do
-                                (root_pop)
-                                final))))))))))))))))
+                        (root_pop)
+                        (root_pop)
+                        (root_pop)
+                        parsed)))))))))))
 
 ;; === defmacro 宣言 ===
 (defn parse-defmacro-v3 [spans pos-ref src]
@@ -2251,7 +2232,7 @@
         expr (parse-expr-v3 spans pos-ref src)]
         (do
           (root_push expr)
-          (let [next-result (vector-push result expr)
+          (let [next-result (vector-push-single-rooted-v3 result expr)
             state (do
               (root_set result-slot next-result)
               (make-parse-loop-state 0 next-result))]

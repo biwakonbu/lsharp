@@ -26,6 +26,12 @@
 (defn span-kind-or-minus-one [spans idx] (if (< (* idx 3) (vector-length spans)) (span-kind spans idx) -1))
 (defn span-start-or-minus-one [spans idx] (if (< (+ (* idx 3) 1) (vector-length spans)) (span-start spans idx) -1))
 (defn span-end-or-minus-one [spans idx] (if (< (+ (* idx 3) 2) (vector-length spans)) (span-end spans idx) -1))
+(defn find-span-kind-index [spans idx n target-kind]
+  (if (>= idx n)
+    -1
+    (if (= (span-kind spans idx) target-kind)
+      idx
+      (find-span-kind-index spans (+ idx 1) n target-kind))))
 (defn push-int-vector-local [dst value] (do (root_push dst) (let [next-dst (vector-push dst value)] (do (root_pop) next-dst))))
 (defn ref-map-get-safe [map-ref key]
   (let [map-value (ref-get map-ref)]
@@ -1334,6 +1340,79 @@
           (root_pop)
           (root_pop)
           0)))))
+(defn print-direct-defn-build-progress-probe [spans first-defn-span src]
+  (if (< first-defn-span 0)
+    0
+    (let [pos-ref (ref-new first-defn-span)]
+      (do
+        (root_push pos-ref)
+        (print 180)
+        (print (ref-get pos-ref))
+        (print (p-current spans pos-ref))
+        (p-advance pos-ref)
+        (let [ns (p-start spans pos-ref)
+          ne (p-end spans pos-ref)
+          nh (name-hash src ns ne)]
+          (do
+            (print 181)
+            (print (ref-get pos-ref))
+            (print (p-current spans pos-ref))
+            (p-advance pos-ref)
+            (print 182)
+            (print (ref-get pos-ref))
+            (print (p-current spans pos-ref))
+            (p-expect spans pos-ref 2)
+            (print 183)
+            (print (ref-get pos-ref))
+            (print (p-current spans pos-ref))
+            (let [result (vector-push-triple-rooted-v3 (vector-new 8) 20 nh 0)]
+              (do
+                (root_push result)
+                (print 184)
+                (print (vector-get result 0))
+                (print (vector-length result))
+                (let [with-params (parse-params-v3 spans pos-ref src result 0)]
+                  (do
+                    (root_push with-params)
+                    (let [param-count (- (vector-length with-params) 3)
+                      defn-node (vector-set-at-rooted-v3 with-params 2 param-count)]
+                      (do
+                        (root_push defn-node)
+                        (print 185)
+                        (print (vector-get with-params 0))
+                        (print (vector-length with-params))
+                        (print param-count)
+                        (print (ref-get pos-ref))
+                        (print (p-current spans pos-ref))
+                        (print 186)
+                        (print (vector-get defn-node 0))
+                        (print (vector-length defn-node))
+                        (skip-optional-type-sig-v3 spans pos-ref src)
+                        (skip-optional-where-v3 spans pos-ref src)
+                        (print 187)
+                        (print (ref-get pos-ref))
+                        (print (p-current spans pos-ref))
+                        (let [body (parse-expr-v3 spans pos-ref src)]
+                          (do
+                            (root_push body)
+                            (print 188)
+                            (print (vector-get body 0))
+                            (print (vector-length body))
+                            (print (ref-get pos-ref))
+                            (let [parsed (finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)]
+                              (do
+                                (root_push parsed)
+                                (print 189)
+                                (print (vector-get parsed 0))
+                                (print (vector-length parsed))
+                                (print (ref-get pos-ref))
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                (root_pop)
+                                0))))))))))))))))
 (defn compile-file-mode-entry-shape-progress-probe []
   (let [path (command-line-arg 1)]
     (do
@@ -1503,6 +1582,72 @@
                       (print (decl-tag-or-minus-one decls0 1))
                       (print (decl-tag-or-minus-one decls0 2))
                       (print (decl-tag-or-minus-one decls0 3))
+                      (let [reparsed (parse-program src0)
+                        spans0 (tokenize-with-spans src0)
+                        span-count (/ (vector-length spans0) 3)
+                        first-defn-span (find-span-kind-index spans0 0 span-count 30)]
+                        (do
+                          (root_push reparsed)
+                          (root_push spans0)
+                          (print 157)
+                          (print (vector-length reparsed))
+                          (print (decl-tag-or-minus-one reparsed 0))
+                          (print (decl-tag-or-minus-one reparsed 1))
+                          (print (decl-tag-or-minus-one reparsed 2))
+                          (print (decl-tag-or-minus-one reparsed 3))
+                          (print 158)
+                          (print first-defn-span)
+                          (print (span-kind-or-minus-one spans0 (- first-defn-span 1)))
+                          (print (span-kind-or-minus-one spans0 first-defn-span))
+                          (print (span-kind-or-minus-one spans0 (+ first-defn-span 1)))
+                          (print (span-kind-or-minus-one spans0 (+ first-defn-span 2)))
+                          (print (span-kind-or-minus-one spans0 (+ first-defn-span 3)))
+                          (print (span-kind-or-minus-one spans0 (+ first-defn-span 4)))
+                          (print (span-kind-or-minus-one spans0 (+ first-defn-span 5)))
+                          (print (span-kind-or-minus-one spans0 (+ first-defn-span 6)))
+                          (print (span-kind-or-minus-one spans0 (+ first-defn-span 7)))
+                          (if (>= first-defn-span 0)
+                            (let [direct-pos (ref-new (- first-defn-span 1))]
+                              (do
+                                (root_push direct-pos)
+                                (let [direct-node (parse-expr-v3 spans0 direct-pos src0)]
+                                  (do
+                                    (root_push direct-node)
+                                    (print (vector-get direct-node 0))
+                                    (print (vector-length direct-node))
+                                    (print (ref-get direct-pos))
+                                    (print (vector-get direct-node 1))
+                                    (print (vector-get direct-node 2))
+                                    (print (vector-get direct-node 3))
+                                    (print (vector-get direct-node 4))
+                                    (print (vector-get direct-node 5))
+                                    (print (vector-get direct-node 6))
+                                    (print (vector-get direct-node 7))
+                                    (print (vector-get direct-node 8))
+                                    (root_pop)
+                                    (root_pop)))))
+                            0)
+                          (print 159)
+                          (if (>= first-defn-span 0)
+                            (let [direct-defn-pos (ref-new first-defn-span)]
+                              (do
+                                (root_push direct-defn-pos)
+                                (let [direct-defn (parse-defn-v3 spans0 direct-defn-pos src0)]
+                                  (do
+                                    (root_push direct-defn)
+                                    (print (vector-get direct-defn 0))
+                                    (print (vector-length direct-defn))
+                                    (print (ref-get direct-defn-pos))
+                                    (print (vector-get direct-defn 1))
+                                    (print (vector-get direct-defn 2))
+                                    (print (vector-get direct-defn 3))
+                                    (print (vector-get direct-defn 4))
+                                    (root_pop)
+                                    (root_pop)))))
+                            0)
+                          (print-direct-defn-build-progress-probe spans0 first-defn-span src0)
+                          (root_pop)
+                          (root_pop)))
                       (let [debug-functions (compile-defn-functions-chunked-step-progress-debug decls0 0 (vector-length decls0) src0 ftable debug-data-ref (vector-new 8))]
                         (do
                           (root_push debug-functions)

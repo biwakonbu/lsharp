@@ -8,9 +8,8 @@ fn workspace_root() -> std::path::PathBuf {
 
 #[test]
 fn compiler_mode_tokenize_step_probe_distinguishes_append_state_boundaries() {
-    let source =
-        std::fs::read_to_string(workspace_root().join("selfhost/src/App/CompilerMode.ls"))
-            .expect("CompilerMode.ls を読めること");
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/App/CompilerMode.ls"))
+        .expect("CompilerMode.ls を読めること");
 
     assert!(
         source.contains("(defn print-tokenize-step-progress-probe [src]")
@@ -32,9 +31,8 @@ fn compiler_mode_tokenize_step_probe_distinguishes_append_state_boundaries() {
             && source.contains("(append-span-token tokens0 manual-kind2 manual-ws manual-end)")
             && source.contains("(print (vector-length manual-next))")
             && source.contains("(print 9000000066)")
-            && source.contains(
-                "(make-tokenize-state-from-appended-tokens 0 manual-end manual-next)"
-            )
+            && source
+                .contains("(make-tokenize-state-from-appended-tokens 0 manual-end manual-next)")
             && source.contains("(let [manual-step-tokens (vector-get manual-step-state 2)]")
             && source.contains("(print 9000000067)")
             && source.contains("(append-span-token-state tokens0 0 1 0 0 1)")
@@ -80,15 +78,14 @@ fn lexer_roots_appended_tokens_before_state_storage() {
         helper.contains("(root_push next-tokens)")
             && helper.contains("(make-tokenize-state done next-pos next-tokens)")
             && helper.contains("(root_pop)")
-            && append_state.contains(
-                "(make-tokenize-state-from-appended-tokens done next-pos next-tokens)"
-            )
+            && append_state
+                .contains("(make-tokenize-state-from-appended-tokens done next-pos next-tokens)")
             && append_state_end
                 .contains("(make-tokenize-state-from-appended-tokens done end next-tokens)")
-            && append_lex.contains("(make-tokenize-state-from-appended-tokens 1 start next-tokens)")
-            && append_lex.contains(
-                "(make-tokenize-state-from-appended-tokens 0 end-pos next-tokens)"
-            ),
+            && append_lex
+                .contains("(make-tokenize-state-from-appended-tokens 1 start next-tokens)")
+            && append_lex
+                .contains("(make-tokenize-state-from-appended-tokens 0 end-pos next-tokens)"),
         "append-span-token の戻り値は x86 stage2 native で state 格納前に caller 側 root が必要"
     );
 }
@@ -137,19 +134,38 @@ fn lexer_tokenize_spans_step_delegates_append_state_to_small_helpers() {
 
 #[test]
 fn compiler_mode_compile_pair_probe_prints_first_pair_debug_compile() {
-    let source =
-        std::fs::read_to_string(workspace_root().join("selfhost/src/App/CompilerMode.ls"))
-            .expect("CompilerMode.ls を読めること");
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/App/CompilerMode.ls"))
+        .expect("CompilerMode.ls を読めること");
     let probe = source
         .split("(defn compile-file-mode-cache-compile-pair-progress-probe []")
         .nth(1)
-        .and_then(|tail| tail.split("(defn compile-file-mode-ast-chunked-step-progress-probe").next())
+        .and_then(|tail| {
+            tail.split("(defn compile-file-mode-ast-chunked-step-progress-probe")
+                .next()
+        })
         .expect("CompilerMode.ls に compile pair progress probe が存在すること");
 
     assert!(
         probe.contains("(print 155)")
             && probe.contains("(decl-tag-or-minus-one decls0 0)")
             && probe.contains("(decl-tag-or-minus-one decls0 3)")
+            && probe.contains("(let [reparsed (parse-program src0)")
+            && probe.contains("first-defn-span (find-span-kind-index spans0 0 span-count 30)")
+            && probe.contains("(print 157)")
+            && probe.contains("(decl-tag-or-minus-one reparsed 1)")
+            && probe.contains("(print 158)")
+            && probe.contains("(span-kind-or-minus-one spans0 (- first-defn-span 1))")
+            && probe.contains("(span-kind-or-minus-one spans0 (+ first-defn-span 7))")
+            && probe.contains("(let [direct-pos (ref-new (- first-defn-span 1))]")
+            && probe.contains("(let [direct-node (parse-expr-v3 spans0 direct-pos src0)]")
+            && probe.contains("(print (vector-get direct-node 8))")
+            && probe.contains("(print 159)")
+            && probe.contains("(let [direct-defn-pos (ref-new first-defn-span)]")
+            && probe.contains("(let [direct-defn (parse-defn-v3 spans0 direct-defn-pos src0)]")
+            && source.contains("(defn print-direct-defn-build-progress-probe [spans first-defn-span src]")
+            && source.contains("(print 184)")
+            && source.contains("(print 189)")
+            && probe.contains("(print-direct-defn-build-progress-probe spans0 first-defn-span src0)")
             && probe.contains(
                 "(compile-defn-functions-chunked-step-progress-debug decls0 0 (vector-length decls0) src0 ftable debug-data-ref (vector-new 8))"
             )
@@ -157,5 +173,63 @@ fn compiler_mode_compile_pair_probe_prints_first_pair_debug_compile() {
             && probe.contains("(print (vector-length debug-functions))")
             && probe.contains("(print (vector-length (ref-get debug-data-ref)))"),
         "compile pair probe は first pair の AST tag と debug compile の関数数を出すべき"
+    );
+}
+
+#[test]
+fn parser_program_step_delegates_expr_append_to_rooted_helper() {
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
+        .expect("Parser.ls を読めること");
+    let step = source
+        .split("(defn parse-program-step-v3 [spans pos-ref src result]")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn parse-program-step-64-loop-bounded")
+                .next()
+        })
+        .expect("Parser.ls に parse-program-step-v3 が存在すること");
+
+    assert!(
+        step.contains("(let [next-result (vector-push-single-rooted-v3 result expr)")
+            && step.contains("(root_set result-slot next-result)")
+            && !step.contains("(let [next-result (vector-push result expr)"),
+        "parse-program-step-v3 は top-level AST node append を小さい rooted helper に委譲するべき"
+    );
+}
+
+#[test]
+fn parser_defn_body_finalize_uses_small_rooted_helper() {
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
+        .expect("Parser.ls を読めること");
+    let body = source
+        .split("(defn parse-defn-bodyless-or-body-v3 [spans pos-ref src defn-node param-count]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defn-bodyless-or-body-with-meta-v3").next())
+        .expect("Parser.ls に parse-defn-bodyless-or-body-v3 が存在すること");
+
+    assert!(
+        body.contains("(finalize-defn-body-v3 defn-node param-count body)")
+            && body.contains("(finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)")
+            && !body.contains("node-with-placeholder"),
+        "parse-defn body finalize は x86 stage2 の local 保持崩れを避けるため小さい rooted helper に委譲するべき"
+    );
+}
+
+#[test]
+fn parser_parse_defn_delegates_tail_without_ref_roundtrip() {
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
+        .expect("Parser.ls を読めること");
+    let parse_defn = source
+        .split("(defn parse-defn-v3 [spans pos-ref src]")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn parse-defmacro-v3").next())
+        .expect("Parser.ls に parse-defn-v3 が存在すること");
+
+    assert!(
+        source.contains("(defn parse-defn-tail-v3 [spans pos-ref src defn-node param-count]")
+            && parse_defn.contains("(parse-defn-tail-v3 spans pos-ref src defn-node param-count)")
+            && !parse_defn.contains("parsed-ref")
+            && !parse_defn.contains("(root_set result-slot parsed)"),
+        "parse-defn-v3 は x86 stage2 の戻り値 local 崩れを避けるため tail helper へ委譲するべき"
     );
 }
