@@ -211,12 +211,17 @@ fn parser_defn_body_finalize_uses_small_rooted_helper() {
     let body = source
         .split("(defn parse-defn-bodyless-or-body-v3 [spans pos-ref src defn-node param-count]")
         .nth(1)
-        .and_then(|tail| tail.split("(defn parse-defn-bodyless-or-body-with-meta-v3").next())
+        .and_then(|tail| {
+            tail.split("(defn parse-defn-bodyless-or-body-with-meta-v3")
+                .next()
+        })
         .expect("Parser.ls に parse-defn-bodyless-or-body-v3 が存在すること");
 
     assert!(
         body.contains("(finalize-defn-body-v3 defn-node param-count body)")
-            && body.contains("(finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)")
+            && body.contains(
+                "(finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)"
+            )
             && !body.contains("node-with-placeholder"),
         "parse-defn body finalize は x86 stage2 の local 保持崩れを避けるため小さい rooted helper に委譲するべき"
     );
@@ -237,8 +242,9 @@ fn parser_parse_defn_uses_direct_tail_sequence_without_ref_roundtrip() {
             && parse_defn.contains("(skip-optional-where-v3 spans pos-ref src)")
             && parse_defn.contains("(parse-defn-bodyless-or-body-with-meta-v3")
             && parse_defn.contains("(let [body (parse-expr-v3 spans pos-ref src)]")
-            && parse_defn
-                .contains("(finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)")
+            && parse_defn.contains(
+                "(finalize-defn-parsed-body-v3 spans pos-ref defn-node param-count body)"
+            )
             && !parse_defn.contains("(parse-defn-tail-v3 spans pos-ref src defn-node param-count)")
             && !parse_defn.contains("(parse-defn-bodyless-or-body-v3\n")
             && !parse_defn.contains("parsed-ref"),

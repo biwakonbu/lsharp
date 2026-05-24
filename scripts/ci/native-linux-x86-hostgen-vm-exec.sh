@@ -210,6 +210,7 @@ limactl shell "${VM_NAME}" -- env \
   LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_SIZE:-8}" \
   LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_CHUNK_RETRIES:-1}" \
   LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES="${LSHARP_NATIVE_LINUX_X86_ACTUAL_HEAP_BYTES:-4294967296}" \
+  LSHARP_NATIVE_LINUX_X86_VM_REPLAY_LOCK_DIR="${LSHARP_NATIVE_LINUX_X86_VM_REPLAY_LOCK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-replay.lock}" \
   LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END:-}" \
   LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS="${LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS:-}" \
@@ -1095,12 +1096,47 @@ STAGE2_METADATA_START="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_START:-}"
 STAGE2_METADATA_END="${LSHARP_NATIVE_LINUX_X86_STAGE2_METADATA_END:-}"
 STAGE3_PROGRESS="${LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS:-}"
 STAGE3_PROGRESS_ONLY="${LSHARP_NATIVE_LINUX_X86_STAGE3_PROGRESS_ONLY:-}"
+VM_REPLAY_LOCK_DIR="${LSHARP_NATIVE_LINUX_X86_VM_REPLAY_LOCK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-replay.lock}"
+REPLAY_LOCK_ACQUIRED=0
 if [[ -n "${STAGE3_PROGRESS_ONLY}" ]]; then
   STAGE3_PROGRESS=1
 fi
 mkdir -p actual-stage2 actual-stage3
 cp -a actual-stage1/src actual-stage2/src
 cp -a actual-stage1/src actual-stage3/src
+
+release_actual_replay_lock() {
+  local holder_pid=""
+  if [[ "${REPLAY_LOCK_ACQUIRED}" -ne 1 ]]; then
+    return 0
+  fi
+  holder_pid="$(cat "${VM_REPLAY_LOCK_DIR}/pid" 2>/dev/null || true)"
+  if [[ "${holder_pid}" = "$$" ]]; then
+    rm -rf "${VM_REPLAY_LOCK_DIR}"
+  fi
+}
+
+acquire_actual_replay_lock() {
+  local current_pid=$$
+  local holder_pid=""
+  local holder_work_dir=""
+  while ! mkdir "${VM_REPLAY_LOCK_DIR}" 2>/dev/null; do
+    holder_pid="$(cat "${VM_REPLAY_LOCK_DIR}/pid" 2>/dev/null || true)"
+    holder_work_dir="$(cat "${VM_REPLAY_LOCK_DIR}/work_dir" 2>/dev/null || true)"
+    if [[ "${holder_pid}" =~ ^[0-9]+$ ]] && ps -p "${holder_pid}" >/dev/null 2>&1; then
+      echo "ERROR: VM actual replay lock is held: current_pid=${current_pid} holder_pid=${holder_pid} holder_work_dir=${holder_work_dir}" >&2
+      ps -p "${holder_pid}" -o pid,ppid,etime,%mem,%cpu,comm,args >&2 || true
+      return 90
+    fi
+    echo "WARN: removing stale VM actual replay lock: ${VM_REPLAY_LOCK_DIR} holder_pid=${holder_pid} current_pid=${current_pid}" >&2
+    rm -rf "${VM_REPLAY_LOCK_DIR}"
+  done
+  REPLAY_LOCK_ACQUIRED=1
+  printf '%s\n' "$$" >"${VM_REPLAY_LOCK_DIR}/pid"
+  printf '%s\n' "${VM_WORK_DIR}" >"${VM_REPLAY_LOCK_DIR}/work_dir"
+  date -u '+%Y-%m-%dT%H:%M:%SZ' >"${VM_REPLAY_LOCK_DIR}/started_at"
+  trap release_actual_replay_lock EXIT
+}
 
 write_actual_selfregen_failure_summary() {
   local phase="$1"
@@ -1269,6 +1305,7 @@ collect_stage3_progress_markers() {
   fi
 }
 
+acquire_actual_replay_lock
 python3 materialize-actual-bundle.py actual-stage1 stage1-code.bin entrypoint-offset.txt
 set +e
 run_actual_stage_chunked actual-stage1 actual-stage2-stdout.txt actual-stage2-stderr.txt

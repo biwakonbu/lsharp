@@ -536,6 +536,59 @@ fn test_native_linux_x86_hostgen_vm_script_forwards_actual_chunk_env_to_guest() 
 }
 
 #[test]
+fn test_native_linux_x86_hostgen_vm_script_guards_actual_replay_with_vm_side_lock() {
+    let script_path =
+        selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
+    let script = std::fs::read_to_string(&script_path)
+        .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
+    let vm_exec = script
+        .split(r#"limactl shell "${VM_NAME}" -- env"#)
+        .nth(1)
+        .and_then(|tail| tail.split("<<'VM_SCRIPT'").next())
+        .expect("VM 実行 heredoc は env 経由で actual replay lock 設定を渡すべき");
+    let acquire_body = shell_function_body(&script, "acquire_actual_replay_lock");
+    let release_body = shell_function_body(&script, "release_actual_replay_lock");
+
+    assert!(
+        vm_exec.contains(
+            r#"LSHARP_NATIVE_LINUX_X86_VM_REPLAY_LOCK_DIR="${LSHARP_NATIVE_LINUX_X86_VM_REPLAY_LOCK_DIR:-/tmp/lsharp-native-linux-x86-hostgen-vm-replay.lock}""#
+        ),
+        "hostgen VM script は VM 側 actual replay lock path を env 経由で渡すべき"
+    );
+    assert!(
+        acquire_body.contains(r#"mkdir "${VM_REPLAY_LOCK_DIR}""#)
+            && acquire_body.contains(r#"current_pid=$$"#)
+            && acquire_body.contains("holder_pid")
+            && acquire_body.contains("ps -p")
+            && acquire_body.contains("WARN: removing stale VM actual replay lock")
+            && acquire_body.contains(r#"trap release_actual_replay_lock EXIT"#),
+        "actual replay lock は mkdir で atomic acquire し、live holder / stale cleanup / current PID を報告するべき"
+    );
+    assert!(
+        release_body
+            .contains(r#"holder_pid="$(cat "${VM_REPLAY_LOCK_DIR}/pid" 2>/dev/null || true)""#)
+            && release_body.contains(r#"[[ "${holder_pid}" = "$$" ]]"#)
+            && release_body.contains(r#"rm -rf "${VM_REPLAY_LOCK_DIR}""#),
+        "actual replay lock release は自分が保持する lock だけを解放するべき"
+    );
+
+    let acquire_pos = script
+        .find("\nacquire_actual_replay_lock\n")
+        .expect("actual replay lock acquire 呼び出しが必要");
+    let materialize_pos = script
+        .find("python3 materialize-actual-bundle.py actual-stage1 stage1-code.bin entrypoint-offset.txt")
+        .expect("actual stage1 materialize が必要");
+    let stage2_pos = script
+        .find("run_actual_stage_chunked actual-stage1 actual-stage2-stdout.txt actual-stage2-stderr.txt")
+        .expect("actual stage2 chunked run が必要");
+
+    assert!(
+        acquire_pos < materialize_pos && materialize_pos < stage2_pos,
+        "actual replay lock は actual stage1 materialize と heavy chunked replay の前に取得するべき"
+    );
+}
+
+#[test]
 fn test_native_linux_x86_hostgen_vm_decoder_writes_stage_code_segment_table() {
     let script_path =
         selfhost_project_root().join("scripts/ci/native-linux-x86-hostgen-vm-exec.sh");
@@ -871,7 +924,7 @@ fn test_selfhost_compiler_mode_has_entry_shape_progress_probe() {
     let source = std::fs::read_to_string(workspace_root_relative_path(std::path::PathBuf::from(
         "selfhost/src/App/CompilerMode.ls",
     )))
-        .expect("CompilerMode.ls を読めること");
+    .expect("CompilerMode.ls を読めること");
 
     assert!(
         source.contains("(defn find-defn-index-by-hash [decls idx len target-hash]")
@@ -972,12 +1025,11 @@ fn test_linux_x86_metadata_rel32_target_helper_preserves_negative_user_call_targ
         .expect("Linux x86 seed に rel32 target helper が存在すること");
 
     assert!(
-        helper.contains(
-            "(let [call-offset (x86-first-rel32-offset-in-window bytes offset 0 size)]"
-        ) && helper.contains("base-offset-ref (ref-new base-offset)")
-            && helper.contains(
-                "(defn x86-rel32-target-at-offset-base [bytes call-offset base-offset]"
-            )
+        helper
+            .contains("(let [call-offset (x86-first-rel32-offset-in-window bytes offset 0 size)]")
+            && helper.contains("base-offset-ref (ref-new base-offset)")
+            && helper
+                .contains("(defn x86-rel32-target-at-offset-base [bytes call-offset base-offset]")
             && helper.contains("call-offset-ref (ref-new call-offset)")
             && helper.contains("(x86-rel32-at bytes (ref-get call-offset-ref))")
             && helper.contains(
@@ -1516,12 +1568,18 @@ fn test_native_codegen_x86_read_file_helper_uses_128k_cap_for_selfhost_seed() {
     let helper = source
         .split("(defn emit-x86-selfhost-read-file-helper []")
         .nth(1)
-        .and_then(|tail| tail.split("(defn append-x86-selfhost-read-file-helper-rooted").next())
+        .and_then(|tail| {
+            tail.split("(defn append-x86-selfhost-read-file-helper-rooted")
+                .next()
+        })
         .expect("NativeCodegen.ls に x86 read-file helper が存在すること");
     let helper_size = source
         .split("(defn x86-selfhost-read-file-helper-size []")
         .nth(1)
-        .and_then(|tail| tail.split("(defn x86-selfhost-string-length-helper-size").next())
+        .and_then(|tail| {
+            tail.split("(defn x86-selfhost-string-length-helper-size")
+                .next()
+        })
         .expect("NativeCodegen.ls に x86 read-file helper size が存在すること");
 
     assert!(
@@ -1764,7 +1822,8 @@ fn test_selfhost_lexer_tokenize_spans_loop_roots_batch_before_field_reads() {
         .expect("Lexer.ls に tokenize-spans-loop が存在すること");
 
     assert!(
-        tokenize_loop.contains("(let [batch (tokenize-spans-outer-loop-bounded src pos len tokens 256)]")
+        tokenize_loop
+            .contains("(let [batch (tokenize-spans-outer-loop-bounded src pos len tokens 256)]")
             && tokenize_loop.contains("(root_push batch)")
             && tokenize_loop.contains("(let [done (vector-get batch 0)")
             && tokenize_loop.contains("next-pos (vector-get batch 1)")
@@ -1779,7 +1838,10 @@ fn test_selfhost_lexer_tokenize_spans_step_512_roots_recursive_step() {
     let step_loop = source
         .split("(defn tokenize-spans-step-512-state-loop [src len state remaining]")
         .nth(1)
-        .and_then(|tail| tail.split("(defn tokenize-spans-step-512-loop-bounded").next())
+        .and_then(|tail| {
+            tail.split("(defn tokenize-spans-step-512-loop-bounded")
+                .next()
+        })
         .expect("Lexer.ls に tokenize-spans-step-512-state-loop が存在すること");
     let step_pos = step_loop
         .find("step (tokenize-spans-step-2 src next-pos len next-tokens)")
@@ -4552,9 +4614,8 @@ fn test_e2e_stage1_native_observation_summary_two_run_determinism() {
 
 #[test]
 fn test_parse_numeric_lines_accepts_unsigned_i64_twos_complement_output() {
-    let lines = parse_numeric_lines(
-        "9223372036854775808\n18446744073709551614\n18446744073709551615\n",
-    );
+    let lines =
+        parse_numeric_lines("9223372036854775808\n18446744073709551614\n18446744073709551615\n");
 
     assert_eq!(lines, vec![i64::MIN, -2, -1]);
 }
@@ -43726,7 +43787,9 @@ fn test_e2e_linux_x86_actual_function_metadata_user_call_rel32_correlation() {
                     && row.size == direct_row.size
             })
             .unwrap_or_else(|| {
-                panic!("opcode 40 direct replay row に対応する metadata row が無い: row={direct_row:?}")
+                panic!(
+                    "opcode 40 direct replay row に対応する metadata row が無い: row={direct_row:?}"
+                )
             });
         if let Some(emitted_target) = x86_metadata_row_rel32_target(metadata_row) {
             compared_rel32_rows += 1;
