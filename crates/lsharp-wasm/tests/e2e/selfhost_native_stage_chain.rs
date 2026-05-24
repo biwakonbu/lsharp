@@ -1799,7 +1799,13 @@ fn test_linux_x86_representative_seed_has_opcode40_call_replay_metadata_diagnost
         source.contains("(defn print-x86-call-control-replay-diagnostic")
             && source.contains("(print 9000000046)")
             && source.contains("(if (= opcode 40)")
-            && source.contains("(codegen-x86-opcode-call-bundle operand offset starts direct-context)")
+            && source.contains("offset-ref (ref-new offset)")
+            && source.contains(
+                "(codegen-x86-opcode-call-bundle operand (ref-get offset-ref) starts direct-context)"
+            )
+            && source.contains(
+                "(x86-rel32-target-in-window-at-base direct 0 direct-len (ref-get offset-ref))"
+            )
             && source.contains("(print-x86-call-control-replay-diagnostic control-ctx idx opcode operand offset size)"),
         "Linux x86 segmented seed は opcode 40 user call の IR row / direct bundle / emitted bytes / rel32 target を同一 metadata row で出せるべき"
     );
@@ -7061,6 +7067,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
             functions (vector-get control-ctx 6)
             layout (vector-get control-ctx 7)
             frame-base-slot-count (vector-get control-ctx 8)
+            offset-ref (ref-new offset)
             import-count (vector-get layout 0)
             import-stub-offset (vector-get layout 1)
             function-start-base (vector-get layout 2)
@@ -7069,6 +7076,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
           (root_push starts)
           (root_push functions)
           (root_push layout)
+          (root_push offset-ref)
           (let [target-meta (vector-get functions operand)]
             (do
               (root_push target-meta)
@@ -7077,7 +7085,7 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                     target-offset (if (< operand import-count)
                                     (x86-import-ret-stub-offset import-stub-offset import-count operand)
                                     (- (vector-get starts (- operand import-count)) function-start-base))
-                    call-rel (- target-offset (+ offset call-next-offset))
+                    call-rel (- target-offset (+ (ref-get offset-ref) call-next-offset))
                     direct-context
                       (vector-push
                         (vector-push
@@ -7090,24 +7098,24 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                             function-start-base)
                           frame-base-slot-count)
                         current-depth)]
-                (do
-                  (root_push direct-context)
-                  (let [direct (codegen-x86-opcode-call-bundle operand offset starts direct-context)]
-                    (do
-                      (root_push direct)
-                      (let [direct-len (vector-length direct)
-                            direct-target (x86-rel32-target-in-window-at-base direct 0 direct-len offset)]
-                        (do
-                          (print 9000000046)
-                          (print idx)
-                          (print opcode)
-                          (print operand)
-                          (print current-depth)
-                          (print offset)
-                          (print size)
-                          (print target-param-count)
-                          (print call-next-offset)
-                          (print target-offset)
+	                (do
+	                  (root_push direct-context)
+	                  (let [direct (codegen-x86-opcode-call-bundle operand (ref-get offset-ref) starts direct-context)]
+	                    (do
+	                      (root_push direct)
+	                      (let [direct-len (vector-length direct)
+	                            direct-target (x86-rel32-target-in-window-at-base direct 0 direct-len (ref-get offset-ref))]
+	                        (do
+	                          (print 9000000046)
+	                          (print idx)
+	                          (print opcode)
+	                          (print operand)
+	                          (print current-depth)
+	                          (print (ref-get offset-ref))
+	                          (print size)
+	                          (print target-param-count)
+	                          (print call-next-offset)
+	                          (print target-offset)
                           (print call-rel)
                           (print direct-len)
                           (print direct-target)
@@ -7122,11 +7130,12 @@ fn selfhost_main_native_code_only_export_harness_with_payload_and_code_binding_a
                           (root_pop)))
                       (root_pop)))
                   (root_pop)))
-              (root_pop)))
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          (root_pop))))
+	              (root_pop)))
+	          (root_pop)
+	          (root_pop)
+	          (root_pop)
+	          (root_pop)
+	          (root_pop))))
     0))
 
 (defn print-x86-function-ir-prefix-loop [segment ir offsets functions control-ctx idx len depth]
