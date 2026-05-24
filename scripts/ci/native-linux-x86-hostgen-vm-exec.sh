@@ -179,6 +179,9 @@ for file in stage1-code.bin entrypoint-offset.txt seed.ls manifest.json; do
 done
 
 reject_dirty_actual_stage1_seed() {
+  if [[ "${LSHARP_NATIVE_LINUX_X86_REJECT_DIRTY_STAGE1_SEED:-0}" != "1" ]]; then
+    return 0
+  fi
   local seed_file="${ACTUAL_STAGE1_ARTIFACT_DIR}/seed.ls"
   local marker
   for marker in "payload-progress-mode" "pre-callable-progress" "command-line-arg 9" "9000000030"; do

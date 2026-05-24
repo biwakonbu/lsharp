@@ -596,6 +596,13 @@ fn test_native_linux_x86_hostgen_vm_script_rejects_dirty_actual_stage1_seed_debu
         .unwrap_or_else(|e| panic!("{} 読み込み失敗: {e}", script_path.display()));
     let reject_body = shell_function_body(&script, "reject_dirty_actual_stage1_seed");
 
+    assert!(
+        reject_body.contains(r#"LSHARP_NATIVE_LINUX_X86_REJECT_DIRTY_STAGE1_SEED:-0"#)
+            && reject_body.contains(r#"!= "1""#)
+            && reject_body.contains("return 0"),
+        "dirty seed rejection は diagnostic replay を妨げないよう opt-in gate で有効化するべき"
+    );
+
     for marker in [
         "payload-progress-mode",
         "pre-callable-progress",
