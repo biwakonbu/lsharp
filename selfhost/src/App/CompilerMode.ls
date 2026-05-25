@@ -1023,7 +1023,9 @@
                   (root_pop)
                   functions)))))))))
 (defn compile-file-functions-payload-with-cache [path func-idx cache-ref parse-count-ref]
-  (let [all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)]
+  (let [cache-root (root_push cache-ref)
+    parse-count-root (root_push parse-count-ref)
+    all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)]
     (do
       (root_push all-pairs)
       (let [data-ref (ref-new (vector-new 8))]
@@ -1066,6 +1068,8 @@
                                           (print (vector-length (vector-get payload2 0)))
                                           (print (vector-length (vector-get payload2 1))))
                                         (do))
+                                      (root_pop)
+                                      (root_pop)
                                       (root_pop)
                                       (root_pop)
                                       (root_pop)

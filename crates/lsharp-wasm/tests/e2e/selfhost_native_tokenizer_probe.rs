@@ -327,6 +327,14 @@ fn compiler_mode_payload_with_cache_roots_payload_result_before_cleanup() {
         .and_then(|tail| tail.split("(defn compile-file-mode-cache-probe").next())
         .expect("compile-file-functions-payload-with-cache が存在すること");
 
+    let cache_root_pos = body.find("cache-root (root_push cache-ref)").expect(
+        "compile-file-functions-payload-with-cache は cache-ref を pairs 取得前に root すること",
+    );
+    let parse_count_root_pos = body
+        .find("parse-count-root (root_push parse-count-ref)")
+        .expect(
+            "compile-file-functions-payload-with-cache は parse-count-ref を pairs 取得前に root すること",
+        );
     let all_pairs_pos = body
         .find("all-pairs (compile-file-pairs-with-cache")
         .expect("compile-file-functions-payload-with-cache は pairs を自前で取得すること");
@@ -365,7 +373,9 @@ fn compiler_mode_payload_with_cache_roots_payload_result_before_cleanup() {
         .expect("compile-file-functions-payload-with-cache は cleanup root_pop を持つこと");
 
     assert!(
-        all_pairs_pos < all_pairs_root_pos
+        cache_root_pos < parse_count_root_pos
+            && parse_count_root_pos < all_pairs_pos
+            && all_pairs_pos < all_pairs_root_pos
             && all_pairs_root_pos < data_ref_root_pos
             && data_ref_root_pos < register_pos
             && register_pos < compile_pos
