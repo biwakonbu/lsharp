@@ -205,6 +205,83 @@ fn compiler_mode_register_all_pairs_roots_final_state_before_result_alloc() {
 }
 
 #[test]
+fn compiler_mode_source_pair_chunked_roots_function_accumulator_states() {
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/App/CompilerMode.ls"))
+        .expect("CompilerMode.ls を読めること");
+    let continue_step = source
+        .split("(defn continue-compile-src-decl-pairs-step ")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-src-decl-pairs-step-8").next())
+        .expect("continue-compile-src-decl-pairs-step が存在すること");
+    let step8 = source
+        .split("(defn compile-src-decl-pairs-step-8")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn continue-compile-src-decl-pairs-step-8")
+                .next()
+        })
+        .expect("compile-src-decl-pairs-step-8 が存在すること");
+    let continue8 = source
+        .split("(defn continue-compile-src-decl-pairs-step-8")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-src-decl-pairs-step-64").next())
+        .expect("continue-compile-src-decl-pairs-step-8 が存在すること");
+    let step64 = source
+        .split("(defn compile-src-decl-pairs-step-64")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn continue-compile-src-decl-pairs-step-64")
+                .next()
+        })
+        .expect("compile-src-decl-pairs-step-64 が存在すること");
+    let continue64 = source
+        .split("(defn continue-compile-src-decl-pairs-step-64")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-all-src-decl-pairs-chunked")
+                .next()
+        })
+        .expect("continue-compile-src-decl-pairs-step-64 が存在すること");
+    let chunked = source
+        .split("(defn compile-all-src-decl-pairs-chunked")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-all-src-decl-pairs ").next())
+        .expect("compile-all-src-decl-pairs-chunked が存在すること");
+
+    for (name, body) in [
+        ("continue step", continue_step),
+        ("continue step-8", continue8),
+        ("continue step-64", continue64),
+    ] {
+        assert!(
+            body.contains("next-functions (vector-get state 2)")
+                && body.contains("(root_push next-functions)")
+                && !body.contains("data-ref (vector-get state 2)"),
+            "{name} は state から取り出した functions accumulator を次 helper 呼び出し前に root するべき"
+        );
+    }
+
+    for (name, body) in [("step-8", step8), ("step-64", step64)] {
+        assert!(
+            body.contains("(root_push functions)")
+                && body.find("(root_push functions)")
+                    < body.find("state (compile-src-decl-pairs-step"),
+            "{name} wrapper は初回 pair step 呼び出し前に functions accumulator を root するべき"
+        );
+    }
+
+    assert!(
+        chunked.contains("state0 (compile-src-decl-pairs-step-64")
+            && chunked.contains("(root_push state0)")
+            && chunked.contains("state1 (continue-compile-src-decl-pairs-step-64")
+            && chunked.contains("(root_push state1)")
+            && chunked.contains("result (vector-get state1 2)")
+            && !chunked.contains("(vector-get\n    (continue-compile-src-decl-pairs-step-64"),
+        "compile-all-src-decl-pairs-chunked は stage2 x86 native の state local 崩れを避けるため state を root してから result を取り出すべき"
+    );
+}
+
+#[test]
 fn compiler_with_source_compile_step_roots_next_functions_before_state_alloc() {
     let source =
         std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))
