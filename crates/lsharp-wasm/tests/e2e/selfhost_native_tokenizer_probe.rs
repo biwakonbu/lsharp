@@ -342,6 +342,9 @@ fn compiler_mode_payload_with_cache_roots_payload_result_before_cleanup() {
     let compile_pos = body
         .find("functions (compile-all-src-decl-pairs-chunked")
         .expect("compile-file-functions-payload-with-cache は payload 作成前に functions を直接 compile すること");
+    let diag_gate_pos = body
+        .find("payload-helper-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)")
+        .expect("compile-file-functions-payload-with-cache の helper 内診断は progress arg で gated すること");
     let pre_payload_diag_pos = body
         .find("(print 163)")
         .expect("compile-file-functions-payload-with-cache は payload 構築直前の helper 内診断 marker を持つこと");
@@ -366,7 +369,8 @@ fn compiler_mode_payload_with_cache_roots_payload_result_before_cleanup() {
             && all_pairs_root_pos < data_ref_root_pos
             && data_ref_root_pos < register_pos
             && register_pos < compile_pos
-            && compile_pos < pre_payload_diag_pos
+            && compile_pos < diag_gate_pos
+            && diag_gate_pos < pre_payload_diag_pos
             && pre_payload_diag_pos < payload_slot_pos
             && payload_slot_pos < payload1_set_pos
             && payload1_set_pos < payload2_set_pos

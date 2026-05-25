@@ -1040,12 +1040,16 @@
                   (let [functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)]
                     (do
                       (root_push functions)
-                      (let [data (ref-get data-ref)]
+                      (let [data (ref-get data-ref)
+                        payload-helper-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)]
                         (do
                           (root_push data)
-                          (print 163)
-                          (print (vector-length functions))
-                          (print (vector-length data))
+                          (if (= payload-helper-progress-mode 1)
+                            (do
+                              (print 163)
+                              (print (vector-length functions))
+                              (print (vector-length data)))
+                            (do))
                           (let [payload-base (vector-new 2)]
                             (do
                               (let [payload-slot (root_push payload-base)
@@ -1055,10 +1059,13 @@
                                   (let [payload2 (vector-push payload1 data)]
                                     (do
                                       (root_set payload-slot payload2)
-                                      (print 164)
-                                      (print (vector-length payload2))
-                                      (print (vector-length (vector-get payload2 0)))
-                                      (print (vector-length (vector-get payload2 1)))
+                                      (if (= payload-helper-progress-mode 1)
+                                        (do
+                                          (print 164)
+                                          (print (vector-length payload2))
+                                          (print (vector-length (vector-get payload2 0)))
+                                          (print (vector-length (vector-get payload2 1))))
+                                        (do))
                                       (root_pop)
                                       (root_pop)
                                       (root_pop)
