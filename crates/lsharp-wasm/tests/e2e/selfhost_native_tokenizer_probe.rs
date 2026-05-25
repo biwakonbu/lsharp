@@ -327,12 +327,21 @@ fn compiler_mode_payload_with_cache_roots_payload_result_before_cleanup() {
         .and_then(|tail| tail.split("(defn compile-file-mode-cache-probe").next())
         .expect("compile-file-functions-payload-with-cache が存在すること");
 
-    let data_ref_root_pos = body.find("data-ref-slot (root_push data-ref)").expect(
+    let all_pairs_pos = body
+        .find("all-pairs (compile-file-pairs-with-cache")
+        .expect("compile-file-functions-payload-with-cache は pairs を自前で取得すること");
+    let all_pairs_root_pos = body
+        .find("(root_push all-pairs)")
+        .expect("compile-file-functions-payload-with-cache は all-pairs を root すること");
+    let data_ref_root_pos = body.find("(root_push data-ref)").expect(
         "compile-file-functions-payload-with-cache は data-ref を compile 前に root すること",
     );
+    let register_pos = body
+        .find("reg-result (register-all-pairs")
+        .expect("compile-file-functions-payload-with-cache は ftable を自前で登録すること");
     let compile_pos = body
-        .find("functions (compile-file-functions-with-cache")
-        .expect("compile-file-functions-payload-with-cache は functions を compile すること");
+        .find("functions (compile-all-src-decl-pairs-chunked")
+        .expect("compile-file-functions-payload-with-cache は payload 作成前に functions を直接 compile すること");
     let payload_slot_pos = body.find("payload-slot (root_push payload-base)").expect(
         "compile-file-functions-payload-with-cache は payload vector slot を root すること",
     );
@@ -347,12 +356,19 @@ fn compiler_mode_payload_with_cache_roots_payload_result_before_cleanup() {
         .expect("compile-file-functions-payload-with-cache は cleanup root_pop を持つこと");
 
     assert!(
-        data_ref_root_pos < compile_pos
+        all_pairs_pos < all_pairs_root_pos
+            && all_pairs_root_pos < data_ref_root_pos
+            && data_ref_root_pos < register_pos
+            && register_pos < compile_pos
             && compile_pos < payload_slot_pos
             && payload_slot_pos < payload1_set_pos
             && payload1_set_pos < payload2_set_pos
             && payload2_set_pos < first_pop_pos,
-        "compile-file-functions-payload-with-cache は x86 native の payload handoff で data-ref/payload result を cleanup 前に root slot へ保持するべき"
+        "compile-file-functions-payload-with-cache は x86 native の payload handoff で compile-file-functions-with-cache の return local を跨がず、functions が root されたまま payload を組むべき"
+    );
+    assert!(
+        !body.contains("compile-file-functions-with-cache path"),
+        "compile-file-functions-payload-with-cache は functions return cleanup 経路を跨がず payload を組むべき"
     );
 }
 

@@ -1023,29 +1023,43 @@
                   (root_pop)
                   functions)))))))))
 (defn compile-file-functions-payload-with-cache [path func-idx cache-ref parse-count-ref]
-  (let [data-ref (ref-new (vector-new 8))]
+  (let [all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)]
     (do
-      (let [data-ref-slot (root_push data-ref)
-        functions (compile-file-functions-with-cache path func-idx cache-ref parse-count-ref data-ref)]
+      (root_push all-pairs)
+      (let [data-ref (ref-new (vector-new 8))]
         (do
-          (root_push functions)
-          (let [data (ref-get data-ref)]
+          (root_push data-ref)
+          (let [n (vector-length all-pairs)
+            reg-result (register-all-pairs all-pairs 0 n (ftable-new) func-idx)
+            ftable (vector-get reg-result 0)]
             (do
-              (root_push data)
-              (let [payload-base (vector-new 2)]
+              (root_push reg-result)
+              (let [functions0 (vector-new 8)]
                 (do
-                  (let [payload-slot (root_push payload-base)
-                    payload1 (vector-push payload-base functions)]
+                  (root_push functions0)
+                  (let [functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)]
                     (do
-                      (root_set payload-slot payload1)
-                      (let [payload2 (vector-push payload1 data)]
+                      (root_push functions)
+                      (let [data (ref-get data-ref)]
                         (do
-                          (root_set payload-slot payload2)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          (root_pop)
-                          payload2)))))))))))))
+                          (root_push data)
+                          (let [payload-base (vector-new 2)]
+                            (do
+                              (let [payload-slot (root_push payload-base)
+                                payload1 (vector-push payload-base functions)]
+                                (do
+                                  (root_set payload-slot payload1)
+                                  (let [payload2 (vector-push payload1 data)]
+                                    (do
+                                      (root_set payload-slot payload2)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      (root_pop)
+                                      payload2)))))))))))))))))))
 (defn compile-file-mode-cache-probe []
   (let [path (command-line-arg 1)
     cache-ref (ref-new (map-new))
