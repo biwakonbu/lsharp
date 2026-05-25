@@ -231,6 +231,31 @@ fn compiler_with_source_compile_step_roots_next_functions_before_state_alloc() {
 }
 
 #[test]
+fn compiler_source_chunked_roots_step_states_before_result_extract() {
+    let source =
+        std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))
+            .expect("Compiler.ls を読めること");
+    let body = source
+        .split("(defn compile-source-defn-functions-chunked")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn continue-compile-let-chain-step-with-source")
+                .next()
+        })
+        .expect("Compiler.ls に compile-source-defn-functions-chunked が存在すること");
+
+    assert!(
+        body.contains("state0 (compile-defn-functions-step-64-with-source")
+            && body.contains("(root_push state0)")
+            && body.contains("state1 (continue-compile-defn-functions-step-64-with-source")
+            && body.contains("(root_push state1)")
+            && body.contains("result (vector-get state1 2)")
+            && !body.contains("(vector-get (continue-compile-defn-functions-step-64-with-source"),
+        "compile-source-defn-functions-chunked は stage2 x86 native の state local 崩れを避けるため step/continue state を root してから result を取り出すべき"
+    );
+}
+
+#[test]
 fn parser_program_step_delegates_expr_append_to_rooted_helper() {
     let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
         .expect("Parser.ls を読めること");

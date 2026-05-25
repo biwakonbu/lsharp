@@ -1491,7 +1491,28 @@
               result)))))))
 
 (defn compile-source-defn-functions-chunked [decls idx n source ftable data-ref functions]
-  (vector-get (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref (compile-defn-functions-step-64-with-source decls idx n source ftable data-ref functions)) 2))
+  (do
+    (root_push decls)
+    (root_push source)
+    (root_push ftable)
+    (root_push data-ref)
+    (root_push functions)
+    (let [state0 (compile-defn-functions-step-64-with-source decls idx n source ftable data-ref functions)]
+      (do
+        (root_push state0)
+        (let [state1 (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref state0)]
+          (do
+            (root_push state1)
+            (let [result (vector-get state1 2)]
+              (do
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                (root_pop)
+                result))))))))
 (defn continue-compile-let-chain-step-with-source [source ftable state data-ref]
   (if (= (vector-get state 0) 1)
     state
