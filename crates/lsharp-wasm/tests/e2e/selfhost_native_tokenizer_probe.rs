@@ -231,6 +231,34 @@ fn compiler_with_source_compile_step_roots_next_functions_before_state_alloc() {
 }
 
 #[test]
+fn compiler_with_source_skip_decl_roots_functions_until_state_alloc() {
+    let source =
+        std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))
+            .expect("Compiler.ls を読めること");
+    let body = source
+        .split("(defn compile-defn-functions-step-with-source-body-impl-3")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-let-with-ftable-impl-body-impl-3")
+                .next()
+        })
+        .expect(
+            "Compiler.ls に compile-defn-functions-step-with-source-body-impl-3 が存在すること",
+        );
+
+    assert!(
+        body.contains(
+            "(let [result (make-compile-step-state 0 (+ idx 1) functions)]\n            (do\n              (root_pop)"
+        )
+            && body.contains("              result)))))))")
+            && !body.contains(
+                "(root_pop)\n          (root_pop)\n          (root_pop)\n          (root_pop)\n          (root_pop)\n          (make-compile-step-state 0 (+ idx 1) functions)"
+            ),
+        "compile-defn-functions-step-with-source の non-defn skip branch は functions を root したまま state allocation するべき"
+    );
+}
+
+#[test]
 fn compiler_source_chunked_roots_step_states_before_result_extract() {
     let source =
         std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))

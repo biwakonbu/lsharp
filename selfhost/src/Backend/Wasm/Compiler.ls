@@ -2106,12 +2106,14 @@
                   (root_pop)
                       result)))))))
         (do
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          (make-compile-step-state 0 (+ idx 1) functions))))))
+          (let [result (make-compile-step-state 0 (+ idx 1) functions)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
 (defn compile-let-with-ftable-impl-body-impl-3 [node env ftable instrs]
   (let [name-hash (vector-get node 1)
     init-expr (vector-get node 2)
