@@ -344,9 +344,15 @@ fn compiler_mode_payload_with_cache_roots_payload_result_before_cleanup() {
     let data_ref_root_pos = body.find("(root_push data-ref)").expect(
         "compile-file-functions-payload-with-cache は data-ref を compile 前に root すること",
     );
+    let pairs_diag_pos = body
+        .find("(print 165)")
+        .expect("compile-file-functions-payload-with-cache は pairs 取得直後の helper 内診断 marker を持つこと");
     let register_pos = body
         .find("reg-result (register-all-pairs")
         .expect("compile-file-functions-payload-with-cache は ftable を自前で登録すること");
+    let register_diag_pos = body
+        .find("(print 166)")
+        .expect("compile-file-functions-payload-with-cache は register 直後の helper 内診断 marker を持つこと");
     let compile_pos = body
         .find("functions (compile-all-src-decl-pairs-chunked")
         .expect("compile-file-functions-payload-with-cache は payload 作成前に functions を直接 compile すること");
@@ -374,13 +380,16 @@ fn compiler_mode_payload_with_cache_roots_payload_result_before_cleanup() {
 
     assert!(
         cache_root_pos < parse_count_root_pos
-            && parse_count_root_pos < all_pairs_pos
+            && parse_count_root_pos < diag_gate_pos
+            && diag_gate_pos < all_pairs_pos
             && all_pairs_pos < all_pairs_root_pos
             && all_pairs_root_pos < data_ref_root_pos
+            && data_ref_root_pos < pairs_diag_pos
+            && pairs_diag_pos < register_pos
             && data_ref_root_pos < register_pos
-            && register_pos < compile_pos
-            && compile_pos < diag_gate_pos
-            && diag_gate_pos < pre_payload_diag_pos
+            && register_pos < register_diag_pos
+            && register_diag_pos < compile_pos
+            && compile_pos < pre_payload_diag_pos
             && pre_payload_diag_pos < payload_slot_pos
             && payload_slot_pos < payload1_set_pos
             && payload1_set_pos < payload2_set_pos

@@ -1025,25 +1025,37 @@
 (defn compile-file-functions-payload-with-cache [path func-idx cache-ref parse-count-ref]
   (let [cache-root (root_push cache-ref)
     parse-count-root (root_push parse-count-ref)
+    payload-helper-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)
     all-pairs (compile-file-pairs-with-cache path cache-ref parse-count-ref)]
     (do
       (root_push all-pairs)
       (let [data-ref (ref-new (vector-new 8))]
         (do
           (root_push data-ref)
+          (if (= payload-helper-progress-mode 1)
+            (do
+              (print 165)
+              (print (vector-length all-pairs))
+              (print (ref-get parse-count-ref)))
+            (do))
           (let [n (vector-length all-pairs)
             reg-result (register-all-pairs all-pairs 0 n (ftable-new) func-idx)
             ftable (vector-get reg-result 0)]
             (do
               (root_push reg-result)
+              (if (= payload-helper-progress-mode 1)
+                (do
+                  (print 166)
+                  (print n)
+                  (print (vector-length reg-result)))
+                (do))
               (let [functions0 (vector-new 8)]
                 (do
                   (root_push functions0)
                   (let [functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable data-ref functions0)]
                     (do
                       (root_push functions)
-                      (let [data (ref-get data-ref)
-                        payload-helper-progress-mode (if (> (string-length (command-line-arg 8)) 0) 1 0)]
+                      (let [data (ref-get data-ref)]
                         (do
                           (root_push data)
                           (if (= payload-helper-progress-mode 1)
