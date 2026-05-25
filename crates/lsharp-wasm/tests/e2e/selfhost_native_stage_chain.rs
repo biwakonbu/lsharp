@@ -258,10 +258,10 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                               (print 9000000042))
                                             0)
               payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
+              payload-root (root_push payload-base)
               functions (vector-get payload-base 0)
               data (vector-get payload-base 1)
               bounded-main-func-idx (+ 9 (vector-length functions))
-              payload-root (root_push payload-base)
               progress-after-payload (if (= payload-progress-mode 1)
                                       (do
                                         (print 9000000031)
@@ -301,11 +301,11 @@ fn linux_x86_representative_actual_stage23_seed_source() -> String {
                                               (print 9000000042))
                                             0)
          payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)
+         payload-root (root_push payload-base)
          payload payload-base
          functions (vector-get payload-base 0)
          data (vector-get payload-base 1)
          bounded-main-func-idx (+ 9 (vector-length functions))
-         payload-root (root_push payload-base)
          functions-root (root_push functions)
          data-root (root_push data)
          progress-after-payload (if (= payload-progress-mode 1)
@@ -454,6 +454,30 @@ fn test_linux_x86_representative_seed_uses_layout_emit_for_segmented_native_code
     assert!(
         entrypoint_checks.iter().all(|check| *check),
         "Linux x86 segmented seed は stage2/stage3 artifact の entrypoint を最後の callable ではなく対象 source の main defn に固定するべき: checks={entrypoint_checks:?}"
+    );
+}
+
+#[test]
+fn test_linux_x86_representative_seed_roots_payload_before_observing_children() {
+    let source = linux_x86_representative_actual_stage23_seed_source();
+    let payload_base_pos = source
+        .find("payload-base (compile-file-functions-payload-with-cache (command-line-arg 1) 10 cache-ref parse-count-ref)")
+        .expect("Linux x86 representative seed は payload-base binding を持つこと");
+    let payload_root_pos = source
+        .find("payload-root (root_push payload-base)")
+        .expect("Linux x86 representative seed は payload-base root binding を持つこと");
+    let functions_pos = source
+        .find("functions (vector-get payload-base 0)")
+        .expect("Linux x86 representative seed は functions を payload-base から読むこと");
+    let data_pos = source
+        .find("data (vector-get payload-base 1)")
+        .expect("Linux x86 representative seed は data を payload-base から読むこと");
+
+    assert!(
+        payload_base_pos < payload_root_pos
+            && payload_root_pos < functions_pos
+            && payload_root_pos < data_pos,
+        "Linux x86 representative seed は payload-base を root してから functions/data を取り出すべき"
     );
 }
 

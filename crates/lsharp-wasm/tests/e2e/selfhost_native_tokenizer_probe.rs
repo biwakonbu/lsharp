@@ -318,6 +318,45 @@ fn compiler_mode_compile_file_functions_roots_chunked_result_before_cleanup() {
 }
 
 #[test]
+fn compiler_mode_payload_with_cache_roots_payload_result_before_cleanup() {
+    let source = std::fs::read_to_string(workspace_root().join("selfhost/src/App/CompilerMode.ls"))
+        .expect("CompilerMode.ls を読めること");
+    let body = source
+        .split("(defn compile-file-functions-payload-with-cache ")
+        .nth(1)
+        .and_then(|tail| tail.split("(defn compile-file-mode-cache-probe").next())
+        .expect("compile-file-functions-payload-with-cache が存在すること");
+
+    let data_ref_root_pos = body.find("data-ref-slot (root_push data-ref)").expect(
+        "compile-file-functions-payload-with-cache は data-ref を compile 前に root すること",
+    );
+    let compile_pos = body
+        .find("functions (compile-file-functions-with-cache")
+        .expect("compile-file-functions-payload-with-cache は functions を compile すること");
+    let payload_slot_pos = body.find("payload-slot (root_push payload-base)").expect(
+        "compile-file-functions-payload-with-cache は payload vector slot を root すること",
+    );
+    let payload1_set_pos = body
+        .find("(root_set payload-slot payload1)")
+        .expect("compile-file-functions-payload-with-cache は payload1 を slot に反映すること");
+    let payload2_set_pos = body.find("(root_set payload-slot payload2)").expect(
+        "compile-file-functions-payload-with-cache は payload2 を cleanup 前に slot に反映すること",
+    );
+    let first_pop_pos = body
+        .find("(root_pop)")
+        .expect("compile-file-functions-payload-with-cache は cleanup root_pop を持つこと");
+
+    assert!(
+        data_ref_root_pos < compile_pos
+            && compile_pos < payload_slot_pos
+            && payload_slot_pos < payload1_set_pos
+            && payload1_set_pos < payload2_set_pos
+            && payload2_set_pos < first_pop_pos,
+        "compile-file-functions-payload-with-cache は x86 native の payload handoff で data-ref/payload result を cleanup 前に root slot へ保持するべき"
+    );
+}
+
+#[test]
 fn compiler_with_source_compile_step_roots_next_functions_before_state_alloc() {
     let source =
         std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))

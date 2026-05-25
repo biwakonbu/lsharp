@@ -1023,22 +1023,29 @@
                   (root_pop)
                   functions)))))))))
 (defn compile-file-functions-payload-with-cache [path func-idx cache-ref parse-count-ref]
-  (let [data-ref (ref-new (vector-new 8))
-    functions (compile-file-functions-with-cache path func-idx cache-ref parse-count-ref data-ref)]
+  (let [data-ref (ref-new (vector-new 8))]
     (do
-      (root_push functions)
-      (let [data (ref-get data-ref)]
+      (let [data-ref-slot (root_push data-ref)
+        functions (compile-file-functions-with-cache path func-idx cache-ref parse-count-ref data-ref)]
         (do
-          (root_push data)
-          (let [payload1 (vector-push (vector-new 2) functions)]
+          (root_push functions)
+          (let [data (ref-get data-ref)]
             (do
-              (root_push payload1)
-              (let [payload2 (vector-push payload1 data)]
+              (root_push data)
+              (let [payload-base (vector-new 2)]
                 (do
-                  (root_pop)
-                  (root_pop)
-                  (root_pop)
-                  payload2)))))))))
+                  (let [payload-slot (root_push payload-base)
+                    payload1 (vector-push payload-base functions)]
+                    (do
+                      (root_set payload-slot payload1)
+                      (let [payload2 (vector-push payload1 data)]
+                        (do
+                          (root_set payload-slot payload2)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          (root_pop)
+                          payload2)))))))))))
 (defn compile-file-mode-cache-probe []
   (let [path (command-line-arg 1)
     cache-ref (ref-new (map-new))
