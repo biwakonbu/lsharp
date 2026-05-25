@@ -1737,7 +1737,7 @@
                               (root_pop)
                               (root_pop)
                               (root_pop)
-                              first-pair-debug)))))))))))))))
+                              first-pair-debug))))))))))))))))
 (defn compile-file-mode-ast-chunked-step-progress-probe []
   (let [path (command-line-arg 1)
     cache-ref (ref-new (map-new))
