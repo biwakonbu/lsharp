@@ -1043,6 +1043,9 @@
                       (let [data (ref-get data-ref)]
                         (do
                           (root_push data)
+                          (print 163)
+                          (print (vector-length functions))
+                          (print (vector-length data))
                           (let [payload-base (vector-new 2)]
                             (do
                               (let [payload-slot (root_push payload-base)
@@ -1052,6 +1055,10 @@
                                   (let [payload2 (vector-push payload1 data)]
                                     (do
                                       (root_set payload-slot payload2)
+                                      (print 164)
+                                      (print (vector-length payload2))
+                                      (print (vector-length (vector-get payload2 0)))
+                                      (print (vector-length (vector-get payload2 1)))
                                       (root_pop)
                                       (root_pop)
                                       (root_pop)

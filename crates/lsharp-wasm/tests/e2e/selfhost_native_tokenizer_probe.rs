@@ -342,6 +342,9 @@ fn compiler_mode_payload_with_cache_roots_payload_result_before_cleanup() {
     let compile_pos = body
         .find("functions (compile-all-src-decl-pairs-chunked")
         .expect("compile-file-functions-payload-with-cache は payload 作成前に functions を直接 compile すること");
+    let pre_payload_diag_pos = body
+        .find("(print 163)")
+        .expect("compile-file-functions-payload-with-cache は payload 構築直前の helper 内診断 marker を持つこと");
     let payload_slot_pos = body.find("payload-slot (root_push payload-base)").expect(
         "compile-file-functions-payload-with-cache は payload vector slot を root すること",
     );
@@ -351,6 +354,9 @@ fn compiler_mode_payload_with_cache_roots_payload_result_before_cleanup() {
     let payload2_set_pos = body.find("(root_set payload-slot payload2)").expect(
         "compile-file-functions-payload-with-cache は payload2 を cleanup 前に slot に反映すること",
     );
+    let post_payload_diag_pos = body
+        .find("(print 164)")
+        .expect("compile-file-functions-payload-with-cache は payload 構築後の helper 内診断 marker を持つこと");
     let first_pop_pos = body
         .find("(root_pop)")
         .expect("compile-file-functions-payload-with-cache は cleanup root_pop を持つこと");
@@ -360,10 +366,12 @@ fn compiler_mode_payload_with_cache_roots_payload_result_before_cleanup() {
             && all_pairs_root_pos < data_ref_root_pos
             && data_ref_root_pos < register_pos
             && register_pos < compile_pos
-            && compile_pos < payload_slot_pos
+            && compile_pos < pre_payload_diag_pos
+            && pre_payload_diag_pos < payload_slot_pos
             && payload_slot_pos < payload1_set_pos
             && payload1_set_pos < payload2_set_pos
-            && payload2_set_pos < first_pop_pos,
+            && payload2_set_pos < post_payload_diag_pos
+            && post_payload_diag_pos < first_pop_pos,
         "compile-file-functions-payload-with-cache は x86 native の payload handoff で compile-file-functions-with-cache の return local を跨がず、functions が root されたまま payload を組むべき"
     );
     assert!(
