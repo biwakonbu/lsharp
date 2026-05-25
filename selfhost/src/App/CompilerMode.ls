@@ -1712,21 +1712,32 @@
                           (root_pop)
                           0))))
                   0)]
-              (let [functions0 (vector-new 8)]
+              (let [regular-data-ref (ref-new (vector-new 8))]
                 (do
-                  (root_push functions0)
-                  (let [functions (compile-all-src-decl-pairs-chunked-progress all-pairs 0 n ftable data-ref functions0)]
+                  (root_push regular-data-ref)
+                  (let [regular-functions (compile-all-src-decl-pairs-chunked all-pairs 0 n ftable regular-data-ref (vector-new 8))]
                     (do
-                      (root_push functions)
-                      (print 153)
-                      (print (vector-length functions))
-                      (print 154)
-                      (print (vector-length (ref-get data-ref)))
+                      (root_push regular-functions)
+                      (print 162)
+                      (print (vector-length regular-functions))
+                      (print (vector-length (ref-get regular-data-ref)))
                       (root_pop)
                       (root_pop)
-                      (root_pop)
-                      (root_pop)
-                      first-pair-debug))))))))))))
+                      (let [functions0 (vector-new 8)]
+                        (do
+                          (root_push functions0)
+                          (let [functions (compile-all-src-decl-pairs-chunked-progress all-pairs 0 n ftable data-ref functions0)]
+                            (do
+                              (root_push functions)
+                              (print 153)
+                              (print (vector-length functions))
+                              (print 154)
+                              (print (vector-length (ref-get data-ref)))
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              (root_pop)
+                              first-pair-debug)))))))))))))))
 (defn compile-file-mode-ast-chunked-step-progress-probe []
   (let [path (command-line-arg 1)
     cache-ref (ref-new (map-new))

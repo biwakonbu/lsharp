@@ -178,8 +178,15 @@ fn compiler_mode_compile_pair_probe_prints_first_pair_debug_compile() {
             )
             && probe.contains("(print 156)")
             && probe.contains("(print (vector-length debug-functions))")
-            && probe.contains("(print (vector-length (ref-get debug-data-ref)))"),
-        "compile pair probe は first pair の AST tag と debug compile の関数数を出すべき"
+            && probe.contains("(print (vector-length (ref-get debug-data-ref)))")
+            && probe.contains("regular-data-ref (ref-new (vector-new 8))")
+            && probe.contains(
+                "(compile-all-src-decl-pairs-chunked all-pairs 0 n ftable regular-data-ref (vector-new 8))"
+            )
+            && probe.contains("(print 162)")
+            && probe.contains("(print (vector-length regular-functions))")
+            && probe.contains("(print (vector-length (ref-get regular-data-ref)))"),
+        "compile pair probe は first pair の AST tag、debug compile、通常 chunked compile の関数数を出すべき"
     );
 }
 
