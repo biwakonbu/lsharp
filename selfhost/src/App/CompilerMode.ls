@@ -1045,7 +1045,7 @@
                           (root_pop)
                           (root_pop)
                           (root_pop)
-                          payload2)))))))))))
+                          payload2)))))))))))))
 (defn compile-file-mode-cache-probe []
   (let [path (command-line-arg 1)
     cache-ref (ref-new (map-new))
