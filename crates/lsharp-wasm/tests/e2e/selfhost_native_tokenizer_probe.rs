@@ -256,6 +256,75 @@ fn compiler_source_chunked_roots_step_states_before_result_extract() {
 }
 
 #[test]
+fn compiler_source_chunked_roots_next_functions_between_step_helpers() {
+    let source =
+        std::fs::read_to_string(workspace_root().join("selfhost/src/Backend/Wasm/Compiler.ls"))
+            .expect("Compiler.ls を読めること");
+    let continue_step = source
+        .split("(defn continue-compile-defn-functions-step-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn continue-compile-defn-functions-step-times-with-source")
+                .next()
+        })
+        .expect("continue-compile-defn-functions-step-with-source が存在すること");
+    let step8 = source
+        .split("(defn compile-defn-functions-step-8-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn continue-compile-defn-functions-step-8-with-source")
+                .next()
+        })
+        .expect("compile-defn-functions-step-8-with-source が存在すること");
+    let continue8 = source
+        .split("(defn continue-compile-defn-functions-step-8-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-defn-functions-step-64-with-source")
+                .next()
+        })
+        .expect("continue-compile-defn-functions-step-8-with-source が存在すること");
+    let step64 = source
+        .split("(defn compile-defn-functions-step-64-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn continue-compile-defn-functions-step-64-with-source")
+                .next()
+        })
+        .expect("compile-defn-functions-step-64-with-source が存在すること");
+    let continue64 = source
+        .split("(defn continue-compile-defn-functions-step-64-with-source")
+        .nth(1)
+        .and_then(|tail| {
+            tail.split("(defn compile-source-defn-functions-chunked")
+                .next()
+        })
+        .expect("continue-compile-defn-functions-step-64-with-source が存在すること");
+
+    for (name, body) in [
+        ("continue step", continue_step),
+        ("continue step-8", continue8),
+        ("continue step-64", continue64),
+    ] {
+        assert!(
+            body.contains("next-functions (vector-get state 2)")
+                && body.contains("(root_push next-functions)")
+                && !body.contains("data-ref (vector-get state 2)"),
+            "{name} は state から取り出した functions accumulator を次 helper 呼び出し前に root するべき"
+        );
+    }
+
+    for (name, body) in [("step-8", step8), ("step-64", step64)] {
+        assert!(
+            body.contains("(root_push functions)")
+                && body.find("(root_push functions)")
+                    < body.find("state (compile-defn-functions-step-with-source"),
+            "{name} wrapper は初回 step 呼び出し前に functions accumulator を root するべき"
+        );
+    }
+}
+
+#[test]
 fn parser_program_step_delegates_expr_append_to_rooted_helper() {
     let source = std::fs::read_to_string(workspace_root().join("selfhost/src/Syntax/Parser.ls"))
         .expect("Parser.ls を読めること");

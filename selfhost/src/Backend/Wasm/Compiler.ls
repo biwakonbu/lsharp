@@ -1388,7 +1388,17 @@
 (defn continue-compile-defn-functions-step-with-source [decls n source ftable data-ref state]
   (if (= (vector-get state 0) 1)
     state
-    (compile-defn-functions-step-with-source decls (vector-get state 1) n source ftable data-ref (vector-get state 2))))
+    (do
+      (root_push state)
+      (let [next-idx (vector-get state 1)
+        next-functions (vector-get state 2)]
+        (do
+          (root_push next-functions)
+          (let [result (compile-defn-functions-step-with-source decls next-idx n source ftable data-ref next-functions)]
+            (do
+              (root_pop)
+              (root_pop)
+              result)))))))
 
 (defn continue-compile-defn-functions-step-times-with-source [decls n source ftable data-ref remaining state]
   (if (= remaining 0)
@@ -1420,11 +1430,13 @@
     (root_push source)
     (root_push ftable)
     (root_push data-ref)
+    (root_push functions)
     (let [state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)]
       (do
         (root_push state)
         (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 7 state)]
           (do
+            (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)
@@ -1441,14 +1453,19 @@
       (root_push ftable)
       (root_push data-ref)
       (root_push state)
-      (let [result (compile-defn-functions-step-8-with-source decls (vector-get state 1) n source ftable data-ref (vector-get state 2))]
+      (let [next-idx (vector-get state 1)
+        next-functions (vector-get state 2)]
         (do
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          (root_pop)
-          result)))))
+          (root_push next-functions)
+          (let [result (compile-defn-functions-step-8-with-source decls next-idx n source ftable data-ref next-functions)]
+            (do
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              (root_pop)
+              result)))))))
 
 (defn compile-defn-functions-step-64-with-source [decls idx n source ftable data-ref functions]
   (do
@@ -1456,11 +1473,13 @@
     (root_push source)
     (root_push ftable)
     (root_push data-ref)
+    (root_push functions)
     (let [state (compile-defn-functions-step-with-source decls idx n source ftable data-ref functions)]
       (do
         (root_push state)
         (let [result (continue-compile-defn-functions-step-times-with-source decls n source ftable data-ref 63 state)]
           (do
+            (root_pop)
             (root_pop)
             (root_pop)
             (root_pop)
@@ -1477,18 +1496,23 @@
       (root_push ftable)
       (root_push data-ref)
       (root_push state)
-      (let [next-state (compile-defn-functions-step-64-with-source decls (vector-get state 1) n source ftable data-ref (vector-get state 2))]
+      (let [next-idx (vector-get state 1)
+        next-functions (vector-get state 2)]
         (do
-          (root_push next-state)
-          (let [result (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref next-state)]
+          (root_push next-functions)
+          (let [next-state (compile-defn-functions-step-64-with-source decls next-idx n source ftable data-ref next-functions)]
             (do
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              (root_pop)
-              result)))))))
+              (root_push next-state)
+              (let [result (continue-compile-defn-functions-step-64-with-source decls n source ftable data-ref next-state)]
+                (do
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  (root_pop)
+                  result)))))))))
 
 (defn compile-source-defn-functions-chunked [decls idx n source ftable data-ref functions]
   (do
